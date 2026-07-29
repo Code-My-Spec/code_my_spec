@@ -10,6 +10,13 @@ defmodule CodeMySpec.Analysis.Runners do
   No persistence here — the Reconciler owns all writes. `opts` carries the
   cassette escape hatches (`:output_file`) so spex can drive runs from
   pre-recorded tool output.
+
+  This is the device half of analysis: it needs a shell and the working copy,
+  and nothing else. Problems come back unstamped — `Reconciler.stamp_project/2`
+  sets `project_id` on every problem it persists, and `stamp_component_ids/3`
+  resolves components through the Files table, which is a database join this
+  side has no business doing. Runners used to set `project_id` too; the value
+  was overwritten on the way in every time.
   """
 
   alias CodeMySpec.BddSpecs.Spex
@@ -30,14 +37,13 @@ defmodule CodeMySpec.Analysis.Runners do
 
   @spec run(String.t(), Scope.t(), [String.t()], keyword()) ::
           {:ok, result()} | {:error, term()}
-  def run("compiler", %Scope{cwd: cwd} = scope, _args, opts) do
-    execute_opts = [cwd: cwd] |> maybe_output_file(opts)
+  def run("compiler", %Scope{} = scope, _args, opts) do
+    execute_opts = [environment: scope.environment] |> maybe_output_file(opts)
     result = Compile.execute(execute_opts)
 
     problems =
       result.data.compiler_results
       |> Enum.map(&ProblemConverter.from_compiler/1)
-      |> Enum.map(&%{&1 | project_id: scope.active_project_id})
 
     {errors, warnings} = Enum.split_with(problems, &(&1.severity == :error))
 
@@ -73,8 +79,8 @@ defmodule CodeMySpec.Analysis.Runners do
     end
   end
 
-  def run("exunit", %Scope{cwd: cwd} = scope, args, opts) do
-    exec_opts = [project_root: cwd] |> maybe_output_file(opts)
+  def run("exunit", %Scope{} = scope, args, opts) do
+    exec_opts = [environment: scope.environment] |> maybe_output_file(opts)
 
     case Tests.execute(args, exec_opts) do
       # `mix test` exited nonzero without reporting a single failure: bad args,
@@ -98,7 +104,7 @@ defmodule CodeMySpec.Analysis.Runners do
         problems =
           test_run.failures
           |> Enum.map(&ProblemConverter.from_test_failure(&1.error))
-          |> Enum.map(&%{&1 | project_id: scope.active_project_id, source: "exunit"})
+          |> Enum.map(&%{&1 | source: "exunit"})
 
         {:ok,
          %{
@@ -113,8 +119,8 @@ defmodule CodeMySpec.Analysis.Runners do
     end
   end
 
-  def run("spex", %Scope{cwd: cwd} = scope, args, opts) do
-    exec_opts = [project_root: cwd] |> maybe_output_file(opts)
+  def run("spex", %Scope{} = scope, args, opts) do
+    exec_opts = [environment: scope.environment] |> maybe_output_file(opts)
 
     case Spex.execute(args, exec_opts) do
       # The same trap as exunit above. `Spex.parse_jsonl/1` answers `{:ok, []}`
@@ -129,7 +135,7 @@ defmodule CodeMySpec.Analysis.Runners do
         problems =
           failures
           |> Enum.map(&spex_failure_to_problem/1)
-          |> Enum.map(&%{&1 | project_id: scope.active_project_id, source: "spex"})
+          |> Enum.map(&%{&1 | source: "spex"})
 
         {:ok,
          %{

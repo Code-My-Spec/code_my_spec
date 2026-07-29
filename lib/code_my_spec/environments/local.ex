@@ -155,7 +155,19 @@ defmodule CodeMySpec.Environments.Local do
     """
   end
 
-  def cmd(command, args, opts) do
+  # Local runs commands on the same filesystem it reads, so the execution view
+  # and the domain view are one filesystem.
+  @impl true
+  def exec_file_exists?(env, path), do: file_exists?(env, path)
+
+  @impl true
+  def cmd(%Environment{cwd: cwd}, command, args, opts) do
+    # The environment's cwd is the default working directory — that is what
+    # makes this the environment's command rather than an ambient one. An
+    # explicit :cd still wins, for callers operating on a path outside the
+    # project root.
+    opts = if cwd, do: Keyword.put_new(opts, :cd, cwd), else: opts
+
     # Append clean_otp_env LAST so it wins: clears the Burrito release's
     # ROOTDIR/BINDIR/RELEASE_* that would otherwise make a child mix/erl boot
     # from our extracted ERTS ("cannot get bootfile") instead of the user's OTP.

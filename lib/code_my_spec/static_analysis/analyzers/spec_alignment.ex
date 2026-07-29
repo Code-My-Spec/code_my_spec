@@ -10,6 +10,8 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignment do
 
   @behaviour CodeMySpec.StaticAnalysis.AnalyzerBehaviour
 
+  alias CodeMySpec.StaticAnalysis
+  alias CodeMySpec.Environments
   alias CodeMySpec.Code.ElixirAst
   alias CodeMySpec.Documents.MarkdownParser
   alias CodeMySpec.Paths
@@ -26,9 +28,12 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignment do
 
   @impl true
   @spec available?(Scope.t()) :: boolean()
-  def available?(%Scope{cwd: cwd}) when is_binary(cwd) and cwd != "" do
-    spec_dir = Path.join(cwd, Paths.spec_dir())
-    File.dir?(spec_dir)
+  def available?(%Scope{cwd: cwd} = scope) when is_binary(cwd) and cwd != "" do
+    # file_exists?, not exec_file_exists?: the spec directory is a domain file,
+    # read through read_file/2. Only tool-installation checks belong to the
+    # shell's filesystem.
+    env = StaticAnalysis.resolve_environment([], scope, cwd)
+    Environments.file_exists?(env, Paths.spec_dir())
   rescue
     _ -> false
   end
@@ -43,11 +48,12 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignment do
     if is_nil(cwd) or cwd == "" do
       {:error, "No working directory available"}
     else
-      with {:ok, spec_dir} <- get_spec_directory(cwd),
-           {:ok, spec_files} <- find_spec_files(spec_dir, opts) do
+      env = StaticAnalysis.resolve_environment(opts, scope, cwd)
+
+      with {:ok, spec_files} <- find_spec_files(env, opts) do
         problems =
           spec_files
-          |> Enum.flat_map(&analyze_spec_file(&1, cwd, project_id))
+          |> Enum.flat_map(&analyze_spec_file(&1, env, project_id))
 
         {:ok, problems}
       end
@@ -60,42 +66,51 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignment do
 
   # Private functions
 
-  defp get_spec_directory(cwd) do
-    spec_dir = Path.join(cwd, Paths.spec_dir())
-
-    if File.dir?(spec_dir) do
-      {:ok, spec_dir}
-    else
-      {:error, "Spec directory does not exist: #{spec_dir}"}
-    end
-  end
-
-  defp find_spec_files(spec_dir, opts) when is_list(opts) do
+  # stream_files/3 rather than glob/2: its contract says emitted paths are
+  # relative to the environment's cwd, and every path this analyzer produces —
+  # including the ones that end up in Problem.file_path — is project-relative.
+  defp find_spec_files(env, opts) when is_list(opts) do
     case Keyword.get(opts, :paths) do
       nil ->
-        {:ok, Path.wildcard(Path.join(spec_dir, "**/*.spec.md"))}
+        # stream_files/3 silently skips roots that do not exist, so the missing
+        # spec directory has to be checked separately. "The project has no spec
+        # directory" and "the spec directory holds no specs" are different
+        # answers — the first means the project is not set up, and the analyzer
+        # reported it as an error before this went through the environment.
+        if Environments.file_exists?(env, Paths.spec_dir()) do
+          files =
+            env
+            |> Environments.stream_files([Paths.spec_dir()])
+            |> Enum.filter(&String.ends_with?(&1, ".spec.md"))
+
+          {:ok, files}
+        else
+          {:error, "Spec directory does not exist: #{Paths.spec_dir()}"}
+        end
 
       paths when is_list(paths) ->
-        {:ok, Enum.filter(paths, &File.exists?/1)}
+        {:ok, Enum.filter(paths, &Environments.file_exists?(env, &1))}
     end
   end
 
-  defp analyze_spec_file(spec_file_path, cwd, project_id) do
-    with {:ok, content} <- File.read(spec_file_path),
+  defp analyze_spec_file(spec_file_path, env, project_id) do
+    with {:ok, content} <- Environments.read_file(env, spec_file_path),
          {:ok, module_name} <- extract_module_name_from_content(content),
          {:ok, sections} <- MarkdownParser.parse(content),
-         impl_path <- determine_impl_path(module_name, cwd),
-         test_path <- determine_test_path(module_name, cwd) do
+         impl_path <- determine_impl_path(module_name),
+         test_path <- determine_test_path(module_name) do
       # Only analyze if implementation exists
-      if File.exists?(impl_path) do
+      if Environments.file_exists?(env, impl_path) do
         functions = Map.get(sections, "functions", [])
-        function_problems = analyze_module_alignment(functions, impl_path, test_path, spec_file_path, project_id)
+
+        function_problems =
+          analyze_module_alignment(functions, impl_path, test_path, spec_file_path, project_id, env)
 
         # Also check top-level Test Assertions (used by LiveView/component specs)
         top_level_problems =
           case Map.get(sections, "test assertions") do
             nil -> []
-            assertions_text -> check_top_level_test_assertions(assertions_text, test_path, project_id)
+            assertions_text -> check_top_level_test_assertions(assertions_text, test_path, project_id, env)
           end
 
         function_problems ++ top_level_problems
@@ -128,7 +143,7 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignment do
     end
   end
 
-  defp determine_impl_path(module_name, cwd) do
+  defp determine_impl_path(module_name) do
     # Convert module name to file path
     # e.g., "MyApp.User.Schema" -> "lib/my_app/user/schema.ex"
     relative_path =
@@ -137,10 +152,10 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignment do
       |> Enum.map(&Macro.underscore/1)
       |> Path.join()
 
-    Path.join([cwd, "lib", "#{relative_path}.ex"])
+    Path.join(["lib", "#{relative_path}.ex"])
   end
 
-  defp determine_test_path(module_name, cwd) do
+  defp determine_test_path(module_name) do
     # Convert module name to test file path
     # e.g., "MyApp.User.Schema" -> "test/my_app/user/schema_test.exs"
     relative_path =
@@ -149,19 +164,19 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignment do
       |> Enum.map(&Macro.underscore/1)
       |> Path.join()
 
-    Path.join([cwd, "test", "#{relative_path}_test.exs"])
+    Path.join(["test", "#{relative_path}_test.exs"])
   end
 
-  defp analyze_module_alignment(spec_functions, impl_path, test_path, _spec_file_path, project_id)
+  defp analyze_module_alignment(spec_functions, impl_path, test_path, _spec_file_path, project_id, env)
        when is_list(spec_functions) do
-    impl_problems = compare_implementations(spec_functions, impl_path, project_id)
-    test_problems = compare_test_assertions(spec_functions, test_path, project_id)
+    impl_problems = compare_implementations(spec_functions, impl_path, project_id, env)
+    test_problems = compare_test_assertions(spec_functions, test_path, project_id, env)
 
     impl_problems ++ test_problems
   end
 
-  defp compare_implementations(spec_functions, impl_path, project_id) do
-    case ElixirAst.get_public_functions(impl_path) do
+  defp compare_implementations(spec_functions, impl_path, project_id, env) do
+    case read_and_parse(env, impl_path, &ElixirAst.public_functions_from_source/1) do
       {:ok, impl_functions} ->
         # Convert spec functions to map for easy lookup
         spec_fn_map = build_spec_function_map(spec_functions)
@@ -300,10 +315,10 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignment do
     |> String.trim()
   end
 
-  defp compare_test_assertions(spec_functions, test_path, project_id) do
+  defp compare_test_assertions(spec_functions, test_path, project_id, env) do
     # Only check tests if test file exists
-    if File.exists?(test_path) do
-      case ElixirAst.get_test_assertions(test_path) do
+    if Environments.file_exists?(env, test_path) do
+      case read_and_parse(env, test_path, &ElixirAst.test_assertions_from_source/1) do
         {:ok, test_assertions} ->
           compare_test_assertions_with_spec(
             spec_functions,
@@ -539,18 +554,26 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignment do
       else: {:ok, :misaligned, %{missing: missing, extra: extra}}
   end
 
-  defp check_top_level_test_assertions(assertions_text, test_path, project_id) do
+  defp check_top_level_test_assertions(assertions_text, test_path, project_id, env) do
     spec_assertions = parse_assertion_list(assertions_text)
 
-    if spec_assertions == [] or not File.exists?(test_path) do
+    if spec_assertions == [] or not Environments.file_exists?(env, test_path) do
       []
     else
-      compare_top_level_assertions(spec_assertions, test_path, project_id)
+      compare_top_level_assertions(spec_assertions, test_path, project_id, env)
     end
   end
 
-  defp compare_top_level_assertions(spec_assertions, test_path, project_id) do
-    case ElixirAst.get_test_assertions(test_path) do
+  # Read through the environment, parse in memory. ElixirAst's path-taking
+  # functions do their own File.read, which would go to the wrong host.
+  defp read_and_parse(env, path, parse) do
+    with {:ok, content} <- Environments.read_file(env, path) do
+      parse.(content)
+    end
+  end
+
+  defp compare_top_level_assertions(spec_assertions, test_path, project_id, env) do
+    case read_and_parse(env, test_path, &ElixirAst.test_assertions_from_source/1) do
       {:ok, test_assertions} ->
         test_names = test_assertions |> Enum.map(& &1.test_name) |> Enum.uniq()
 

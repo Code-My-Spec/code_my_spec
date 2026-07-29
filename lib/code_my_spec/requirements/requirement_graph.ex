@@ -17,6 +17,8 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   """
 
   alias CodeMySpec.Components.Registry, as: ComponentRegistry
+  alias CodeMySpec.Requirements.GraphCache
+  alias CodeMySpec.Requirements.GraphFingerprint
   alias CodeMySpec.Requirements.Preloader
   alias CodeMySpec.Requirements.Requirement
   alias CodeMySpec.Requirements.RequirementCalculator
@@ -36,8 +38,27 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   def compute_graph(%Scope{} = scope) do
     ctx = Preloader.load(scope)
     config = CodeMySpec.Configurations.get_or_create(scope)
-    {nodes, ctx} = compute_all_from_ctx(scope, ctx, config)
-    edges = compute_edges(nodes, ctx, config)
+    compute_and_publish(scope, ctx, config)
+  end
+
+  # Publish the computed graph so readers that cannot compute one still have
+  # something to show. Deliberately not a memoization: computation never
+  # consults the cache, so there is no key that can be wrong.
+  #
+  # It cannot be a memoization today. 13 of the 70 requirement definitions use
+  # `check_type: :delegate`, which hands satisfaction to an arbitrary module —
+  # release reads deploys, qa_complete reads QA results, issues_resolved reads
+  # issues. None of that is in the preloaded context, so a fingerprint over the
+  # context would miss it and serve a graph that says work is done when a fresh
+  # deploy just reopened it. That is not hypothetical: it is what story 859's
+  # spex caught when this was wired as a read-through cache.
+  #
+  # Making it a real memoization means every delegate module exposing a
+  # fingerprint of its own inputs. Worth doing, and a bigger change than this.
+  defp compute_and_publish(scope, ctx, config) do
+    {nodes, enriched_ctx} = compute_all_from_ctx(scope, ctx, config)
+    edges = compute_edges(nodes, enriched_ctx, config)
+    GraphCache.publish(scope, GraphFingerprint.compute(ctx, config), {nodes, edges})
     {nodes, edges}
   end
 
@@ -57,8 +78,11 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   def next_actionable(%Scope{} = scope) do
     ctx = Preloader.load(scope)
     config = CodeMySpec.Configurations.get_or_create(scope)
-    {nodes, ctx} = compute_all_from_ctx(scope, ctx, config)
-    edges = compute_edges(nodes, ctx, config)
+    {nodes, edges} = compute_and_publish(scope, ctx, config)
+
+    # The un-enriched ctx is correct here: compute_all_from_ctx/3 only adds
+    # :template_edges, which actionable_from/3 does not read — it needs
+    # ctx.components and ctx.stories, both loaded by the preloader.
     actionable_from(nodes, edges, ctx)
   end
 
@@ -133,7 +157,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   def compute_all(%Scope{} = scope) do
     ctx = Preloader.load(scope)
     config = CodeMySpec.Configurations.get_or_create(scope)
-    {nodes, _ctx} = compute_all_from_ctx(scope, ctx, config)
+    {nodes, _edges} = compute_and_publish(scope, ctx, config)
     nodes
   end
 

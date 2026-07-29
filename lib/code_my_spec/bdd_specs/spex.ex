@@ -7,6 +7,8 @@ defmodule CodeMySpec.BddSpecs.Spex do
 
   require Logger
 
+  alias CodeMySpec.Environments
+
   alias CodeMySpec.BddSpecs.Spex.{Error, Failure, Step}
 
   @doc """
@@ -16,7 +18,7 @@ defmodule CodeMySpec.BddSpecs.Spex do
 
   - `args` - List of arguments to pass to mix spex (e.g., ["test/spex/login_spex.ex"])
   - `opts` - Keyword list of options:
-    - `:project_root` - Project root directory to run tests from (defaults to cwd)
+    - `:environment` - Environment to run specs in (required); commands run in its cwd
     - `:quiet` - Suppress console output (default: false)
     - `:jsonl_path` - Custom path for JSONL output file (defaults to temp file)
 
@@ -27,13 +29,14 @@ defmodule CodeMySpec.BddSpecs.Spex do
 
   ## Example
 
-      {:ok, failures, exit_code} = Spex.execute(["test/spex/login_spex.ex"])
+      {:ok, failures, exit_code} = Spex.execute(["test/spex/login_spex.ex"], environment: env)
       exit_code  # => 0 for success, non-zero for failure
   """
   @spec execute(args :: [String.t()], opts :: keyword()) ::
           {:ok, [Failure.t()], integer()} | {:error, {:parse_error, String.t()}}
   def execute(args, opts \\ []) do
-    project_root = Keyword.get(opts, :project_root, File.cwd!())
+    environment = Keyword.fetch!(opts, :environment)
+    project_root = environment.cwd
     quiet = Keyword.get(opts, :quiet, false)
 
     caller_provided_file = Keyword.has_key?(opts, :output_file) or Keyword.has_key?(opts, :jsonl_path)
@@ -55,11 +58,11 @@ defmodule CodeMySpec.BddSpecs.Spex do
 
     # clean_otp_env keeps the child `mix`/`erl` off our Burrito ERTS (see
     # CodeMySpec.Environments.clean_otp_env/0).
-    env = [{"MIX_ENV", "test"}] ++ CodeMySpec.Environments.clean_otp_env()
+    cmd_env = [{"MIX_ENV", "test"}] ++ CodeMySpec.Environments.clean_otp_env()
 
     Logger.info("[Spex] Running: #{command}")
 
-    case System.cmd("mix", spex_args, cd: project_root, stderr_to_stdout: true, env: env) do
+    case Environments.cmd(environment, "mix", spex_args, stderr_to_stdout: true, env: cmd_env) do
       {_raw_output, exit_code} ->
         result = parse_and_return_failures(temp_file, exit_code)
         unless caller_provided_file, do: cleanup_temp_file(temp_file)

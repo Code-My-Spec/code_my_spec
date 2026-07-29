@@ -145,6 +145,7 @@ defmodule CodeMySpec.StaticAnalysis.Runner do
 
   defp ensure_cwd_option(opts, _scope), do: opts
 
+
   defp resolve_analyzer(analyzer_name) when is_atom(analyzer_name) do
     analyzer_map = %{
       credo: Credo,

@@ -9,6 +9,8 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.Sobelow do
 
   @behaviour CodeMySpec.StaticAnalysis.AnalyzerBehaviour
 
+  alias CodeMySpec.Environments
+  alias CodeMySpec.StaticAnalysis
   alias CodeMySpec.Problems.Problem
   alias CodeMySpec.Users.Scope
 
@@ -20,14 +22,15 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.Sobelow do
 
   @impl true
   @spec available?(Scope.t()) :: boolean()
-  def available?(%Scope{cwd: cwd}) when is_binary(cwd) and cwd != "" do
-    with true <- File.dir?(cwd),
-         true <- File.exists?(Path.join(cwd, "mix.exs")),
-         true <- File.dir?(Path.join(cwd, "deps/sobelow")) do
-      true
-    else
-      _ -> false
-    end
+  def available?(%Scope{cwd: cwd} = scope) when is_binary(cwd) and cwd != "" do
+    # exec_file_exists?, not File.*: this asks whether the tool is installed for
+    # the `mix` that would actually run, and on a remote environment that is not
+    # this machine's disk. Raw File calls would inspect the wrong host and answer
+    # false, which skips the analyzer silently instead of failing.
+    env = StaticAnalysis.resolve_environment([], scope, cwd)
+
+    Environments.exec_file_exists?(env, "mix.exs") and
+      Environments.exec_file_exists?(env, "deps/sobelow")
   rescue
     _ -> false
   end
@@ -43,7 +46,7 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.Sobelow do
       {:error, "No working directory available"}
     else
       with {:ok, temp_file} <- create_temp_file(),
-           {:ok, json_output} <- execute_sobelow(cwd, temp_file, opts),
+           {:ok, json_output} <- execute_sobelow(cwd, temp_file, opts, scope),
            {:ok, findings} <- parse_json_output(json_output),
            problems <- convert_to_problems(findings, scope) do
         cleanup_temp_file(temp_file)
@@ -71,15 +74,16 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.Sobelow do
       {:error, "Failed to create temporary file: #{Exception.message(exception)}"}
   end
 
-  defp execute_sobelow(code_repo, temp_file, opts) do
+  defp execute_sobelow(code_repo, temp_file, opts, scope) do
     args = build_sobelow_args(opts)
+    environment = StaticAnalysis.resolve_environment(opts, scope, code_repo)
 
-    # Build System.cmd options. clean_otp_env keeps the child `mix` off our
-    # Burrito ERTS (see CodeMySpec.Environments.clean_otp_env/0).
+    # `cd:` stays explicit — opts may carry a :cwd override distinct from the
+    # environment's root. clean_otp_env is applied by the environment
+    # (see Local.cmd/4).
     cmd_opts = [
       cd: code_repo,
-      stderr_to_stdout: true,
-      env: CodeMySpec.Environments.clean_otp_env()
+      stderr_to_stdout: true
     ]
 
     # Note: System.cmd in Elixir 1.19 doesn't support :timeout option directly
@@ -92,7 +96,7 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.Sobelow do
       )
     end
 
-    case System.cmd("mix", args, cmd_opts) do
+    case CodeMySpec.Environments.cmd(environment, "mix", args, cmd_opts) do
       {output, exit_code} when exit_code in [0, 1] ->
         # Sobelow exit codes: 0 = no issues, 1 = issues found
         # We write stdout to temp file for reliable parsing

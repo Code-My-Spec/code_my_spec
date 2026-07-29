@@ -45,16 +45,28 @@ defmodule CodeMySpec.Code.ElixirAst do
   @spec get_public_functions(file_path :: String.t()) ::
           {:ok, [%{name: atom(), arity: integer(), spec: String.t() | nil}]} | {:error, term()}
   def get_public_functions(file_path) do
-    with {:ok, content} <- File.read(file_path),
-         {:ok, ast} <- Code.string_to_quoted(content) do
+    with {:ok, content} <- File.read(file_path) do
+      public_functions_from_source(content)
+    end
+  end
+
+  @doc """
+  Same as `get_public_functions/1`, on source already in hand.
+
+  Parsing is pure; reading is not. Callers that get their bytes from an
+  `Environments` environment — anything that might run against a working copy
+  on another machine — need the parse without the `File.read`.
+  """
+  @spec public_functions_from_source(String.t()) ::
+          {:ok, [%{name: atom(), arity: integer(), spec: String.t() | nil}]} | {:error, term()}
+  def public_functions_from_source(content) do
+    with {:ok, ast} <- Code.string_to_quoted(content) do
       functions =
         ast
         |> extract_functions()
         |> deduplicate_functions()
 
       {:ok, functions}
-    else
-      {:error, reason} -> {:error, reason}
     end
   end
 
@@ -75,13 +87,22 @@ defmodule CodeMySpec.Code.ElixirAst do
            [%{test_name: String.t(), describe_blocks: [String.t()], description: String.t()}]}
           | {:error, term()}
   def get_test_assertions(file_path) do
-    with {:ok, content} <- File.read(file_path),
-         {:ok, ast} <- Code.string_to_quoted(content) do
-      tests = extract_tests(ast, [])
+    with {:ok, content} <- File.read(file_path) do
+      test_assertions_from_source(content)
+    end
+  end
 
-      {:ok, tests}
-    else
-      {:error, reason} -> {:error, reason}
+  @doc """
+  Same as `get_test_assertions/1`, on source already in hand. See
+  `public_functions_from_source/1`.
+  """
+  @spec test_assertions_from_source(String.t()) ::
+          {:ok,
+           [%{test_name: String.t(), describe_blocks: [String.t()], description: String.t()}]}
+          | {:error, term()}
+  def test_assertions_from_source(content) do
+    with {:ok, ast} <- Code.string_to_quoted(content) do
+      {:ok, extract_tests(ast, [])}
     end
   end
 

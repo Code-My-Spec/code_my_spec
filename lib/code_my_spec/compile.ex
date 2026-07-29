@@ -10,6 +10,8 @@ defmodule CodeMySpec.Compile do
 
   require Logger
 
+  alias CodeMySpec.Environments
+
   @doc """
   Execute mix compile synchronously and read the diagnostics JSONL file.
 
@@ -36,7 +38,7 @@ defmodule CodeMySpec.Compile do
   @spec execute(keyword()) :: map()
   def execute(opts \\ []) do
     output_file = Keyword.get_lazy(opts, :output_file, &create_temp_file_path/0)
-    cwd = Keyword.get(opts, :cwd)
+    env = Keyword.fetch!(opts, :environment)
 
     cmd_opts = [
       stderr_to_stdout: true,
@@ -50,14 +52,12 @@ defmodule CodeMySpec.Compile do
         ] ++ CodeMySpec.Environments.clean_otp_env()
     ]
 
-    cmd_opts = if cwd, do: Keyword.put(cmd_opts, :cd, cwd), else: cmd_opts
-
     Logger.debug("[Compile] output_file=#{output_file}")
-    Logger.debug("[Compile] cwd=#{inspect(cwd)}")
+    Logger.debug("[Compile] cwd=#{inspect(env.cwd)}")
     Logger.debug("[Compile] env=#{inspect(cmd_opts[:env])}")
 
     {output, exit_code} =
-      System.cmd("mix", ["compile", "--return-errors"], cmd_opts)
+      Environments.cmd(env, "mix", ["compile", "--return-errors"], cmd_opts)
 
     Logger.debug("[Compile] exit_code=#{exit_code}")
     Logger.debug("[Compile] output_file exists?=#{File.exists?(output_file)}")

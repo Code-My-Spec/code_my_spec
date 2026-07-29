@@ -10,6 +10,8 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.Credo do
 
   @behaviour CodeMySpec.StaticAnalysis.AnalyzerBehaviour
 
+  alias CodeMySpec.Environments
+  alias CodeMySpec.StaticAnalysis
   alias CodeMySpec.Problems
   alias CodeMySpec.Users.Scope
 
@@ -21,14 +23,15 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.Credo do
 
   @impl true
   @spec available?(Scope.t()) :: boolean()
-  def available?(%Scope{cwd: cwd}) when is_binary(cwd) and cwd != "" do
-    with true <- File.dir?(cwd),
-         true <- File.exists?(Path.join(cwd, "mix.exs")),
-         true <- File.dir?(Path.join(cwd, "deps/credo")) do
-      true
-    else
-      _ -> false
-    end
+  def available?(%Scope{cwd: cwd} = scope) when is_binary(cwd) and cwd != "" do
+    # exec_file_exists?, not File.*: this asks whether the tool is installed for
+    # the `mix` that would actually run, and on a remote environment that is not
+    # this machine's disk. Raw File calls would inspect the wrong host and answer
+    # false, which skips the analyzer silently instead of failing.
+    env = StaticAnalysis.resolve_environment([], scope, cwd)
+
+    Environments.exec_file_exists?(env, "mix.exs") and
+      Environments.exec_file_exists?(env, "deps/credo")
   rescue
     _ -> false
   end
@@ -95,7 +98,7 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.Credo do
   end
 
   defp execute_and_parse(code_repo, temp_file, scope, opts) do
-    with {:ok, json_output} <- execute_credo(code_repo, temp_file, opts),
+    with {:ok, json_output} <- execute_credo(code_repo, temp_file, opts, scope),
          {:ok, issues} <- parse_json_output(json_output),
          problems <- convert_to_problems(issues, scope) do
       {:ok, problems}
@@ -105,15 +108,18 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.Credo do
     end
   end
 
-  defp execute_credo(code_repo, temp_file, opts) do
+  defp execute_credo(code_repo, temp_file, opts, scope) do
     args = build_credo_args(opts, code_repo)
+    environment = StaticAnalysis.resolve_environment(opts, scope, code_repo)
 
-    # clean_otp_env: keep the child `mix` off our Burrito ERTS (see
-    # CodeMySpec.Environments.clean_otp_env/0).
-    case System.cmd("mix", args,
+    # `cd:` stays explicit rather than riding on the environment's cwd: opts
+    # may carry a :cwd override that points somewhere other than the project
+    # root, and that override predates this call going through the abstraction.
+    #
+    # clean_otp_env is applied by the environment (see Local.cmd/4).
+    case CodeMySpec.Environments.cmd(environment, "mix", args,
            cd: code_repo,
-           stderr_to_stdout: true,
-           env: CodeMySpec.Environments.clean_otp_env()
+           stderr_to_stdout: true
          ) do
       {output, exit_code} when exit_code in 0..127 ->
         handle_credo_output(output, exit_code, temp_file)

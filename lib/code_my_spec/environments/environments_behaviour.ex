@@ -99,6 +99,45 @@ defmodule CodeMySpec.Environments.EnvironmentsBehaviour do
   @callback stream_files(env :: Environment.t(), roots :: [String.t()], opts :: keyword()) ::
               Enumerable.t()
 
+  @doc """
+  Run a command in the environment and return its output and exit status.
+
+  Execution is a property of the environment for the same reason file access
+  is: `mix test` has to run where the working copy lives. Every shell-out in
+  the system goes through here, so moving the code somewhere other than the
+  machine holding the checkout is a matter of adding an implementation rather
+  than of finding and rewriting call sites.
+
+  Implementations run in `env.cwd` unless the caller overrides `:cd`. `opts`
+  otherwise follows `System.cmd/3`.
+
+  Output is returned cleaned — ANSI stripped, valid UTF-8, trimmed — because
+  it is bound for a database and a JSON response, and neither tolerates raw
+  terminal bytes.
+  """
+  @callback cmd(
+              env :: Environment.t(),
+              command :: String.t(),
+              args :: [String.t()],
+              opts :: keyword()
+            ) :: {output :: String.t(), exit_code :: non_neg_integer()}
+
+  @doc """
+  Whether `path` exists in the filesystem the *shell* sees — the one `cmd/4`
+  runs in.
+
+  Usually the same answer as `file_exists?/2`, and deliberately a separate
+  question. `file_exists?/2` reports on the domain's filesystem; this reports
+  on the execution filesystem. The in-memory test environments are where they
+  come apart: they fake the domain filesystem while delegating execution to
+  the real one, so `deps/credo` is present to a spawned `mix` and absent to
+  `read_file/2`. A tool-availability check has to follow `cmd/4`, not
+  `read_file/2`, or it concludes the tool is missing and silently skips it.
+
+  Paths resolve against the environment's cwd, as everywhere else.
+  """
+  @callback exec_file_exists?(env :: Environment.t(), path :: String.t()) :: boolean()
+
   # Remove later, or reconsider:
 
   @callback environment_setup_command(env :: Environment.t(), attrs :: map()) :: String.t()

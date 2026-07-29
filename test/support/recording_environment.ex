@@ -26,6 +26,21 @@ defmodule CodeMySpec.Support.RecordingEnvironment do
   @impl true
   def destroy(_env), do: :ok
 
+  @doc """
+  Run a command for real, as `InMemoryEnvironment` does.
+
+  This environment records *filesystem* calls; the shell is a separate seam
+  that `ExCliVcr` already owns by meck-patching `System.cmd/3`. Delegating
+  keeps both recorders intact.
+  """
+  # Execution is delegated to Local, so the execution filesystem is Local's
+  # — the recorder wraps reads, not the shell.
+  @impl true
+  defdelegate exec_file_exists?(env, path), to: CodeMySpec.Environments.Local
+
+  @impl true
+  defdelegate cmd(env, command, args, opts), to: CodeMySpec.Environments.Local
+
   @impl true
   def read_file(env, path) do
     resolved_path = resolve_path(path, env.cwd)

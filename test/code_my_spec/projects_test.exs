@@ -19,6 +19,43 @@ defmodule CodeMySpec.ProjectsTest do
       setup_error: nil
     }
 
+    test "resolve_local_project/1 matches on working dir when no project is configured" do
+      user = user_fixture()
+      account = account_with_owner_fixture(user)
+      scope = user_scope_fixture(user, account)
+      project = project_fixture(scope, %{local_path: "/home/dev/alpha"})
+
+      assert {:ok, found} = Projects.resolve_local_project("/home/dev/alpha")
+      assert found.id == project.id
+
+      assert {:error, :not_found} = Projects.resolve_local_project("/home/dev/nope")
+    end
+
+    test "resolve_local_project/1 ignores the working dir when a project is configured" do
+      user = user_fixture()
+      account = account_with_owner_fixture(user)
+      scope = user_scope_fixture(user, account)
+
+      # Two checkouts of different projects that landed on the same conventional
+      # path — `/workspace/<app>` is the same string in every container.
+      mine = project_fixture(scope, %{local_path: "/workspace/app"})
+      _theirs = project_fixture(scope, %{local_path: "/workspace/app"})
+
+      Application.put_env(:code_my_spec, :project_id, mine.id)
+      on_exit(fn -> Application.delete_env(:code_my_spec, :project_id) end)
+
+      # Without config this is `order_by updated_at desc, limit 1` — it returns
+      # a project, just not reliably the right one. Configured, the collision
+      # cannot arise because the directory is never consulted.
+      assert {:ok, found} = Projects.resolve_local_project("/workspace/app")
+      assert found.id == mine.id
+
+      # Even a directory belonging to nothing resolves, because identity does
+      # not come from the directory.
+      assert {:ok, ^found} = Projects.resolve_local_project("/some/other/dir")
+      assert {:ok, ^found} = Projects.resolve_local_project(nil)
+    end
+
     test "deploy_key is encrypted at rest" do
       user = user_fixture()
       account = account_with_owner_fixture(user)

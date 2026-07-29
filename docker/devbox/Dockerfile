@@ -34,6 +34,25 @@
 #
 # The image is deliberately agentless: it mounts the user's own Claude Code
 # credentials rather than brokering model access.
+#
+# --- sprite mode ---------------------------------------------------------
+# Built with `--build-arg CMS_RELEASE_ENV=dev_sprite` (tag it separately), a
+# sprite clones an existing repo and serves MCP against the central Postgres.
+# It has no database of its own, so there is nothing to mount and nothing to
+# back up:
+#
+#   docker run -d --name sprite \
+#     -e REPO_URL=https://github.com/owner/repo \
+#     -e CMS_PROJECT_ID=<project uuid> \
+#     -e CMS_DB_HOST=host.docker.internal \
+#     -e CMS_DB_NAME=code_my_spec_dev \
+#     -e CMS_DB_USER=cms_sprite -e CMS_DB_PASSWORD=... \
+#     -e GITHUB_TOKEN=... \
+#     --entrypoint /usr/local/bin/devbox-sprite \
+#     codemyspec/sprite
+#
+# MCP is on 127.0.0.1:4003 *inside* the container, same as the desktop
+# harness — reach it with `docker exec`, or from the agent that runs in there.
 
 ARG ELIXIR_IMAGE=hexpm/elixir:1.20.2-erlang-29.0.4-debian-trixie-20260713-slim
 
@@ -59,7 +78,17 @@ RUN apt-get update \
 RUN curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal
 ENV PATH="/root/.cargo/bin:${PATH}"
 
-ENV MIX_ENV=prod_cli
+# Which harness this image carries.
+#
+#   prod_cli   — the desktop harness: SQLite in ~/.codemyspec, local-first.
+#   dev_sprite — a sprite: the same code against the central Postgres.
+#
+# It is a build arg rather than a runtime flag because the adapter is a
+# compile-time decision — DocEmbedding derives its column types from
+# `Application.compile_env(:code_my_spec, :adapter)`, so one binary cannot
+# serve both. Two tags, one Dockerfile.
+ARG CMS_RELEASE_ENV=prod_cli
+ENV MIX_ENV=${CMS_RELEASE_ENV}
 WORKDIR /src
 
 RUN mix local.hex --force && mix local.rebar --force
@@ -112,6 +141,13 @@ RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
   && apt-get install -y --no-install-recommends nodejs \
   && rm -rf /var/lib/apt/lists/*
 
+# Claude Code. The image ships the client but no credentials — mount the
+# user's own ~/.claude at run time. This is the local-development path: using
+# one person's subscription to serve other people would be a licensing
+# problem, so the hosted path needs an API key or Managed Agents instead.
+RUN npm install -g @anthropic-ai/claude-code \
+  && npm cache clean --force
+
 ENV PATH="/usr/lib/postgresql/${POSTGRES_VERSION}/bin:${PATH}"
 
 RUN mix local.hex --force && mix local.rebar --force
@@ -151,7 +187,10 @@ RUN mkdir -p "$PGDATA" /var/run/postgresql \
   && echo "listen_addresses = 'localhost'" >> "$PGDATA/postgresql.conf"
 
 COPY docker/devbox/entrypoint.sh /usr/local/bin/devbox-init
-RUN chmod 0755 /usr/local/bin/devbox-init
+COPY docker/devbox/new-project.sh /usr/local/bin/devbox-new-project
+COPY docker/devbox/sprite.sh /usr/local/bin/devbox-sprite
+RUN chmod 0755 /usr/local/bin/devbox-init /usr/local/bin/devbox-new-project \
+      /usr/local/bin/devbox-sprite
 
 WORKDIR /workspace
 

@@ -203,7 +203,7 @@ defmodule CodeMySpec.BddSpecs do
 
   ## Options
 
-  - `:project_root` - Project root directory (required)
+  - `:environment` - Environment to run specs in (required)
   - `:quiet` - Suppress console output (default: false)
 
   ## Returns
@@ -213,10 +213,10 @@ defmodule CodeMySpec.BddSpecs do
 
   ## Examples
 
-      iex> run_specs(["test/spex/login_spex.exs"], project_root: "/path/to/project")
+      iex> run_specs(["test/spex/login_spex.exs"], environment: env)
       {:ok, [], 0}
 
-      iex> run_specs(["test/spex/failing_spex.exs"], project_root: "/path/to/project")
+      iex> run_specs(["test/spex/failing_spex.exs"], environment: env)
       {:ok, [%Spex.Failure{...}], 1}
 
   """

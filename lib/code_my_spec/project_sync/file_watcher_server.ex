@@ -352,23 +352,55 @@ defmodule CodeMySpec.ProjectSync.FileWatcherServer do
     end)
   end
 
+  # "Every project with a local_path" was a safe definition of "mine" only
+  # while the database was per-machine: the rows in a local SQLite file were
+  # by construction this machine's projects. On a shared database it means
+  # every project anyone has ever linked, and a sprite booting against
+  # centralized data starts watchers for all of them, pointed at directories
+  # that belong to someone else's laptop.
+  #
+  # A sprite has exactly one working copy, so it says which project it is.
+  # Absent that, behaviour is unchanged for a desktop install.
+  #
+  # Note the `File.dir?` guard below would mask this in a container (none of
+  # those paths exist there, so nothing would start) — but that is an accident
+  # of the paths being absent, not scoping. The moment a host path happened to
+  # exist inside the container, it would be watched.
   defp watch_all_linked_projects(state) do
+    Enum.reduce(watchable_projects(), state.watchers, &maybe_add_watcher/2)
+  end
+
+  # Returns {project, root} pairs. The root is a separate value because the two
+  # deployments answer "where is this project on disk?" differently: a desktop
+  # reads the column it wrote itself, while a sprite cloned to a path it chose
+  # at runtime and the shared column still describes somebody else's laptop.
+  defp watchable_projects do
     import Ecto.Query
 
     alias CodeMySpec.Projects.Project
 
-    projects =
-      Project
-      |> where([p], not is_nil(p.local_path))
-      |> CodeMySpec.Repo.all()
+    case Application.get_env(:code_my_spec, :project_id) do
+      nil ->
+        Project
+        |> where([p], not is_nil(p.local_path))
+        |> CodeMySpec.Repo.all()
+        |> Enum.map(&{&1, &1.local_path})
 
-    Enum.reduce(projects, state.watchers, &maybe_add_watcher/2)
+      project_id ->
+        case CodeMySpec.Repo.get(Project, project_id) do
+          nil -> []
+          project -> [{project, sprite_root(project)}]
+        end
+    end
   end
 
-  defp maybe_add_watcher(project, watchers) do
-    root = project.local_path
+  defp sprite_root(project) do
+    Application.get_env(:code_my_spec, :mcp_working_dir) || project.local_path
+  end
 
+  defp maybe_add_watcher({project, root}, watchers) do
     cond do
+      is_nil(root) -> watchers
       Map.has_key?(watchers, root) -> watchers
       not File.dir?(root) -> watchers
       true -> add_watcher_for_project(project, root, watchers)
@@ -376,7 +408,7 @@ defmodule CodeMySpec.ProjectSync.FileWatcherServer do
   end
 
   defp add_watcher_for_project(project, root, watchers) do
-    with {:ok, scope} <- Scope.for_local_project(project),
+    with {:ok, scope} <- Scope.for_local_project(project, root),
          {:ok, watcher_pid} <- start_watcher(root) do
       Logger.info("[FileWatcher] Auto-watching #{project.name} at #{root}")
       Map.put(watchers, root, %{watcher_pid: watcher_pid, scope: scope})
