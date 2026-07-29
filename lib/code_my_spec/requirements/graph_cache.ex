@@ -93,8 +93,37 @@ defmodule CodeMySpec.Requirements.GraphCache do
   an agent's turn because a cache write lost a race would be a worse trade.
   """
   @spec publish(Scope.t(), String.t(), {list(), list()}) :: :ok
-  def publish(%Scope{active_project_id: project_id}, fingerprint, {nodes, edges})
+  def publish(%Scope{active_project_id: project_id} = scope, fingerprint, {nodes, edges})
       when is_binary(project_id) and is_binary(fingerprint) do
+    if current?(scope, fingerprint) do
+      # Nothing moved since the last publish. Readers call compute_graph/1 too —
+      # the web UI does, on every render — so writing unconditionally would mean
+      # a ~30KB upsert per page view for a row that already says the same thing.
+      # One indexed SELECT is the cheaper half of that trade.
+      :ok
+    else
+      do_publish(project_id, fingerprint, {nodes, edges})
+    end
+  end
+
+  def publish(_scope, _fingerprint, _graph), do: :ok
+
+  defp current?(scope, fingerprint) do
+    match?({:ok, _}, fetch_fingerprint(scope, fingerprint))
+  end
+
+  defp fetch_fingerprint(%Scope{active_project_id: project_id}, fingerprint) do
+    CachedGraph
+    |> where([g], g.project_id == ^project_id and g.fingerprint == ^fingerprint)
+    |> select([g], g.id)
+    |> Repo.one()
+    |> case do
+      nil -> :miss
+      id -> {:ok, id}
+    end
+  end
+
+  defp do_publish(project_id, fingerprint, {nodes, edges}) do
     now = DateTime.utc_now()
 
     attrs = %{
@@ -123,8 +152,6 @@ defmodule CodeMySpec.Requirements.GraphCache do
       Logger.warning("[GraphCache] write failed: #{inspect(error)}")
       :ok
   end
-
-  def publish(_scope, _fingerprint, _graph), do: :ok
 
   # term_to_binary rather than JSON: nodes are Requirement structs and edge
   # endpoints are `{entity_type, entity_id, name}` tuples. A JSON codec for

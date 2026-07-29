@@ -29,6 +29,20 @@ defmodule CodeMySpec.Requirements.GraphCacheTest do
       assert %DateTime{} = computed_at
     end
 
+    test "an unchanged republish does not rewrite the row" do
+      scope = setup_project()
+
+      RequirementGraph.compute_graph(scope)
+      {:ok, _graph, first_at} = GraphCache.fetch_any(scope)
+
+      # Readers call compute_graph/1 too — the UI does, on every render — so a
+      # write per call would be a ~30KB upsert to say what the row already says.
+      RequirementGraph.compute_graph(scope)
+      {:ok, _graph, second_at} = GraphCache.fetch_any(scope)
+
+      assert first_at == second_at
+    end
+
     test "republishing replaces the row rather than accumulating snapshots" do
       scope = setup_project()
 
