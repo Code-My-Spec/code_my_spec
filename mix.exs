@@ -160,8 +160,13 @@ defmodule CodeMySpec.MixProject do
     ] ++ cli_release()
   end
 
+  # dev_sprite ships the same release as prod_cli — a sprite is the CLI harness,
+  # just compiled against Postgres instead of SQLite (see config/dev_sprite.exs).
+  # The adapter is a compile-time choice (DocEmbedding keys its column types off
+  # it), so a sprite needs its own build rather than a runtime flag on the
+  # published binary.
   defp cli_release do
-    if Mix.env() == :prod_cli do
+    if Mix.env() in [:prod_cli, :dev_sprite] do
       [
         code_my_spec_cli: [
           steps: [:assemble, &copy_bcrypt_nif_dll/1, &copy_mcp_relay/1, :tar]
