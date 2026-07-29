@@ -394,7 +394,53 @@ defmodule CodeMySpec.Sessions do
         {:ok, existing}
 
       nil ->
+        warn_on_concurrent_agent(scope, external_id)
         create_session(scope, Map.put(attrs, :external_conversation_id, external_id))
+    end
+  end
+
+  @doc """
+  Other active sessions on this project belonging to a different conversation.
+
+  A project is meant to have one agent working it. Two is not a race that
+  resolves badly now and then — it corrupts the record. Observed: a second agent
+  whose own MCP session had failed to register used the *only* session id it
+  could find, which was the first agent's, so every start_task and evaluate_task
+  it performed was attributed to the other agent, including a task it cancelled
+  there. Both also wrote the same files; that composed by luck.
+
+  Detection only. Refusing outright is a policy call — a desktop user and a
+  sprite on one project may be legitimate — and silently proceeding was the
+  thing that hurt, not the concurrency itself.
+  """
+  @spec concurrent_sessions(Scope.t(), String.t()) :: [Session.t()]
+  def concurrent_sessions(%Scope{active_project_id: project_id}, external_id)
+      when is_binary(project_id) do
+    from(s in Session,
+      where:
+        s.project_id == ^project_id and s.status == :active and
+          s.external_conversation_id != ^external_id and
+          not is_nil(s.external_conversation_id)
+    )
+    |> Repo.all()
+  end
+
+  def concurrent_sessions(_scope, _external_id), do: []
+
+  defp warn_on_concurrent_agent(scope, external_id) do
+    case concurrent_sessions(scope, external_id) do
+      [] ->
+        :ok
+
+      others ->
+        require Logger
+
+        Logger.warning(
+          "[Sessions] another agent is already active on this project — " <>
+            "#{length(others)} session(s): " <>
+            Enum.map_join(others, ", ", & &1.external_conversation_id) <>
+            ". Concurrent agents corrupt task attribution and overwrite each other's files."
+        )
     end
   end
 end
