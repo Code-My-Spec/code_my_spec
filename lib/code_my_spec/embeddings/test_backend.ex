@@ -145,4 +145,13 @@ defmodule CodeMySpec.Embeddings.TestBackend do
     |> elem(0)
     |> Enum.reverse()
   end
+
+  # The ETS-backed test store does its own chunking and storage inside
+  # embed_file/4 rather than going through EmbeddingService, so this callback
+  # is never reached. Implemented explicitly so the behaviour is satisfied and
+  # a future caller gets a clear error rather than an UndefinedFunctionError.
+  @impl true
+  def store_chunk(_project_id, _source, _path, _index, _chunk, _hash, _file_hash) do
+    {:error, :not_supported_by_test_backend}
+  end
 end

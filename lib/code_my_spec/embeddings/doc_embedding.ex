@@ -24,8 +24,17 @@ defmodule CodeMySpec.Embeddings.DocEmbedding do
                        :binary
                    end)
 
+  # SQLite stored project_id as TEXT; Postgres uses a real uuid column with a
+  # foreign key to projects. Same adapter split as @embedding_type — declaring
+  # :string against a uuid column fails at the driver with "expected a binary
+  # of 16 bytes".
+  @project_id_type (case Application.compile_env(:code_my_spec, :adapter) do
+                      Ecto.Adapters.SQLite3 -> :string
+                      _ -> :binary_id
+                    end)
+
   schema "doc_embeddings" do
-    field :project_id, :string
+    field :project_id, @project_id_type
     field :source, :string
     field :path, :string
     field :chunk_index, :integer, default: 0

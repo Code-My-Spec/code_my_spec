@@ -41,4 +41,28 @@ defmodule CodeMySpec.Embeddings.Backend do
               query :: String.t(),
               opts :: keyword()
             ) :: {:ok, [result()]} | {:error, term()}
+
+  @doc """
+  Persist one embedded chunk.
+
+  This is the only genuinely adapter-specific operation in the pipeline —
+  sqlite_vec and pgvector spell the vector literal, the placeholders, and the
+  upsert conflict target differently. Everything else `EmbeddingService` does
+  (chunking, hashing, the file_hash fast path, stale-chunk cleanup) is shared,
+  so the backends cannot drift on dedupe semantics.
+
+  Part of the behaviour rather than an optional function discovered with
+  `function_exported?/3`: that check returns false for a module that simply
+  has not been loaded yet, which fails silently by falling back to the wrong
+  adapter's SQL instead of erroring.
+  """
+  @callback store_chunk(
+              project_id :: String.t() | nil,
+              source :: String.t(),
+              path :: String.t(),
+              chunk_index :: integer(),
+              chunk :: String.t(),
+              content_hash :: String.t(),
+              file_hash :: String.t()
+            ) :: :ok | {:error, term()}
 end
