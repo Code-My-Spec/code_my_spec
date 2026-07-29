@@ -370,24 +370,37 @@ defmodule CodeMySpec.ProjectSync.FileWatcherServer do
     Enum.reduce(watchable_projects(), state.watchers, &maybe_add_watcher/2)
   end
 
+  # Returns {project, root} pairs. The root is a separate value because the two
+  # deployments answer "where is this project on disk?" differently: a desktop
+  # reads the column it wrote itself, while a sprite cloned to a path it chose
+  # at runtime and the shared column still describes somebody else's laptop.
   defp watchable_projects do
     import Ecto.Query
 
     alias CodeMySpec.Projects.Project
 
-    base = where(Project, [p], not is_nil(p.local_path))
-
     case Application.get_env(:code_my_spec, :project_id) do
-      nil -> base
-      project_id -> where(base, [p], p.id == ^project_id)
+      nil ->
+        Project
+        |> where([p], not is_nil(p.local_path))
+        |> CodeMySpec.Repo.all()
+        |> Enum.map(&{&1, &1.local_path})
+
+      project_id ->
+        case CodeMySpec.Repo.get(Project, project_id) do
+          nil -> []
+          project -> [{project, sprite_root(project)}]
+        end
     end
-    |> CodeMySpec.Repo.all()
   end
 
-  defp maybe_add_watcher(project, watchers) do
-    root = project.local_path
+  defp sprite_root(project) do
+    Application.get_env(:code_my_spec, :mcp_working_dir) || project.local_path
+  end
 
+  defp maybe_add_watcher({project, root}, watchers) do
     cond do
+      is_nil(root) -> watchers
       Map.has_key?(watchers, root) -> watchers
       not File.dir?(root) -> watchers
       true -> add_watcher_for_project(project, root, watchers)
@@ -395,7 +408,7 @@ defmodule CodeMySpec.ProjectSync.FileWatcherServer do
   end
 
   defp add_watcher_for_project(project, root, watchers) do
-    with {:ok, scope} <- Scope.for_local_project(project),
+    with {:ok, scope} <- Scope.for_local_project(project, root),
          {:ok, watcher_pid} <- start_watcher(root) do
       Logger.info("[FileWatcher] Auto-watching #{project.name} at #{root}")
       Map.put(watchers, root, %{watcher_pid: watcher_pid, scope: scope})
