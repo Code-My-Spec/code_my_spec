@@ -142,7 +142,8 @@ defmodule CodeMySpec.Stories.StoriesRepository do
 
   def list_unsatisfied_stories(%Scope{} = scope) do
     from(s in Story,
-      where: s.project_id == ^scope.active_project.id and is_nil(s.component_id)
+      where: s.project_id == ^scope.active_project.id and is_nil(s.component_id),
+      preload: [:criteria, :tags]
     )
     |> Repo.all()
   end

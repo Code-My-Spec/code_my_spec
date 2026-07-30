@@ -913,30 +913,63 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   end
 
   # -- Sorting --
-  # Actionable nodes sorted by (priority, link_rank).
-  # link_rank breaks ties so story-linked components always sort
-  # before orphan components, and project-level requirements sort
-  # after both. The graph edges already encode within-chain
-  # execution order.
+  # Actionable nodes sorted by {tier, priority, rank} in three tiers:
+  #
+  #   0. Project requirements up to and including `qa_setup` — these gate
+  #      everything below them. Working a component while the architecture
+  #      is incoherent or incoming issues are untriaged means choosing that
+  #      work from a stale picture.
+  #   1. Story and component work, by story priority (components inherit
+  #      their story's priority via `build_component_priority_map/1`).
+  #      Untethered components rank last within the tier.
+  #   2. The QA journey chain after `qa_setup` — end-game requirements that
+  #      depend on the stories being done.
+  #
+  # Ties inside the project tiers break on requirement definition order.
+  # Within a story's chain, graph edges already encode execution order
+  # (e.g. bdd_specs_exist before implementation_file).
+  #
+  # This restores the tiering from 2d4f928b ("Fix priority: late project
+  # requirements sort after story/component work"), which 3f7be0c9
+  # ("Simplify actionable sorting to story priority only") collapsed into a
+  # single dead-last project tier — burying architecture_designed and
+  # issues_triaged beneath every tethered component requirement.
+  @late_project_reqs MapSet.new([
+                       "qa_journey_plan",
+                       "qa_journey_execute",
+                       "qa_journey_wallaby"
+                     ])
+
   defp sort_by_story_priority(nodes, ctx) do
     story_by_id = Map.new(ctx.stories, &{&1.id, &1})
     component_priority = build_component_priority_map(ctx)
-    Enum.sort_by(nodes, &priority_sort_key(&1, story_by_id, component_priority))
+    def_order = project_req_order()
+    Enum.sort_by(nodes, &priority_sort_key(&1, story_by_id, component_priority, def_order))
   end
 
-  defp priority_sort_key(%{entity_type: "story", entity_id: id}, story_by_id, _comp_priority) do
+  # Requirement name → position in the project graph definition list.
+  defp project_req_order do
+    RequirementDefinitionData.project_graph()
+    |> Enum.with_index()
+    |> Map.new(fn {req, idx} -> {req.name, idx} end)
+  end
+
+  defp priority_sort_key(%{entity_type: "project", name: name}, _story_by_id, _comp, def_order) do
+    tier = if MapSet.member?(@late_project_reqs, name), do: 2, else: 0
+    {tier, 0, Map.get(def_order, name, 999)}
+  end
+
+  defp priority_sort_key(%{entity_type: "story", entity_id: id}, story_by_id, _comp, _def_order) do
     story = Map.get(story_by_id, id)
-    {(story && story.priority) || 999, 0}
+    {1, (story && story.priority) || 999, 0}
   end
 
-  defp priority_sort_key(%{entity_type: "component", entity_id: id}, _story_by_id, comp_priority) do
+  defp priority_sort_key(%{entity_type: "component", entity_id: id}, _story, comp_priority, _order) do
     case Map.fetch(comp_priority, id) do
-      {:ok, priority} -> {priority, 0}
-      :error -> {999, 1}
+      {:ok, priority} -> {1, priority, 0}
+      :error -> {1, 999, 1}
     end
   end
-
-  defp priority_sort_key(%{entity_type: "project"}, _story_by_id, _comp_priority), do: {999, 2}
 
   # Build a map of component_id → best (lowest) story priority.
   # A component inherits priority from:
