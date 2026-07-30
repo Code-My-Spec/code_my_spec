@@ -1,0 +1,262 @@
+{
+  "interactions": [
+    {
+      "recorded_at": "2026-07-30T22:47:40.535278Z",
+      "request": {
+        "body": "",
+        "body_type": "text",
+        "headers": {
+          "accept": [
+            "application/vnd.github+json"
+          ],
+          "accept-encoding": [
+            "gzip"
+          ],
+          "user-agent": [
+            "CodeMySpec"
+          ],
+          "x-github-api-version": [
+            "2022-11-28"
+          ]
+        },
+        "method": "GET",
+        "query_string": "",
+        "uri": "https://api.github.com/repos/johns10/code_my_spec"
+      },
+      "response": {
+        "body_json": {
+          "delete_branch_on_merge": false,
+          "mirror_url": null,
+          "pushed_at": "2026-07-30T09:06:08Z",
+          "allow_update_branch": false,
+          "svn_url": "https://github.com/Code-My-Spec/code_my_spec",
+          "open_issues_count": 1,
+          "forks_url": "https://api.github.com/repos/Code-My-Spec/code_my_spec/forks",
+          "watchers_count": 0,
+          "issues_url": "https://api.github.com/repos/Code-My-Spec/code_my_spec/issues{/number}",
+          "disabled": false,
+          "collaborators_url": "https://api.github.com/repos/Code-My-Spec/code_my_spec/collaborators{/collaborator}",
+          "has_wiki": false,
+          "statuses_url": "https://api.github.com/repos/Code-My-Spec/code_my_spec/statuses/{sha}",
+          "merge_commit_title": "MERGE_MESSAGE",
+          "homepage": null,
+          "allow_auto_merge": false,
+          "full_name": "Code-My-Spec/code_my_spec",
+          "stargazers_count": 0,
+          "subscription_url": "https://api.github.com/repos/Code-My-Spec/code_my_spec/subscription",
+          "use_squash_pr_title_as_default": false,
+          "stargazers_url": "https://api.github.com/repos/Code-My-Spec/code_my_spec/stargazers",
+          "events_url": "https://api.github.com/repos/Code-My-Spec/code_my_spec/events",
+          "has_projects": true,
+          "archive_url": "https://api.github.com/repos/Code-My-Spec/code_my_spec/{archive_format}{/ref}",
+          "commits_url": "https://api.github.com/repos/Code-My-Spec/code_my_spec/commits{/sha}",
+          "merges_url": "https://api.github.com/repos/Code-My-Spec/code_my_spec/merges",
+          "downloads_url": "https://api.github.com/repos/Code-My-Spec/code_my_spec/downloads",
+          "blobs_url": "https://api.github.com/repos/Code-My-Spec/code_my_spec/git/blobs{/sha}",
+          "comments_url": "https://api.github.com/repos/Code-My-Spec/code_my_spec/comments{/number}",
+          "contributors_url": "https://api.github.com/repos/Code-My-Spec/code_my_spec/contributors",
+          "subscribers_url": "https://api.github.com/repos/Code-My-Spec/code_my_spec/subscribers",
+          "custom_properties": {},
+          "squash_merge_commit_message": "COMMIT_MESSAGES",
+          "git_tags_url": "https://api.github.com/repos/Code-My-Spec/code_my_spec/git/tags{/sha}",
+          "updated_at": "2026-07-30T09:07:01Z",
+          "issue_events_url": "https://api.github.com/repos/Code-My-Spec/code_my_spec/issues/events{/number}",
+          "visibility": "private",
+          "pull_request_creation_policy": "all",
+          "description": null,
+          "name": "code_my_spec",
+          "id": 1058192037,
+          "labels_url": "https://api.github.com/repos/Code-My-Spec/code_my_spec/labels{/name}",
+          "branches_url": "https://api.github.com/repos/Code-My-Spec/code_my_spec/branches{/branch}",
+          "network_count": 0,
+          "private": true,
+          "issue_comment_url": "https://api.github.com/repos/Code-My-Spec/code_my_spec/issues/comments{/number}",
+          "merge_commit_message": "PR_TITLE",
+          "releases_url": "https://api.github.com/repos/Code-My-Spec/code_my_spec/releases{/id}",
+          "notifications_url": "https://api.github.com/repos/Code-My-Spec/code_my_spec/notifications{?since,all,participating}",
+          "hooks_url": "https://api.github.com/repos/Code-My-Spec/code_my_spec/hooks",
+          "allow_squash_merge": true,
+          "default_branch": "main",
+          "web_commit_signoff_required": false,
+          "teams_url": "https://api.github.com/repos/Code-My-Spec/code_my_spec/teams",
+          "topics": [],
+          "compare_url": "https://api.github.com/repos/Code-My-Spec/code_my_spec/compare/{base}...{head}",
+          "deployments_url": "https://api.github.com/repos/Code-My-Spec/code_my_spec/deployments",
+          "git_url": "git://github.com/Code-My-Spec/code_my_spec.git",
+          "allow_merge_commit": true,
+          "git_refs_url": "https://api.github.com/repos/Code-My-Spec/code_my_spec/git/refs{/sha}",
+          "pulls_url": "https://api.github.com/repos/Code-My-Spec/code_my_spec/pulls{/number}",
+          "url": "https://api.github.com/repos/Code-My-Spec/code_my_spec",
+          "has_issues": true,
+          "contents_url": "https://api.github.com/repos/Code-My-Spec/code_my_spec/contents/{+path}",
+          "size": 257876,
+          "allow_rebase_merge": true,
+          "owner": {
+            "avatar_url": "https://avatars.githubusercontent.com/u/255700461?v=4",
+            "events_url": "https://api.github.com/users/Code-My-Spec/events{/privacy}",
+            "followers_url": "https://api.github.com/users/Code-My-Spec/followers",
+            "following_url": "https://api.github.com/users/Code-My-Spec/following{/other_user}",
+            "gists_url": "https://api.github.com/users/Code-My-Spec/gists{/gist_id}",
+            "gravatar_id": "",
+            "html_url": "https://github.com/Code-My-Spec",
+            "id": 255700461,
+            "login": "Code-My-Spec",
+            "node_id": "O_kgDODz2t7Q",
+            "organizations_url": "https://api.github.com/users/Code-My-Spec/orgs",
+            "received_events_url": "https://api.github.com/users/Code-My-Spec/received_events",
+            "repos_url": "https://api.github.com/users/Code-My-Spec/repos",
+            "site_admin": false,
+            "starred_url": "https://api.github.com/users/Code-My-Spec/starred{/owner}{/repo}",
+            "subscriptions_url": "https://api.github.com/users/Code-My-Spec/subscriptions",
+            "type": "Organization",
+            "url": "https://api.github.com/users/Code-My-Spec",
+            "user_view_type": "public"
+          },
+          "git_commits_url": "https://api.github.com/repos/Code-My-Spec/code_my_spec/git/commits{/sha}",
+          "tags_url": "https://api.github.com/repos/Code-My-Spec/code_my_spec/tags",
+          "permissions": {
+            "admin": true,
+            "maintain": true,
+            "pull": true,
+            "push": true,
+            "triage": true
+          },
+          "language": "Elixir",
+          "fork": false,
+          "has_discussions": false,
+          "watchers": 0,
+          "html_url": "https://github.com/Code-My-Spec/code_my_spec",
+          "open_issues": 1,
+          "is_template": false,
+          "node_id": "R_kgDOPxK6pQ",
+          "milestones_url": "https://api.github.com/repos/Code-My-Spec/code_my_spec/milestones{/number}",
+          "license": null,
+          "forks_count": 0,
+          "squash_merge_commit_title": "COMMIT_OR_PR_TITLE",
+          "allow_forking": false,
+          "has_pages": false,
+          "organization": {
+            "avatar_url": "https://avatars.githubusercontent.com/u/255700461?v=4",
+            "events_url": "https://api.github.com/users/Code-My-Spec/events{/privacy}",
+            "followers_url": "https://api.github.com/users/Code-My-Spec/followers",
+            "following_url": "https://api.github.com/users/Code-My-Spec/following{/other_user}",
+            "gists_url": "https://api.github.com/users/Code-My-Spec/gists{/gist_id}",
+            "gravatar_id": "",
+            "html_url": "https://github.com/Code-My-Spec",
+            "id": 255700461,
+            "login": "Code-My-Spec",
+            "node_id": "O_kgDODz2t7Q",
+            "organizations_url": "https://api.github.com/users/Code-My-Spec/orgs",
+            "received_events_url": "https://api.github.com/users/Code-My-Spec/received_events",
+            "repos_url": "https://api.github.com/users/Code-My-Spec/repos",
+            "site_admin": false,
+            "starred_url": "https://api.github.com/users/Code-My-Spec/starred{/owner}{/repo}",
+            "subscriptions_url": "https://api.github.com/users/Code-My-Spec/subscriptions",
+            "type": "Organization",
+            "url": "https://api.github.com/users/Code-My-Spec",
+            "user_view_type": "public"
+          },
+          "trees_url": "https://api.github.com/repos/Code-My-Spec/code_my_spec/git/trees{/sha}",
+          "ssh_url": "git@github.com:Code-My-Spec/code_my_spec.git",
+          "temp_clone_token": "AAXKPXJKNYFNIRIPZODC4GDKNPK3Q",
+          "has_pull_requests": true,
+          "assignees_url": "https://api.github.com/repos/Code-My-Spec/code_my_spec/assignees{/user}",
+          "clone_url": "https://github.com/Code-My-Spec/code_my_spec.git",
+          "forks": 0,
+          "archived": false,
+          "subscribers_count": 0,
+          "keys_url": "https://api.github.com/repos/Code-My-Spec/code_my_spec/keys{/key_id}",
+          "has_downloads": false,
+          "created_at": "2025-09-16T18:44:01Z",
+          "languages_url": "https://api.github.com/repos/Code-My-Spec/code_my_spec/languages"
+        },
+        "body_type": "json",
+        "headers": {
+          "access-control-allow-origin": [
+            "*"
+          ],
+          "access-control-expose-headers": [
+            "ETag, Link, Location, Retry-After, X-GitHub-OTP, X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Used, X-RateLimit-Resource, X-RateLimit-Reset, X-OAuth-Scopes, X-Accepted-OAuth-Scopes, X-Poll-Interval, X-GitHub-Media-Type, X-GitHub-SSO, X-GitHub-Request-Id, Deprecation, Sunset, Warning"
+          ],
+          "cache-control": [
+            "private, max-age=60, s-maxage=60"
+          ],
+          "content-security-policy": [
+            "default-src 'none'"
+          ],
+          "content-type": [
+            "application/json; charset=utf-8"
+          ],
+          "date": [
+            "Thu, 30 Jul 2026 22:47:40 GMT"
+          ],
+          "etag": [
+            "W/\"d33ccdbeb0576286572f873070173344a35e93a20d091d63687faa0ff7102005\""
+          ],
+          "last-modified": [
+            "Thu, 30 Jul 2026 09:07:01 GMT"
+          ],
+          "referrer-policy": [
+            "origin-when-cross-origin, strict-origin-when-cross-origin"
+          ],
+          "server": [
+            "github.com"
+          ],
+          "strict-transport-security": [
+            "max-age=31536000; includeSubdomains; preload"
+          ],
+          "transfer-encoding": [
+            "chunked"
+          ],
+          "vary": [
+            "Accept, Authorization, Cookie, X-GitHub-OTP,Accept-Encoding, Accept, X-Requested-With"
+          ],
+          "x-accepted-oauth-scopes": [
+            "repo"
+          ],
+          "x-content-type-options": [
+            "nosniff"
+          ],
+          "x-frame-options": [
+            "deny"
+          ],
+          "x-github-api-version-selected": [
+            "2022-11-28"
+          ],
+          "x-github-media-type": [
+            "github.v3; format=json"
+          ],
+          "x-github-request-id": [
+            "EA1A:23D17F:2244070:748064F:6A6BD48C"
+          ],
+          "x-oauth-client-id": [
+            "178c6fc778ccc68e1d6a"
+          ],
+          "x-oauth-scopes": [
+            "admin:public_key, gist, read:org, repo, workflow, write:packages"
+          ],
+          "x-ratelimit-limit": [
+            "5000"
+          ],
+          "x-ratelimit-remaining": [
+            "4983"
+          ],
+          "x-ratelimit-reset": [
+            "1785455050"
+          ],
+          "x-ratelimit-resource": [
+            "core"
+          ],
+          "x-ratelimit-used": [
+            "17"
+          ],
+          "x-xss-protection": [
+            "0"
+          ]
+        },
+        "status": 200
+      }
+    }
+  ],
+  "version": "2.0"
+}
