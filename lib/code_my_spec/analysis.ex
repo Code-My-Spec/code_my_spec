@@ -123,13 +123,26 @@ defmodule CodeMySpec.Analysis do
   # Scoped to the skip case on purpose: a quiet stop with nothing skipped must
   # still block on a genuinely outstanding compile error without re-running
   # anything (criterion 6077).
+  # A source that has never run is stale, not current.
+  #
+  # `only_failed` asks for "re-run what broke", and a missing run matched
+  # neither the failed clause nor anything else — so a source with no run was
+  # treated as up to date and skipped, forever. It could not bootstrap: no run
+  # meant no enqueue, and no enqueue meant no run.
+  #
+  # compiler and credo were caught by it on a real project. Nothing errored;
+  # `tests_passing` simply never went green, which blocked every story's
+  # qa_complete, which emptied next_actionable, which told an unattended agent
+  # there was nothing left to do while ten stories sat unQA'd. `stale?/3`
+  # already got this right with its `_ -> true`.
   defp needs_run?("compiler", _args, _fingerprints, latest, true) do
-    match?(%Run{status: :failed}, latest["compiler"]) or
+    is_nil(latest["compiler"]) or
+      match?(%Run{status: :failed}, latest["compiler"]) or
       Enum.any?(latest, fn {_source, run} -> skipped_for_compile_errors?(run) end)
   end
 
   defp needs_run?(source, _args, _fingerprints, latest, true),
-    do: match?(%Run{status: :failed}, latest[source])
+    do: is_nil(latest[source]) or match?(%Run{status: :failed}, latest[source])
 
   defp needs_run?(_source, _args, _fingerprints, _latest, _only_failed), do: true
 
