@@ -17,29 +17,33 @@ defmodule CodeMySpec.Integrations.Providers.Cloudflare do
   against the live endpoint, which answers `invalid_request` for a call that
   omits it. Hence `code_verifier: true`.
 
-  ## Scopes — dot-separated, and currently narrower than provisioning needs
+  ## Scopes
 
-  Cloudflare's OAuth scopes use dot notation (`zone.read`), NOT the colon form
-  that its API-token permissions use (`zone:read`). Every colon-form scope is
-  rejected with `invalid_scope`.
+  Dot-separated (`zone.read`), NOT the colon form that Cloudflare's own
+  API-token permissions use (`zone:read`). Every colon-form scope is rejected
+  with `invalid_scope`, which is an easy hour to lose because the token UI
+  shows the colon form.
 
-  More importantly: this client's registered allow-list is `zone.read` and
-  nothing else. Probed against the live authorize endpoint, all of these come
-  back "The OAuth 2.0 Client is not allowed to request scope ...":
+  The names are also not derivable from the resource — it is
+  `registrar-domains.admin`, not `registrar.edit`, and `dns.write`, not
+  `dns_records.edit`. The full set below was confirmed against the live
+  authorize endpoint, individually and together.
 
-      zone.edit  zone.write  zone.create  dns_records.read  dns_records.edit
-      account.read  user.read  registrar.read  registrar.edit  offline_access
+  There is no `account.read`. Zone creation needs an account id, so that has
+  to come from somewhere other than a scope — the zone list, or the account
+  the user picks during consent.
 
-  So the grant is **read-only** today. Provisioning needs zone creation, DNS
-  record writes and Registrar access, none of which this client may request —
-  widening it is a change to the app registration held with Cloudflare, not
-  something callers can work around. Until then the write-path steps cannot
-  run on a delegated token.
+  ### Sandbox registrar
 
-  Omitting `scope` entirely is also accepted and falls back to the client's
-  registered default, but we send it explicitly so a widened registration
-  shows up here as a deliberate change rather than silently altering what
-  users consent to.
+  `registrar-sandbox-domains.admin` / `.read` exist alongside the real ones.
+  That is how the domain-registration path gets exercised end to end without
+  spending money on a throwaway domain, which is worth preferring for
+  anything that is not a deliberate production purchase.
+
+  ### Not requested
+
+  `cache.purge` is grantable but nothing here purges cache, so it is left out
+  — an unused scope on a consent screen is a reason for a user to say no.
 
   ## Redirect URI
 
@@ -51,14 +55,23 @@ defmodule CodeMySpec.Integrations.Providers.Cloudflare do
 
   @behaviour CodeMySpec.Integrations.Providers.Behaviour
 
-  # What the registration actually permits. See the scope note above before
-  # adding to this list — an unpermitted scope fails the whole authorize
-  # request, it does not degrade.
-  @scopes ~w(zone.read)
+  # Every one verified against the live authorize endpoint. An unpermitted
+  # scope fails the whole request rather than degrading, so do not add a
+  # guessed name here — probe it first.
+  @scopes ~w(
+    zone.read
+    zone.write
+    dns.read
+    dns.write
+    registrar-domains.read
+    registrar-domains.admin
+    email-routing-address.write
+    email-routing-rule.write
+  )
 
-  # What the provisioning steps need. Kept next to the granted set so the gap
-  # is visible at the point someone would try to use them.
-  @required_for_provisioning ~w(zone.read zone.edit dns_records.edit account.read registrar.edit)
+  # Registration and DNS against Cloudflare's sandbox registrar, for
+  # exercising the purchase path without buying a domain.
+  @sandbox_scopes ~w(registrar-sandbox-domains.read registrar-sandbox-domains.admin)
 
   @impl true
   def config do
@@ -82,23 +95,30 @@ defmodule CodeMySpec.Integrations.Providers.Cloudflare do
   @impl true
   def strategy, do: Assent.Strategy.OAuth2
 
-  @doc "The scopes this integration requests — what the registration permits."
+  @doc "The scopes this integration requests."
   @spec scopes() :: [String.t()]
   def scopes, do: @scopes
 
   @doc """
-  Scopes the provisioning steps need, granted or not.
-
-  `missing_scopes/0` is the difference — non-empty means the write-path steps
-  (zone create, DNS records, domain registration) cannot run on a delegated
-  token and the app registration has to be widened with Cloudflare first.
+  Sandbox registrar scopes, for exercising domain registration without buying
+  a domain. Not requested by default — `config/0` asks for the real registrar,
+  and a caller wanting the sandbox opts in.
   """
-  @spec required_for_provisioning() :: [String.t()]
-  def required_for_provisioning, do: @required_for_provisioning
+  @spec sandbox_scopes() :: [String.t()]
+  def sandbox_scopes, do: @sandbox_scopes
 
-  @doc "Scopes provisioning needs that this client may not request."
-  @spec missing_scopes() :: [String.t()]
-  def missing_scopes, do: @required_for_provisioning -- @scopes
+  @doc """
+  Config that grants the sandbox registrar alongside everything else.
+
+  Use when driving the registration flow for a test or a recording rather than
+  a real purchase.
+  """
+  @spec sandbox_config() :: Keyword.t()
+  def sandbox_config do
+    Keyword.update!(config(), :authorization_params, fn params ->
+      Keyword.put(params, :scope, Enum.join(@scopes ++ @sandbox_scopes, " "))
+    end)
+  end
 
   # Cloudflare wraps every response in {success, errors, result}, so the
   # identity fields sit one level down rather than at the top like GitHub's.
