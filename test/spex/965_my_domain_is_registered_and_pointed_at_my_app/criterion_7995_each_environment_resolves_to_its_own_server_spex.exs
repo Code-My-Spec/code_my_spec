@@ -64,9 +64,16 @@ defmodule CodeMySpecSpex.Story965.Criterion7995Spex do
                  "expected #{env}'s record to name the server it points at"
         end
 
-        # Distinct environments must not share a target unless they share a
-        # box; where they do, that is a deliberate one-box start, so only
-        # assert each has *a* target rather than uniqueness.
+        # Environments never share a server, so their DNS targets must differ.
+        # This assertion was initially left out to accommodate a shared-box
+        # start; that was rolled back — UAT and prod always get their own
+        # boxes, and prod is simply provisioned later. Two environments
+        # resolving to one address would mean UAT traffic reaching production.
+        targets = Map.values(by_env)
+
+        assert targets == Enum.uniq(targets),
+               "expected each environment to resolve to its own server, got #{inspect(by_env)}"
+
         {:ok, Map.put(context, :by_env, by_env)}
       end
 
