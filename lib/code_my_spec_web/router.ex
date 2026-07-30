@@ -71,6 +71,7 @@ defmodule CodeMySpecWeb.Router do
       live "/case-studies/keel", ContentLive.Pages.Keel, :keel
       live "/case-studies/legwork", ContentLive.Pages.Legwork, :legwork
       live "/case-studies/ear-witness", ContentLive.Pages.EarWitness, :ear_witness
+      live "/case-studies/broken-oaths", ContentLive.Pages.BrokenOaths, :broken_oaths
 
       live "/blog/agentic-marketing-with-mcp",
            ContentLive.Pages.AgenticMarketingWithMcp,
@@ -333,6 +334,8 @@ defmodule CodeMySpecWeb.Router do
 
       live "/mail", MailLive, :index
       live "/mail/:id", MailLive, :show
+
+      live "/projects/:project_id/provisioning", ProvisioningLive, :index
     end
 
     post "/users/update-password", UserSessionController, :update_password
