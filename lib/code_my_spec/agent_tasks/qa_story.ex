@@ -79,6 +79,9 @@ defmodule CodeMySpec.AgentTasks.QaStory do
       env = scope.environment
       Logger.info("[QaStory] evaluate: story_id=#{story_id}")
 
+      # Most-recent first, `:invalidations` preloaded — see QaAttempts.list/2.
+      attempts = CodeMySpec.Qa.list_qa_attempts(scope, story_id)
+
       cond do
         CodeMySpec.Qa.qa_complete?(scope, story_id) ->
           # Cutover short-circuit: a DB-backed pass attempt exists for
@@ -100,11 +103,52 @@ defmodule CodeMySpec.AgentTasks.QaStory do
           Logger.info("[QaStory] evaluate(#{story_id}): task is owned by sub-agent #{task.agent_id}; skipping demand-submit on parent stop")
           {:ok, :valid}
 
+        attempts != [] ->
+          # Issue a15c252b. An attempt exists but doesn't satisfy — it failed,
+          # or it was invalidated. Either way the agent has already been
+          # through the DB flow for this story, so the legacy plan/brief/result
+          # chain has nothing left to teach it. Running that chain here is
+          # actively misleading: after an invalidation it demands a brief.md
+          # the DB flow never produces, which reads as "go write a document"
+          # when the actual obligation is "run QA again and submit the result".
+          Logger.info(
+            "[QaStory] evaluate(#{story_id}): prior attempt exists but does not satisfy; demanding a fresh submit"
+          )
+
+          {:ok, :invalid, resubmit_required_feedback(story_id, attempts)}
+
         true ->
           do_evaluate(scope, env, story_id)
       end
     end
   end
+
+  defp resubmit_required_feedback(story_id, attempts) do
+    """
+    QA for story #{story_id} is not complete. #{describe_latest(List.first(attempts))}
+
+    QA completion is recorded in the database, not on disk — no file will
+    satisfy this requirement. Re-run the QA scenarios against the real surface,
+    then call `submit_qa_result` with the outcome.
+
+    Use `list_qa_attempts` with story_id=#{story_id} to see the history,
+    including why an attempt was invalidated.
+    """
+  end
+
+  defp describe_latest(nil), do: "No attempt has been recorded."
+
+  defp describe_latest(%{invalidations: [_ | _] = invalidations}) do
+    reason =
+      invalidations
+      |> List.last()
+      |> then(& &1.reason)
+
+    "The most recent attempt was invalidated: #{reason}"
+  end
+
+  defp describe_latest(%{status: status}),
+    do: "The most recent attempt is recorded as #{status}."
 
   defp subagent_owns?(%{agent_id: agent_id}) when is_binary(agent_id) and byte_size(agent_id) > 0,
     do: true
