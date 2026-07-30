@@ -81,6 +81,14 @@ stop, so the harness considered nothing further actionable." \
 while true; do
   attempt=$((attempt + 1))
   started=$(date +%s)
+
+  # Where this attempt's output begins. The auth check below has to look at
+  # THIS attempt only: the log outlives a supervisor, so scanning the whole
+  # file lets a previous run's "OAuth session expired" abort a healthy one that
+  # has only just started. Seen immediately — the first supervisor's failures
+  # were still in the file when the next one came up after the login was fixed.
+  offset=$(( $(wc -c <"${LOG}" 2>/dev/null || echo 0) + 1 ))
+
   log "starting agent (attempt ${attempt})"
 
   claude --permission-mode bypassPermissions -p "${PROMPT}" >>"${LOG}" 2>&1
@@ -103,9 +111,12 @@ while true; do
   # Checked against the tail rather than the exit code because Claude Code exits
   # 1 for everything; the message is the only thing that distinguishes "nobody
   # is logged in" from "the API was busy".
-  if tail -5 "${LOG}" | grep -qiE "OAuth session expired|Failed to authenticate|Invalid API key|not logged in"; then
+  this_attempt=$(tail -c "+${offset}" "${LOG}" 2>/dev/null || true)
+
+  if printf '%s' "${this_attempt}" \
+       | grep -qiE "OAuth session expired|Failed to authenticate|Invalid API key|not logged in"; then
     log "the agent is not authenticated — this needs a human to log in, and retrying cannot fix it. Stopping."
-    tail -5 "${LOG}" >&2
+    printf '%s\n' "${this_attempt}" | tail -5 >&2
     exit 2
   fi
 
