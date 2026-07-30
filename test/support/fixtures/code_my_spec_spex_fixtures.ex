@@ -314,6 +314,29 @@ defmodule CodeMySpecSpex.Fixtures do
   end
 
   @doc """
+  Turns the three requirement toggles on for a project.
+
+  A fresh project defaults them off — it writes BDD spex and code and nothing
+  else. The spex suite exercises the full development workflow, so it needs the
+  whole chain (spec → review → test → implementation) to have anything to drive.
+
+  Lives on the bridge rather than being called directly: `CodeMySpecSpex` is its
+  own Boundary and may not reach into `CodeMySpec.*`, so every fixture the specs
+  need has to come through here.
+  """
+  @spec require_all!(Scope.t()) :: Scope.t()
+  def require_all!(scope) do
+    {:ok, _config} =
+      Configurations.update(scope, %{
+        require_specs: true,
+        require_reviews: true,
+        require_unit_tests: true
+      })
+
+    scope
+  end
+
+  @doc """
   Gives the project working directory the Phoenix shape `Init.PhoenixProject`
   probes for — `mix.exs`, `lib/`, and `config/`.
 

@@ -104,7 +104,9 @@ defmodule CodeMySpec.MixProject do
       # Normal deps
       {:file_system, "~> 1.0"},
       {:mox, "~> 1.2"},
-      {:meck, "~> 0.9", only: [:test]},
+      # Only here because ex_cli_vcr needs it to patch System.cmd/3; nothing in
+      # this app calls :meck directly. Tracks ex_cli_vcr's requirement.
+      {:meck, "~> 1.2", only: [:test]},
       {:req_cassette, "~> 0.6.0", only: :test},
       {:paper_trail, "~> 1.1"},
       {:anubis_mcp, github: "zoedsoupe/anubis-mcp", branch: "main"},

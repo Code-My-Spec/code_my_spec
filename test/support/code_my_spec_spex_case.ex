@@ -108,6 +108,20 @@ defmodule CodeMySpecSpex.Case do
       |> Map.put(:environment, env)
 
     Fixtures.select_active_project(updated_scope, project.id)
+
+    # The spex suite exercises the full development workflow — spec files,
+    # design reviews, unit tests and everything gated on them. A fresh project
+    # now defaults those three toggles OFF (it writes BDD spex and code and
+    # nothing else), which is the right product default and the wrong baseline
+    # for these specs: it silently removed the spec/review/test nodes from the
+    # graph and took about seventy spex down with it, none of which mention a
+    # configuration.
+    #
+    # Set here rather than in seventy files. Story 671's specs are about the
+    # toggles themselves and drive the configuration LiveView explicitly, so
+    # they override this and keep testing what they always tested.
+    Fixtures.require_all!(updated_scope)
+
     Map.merge(context, %{project: project, scope: updated_scope, environment: env})
   end
 
