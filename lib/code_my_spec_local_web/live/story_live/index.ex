@@ -98,6 +98,30 @@ defmodule CodeMySpecLocalWeb.StoryLive.Index do
                 >
                   {if story.ready_for_dev == true, do: "Park", else: "Release"}
                 </button>
+                <span
+                  :if={story.specs_ready == true}
+                  data-test="story-specs-ready"
+                  class="badge badge-info"
+                >
+                  Specs green
+                </span>
+                <span
+                  :if={story.specs_ready != true}
+                  data-test="story-specs-not-ready"
+                  class="badge badge-ghost"
+                >
+                  Specs not green
+                </span>
+                <button
+                  type="button"
+                  phx-click="toggle_story_specs_ready"
+                  phx-value-id={story.id}
+                  data-test="toggle-story-specs-ready"
+                  class="btn btn-ghost btn-xs"
+                  title="Spex failures only block the agent on stories whose specs have gone green"
+                >
+                  {if story.specs_ready == true, do: "Unenforce", else: "Enforce"}
+                </button>
                 <div
                   :if={is_nil(story.component_id)}
                   class="alert alert-warning py-1 px-3 flex items-center gap-2"
@@ -273,6 +297,24 @@ defmodule CodeMySpecLocalWeb.StoryLive.Index do
 
       {:error, reason} ->
         {:noreply, put_flash(socket, :error, "Could not change readiness: #{inspect(reason)}")}
+    end
+  end
+
+  # The manual override on the specs-ready latch. Clearing it parks a
+  # shipped story mid-refactor without touching its specs; setting it puts
+  # a story under enforcement the gate itself would have refused.
+  @impl true
+  def handle_event("toggle_story_specs_ready", %{"id" => id}, socket) do
+    scope = socket.assigns.scope
+    story = Stories.get_story!(scope, id)
+
+    case Stories.set_specs_ready(scope, story, !(story.specs_ready == true)) do
+      {:ok, updated} ->
+        {:noreply, stream_insert(socket, :stories, updated)}
+
+      {:error, reason} ->
+        {:noreply,
+         put_flash(socket, :error, "Could not change spec enforcement: #{inspect(reason)}")}
     end
   end
 

@@ -9,7 +9,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   2. **Project → story**: project.qa_setup → story.component_linked (the
      whole-project gate that opens story-level work)
   2. **Story → component tree**: bdd_specs_exist → component's first req;
-     component's terminal req → qa_complete
+     component's terminal req → bdd_specs_passing → qa_complete
   3. **Stories → project**: each story's qa_complete → qa_journey_plan
      (project-level fan-in node — gives the requirements graph a structural
      seam where story state aggregates into project state, which the
@@ -296,14 +296,19 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     |> Enum.any?(&(&1.name == name))
   end
 
-  # qa_complete is gated on the LEAVES of the surface's
+  # bdd_specs_passing is gated on the LEAVES of the surface's
   # orchestration tree:
   # - leaf surface (template has no :child defs): the surface's own
-  #   last :self def feeds qa_complete.
+  #   last :self def feeds bdd_specs_passing.
   # - container surface (template has :child defs): each direct
-  #   child's terminal feeds qa_complete. Sibling children
+  #   child's terminal feeds bdd_specs_passing. Sibling children
   #   with cross-context deps collapse via transitive reduction —
   #   only the deepest leaf survives.
+  #
+  # The gate then feeds qa_complete via the intra-story prerequisite
+  # edge, so a story cannot reach a QA sub-agent before its own specs
+  # have gone green. bab2f792 pointed these terminals straight at
+  # qa_complete when the gate was removed; this puts the seam back.
   defp surface_exit_edge(surface, story, ctx, config) do
     if ComponentRegistry.has_children?(surface.type) do
       container_exit_edges(surface, story, ctx, config)
@@ -321,7 +326,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
         [
           %{
             from: {"component", surface.id, terminal.name},
-            to: {"story", story.id, "qa_complete"}
+            to: {"story", story.id, "bdd_specs_passing"}
           }
         ]
     end
@@ -339,7 +344,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
           [
             %{
               from: {"component", child.id, name},
-              to: {"story", story.id, "qa_complete"}
+              to: {"story", story.id, "bdd_specs_passing"}
             }
           ]
       end

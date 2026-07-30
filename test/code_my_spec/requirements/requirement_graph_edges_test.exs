@@ -180,12 +180,15 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
       end)
       assert entry, "should have entry edge from story.bdd_specs_exist to component.spec_file"
 
-      # Exit: component.implementation_file → story.qa_complete (terminal for schema)
+      # Exit: component.implementation_file → story.bdd_specs_passing
+      # (terminal for schema). The specs-passing gate sits between the
+      # component tree and QA, so component terminals land there rather
+      # than on qa_complete directly.
       exit_edge = Enum.find(edges, fn e ->
         e.from == {"component", component.id, "implementation_file"} and
-        e.to == {"story", story.id, "qa_complete"}
+        e.to == {"story", story.id, "bdd_specs_passing"}
       end)
-      assert exit_edge, "should have exit edge from component terminal to story.qa_complete"
+      assert exit_edge, "should have exit edge from component terminal to story.bdd_specs_passing"
     end
 
     test "creates edges for direct dependencies" do
@@ -399,7 +402,7 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
   end
 
   describe "qa_complete prerequisites" do
-    test "qa_complete has bdd_specs_exist as prerequisite edge" do
+    test "qa_complete has bdd_specs_passing as prerequisite edge" do
       {scope, tmp_dir} = setup_project()
       seed_setup(tmp_dir)
 
@@ -415,11 +418,11 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
       {_nodes, edges} = RequirementGraph.compute_graph(scope)
 
       prereq_edge = Enum.find(edges, fn e ->
-        e.from == {"story", story.id, "bdd_specs_exist"} and
+        e.from == {"story", story.id, "bdd_specs_passing"} and
         e.to == {"story", story.id, "qa_complete"}
       end)
 
-      assert prereq_edge, "qa_complete should have prerequisite edge from bdd_specs_exist"
+      assert prereq_edge, "qa_complete should have prerequisite edge from bdd_specs_passing"
     end
 
     test "qa_complete is not actionable when bdd_specs_exist is unsatisfied" do

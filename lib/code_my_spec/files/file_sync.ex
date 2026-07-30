@@ -22,6 +22,7 @@ defmodule CodeMySpec.Files.FileSync do
   alias CodeMySpec.Files.Scanner
   alias CodeMySpec.Paths
   alias CodeMySpec.Problems
+  alias CodeMySpec.Stories
   alias CodeMySpec.Users.Scope
 
   # Files whose role makes them part of the project doc embedding corpus.
@@ -373,6 +374,8 @@ defmodule CodeMySpec.Files.FileSync do
 
     sync_embeddings(scope, env, embedding_changed_entries, removed_records)
 
+    clear_specs_ready_for_rewritten_specs(scope, embedding_changed_entries, removed_records)
+
     total_ms = System.monotonic_time(:millisecond) - start
 
     Logger.info(
@@ -388,6 +391,37 @@ defmodule CodeMySpec.Files.FileSync do
        changed_paths: changed_paths,
        total_files: length(file_entries)
      }}
+  end
+
+  # Chain restart: rewriting a story's BDD specs changes the contract, so
+  # whatever a previous green run proved no longer applies and the story
+  # has to earn specs-ready again.
+  #
+  # Keyed on the *fingerprint*-changed set, not the mtime-changed set — a
+  # byte-identical rewrite (a `touch`, a reformat that lands identical
+  # bytes) is not a contract change and must not knock a shipped story out
+  # of enforcement. Deletions count too: dropping a spec file changes the
+  # contract as surely as editing one.
+  defp clear_specs_ready_for_rewritten_specs(scope, changed_entries, removed_records) do
+    story_ids =
+      (changed_entries ++ removed_records)
+      |> Enum.filter(&(Map.get(&1, :role) == :bdd_spec))
+      |> Enum.map(&Map.get(&1, :story_id))
+      |> Enum.reject(&is_nil/1)
+      |> Enum.uniq()
+
+    for story_id <- story_ids,
+        story = Stories.get_story(scope, story_id),
+        story != nil,
+        story.specs_ready == true do
+      {:ok, _story} = Stories.set_specs_ready(scope, story, false)
+
+      Logger.info(
+        "[FileSync] Story #{story_id} BDD specs rewritten — cleared specs_ready"
+      )
+    end
+
+    :ok
   end
 
   @doc """

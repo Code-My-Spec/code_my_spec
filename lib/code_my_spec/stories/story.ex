@@ -13,6 +13,7 @@ defmodule CodeMySpec.Stories.Story do
           story: String.t() | nil,
           notes: String.t() | nil,
           ready_for_dev: boolean(),
+          specs_ready: boolean(),
           epic_id: Ecto.UUID.t() | nil,
           acceptance_criteria: [String.t()],
           criteria: [CodeMySpec.AcceptanceCriteria.Criterion.t()],
@@ -41,6 +42,11 @@ defmodule CodeMySpec.Stories.Story do
       ready_for_dev:
         "Whether the story is released for development. Stories produce no " <>
           "requirements until this is true. New stories start false",
+      specs_ready:
+        "Whether the story's BDD specs have gone green. Set by the " <>
+          "specs-passing gate on a fresh green spex run, cleared when the " <>
+          "chain restarts. Spex failures only block the agent on stories " <>
+          "where this is true. New stories start false",
       epic_id: "Epic this story belongs to (a story belongs to at most one)",
       acceptance_criteria: "List of acceptance criteria strings",
       priority: "Priority order (1 = highest). Lower numbers are higher priority",
@@ -62,6 +68,11 @@ defmodule CodeMySpec.Stories.Story do
     # and new stories start parked. The default lives here rather than in
     # the migration.
     field :ready_for_dev, :boolean, default: false
+    # Latch behind `bdd_specs_passing`. Freshness gates the flip, never the
+    # state: once a green run sets this, a later edit that stales the run
+    # leaves it alone. That is the whole reason the node could come back
+    # after bab2f792 removed it for clamping downstream work.
+    field :specs_ready, :boolean, default: false
     field :acceptance_criteria, {:array, :string}
     # `:active` is a legacy status that predates the narrowed enum
     # (`:in_progress | :completed | :dirty`). Accepted on read to
@@ -98,6 +109,7 @@ defmodule CodeMySpec.Stories.Story do
       :story,
       :notes,
       :ready_for_dev,
+      :specs_ready,
       :status,
       :priority,
       :locked_at,
@@ -108,6 +120,7 @@ defmodule CodeMySpec.Stories.Story do
       :epic_id
     ])
     |> sync_story_and_description()
+    |> clear_specs_ready_on_readiness_change()
     |> validate_required([
       :title,
       :story
@@ -141,6 +154,20 @@ defmodule CodeMySpec.Stories.Story do
 
       true ->
         changeset
+    end
+  end
+
+  # Chain restart: releasing, parking, or re-releasing a story sends it
+  # back to the top, and a latch earned on the previous pass says nothing
+  # about this one.
+  #
+  # Skipped when the same changeset sets `specs_ready` explicitly — that's
+  # the manual override or the specs-passing gate talking, and it wins.
+  defp clear_specs_ready_on_readiness_change(changeset) do
+    cond do
+      is_nil(get_change(changeset, :ready_for_dev)) -> changeset
+      not is_nil(get_change(changeset, :specs_ready)) -> changeset
+      true -> put_change(changeset, :specs_ready, false)
     end
   end
 
