@@ -135,6 +135,29 @@ on first sync, with no agent-driven setup pass."
   fi
 fi
 
+# --- agent home ---------------------------------------------------------------
+# The agent runs as a non-root user (see the Dockerfile) but its credentials
+# arrive on a volume written by whoever logged in, which is root. Files land
+# 0600 root, so the agent cannot read its own login and Claude Code reports
+# "Not logged in" — a confusing way to say "wrong uid".
+#
+# The entrypoint is still root at this point, so this is the one place it can be
+# fixed without granting the agent anything.
+if [ -d /home/agent/.claude ]; then
+  chown -R agent:agent /home/agent
+fi
+
+# The working copy belongs to the agent, but this script — and anything else in
+# the entrypoint — runs as root. Git refuses to operate on a repository owned by
+# somebody else ("detected dubious ownership") and that refusal is fatal, so a
+# root-side clone or push dies after the chown rather than before it.
+#
+# Both users are declared safe rather than picking one owner, because the split
+# is deliberate: root sets the container up, the agent does the work in it.
+git config --global --add safe.directory "${APP_DIR}" 2>/dev/null || true
+su agent -c "git config --global --add safe.directory '${APP_DIR}'" 2>/dev/null || true
+chown -R agent:agent "${APP_DIR}" 2>/dev/null || true
+
 # --- dependencies -------------------------------------------------------------
 # Also on the clone path, not just after generating. A sprite that attaches to
 # an existing repo starts with no deps/ at all, and the analyzers gate on
@@ -143,6 +166,22 @@ fi
 if [ -f "${APP_DIR}/mix.exs" ]; then
   log "Fetching dependencies"
   (cd "${APP_DIR}" && mix deps.get) || log "deps.get failed — the agent will need to sort this out"
+
+  # Hand the toolchain to the agent.
+  #
+  # This runs as root, so deps/, _build/ and the Mix home it populates all come
+  # out root-owned — and the agent is not root. Every compile then fails on
+  # permissions, and the failure is recoverable enough that an agent will just
+  # work around it with redirected paths for the rest of the run rather than
+  # report it. One did, for eighteen requirements, and only mentioned it in
+  # passing at the end.
+  #
+  # MIX_HOME moves rather than being chowned: it holds hex and rebar for
+  # whoever runs mix, and root still needs its own copy for the entrypoint.
+  install -d -o agent -g agent /home/agent/.mix
+  cp -a "${MIX_HOME:-/root/.mix}/." /home/agent/.mix/ 2>/dev/null || true
+  chown -R agent:agent /home/agent/.mix
+  chown -R agent:agent "${APP_DIR}"
 fi
 
 # --- harness -----------------------------------------------------------------
@@ -155,6 +194,10 @@ cd "${APP_DIR}"
 
 export CMS_PROJECT_ID
 export CMS_MCP_WORKING_DIR="${APP_DIR}"
+
+# Documented for whoever launches the agent: run it as `agent` with this
+# MIX_HOME, or it falls back to root's and cannot write there.
+#   docker exec -u agent -e MIX_HOME=/home/agent/.mix ... claude ...
 # Optional. Without it `ask_user` cannot reach anybody, which only matters when
 # the agent hits a manual requirement — and an unattended sprite has no
 # terminal to fall back to.
