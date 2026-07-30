@@ -13,6 +13,12 @@ defmodule CodeMySpecSpex.Story973.Criterion8041Spex do
   """
 
   use CodeMySpecSpex.Case
+  # connect/3 and push/3 collide with Phoenix.ConnTest and Plug.Conn, which
+  # CodeMySpecSpex.Case also imports. Require + qualify those two; import the
+  # rest, since assert_reply/assert_push are macros and cannot be qualified
+  # without the require anyway.
+  import Phoenix.ChannelTest, except: [connect: 3, push: 3]
+  require Phoenix.ChannelTest
 
   @endpoint CodeMySpecWeb.Endpoint
 
@@ -37,7 +43,7 @@ defmodule CodeMySpecSpex.Story973.Criterion8041Spex do
           )
 
         {:ok, _reply, channel} =
-          Phoenix.ChannelTest.subscribe_and_join(socket, "conversation:visitor-probe", %{})
+          subscribe_and_join(socket, "conversation:visitor-probe", %{})
 
         {:ok, Map.put(context, :channel, channel)}
       end
@@ -55,7 +61,7 @@ defmodule CodeMySpecSpex.Story973.Criterion8041Spex do
         # The channel acknowledging the push proves acceptance; the real
         # proof that it landed against Sam's project is the next step,
         # observed through the LiveView surface.
-        Phoenix.ChannelTest.assert_reply(context.ref, :ok, %{}, 1000)
+        assert_reply(context.ref, :ok, %{}, 1000)
 
         {:ok, context}
       end

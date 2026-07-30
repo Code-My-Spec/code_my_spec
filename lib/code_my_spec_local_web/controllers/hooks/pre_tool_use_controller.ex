@@ -122,16 +122,34 @@ defmodule CodeMySpecLocalWeb.Hooks.PreToolUseController do
   # `mix test`/`mix spex`, then plain args to end-of-command. Compound shell
   # (cd &&, pipes, subshells) passes through: replacing part of a compound
   # command with a curl would silently change the rest's semantics.
-  @test_command ~r/^\s*(?:[A-Z_]+=\S+\s+)*mix\s+(test|spex)(?:\s+(.*))?$/s
+  @test_command ~r/^\s*((?:[A-Z_]+=\S+\s+)*)mix\s+(test|spex)(?:\s+(.*))?$/s
+
+  # `(.*)` with `/s` swallows everything to end of command, including shell
+  # that follows the mix invocation — so the "compound shell passes through"
+  # promise above was never enforced. `mix spex foo.exs > out.txt 2>&1; tail
+  # out.txt` matched, and the rewrite dropped the redirect and the tail while
+  # storing `[">", "out.txt", "2>&1;", "tail", ...]` as the run's args. Two
+  # harms, both silent: the agent's requested output never materialised, and
+  # the junk tokens were persisted as if they were paths. Issue 0b54e827.
+  @shell_metachars ~r/[;&|<>`$\n(){}]/
+
+  # The curl carries no environment, so any env-var prefix the agent wrote is
+  # dropped by the rewrite. `MIX_ENV=test` is the default for both tasks and
+  # so means nothing; anything else (`MIX_ENV=cli_dev`, a feature flag) changes
+  # what runs, and dropping it silently is the same class of bug as swallowing
+  # a redirect.
+  @harmless_env_prefix ~r/^(?:MIX_ENV=test\s+)*$/
 
   defp maybe_rewrite_test_command(conn, params) do
     command = get_in(params, ["tool_input", "command"]) || ""
     scope = conn.assigns[:current_scope]
 
     with %{active_project_id: project_id, cwd: cwd} when not is_nil(project_id) and is_binary(cwd) <- scope,
-         [_, task | rest] <- Regex.run(@test_command, String.trim(command)) do
+         [_, env_prefix, task | rest] <- Regex.run(@test_command, String.trim(command)),
+         true <- Regex.match?(@harmless_env_prefix, env_prefix),
+         false <- compound_shell?(rest),
+         {:ok, args} <- parse_args(rest) do
       source = if task == "spex", do: "spex", else: "exunit"
-      args = parse_args(rest)
 
       replacement = build_curl(conn, cwd, source, args)
 
@@ -154,9 +172,28 @@ defmodule CodeMySpecLocalWeb.Hooks.PreToolUseController do
     end
   end
 
-  defp parse_args([]), do: []
-  defp parse_args([nil]), do: []
-  defp parse_args([args_string]), do: OptionParser.split(args_string)
+  # True when the arg tail carries shell that the rewrite would swallow.
+  # Redirections, separators, substitutions, subshells — anything whose
+  # meaning is the shell's rather than mix's. A legitimate `mix test` arg is a
+  # path, a `--flag`, or a flag value; none of them need these characters, so
+  # rejecting is cheap and the cost of a false negative is a silently altered
+  # command.
+  defp compound_shell?([]), do: false
+  defp compound_shell?([nil]), do: false
+  defp compound_shell?([args_string]), do: Regex.match?(@shell_metachars, args_string)
+
+  defp parse_args([]), do: {:ok, []}
+  defp parse_args([nil]), do: {:ok, []}
+
+  defp parse_args([args_string]) do
+    {:ok, OptionParser.split(args_string)}
+  rescue
+    # Unbalanced quotes make the split ambiguous, and the shell would resolve
+    # it differently than we would. Returning `[]` here would read as "no
+    # args" and silently widen a targeted run to the whole suite, so refuse
+    # the rewrite and let the original command run.
+    _ -> :error
+  end
 
   defp build_curl(conn, cwd, source, args) do
     payload = Jason.encode!(%{source: source, args: args})

@@ -130,6 +130,80 @@ defmodule CodeMySpecLocalWeb.Hooks.PreToolUseControllerTest do
       assert body == %{}
     end
 
+    # Issue 0b54e827. Shell *before* mix never matched the anchor, so it was
+    # already safe. Shell *after* mix was swallowed by the trailing `(.*)`:
+    # the command got rewritten, the redirect and tail silently never ran, and
+    # the shell tokens were persisted as the run's args — where the analysis
+    # ledger showed [">", "/tmp/spex_604.txt", "2>&1;", "echo", "tail", ...].
+    for {label, tail} <- [
+          {"a redirect and a follow-on command",
+           "> /tmp/out.txt 2>&1; echo exit=$?; tail -12 /tmp/out.txt"},
+          {"a pipe", "| grep failure"},
+          {"a chained command", "&& echo done"},
+          {"command substitution", "--only $(cat /tmp/tag)"},
+          {"a backgrounded run", "&"}
+        ] do
+      test "does not rewrite when the args are followed by #{label}", %{scope: scope} do
+        command = "mix spex test/spex/some_spex.exs " <> unquote(tail)
+
+        conn =
+          build_post(scope, %{
+            "tool_name" => "Bash",
+            "tool_input" => %{"command" => command}
+          })
+
+        conn = PreToolUseController.handle(conn, conn.body_params)
+
+        assert Jason.decode!(conn.resp_body) == %{},
+               "expected pass-through so the shell runs as written, got a rewrite"
+      end
+    end
+
+    # The curl carries no environment, so a rewrite drops the prefix. Only
+    # MIX_ENV=test is safe to drop — it is already the default for both tasks.
+    test "does not rewrite when an env prefix would change what runs", %{scope: scope} do
+      conn =
+        build_post(scope, %{
+          "tool_name" => "Bash",
+          "tool_input" => %{"command" => "MIX_ENV=cli_dev mix test test/my_test.exs"}
+        })
+
+      conn = PreToolUseController.handle(conn, conn.body_params)
+
+      assert Jason.decode!(conn.resp_body) == %{}
+    end
+
+    test "does not rewrite when quoting makes the args ambiguous", %{scope: scope} do
+      conn =
+        build_post(scope, %{
+          "tool_name" => "Bash",
+          "tool_input" => %{"command" => ~s(mix test --only "unbalanced)}
+        })
+
+      conn = PreToolUseController.handle(conn, conn.body_params)
+
+      assert Jason.decode!(conn.resp_body) == %{}
+    end
+
+    test "still rewrites a plain targeted run with flags", %{scope: scope} do
+      conn =
+        build_post(scope, %{
+          "tool_name" => "Bash",
+          "tool_input" => %{
+            "command" => "mix test test/my_test.exs:42 --max-failures 1 --seed 0"
+          }
+        })
+
+      conn = PreToolUseController.handle(conn, conn.body_params)
+
+      command =
+        conn.resp_body
+        |> Jason.decode!()
+        |> get_in(["hookSpecificOutput", "updatedInput", "command"])
+
+      assert command =~ ~s("args":["test/my_test.exs:42","--max-failures","1","--seed","0"])
+    end
+
     test "does not rewrite without a working dir on the scope", %{scope: scope} do
       conn =
         build_post(%{scope | cwd: nil}, %{

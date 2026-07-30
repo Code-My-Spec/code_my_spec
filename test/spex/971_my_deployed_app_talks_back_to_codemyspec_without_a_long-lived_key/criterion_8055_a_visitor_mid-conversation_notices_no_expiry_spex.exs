@@ -13,6 +13,12 @@ defmodule CodeMySpecSpex.Story971.Criterion8055Spex do
   """
 
   use CodeMySpecSpex.Case
+  # connect/3 and push/3 collide with Phoenix.ConnTest and Plug.Conn, which
+  # CodeMySpecSpex.Case also imports. Require + qualify those two; import the
+  # rest, since assert_reply/assert_push are macros and cannot be qualified
+  # without the require anyway.
+  import Phoenix.ChannelTest, except: [connect: 3, push: 3]
+  require Phoenix.ChannelTest
 
   @endpoint CodeMySpecWeb.Endpoint
 
@@ -38,7 +44,7 @@ defmodule CodeMySpecSpex.Story971.Criterion8055Spex do
           )
 
         {:ok, _reply, channel} =
-          Phoenix.ChannelTest.subscribe_and_join(
+          subscribe_and_join(
             socket,
             "conversation:visitor-probe",
             %{}
@@ -46,7 +52,7 @@ defmodule CodeMySpecSpex.Story971.Criterion8055Spex do
 
         # Anchor: the conversation is live before expiry is in play.
         ref = Phoenix.ChannelTest.push(channel, "message", %{"body" => "before expiry"})
-        Phoenix.ChannelTest.assert_reply(ref, :ok, %{}, 1000)
+        assert_reply(ref, :ok, %{}, 1000)
 
         {:ok,
          context
@@ -60,13 +66,13 @@ defmodule CodeMySpecSpex.Story971.Criterion8055Spex do
             "seconds" => context.expires_in + 60
           })
 
-        Phoenix.ChannelTest.assert_reply(ref, :ok, %{}, 1000)
+        assert_reply(ref, :ok, %{}, 1000)
 
         {:ok, context}
       end
 
       then_ "the connection presents a fresh one and stays open", context do
-        Phoenix.ChannelTest.refute_push("disconnect", %{}, 300)
+        refute_push("disconnect", %{}, 300)
 
         assert Process.alive?(context.channel.channel_pid),
                "expected the socket to stay open across the renewal rather than dropping"
@@ -77,7 +83,7 @@ defmodule CodeMySpecSpex.Story971.Criterion8055Spex do
       then_ "the visitor's conversation continues uninterrupted", context do
         ref = Phoenix.ChannelTest.push(context.channel, "message", %{"body" => "after expiry"})
 
-        Phoenix.ChannelTest.assert_reply(ref, :ok, %{}, 1000)
+        assert_reply(ref, :ok, %{}, 1000)
 
         {:ok, context}
       end

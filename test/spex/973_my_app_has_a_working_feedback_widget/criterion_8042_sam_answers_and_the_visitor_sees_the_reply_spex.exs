@@ -11,6 +11,12 @@ defmodule CodeMySpecSpex.Story973.Criterion8042Spex do
   """
 
   use CodeMySpecSpex.Case
+  # connect/3 and push/3 collide with Phoenix.ConnTest and Plug.Conn, which
+  # CodeMySpecSpex.Case also imports. Require + qualify those two; import the
+  # rest, since assert_reply/assert_push are macros and cannot be qualified
+  # without the require anyway.
+  import Phoenix.ChannelTest, except: [connect: 3, push: 3]
+  require Phoenix.ChannelTest
 
   @endpoint CodeMySpecWeb.Endpoint
 
@@ -35,10 +41,10 @@ defmodule CodeMySpecSpex.Story973.Criterion8042Spex do
           )
 
         {:ok, _reply, channel} =
-          Phoenix.ChannelTest.subscribe_and_join(socket, "conversation:visitor-probe", %{})
+          subscribe_and_join(socket, "conversation:visitor-probe", %{})
 
         ref = Phoenix.ChannelTest.push(channel, "message", %{"body" => "is anyone there"})
-        Phoenix.ChannelTest.assert_reply(ref, :ok, %{}, 1000)
+        assert_reply(ref, :ok, %{}, 1000)
 
         {:ok, Map.put(context, :channel, channel)}
       end
@@ -59,7 +65,7 @@ defmodule CodeMySpecSpex.Story973.Criterion8042Spex do
         # a receive whose bindings do not escape this step closure. Matching
         # the body inline asserts exactly what the criterion wants — Sam's
         # reply text reaching the visitor's open connection.
-        Phoenix.ChannelTest.assert_push("message", %{"body" => "yes, right here"}, 1000)
+        assert_push("message", %{"body" => "yes, right here"}, 1000)
 
         {:ok, context}
       end
