@@ -169,6 +169,10 @@ if config_env() not in [:dev_cli, :prod_cli, :cli_demo, :dev_sprite] do
     github_client_secret: env!("GITHUB_CLIENT_SECRET"),
     google_client_id: env!("GOOGLE_CLIENT_ID"),
     google_client_secret: env!("GOOGLE_CLIENT_SECRET"),
+    cloudflare_client_id: env!("CLOUDFLARE_CLIENT_ID", :string, ""),
+    cloudflare_client_secret: env!("CLOUDFLARE_CLIENT_SECRET", :string, ""),
+    resend_client_id: env!("RESEND_CLIENT_ID", :string, ""),
+    resend_client_secret: env!("RESEND_CLIENT_SECRET", :string, ""),
     base_url: env!("BASE_URL", :string, "https://dev.codemyspec.com"),
     deploy_key: env!("DEPLOY_KEY"),
     indexnow_key: env!("BING_SITEMASTER_INDEXNOW_KEY", :string, nil)
