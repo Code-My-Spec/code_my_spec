@@ -94,6 +94,25 @@ defmodule CodeMySpec.ContentPublishing.CtasTest do
       end
     end
 
+    test "flattening preserves the word boundary before an inline link" do
+      # Regression: collapsing newlines to "" instead of " " ran the body text
+      # straight into the link, publishing "was.Point the QA agent at your app".
+      html = Ctas.render("verification_gate_cta")
+
+      refute html =~ ~r/[a-z.,][<]a\s/,
+             "body text is touching the opening <a> tag with no separating space"
+
+      # Tags become a space, not nothing: <br /> is a real visual break, so
+      # stripping it to "" would flag a legitimate boundary as a defect.
+      text =
+        html
+        |> String.replace(~r/<[^>]+>/, " ")
+        |> String.replace(~r/\s+/, " ")
+        |> String.trim()
+
+      refute text =~ ~r/[a-z]\.[A-Z]/, "sentence runs into the link text: #{text}"
+    end
+
     test "no HTML comments survive (dev builds add HEEx debug annotations)" do
       for name <- Ctas.names() do
         refute Ctas.render(name) =~ "<!--", "#{name} leaked a debug comment"

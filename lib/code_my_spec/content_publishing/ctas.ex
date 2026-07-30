@@ -135,10 +135,13 @@ defmodule CodeMySpec.ContentPublishing.Ctas do
   defp flatten_for_earmark(html) do
     html
     |> String.replace(~r/<!--.*?-->/s, "")
-    # Every newline goes, not just the ones between tags: HEEx also indents
-    # interpolated text (`>\n  Start free\n</a>`), and a single stray newline is
-    # enough for Earmark to lose the block.
-    |> String.replace(~r/\s*\R\s*/, "")
+    # Newlines collapse to a single space, not to nothing. HEEx indents
+    # interpolated text, so `{@body}\n<a>` is a real word boundary: deleting it
+    # outright produced "was.Point the QA agent at your app" in published posts.
+    |> String.replace(~r/\s*\R\s*/, " ")
+    # Whitespace strictly between two tags carries no meaning, so it goes. This
+    # runs second so the step above cannot reintroduce a break Earmark chokes on.
+    |> String.replace(~r/>\s+</, "><")
     |> String.trim()
   end
 
