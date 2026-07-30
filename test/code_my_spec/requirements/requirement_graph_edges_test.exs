@@ -6,6 +6,7 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
   use ExUnit.Case, async: true
 
   import CodeMySpec.UsersFixtures
+  alias CodeMySpec.ConfigurationsFixtures
 
   alias CodeMySpec.Components
   alias CodeMySpec.Environments.Environment
@@ -630,7 +631,9 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
         environment: Environment.new(:local, tmp_dir)
     }
 
-    {scope, tmp_dir}
+    # Graph-shape tests need the full spec -> review -> test -> implementation
+    # chain; a fresh project defaults to spex and code only.
+    {ConfigurationsFixtures.require_all!(scope), tmp_dir}
   end
 
   defp create_component(scope, module_name, type) do

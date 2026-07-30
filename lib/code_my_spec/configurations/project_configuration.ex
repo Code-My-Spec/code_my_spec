@@ -46,10 +46,21 @@ defmodule CodeMySpec.Configurations.ProjectConfiguration do
   schema "project_configurations" do
     field :project_id, :binary_id
 
-    # Requirement toggles
-    field :require_specs, :boolean, default: true
-    field :require_reviews, :boolean, default: true
-    field :require_unit_tests, :boolean, default: true
+    # Requirement toggles.
+    #
+    # All three default off: a fresh project writes BDD spex and code, and
+    # nothing else. Markdown specs, design reviews and unit tests are real
+    # artifacts with real value, but requiring them from the first commit means
+    # a new project's first hours go into paperwork about code that does not
+    # exist yet — and the spex already say what the code has to do, from the
+    # outside, in the language of the story.
+    #
+    # Off is also the cheaper mistake. Turning one on later costs a
+    # configuration change; turning one off after the graph has demanded
+    # eighty spec files costs eighty files nobody asked for.
+    field :require_specs, :boolean, default: false
+    field :require_reviews, :boolean, default: false
+    field :require_unit_tests, :boolean, default: false
 
     # Analyzer modes
     field :compile_warnings, Ecto.Enum, values: @compile_modes, default: :block

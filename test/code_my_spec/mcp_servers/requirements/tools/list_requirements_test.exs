@@ -15,7 +15,9 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.ListRequirementsTest do
 
   describe "execute/2" do
     test "returns requirements grouped by entity with satisfaction status" do
-      scope = full_scope_fixture()
+      # Asserts on a `spec_file` node, which only exists when specs are
+      # required — a fresh project defaults to spex and code only.
+      scope = CodeMySpec.ConfigurationsFixtures.require_all!(full_scope_fixture())
       component = component_fixture(scope)
       frame = %Frame{assigns: %{current_scope: scope}}
 

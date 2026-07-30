@@ -703,7 +703,11 @@ defmodule CodeMySpec.Files.FileSyncTest do
         environment: Environment.new(:local, tmp_dir)
     }
 
-    {scope, tmp_dir}
+    # Spec-file validation is gated on `require_specs`, which a fresh project
+    # now defaults off — without this the "invalid spec file" cases validate
+    # leniently and come back valid, which is correct behaviour and the wrong
+    # thing for these tests to be exercising.
+    {CodeMySpec.ConfigurationsFixtures.require_all!(scope), tmp_dir}
   end
 
   defp write_file(tmp_dir, relative_path, content) do
