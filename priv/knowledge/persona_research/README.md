@@ -14,6 +14,18 @@ Reference material for an agent doing persona research end-to-end. The agent's t
 | Deciding which fields the persona should contain          | `templates.md`                         |
 | Turning raw data into a finished persona                  | `synthesis.md`                         |
 | Sanity-checking for anti-patterns and bias                | `pitfalls.md` (read before shipping)   |
+| Researching a persona whose actor is an **LLM agent class** | `agent_personas.md` (replaces this whole table) |
+
+## First: is this persona a human?
+
+Everything below assumes it is. If the persona's actor is a **class of LLM
+agent** running against the harness — `Per-Story QA Agent`, `Code Writer
+Agent`, `BDD Spec Writer Agent` — stop here and read `agent_personas.md`
+instead. The artifact contract is identical (`create_persona`, `summary.md` +
+`sources.md` with the same H2 sections, `link_persona_to_story`), but none of
+the methodology transfers: there is no PM to interview, no JTBD switching
+story, and no public review corpus. The sources are agent definitions, the MCP
+spec, observed behaviour in `cli.log` / `server.log`, and self-reflection.
 
 ## Agent workflow (canonical order)
 

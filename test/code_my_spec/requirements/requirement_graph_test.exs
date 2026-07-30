@@ -80,6 +80,77 @@ defmodule CodeMySpec.Requirements.RequirementGraphTest do
       assert "spec_file" in names
     end
 
+    # Issue 5e7ffbd9 reported the graph offering implementation_file for MCP
+    # tools before the modules they delegate to existed. The graph does order
+    # this correctly — but only through dependency EDGES, which gate
+    # actionability outright, not through the priority sort. A dependent
+    # component does not sort late; it does not appear at all until what it
+    # depends on is done.
+    #
+    # That is why the reported symptom happened: those components were created
+    # without dependency edges, so there was nothing to gate on. This test
+    # pins the mechanism that does the work, so a change to actionability
+    # can't quietly reintroduce the symptom.
+    test "a component that depends on another is not actionable until that one is done" do
+      {scope, tmp_dir} = setup_project()
+
+      kickoff_context =
+        ProjectStateFixtures.apply_project_kickoff(%{
+          scope: scope,
+          environment: scope.environment
+        })
+
+      scope = kickoff_context.scope
+      persona_id = kickoff_context.persona_id
+
+      story =
+        StoryHelpers.create_story(scope,
+          title: "Agent records a QA result",
+          description: "As an agent, I want to submit a QA result so that it is recorded.",
+          acceptance_criteria: ["a result is recorded"],
+          priority: 1
+        )
+
+      # Go through the real architecture flow rather than create_component +
+      # create_dependency. Components are file projections, so hand-created
+      # ones are dropped by the next sync, and adding a dependency out of band
+      # invalidates architecture_designed, which gates all component work.
+      proposal =
+        CodeMySpec.ArchitectureFixtures.proposal_with_surface_and_context(
+          app: "MyApp",
+          surface_name: "QaLive",
+          surface_description: "Where the agent submits a QA result",
+          context_name: "Qa",
+          context_description: "QA attempt recording",
+          story_id: story.id
+        )
+
+      {:ok, _} =
+        CodeMySpec.ArchitectureFixtures.with_executed_proposal(
+          scope,
+          scope.environment,
+          proposal
+        )
+
+      story = StoryHelpers.fetch(scope, story.id)
+      seed_story_chain_complete(scope, tmp_dir, story, persona_id)
+      sync!(scope, tmp_dir)
+
+      surface = Components.get_component_by_module_name(scope, "MyAppWeb.QaLive")
+      context = Components.get_component_by_module_name(scope, "MyApp.Qa")
+
+      actionable = RequirementGraph.next_actionable(scope)
+      component_ids = for n <- actionable, n.entity_type == "component", do: n.entity_id
+
+      assert context.id in component_ids,
+             "the depended-on context should be offered first, got: " <>
+               inspect(Enum.map(actionable, &{&1.entity_type, &1.name}))
+
+      refute surface.id in component_ids,
+             "MyAppWeb.QaLive depends on MyApp.Qa and must not be offered " <>
+               "while that context is unbuilt — this is the defect in 5e7ffbd9"
+    end
+
     # Regression guard for the tiering restored in "Restore project requirement
     # tiering in next_actionable". Commit 2d4f928b introduced the early/late
     # project split; 3f7be0c9 collapsed it into a single dead-last tier, and
