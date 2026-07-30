@@ -33,6 +33,7 @@ defmodule CodeMySpec.Embeddings.HexDocProjector do
   require Logger
 
   alias CodeMySpec.Environments
+  alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Paths
   alias CodeMySpec.Users.Scope
 
@@ -45,12 +46,11 @@ defmodule CodeMySpec.Embeddings.HexDocProjector do
       `"deps"`. Exposed for tests.
   """
   def project(%Scope{} = scope, opts \\ []) do
-    cwd = scope.cwd || scope.environment.cwd
+    env = environment(scope)
     deps_rel = Keyword.get(opts, :deps_dir, "deps")
-    deps_dir = Path.join(cwd, deps_rel)
 
-    if File.dir?(deps_dir) do
-      do_project(scope, deps_dir)
+    if dir?(env, deps_rel) do
+      do_project(scope, env, deps_rel)
     else
       :ok
     end
@@ -68,23 +68,34 @@ defmodule CodeMySpec.Embeddings.HexDocProjector do
   """
   @spec project_package(Scope.t(), String.t(), keyword()) :: :ok
   def project_package(%Scope{} = scope, package, opts \\ []) when is_binary(package) do
-    cwd = scope.cwd || scope.environment.cwd
+    env = environment(scope)
     deps_rel = Keyword.get(opts, :deps_dir, "deps")
-    pkg_dir = Path.join([cwd, deps_rel, package])
+    pkg_rel = Path.join(deps_rel, package)
 
-    if File.dir?(pkg_dir) do
-      project_package_from_source(scope, package, pkg_dir)
+    if dir?(env, pkg_rel) do
+      project_package_from_source(scope, env, package, pkg_rel)
     else
       # Package was uninstalled — drop every projected module.
       drop_orphan_modules(scope, package, MapSet.new())
     end
   end
 
-  defp do_project(scope, deps_dir) do
-    installed = list_packages(deps_dir)
+  # Paths stay relative and the environment resolves them. Joining them onto
+  # `scope.cwd` by hand — which is what this did — produces a path that is only
+  # meaningful on the machine the scope was built on, so a sprite's deps were
+  # looked for on the server's disk and every package read as uninstalled.
+  defp environment(%Scope{environment: %Environment{} = env}), do: env
+  defp environment(%Scope{cwd: cwd}), do: Environment.new(:local, cwd || File.cwd!())
+
+  # `Environments` has no dir? predicate. A successful listing is the check:
+  # `list_directory` on a regular file returns `{:error, :enotdir}`.
+  defp dir?(env, path), do: match?({:ok, _}, Environments.list_directory(env, path))
+
+  defp do_project(scope, env, deps_rel) do
+    installed = list_packages(env, deps_rel)
 
     for pkg <- installed do
-      project_package_from_source(scope, pkg, Path.join(deps_dir, pkg))
+      project_package_from_source(scope, env, pkg, Path.join(deps_rel, pkg))
     end
 
     drop_orphan_packages(scope, MapSet.new(installed))
@@ -92,18 +103,18 @@ defmodule CodeMySpec.Embeddings.HexDocProjector do
     :ok
   end
 
-  defp list_packages(deps_dir) do
-    case File.ls(deps_dir) do
+  defp list_packages(env, deps_rel) do
+    case Environments.list_directory(env, deps_rel) do
       {:ok, names} ->
-        Enum.filter(names, &File.dir?(Path.join(deps_dir, &1)))
+        Enum.filter(names, &dir?(env, Path.join(deps_rel, &1)))
 
       _ ->
         []
     end
   end
 
-  defp project_package_from_source(scope, pkg, pkg_dir) do
-    docs = extract_package_docs(pkg_dir)
+  defp project_package_from_source(scope, env, pkg, pkg_rel) do
+    docs = extract_package_docs(env, pkg_rel)
     write_module_files(scope, pkg, docs)
     drop_orphan_modules(scope, pkg, MapSet.new(Map.keys(docs)))
   end
@@ -111,16 +122,15 @@ defmodule CodeMySpec.Embeddings.HexDocProjector do
   # `%{module_name => markdown}` for every Elixir module under the
   # package's `lib/` that carries a `@moduledoc` or at least one `@doc`.
   # Erlang deps (`src/*.erl`) are not parsed — Elixir source only.
-  defp extract_package_docs(pkg_dir) do
-    pkg_dir
-    |> Path.join("lib/**/*.ex")
-    |> Path.wildcard()
-    |> Enum.flat_map(&extract_source_docs/1)
+  defp extract_package_docs(env, pkg_rel) do
+    env
+    |> Environments.glob(Path.join(pkg_rel, "lib/**/*.ex"))
+    |> Enum.flat_map(&extract_source_docs(env, &1))
     |> Map.new()
   end
 
-  defp extract_source_docs(path) do
-    case File.read(path) do
+  defp extract_source_docs(env, path) do
+    case Environments.read_file(env, path) do
       {:ok, content} ->
         content
         |> extract_modules()

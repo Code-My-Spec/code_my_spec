@@ -10,6 +10,7 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
   alias CodeMySpec.BddSpecs.Parser
   alias CodeMySpec.Components
   alias CodeMySpec.Environments
+  alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Stories
 
   require Logger
@@ -40,7 +41,7 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
       app_name = derive_app_name(scope)
       spex_module = "#{camelize(app_name)}Spex"
 
-      prompt = build_prompt(story, component, app_name, spex_module)
+      prompt = build_prompt(scope, story, component, app_name, spex_module)
       {:ok, prompt}
     end
   end
@@ -127,16 +128,17 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
   # Prompt assembly
   # ============================================================================
 
-  defp build_prompt(story, component, app_name, spex_module) do
+  defp build_prompt(scope, story, component, app_name, spex_module) do
     criteria = story.criteria || []
+    env = environment(scope)
 
     sections =
       [
         header_section(story, component),
         mental_model_section(),
         knowledge_section(),
-        component_context_section(component),
-        sibling_specs_section(story, criteria),
+        component_context_section(env, component),
+        sibling_specs_section(env, story, criteria),
         surface_hint_section(component),
         criteria_section(story, criteria),
         procedure_section(spex_module),
@@ -215,11 +217,11 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
   # Surfaces the component's source location and @moduledoc so the
   # spec-writer can see the real public interface rather than grepping
   # blind.
-  defp component_context_section(%{module_name: module_name}) do
-    path = module_path(module_name)
+  defp component_context_section(env, %{module_name: module_name}) do
+    path = module_path(env, module_name)
 
     body =
-      case path && File.read(path) do
+      case path && Environments.read_file(env, path) do
         {:ok, source} ->
           """
           Source: `#{path}`
@@ -241,10 +243,10 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
   # If other specs in the same story already exist, point at one so the
   # author can copy the established pattern (setup blocks, fixture paths,
   # shared givens, module namespace) rather than reinventing.
-  defp sibling_specs_section(story, criteria) do
+  defp sibling_specs_section(env, story, criteria) do
     dir = story_spec_dir(story, criteria)
 
-    case dir && list_existing_specs(dir) do
+    case dir && list_existing_specs(env, dir) do
       [_ | _] = existing ->
         bullets = Enum.map_join(existing, "\n", &"- `#{&1}`")
 
@@ -383,17 +385,25 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
   # Component source helpers
   # ============================================================================
 
-  defp module_path(module_name) when is_binary(module_name) do
+  defp module_path(env, module_name) when is_binary(module_name) do
     relative =
       module_name
       |> String.split(".")
       |> Enum.map_join("/", &Macro.underscore/1)
 
     candidates = ["lib/#{relative}.ex", "#{relative}.ex"]
-    Enum.find(candidates, &File.exists?/1)
+    Enum.find(candidates, &Environments.file_exists?(env, &1))
   end
 
-  defp module_path(_), do: nil
+  defp module_path(_env, _), do: nil
+
+  # The prompt describes the project's source tree, so every probe in it has to
+  # be asked of the machine holding that tree. Built against cwd, these sections
+  # silently came back empty on a sprite — the spec-writer was told the component
+  # had no @moduledoc and no sibling specs, which is a plausible-looking answer
+  # rather than a visible failure.
+  defp environment(%{environment: %Environment{} = env}), do: env
+  defp environment(scope), do: Environment.new(:local, Map.get(scope, :cwd) || File.cwd!())
 
   defp inferred_path_hint(module_name) when is_binary(module_name) do
     relative =
@@ -423,8 +433,8 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
 
   defp story_spec_dir(_story, _), do: nil
 
-  defp list_existing_specs(dir) do
-    case File.ls(dir) do
+  defp list_existing_specs(env, dir) do
+    case Environments.list_directory(env, dir) do
       {:ok, entries} ->
         entries
         |> Enum.filter(&String.ends_with?(&1, "_spex.exs"))

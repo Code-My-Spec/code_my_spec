@@ -20,8 +20,8 @@ defmodule CodeMySpec.Rules do
   Supports wildcard matching with "*".
 
   The third argument is the execution environment (`Environment.t()`)
-  to read rule files from. When `nil`, falls back to the process
-  filesystem at the relative `.code_my_spec/rules/` path.
+  to read rule files from. When `nil`, the process working directory is
+  wrapped in a local environment — the same read path, not a second one.
 
   ## Examples
 
@@ -52,33 +52,15 @@ defmodule CodeMySpec.Rules do
     end
   end
 
-  defp load_all_rules(nil) do
-    rules_dir = CodeMySpec.Paths.rules_dir()
-
-    case File.exists?(rules_dir) do
-      true ->
-        rules_dir
-        |> File.ls!()
-        |> Enum.filter(&String.ends_with?(&1, ".md"))
-        |> Enum.map(&Path.join(rules_dir, &1))
-        |> Enum.map(&parse_disk_rule_file/1)
-        |> Enum.filter(&match?({:ok, _}, &1))
-        |> Enum.map(fn {:ok, rule} -> rule end)
-
-      false ->
-        []
-    end
-  end
+  # No env supplied means "wherever this process is running", which is exactly
+  # what a local environment rooted at cwd describes. Written as a fallback
+  # rather than a second implementation: a bare File.ls! here would read the
+  # host's disk even when the caller's project lives on a sprite, and the two
+  # branches would drift.
+  defp load_all_rules(nil), do: load_all_rules(Environment.new(:local, File.cwd!()))
 
   defp parse_env_rule_file(env, path) do
     case Environments.read_file(env, path) do
-      {:ok, content} -> build_rule(path, content)
-      {:error, reason} -> {:error, reason}
-    end
-  end
-
-  defp parse_disk_rule_file(path) do
-    case File.read(path) do
       {:ok, content} -> build_rule(path, content)
       {:error, reason} -> {:error, reason}
     end

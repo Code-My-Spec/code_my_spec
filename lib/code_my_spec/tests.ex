@@ -60,7 +60,7 @@ defmodule CodeMySpec.Tests do
 
     case Environments.cmd(env, "mix", test_args, stderr_to_stdout: true, env: cmd_env) do
       {raw_output, exit_code} ->
-        json_content = read_test_results(temp_file, caller_provided_file)
+        json_content = read_test_results(env, temp_file, caller_provided_file)
 
         parse_test_results(json_content, %{
           file_path: file_path,
@@ -76,9 +76,24 @@ defmodule CodeMySpec.Tests do
       {:error, {:execution_error, Exception.message(exception)}}
   end
 
-  defp read_test_results(temp_file, caller_provided_file) do
+  # A generated temp path is handed to the child as `EXUNIT_JSON_OUTPUT_FILE`,
+  # so the child writes it wherever it is running — inside the environment.
+  # Reading it back with File.read looked on the machine that *launched* the run,
+  # and the miss is silent: "{}" parses as a run with no tests, which is
+  # indistinguishable from a clean suite. A sprite whose tests all failed
+  # reported green.
+  #
+  # A caller-provided path is the cassette seam (the stop hook's
+  # `test_output_files`), which is a fixture on the harness's own disk — host
+  # local, and not ours to delete.
+  defp read_test_results(env, temp_file, caller_provided_file) do
+    read =
+      if caller_provided_file,
+        do: File.read(temp_file),
+        else: Environments.read_file(env, temp_file)
+
     result =
-      case File.read(temp_file) do
+      case read do
         {:ok, content} ->
           content
 
@@ -87,7 +102,7 @@ defmodule CodeMySpec.Tests do
           "{}"
       end
 
-    unless caller_provided_file, do: File.rm(temp_file)
+    unless caller_provided_file, do: Environments.delete_file(env, temp_file)
     result
   end
 

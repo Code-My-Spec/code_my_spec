@@ -23,7 +23,11 @@ defmodule CodeMySpecSpex.Story711.Criterion6251Spex do
   spex "Init.PhoenixProject requires mix.exs + lib/ + config/ in cwd; otherwise emits relaunch guidance" do
     scenario "Missing project shape emits relaunch-from-root directive on the per-step page" do
       given_ "the working directory has no mix.exs", context do
-        CodeMySpecSpex.Fixtures.remove_mix_exs(context.scope.cwd)
+        # Establish the full shape first, then take mix.exs away. Removing it
+        # from a working directory that never had the shape would fail the check
+        # for a reason this scenario is not about.
+        CodeMySpecSpex.Fixtures.add_phoenix_project_shape(context.scope)
+        CodeMySpecSpex.Fixtures.remove_mix_exs(context.scope)
         {:ok, context}
       end
 

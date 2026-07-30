@@ -314,23 +314,37 @@ defmodule CodeMySpecSpex.Fixtures do
   end
 
   @doc """
-  Adds the `config/` directory to an existing working dir, completing the
-  Phoenix-project shape the `init_phoenix_project` probe checks for.
+  Gives the project working directory the Phoenix shape `Init.PhoenixProject`
+  probes for — `mix.exs`, `lib/`, and `config/`.
+
+  Writes through the scope's environment rather than to disk. The spex case
+  registers an in-memory environment and keeps a directory on disk purely as a
+  marker for the `WorkingDir` plug, so a `File.mkdir_p!` here would seed a
+  filesystem the probe does not read.
+
+  The `.gitkeep` entries are load-bearing: the in-memory environment has no
+  directories of its own, and reports one as existing only when some entry sits
+  beneath it. `ensure_dir/2` is a no-op there for the same reason.
   """
-  @spec add_phoenix_config_dir(String.t()) :: :ok
-  def add_phoenix_config_dir(dir) do
-    File.mkdir_p!(Path.join(dir, "config"))
+  @spec add_phoenix_project_shape(Scope.t()) :: :ok
+  def add_phoenix_project_shape(%{environment: env}) do
+    :ok = Environments.write_file(env, "mix.exs", "# stub for PhoenixProject.evaluate\n")
+    :ok = Environments.write_file(env, "lib/.gitkeep", "")
+    :ok = Environments.write_file(env, "config/.gitkeep", "")
     :ok
   end
 
   @doc """
-  Removes `mix.exs` from a working dir so the Phoenix-project shape check
-  fails (Story 711 / criterion 6251 — missing shape emits the
+  Removes `mix.exs` from the project working directory so the Phoenix-project
+  shape check fails (Story 711 / criterion 6251 — missing shape emits the
   relaunch-from-root directive).
+
+  Pair with `add_phoenix_project_shape/1`: removing from an environment that
+  never had the shape passes for the wrong reason.
   """
-  @spec remove_mix_exs(String.t()) :: :ok
-  def remove_mix_exs(dir) do
-    File.rm!(Path.join(dir, "mix.exs"))
+  @spec remove_mix_exs(Scope.t()) :: :ok
+  def remove_mix_exs(%{environment: env}) do
+    :ok = Environments.delete_file(env, "mix.exs")
     :ok
   end
 

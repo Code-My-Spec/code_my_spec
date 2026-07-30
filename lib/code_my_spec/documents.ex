@@ -4,6 +4,8 @@ defmodule CodeMySpec.Documents do
   """
 
   alias CodeMySpec.Documents.MarkdownParser
+  alias CodeMySpec.Environments
+  alias CodeMySpec.Environments.Environment
 
   @app_prefixes ["CodeMySpec.", "CodeMySpecCli.", "CodeMySpecWeb."]
 
@@ -35,15 +37,20 @@ defmodule CodeMySpec.Documents do
 
   Returns `{:ok, warnings}` where warnings is a list of dependency issues found.
   This is intentionally not a hard error to allow for gradual adoption.
+
+  `base_dir` is resolved against `env` when one is given, and against the
+  running process's filesystem otherwise.
   """
-  @spec validate_internal_dependencies(String.t(), String.t()) :: {:ok, [String.t()]}
-  def validate_internal_dependencies(content, base_dir) do
+  @spec validate_internal_dependencies(String.t(), String.t(), Environment.t() | nil) ::
+          {:ok, [String.t()]}
+  def validate_internal_dependencies(content, base_dir, env_or_nil \\ nil) do
+    env = env_or_nil || Environment.new(:local, File.cwd!())
     dependencies = extract_dependencies(content)
 
     warnings =
       dependencies
       |> Enum.filter(&internal_module?/1)
-      |> Enum.reject(&dependency_exists?(&1, base_dir))
+      |> Enum.reject(&dependency_exists?(&1, base_dir, env))
       |> Enum.map(&"Dependency '#{&1}' not found (no spec or impl file)")
 
     {:ok, warnings}
@@ -53,11 +60,11 @@ defmodule CodeMySpec.Documents do
     Enum.any?(@app_prefixes, &String.starts_with?(module_name, &1))
   end
 
-  defp dependency_exists?(module_name, base_dir) do
+  defp dependency_exists?(module_name, base_dir, env) do
     spec_path = module_to_spec_path(module_name, base_dir)
     impl_path = module_to_impl_path(module_name, base_dir)
 
-    File.exists?(spec_path) or File.exists?(impl_path)
+    Environments.file_exists?(env, spec_path) or Environments.file_exists?(env, impl_path)
   end
 
   defp module_to_spec_path(module_name, base_dir) do

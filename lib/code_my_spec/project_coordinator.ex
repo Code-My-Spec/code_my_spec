@@ -12,6 +12,7 @@ defmodule CodeMySpec.ProjectCoordinator do
 
   alias CodeMySpec.Components
   alias CodeMySpec.Environments
+  alias CodeMySpec.Environments.Environment
 
   @tasks_dir CodeMySpec.Paths.tasks_dir()
 
@@ -117,21 +118,6 @@ defmodule CodeMySpec.ProjectCoordinator do
   end
 
   @doc """
-  Remove the entire status directory for a component.
-  """
-  # sobelow_skip ["Traversal.FileModule"]
-  @spec cleanup_status_directory(String.t(), String.t() | nil) :: :ok
-  def cleanup_status_directory(status_dir, working_dir) do
-    dir = resolve_dir(status_dir, working_dir)
-
-    if File.exists?(dir) and File.dir?(dir) do
-      File.rm_rf(dir)
-    end
-
-    :ok
-  end
-
-  @doc """
   Default orchestrate implementation for task modules.
 
   Always writes the prompt file (via command), then checks completeness
@@ -158,9 +144,8 @@ defmodule CodeMySpec.ProjectCoordinator do
       case task_module.evaluate(scope, task) do
         {:ok, :valid} ->
           Logger.info("[ProjectCoordinator] #{suffix} for #{module_name}: complete")
-          cwd = scope.environment && scope.environment.cwd
-          cleanup_file(prompt_path, cwd)
-          cleanup_file(problem_path, cwd)
+          cleanup_file(scope.environment, prompt_path)
+          cleanup_file(scope.environment, problem_path)
           {true, nil}
 
         {:ok, :invalid, feedback} ->
@@ -219,9 +204,8 @@ defmodule CodeMySpec.ProjectCoordinator do
         {:ok, :valid} ->
           Logger.info("[ProjectCoordinator] #{suffix} evaluate for #{module_name}: complete")
           # Clean up prompt and problems files
-          cwd = scope.environment && scope.environment.cwd
-          cleanup_file(prompt_path, cwd)
-          cleanup_file(problem_path, cwd)
+          cleanup_file(scope.environment, prompt_path)
+          cleanup_file(scope.environment, problem_path)
           {true, nil}
 
         {:ok, :invalid, feedback} ->
@@ -343,18 +327,18 @@ defmodule CodeMySpec.ProjectCoordinator do
   # Private Helpers
   # ============================================================================
 
-  defp resolve_dir(status_dir, nil), do: status_dir
-  defp resolve_dir(status_dir, working_dir), do: Path.join(working_dir, status_dir)
-
-  # sobelow_skip ["Traversal.FileModule"]
-  defp cleanup_file(relative_path, nil) do
-    File.rm(relative_path)
+  # Deletes go through the same environment the writes did. They used to unwrap
+  # `scope.environment.cwd` and hand the joined path to File.rm, which meant a
+  # prompt written onto a sprite was deleted from whatever machine happened to
+  # run the evaluation — so the prompt survived, and the agent kept being told
+  # to redo work it had finished.
+  defp cleanup_file(%Environment{} = env, relative_path) do
+    Environments.delete_file(env, relative_path)
     :ok
   end
 
-  # sobelow_skip ["Traversal.FileModule"]
-  defp cleanup_file(relative_path, working_dir) do
-    File.rm(Path.join(working_dir, relative_path))
+  defp cleanup_file(nil, relative_path) do
+    Environments.delete_file(Environment.new(:local, File.cwd!()), relative_path)
     :ok
   end
 

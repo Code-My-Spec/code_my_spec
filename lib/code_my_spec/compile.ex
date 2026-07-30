@@ -39,6 +39,7 @@ defmodule CodeMySpec.Compile do
   def execute(opts \\ []) do
     output_file = Keyword.get_lazy(opts, :output_file, &create_temp_file_path/0)
     env = Keyword.fetch!(opts, :environment)
+    injected_file = Keyword.has_key?(opts, :output_file)
 
     cmd_opts = [
       stderr_to_stdout: true,
@@ -60,11 +61,11 @@ defmodule CodeMySpec.Compile do
       Environments.cmd(env, "mix", ["compile", "--return-errors"], cmd_opts)
 
     Logger.debug("[Compile] exit_code=#{exit_code}")
-    Logger.debug("[Compile] output_file exists?=#{File.exists?(output_file)}")
+    Logger.debug("[Compile] output_file exists?=#{output_exists?(env, output_file, injected_file)}")
     Logger.debug("[Compile] raw output (first 500 chars): #{String.slice(output, 0, 500)}")
 
     result_data =
-      case File.read(output_file) do
+      case read_output(env, output_file, injected_file) do
         {:ok, content} when byte_size(content) > 0 ->
           Logger.debug("[Compile] Read JSONL from diagnostics file (#{byte_size(content)} bytes)")
           parse_jsonl(content)
@@ -199,6 +200,25 @@ defmodule CodeMySpec.Compile do
     Enum.any?(@compiler_error_markers, &String.starts_with?(trimmed, &1)) or
       String.starts_with?(trimmed, "error:")
   end
+
+  # Two different files wear the `output_file` name here, and they live on
+  # different machines.
+  #
+  # The generated temp path is handed to the child as `DIAGNOSTICS_OUTPUT`, so
+  # the child writes it wherever it is running — inside the environment. Reading
+  # that with File.read looks on the machine that *launched* the run, misses,
+  # and falls into the "no diagnostics" branch below, which reports a clean
+  # compilation. That is the most dangerous possible wrong answer.
+  #
+  # A caller-provided path is the cassette seam: `Analysis.Execution` only
+  # populates `:output_file` from the stop hook's `test_output_files` param, so
+  # it is a fixture on the harness's own disk, put there by the spex suite and
+  # never by the project under test. That one is genuinely host-local.
+  defp read_output(_env, path, true), do: File.read(path)
+  defp read_output(env, path, false), do: Environments.read_file(env, path)
+
+  defp output_exists?(_env, path, true), do: File.exists?(path)
+  defp output_exists?(env, path, false), do: Environments.file_exists?(env, path)
 
   defp create_temp_file_path do
     temp_dir = System.tmp_dir!()

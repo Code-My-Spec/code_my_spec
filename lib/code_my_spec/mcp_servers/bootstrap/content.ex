@@ -235,16 +235,6 @@ defmodule CodeMySpec.McpServers.Bootstrap.Content do
   end
 
   @doc """
-  Extract app name from a mix.exs file path.
-  """
-  def extract_app_name(mix_exs_path) do
-    case File.read(mix_exs_path) do
-      {:ok, content} -> extract_app_name_from_source(content)
-      _ -> nil
-    end
-  end
-
-  @doc """
   Extract app name from already-read mix.exs source.
 
   Lets callers read `mix.exs` through `CodeMySpec.Environments` (so the

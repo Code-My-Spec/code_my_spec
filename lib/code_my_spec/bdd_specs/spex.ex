@@ -8,6 +8,7 @@ defmodule CodeMySpec.BddSpecs.Spex do
   require Logger
 
   alias CodeMySpec.Environments
+  alias CodeMySpec.Environments.Environment
 
   alias CodeMySpec.BddSpecs.Spex.{Error, Failure, Step}
 
@@ -52,7 +53,7 @@ defmodule CodeMySpec.BddSpecs.Spex do
         )
       )
 
-    args = expand_directory_args(args, project_root)
+    args = expand_directory_args(args, project_root, environment)
     spex_args = build_args(args, temp_file, quiet)
     command = "mix " <> Enum.join(spex_args, " ")
 
@@ -64,8 +65,9 @@ defmodule CodeMySpec.BddSpecs.Spex do
 
     case Environments.cmd(environment, "mix", spex_args, stderr_to_stdout: true, env: cmd_env) do
       {_raw_output, exit_code} ->
-        result = parse_and_return_failures(temp_file, exit_code)
-        unless caller_provided_file, do: cleanup_temp_file(temp_file)
+        result =
+          parse_and_return_failures(temp_file, exit_code, environment, caller_provided_file)
+        unless caller_provided_file, do: cleanup_temp_file(temp_file, environment)
         result
     end
   rescue
@@ -86,10 +88,16 @@ defmodule CodeMySpec.BddSpecs.Spex do
   `{:ok, [Failure.t()]}` - List of parsed failures (empty if file doesn't exist or is empty)
   `{:error, term()}` - If JSON parsing fails
   """
-  # sobelow_skip ["Traversal.FileModule"]
-  @spec parse_jsonl(String.t()) :: {:ok, [Failure.t()]} | {:error, term()}
-  def parse_jsonl(path) do
-    case File.read(path) do
+  # The JSONL is produced by `mix spex` running *inside* the environment, so it
+  # is read back through the same environment. Reading it with File.read meant
+  # the run wrote its results on one machine and the parser looked for them on
+  # another — which surfaces as "0 failures", the same answer as a clean run.
+  @spec parse_jsonl(String.t(), Environment.t() | nil) ::
+          {:ok, [Failure.t()]} | {:error, term()}
+  def parse_jsonl(path, env_or_nil \\ nil) do
+    env = env_or_nil || Environment.new(:local, File.cwd!())
+
+    case Environments.read_file(env, path) do
       {:ok, ""} ->
         {:ok, []}
 
@@ -112,17 +120,17 @@ defmodule CodeMySpec.BddSpecs.Spex do
   # args to their *_spex.exs files here so `mix spex test/spex/some_story/`
   # runs what the caller meant.
   @doc false
-  def expand_directory_args(args, project_root) do
+  def expand_directory_args(args, project_root, env_or_nil \\ nil) do
+    env = env_or_nil || Environment.new(:local, project_root)
+
     Enum.flat_map(args, fn arg ->
       cond do
         String.starts_with?(arg, "-") ->
           [arg]
 
-        File.dir?(Path.expand(arg, project_root)) ->
-          arg
-          |> Path.expand(project_root)
-          |> Path.join("**/*_spex.exs")
-          |> Path.wildcard()
+        directory?(env, Path.expand(arg, project_root)) ->
+          env
+          |> Environments.glob(Path.join(Path.expand(arg, project_root), "**/*_spex.exs"))
           |> Enum.map(&Path.relative_to(&1, project_root))
           |> case do
             [] ->
@@ -139,6 +147,9 @@ defmodule CodeMySpec.BddSpecs.Spex do
     end)
   end
 
+  # `Environments` exposes no dir? predicate; a successful listing is the check.
+  defp directory?(env, path), do: match?({:ok, _}, Environments.list_directory(env, path))
+
   defp build_args(args, temp_file, quiet) do
     base_args = ["spex" | args] ++ ["--jsonl=#{temp_file}"]
 
@@ -149,8 +160,11 @@ defmodule CodeMySpec.BddSpecs.Spex do
     end
   end
 
-  defp parse_and_return_failures(temp_file, exit_code) do
-    case parse_jsonl(temp_file) do
+  # `nil` env means "read on this machine": the caller-provided path is the
+  # cassette seam, a fixture on the harness's own disk rather than something
+  # `mix spex` wrote inside the environment.
+  defp parse_and_return_failures(temp_file, exit_code, env, caller_provided_file) do
+    case parse_jsonl(temp_file, if(caller_provided_file, do: nil, else: env)) do
       {:ok, failures} ->
         {:ok, failures, exit_code}
 
@@ -159,9 +173,8 @@ defmodule CodeMySpec.BddSpecs.Spex do
     end
   end
 
-  # sobelow_skip ["Traversal.FileModule"]
-  defp cleanup_temp_file(temp_file) do
-    File.rm(temp_file)
+  defp cleanup_temp_file(temp_file, env) do
+    Environments.delete_file(env, temp_file)
   end
 
   defp parse_jsonl_content(content) do

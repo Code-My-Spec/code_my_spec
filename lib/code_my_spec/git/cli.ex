@@ -42,7 +42,7 @@ defmodule CodeMySpec.Git.CLI do
     with {:ok, provider} <- URLParser.provider(repo_url),
          {:ok, integration} <- get_integration(scope, provider),
          {:ok, authenticated_url} <- URLParser.inject_token(repo_url, integration.access_token),
-         {:ok, _repository} <- Git.clone([authenticated_url, path]),
+         :ok <- execute_clone(scope.environment, authenticated_url, path),
          :ok <- set_remote_url(scope.environment, path, repo_url) do
       {:ok, path}
     end
@@ -85,7 +85,7 @@ defmodule CodeMySpec.Git.CLI do
       # Inject credentials, pull, then restore - always restore URL
       case set_remote_url(scope.environment, path, authenticated_url) do
         :ok ->
-          result = execute_pull(path)
+          result = execute_pull(scope.environment, path)
           # Always restore original URL, regardless of pull result
           set_remote_url(scope.environment, path, original_url)
           result
@@ -110,11 +110,10 @@ defmodule CodeMySpec.Git.CLI do
     end
   end
 
-  # Only the remote-URL plumbing runs through the environment. `Git.clone/1`
-  # and `Git.pull/1` above come from the git_cli dependency, which shells out
-  # on its own — so this module is the one place a remote environment would
-  # still execute locally. Closing that means replacing git_cli with plain
-  # `Environments.cmd(env, "git", ...)` calls, which is a separate change.
+  # Every git invocation in this module now goes through here, clone and pull
+  # included. They used to come from the git_cli dependency, which shells out on
+  # its own and so ignored the environment entirely: a sprite asking to clone
+  # its own repo would have cloned it onto whichever machine ran the call.
   defp cmd(nil, args, opts), do: System.cmd("git", args, opts)
 
   defp cmd(env, args, opts), do: CodeMySpec.Environments.cmd(env, "git", args, opts)
@@ -135,11 +134,26 @@ defmodule CodeMySpec.Git.CLI do
     end
   end
 
-  defp execute_pull(path) do
-    case Git.pull(%Git.Repository{path: path}) do
-      {:ok, _output} -> :ok
-      {:error, reason} -> {:error, reason}
+  defp execute_clone(env, authenticated_url, path) do
+    case cmd(env, ["clone", authenticated_url, path], stderr_to_stdout: true) do
+      {_output, 0} -> :ok
+      {output, _exit_code} -> {:error, {:clone_failed, redact_credentials(output)}}
     end
+  end
+
+  defp execute_pull(env, path) do
+    case cmd(env, ["-C", path, "pull"], stderr_to_stdout: true) do
+      {_output, 0} -> :ok
+      {output, _exit_code} -> {:error, {:pull_failed, redact_credentials(output)}}
+    end
+  end
+
+  # git echoes the remote it was given back in its error messages, and the
+  # remote we hand it carries an access token. That output travels — into logs,
+  # into problem records, into an agent's prompt — so it is scrubbed at the
+  # point of capture rather than anywhere it might later be printed.
+  defp redact_credentials(output) when is_binary(output) do
+    String.replace(output, ~r{(https?://)[^/@\s]+@}, "\\1***@")
   end
 
   defp restore_remote_url(env, path) do

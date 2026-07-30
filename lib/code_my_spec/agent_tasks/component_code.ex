@@ -11,6 +11,7 @@ defmodule CodeMySpec.AgentTasks.ComponentCode do
   alias CodeMySpec.Components
   alias CodeMySpec.Components.ComponentRepository
   alias CodeMySpec.Environments
+  alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Requirements
   alias CodeMySpec.Requirements.RequirementsFormatter
   alias CodeMySpec.{Rules, Utils}
@@ -141,14 +142,17 @@ defmodule CodeMySpec.AgentTasks.ComponentCode do
     end
   end
 
-  defp read_spec(%{environment: env}, path) when not is_nil(env) do
-    case Environments.read_file(env, path) do
-      {:ok, content} -> {:ok, content}
-      _ -> File.read(path)
-    end
-  end
+  # No fallback to File.read on a failed environment read. The old version had
+  # one, and it was worse than the error it hid: when the project lives on a
+  # sprite, "the env could not read this spec" and "the host happens to have a
+  # file at that path" are unrelated facts, and treating the second as an answer
+  # to the first feeds one machine's spec into another machine's component.
+  # A missing spec should read as missing.
+  defp read_spec(%{environment: %Environment{} = env}, path),
+    do: Environments.read_file(env, path)
 
-  defp read_spec(_scope, path), do: File.read(path)
+  defp read_spec(_scope, path),
+    do: Environments.read_file(Environment.new(:local, File.cwd!()), path)
 
   defp substantive_spec?(content) do
     line_count = content |> String.split("\n") |> length()
