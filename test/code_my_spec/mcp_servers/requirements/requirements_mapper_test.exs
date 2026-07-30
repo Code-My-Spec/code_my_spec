@@ -203,4 +203,80 @@ defmodule CodeMySpec.McpServers.Requirements.RequirementsMapperTest do
       assert text =~ "All requirements satisfied"
     end
   end
+
+  describe "format_next_requirements/2 — project gates are never suppressed" do
+    # Regression guard. An active orchestration group used to suppress *all*
+    # standalone requirements, including project-level ones. That hid
+    # architecture_designed and issues_triaged the moment any context had
+    # component work in flight — so the agent was handed component code while
+    # incoming issues sat untriaged. next_actionable/1 sorts project
+    # requirements first; dropping them here made that invisible.
+    test "a project requirement still shows when an orchestration group is active" do
+      orchestrated =
+        build_node(%{
+          name: "implementation_file",
+          entity_type: "component",
+          entity_id: "comp_1",
+          entity_name: "ProjectSecrets",
+          orchestrated_by: :develop_context,
+          parent_entity_id: "ctx_1",
+          parent_entity_name: "CodeMySpec.ProjectSecrets"
+        })
+
+      project_gate =
+        build_node(%{
+          name: "issues_triaged",
+          entity_type: "project",
+          entity_id: "proj_1",
+          entity_name: "Code My Spec",
+          orchestrated_by: nil
+        })
+
+      text = RequirementsMapper.format_next_requirements([project_gate, orchestrated])
+
+      assert text =~ "issues_triaged",
+             "expected the project gate to survive an active orchestration group, got:\n#{text}"
+
+      assert text =~ "CodeMySpec.ProjectSecrets",
+             "expected the orchestration group to still be shown"
+    end
+
+    test "standalone story and component items are still suppressed by an orchestration group" do
+      orchestrated =
+        build_node(%{
+          name: "implementation_file",
+          orchestrated_by: :develop_context,
+          parent_entity_id: "ctx_1",
+          parent_entity_name: "CodeMySpec.ProjectSecrets"
+        })
+
+      unrelated_story =
+        build_node(%{
+          name: "bdd_specs_exist",
+          entity_type: "story",
+          entity_id: "999",
+          entity_name: "Some unrelated story"
+        })
+
+      text = RequirementsMapper.format_next_requirements([unrelated_story, orchestrated])
+
+      refute text =~ "bdd_specs_exist",
+             "expected unrelated story work to stay suppressed so the active context keeps focus"
+
+      assert text =~ "CodeMySpec.ProjectSecrets",
+             "expected the orchestration group to be shown"
+    end
+
+    test "with no orchestration group everything standalone shows" do
+      project_gate =
+        build_node(%{name: "architecture_designed", entity_type: "project", entity_id: "proj_1"})
+
+      story = build_node(%{name: "bdd_specs_exist", entity_type: "story", entity_id: "999"})
+
+      text = RequirementsMapper.format_next_requirements([project_gate, story])
+
+      assert text =~ "architecture_designed"
+      assert text =~ "bdd_specs_exist"
+    end
+  end
 end

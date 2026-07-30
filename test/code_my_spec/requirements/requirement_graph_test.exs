@@ -80,6 +80,121 @@ defmodule CodeMySpec.Requirements.RequirementGraphTest do
       assert "spec_file" in names
     end
 
+    # Regression guard for the tiering restored in "Restore project requirement
+    # tiering in next_actionable". Commit 2d4f928b introduced the early/late
+    # project split; 3f7be0c9 collapsed it into a single dead-last tier, and
+    # nothing failed — no test asserted the ordering in either direction. That
+    # silence is why architecture_designed and issues_triaged sat beneath 719
+    # tethered component requirements. This test is the assertion that was
+    # missing.
+    test "an unsatisfied early project requirement sorts before tethered component work" do
+      {scope, tmp_dir} = setup_project()
+
+      # Advance the project chain up to (and including) qa_integration_plan,
+      # deliberately stopping short of apply_architecture/1 so
+      # architecture_designed is unsatisfied while its only prerequisite
+      # (qa_integration_plan) is satisfied — i.e. genuinely actionable.
+      kickoff_context =
+        %{scope: scope, environment: scope.environment}
+        |> ProjectStateFixtures.apply_project_setup_steps()
+        |> ProjectStateFixtures.apply_technical_strategy()
+        |> ProjectStateFixtures.apply_code_generation()
+        |> ProjectStateFixtures.apply_qa_integration_plan()
+        |> ProjectStateFixtures.apply_persona()
+
+      scope = kickoff_context.scope
+
+      # Tethered component work: a story with a real priority linked to a
+      # component, so the component inherits that priority and lands in the
+      # story/component tier rather than being dropped as untethered.
+      {:ok, _component} =
+        Components.create_component(scope, %{
+          name: "Widget",
+          type: "schema",
+          module_name: "MyApp.Widget"
+        })
+
+      StoryHelpers.create_and_link(scope, "MyApp.Widget",
+        title: "Build the widget",
+        description: "As an engineer, I want a Widget so that I can store things.",
+        acceptance_criteria: ["widget exists"],
+        priority: 1
+      )
+
+      write_file(tmp_dir, "lib/my_app/widget.ex", "defmodule MyApp.Widget do\nend")
+      sync!(scope, tmp_dir)
+
+      actionable = RequirementGraph.next_actionable(scope)
+
+      assert "architecture_designed" in Enum.map(actionable, & &1.name),
+             "expected architecture_designed to be actionable when its prerequisite is satisfied, got: #{inspect(Enum.map(actionable, &{&1.entity_type, &1.name}))}"
+
+      # Priority 1 on the story is the strongest possible pull for the
+      # component tier, so this ordering only holds if project requirements
+      # occupy an earlier tier rather than competing on priority.
+      first_project_index =
+        Enum.find_index(actionable, &(&1.entity_type == "project"))
+
+      first_component_index =
+        Enum.find_index(actionable, &(&1.entity_type == "component"))
+
+      assert first_project_index != nil,
+             "expected at least one actionable project requirement"
+
+      if first_component_index do
+        assert first_project_index < first_component_index,
+               "expected project requirements to sort before component work, got: #{inspect(Enum.map(actionable, &{&1.entity_type, &1.name}))}"
+      end
+    end
+
+    test "the qa journey chain sorts after story and component work" do
+      {scope, tmp_dir} = setup_project()
+
+      kickoff_context =
+        ProjectStateFixtures.apply_project_kickoff(%{
+          scope: scope,
+          environment: scope.environment
+        })
+
+      scope = kickoff_context.scope
+
+      {:ok, _component} =
+        Components.create_component(scope, %{
+          name: "Widget",
+          type: "schema",
+          module_name: "MyApp.Widget"
+        })
+
+      StoryHelpers.create_and_link(scope, "MyApp.Widget",
+        title: "Build the widget",
+        description: "As an engineer, I want a Widget so that I can store things.",
+        acceptance_criteria: ["widget exists"],
+        priority: 1
+      )
+
+      write_file(tmp_dir, "lib/my_app/widget.ex", "defmodule MyApp.Widget do\nend")
+      sync!(scope, tmp_dir)
+
+      actionable = RequirementGraph.next_actionable(scope)
+      names = Enum.map(actionable, & &1.name)
+
+      # Anchor: there is non-project work in the list, so the ordering
+      # assertion below is meaningful rather than vacuous.
+      assert Enum.any?(actionable, &(&1.entity_type in ["story", "component"])),
+             "expected story or component work to be actionable after kickoff"
+
+      journey_index =
+        Enum.find_index(names, &(&1 in ["qa_journey_plan", "qa_journey_execute", "qa_journey_wallaby"]))
+
+      other_index =
+        Enum.find_index(actionable, &(&1.entity_type in ["story", "component"]))
+
+      if journey_index do
+        assert journey_index > other_index,
+               "expected the qa journey chain to sort after story/component work, got: #{inspect(Enum.map(actionable, &{&1.entity_type, &1.name}))}"
+      end
+    end
+
     test "story component_linked is blocked when project prerequisites are unsatisfied" do
       {scope, tmp_dir} = setup_project()
       seed_setup(tmp_dir)
