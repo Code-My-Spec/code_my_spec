@@ -130,6 +130,33 @@ defmodule CodeMySpecLocalWeb.Hooks.PreToolUseControllerTest do
       assert body == %{}
     end
 
+    # The pre-existing compound test above covers a *leading* compound
+    # (`cd sub && mix test`), which the old pattern already rejected because it
+    # anchored `mix` to the start. The gap was everything trailing: `(.*)` with
+    # `/s` ran to the end of the command, so a pipe or a redirect was captured
+    # as arguments to mix and handed to the analysis API. The agent then got a
+    # run summary where it had asked for grep output, with nothing saying its
+    # command had been rewritten — six retries in four minutes, in one run.
+    for {label, command} <- [
+          {"a pipe", "mix spex test/spex/a_spex.exs --verbose 2>&1 | grep -oE 'foo'"},
+          {"a redirect and a second command", "mix spex a_spex.exs > /tmp/c.txt 2>&1; grep -o x /tmp/c.txt"},
+          {"stderr redirection", "mix test 2>&1 | tail -30"},
+          {"command substitution", "mix test $(cat files.txt)"}
+        ] do
+      test "does not rewrite a command containing #{label}", %{scope: scope} do
+        conn =
+          build_post(scope, %{
+            "tool_name" => "Bash",
+            "tool_input" => %{"command" => unquote(command)}
+          })
+
+        conn = PreToolUseController.handle(conn, conn.body_params)
+
+        assert Jason.decode!(conn.resp_body) == %{},
+               "expected #{unquote(command)} to pass through to the shell unmodified"
+      end
+    end
+
     test "does not rewrite without a working dir on the scope", %{scope: scope} do
       conn =
         build_post(%{scope | cwd: nil}, %{

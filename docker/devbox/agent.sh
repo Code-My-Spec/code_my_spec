@@ -35,6 +35,49 @@ attempt=0
 
 log() { printf '\n\033[1;35m[agent-supervisor] %s\033[0m\n' "$*" | tee -a "${LOG}"; }
 
+# A sprite is disposable — sprite.sh says so in its own header, on the grounds
+# that destroying one "costs nothing that isn't already pushed". That only holds
+# if something pushes. The last run ended with 92 modified files and an agent
+# politely asking whether it should commit; unattended, nobody answers, and two
+# hours of work lives exactly as long as the container does.
+#
+# So the supervisor commits on a clean exit. Deliberately not on a failed one:
+# a run that was cut off mid-requirement is a working copy in an unknown state,
+# and committing that would push half-written code over a good branch.
+commit_and_push() {
+  cd "${APP_DIR:-$PWD}" || return 0
+  git rev-parse --git-dir >/dev/null 2>&1 || { log "not a git repo — nothing to commit"; return 0; }
+
+  if [ -z "$(git status --porcelain)" ]; then
+    log "working copy is clean — nothing to commit"
+    return 0
+  fi
+
+  git config user.name "CodeMySpec Agent"
+  git config user.email "noreply@codemyspec.com"
+  git add -A
+  git commit -q -m "Agent run $(git rev-parse --short HEAD 2>/dev/null || echo initial)
+
+Committed by the sprite supervisor on a clean exit — the stop hook allowed the
+stop, so the harness considered nothing further actionable." \
+    || { log "commit failed"; return 0; }
+
+  log "committed $(git rev-parse --short HEAD)"
+
+  # Push is best-effort and never fatal: a sprite that committed locally has
+  # already saved the work from container disposal, which is the point. The
+  # token is scrubbed from any output because git echoes the remote back on
+  # failure.
+  if [ -n "${GITHUB_TOKEN:-}" ] && [ -n "${REPO_URL:-}" ]; then
+    git push -q "https://x-access-token:${GITHUB_TOKEN}@${REPO_URL#https://}" HEAD 2>&1 \
+      | sed 's/x-access-token:[^@]*@/x-access-token:***@/g' \
+      && log "pushed to ${REPO_URL}" \
+      || log "push failed — work is committed locally but not pushed"
+  else
+    log "no GITHUB_TOKEN/REPO_URL — committed locally, not pushed"
+  fi
+}
+
 while true; do
   attempt=$((attempt + 1))
   started=$(date +%s)
@@ -47,6 +90,7 @@ while true; do
 
   if [ "${code}" -eq 0 ]; then
     log "agent exited cleanly after ${elapsed}s — the stop hook allowed the stop, so nothing is actionable. Done."
+    commit_and_push
     exit 0
   fi
 

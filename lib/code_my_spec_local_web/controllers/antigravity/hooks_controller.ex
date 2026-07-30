@@ -41,7 +41,13 @@ defmodule CodeMySpecLocalWeb.Antigravity.HooksController do
 
   # Mirrors PreToolUseController's rewrite matcher: whole, simple
   # invocations only — compound shell passes through untouched.
-  @test_command ~r/^\s*(?:[A-Z_]+=\S+\s+)*mix\s+(test|spex)(?:\s+(.*))?$/s
+  #
+  # Kept as a reference to the one definition rather than a second copy of the
+  # pattern. It was a copy, and both copies had the same bug — `(.*)` swallowed
+  # pipes and redirects, so a rewrite fired on commands this comment already
+  # promised would pass through. Two places to fix is one place too many for a
+  # rule stated once.
+  @test_command CodeMySpecLocalWeb.Hooks.PreToolUseController.test_command_regex()
 
   # ── PreInvocation ──────────────────────────────────────────────────
   # Fires before every model call; the first invocation of a conversation

@@ -122,7 +122,28 @@ defmodule CodeMySpecLocalWeb.Hooks.PreToolUseController do
   # `mix test`/`mix spex`, then plain args to end-of-command. Compound shell
   # (cd &&, pipes, subshells) passes through: replacing part of a compound
   # command with a curl would silently change the rest's semantics.
-  @test_command ~r/^\s*(?:[A-Z_]+=\S+\s+)*mix\s+(test|spex)(?:\s+(.*))?$/s
+  #
+  # That was the intent from the start, but `(.*)` did not implement it: with
+  # `/s` it matched to the end of the command, pipes and redirects included, so
+  # `mix spex foo_spex.exs --verbose 2>&1 | grep -oE ...` was rewritten with
+  # `2>&1`, `|`, `grep`, `-oE`, ... passed to the analysis API *as arguments to
+  # mix spex*. The agent got the analyzer's summary instead of the grep output
+  # it asked for, and no indication its command had been rewritten.
+  #
+  # In one run that cost six consecutive retries in four minutes: the agent
+  # rephrased the same diagnostic — pipe to grep, redirect to /tmp, redirect to
+  # the home dir — because it could not see that a wrapper was eating the
+  # pipeline. Excluding shell metacharacters here is what makes the comment
+  # above true.
+  @test_command ~r/^\s*(?:[A-Z_]+=\S+\s+)*mix\s+(test|spex)(?:\s+([^|&;<>`$()\n]*))?$/
+
+  @doc """
+  The rewrite matcher, exposed so the Antigravity hooks controller can share it
+  rather than keep a second copy. It kept a copy, and both copies carried the
+  same bug.
+  """
+  @spec test_command_regex() :: Regex.t()
+  def test_command_regex, do: @test_command
 
   defp maybe_rewrite_test_command(conn, params) do
     command = get_in(params, ["tool_input", "command"]) || ""

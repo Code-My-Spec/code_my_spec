@@ -207,8 +207,20 @@ if [ -f "${APP_DIR}/mix.exs" ]; then
   install -d -o agent -g agent /home/agent/.mix
   cp -a "${MIX_HOME:-/root/.mix}/." /home/agent/.mix/ 2>/dev/null || true
   chown -R agent:agent /home/agent/.mix
+
+  # Hex too, not just Mix. The harness now runs as `agent` (see the exec at the
+  # bottom), so every `mix` it spawns needs a hex cache it can read and write —
+  # root's is neither.
+  install -d -o agent -g agent /home/agent/.hex
+  cp -a "${HEX_HOME:-/root/.hex}/." /home/agent/.hex/ 2>/dev/null || true
+  chown -R agent:agent /home/agent/.hex
+
   chown -R agent:agent "${APP_DIR}"
 fi
+
+# The harness writes its own state and logs under $HOME; as `agent` that is
+# /home/agent/.codemyspec, which root has to create before dropping privileges.
+install -d -o agent -g agent /home/agent/.codemyspec
 
 # --- harness -----------------------------------------------------------------
 # No migrations: the schema belongs to the server, which owns those rows. The
@@ -232,4 +244,29 @@ export CMS_MCP_WORKING_DIR="${APP_DIR}"
 # terminal to fall back to.
 export CMS_DEPLOY_KEY="${CMS_DEPLOY_KEY:-}"
 
-exec /opt/cms/bin/code_my_spec_cli start
+# Run the harness as `agent`, the same uid as the agent it serves.
+#
+# It used to run as root, and root and the agent share the project's `_build`.
+# Every analyzer the harness spawned left root-owned artifacts there —
+# `_build/test/lib/<app>/.mix/.mix_test_failures` and `compile.elixir` were both
+# root-owned after the last run — and the agent's next `mix test` died on
+# EACCES trying to rewrite them. The chowns above only fix the state at
+# startup; the harness goes on re-creating root-owned files for the rest of the
+# run.
+#
+# The failure mode is worse than a crash, because it is recoverable: an agent
+# that cannot write `_build` will quietly redirect to another build path and
+# carry on rather than report it. There is a `_build/test_root_owned` directory
+# in the last run's working copy that is exactly that — a workaround nobody
+# asked for and nobody saw. This script already warns about the same trap for
+# MIX_HOME a few lines up; `_build` had the identical problem and no fix.
+#
+# setpriv rather than su: it preserves the environment exactly, and everything
+# below CMS_* has already been exported into it. HOME and MIX_HOME are set
+# explicitly because those are the two su would have changed for us.
+export HOME=/home/agent
+export MIX_HOME=/home/agent/.mix
+export HEX_HOME=/home/agent/.hex
+
+exec setpriv --reuid=agent --regid=agent --init-groups \
+  /opt/cms/bin/code_my_spec_cli start
