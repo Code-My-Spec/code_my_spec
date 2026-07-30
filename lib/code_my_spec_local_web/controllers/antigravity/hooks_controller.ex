@@ -168,7 +168,7 @@ defmodule CodeMySpecLocalWeb.Antigravity.HooksController do
     with %{active_project_id: project_id, cwd: cwd}
          when not is_nil(project_id) and is_binary(cwd) <- scope,
          {:ok, task, source, args} <-
-           CodeMySpecLocalWeb.Hooks.PreToolUseController.classify_test_command(command) do
+           CodeMySpec.Hooks.PreToolUse.classify_test_command(command) do
       curl = build_curl(conn, cwd, source, args)
 
       {:deny,
