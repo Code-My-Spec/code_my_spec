@@ -276,9 +276,5 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
   # Task modules may return `{:error, atom}` (terse code) or
   # `{:error, {atom, message}}` (terse code + agent-actionable
   # message). Prefer the message when present.
-  defp format_error_reason({atom, message}) when is_atom(atom) and is_binary(message) do
-    "#{atom}\n\n#{message}"
-  end
-
-  defp format_error_reason(reason), do: inspect(reason)
+  defp format_error_reason(reason), do: CodeMySpec.AgentTasks.format_error(reason)
 end

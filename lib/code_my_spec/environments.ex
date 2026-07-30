@@ -42,6 +42,10 @@ defmodule CodeMySpec.Environments do
     RELEASE_ROOT RELEASE_SYS_CONFIG RELEASE_TMP RELEASE_NODE RELEASE_VSN
     RELEASE_COOKIE RELEASE_MODE RELEASE_DISTRIBUTION RELEASE_BOOT_SCRIPT
     RELEASE_BOOT_SCRIPT_CLEAN RELEASE_COMMAND RELEASE_PROG RELEASE_NAME
+    RELEASE_VM_ARGS RELEASE_REMOTE_VM_ARGS RELEASE_DISTRIBUTION_FLAG
+    ERTS_BIN ERTS_VSN ERLEXEC_DIR ERL_CONSOLE_MODE ELIXIR_VERSION
+    REL_VSN_DIR REL_EXEC REL_EXTRA REL_GOTO SCRIPT_PATH
+    beforeExtra parsErlang endLoop
   )
 
   @doc """
@@ -51,8 +55,58 @@ defmodule CodeMySpec.Environments do
   derive its own OTP from PATH. Safe off Burrito — clearing an unset var is a
   no-op.
   """
-  @spec clean_otp_env() :: [{String.t(), nil}]
-  def clean_otp_env, do: Enum.map(@otp_release_vars, fn var -> {var, nil} end)
+  @spec clean_otp_env() :: [{String.t(), String.t() | nil}]
+  def clean_otp_env do
+    Enum.map(@otp_release_vars, fn var -> {var, nil} end) ++ path_without_release_dirs()
+  end
+
+  # Clearing ROOTDIR is necessary but not sufficient: the release's own
+  # `erts-*/bin` is on PATH — *first* under the Windows MSI — so a child
+  # `mix`/`elixir` resolves `erl` to OUR erl regardless of what we unset. That
+  # erl then derives ROOTDIR from its own location and looks for
+  # `<root>/bin/start.boot`, a path no release has (boot files live in
+  # `releases/<vsn>/`), so the child dies with "cannot get bootfile" before it
+  # ever runs. Every compile, test and credo run on that machine failed this
+  # way while the scrub list was working perfectly.
+  #
+  # Dropping every PATH entry inside RELEASE_ROOT leaves the child resolving
+  # the user's own toolchain. Off a release RELEASE_ROOT is unset and PATH is
+  # passed through untouched.
+  defp path_without_release_dirs do
+    with root when is_binary(root) <- System.get_env("RELEASE_ROOT"),
+         path when is_binary(path) <- System.get_env("PATH"),
+         sep = path_separator(),
+         kept when kept != "" <-
+           path
+           |> String.split(sep, trim: true)
+           |> Enum.reject(&under_root?(&1, root))
+           |> Enum.join(sep) do
+      [{"PATH", kept}]
+    else
+      # Not in a release, no PATH, or stripping would empty it — in every case
+      # the inherited PATH is the better answer than a broken one.
+      _ -> []
+    end
+  end
+
+  defp path_separator do
+    case :os.type() do
+      {:win32, _} -> ";"
+      _ -> ":"
+    end
+  end
+
+  defp under_root?(entry, root), do: String.starts_with?(normalize(entry), normalize(root))
+
+  # Windows mixes separators and is case-insensitive; unix is neither.
+  defp normalize(path) do
+    normalized = path |> String.replace("\\", "/") |> String.trim_trailing("/")
+
+    case :os.type() do
+      {:win32, _} -> String.downcase(normalized)
+      _ -> normalized
+    end
+  end
 
   @doc """
   Register an environment override for a project.

@@ -40,12 +40,27 @@ defmodule CodeMySpec.McpServers.Requirements.RequirementsMapper do
       end
 
     # When an orchestration group is active, focus on it — don't show
-    # unrelated standalone items that distract from the current context.
+    # unrelated standalone story/component items that distract from the
+    # current context.
+    #
+    # Project-level requirements are exempt. They are gates, not
+    # distractions: `architecture_designed` and `issues_triaged` govern
+    # whether the component work below them is even the right thing to do.
+    # Suppressing them because some context happens to be mid-development
+    # inverts the ordering the graph exists to enforce — the agent gets
+    # handed component code while incoming issues sit untriaged and the
+    # architecture is incoherent. `next_actionable/1` already sorts them
+    # first; dropping them here is what made that invisible.
+    standalone_to_show =
+      case orchestrated_section do
+        "" -> standalone
+        _ -> Enum.filter(standalone, &(&1.entity_type == "project"))
+      end
+
     standalone_sections =
-      if orchestrated_section == "" do
-        format_satisfied_by_groups(standalone, active_subagents)
-      else
-        ""
+      case standalone_to_show do
+        [] -> ""
+        nodes -> format_satisfied_by_groups(nodes, active_subagents)
       end
 
     [orchestrated_section, standalone_sections]

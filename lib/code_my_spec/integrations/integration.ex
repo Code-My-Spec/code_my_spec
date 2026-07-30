@@ -23,7 +23,7 @@ defmodule CodeMySpec.Integrations.Integration do
   @type t :: %__MODULE__{
           id: integer() | nil,
           user_id: integer(),
-          provider: :github | :gitlab | :bitbucket | :google,
+          provider: :github | :gitlab | :bitbucket | :google | :cloudflare | :resend,
           access_token: binary(),
           refresh_token: binary() | nil,
           expires_at: DateTime.t(),
@@ -35,7 +35,7 @@ defmodule CodeMySpec.Integrations.Integration do
         }
 
   schema "integrations" do
-    field :provider, Ecto.Enum, values: [:github, :gitlab, :bitbucket, :google]
+    field :provider, Ecto.Enum, values: [:github, :gitlab, :bitbucket, :google, :cloudflare, :resend]
     field :access_token, CodeMySpec.Encrypted.Binary
     field :refresh_token, CodeMySpec.Encrypted.Binary
     field :expires_at, :utc_datetime_usec

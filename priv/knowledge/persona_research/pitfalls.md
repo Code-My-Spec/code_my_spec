@@ -75,6 +75,13 @@ Spool: "If you didn't partake in the research, you don't get to play with the sc
 
 **Fix:** researchers and designers overlap. If the agent is doing the research, the agent owns the synthesis. If a human owns downstream decisions, include them in the research.
 
+### Human methodology applied to an agent persona
+The persona's actor is a class of LLM agent — `Per-Story QA Agent`, `Code Writer Agent` — and the research was run as if it were a person: a PM intake, a JTBD switching story, a hunt for reviews and forum posts. There is no one to interview and no public corpus, so the evidence footer ends up citing the researcher's own assumptions dressed as findings. This is the same failure as manufactured quotes below, one level up: the *method* is manufactured rather than the quote.
+
+The tell is a sources.md whose entries are all internal reasoning, or a summary.md with a "frustrations" section that describes what the harness does rather than what the agent observably does with it.
+
+**Fix:** stop and switch to `agent_personas.md`. The artifact contract is identical, but the sources are agent definitions in the repo, the MCP tool surface, observed behaviour in `cli.log` / `server.log`, and explicit self-reflection labelled as such. Note that `persona_type` (`proto` / `qualitative` / `statistical`) describes research rigor, not who the actor is — an agent persona still carries one of those three, so the field will not warn you.
+
 ### Manufactured quotes
 Quote bubbles that sound like the persona but weren't actually said by any interviewee. Anti-signal — manufactured language lacks the specificity of real speech.
 

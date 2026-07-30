@@ -184,4 +184,39 @@ defmodule CodeMySpec.Sessions.SessionTypeTest do
       assert map_size(mapper) == length(valid_module_atoms())
     end
   end
+
+  describe "load/1 — tolerance for legacy rows" do
+    # Regression guard for issue f79da343. A row whose `type` names a module
+    # that no longer exists must still load: `load/1` is deliberately tolerant
+    # while `cast/1` stays strict, so new writes are still rejected but a
+    # legacy row cannot take down every query that materialises a Session.
+    #
+    # Without this, `Repo.all(Session)` crashes with
+    #   ** (ArgumentError) cannot load "Elixir.CodeMySpec.ComponentDesignSessions"
+    #      as type CodeMySpec.Sessions.SessionType
+    # and the failure surfaces far from its cause — it took down the whole QA
+    # submission path via an opaque -32603 from inside an Anubis tool dispatch.
+    #
+    # If someone "tightens" load/1 to to_existing_atom/1 for symmetry with
+    # cast/1, this test is what should stop them.
+    test "loads a type whose module no longer exists" do
+      assert {:ok, _} = SessionType.load("Elixir.CodeMySpec.ComponentDesignSessions")
+    end
+
+    test "loads a type that was never a module at all" do
+      assert {:ok, _} = SessionType.load("Elixir.CodeMySpec.AgentTasks.NeverExisted")
+    end
+
+    test "loads every currently valid type" do
+      for module <- valid_module_atoms() do
+        assert {:ok, ^module} = SessionType.load(Atom.to_string(module))
+      end
+    end
+
+    test "cast/1 stays strict — a deleted module is still rejected on write" do
+      # The asymmetry is the point: tolerate what is already on disk, refuse to
+      # write more of it.
+      assert :error = SessionType.cast("Elixir.CodeMySpec.ComponentDesignSessions")
+    end
+  end
 end

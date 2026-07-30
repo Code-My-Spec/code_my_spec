@@ -15,6 +15,7 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
   # trailing edge fires once the developer stops saving for this long.
   @graph_debounce_ms 750
 
+  alias CodeMySpec.AgentTasks
   alias CodeMySpec.AgentTasks.ProjectSetup
   alias CodeMySpec.ProjectSync.Sync, as: ProjectSync
   alias CodeMySpec.Components
@@ -820,14 +821,14 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
   defp fetch_prompt_text(satisfied_by, scope, task) do
     case satisfied_by.command(scope, task) do
       {:ok, text} -> text
-      {:error, reason} -> "Error generating prompt: #{inspect(reason)}"
+      {:error, reason} -> "Error generating prompt: #{AgentTasks.format_error(reason)}"
     end
   end
 
   defp generate_command(task_module, scope) do
     case task_module.command(scope, %{}) do
       {:ok, text} -> text
-      {:error, reason} -> "Error: #{inspect(reason)}"
+      {:error, reason} -> "Error: #{AgentTasks.format_error(reason)}"
     end
   rescue
     error -> "Error: #{inspect(error)}"

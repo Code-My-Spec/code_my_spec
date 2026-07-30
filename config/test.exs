@@ -16,13 +16,18 @@ config :code_my_spec, CodeMySpec.Repo,
   pool: Ecto.Adapters.SQL.Sandbox,
   pool_size: System.schedulers_online() * 2
 
-# Endpoint runs with server: true so Wallaby (browser-driven e2e tests)
-# can hit real HTTP. Phoenix.ConnTest / LiveViewTest don't go through HTTP,
-# so this doesn't affect non-e2e tests.
+# server: false — Phoenix.ConnTest and LiveViewTest do not go through HTTP,
+# so nothing here needs a listener. It was true only for Wallaby, which is no
+# longer a dependency and whose test/e2e directory no longer exists.
+#
+# Binding the port had a real cost: every `mix test` and `mix run` grabbed
+# 4002, so a concurrent background analysis run (the stop hook enqueues a full
+# `mix spex`) failed the other with :eaddrinuse. Same reasoning as the
+# LocalWeb endpoint below, which has always been server: false.
 config :code_my_spec, CodeMySpecWeb.Endpoint,
   http: [ip: {127, 0, 0, 1}, port: 4002],
   secret_key_base: "uQsFkBLrXNG5yxrQkMHNLOAi5NcrEzpZut3YYEOlAFiuhpoynMd+/rJBgz6FSWsg",
-  server: true
+  server: false
 
 # Local web endpoint — needed for spex tests that drive the local UI.
 # server: false, runs as a started-but-quiet endpoint so LiveViewTest can use it.

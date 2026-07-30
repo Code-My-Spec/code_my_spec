@@ -8,6 +8,8 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
   alias CodeMySpec.AgentTasks.QaStory
   alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Issues
+  alias CodeMySpec.Qa
+  alias CodeMySpec.QaFixtures
 
   # ============================================================================
   # Test Helpers
@@ -609,6 +611,78 @@ defmodule CodeMySpec.AgentTasks.QaStoryTest do
       seed_issue = Enum.find(issues, &String.contains?(&1.title, "Seed script"))
 
       assert seed_issue.scope == :qa
+    end
+  end
+
+  # ==========================================================================
+  # Issue a15c252b — file/DB dual-enforcement after an invalidated attempt
+  # ==========================================================================
+
+  describe "evaluate/2 when a prior attempt exists but does not satisfy" do
+    # The plan must exist, or `do_evaluate/3` fails at `check_plan/1` and
+    # never reaches `check_brief/2` — which would make the "no brief.md"
+    # assertions below pass without the fix being present.
+    setup [:create_scope, :create_story, :create_task, :create_qa_plan]
+
+    test "an invalidated attempt demands a resubmit, not a brief.md", %{
+      scope: scope,
+      story: story,
+      task: task
+    } do
+      # The repro from the issue: submit, then invalidate, then stop without
+      # starting a new task. No QA files are ever written — the DB flow does
+      # not produce them.
+      {:ok, attempt} = QaFixtures.passed_qa_attempt(scope, story_id: story.id)
+      {:ok, _} = Qa.invalidate_qa_attempt(scope, attempt.id, "Spex-only pass, never probed the surface")
+
+      {:ok, :invalid, feedback} = QaStory.evaluate(scope, task)
+
+      # The defect: the legacy chain demanded an artifact the DB flow never
+      # produces, which reads as "go write a document".
+      refute feedback =~ "brief.md"
+      refute feedback =~ "Brief not found"
+
+      assert feedback =~ "submit_qa_result"
+      assert feedback =~ "not on disk"
+      # Say WHY it re-opened, so the agent doesn't re-run the same shallow pass.
+      assert feedback =~ "Spex-only pass, never probed the surface"
+    end
+
+    test "an earlier passing attempt does not rescue a later invalidated one", %{
+      scope: scope,
+      story: story,
+      task: task
+    } do
+      {:ok, _} = QaFixtures.passed_qa_attempt(scope, story_id: story.id)
+
+      {:ok, attempt} = QaFixtures.passed_qa_attempt(scope, story_id: story.id)
+      {:ok, _} = Qa.invalidate_qa_attempt(scope, attempt.id, "superseded")
+
+      {:ok, :invalid, feedback} = QaStory.evaluate(scope, task)
+
+      refute feedback =~ "Brief not found"
+      assert feedback =~ "list_qa_attempts"
+    end
+
+    test "a story with no attempts at all still walks the file chain", %{
+      scope: scope,
+      task: task
+    } do
+      # The first-time path is unchanged: with nothing in the DB the evaluator
+      # still scaffolds plan -> brief -> result.
+      {:ok, :invalid, feedback} = QaStory.evaluate(scope, task)
+
+      assert feedback =~ "plan" or feedback =~ "brief"
+    end
+
+    test "a satisfying attempt short-circuits ahead of all of this", %{
+      scope: scope,
+      story: story,
+      task: task
+    } do
+      {:ok, _} = QaFixtures.passed_qa_attempt(scope, story_id: story.id)
+
+      assert {:ok, :valid} = QaStory.evaluate(scope, task)
     end
   end
 end

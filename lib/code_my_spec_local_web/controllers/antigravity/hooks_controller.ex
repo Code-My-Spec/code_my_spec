@@ -39,15 +39,6 @@ defmodule CodeMySpecLocalWeb.Antigravity.HooksController do
   # in toolCall.args.
   @edit_tools ~w(write_to_file replace_file_content multi_replace_file_content)
 
-  # Mirrors PreToolUseController's rewrite matcher: whole, simple
-  # invocations only — compound shell passes through untouched.
-  #
-  # Kept as a reference to the one definition rather than a second copy of the
-  # pattern. It was a copy, and both copies had the same bug — `(.*)` swallowed
-  # pipes and redirects, so a rewrite fired on commands this comment already
-  # promised would pass through. Two places to fix is one place too many for a
-  # rule stated once.
-  @test_command CodeMySpecLocalWeb.Hooks.PreToolUseController.test_command_regex()
 
   # ── PreInvocation ──────────────────────────────────────────────────
   # Fires before every model call; the first invocation of a conversation
@@ -170,11 +161,14 @@ defmodule CodeMySpecLocalWeb.Antigravity.HooksController do
        when is_binary(command) do
     scope = conn.assigns[:current_scope]
 
+    # The decision — is this a whole, simple invocation? — belongs to
+    # PreToolUseController. This module used to keep its own copy of the regex
+    # and its own arg parsing, which meant the pipe-swallowing bug had to be
+    # found and fixed twice.
     with %{active_project_id: project_id, cwd: cwd}
          when not is_nil(project_id) and is_binary(cwd) <- scope,
-         [_, task | rest] <- Regex.run(@test_command, String.trim(command)) do
-      source = if task == "spex", do: "spex", else: "exunit"
-      args = parse_args(rest)
+         {:ok, task, source, args} <-
+           CodeMySpecLocalWeb.Hooks.PreToolUseController.classify_test_command(command) do
       curl = build_curl(conn, cwd, source, args)
 
       {:deny,
@@ -187,10 +181,6 @@ defmodule CodeMySpecLocalWeb.Antigravity.HooksController do
   end
 
   defp redirect_test_command(_conn, _tool, _args), do: :pass
-
-  defp parse_args([]), do: []
-  defp parse_args([nil]), do: []
-  defp parse_args([args_string]), do: OptionParser.split(args_string)
 
   defp build_curl(conn, cwd, source, args) do
     payload = Jason.encode!(%{source: source, args: args})

@@ -122,38 +122,56 @@ defmodule CodeMySpecLocalWeb.Hooks.PreToolUseController do
   # `mix test`/`mix spex`, then plain args to end-of-command. Compound shell
   # (cd &&, pipes, subshells) passes through: replacing part of a compound
   # command with a curl would silently change the rest's semantics.
-  #
-  # That was the intent from the start, but `(.*)` did not implement it: with
-  # `/s` it matched to the end of the command, pipes and redirects included, so
-  # `mix spex foo_spex.exs --verbose 2>&1 | grep -oE ...` was rewritten with
-  # `2>&1`, `|`, `grep`, `-oE`, ... passed to the analysis API *as arguments to
-  # mix spex*. The agent got the analyzer's summary instead of the grep output
-  # it asked for, and no indication its command had been rewritten.
-  #
-  # In one run that cost six consecutive retries in four minutes: the agent
-  # rephrased the same diagnostic — pipe to grep, redirect to /tmp, redirect to
-  # the home dir — because it could not see that a wrapper was eating the
-  # pipeline. Excluding shell metacharacters here is what makes the comment
-  # above true.
-  @test_command ~r/^\s*(?:[A-Z_]+=\S+\s+)*mix\s+(test|spex)(?:\s+([^|&;<>`$()\n]*))?$/
+  @test_command ~r/^\s*((?:[A-Z_]+=\S+\s+)*)mix\s+(test|spex)(?:\s+(.*))?$/s
+
+  # `(.*)` with `/s` swallows everything to end of command, including shell
+  # that follows the mix invocation — so the "compound shell passes through"
+  # promise above was never enforced. `mix spex foo.exs > out.txt 2>&1; tail
+  # out.txt` matched, and the rewrite dropped the redirect and the tail while
+  # storing `[">", "out.txt", "2>&1;", "tail", ...]` as the run's args. Two
+  # harms, both silent: the agent's requested output never materialised, and
+  # the junk tokens were persisted as if they were paths. Issue 0b54e827.
+  @shell_metachars ~r/[;&|<>`$\n(){}]/
+
+  # The curl carries no environment, so any env-var prefix the agent wrote is
+  # dropped by the rewrite. `MIX_ENV=test` is the default for both tasks and
+  # so means nothing; anything else (`MIX_ENV=cli_dev`, a feature flag) changes
+  # what runs, and dropping it silently is the same class of bug as swallowing
+  # a redirect.
+  @harmless_env_prefix ~r/^(?:MIX_ENV=test\s+)*$/
 
   @doc """
-  The rewrite matcher, exposed so the Antigravity hooks controller can share it
-  rather than keep a second copy. It kept a copy, and both copies carried the
-  same bug.
+  Whether a shell command is a whole, simple `mix test`/`mix spex` invocation
+  worth routing through the analysis service.
+
+  `{:ok, task, source, args}` when it is; `:skip` when the command carries
+  shell the rewrite would swallow, an env-var prefix the curl would drop, or
+  quoting that cannot be split unambiguously.
+
+  Public because the Antigravity hooks controller makes the same decision
+  against a different tool payload. It used to make it with its own copy of the
+  regex and its own `parse_args`, and when this rule was fixed here that copy
+  kept the bug — so the rule lives in one place now.
   """
-  @spec test_command_regex() :: Regex.t()
-  def test_command_regex, do: @test_command
+  @spec classify_test_command(String.t()) ::
+          {:ok, String.t(), String.t(), [String.t()]} | :skip
+  def classify_test_command(command) when is_binary(command) do
+    with [_, env_prefix, task | rest] <- Regex.run(@test_command, String.trim(command)),
+         true <- Regex.match?(@harmless_env_prefix, env_prefix),
+         false <- compound_shell?(rest),
+         {:ok, args} <- parse_args(rest) do
+      {:ok, task, if(task == "spex", do: "spex", else: "exunit"), args}
+    else
+      _ -> :skip
+    end
+  end
 
   defp maybe_rewrite_test_command(conn, params) do
     command = get_in(params, ["tool_input", "command"]) || ""
     scope = conn.assigns[:current_scope]
 
     with %{active_project_id: project_id, cwd: cwd} when not is_nil(project_id) and is_binary(cwd) <- scope,
-         [_, task | rest] <- Regex.run(@test_command, String.trim(command)) do
-      source = if task == "spex", do: "spex", else: "exunit"
-      args = parse_args(rest)
-
+         {:ok, task, source, args} <- classify_test_command(command) do
       replacement = build_curl(conn, cwd, source, args)
 
       Logger.info("[PreToolUse] Rewriting mix #{task} → analysis API (#{source}, args: #{inspect(args)})")
@@ -175,9 +193,28 @@ defmodule CodeMySpecLocalWeb.Hooks.PreToolUseController do
     end
   end
 
-  defp parse_args([]), do: []
-  defp parse_args([nil]), do: []
-  defp parse_args([args_string]), do: OptionParser.split(args_string)
+  # True when the arg tail carries shell that the rewrite would swallow.
+  # Redirections, separators, substitutions, subshells — anything whose
+  # meaning is the shell's rather than mix's. A legitimate `mix test` arg is a
+  # path, a `--flag`, or a flag value; none of them need these characters, so
+  # rejecting is cheap and the cost of a false negative is a silently altered
+  # command.
+  defp compound_shell?([]), do: false
+  defp compound_shell?([nil]), do: false
+  defp compound_shell?([args_string]), do: Regex.match?(@shell_metachars, args_string)
+
+  defp parse_args([]), do: {:ok, []}
+  defp parse_args([nil]), do: {:ok, []}
+
+  defp parse_args([args_string]) do
+    {:ok, OptionParser.split(args_string)}
+  rescue
+    # Unbalanced quotes make the split ambiguous, and the shell would resolve
+    # it differently than we would. Returning `[]` here would read as "no
+    # args" and silently widen a targeted run to the whole suite, so refuse
+    # the rewrite and let the original command run.
+    _ -> :error
+  end
 
   defp build_curl(conn, cwd, source, args) do
     payload = Jason.encode!(%{source: source, args: args})
