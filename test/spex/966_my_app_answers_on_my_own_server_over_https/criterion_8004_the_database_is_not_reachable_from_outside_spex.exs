@@ -1,0 +1,82 @@
+defmodule CodeMySpecSpex.Story966.Criterion8004Spex do
+  @moduledoc """
+  Story 966 — My app answers on my own server over HTTPS
+  Criterion 8004 — The database is not reachable from outside.
+
+  Only the ports the app needs answer from the internet. The database port
+  does not. Docker writes its own iptables rules and bypasses UFW, so the
+  Hetzner cloud firewall at the network edge is the control that actually
+  holds — a spec that only checked the host firewall would pass while
+  Postgres sat open to the world.
+
+  Surface: `CodeMySpecWeb.ProvisioningLive` on the cloud app, driving
+  `CodeMySpec.Provisioning.Deploy`.
+  """
+
+  use CodeMySpecSpex.Case
+
+  @endpoint CodeMySpecWeb.Endpoint
+
+  @cassette "hetzner_firewall_rules_applied"
+
+  setup :register_log_in_setup_account
+  setup :setup_active_project
+
+  spex "The database is not reachable from outside" do
+    scenario "only the web ports are open at the network edge" do
+      given_ "Sam is on the setup status page", context do
+        {:ok, view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/provisioning")
+
+        {:ok, Map.put(context, :view, view)}
+      end
+
+      when_ "the server step has provisioned the box and its firewall", context do
+        html =
+          ReqCassette.with_cassette(@cassette, [mode: :replay], fn ->
+            context.view
+            |> element("[data-test='setup-step'][data-step='server'] [data-test='run-step']")
+            |> render_click()
+          end)
+
+        {:ok, Map.put(context, :html, html)}
+      end
+
+      then_ "the ports open from the internet are only the ones the app needs", context do
+        rules =
+          context.html
+          |> Floki.parse_document!()
+          |> Floki.find("[data-test='firewall-rule'][data-direction='in']")
+
+        # Anchor: rules were recorded, so the absence below is meaningful.
+        assert rules != [], "expected inbound firewall rules to be recorded"
+
+        public_ports =
+          rules
+          |> Enum.filter(fn r ->
+            (r |> Floki.attribute("data-source") |> List.first()) in ["0.0.0.0/0", "::/0", "any"]
+          end)
+          |> Enum.map(&(Floki.attribute(&1, "data-port") |> List.first()))
+          |> MapSet.new()
+
+        assert MapSet.subset?(public_ports, MapSet.new(["80", "443"])),
+               "expected only the web ports open to the internet, got #{inspect(MapSet.to_list(public_ports))}"
+
+        {:ok, Map.put(context, :public_ports, public_ports)}
+      end
+
+      then_ "the database port does not answer from outside", context do
+        refute MapSet.member?(context.public_ports, "5432"),
+               "expected the database port never to be open to the internet"
+
+        assert has_element?(
+                 context.view,
+                 "[data-test='firewall-scope'][data-enforced-at='cloud']"
+               ),
+               "expected the firewall to be enforced at the Hetzner network edge, since Docker bypasses host firewalls"
+
+        {:ok, context}
+      end
+    end
+  end
+end
