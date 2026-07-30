@@ -31,6 +31,59 @@ defmodule CodeMySpec.ProjectsTest do
       assert {:error, :not_found} = Projects.resolve_local_project("/home/dev/nope")
     end
 
+    test "resolve_local_project/1 reads project_id from the project's own config" do
+      user = user_fixture()
+      account = account_with_owner_fixture(user)
+      scope = user_scope_fixture(user, account)
+
+      # The project's local_path is deliberately somewhere else, so a pass only
+      # happens if the config file was consulted rather than the directory.
+      project = project_fixture(scope, %{local_path: "/somewhere/else"})
+      dir = write_config(%{"project_id" => project.id})
+
+      assert {:ok, found} = Projects.resolve_local_project(dir)
+      assert found.id == project.id
+    end
+
+    test "resolve_local_project/1 prefers the configured project over the config file" do
+      user = user_fixture()
+      account = account_with_owner_fixture(user)
+      scope = user_scope_fixture(user, account)
+
+      sprite_project = project_fixture(scope, %{local_path: "/workspace/app"})
+      other = project_fixture(scope, %{local_path: "/somewhere/else"})
+      dir = write_config(%{"project_id" => other.id})
+
+      Application.put_env(:code_my_spec, :project_id, sprite_project.id)
+      on_exit(fn -> Application.delete_env(:code_my_spec, :project_id) end)
+
+      # A sprite is told what it is. A config file it happens to have cloned
+      # must not talk it out of that.
+      assert {:ok, found} = Projects.resolve_local_project(dir)
+      assert found.id == sprite_project.id
+    end
+
+    test "resolve_local_project/1 falls back to the working dir with no config" do
+      user = user_fixture()
+      account = account_with_owner_fixture(user)
+      scope = user_scope_fixture(user, account)
+
+      {:ok, dir} = Briefly.create(directory: true)
+      project = project_fixture(scope, %{local_path: dir})
+
+      assert {:ok, found} = Projects.resolve_local_project(dir)
+      assert found.id == project.id
+    end
+
+    test "resolve_local_project/1 refuses a config naming a project that does not exist" do
+      dir = write_config(%{"project_id" => Ecto.UUID.generate()})
+
+      # Deliberately not a fall-through to the path lookup: a config file naming
+      # an unknown project is a mistake, and silently binding the directory to
+      # whatever else matches would hide it.
+      assert {:error, :not_found} = Projects.resolve_local_project(dir)
+    end
+
     test "resolve_local_project/1 ignores the working dir when a project is configured" do
       user = user_fixture()
       account = account_with_owner_fixture(user)
@@ -266,5 +319,17 @@ defmodule CodeMySpec.ProjectsTest do
       assert {:error, :github_not_connected} =
                Projects.create_github_repo(scope, project, :code_repo, %{}, "-code")
     end
+  end
+
+  # A project root carrying `.code_my_spec/config.yml`, the way a real checkout
+  # does. Briefly cleans it up.
+  defp write_config(config) do
+    {:ok, dir} = Briefly.create(directory: true)
+    File.mkdir_p!(Path.join(dir, ".code_my_spec"))
+
+    yaml = Enum.map_join(config, "\n", fn {k, v} -> "#{k}: #{v}" end)
+    File.write!(Path.join([dir, ".code_my_spec", "config.yml"]), yaml <> "\n")
+
+    dir
   end
 end

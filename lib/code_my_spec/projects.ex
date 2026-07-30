@@ -139,17 +139,49 @@ defmodule CodeMySpec.Projects do
   asking the question.
   """
   def resolve_local_project(working_dir) do
+    # Identity in precedence order, most specific first:
+    #
+    #   1. `:project_id` app env (CMS_PROJECT_ID) — the whole VM serves one
+    #      project. This is a sprite.
+    #   2. `project_id` in the project's own `.code_my_spec/config.yml` — the
+    #      per-project answer, and the one a laptop needs when a single harness
+    #      serves several checkouts.
+    #   3. `local_path` lookup — the original mechanism, kept so existing
+    #      installs keep working. It is the one that cannot survive the split:
+    #      it is a database lookup keyed by a filesystem path, and the server
+    #      that will own these tools has no filesystem.
+    #
     # `Elixir.Application` explicitly: this module aliases
     # `CodeMySpec.Oauth.Application`, which shadows the OTP module.
     case Elixir.Application.get_env(:code_my_spec, :project_id) do
-      nil ->
-        get_project_by_local_path(working_dir)
+      nil -> resolve_from_config_or_path(working_dir)
+      project_id -> fetch_project(project_id)
+    end
+  end
 
-      project_id ->
-        case Repo.get(Project, project_id) do
-          nil -> {:error, :not_found}
-          project -> {:ok, project}
-        end
+  defp resolve_from_config_or_path(working_dir) when is_binary(working_dir) do
+    case project_id_from_config(working_dir) do
+      nil -> get_project_by_local_path(working_dir)
+      project_id -> fetch_project(project_id)
+    end
+  end
+
+  defp resolve_from_config_or_path(_), do: {:error, :no_working_dir}
+
+  # A config file that names a project this database does not have is a
+  # mistake worth surfacing rather than falling through to a path lookup that
+  # would quietly bind the directory to some *other* project.
+  defp project_id_from_config(working_dir) do
+    case Scope.read_local_config(working_dir) do
+      {:ok, %{"project_id" => id}} when is_binary(id) and id != "" -> id
+      _ -> nil
+    end
+  end
+
+  defp fetch_project(project_id) do
+    case Repo.get(Project, project_id) do
+      nil -> {:error, :not_found}
+      project -> {:ok, project}
     end
   end
 
