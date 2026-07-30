@@ -142,6 +142,23 @@ defmodule CodeMySpecWeb.Router do
   scope "/mcp" do
     pipe_through :mcp_protected
 
+    # The harness tools, served from the server rather than from a process on
+    # the developer's machine.
+    #
+    # Scope arrives the same way it does for every other server-mounted MCP
+    # server: `require_oauth_token` identifies the user and
+    # `ProjectScopeOverride` picks the project from `X-Project-ID`. Anubis
+    # copies `conn.assigns` wholesale into the request context, so the
+    # `current_scope` those plugs build reaches the tools untouched — which is
+    # the same route `working_dir` takes on the local mount.
+    #
+    # `Validators.validate_local_scope/2` already prefers a frame scope that
+    # carries an `active_project_id` and only falls back to resolving one from a
+    # working directory. Here there is no working directory and no fallback: a
+    # request without a project is refused rather than guessed at.
+    forward "/harness", Anubis.Server.Transport.StreamableHTTP.Plug,
+      server: CodeMySpec.McpServers.LocalServer
+
     forward "/components", Anubis.Server.Transport.StreamableHTTP.Plug,
       server: CodeMySpec.McpServers.ComponentsServer
 

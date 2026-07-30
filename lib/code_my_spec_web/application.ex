@@ -20,6 +20,14 @@ defmodule CodeMySpecWeb.Application do
         {DNSCluster, query: Application.get_env(:code_my_spec, :dns_cluster_query) || :ignore},
         {Phoenix.PubSub, name: CodeMySpec.PubSub},
         CodeMySpecWeb.Presence,
+        # The harness tools. Same server module the local process runs — the
+        # only difference is where scope comes from, and the tools never had to
+        # know. `session_idle_timeout` matches the local mount for the same
+        # reason it was raised there: an agent's workflow has long gaps between
+        # MCP calls while it writes code and runs tests, and the 30-minute
+        # default dropped sessions mid-run.
+        {CodeMySpec.McpServers.LocalServer,
+         transport: :streamable_http, session_idle_timeout: to_timeout(hour: 4)},
         {CodeMySpec.McpServers.ComponentsServer, transport: :streamable_http},
         {CodeMySpec.McpServers.IssuesServer, transport: :streamable_http},
         {CodeMySpec.McpServers.GscServer, transport: :streamable_http},
