@@ -130,7 +130,26 @@ defmodule CodeMySpec.ContentPublishing do
     end
   end
 
-  defp trigger_client(_project, manifest_url), do: {:ok, %{sync_id: nil, manifest_url: manifest_url}}
+  # An unconfigured trigger is a failure, not a quiet success. Sync is
+  # trigger-only — no reconciliation pass, no retry sweep, nothing that later
+  # notices the deployed site is stale — so a publish that never triggers does
+  # not converge later. The content sits in the bucket permanently while the
+  # operator has been told it worked. Issue bb956e54; story 972 criterion 8058
+  # ("a lost trigger is reported, not swallowed") covers the same outcome
+  # reached by a trigger that was never attempted rather than one that failed
+  # in flight.
+  defp trigger_client(project, _manifest_url) do
+    missing =
+      [:client_api_url, :deploy_key]
+      |> Enum.filter(fn field -> Map.get(project, field) in [nil, ""] end)
+
+    {:error,
+     %{
+       message:
+         "Client pull trigger not configured — #{Enum.join(missing, ", ")} missing. " <>
+           "Sync is trigger-only, so nothing would tell the site to pull this content."
+     }}
+  end
 
   # The project's own AWS keys (encrypted at rest), passed per-request to ExAws
   # so a published install signs uploads without a global `:ex_aws` env. Blank
