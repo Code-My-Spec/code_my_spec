@@ -94,6 +94,21 @@ while true; do
     exit 0
   fi
 
+  # Some failures are not worth a single retry, let alone six. An expired login
+  # is the clearest: it fails in about a second, it fails identically every
+  # time, and no amount of backoff fixes it — only a human re-authenticating
+  # does. Retrying burns roughly twelve minutes to arrive at the same answer,
+  # with the real cause buried under supervisor noise.
+  #
+  # Checked against the tail rather than the exit code because Claude Code exits
+  # 1 for everything; the message is the only thing that distinguishes "nobody
+  # is logged in" from "the API was busy".
+  if tail -5 "${LOG}" | grep -qiE "OAuth session expired|Failed to authenticate|Invalid API key|not logged in"; then
+    log "the agent is not authenticated — this needs a human to log in, and retrying cannot fix it. Stopping."
+    tail -5 "${LOG}" >&2
+    exit 2
+  fi
+
   # A turn that ran for a while before dying was doing real work; the failure
   # that ended it is unrelated to the ones before it. Only *consecutive* quick
   # failures suggest the sprite itself is broken.
