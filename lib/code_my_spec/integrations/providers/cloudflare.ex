@@ -29,9 +29,15 @@ defmodule CodeMySpec.Integrations.Providers.Cloudflare do
   `dns_records.edit`. The full set below was confirmed against the live
   authorize endpoint, individually and together.
 
-  There is no `account.read`. Zone creation needs an account id, so that has
-  to come from somewhere other than a scope — the zone list, or the account
-  the user picks during consent.
+  There is no `account.read`, and that has a consequence beyond zone creation:
+  `GET /client/v4/user` answers 403 (code 9109, "Unauthorized to access
+  requested resource") on a delegated token, so it cannot serve as the
+  identity endpoint. Confirmed on a real token — the exchange succeeds and
+  only the user fetch fails, which makes it an easy failure to misread as a
+  broken grant.
+
+  `user_url` is therefore `/client/v4/zones`, which `zone.read` covers. The
+  zone list doubles as the account id source that zone creation needs.
 
   ### Sandbox registrar
 
@@ -81,7 +87,7 @@ defmodule CodeMySpec.Integrations.Providers.Cloudflare do
       base_url: "https://dash.cloudflare.com",
       authorize_url: "/oauth2/auth",
       token_url: "/oauth2/token",
-      user_url: "https://api.cloudflare.com/client/v4/user",
+      user_url: "https://api.cloudflare.com/client/v4/zones",
       auth_method: :client_secret_post,
       # Cloudflare rejects an authorize request with no code_challenge.
       code_verifier: true,
@@ -120,9 +126,27 @@ defmodule CodeMySpec.Integrations.Providers.Cloudflare do
     end)
   end
 
-  # Cloudflare wraps every response in {success, errors, result}, so the
-  # identity fields sit one level down rather than at the top like GitHub's.
+  # The zone list stands in for identity, because no granted scope can read
+  # the user. Each zone carries its account, which is what zone creation
+  # needs and what no scope grants directly.
   @impl true
+  def normalize_user(%{"result" => zones}) when is_list(zones) do
+    accounts =
+      zones
+      |> Enum.map(& &1["account"])
+      |> Enum.reject(&is_nil/1)
+      |> Enum.uniq_by(& &1["id"])
+
+    {:ok,
+     %{
+       provider_user_id: accounts |> List.first() |> account_id(),
+       email: nil,
+       name: accounts |> List.first() |> account_name(),
+       accounts: Enum.map(accounts, &%{id: &1["id"], name: &1["name"]}),
+       zones: Enum.map(zones, & &1["name"])
+     }}
+  end
+
   def normalize_user(%{"result" => result}) when is_map(result) do
     {:ok,
      %{
@@ -151,6 +175,12 @@ defmodule CodeMySpec.Integrations.Providers.Cloudflare do
   end
 
   defp full_name(result), do: result["name"]
+
+  defp account_id(nil), do: nil
+  defp account_id(account), do: account["id"]
+
+  defp account_name(nil), do: "Cloudflare account"
+  defp account_name(account), do: account["name"]
 
   defp build_redirect_uri do
     "#{CodeMySpec.PublicUrl.base()}/auth/cloudflare/callback"

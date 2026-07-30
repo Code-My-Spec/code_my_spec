@@ -31,6 +31,12 @@ defmodule CodeMySpec.Integrations.Providers.Resend do
   verify a sending domain. Worth knowing rather than discovering later: this
   is a broader grant than the Cloudflare one, and not because we chose it.
 
+  ## Client authentication
+
+  `client_secret_basic` — the registration declares it explicitly, and Assent
+  would otherwise default to posting the secret in the body, which this client
+  rejects.
+
   ## Refresh tokens rotate
 
   Resend returns a new refresh token on each refresh. `Integrations.
@@ -53,7 +59,7 @@ defmodule CodeMySpec.Integrations.Providers.Resend do
       authorize_url: "/oauth/authorize",
       token_url: "/oauth/token",
       user_url: "https://api.resend.com/domains",
-      auth_method: :client_secret_post,
+      auth_method: :client_secret_basic,
       code_verifier: true,
       redirect_uri: build_redirect_uri(),
       authorization_params: [
