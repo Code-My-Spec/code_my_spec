@@ -1,0 +1,211 @@
+{
+  "interactions": [
+    {
+      "recorded_at": "2026-07-30T22:55:40.308522Z",
+      "request": {
+        "body": "",
+        "body_type": "text",
+        "headers": {
+          "accept": [
+            "application/vnd.github+json"
+          ],
+          "accept-encoding": [
+            "gzip"
+          ],
+          "user-agent": [
+            "CodeMySpec"
+          ],
+          "x-github-api-version": [
+            "2022-11-28"
+          ]
+        },
+        "method": "GET",
+        "query_string": "",
+        "uri": "https://api.github.com/repos/johns10/cms-cassette-probe-delete-me/commits/main"
+      },
+      "response": {
+        "body_json": {
+          "author": {
+            "avatar_url": "https://avatars.githubusercontent.com/u/3057629?v=4",
+            "events_url": "https://api.github.com/users/johns10/events{/privacy}",
+            "followers_url": "https://api.github.com/users/johns10/followers",
+            "following_url": "https://api.github.com/users/johns10/following{/other_user}",
+            "gists_url": "https://api.github.com/users/johns10/gists{/gist_id}",
+            "gravatar_id": "",
+            "html_url": "https://github.com/johns10",
+            "id": 3057629,
+            "login": "johns10",
+            "node_id": "MDQ6VXNlcjMwNTc2Mjk=",
+            "organizations_url": "https://api.github.com/users/johns10/orgs",
+            "received_events_url": "https://api.github.com/users/johns10/received_events",
+            "repos_url": "https://api.github.com/users/johns10/repos",
+            "site_admin": false,
+            "starred_url": "https://api.github.com/users/johns10/starred{/owner}{/repo}",
+            "subscriptions_url": "https://api.github.com/users/johns10/subscriptions",
+            "type": "User",
+            "url": "https://api.github.com/users/johns10",
+            "user_view_type": "public"
+          },
+          "comments_url": "https://api.github.com/repos/johns10/cms-cassette-probe-delete-me/commits/70a1ed952bfb6c1ce555c8e032ff453226807baf/comments",
+          "commit": {
+            "author": {
+              "date": "2026-07-30T22:55:14Z",
+              "email": "johns10@gmail.com",
+              "name": "John Davenport"
+            },
+            "comment_count": 0,
+            "committer": {
+              "date": "2026-07-30T22:55:14Z",
+              "email": "johns10@gmail.com",
+              "name": "John Davenport"
+            },
+            "message": "Initial commit",
+            "tree": {
+              "sha": "575a73151c3e033cdfa7a2097bc099a537f86c9c",
+              "url": "https://api.github.com/repos/johns10/cms-cassette-probe-delete-me/git/trees/575a73151c3e033cdfa7a2097bc099a537f86c9c"
+            },
+            "url": "https://api.github.com/repos/johns10/cms-cassette-probe-delete-me/git/commits/70a1ed952bfb6c1ce555c8e032ff453226807baf",
+            "verification": {
+              "payload": null,
+              "reason": "unsigned",
+              "signature": null,
+              "verified": false,
+              "verified_at": null
+            }
+          },
+          "committer": {
+            "avatar_url": "https://avatars.githubusercontent.com/u/3057629?v=4",
+            "events_url": "https://api.github.com/users/johns10/events{/privacy}",
+            "followers_url": "https://api.github.com/users/johns10/followers",
+            "following_url": "https://api.github.com/users/johns10/following{/other_user}",
+            "gists_url": "https://api.github.com/users/johns10/gists{/gist_id}",
+            "gravatar_id": "",
+            "html_url": "https://github.com/johns10",
+            "id": 3057629,
+            "login": "johns10",
+            "node_id": "MDQ6VXNlcjMwNTc2Mjk=",
+            "organizations_url": "https://api.github.com/users/johns10/orgs",
+            "received_events_url": "https://api.github.com/users/johns10/received_events",
+            "repos_url": "https://api.github.com/users/johns10/repos",
+            "site_admin": false,
+            "starred_url": "https://api.github.com/users/johns10/starred{/owner}{/repo}",
+            "subscriptions_url": "https://api.github.com/users/johns10/subscriptions",
+            "type": "User",
+            "url": "https://api.github.com/users/johns10",
+            "user_view_type": "public"
+          },
+          "files": [
+            {
+              "additions": 1,
+              "blob_url": "https://github.com/johns10/cms-cassette-probe-delete-me/blob/70a1ed952bfb6c1ce555c8e032ff453226807baf/README.md",
+              "changes": 1,
+              "contents_url": "https://api.github.com/repos/johns10/cms-cassette-probe-delete-me/contents/README.md?ref=70a1ed952bfb6c1ce555c8e032ff453226807baf",
+              "deletions": 0,
+              "filename": "README.md",
+              "patch": "@@ -0,0 +1 @@\n+# Throwaway — CodeMySpec cassette recording",
+              "raw_url": "https://github.com/johns10/cms-cassette-probe-delete-me/raw/70a1ed952bfb6c1ce555c8e032ff453226807baf/README.md",
+              "sha": "1108c274852ee06802098aa792649e632750d15f",
+              "status": "added"
+            }
+          ],
+          "html_url": "https://github.com/johns10/cms-cassette-probe-delete-me/commit/70a1ed952bfb6c1ce555c8e032ff453226807baf",
+          "node_id": "C_kwDOTosiQ9oAKDcwYTFlZDk1MmJmYjZjMWNlNTU1YzhlMDMyZmY0NTMyMjY4MDdiYWY",
+          "parents": [],
+          "sha": "70a1ed952bfb6c1ce555c8e032ff453226807baf",
+          "stats": {
+            "additions": 1,
+            "deletions": 0,
+            "total": 1
+          },
+          "url": "https://api.github.com/repos/johns10/cms-cassette-probe-delete-me/commits/70a1ed952bfb6c1ce555c8e032ff453226807baf"
+        },
+        "body_type": "json",
+        "headers": {
+          "access-control-allow-origin": [
+            "*"
+          ],
+          "access-control-expose-headers": [
+            "ETag, Link, Location, Retry-After, X-GitHub-OTP, X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Used, X-RateLimit-Resource, X-RateLimit-Reset, X-OAuth-Scopes, X-Accepted-OAuth-Scopes, X-Poll-Interval, X-GitHub-Media-Type, X-GitHub-SSO, X-GitHub-Request-Id, Deprecation, Sunset, Warning"
+          ],
+          "cache-control": [
+            "private, max-age=60, s-maxage=60"
+          ],
+          "content-security-policy": [
+            "default-src 'none'"
+          ],
+          "content-type": [
+            "application/json; charset=utf-8"
+          ],
+          "date": [
+            "Thu, 30 Jul 2026 22:55:40 GMT"
+          ],
+          "etag": [
+            "W/\"8393c2a0141e52dc2c30941192f6bd3826e704d2e87ec356af418c451a48cf75\""
+          ],
+          "last-modified": [
+            "Thu, 30 Jul 2026 22:55:14 GMT"
+          ],
+          "referrer-policy": [
+            "origin-when-cross-origin, strict-origin-when-cross-origin"
+          ],
+          "server": [
+            "github.com"
+          ],
+          "strict-transport-security": [
+            "max-age=31536000; includeSubdomains; preload"
+          ],
+          "transfer-encoding": [
+            "chunked"
+          ],
+          "vary": [
+            "Accept, Authorization, Cookie, X-GitHub-OTP,Accept-Encoding, Accept, X-Requested-With"
+          ],
+          "x-accepted-oauth-scopes": [
+            ""
+          ],
+          "x-content-type-options": [
+            "nosniff"
+          ],
+          "x-frame-options": [
+            "deny"
+          ],
+          "x-github-api-version-selected": [
+            "2022-11-28"
+          ],
+          "x-github-media-type": [
+            "github.v3; format=json"
+          ],
+          "x-github-request-id": [
+            "EC79:18ABD:2286A5B:75D9866:6A6BD66C"
+          ],
+          "x-oauth-client-id": [
+            "178c6fc778ccc68e1d6a"
+          ],
+          "x-oauth-scopes": [
+            "admin:public_key, delete_repo, gist, read:org, repo, workflow, write:packages"
+          ],
+          "x-ratelimit-limit": [
+            "5000"
+          ],
+          "x-ratelimit-remaining": [
+            "4970"
+          ],
+          "x-ratelimit-reset": [
+            "1785455050"
+          ],
+          "x-ratelimit-resource": [
+            "core"
+          ],
+          "x-ratelimit-used": [
+            "30"
+          ],
+          "x-xss-protection": [
+            "0"
+          ]
+        },
+        "status": 200
+      }
+    }
+  ],
+  "version": "2.0"
+}

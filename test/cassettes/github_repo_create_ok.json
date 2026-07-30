@@ -1,0 +1,253 @@
+{
+  "interactions": [
+    {
+      "recorded_at": "2026-07-30T22:55:04.348019Z",
+      "request": {
+        "body_json": {
+          "auto_init": false,
+          "description": "Throwaway for CodeMySpec cassette recording — safe to delete",
+          "name": "cms-cassette-probe-delete-me",
+          "private": true
+        },
+        "body_type": "json",
+        "headers": {
+          "accept": [
+            "application/vnd.github+json"
+          ],
+          "accept-encoding": [
+            "gzip"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "user-agent": [
+            "CodeMySpec"
+          ],
+          "x-github-api-version": [
+            "2022-11-28"
+          ]
+        },
+        "method": "POST",
+        "query_string": "",
+        "uri": "https://api.github.com/user/repos"
+      },
+      "response": {
+        "body_json": {
+          "delete_branch_on_merge": false,
+          "mirror_url": null,
+          "pushed_at": "2026-07-30T22:55:03Z",
+          "allow_update_branch": false,
+          "svn_url": "https://github.com/johns10/cms-cassette-probe-delete-me",
+          "open_issues_count": 0,
+          "forks_url": "https://api.github.com/repos/johns10/cms-cassette-probe-delete-me/forks",
+          "watchers_count": 0,
+          "issues_url": "https://api.github.com/repos/johns10/cms-cassette-probe-delete-me/issues{/number}",
+          "disabled": false,
+          "collaborators_url": "https://api.github.com/repos/johns10/cms-cassette-probe-delete-me/collaborators{/collaborator}",
+          "has_wiki": true,
+          "statuses_url": "https://api.github.com/repos/johns10/cms-cassette-probe-delete-me/statuses/{sha}",
+          "merge_commit_title": "MERGE_MESSAGE",
+          "homepage": null,
+          "allow_auto_merge": false,
+          "full_name": "johns10/cms-cassette-probe-delete-me",
+          "stargazers_count": 0,
+          "subscription_url": "https://api.github.com/repos/johns10/cms-cassette-probe-delete-me/subscription",
+          "use_squash_pr_title_as_default": false,
+          "stargazers_url": "https://api.github.com/repos/johns10/cms-cassette-probe-delete-me/stargazers",
+          "events_url": "https://api.github.com/repos/johns10/cms-cassette-probe-delete-me/events",
+          "has_projects": true,
+          "archive_url": "https://api.github.com/repos/johns10/cms-cassette-probe-delete-me/{archive_format}{/ref}",
+          "commits_url": "https://api.github.com/repos/johns10/cms-cassette-probe-delete-me/commits{/sha}",
+          "merges_url": "https://api.github.com/repos/johns10/cms-cassette-probe-delete-me/merges",
+          "downloads_url": "https://api.github.com/repos/johns10/cms-cassette-probe-delete-me/downloads",
+          "blobs_url": "https://api.github.com/repos/johns10/cms-cassette-probe-delete-me/git/blobs{/sha}",
+          "comments_url": "https://api.github.com/repos/johns10/cms-cassette-probe-delete-me/comments{/number}",
+          "contributors_url": "https://api.github.com/repos/johns10/cms-cassette-probe-delete-me/contributors",
+          "subscribers_url": "https://api.github.com/repos/johns10/cms-cassette-probe-delete-me/subscribers",
+          "squash_merge_commit_message": "COMMIT_MESSAGES",
+          "git_tags_url": "https://api.github.com/repos/johns10/cms-cassette-probe-delete-me/git/tags{/sha}",
+          "updated_at": "2026-07-30T22:55:03Z",
+          "issue_events_url": "https://api.github.com/repos/johns10/cms-cassette-probe-delete-me/issues/events{/number}",
+          "visibility": "private",
+          "pull_request_creation_policy": "all",
+          "description": "Throwaway for CodeMySpec cassette recording — safe to delete",
+          "name": "cms-cassette-probe-delete-me",
+          "id": 1317741123,
+          "labels_url": "https://api.github.com/repos/johns10/cms-cassette-probe-delete-me/labels{/name}",
+          "branches_url": "https://api.github.com/repos/johns10/cms-cassette-probe-delete-me/branches{/branch}",
+          "network_count": 0,
+          "private": true,
+          "issue_comment_url": "https://api.github.com/repos/johns10/cms-cassette-probe-delete-me/issues/comments{/number}",
+          "merge_commit_message": "PR_TITLE",
+          "releases_url": "https://api.github.com/repos/johns10/cms-cassette-probe-delete-me/releases{/id}",
+          "notifications_url": "https://api.github.com/repos/johns10/cms-cassette-probe-delete-me/notifications{?since,all,participating}",
+          "hooks_url": "https://api.github.com/repos/johns10/cms-cassette-probe-delete-me/hooks",
+          "allow_squash_merge": true,
+          "default_branch": "main",
+          "web_commit_signoff_required": false,
+          "teams_url": "https://api.github.com/repos/johns10/cms-cassette-probe-delete-me/teams",
+          "topics": [],
+          "compare_url": "https://api.github.com/repos/johns10/cms-cassette-probe-delete-me/compare/{base}...{head}",
+          "deployments_url": "https://api.github.com/repos/johns10/cms-cassette-probe-delete-me/deployments",
+          "git_url": "git://github.com/johns10/cms-cassette-probe-delete-me.git",
+          "allow_merge_commit": true,
+          "git_refs_url": "https://api.github.com/repos/johns10/cms-cassette-probe-delete-me/git/refs{/sha}",
+          "pulls_url": "https://api.github.com/repos/johns10/cms-cassette-probe-delete-me/pulls{/number}",
+          "url": "https://api.github.com/repos/johns10/cms-cassette-probe-delete-me",
+          "has_issues": true,
+          "contents_url": "https://api.github.com/repos/johns10/cms-cassette-probe-delete-me/contents/{+path}",
+          "size": 0,
+          "allow_rebase_merge": true,
+          "owner": {
+            "avatar_url": "https://avatars.githubusercontent.com/u/3057629?v=4",
+            "events_url": "https://api.github.com/users/johns10/events{/privacy}",
+            "followers_url": "https://api.github.com/users/johns10/followers",
+            "following_url": "https://api.github.com/users/johns10/following{/other_user}",
+            "gists_url": "https://api.github.com/users/johns10/gists{/gist_id}",
+            "gravatar_id": "",
+            "html_url": "https://github.com/johns10",
+            "id": 3057629,
+            "login": "johns10",
+            "node_id": "MDQ6VXNlcjMwNTc2Mjk=",
+            "organizations_url": "https://api.github.com/users/johns10/orgs",
+            "received_events_url": "https://api.github.com/users/johns10/received_events",
+            "repos_url": "https://api.github.com/users/johns10/repos",
+            "site_admin": false,
+            "starred_url": "https://api.github.com/users/johns10/starred{/owner}{/repo}",
+            "subscriptions_url": "https://api.github.com/users/johns10/subscriptions",
+            "type": "User",
+            "url": "https://api.github.com/users/johns10",
+            "user_view_type": "public"
+          },
+          "git_commits_url": "https://api.github.com/repos/johns10/cms-cassette-probe-delete-me/git/commits{/sha}",
+          "tags_url": "https://api.github.com/repos/johns10/cms-cassette-probe-delete-me/tags",
+          "permissions": {
+            "admin": true,
+            "maintain": true,
+            "pull": true,
+            "push": true,
+            "triage": true
+          },
+          "language": null,
+          "fork": false,
+          "has_discussions": false,
+          "watchers": 0,
+          "html_url": "https://github.com/johns10/cms-cassette-probe-delete-me",
+          "open_issues": 0,
+          "is_template": false,
+          "node_id": "R_kgDOTosiQw",
+          "milestones_url": "https://api.github.com/repos/johns10/cms-cassette-probe-delete-me/milestones{/number}",
+          "license": null,
+          "forks_count": 0,
+          "squash_merge_commit_title": "COMMIT_OR_PR_TITLE",
+          "allow_forking": true,
+          "has_pages": false,
+          "trees_url": "https://api.github.com/repos/johns10/cms-cassette-probe-delete-me/git/trees{/sha}",
+          "ssh_url": "git@github.com:johns10/cms-cassette-probe-delete-me.git",
+          "has_pull_requests": true,
+          "assignees_url": "https://api.github.com/repos/johns10/cms-cassette-probe-delete-me/assignees{/user}",
+          "clone_url": "https://github.com/johns10/cms-cassette-probe-delete-me.git",
+          "forks": 0,
+          "archived": false,
+          "subscribers_count": 0,
+          "keys_url": "https://api.github.com/repos/johns10/cms-cassette-probe-delete-me/keys{/key_id}",
+          "has_downloads": false,
+          "created_at": "2026-07-30T22:55:02Z",
+          "languages_url": "https://api.github.com/repos/johns10/cms-cassette-probe-delete-me/languages"
+        },
+        "body_type": "json",
+        "headers": {
+          "access-control-allow-origin": [
+            "*"
+          ],
+          "access-control-expose-headers": [
+            "ETag, Link, Location, Retry-After, X-GitHub-OTP, X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Used, X-RateLimit-Resource, X-RateLimit-Reset, X-OAuth-Scopes, X-Accepted-OAuth-Scopes, X-Poll-Interval, X-GitHub-Media-Type, X-GitHub-SSO, X-GitHub-Request-Id, Deprecation, Sunset, Warning"
+          ],
+          "cache-control": [
+            "private, max-age=60, s-maxage=60"
+          ],
+          "content-security-policy": [
+            "default-src 'none'"
+          ],
+          "content-type": [
+            "application/json; charset=utf-8"
+          ],
+          "date": [
+            "Thu, 30 Jul 2026 22:55:04 GMT"
+          ],
+          "deprecation": [
+            "Tue, 10 Mar 2026 00:00:00 GMT"
+          ],
+          "etag": [
+            "\"df1617594c98d39d014a65395247993f41a1f2968950fcf5017b671b02a2f6da\""
+          ],
+          "link": [
+            "<https://docs.github.com/en/rest/about-the-rest-api/api-versions>; rel=\"deprecation\"; type=\"text/html\""
+          ],
+          "location": [
+            "https://api.github.com/repos/johns10/cms-cassette-probe-delete-me"
+          ],
+          "referrer-policy": [
+            "origin-when-cross-origin, strict-origin-when-cross-origin"
+          ],
+          "server": [
+            "github.com"
+          ],
+          "strict-transport-security": [
+            "max-age=31536000; includeSubdomains; preload"
+          ],
+          "sunset": [
+            "Fri, 10 Mar 2028 00:00:00 GMT"
+          ],
+          "vary": [
+            "Accept, Authorization, Cookie, X-GitHub-OTP,Accept-Encoding, Accept, X-Requested-With"
+          ],
+          "x-accepted-oauth-scopes": [
+            "public_repo, repo"
+          ],
+          "x-content-type-options": [
+            "nosniff"
+          ],
+          "x-frame-options": [
+            "deny"
+          ],
+          "x-github-api-version-selected": [
+            "2022-11-28"
+          ],
+          "x-github-media-type": [
+            "github.v3; format=json"
+          ],
+          "x-github-request-id": [
+            "EC53:35959F:28266DD:87EE372:6A6BD646"
+          ],
+          "x-oauth-client-id": [
+            "178c6fc778ccc68e1d6a"
+          ],
+          "x-oauth-scopes": [
+            "admin:public_key, delete_repo, gist, read:org, repo, workflow, write:packages"
+          ],
+          "x-ratelimit-limit": [
+            "5000"
+          ],
+          "x-ratelimit-remaining": [
+            "4996"
+          ],
+          "x-ratelimit-reset": [
+            "1785455083"
+          ],
+          "x-ratelimit-resource": [
+            "core"
+          ],
+          "x-ratelimit-used": [
+            "4"
+          ],
+          "x-xss-protection": [
+            "0"
+          ]
+        },
+        "status": 201
+      }
+    }
+  ],
+  "version": "2.0"
+}
