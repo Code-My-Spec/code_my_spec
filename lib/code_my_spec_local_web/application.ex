@@ -76,6 +76,11 @@ defmodule CodeMySpecLocalWeb.Application do
         CodeMySpecLocalWeb.Presence,
         CodeMySpec.AgentHarness.WorkSource,
         CodeMySpecLocalWeb.Endpoint,
+        # Before the watcher, because the watcher claims a project lease as it
+        # starts watching and that claim is a call into this process. Its being
+        # alive is what holds this harness's leases, so it outliving the watcher
+        # is also what keeps them held.
+        CodeMySpec.Leases.Session,
         CodeMySpec.ProjectSync.FileWatcherServer,
         CodeMySpecLocalWeb.SocketSupervisor,
         CodeMySpecCli.PresenceClient

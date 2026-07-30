@@ -25,6 +25,7 @@ defmodule CodeMySpec.ProjectSync.FileWatcherServer do
   use GenServer
   require Logger
 
+  alias CodeMySpec.Leases
   alias CodeMySpec.Embeddings
   alias CodeMySpec.Embeddings.HexDocProjector
   alias CodeMySpec.ProjectSync.Sync
@@ -166,7 +167,45 @@ defmodule CodeMySpec.ProjectSync.FileWatcherServer do
     end
   end
 
+  # Watching a project is how a harness starts owning its Files rows, so this is
+  # where the lease is claimed. A second harness on the same project does not
+  # get a degraded mode — it does not watch at all, because the damage is not in
+  # reading, it is in syncing a second working copy into one set of rows and
+  # deleting whatever the first one wrote.
   defp do_watch(project_root, scope, state) do
+    case claim_project(project_root, scope) do
+      :ok ->
+        do_watch_claimed(project_root, scope, state)
+
+      {:error, {:held_by, holder}} ->
+        Logger.error(
+          "[FileWatcher] not watching #{project_root} — #{holder} already holds this " <>
+            "project. Two harnesses syncing one project overwrite each other's files and " <>
+            "produce a requirement graph that matches neither checkout. Stop that harness; " <>
+            "its lease frees the moment it exits."
+        )
+
+        {:noreply, state}
+    end
+  end
+
+  defp claim_project(project_root, scope) do
+    Leases.acquire(scope, Leases.describe(project_root))
+  rescue
+    # A project with no id in scope, or a repo that is not up yet. The lease is
+    # a guard against a specific kind of corruption, not a precondition for the
+    # watcher existing — failing to evaluate it must not stop a lone harness
+    # from working.
+    exception ->
+      Logger.warning(
+        "[FileWatcher] could not evaluate the project lease for #{project_root} " <>
+          "(#{Exception.message(exception)}) — watching anyway"
+      )
+
+      :ok
+  end
+
+  defp do_watch_claimed(project_root, scope, state) do
     case start_watcher(project_root) do
       {:ok, watcher_pid} ->
         entry = %{watcher_pid: watcher_pid, scope: scope}
@@ -251,6 +290,7 @@ defmodule CodeMySpec.ProjectSync.FileWatcherServer do
   defp schedule_lock_poll do
     Process.send_after(self(), :poll_locks, @lock_poll_interval_ms)
   end
+
 
   defp poll_locks(state) do
     Enum.reduce(state.watchers, state, fn {project_root, _entry}, acc ->
