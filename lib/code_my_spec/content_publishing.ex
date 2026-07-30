@@ -420,14 +420,20 @@ defmodule CodeMySpec.ContentPublishing do
   # via Earmark (Windows-safe, unlike the MDEx NIF); HTML bodies are
   # image-rewritten and passed through. Either way `processed_content` is HTML,
   # which is what the blog templates `raw/1`.
+  # CTA shortcodes expand before Earmark runs, so the result is plain HTML in
+  # `processed_content`: crawler-visible, no JS, and it works on the blog's dead
+  # views. See `CodeMySpec.ContentPublishing.Ctas`.
   defp render_body(body, :markdown, images_host) do
     body
+    |> CodeMySpec.ContentPublishing.Ctas.expand()
     |> rewrite_markdown_images(images_host)
     |> markdown_to_html()
   end
 
   defp render_body(body, :html, images_host) do
-    rewrite_html_images(body, images_host)
+    body
+    |> CodeMySpec.ContentPublishing.Ctas.expand()
+    |> rewrite_html_images(images_host)
   end
 
   defp markdown_to_html(markdown) do
