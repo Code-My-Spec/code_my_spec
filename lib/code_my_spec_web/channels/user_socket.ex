@@ -2,6 +2,8 @@ defmodule CodeMySpecWeb.UserSocket do
   use Phoenix.Socket
   require Logger
 
+  alias CodeMySpec.Accounts
+  alias CodeMySpec.Projects
   alias CodeMySpec.Users
   alias CodeMySpec.Users.Scope
   alias ExOauth2Provider.AccessTokens
@@ -53,8 +55,7 @@ defmodule CodeMySpecWeb.UserSocket do
         end
 
       nil ->
-        Logger.warning("[UserSocket] connect refused — token not found")
-        :error
+        connect_with_deploy_key(token, socket)
     end
   end
 
@@ -78,4 +79,29 @@ defmodule CodeMySpecWeb.UserSocket do
   # Returning `nil` makes this socket anonymous.
   @impl true
   def id(_socket), do: nil
+  # A sprite has no user and therefore no OAuth token — it holds its project's
+  # deploy key and nothing else. Without this it cannot open the harness socket
+  # at all, so agent messages never reach the operator inbox and human replies
+  # have no route back down.
+  #
+  # Same trade as `Plugs.DeployKeyOrOAuth`: the key resolves to the project's
+  # account owner, because it is their project and their inbox. Tried only after
+  # the token lookup misses, so nothing about the user path changes.
+  defp connect_with_deploy_key(token, socket) do
+    with %{account_id: account_id} = project when not is_nil(account_id) <-
+           Projects.get_project_by_deploy_key(token),
+         %{} = user <- Accounts.get_account_owner(account_id) do
+      Logger.info("[UserSocket] connect ok via deploy key project_id=#{project.id}")
+
+      {:ok,
+       socket
+       |> assign(:user_id, user.id)
+       |> assign(:scope, Scope.for_user(user))
+       |> assign(:deploy_key_project_id, project.id)}
+    else
+      _ ->
+        Logger.warning("[UserSocket] connect refused — token not found")
+        :error
+    end
+  end
 end

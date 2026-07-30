@@ -127,8 +127,23 @@ defmodule CodeMySpec.AgentHarness.HarnessProxySocket do
     {:ok, socket |> assign(:joined, false) |> assign(:reconnect_attempts, attempts + 1)}
   end
 
+  # OAuth when a user is signed in here; otherwise the project's deploy key,
+  # which is all a sprite has. UserSocket accepts either.
+  defp socket_credential do
+    case OAuthClient.get_token() do
+      {:ok, token} ->
+        {:ok, token}
+
+      _ ->
+        case Application.get_env(:code_my_spec, :deploy_key) do
+          key when is_binary(key) and key != "" -> {:ok, key}
+          _ -> {:error, :not_authenticated}
+        end
+    end
+  end
+
   defp build_ws_url do
-    with {:ok, token} <- OAuthClient.get_token() do
+    with {:ok, token} <- socket_credential() do
       server_url = OAuthClient.get_server_url()
 
       ws_url =
