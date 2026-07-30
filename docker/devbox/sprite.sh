@@ -158,6 +158,32 @@ git config --global --add safe.directory "${APP_DIR}" 2>/dev/null || true
 su agent -c "git config --global --add safe.directory '${APP_DIR}'" 2>/dev/null || true
 chown -R agent:agent "${APP_DIR}" 2>/dev/null || true
 
+# --- the agent's harness tools -------------------------------------------------
+# Without the plugin the agent has no `get_next_requirement`, no `start_task`,
+# and — the part that actually ends the run — no stop hook, so nothing forces it
+# back into the loop when it decides it is finished. `claude mcp list` shows only
+# the user's own remote servers, which reads as "the harness is down" rather than
+# "the harness was never wired up".
+#
+# This has to happen before the agent is launched, not from inside it: hooks and
+# plugin agents are read once at session start, so a plugin installed by a
+# running session takes effect no earlier than the next one.
+#
+# Both commands are idempotent, so a restarted container re-runs them for free.
+# Failure is not fatal — a sprite with a working copy and no plugin is still
+# worth handing to a human — but it is loud, because every downstream symptom
+# looks like something else.
+if [ -d /home/agent/.claude ]; then
+  log "Installing the CodeMySpec plugin"
+  su agent -c "claude plugin marketplace add Code-My-Spec/plugins" >/dev/null 2>&1 \
+    || log "WARNING: could not add the codemyspec marketplace — the agent will have no harness tools"
+  su agent -c "claude plugin install codemyspec@codemyspec" >/dev/null 2>&1 \
+    || log "WARNING: could not install the codemyspec plugin — the agent will have no harness tools"
+  su agent -c "claude plugin list" 2>/dev/null | grep -q codemyspec \
+    && log "Plugin installed" \
+    || log "WARNING: codemyspec plugin is NOT installed; expect 'no MCP tools' and a run that stops at the first stop hook"
+fi
+
 # --- dependencies -------------------------------------------------------------
 # Also on the clone path, not just after generating. A sprite that attaches to
 # an existing repo starts with no deps/ at all, and the analyzers gate on
