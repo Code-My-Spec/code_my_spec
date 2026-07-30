@@ -1,16 +1,24 @@
 defmodule CodeMySpec.Provisioning.Repository do
   @moduledoc """
   The project's Git remote — created or adopted through the user's own GitHub
-  App installation.
+  OAuth grant.
 
-  ## Selection is GitHub's screen, not a picker we build
+  ## An OAuth App, which means we own the picker
 
-  This is a GitHub App. Which repositories the grant can touch is decided on
-  GitHub's installation screen — "All repositories" or "Only select
-  repositories" — so access is scoped to what Sam ticked and is revocable
-  per-repository from his side. There is no `list_repositories` call here and
-  there should not be one: building our own picker would show him repositories
-  the installation cannot actually reach.
+  Confirmed with the app owner: this is an OAuth App, not a GitHub App. An
+  earlier draft of this module assumed the opposite — the `Ov23` client-id
+  prefix is widely documented as indicating a GitHub App — and got the design
+  backwards as a result.
+
+  The difference is not cosmetic. A GitHub App has an installation screen
+  where the user picks repositories, so a picker of our own would be wrong.
+  An OAuth App has no such screen: the `repo` scope grants access to
+  everything the user can reach, and choosing *which* repository is therefore
+  our job. Hence `list_repositories/2`.
+
+  It also means the grant is coarse and revocable only wholesale — Sam cannot
+  withdraw one repository, only the whole authorization. Worth knowing rather
+  than assuming per-repository control that does not exist.
 
   ## Adoption and collision are different things
 
@@ -30,7 +38,7 @@ defmodule CodeMySpec.Provisioning.Repository do
 
   ## No credential fallback
 
-  A revoked installation returns `{:error, :github_not_connected}` and stops.
+  A revoked authorization returns `{:error, :github_not_connected}` and stops.
   There is deliberately no fallback to a platform token, a machine account, or
   a locally-authenticated `gh` — each would create the repository under the
   wrong account and look like success. `gh` in particular is authenticated as
@@ -41,8 +49,9 @@ defmodule CodeMySpec.Provisioning.Repository do
 
   `run/3` completes only when a push lands, and records the commit. A
   repository that exists but rejects the push is not a remote: the grant may
-  be read-only, the installation may cover a different repository, the default
-  branch may be protected. Reporting "repository created" there would be true
+  be read-only, the repository may be archived, the default branch may be
+  protected. All three were observed while recording this story's cassettes —
+  the archived case is where the real 403 came from. Reporting "repository created" there would be true
   and useless — the harness would fail on its first push, far from setup.
   """
 

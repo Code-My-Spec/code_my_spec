@@ -1,0 +1,85 @@
+{
+  "interactions": [
+    {
+      "recorded_at": "2026-07-30T23:15:51.046701Z",
+      "request": {
+        "body": "",
+        "body_type": "text",
+        "headers": {
+          "accept": [
+            "application/vnd.github+json"
+          ],
+          "accept-encoding": [
+            "gzip"
+          ],
+          "user-agent": [
+            "CodeMySpec"
+          ],
+          "x-github-api-version": [
+            "2022-11-28"
+          ]
+        },
+        "method": "GET",
+        "query_string": "",
+        "uri": "https://api.github.com/user/repos"
+      },
+      "response": {
+        "body_json": {
+          "documentation_url": "https://docs.github.com/rest",
+          "message": "Bad credentials",
+          "status": "401"
+        },
+        "body_type": "json",
+        "headers": {
+          "access-control-allow-origin": [
+            "*"
+          ],
+          "access-control-expose-headers": [
+            "ETag, Link, Location, Retry-After, X-GitHub-OTP, X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Used, X-RateLimit-Resource, X-RateLimit-Reset, X-OAuth-Scopes, X-Accepted-OAuth-Scopes, X-Poll-Interval, X-GitHub-Media-Type, X-GitHub-SSO, X-GitHub-Request-Id, Deprecation, Sunset"
+          ],
+          "connection": [
+            "close"
+          ],
+          "content-security-policy": [
+            "default-src 'none'"
+          ],
+          "content-type": [
+            "application/json; charset=utf-8"
+          ],
+          "date": [
+            "Thu, 30 Jul 2026 23:15:51 GMT"
+          ],
+          "referrer-policy": [
+            "origin-when-cross-origin, strict-origin-when-cross-origin"
+          ],
+          "server": [
+            "github.com"
+          ],
+          "strict-transport-security": [
+            "max-age=31536000; includeSubdomains; preload"
+          ],
+          "vary": [
+            "Accept-Encoding, Accept, X-Requested-With"
+          ],
+          "x-content-type-options": [
+            "nosniff"
+          ],
+          "x-frame-options": [
+            "deny"
+          ],
+          "x-github-media-type": [
+            "github.v3; format=json"
+          ],
+          "x-github-request-id": [
+            "F0D6:28D31C:BDEF76:28B7462:6A6BDB26"
+          ],
+          "x-xss-protection": [
+            "0"
+          ]
+        },
+        "status": 401
+      }
+    }
+  ],
+  "version": "2.0"
+}
