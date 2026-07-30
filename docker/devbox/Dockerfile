@@ -48,8 +48,18 @@
 #     -e CMS_DB_NAME=code_my_spec_dev \
 #     -e CMS_DB_USER=cms_sprite -e CMS_DB_PASSWORD=... \
 #     -e GITHUB_TOKEN=... \
+#     --security-opt seccomp=unconfined \
 #     --entrypoint /usr/local/bin/devbox-sprite \
 #     codemyspec/sprite
+#
+# seccomp=unconfined is required for browser QA and only for that. Chrome's
+# sandbox needs user namespaces that Docker's default profile blocks, and
+# vibium exposes no --no-sandbox option to work around it. Without the flag
+# every QA session silently falls back to curl-and-HTML — which is how two
+# unusable screens once passed a fully green suite.
+#
+# The agent must also run as the non-root `agent` user:
+#   docker exec -u agent -e MIX_HOME=/home/agent/.mix ... claude ...
 #
 # MCP is on 127.0.0.1:4003 *inside* the container, same as the desktop
 # harness — reach it with `docker exec`, or from the agent that runs in there.
@@ -148,6 +158,34 @@ RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
 RUN npm install -g @anthropic-ai/claude-code \
   && npm cache clean --force
 
+# Vibium plus a browser for it to drive.
+#
+# The CodeMySpec plugin declares a `vibium` MCP server, so without this the
+# agent has browser tools listed and none of them work. Every QA session ends up
+# curl-and-HTML — no click, no keystroke, no viewport.
+#
+# That is not a theoretical gap. On the first full run it meant every control on
+# the two main screens rendered with no class attribute at all — browser-default
+# sizing against the 44px the specs commit to — and a completely green suite was
+# compatible with both screens being unusable by thumb, because nothing in the
+# project asserts on a class or a size. curl cannot see that. A browser can.
+#
+# Vibium depends only on `ws` and drives the browser over WebDriver, so it needs
+# both chromium and chromedriver — the driver is not optional, and without it
+# vibium fails at launch with "chromedriver not found" rather than at install.
+# A few hundred MB, which is the price of QA that can see.
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends chromium chromium-driver \
+  && rm -rf /var/lib/apt/lists/* \
+  && npm install -g vibium \
+  && npm cache clean --force
+
+# Containers have no user namespace for chromium's sandbox to use, so it aborts
+# on startup unless told not to try. Set here rather than passed per-call so a
+# tool that shells out to the browser does not have to know.
+
+ENV CHROME_PATH=/usr/bin/chromium
+
 # Claude Code keeps its state in two places: credentials and sessions under
 # ~/.claude/, and its config at ~/.claude.json — a sibling of that directory,
 # not a child. Mounting a volume at ~/.claude therefore persists the login and
@@ -176,6 +214,29 @@ RUN useradd --create-home --shell /bin/bash agent \
   && ln -sf /home/agent/.claude/claude.json /home/agent/.claude.json \
   && mkdir -p /workspace \
   && chown -R agent:agent /workspace /home/agent
+
+# Point vibium's expected binaries at the system ones.
+#
+# Its postinstall downloads Chrome for Testing, and on arm64 it fetches x86_64
+# builds that cannot execute here at all. That surfaced as "chromedriver not
+# found" and then "timeout waiting for chromedriver" — never as a word about
+# architecture — so the apt chromium above is the real browser and these are
+# the paths vibium insists on looking in.
+#
+# Symlinks rather than deleting the cache: vibium checks for a versioned
+# directory before it will launch anything.
+#
+# The destination is named explicitly. `cp -a src dst/` when dst does not exist
+# copies src's *contents* under that name, which silently produced
+# .cache/chrome-for-testing instead of .cache/vibium/chrome-for-testing — and
+# succeeded, so no fallback fired and the build passed.
+RUN set -eu; \
+    D="$(dirname "$(find /root/.cache/vibium -name chromedriver | head -1)")"; \
+    ln -sf /usr/bin/chromium "$D/chrome"; \
+    ln -sf /usr/bin/chromedriver "$D/chromedriver"; \
+    mkdir -p /home/agent/.cache; \
+    cp -a /root/.cache/vibium /home/agent/.cache/vibium; \
+    chown -R agent:agent /home/agent/.cache
 
 ENV PATH="/usr/lib/postgresql/${POSTGRES_VERSION}/bin:${PATH}"
 
