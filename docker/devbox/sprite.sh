@@ -222,8 +222,11 @@ export CMS_PROJECT_ID
 export CMS_MCP_WORKING_DIR="${APP_DIR}"
 
 # Documented for whoever launches the agent: run it as `agent` with this
-# MIX_HOME, or it falls back to root's and cannot write there.
-#   docker exec -u agent -e MIX_HOME=/home/agent/.mix ... claude ...
+# MIX_HOME, or it falls back to root's and cannot write there. Prefer
+# `devbox-agent` over bare `claude` — it restarts the agent when a transient
+# upstream error cuts a turn short, which unattended is the difference between
+# a run that finishes and one that stops at the first 529.
+#   docker exec -d -u agent -e MIX_HOME=/home/agent/.mix <container> devbox-agent
 # Optional. Without it `ask_user` cannot reach anybody, which only matters when
 # the agent hits a manual requirement — and an unattended sprite has no
 # terminal to fall back to.

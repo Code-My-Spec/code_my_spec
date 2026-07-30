@@ -288,8 +288,9 @@ RUN mkdir -p "$PGDATA" /var/run/postgresql \
 COPY docker/devbox/entrypoint.sh /usr/local/bin/devbox-init
 COPY docker/devbox/new-project.sh /usr/local/bin/devbox-new-project
 COPY docker/devbox/sprite.sh /usr/local/bin/devbox-sprite
+COPY docker/devbox/agent.sh /usr/local/bin/devbox-agent
 RUN chmod 0755 /usr/local/bin/devbox-init /usr/local/bin/devbox-new-project \
-      /usr/local/bin/devbox-sprite
+      /usr/local/bin/devbox-sprite /usr/local/bin/devbox-agent
 
 WORKDIR /workspace
 
