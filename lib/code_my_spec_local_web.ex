@@ -17,6 +17,7 @@ defmodule CodeMySpecLocalWeb do
       CodeMySpec,
       CodeMySpec.AgentHarness,
       CodeMySpec.Environments,
+      CodeMySpec.Hooks,
       CodeMySpec.McpServers
     ],
     exports: :all
