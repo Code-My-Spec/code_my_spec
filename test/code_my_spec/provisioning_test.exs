@@ -258,4 +258,37 @@ defmodule CodeMySpec.ProvisioningTest do
       refute Enum.any?(exported, &String.contains?(&1, "delete"))
     end
   end
+
+  describe "the sequence actually reaches the providers" do
+    # Regression guard. execute_step/3 was a stub returning "not wired" for
+    # every step while @runners claimed each one had a module — the map read
+    # as wiring and nothing dispatched through it. These assert the real path
+    # without injecting an execute function, which is what made the stub
+    # invisible: every existing test passed its own executor.
+    test "a step with no provider names itself rather than reporting done", %{scope: scope} do
+      assert {:halt, row, reason} = Provisioning.run_step(scope, :backups, [])
+
+      assert row.state == :errored
+      assert reason =~ "not_implemented"
+      assert reason =~ "backups"
+    end
+
+    test "an unimplemented step never reports done", %{scope: scope} do
+      for key <- [:backups, :storage, :tls, :inbound, :callback_credential] do
+        {:halt, row, _} = Provisioning.run_step(scope, key, [])
+
+        refute row.state == :done,
+               "#{key} has no provider but reported done — that is the failure this context exists to prevent"
+      end
+    end
+
+    # The GitHub path is real: no integration on the scope means the provider
+    # answers :github_not_connected, which must surface rather than crash.
+    test "the repository step reaches GitHub and reports a missing connection", %{scope: scope} do
+      assert {:halt, row, reason} = Provisioning.run_step(scope, :repository, owner: "someone")
+
+      assert row.state == :errored
+      assert reason =~ "GitHub" or reason =~ "github"
+    end
+  end
 end

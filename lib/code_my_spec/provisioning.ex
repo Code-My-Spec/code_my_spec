@@ -40,7 +40,7 @@ defmodule CodeMySpec.Provisioning do
 
   require Logger
 
-  alias CodeMySpec.Provisioning.{Sequence, Step, StepRepository}
+  alias CodeMySpec.Provisioning.{Sequence, Step, StepRepository, Steps}
   alias CodeMySpec.Users.Scope
 
   @type run_result :: %{
@@ -49,8 +49,12 @@ defmodule CodeMySpec.Provisioning do
           reason: String.t() | nil
         }
 
-  # Each step's verifier and runner. Kept here rather than on the Sequence
-  # entries so Sequence stays pure and free of provider modules.
+  # Which module backs each step. Informational only — dispatch goes through
+  # Steps.run/3, which pattern-matches on the key. An earlier version of this
+  # map WAS the wiring, and the executor ignored it: the map said every step
+  # had a runner while execute_step returned "not wired" for all of them.
+  # Keeping it purely descriptive avoids a second source of truth that can
+  # disagree with the one that runs.
   @runners %{
     repository: CodeMySpec.Provisioning.Repository,
     server: CodeMySpec.Provisioning.Hetzner,
@@ -147,7 +151,7 @@ defmodule CodeMySpec.Provisioning do
         run_and_record(scope, key, execute, opts)
 
       {:error, reason} ->
-        {:halt, mark(scope, key, :errored, error_attrs(key, reason)), to_string(reason)}
+        {:halt, mark(scope, key, :errored, error_attrs(key, reason)), describe(reason)}
     end
   end
 
@@ -164,7 +168,7 @@ defmodule CodeMySpec.Provisioning do
 
       {:error, reason} ->
         row = mark(scope, key, :errored, error_attrs(key, reason))
-        {:halt, row, to_string(reason)}
+        {:halt, row, describe(reason)}
     end
   end
 
@@ -179,7 +183,7 @@ defmodule CodeMySpec.Provisioning do
           {:ok, :satisfied, [map()]} | {:ok, :absent} | {:error, term()}
   def verify(%Scope{} = scope, key, opts \\ []) do
     case Keyword.get(opts, :verify) do
-      nil -> {:ok, :absent}
+      nil -> Steps.verify(key, scope, opts)
       verifier -> verifier.(scope, key)
     end
   end
@@ -234,22 +238,23 @@ defmodule CodeMySpec.Provisioning do
 
   ## Internals
 
-  defp execute_step(_scope, key, _opts) do
-    # Steps without a wired runner report that plainly rather than silently
-    # succeeding — a step that does nothing and reports done is the failure
-    # mode this whole context exists to prevent.
-    case runner(key) do
-      nil -> {:error, "no runner wired for step #{key}"}
-      module -> {:error, "runner #{inspect(module)} is not wired into the sequence yet"}
-    end
-  end
+  defp execute_step(scope, key, opts), do: Steps.run(key, scope, opts)
 
   defp error_attrs(key, reason) do
     %{
       attempted: "run the #{key} step",
-      provider_error: to_string(reason)
+      provider_error: describe(reason)
     }
   end
+
+  # Providers report failures as tuples far more often than as strings —
+  # {:cloudflare_error, 403, body}, {:not_implemented, :backups}. `to_string/1`
+  # raises on those, so the halt path crashed on the most common error shape
+  # instead of recording it. Found by a test that let a real provider fail
+  # rather than injecting a string.
+  defp describe(reason) when is_binary(reason), do: reason
+  defp describe(reason) when is_atom(reason), do: to_string(reason)
+  defp describe(reason), do: inspect(reason)
 
   defp mark(scope, key, state, attrs) do
     StepRepository.upsert(
