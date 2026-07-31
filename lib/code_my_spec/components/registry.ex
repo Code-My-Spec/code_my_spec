@@ -1,15 +1,23 @@
 defmodule CodeMySpec.Components.Registry do
   @moduledoc """
-  Central registry containing all component type-specific metadata and behavior definitions.
-  Provides the authoritative source for component type characteristics including requirements,
-  display properties, workflow rules, and validation logic.
+  What a component type *is*: display name, description, icon, colour, document
+  type, dependency order.
+
+  A plain table and two lookups over it. No database, no requirement
+  definitions — everything that reads `RequirementDefinitionData` moved to
+  `Requirements.Registry`, which is where the entry point for those was always
+  meant to be.
+
+  The split matters because this table is needed by both halves of the system.
+  The light harness classifies files with it and holds no database; the server
+  builds requirement graphs and does. Keeping the requirements lookups here
+  would have meant a library calling back into the application that consumes
+  it — which resolves fine while they are compiled together and fails at
+  runtime the first time anyone uses the library on its own.
   """
 
-  alias CodeMySpec.Requirements.RequirementDefinition
-  alias CodeMySpec.Requirements.RequirementDefinitionData
-
   @type type_definition :: %{
-          graph: [RequirementDefinition.t()],
+          graph: atom(),
           display_name: String.t(),
           description: String.t(),
           document_type: String.t(),
@@ -179,41 +187,6 @@ defmodule CodeMySpec.Components.Registry do
       type_def ->
         type_def
     end
-  end
-
-  @doc "Returns the full graph template for a component type."
-  @spec get_graph_template(String.t()) :: [RequirementDefinition.t()]
-  def get_graph_template(component_type) do
-    RequirementDefinitionData.graph_for_type(component_type)
-  end
-
-  @doc """
-  Returns requirement definitions for a component type.
-
-  For types with parent/child graphs, returns only the definitions
-  relevant to the entity itself — `:parent` defs for parent components,
-  `:child` defs for child components, `:self` defs for standalone.
-  """
-  @spec get_requirements_for_type(String.t()) :: [RequirementDefinition.t()]
-  def get_requirements_for_type(component_type) do
-    # Return all definitions from the graph template.
-    # The graph instantiation code handles parent/child scoping.
-    RequirementDefinitionData.graph_for_type(component_type)
-  end
-
-  @doc """
-  True iff `component_type`'s graph template defines child-scoped
-  requirements — i.e., this type can have child components nested
-  under it.
-
-  Derived structurally from the template rather than hardcoded so
-  the answer stays correct as templates evolve.
-  """
-  @spec has_children?(String.t()) :: boolean()
-  def has_children?(component_type) do
-    component_type
-    |> get_graph_template()
-    |> Enum.any?(&(&1.node_scope == :child))
   end
 
   @doc """

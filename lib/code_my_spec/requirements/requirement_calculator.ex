@@ -17,7 +17,7 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
   import Ecto.Query
 
   alias CodeMySpec.Components.Component
-  alias CodeMySpec.Components.Registry, as: ComponentRegistry
+  alias CodeMySpec.Requirements.Registry, as: RequirementsRegistry
   alias CodeMySpec.Environments
   alias CodeMySpec.Files.File
   alias CodeMySpec.Problems.Problem
@@ -38,7 +38,7 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
   """
   @spec compute_component(Scope.t(), Component.t(), Preloader.context() | nil) :: [computed_requirement()]
   def compute_component(%Scope{} = scope, %Component{} = component, ctx \\ nil) do
-    definitions = ComponentRegistry.get_requirements_for_type(component.type)
+    definitions = RequirementsRegistry.get_requirements_for_type(component.type)
     files = get_files(scope, component.id, ctx)
 
     Enum.map(definitions, fn definition ->

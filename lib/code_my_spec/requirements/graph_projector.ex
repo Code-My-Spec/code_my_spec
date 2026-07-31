@@ -57,6 +57,7 @@ defmodule CodeMySpec.Requirements.GraphProjector do
 
   alias CodeMySpec.Components
   alias CodeMySpec.Components.Registry, as: ComponentRegistry
+  alias CodeMySpec.Requirements.Registry, as: RequirementsRegistry
   alias CodeMySpec.Requirements
   alias CodeMySpec.Requirements.Topology
   alias CodeMySpec.Users.Scope
@@ -223,7 +224,7 @@ defmodule CodeMySpec.Requirements.GraphProjector do
     # itself top-level.
     container_ids =
       components
-      |> Enum.filter(&ComponentRegistry.has_children?(&1.type))
+      |> Enum.filter(&RequirementsRegistry.has_children?(&1.type))
       |> MapSet.new(& &1.id)
 
     parent_ids = container_ids
@@ -568,7 +569,7 @@ defmodule CodeMySpec.Requirements.GraphProjector do
 
     context_ids =
       components
-      |> Enum.filter(fn c -> ComponentRegistry.has_children?(c.type) end)
+      |> Enum.filter(fn c -> RequirementsRegistry.has_children?(c.type) end)
       |> MapSet.new(& &1.id)
 
     child_to_context =

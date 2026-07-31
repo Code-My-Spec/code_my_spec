@@ -23,7 +23,7 @@ defmodule CodeMySpec.Requirements.ArchitectureChecker do
   """
 
   alias CodeMySpec.Components
-  alias CodeMySpec.Components.Registry, as: ComponentRegistry
+  alias CodeMySpec.Requirements.Registry, as: RequirementsRegistry
   alias CodeMySpec.Environments
   alias CodeMySpec.Paths
   alias CodeMySpec.Stories
@@ -62,7 +62,7 @@ defmodule CodeMySpec.Requirements.ArchitectureChecker do
   Returns the list of orphan **context** components in the project.
 
   Only context-shaped components (types where
-  `ComponentRegistry.has_children?/1` is true — `context`,
+  `RequirementsRegistry.has_children?/1` is true — `context`,
   `coordination_context`, `live_context`) are subject to the orphan
   rule. Non-context components (liveview, controller, schema,
   module, etc.) are owned by their parent context and are not
@@ -91,7 +91,7 @@ defmodule CodeMySpec.Requirements.ArchitectureChecker do
   end
 
   defp context_shaped?(%{type: nil}), do: false
-  defp context_shaped?(%{type: type}), do: ComponentRegistry.has_children?(type)
+  defp context_shaped?(%{type: type}), do: RequirementsRegistry.has_children?(type)
 
   # A component is "covered" when:
   #   1. It is directly story-linked, OR

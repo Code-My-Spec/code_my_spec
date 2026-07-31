@@ -18,7 +18,7 @@ defmodule CodeMySpec.AgentTasks.Evaluator do
 
   alias CodeMySpec.AgentTasks.ProblemFeedback
   alias CodeMySpec.Components
-  alias CodeMySpec.Components.Registry, as: ComponentRegistry
+  alias CodeMySpec.Requirements.Registry, as: RequirementsRegistry
   alias CodeMySpec.Files.ComponentSync, as: FileComponentSync
   alias CodeMySpec.Files.FileSync
   alias CodeMySpec.Requirements.RequirementCalculator
@@ -155,7 +155,7 @@ defmodule CodeMySpec.AgentTasks.Evaluator do
 
   defp find_definition(scope, :component, requirement_name, entity) do
     # First try the component's own type template
-    definitions = ComponentRegistry.get_requirements_for_type(entity.type)
+    definitions = RequirementsRegistry.get_requirements_for_type(entity.type)
 
     case find_by_name(definitions, requirement_name) do
       {:ok, _} = found ->
@@ -166,7 +166,7 @@ defmodule CodeMySpec.AgentTasks.Evaluator do
         # A schema child of a context gets :child requirements from the context template.
         case entity.parent_component_id && Components.get_component(scope, entity.parent_component_id) do
           %_{} = parent ->
-            parent_template = ComponentRegistry.get_graph_template(parent.type)
+            parent_template = RequirementsRegistry.get_graph_template(parent.type)
             child_defs = Enum.filter(parent_template, &(&1.node_scope == :child))
             find_by_name(child_defs, requirement_name)
 

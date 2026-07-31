@@ -6,10 +6,10 @@ defmodule CodeMySpec.Components do
   alias CodeMySpec.Components.{
     Component,
     ComponentRepository,
-    DependencyRepository,
-    Registry
+    DependencyRepository
   }
 
+  alias CodeMySpec.Requirements.Registry, as: RequirementsRegistry
   alias CodeMySpec.Users.Scope
 
   @doc """
@@ -142,7 +142,7 @@ defmodule CodeMySpec.Components do
           {:ok, [CodeMySpec.Components.Component.t()]}
   defdelegate resolve_dependency_order(scope), to: DependencyRepository
 
-  defdelegate get_requirements_for_type(component_type), to: Registry
+  defdelegate get_requirements_for_type(component_type), to: RequirementsRegistry
 
   @doc """
   Returns requirement definitions for a component based on its type, with optional filtering.
@@ -176,7 +176,7 @@ defmodule CodeMySpec.Components do
     exclude_types = Keyword.get(opts, :exclude, [])
     artifact_types = Keyword.get(opts, :artifact_types, [])
 
-    Registry.get_requirements_for_type(type)
+    RequirementsRegistry.get_requirements_for_type(type)
     |> Enum.filter(fn %{name: name, artifact_type: artifact_type} ->
       exclude = exclude_types != [] and name in exclude_types
 
