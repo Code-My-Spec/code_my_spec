@@ -237,10 +237,24 @@ if not manifest.exists():
     raise SystemExit(0)
 
 m = json.loads(manifest.read_text())
-env = m.setdefault("mcpServers", {}).setdefault("local", {}).setdefault("env", {})
-env["CMS_MCP_BASE_URL"] = url
-env["CMS_MCP_TOKEN"] = token
-env["CMS_PROJECT_ID"] = project_id
+
+# A remote MCP server, not a spawned bridge. Claude Code connects to this URL
+# itself and sends these headers on every request; the shipped manifest points
+# at a local `cms server` instead, and this repoints it at the CodeMySpec
+# server, which needs a token and an explicit project because it has no disk to
+# resolve a working directory against.
+#
+# Replaced wholesale rather than merged: the shipped entry may still be a stdio
+# relay, and leaving `command` beside `url` is an ambiguous manifest.
+m.setdefault("mcpServers", {})["local"] = {
+    "type": "http",
+    "url": url,
+    "headers": {
+        "Authorization": f"Bearer {token}",
+        "X-Project-ID": project_id,
+    },
+}
+
 manifest.write_text(json.dumps(m, indent=2))
 print(f"pointed the plugin's MCP at {url}")
 PATCH
@@ -477,10 +491,9 @@ if [ "${CMS_LIGHT_HARNESS:-}" = "1" ]; then
   # install above, because that is the only moment Claude Code reads it.
   [ -n "${CMS_ACCESS_TOKEN:-}" ] || exchange_token
 
-  # The relay reads these and sends them as Authorization / X-Project-ID. The
-  # server has no disk to resolve a working directory into a project, so it is
-  # told the id outright.
-  export CMS_MCP_TOKEN="${CMS_ACCESS_TOKEN}"
+  # The token and project id ride the plugin manifest as request headers —
+  # see patch_marketplace_manifest. Nothing in this container reads them from
+  # the environment any more; Claude Code holds the connection itself.
 
   if [ -n "${CMS_HARNESS_PORT:-}" ]; then
     :

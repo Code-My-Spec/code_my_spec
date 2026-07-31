@@ -5,10 +5,31 @@
 // Anubis streamable-HTTP endpoint (POST /mcp?dir=<cwd>) and writes the server's
 // responses back to stdout. It holds no state beyond the HTTP session id.
 //
-// Why a standalone binary and not the Elixir app: Claude talks to a process it
+// Why a standalone binary and not the Elixir app: the host talks to a process it
 // spawns; the running server is a separate daemon it can't attach stdio to. So
 // a spawned bridge is unavoidable — but it should be a fast-starting, no-runtime
 // byte-shuffler, not a second BEAM boot behind a release launcher + env.sh.
+//
+// # Claude Code no longer needs this
+//
+// That reasoning was never true of Claude Code, which speaks remote MCP itself.
+// Verified against a real sprite: a plugin manifest declaring
+//
+//	{"type": "http", "url": "...", "headers": {"Authorization": "Bearer ...", ...}}
+//
+// reports `✔ Connected` with no relay process at all, and the agent then drove
+// `get_next_requirement` and `list_stories` through it. The last apparent
+// justification — that only a spawned process can compute the caller's working
+// directory for `?dir=` — does not hold either: Claude Code interpolates
+// `${CLAUDE_PROJECT_DIR}` inside the URL, confirmed by a probe param arriving
+// server-side already substituted. `plugins/claude` therefore ships an `http`
+// server and never spawns this.
+//
+// It stays for `plugins/codex` and `plugins/antigravity`, which still declare it
+// by command. Whether those hosts support a remote MCP server has not been
+// tested, and breaking two ports on an assumption is not worth the deletion.
+// Test them; if they do, this binary and its build steps in mix.exs, the
+// Dockerfile and release-extension.yml all come out together.
 //
 // Config (env):
 //   CMS_MCP_BASE_URL   base URL of the running server (default http://localhost:4003)
