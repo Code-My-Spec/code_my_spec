@@ -40,10 +40,18 @@ defmodule CodeMySpecWeb.SpriteTokenController do
 
   require Logger
 
-  # Long enough that a sprite is not re-authenticating mid-task, short enough
-  # that a leaked one is a bounded problem. The harness re-exchanges on its own
-  # schedule; it holds the deploy key and can always get another.
-  @expires_in 3600
+  # Sized to outlast a run, because **nothing refreshes this**.
+  #
+  # The token is handed to the agent's MCP client, which knows nothing about
+  # deploy keys and will not re-exchange. So the lifetime is not a security dial
+  # to be turned down freely: set it below the length of a run and tool calls
+  # start 401ing partway through, which is the "a long session silently loses its
+  # harness tools" failure with a new cause. The last unattended drill ran 2h11m.
+  #
+  # Twelve hours covers a long drill with room, and is still bounded and
+  # individually revocable, which a deploy key is not. Shortening this is only
+  # safe once something on the sprite refreshes it.
+  @expires_in 12 * 60 * 60
 
   @doc """
   Exchange the deploy key in the `Authorization` header for an access token.
