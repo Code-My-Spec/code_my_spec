@@ -414,6 +414,27 @@ if [ "${CMS_LIGHT_HARNESS:-}" = "1" ]; then
   export CMS_HARNESS_PORT="${CMS_HARNESS_PORT:-4004}"
   export CMS_PROJECT_DIR="${APP_DIR}"
 
+  # Where the embedding model is. `mix release` copies priv/ in, so the CLI
+  # release already carries one — found rather than shipped a second time.
+  # Resolved by glob because the path contains the release's version, and
+  # hardcoding that means it works until the next version bump and then does
+  # not, in a way that looks like the model is missing.
+  if [ -z "${CMS_MODEL_PATH:-}" ]; then
+    for candidate in /opt/cms/lib/code_my_spec-*/priv/models; do
+      if [ -f "${candidate}/all-MiniLM-L6-v2.onnx" ]; then
+        export CMS_MODEL_PATH="${candidate}"
+        break
+      fi
+    done
+  fi
+
+  if [ -n "${CMS_MODEL_PATH:-}" ]; then
+    log "Embedding model: ${CMS_MODEL_PATH}"
+  else
+    log "WARNING: no embedding model found under /opt/cms. Search will be"
+    log "         degraded; set CMS_MODEL_PATH if one lives elsewhere."
+  fi
+
   # A failed auth is cached, and the cache outlives the run. This home is a
   # volume reused across drills, so a single 401 disables the MCP server for
   # every later run, presenting as "the server never finished connecting".
