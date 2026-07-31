@@ -359,44 +359,65 @@ if [ "${CMS_LIGHT_HARNESS:-}" = "1" ]; then
   export CMS_HARNESS_PORT="${CMS_HARNESS_PORT:-4004}"
   export CMS_PROJECT_DIR="${APP_DIR}"
 
-  # Repoint the *installed* plugin's MCP base URL at the server.
+  # Point the *installed* plugin's MCP config at the server.
   #
-  # The published plugin.json hardcodes `"CMS_MCP_BASE_URL": "http://localhost:4003"`
-  # in the env it hands the relay, and a plugin-declared env value is not
-  # something an outer export can override. Patching the installed copy is
-  # deterministic, where hoping for placeholder interpolation is not — and this
-  # container owns that file.
-  # `*/plugins/codemyspec/*`, not `*codemyspec*`. The marketplace directory is
-  # itself named codemyspec, so the looser pattern also matches every other
-  # plugin it carries — market-my-spec among them — and `head -1` would pick
-  # whichever the filesystem happened to return first. Patching the wrong
-  # manifest leaves the real one pointing at a dead port, which surfaces as
-  # "no MCP tools" with nothing to connect it to a bad glob.
-  PLUGIN_JSON="$(find /home/agent/.claude \
-    -path '*/plugins/codemyspec/.claude-plugin/plugin.json' 2>/dev/null | head -1)"
+  # Two things here were wrong for a while, and both failed silently.
+  #
+  # The manifest to patch is the installed copy under
+  # plugins/cache/<marketplace>/<plugin>/<version>/, not the marketplace
+  # checkout. `installed_plugins.json` records installPath, which is
+  # authoritative — globbing for plugin.json finds the marketplace copy (and
+  # every other plugin that marketplace carries), so it patches a file Claude
+  # Code never reads and the agent ends up with no tools and nothing to look at.
+  #
+  # And the token belongs in the plugin's env, not this shell's: Claude Code
+  # spawns the relay itself with the env declared in the manifest, so exporting
+  # it here reaches the harness and never reaches the relay.
+  python3 - "${CMS_SERVER_URL}/mcp/harness" "${CMS_ACCESS_TOKEN}" "${CMS_PROJECT_ID}" <<'PATCH'
+import json, pathlib, sys
 
-  if [ -n "${PLUGIN_JSON}" ]; then
-    python3 - "${PLUGIN_JSON}" "${CMS_SERVER_URL}/mcp/harness" <<'PATCH'
-import json, sys
+url, token, project_id = sys.argv[1:4]
+installed = pathlib.Path("/home/agent/.claude/plugins/installed_plugins.json")
 
-path, url = sys.argv[1], sys.argv[2]
-with open(path) as f:
-    manifest = json.load(f)
+if not installed.exists():
+    print("WARNING: no installed_plugins.json — the agent will have no harness tools.")
+    raise SystemExit(0)
 
-manifest.setdefault("mcpServers", {}).setdefault("local", {}).setdefault("env", {})
-manifest["mcpServers"]["local"]["env"]["CMS_MCP_BASE_URL"] = url
+entries = json.loads(installed.read_text()).get("plugins", {}).get("codemyspec@codemyspec", [])
 
-with open(path, "w") as f:
-    json.dump(manifest, f, indent=2)
+if not entries:
+    print("WARNING: codemyspec is not installed — the agent will have no harness tools.")
+    raise SystemExit(0)
+
+manifest = pathlib.Path(entries[0]["installPath"]) / ".claude-plugin" / "plugin.json"
+m = json.loads(manifest.read_text())
+env = m.setdefault("mcpServers", {}).setdefault("local", {}).setdefault("env", {})
+env["CMS_MCP_BASE_URL"] = url
+env["CMS_MCP_TOKEN"] = token
+env["CMS_PROJECT_ID"] = project_id
+manifest.write_text(json.dumps(m, indent=2))
+print(f"pointed {manifest} at {url}")
 PATCH
-    log "Pointed the plugin's MCP at ${CMS_SERVER_URL}/mcp/harness"
-  else
-    # Loud, because the symptom is "no MCP tools", which reads as a broken
-    # plugin rather than as a base URL still aimed at a port nothing serves.
-    log "WARNING: could not find the installed plugin.json to repoint."
-    log "         The agent's MCP will still target localhost:4003, which the"
-    log "         light harness does not serve — expect zero harness tools."
-  fi
+
+  # A failed auth is cached, and the cache outlives the run. This home is a
+  # volume reused across drills, so a single 401 — from a token that had not
+  # been written yet, say — disables the MCP server for every later run,
+  # presenting as "the server never finished connecting".
+  python3 - <<'RESET'
+import json, pathlib
+
+p = pathlib.Path("/home/agent/.claude/mcp-needs-auth-cache.json")
+if p.exists():
+    cache = json.loads(p.read_text())
+    stale = [k for k in cache if "codemyspec" in k]
+    for k in stale:
+        cache.pop(k)
+    if stale:
+        p.write_text(json.dumps(cache))
+        print(f"cleared a cached auth failure for {', '.join(stale)}")
+RESET
+
+  chown -R agent:agent /home/agent/.claude 2>/dev/null || true
 
   log "Starting the light harness on ${CMS_HARNESS_PORT} against ${CMS_SERVER_URL}"
 
