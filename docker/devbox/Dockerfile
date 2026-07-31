@@ -132,9 +132,18 @@ RUN mix deps.get \
 # message about a missing path, several minutes into a build.
 FROM ${ELIXIR_IMAGE} AS harness-builder
 
+# Rust, because the harness embeds. Inference is local so file content never
+# crosses the wire, and that means Ortex — whose NIF crate compiles from source
+# when no precompiled artifact matches the platform. This stage started without
+# Rust, on the reasoning that the harness runs no analyzers of its own; adding
+# embeddings changed that.
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends build-essential ca-certificates git \
+  && apt-get install -y --no-install-recommends \
+       build-essential ca-certificates cmake curl git pkg-config \
   && rm -rf /var/lib/apt/lists/*
+
+RUN curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal
+ENV PATH="/root/.cargo/bin:${PATH}"
 
 ENV MIX_ENV=prod
 WORKDIR /src/cms_harness
