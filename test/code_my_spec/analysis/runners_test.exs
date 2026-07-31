@@ -43,15 +43,34 @@ defmodule CodeMySpec.Analysis.RunnersTest do
     # Three outcomes that must stay three, not two. A clean build, a build with
     # errors, and a build that failed while saying nothing — the last of which
     # used to be recorded as the first.
-    test "a build that failed without diagnostics is not reported as clean" do
-      assert {:error, {:compile_failed_without_diagnostics, 1}} =
-               Runners.from_raw("compiler", %{"exit_status" => 1, "diagnostics" => []}),
+    # Keyed on availability, not exit status: `mix compile --return-errors` exits
+    # 0 even on a compile error, so a zero exit says nothing at all. The first
+    # version of this check keyed on exit status and was inert for exactly the
+    # case it was written for.
+    test "a build whose diagnostics were never written is not reported as clean" do
+      assert {:error, {:compile_diagnostics_unavailable, 0}} =
+               Runners.from_raw("compiler", %{
+                 "exit_status" => 0,
+                 "diagnostics" => [],
+                 "diagnostics_available" => false
+               }),
              "`:completed` with no problems is how this system says it looked and " <>
                "found nothing — a compiler that could not say why it failed must not " <>
                "borrow that sentence"
     end
 
     test "a clean build is still clean" do
+      assert {:ok, %{problems: []}} =
+               Runners.from_raw("compiler", %{
+                 "exit_status" => 0,
+                 "diagnostics" => [],
+                 "diagnostics_available" => true
+               })
+    end
+
+    # Absent means "an older harness that does not send this", which must keep
+    # working rather than being read as unavailable and failing every run.
+    test "a payload without the flag is treated as available" do
       assert {:ok, %{problems: []}} =
                Runners.from_raw("compiler", %{"exit_status" => 0, "diagnostics" => []})
     end

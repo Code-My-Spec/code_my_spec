@@ -65,7 +65,8 @@ defmodule CodeMySpec.Analysis.Runners do
 
     from_raw("compiler", %{
       "exit_status" => result.exit_code,
-      "diagnostics" => result.data.compiler_results
+      "diagnostics" => result.data.compiler_results,
+      "diagnostics_available" => Map.get(result.data, :diagnostics_available, true)
     })
   end
 
@@ -172,8 +173,14 @@ defmodule CodeMySpec.Analysis.Runners do
     # Failing the run says the third thing. It does not block: a failed run is
     # re-enqueued on the next stop rather than turned into a Problem, so no
     # phantom error blocks anybody. What it stops doing is claiming success.
-    if raw["exit_status"] not in [0, nil] and problems == [] do
-      {:error, {:compile_failed_without_diagnostics, raw["exit_status"]}}
+    #
+    # Keyed on whether diagnostics were *available*, not on the exit status.
+    # `mix compile --return-errors` exits 0 even on a compile error — that is
+    # what the flag is for — so exit status says nothing about whether the code
+    # compiled. An earlier version of this check keyed on exit status and was
+    # therefore inert for the exact case it was written for.
+    if raw["diagnostics_available"] == false do
+      {:error, {:compile_diagnostics_unavailable, raw["exit_status"]}}
     else
       {:ok,
        summarize(problems, raw["exit_status"], %{
