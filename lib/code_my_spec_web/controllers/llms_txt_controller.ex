@@ -99,6 +99,12 @@ defmodule CodeMySpecWeb.LlmsTxtController do
         "Live harness build in progress: a local-first Otter alternative (on-device transcription, diarization, audio-tap meeting capture, MCP access). 11 stories with full Three Amigos records, statuses updating as browser QA passes"
     },
     %{
+      title: "Broken Oaths Case Study",
+      url: "/case-studies/broken-oaths",
+      description:
+        "Persistent hex-globe 4X strategy game built in a 12-day sprint; 108,734 lines of Elixir, 279 executable BDD spex, seven production releases, real playtesters by day six, 0.25% of the conversation typed by the human. The honest teardown includes 20 of 52 stories carrying no QA record and the case-study tooling being caught fabricating its own evidence"
+    },
+    %{
       title: "About",
       url: "/author/john-davenport",
       description: "About the founder and the project"
