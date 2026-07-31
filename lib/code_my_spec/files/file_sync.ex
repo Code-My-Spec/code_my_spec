@@ -56,7 +56,6 @@ defmodule CodeMySpec.Files.FileSync do
   # to FileSync — `deps/`, `_build/`, `node_modules/`, `priv/`, `assets/`, `.git/`
   # are never touched. Keep in sync with `classify/1`.
 
-
   @doc """
   Sync all trackable files from the filesystem into the DB.
 
@@ -92,7 +91,7 @@ defmodule CodeMySpec.Files.FileSync do
     # One read model for the whole pass. The pre-split code queried components
     # twice — once for ownership, once for validation — and the config flag
     # separately; scanning now states what it needs and gets it once.
-    read_model = Scanner.read_model(scope)
+    read_model = Files.read_model(scope)
 
     observations = Scanner.observe(env, read_model)
 
@@ -234,9 +233,7 @@ defmodule CodeMySpec.Files.FileSync do
 
     elapsed = System.monotonic_time(:millisecond) - start
 
-    Logger.info(
-      "[FileSync] embed_only: #{length(embeddable_records)} files in #{elapsed}ms"
-    )
+    Logger.info("[FileSync] embed_only: #{length(embeddable_records)} files in #{elapsed}ms")
 
     {:ok, %{embedded: length(embeddable_records), elapsed_ms: elapsed}}
   end
@@ -351,7 +348,7 @@ defmodule CodeMySpec.Files.FileSync do
           {0, []}
 
         _ ->
-          read_model = Scanner.read_model(scope)
+          read_model = Files.read_model(scope)
 
           entries_with_owners = Scanner.resolve_owners(mtime_changed_entries, read_model)
           entries_with_fingerprints = Scanner.fingerprint_entries(env, entries_with_owners)
@@ -467,7 +464,7 @@ defmodule CodeMySpec.Files.FileSync do
         entry =
           cond do
             owner_bearing_role?(role) ->
-              read_model = Scanner.read_model(scope)
+              read_model = Files.read_model(scope)
               [entry] = Scanner.resolve_owners([entry], read_model)
               [entry] = Scanner.fingerprint_entries(env, [entry])
               Scanner.validate_entry(entry, env, read_model.component_by_id, read_model.strict?)
@@ -483,7 +480,12 @@ defmodule CodeMySpec.Files.FileSync do
 
             true ->
               [entry] = Scanner.fingerprint_entries(env, [entry])
-              entry |> Map.put(:component_id, nil) |> Map.put(:story_id, nil) |> Map.put(:valid, true) |> Map.put(:validation_errors, nil)
+
+              entry
+              |> Map.put(:component_id, nil)
+              |> Map.put(:story_id, nil)
+              |> Map.put(:valid, true)
+              |> Map.put(:validation_errors, nil)
           end
 
         embedding_changed_entries =
@@ -549,5 +551,5 @@ defmodule CodeMySpec.Files.FileSync do
 
   @doc false
   def resolve_owners(scope, entries),
-    do: Scanner.resolve_owners(entries, Scanner.read_model(scope))
+    do: Scanner.resolve_owners(entries, Files.read_model(scope))
 end

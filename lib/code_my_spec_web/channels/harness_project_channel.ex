@@ -32,6 +32,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
 
   alias CodeMySpec.Accounts
   alias CodeMySpec.Analysis
+  alias CodeMySpec.Files
   alias CodeMySpec.Files.File, as: FileRecord
   alias CodeMySpec.Files.FileSync
   alias CodeMySpec.Files.Scanner
@@ -99,7 +100,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   """
   @impl true
   def handle_in("read_model", _payload, socket) do
-    read_model = Scanner.read_model(socket.assigns.scope)
+    read_model = Files.read_model(socket.assigns.scope)
 
     {:reply, {:ok, serialize_read_model(read_model)}, socket}
   end

@@ -21,14 +21,11 @@ defmodule CodeMySpec.Files.Scanner do
 
   require Logger
 
-  alias CodeMySpec.Components
   alias CodeMySpec.Components.Registry, as: ComponentRegistry
-  alias CodeMySpec.Configurations
   alias CodeMySpec.Documents
   alias CodeMySpec.Environments
   alias CodeMySpec.Paths
   alias CodeMySpec.StaticAnalysis.Analyzers.SpecAlignment
-  alias CodeMySpec.Users.Scope
 
   # The subtrees a sync walks. Everything outside them is invisible to the
   # domain, which is what keeps a project's own deps/ and _build/ out of it.
@@ -48,7 +45,10 @@ defmodule CodeMySpec.Files.Scanner do
     ids parsed out of qa and spex paths; `strict?` is the project's
     require-specs setting.
     """
-    defstruct component_by_module: %{}, component_by_id: %{}, story_ids: MapSet.new(), strict?: true
+    defstruct component_by_module: %{},
+              component_by_id: %{},
+              story_ids: MapSet.new(),
+              strict?: true
 
     @type t :: %__MODULE__{
             component_by_module: %{String.t() => Ecto.UUID.t()},
@@ -56,37 +56,6 @@ defmodule CodeMySpec.Files.Scanner do
             story_ids: MapSet.t(integer()),
             strict?: boolean()
           }
-  end
-
-  @doc """
-  Build the `ReadModel` for a scope.
-
-  The only function here that touches the database. It is separate so the rest
-  of the module stays a function of (environment, read model) — which is what
-  would let a scanner run somewhere with no database at all.
-  """
-  @spec read_model(Scope.t()) :: ReadModel.t()
-  def read_model(%Scope{} = scope) do
-    components = Components.list_components(scope)
-
-    %ReadModel{
-      component_by_module: Map.new(components, &{&1.module_name, &1.id}),
-      component_by_id: Map.new(components, &{&1.id, &1}),
-      story_ids: project_story_ids(scope),
-      strict?: Configurations.require_specs?(scope)
-    }
-  end
-
-  defp project_story_ids(%Scope{active_project_id: nil}), do: MapSet.new()
-
-  defp project_story_ids(%Scope{} = scope) do
-    import Ecto.Query
-
-    CodeMySpec.Stories.Story
-    |> where([s], s.project_id == ^scope.active_project_id)
-    |> select([s], s.id)
-    |> CodeMySpec.Repo.all()
-    |> MapSet.new()
   end
 
   @doc """
@@ -153,7 +122,10 @@ defmodule CodeMySpec.Files.Scanner do
         validate_spec_content(entry, content, document_type, strict?)
 
       {:error, reason} ->
-        Map.merge(entry, %{valid: false, validation_errors: %{error: "Read failed: #{inspect(reason)}"}})
+        Map.merge(entry, %{
+          valid: false,
+          validation_errors: %{error: "Read failed: #{inspect(reason)}"}
+        })
     end
   end
 
@@ -163,12 +135,20 @@ defmodule CodeMySpec.Files.Scanner do
         validate_spec_content(entry, content, "design_review", strict?)
 
       {:error, reason} ->
-        Map.merge(entry, %{valid: false, validation_errors: %{error: "Read failed: #{inspect(reason)}"}})
+        Map.merge(entry, %{
+          valid: false,
+          validation_errors: %{error: "Read failed: #{inspect(reason)}"}
+        })
     end
   end
 
-  def validate_entry(%{role: :test, component_id: component_id} = entry, env, component_by_id, _strict?)
-       when not is_nil(component_id) do
+  def validate_entry(
+        %{role: :test, component_id: component_id} = entry,
+        env,
+        component_by_id,
+        _strict?
+      )
+      when not is_nil(component_id) do
     component = Map.get(component_by_id, component_id)
 
     if component do
@@ -288,7 +268,14 @@ defmodule CodeMySpec.Files.Scanner do
     Map.new(map, fn {k, v} -> {to_string(k), v} end)
   end
 
-  @required_mix_deps [:credo, :client_utils, :sobelow, :sexy_spex, :boundary, :code_my_spec_generators]
+  @required_mix_deps [
+    :credo,
+    :client_utils,
+    :sobelow,
+    :sexy_spex,
+    :boundary,
+    :code_my_spec_generators
+  ]
 
   defp validate_mix_exs(content) do
     {app_name_value, app_name_error} = extract_app_name_result(content)
@@ -479,7 +466,9 @@ defmodule CodeMySpec.Files.Scanner do
       |> List.first()
 
     case type_section do
-      nil -> "spec"
+      nil ->
+        "spec"
+
       component_type ->
         type_def = ComponentRegistry.get_type(component_type)
         Map.get(type_def, :document_type, "spec")
@@ -616,7 +605,6 @@ defmodule CodeMySpec.Files.Scanner do
     first_segment in @ignored_dirs
   end
 
-
   # .code_my_spec/qa/{story_id}/brief.md
   defp match_qa_file?(path, filename) do
     qa_prefix = Paths.qa_dir() <> "/"
@@ -738,7 +726,6 @@ defmodule CodeMySpec.Files.Scanner do
     |> Enum.reject(&is_nil/1)
     |> Enum.uniq()
   end
-
 
   defp path_to_module_name(path, :implementation) do
     path
