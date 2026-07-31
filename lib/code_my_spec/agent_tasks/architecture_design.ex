@@ -198,8 +198,29 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
     "## Warnings\n\n#{bullets}"
   end
 
+  # `module_name` is the only authority. It is what the sprite names the
+  # generated app after, so it is the one value guaranteed to match the modules
+  # and boundaries actually on disk.
+  #
+  # This module used to derive a second app name alongside this one, by
+  # stripping every non-alphanumeric out of the project's *display* name and
+  # camelizing the result. For a project called "e2e-todo" that produced
+  # `E2etodo` while the repo defined `E2eTodo` — one letter apart, and a module
+  # tree no boundary claims. Two derivations in one file, disagreeing, and the
+  # prompt handed out the wrong one: an agent registered fourteen components
+  # under `E2etodo.` before noticing and refused to paper over it in code.
   defp get_app_name(%{module_name: module_name}) when is_binary(module_name), do: module_name
-  defp get_app_name(%{name: name}) when is_binary(name), do: Macro.camelize(name)
+
+  # Last resort only. Underscore first so `-` and ` ` are word boundaries —
+  # `Macro.camelize/1` alone leaves "e2e-todo" as "E2e-todo", which is not a
+  # module name at all.
+  defp get_app_name(%{name: name}) when is_binary(name) do
+    name
+    |> String.replace(~r/[^a-zA-Z0-9]+/, "_")
+    |> Macro.underscore()
+    |> Macro.camelize()
+  end
+
   defp get_app_name(_), do: raise("Project must have module_name or name for architecture design")
 
   defp proposal_not_found_feedback do
@@ -233,7 +254,7 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
   defp build_prompt(project, stories, orphans, component_count, output_dir, proposal_exists?) do
     stories_section = format_stories(stories, orphans)
     orphans_section = format_orphans_section(orphans)
-    app_name = derive_app_name(project.name)
+    app_name = get_app_name(project)
 
     architecture_section =
       if component_count > 0 do
@@ -374,12 +395,6 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
     Stop when your edits are complete. The evaluator checks that every
     story has a linked component AND no orphan contexts remain.
     """
-  end
-
-  defp derive_app_name(project_name) do
-    project_name
-    |> String.replace(~r/[^a-zA-Z0-9]/, "")
-    |> Macro.camelize()
   end
 
   defp format_stories([], []) do

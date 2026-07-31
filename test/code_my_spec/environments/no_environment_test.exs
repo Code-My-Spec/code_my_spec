@@ -70,4 +70,24 @@ defmodule CodeMySpec.Environments.NoEnvironmentTest do
       end
     end
   end
+
+  describe "the app name a prompt hands the agent" do
+    test "comes from module_name, not from the display name" do
+      scope = full_scope_fixture()
+
+      # The real shape that broke: a hyphenated display name beside a proper
+      # module name. Stripping separators out of "e2e-todo" yields "E2etodo";
+      # the repo defines "E2eTodo", and the two are one letter apart.
+      project = %{scope.active_project | name: "e2e-todo", module_name: "E2eTodo"}
+      scope = %{scope | active_project: project, environment: nil}
+
+      assert {:ok, prompt} = CodeMySpec.AgentTasks.ArchitectureDesign.command(scope, %{})
+
+      refute prompt =~ "E2etodo",
+             "a prompt naming a module tree no boundary claims sends the agent " <>
+               "to register components that cannot compile where they are put"
+
+      assert prompt =~ "E2eTodo"
+    end
+  end
 end
