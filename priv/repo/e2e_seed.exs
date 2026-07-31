@@ -4,7 +4,12 @@
 # Run against the CMS_E2E database only. Prints the project id and deploy key so
 # the harness can be pointed at them.
 #
-#     CMS_E2E=1 MIX_ENV=test elixir -S mix run priv/repo/e2e_seed.exs
+#     CMS_E2E=1 CMS_E2E_SEED=1 MIX_ENV=test elixir -S mix run priv/repo/e2e_seed.exs
+#
+# CMS_E2E_SEED=1 keeps this from trying to bind 4102, so it can be run while
+# the server it seeds for is already up. Note it ROTATES the deploy key on
+# every run — an older key stops working, which shows up as a 403 on the
+# websocket upgrade and a 401 on the token exchange.
 
 alias CodeMySpec.Accounts
 alias CodeMySpec.Projects

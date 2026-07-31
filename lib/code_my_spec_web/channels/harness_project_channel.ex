@@ -31,6 +31,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   require Logger
 
   alias CodeMySpec.Accounts
+  alias CodeMySpec.Analysis
   alias CodeMySpec.Files.File, as: FileRecord
   alias CodeMySpec.Files.FileSync
   alias CodeMySpec.Files.Scanner
@@ -53,12 +54,28 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
 
     with {:ok, scope} <- authorize(socket, project_id),
          {:ok, holder} <- start_lease_holder(),
-         :ok <- Leases.acquire(scope, label, holder) do
+         :ok <- Leases.acquire(scope, label, holder),
+         :ok <- Analysis.register_executor(project_id) do
+      # Anything still `:running` belongs to a previous connection. Its queue
+      # was on a harness that has gone, so nothing will ever finish it — and an
+      # open run makes every later stop report analysis pending, which allows
+      # the stop while saying results will apply next time, on a next time that
+      # never arrives. This is the one moment it is provably safe to close them.
+      Analysis.fail_in_flight(scope, :harness_reconnected)
+
       {:ok, socket |> assign(:scope, scope) |> assign(:lease_holder, holder)}
     else
       {:error, {:held_by, holder}} ->
         Logger.warning("[HarnessProject] refused #{project_id} — already held by #{holder}")
         {:error, %{reason: "project_in_use", held_by: holder}}
+
+      {:error, {:already_registered, _pid}} ->
+        # The lease was acquired but the executor slot was not, which means two
+        # channels for one project got past the lease. Refused rather than
+        # served: the second harness would run analyzers whose results the
+        # server would attribute to runs it dispatched to the first.
+        Logger.error("[HarnessProject] #{project_id} already has an analysis executor registered")
+        {:error, %{reason: "project_in_use", held_by: "another harness on this server"}}
 
       {:error, reason} ->
         {:error, %{reason: to_string(reason)}}
@@ -156,6 +173,37 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
     end
   end
 
+  # What an analyzer printed on the machine that has the working copy.
+  #
+  # The split this carries: the harness has the disk and the toolchain, so it
+  # runs `mix`; the `Problem` schema and the run ledger are here, so this
+  # converts and records. The harness sends diagnostics, never Problems —
+  # `Analysis.record_remote_result/2` puts them through the same
+  # `Runners.from_raw/2` a local run goes through, which is what stops the two
+  # paths disagreeing about what a diagnostic means.
+  #
+  # The reply is read on the far side. A rejected result is an analyzer that ran
+  # and was not recorded, which looks from the outside exactly like one that
+  # never ran — the distinction this whole design exists to keep.
+  def handle_in("analysis_result", %{"run_id" => _, "source" => source} = payload, socket) do
+    case Analysis.record_remote_result(socket.assigns.scope, payload) do
+      {:ok, run} ->
+        {:reply, {:ok, %{"run_id" => run.id, "status" => to_string(run.status)}}, socket}
+
+      {:error, :unknown_run} ->
+        # Either the run was already closed (its channel dropped and rejoined)
+        # or it belongs to another project. Not applied: reconciling it would
+        # rewrite this source's Problems off a run nobody is waiting for.
+        Logger.warning("[HarnessProject] #{source} result for a run this server is not tracking")
+
+        {:reply, {:error, %{"reason" => "unknown_run"}}, socket}
+
+      {:error, reason} ->
+        Logger.warning("[HarnessProject] #{source} result rejected: #{inspect(reason)}")
+        {:reply, {:error, %{"reason" => inspect(reason)}}, socket}
+    end
+  end
+
   # An unknown event is answered, not dropped.
   #
   # This clause used to be `{:noreply, socket}`, and that silence was a real
@@ -169,6 +217,41 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   def handle_in(event, _payload, socket) do
     Logger.warning("[HarnessProject] unknown event #{inspect(event)}")
     {:reply, {:error, %{"reason" => "unknown_event", "event" => event}}, socket}
+  end
+
+  # `Analysis` dispatches a run by sending here, because the executor it looked
+  # up in `HarnessRegistry` is this process. It arrives as a plain message
+  # rather than a broadcast so that the thing proving the harness is alive and
+  # the thing the work is sent to are the same pid.
+  #
+  # Note this can be sent *by this process to itself*: the stop hook is decided
+  # inside `handle_in("hook_decision", …)`, which is what enqueues the runs. The
+  # message lands after that call returns, which is the right order — the
+  # decision is made from what has already been recorded, never from what is
+  # about to run.
+  @impl true
+  def handle_info({:run_analysis, runs}, socket) do
+    push(socket, "run_analysis", %{"runs" => runs})
+    {:noreply, socket}
+  end
+
+  def handle_info(_message, socket), do: {:noreply, socket}
+
+  # Everything this harness had running dies with it: the queue was on the other
+  # machine. Leaving those rows `:running` would make every later stop for this
+  # project report analysis pending — an allow, with a note that results apply
+  # next time, forever.
+  @impl true
+  def terminate(_reason, socket) do
+    case socket.assigns[:scope] do
+      %Scope{active_project_id: id} when not is_nil(id) ->
+        Analysis.fail_in_flight(socket.assigns.scope, :harness_disconnected)
+
+      _ ->
+        :ok
+    end
+
+    :ok
   end
 
   # `port` is the harness's own — the analysis curl that `pre-tool-use` rewrites

@@ -324,6 +324,188 @@ defmodule CodeMySpecWeb.HarnessProjectChannelTest do
     end
   end
 
+  # The gap this closed: the harness ran no analyzers, so `Stop.decide/2`
+  # consulted persisted Problems and found none — from a set of facts nobody had
+  # gathered. A stop hook answering `{}` looked identical whether the project was
+  # clean or unexamined.
+  #
+  # These drive the whole loop from the channel: a stop asks for analysis, the
+  # runs are opened and pushed, the result comes back as diagnostics, Problems
+  # land, and the next stop blocks. `analysis_mode: :inline` is irrelevant here —
+  # a remote run never touches the local queue.
+  describe "analysis" do
+    setup %{scope: scope, topic: topic} do
+      {:ok, _reply, channel} = join_as(scope, topic)
+      %{channel: channel}
+    end
+
+    alias CodeMySpec.Analysis
+    alias CodeMySpec.Problems
+
+    defp compiler_result(run_id, diagnostics) do
+      %{
+        "run_id" => run_id,
+        "source" => "compiler",
+        "status" => "ok",
+        "result" => %{"exit_status" => 1, "diagnostics" => diagnostics}
+      }
+    end
+
+    defp broken_file_diagnostic do
+      %{
+        "file" => "lib/demo/broken.ex",
+        "line" => 4,
+        "severity" => "error",
+        "message" => "** (SyntaxError) unexpected reserved word: end"
+      }
+    end
+
+    test "a stop asks the harness to run the compiler", %{channel: channel} do
+      ref = push(channel, "hook_decision", %{"hook" => "stop", "payload" => %{}})
+      assert_reply ref, :ok, _decision, 5_000
+
+      assert_push "run_analysis", %{"runs" => runs}, 5_000
+
+      assert Enum.any?(runs, &(&1["source"] == "compiler")),
+             "the compiler is the cheapest signal and every other source short-circuits " <>
+               "on its errors, so it is always requested"
+
+      assert Enum.all?(runs, &is_integer(&1["run_id"])),
+             "the run row is opened here so the request is recoverable — a push with no " <>
+               "row would leave no trace that anything was ever asked for"
+    end
+
+    test "a stop while the harness is still running one says so, rather than reporting clean",
+         %{channel: channel} do
+      ref = push(channel, "hook_decision", %{"hook" => "stop", "payload" => %{}})
+      assert_reply ref, :ok, _first, 5_000
+      assert_push "run_analysis", %{"runs" => _}, 5_000
+
+      ref = push(channel, "hook_decision", %{"hook" => "stop", "payload" => %{}})
+      assert_reply ref, :ok, decision, 5_000
+
+      assert decision["systemMessage"] =~ "analysis running",
+             "\"I have not looked yet\" has to be a different answer from \"nothing blocks\""
+    end
+
+    test "diagnostics from the harness become Problems", %{channel: channel, scope: scope} do
+      ref = push(channel, "hook_decision", %{"hook" => "stop", "payload" => %{}})
+      assert_reply ref, :ok, _decision, 5_000
+      assert_push "run_analysis", %{"runs" => runs}, 5_000
+
+      run_id = runs |> Enum.find(&(&1["source"] == "compiler")) |> Map.fetch!("run_id")
+
+      ref = push(channel, "analysis_result", compiler_result(run_id, [broken_file_diagnostic()]))
+      assert_reply ref, :ok, %{"status" => "completed"}, 5_000
+
+      assert [problem] = Problems.list_project_problems(scope, source: "compiler")
+      assert problem.severity == :error
+      assert problem.file_path == "lib/demo/broken.ex"
+    end
+
+    # The acceptance test, in process. The wire version of it is the e2e run.
+    test "a project whose code will not compile has its next stop BLOCKED",
+         %{channel: channel, scope: scope} do
+      ref = push(channel, "hook_decision", %{"hook" => "stop", "payload" => %{}})
+      assert_reply ref, :ok, first, 5_000
+
+      refute first["decision"] == "block",
+             "nothing has been looked at yet, so this stop is allowed — but labelled"
+
+      assert_push "run_analysis", %{"runs" => runs}, 5_000
+      run_id = runs |> Enum.find(&(&1["source"] == "compiler")) |> Map.fetch!("run_id")
+
+      ref = push(channel, "analysis_result", compiler_result(run_id, [broken_file_diagnostic()]))
+      assert_reply ref, :ok, _recorded, 5_000
+
+      # Drain whatever the reconcile enqueued next, so the stop below is
+      # decided from the Problems rather than from a run still in flight.
+      Analysis.fail_in_flight(scope, :test_drain)
+
+      ref = push(channel, "hook_decision", %{"hook" => "stop", "payload" => %{}})
+      assert_reply ref, :ok, decision, 5_000
+
+      assert decision["decision"] == "block", """
+      A working copy that does not compile got a green light.
+
+      This is the defect the analyzer path was built for: before it, the harness
+      ran nothing, so the stop hook consulted persisted Problems, found none, and
+      answered `{}` — from a set of facts nobody had gathered.
+      """
+
+      assert decision["reason"] =~ "broken.ex"
+    end
+
+    test "a run the harness could not do fails rather than completing empty",
+         %{channel: channel, scope: scope} do
+      ref = push(channel, "hook_decision", %{"hook" => "stop", "payload" => %{}})
+      assert_reply ref, :ok, _decision, 5_000
+      assert_push "run_analysis", %{"runs" => runs}, 5_000
+
+      run_id = runs |> Enum.find(&(&1["source"] == "compiler")) |> Map.fetch!("run_id")
+
+      ref =
+        push(channel, "analysis_result", %{
+          "run_id" => run_id,
+          "source" => "compiler",
+          "status" => "error",
+          "error" => "analyzer timed out after 1800000ms"
+        })
+
+      assert_reply ref, :error, %{"reason" => reason}, 5_000
+      assert reason =~ "timed out"
+
+      refute Analysis.fresh?(scope, "compiler"), """
+      A failed run must never satisfy freshness. If it did, an analyzer that
+      could not run would make the source look current and stop re-enqueueing —
+      "nobody looked" recorded as "looked, and it is clean".
+      """
+    end
+
+    test "a result for a run this server is not tracking is refused", %{channel: channel} do
+      ref =
+        push(channel, "analysis_result", compiler_result(999_999, [broken_file_diagnostic()]))
+
+      assert_reply ref, :error, %{"reason" => "unknown_run"}, 5_000
+    end
+
+  end
+
+  # A run left `:running` makes `in_flight/1` report analysis pending on every
+  # later stop, which allows the stop with a note that results apply next time —
+  # on a next time that never comes. The queue that was going to answer those
+  # runs died with the harness that held it, so a hard kill is the case that
+  # matters: `terminate/2` does not get to run, and the cleanup has to happen at
+  # the next join instead.
+  describe "runs a departed harness left open" do
+    alias CodeMySpec.Analysis
+
+    setup do
+      Process.flag(:trap_exit, true)
+      :ok
+    end
+
+    test "are closed when the next harness joins", %{scope: scope, topic: topic} do
+      {:ok, _reply, channel} = join_as(scope, topic)
+
+      ref = push(channel, "hook_decision", %{"hook" => "stop", "payload" => %{}})
+      assert_reply ref, :ok, _decision, 5_000
+      assert_push "run_analysis", %{"runs" => _}, 5_000
+
+      assert Analysis.runs_in_flight?(scope)
+
+      down = Process.monitor(channel.channel_pid)
+      Process.exit(channel.channel_pid, :kill)
+      assert_receive {:DOWN, ^down, :process, _, _}, 2_000
+
+      assert eventually(fn -> match?({:ok, _, _}, join_as(scope, topic)) end)
+
+      refute Analysis.runs_in_flight?(scope),
+             "an open run whose executor is gone makes every later stop report analysis " <>
+               "pending — an allow, forever"
+    end
+  end
+
   # This is the test that would have caught the defect it was written for.
   #
   # The harness pushed `hook_decision` for weeks of work while this server had no
@@ -346,11 +528,18 @@ defmodule CodeMySpecWeb.HarnessProjectChannelTest do
 
     # Keep in step with the events CmsHarness pushes — see
     # `CmsHarness.Project.ChannelClient` and `CmsHarnessTest.FakeServer`.
-    @harness_events ~w(read_model observations hook_decision)
+    @harness_events ~w(read_model observations hook_decision analysis_result)
 
     test "every event the harness sends is one this server implements", %{channel: channel} do
       for event <- @harness_events do
-        ref = push(channel, event, %{"observations" => [], "hook" => "stop", "payload" => %{}})
+        ref =
+          push(channel, event, %{
+            "observations" => [],
+            "hook" => "stop",
+            "payload" => %{},
+            "run_id" => 0,
+            "source" => "compiler"
+          })
 
         assert_receive %Phoenix.Socket.Reply{ref: ^ref, payload: payload}, 5_000, """
         The harness pushes #{inspect(event)} and this server never replied to it.

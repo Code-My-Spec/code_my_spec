@@ -63,7 +63,17 @@ e2e_ip =
 config :code_my_spec, CodeMySpecWeb.Endpoint,
   http: [ip: e2e_ip, port: if(e2e?, do: 4102, else: 4002)],
   secret_key_base: "uQsFkBLrXNG5yxrQkMHNLOAi5NcrEzpZut3YYEOlAFiuhpoynMd+/rJBgz6FSWsg",
-  server: e2e?
+  # Listens under CMS_E2E, except while seeding.
+  #
+  # `server: e2e?` alone meant *any* `mix run` in this env tried to bind 4102 —
+  # so `e2e_seed.exs` could not run while the server it seeds for was up, which
+  # is exactly when you want to run it, and it died with :eaddrinuse.
+  #
+  # Setting `server: false` and relying on `mix phx.server` to set
+  # `:serve_endpoints` does not work here — checked, the endpoint never bound.
+  # So the exception is explicit rather than inferred from a framework
+  # behaviour I got wrong once already.
+  server: e2e? and System.get_env("CMS_E2E_SEED") != "1"
 
 # Local web endpoint — needed for spex tests that drive the local UI.
 # server: false, runs as a started-but-quiet endpoint so LiveViewTest can use it.
