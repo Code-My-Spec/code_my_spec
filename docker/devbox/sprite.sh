@@ -173,6 +173,40 @@ git config --global --add safe.directory "${APP_DIR}" 2>/dev/null || true
 su agent -c "git config --global --add safe.directory '${APP_DIR}'" 2>/dev/null || true
 chown -R agent:agent "${APP_DIR}" 2>/dev/null || true
 
+# --- the agent's credentials ---------------------------------------------------
+# Claude Code needs to be logged in, and nothing here logs it in. Two ways to
+# supply that, both from outside:
+#
+#   1. A volume holding an already-authenticated home (how this has been done
+#      so far — `cms-agent-home-v2` on the dev machine):
+#
+#        docker run -v cms-agent-home-v2:/home/agent/.claude ...
+#
+#   2. A long-lived token, which is what an unattended sprite on a fresh host
+#      wants:
+#
+#        claude setup-token                    # on a machine with a browser
+#        docker run -e CLAUDE_CODE_OAUTH_TOKEN=... ...
+#
+# Checked here rather than discovered at the first agent turn, because
+# "Not logged in" arrives as a turn that does nothing and looks like a hung
+# sprite. On macOS the credential lives in the Keychain, not in ~/.claude, so
+# bind-mounting the host's directory carries config and no auth — that looks
+# like it should work and does not.
+if [ -z "${CLAUDE_CODE_OAUTH_TOKEN:-}" ] && [ ! -f /home/agent/.claude/.credentials.json ]; then
+  log "WARNING: no Claude credential. Mount an authenticated home at"
+  log "         /home/agent/.claude, or pass CLAUDE_CODE_OAUTH_TOKEN."
+  log "         The agent will start and every turn will report 'Not logged in'."
+fi
+
+# The image symlinks ~/.claude.json into ~/.claude so both survive one volume.
+# A mounted volume replaces the directory the symlink pointed into, so it is
+# re-made here rather than baked.
+if [ -f /home/agent/.claude/claude.json ]; then
+  ln -sfn /home/agent/.claude/claude.json /home/agent/.claude.json
+  chown -h agent:agent /home/agent/.claude.json 2>/dev/null || true
+fi
+
 # --- the agent's harness tools -------------------------------------------------
 # Without the plugin the agent has no `get_next_requirement`, no `start_task`,
 # and — the part that actually ends the run — no stop hook, so nothing forces it
