@@ -345,7 +345,7 @@ PATCH
   log "Starting the light harness on ${CMS_HARNESS_PORT} against ${CMS_SERVER_URL}"
 
   exec setpriv --reuid=agent --regid=agent --init-groups \
-    /opt/cms/bin/cms_harness start
+    /opt/cms_harness/bin/cms_harness start
 fi
 
 exec setpriv --reuid=agent --regid=agent --init-groups \
