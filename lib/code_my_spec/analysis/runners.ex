@@ -86,7 +86,8 @@ defmodule CodeMySpec.Analysis.Runners do
 
     case StaticRunner.run(scope, :credo, runner_opts) do
       {:ok, problems} ->
-        {:ok, summarize(problems, if(problems == [], do: 0, else: 1), %{"issues" => length(problems)})}
+        {:ok,
+         summarize(problems, if(problems == [], do: 0, else: 1), %{"issues" => length(problems)})}
 
       {:error, reason} ->
         {:error, reason}
@@ -154,11 +155,32 @@ defmodule CodeMySpec.Analysis.Runners do
     problems = raw |> diagnostics() |> Enum.map(&ProblemConverter.from_compiler/1)
     {errors, warnings} = Enum.split_with(problems, &(&1.severity == :error))
 
-    {:ok,
-     summarize(problems, raw["exit_status"], %{
-       "errors" => length(errors),
-       "warnings" => length(warnings)
-     })}
+    # A build that failed and said nothing is not a clean build.
+    #
+    # `Compile` deliberately returns no diagnostics when it cannot tell a real
+    # compile error from a transient one — a config change forcing a rebuild,
+    # build-lock contention, a project without the `:diagnostics` compiler. That
+    # restraint is right: synthesising a problem out of Mix's progress banner
+    # would block stops on a phantom.
+    #
+    # But the result was still recorded `:completed` with zero problems, and
+    # `:completed` with zero problems is how this system says "looked, and it is
+    # clean". So "the compiler failed and I could not tell you why" and "the code
+    # is fine" arrived identically — the exact collapse this project exists to
+    # prevent, on the analyzer that matters most.
+    #
+    # Failing the run says the third thing. It does not block: a failed run is
+    # re-enqueued on the next stop rather than turned into a Problem, so no
+    # phantom error blocks anybody. What it stops doing is claiming success.
+    if raw["exit_status"] not in [0, nil] and problems == [] do
+      {:error, {:compile_failed_without_diagnostics, raw["exit_status"]}}
+    else
+      {:ok,
+       summarize(problems, raw["exit_status"], %{
+         "errors" => length(errors),
+         "warnings" => length(warnings)
+       })}
+    end
   end
 
   def from_raw("credo", raw) do

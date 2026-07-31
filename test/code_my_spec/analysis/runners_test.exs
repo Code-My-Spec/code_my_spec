@@ -40,6 +40,41 @@ defmodule CodeMySpec.Analysis.RunnersTest do
   # Problems. `run/4` goes through the same function, so the two paths cannot
   # disagree about what a diagnostic means.
   describe "from_raw/2" do
+    # Three outcomes that must stay three, not two. A clean build, a build with
+    # errors, and a build that failed while saying nothing — the last of which
+    # used to be recorded as the first.
+    test "a build that failed without diagnostics is not reported as clean" do
+      assert {:error, {:compile_failed_without_diagnostics, 1}} =
+               Runners.from_raw("compiler", %{"exit_status" => 1, "diagnostics" => []}),
+             "`:completed` with no problems is how this system says it looked and " <>
+               "found nothing — a compiler that could not say why it failed must not " <>
+               "borrow that sentence"
+    end
+
+    test "a clean build is still clean" do
+      assert {:ok, %{problems: []}} =
+               Runners.from_raw("compiler", %{"exit_status" => 0, "diagnostics" => []})
+    end
+
+    # The restraint that motivated the old behaviour is intact: a failed build
+    # that *did* report diagnostics still converts them rather than erroring, so
+    # nothing is lost by the stricter path.
+    test "a failed build with diagnostics still converts them" do
+      raw = %{
+        "exit_status" => 1,
+        "diagnostics" => [
+          %{
+            "file" => "lib/a.ex",
+            "line" => 1,
+            "message" => "undefined function x/0",
+            "severity" => "error"
+          }
+        ]
+      }
+
+      assert {:ok, %{problems: [_]}} = Runners.from_raw("compiler", raw)
+    end
+
     test "a compiler error becomes a blocking Problem" do
       raw = %{
         "exit_status" => 1,
