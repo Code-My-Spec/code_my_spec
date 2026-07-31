@@ -188,7 +188,6 @@ defmodule CodeMySpecWeb.Router do
     post "/permissions/request", PermissionController, :create
     post "/permissions/:id/respond", PermissionController, :respond
     get "/permissions/:id/status", PermissionController, :status
-
   end
 
   # Questions are the one API a sprite needs, and a sprite has no user to run
@@ -197,6 +196,10 @@ defmodule CodeMySpecWeb.Router do
   # credential widened, and only here.
   scope "/api", CodeMySpecWeb do
     pipe_through [:api, CodeMySpecWeb.Plugs.DeployKeyOrOAuth]
+
+    # A sprite trades its deploy key for a real OAuth token here, then uses that
+    # everywhere else. Keeps the deploy key narrow — see SpriteTokenController.
+    post "/sprite/token", SpriteTokenController, :create
 
     post "/questions/ask", QuestionController, :ask
     post "/questions/:id/answer", QuestionController, :answer
