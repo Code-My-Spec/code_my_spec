@@ -33,6 +33,14 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   alias CodeMySpec.Files.File, as: FileRecord
   alias CodeMySpec.Files.FileSync
   alias CodeMySpec.Files.Scanner
+  alias CodeMySpec.Hooks.AskUserQuestion
+  alias CodeMySpec.Hooks.NotificationHook
+  alias CodeMySpec.Hooks.PostToolUse
+  alias CodeMySpec.Hooks.PreToolUse
+  alias CodeMySpec.Hooks.SessionStart
+  alias CodeMySpec.Hooks.Stop
+  alias CodeMySpec.Hooks.SubagentStart
+  alias CodeMySpec.Hooks.SubagentStop
   alias CodeMySpec.Leases
   alias CodeMySpec.Users.Scope
 
@@ -122,7 +130,75 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
     end
   end
 
-  def handle_in(_event, _payload, socket), do: {:noreply, socket}
+  # Decide a hook the harness is proxying for Claude Code.
+  #
+  # The decision is database work — blocking problems, config modes, session and
+  # task state — so it lives here, while the analyzers that feed it shell out
+  # against a working copy and stay on the harness. This is the same split the
+  # local controllers already use; they call the identical `Hooks.*` modules, so
+  # the two paths cannot drift in what they decide, only in how they are reached.
+  #
+  # On the critical path of every agent turn, so it does exactly one thing.
+  def handle_in("hook_decision", %{"hook" => hook, "payload" => payload} = msg, socket)
+      when is_binary(hook) and is_map(payload) do
+    case decide_hook(hook, socket.assigns.scope, payload, msg["port"]) do
+      {:error, reason} ->
+        {:reply, {:error, %{"reason" => reason}}, socket}
+
+      {200, body} ->
+        {:reply, {:ok, body}, socket}
+
+      {status, body} when is_integer(status) ->
+        {:reply, {:error, %{"status" => status, "body" => body}}, socket}
+    end
+  end
+
+  # An unknown event is answered, not dropped.
+  #
+  # This clause used to be `{:noreply, socket}`, and that silence was a real
+  # defect: the harness pushed `hook_decision` before this server implemented it,
+  # got no reply, and sat out its full timeout on every single hook. Both test
+  # suites were green throughout, because the harness tests against a fake that
+  # did implement it.
+  #
+  # A reply saying "I do not know that event" is the difference between a version
+  # skew that announces itself and one that reads as latency.
+  def handle_in(event, _payload, socket) do
+    Logger.warning("[HarnessProject] unknown event #{inspect(event)}")
+    {:reply, {:error, %{"reason" => "unknown_event", "event" => event}}, socket}
+  end
+
+  # `port` is the harness's own — the analysis curl that `pre-tool-use` rewrites
+  # points at `http://localhost:<port>/api/analysis/run`, which only means
+  # anything on the machine running the agent. The server cannot know it and
+  # must not guess it, so a rewrite without one is refused rather than pointed
+  # somewhere plausible.
+  defp decide_hook("pre-tool-use", _scope, _payload, nil), do: {:error, "port_required"}
+
+  defp decide_hook("pre-tool-use", scope, payload, port),
+    do: {200, PreToolUse.decide(scope, payload, port)}
+
+  defp decide_hook("stop", scope, payload, _port), do: {200, Stop.decide(scope, payload)}
+
+  defp decide_hook("session-start", scope, payload, _port),
+    do: SessionStart.handle(scope, payload)
+
+  defp decide_hook("post-tool-use", scope, payload, _port),
+    do: PostToolUse.handle(scope, payload)
+
+  defp decide_hook("subagent-start", scope, payload, _port),
+    do: SubagentStart.handle(scope, payload)
+
+  defp decide_hook("subagent-stop", scope, payload, _port),
+    do: SubagentStop.handle(scope, payload)
+
+  defp decide_hook("notification", scope, payload, _port),
+    do: NotificationHook.handle(scope, payload)
+
+  defp decide_hook("ask-user-question", scope, payload, _port),
+    do: AskUserQuestion.handle(scope, payload)
+
+  defp decide_hook(hook, _scope, _payload, _port), do: {:error, "unknown_hook: #{hook}"}
 
   # The whole manifest is validated before any of it is written. A partial
   # apply would leave the project half-described, which is worse than not

@@ -197,6 +197,100 @@ defmodule CodeMySpecWeb.HarnessProjectChannelTest do
     end
   end
 
+  describe "hook decisions" do
+    setup %{scope: scope, topic: topic} do
+      {:ok, _reply, channel} =
+        scope |> connect() |> subscribe_and_join(HarnessProjectChannel, topic)
+
+      %{channel: channel}
+    end
+
+    test "a stop decision comes back over the channel", %{channel: channel} do
+      ref =
+        push(channel, "hook_decision", %{
+          "hook" => "stop",
+          "payload" => %{"session_id" => "s1", "cwd" => "/workspace/app"}
+        })
+
+      assert_reply ref, :ok, decision, 5_000
+      assert is_map(decision)
+    end
+
+    # The server cannot know which port the harness serves on, and the rewritten
+    # analysis curl only means anything on the agent's own machine. Refusing is
+    # the only honest answer; pointing it somewhere plausible would produce a
+    # command that runs and reports against the wrong process.
+    test "pre-tool-use without the harness's port is refused, not guessed",
+         %{channel: channel} do
+      ref =
+        push(channel, "hook_decision", %{
+          "hook" => "pre-tool-use",
+          "payload" => %{"tool_name" => "Bash", "tool_input" => %{"command" => "mix test"}}
+        })
+
+      assert_reply ref, :error, %{"reason" => "port_required"}, 5_000
+    end
+
+    test "an unknown hook says so", %{channel: channel} do
+      ref = push(channel, "hook_decision", %{"hook" => "not-a-hook", "payload" => %{}})
+
+      assert_reply ref, :error, %{"reason" => "unknown_hook: not-a-hook"}, 5_000
+    end
+  end
+
+  # This is the test that would have caught the defect it was written for.
+  #
+  # The harness pushed `hook_decision` for weeks of work while this server had no
+  # clause for it. The old catch-all returned `{:noreply, socket}`, so the push
+  # got no reply at all and the harness sat out its full timeout on every hook —
+  # on the critical path of every agent turn. Both suites stayed green: this one
+  # did not know the event existed, and the harness's tests run against a fake
+  # server that did implement it.
+  #
+  # A fake is the right way to test the harness in isolation. What it cannot do
+  # is notice that it has drifted from the real thing, so that has to be asserted
+  # somewhere, and this is the somewhere.
+  describe "the wire contract" do
+    setup %{scope: scope, topic: topic} do
+      {:ok, _reply, channel} =
+        scope |> connect() |> subscribe_and_join(HarnessProjectChannel, topic)
+
+      %{channel: channel}
+    end
+
+    # Keep in step with the events CmsHarness pushes — see
+    # `CmsHarness.Project.ChannelClient` and `CmsHarnessTest.FakeServer`.
+    @harness_events ~w(read_model observations hook_decision)
+
+    test "every event the harness sends is one this server implements", %{channel: channel} do
+      for event <- @harness_events do
+        ref = push(channel, event, %{"observations" => [], "hook" => "stop", "payload" => %{}})
+
+        assert_receive %Phoenix.Socket.Reply{ref: ^ref, payload: payload}, 5_000, """
+        The harness pushes #{inspect(event)} and this server never replied to it.
+
+        A push with no reply is indistinguishable from a slow server: the harness
+        waits out its whole decision timeout and then fails closed.
+        """
+
+        # Not merely "a reply came back" — the catch-all replies too, and a test
+        # satisfied by that would pass for an event nobody implemented, which is
+        # the exact hole it exists to close.
+        refute payload["reason"] == "unknown_event", """
+        #{inspect(event)} reached the catch-all: the harness sends it and this
+        server has no clause for it. Add a handle_in clause, or stop sending it.
+        """
+      end
+    end
+
+    test "an event neither side knows is refused rather than swallowed",
+         %{channel: channel} do
+      ref = push(channel, "some_event_from_a_newer_harness", %{})
+
+      assert_reply ref, :error, %{"reason" => "unknown_event"}, 5_000
+    end
+  end
+
   describe "the channel's lifetime is the lease" do
     # The channel is linked to the test process, so its death would take the
     # test with it — and its death is the thing under test.
