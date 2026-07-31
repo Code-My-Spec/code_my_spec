@@ -317,7 +317,14 @@ if [ "${CMS_LIGHT_HARNESS:-}" = "1" ]; then
   # something an outer export can override. Patching the installed copy is
   # deterministic, where hoping for placeholder interpolation is not — and this
   # container owns that file.
-  PLUGIN_JSON="$(find /home/agent/.claude -path '*codemyspec*' -name plugin.json 2>/dev/null | head -1)"
+  # `*/plugins/codemyspec/*`, not `*codemyspec*`. The marketplace directory is
+  # itself named codemyspec, so the looser pattern also matches every other
+  # plugin it carries — market-my-spec among them — and `head -1` would pick
+  # whichever the filesystem happened to return first. Patching the wrong
+  # manifest leaves the real one pointing at a dead port, which surfaces as
+  # "no MCP tools" with nothing to connect it to a bad glob.
+  PLUGIN_JSON="$(find /home/agent/.claude \
+    -path '*/plugins/codemyspec/.claude-plugin/plugin.json' 2>/dev/null | head -1)"
 
   if [ -n "${PLUGIN_JSON}" ]; then
     python3 - "${PLUGIN_JSON}" "${CMS_SERVER_URL}/mcp/harness" <<'PATCH'
