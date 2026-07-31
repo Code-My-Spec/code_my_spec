@@ -27,6 +27,7 @@ package main
 
 import (
 	"bufio"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -76,16 +77,62 @@ func (r *relay) run() {
 		if line == "" {
 			continue
 		}
+
+		// Until a session exists, one at a time.
+		//
+		// Fanning every line out to its own goroutine loses ordering, and the
+		// first two messages are the two that cannot be reordered: `initialize`
+		// establishes the session and its response header carries the id that
+		// every later request needs. `notifications/initialized` follows
+		// immediately, won the race, and arrived at a server that had no session
+		// yet — which answered `-32600 Session not found`, an error response to a
+		// notification, and Claude Code closed the transport about ten
+		// milliseconds in. Reproduced by hand against the installed binary.
+		//
+		// The cost is bounded: this serializes exactly the handshake. Once the
+		// session id is known, parallel tool calls fan out as before.
 		r.wg.Add(1)
-		go r.forward(line)
+		if r.getSID() == "" {
+			r.forward(line)
+		} else {
+			go r.forward(line)
+		}
 	}
 	// stdin closed (Claude ended the session): drain in-flight work, then exit.
 	r.wg.Wait()
 }
 
+// isNotification reports whether a client->server message is a JSON-RPC
+// notification: an object with no `id`. Notifications must not be answered, so
+// whatever comes back for one must not reach stdout.
+func isNotification(msg string) bool {
+	var probe struct {
+		ID     *json.RawMessage `json:"id"`
+		Method string           `json:"method"`
+	}
+	if err := json.Unmarshal([]byte(msg), &probe); err != nil {
+		// Not an object we can read — forward it and let the server judge.
+		return false
+	}
+	return probe.Method != "" && probe.ID == nil
+}
+
 // forward POSTs one message and streams the response back to stdout.
 func (r *relay) forward(msg string) {
 	defer r.wg.Done()
+
+	// A notification gets no reply, by the spec. This server answers
+	// `notifications/initialized` with 202 and a body of `{}`, and relaying that
+	// `{}` to stdout is what killed the transport: Claude Code validates each
+	// stdout line as a JSON-RPC message, `{}` is not one, and the whole MCP
+	// server dies about ten milliseconds into the session. Every tool the
+	// harness offers then reads as "the plugin has no tools", which looks like a
+	// failed install and is not one. An agent lost a full run to this and had to
+	// hand-roll its own HTTP bridge to get any tools at all.
+	//
+	// Sent anyway — the server needs it, it is how a session becomes ready.
+	// Only the reply is dropped.
+	swallow := isNotification(msg)
 
 	req, err := http.NewRequest(http.MethodPost, r.endpoint, strings.NewReader(msg))
 	if err != nil {
@@ -122,6 +169,10 @@ func (r *relay) forward(msg string) {
 	if sid := resp.Header.Get("Mcp-Session-Id"); sid != "" {
 		r.setSID(sid)
 	}
+	if swallow {
+		io.Copy(io.Discard, resp.Body)
+		return
+	}
 	r.emit(resp)
 }
 
@@ -148,7 +199,36 @@ func (r *relay) emit(resp *http.Response) {
 	}
 }
 
+// isJSONRPC reports whether a payload is something Claude Code will accept on
+// stdout: a JSON-RPC message, or a batch of them.
+func isJSONRPC(s string) bool {
+	var one struct {
+		JSONRPC string `json:"jsonrpc"`
+	}
+	if err := json.Unmarshal([]byte(s), &one); err == nil {
+		return one.JSONRPC != ""
+	}
+
+	var batch []struct {
+		JSONRPC string `json:"jsonrpc"`
+	}
+	if err := json.Unmarshal([]byte(s), &batch); err == nil && len(batch) > 0 {
+		return batch[0].JSONRPC != ""
+	}
+
+	return false
+}
+
 func (r *relay) writeLine(s string) {
+	// Belt to the notification braces. Anything on stdout that is not a JSON-RPC
+	// message takes the whole transport down with it, so a payload we cannot
+	// vouch for goes to the log instead — a dropped line degrades one call, a
+	// bad line ends the session.
+	if !isJSONRPC(s) {
+		logf("dropped a non-JSON-RPC payload rather than breaking the transport: %.200s", s)
+		return
+	}
+
 	r.outMu.Lock()
 	defer r.outMu.Unlock()
 	r.out.WriteString(s)
