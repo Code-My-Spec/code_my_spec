@@ -94,52 +94,19 @@ defmodule CodeMySpec.Files.FileSync do
     # separately; scanning now states what it needs and gets it once.
     read_model = Scanner.read_model(scope)
 
-    file_entries = Scanner.stream_files(env) |> Enum.to_list()
+    observations = Scanner.observe(env, read_model)
 
     scan_ms = System.monotonic_time(:millisecond) - start
 
-    # Snapshot existing rows up front so we can compute fingerprint diffs
-    # (real "changed paths") and capture the role of files that are about
-    # to be removed (so embedding cleanup knows the source/path tuple).
-    existing_records = Files.list_files(scope)
-    existing_by_path = Map.new(existing_records, &{&1.path, &1})
+    %{
+      upserted: upserted,
+      removed: removed,
+      changed_entries: changed_entries,
+      removed_records: removed_records
+    } = reconcile(scope, observations)
 
-    {upserted, changed_entries} =
-      case file_entries do
-        [] ->
-          {0, []}
-
-        _ ->
-          validated_entries =
-            file_entries
-            |> Scanner.resolve_owners(read_model)
-            |> then(&Scanner.fingerprint_entries(env, &1))
-            |> Enum.map(
-              &Scanner.validate_entry(&1, env, read_model.component_by_id, read_model.strict?)
-            )
-
-          changed = changed_entries(validated_entries, existing_by_path)
-
-          {count, _} = Files.upsert_files(scope, validated_entries)
-          {count, changed}
-      end
-
+    file_entries = observations
     validate_ms = System.monotonic_time(:millisecond) - start - scan_ms
-
-    # Remove files no longer on disk + their orphaned problems (otherwise
-    # stale failures from deleted files keep blocking stop hooks).
-    current_paths = Enum.map(file_entries, & &1.path)
-    current_path_set = MapSet.new(current_paths)
-
-    removed_records =
-      Enum.reject(existing_records, &MapSet.member?(current_path_set, &1.path))
-
-    {removed, _} = Files.delete_removed(scope, current_paths)
-    {:ok, orphaned} = Problems.clear_problems_for_missing_files(scope, current_paths)
-
-    if orphaned > 0 do
-      Logger.info("[FileSync] Cleared #{orphaned} orphaned problem(s) from deleted files")
-    end
 
     if embed?, do: sync_embeddings(scope, env, changed_entries, removed_records)
 
@@ -161,6 +128,64 @@ defmodule CodeMySpec.Files.FileSync do
        changed_paths: changed_paths,
        total_files: length(file_entries)
      }}
+  end
+
+  @doc """
+  Turn observations into File rows.
+
+  The interpretation half of sync. Takes what `Files.Scanner` saw — path, role,
+  fingerprint, validity, owning component or story, and no file content — and
+  reconciles it against what is stored: upserting what is there, removing what
+  is not, and clearing problems belonging to files that no longer exist.
+
+  Split out because the two halves need different machines. Observing has to
+  happen where the files are; this needs only the database, and a harness that
+  holds none can send its observations here instead of writing rows itself.
+
+  Note that it takes the *whole* observation set rather than a delta. That is
+  what lets it tell a deletion from an omission — a stream of per-file updates
+  cannot, and would silently retain rows for files that had gone.
+  """
+  @spec reconcile(Scope.t(), [map()]) :: map()
+  def reconcile(%Scope{} = scope, observations) when is_list(observations) do
+    # Snapshot existing rows up front so we can compute fingerprint diffs
+    # (real "changed paths") and capture the role of files that are about
+    # to be removed (so embedding cleanup knows the source/path tuple).
+    existing_records = Files.list_files(scope)
+    existing_by_path = Map.new(existing_records, &{&1.path, &1})
+
+    {upserted, changed} =
+      case observations do
+        [] ->
+          {0, []}
+
+        _ ->
+          changed = changed_entries(observations, existing_by_path)
+          {count, _} = Files.upsert_files(scope, observations)
+          {count, changed}
+      end
+
+    # Remove files no longer on disk + their orphaned problems (otherwise
+    # stale failures from deleted files keep blocking stop hooks).
+    current_paths = Enum.map(observations, & &1.path)
+    current_path_set = MapSet.new(current_paths)
+
+    removed_records =
+      Enum.reject(existing_records, &MapSet.member?(current_path_set, &1.path))
+
+    {removed, _} = Files.delete_removed(scope, current_paths)
+    {:ok, orphaned} = Problems.clear_problems_for_missing_files(scope, current_paths)
+
+    if orphaned > 0 do
+      Logger.info("[FileSync] Cleared #{orphaned} orphaned problem(s) from deleted files")
+    end
+
+    %{
+      upserted: upserted,
+      removed: removed,
+      changed_entries: changed,
+      removed_records: removed_records
+    }
   end
 
   # Entries whose fingerprint differs from the existing DB row (or that
