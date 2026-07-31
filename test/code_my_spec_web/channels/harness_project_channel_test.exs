@@ -13,6 +13,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannelTest do
   use CodeMySpecTest.DataCase, async: false
 
   import Phoenix.ChannelTest
+  import CodeMySpec.ComponentsFixtures
   import CodeMySpec.UsersFixtures
 
   @endpoint CodeMySpecWeb.Endpoint
@@ -27,26 +28,43 @@ defmodule CodeMySpecWeb.HarnessProjectChannelTest do
     %{scope: scope, topic: "harness_project:#{scope.active_project_id}"}
   end
 
-  defp connect(scope) do
-    UserSocket
-    |> socket("harness_test", %{scope: scope})
-    |> Map.update!(:assigns, &Map.put(&1, :harness_label, "the harness at /workspace/app"))
+  # Mirrors what `UserSocket.connect/2` actually assigns: a scope, and for a
+  # sprite a `:deploy_key_project_id`. Nothing else. The previous version of this
+  # helper hand-injected `:harness_label`, an assign nothing in production ever
+  # sets — which is precisely why the "name the checkout" property passed here
+  # while every real refusal said "an unknown host".
+  defp harness_socket(scope, opts) do
+    assigns =
+      case Keyword.get(opts, :deploy_key_project_id) do
+        nil -> %{scope: scope}
+        pid -> %{scope: scope, deploy_key_project_id: pid}
+      end
+
+    socket(UserSocket, "harness_test", assigns)
+  end
+
+  @label "the harness at /workspace/app"
+
+  defp join_as(scope, topic, opts \\ []) do
+    scope
+    |> harness_socket(opts)
+    |> subscribe_and_join(HarnessProjectChannel, topic, %{"label" => @label})
   end
 
   describe "joining" do
     test "a harness takes the project when it is free", %{scope: scope, topic: topic} do
       assert {:ok, _reply, _socket} =
-               scope |> connect() |> subscribe_and_join(HarnessProjectChannel, topic)
+               join_as(scope, topic)
     end
 
     test "a second harness is refused and told who holds it", %{scope: scope, topic: topic} do
       {:ok, _reply, _first} =
-        scope |> connect() |> subscribe_and_join(HarnessProjectChannel, topic)
+        join_as(scope, topic)
 
       assert {:error, %{reason: "project_in_use", held_by: held_by}} =
-               scope |> connect() |> subscribe_and_join(HarnessProjectChannel, topic)
+               join_as(scope, topic)
 
-      assert held_by == "the harness at /workspace/app",
+      assert held_by == @label,
              "a refusal has to name the checkout to go and stop"
     end
 
@@ -54,17 +72,60 @@ defmodule CodeMySpecWeb.HarnessProjectChannelTest do
       other = full_scope_fixture()
 
       assert {:error, %{reason: "unauthorized"}} =
-               scope
-               |> connect()
-               |> subscribe_and_join(
-                 HarnessProjectChannel,
-                 "harness_project:#{other.active_project_id}"
-               )
+               join_as(scope, "harness_project:#{other.active_project_id}")
     end
 
     test "an unknown topic shape is refused", %{scope: scope} do
       assert {:error, %{reason: "invalid topic"}} =
-               scope |> connect() |> subscribe_and_join(HarnessProjectChannel, "nonsense:1")
+               join_as(scope, "nonsense:1")
+    end
+
+    # Authorization used to compare the topic against `scope.active_project_id`,
+    # which is the user's *UI preference* — the project they last clicked in the
+    # web app. That capped a laptop at one project, the opposite of the
+    # one-harness-many-projects design.
+    test "a harness can hold a second project in the same account", %{scope: scope} do
+      {:ok, other} =
+        CodeMySpec.Projects.create_project(scope, %{
+          name: "another-project-#{System.unique_integer([:positive])}",
+          module_name: "Another"
+        })
+
+      assert {:ok, _reply, _channel} = join_as(scope, "harness_project:#{other.id}"),
+             "a harness serves every project its credential reaches, not just the last one clicked"
+    end
+
+    # The sprite case, which was refused outright: the deploy-key connect assigns
+    # `:deploy_key_project_id`, and resolving through the account owner's UI
+    # preference meant a sprite was judged against whatever they last clicked.
+    test "a deploy key reaches its own project", %{scope: scope, topic: topic} do
+      assert {:ok, _reply, _channel} =
+               join_as(scope, topic, deploy_key_project_id: scope.active_project_id)
+    end
+
+    test "a deploy key reaches nothing else", %{scope: scope} do
+      {:ok, other} =
+        CodeMySpec.Projects.create_project(scope, %{
+          name: "not-mine-#{System.unique_integer([:positive])}",
+          module_name: "NotMine"
+        })
+
+      assert {:error, %{reason: "unauthorized"}} =
+               join_as(scope, "harness_project:#{other.id}",
+                 deploy_key_project_id: scope.active_project_id
+               ),
+             "a deploy key is issued per project and must not reach a sibling"
+    end
+
+    test "a refusal that nobody labelled says so, rather than inventing a host",
+         %{scope: scope, topic: topic} do
+      {:ok, _reply, _first} =
+        scope
+        |> harness_socket([])
+        |> subscribe_and_join(HarnessProjectChannel, topic, %{})
+
+      assert {:error, %{reason: "project_in_use", held_by: held_by}} = join_as(scope, topic)
+      assert held_by =~ "did not say where it is"
     end
   end
 
@@ -72,7 +133,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannelTest do
     test "hands back everything a database-less harness needs to scan",
          %{scope: scope, topic: topic} do
       {:ok, _reply, channel} =
-        scope |> connect() |> subscribe_and_join(HarnessProjectChannel, topic)
+        join_as(scope, topic)
 
       ref = push(channel, "read_model", %{})
 
@@ -85,12 +146,37 @@ defmodule CodeMySpecWeb.HarnessProjectChannelTest do
       assert is_list(payload["story_ids"]), "a MapSet has no JSON form — it must cross as a list"
       assert is_boolean(payload["strict"])
     end
+
+    # `assert_reply` compares terms in-process, so it never exercises the
+    # serializer — which is how a reply carrying whole `%Component{}` structs
+    # passed here while raising on a real socket. Components have no
+    # `@derive Jason.Encoder`, so the harness received no read model at all.
+    test "the reply can actually be encoded for the wire", %{scope: scope, topic: topic} do
+      component_fixture(scope)
+
+      {:ok, _reply, channel} = join_as(scope, topic)
+
+      ref = push(channel, "read_model", %{})
+      assert_reply ref, :ok, payload, 2_000
+
+      assert {:ok, json} = Jason.encode(payload),
+             "the read model has to survive JSON — asserting on the term in-process does not check that"
+
+      # And only the one field its reader asks for: `component_by_id` is read
+      # solely for `.module_name`, so shipping the row was a crash and several
+      # kilobytes per component of fields nobody reads.
+      decoded = Jason.decode!(json)
+
+      for {_id, component} <- decoded["component_by_id"] do
+        assert Map.keys(component) == ["module_name"]
+      end
+    end
   end
 
   describe "observations" do
     setup %{scope: scope, topic: topic} do
       {:ok, _reply, channel} =
-        scope |> connect() |> subscribe_and_join(HarnessProjectChannel, topic)
+        join_as(scope, topic)
 
       %{channel: channel}
     end
@@ -200,7 +286,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannelTest do
   describe "hook decisions" do
     setup %{scope: scope, topic: topic} do
       {:ok, _reply, channel} =
-        scope |> connect() |> subscribe_and_join(HarnessProjectChannel, topic)
+        join_as(scope, topic)
 
       %{channel: channel}
     end
@@ -253,7 +339,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannelTest do
   describe "the wire contract" do
     setup %{scope: scope, topic: topic} do
       {:ok, _reply, channel} =
-        scope |> connect() |> subscribe_and_join(HarnessProjectChannel, topic)
+        join_as(scope, topic)
 
       %{channel: channel}
     end
@@ -301,7 +387,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannelTest do
 
     test "leaving frees the project for the next harness", %{scope: scope, topic: topic} do
       {:ok, _reply, first} =
-        scope |> connect() |> subscribe_and_join(HarnessProjectChannel, topic)
+        join_as(scope, topic)
 
       ref = Process.monitor(first.channel_pid)
       leave(first)
@@ -310,7 +396,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannelTest do
       assert eventually(fn ->
                match?(
                  {:ok, _, _},
-                 scope |> connect() |> subscribe_and_join(HarnessProjectChannel, topic)
+                 join_as(scope, topic)
                )
              end),
              "a departed harness must not keep holding the project"
@@ -319,7 +405,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannelTest do
     test "a killed channel frees the project — no release, no expiry",
          %{scope: scope, topic: topic} do
       {:ok, _reply, first} =
-        scope |> connect() |> subscribe_and_join(HarnessProjectChannel, topic)
+        join_as(scope, topic)
 
       # The case the design exists for: nothing gets to run on the way out, the
       # way it would if the container were killed or the network dropped.
@@ -330,7 +416,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannelTest do
       assert eventually(fn ->
                match?(
                  {:ok, _, _},
-                 scope |> connect() |> subscribe_and_join(HarnessProjectChannel, topic)
+                 join_as(scope, topic)
                )
              end),
              "a killed harness must not hold a project until some deadline passes"

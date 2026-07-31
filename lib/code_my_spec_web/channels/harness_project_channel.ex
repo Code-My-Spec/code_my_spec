@@ -30,6 +30,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
 
   require Logger
 
+  alias CodeMySpec.Accounts
   alias CodeMySpec.Files.File, as: FileRecord
   alias CodeMySpec.Files.FileSync
   alias CodeMySpec.Files.Scanner
@@ -42,15 +43,17 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   alias CodeMySpec.Hooks.SubagentStart
   alias CodeMySpec.Hooks.SubagentStop
   alias CodeMySpec.Leases
+  alias CodeMySpec.Projects
+  alias CodeMySpec.Projects.Project
   alias CodeMySpec.Users.Scope
 
   @impl true
-  def join("harness_project:" <> project_id, _payload, socket) do
-    scope = socket.assigns[:scope]
+  def join("harness_project:" <> project_id, payload, socket) do
+    label = harness_label(payload)
 
-    with {:ok, scope} <- authorize(scope, project_id),
+    with {:ok, scope} <- authorize(socket, project_id),
          {:ok, holder} <- start_lease_holder(),
-         :ok <- claim(scope, holder, socket) do
+         :ok <- Leases.acquire(scope, label, holder) do
       {:ok, socket |> assign(:scope, scope) |> assign(:lease_holder, holder)}
     else
       {:error, {:held_by, holder}} ->
@@ -256,44 +259,95 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
 
   defp parse_mtime(_), do: nil
 
-  # `story_ids` is a MapSet, which has no JSON representation — it crosses as a
-  # list and the harness rebuilds it. Everything else is already a plain map.
+  # Nothing here may be a struct. `story_ids` is a MapSet, which has no JSON
+  # representation, and `component_by_id` held whole `%Components.Component{}`
+  # rows — which have no `@derive Jason.Encoder`, so the channel serializer
+  # raised on the reply and the harness never received a read model at all.
+  #
+  # Only `module_name` is ever read from a component, by the test-alignment
+  # check, so that is all that crosses. Sending the row was both a crash and
+  # several kilobytes per component of timestamps and descriptions nobody reads.
   defp serialize_read_model(%Scanner.ReadModel{} = read_model) do
     %{
       "component_by_module" => read_model.component_by_module,
-      "component_by_id" => read_model.component_by_id,
+      "component_by_id" => Map.new(read_model.component_by_id, &serialize_component/1),
       "story_ids" => MapSet.to_list(read_model.story_ids),
       "strict" => read_model.strict?
     }
   end
 
-  # A harness may only hold a project its credential actually reaches. The
-  # socket has already authenticated (user token or project deploy key); this
-  # only checks that the project on the topic is the one that scope covers.
-  defp authorize(%Scope{active_project_id: pid} = scope, project_id)
-       when not is_nil(pid) do
-    if to_string(pid) == project_id, do: {:ok, scope}, else: {:error, :unauthorized}
+  defp serialize_component({id, component}) do
+    {id, %{"module_name" => Map.get(component, :module_name)}}
   end
 
-  defp authorize(_scope, _project_id), do: {:error, :unauthorized}
+  # A harness may only hold a project its credential actually reaches.
+  #
+  # This used to compare the topic against `scope.active_project_id`, which is
+  # the user's *UI preference* — whichever project they last clicked in the web
+  # app. That made a laptop able to serve exactly one project at a time, which
+  # is the opposite of the one-harness-many-projects design, and it broke
+  # sprites outright: the deploy-key connect assigns `:deploy_key_project_id`,
+  # but resolving through the preference meant a sprite was judged against the
+  # *account owner's* last UI click and refused unless it happened to match.
+  #
+  # A UI preference is not an authorization fact. What is: a deploy key names
+  # exactly one project, and a user reaches the projects in accounts they belong
+  # to.
+  defp authorize(socket, project_id) do
+    case socket.assigns[:deploy_key_project_id] do
+      nil -> authorize_member(socket.assigns[:scope], project_id)
+      key_project_id -> authorize_deploy_key(socket.assigns[:scope], key_project_id, project_id)
+    end
+  end
+
+  # A deploy key is issued per project and reaches that project only, whatever
+  # its account owner happens to have selected in the browser.
+  defp authorize_deploy_key(%Scope{} = scope, key_project_id, project_id) do
+    if to_string(key_project_id) == project_id do
+      pin_to_project(scope, project_id)
+    else
+      {:error, :unauthorized}
+    end
+  end
+
+  defp authorize_deploy_key(_scope, _key_project_id, _project_id), do: {:error, :unauthorized}
+
+  defp authorize_member(%Scope{user: %{}} = scope, project_id) do
+    pin_to_project(scope, project_id)
+  end
+
+  defp authorize_member(_scope, _project_id), do: {:error, :unauthorized}
+
+  # Resolves the project the topic names and rebuilds the scope around it, so
+  # everything downstream — files, leases, hook decisions — acts on the project
+  # the harness asked for rather than on whatever the session was pointed at.
+  defp pin_to_project(%Scope{} = scope, project_id) do
+    with %Project{} = project <- Projects.get_project_by_id(project_id),
+         true <- Accounts.user_has_account_access?(scope, project.account_id) do
+      {:ok,
+       %Scope{
+         scope
+         | active_project: project,
+           active_project_id: project.id,
+           active_account_id: project.account_id
+       }}
+    else
+      _ -> {:error, :unauthorized}
+    end
+  end
+
+  # Said by the harness at join, because the server has no way to find it out.
+  # A refusal has to name the checkout to go and stop, and the previous version
+  # read `socket.assigns[:harness_label]`, which nothing ever assigned — so every
+  # refusal said "a harness on an unknown host" while claiming to identify one.
+  # The channel test passed only because it injected the assign by hand.
+  defp harness_label(%{"label" => label}) when is_binary(label) and label != "", do: label
+  defp harness_label(_payload), do: "a harness that did not say where it is"
 
   # Linked, deliberately. This process dying is what releases the lock, so the
   # holder must not outlive the channel — and a holder that cannot start must
   # fail the join rather than silently leave the project unguarded.
   defp start_lease_holder do
     Leases.Session.start_link(name: nil)
-  end
-
-  defp claim(scope, holder, socket) do
-    Leases.acquire(scope, label_for(socket), holder)
-  end
-
-  # Says where the harness is, because the person reading a refusal needs to
-  # know which one to go and stop.
-  defp label_for(socket) do
-    case socket.assigns[:harness_label] do
-      label when is_binary(label) and label != "" -> label
-      _ -> "a harness on #{inspect(socket.assigns[:peer_data] || "an unknown host")}"
-    end
   end
 end
