@@ -32,6 +32,7 @@ defmodule CodeMySpec.Embeddings.HexDocProjector do
 
   require Logger
 
+  alias CodeMySpec.Dependencies
   alias CodeMySpec.Environments
   alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Paths
@@ -77,6 +78,90 @@ defmodule CodeMySpec.Embeddings.HexDocProjector do
     else
       # Package was uninstalled — drop every projected module.
       drop_orphan_modules(scope, package, MapSet.new())
+    end
+  end
+
+  @doc """
+  Project the packages whose recorded version has no docs projected yet.
+
+  This is the convergence step that replaced a settle timer. `Dependencies`
+  records what `mix.lock` says the project depends on — which is knowable the
+  instant the lock is written, before `mix deps.get` has unpacked anything — and
+  this projects the ones whose source has actually landed on disk.
+
+  Returns `%{projected: [name], missing: [name]}`. `missing` is a package the
+  lock names whose `deps/<package>` is not there: either still unpacking, or an
+  `only:`-gated dependency that will never be fetched in this environment. The
+  caller retries a bounded number of times and then reports what stayed missing,
+  because those two cases are not distinguishable from here and pretending
+  otherwise is how the settle timer went wrong in the first place.
+
+  A package is marked projected only at the version that was actually projected.
+  One re-pinned mid-pass stays pending rather than being marked current for a
+  version nobody read.
+  """
+  @spec project_pending(Scope.t(), keyword()) :: %{
+          projected: [String.t()],
+          missing: [String.t()]
+        }
+  def project_pending(%Scope{} = scope, opts \\ []) do
+    env = environment(scope)
+    deps_rel = Keyword.get(opts, :deps_dir, "deps")
+
+    scope
+    |> Dependencies.pending()
+    |> Enum.reduce(%{projected: [], missing: []}, fn dep, acc ->
+      pkg_rel = Path.join(deps_rel, dep.name)
+
+      if dir?(env, pkg_rel) do
+        project_package_from_source(scope, env, dep.name, pkg_rel)
+        Dependencies.mark_projected(scope, dep.name, dep.version)
+        %{acc | projected: [dep.name | acc.projected]}
+      else
+        %{acc | missing: [dep.name | acc.missing]}
+      end
+    end)
+    |> then(&%{projected: Enum.reverse(&1.projected), missing: Enum.reverse(&1.missing)})
+  end
+
+  @doc """
+  Drop projected docs for packages the project no longer depends on.
+
+  Keyed on the recorded dependency set rather than on a removal event, so it is
+  self-healing: a removal missed while the harness was down is corrected on the
+  next pass instead of leaving a package's documentation in the embedding store
+  indefinitely, answering questions about a library that is no longer used.
+
+  This is also why the recorded set is more accurate than globbing `deps/`,
+  which was the previous source of truth. A directory left behind by a removed
+  dependency looks exactly like an installed one; a lock entry cannot be left
+  behind, because `mix` rewrites the lock as a whole.
+  """
+  @spec drop_unrecorded(Scope.t()) :: :ok
+  def drop_unrecorded(%Scope{} = scope) do
+    recorded =
+      scope
+      |> Dependencies.list_dependencies()
+      |> MapSet.new(& &1.name)
+
+    drop_orphan_packages(scope, recorded)
+  end
+
+  @doc """
+  Give up on packages that never appeared, recording that they were looked for.
+
+  Called once the retry budget is spent. Marks each at its recorded version so
+  the project converges, and drops any docs left over from a previous version.
+  The names are returned so the caller can say which packages contributed
+  nothing — a package silently missing from the embedding store is the failure
+  this whole design exists to make visible.
+  """
+  @spec settle_missing(Scope.t()) :: [String.t()]
+  def settle_missing(%Scope{} = scope) do
+    for dep <- Dependencies.pending(scope) do
+      drop_orphan_modules(scope, dep.name, MapSet.new())
+      Dependencies.mark_projected(scope, dep.name, dep.version)
+      dep.name
     end
   end
 

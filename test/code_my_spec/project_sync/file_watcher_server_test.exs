@@ -2,6 +2,7 @@ defmodule CodeMySpec.ProjectSync.FileWatcherServerTest do
   use CodeMySpecTest.DataCase, async: false
 
   alias CodeMySpec.ProjectSync.FileWatcherServer
+  alias CodeMySpec.Dependencies
   alias Ecto.Adapters.SQL.Sandbox
 
   import CodeMySpec.UsersFixtures
@@ -11,7 +12,9 @@ defmodule CodeMySpec.ProjectSync.FileWatcherServerTest do
   setup do
     scope = full_scope_fixture(%{module_name: "CodeMySpec"})
 
-    tmp_dir = Path.join(System.tmp_dir!(), "file_watcher_test_#{System.unique_integer([:positive])}")
+    tmp_dir =
+      Path.join(System.tmp_dir!(), "file_watcher_test_#{System.unique_integer([:positive])}")
+
     File.mkdir_p!(Path.join(tmp_dir, "lib"))
     File.mkdir_p!(Path.join(tmp_dir, "test"))
 
@@ -55,7 +58,9 @@ defmodule CodeMySpec.ProjectSync.FileWatcherServerTest do
     end
 
     test "watches multiple project directories", %{scope: scope, server: name} do
-      tmp_dir2 = Path.join(System.tmp_dir!(), "file_watcher_test2_#{System.unique_integer([:positive])}")
+      tmp_dir2 =
+        Path.join(System.tmp_dir!(), "file_watcher_test2_#{System.unique_integer([:positive])}")
+
       File.mkdir_p!(Path.join(tmp_dir2, "lib"))
       on_exit(fn -> File.rm_rf!(tmp_dir2) end)
 
@@ -88,7 +93,12 @@ defmodule CodeMySpec.ProjectSync.FileWatcherServerTest do
       assert tmp_dir in FileWatcherServer.watched_dirs(name)
     end
 
-    test "ignores non-relevant events", %{scope: scope, server: name, server_pid: pid, tmp_dir: tmp_dir} do
+    test "ignores non-relevant events", %{
+      scope: scope,
+      server: name,
+      server_pid: pid,
+      tmp_dir: tmp_dir
+    } do
       ensure_watching_sync(scope, name)
 
       send(pid, {:file_event, get_watcher_pid(name, tmp_dir), {"/some/path", [:isdir]}})
@@ -101,7 +111,12 @@ defmodule CodeMySpec.ProjectSync.FileWatcherServerTest do
   describe "stop event" do
     setup [:start_server]
 
-    test "removes watcher entry on FileSystem stop", %{scope: scope, server: name, server_pid: pid, tmp_dir: tmp_dir} do
+    test "removes watcher entry on FileSystem stop", %{
+      scope: scope,
+      server: name,
+      server_pid: pid,
+      tmp_dir: tmp_dir
+    } do
       ensure_watching_sync(scope, name)
       assert tmp_dir in FileWatcherServer.watched_dirs(name)
 
@@ -139,6 +154,7 @@ defmodule CodeMySpec.ProjectSync.FileWatcherServerTest do
 
       state = :sys.get_state(name)
       assert state.lock_mtimes[tmp_dir] == initial + 5
+
       assert is_reference(state.hex_sync_timers[tmp_dir]),
              "expected a debounce timer to be scheduled after mix.lock change"
     end
@@ -207,22 +223,36 @@ defmodule CodeMySpec.ProjectSync.FileWatcherServerTest do
     end
   end
 
-  describe "{:run_hex_sync, project_root} dispatch" do
+  describe "{:run_hex_sync, project_root, pass} dispatch" do
     setup [:start_server]
 
-    test "runs HexDocProjector and lands markdown for installed packages", %{
+    # Projection is driven by what `mix.lock` says the project depends on, not
+    # by what happens to be sitting in `deps/`. A directory left behind by a
+    # removed dependency is indistinguishable from an installed one; a lock
+    # entry cannot be left behind, because mix rewrites the lock whole.
+    test "records the lock, then lands markdown for the packages it names", %{
       scope: scope,
       server: name,
       server_pid: pid,
       tmp_dir: tmp_dir
     } do
-      install_fixture_source(tmp_dir, "phoenix", "Phoenix",
-        "Phoenix is a productive web framework.")
+      install_fixture_source(
+        tmp_dir,
+        "phoenix",
+        "Phoenix",
+        "Phoenix is a productive web framework."
+      )
+
+      File.write!(
+        Path.join(tmp_dir, "mix.lock"),
+        ~s|%{\n  "phoenix": {:hex, :phoenix, "1.8.1", "c", [:mix], [], "hexpm", "c2"}\n}\n|
+      )
 
       ensure_watching_sync(scope, name)
-      send(pid, {:run_hex_sync, tmp_dir})
+      send(pid, {:run_hex_sync, tmp_dir, 1})
 
       target = Path.join([tmp_dir, ".code_my_spec/hex_docs/phoenix/Phoenix.md"])
+
       assert wait_until(200, fn -> File.exists?(target) end),
              "expected projector to land Phoenix.md after {:run_hex_sync} dispatch"
 
@@ -238,14 +268,26 @@ defmodule CodeMySpec.ProjectSync.FileWatcherServerTest do
       ensure_watching_sync(scope, name)
       # Plant a fake timer ref so we can observe it being cleared.
       ref = make_ref()
+
       :sys.replace_state(name, fn state ->
         %{state | hex_sync_timers: Map.put(state.hex_sync_timers, tmp_dir, ref)}
       end)
 
-      send(pid, {:run_hex_sync, tmp_dir})
+      File.write!(
+        Path.join(tmp_dir, "mix.lock"),
+        ~s|%{\n  "phoenix": {:hex, :phoenix, "1.8.1", "c", [:mix], [], "hexpm", "c2"}\n}\n|
+      )
+
+      send(pid, {:run_hex_sync, tmp_dir, 1})
       _ = FileWatcherServer.watched_dirs(name)
 
       refute Map.has_key?(:sys.get_state(name).hex_sync_timers, tmp_dir)
+
+      # The pass runs in a Task. Wait for it on an observable signal rather than
+      # letting the test end underneath it — a task killed at teardown takes the
+      # sandbox connection with it and logs an ownership crash that has nothing
+      # to do with what is being tested.
+      assert wait_until(500, fn -> Dependencies.list_dependencies(scope) != [] end)
     end
   end
 

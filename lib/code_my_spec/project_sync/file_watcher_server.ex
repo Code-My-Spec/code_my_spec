@@ -18,13 +18,25 @@ defmodule CodeMySpec.ProjectSync.FileWatcherServer do
      mtime is the causally correct signal at zero event volume. (We do
      NOT watch `deps/` via filesystem events: routing dep source through
      `FileSync.sync_path/3` would try to embed each dep file directly
-     instead of projecting it.) On detected change we debounce a short
-     settle window (`@lock_settle_delay_ms`) for the `mix deps.get`
-     unpack to finish writing source, then run the projector.
+     instead of projecting it.) On a detected change the lock is parsed
+     and recorded via `Dependencies`, then the packages whose docs are
+     not yet projected at their recorded version are projected —
+     retrying a bounded number of times for source that has not been
+     unpacked yet, and reporting whatever never appears.
+
+  The recording step is what removed the old race. Projection used to
+  wait out a fixed ten-second window and hope `mix deps.get` had
+  finished unpacking; a slower machine lost that bet silently, embedding
+  a half-unpacked tree and reporting success. The lock, unlike the tree,
+  is complete the moment it is written, so recording it needs no window
+  at all — and projection driven from recorded state has an end state
+  (`Dependencies.pending/1` empty) that can be waited on and asserted.
   """
   use GenServer
   require Logger
 
+  alias CodeMySpec.Dependencies
+  alias CodeMySpec.Environments
   alias CodeMySpec.Leases
   alias CodeMySpec.Embeddings
   alias CodeMySpec.Embeddings.HexDocProjector
@@ -55,13 +67,23 @@ defmodule CodeMySpec.ProjectSync.FileWatcherServer do
   # latency before we even notice a lock change.
   @lock_poll_interval_ms 30_000
 
-  # After detecting a lock change, wait this long before running the
-  # projector. Lets the `mix deps.get` unpack finish writing source into
-  # `deps/<package>/lib/` before we read it. No `mix deps.compile` wait
-  # is needed anymore — projection reads source, not compiled BEAMs — so
-  # this is far shorter than the old beam-era 90s. Mid-write reads still
-  # no-op gracefully (unparseable source yields no module).
-  @lock_settle_delay_ms 10_000
+  # Coalesce a burst of lock rewrites into one pass. This is a debounce, not a
+  # settle window: it is not waiting for `mix deps.get` to finish, it is waiting
+  # to stop being told the same thing.
+  @lock_debounce_ms 1_000
+
+  # How long to wait before re-attempting packages whose source has not appeared
+  # in `deps/` yet, and how many times. This is what replaced a single blind
+  # ten-second guess at how long an unpack takes: the common case finishes on
+  # the first pass because the lock is written before unpacking starts, and a
+  # slow one gets four passes over ~20s instead of one deadline it can miss.
+  #
+  # Bounded rather than indefinite, because a package can be legitimately absent
+  # forever — an `only: :dev` dependency in a prod checkout is in the lock and
+  # will never be in `deps/`. What stays missing is reported, not retried into
+  # eternity.
+  @projection_retry_ms 5_000
+  @max_projection_passes 4
 
   # --- Client API ---
 
@@ -258,39 +280,127 @@ defmodule CodeMySpec.ProjectSync.FileWatcherServer do
     {:noreply, state}
   end
 
-  def handle_info({:run_hex_sync, project_root}, state) do
+  def handle_info({:run_hex_sync, project_root, pass}, state) do
     state = %{state | hex_sync_timers: Map.delete(state.hex_sync_timers, project_root)}
 
     case Map.fetch(state.watchers, project_root) do
-      {:ok, %{scope: scope}} ->
-        Logger.info("[FileWatcher] Running hex doc projector for #{project_root}")
-
-        Task.start(fn ->
-          try do
-            HexDocProjector.project(scope)
-          rescue
-            e ->
-              Logger.error(
-                "[FileWatcher] Hex doc projector failed for #{project_root}: #{Exception.message(e)}"
-              )
-          end
-        end)
-
-      :error ->
-        :ok
+      {:ok, %{scope: scope}} -> run_projection_pass(scope, project_root, pass)
+      :error -> :ok
     end
 
     {:noreply, state}
   end
 
+  # Reported by the task so the server, not the task, owns the retry decision.
+  def handle_info({:hex_pass_done, project_root, pass, missing}, state) do
+    cond do
+      missing == [] ->
+        {:noreply, state}
+
+      pass < @max_projection_passes ->
+        Logger.info(
+          "[FileWatcher] #{length(missing)} package(s) not unpacked yet for #{project_root}, " <>
+            "pass #{pass}/#{@max_projection_passes}"
+        )
+
+        {:noreply, schedule_hex_sync(state, project_root, pass + 1, @projection_retry_ms)}
+
+      true ->
+        # Out of retries. Say which packages contributed no documentation and
+        # settle them, rather than leaving the project permanently pending or —
+        # worse — quietly converging as though they had been read.
+        case Map.fetch(state.watchers, project_root) do
+          {:ok, %{scope: scope}} ->
+            settled = HexDocProjector.settle_missing(scope)
+
+            Logger.warning(
+              "[FileWatcher] no source found in deps/ for #{Enum.join(settled, ", ")} " <>
+                "(#{project_root}) — these contribute no documentation. Expected for " <>
+                "environment-gated deps; otherwise `mix deps.get` may not have run."
+            )
+
+          :error ->
+            :ok
+        end
+
+        {:noreply, state}
+    end
+  end
+
   def handle_info(_msg, state), do: {:noreply, state}
+
+  # Record what the lock says, then project whatever has landed on disk.
+  #
+  # The order matters and is the whole point: the lock is complete the moment it
+  # is written, so recording it never has to wait for anything. Only projection
+  # depends on `mix deps.get` having unpacked source, and that is the part that
+  # retries.
+  defp run_projection_pass(scope, project_root, pass) do
+    server = self()
+
+    Task.start(fn ->
+      try do
+        record_lock(scope, project_root)
+
+        # Before projecting, clear docs for anything that left the lock. Keyed
+        # on the recorded set rather than on the removal event, so a removal
+        # that happened while this was down still converges.
+        HexDocProjector.drop_unrecorded(scope)
+
+        %{projected: projected, missing: missing} = HexDocProjector.project_pending(scope)
+
+        if projected != [] do
+          Logger.info(
+            "[FileWatcher] projected docs for #{length(projected)} package(s) in #{project_root}"
+          )
+        end
+
+        send(server, {:hex_pass_done, project_root, pass, missing})
+      rescue
+        e ->
+          Logger.error(
+            "[FileWatcher] Hex doc projector failed for #{project_root}: #{Exception.message(e)}"
+          )
+      end
+    end)
+  end
+
+  defp record_lock(scope, project_root) do
+    env = scope_environment(scope)
+
+    with {:ok, contents} <- Environments.read_file(env, "mix.lock"),
+         {:ok, %{recorded: recorded, removed: removed}} <-
+           Dependencies.record_lockfile(scope, contents) do
+      Logger.info(
+        "[FileWatcher] recorded #{recorded} dependencies (#{removed} removed) for #{project_root}"
+      )
+    else
+      {:error, :unparseable} ->
+        # Loud, and deliberately non-destructive: an unreadable lock says
+        # nothing about what a project depends on, so it must not be allowed to
+        # say "nothing". The previously recorded set stands.
+        Logger.warning(
+          "[FileWatcher] could not parse mix.lock for #{project_root} — " <>
+            "keeping the previously recorded dependency set"
+        )
+
+      {:error, reason} ->
+        Logger.warning(
+          "[FileWatcher] could not read mix.lock for #{project_root}: #{inspect(reason)}"
+        )
+    end
+  end
+
+  defp scope_environment(%Scope{environment: %Environments.Environment{} = env}), do: env
+
+  defp scope_environment(%Scope{cwd: cwd}),
+    do: Environments.Environment.new(:local, cwd || File.cwd!())
 
   # --- Private ---
 
   defp schedule_lock_poll do
     Process.send_after(self(), :poll_locks, @lock_poll_interval_ms)
   end
-
 
   defp poll_locks(state) do
     Enum.reduce(state.watchers, state, fn {project_root, _entry}, acc ->
@@ -321,12 +431,12 @@ defmodule CodeMySpec.ProjectSync.FileWatcherServer do
 
   defp maybe_schedule_hex_sync(state, _project_root, _previous, _mtime), do: state
 
-  defp schedule_hex_sync(state, project_root) do
+  defp schedule_hex_sync(state, project_root, pass \\ 1, delay \\ @lock_debounce_ms) do
     if existing = Map.get(state.hex_sync_timers, project_root) do
       Process.cancel_timer(existing)
     end
 
-    timer_ref = Process.send_after(self(), {:run_hex_sync, project_root}, @lock_settle_delay_ms)
+    timer_ref = Process.send_after(self(), {:run_hex_sync, project_root, pass}, delay)
     %{state | hex_sync_timers: Map.put(state.hex_sync_timers, project_root, timer_ref)}
   end
 

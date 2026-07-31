@@ -3,6 +3,7 @@ defmodule CodeMySpec.Embeddings.HexDocProjectorTest do
 
   import CodeMySpec.UsersFixtures
 
+  alias CodeMySpec.Dependencies
   alias CodeMySpec.Embeddings.HexDocProjector
   alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Projects
@@ -139,7 +140,9 @@ defmodule CodeMySpec.Embeddings.HexDocProjectorTest do
 
       :ok = HexDocProjector.project_package(scope, "phoenix")
 
-      refute File.exists?(Path.join([tmp_dir, ".code_my_spec/hex_docs/phoenix/Phoenix.Secret.md"]))
+      refute File.exists?(
+               Path.join([tmp_dir, ".code_my_spec/hex_docs/phoenix/Phoenix.Secret.md"])
+             )
     end
 
     test "skips a module with no docs at all" do
@@ -234,6 +237,7 @@ defmodule CodeMySpec.Embeddings.HexDocProjectorTest do
       assert :ok = HexDocProjector.project_package(scope, "phoenix")
 
       base = Path.join(tmp_dir, ".code_my_spec/hex_docs/phoenix")
+
       assert File.exists?(Path.join(base, "Phoenix.Good.md")),
              "expected the valid sibling module to still project"
     end
@@ -351,6 +355,86 @@ defmodule CodeMySpec.Embeddings.HexDocProjectorTest do
   end
 
   # -- Helpers --
+
+  describe "project_pending/2 — convergence instead of a settle timer" do
+    # The race this replaced, staged directly: the lock is complete, the unpack
+    # is not. The old design waited ten seconds and then read whatever was
+    # there; this one projects what has landed and reports what has not.
+    test "projects what has landed and reports what has not" do
+      {scope, tmp_dir} = setup_project()
+
+      {:ok, _} = Dependencies.record_lockfile(scope, lock(["phoenix", "ecto"]))
+
+      # Only phoenix has finished unpacking.
+      write_dep_source(tmp_dir, "phoenix", "phoenix.ex", """
+      defmodule Phoenix do
+        @moduledoc "A productive web framework."
+      end
+      """)
+
+      assert %{projected: ["phoenix"], missing: ["ecto"]} =
+               HexDocProjector.project_pending(scope)
+
+      assert File.exists?(Path.join([tmp_dir, ".code_my_spec/hex_docs/phoenix/Phoenix.md"]))
+    end
+
+    # The end state the timer never had: something a caller can wait for.
+    test "a second pass after the unpack finishes converges" do
+      {scope, tmp_dir} = setup_project()
+
+      {:ok, _} = Dependencies.record_lockfile(scope, lock(["phoenix", "ecto"]))
+
+      write_dep_source(
+        tmp_dir,
+        "phoenix",
+        "phoenix.ex",
+        ~s|defmodule Phoenix do\n@moduledoc "P"\nend|
+      )
+
+      assert %{missing: ["ecto"]} = HexDocProjector.project_pending(scope)
+
+      write_dep_source(tmp_dir, "ecto", "ecto.ex", ~s|defmodule Ecto do\n@moduledoc "E"\nend|)
+
+      assert %{projected: ["ecto"], missing: []} = HexDocProjector.project_pending(scope)
+      assert Dependencies.pending(scope) == []
+    end
+
+    test "an already-projected package is not projected again" do
+      {scope, tmp_dir} = setup_project()
+
+      {:ok, _} = Dependencies.record_lockfile(scope, lock(["phoenix"]))
+
+      write_dep_source(
+        tmp_dir,
+        "phoenix",
+        "phoenix.ex",
+        ~s|defmodule Phoenix do\n@moduledoc "P"\nend|
+      )
+
+      assert %{projected: ["phoenix"]} = HexDocProjector.project_pending(scope)
+      assert %{projected: [], missing: []} = HexDocProjector.project_pending(scope)
+    end
+
+    # Bounded retries have to end somewhere, and where they end must be
+    # "we looked and found nothing", never "nothing needed doing".
+    test "settle_missing names what never appeared and converges the project" do
+      {scope, _tmp_dir} = setup_project()
+
+      {:ok, _} = Dependencies.record_lockfile(scope, lock(["never_fetched"]))
+
+      assert ["never_fetched"] = HexDocProjector.settle_missing(scope)
+      assert Dependencies.pending(scope) == []
+    end
+  end
+
+  defp lock(names) do
+    body =
+      Enum.map_join(names, ",\n", fn name ->
+        ~s(  "#{name}": {:hex, :#{name}, "1.0.0", "chk", [:mix], [], "hexpm", "chk2"})
+      end)
+
+    "%{\n" <> body <> "\n}\n"
+  end
 
   defp setup_project do
     {:ok, tmp_dir} = Briefly.create(directory: true)
