@@ -12,6 +12,13 @@
 //
 // Config (env):
 //   CMS_MCP_BASE_URL   base URL of the running server (default http://localhost:4003)
+//   CMS_MCP_TOKEN      bearer token, when the endpoint is the CodeMySpec server
+//                      rather than a local `cms server`. The server's harness
+//                      mount takes an OAuth token; a sprite trades its deploy
+//                      key for one (POST /api/sprite/token) and passes it here.
+//   CMS_PROJECT_ID     the project to act on, when there is no local server to
+//                      resolve one from a directory. The server has no disk and
+//                      cannot look a path up, so it is told the id outright.
 //   CLAUDE_PROJECT_DIR the project directory the server resolves scope from
 //                      (default: the process cwd). Passed as ?dir= on every
 //                      request — Anubis only honors custom headers on POSTs, not
@@ -89,6 +96,20 @@ func (r *relay) forward(msg string) {
 	req.Header.Set("Accept", "application/json, text/event-stream")
 	if sid := r.getSID(); sid != "" {
 		req.Header.Set("Mcp-Session-Id", sid)
+	}
+	// Both optional, and absent for a local `cms server` — that one resolves
+	// scope from the directory and needs no credential, because reaching it at
+	// all already means being on the machine. They are set when the endpoint is
+	// the CodeMySpec server, which has neither the disk to resolve a path nor a
+	// reason to trust the caller.
+	//
+	// Headers rather than query params: unlike ?dir=, these only ever ride
+	// POSTs, and this relay makes no other kind of request.
+	if tok := os.Getenv("CMS_MCP_TOKEN"); tok != "" {
+		req.Header.Set("Authorization", "Bearer "+tok)
+	}
+	if pid := os.Getenv("CMS_PROJECT_ID"); pid != "" {
+		req.Header.Set("X-Project-ID", pid)
 	}
 
 	resp, err := r.client.Do(req)

@@ -268,5 +268,85 @@ export HOME=/home/agent
 export MIX_HOME=/home/agent/.mix
 export HEX_HOME=/home/agent/.hex
 
+# CMS_LIGHT_HARNESS=1 serves this project with the light harness instead of the
+# full local application.
+#
+# Opt-in, and deliberately not the default yet: the CLI path below is what every
+# drill so far has run on, and switching the thing under test at the same time as
+# the thing being tested makes a failed drill say nothing about either.
+#
+# Two differences, and only two:
+#
+#   * It serves the hooks on 4004 rather than 4005, which is the port the
+#     published plugin posts to. The harness serves those paths already, so
+#     nothing about the plugin changes — see cms_harness/config/runtime.exs.
+#   * The MCP tools come from the server rather than from a process here. A
+#     deploy key cannot reach them (the mount takes an OAuth token), so the key
+#     is traded for one first. That token is what the agent's MCP client holds.
+if [ "${CMS_LIGHT_HARNESS:-}" = "1" ]; then
+  : "${CMS_SERVER_URL:?CMS_LIGHT_HARNESS=1 needs CMS_SERVER_URL}"
+  : "${CMS_DEPLOY_KEY:?CMS_LIGHT_HARNESS=1 needs CMS_DEPLOY_KEY}"
+
+  log "Trading the deploy key for an access token"
+
+  CMS_ACCESS_TOKEN="$(curl -sS -X POST "${CMS_SERVER_URL}/api/sprite/token" \
+    -H "Authorization: Bearer ${CMS_DEPLOY_KEY}" \
+    -H "Content-Type: application/json" -d '{}' \
+    | python3 -c 'import sys, json; print(json.load(sys.stdin).get("access_token", ""))')"
+
+  # Refuse rather than start half-configured. A harness that comes up with no
+  # token serves hooks perfectly well and gives the agent no tools at all, and
+  # "no tools" reads as a broken plugin rather than as a failed exchange.
+  [ -n "${CMS_ACCESS_TOKEN}" ] || {
+    log "FATAL: could not trade the deploy key for an access token at ${CMS_SERVER_URL}."
+    log "       The agent would come up with no harness tools. Refusing to start."
+    exit 1
+  }
+
+  # The relay reads these and sends them as Authorization / X-Project-ID. The
+  # server has no disk to resolve a working directory into a project, so it is
+  # told the id outright.
+  export CMS_MCP_TOKEN="${CMS_ACCESS_TOKEN}"
+  export CMS_HARNESS_PORT="${CMS_HARNESS_PORT:-4004}"
+  export CMS_PROJECT_DIR="${APP_DIR}"
+
+  # Repoint the *installed* plugin's MCP base URL at the server.
+  #
+  # The published plugin.json hardcodes `"CMS_MCP_BASE_URL": "http://localhost:4003"`
+  # in the env it hands the relay, and a plugin-declared env value is not
+  # something an outer export can override. Patching the installed copy is
+  # deterministic, where hoping for placeholder interpolation is not — and this
+  # container owns that file.
+  PLUGIN_JSON="$(find /home/agent/.claude -path '*codemyspec*' -name plugin.json 2>/dev/null | head -1)"
+
+  if [ -n "${PLUGIN_JSON}" ]; then
+    python3 - "${PLUGIN_JSON}" "${CMS_SERVER_URL}/mcp/harness" <<'PATCH'
+import json, sys
+
+path, url = sys.argv[1], sys.argv[2]
+with open(path) as f:
+    manifest = json.load(f)
+
+manifest.setdefault("mcpServers", {}).setdefault("local", {}).setdefault("env", {})
+manifest["mcpServers"]["local"]["env"]["CMS_MCP_BASE_URL"] = url
+
+with open(path, "w") as f:
+    json.dump(manifest, f, indent=2)
+PATCH
+    log "Pointed the plugin's MCP at ${CMS_SERVER_URL}/mcp/harness"
+  else
+    # Loud, because the symptom is "no MCP tools", which reads as a broken
+    # plugin rather than as a base URL still aimed at a port nothing serves.
+    log "WARNING: could not find the installed plugin.json to repoint."
+    log "         The agent's MCP will still target localhost:4003, which the"
+    log "         light harness does not serve — expect zero harness tools."
+  fi
+
+  log "Starting the light harness on ${CMS_HARNESS_PORT} against ${CMS_SERVER_URL}"
+
+  exec setpriv --reuid=agent --regid=agent --init-groups \
+    /opt/cms/bin/cms_harness start
+fi
+
 exec setpriv --reuid=agent --regid=agent --init-groups \
   /opt/cms/bin/code_my_spec_cli start
