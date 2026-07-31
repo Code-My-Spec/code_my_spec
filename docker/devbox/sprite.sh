@@ -66,6 +66,20 @@ if [ -z "$(git -C "${APP_DIR}" log --oneline -1 2>/dev/null)" ]; then
   #
   # The value is fenced in a sentinel because release boot writes to stdout and
   # command substitution would swallow it into the app name.
+  # On the light-harness path the project's identity comes from the server, on
+  # the same exchange that gets the token. Reading it out of Postgres here is a
+  # database dependency in the launcher of a harness whose whole premise is
+  # holding no database — and there is no reason for that container to hold
+  # credentials for one.
+  if [ "${CMS_LIGHT_HARNESS:-}" = "1" ]; then
+    : "${CMS_SERVER_URL:?CMS_LIGHT_HARNESS=1 needs CMS_SERVER_URL}"
+    : "${CMS_DEPLOY_KEY:?CMS_LIGHT_HARNESS=1 needs CMS_DEPLOY_KEY}"
+
+    APP_NAME="$(curl -sS --max-time 30 -X POST "${CMS_SERVER_URL}/api/sprite/token" \
+      -H "Authorization: Bearer ${CMS_DEPLOY_KEY}" \
+      -H "Content-Type: application/json" -d '{}' \
+      | python3 -c 'import json, sys; print(json.load(sys.stdin).get("app_name") or "")')"
+  else
   APP_NAME="$(CMS_PROJECT_ID="$CMS_PROJECT_ID" /opt/cms/bin/code_my_spec_cli eval '
     {:ok, _} = Application.ensure_all_started(:ecto_sql)
     {:ok, _} = Application.ensure_all_started(:postgrex)
@@ -83,6 +97,7 @@ if [ -z "$(git -C "${APP_DIR}" log --oneline -1 2>/dev/null)" ]; then
 
     IO.puts("__CMS_APP__" <> Macro.underscore(module_name))
   ' | sed -n 's/^__CMS_APP__//p' | tail -1)"
+  fi
 
   [ -n "${APP_NAME}" ] || { echo "could not resolve module_name for ${CMS_PROJECT_ID}" >&2; exit 1; }
   log "Generating ${APP_NAME} with mix cms.new"

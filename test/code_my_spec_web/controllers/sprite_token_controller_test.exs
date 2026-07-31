@@ -69,6 +69,32 @@ defmodule CodeMySpecWeb.SpriteTokenControllerTest do
            "a token that never expires is a deploy key with extra steps — expiry is half the point"
   end
 
+  # The sprite needs the project's module name to generate an app, and it used to
+  # read that straight out of Postgres — a database dependency in the launcher of
+  # a harness whose premise is holding no database. It comes back here instead,
+  # on the one call the sprite already makes.
+  test "the exchange also answers who the project is", %{
+    conn: conn,
+    project: project,
+    deploy_key: deploy_key
+  } do
+    body =
+      conn
+      |> put_req_header("authorization", "Bearer #{deploy_key}")
+      |> post(~p"/api/sprite/token", %{})
+      |> json_response(200)
+
+    assert body["module_name"] == project.module_name
+    assert body["project_name"] == project.name
+
+    assert body["app_name"] == Macro.underscore(project.module_name),
+           "underscored here, because the consumer is a shell script and a " <>
+             "reimplementation of Macro.underscore got ABCWidget wrong"
+
+    assert body["module_name"],
+           "without this the sprite is back to querying the database it is not supposed to have"
+  end
+
   # The token has to work with `require_oauth_token` as it stands, which resolves
   # the user from `resource_owner_id`. A `client_credentials` grant has none, so
   # such a token would reach `Users.get_user!(nil)` and raise; minting against

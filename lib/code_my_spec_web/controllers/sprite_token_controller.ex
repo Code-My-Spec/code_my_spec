@@ -83,7 +83,23 @@ defmodule CodeMySpecWeb.SpriteTokenController do
           access_token: token.token,
           token_type: "Bearer",
           expires_in: @expires_in,
-          project_id: scope.active_project_id
+          project_id: scope.active_project_id,
+          # The project's identity, returned here because the sprite needs it
+          # and this is the one call it already makes.
+          #
+          # It used to read `module_name` out of Postgres directly, with an
+          # `eval` that started a Repo by hand and queried the raw table. That
+          # is a database dependency in the launcher of a harness whose whole
+          # premise is holding no database — and on the light-harness path
+          # there is no reason for the container to have credentials for one.
+          module_name: module_name(scope.active_project),
+          # Underscored here, by `Macro.underscore/1`, rather than by whoever
+          # consumes this. The sprite is a shell script; reimplementing that
+          # function in it got `ABCWidget` wrong (`abcwidget`, not
+          # `abc_widget`), and a directory named almost-right is a failure
+          # several steps later that looks like a generator bug.
+          app_name: app_name(scope.active_project),
+          project_name: project_name(scope.active_project)
         })
 
       {:error, changeset} ->
@@ -94,4 +110,15 @@ defmodule CodeMySpecWeb.SpriteTokenController do
         |> json(%{error: "token_creation_failed"})
     end
   end
+
+  defp module_name(%{module_name: module_name}) when is_binary(module_name), do: module_name
+  defp module_name(_), do: nil
+
+  defp app_name(%{module_name: module_name}) when is_binary(module_name),
+    do: Macro.underscore(module_name)
+
+  defp app_name(_), do: nil
+
+  defp project_name(%{name: name}) when is_binary(name), do: name
+  defp project_name(_), do: nil
 end
