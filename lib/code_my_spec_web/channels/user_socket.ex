@@ -20,6 +20,7 @@ defmodule CodeMySpecWeb.UserSocket do
   channel "issues:*", CodeMySpecWeb.IssuesChannel
   channel "cli:user:*", CodeMySpecWeb.CliChannel
   channel "harness:*", CodeMySpecWeb.HarnessChannel
+  channel "harness_project:*", CodeMySpecWeb.HarnessProjectChannel
 
   # Socket params are passed from the client and can
   # be used to verify and authenticate a user. After

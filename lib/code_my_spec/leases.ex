@@ -44,13 +44,18 @@ defmodule CodeMySpec.Leases do
   @doc """
   Claim this project's files, or report who already has them.
 
-  Succeeds if this harness already holds the lock — advisory locks are
+  Succeeds if the given session already holds the lock — advisory locks are
   re-entrant per session, so the startup path and a re-check are the same call.
+
+  `session` names the process holding the lock — the harness's own by default.
+  The server passes a per-connection one, because there the lease belongs to a
+  single connected harness rather than to the whole VM.
   """
-  @spec acquire(Scope.t(), String.t() | nil) :: :ok | {:error, acquire_error()}
-  def acquire(%Scope{active_project_id: project_id}, label \\ nil)
+  @spec acquire(Scope.t(), String.t() | nil, GenServer.server()) ::
+          :ok | {:error, acquire_error()}
+  def acquire(%Scope{active_project_id: project_id}, label \\ nil, session \\ Session)
       when is_binary(project_id) do
-    if Session.try_lock(project_id) do
+    if Session.try_lock(project_id, session) do
       note_holder(project_id, label)
       :ok
     else

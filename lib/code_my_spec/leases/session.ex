@@ -34,8 +34,18 @@ defmodule CodeMySpec.Leases.Session do
   # cannot collide with any other advisory lock taken against the same database.
   @classid 0x434D5301
 
+  @doc """
+  Start a lease session.
+
+  `name: nil` starts it unnamed, which is what a per-channel holder wants:
+  the server runs one of these per connected harness, and their whole purpose
+  is to die individually.
+  """
   def start_link(opts \\ []) do
-    GenServer.start_link(__MODULE__, opts, name: Keyword.get(opts, :name, __MODULE__))
+    case Keyword.get(opts, :name, __MODULE__) do
+      nil -> GenServer.start_link(__MODULE__, opts)
+      name -> GenServer.start_link(__MODULE__, opts, name: name)
+    end
   end
 
   @doc """
