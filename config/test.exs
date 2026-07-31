@@ -50,8 +50,18 @@ config :code_my_spec, CodeMySpec.Repo,
 #
 # Under CMS_E2E it listens on 4102 — deliberately not 4002, so an e2e server and
 # an ordinary `mix test` cannot collide on the port.
+# Loopback unless CMS_E2E_BIND_ALL says otherwise. A container cannot reach the
+# host's loopback, so a drill needs this open — but it is opt-in and stated,
+# because the alternative is an e2e server quietly listening on the LAN for
+# anyone who ever sets CMS_E2E. It still carries only the throwaway e2e
+# database.
+e2e_ip =
+  if e2e? and System.get_env("CMS_E2E_BIND_ALL") in ~w(1 true),
+    do: {0, 0, 0, 0},
+    else: {127, 0, 0, 1}
+
 config :code_my_spec, CodeMySpecWeb.Endpoint,
-  http: [ip: {127, 0, 0, 1}, port: if(e2e?, do: 4102, else: 4002)],
+  http: [ip: e2e_ip, port: if(e2e?, do: 4102, else: 4002)],
   secret_key_base: "uQsFkBLrXNG5yxrQkMHNLOAi5NcrEzpZut3YYEOlAFiuhpoynMd+/rJBgz6FSWsg",
   server: e2e?
 
