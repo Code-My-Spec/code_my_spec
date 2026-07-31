@@ -8,12 +8,35 @@ config :bcrypt_elixir, :log_rounds, 1
 # The MIX_TEST_PARTITION environment variable can be used
 # to provide built-in test partitioning in CI environment.
 # Run `mix help test` for more information.
+# CMS_E2E turns this env into a real, listening server against a real pool.
+#
+# It exists to answer a question no in-process test can: does a separate OS
+# process, speaking the actual wire protocol, get what it expects? The light
+# harness is exactly that, and the four defects found in `HarnessProjectChannel`
+# were all invisible to `Phoenix.ChannelTest` — a hand-built socket carrying
+# assigns production never sets, and a reply asserted as a term rather than
+# encoded. Those are not gaps in the tests so much as gaps in what that kind of
+# test *can* see.
+#
+# Why the test env rather than dev: `MIX_ENV=test` does not contend for the
+# compile lock the running dev servers hold, so this cannot 500 :4000/:4003/:4004
+# the way building against dev would. Its own database, so a run cannot disturb
+# the ordinary suite.
+e2e? = System.get_env("CMS_E2E") in ~w(1 true)
+
 config :code_my_spec, CodeMySpec.Repo,
   username: "postgres",
   password: "postgres",
   hostname: "localhost",
-  database: "code_my_spec_test#{System.get_env("MIX_TEST_PARTITION")}",
-  pool: Ecto.Adapters.SQL.Sandbox,
+  database:
+    if(e2e?,
+      do: "code_my_spec_e2e",
+      else: "code_my_spec_test#{System.get_env("MIX_TEST_PARTITION")}"
+    ),
+  # The sandbox owns connections per test process and hands nothing to an
+  # external client, so an out-of-process harness cannot see anything a
+  # sandboxed pool writes.
+  pool: if(e2e?, do: DBConnection.ConnectionPool, else: Ecto.Adapters.SQL.Sandbox),
   pool_size: System.schedulers_online() * 2
 
 # server: false — Phoenix.ConnTest and LiveViewTest do not go through HTTP,
@@ -24,10 +47,13 @@ config :code_my_spec, CodeMySpec.Repo,
 # 4002, so a concurrent background analysis run (the stop hook enqueues a full
 # `mix spex`) failed the other with :eaddrinuse. Same reasoning as the
 # LocalWeb endpoint below, which has always been server: false.
+#
+# Under CMS_E2E it listens on 4102 — deliberately not 4002, so an e2e server and
+# an ordinary `mix test` cannot collide on the port.
 config :code_my_spec, CodeMySpecWeb.Endpoint,
-  http: [ip: {127, 0, 0, 1}, port: 4002],
+  http: [ip: {127, 0, 0, 1}, port: if(e2e?, do: 4102, else: 4002)],
   secret_key_base: "uQsFkBLrXNG5yxrQkMHNLOAi5NcrEzpZut3YYEOlAFiuhpoynMd+/rJBgz6FSWsg",
-  server: false
+  server: e2e?
 
 # Local web endpoint — needed for spex tests that drive the local UI.
 # server: false, runs as a started-but-quiet endpoint so LiveViewTest can use it.
