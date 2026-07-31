@@ -23,8 +23,8 @@ defmodule CodeMySpec.Requirements.ArchitectureChecker do
   """
 
   alias CodeMySpec.Components
+  alias CodeMySpec.Files
   alias CodeMySpec.Requirements.Registry, as: RequirementsRegistry
-  alias CodeMySpec.Environments
   alias CodeMySpec.Paths
   alias CodeMySpec.Stories
   alias CodeMySpec.Users.Scope
@@ -32,9 +32,10 @@ defmodule CodeMySpec.Requirements.ArchitectureChecker do
   @proposal_path Paths.proposal_path()
 
   @spec complete?(Scope.t(), term()) :: {boolean(), map()}
-  def complete?(%Scope{environment: env} = scope, _entity) when not is_nil(env) do
+  def complete?(%Scope{active_project_id: project_id} = scope, _entity)
+      when not is_nil(project_id) do
     cond do
-      not proposal_present?(env) ->
+      not proposal_present?(scope) ->
         {false,
          %{
            reason:
@@ -48,15 +49,27 @@ defmodule CodeMySpec.Requirements.ArchitectureChecker do
         {false, %{reason: format_orphans(orphan_components)}}
 
       true ->
-        {true, %{status: "Architecture clean — every component is covered and every story is linked."}}
+        {true,
+         %{status: "Architecture clean — every component is covered and every story is linked."}}
     end
   end
 
   def complete?(_scope, _entity) do
-    {false, %{reason: "Environment is not available — cannot verify architecture state."}}
+    {false, %{reason: "No active project in scope — cannot verify architecture state."}}
   end
 
-  defp proposal_present?(env), do: Environments.file_exists?(env, @proposal_path) == true
+  # Asked of the synced files, not of a disk.
+  #
+  # This used to stat `@proposal_path` through the scope's environment, and
+  # answered "Environment is not available" whenever there was none — which on
+  # the light harness is always, because the server holds no working copy. An
+  # agent wrote the proposal, watched it sync, and still got told it was
+  # missing.
+  #
+  # Nothing was needed to fix that: files under `Paths.architecture_dir/0`
+  # already sync with role `:architecture`, so a File row at that path is the
+  # same evidence the stat was after, and it works with or without a disk.
+  defp proposal_present?(scope), do: Files.get_by_path(scope, @proposal_path) != nil
 
   @doc """
   Returns the list of orphan **context** components in the project.

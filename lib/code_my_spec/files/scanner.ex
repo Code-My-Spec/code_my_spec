@@ -182,6 +182,18 @@ defmodule CodeMySpec.Files.Scanner do
     validate_setup_file(entry, env, &validate_test_support(&1, entry.path))
   end
 
+  # Persona artifacts follow the setup pattern for the same reason: the
+  # verdict has to survive the trip to a server that cannot read the file.
+  # `PersonasChecker` used to read and validate these itself and could not do
+  # it at all without a disk.
+  def validate_entry(%{role: :persona_summary} = entry, env, _component_by_id, _strict?) do
+    validate_setup_file(entry, env, &validate_persona_summary/1)
+  end
+
+  def validate_entry(%{role: :persona_sources} = entry, env, _component_by_id, _strict?) do
+    validate_setup_file(entry, env, &validate_persona_sources/1)
+  end
+
   @valid_by_existence_roles [
     :implementation,
     :test,
@@ -241,6 +253,59 @@ defmodule CodeMySpec.Files.Scanner do
   # maps off the persisted File record's `validation_errors` and use the data
   # for cross-file decisions (e.g. TestSupportNamespace needs app_name from
   # mix_exs to know what namespace to look for in conn_case / data_case).
+
+  # Both lifted verbatim from `PersonasChecker`, which ran them against a disk
+  # at evaluate time. Same rules, decided once at sync and carried in
+  # `validation_errors` so a server with no working copy can still read the
+  # verdict.
+  defp validate_persona_summary(content) do
+    error =
+      cond do
+        String.trim(content) == "" ->
+          "`summary.md` is empty"
+
+        true ->
+          case Documents.create_dynamic_document(content, "persona_summary") do
+            {:ok, _document} -> nil
+            {:error, reason} -> "`summary.md` invalid — #{reason}"
+          end
+      end
+
+    %{errors: %{summary: error}, data: %{}}
+  end
+
+  # workflow.md: "Link list with URL, title, and access date per entry — one per
+  # line." Entries are markdown list items; each needs a URL and a YYYY-MM-DD
+  # date, with the title between them.
+  defp validate_persona_sources(content) do
+    entries =
+      content
+      |> String.split("\n", trim: true)
+      |> Enum.map(&String.trim/1)
+      |> Enum.filter(&(String.starts_with?(&1, "- ") or String.starts_with?(&1, "* ")))
+
+    invalid =
+      Enum.find(entries, fn line ->
+        not (Regex.match?(~r{https?://\S+}, line) and
+               Regex.match?(~r/\b\d{4}-\d{2}-\d{2}\b/, line))
+      end)
+
+    error =
+      cond do
+        entries == [] ->
+          "`sources.md` has no entries — expected one markdown list item per " <>
+            "source (URL — title — access date)"
+
+        invalid != nil ->
+          "`sources.md` entry missing URL or YYYY-MM-DD date: " <>
+            String.slice(invalid, 0, 80)
+
+        true ->
+          nil
+      end
+
+    %{errors: %{sources: error}, data: %{entry_count: length(entries)}}
+  end
 
   defp validate_setup_file(entry, env, validator) do
     case Environments.read_file(env, entry.path) do
@@ -573,8 +638,32 @@ defmodule CodeMySpec.Files.Scanner do
   end
 
   defp classify_docs(path) do
-    if String.ends_with?(path, ".md"),
-      do: Enum.find_value(doc_dir_roles(), &match_doc_dir(path, &1))
+    classify_persona(path) ||
+      if String.ends_with?(path, ".md"),
+        do: Enum.find_value(doc_dir_roles(), &match_doc_dir(path, &1))
+  end
+
+  # `.code_my_spec/personas/<slug>/{summary,sources}.md`.
+  #
+  # Their own roles rather than a shared `:persona`, because each is validated
+  # differently — the summary against a document schema, the sources against a
+  # line format — and `PersonasChecker` reports them as separate gaps.
+  #
+  # Anything else in the folder is unclassified and therefore never synced,
+  # which costs the old stray-file rule — see `PersonasChecker`.
+  defp classify_persona(path) do
+    prefix = Paths.personas_dir() <> "/"
+
+    with true <- String.starts_with?(path, prefix),
+         [_slug, file] <- path |> String.replace_prefix(prefix, "") |> Path.split() do
+      case file do
+        "summary.md" -> {path, :persona_summary}
+        "sources.md" -> {path, :persona_sources}
+        _ -> nil
+      end
+    else
+      _ -> nil
+    end
   end
 
   defp match_doc_dir(path, {dir_fn, role}) do

@@ -27,6 +27,8 @@ defmodule CodeMySpec.Files.File do
     :qa_result,
     :config,
     :architecture,
+    :persona_summary,
+    :persona_sources,
     :integration,
     :task_artifact,
     :mix_exs,
