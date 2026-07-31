@@ -32,8 +32,6 @@ defmodule CodeMySpec.Leases do
   consults the lock and then overwrites it.
   """
 
-  use Boundary, deps: [CodeMySpec, CodeMySpec.Repo], exports: :all
-
   alias CodeMySpec.Leases.ProjectLease
   alias CodeMySpec.Leases.Session
   alias CodeMySpec.Repo

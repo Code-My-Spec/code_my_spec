@@ -68,6 +68,25 @@ defmodule CodeMySpecWeb.HarnessProjectChannelTest do
     end
   end
 
+  describe "read_model" do
+    test "hands back everything a database-less harness needs to scan",
+         %{scope: scope, topic: topic} do
+      {:ok, _reply, channel} =
+        scope |> connect() |> subscribe_and_join(HarnessProjectChannel, topic)
+
+      ref = push(channel, "read_model", %{})
+
+      assert_reply ref, :ok, payload, 2_000
+
+      # The Scanner's own moduledoc names these as the only things it needs
+      # from the domain; everything else it derives from the working copy.
+      assert Map.has_key?(payload, "component_by_module")
+      assert Map.has_key?(payload, "component_by_id")
+      assert is_list(payload["story_ids"]), "a MapSet has no JSON form — it must cross as a list"
+      assert is_boolean(payload["strict"])
+    end
+  end
+
   describe "the channel's lifetime is the lease" do
     # The channel is linked to the test process, so its death would take the
     # test with it — and its death is the thing under test.

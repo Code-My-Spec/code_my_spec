@@ -30,6 +30,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
 
   require Logger
 
+  alias CodeMySpec.Files.Scanner
   alias CodeMySpec.Leases
   alias CodeMySpec.Users.Scope
 
@@ -52,6 +53,39 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   end
 
   def join(_topic, _payload, _socket), do: {:error, %{reason: "invalid topic"}}
+
+  @doc """
+  Hand the harness the small slice of the domain that scanning needs.
+
+  `Files.Scanner` is already the device half of sync: it walks the working
+  copy, hashes it, and decides whether each spec is valid, and its own moduledoc
+  notes that none of that needs a database and that no file content ever leaves
+  it. The one thing it does need is a `ReadModel` — component module names, the
+  project's story ids, and whether validation is strict.
+
+  So this is the whole of what a database-less harness requires in order to
+  produce a manifest. It is small and it changes slowly, which is why it is
+  fetched rather than inferred.
+  """
+  @impl true
+  def handle_in("read_model", _payload, socket) do
+    read_model = Scanner.read_model(socket.assigns.scope)
+
+    {:reply, {:ok, serialize_read_model(read_model)}, socket}
+  end
+
+  def handle_in(_event, _payload, socket), do: {:noreply, socket}
+
+  # `story_ids` is a MapSet, which has no JSON representation — it crosses as a
+  # list and the harness rebuilds it. Everything else is already a plain map.
+  defp serialize_read_model(%Scanner.ReadModel{} = read_model) do
+    %{
+      "component_by_module" => read_model.component_by_module,
+      "component_by_id" => read_model.component_by_id,
+      "story_ids" => MapSet.to_list(read_model.story_ids),
+      "strict" => read_model.strict?
+    }
+  end
 
   # A harness may only hold a project its credential actually reaches. The
   # socket has already authenticated (user token or project deploy key); this
