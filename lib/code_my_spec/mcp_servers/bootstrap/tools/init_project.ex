@@ -8,7 +8,6 @@ defmodule CodeMySpec.McpServers.Bootstrap.Tools.InitProject do
 
   use Anubis.Server.Component, type: :tool
 
-
   alias CodeMySpec.Environments
   alias CodeMySpec.Auth.OAuthClient
   alias CodeMySpec.McpServers.Bootstrap.{BootstrapMapper, Installers}
@@ -24,8 +23,16 @@ defmodule CodeMySpec.McpServers.Bootstrap.Tools.InitProject do
 
   @impl true
   def execute(%{project_id: project_id}, frame) do
-    working_dir = Validators.mcp_working_dir(frame)
+    case Validators.mcp_working_dir(frame) do
+      nil ->
+        {:reply, BootstrapMapper.error(Validators.no_working_copy_message("init_project")), frame}
 
+      working_dir ->
+        link(project_id, working_dir, frame)
+    end
+  end
+
+  defp link(project_id, working_dir, frame) do
     with {:ok, token} <- OAuthClient.get_token(),
          {:ok, project_data} <- fetch_project(token, project_id),
          {:ok, project} <- upsert_local_project(project_data, working_dir) do
@@ -93,7 +100,8 @@ defmodule CodeMySpec.McpServers.Bootstrap.Tools.InitProject do
   end
 
   defp install_summary({installed, failures}) do
-    failed = Enum.map_join(failures, ", ", fn {label, reason} -> "#{label} (#{inspect(reason)})" end)
+    failed =
+      Enum.map_join(failures, ", ", fn {label, reason} -> "#{label} (#{inspect(reason)})" end)
 
     installed_part =
       if installed == [], do: "", else: "\ninstalled: #{Enum.join(installed, ", ")}"

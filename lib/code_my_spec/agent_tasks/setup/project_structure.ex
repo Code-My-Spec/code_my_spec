@@ -2,10 +2,11 @@ defmodule CodeMySpec.AgentTasks.Setup.ProjectStructure do
   @moduledoc """
   Setup step: .code_my_spec/ directory structure exists.
 
-  Directories aren't tracked as `File` records (FileSync syncs files), so
-  this step is the one residual filesystem-bound check. The cost is at
-  most a handful of `Environments.file_exists?/2` stats and only matters
-  when the step is unsatisfied — once the dirs exist this returns fast.
+  Directories aren't tracked as `File` records (FileSync syncs files), so this
+  step is the one that reaches past them. It asks `Context.dir_status/2`, which
+  proves a directory from the synced files inside it where it can and stats only
+  where it must — and says `:unobservable` rather than `:absent` when there is no
+  disk to stat, which is the normal case on the light harness.
   """
 
   alias CodeMySpec.AgentTasks.Setup.{Context, Helpers}
@@ -25,7 +26,13 @@ defmodule CodeMySpec.AgentTasks.Setup.ProjectStructure do
           []
         end
 
-    missing = Enum.reject(required, &Context.dir_exists?(ctx, &1))
+    # Only `:absent` counts. `:unobservable` means there is no disk to look at
+    # (the light harness), and reporting those as missing makes a step the agent
+    # cannot satisfy: directories are not synced, so `mkdir` changes nothing the
+    # server can see. Every one of these directories is created by writing the
+    # file that belongs in it, and those writes are checked by their own steps —
+    # so nothing goes unverified by letting an empty, unseeable directory pass.
+    missing = Enum.filter(required, &(Context.dir_status(ctx, &1) == :absent))
 
     if missing == [],
       do: :valid,
@@ -40,16 +47,16 @@ defmodule CodeMySpec.AgentTasks.Setup.ProjectStructure do
   defp wrap({:invalid, reason}), do: {:ok, :invalid, reason}
 
   def command(scope, _task) do
-    env = scope.environment
-    app_name = Helpers.extract_app_name(env) || "your_app"
+    app_name = Helpers.app_name(scope)
     base = CodeMySpec.Paths.base_dir()
 
-    {:ok, """
-    # Create Project Structure
+    {:ok,
+     """
+     # Create Project Structure
 
-    ```bash
-    mkdir -p #{base}/rules #{base}/spec/#{app_name} #{base}/spec/#{app_name}_web
-    ```
-    """}
+     ```bash
+     mkdir -p #{base}/rules #{base}/spec/#{app_name} #{base}/spec/#{app_name}_web
+     ```
+     """}
   end
 end

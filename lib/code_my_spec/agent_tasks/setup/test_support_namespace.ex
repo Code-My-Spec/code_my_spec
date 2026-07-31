@@ -42,8 +42,7 @@ defmodule CodeMySpec.AgentTasks.Setup.TestSupportNamespace do
   defp wrap({:invalid, reason}), do: {:ok, :invalid, reason}
 
   def command(scope, _task) do
-    env = scope.environment
-    app_name = Helpers.extract_app_name(env) || "your_app"
+    app_name = Helpers.app_name(scope)
     mod = Macro.camelize(app_name)
 
     {:ok, """

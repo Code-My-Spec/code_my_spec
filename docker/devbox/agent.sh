@@ -78,6 +78,71 @@ stop, so the harness considered nothing further actionable." \
   fi
 }
 
+# --- the stop hook has to actually reach the harness ---------------------------
+# This loop's exit condition is "a clean exit means the stop hook allowed the
+# stop". That sentence is only true if the stop hook can reach the harness. When
+# it cannot, curl fails, Claude Code treats an unreachable hook as a hook with no
+# opinion, and every stop is allowed — so the supervisor commits and reports
+# success on the first turn, having gated nothing.
+#
+# That is not a hypothetical either. A full drill ran this way: the plugin posted
+# to 4003, the harness listened on 4004, and the run was declared clean. Nothing
+# in the log said otherwise, because there is nothing to say — the failure is
+# silence.
+#
+# So: probe once, up front, and refuse to run rather than produce a green result
+# that means nothing. A sprite that will not start is a page; a sprite that
+# rubber-stamps its own work is a lie that takes a day to find.
+hook_port() {
+  python3 - <<'PY' 2>/dev/null || true
+import json, pathlib, re, collections
+
+roots = []
+try:
+    installed = json.loads(
+        pathlib.Path("/home/agent/.claude/plugins/installed_plugins.json").read_text()
+    )
+    for entries in installed.get("plugins", {}).values():
+        for entry in entries:
+            if entry.get("installPath"):
+                roots.append(pathlib.Path(entry["installPath"]))
+except Exception:
+    pass
+
+ports = collections.Counter()
+for root in roots:
+    hooks = root / "hooks" / "hooks.json"
+    if hooks.exists():
+        ports.update(re.findall(r"localhost:(\d+)", hooks.read_text()))
+
+if ports:
+    print(ports.most_common(1)[0][0])
+PY
+}
+
+PORT="$(hook_port)"
+
+if [ -z "${PORT}" ]; then
+  log "FATAL: no hook port found in the installed plugin. Either the plugin is not"
+  log "       installed or its hooks.json changed shape. Without hooks the stop hook"
+  log "       cannot gate, so a clean exit would prove nothing. Refusing to start."
+  exit 78
+fi
+
+# Any HTTP response means something is listening and routing. A connection
+# refusal is the failure being guarded against.
+if curl -sS -o /dev/null -m 10 "http://localhost:${PORT}/api/hooks/session_start" \
+     -X POST -H 'Content-Type: application/json' -d '{}' 2>/dev/null; then
+  log "hooks reach the harness on ${PORT}"
+else
+  log "FATAL: nothing is answering hooks on localhost:${PORT}, which is where the"
+  log "       installed plugin posts them. The stop hook would fail open and every"
+  log "       stop would be allowed, so this run would report success without the"
+  log "       harness ever gating it. Refusing to start."
+  log "       Fix: set CMS_HARNESS_PORT=${PORT} on the sprite and restart it."
+  exit 78
+fi
+
 while true; do
   attempt=$((attempt + 1))
   started=$(date +%s)

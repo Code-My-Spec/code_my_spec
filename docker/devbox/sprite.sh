@@ -303,6 +303,54 @@ if [ -d /home/agent/.claude ]; then
     || log "WARNING: codemyspec plugin is NOT installed; expect 'no MCP tools' and a run that stops at the first stop hook"
 fi
 
+# --- which port the hooks actually post to -------------------------------------
+# Read from the installed plugin rather than assumed, because guessing it wrong
+# does not fail: the hooks POST into a closed port, curl exits non-zero, and
+# Claude Code treats a hook that could not be reached as a hook with nothing to
+# say. Session ids are never injected and the stop hook never gates, so the run
+# looks like a harness that approves of everything.
+#
+# A whole drill was lost to this. The published plugin posts to 4003; this script
+# had 4004 (taken from the newer copy in the repo) and a comment claiming 4005.
+# All three disagreed, and the run still reported success — the agent noticed the
+# silence and drove the hooks by hand with curl.
+#
+# The installed manifest is the only authority: it is the file the running hooks
+# were read from.
+detect_harness_port() {
+  python3 - <<'PY' 2>/dev/null || true
+import json, pathlib, re, collections
+
+roots = []
+try:
+    installed = json.loads(
+        pathlib.Path("/home/agent/.claude/plugins/installed_plugins.json").read_text()
+    )
+    for entries in installed.get("plugins", {}).values():
+        for entry in entries:
+            if entry.get("installPath"):
+                roots.append(pathlib.Path(entry["installPath"]))
+except Exception:
+    pass
+
+# Fallback for a layout change in installed_plugins.json: any hooks.json under
+# the plugin cache is still closer to the truth than a hardcoded number.
+if not roots:
+    roots = list(pathlib.Path("/home/agent/.claude/plugins").glob("*/*/*/*"))
+
+ports = collections.Counter()
+for root in roots:
+    hooks = root / "hooks" / "hooks.json"
+    if hooks.exists():
+        ports.update(re.findall(r"localhost:(\d+)", hooks.read_text()))
+
+if ports:
+    print(ports.most_common(1)[0][0])
+PY
+}
+
+DETECTED_HARNESS_PORT="$(detect_harness_port)"
+
 # --- dependencies -------------------------------------------------------------
 # Also on the clone path, not just after generating. A sprite that attaches to
 # an existing repo starts with no deps/ at all, and the analyzers gate on
@@ -396,9 +444,10 @@ export HEX_HOME=/home/agent/.hex
 #
 # Two differences, and only two:
 #
-#   * It serves the hooks on 4004 rather than 4005, which is the port the
-#     published plugin posts to. The harness serves those paths already, so
-#     nothing about the plugin changes — see cms_harness/config/runtime.exs.
+#   * It serves the hooks on whatever port the installed plugin posts to, found
+#     by reading that plugin's hooks.json above. The harness serves those paths
+#     already, so nothing about the plugin changes — see
+#     cms_harness/config/runtime.exs.
 #   * The MCP tools come from the server rather than from a process here. A
 #     deploy key cannot reach them (the mount takes an OAuth token), so the key
 #     is traded for one first. That token is what the agent's MCP client holds.
@@ -411,7 +460,16 @@ if [ "${CMS_LIGHT_HARNESS:-}" = "1" ]; then
   # server has no disk to resolve a working directory into a project, so it is
   # told the id outright.
   export CMS_MCP_TOKEN="${CMS_ACCESS_TOKEN}"
-  export CMS_HARNESS_PORT="${CMS_HARNESS_PORT:-4004}"
+
+  if [ -n "${CMS_HARNESS_PORT:-}" ]; then
+    :
+  elif [ -n "${DETECTED_HARNESS_PORT:-}" ]; then
+    export CMS_HARNESS_PORT="${DETECTED_HARNESS_PORT}"
+    log "Hooks post to ${CMS_HARNESS_PORT} (read from the installed plugin)"
+  else
+    export CMS_HARNESS_PORT=4003
+    log "WARNING: could not read a hook port from the installed plugin; guessing ${CMS_HARNESS_PORT}. If hooks do not fire, this is why."
+  fi
   export CMS_PROJECT_DIR="${APP_DIR}"
 
   # Where the embedding model is. `mix release` copies priv/ in, so the CLI

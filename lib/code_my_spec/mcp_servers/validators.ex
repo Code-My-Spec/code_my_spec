@@ -3,6 +3,8 @@ defmodule CodeMySpec.McpServers.Validators do
   Validation functions for MCP servers.
   """
 
+  alias CodeMySpec.Environments.Environment
+
   @doc """
   Validates that the current scope has an active account set.
   Returns {:ok, frame} if valid, {:stop, :missing_active_account} if not.
@@ -90,18 +92,35 @@ defmodule CodeMySpec.McpServers.Validators do
   end
 
   @doc """
-  Returns the MCP working directory from the frame context.
+  The working directory this request's project lives in, or nil if it does not
+  live on this machine.
 
-  For HTTP transport, this comes from the X-Working-Dir header.
-  For stdio transport, this comes from Application.get_env (set by CLI).
-  Falls back to File.cwd!() if not set.
+  For HTTP transport, from the X-Working-Dir header. For stdio, from
+  `Application.get_env` — the CLI sets it at startup from `CMS_MCP_WORKING_DIR`,
+  and there cwd genuinely is the project.
+
+  ## Why there is no `File.cwd!()` fallback
+
+  There was one. It was written for early bootstrap on a developer's machine,
+  where the current directory is the project and defaulting to it is right.
+
+  On a server it is not right, and it does not fail — it succeeds against the
+  wrong disk. The light-harness mount carries a project id and no working
+  directory, because the project's working copy is on the harness; the fallback
+  turned that into a `:local` environment rooted at the server's own checkout.
+  `install_agents_md` then reported `Installed: .code_my_spec/AGENTS.md`,
+  truthfully, having written it into this repository. An agent in a container
+  called it, saw success, found its own file unchanged, and could not tell the
+  difference between "already correct" and "written somewhere else entirely".
+
+  Nil means the caller must not touch a filesystem. Every caller here can say
+  so; none of them could have detected the wrong one.
   """
+  @spec mcp_working_dir(map()) :: String.t() | nil
   def mcp_working_dir(frame) do
-    # Try frame.assigns first (HTTP transport sets working_dir from header)
-    # Fall back to Application.get_env (stdio transport sets it at startup)
     case frame.assigns do
       %{working_dir: dir} when is_binary(dir) -> dir
-      _ -> Application.get_env(:code_my_spec, :mcp_working_dir, File.cwd!())
+      _ -> Application.get_env(:code_my_spec, :mcp_working_dir)
     end
   end
 
@@ -109,30 +128,56 @@ defmodule CodeMySpec.McpServers.Validators do
   Legacy function for backward compatibility.
   Prefer mcp_working_dir/1 with frame when available.
   """
+  @spec mcp_working_dir() :: String.t() | nil
   def mcp_working_dir do
-    Application.get_env(:code_my_spec, :mcp_working_dir, File.cwd!())
+    Application.get_env(:code_my_spec, :mcp_working_dir)
   end
 
   @doc """
-  Resolve the execution environment for a local MCP tool.
+  Resolve the execution environment for a local MCP tool, or nil when this
+  machine holds no working copy for the request.
 
   Prefers the environment already attached to the current scope — in
   production that is the `:local` environment built from the project's
   `local_path`; in specs it is the in-memory environment seeded by
   `setup_active_project`. Falls back to a `:local` environment rooted at
   the resolved working dir for early bootstrap, where no project scope is
-  resolved yet. Mirrors the `scope.environment || Environment.new(...)`
-  pattern in `StartAgentTask` and `ArchitectureDesign`.
-  """
-  def mcp_environment(frame) do
-    alias CodeMySpec.Environments.Environment
+  resolved yet.
 
+  Returns nil when there is no working directory to root one at. See
+  `mcp_working_dir/1` for why guessing is worse than refusing.
+  """
+  @spec mcp_environment(map()) :: Environment.t() | nil
+  def mcp_environment(frame) do
     case frame.assigns[:current_scope] do
       %{environment: %Environment{} = env} ->
         env
 
       _ ->
-        Environment.new(:local, mcp_working_dir(frame))
+        case mcp_working_dir(frame) do
+          nil -> nil
+          dir -> Environment.new(:local, dir)
+        end
     end
+  end
+
+  @doc """
+  The reply a filesystem-bound tool gives when this machine has no working copy.
+
+  Shared so every one of them says the same thing, and says what to do instead
+  rather than only what failed.
+  """
+  @spec no_working_copy_message(String.t()) :: String.t()
+  def no_working_copy_message(tool) do
+    """
+    `#{tool}` needs the project's files, and this server does not have them.
+
+    The working copy lives on the harness — that is the design, not a \
+    misconfiguration. Write the file there yourself; the harness syncs it back \
+    and the requirement will clear on the next evaluation.
+
+    (If you expected this server to hold the project, it was started without \
+    CMS_MCP_WORKING_DIR.)\
+    """
   end
 end
