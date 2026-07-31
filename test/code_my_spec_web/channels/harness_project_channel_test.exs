@@ -87,6 +87,116 @@ defmodule CodeMySpecWeb.HarnessProjectChannelTest do
     end
   end
 
+  describe "observations" do
+    setup %{scope: scope, topic: topic} do
+      {:ok, _reply, channel} =
+        scope |> connect() |> subscribe_and_join(HarnessProjectChannel, topic)
+
+      %{channel: channel}
+    end
+
+    test "a manifest becomes File rows", %{channel: channel, scope: scope} do
+      ref =
+        push(channel, "observations", %{
+          "observations" => [
+            %{
+              "path" => "lib/todo/accounts.ex",
+              "role" => "implementation",
+              "mtime" => "2026-07-28T10:00:00.000000Z",
+              "size" => 120,
+              "fingerprint" => "abc123",
+              "valid" => true,
+              "validation_errors" => %{}
+            }
+          ]
+        })
+
+      assert_reply ref, :ok, %{"upserted" => 1}, 2_000
+
+      assert [%{path: "lib/todo/accounts.ex", role: :implementation}] =
+               CodeMySpec.Files.list_files(scope)
+    end
+
+    # The manifest is the whole truth, so a path's absence is a deletion. This
+    # is the reason it's sent whole rather than as a delta.
+    test "a path missing from the next manifest is removed", %{channel: channel, scope: scope} do
+      observation = fn path ->
+        %{
+          "path" => path,
+          "role" => "implementation",
+          "mtime" => "2026-07-28T10:00:00.000000Z",
+          "size" => 10,
+          "fingerprint" => "f-" <> path,
+          "valid" => true,
+          "validation_errors" => %{}
+        }
+      end
+
+      ref =
+        push(channel, "observations", %{
+          "observations" => [observation.("a.ex"), observation.("b.ex")]
+        })
+
+      assert_reply ref, :ok, %{"upserted" => 2}, 2_000
+
+      ref = push(channel, "observations", %{"observations" => [observation.("a.ex")]})
+      assert_reply ref, :ok, %{"removed" => 1}, 2_000
+
+      assert ["a.ex"] = scope |> CodeMySpec.Files.list_files() |> Enum.map(& &1.path)
+    end
+
+    # The defect class this whole design exists to avoid: a harness that failed
+    # to scan must not be able to report the same thing as an empty project.
+    test "an empty manifest is refused rather than obeyed", %{channel: channel, scope: scope} do
+      ref =
+        push(channel, "observations", %{
+          "observations" => [
+            %{
+              "path" => "lib/todo.ex",
+              "role" => "implementation",
+              "mtime" => "2026-07-28T10:00:00.000000Z",
+              "size" => 10,
+              "fingerprint" => "abc",
+              "valid" => true,
+              "validation_errors" => %{}
+            }
+          ]
+        })
+
+      assert_reply ref, :ok, _, 2_000
+
+      ref = push(channel, "observations", %{"observations" => []})
+      assert_reply ref, :error, %{"reason" => "empty_manifest"}, 2_000
+
+      assert length(CodeMySpec.Files.list_files(scope)) == 1,
+             "an empty manifest must not be able to wipe a project's files"
+    end
+
+    test "a role this server does not know is reported as skew, not written as nil",
+         %{channel: channel, scope: scope} do
+      ref =
+        push(channel, "observations", %{
+          "observations" => [
+            %{
+              "path" => "lib/todo.ex",
+              "role" => "some_role_from_a_newer_harness",
+              "mtime" => "2026-07-28T10:00:00.000000Z",
+              "size" => 10,
+              "fingerprint" => "abc",
+              "valid" => true,
+              "validation_errors" => %{}
+            }
+          ]
+        })
+
+      assert_reply ref, :error, %{"reason" => "invalid_manifest", "problems" => problems}, 2_000
+      assert Enum.any?(problems, &String.contains?(&1, "some_role_from_a_newer_harness"))
+
+      assert CodeMySpec.Files.list_files(scope) == [],
+             "a manifest the server cannot understand must not be half-applied"
+    end
+  end
+
   describe "the channel's lifetime is the lease" do
     # The channel is linked to the test process, so its death would take the
     # test with it — and its death is the thing under test.
