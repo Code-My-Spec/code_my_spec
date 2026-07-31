@@ -161,19 +161,81 @@ defmodule CodeMySpec.Provisioning.Repository do
 
   Runs through `Environments.cmd/4` so it executes on whichever device the
   environment names.
+
+  ## It initialises, because a new project has no git yet
+
+  This step exists for a project that was just generated: the files are there,
+  git is not. An earlier version assumed a repository and failed with
+  `git exited 128` on exactly the case it was built for. So it inits when
+  absent, commits when there is nothing to push, and sets the remote whether
+  or not `origin` already exists.
+
+  Every git invocation captures stderr. Without `stderr_to_stdout: true`,
+  `System.cmd/3` discards it and a failure reports only its exit code —
+  which is how the first failure here said "git exited 128:" and nothing
+  else.
   """
   @spec push(Environments.Environment.t(), String.t(), keyword()) ::
           {:ok, String.t()} | {:error, String.t()}
   def push(env, remote_url, opts \\ []) do
     branch = Keyword.get(opts, :branch, "main")
     git = Keyword.get(opts, :git_bin, "git")
+    run = fn args -> Environments.cmd(env, git, args, stderr_to_stdout: true) end
 
-    with {_, 0} <- Environments.cmd(env, git, ["remote", "add", "origin", remote_url]),
-         {_, 0} <- Environments.cmd(env, git, ["push", "-u", "origin", branch]),
-         {sha, 0} <- Environments.cmd(env, git, ["rev-parse", "HEAD"]) do
+    with :ok <- ensure_repo(run, branch),
+         :ok <- ensure_commit(run),
+         :ok <- set_remote(run, remote_url),
+         {_, 0} <- run.(["push", "-u", "origin", branch]),
+         {sha, 0} <- run.(["rev-parse", "HEAD"]) do
       {:ok, String.trim(sha)}
     else
+      {:error, reason} -> {:error, reason}
       {output, status} -> {:error, "git exited #{status}: #{String.trim(to_string(output))}"}
+    end
+  end
+
+  defp ensure_repo(run, branch) do
+    case run.(["rev-parse", "--is-inside-work-tree"]) do
+      {_, 0} ->
+        :ok
+
+      _ ->
+        case run.(["init", "-b", branch]) do
+          {_, 0} -> :ok
+          {output, status} -> {:error, "git init failed (#{status}): #{String.trim(output)}"}
+        end
+    end
+  end
+
+  # A repository with no commit has nothing to push, and `git push` on one
+  # fails in a way that reads like a permissions problem.
+  defp ensure_commit(run) do
+    case run.(["rev-parse", "HEAD"]) do
+      {_, 0} ->
+        :ok
+
+      _ ->
+        with {_, 0} <- run.(["add", "-A"]),
+             {_, 0} <- run.(["commit", "-m", "Initial commit"]) do
+          :ok
+        else
+          {output, status} -> {:error, "could not create the initial commit (#{status}): #{String.trim(output)}"}
+        end
+    end
+  end
+
+  # `remote add` fails when origin exists, which is an ordinary state on a
+  # retry rather than an error.
+  defp set_remote(run, url) do
+    case run.(["remote", "add", "origin", url]) do
+      {_, 0} ->
+        :ok
+
+      _ ->
+        case run.(["remote", "set-url", "origin", url]) do
+          {_, 0} -> :ok
+          {output, status} -> {:error, "could not set the remote (#{status}): #{String.trim(output)}"}
+        end
     end
   end
 
