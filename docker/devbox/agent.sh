@@ -93,7 +93,12 @@ stop, so the harness considered nothing further actionable." \
 # So: probe once, up front, and refuse to run rather than produce a green result
 # that means nothing. A sprite that will not start is a page; a sprite that
 # rubber-stamps its own work is a lie that takes a day to find.
-hook_port() {
+# The whole URL comes out of the plugin, not just the port. Probing a path this
+# script names itself proves less than it looks: `/api/hooks/session_start` 404s
+# against a harness that serves `/api/hooks/session-start`, and curl calls a 404
+# a successful request — so an underscore here would have reported healthy hooks
+# against a route nothing serves. Take the URL the hooks actually use.
+hook_url() {
   python3 - <<'PY' 2>/dev/null || true
 import json, pathlib, re, collections
 
@@ -109,39 +114,48 @@ try:
 except Exception:
     pass
 
-ports = collections.Counter()
+urls = collections.Counter()
 for root in roots:
     hooks = root / "hooks" / "hooks.json"
     if hooks.exists():
-        ports.update(re.findall(r"localhost:(\d+)", hooks.read_text()))
+        urls.update(re.findall(r"https?://localhost:\d+/[A-Za-z0-9._/-]+", hooks.read_text()))
 
-if ports:
-    print(ports.most_common(1)[0][0])
+if urls:
+    print(urls.most_common(1)[0][0])
 PY
 }
 
-PORT="$(hook_port)"
+URL="$(hook_url)"
 
-if [ -z "${PORT}" ]; then
-  log "FATAL: no hook port found in the installed plugin. Either the plugin is not"
+if [ -z "${URL}" ]; then
+  log "FATAL: no hook URL found in the installed plugin. Either the plugin is not"
   log "       installed or its hooks.json changed shape. Without hooks the stop hook"
   log "       cannot gate, so a clean exit would prove nothing. Refusing to start."
   exit 78
 fi
 
-# Any HTTP response means something is listening and routing. A connection
-# refusal is the failure being guarded against.
-if curl -sS -o /dev/null -m 10 "http://localhost:${PORT}/api/hooks/session_start" \
-     -X POST -H 'Content-Type: application/json' -d '{}' 2>/dev/null; then
-  log "hooks reach the harness on ${PORT}"
-else
-  log "FATAL: nothing is answering hooks on localhost:${PORT}, which is where the"
-  log "       installed plugin posts them. The stop hook would fail open and every"
-  log "       stop would be allowed, so this run would report success without the"
-  log "       harness ever gating it. Refusing to start."
-  log "       Fix: set CMS_HARNESS_PORT=${PORT} on the sprite and restart it."
-  exit 78
-fi
+STATUS="$(curl -sS -o /dev/null -w '%{http_code}' -m 10 "${URL}" \
+  -X POST -H 'Content-Type: application/json' -d '{}' 2>/dev/null || echo 000)"
+
+case "${STATUS}" in
+  2*)
+    log "hooks reach the harness — ${URL} answered ${STATUS}"
+    ;;
+  000)
+    log "FATAL: nothing is answering ${URL}, which is where the installed plugin"
+    log "       posts its hooks. The stop hook would fail open and every stop would"
+    log "       be allowed, so this run would report success without the harness"
+    log "       ever gating it. Refusing to start."
+    log "       Fix: serve the harness on the port in that URL and restart."
+    exit 78
+    ;;
+  *)
+    log "FATAL: ${URL} answered ${STATUS}. Something is listening but not serving the"
+    log "       hook route, so hooks would fail and every stop would be allowed."
+    log "       Refusing to start rather than reporting a run nothing gated."
+    exit 78
+    ;;
+esac
 
 while true; do
   attempt=$((attempt + 1))

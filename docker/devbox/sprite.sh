@@ -40,9 +40,30 @@ else
     # it never lands in .git/config on a volume that outlives the container.
     git clone "https://x-access-token:${GITHUB_TOKEN}@${REPO_URL#https://}" "${APP_DIR}" 2>&1 \
       | sed 's/x-access-token:[^@]*@/x-access-token:***@/g'
-    git -C "${APP_DIR}" remote set-url origin "${REPO_URL}"
+    clone_status=$?
+    [ "${clone_status}" -eq 0 ] && git -C "${APP_DIR}" remote set-url origin "${REPO_URL}"
   else
     git clone "${REPO_URL}" "${APP_DIR}"
+    clone_status=$?
+  fi
+
+  # `set -e` used to end the run here on git's bare exit 128, with the last line
+  # of output being git's own — which says the host did not resolve and nothing
+  # about what that meant for the sprite.
+  #
+  # Deliberately not falling through to "generate a new project". An
+  # unreachable remote and an empty new remote look identical from here, and
+  # guessing wrong means scaffolding a fresh tree over a repository that
+  # already has history, then committing it. A sprite that stops is
+  # recoverable; one that forks a project's history quietly is not.
+  if [ "${clone_status}" -ne 0 ]; then
+    log "FATAL: could not clone ${REPO_URL} (git exited ${clone_status})."
+    log "       Not generating a new project instead: an unreachable repo and an"
+    log "       empty new one are indistinguishable from here, and guessing wrong"
+    log "       means scaffolding over history that already exists."
+    log "       If this project has no repository yet, create it empty and point"
+    log "       REPO_URL at it — an empty clone does reach the generate path."
+    exit 1
   fi
 fi
 
