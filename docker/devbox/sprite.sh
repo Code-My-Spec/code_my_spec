@@ -173,6 +173,60 @@ git config --global --add safe.directory "${APP_DIR}" 2>/dev/null || true
 su agent -c "git config --global --add safe.directory '${APP_DIR}'" 2>/dev/null || true
 chown -R agent:agent "${APP_DIR}" 2>/dev/null || true
 
+# --- talking to the server -----------------------------------------------------
+# Defined here because the plugin install below needs them: the manifest has to
+# carry the token before Claude Code snapshots it.
+
+exchange_token() {
+  : "${CMS_SERVER_URL:?CMS_LIGHT_HARNESS=1 needs CMS_SERVER_URL}"
+  : "${CMS_DEPLOY_KEY:?CMS_LIGHT_HARNESS=1 needs CMS_DEPLOY_KEY}"
+
+  log "Trading the deploy key for an access token"
+
+  CMS_ACCESS_TOKEN="$(curl -sS -X POST "${CMS_SERVER_URL}/api/sprite/token" \
+    -H "Authorization: Bearer ${CMS_DEPLOY_KEY}" \
+    -H "Content-Type: application/json" -d '{}' \
+    | python3 -c 'import sys, json; print(json.load(sys.stdin).get("access_token", ""))')"
+
+  # Refuse rather than start half-configured. A harness that comes up with no
+  # token serves hooks perfectly well and gives the agent no tools at all, and
+  # "no tools" reads as a broken plugin rather than as a failed exchange.
+  [ -n "${CMS_ACCESS_TOKEN}" ] || {
+    log "FATAL: could not trade the deploy key for an access token at ${CMS_SERVER_URL}."
+    log "       The agent would come up with no harness tools. Refusing to start."
+    exit 1
+  }
+
+  export CMS_ACCESS_TOKEN
+}
+
+patch_marketplace_manifest() {
+  python3 - "${CMS_SERVER_URL}/mcp/harness" "${CMS_ACCESS_TOKEN}" "${CMS_PROJECT_ID}" <<'PATCH'
+import json, pathlib, sys
+
+url, token, project_id = sys.argv[1:4]
+manifest = pathlib.Path(
+    "/home/agent/.claude/plugins/marketplaces/codemyspec"
+    "/plugins/codemyspec/.claude-plugin/plugin.json"
+)
+
+if not manifest.exists():
+    print(f"WARNING: no marketplace manifest at {manifest} — the agent will have no "
+          "harness tools.")
+    raise SystemExit(0)
+
+m = json.loads(manifest.read_text())
+env = m.setdefault("mcpServers", {}).setdefault("local", {}).setdefault("env", {})
+env["CMS_MCP_BASE_URL"] = url
+env["CMS_MCP_TOKEN"] = token
+env["CMS_PROJECT_ID"] = project_id
+manifest.write_text(json.dumps(m, indent=2))
+print(f"pointed the plugin's MCP at {url}")
+PATCH
+
+  chown -R agent:agent /home/agent/.claude 2>/dev/null || true
+}
+
 # --- the agent's credentials ---------------------------------------------------
 # Claude Code needs to be logged in, and nothing here logs it in. Two ways to
 # supply that, both from outside:
@@ -226,6 +280,22 @@ if [ -d /home/agent/.claude ]; then
   log "Installing the CodeMySpec plugin"
   su agent -c "claude plugin marketplace add Code-My-Spec/plugins" >/dev/null 2>&1 \
     || log "WARNING: could not add the codemyspec marketplace — the agent will have no harness tools"
+
+  # Patch the marketplace copy *before* installing, and reinstall if something
+  # is already there.
+  #
+  # Claude Code snapshots a plugin's MCP config when it installs, into
+  # plugins/cache/<marketplace>/<plugin>/<version>/. Editing that snapshot
+  # afterwards does nothing — not even adding a whole new server, which is how
+  # this was finally pinned down. Install-then-patch leaves the agent with no
+  # harness tools and a log that says only that the server "never finished
+  # connecting".
+  if [ "${CMS_LIGHT_HARNESS:-}" = "1" ]; then
+    exchange_token
+    patch_marketplace_manifest
+    su agent -c "claude plugin uninstall codemyspec@codemyspec" >/dev/null 2>&1 || true
+  fi
+
   su agent -c "claude plugin install codemyspec@codemyspec" >/dev/null 2>&1 \
     || log "WARNING: could not install the codemyspec plugin — the agent will have no harness tools"
   su agent -c "claude plugin list" 2>/dev/null | grep -q codemyspec \
@@ -333,24 +403,9 @@ export HEX_HOME=/home/agent/.hex
 #     deploy key cannot reach them (the mount takes an OAuth token), so the key
 #     is traded for one first. That token is what the agent's MCP client holds.
 if [ "${CMS_LIGHT_HARNESS:-}" = "1" ]; then
-  : "${CMS_SERVER_URL:?CMS_LIGHT_HARNESS=1 needs CMS_SERVER_URL}"
-  : "${CMS_DEPLOY_KEY:?CMS_LIGHT_HARNESS=1 needs CMS_DEPLOY_KEY}"
-
-  log "Trading the deploy key for an access token"
-
-  CMS_ACCESS_TOKEN="$(curl -sS -X POST "${CMS_SERVER_URL}/api/sprite/token" \
-    -H "Authorization: Bearer ${CMS_DEPLOY_KEY}" \
-    -H "Content-Type: application/json" -d '{}' \
-    | python3 -c 'import sys, json; print(json.load(sys.stdin).get("access_token", ""))')"
-
-  # Refuse rather than start half-configured. A harness that comes up with no
-  # token serves hooks perfectly well and gives the agent no tools at all, and
-  # "no tools" reads as a broken plugin rather than as a failed exchange.
-  [ -n "${CMS_ACCESS_TOKEN}" ] || {
-    log "FATAL: could not trade the deploy key for an access token at ${CMS_SERVER_URL}."
-    log "       The agent would come up with no harness tools. Refusing to start."
-    exit 1
-  }
+  # The token was exchanged and written into the plugin manifest before the
+  # install above, because that is the only moment Claude Code reads it.
+  [ -n "${CMS_ACCESS_TOKEN:-}" ] || exchange_token
 
   # The relay reads these and sends them as Authorization / X-Project-ID. The
   # server has no disk to resolve a working directory into a project, so it is
@@ -359,50 +414,9 @@ if [ "${CMS_LIGHT_HARNESS:-}" = "1" ]; then
   export CMS_HARNESS_PORT="${CMS_HARNESS_PORT:-4004}"
   export CMS_PROJECT_DIR="${APP_DIR}"
 
-  # Point the *installed* plugin's MCP config at the server.
-  #
-  # Two things here were wrong for a while, and both failed silently.
-  #
-  # The manifest to patch is the installed copy under
-  # plugins/cache/<marketplace>/<plugin>/<version>/, not the marketplace
-  # checkout. `installed_plugins.json` records installPath, which is
-  # authoritative — globbing for plugin.json finds the marketplace copy (and
-  # every other plugin that marketplace carries), so it patches a file Claude
-  # Code never reads and the agent ends up with no tools and nothing to look at.
-  #
-  # And the token belongs in the plugin's env, not this shell's: Claude Code
-  # spawns the relay itself with the env declared in the manifest, so exporting
-  # it here reaches the harness and never reaches the relay.
-  python3 - "${CMS_SERVER_URL}/mcp/harness" "${CMS_ACCESS_TOKEN}" "${CMS_PROJECT_ID}" <<'PATCH'
-import json, pathlib, sys
-
-url, token, project_id = sys.argv[1:4]
-installed = pathlib.Path("/home/agent/.claude/plugins/installed_plugins.json")
-
-if not installed.exists():
-    print("WARNING: no installed_plugins.json — the agent will have no harness tools.")
-    raise SystemExit(0)
-
-entries = json.loads(installed.read_text()).get("plugins", {}).get("codemyspec@codemyspec", [])
-
-if not entries:
-    print("WARNING: codemyspec is not installed — the agent will have no harness tools.")
-    raise SystemExit(0)
-
-manifest = pathlib.Path(entries[0]["installPath"]) / ".claude-plugin" / "plugin.json"
-m = json.loads(manifest.read_text())
-env = m.setdefault("mcpServers", {}).setdefault("local", {}).setdefault("env", {})
-env["CMS_MCP_BASE_URL"] = url
-env["CMS_MCP_TOKEN"] = token
-env["CMS_PROJECT_ID"] = project_id
-manifest.write_text(json.dumps(m, indent=2))
-print(f"pointed {manifest} at {url}")
-PATCH
-
   # A failed auth is cached, and the cache outlives the run. This home is a
-  # volume reused across drills, so a single 401 — from a token that had not
-  # been written yet, say — disables the MCP server for every later run,
-  # presenting as "the server never finished connecting".
+  # volume reused across drills, so a single 401 disables the MCP server for
+  # every later run, presenting as "the server never finished connecting".
   python3 - <<'RESET'
 import json, pathlib
 
