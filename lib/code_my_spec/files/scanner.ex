@@ -23,6 +23,7 @@ defmodule CodeMySpec.Files.Scanner do
 
   alias CodeMySpec.Components.Registry, as: ComponentRegistry
   alias CodeMySpec.Documents
+  alias CodeMySpec.Files.ComponentExtract
   alias CodeMySpec.Environments
   alias CodeMySpec.Paths
   alias CodeMySpec.StaticAnalysis.Analyzers.SpecAlignment
@@ -194,8 +195,27 @@ defmodule CodeMySpec.Files.Scanner do
     validate_setup_file(entry, env, &validate_persona_sources/1)
   end
 
+  def validate_entry(%{role: :implementation} = entry, env, _component_by_id, _strict?) do
+    # Not "valid by existence" any more, but the validity claim is unchanged —
+    # an implementation file is valid because it is there. What is new is the
+    # module name travelling with it, which `ComponentSync` used to open the
+    # file to learn.
+    case Environments.read_file(env, entry.path) do
+      {:ok, content} ->
+        Map.merge(entry, %{
+          valid: true,
+          validation_errors: %{
+            "errors" => %{},
+            "data" => %{"module_name" => ComponentExtract.extract_defmodule(content)}
+          }
+        })
+
+      {:error, _reason} ->
+        Map.merge(entry, %{valid: true, validation_errors: nil})
+    end
+  end
+
   @valid_by_existence_roles [
-    :implementation,
     :test,
     :rule,
     :config,
@@ -306,6 +326,18 @@ defmodule CodeMySpec.Files.Scanner do
       end
 
     %{errors: %{sources: error}, data: %{entry_count: length(entries)}}
+  end
+
+  defp component_data(content) do
+    %{
+      "errors" => %{},
+      "data" => %{
+        "module_name" => ComponentExtract.extract_h1_module(content),
+        "type" => ComponentExtract.extract_type_section(content),
+        "description" => ComponentExtract.extract_intro_text(content),
+        "dependencies" => ComponentExtract.extract_dependencies(content)
+      }
+    }
   end
 
   defp validate_setup_file(entry, env, validator) do
@@ -502,7 +534,10 @@ defmodule CodeMySpec.Files.Scanner do
   defp validate_spec_content(entry, content, document_type, strict?) do
     case Documents.create_dynamic_document(content, document_type, strict: strict?) do
       {:ok, _document} ->
-        Map.merge(entry, %{valid: true, validation_errors: nil})
+        # Carries the component identity, so `ComponentSync` does not have to
+        # re-read the file to find it. Stored even for an otherwise clean spec
+        # because "valid" and "names a component" are different questions.
+        Map.merge(entry, %{valid: true, validation_errors: component_data(content)})
 
       {:error, error} ->
         Map.merge(entry, %{valid: false, validation_errors: %{error: to_string(error)}})
