@@ -195,6 +195,39 @@ defmodule CodeMySpecSpex.Fixtures do
     end)
   end
 
+  @doc """
+  The full computed requirement, not just whether it is satisfied.
+
+  Story 988 is about the *shape* of a verdict — whether an agent can tell "not
+  yet known" from "not done" — so a boolean is exactly the thing that cannot be
+  asserted on.
+  """
+  def requirement(%Scope{} = scope, name, entity_type, entity_id) do
+    scope
+    |> CodeMySpec.Requirements.compute_all()
+    |> Enum.find(fn r ->
+      to_string(r.name) == name and
+        to_string(r.entity_type) == to_string(entity_type) and
+        to_string(r.entity_id) == to_string(entity_id)
+    end)
+  end
+
+  @doc "Record a problem against a project, as an analyzer's reconciler would."
+  def record_problem(%Scope{} = scope, source, attrs \\ %{}) do
+    CodeMySpec.Problems.create_problems(scope, [
+      Map.merge(
+        %{
+          source: source,
+          severity: :error,
+          message: "nesting too deep",
+          file: "lib/my_app/accounts.ex",
+          line: 61
+        },
+        attrs
+      )
+    ])
+  end
+
   @doc "Files the harness scanned but could classify into no role."
   def unclassified_files(%Scope{} = scope),
     do: CodeMySpec.Files.Scanner.unclassified(scope.environment)
