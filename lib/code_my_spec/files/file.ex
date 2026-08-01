@@ -29,6 +29,7 @@ defmodule CodeMySpec.Files.File do
     :architecture,
     :persona_summary,
     :persona_sources,
+    :credo_check,
     :integration,
     :task_artifact,
     :mix_exs,

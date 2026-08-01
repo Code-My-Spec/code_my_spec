@@ -205,6 +205,7 @@ defmodule CodeMySpec.Files.Scanner do
     :json,
     :review,
     :architecture,
+    :credo_check,
     :integration,
     :agents_md,
     :project_knowledge,
@@ -552,6 +553,7 @@ defmodule CodeMySpec.Files.Scanner do
         &classify_setup_artifact/1,
         &classify_spec_or_review/1,
         &classify_code/1,
+        &classify_credo_check/1,
         &classify_docs/1,
         &classify_qa/1,
         &classify_config/1
@@ -580,10 +582,17 @@ defmodule CodeMySpec.Files.Scanner do
   defp test_support?(path) do
     base = Path.basename(path)
 
+    # The fixtures bridge `SpexBoundaryChecker` looks for. `.ex` files
+    # under test/ match no other classifier — `classify_code/1` claims
+    # only `_test.exs` and `_spex.exs` there — so this went unsynced and
+    # the checker could only find it by statting a disk.
+    # `do_validate_test_support/3` treats an unrecognised basename as
+    # valid-by-existence, which is exactly the claim being made here.
     String.starts_with?(path, "test/support/") and
       (String.ends_with?(base, "_spex.ex") or
          String.ends_with?(base, "_test_boundary.ex") or
          String.ends_with?(base, "_spex_case.ex") or
+         String.ends_with?(base, "_spex_fixtures.ex") or
          base == "conn_case.ex" or
          base == "data_case.ex")
   end
@@ -635,6 +644,22 @@ defmodule CodeMySpec.Files.Scanner do
       {&Paths.knowledge_dir/0, :project_knowledge},
       {&Paths.hex_docs_dir/0, :hex_doc}
     ]
+  end
+
+  # `.code_my_spec/credo_checks/**/*.ex[s]`.
+  #
+  # `classify_code/1` only claims `lib/` and `test/`, and `classify_docs/1`
+  # only claims `.md`, so these fell between the two and never synced at all —
+  # which is why `SpexBoundaryChecker` had to stat them and could not run
+  # without a disk.
+  #
+  # Both extensions: the framework ships `checks.exs` beside the `.ex` checks,
+  # and a checker that wants only one can filter. Syncing less than is there
+  # is how a directory listing and a file table stop agreeing.
+  defp classify_credo_check(path) do
+    if String.starts_with?(path, Paths.credo_checks_dir() <> "/") and
+         (String.ends_with?(path, ".ex") or String.ends_with?(path, ".exs")),
+       do: {path, :credo_check}
   end
 
   defp classify_docs(path) do

@@ -107,4 +107,54 @@ defmodule CodeMySpec.Requirements.CheckersWithoutADiskTest do
       refute inspect(details) =~ "Environment is not available"
     end
   end
+
+  describe "spex_boundary_ready" do
+    test "reports every gap instead of refusing to look", %{scope: scope} do
+      assert {false, %{reason: reason}} =
+               CodeMySpec.Requirements.SpexBoundaryChecker.complete?(scope, nil)
+
+      refute reason =~ "Environment is not available",
+             "with no disk this used to decline to check at all, which reads to " <>
+               "an agent as a blocked requirement rather than a list of work"
+
+      assert reason =~ "spex_denied_calls.ex"
+      assert reason =~ "credo_checks/local"
+    end
+
+    test "synced credo checks, fixtures bridge and bdd plan satisfy it", %{scope: scope} do
+      framework = CodeMySpec.Paths.credo_checks_framework_dir()
+
+      for f <- ["spex_denied_calls.ex", "no_direct_send_in_spex.ex"] do
+        sync(scope, Path.join(framework, f), :credo_check)
+      end
+
+      sync(
+        scope,
+        Path.join(CodeMySpec.Paths.credo_checks_local_dir(), "my_app_spex_denies.ex"),
+        :credo_check
+      )
+
+      sync(scope, "mix.exs", :mix_exs)
+
+      Repo.update_all(
+        from(f in FileRecord,
+          where: f.project_id == ^scope.active_project_id and f.path == "mix.exs"
+        ),
+        set: [validation_errors: %{"errors" => %{}, "data" => %{"app_name" => "my_app"}}]
+      )
+
+      sync(scope, "test/support/fixtures/my_app_spex_fixtures.ex", :test_support)
+
+      sync(
+        scope,
+        Path.join([CodeMySpec.Paths.knowledge_dir(), "bdd", "spex", "index.md"]),
+        :project_knowledge
+      )
+
+      assert {true, %{status: status}} =
+               CodeMySpec.Requirements.SpexBoundaryChecker.complete?(scope, nil)
+
+      assert status =~ "installed"
+    end
+  end
 end

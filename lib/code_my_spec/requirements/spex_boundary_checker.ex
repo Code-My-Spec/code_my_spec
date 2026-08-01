@@ -27,19 +27,25 @@ defmodule CodeMySpec.Requirements.SpexBoundaryChecker do
   """
 
   alias CodeMySpec.AgentTasks.Setup.Helpers
-  alias CodeMySpec.{Environments, Paths}
+  alias CodeMySpec.{Files, Paths}
   alias CodeMySpec.Users.Scope
 
   @framework_check_files ["spex_denied_calls.ex", "no_direct_send_in_spex.ex"]
 
   @spec complete?(Scope.t(), term()) :: {boolean(), map()}
-  def complete?(%Scope{environment: env}, _entity) when not is_nil(env) do
+  def complete?(%Scope{active_project_id: project_id} = scope, _entity)
+      when not is_nil(project_id) do
+    # One query; every gap below is a question about which files exist, and
+    # each used to be its own stat or directory listing against a disk this
+    # server may not have.
+    paths = scope |> Files.list_files() |> MapSet.new(& &1.path)
+
     gaps =
       []
-      |> add_credo_check_gaps(env)
-      |> add_local_credo_check_gap(env)
-      |> add_fixtures_bridge_gap(env)
-      |> add_project_bdd_plan_gap(env)
+      |> add_credo_check_gaps(paths)
+      |> add_local_credo_check_gap(paths)
+      |> add_fixtures_bridge_gap(paths, scope)
+      |> add_project_bdd_plan_gap(paths)
 
     case gaps do
       [] -> {true, %{status: "Spex boundary protections installed"}}
@@ -48,15 +54,15 @@ defmodule CodeMySpec.Requirements.SpexBoundaryChecker do
   end
 
   def complete?(_scope, _entity) do
-    {false, %{reason: "Environment is not available — cannot verify spex boundary files."}}
+    {false, %{reason: "No active project in scope — cannot verify spex boundary files."}}
   end
 
-  defp add_credo_check_gaps(gaps, env) do
+  defp add_credo_check_gaps(gaps, paths) do
     framework_dir = Paths.credo_checks_framework_dir()
 
     missing =
       Enum.reject(@framework_check_files, fn file ->
-        Environments.file_exists?(env, Path.join(framework_dir, file)) == true
+        MapSet.member?(paths, Path.join(framework_dir, file))
       end)
 
     Enum.map(missing, fn file ->
@@ -68,37 +74,35 @@ defmodule CodeMySpec.Requirements.SpexBoundaryChecker do
   # The local check carries the project's whole-module deny list (stdlib
   # bypasses + internal app contexts); without it the framework template
   # alone has no whole-module denies wired up.
-  defp add_local_credo_check_gap(gaps, env) do
+  defp add_local_credo_check_gap(gaps, paths) do
     local_dir = Paths.credo_checks_local_dir()
+    prefix = local_dir <> "/"
 
-    case Environments.list_directory(env, local_dir) do
-      {:ok, entries} ->
-        if Enum.any?(entries, &String.ends_with?(&1, ".ex")) do
-          gaps
-        else
-          [
-            "`#{local_dir}/` exists but contains no project-local Credo check (`*.ex`) — write `<app>_spex_denies.ex` filling in @denied_whole_modules with stdlib bypasses (File, Port, :file) plus internal app contexts from the architecture proposal."
-            | gaps
-          ]
-        end
-
-      _ ->
-        [
-          "`#{local_dir}/` is missing — write the project-local Credo check that fills in the whole-module deny list."
-          | gaps
-        ]
+    # "Directory missing" and "directory present but empty" used to be two
+    # different messages. Directories are not tracked as files, so from here they
+    # are one state: nothing under the prefix synced. The surviving message names
+    # the file to write, which was the actionable half of both.
+    if Enum.any?(paths, &(String.starts_with?(&1, prefix) and String.ends_with?(&1, ".ex"))) do
+      gaps
+    else
+      [
+        "`#{local_dir}/` has no project-local Credo check (`*.ex`) — write `<app>_spex_denies.ex` filling in @denied_whole_modules with stdlib bypasses (File, Port, :file) plus internal app contexts from the architecture proposal."
+        | gaps
+      ]
     end
   end
 
-  defp add_fixtures_bridge_gap(gaps, env) do
-    case Helpers.extract_app_name(env) do
-      nil ->
+  defp add_fixtures_bridge_gap(gaps, paths, scope) do
+    # `Helpers.app_name/1` prefers the synced mix.exs and only falls back to
+    # reading one, so it answers here where `extract_app_name/1` needed a disk.
+    case Helpers.app_name(scope) do
+      "your_app" ->
         ["Could not determine app name from `mix.exs` — cannot verify fixtures bridge." | gaps]
 
       app ->
         path = Path.join(["test", "support", "fixtures", "#{app}_spex_fixtures.ex"])
 
-        if Environments.file_exists?(env, path) == true do
+        if MapSet.member?(paths, path) do
           gaps
         else
           [
@@ -109,28 +113,17 @@ defmodule CodeMySpec.Requirements.SpexBoundaryChecker do
     end
   end
 
-  # Looks for at least one .md file in `.code_my_spec/knowledge/bdd/spex/`.
-  # Filename is the agent's choice — `index.md` is the convention but not
-  # required by the checker. Existence-only, like the other gaps.
-  defp add_project_bdd_plan_gap(gaps, env) do
+  defp add_project_bdd_plan_gap(gaps, paths) do
     plan_dir = Path.join([Paths.knowledge_dir(), "bdd", "spex"])
+    prefix = plan_dir <> "/"
 
-    case Environments.list_directory(env, plan_dir) do
-      {:ok, entries} ->
-        if Enum.any?(entries, &String.ends_with?(&1, ".md")) do
-          gaps
-        else
-          [
-            "`#{plan_dir}/` exists but contains no project BDD spec plan (`*.md`) — write a project-tailored doc covering this project's public surfaces, fixture inventory, and observable patterns."
-            | gaps
-          ]
-        end
-
-      _ ->
-        [
-          "`#{plan_dir}/` is missing — write a project-specific BDD spec plan that complements the generic framework BDD docs at `.code_my_spec/framework/bdd/spex/`."
-          | gaps
-        ]
+    if Enum.any?(paths, &(String.starts_with?(&1, prefix) and String.ends_with?(&1, ".md"))) do
+      gaps
+    else
+      [
+        "`#{plan_dir}/` has no project BDD spec plan (`*.md`) — write a project-tailored doc covering this project's public surfaces, fixture inventory, and observable patterns."
+        | gaps
+      ]
     end
   end
 
