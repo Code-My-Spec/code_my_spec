@@ -36,7 +36,9 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
   @doc """
   Compute satisfaction for all requirements of a component.
   """
-  @spec compute_component(Scope.t(), Component.t(), Preloader.context() | nil) :: [computed_requirement()]
+  @spec compute_component(Scope.t(), Component.t(), Preloader.context() | nil) :: [
+          computed_requirement()
+        ]
   def compute_component(%Scope{} = scope, %Component{} = component, ctx \\ nil) do
     definitions = RequirementsRegistry.get_requirements_for_type(component.type)
     files = get_files(scope, component.id, ctx)
@@ -92,12 +94,34 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
 
   defp check(%{check_type: :no_problems, config: config}, scope, entity, _files, ctx) do
     source = config_source(config)
-    count = get_problem_count(scope, entity_id(entity), source, ctx)
 
-    if count == 0 do
-      {true, %{status: "No #{source} problems"}}
+    if analysis_fresh?(scope, source, ctx) do
+      count = get_problem_count(scope, entity_id(entity), source, ctx)
+
+      if count == 0 do
+        {true, %{status: "No #{source} problems"}}
+      else
+        {false, %{reason: "#{count} #{source} problem(s)", count: count}}
+      end
     else
-      {false, %{reason: "#{count} #{source} problem(s)", count: count}}
+      # Same rule `tests_passing` already applies, and it belongs here for a
+      # second reason. There, stale results risk a false *pass*: zero recorded
+      # failures against yesterday's code. Here the danger runs the other way —
+      # a stale non-zero count is a false *fail*, and it is worse than it
+      # sounds.
+      #
+      # An agent fixed four credo findings and was handed the same four back, at
+      # the same line numbers, against code it had already corrected. For
+      # "nesting too deep" or "alias order" there is no idempotent second fix:
+      # to satisfy the list it would have to invent a *different* refactor of
+      # correct code, degrading it — and those edits produce another snapshot
+      # the next check reads while stale. That is a loop with no exit, and each
+      # turn makes the code worse.
+      #
+      # The one this drill hit stopped only because the analyzers eventually
+      # caught up. It reported the friction and refused to re-fix, which is the
+      # right call and not one to depend on.
+      {false, %{reason: "#{source} results not current — analysis pending or stale"}}
     end
   end
 
@@ -160,7 +184,9 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
   defp normalize_delegate_result({:ok, :valid}), do: {true, %{status: "delegate check passed"}}
   defp normalize_delegate_result({:ok, :valid, advisory}), do: {true, %{advisory: advisory}}
   defp normalize_delegate_result({:ok, :invalid, reason}), do: {false, %{reason: reason}}
-  defp normalize_delegate_result(_), do: {false, %{reason: "delegate check returned unexpected result"}}
+
+  defp normalize_delegate_result(_),
+    do: {false, %{reason: "delegate check returned unexpected result"}}
 
   # -- Config helpers --
 
@@ -255,17 +281,27 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
       {true, %{status: "#{role} file exists"}}
     else
       details = %{reason: "#{role} file missing"}
-      details = if expected_path, do: Map.put(details, :expected_path, expected_path), else: details
+
+      details =
+        if expected_path, do: Map.put(details, :expected_path, expected_path), else: details
+
       {false, details}
     end
   end
 
   defp has_valid_role?(files, role) do
     case Enum.find(files, &(&1.role == role)) do
-      nil -> {false, %{reason: "#{role} file missing"}}
-      %{valid: true} -> {true, %{status: "#{role} file valid"}}
-      %{valid: false, validation_errors: errors} -> {false, %{reason: "#{role} file invalid", errors: errors}}
-      %{valid: nil} -> {false, %{reason: "#{role} file not yet validated"}}
+      nil ->
+        {false, %{reason: "#{role} file missing"}}
+
+      %{valid: true} ->
+        {true, %{status: "#{role} file valid"}}
+
+      %{valid: false, validation_errors: errors} ->
+        {false, %{reason: "#{role} file invalid", errors: errors}}
+
+      %{valid: nil} ->
+        {false, %{reason: "#{role} file not yet validated"}}
     end
   end
 
@@ -289,7 +325,10 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
 
   defp get_problem_count(%Scope{active_project_id: project_id}, component_id, source, nil) do
     Problem
-    |> where([p], p.project_id == ^project_id and p.component_id == ^component_id and p.source == ^source)
+    |> where(
+      [p],
+      p.project_id == ^project_id and p.component_id == ^component_id and p.source == ^source
+    )
     |> Repo.aggregate(:count)
   end
 
