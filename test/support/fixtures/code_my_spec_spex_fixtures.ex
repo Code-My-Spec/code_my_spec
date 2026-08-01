@@ -16,7 +16,7 @@ defmodule CodeMySpecSpex.Fixtures do
   """
   use Boundary,
     top_level?: true,
-    deps: [CodeMySpec, CodeMySpec.Environments, CodeMySpec.Repo, CodeMySpecTest]
+    deps: [CodeMySpec, CodeMySpec.Environments, CodeMySpec.Repo, CodeMySpecTest, CodeMySpecWeb]
 
   alias CodeMySpec.{
     AccountsFixtures,
@@ -52,8 +52,12 @@ defmodule CodeMySpecSpex.Fixtures do
   alias CodeMySpec.Requirements.RequirementGraph
 
   def generate_user_session_token(user), do: Users.generate_user_session_token(user)
-  def select_active_account(scope, account_id), do: UserPreferences.select_active_account(scope, account_id)
-  def select_active_project(scope, project_id), do: UserPreferences.select_active_project(scope, project_id)
+
+  def select_active_account(scope, account_id),
+    do: UserPreferences.select_active_account(scope, account_id)
+
+  def select_active_project(scope, project_id),
+    do: UserPreferences.select_active_project(scope, project_id)
 
   defdelegate google_integration_fixture(user, attrs \\ %{}), to: IntegrationsFixtures
 
@@ -102,6 +106,98 @@ defmodule CodeMySpecSpex.Fixtures do
   def notify_file_changed(%Scope{} = scope, rel_path) when is_binary(rel_path) do
     ProjectSync.Sync.sync_path(scope, Path.join(scope.cwd, rel_path))
   end
+
+  @doc """
+  The harness's side of the wire, for Story 987.
+
+  Scans the working copy with the real `Scanner.observe/2` — the same function
+  the harness runs, kept identical by cms_scan's drift test — serialises the
+  result the way the harness does, and pushes it through the **real channel
+  handler**.
+
+  Going through the channel is the whole point. An earlier version of this
+  bridge called `FileSync.reconcile/2` and `ComponentSync.sync_from_files/1`
+  directly, which meant it reimplemented the behaviour under test: the spex
+  passed against code where the channel never called `ComponentSync` at all, so
+  they proved the bridge worked and nothing else.
+
+  The read model defaults to **empty**, because that is what a sprite holds. It
+  fetches once on join, before the project has any stories or components, so
+  every ownership decision made from the harness's copy is made against nothing.
+  Passing a populated one would hide exactly the bug this story is about.
+  """
+  def deliver_manifest(%Scope{} = scope, opts \\ []) do
+    read_model = Keyword.get(opts, :read_model, %CodeMySpec.Files.Scanner.ReadModel{})
+
+    observations =
+      scope.environment
+      |> CodeMySpec.Files.Scanner.observe(read_model)
+      |> Enum.map(&serialize_observation/1)
+
+    socket = %Phoenix.Socket{assigns: %{scope: scope}}
+
+    {:reply, reply, _socket} =
+      CodeMySpecWeb.HarnessProjectChannel.handle_in(
+        "observations",
+        %{"observations" => observations},
+        socket
+      )
+
+    reply
+  end
+
+  defp serialize_observation(entry) do
+    %{
+      "path" => entry.path,
+      "role" => to_string(entry.role),
+      "mtime" => entry.mtime && DateTime.to_iso8601(entry.mtime),
+      "size" => entry.size,
+      "fingerprint" => entry.fingerprint,
+      "valid" => entry.valid,
+      "validation_errors" => entry.validation_errors || %{},
+      "component_id" => entry[:component_id],
+      "story_id" => entry[:story_id]
+    }
+  end
+
+  # Paths and domain calls a spex needs. Re-exported rather than referenced
+  # directly, because `CodeMySpecSpex` may not depend on `CodeMySpec` — the
+  # bridge is the sanctioned crossing.
+  defdelegate qa_plan_path(), to: CodeMySpec.Paths, as: :qa_plan
+  defdelegate qa_journey_plan_path(), to: CodeMySpec.Paths, as: :qa_journey_plan
+  defdelegate qa_journey_result_path(), to: CodeMySpec.Paths, as: :qa_journey_result
+  defdelegate persona_summary_path(slug), to: CodeMySpec.Personas, as: :summary_path
+  defdelegate persona_sources_path(slug), to: CodeMySpec.Personas, as: :sources_path
+  defdelegate create_persona(scope, attrs), to: CodeMySpec.Personas
+  defdelegate list_components(scope), to: CodeMySpec.Components
+
+  @doc "Attempt to write a component's stub spec through the scope's environment."
+  defdelegate write_component_stub(scope, attrs),
+    to: CodeMySpec.Architecture.SpecStub,
+    as: :write_for_scope
+
+  @doc """
+  Whether a named requirement is satisfied for an entity, read off the computed
+  graph — the same graph `get_next_requirement` serves an agent from.
+
+  Read from the whole graph rather than a single check because that is what an
+  agent sees: a checker returning true while the graph still lists the
+  requirement open is exactly the disagreement this story exists to catch.
+  """
+  def requirement_satisfied?(%Scope{} = scope, name, entity_type, entity_id) do
+    scope
+    |> CodeMySpec.Requirements.compute_all()
+    |> Enum.any?(fn r ->
+      to_string(r.name) == name and
+        to_string(r.entity_type) == to_string(entity_type) and
+        to_string(r.entity_id) == to_string(entity_id) and
+        r.satisfied
+    end)
+  end
+
+  @doc "Files the harness scanned but could classify into no role."
+  def unclassified_files(%Scope{} = scope),
+    do: CodeMySpec.Files.Scanner.unclassified(scope.environment)
 
   # -- Project Setup (Story 124) --
   defdelegate satisfy_setup_steps(env, steps), to: SetupFixtures, as: :satisfy
@@ -419,7 +515,6 @@ defmodule CodeMySpecSpex.Fixtures do
   full agent run.
   """
   defdelegate session_fixture(scope, attrs \\ %{}), to: SessionsFixtures
-
 
   # -- Sessions (QA spex fixture setup, Stories 726/727) --
   @doc """
