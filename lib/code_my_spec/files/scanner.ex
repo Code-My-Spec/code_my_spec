@@ -76,6 +76,32 @@ defmodule CodeMySpec.Files.Scanner do
     |> Enum.map(&validate_entry(&1, env, read_model.component_by_id, read_model.strict?))
   end
 
+  @doc """
+  Paths under the sync roots that no clause of `classify/1` claims.
+
+  These are dropped by `stream_files/1`, and until now they were dropped in
+  silence — which is the single most expensive piece of missing information in
+  this system. An unclassified file never syncs, so the scan reports a
+  *constant* file count while an agent keeps writing, and the requirement that
+  gates on it reports it missing while it sits on disk.
+
+  That reads exactly like a dead file watcher. Three drills were spent trying to
+  revive watchers that were scanning every forty-five seconds and having every
+  manifest accepted; the answer each time was one unclassified path.
+
+  Most of what this returns is legitimately ignorable — test-support scaffolding,
+  fixtures, page content. The point is not that the list is empty. It is that
+  the list is *visible*, so "the harness cannot see my file" and "the harness
+  chose not to track my file" stop looking the same.
+  """
+  @spec unclassified(Environments.Environment.t()) :: [String.t()]
+  def unclassified(env) do
+    env
+    |> Environments.stream_files(@sync_roots)
+    |> Stream.filter(&(classify(&1) == nil))
+    |> Enum.to_list()
+  end
+
   def fingerprint_entries(env, entries) do
     Enum.map(entries, &add_fingerprint(env, &1))
   end
