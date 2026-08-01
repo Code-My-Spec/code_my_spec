@@ -190,7 +190,7 @@ defmodule CodeMySpec.Files.Scanner do
   # Parsed against the registered `qa_plan` document spec at sync time, so the
   # requirement reads a verdict instead of a file.
   def validate_entry(%{role: :qa_plan} = entry, env, _component_by_id, _strict?) do
-    validate_setup_file(entry, env, &validate_qa_plan/1)
+    validate_setup_file(entry, env, &validate_qa_plan(&1, entry.path))
   end
 
   def validate_entry(%{role: :persona_summary} = entry, env, _component_by_id, _strict?) do
@@ -285,14 +285,24 @@ defmodule CodeMySpec.Files.Scanner do
   # at evaluate time. Same rules, decided once at sync and carried in
   # `validation_errors` so a server with no working copy can still read the
   # verdict.
-  defp validate_qa_plan(content) do
+  # Two files share this role and they are *not* the same document. `plan.md`
+  # parses as `qa_plan`, `journey_plan.md` as `qa_journey_plan` — both registered,
+  # with different required sections. Validating the journey plan against the
+  # other schema marked a perfectly good file invalid, which is worse than not
+  # validating it: an agent is told to fix something that is already right.
+  defp validate_qa_plan(content, path) do
+    {doc_type, label} =
+      if path == Paths.qa_journey_plan(),
+        do: {"qa_journey_plan", "journey_plan.md"},
+        else: {"qa_plan", "plan.md"}
+
     error =
       if String.trim(content) == "" do
-        "`plan.md` is empty"
+        "`#{label}` is empty"
       else
-        case Documents.create_dynamic_document(content, "qa_plan") do
+        case Documents.create_dynamic_document(content, doc_type) do
           {:ok, _document} -> nil
-          {:error, reason} -> "`plan.md` invalid — #{reason}"
+          {:error, reason} -> "`#{label}` invalid — #{reason}"
         end
       end
 
@@ -789,11 +799,16 @@ defmodule CodeMySpec.Files.Scanner do
   # (result.md) and archived failures (result_failed_<ts>.md) live on disk
   # but aren't role-tagged — qa_complete must not be satisfied by an
   # unfinished or failed run.
+  # `journey_result.md` is here because `qa_journey_execute` gates on it and it
+  # matched nothing — the fifth artifact in this codebase that a requirement
+  # required and the classifier had never heard of. See
+  # `ClassifiableArtifactsTest`, which now enumerates them so there is not a
+  # sixth.
   defp match_qa_result?(path) do
     qa_prefix = Paths.qa_dir() <> "/"
 
     String.starts_with?(path, qa_prefix) and
-      Path.basename(path) == "result_complete.md"
+      Path.basename(path) in ["result_complete.md", "journey_result.md"]
   end
 
   @doc "Stat a file for mtime and size. Returns entry map or nil if file doesn't exist."

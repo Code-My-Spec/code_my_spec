@@ -241,4 +241,39 @@ defmodule CodeMySpec.AgentTasks.QaSetupTest do
       assert feedback =~ "Seed Strategy"
     end
   end
+
+  describe "the journey plan shares the role but not the schema" do
+    setup [:create_scope, :create_task]
+
+    test "a valid journey plan is not marked invalid by the qa_plan spec", %{scope: scope} do
+      write_file!(scope.environment, ".code_my_spec/qa/journey_plan.md", """
+      # QA Journey Plan
+
+      ## Journeys
+
+      ### Capture a task
+      1. Log in
+      2. Type a task
+      3. See it listed
+      """)
+
+      sync!(scope)
+
+      record = CodeMySpec.Files.get_by_path(scope, CodeMySpec.Paths.qa_journey_plan())
+
+      assert record, "journey_plan.md must classify and sync"
+
+      error = record.validation_errors["errors"]["plan"]
+
+      # `qa_plan` requires App Overview / Tools Registry / Seed Strategy. If the
+      # journey plan is being judged by that schema, the complaint names them.
+      if error do
+        refute error =~ "tools registry",
+               "the journey plan is being validated against the qa_plan schema, " <>
+                 "which tells an agent to fix a file that is already correct"
+
+        refute error =~ "seed strategy"
+      end
+    end
+  end
 end
