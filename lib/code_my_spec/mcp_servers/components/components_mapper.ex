@@ -14,6 +14,22 @@ defmodule CodeMySpec.McpServers.Components.ComponentsMapper do
     })
   end
 
+  @doc """
+  The component, plus something the caller has to act on.
+
+  Text rather than JSON, deliberately: a structured payload is read instead of
+  the text beside it, not as well as, so a note attached to `Response.json/2`
+  is a note nobody sees. The whole point of this clause is that the agent reads
+  and acts on it.
+  """
+  def component_response(component, note) when is_binary(note) do
+    Response.tool()
+    |> Response.text("""
+    Created `#{component.module_name}` (#{component.type}) — id `#{component.id}`.
+    #{note}
+    """)
+  end
+
   def validation_error(changeset) do
     Response.tool()
     |> Response.error(Formatters.format_changeset_errors(changeset))
