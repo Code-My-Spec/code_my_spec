@@ -69,6 +69,15 @@ defmodule CodeMySpec.AgentTasks.QaSetupTest do
     """)
   end
 
+  # `evaluate/2` reads the synced record, not the file — the plan is parsed
+  # during the scan, on the machine that holds it, so a server with no working
+  # copy can still tell whether it is valid. Syncing here means these tests
+  # exercise the classifier and the validator too, not just the checker.
+  defp sync!(scope) do
+    {:ok, _} = CodeMySpec.Files.FileSync.sync(scope, base_dir: scope.environment.cwd)
+    :ok
+  end
+
   defp write_qa_plan(env, content \\ nil) do
     write_file!(
       env,
@@ -162,7 +171,6 @@ defmodule CodeMySpec.AgentTasks.QaSetupTest do
       assert {:ok, prompt} = QaSetup.command(scope, task)
       assert prompt =~ ".code_my_spec/qa/plan.md"
     end
-
   end
 
   # ============================================================================
@@ -177,6 +185,7 @@ defmodule CodeMySpec.AgentTasks.QaSetupTest do
       task: task
     } do
       write_qa_plan(scope.environment)
+      sync!(scope)
 
       assert {:ok, :valid} = QaSetup.evaluate(scope, task)
     end
@@ -202,6 +211,8 @@ defmodule CodeMySpec.AgentTasks.QaSetupTest do
       Some overview content.
       """)
 
+      sync!(scope)
+
       assert {:ok, :invalid, feedback} = QaSetup.evaluate(scope, task)
       assert feedback =~ "missing required section"
       assert feedback =~ "Tools Registry"
@@ -224,9 +235,10 @@ defmodule CodeMySpec.AgentTasks.QaSetupTest do
       Tools here.
       """)
 
+      sync!(scope)
+
       assert {:ok, :invalid, feedback} = QaSetup.evaluate(scope, task)
       assert feedback =~ "Seed Strategy"
     end
-
   end
 end

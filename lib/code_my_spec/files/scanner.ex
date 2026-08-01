@@ -187,6 +187,12 @@ defmodule CodeMySpec.Files.Scanner do
   # verdict has to survive the trip to a server that cannot read the file.
   # `PersonasChecker` used to read and validate these itself and could not do
   # it at all without a disk.
+  # Parsed against the registered `qa_plan` document spec at sync time, so the
+  # requirement reads a verdict instead of a file.
+  def validate_entry(%{role: :qa_plan} = entry, env, _component_by_id, _strict?) do
+    validate_setup_file(entry, env, &validate_qa_plan/1)
+  end
+
   def validate_entry(%{role: :persona_summary} = entry, env, _component_by_id, _strict?) do
     validate_setup_file(entry, env, &validate_persona_summary/1)
   end
@@ -279,6 +285,20 @@ defmodule CodeMySpec.Files.Scanner do
   # at evaluate time. Same rules, decided once at sync and carried in
   # `validation_errors` so a server with no working copy can still read the
   # verdict.
+  defp validate_qa_plan(content) do
+    error =
+      if String.trim(content) == "" do
+        "`plan.md` is empty"
+      else
+        case Documents.create_dynamic_document(content, "qa_plan") do
+          {:ok, _document} -> nil
+          {:error, reason} -> "`plan.md` invalid — #{reason}"
+        end
+      end
+
+    %{errors: %{plan: error}, data: %{}}
+  end
+
   defp validate_persona_summary(content) do
     error =
       cond do
@@ -732,6 +752,11 @@ defmodule CodeMySpec.Files.Scanner do
 
   defp classify_qa(path) do
     cond do
+      # The plans `qa_setup` and the journey requirements gate on. Neither
+      # was classified, so neither ever synced, so the checkers had to read
+      # them off a disk — and reported them missing on a server that has
+      # none, while they sat in the agent's working copy.
+      path in [Paths.qa_plan(), Paths.qa_journey_plan()] -> {path, :qa_plan}
       match_qa_file?(path, "brief.md") -> {path, :qa_brief}
       match_qa_result?(path) -> {path, :qa_result}
       true -> nil

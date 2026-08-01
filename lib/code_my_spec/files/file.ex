@@ -30,6 +30,7 @@ defmodule CodeMySpec.Files.File do
     :persona_summary,
     :persona_sources,
     :credo_check,
+    :qa_plan,
     :integration,
     :task_artifact,
     :mix_exs,
