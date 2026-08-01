@@ -153,6 +153,26 @@ defmodule CodeMySpec.Files.FileSync do
     existing_records = Files.list_files(scope)
     existing_by_path = Map.new(existing_records, &{&1.path, &1})
 
+    # Ownership is decided here, against this server's live domain, and whatever
+    # the harness worked out is discarded.
+    #
+    # The harness fetches its read model once, when it joins the channel. A
+    # sprite joins before the project has any stories, so `story_ids` is empty
+    # for the rest of the session — and `resolve_owners/2` refuses to link a
+    # spex file to a story the read model has never heard of, which is the right
+    # rule against a *fresh* read model and exactly wrong against a stale one.
+    #
+    # Drill 12 wrote 32 BDD spec files across 9 stories. All 32 synced; not one
+    # carried a story id, so `bdd_specs_exist` could not pass for any story, and
+    # that gates all 69 `implementation_file` requirements behind it. The agent
+    # read the frozen graph as a dead file watcher — the fourth run to reach for
+    # that explanation and the fourth time it was something else.
+    #
+    # Re-resolving here costs one read-model build per manifest and removes the
+    # whole class: the harness reports what a file *is*, and the server, which
+    # owns the database, decides what it *belongs to*.
+    observations = Scanner.resolve_owners(observations, Files.read_model(scope))
+
     {upserted, changed} =
       case observations do
         [] ->

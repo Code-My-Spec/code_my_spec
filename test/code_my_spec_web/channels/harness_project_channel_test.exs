@@ -256,6 +256,44 @@ defmodule CodeMySpecWeb.HarnessProjectChannelTest do
                "`implementation_file` can never be satisfied"
     end
 
+    # The harness fetches its read model once, on join. A sprite joins before the
+    # project has any stories, so its `story_ids` stays empty all session and it
+    # refuses to link any spex file to any story — correct against a fresh read
+    # model, exactly wrong against a stale one.
+    #
+    # Drill 12 wrote 32 spec files across 9 stories. All 32 synced; none carried
+    # a story id, so `bdd_specs_exist` failed for every story and gated all 69
+    # `implementation_file` requirements behind it. The manifest here carries no
+    # ownership at all — the harness cannot know it — and the server has to
+    # supply it.
+    test "the server decides ownership, not the harness", %{channel: channel, scope: scope} do
+      story = CodeMySpec.StoriesFixtures.story_fixture(scope)
+      dir = "test/spex/#{story.id}_some_title"
+
+      ref =
+        push(channel, "observations", %{
+          "observations" => [
+            %{
+              "path" => "#{dir}/criterion_1_a_thing_happens_spex.exs",
+              "role" => "bdd_spec",
+              "mtime" => "2026-07-28T10:00:00.000000Z",
+              "size" => 40,
+              "fingerprint" => "spex-1",
+              "valid" => true,
+              "validation_errors" => %{}
+            }
+          ]
+        })
+
+      assert_reply ref, :ok, %{"upserted" => 1}, 2_000
+
+      [file] = CodeMySpec.Files.list_files(scope)
+
+      assert file.story_id == story.id,
+             "the spec synced but belongs to no story, so `bdd_specs_exist` can " <>
+               "never pass — and everything gated behind it stays unreachable"
+    end
+
     # The manifest is the whole truth, so a path's absence is a deletion. This
     # is the reason it's sent whole rather than as a delta.
     test "a path missing from the next manifest is removed", %{channel: channel, scope: scope} do
