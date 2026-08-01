@@ -290,8 +290,7 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
   defp surface_hint("controller"), do: "HTTP (a controller endpoint, possibly with cassette)"
 
   defp surface_hint(_),
-    do:
-      "MCP tool or HTTP — depends on whether an agent or a hook drives the criterion"
+    do: "MCP tool or HTTP — depends on whether an agent or a hook drives the criterion"
 
   defp criteria_section(story, criteria) do
     sections =
@@ -403,7 +402,13 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
   # had no @moduledoc and no sibling specs, which is a plausible-looking answer
   # rather than a visible failure.
   defp environment(%{environment: %Environment{} = env}), do: env
-  defp environment(scope), do: Environment.new(:local, Map.get(scope, :cwd) || File.cwd!())
+
+  defp environment(scope) do
+    case Map.get(scope, :cwd) do
+      cwd when is_binary(cwd) -> Environment.new(:local, cwd)
+      _ -> nil
+    end
+  end
 
   defp inferred_path_hint(module_name) when is_binary(module_name) do
     relative =

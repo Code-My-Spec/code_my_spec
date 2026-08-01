@@ -235,7 +235,24 @@ defmodule CodeMySpec.Environments.Local do
   end
 
   # Resolve path relative to working_dir if it's a relative path
-  defp resolve_path(path, nil), do: path
+  # A relative path against no working directory is not "relative to nothing" —
+  # `File.read/1` and `File.write/2` resolve it against whatever directory this
+  # OS process is in, which on a server is its own checkout. Returning the path
+  # unchanged is what made that silent.
+  #
+  # Unreachable now that `Scope.resolve_environment/2` returns nil rather than a
+  # directoryless environment. Kept loud so that if some other path builds one,
+  # it says so instead of writing into the server's repository.
+  defp resolve_path(path, nil) do
+    if Path.type(path) == :relative do
+      raise ArgumentError,
+            "cannot resolve the relative path #{inspect(path)}: this environment has " <>
+              "no working directory, so the path would resolve against the current " <>
+              "process's directory — on a server, its own checkout"
+    else
+      path
+    end
+  end
 
   defp resolve_path(path, working_dir) do
     if Path.type(path) == :relative do

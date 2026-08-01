@@ -170,7 +170,8 @@ defmodule CodeMySpec.Embeddings.HexDocProjector do
   # meaningful on the machine the scope was built on, so a sprite's deps were
   # looked for on the server's disk and every package read as uninstalled.
   defp environment(%Scope{environment: %Environment{} = env}), do: env
-  defp environment(%Scope{cwd: cwd}), do: Environment.new(:local, cwd || File.cwd!())
+  defp environment(%Scope{cwd: cwd}) when is_binary(cwd), do: Environment.new(:local, cwd)
+  defp environment(%Scope{}), do: nil
 
   # `Environments` has no dir? predicate. A successful listing is the check:
   # `list_directory` on a regular file returns `{:error, :enotdir}`.

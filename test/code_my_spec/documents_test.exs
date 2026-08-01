@@ -401,7 +401,12 @@ defmodule CodeMySpec.DocumentsTest do
       - CodeMySpec.Accounts.Account
       """
 
-      assert {:ok, []} = Documents.validate_internal_dependencies(content, tmp_dir)
+      assert {:ok, []} =
+               Documents.validate_internal_dependencies(
+                 content,
+                 tmp_dir,
+                 CodeMySpec.Environments.Environment.new(:local, File.cwd!())
+               )
     end
 
     test "returns warnings for missing internal dependencies", %{tmp_dir: tmp_dir} do
@@ -414,7 +419,13 @@ defmodule CodeMySpec.DocumentsTest do
       - CodeMySpec.Accounts.Missing
       """
 
-      assert {:ok, warnings} = Documents.validate_internal_dependencies(content, tmp_dir)
+      assert {:ok, warnings} =
+               Documents.validate_internal_dependencies(
+                 content,
+                 tmp_dir,
+                 CodeMySpec.Environments.Environment.new(:local, File.cwd!())
+               )
+
       assert length(warnings) == 1
       assert hd(warnings) =~ "CodeMySpec.Accounts.Missing"
       assert hd(warnings) =~ "not found"
@@ -431,7 +442,12 @@ defmodule CodeMySpec.DocumentsTest do
       - File
       """
 
-      assert {:ok, []} = Documents.validate_internal_dependencies(content, tmp_dir)
+      assert {:ok, []} =
+               Documents.validate_internal_dependencies(
+                 content,
+                 tmp_dir,
+                 CodeMySpec.Environments.Environment.new(:local, File.cwd!())
+               )
     end
 
     test "handles mixed internal and external dependencies", %{tmp_dir: tmp_dir} do
@@ -445,7 +461,13 @@ defmodule CodeMySpec.DocumentsTest do
       - CodeMySpec.Missing.Module
       """
 
-      assert {:ok, warnings} = Documents.validate_internal_dependencies(content, tmp_dir)
+      assert {:ok, warnings} =
+               Documents.validate_internal_dependencies(
+                 content,
+                 tmp_dir,
+                 CodeMySpec.Environments.Environment.new(:local, File.cwd!())
+               )
+
       assert length(warnings) == 1
       assert hd(warnings) =~ "CodeMySpec.Missing.Module"
     end

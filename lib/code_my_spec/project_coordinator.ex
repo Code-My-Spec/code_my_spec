@@ -28,7 +28,9 @@ defmodule CodeMySpec.ProjectCoordinator do
   """
   @spec generate_prompt_files(any(), map(), [map()], String.t()) :: {:ok, [map()]}
   def generate_prompt_files(scope, session, actionable, status_dir) do
-    Logger.info("[ProjectCoordinator] Generating #{length(actionable)} prompt files in #{status_dir}")
+    Logger.info(
+      "[ProjectCoordinator] Generating #{length(actionable)} prompt files in #{status_dir}"
+    )
 
     prompt_files =
       Enum.map(actionable, fn %{component: component, task_module: task_module} ->
@@ -149,7 +151,10 @@ defmodule CodeMySpec.ProjectCoordinator do
           {true, nil}
 
         {:ok, :invalid, feedback} ->
-          Logger.info("[ProjectCoordinator] #{suffix} for #{module_name}: incomplete, writing prompt")
+          Logger.info(
+            "[ProjectCoordinator] #{suffix} for #{module_name}: incomplete, writing prompt"
+          )
+
           {:ok, prompt_content} = task_module.command(scope, task)
           :ok = Environments.write_file(scope.environment, prompt_path, prompt_content)
           :ok = Environments.write_file(scope.environment, problem_path, feedback)
@@ -288,6 +293,7 @@ defmodule CodeMySpec.ProjectCoordinator do
     case {Map.get(task, :component_id), Map.get(task, :component_module_name)} do
       {cid, _} when not is_nil(cid) ->
         component = Components.get_component!(scope, cid)
+
         status_dir =
           Keyword.get_lazy(opts, :status_dir, fn -> component_status_dir(component) end)
 
@@ -337,8 +343,10 @@ defmodule CodeMySpec.ProjectCoordinator do
     :ok
   end
 
-  defp cleanup_file(nil, relative_path) do
-    Environments.delete_file(Environment.new(:local, File.cwd!()), relative_path)
+  # No environment means nothing here to clean up. Deleting through an
+  # environment invented from this process's directory would remove a file
+  # from the *server's* checkout.
+  defp cleanup_file(nil, _relative_path) do
     :ok
   end
 

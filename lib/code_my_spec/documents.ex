@@ -44,7 +44,7 @@ defmodule CodeMySpec.Documents do
   @spec validate_internal_dependencies(String.t(), String.t(), Environment.t() | nil) ::
           {:ok, [String.t()]}
   def validate_internal_dependencies(content, base_dir, env_or_nil \\ nil) do
-    env = env_or_nil || Environment.new(:local, File.cwd!())
+    env = env_or_nil
     dependencies = extract_dependencies(content)
 
     warnings =
@@ -163,8 +163,8 @@ defmodule CodeMySpec.Documents do
   # piecewise without being forced to fill in every section. Structural
   # checks that don't depend on completeness (H1, parse, disallowed
   # sections, parsed-issue shape) still run.
-  defp effective_section_requirements(doc_def, true), do:
-    {doc_def.required_sections, doc_def.optional_sections}
+  defp effective_section_requirements(doc_def, true),
+    do: {doc_def.required_sections, doc_def.optional_sections}
 
   defp effective_section_requirements(doc_def, false) do
     flattened =

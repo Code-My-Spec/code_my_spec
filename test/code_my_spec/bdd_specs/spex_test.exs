@@ -24,7 +24,12 @@ defmodule CodeMySpec.BddSpecs.SpexTest do
 
       File.write!(jsonl_path, content)
 
-      assert {:ok, failures} = Spex.parse_jsonl(jsonl_path)
+      assert {:ok, failures} =
+               Spex.parse_jsonl(
+                 jsonl_path,
+                 CodeMySpec.Environments.Environment.new(:local, File.cwd!())
+               )
+
       assert length(failures) == 2
 
       [first, second] = failures
@@ -37,13 +42,21 @@ defmodule CodeMySpec.BddSpecs.SpexTest do
       jsonl_path = Path.join(tmp_dir, "empty.jsonl")
       File.write!(jsonl_path, "")
 
-      assert {:ok, []} = Spex.parse_jsonl(jsonl_path)
+      assert {:ok, []} =
+               Spex.parse_jsonl(
+                 jsonl_path,
+                 CodeMySpec.Environments.Environment.new(:local, File.cwd!())
+               )
     end
 
     test "returns {:ok, []} when file doesn't exist", %{tmp_dir: tmp_dir} do
       jsonl_path = Path.join(tmp_dir, "nonexistent.jsonl")
 
-      assert {:ok, []} = Spex.parse_jsonl(jsonl_path)
+      assert {:ok, []} =
+               Spex.parse_jsonl(
+                 jsonl_path,
+                 CodeMySpec.Environments.Environment.new(:local, File.cwd!())
+               )
     end
 
     test "decodes all failure fields correctly", %{tmp_dir: tmp_dir} do
@@ -77,7 +90,11 @@ defmodule CodeMySpec.BddSpecs.SpexTest do
 
       File.write!(jsonl_path, Jason.encode!(failure_data))
 
-      assert {:ok, [failure]} = Spex.parse_jsonl(jsonl_path)
+      assert {:ok, [failure]} =
+               Spex.parse_jsonl(
+                 jsonl_path,
+                 CodeMySpec.Environments.Environment.new(:local, File.cwd!())
+               )
 
       assert %Failure{} = failure
       assert failure.spex == "User authentication"
@@ -107,14 +124,23 @@ defmodule CodeMySpec.BddSpecs.SpexTest do
       jsonl_path = Path.join(tmp_dir, "malformed.jsonl")
       File.write!(jsonl_path, "not valid json{{{")
 
-      assert {:error, _} = Spex.parse_jsonl(jsonl_path)
+      assert {:error, _} =
+               Spex.parse_jsonl(
+                 jsonl_path,
+                 CodeMySpec.Environments.Environment.new(:local, File.cwd!())
+               )
     end
 
     test "parses real passing spex output from cached run" do
       # Use cached passing spex results from TestAdapter
       cached_jsonl = TestAdapter.spex_results_passing_cache_path()
 
-      assert {:ok, failures} = Spex.parse_jsonl(cached_jsonl)
+      assert {:ok, failures} =
+               Spex.parse_jsonl(
+                 cached_jsonl,
+                 CodeMySpec.Environments.Environment.new(:local, File.cwd!())
+               )
+
       # Passing tests should have no failures
       assert failures == []
     end
@@ -123,7 +149,12 @@ defmodule CodeMySpec.BddSpecs.SpexTest do
       # Use cached failing spex results from TestAdapter
       cached_jsonl = TestAdapter.spex_results_failing_cache_path()
 
-      assert {:ok, failures} = Spex.parse_jsonl(cached_jsonl)
+      assert {:ok, failures} =
+               Spex.parse_jsonl(
+                 cached_jsonl,
+                 CodeMySpec.Environments.Environment.new(:local, File.cwd!())
+               )
+
       # Should have at least one failure
       assert failures != []
 

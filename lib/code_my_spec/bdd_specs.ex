@@ -162,7 +162,7 @@ defmodule CodeMySpec.BddSpecs do
   """
   @spec validate_spec_syntax(Path.t(), Environment.t() | nil) :: :ok | {:error, [String.t()]}
   def validate_spec_syntax(path, env_or_nil \\ nil) do
-    env = env_or_nil || Environment.new(:local, File.cwd!())
+    env = env_or_nil
 
     case Environments.read_file(env, path) do
       {:ok, content} -> Parser.validate_syntax(content)
@@ -273,7 +273,9 @@ defmodule CodeMySpec.BddSpecs do
     chunk = Utf8.valid_prefix(slug, max)
 
     case :binary.matches(chunk, "_") do
-      [] -> chunk
+      [] ->
+        chunk
+
       matches ->
         {pos, _} = List.last(matches)
         binary_part(chunk, 0, pos)

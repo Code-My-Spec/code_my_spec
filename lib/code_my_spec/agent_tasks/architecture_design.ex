@@ -44,7 +44,9 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
     orphans = ArchitectureChecker.orphans(scope)
     component_count = Components.count_components(scope)
 
-    env = scope.environment || Environment.new(:cli, working_dir || File.cwd!())
+    # The caller's environment or none. Inventing one at this server's
+    # directory made `proposal_exists?` answer about *this* repository.
+    env = scope.environment || cli_env(working_dir)
     proposal_exists? = Environments.file_exists?(env, @proposal_path)
     record_session_start_state(env, proposal_exists?)
 
@@ -79,8 +81,8 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
   - {:ok, :invalid, feedback} if proposal has errors or execution fails
   """
   def evaluate(scope, _task) do
-    working_dir = (scope.environment && scope.environment.cwd) || File.cwd!()
-    env = scope.environment || Environment.new(:cli, working_dir)
+    working_dir = scope.environment && scope.environment.cwd
+    env = scope.environment
 
     # Don't clear the marker on evaluate — `command/2` owns the lifecycle.
     # A failing patch-mode evaluate (e.g. unlinked story) used to clear the
@@ -115,8 +117,8 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
   @spec execute_proposal(map()) ::
           {:ok, :valid} | {:ok, :valid, String.t()} | {:ok, :invalid, String.t()}
   def execute_proposal(scope) do
-    working_dir = (scope.environment && scope.environment.cwd) || File.cwd!()
-    env = scope.environment || Environment.new(:cli, working_dir)
+    working_dir = scope.environment && scope.environment.cwd
+    env = scope.environment
     evaluate_initial_mode(scope, env, working_dir)
   end
 
@@ -209,6 +211,11 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
   # tree no boundary claims. Two derivations in one file, disagreeing, and the
   # prompt handed out the wrong one: an agent registered fourteen components
   # under `E2etodo.` before noticing and refused to paper over it in code.
+  # Only when a directory was actually supplied. `nil` means this server has
+  # no working copy for the project, which every caller below handles.
+  defp cli_env(nil), do: nil
+  defp cli_env(working_dir), do: Environment.new(:cli, working_dir)
+
   defp get_app_name(%{module_name: module_name}) when is_binary(module_name), do: module_name
 
   # Last resort only. Underscore first so `-` and ` ` are word boundaries —
