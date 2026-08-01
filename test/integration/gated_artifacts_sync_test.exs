@@ -150,4 +150,32 @@ defmodule CodeMySpec.Integration.GatedArtifactsSyncTest do
     Desk research.
     """
   end
+
+  describe "components own their files after a sync" do
+    test "an implementation file is linked to its component", %{scope: scope} do
+      spec = Path.join(scope.cwd, ".code_my_spec/spec/my_app/tasks.spec.md")
+      spec |> Path.dirname() |> File.mkdir_p!()
+
+      File.write!(
+        spec,
+        "# MyApp.Tasks\n\nStores tasks.\n\n## Type\n\ncontext\n"
+      )
+
+      assert {:ok, _} = FileSync.sync(scope, base_dir: scope.cwd)
+      assert {:ok, _} = CodeMySpec.Files.ComponentSync.sync_from_files(scope)
+
+      impl = Files.get_by_path(scope, "lib/my_app/tasks.ex")
+
+      assert impl.component_id,
+             """
+             The implementation file synced but nothing owns it.
+
+             `implementation_file` is a file_exists check scoped to a component's
+             own files, so an unlinked file is invisible to it and the requirement
+             stays open forever. Drill 11 finished the whole project chain with
+             157 tests passing and still showed 15 of these open, every file
+             synced and not one linked.
+             """
+    end
+  end
 end

@@ -203,6 +203,59 @@ defmodule CodeMySpecWeb.HarnessProjectChannelTest do
                CodeMySpec.Files.list_files(scope)
     end
 
+    # Reconciling files is half a sync. The half that was missing here writes
+    # `component_id` back onto each File row, and without it every
+    # `implementation_file` requirement stays open forever — the check is scoped
+    # to a component's own files, so a file nothing owns is invisible to it.
+    #
+    # Drill 11 finished the entire project chain, wrote every module, passed 157
+    # tests, and still reported 15 implementation requirements unsatisfied with
+    # all 66 implementation files synced and not one linked. The agent read that
+    # as a dead file watcher. Sync was working perfectly; only the second half
+    # was never being run on this path.
+    test "a manifest also links files to their components", %{channel: channel, scope: scope} do
+      ref =
+        push(channel, "observations", %{
+          "observations" => [
+            %{
+              "path" => ".code_my_spec/spec/todo/accounts.spec.md",
+              "role" => "spec",
+              "mtime" => "2026-07-28T10:00:00.000000Z",
+              "size" => 80,
+              "fingerprint" => "spec-1",
+              "valid" => true,
+              "validation_errors" => %{
+                "errors" => %{},
+                "data" => %{"module_name" => "Todo.Accounts", "type" => "context"}
+              }
+            },
+            %{
+              "path" => "lib/todo/accounts.ex",
+              "role" => "implementation",
+              "mtime" => "2026-07-28T10:00:00.000000Z",
+              "size" => 120,
+              "fingerprint" => "impl-1",
+              "valid" => true,
+              "validation_errors" => %{
+                "errors" => %{},
+                "data" => %{"module_name" => "Todo.Accounts"}
+              }
+            }
+          ]
+        })
+
+      assert_reply ref, :ok, %{"upserted" => 2}, 2_000
+
+      impl =
+        scope
+        |> CodeMySpec.Files.list_files()
+        |> Enum.find(&(&1.path == "lib/todo/accounts.ex"))
+
+      assert impl.component_id,
+             "the implementation file synced but nothing owns it, so " <>
+               "`implementation_file` can never be satisfied"
+    end
+
     # The manifest is the whole truth, so a path's absence is a deletion. This
     # is the reason it's sent whole rather than as a delta.
     test "a path missing from the next manifest is removed", %{channel: channel, scope: scope} do
@@ -468,7 +521,6 @@ defmodule CodeMySpecWeb.HarnessProjectChannelTest do
 
       assert_reply ref, :error, %{"reason" => "unknown_run"}, 5_000
     end
-
   end
 
   # A run left `:running` makes `in_flight/1` report analysis pending on every

@@ -34,6 +34,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   alias CodeMySpec.Analysis
   alias CodeMySpec.Files
   alias CodeMySpec.Files.File, as: FileRecord
+  alias CodeMySpec.Files.ComponentSync
   alias CodeMySpec.Files.FileSync
   alias CodeMySpec.Files.Scanner
   alias CodeMySpec.Hooks.AskUserQuestion
@@ -130,14 +131,34 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
       when is_list(observations) do
     case deserialize_observations(observations) do
       {:ok, entries} ->
-        summary = FileSync.reconcile(socket.assigns.scope, entries)
+        scope = socket.assigns.scope
+        summary = FileSync.reconcile(scope, entries)
+
+        # Reconciling files is only half of a sync. The other half turns those
+        # files into components and — the part that matters here — writes
+        # `component_id` back onto each File row.
+        #
+        # Without it every `implementation_file` requirement stays unsatisfied
+        # forever: the check is scoped to a component's own files, and a file
+        # nothing owns is invisible to it. Drill 11 finished the entire project
+        # chain, wrote every module, passed 157 tests, and still showed 15
+        # implementation requirements open with all 66 implementation files
+        # synced and not one of them linked.
+        #
+        # The local path has always run both (see `Tools.SyncProject`). This one
+        # ran only the first, and could not have run the second until
+        # `ComponentSync` stopped needing to read the files itself — the
+        # component identity now travels in the File record, which is what makes
+        # this line possible at all.
+        {:ok, components} = ComponentSync.sync_from_files(scope)
 
         {:reply,
          {:ok,
           %{
             "upserted" => summary.upserted,
             "removed" => summary.removed,
-            "changed" => length(summary.changed_entries)
+            "changed" => length(summary.changed_entries),
+            "components" => length(components.all_components)
           }}, socket}
 
       {:error, problems} ->
