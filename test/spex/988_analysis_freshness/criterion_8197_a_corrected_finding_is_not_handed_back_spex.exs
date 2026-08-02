@@ -28,10 +28,11 @@ defmodule CodeMySpecSpex.Story988.Criterion8197Spex do
   all — the stop simply passes.
 
   So 8197 holds, but by silence rather than by filtering: nothing is handed
-  back because nothing is. The window that opens is filed as an issue; it is
-  not asserted here, because `validation.ex` chose it deliberately ("stale
-  means silent, not passing") and a spex is the wrong place to overturn a
-  decision.
+  back because nothing is. The window that opens was reviewed and accepted —
+  PM decision 2026-08-02 — on the grounds that the alternatives are worse: a
+  blocking "analysis pending" wedges on an analyzer that never completes, and
+  per-file freshness reintroduces drill 6 for cross-file causation. See
+  criterion 8202's moduledoc for the full reasoning.
   """
 
   use CodeMySpecSpex.Case
