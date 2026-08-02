@@ -1350,4 +1350,57 @@ defmodule CodeMySpecSpex.Fixtures do
       "#{config[:hostname]}/#{config[:database]}"
   end
 
+  @doc """
+  Hetzner resources left behind by an earlier spex run.
+
+  Named `spex-` by convention, which is also what makes them safe to identify:
+  anything without that prefix is somebody's real infrastructure and is never
+  reported here. Returns `[]` when the credentials are absent — a developer
+  without them cannot have leaked anything.
+  """
+  @spec leaked_spex_resources() :: [String.t()]
+  def leaked_spex_resources do
+    with token when is_binary(token) and token != "" <- System.get_env("HETZNER_API_TOKEN"),
+         id when is_binary(id) and id != "" <- System.get_env("HETZNER_S3_ACCESS_KEY_ID"),
+         secret when is_binary(secret) and secret != "" <-
+           System.get_env("HETZNER_S3_SECRET_ACCESS_KEY") do
+      credentials = [
+        access_key_id: id,
+        secret_access_key: secret,
+        region: System.get_env("HETZNER_S3_REGION", "fsn1")
+      ]
+
+      previous = Application.get_env(:code_my_spec, CodeMySpec.Provisioning.Hetzner, [])
+
+      Application.put_env(
+        :code_my_spec,
+        CodeMySpec.Provisioning.Hetzner,
+        Keyword.put(previous, :api_token, token)
+      )
+
+      servers =
+        case CodeMySpec.Provisioning.Hetzner.list_servers(%CodeMySpec.Users.Scope{}) do
+          {:ok, list} -> Enum.map(list, &(&1["name"] || &1[:name]))
+          _ -> []
+        end
+
+      buckets =
+        case CodeMySpec.Provisioning.Storage.list_buckets(credentials, []) do
+          {:ok, list} -> Enum.map(list, &name_of/1)
+          _ -> []
+        end
+
+      Application.put_env(:code_my_spec, CodeMySpec.Provisioning.Hetzner, previous)
+
+      Enum.filter(servers ++ buckets, &String.starts_with?(to_string(&1), "spex-"))
+    else
+      _ -> []
+    end
+  end
+
+  defp name_of(%{name: name}), do: name
+  defp name_of(%{"name" => name}), do: name
+  defp name_of(name) when is_binary(name), do: name
+  defp name_of(other), do: inspect(other)
+
 end

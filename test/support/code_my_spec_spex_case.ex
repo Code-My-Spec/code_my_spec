@@ -92,6 +92,8 @@ defmodule CodeMySpecSpex.Case do
   deliberate act it is.
   """
   def connect_providers(%{scope: scope} = context) do
+    refuse_to_run_on_residue()
+
     for provider <- [:github, :cloudflare, :resend] do
       grant = live_grant(provider)
 
@@ -179,6 +181,41 @@ defmodule CodeMySpecSpex.Case do
   encrypted env file; here there is no such box, so the test database — which is
   a real Postgres with real tables — stands in for it.
   """
+  # A criterion whose premise is "this resource exists" has to be the thing that
+  # creates it. When a previous run crashed before `on_exit`, the resource is
+  # still there and the criterion passes without ever having created it —
+  # silently, and only until someone runs the suite against a clean account.
+  #
+  # So a run that starts on residue stops instead, naming what it found. Not
+  # deleted automatically: a recording may be in flight, and deleting somebody
+  # else's live resource is worse than refusing to start.
+  #
+  # Once per BEAM — the check costs a provider round trip and the answer cannot
+  # change while the suite that would change it is the one asking.
+  defp refuse_to_run_on_residue do
+    case :persistent_term.get({__MODULE__, :residue_checked}, nil) do
+      nil ->
+        :persistent_term.put({__MODULE__, :residue_checked}, true)
+        leaked = Fixtures.leaked_spex_resources()
+
+        if leaked != [] do
+          raise """
+          this account already holds spex resources from an earlier run:
+
+            #{Enum.join(leaked, "\n  ")}
+
+          A criterion whose premise is "this exists" would pass on them without
+          creating anything. Clear them first:
+
+            MIX_ENV=test mix cms.provisioning_leaks --delete
+          """
+        end
+
+      _ ->
+        :ok
+    end
+  end
+
   @doc """
   Advance the clock the backup health check reads, by several nights.
 
