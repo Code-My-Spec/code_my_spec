@@ -1,4 +1,4 @@
-defmodule CodeMySpecLocalWeb.EpicsLive.Show do
+defmodule CodeMySpecWeb.EpicsLive.Show do
   @moduledoc """
   A single epic and the stories it contains, with per-story readiness toggles
   and a one-shot bulk release.
@@ -6,21 +6,16 @@ defmodule CodeMySpecLocalWeb.EpicsLive.Show do
   The bulk release stamps the stories that are in the epic *at that moment*.
   Stories added later stay parked — the epic holds no readiness of its own.
   """
-  use CodeMySpecLocalWeb, :live_view
+  use CodeMySpecWeb, :live_view
 
   alias CodeMySpec.Epics
-  alias CodeMySpec.Projects
   alias CodeMySpec.Stories
-  alias CodeMySpec.Users.Scope
 
   @impl true
   def mount(_params, _session, socket) do
     {:ok,
      assign(socket,
-       projects: Projects.list_local_projects(),
-       project: nil,
-       scope: nil,
-       slug: nil,
+       section: :epics,
        error: nil,
        page_title: "Epic",
        epic: nil
@@ -28,15 +23,11 @@ defmodule CodeMySpecLocalWeb.EpicsLive.Show do
   end
 
   @impl true
-  def handle_params(%{"slug" => epic_slug} = params, _url, socket) do
-    with {:ok, project, scope} <- load_project_and_scope(params["project_name"]),
-         epic when not is_nil(epic) <- Epics.get_epic_by_slug(scope, epic_slug) do
+  def handle_params(%{"slug" => epic_slug}, _url, %{assigns: %{scope: %{} = scope}} = socket) do
+    with epic when not is_nil(epic) <- Epics.get_epic_by_slug(scope, epic_slug) do
       {:noreply,
        socket
        |> assign(
-         project: project,
-         scope: scope,
-         slug: project_slug(project),
          error: nil,
          page_title: epic.name,
          epic: epic
@@ -115,13 +106,6 @@ defmodule CodeMySpecLocalWeb.EpicsLive.Show do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app
-      flash={@flash}
-      projects={@projects}
-      project={@project}
-      section={:epics}
-      page_title={@page_title}
-    >
       <div :if={@error} role="alert" class="alert alert-error">
         <span>{@error}</span>
       </div>
@@ -131,7 +115,7 @@ defmodule CodeMySpecLocalWeb.EpicsLive.Show do
           {@epic.name}
           <:subtitle>{@epic.description}</:subtitle>
           <:actions>
-            <.link navigate={~p"/app/projects/#{@slug}/epics"} class="btn btn-ghost btn-sm">
+            <.link navigate={path(@socket, ~p"/app/projects/#{@slug}/epics")} class="btn btn-ghost btn-sm">
               Back to epics
             </.link>
             <button
@@ -201,21 +185,7 @@ defmodule CodeMySpecLocalWeb.EpicsLive.Show do
           </li>
         </ul>
       </div>
-    </Layouts.app>
     """
   end
 
-  defp load_project_and_scope(name) do
-    with {:ok, project} <- Projects.get_project_by_name(name),
-         {:ok, scope} <- Scope.for_local_project(project) do
-      {:ok, project, scope}
-    end
-  end
-
-  defp project_slug(project) do
-    (project.name || "project")
-    |> String.downcase()
-    |> String.replace(~r/[^a-z0-9]+/, "-")
-    |> String.trim("-")
-  end
 end

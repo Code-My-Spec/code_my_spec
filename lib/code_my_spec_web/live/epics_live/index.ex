@@ -1,4 +1,4 @@
-defmodule CodeMySpecLocalWeb.EpicsLive.Index do
+defmodule CodeMySpecWeb.EpicsLive.Index do
   @moduledoc """
   Project-scoped epic board for the local app.
 
@@ -15,23 +15,18 @@ defmodule CodeMySpecLocalWeb.EpicsLive.Index do
   Epics are organizational. Filing a story does not release it for
   development; the per-epic release button does that as a one-shot bulk edit.
   """
-  use CodeMySpecLocalWeb, :live_view
+  use CodeMySpecWeb, :live_view
 
   alias CodeMySpec.Epics
   alias CodeMySpec.Epics.Epic
-  alias CodeMySpec.Projects
   alias CodeMySpec.Stories
-  alias CodeMySpec.Users.Scope
-  alias CodeMySpecLocalWeb.EpicsLive.FormComponent
+  alias CodeMySpecWeb.EpicsLive.FormComponent
 
   @impl true
   def mount(_params, _session, socket) do
     {:ok,
      assign(socket,
-       projects: Projects.list_local_projects(),
-       project: nil,
-       scope: nil,
-       slug: nil,
+       section: :epics,
        error: nil,
        page_title: "Epics",
        epics: [],
@@ -41,21 +36,14 @@ defmodule CodeMySpecLocalWeb.EpicsLive.Index do
   end
 
   @impl true
-  def handle_params(params, _url, socket) do
-    case load_project_and_scope(params["project_name"]) do
-      {:ok, project, scope} ->
-        socket =
-          socket
-          |> assign(project: project, scope: scope, slug: project_slug(project), error: nil)
-          |> load_board(scope)
-          |> apply_action(socket.assigns.live_action, params, scope)
-
-        {:noreply, socket}
-
-      {:error, msg} ->
-        {:noreply, assign(socket, error: "#{msg}")}
-    end
+  def handle_params(params, _url, %{assigns: %{scope: %{} = scope}} = socket) do
+    {:noreply,
+     socket
+     |> load_board(scope)
+     |> apply_action(socket.assigns.live_action, params, scope)}
   end
+
+  def handle_params(_params, _url, socket), do: {:noreply, socket}
 
   defp apply_action(socket, :new, _params, _scope) do
     socket
@@ -68,7 +56,7 @@ defmodule CodeMySpecLocalWeb.EpicsLive.Index do
       nil ->
         socket
         |> put_flash(:error, "Epic not found")
-        |> push_patch(to: ~p"/app/projects/#{socket.assigns.slug}/epics")
+        |> push_patch(to: path(socket, ~p"/app/projects/#{socket.assigns.slug}/epics"))
 
       epic ->
         socket
@@ -261,13 +249,6 @@ defmodule CodeMySpecLocalWeb.EpicsLive.Index do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app
-      flash={@flash}
-      projects={@projects}
-      project={@project}
-      section={:epics}
-      page_title={@page_title}
-    >
       <div :if={@error} role="alert" class="alert alert-error">
         <span>{@error}</span>
       </div>
@@ -280,7 +261,7 @@ defmodule CodeMySpecLocalWeb.EpicsLive.Index do
             filing a story does not release it; the release button does.
           </:subtitle>
           <:actions>
-            <.button patch={~p"/app/projects/#{@slug}/epics/new"} class="btn btn-primary">
+            <.button patch={path(@socket, ~p"/app/projects/#{@slug}/epics/new")} class="btn btn-primary">
               <.icon name="hero-plus" /> New epic
             </.button>
           </:actions>
@@ -314,7 +295,7 @@ defmodule CodeMySpecLocalWeb.EpicsLive.Index do
                   </div>
                   <div class="flex items-center gap-1 shrink-0">
                     <.button
-                      patch={~p"/app/projects/#{@slug}/epics/#{epic.slug}/edit"}
+                      patch={path(@socket, ~p"/app/projects/#{@slug}/epics/#{epic.slug}/edit")}
                       class="btn btn-ghost btn-xs"
                     >
                       Edit
@@ -425,11 +406,11 @@ defmodule CodeMySpecLocalWeb.EpicsLive.Index do
               action={@live_action}
               epic={@epic}
               scope={@scope}
-              return_to={~p"/app/projects/#{@slug}/epics"}
+              return_to={path(@socket, ~p"/app/projects/#{@slug}/epics")}
             />
           </div>
           <form method="dialog" class="modal-backdrop">
-            <button phx-click={JS.patch(~p"/app/projects/#{@slug}/epics")}>close</button>
+            <button phx-click={JS.patch(path(@socket, ~p"/app/projects/#{@slug}/epics"))}>close</button>
           </form>
         </dialog>
       </div>
@@ -460,21 +441,7 @@ defmodule CodeMySpecLocalWeb.EpicsLive.Index do
           }
         }
       </script>
-    </Layouts.app>
     """
   end
 
-  defp load_project_and_scope(name) do
-    with {:ok, project} <- Projects.get_project_by_name(name),
-         {:ok, scope} <- Scope.for_local_project(project) do
-      {:ok, project, scope}
-    end
-  end
-
-  defp project_slug(project) do
-    (project.name || "project")
-    |> String.downcase()
-    |> String.replace(~r/[^a-z0-9]+/, "-")
-    |> String.trim("-")
-  end
 end

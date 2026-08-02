@@ -19,7 +19,22 @@ defmodule CodeMySpecWeb.LinkResolutionTest do
   # Views and components only — routers and endpoints are where paths are
   # *declared*, and scanning them would just assert routes match themselves.
   @local_only ["lib/code_my_spec_local_web/live", "lib/code_my_spec_local_web/components"]
-  @portable ["lib/code_my_spec_web/live/story_live"]
+
+  # Derived, not listed: a view is portable exactly when both routers mount it.
+  # Hardcoding the directories would rot on the first surface migrated, and a
+  # guard that silently stops covering things is worse than no guard.
+  defp portable_sources do
+    views = fn router ->
+      router.__routes__()
+      |> Enum.filter(&(&1.plug == Phoenix.LiveView.Plug))
+      |> MapSet.new(&elem(&1.metadata.phoenix_live_view, 0))
+    end
+
+    MapSet.intersection(views.(CodeMySpecWeb.Router), views.(CodeMySpecLocalWeb.Router))
+    |> Enum.map(&(&1.__info__(:compile)[:source] |> to_string() |> Path.relative_to_cwd()))
+    |> Enum.filter(&File.exists?/1)
+    |> Enum.uniq()
+  end
 
   # `/`-rooted strings in a view that aren't navigation. Keep this short and
   # justified — anything not listed here has to resolve, which is what makes
@@ -33,9 +48,11 @@ defmodule CodeMySpecWeb.LinkResolutionTest do
       path == "/overview"
   end
 
-  defp path_literals(dirs) do
-    dirs
-    |> Enum.flat_map(&Path.wildcard(&1 <> "/**/*.{ex,heex}"))
+  defp path_literals(paths) do
+    paths
+    |> Enum.flat_map(fn p ->
+      if File.dir?(p), do: Path.wildcard(p <> "/**/*.{ex,heex}"), else: [p]
+    end)
     |> Enum.flat_map(fn file ->
       file
       |> File.read!()
@@ -103,7 +120,11 @@ defmodule CodeMySpecWeb.LinkResolutionTest do
   end
 
   test "portable view links resolve against BOTH routers" do
-    dead = unresolvable(@portable, [CodeMySpecWeb.Router, CodeMySpecLocalWeb.Router])
+    sources = portable_sources()
+
+    assert sources != [], "no portable views found — both routers should share at least the stories surface"
+
+    dead = unresolvable(sources, [CodeMySpecWeb.Router, CodeMySpecLocalWeb.Router])
 
     assert dead == [], """
     A portable view links somewhere one of its two hosts can't serve. Shared

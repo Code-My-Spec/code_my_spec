@@ -1,9 +1,9 @@
-defmodule CodeMySpecLocalWeb.EpicsLive.FormComponent do
+defmodule CodeMySpecWeb.EpicsLive.FormComponent do
   @moduledoc """
   Form for creating and editing an epic — name and description. The slug is
   derived from the name rather than entered.
   """
-  use CodeMySpecLocalWeb, :live_component
+  use CodeMySpecWeb, :live_component
 
   alias CodeMySpec.Epics
 

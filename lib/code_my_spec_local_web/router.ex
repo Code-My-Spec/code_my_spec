@@ -70,12 +70,6 @@ defmodule CodeMySpecLocalWeb.Router do
            RequirementsLive,
            :story_req_show
 
-      # Epics — static segments first so they win over `:slug`
-      live "/app/projects/:project_name/epics", EpicsLive.Index, :index
-      live "/app/projects/:project_name/epics/new", EpicsLive.Index, :new
-      live "/app/projects/:project_name/epics/:slug", EpicsLive.Show, :show
-      live "/app/projects/:project_name/epics/:slug/edit", EpicsLive.Index, :edit
-
       live "/app/projects/:project_name/personas", PersonasLive.Index, :index
       live "/app/projects/:project_name/personas/new", PersonasLive.Index, :new
       live "/app/projects/:project_name/personas/:slug", PersonasLive.Show, :show
@@ -124,6 +118,12 @@ defmodule CodeMySpecLocalWeb.Router do
       live "/app/projects/:project_id/stories/:id/edit", StoryLive.Form, :edit
       live "/app/projects/:project_id/stories/:id/three-amigos", StoryLive.ThreeAmigos
       live "/app/projects/:project_id/stories/:id/gherkin", StoryLive.Gherkin
+
+      # Epics — static segments first so they win over `:slug`
+      live "/app/projects/:project_id/epics", EpicsLive.Index, :index
+      live "/app/projects/:project_id/epics/new", EpicsLive.Index, :new
+      live "/app/projects/:project_id/epics/:slug", EpicsLive.Show, :show
+      live "/app/projects/:project_id/epics/:slug/edit", EpicsLive.Index, :edit
     end
   end
 
