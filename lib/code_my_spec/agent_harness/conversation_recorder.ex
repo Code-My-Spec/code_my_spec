@@ -214,8 +214,51 @@ defmodule CodeMySpec.AgentHarness.ConversationRecorder do
 
   defp block_text(%{"type" => "text", "text" => text}) when is_binary(text), do: text
 
+  # A tool result is most of what an agent's later requests are made of: once it
+  # has called anything, the next turn's content is these blocks and little
+  # else. Dropping them recorded those turns as empty, which is the same defect
+  # 8173 names for tool-only responses, on the request side.
+  #
+  # `is_error` is kept because a failed tool result is the most diagnostic thing
+  # an operator can see — it is where a run starts going wrong, several turns
+  # before the agent says anything about it.
+  defp block_text(%{"type" => "tool_result"} = block) do
+    marker = if block["is_error"], do: "failed", else: "result"
+    "← #{marker}: #{truncate(tool_result_content(block["content"]))}"
+  end
+
+  # An image is worth naming without being rendered — the conversation is a
+  # record of what happened, and "a screenshot went to the model here" is the
+  # fact that matters.
+  defp block_text(%{"type" => "image"}), do: "← image"
+
   defp block_text(%{"type" => "thinking"}), do: nil
   defp block_text(_block), do: nil
+
+  # Anthropic allows a tool result to be a plain string or a list of blocks.
+  defp tool_result_content(content) when is_binary(content), do: content
+
+  defp tool_result_content(content) when is_list(content) do
+    content
+    |> Enum.map(fn
+      %{"type" => "text", "text" => text} -> text
+      %{"type" => type} -> "[#{type}]"
+      other -> inspect(other)
+    end)
+    |> Enum.join("\n")
+  end
+
+  defp tool_result_content(nil), do: ""
+  defp tool_result_content(other), do: inspect(other)
+
+  # Tool output is unbounded — a test run or a file read can be megabytes, and
+  # the conversation is for reading, not for archiving stdout.
+  @result_cap 2_000
+  defp truncate(text) when byte_size(text) > @result_cap do
+    binary_part(text, 0, @result_cap) <> "\n… (truncated)"
+  end
+
+  defp truncate(text), do: text
 
   # A turn can be nothing but thinking — a small max_tokens spends the budget
   # before any prose is emitted, and the first turn recorded here was exactly
