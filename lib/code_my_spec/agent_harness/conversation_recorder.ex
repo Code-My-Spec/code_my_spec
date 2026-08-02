@@ -121,7 +121,8 @@ defmodule CodeMySpec.AgentHarness.ConversationRecorder do
              session_external_id
            ),
          :ok <- write_request(conversation, agent_role, request_text(request)),
-         :ok <- write_response(conversation, agent_role, response_text(response)) do
+         :ok <- write_response(conversation, agent_role, response_text(response)),
+         :ok <- write_tool_calls(conversation, agent_role, tool_calls(response)) do
       :ok
     else
       {:error, reason} = error ->
@@ -149,6 +150,41 @@ defmodule CodeMySpec.AgentHarness.ConversationRecorder do
     |> normalize()
   end
 
+  # Tool calls are their own messages, not prose folded into the assistant's.
+  # The conversation view renders a :tool message as a tool-call block, and a
+  # turn that only called tools has to show which tool and with what arguments
+  # — a name alone does not tell an operator what the sprite actually did.
+  defp write_tool_calls(_conversation, _agent_role, []), do: :ok
+
+  defp write_tool_calls(conversation, agent_role, [call | rest]) do
+    case conversation
+         |> Conversations.add_agent_message(agent_role, "tool", call)
+         |> normalize() do
+      :ok -> write_tool_calls(conversation, agent_role, rest)
+      error -> error
+    end
+  end
+
+  @doc false
+  @spec tool_calls(map()) :: [String.t()]
+  def tool_calls(%{"content" => content}) when is_list(content) do
+    for %{"type" => "tool_use", "name" => name} = block <- content do
+      case block["input"] do
+        input when is_map(input) and input != %{} -> "#{name}\n#{encode(input)}"
+        _ -> name
+      end
+    end
+  end
+
+  def tool_calls(_response), do: []
+
+  defp encode(input) do
+    case Jason.encode(input, pretty: true) do
+      {:ok, json} -> json
+      {:error, _} -> inspect(input)
+    end
+  end
+
   defp normalize({:ok, _record}), do: :ok
   defp normalize({:error, reason}), do: {:error, reason}
 
@@ -159,7 +195,7 @@ defmodule CodeMySpec.AgentHarness.ConversationRecorder do
   @spec response_text(map()) :: String.t() | nil
   def response_text(%{"content" => content}) when is_list(content) do
     case content |> Enum.map(&block_text/1) |> Enum.reject(&is_nil/1) |> join() do
-      nil -> thinking_only(content)
+      nil -> if tool_calls(%{"content" => content}) == [], do: thinking_only(content), else: nil
       text -> text
     end
   end
@@ -167,10 +203,6 @@ defmodule CodeMySpec.AgentHarness.ConversationRecorder do
   def response_text(_response), do: nil
 
   defp block_text(%{"type" => "text", "text" => text}) when is_binary(text), do: text
-
-  defp block_text(%{"type" => "tool_use", "name" => name} = block) do
-    "→ #{name}(#{summarize(block["input"])})"
-  end
 
   defp block_text(%{"type" => "thinking"}), do: nil
   defp block_text(_block), do: nil
@@ -204,13 +236,4 @@ defmodule CodeMySpec.AgentHarness.ConversationRecorder do
 
   defp join([]), do: nil
   defp join(parts), do: Enum.join(parts, "\n")
-
-  defp summarize(input) when is_map(input) do
-    input
-    |> Map.keys()
-    |> Enum.sort()
-    |> Enum.join(", ")
-  end
-
-  defp summarize(_input), do: ""
 end
