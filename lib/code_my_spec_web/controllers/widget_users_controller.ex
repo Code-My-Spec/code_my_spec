@@ -14,8 +14,8 @@ defmodule CodeMySpecWeb.WidgetUsersController do
   use CodeMySpecWeb, :controller
 
   alias CodeMySpec.ExternalUsers
-  alias CodeMySpec.Projects
   alias CodeMySpec.Projects.Project
+  alias CodeMySpecWeb.AppCredential
 
   action_fallback CodeMySpecWeb.FallbackController
 
@@ -27,25 +27,48 @@ defmodule CodeMySpecWeb.WidgetUsersController do
           render(conn, :show, external_user: external_user)
         end
 
-      {:error, :unauthorized} ->
+      {:error, :expired} ->
+        conn
+        |> put_status(:unauthorized)
+        |> json(%{status: "error", error: "Access token expired", reason: "expired"})
+
+      {:error, _} ->
         conn
         |> put_status(:unauthorized)
         |> json(%{status: "error", error: "Invalid deploy key"})
     end
   end
 
+  # Auth before the missing-parameter complaint (8045).
   def upsert(conn, _params) do
+    case authenticate(conn) do
+      {:ok, %Project{}} ->
+        param_error(conn)
+
+      {:error, :expired} ->
+        conn
+        |> put_status(:unauthorized)
+        |> json(%{status: "error", error: "Access token expired", reason: "expired"})
+
+      {:error, _} ->
+        conn |> put_status(:unauthorized) |> json(%{status: "error", error: "Unauthorized"})
+    end
+  end
+
+  defp param_error(conn) do
     conn
     |> put_status(:bad_request)
     |> json(%{status: "error", error: "Missing required parameter: user"})
   end
 
+  # Either credential names the project: a short-lived access token from
+  # `POST /api/token`, or the durable deploy key. Token first, key second —
+  # that ordering is the migration, since dropping the key here would break
+  # every deployed caller the moment this shipped.
   defp authenticate(conn) do
-    with ["Bearer " <> key] <- get_req_header(conn, "authorization"),
-         %Project{} = project <- Projects.get_project_by_deploy_key(key) do
-      {:ok, project}
-    else
-      _ -> {:error, :unauthorized}
-    end
+    # `:expired` is preserved rather than folded into `:unauthorized` — a
+    # client holding an aged-out token should renew and retry, and one holding
+    # a wrong credential should stop. Criterion 8023.
+    AppCredential.project(conn)
   end
 end

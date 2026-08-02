@@ -233,6 +233,9 @@ defmodule CodeMySpec.Environments do
   defp impl(:local),
     do: Application.get_env(:code_my_spec, :environment, CodeMySpec.Environments.Local)
 
+  defp impl(:container),
+    do: Application.get_env(:code_my_spec, :container_environment, CodeMySpec.Environments.Container)
+
   defp impl(:memory), do: CodeMySpec.Support.InMemoryEnvironment
 
   # No `:server` clause and no catch-all on purpose. `Environment.type` is

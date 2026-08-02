@@ -25,7 +25,7 @@ defmodule CodeMySpecWeb.ProjectLive.Form do
         <:subtitle>Use this form to manage project records in your database.</:subtitle>
       </.header>
 
-      <.form for={@form} id="project-form" phx-change="validate" phx-submit="save">
+      <.form for={@form} id="project-form" data-test="project-form" phx-change="validate" phx-submit="save">
         <.input field={@form[:name]} type="text" label="Name" />
         <.input field={@form[:module_name]} type="text" label="Module Name" />
         <.input field={@form[:description]} type="textarea" label="Description" />

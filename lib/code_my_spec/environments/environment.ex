@@ -7,7 +7,8 @@ defmodule CodeMySpec.Environments.Environment do
 
   ## Fields
 
-  - `type` - Environment type identifier (`:cli`, `:local`, `:vscode`)
+  - `type` - Environment type identifier (`:cli`, `:local`, `:vscode`,
+    `:container`, `:memory`)
   - `ref` - Implementation-specific reference data (map)
   - `cwd` - Current working directory for the environment
   - `metadata` - Optional context information
@@ -43,7 +44,7 @@ defmodule CodeMySpec.Environments.Environment do
   import Ecto.Changeset
 
   @type t :: %__MODULE__{
-          type: :cli | :local | :vscode | nil,
+          type: :cli | :local | :vscode | :container | :memory | nil,
           ref: map(),
           cwd: String.t() | nil,
           metadata: map()

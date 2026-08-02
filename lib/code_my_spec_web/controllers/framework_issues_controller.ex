@@ -17,8 +17,8 @@ defmodule CodeMySpecWeb.FrameworkIssuesController do
   use CodeMySpecWeb, :controller
 
   alias CodeMySpec.Issues
-  alias CodeMySpec.Projects
   alias CodeMySpec.Projects.Project
+  alias CodeMySpecWeb.AppCredential
 
   action_fallback CodeMySpecWeb.FallbackController
 
@@ -33,25 +33,45 @@ defmodule CodeMySpecWeb.FrameworkIssuesController do
           |> render(:show, issue: issue)
         end
 
-      {:error, :unauthorized} ->
+      {:error, :expired} ->
+        conn
+        |> put_status(:unauthorized)
+        |> json(%{status: "error", error: "Access token expired", reason: "expired"})
+
+      {:error, _} ->
         conn
         |> put_status(:unauthorized)
         |> json(%{status: "error", error: "Invalid deploy key"})
     end
   end
 
+  # Auth before the missing-parameter complaint: an unauthenticated caller
+  # must not learn this endpoint's contract by sending it garbage (8045).
   def create(conn, _params) do
-    conn
-    |> put_status(:bad_request)
-    |> json(%{status: "error", error: "Missing required parameter: issue"})
+    case authenticate(conn) do
+      {:ok, %Project{}} ->
+        conn
+        |> put_status(:bad_request)
+        |> json(%{status: "error", error: "Missing required parameter: issue"})
+
+      {:error, :expired} ->
+        conn
+        |> put_status(:unauthorized)
+        |> json(%{status: "error", error: "Access token expired", reason: "expired"})
+
+      {:error, _} ->
+        conn |> put_status(:unauthorized) |> json(%{status: "error", error: "Unauthorized"})
+    end
   end
 
+  # Either credential names the project: a short-lived access token from
+  # `POST /api/token`, or the durable deploy key. Token first, key second —
+  # that ordering is the migration, since dropping the key here would break
+  # every deployed caller the moment this shipped.
   defp authenticate(conn) do
-    with ["Bearer " <> key] <- get_req_header(conn, "authorization"),
-         %Project{} = project <- Projects.get_project_by_deploy_key(key) do
-      {:ok, project}
-    else
-      _ -> {:error, :unauthorized}
-    end
+    # `:expired` is preserved rather than folded into `:unauthorized` — a
+    # client holding an aged-out token should renew and retry, and one holding
+    # a wrong credential should stop. Criterion 8023.
+    AppCredential.project(conn)
   end
 end

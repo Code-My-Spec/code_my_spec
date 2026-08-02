@@ -16,6 +16,11 @@ defmodule CodeMySpec.Conversations do
       `start_conversation/3`, `reply/3`. Driven by `InboxLive`. Conversations are
       account-scoped, so any CMS user in the account can read and reply across
       every project the account owns.
+
+  A third kind of conversation — the background-agent session, keyed by harness
+  `session_external_id` instead of an end-user — has no human on the other end.
+  `get_agent_conversation/2` and `AgentConversationLive` read it; it never
+  surfaces through the operator-side inbox functions above.
   """
 
   import Ecto.Query, warn: false
@@ -65,9 +70,12 @@ defmodule CodeMySpec.Conversations do
         })
         |> Repo.insert()
         |> case do
-          {:ok, conversation} -> {:ok, conversation}
+          {:ok, conversation} ->
+            {:ok, conversation}
+
           # Lost an insert race — fetch the now-existing row.
-          {:error, _changeset} -> {:ok, get_conversation_by_email!(account_id, project_id, end_user_email)}
+          {:error, _changeset} ->
+            {:ok, get_conversation_by_email!(account_id, project_id, end_user_email)}
         end
 
       %Conversation{end_user_id: nil} = conversation when is_binary(end_user_id) ->
@@ -284,7 +292,11 @@ defmodule CodeMySpec.Conversations do
   """
   def start_conversation(scope, end_user_email, body) do
     {:ok, conversation} =
-      find_or_create_conversation(scope.active_account_id, scope.active_project_id, end_user_email)
+      find_or_create_conversation(
+        scope.active_account_id,
+        scope.active_project_id,
+        end_user_email
+      )
 
     {:ok, _message} = add_message(conversation, :operator, body, operator_sender_id(scope))
     {:ok, conversation}
@@ -329,7 +341,9 @@ defmodule CodeMySpec.Conversations do
   @doc "Count of unread conversations for the scope's active account."
   def unread_count(%Scope{} = scope) do
     Repo.aggregate(
-      from(c in Conversation, where: c.account_id == ^scope.active_account_id and c.read == false),
+      from(c in Conversation,
+        where: c.account_id == ^scope.active_account_id and c.read == false
+      ),
       :count
     )
   end
@@ -360,13 +374,34 @@ defmodule CodeMySpec.Conversations do
     end
   end
 
+  @doc """
+  The project's sprite-agent conversation — the accumulating record of every
+  background-agent turn taken while working the project. `nil` until the first
+  turn has been recorded.
+
+  Read by `AgentConversationLive`, deliberately outside `list_conversations/1`
+  and `unread_count/1` — a machine being watched is not a support thread, and
+  must never raise the inbox's unread badge or appear in its list.
+  """
+  @spec get_agent_conversation(Scope.t(), Ecto.UUID.t()) :: Conversation.t() | nil
+  def get_agent_conversation(%Scope{} = scope, project_id) do
+    Conversation
+    |> where([c], c.account_id == ^scope.active_account_id and c.project_id == ^project_id)
+    |> where([c], not is_nil(c.session_external_id))
+    |> order_by([c], desc: c.updated_at)
+    |> limit(1)
+    |> Repo.one()
+  end
+
   defp operator_sender_id(scope), do: scope.user && to_string(scope.user.id)
 
   # ---- internals ----
 
   defp touch(%Conversation{} = conversation, read) do
     from(c in Conversation, where: c.id == ^conversation.id)
-    |> Repo.update_all(set: [read: read, updated_at: DateTime.utc_now() |> DateTime.truncate(:second)])
+    |> Repo.update_all(
+      set: [read: read, updated_at: DateTime.utc_now() |> DateTime.truncate(:second)]
+    )
   end
 
   defp broadcast_new_message(%Conversation{} = conversation, %Message{} = message) do

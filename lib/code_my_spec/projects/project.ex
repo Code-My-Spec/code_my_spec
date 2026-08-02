@@ -59,6 +59,11 @@ defmodule CodeMySpec.Projects.Project do
     # project id. Deploy keys are 64 bytes of random, so an unsalted hash is
     # safe from brute force.
     field :deploy_key_hash, :string
+
+    # Digest of the refresh secret a deployed app exchanges for short-lived
+    # access tokens (story 971). The secret lives in the project's encrypted
+    # environment; only its digest is here.
+    field :cms_refresh_secret_hash, :string
     field :google_analytics_property_id, :string
     field :setup_error, :string
     field :local_path, :string
@@ -73,6 +78,18 @@ defmodule CodeMySpec.Projects.Project do
     # Resend's domain id, captured when the domain is registered with the
     # provider; used to fetch DNS records and trigger verification.
     field :resend_domain_id, :string
+
+    # Which parts of setup this project runs. Stored as strings and read back
+    # through `setup_options/1`, which is where the default lives — a project
+    # that has never chosen gets everything, because setup's job is a working
+    # project and a user who wants less turns it off rather than having to
+    # discover what to turn on.
+    #
+    # `nil` and `[]` are different answers: nil is "never chosen", [] is
+    # "chose none of the optional parts", and the unconditional steps still
+    # run. Collapsing them would make turning everything off indistinguishable
+    # from never having opened the page.
+    field :setup_options, {:array, :string}
 
     belongs_to :oauth_application, CodeMySpec.Oauth.Application, type: :id
 
@@ -120,7 +137,8 @@ defmodule CodeMySpec.Projects.Project do
       :oauth_application_id,
       :domain,
       :domain_verified_at,
-      :resend_domain_id
+      :resend_domain_id,
+      :setup_options
     ])
     |> validate_required([:name])
     |> validate_format(:module_name, ~r/^[A-Z][a-zA-Z0-9]*$/,

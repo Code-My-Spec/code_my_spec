@@ -110,7 +110,7 @@ defmodule CodeMySpec.Projects do
   Gets a project by name (case-insensitive). For local web routes using project name in URL.
   """
   def get_project_by_name(name) when is_binary(name) do
-    slug = name |> String.replace(~r/[-_]/, " ") |> String.downcase()
+    slug = normalize_project_name(name)
 
     query =
       from p in Project,
@@ -121,6 +121,31 @@ defmodule CodeMySpec.Projects do
       project -> {:ok, project}
     end
   end
+
+  @doc """
+  Gets a project by name (case-insensitive) within the scope's active account.
+  For cloud web routes that put the project name, not its id, in the URL.
+
+  A name that doesn't exist and a name that belongs to another account return
+  the same `{:error, :not_found}` — confirming a project's existence to
+  someone guessing names on another account is its own leak.
+  """
+  def get_project_by_name(%Scope{} = scope, name) when is_binary(name) do
+    slug = normalize_project_name(name)
+
+    query =
+      from p in Project,
+        where: p.account_id == ^scope.active_account_id,
+        where: fragment("lower(replace(replace(?, '-', ' '), '_', ' '))", p.name) == ^slug
+
+    case Repo.one(query) do
+      nil -> {:error, :not_found}
+      project -> {:ok, project}
+    end
+  end
+
+  defp normalize_project_name(name),
+    do: name |> String.replace(~r/[-_]/, " ") |> String.downcase()
 
   @doc """
   Resolves which project a local request belongs to.
