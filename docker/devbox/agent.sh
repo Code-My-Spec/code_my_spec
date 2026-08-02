@@ -101,16 +101,36 @@ stop, so the harness considered nothing further actionable." \
   log "committed $(git rev-parse --short HEAD)"
 
   # Push is best-effort and never fatal: a sprite that committed locally has
-  # already saved the work from container disposal, which is the point. The
-  # token is scrubbed from any output because git echoes the remote back on
-  # failure.
-  if [ -n "${GITHUB_TOKEN:-}" ] && [ -n "${REPO_URL:-}" ]; then
-    git push -q "https://x-access-token:${GITHUB_TOKEN}@${REPO_URL#https://}" HEAD 2>&1 \
+  # already saved the work from container disposal, which is the point.
+  #
+  # A token is one way to authenticate a push, not a precondition for pushing.
+  # This used to require GITHUB_TOKEN before it would try at all, so a sprite
+  # whose origin is the bare repo in its own volume — which needs no
+  # credentials — committed and then declined to push, and the work lived
+  # exactly as long as the container. Drill 13 ended that way.
+  #
+  # So: rewrite the URL only when there is a token AND an https remote to put it
+  # in. Otherwise push the remote as configured, which covers file://, ssh, and
+  # https where a credential helper already answers.
+  local remote
+  remote="$(git remote get-url origin 2>/dev/null || echo "")"
+
+  if [ -z "${remote}" ]; then
+    log "no origin remote — committed locally, nothing to push to"
+    return 0
+  fi
+
+  if [ -n "${GITHUB_TOKEN:-}" ] && [ "${remote#https://}" != "${remote}" ]; then
+    # The token is scrubbed from output because git echoes the remote back on
+    # failure.
+    git push -q "https://x-access-token:${GITHUB_TOKEN}@${remote#https://}" HEAD 2>&1 \
       | sed 's/x-access-token:[^@]*@/x-access-token:***@/g' \
-      && log "pushed to ${REPO_URL}" \
+      && log "pushed to ${remote}" \
       || log "push failed — work is committed locally but not pushed"
   else
-    log "no GITHUB_TOKEN/REPO_URL — committed locally, not pushed"
+    git push -q origin HEAD 2>&1 \
+      && log "pushed to ${remote}" \
+      || log "push failed — work is committed locally but not pushed"
   fi
 }
 

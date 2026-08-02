@@ -99,10 +99,15 @@ else
 
   log "Creating $VOLUME with a bare ${APP}.git"
   docker volume create "$VOLUME" >/dev/null
+  # Owned by the agent uid, not root. The sprite pushes as `agent`, and git
+  # refuses a repository owned by someone else ("detected dubious ownership") —
+  # so a root-owned bare repo produces a sprite that commits and then cannot
+  # push, which is the same stranded-work failure by a different route.
   docker run --rm -v "$VOLUME:/w" --entrypoint sh alpine/git -c "
     set -e
     mkdir -p /w/.origin
     git init --bare -q /w/.origin/${APP}.git
+    chown -R 1000:1000 /w/.origin
   "
 
   if [ -n "$SEED" ]; then
@@ -112,6 +117,7 @@ else
       set -e
       git clone -q --bare /seed /tmp/seed.git
       git --git-dir=/tmp/seed.git push -q --mirror /w/.origin/${APP}.git
+      chown -R 1000:1000 /w/.origin
     "
   fi
 fi
