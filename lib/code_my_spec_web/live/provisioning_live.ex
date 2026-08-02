@@ -765,6 +765,38 @@ defmodule CodeMySpecWeb.ProvisioningLive do
       </div>
     </section>
 
+    <%!-- Environments never share a server (966/8156). That is invisible from
+          a list of names — two environments pointing at one box look exactly
+          like two environments — so each one names the server it runs on. --%>
+    <section data-test="environments-panel">
+      <h2>Environments</h2>
+
+      <%!-- Turning production on is adding an environment, not ticking a box.
+            There is no `prod` option on the setup form and never was — the
+            steps fan out over whichever environment rows exist, which is what
+            lets a project have `qa`, or one per story, without a code change. --%>
+      <.form
+        for={%{}}
+        as={:environment}
+        data-test="add-environment-form"
+        phx-submit="add_environment"
+      >
+        <input type="text" name="environment[name]" data-test="environment-name" />
+        <.button type="submit" data-test="add-environment">Add environment</.button>
+      </.form>
+
+      <div
+        :for={environment <- @environment_rows}
+        data-test="environment"
+        data-environment={environment.name}
+        data-server={environment.server_name}
+        data-host={environment.host}
+        data-ip={environment.ip}
+      >
+        {environment.name}: {environment.server_name || "no server yet"}
+      </div>
+    </section>
+
     <section data-test="backups-panel">
       <h2>Backups</h2>
 
@@ -1163,6 +1195,24 @@ defmodule CodeMySpecWeb.ProvisioningLive do
     {:noreply, socket |> assign(:backups, dumps) |> assign(:restore_result, result)}
   end
 
+  # Adding an environment is how production gets turned on. It provisions on
+  # the next run rather than migrating onto anything that already exists —
+  # sharing a box was tried and abandoned, because prod-affecting
+  # infrastructure changes cannot be validated in a UAT that lives on it.
+  def handle_event("add_environment", %{"environment" => %{"name" => name}}, socket) do
+    scope = socket.assigns.current_scope
+    name = String.trim(name)
+
+    if name == "" do
+      {:noreply, put_flash(socket, :error, "an environment needs a name")}
+    else
+      case Provisioning.put_environment(scope, name) do
+        {:ok, _environment} -> {:noreply, load(socket, socket.assigns.options)}
+        {:error, reason} -> {:noreply, put_flash(socket, :error, inspect(reason))}
+      end
+    end
+  end
+
   def handle_event("refresh_backups", _params, socket) do
     dumps = list_backups(socket)
 
@@ -1408,6 +1458,7 @@ defmodule CodeMySpecWeb.ProvisioningLive do
     |> assign_new(:backups, fn -> [] end)
     |> assign_new(:backup_health, fn -> nil end)
     |> assign_new(:restore_result, fn -> nil end)
+    |> assign(:environment_rows, Provisioning.environments(socket.assigns.current_scope))
     |> assign(:options, options)
     |> assign(:available_options, available_options())
     |> assign(:plan, plan)

@@ -16,7 +16,6 @@ defmodule CodeMySpecSpex.Story970.Criterion7974Spex do
 
   use CodeMySpecSpex.Case
 
-  alias CodeMySpec.Environments
 
   @endpoint CodeMySpecWeb.Endpoint
 

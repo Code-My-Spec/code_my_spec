@@ -74,7 +74,13 @@ defmodule CodeMySpecSpex.Story966.Criterion8156Spex do
         # Anchor: UAT really was provisioned on its own, and production was
         # genuinely absent rather than merely unlisted.
         assert Map.has_key?(servers, "uat"),
-               "expected UAT to be provisioned, got #{inspect(servers)}"
+               "expected UAT to be provisioned, got #{inspect(servers)}; steps: " <>
+                 (html
+                  |> Floki.parse_document!()
+                  |> Floki.find("[data-test='setup-step']")
+                  |> Enum.map_join(", ", fn s ->
+                    "#{Floki.attribute(s, "data-step")}=#{Floki.attribute(s, "data-state")} #{if Floki.attribute(s, "data-state") == ["errored"], do: Floki.text(s) |> String.replace(~r/\s+/, " ") |> String.slice(0, 300)}"
+                  end))
 
         refute Map.has_key?(servers, "prod"),
                "expected no production server while the option is off, got #{inspect(servers)}"
@@ -86,8 +92,11 @@ defmodule CodeMySpecSpex.Story966.Criterion8156Spex do
       end
 
       when_ "he later turns production on and runs setup again", context do
+        # Adding the environment, because that is what turning production on
+        # is here — there is no `prod` checkbox, and the steps fan out over
+        # whichever environment rows exist.
         context.view
-        |> form("[data-test='setup-options-form']", provisioning: %{prod: true})
+        |> form("[data-test='add-environment-form']", environment: %{name: "prod"})
         |> render_submit()
 
         html =
@@ -102,7 +111,18 @@ defmodule CodeMySpecSpex.Story966.Criterion8156Spex do
         servers = servers_by_environment(context.html)
 
         assert is_binary(servers["prod"]) and servers["prod"] != "",
-               "expected production to have a server of its own, got #{inspect(servers)}"
+               "expected production to have a server of its own, got #{inspect(servers)}; steps: " <>
+                 (context.html
+                  |> Floki.parse_document!()
+                  |> Floki.find("[data-test='setup-step']")
+                  |> Enum.map_join(", ", fn s ->
+                    state = s |> Floki.attribute("data-state") |> List.first()
+                    name = s |> Floki.attribute("data-step") |> List.first()
+
+                    if state in ["errored", "paused"],
+                      do: "#{name}=#{state} (#{s |> Floki.text() |> String.replace(~r/\s+/, " ") |> String.slice(0, 160)})",
+                      else: "#{name}=#{state}"
+                  end))
 
         refute servers["prod"] == servers["uat"],
                "expected production and UAT never to share a server, both #{inspect(servers["prod"])}"

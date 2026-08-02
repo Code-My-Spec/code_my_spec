@@ -174,6 +174,36 @@ defmodule CodeMySpec.Provisioning do
   def environment_names(%Scope{} = scope),
     do: CodeMySpec.Provisioning.EnvironmentRepository.names(scope)
 
+  @doc """
+  The project's environments, in full.
+
+  `environment_names/1` answers "which are there"; this answers "and what is
+  each one running on", which is the question the page has to render — an
+  environment sharing another's box is invisible from the names alone.
+  """
+  @spec environments(Scope.t()) :: [CodeMySpec.Provisioning.Environment.t()]
+  def environments(%Scope{} = scope),
+    do: CodeMySpec.Provisioning.EnvironmentRepository.list(scope)
+
+  @doc """
+  Add an environment, or update one that is already there.
+
+  The host is derived from the project's domain — prod on the apex, anything
+  else on a subdomain of its own name — so a new environment is reachable
+  without anyone deciding where it lives.
+  """
+  @spec put_environment(Scope.t(), String.t(), map()) :: {:ok, term()} | {:error, term()}
+  def put_environment(%Scope{active_project: project} = scope, name, attrs \\ %{}) do
+    domain = Map.get(project || %{}, :domain)
+    host = Map.get(attrs, :host) || derived_host(name, domain)
+
+    CodeMySpec.Provisioning.EnvironmentRepository.put(scope, name, Map.put(attrs, :host, host))
+  end
+
+  defp derived_host(_name, domain) when domain in [nil, ""], do: nil
+  defp derived_host("prod", domain), do: domain
+  defp derived_host(name, domain), do: "#{name}.#{domain}"
+
   def plan(%Scope{} = scope, enabled_options) do
     persisted = scope |> StepRepository.list() |> Map.new(&{&1.key, &1})
 

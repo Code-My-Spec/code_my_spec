@@ -1,7 +1,7 @@
 {
   "interactions": [
     {
-      "recorded_at": "2026-08-02T17:47:08.000056Z",
+      "recorded_at": "2026-08-02T21:05:47.519109Z",
       "request": {
         "body": "",
         "body_type": "text",
@@ -29,7 +29,7 @@
               "page": 1,
               "per_page": 25,
               "previous_page": null,
-              "total_entries": 3
+              "total_entries": 4
             }
           },
           "servers": [
@@ -60,7 +60,7 @@
                 "type": "system"
               },
               "included_traffic": 21990232555520,
-              "ingoing_traffic": 46490000,
+              "ingoing_traffic": 55780000,
               "iso": null,
               "labels": {},
               "load_balancers": [],
@@ -76,7 +76,7 @@
               },
               "locked": false,
               "name": "fuellytics",
-              "outgoing_traffic": 146285000,
+              "outgoing_traffic": 149680000,
               "placement_group": null,
               "primary_disk_size": 40,
               "private_net": [],
@@ -218,7 +218,7 @@
                 "type": "system"
               },
               "included_traffic": 2199023255552,
-              "ingoing_traffic": 79420000,
+              "ingoing_traffic": 88255000,
               "iso": null,
               "labels": {},
               "load_balancers": [],
@@ -234,7 +234,7 @@
               },
               "locked": false,
               "name": "fuellytics-prod",
-              "outgoing_traffic": 262425000,
+              "outgoing_traffic": 285210000,
               "placement_group": null,
               "primary_disk_size": 80,
               "private_net": [],
@@ -432,8 +432,8 @@
             },
             {
               "backup_window": null,
-              "created": "2026-08-02T17:47:02Z",
-              "id": 158287381,
+              "created": "2026-08-02T21:04:09Z",
+              "id": 158334180,
               "image": {
                 "architecture": "x86",
                 "bound_to": null,
@@ -456,7 +456,7 @@
                 "status": "available",
                 "type": "system"
               },
-              "included_traffic": 0,
+              "included_traffic": 1099511627776,
               "ingoing_traffic": 0,
               "iso": null,
               "labels": {},
@@ -484,21 +484,21 @@
               "public_net": {
                 "firewalls": [
                   {
-                    "id": 11406724,
-                    "status": "pending"
+                    "id": 11407334,
+                    "status": "applied"
                   }
                 ],
                 "floating_ips": [],
                 "ipv4": {
                   "blocked": false,
-                  "dns_ptr": "static.9.213.161.5.clients.your-server.de",
-                  "id": 143161716,
-                  "ip": "5.161.213.9"
+                  "dns_ptr": "static.73.239.161.5.clients.your-server.de",
+                  "id": 143176795,
+                  "ip": "5.161.239.73"
                 },
                 "ipv6": {
                   "blocked": false,
                   "dns_ptr": [],
-                  "id": 143161717,
+                  "id": 143176796,
                   "ip": "2a01:4ff:f0:549b::/64"
                 }
               },
@@ -671,7 +671,251 @@
                 ],
                 "storage_type": "local"
               },
-              "status": "initializing",
+              "status": "running",
+              "volumes": []
+            },
+            {
+              "backup_window": null,
+              "created": "2026-08-02T21:04:16Z",
+              "id": 158334208,
+              "image": {
+                "architecture": "x86",
+                "bound_to": null,
+                "created": "2024-04-25T13:26:27Z",
+                "created_from": null,
+                "deleted": null,
+                "deprecated": null,
+                "description": "Ubuntu 24.04",
+                "disk_size": 5,
+                "id": 161547269,
+                "image_size": null,
+                "labels": {},
+                "name": "ubuntu-24.04",
+                "os_flavor": "ubuntu",
+                "os_version": "24.04",
+                "protection": {
+                  "delete": false
+                },
+                "rapid_deploy": true,
+                "status": "available",
+                "type": "system"
+              },
+              "included_traffic": 1099511627776,
+              "ingoing_traffic": 0,
+              "iso": null,
+              "labels": {},
+              "load_balancers": [],
+              "location": {
+                "city": "Ashburn, VA",
+                "country": "US",
+                "description": "Ashburn, VA",
+                "id": 4,
+                "latitude": 39.045821,
+                "longitude": -77.487073,
+                "name": "ash",
+                "network_zone": "us-east"
+              },
+              "locked": false,
+              "name": "spex-story966-criterion8156-prod",
+              "outgoing_traffic": 0,
+              "placement_group": null,
+              "primary_disk_size": 40,
+              "private_net": [],
+              "protection": {
+                "delete": false,
+                "rebuild": false
+              },
+              "public_net": {
+                "firewalls": [
+                  {
+                    "id": 11407334,
+                    "status": "applied"
+                  }
+                ],
+                "floating_ips": [],
+                "ipv4": {
+                  "blocked": false,
+                  "dns_ptr": "static.9.213.161.5.clients.your-server.de",
+                  "id": 143176806,
+                  "ip": "5.161.213.9"
+                },
+                "ipv6": {
+                  "blocked": false,
+                  "dns_ptr": [],
+                  "id": 143176807,
+                  "ip": "2a01:4ff:f0:af2d::/64"
+                }
+              },
+              "rescue_enabled": false,
+              "server_type": {
+                "architecture": "x86",
+                "category": "regular_purpose",
+                "cores": 2,
+                "cpu_type": "shared",
+                "deprecated": false,
+                "deprecation": null,
+                "description": "CPX 11",
+                "disk": 40,
+                "id": 22,
+                "locations": [
+                  {
+                    "available": false,
+                    "deprecation": {
+                      "announced": "2025-10-16T06:00:00Z",
+                      "unavailable_after": "2025-12-31T23:59:59Z"
+                    },
+                    "id": 1,
+                    "name": "fsn1",
+                    "recommended": false
+                  },
+                  {
+                    "available": false,
+                    "deprecation": {
+                      "announced": "2025-10-16T06:00:00Z",
+                      "unavailable_after": "2025-12-31T23:59:59Z"
+                    },
+                    "id": 2,
+                    "name": "nbg1",
+                    "recommended": false
+                  },
+                  {
+                    "available": false,
+                    "deprecation": {
+                      "announced": "2025-10-16T06:00:00Z",
+                      "unavailable_after": "2025-12-31T23:59:59Z"
+                    },
+                    "id": 3,
+                    "name": "hel1",
+                    "recommended": false
+                  },
+                  {
+                    "available": true,
+                    "deprecation": null,
+                    "id": 4,
+                    "name": "ash",
+                    "recommended": false
+                  },
+                  {
+                    "available": true,
+                    "deprecation": null,
+                    "id": 5,
+                    "name": "hil",
+                    "recommended": false
+                  },
+                  {
+                    "available": false,
+                    "deprecation": {
+                      "announced": "2025-10-16T06:00:00Z",
+                      "unavailable_after": "2025-12-31T23:59:59Z"
+                    },
+                    "id": 6,
+                    "name": "sin",
+                    "recommended": false
+                  }
+                ],
+                "memory": 2,
+                "name": "cpx11",
+                "prices": [
+                  {
+                    "included_traffic": 1099511627776,
+                    "location": "ash",
+                    "price_hourly": {
+                      "gross": "0.0328000000000000",
+                      "net": "0.0328000000"
+                    },
+                    "price_monthly": {
+                      "gross": "20.4900000000000000",
+                      "net": "20.4900000000"
+                    },
+                    "price_per_tb_traffic": {
+                      "gross": "1.2000000000000000",
+                      "net": "1.2000000000"
+                    }
+                  },
+                  {
+                    "included_traffic": 21990232555520,
+                    "location": "fsn1",
+                    "price_hourly": {
+                      "gross": "0.0096000000000000",
+                      "net": "0.0096000000"
+                    },
+                    "price_monthly": {
+                      "gross": "5.9900000000000000",
+                      "net": "5.9900000000"
+                    },
+                    "price_per_tb_traffic": {
+                      "gross": "1.2000000000000000",
+                      "net": "1.2000000000"
+                    }
+                  },
+                  {
+                    "included_traffic": 21990232555520,
+                    "location": "hel1",
+                    "price_hourly": {
+                      "gross": "0.0096000000000000",
+                      "net": "0.0096000000"
+                    },
+                    "price_monthly": {
+                      "gross": "5.9900000000000000",
+                      "net": "5.9900000000"
+                    },
+                    "price_per_tb_traffic": {
+                      "gross": "1.2000000000000000",
+                      "net": "1.2000000000"
+                    }
+                  },
+                  {
+                    "included_traffic": 1099511627776,
+                    "location": "hil",
+                    "price_hourly": {
+                      "gross": "0.0328000000000000",
+                      "net": "0.0328000000"
+                    },
+                    "price_monthly": {
+                      "gross": "20.4900000000000000",
+                      "net": "20.4900000000"
+                    },
+                    "price_per_tb_traffic": {
+                      "gross": "1.2000000000000000",
+                      "net": "1.2000000000"
+                    }
+                  },
+                  {
+                    "included_traffic": 21990232555520,
+                    "location": "nbg1",
+                    "price_hourly": {
+                      "gross": "0.0096000000000000",
+                      "net": "0.0096000000"
+                    },
+                    "price_monthly": {
+                      "gross": "5.9900000000000000",
+                      "net": "5.9900000000"
+                    },
+                    "price_per_tb_traffic": {
+                      "gross": "1.2000000000000000",
+                      "net": "1.2000000000"
+                    }
+                  },
+                  {
+                    "included_traffic": 1099511627776,
+                    "location": "sin",
+                    "price_hourly": {
+                      "gross": "0.0184000000000000",
+                      "net": "0.0184000000"
+                    },
+                    "price_monthly": {
+                      "gross": "11.4900000000000000",
+                      "net": "11.4900000000"
+                    },
+                    "price_per_tb_traffic": {
+                      "gross": "8.3000000000000000",
+                      "net": "8.3000000000"
+                    }
+                  }
+                ],
+                "storage_type": "local"
+              },
+              "status": "running",
               "volumes": []
             }
           ]
@@ -697,7 +941,7 @@
             "application/json"
           ],
           "date": [
-            "Sun, 02 Aug 2026 17:47:07 GMT"
+            "Sun, 02 Aug 2026 21:05:47 GMT"
           ],
           "link": [
             "<https://api.hetzner.cloud/v1/servers?page=1>; rel=\"last\""
@@ -706,10 +950,10 @@
             "3600"
           ],
           "ratelimit-remaining": [
-            "3596"
+            "3599"
           ],
           "ratelimit-reset": [
-            "1785692831"
+            "1785704748"
           ],
           "strict-transport-security": [
             "max-age=31536000; includeSubDomains"
@@ -721,14 +965,14 @@
             "Accept-Encoding"
           ],
           "x-correlation-id": [
-            "b8a98d4f0796eb2b9deff49806ea77b6"
+            "156c52d4c580bed1dff669a5549a8bdd"
           ]
         },
         "status": 200
       }
     },
     {
-      "recorded_at": "2026-08-02T17:47:08.158966Z",
+      "recorded_at": "2026-08-02T21:05:47.685321Z",
       "request": {
         "body": "",
         "body_type": "text",
@@ -745,7 +989,7 @@
         },
         "method": "DELETE",
         "query_string": "",
-        "uri": "https://api.hetzner.cloud/v1/servers/158287381"
+        "uri": "https://api.hetzner.cloud/v1/servers/158334180"
       },
       "response": {
         "body_json": {
@@ -753,15 +997,15 @@
             "command": "delete_server",
             "error": null,
             "finished": null,
-            "id": 646452714464518,
+            "id": 646487074329294,
             "progress": 0,
             "resources": [
               {
-                "id": 158287381,
+                "id": 158334180,
                 "type": "server"
               }
             ],
-            "started": "2026-08-02T17:47:08Z",
+            "started": "2026-08-02T21:05:47Z",
             "status": "running"
           }
         },
@@ -786,16 +1030,16 @@
             "application/json"
           ],
           "date": [
-            "Sun, 02 Aug 2026 17:47:08 GMT"
+            "Sun, 02 Aug 2026 21:05:47 GMT"
           ],
           "ratelimit-limit": [
             "3600"
           ],
           "ratelimit-remaining": [
-            "3595"
+            "3598"
           ],
           "ratelimit-reset": [
-            "1785692833"
+            "1785704749"
           ],
           "strict-transport-security": [
             "max-age=31536000; includeSubDomains"
@@ -807,14 +1051,14 @@
             "Accept-Encoding"
           ],
           "x-correlation-id": [
-            "4d49f4fbdba691ddb66d53968d50f1a6"
+            "5adef33bcd7f05b1e9cee9652b800e93"
           ]
         },
         "status": 200
       }
     },
     {
-      "recorded_at": "2026-08-02T17:47:08.303554Z",
+      "recorded_at": "2026-08-02T21:05:47.839174Z",
       "request": {
         "body": "",
         "body_type": "text",
@@ -842,7 +1086,7 @@
               "page": 1,
               "per_page": 25,
               "previous_page": null,
-              "total_entries": 2
+              "total_entries": 3
             }
           },
           "servers": [
@@ -873,7 +1117,7 @@
                 "type": "system"
               },
               "included_traffic": 21990232555520,
-              "ingoing_traffic": 46490000,
+              "ingoing_traffic": 55780000,
               "iso": null,
               "labels": {},
               "load_balancers": [],
@@ -889,7 +1133,7 @@
               },
               "locked": false,
               "name": "fuellytics",
-              "outgoing_traffic": 146285000,
+              "outgoing_traffic": 149680000,
               "placement_group": null,
               "primary_disk_size": 40,
               "private_net": [],
@@ -1031,7 +1275,7 @@
                 "type": "system"
               },
               "included_traffic": 2199023255552,
-              "ingoing_traffic": 79420000,
+              "ingoing_traffic": 88255000,
               "iso": null,
               "labels": {},
               "load_balancers": [],
@@ -1047,7 +1291,7 @@
               },
               "locked": false,
               "name": "fuellytics-prod",
-              "outgoing_traffic": 262425000,
+              "outgoing_traffic": 285210000,
               "placement_group": null,
               "primary_disk_size": 80,
               "private_net": [],
@@ -1242,6 +1486,250 @@
               },
               "status": "running",
               "volumes": []
+            },
+            {
+              "backup_window": null,
+              "created": "2026-08-02T21:04:16Z",
+              "id": 158334208,
+              "image": {
+                "architecture": "x86",
+                "bound_to": null,
+                "created": "2024-04-25T13:26:27Z",
+                "created_from": null,
+                "deleted": null,
+                "deprecated": null,
+                "description": "Ubuntu 24.04",
+                "disk_size": 5,
+                "id": 161547269,
+                "image_size": null,
+                "labels": {},
+                "name": "ubuntu-24.04",
+                "os_flavor": "ubuntu",
+                "os_version": "24.04",
+                "protection": {
+                  "delete": false
+                },
+                "rapid_deploy": true,
+                "status": "available",
+                "type": "system"
+              },
+              "included_traffic": 1099511627776,
+              "ingoing_traffic": 0,
+              "iso": null,
+              "labels": {},
+              "load_balancers": [],
+              "location": {
+                "city": "Ashburn, VA",
+                "country": "US",
+                "description": "Ashburn, VA",
+                "id": 4,
+                "latitude": 39.045821,
+                "longitude": -77.487073,
+                "name": "ash",
+                "network_zone": "us-east"
+              },
+              "locked": false,
+              "name": "spex-story966-criterion8156-prod",
+              "outgoing_traffic": 0,
+              "placement_group": null,
+              "primary_disk_size": 40,
+              "private_net": [],
+              "protection": {
+                "delete": false,
+                "rebuild": false
+              },
+              "public_net": {
+                "firewalls": [
+                  {
+                    "id": 11407334,
+                    "status": "applied"
+                  }
+                ],
+                "floating_ips": [],
+                "ipv4": {
+                  "blocked": false,
+                  "dns_ptr": "static.9.213.161.5.clients.your-server.de",
+                  "id": 143176806,
+                  "ip": "5.161.213.9"
+                },
+                "ipv6": {
+                  "blocked": false,
+                  "dns_ptr": [],
+                  "id": 143176807,
+                  "ip": "2a01:4ff:f0:af2d::/64"
+                }
+              },
+              "rescue_enabled": false,
+              "server_type": {
+                "architecture": "x86",
+                "category": "regular_purpose",
+                "cores": 2,
+                "cpu_type": "shared",
+                "deprecated": false,
+                "deprecation": null,
+                "description": "CPX 11",
+                "disk": 40,
+                "id": 22,
+                "locations": [
+                  {
+                    "available": false,
+                    "deprecation": {
+                      "announced": "2025-10-16T06:00:00Z",
+                      "unavailable_after": "2025-12-31T23:59:59Z"
+                    },
+                    "id": 1,
+                    "name": "fsn1",
+                    "recommended": false
+                  },
+                  {
+                    "available": false,
+                    "deprecation": {
+                      "announced": "2025-10-16T06:00:00Z",
+                      "unavailable_after": "2025-12-31T23:59:59Z"
+                    },
+                    "id": 2,
+                    "name": "nbg1",
+                    "recommended": false
+                  },
+                  {
+                    "available": false,
+                    "deprecation": {
+                      "announced": "2025-10-16T06:00:00Z",
+                      "unavailable_after": "2025-12-31T23:59:59Z"
+                    },
+                    "id": 3,
+                    "name": "hel1",
+                    "recommended": false
+                  },
+                  {
+                    "available": true,
+                    "deprecation": null,
+                    "id": 4,
+                    "name": "ash",
+                    "recommended": false
+                  },
+                  {
+                    "available": true,
+                    "deprecation": null,
+                    "id": 5,
+                    "name": "hil",
+                    "recommended": false
+                  },
+                  {
+                    "available": false,
+                    "deprecation": {
+                      "announced": "2025-10-16T06:00:00Z",
+                      "unavailable_after": "2025-12-31T23:59:59Z"
+                    },
+                    "id": 6,
+                    "name": "sin",
+                    "recommended": false
+                  }
+                ],
+                "memory": 2,
+                "name": "cpx11",
+                "prices": [
+                  {
+                    "included_traffic": 1099511627776,
+                    "location": "ash",
+                    "price_hourly": {
+                      "gross": "0.0328000000000000",
+                      "net": "0.0328000000"
+                    },
+                    "price_monthly": {
+                      "gross": "20.4900000000000000",
+                      "net": "20.4900000000"
+                    },
+                    "price_per_tb_traffic": {
+                      "gross": "1.2000000000000000",
+                      "net": "1.2000000000"
+                    }
+                  },
+                  {
+                    "included_traffic": 21990232555520,
+                    "location": "fsn1",
+                    "price_hourly": {
+                      "gross": "0.0096000000000000",
+                      "net": "0.0096000000"
+                    },
+                    "price_monthly": {
+                      "gross": "5.9900000000000000",
+                      "net": "5.9900000000"
+                    },
+                    "price_per_tb_traffic": {
+                      "gross": "1.2000000000000000",
+                      "net": "1.2000000000"
+                    }
+                  },
+                  {
+                    "included_traffic": 21990232555520,
+                    "location": "hel1",
+                    "price_hourly": {
+                      "gross": "0.0096000000000000",
+                      "net": "0.0096000000"
+                    },
+                    "price_monthly": {
+                      "gross": "5.9900000000000000",
+                      "net": "5.9900000000"
+                    },
+                    "price_per_tb_traffic": {
+                      "gross": "1.2000000000000000",
+                      "net": "1.2000000000"
+                    }
+                  },
+                  {
+                    "included_traffic": 1099511627776,
+                    "location": "hil",
+                    "price_hourly": {
+                      "gross": "0.0328000000000000",
+                      "net": "0.0328000000"
+                    },
+                    "price_monthly": {
+                      "gross": "20.4900000000000000",
+                      "net": "20.4900000000"
+                    },
+                    "price_per_tb_traffic": {
+                      "gross": "1.2000000000000000",
+                      "net": "1.2000000000"
+                    }
+                  },
+                  {
+                    "included_traffic": 21990232555520,
+                    "location": "nbg1",
+                    "price_hourly": {
+                      "gross": "0.0096000000000000",
+                      "net": "0.0096000000"
+                    },
+                    "price_monthly": {
+                      "gross": "5.9900000000000000",
+                      "net": "5.9900000000"
+                    },
+                    "price_per_tb_traffic": {
+                      "gross": "1.2000000000000000",
+                      "net": "1.2000000000"
+                    }
+                  },
+                  {
+                    "included_traffic": 1099511627776,
+                    "location": "sin",
+                    "price_hourly": {
+                      "gross": "0.0184000000000000",
+                      "net": "0.0184000000"
+                    },
+                    "price_monthly": {
+                      "gross": "11.4900000000000000",
+                      "net": "11.4900000000"
+                    },
+                    "price_per_tb_traffic": {
+                      "gross": "8.3000000000000000",
+                      "net": "8.3000000000"
+                    }
+                  }
+                ],
+                "storage_type": "local"
+              },
+              "status": "running",
+              "volumes": []
             }
           ]
         },
@@ -1266,7 +1754,7 @@
             "application/json"
           ],
           "date": [
-            "Sun, 02 Aug 2026 17:47:08 GMT"
+            "Sun, 02 Aug 2026 21:05:47 GMT"
           ],
           "link": [
             "<https://api.hetzner.cloud/v1/servers?page=1>; rel=\"last\""
@@ -1275,10 +1763,10 @@
             "3600"
           ],
           "ratelimit-remaining": [
-            "3594"
+            "3597"
           ],
           "ratelimit-reset": [
-            "1785692834"
+            "1785704750"
           ],
           "strict-transport-security": [
             "max-age=31536000; includeSubDomains"
@@ -1290,14 +1778,14 @@
             "Accept-Encoding"
           ],
           "x-correlation-id": [
-            "08df69e9120f3dc9dc12c2da6d5959ca"
+            "817f4cc1ff4840643ff75343ef157d0c"
           ]
         },
         "status": 200
       }
     },
     {
-      "recorded_at": "2026-08-02T17:47:08.441658Z",
+      "recorded_at": "2026-08-02T21:05:47.983033Z",
       "request": {
         "body": "",
         "body_type": "text",
@@ -1313,11 +1801,68 @@
           ]
         },
         "method": "GET",
-        "query_string": "fingerprint=78:d5:78:5c:b9:f1:1b:fc:09:d4:af:88:9e:5b:0a:fd",
-        "uri": "https://api.hetzner.cloud/v1/ssh_keys"
+        "query_string": "",
+        "uri": "https://api.hetzner.cloud/v1/firewalls"
       },
       "response": {
         "body_json": {
+          "firewalls": [
+            {
+              "applied_to": [
+                {
+                  "server": {
+                    "id": 158334180
+                  },
+                  "type": "server"
+                },
+                {
+                  "server": {
+                    "id": 158334208
+                  },
+                  "type": "server"
+                }
+              ],
+              "created": "2026-08-02T21:04:08Z",
+              "id": 11407334,
+              "labels": {},
+              "name": "spex-story966-criterion8156",
+              "rules": [
+                {
+                  "description": null,
+                  "destination_ips": [],
+                  "direction": "in",
+                  "port": "22",
+                  "protocol": "tcp",
+                  "source_ips": [
+                    "0.0.0.0/0",
+                    "::/0"
+                  ]
+                },
+                {
+                  "description": null,
+                  "destination_ips": [],
+                  "direction": "in",
+                  "port": "80",
+                  "protocol": "tcp",
+                  "source_ips": [
+                    "0.0.0.0/0",
+                    "::/0"
+                  ]
+                },
+                {
+                  "description": null,
+                  "destination_ips": [],
+                  "direction": "in",
+                  "port": "443",
+                  "protocol": "tcp",
+                  "source_ips": [
+                    "0.0.0.0/0",
+                    "::/0"
+                  ]
+                }
+              ]
+            }
+          ],
           "meta": {
             "pagination": {
               "last_page": 1,
@@ -1327,17 +1872,7 @@
               "previous_page": null,
               "total_entries": 1
             }
-          },
-          "ssh_keys": [
-            {
-              "created": "2026-08-02T17:47:01Z",
-              "fingerprint": "78:d5:78:5c:b9:f1:1b:fc:09:d4:af:88:9e:5b:0a:fd",
-              "id": 116294435,
-              "labels": {},
-              "name": "spex-story966-criterion8156",
-              "public_key": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIN7AU7KQWfTVy6nRvTVMjoeKY5nTeHAJ0oH+esEFkSXT spex-story966-criterion8156"
-            }
-          ]
+          }
         },
         "body_type": "json",
         "headers": {
@@ -1360,38 +1895,44 @@
             "application/json"
           ],
           "date": [
-            "Sun, 02 Aug 2026 17:47:08 GMT"
+            "Sun, 02 Aug 2026 21:05:47 GMT"
           ],
           "link": [
-            "<https://api.hetzner.cloud/v1/ssh_keys?fingerprint=78%3Ad5%3A78%3A5c%3Ab9%3Af1%3A1b%3Afc%3A09%3Ad4%3Aaf%3A88%3A9e%3A5b%3A0a%3Afd&page=1>; rel=\"last\""
+            "<https://api.hetzner.cloud/v1/firewalls?page=1&per_page=25>; rel=\"last\""
           ],
           "ratelimit-limit": [
             "3600"
           ],
           "ratelimit-remaining": [
-            "3593"
+            "3596"
           ],
           "ratelimit-reset": [
-            "1785692835"
+            "1785704751"
           ],
           "strict-transport-security": [
             "max-age=31536000; includeSubDomains"
           ],
+          "traceparent": [
+            "00-1814181dfc69a951bbb07adb64b70f80-b072103fccc6d0d8-01"
+          ],
           "transfer-encoding": [
             "chunked"
+          ],
+          "uber-trace-id": [
+            "1814181dfc69a951bbb07adb64b70f80:b072103fccc6d0d8:0:1"
           ],
           "vary": [
             "Accept-Encoding"
           ],
           "x-correlation-id": [
-            "332f0567b8454e662b7ad6ea825e036e"
+            "1814181dfc69a951bbb07adb64b70f80"
           ]
         },
         "status": 200
       }
     },
     {
-      "recorded_at": "2026-08-02T17:47:08.582647Z",
+      "recorded_at": "2026-08-02T21:05:48.118727Z",
       "request": {
         "body": "",
         "body_type": "text",
@@ -1408,7 +1949,1198 @@
         },
         "method": "DELETE",
         "query_string": "",
-        "uri": "https://api.hetzner.cloud/v1/ssh_keys/116294435"
+        "uri": "https://api.hetzner.cloud/v1/firewalls/11407334"
+      },
+      "response": {
+        "body_json": {
+          "error": {
+            "code": "resource_in_use",
+            "details": null,
+            "message": "firewall with ID 11407334 is still in use"
+          }
+        },
+        "body_type": "json",
+        "headers": {
+          "access-control-allow-headers": [
+            "X-Requested-With,Authorization,Content-Type"
+          ],
+          "access-control-allow-methods": [
+            "OPTIONS,GET,POST,PUT,PATCH,DELETE"
+          ],
+          "access-control-allow-origin": [
+            "*"
+          ],
+          "access-control-expose-headers": [
+            "Link,X-Correlation-ID"
+          ],
+          "access-control-max-age": [
+            "86400"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "date": [
+            "Sun, 02 Aug 2026 21:05:48 GMT"
+          ],
+          "ratelimit-limit": [
+            "3600"
+          ],
+          "ratelimit-remaining": [
+            "3595"
+          ],
+          "ratelimit-reset": [
+            "1785704753"
+          ],
+          "strict-transport-security": [
+            "max-age=31536000; includeSubDomains"
+          ],
+          "traceparent": [
+            "00-0eec56b4f2bf284068957cb08c39fb43-69335beb1eef7254-01"
+          ],
+          "uber-trace-id": [
+            "0eec56b4f2bf284068957cb08c39fb43:69335beb1eef7254:0:1"
+          ],
+          "x-correlation-id": [
+            "0eec56b4f2bf284068957cb08c39fb43"
+          ]
+        },
+        "status": 422
+      }
+    },
+    {
+      "recorded_at": "2026-08-02T21:05:48.257026Z",
+      "request": {
+        "body": "",
+        "body_type": "text",
+        "headers": {
+          "accept-encoding": [
+            "gzip"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "user-agent": [
+            "req/0.5.17"
+          ]
+        },
+        "method": "GET",
+        "query_string": "",
+        "uri": "https://api.hetzner.cloud/v1/firewalls"
+      },
+      "response": {
+        "body_json": {
+          "firewalls": [
+            {
+              "applied_to": [
+                {
+                  "server": {
+                    "id": 158334180
+                  },
+                  "type": "server"
+                },
+                {
+                  "server": {
+                    "id": 158334208
+                  },
+                  "type": "server"
+                }
+              ],
+              "created": "2026-08-02T21:04:08Z",
+              "id": 11407334,
+              "labels": {},
+              "name": "spex-story966-criterion8156",
+              "rules": [
+                {
+                  "description": null,
+                  "destination_ips": [],
+                  "direction": "in",
+                  "port": "22",
+                  "protocol": "tcp",
+                  "source_ips": [
+                    "0.0.0.0/0",
+                    "::/0"
+                  ]
+                },
+                {
+                  "description": null,
+                  "destination_ips": [],
+                  "direction": "in",
+                  "port": "80",
+                  "protocol": "tcp",
+                  "source_ips": [
+                    "0.0.0.0/0",
+                    "::/0"
+                  ]
+                },
+                {
+                  "description": null,
+                  "destination_ips": [],
+                  "direction": "in",
+                  "port": "443",
+                  "protocol": "tcp",
+                  "source_ips": [
+                    "0.0.0.0/0",
+                    "::/0"
+                  ]
+                }
+              ]
+            }
+          ],
+          "meta": {
+            "pagination": {
+              "last_page": 1,
+              "next_page": null,
+              "page": 1,
+              "per_page": 25,
+              "previous_page": null,
+              "total_entries": 1
+            }
+          }
+        },
+        "body_type": "json",
+        "headers": {
+          "access-control-allow-headers": [
+            "X-Requested-With,Authorization,Content-Type"
+          ],
+          "access-control-allow-methods": [
+            "OPTIONS,GET,POST,PUT,PATCH,DELETE"
+          ],
+          "access-control-allow-origin": [
+            "*"
+          ],
+          "access-control-expose-headers": [
+            "Link,X-Correlation-ID"
+          ],
+          "access-control-max-age": [
+            "86400"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "date": [
+            "Sun, 02 Aug 2026 21:05:48 GMT"
+          ],
+          "link": [
+            "<https://api.hetzner.cloud/v1/firewalls?page=1&per_page=25>; rel=\"last\""
+          ],
+          "ratelimit-limit": [
+            "3600"
+          ],
+          "ratelimit-remaining": [
+            "3594"
+          ],
+          "ratelimit-reset": [
+            "1785704754"
+          ],
+          "strict-transport-security": [
+            "max-age=31536000; includeSubDomains"
+          ],
+          "traceparent": [
+            "00-257a7df3f08938ce24319775bc29541d-7ec8aab98a958670-01"
+          ],
+          "transfer-encoding": [
+            "chunked"
+          ],
+          "uber-trace-id": [
+            "257a7df3f08938ce24319775bc29541d:7ec8aab98a958670:0:1"
+          ],
+          "vary": [
+            "Accept-Encoding"
+          ],
+          "x-correlation-id": [
+            "257a7df3f08938ce24319775bc29541d"
+          ]
+        },
+        "status": 200
+      }
+    },
+    {
+      "recorded_at": "2026-08-02T21:05:48.395977Z",
+      "request": {
+        "body": "",
+        "body_type": "text",
+        "headers": {
+          "accept-encoding": [
+            "gzip"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "user-agent": [
+            "req/0.5.17"
+          ]
+        },
+        "method": "DELETE",
+        "query_string": "",
+        "uri": "https://api.hetzner.cloud/v1/firewalls/11407334"
+      },
+      "response": {
+        "body_json": {
+          "error": {
+            "code": "resource_in_use",
+            "details": null,
+            "message": "firewall with ID 11407334 is still in use"
+          }
+        },
+        "body_type": "json",
+        "headers": {
+          "access-control-allow-headers": [
+            "X-Requested-With,Authorization,Content-Type"
+          ],
+          "access-control-allow-methods": [
+            "OPTIONS,GET,POST,PUT,PATCH,DELETE"
+          ],
+          "access-control-allow-origin": [
+            "*"
+          ],
+          "access-control-expose-headers": [
+            "Link,X-Correlation-ID"
+          ],
+          "access-control-max-age": [
+            "86400"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "date": [
+            "Sun, 02 Aug 2026 21:05:48 GMT"
+          ],
+          "ratelimit-limit": [
+            "3600"
+          ],
+          "ratelimit-remaining": [
+            "3593"
+          ],
+          "ratelimit-reset": [
+            "1785704755"
+          ],
+          "strict-transport-security": [
+            "max-age=31536000; includeSubDomains"
+          ],
+          "traceparent": [
+            "00-f2fdeda89c75653e48d74015b0ea57e4-475d0d50b5682146-01"
+          ],
+          "uber-trace-id": [
+            "f2fdeda89c75653e48d74015b0ea57e4:475d0d50b5682146:0:1"
+          ],
+          "x-correlation-id": [
+            "f2fdeda89c75653e48d74015b0ea57e4"
+          ]
+        },
+        "status": 422
+      }
+    },
+    {
+      "recorded_at": "2026-08-02T21:05:50.600498Z",
+      "request": {
+        "body": "",
+        "body_type": "text",
+        "headers": {
+          "accept-encoding": [
+            "gzip"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "user-agent": [
+            "req/0.5.17"
+          ]
+        },
+        "method": "GET",
+        "query_string": "",
+        "uri": "https://api.hetzner.cloud/v1/firewalls"
+      },
+      "response": {
+        "body_json": {
+          "firewalls": [
+            {
+              "applied_to": [
+                {
+                  "server": {
+                    "id": 158334180
+                  },
+                  "type": "server"
+                },
+                {
+                  "server": {
+                    "id": 158334208
+                  },
+                  "type": "server"
+                }
+              ],
+              "created": "2026-08-02T21:04:08Z",
+              "id": 11407334,
+              "labels": {},
+              "name": "spex-story966-criterion8156",
+              "rules": [
+                {
+                  "description": null,
+                  "destination_ips": [],
+                  "direction": "in",
+                  "port": "22",
+                  "protocol": "tcp",
+                  "source_ips": [
+                    "0.0.0.0/0",
+                    "::/0"
+                  ]
+                },
+                {
+                  "description": null,
+                  "destination_ips": [],
+                  "direction": "in",
+                  "port": "80",
+                  "protocol": "tcp",
+                  "source_ips": [
+                    "0.0.0.0/0",
+                    "::/0"
+                  ]
+                },
+                {
+                  "description": null,
+                  "destination_ips": [],
+                  "direction": "in",
+                  "port": "443",
+                  "protocol": "tcp",
+                  "source_ips": [
+                    "0.0.0.0/0",
+                    "::/0"
+                  ]
+                }
+              ]
+            }
+          ],
+          "meta": {
+            "pagination": {
+              "last_page": 1,
+              "next_page": null,
+              "page": 1,
+              "per_page": 25,
+              "previous_page": null,
+              "total_entries": 1
+            }
+          }
+        },
+        "body_type": "json",
+        "headers": {
+          "access-control-allow-headers": [
+            "X-Requested-With,Authorization,Content-Type"
+          ],
+          "access-control-allow-methods": [
+            "OPTIONS,GET,POST,PUT,PATCH,DELETE"
+          ],
+          "access-control-allow-origin": [
+            "*"
+          ],
+          "access-control-expose-headers": [
+            "Link,X-Correlation-ID"
+          ],
+          "access-control-max-age": [
+            "86400"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "date": [
+            "Sun, 02 Aug 2026 21:05:50 GMT"
+          ],
+          "link": [
+            "<https://api.hetzner.cloud/v1/firewalls?page=1&per_page=25>; rel=\"last\""
+          ],
+          "ratelimit-limit": [
+            "3600"
+          ],
+          "ratelimit-remaining": [
+            "3594"
+          ],
+          "ratelimit-reset": [
+            "1785704756"
+          ],
+          "strict-transport-security": [
+            "max-age=31536000; includeSubDomains"
+          ],
+          "traceparent": [
+            "00-b7f368534ee07f0a388634e288ab23c8-d8a72c42f1ac11c1-01"
+          ],
+          "transfer-encoding": [
+            "chunked"
+          ],
+          "uber-trace-id": [
+            "b7f368534ee07f0a388634e288ab23c8:d8a72c42f1ac11c1:0:1"
+          ],
+          "vary": [
+            "Accept-Encoding"
+          ],
+          "x-correlation-id": [
+            "b7f368534ee07f0a388634e288ab23c8"
+          ]
+        },
+        "status": 200
+      }
+    },
+    {
+      "recorded_at": "2026-08-02T21:05:50.737662Z",
+      "request": {
+        "body": "",
+        "body_type": "text",
+        "headers": {
+          "accept-encoding": [
+            "gzip"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "user-agent": [
+            "req/0.5.17"
+          ]
+        },
+        "method": "DELETE",
+        "query_string": "",
+        "uri": "https://api.hetzner.cloud/v1/firewalls/11407334"
+      },
+      "response": {
+        "body_json": {
+          "error": {
+            "code": "resource_in_use",
+            "details": null,
+            "message": "firewall with ID 11407334 is still in use"
+          }
+        },
+        "body_type": "json",
+        "headers": {
+          "access-control-allow-headers": [
+            "X-Requested-With,Authorization,Content-Type"
+          ],
+          "access-control-allow-methods": [
+            "OPTIONS,GET,POST,PUT,PATCH,DELETE"
+          ],
+          "access-control-allow-origin": [
+            "*"
+          ],
+          "access-control-expose-headers": [
+            "Link,X-Correlation-ID"
+          ],
+          "access-control-max-age": [
+            "86400"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "date": [
+            "Sun, 02 Aug 2026 21:05:50 GMT"
+          ],
+          "ratelimit-limit": [
+            "3600"
+          ],
+          "ratelimit-remaining": [
+            "3593"
+          ],
+          "ratelimit-reset": [
+            "1785704757"
+          ],
+          "strict-transport-security": [
+            "max-age=31536000; includeSubDomains"
+          ],
+          "traceparent": [
+            "00-2b6d9c36893a3fae38b35e531cee2e9d-a357ecb03526a793-01"
+          ],
+          "uber-trace-id": [
+            "2b6d9c36893a3fae38b35e531cee2e9d:a357ecb03526a793:0:1"
+          ],
+          "x-correlation-id": [
+            "2b6d9c36893a3fae38b35e531cee2e9d"
+          ]
+        },
+        "status": 422
+      }
+    },
+    {
+      "recorded_at": "2026-08-02T21:05:52.877420Z",
+      "request": {
+        "body": "",
+        "body_type": "text",
+        "headers": {
+          "accept-encoding": [
+            "gzip"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "user-agent": [
+            "req/0.5.17"
+          ]
+        },
+        "method": "GET",
+        "query_string": "",
+        "uri": "https://api.hetzner.cloud/v1/firewalls"
+      },
+      "response": {
+        "body_json": {
+          "firewalls": [
+            {
+              "applied_to": [
+                {
+                  "server": {
+                    "id": 158334208
+                  },
+                  "type": "server"
+                }
+              ],
+              "created": "2026-08-02T21:04:08Z",
+              "id": 11407334,
+              "labels": {},
+              "name": "spex-story966-criterion8156",
+              "rules": [
+                {
+                  "description": null,
+                  "destination_ips": [],
+                  "direction": "in",
+                  "port": "22",
+                  "protocol": "tcp",
+                  "source_ips": [
+                    "0.0.0.0/0",
+                    "::/0"
+                  ]
+                },
+                {
+                  "description": null,
+                  "destination_ips": [],
+                  "direction": "in",
+                  "port": "80",
+                  "protocol": "tcp",
+                  "source_ips": [
+                    "0.0.0.0/0",
+                    "::/0"
+                  ]
+                },
+                {
+                  "description": null,
+                  "destination_ips": [],
+                  "direction": "in",
+                  "port": "443",
+                  "protocol": "tcp",
+                  "source_ips": [
+                    "0.0.0.0/0",
+                    "::/0"
+                  ]
+                }
+              ]
+            }
+          ],
+          "meta": {
+            "pagination": {
+              "last_page": 1,
+              "next_page": null,
+              "page": 1,
+              "per_page": 25,
+              "previous_page": null,
+              "total_entries": 1
+            }
+          }
+        },
+        "body_type": "json",
+        "headers": {
+          "access-control-allow-headers": [
+            "X-Requested-With,Authorization,Content-Type"
+          ],
+          "access-control-allow-methods": [
+            "OPTIONS,GET,POST,PUT,PATCH,DELETE"
+          ],
+          "access-control-allow-origin": [
+            "*"
+          ],
+          "access-control-expose-headers": [
+            "Link,X-Correlation-ID"
+          ],
+          "access-control-max-age": [
+            "86400"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "date": [
+            "Sun, 02 Aug 2026 21:05:52 GMT"
+          ],
+          "link": [
+            "<https://api.hetzner.cloud/v1/firewalls?page=1&per_page=25>; rel=\"last\""
+          ],
+          "ratelimit-limit": [
+            "3600"
+          ],
+          "ratelimit-remaining": [
+            "3594"
+          ],
+          "ratelimit-reset": [
+            "1785704758"
+          ],
+          "strict-transport-security": [
+            "max-age=31536000; includeSubDomains"
+          ],
+          "traceparent": [
+            "00-ddf25a48f1adeda2540696c525d30042-830200175541fc8a-01"
+          ],
+          "transfer-encoding": [
+            "chunked"
+          ],
+          "uber-trace-id": [
+            "ddf25a48f1adeda2540696c525d30042:830200175541fc8a:0:1"
+          ],
+          "vary": [
+            "Accept-Encoding"
+          ],
+          "x-correlation-id": [
+            "ddf25a48f1adeda2540696c525d30042"
+          ]
+        },
+        "status": 200
+      }
+    },
+    {
+      "recorded_at": "2026-08-02T21:05:53.026004Z",
+      "request": {
+        "body": "",
+        "body_type": "text",
+        "headers": {
+          "accept-encoding": [
+            "gzip"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "user-agent": [
+            "req/0.5.17"
+          ]
+        },
+        "method": "DELETE",
+        "query_string": "",
+        "uri": "https://api.hetzner.cloud/v1/firewalls/11407334"
+      },
+      "response": {
+        "body_json": {
+          "error": {
+            "code": "resource_in_use",
+            "details": null,
+            "message": "firewall with ID 11407334 is still in use"
+          }
+        },
+        "body_type": "json",
+        "headers": {
+          "access-control-allow-headers": [
+            "X-Requested-With,Authorization,Content-Type"
+          ],
+          "access-control-allow-methods": [
+            "OPTIONS,GET,POST,PUT,PATCH,DELETE"
+          ],
+          "access-control-allow-origin": [
+            "*"
+          ],
+          "access-control-expose-headers": [
+            "Link,X-Correlation-ID"
+          ],
+          "access-control-max-age": [
+            "86400"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "date": [
+            "Sun, 02 Aug 2026 21:05:52 GMT"
+          ],
+          "ratelimit-limit": [
+            "3600"
+          ],
+          "ratelimit-remaining": [
+            "3593"
+          ],
+          "ratelimit-reset": [
+            "1785704759"
+          ],
+          "strict-transport-security": [
+            "max-age=31536000; includeSubDomains"
+          ],
+          "traceparent": [
+            "00-4c60fd1cd8d8db2cb2f22da612f559c6-14e9fc040a6b8561-01"
+          ],
+          "uber-trace-id": [
+            "4c60fd1cd8d8db2cb2f22da612f559c6:14e9fc040a6b8561:0:1"
+          ],
+          "x-correlation-id": [
+            "4c60fd1cd8d8db2cb2f22da612f559c6"
+          ]
+        },
+        "status": 422
+      }
+    },
+    {
+      "recorded_at": "2026-08-02T21:05:55.163361Z",
+      "request": {
+        "body": "",
+        "body_type": "text",
+        "headers": {
+          "accept-encoding": [
+            "gzip"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "user-agent": [
+            "req/0.5.17"
+          ]
+        },
+        "method": "GET",
+        "query_string": "",
+        "uri": "https://api.hetzner.cloud/v1/firewalls"
+      },
+      "response": {
+        "body_json": {
+          "firewalls": [
+            {
+              "applied_to": [
+                {
+                  "server": {
+                    "id": 158334208
+                  },
+                  "type": "server"
+                }
+              ],
+              "created": "2026-08-02T21:04:08Z",
+              "id": 11407334,
+              "labels": {},
+              "name": "spex-story966-criterion8156",
+              "rules": [
+                {
+                  "description": null,
+                  "destination_ips": [],
+                  "direction": "in",
+                  "port": "22",
+                  "protocol": "tcp",
+                  "source_ips": [
+                    "0.0.0.0/0",
+                    "::/0"
+                  ]
+                },
+                {
+                  "description": null,
+                  "destination_ips": [],
+                  "direction": "in",
+                  "port": "80",
+                  "protocol": "tcp",
+                  "source_ips": [
+                    "0.0.0.0/0",
+                    "::/0"
+                  ]
+                },
+                {
+                  "description": null,
+                  "destination_ips": [],
+                  "direction": "in",
+                  "port": "443",
+                  "protocol": "tcp",
+                  "source_ips": [
+                    "0.0.0.0/0",
+                    "::/0"
+                  ]
+                }
+              ]
+            }
+          ],
+          "meta": {
+            "pagination": {
+              "last_page": 1,
+              "next_page": null,
+              "page": 1,
+              "per_page": 25,
+              "previous_page": null,
+              "total_entries": 1
+            }
+          }
+        },
+        "body_type": "json",
+        "headers": {
+          "access-control-allow-headers": [
+            "X-Requested-With,Authorization,Content-Type"
+          ],
+          "access-control-allow-methods": [
+            "OPTIONS,GET,POST,PUT,PATCH,DELETE"
+          ],
+          "access-control-allow-origin": [
+            "*"
+          ],
+          "access-control-expose-headers": [
+            "Link,X-Correlation-ID"
+          ],
+          "access-control-max-age": [
+            "86400"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "date": [
+            "Sun, 02 Aug 2026 21:05:55 GMT"
+          ],
+          "link": [
+            "<https://api.hetzner.cloud/v1/firewalls?page=1&per_page=25>; rel=\"last\""
+          ],
+          "ratelimit-limit": [
+            "3600"
+          ],
+          "ratelimit-remaining": [
+            "3594"
+          ],
+          "ratelimit-reset": [
+            "1785704761"
+          ],
+          "strict-transport-security": [
+            "max-age=31536000; includeSubDomains"
+          ],
+          "traceparent": [
+            "00-d3985f33acdc529f77b4fc006f935b00-5689c5929df254c8-01"
+          ],
+          "transfer-encoding": [
+            "chunked"
+          ],
+          "uber-trace-id": [
+            "d3985f33acdc529f77b4fc006f935b00:5689c5929df254c8:0:1"
+          ],
+          "vary": [
+            "Accept-Encoding"
+          ],
+          "x-correlation-id": [
+            "d3985f33acdc529f77b4fc006f935b00"
+          ]
+        },
+        "status": 200
+      }
+    },
+    {
+      "recorded_at": "2026-08-02T21:05:55.302480Z",
+      "request": {
+        "body": "",
+        "body_type": "text",
+        "headers": {
+          "accept-encoding": [
+            "gzip"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "user-agent": [
+            "req/0.5.17"
+          ]
+        },
+        "method": "DELETE",
+        "query_string": "",
+        "uri": "https://api.hetzner.cloud/v1/firewalls/11407334"
+      },
+      "response": {
+        "body_json": {
+          "error": {
+            "code": "resource_in_use",
+            "details": null,
+            "message": "firewall with ID 11407334 is still in use"
+          }
+        },
+        "body_type": "json",
+        "headers": {
+          "access-control-allow-headers": [
+            "X-Requested-With,Authorization,Content-Type"
+          ],
+          "access-control-allow-methods": [
+            "OPTIONS,GET,POST,PUT,PATCH,DELETE"
+          ],
+          "access-control-allow-origin": [
+            "*"
+          ],
+          "access-control-expose-headers": [
+            "Link,X-Correlation-ID"
+          ],
+          "access-control-max-age": [
+            "86400"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "date": [
+            "Sun, 02 Aug 2026 21:05:55 GMT"
+          ],
+          "ratelimit-limit": [
+            "3600"
+          ],
+          "ratelimit-remaining": [
+            "3593"
+          ],
+          "ratelimit-reset": [
+            "1785704762"
+          ],
+          "strict-transport-security": [
+            "max-age=31536000; includeSubDomains"
+          ],
+          "traceparent": [
+            "00-90f109b9b19613caff548dcd13c2d55b-9531b0abc365b222-01"
+          ],
+          "uber-trace-id": [
+            "90f109b9b19613caff548dcd13c2d55b:9531b0abc365b222:0:1"
+          ],
+          "x-correlation-id": [
+            "90f109b9b19613caff548dcd13c2d55b"
+          ]
+        },
+        "status": 422
+      }
+    },
+    {
+      "recorded_at": "2026-08-02T21:05:57.438945Z",
+      "request": {
+        "body": "",
+        "body_type": "text",
+        "headers": {
+          "accept-encoding": [
+            "gzip"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "user-agent": [
+            "req/0.5.17"
+          ]
+        },
+        "method": "GET",
+        "query_string": "",
+        "uri": "https://api.hetzner.cloud/v1/firewalls"
+      },
+      "response": {
+        "body_json": {
+          "firewalls": [
+            {
+              "applied_to": [
+                {
+                  "server": {
+                    "id": 158334208
+                  },
+                  "type": "server"
+                }
+              ],
+              "created": "2026-08-02T21:04:08Z",
+              "id": 11407334,
+              "labels": {},
+              "name": "spex-story966-criterion8156",
+              "rules": [
+                {
+                  "description": null,
+                  "destination_ips": [],
+                  "direction": "in",
+                  "port": "22",
+                  "protocol": "tcp",
+                  "source_ips": [
+                    "0.0.0.0/0",
+                    "::/0"
+                  ]
+                },
+                {
+                  "description": null,
+                  "destination_ips": [],
+                  "direction": "in",
+                  "port": "80",
+                  "protocol": "tcp",
+                  "source_ips": [
+                    "0.0.0.0/0",
+                    "::/0"
+                  ]
+                },
+                {
+                  "description": null,
+                  "destination_ips": [],
+                  "direction": "in",
+                  "port": "443",
+                  "protocol": "tcp",
+                  "source_ips": [
+                    "0.0.0.0/0",
+                    "::/0"
+                  ]
+                }
+              ]
+            }
+          ],
+          "meta": {
+            "pagination": {
+              "last_page": 1,
+              "next_page": null,
+              "page": 1,
+              "per_page": 25,
+              "previous_page": null,
+              "total_entries": 1
+            }
+          }
+        },
+        "body_type": "json",
+        "headers": {
+          "access-control-allow-headers": [
+            "X-Requested-With,Authorization,Content-Type"
+          ],
+          "access-control-allow-methods": [
+            "OPTIONS,GET,POST,PUT,PATCH,DELETE"
+          ],
+          "access-control-allow-origin": [
+            "*"
+          ],
+          "access-control-expose-headers": [
+            "Link,X-Correlation-ID"
+          ],
+          "access-control-max-age": [
+            "86400"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "date": [
+            "Sun, 02 Aug 2026 21:05:57 GMT"
+          ],
+          "link": [
+            "<https://api.hetzner.cloud/v1/firewalls?page=1&per_page=25>; rel=\"last\""
+          ],
+          "ratelimit-limit": [
+            "3600"
+          ],
+          "ratelimit-remaining": [
+            "3594"
+          ],
+          "ratelimit-reset": [
+            "1785704763"
+          ],
+          "strict-transport-security": [
+            "max-age=31536000; includeSubDomains"
+          ],
+          "traceparent": [
+            "00-710b26f4e87f70e4b6804d800331bb62-4309b4570bb64445-01"
+          ],
+          "transfer-encoding": [
+            "chunked"
+          ],
+          "uber-trace-id": [
+            "710b26f4e87f70e4b6804d800331bb62:4309b4570bb64445:0:1"
+          ],
+          "vary": [
+            "Accept-Encoding"
+          ],
+          "x-correlation-id": [
+            "710b26f4e87f70e4b6804d800331bb62"
+          ]
+        },
+        "status": 200
+      }
+    },
+    {
+      "recorded_at": "2026-08-02T21:05:57.575470Z",
+      "request": {
+        "body": "",
+        "body_type": "text",
+        "headers": {
+          "accept-encoding": [
+            "gzip"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "user-agent": [
+            "req/0.5.17"
+          ]
+        },
+        "method": "GET",
+        "query_string": "fingerprint=97:65:5b:40:95:35:a1:a4:72:a9:5a:6c:67:f3:ba:2b",
+        "uri": "https://api.hetzner.cloud/v1/ssh_keys"
+      },
+      "response": {
+        "body_json": {
+          "meta": {
+            "pagination": {
+              "last_page": 1,
+              "next_page": null,
+              "page": 1,
+              "per_page": 25,
+              "previous_page": null,
+              "total_entries": 1
+            }
+          },
+          "ssh_keys": [
+            {
+              "created": "2026-08-02T21:04:08Z",
+              "fingerprint": "97:65:5b:40:95:35:a1:a4:72:a9:5a:6c:67:f3:ba:2b",
+              "id": 116302817,
+              "labels": {},
+              "name": "spex-story966-criterion8156",
+              "public_key": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDKZ1FXSfUSdX3GEjZXpf+BMpa5F1lA8HM4uX1v1Q895 spex-story966-criterion8156"
+            }
+          ]
+        },
+        "body_type": "json",
+        "headers": {
+          "access-control-allow-headers": [
+            "X-Requested-With,Authorization,Content-Type"
+          ],
+          "access-control-allow-methods": [
+            "OPTIONS,GET,POST,PUT,PATCH,DELETE"
+          ],
+          "access-control-allow-origin": [
+            "*"
+          ],
+          "access-control-expose-headers": [
+            "Link,X-Correlation-ID"
+          ],
+          "access-control-max-age": [
+            "86400"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "date": [
+            "Sun, 02 Aug 2026 21:05:57 GMT"
+          ],
+          "link": [
+            "<https://api.hetzner.cloud/v1/ssh_keys?fingerprint=97%3A65%3A5b%3A40%3A95%3A35%3Aa1%3Aa4%3A72%3Aa9%3A5a%3A6c%3A67%3Af3%3Aba%3A2b&page=1>; rel=\"last\""
+          ],
+          "ratelimit-limit": [
+            "3600"
+          ],
+          "ratelimit-remaining": [
+            "3593"
+          ],
+          "ratelimit-reset": [
+            "1785704764"
+          ],
+          "strict-transport-security": [
+            "max-age=31536000; includeSubDomains"
+          ],
+          "transfer-encoding": [
+            "chunked"
+          ],
+          "vary": [
+            "Accept-Encoding"
+          ],
+          "x-correlation-id": [
+            "0e3c970e5bd01e3294d1b05106637c07"
+          ]
+        },
+        "status": 200
+      }
+    },
+    {
+      "recorded_at": "2026-08-02T21:05:57.720398Z",
+      "request": {
+        "body": "",
+        "body_type": "text",
+        "headers": {
+          "accept-encoding": [
+            "gzip"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "user-agent": [
+            "req/0.5.17"
+          ]
+        },
+        "method": "DELETE",
+        "query_string": "",
+        "uri": "https://api.hetzner.cloud/v1/ssh_keys/116302817"
       },
       "response": {
         "body": "",
@@ -1430,7 +3162,7 @@
             "86400"
           ],
           "date": [
-            "Sun, 02 Aug 2026 17:47:08 GMT"
+            "Sun, 02 Aug 2026 21:05:57 GMT"
           ],
           "ratelimit-limit": [
             "3600"
@@ -1439,20 +3171,20 @@
             "3592"
           ],
           "ratelimit-reset": [
-            "1785692836"
+            "1785704765"
           ],
           "strict-transport-security": [
             "max-age=31536000; includeSubDomains"
           ],
           "x-correlation-id": [
-            "1d8a4807071d5308abc42c23c0e814b1"
+            "c8b157e42744d3ced708fcd24468c9f2"
           ]
         },
         "status": 204
       }
     },
     {
-      "recorded_at": "2026-08-02T17:47:08.716166Z",
+      "recorded_at": "2026-08-02T21:05:57.862389Z",
       "request": {
         "body": "",
         "body_type": "text",
@@ -1468,7 +3200,7 @@
           ]
         },
         "method": "GET",
-        "query_string": "fingerprint=78:d5:78:5c:b9:f1:1b:fc:09:d4:af:88:9e:5b:0a:fd",
+        "query_string": "fingerprint=97:65:5b:40:95:35:a1:a4:72:a9:5a:6c:67:f3:ba:2b",
         "uri": "https://api.hetzner.cloud/v1/ssh_keys"
       },
       "response": {
@@ -1506,10 +3238,10 @@
             "application/json"
           ],
           "date": [
-            "Sun, 02 Aug 2026 17:47:08 GMT"
+            "Sun, 02 Aug 2026 21:05:57 GMT"
           ],
           "link": [
-            "<https://api.hetzner.cloud/v1/ssh_keys?fingerprint=78%3Ad5%3A78%3A5c%3Ab9%3Af1%3A1b%3Afc%3A09%3Ad4%3Aaf%3A88%3A9e%3A5b%3A0a%3Afd&page=1>; rel=\"last\""
+            "<https://api.hetzner.cloud/v1/ssh_keys?fingerprint=97%3A65%3A5b%3A40%3A95%3A35%3Aa1%3Aa4%3A72%3Aa9%3A5a%3A6c%3A67%3Af3%3Aba%3A2b&page=1>; rel=\"last\""
           ],
           "ratelimit-limit": [
             "3600"
@@ -1518,7 +3250,7 @@
             "3591"
           ],
           "ratelimit-reset": [
-            "1785692837"
+            "1785704766"
           ],
           "strict-transport-security": [
             "max-age=31536000; includeSubDomains"
@@ -1527,645 +3259,10 @@
             "Accept-Encoding"
           ],
           "x-correlation-id": [
-            "2f4d00a92cbda6163eb6811cdbf81df6"
+            "b2fd49ac5919cb890d5c569da50295cc"
           ]
         },
         "status": 200
-      }
-    },
-    {
-      "recorded_at": "2026-08-02T17:47:08.864900Z",
-      "request": {
-        "body": "",
-        "body_type": "text",
-        "headers": {
-          "accept-encoding": [
-            "gzip"
-          ],
-          "content-type": [
-            "application/json"
-          ],
-          "user-agent": [
-            "req/0.5.17"
-          ]
-        },
-        "method": "GET",
-        "query_string": "",
-        "uri": "https://api.hetzner.cloud/v1/firewalls"
-      },
-      "response": {
-        "body_json": {
-          "firewalls": [
-            {
-              "applied_to": [
-                {
-                  "server": {
-                    "id": 158287381
-                  },
-                  "type": "server"
-                }
-              ],
-              "created": "2026-08-02T17:47:01Z",
-              "id": 11406724,
-              "labels": {},
-              "name": "spex-story966-criterion8156",
-              "rules": [
-                {
-                  "description": null,
-                  "destination_ips": [],
-                  "direction": "in",
-                  "port": "22",
-                  "protocol": "tcp",
-                  "source_ips": [
-                    "0.0.0.0/0",
-                    "::/0"
-                  ]
-                },
-                {
-                  "description": null,
-                  "destination_ips": [],
-                  "direction": "in",
-                  "port": "80",
-                  "protocol": "tcp",
-                  "source_ips": [
-                    "0.0.0.0/0",
-                    "::/0"
-                  ]
-                },
-                {
-                  "description": null,
-                  "destination_ips": [],
-                  "direction": "in",
-                  "port": "443",
-                  "protocol": "tcp",
-                  "source_ips": [
-                    "0.0.0.0/0",
-                    "::/0"
-                  ]
-                }
-              ]
-            }
-          ],
-          "meta": {
-            "pagination": {
-              "last_page": 1,
-              "next_page": null,
-              "page": 1,
-              "per_page": 25,
-              "previous_page": null,
-              "total_entries": 1
-            }
-          }
-        },
-        "body_type": "json",
-        "headers": {
-          "access-control-allow-headers": [
-            "X-Requested-With,Authorization,Content-Type"
-          ],
-          "access-control-allow-methods": [
-            "OPTIONS,GET,POST,PUT,PATCH,DELETE"
-          ],
-          "access-control-allow-origin": [
-            "*"
-          ],
-          "access-control-expose-headers": [
-            "Link,X-Correlation-ID"
-          ],
-          "access-control-max-age": [
-            "86400"
-          ],
-          "content-type": [
-            "application/json"
-          ],
-          "date": [
-            "Sun, 02 Aug 2026 17:47:08 GMT"
-          ],
-          "link": [
-            "<https://api.hetzner.cloud/v1/firewalls?page=1&per_page=25>; rel=\"last\""
-          ],
-          "ratelimit-limit": [
-            "3600"
-          ],
-          "ratelimit-remaining": [
-            "3590"
-          ],
-          "ratelimit-reset": [
-            "1785692838"
-          ],
-          "strict-transport-security": [
-            "max-age=31536000; includeSubDomains"
-          ],
-          "traceparent": [
-            "00-e07e834da6f8f0b38a0efc58d37b2695-b01c645b1dbb94f5-01"
-          ],
-          "transfer-encoding": [
-            "chunked"
-          ],
-          "uber-trace-id": [
-            "e07e834da6f8f0b38a0efc58d37b2695:b01c645b1dbb94f5:0:1"
-          ],
-          "vary": [
-            "Accept-Encoding"
-          ],
-          "x-correlation-id": [
-            "e07e834da6f8f0b38a0efc58d37b2695"
-          ]
-        },
-        "status": 200
-      }
-    },
-    {
-      "recorded_at": "2026-08-02T17:47:08.996876Z",
-      "request": {
-        "body": "",
-        "body_type": "text",
-        "headers": {
-          "accept-encoding": [
-            "gzip"
-          ],
-          "content-type": [
-            "application/json"
-          ],
-          "user-agent": [
-            "req/0.5.17"
-          ]
-        },
-        "method": "DELETE",
-        "query_string": "",
-        "uri": "https://api.hetzner.cloud/v1/firewalls/11406724"
-      },
-      "response": {
-        "body_json": {
-          "error": {
-            "code": "resource_in_use",
-            "details": null,
-            "message": "firewall with ID 11406724 is still in use"
-          }
-        },
-        "body_type": "json",
-        "headers": {
-          "access-control-allow-headers": [
-            "X-Requested-With,Authorization,Content-Type"
-          ],
-          "access-control-allow-methods": [
-            "OPTIONS,GET,POST,PUT,PATCH,DELETE"
-          ],
-          "access-control-allow-origin": [
-            "*"
-          ],
-          "access-control-expose-headers": [
-            "Link,X-Correlation-ID"
-          ],
-          "access-control-max-age": [
-            "86400"
-          ],
-          "content-type": [
-            "application/json"
-          ],
-          "date": [
-            "Sun, 02 Aug 2026 17:47:08 GMT"
-          ],
-          "ratelimit-limit": [
-            "3600"
-          ],
-          "ratelimit-remaining": [
-            "3589"
-          ],
-          "ratelimit-reset": [
-            "1785692839"
-          ],
-          "strict-transport-security": [
-            "max-age=31536000; includeSubDomains"
-          ],
-          "traceparent": [
-            "00-b21e7b15e9b5efc5499f6cbbec4b1b98-7ef9654b0e7b89e7-01"
-          ],
-          "uber-trace-id": [
-            "b21e7b15e9b5efc5499f6cbbec4b1b98:7ef9654b0e7b89e7:0:1"
-          ],
-          "x-correlation-id": [
-            "b21e7b15e9b5efc5499f6cbbec4b1b98"
-          ]
-        },
-        "status": 422
-      }
-    },
-    {
-      "recorded_at": "2026-08-02T17:47:09.136011Z",
-      "request": {
-        "body": "",
-        "body_type": "text",
-        "headers": {
-          "accept-encoding": [
-            "gzip"
-          ],
-          "content-type": [
-            "application/json"
-          ],
-          "user-agent": [
-            "req/0.5.17"
-          ]
-        },
-        "method": "GET",
-        "query_string": "",
-        "uri": "https://api.hetzner.cloud/v1/firewalls"
-      },
-      "response": {
-        "body_json": {
-          "firewalls": [
-            {
-              "applied_to": [
-                {
-                  "server": {
-                    "id": 158287381
-                  },
-                  "type": "server"
-                }
-              ],
-              "created": "2026-08-02T17:47:01Z",
-              "id": 11406724,
-              "labels": {},
-              "name": "spex-story966-criterion8156",
-              "rules": [
-                {
-                  "description": null,
-                  "destination_ips": [],
-                  "direction": "in",
-                  "port": "22",
-                  "protocol": "tcp",
-                  "source_ips": [
-                    "0.0.0.0/0",
-                    "::/0"
-                  ]
-                },
-                {
-                  "description": null,
-                  "destination_ips": [],
-                  "direction": "in",
-                  "port": "80",
-                  "protocol": "tcp",
-                  "source_ips": [
-                    "0.0.0.0/0",
-                    "::/0"
-                  ]
-                },
-                {
-                  "description": null,
-                  "destination_ips": [],
-                  "direction": "in",
-                  "port": "443",
-                  "protocol": "tcp",
-                  "source_ips": [
-                    "0.0.0.0/0",
-                    "::/0"
-                  ]
-                }
-              ]
-            }
-          ],
-          "meta": {
-            "pagination": {
-              "last_page": 1,
-              "next_page": null,
-              "page": 1,
-              "per_page": 25,
-              "previous_page": null,
-              "total_entries": 1
-            }
-          }
-        },
-        "body_type": "json",
-        "headers": {
-          "access-control-allow-headers": [
-            "X-Requested-With,Authorization,Content-Type"
-          ],
-          "access-control-allow-methods": [
-            "OPTIONS,GET,POST,PUT,PATCH,DELETE"
-          ],
-          "access-control-allow-origin": [
-            "*"
-          ],
-          "access-control-expose-headers": [
-            "Link,X-Correlation-ID"
-          ],
-          "access-control-max-age": [
-            "86400"
-          ],
-          "content-type": [
-            "application/json"
-          ],
-          "date": [
-            "Sun, 02 Aug 2026 17:47:09 GMT"
-          ],
-          "link": [
-            "<https://api.hetzner.cloud/v1/firewalls?page=1&per_page=25>; rel=\"last\""
-          ],
-          "ratelimit-limit": [
-            "3600"
-          ],
-          "ratelimit-remaining": [
-            "3588"
-          ],
-          "ratelimit-reset": [
-            "1785692841"
-          ],
-          "strict-transport-security": [
-            "max-age=31536000; includeSubDomains"
-          ],
-          "traceparent": [
-            "00-f2ded9c49e2654871503be09482076c6-546311b726301c02-01"
-          ],
-          "transfer-encoding": [
-            "chunked"
-          ],
-          "uber-trace-id": [
-            "f2ded9c49e2654871503be09482076c6:546311b726301c02:0:1"
-          ],
-          "vary": [
-            "Accept-Encoding"
-          ],
-          "x-correlation-id": [
-            "f2ded9c49e2654871503be09482076c6"
-          ]
-        },
-        "status": 200
-      }
-    },
-    {
-      "recorded_at": "2026-08-02T17:47:09.273274Z",
-      "request": {
-        "body": "",
-        "body_type": "text",
-        "headers": {
-          "accept-encoding": [
-            "gzip"
-          ],
-          "content-type": [
-            "application/json"
-          ],
-          "user-agent": [
-            "req/0.5.17"
-          ]
-        },
-        "method": "DELETE",
-        "query_string": "",
-        "uri": "https://api.hetzner.cloud/v1/firewalls/11406724"
-      },
-      "response": {
-        "body_json": {
-          "error": {
-            "code": "resource_in_use",
-            "details": null,
-            "message": "firewall with ID 11406724 is still in use"
-          }
-        },
-        "body_type": "json",
-        "headers": {
-          "access-control-allow-headers": [
-            "X-Requested-With,Authorization,Content-Type"
-          ],
-          "access-control-allow-methods": [
-            "OPTIONS,GET,POST,PUT,PATCH,DELETE"
-          ],
-          "access-control-allow-origin": [
-            "*"
-          ],
-          "access-control-expose-headers": [
-            "Link,X-Correlation-ID"
-          ],
-          "access-control-max-age": [
-            "86400"
-          ],
-          "content-type": [
-            "application/json"
-          ],
-          "date": [
-            "Sun, 02 Aug 2026 17:47:09 GMT"
-          ],
-          "ratelimit-limit": [
-            "3600"
-          ],
-          "ratelimit-remaining": [
-            "3587"
-          ],
-          "ratelimit-reset": [
-            "1785692842"
-          ],
-          "strict-transport-security": [
-            "max-age=31536000; includeSubDomains"
-          ],
-          "traceparent": [
-            "00-3f41bdf4a0d320d5d590a318ee4e4c66-70202deb99171611-01"
-          ],
-          "uber-trace-id": [
-            "3f41bdf4a0d320d5d590a318ee4e4c66:70202deb99171611:0:1"
-          ],
-          "x-correlation-id": [
-            "3f41bdf4a0d320d5d590a318ee4e4c66"
-          ]
-        },
-        "status": 422
-      }
-    },
-    {
-      "recorded_at": "2026-08-02T17:47:11.412172Z",
-      "request": {
-        "body": "",
-        "body_type": "text",
-        "headers": {
-          "accept-encoding": [
-            "gzip"
-          ],
-          "content-type": [
-            "application/json"
-          ],
-          "user-agent": [
-            "req/0.5.17"
-          ]
-        },
-        "method": "GET",
-        "query_string": "",
-        "uri": "https://api.hetzner.cloud/v1/firewalls"
-      },
-      "response": {
-        "body_json": {
-          "firewalls": [
-            {
-              "applied_to": [],
-              "created": "2026-08-02T17:47:01Z",
-              "id": 11406724,
-              "labels": {},
-              "name": "spex-story966-criterion8156",
-              "rules": [
-                {
-                  "description": null,
-                  "destination_ips": [],
-                  "direction": "in",
-                  "port": "22",
-                  "protocol": "tcp",
-                  "source_ips": [
-                    "0.0.0.0/0",
-                    "::/0"
-                  ]
-                },
-                {
-                  "description": null,
-                  "destination_ips": [],
-                  "direction": "in",
-                  "port": "80",
-                  "protocol": "tcp",
-                  "source_ips": [
-                    "0.0.0.0/0",
-                    "::/0"
-                  ]
-                },
-                {
-                  "description": null,
-                  "destination_ips": [],
-                  "direction": "in",
-                  "port": "443",
-                  "protocol": "tcp",
-                  "source_ips": [
-                    "0.0.0.0/0",
-                    "::/0"
-                  ]
-                }
-              ]
-            }
-          ],
-          "meta": {
-            "pagination": {
-              "last_page": 1,
-              "next_page": null,
-              "page": 1,
-              "per_page": 25,
-              "previous_page": null,
-              "total_entries": 1
-            }
-          }
-        },
-        "body_type": "json",
-        "headers": {
-          "access-control-allow-headers": [
-            "X-Requested-With,Authorization,Content-Type"
-          ],
-          "access-control-allow-methods": [
-            "OPTIONS,GET,POST,PUT,PATCH,DELETE"
-          ],
-          "access-control-allow-origin": [
-            "*"
-          ],
-          "access-control-expose-headers": [
-            "Link,X-Correlation-ID"
-          ],
-          "access-control-max-age": [
-            "86400"
-          ],
-          "content-type": [
-            "application/json"
-          ],
-          "date": [
-            "Sun, 02 Aug 2026 17:47:11 GMT"
-          ],
-          "link": [
-            "<https://api.hetzner.cloud/v1/firewalls?page=1&per_page=25>; rel=\"last\""
-          ],
-          "ratelimit-limit": [
-            "3600"
-          ],
-          "ratelimit-remaining": [
-            "3588"
-          ],
-          "ratelimit-reset": [
-            "1785692843"
-          ],
-          "strict-transport-security": [
-            "max-age=31536000; includeSubDomains"
-          ],
-          "traceparent": [
-            "00-7c5dd9b4737cd717d4f76c377080f195-418590ce21327f90-01"
-          ],
-          "transfer-encoding": [
-            "chunked"
-          ],
-          "uber-trace-id": [
-            "7c5dd9b4737cd717d4f76c377080f195:418590ce21327f90:0:1"
-          ],
-          "vary": [
-            "Accept-Encoding"
-          ],
-          "x-correlation-id": [
-            "7c5dd9b4737cd717d4f76c377080f195"
-          ]
-        },
-        "status": 200
-      }
-    },
-    {
-      "recorded_at": "2026-08-02T17:47:11.554138Z",
-      "request": {
-        "body": "",
-        "body_type": "text",
-        "headers": {
-          "accept-encoding": [
-            "gzip"
-          ],
-          "content-type": [
-            "application/json"
-          ],
-          "user-agent": [
-            "req/0.5.17"
-          ]
-        },
-        "method": "DELETE",
-        "query_string": "",
-        "uri": "https://api.hetzner.cloud/v1/firewalls/11406724"
-      },
-      "response": {
-        "body": "",
-        "body_type": "text",
-        "headers": {
-          "access-control-allow-headers": [
-            "X-Requested-With,Authorization,Content-Type"
-          ],
-          "access-control-allow-methods": [
-            "OPTIONS,GET,POST,PUT,PATCH,DELETE"
-          ],
-          "access-control-allow-origin": [
-            "*"
-          ],
-          "access-control-expose-headers": [
-            "Link,X-Correlation-ID"
-          ],
-          "access-control-max-age": [
-            "86400"
-          ],
-          "date": [
-            "Sun, 02 Aug 2026 17:47:11 GMT"
-          ],
-          "ratelimit-limit": [
-            "3600"
-          ],
-          "ratelimit-remaining": [
-            "3587"
-          ],
-          "ratelimit-reset": [
-            "1785692844"
-          ],
-          "strict-transport-security": [
-            "max-age=31536000; includeSubDomains"
-          ],
-          "traceparent": [
-            "00-92d5400706d50b92c85a430b19cf2619-feaae7dc0f2c930f-01"
-          ],
-          "uber-trace-id": [
-            "92d5400706d50b92c85a430b19cf2619:feaae7dc0f2c930f:0:1"
-          ],
-          "x-correlation-id": [
-            "92d5400706d50b92c85a430b19cf2619"
-          ]
-        },
-        "status": 204
       }
     }
   ],
