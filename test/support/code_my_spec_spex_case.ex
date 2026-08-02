@@ -1053,6 +1053,8 @@ defmodule CodeMySpecSpex.Case do
           scrubbed =
             path
             |> File.read!()
+            |> redact_recorded_env()
+            |> wildcard_working_directories()
             |> then(fn body ->
               Enum.reduce(sensitive_patterns(), body, fn {pattern, replacement}, acc ->
                 String.replace(acc, pattern, replacement)
@@ -1066,6 +1068,83 @@ defmodule CodeMySpecSpex.Case do
 
     :ok
   end
+
+  # ExCliVcr records the *whole* environment each command was given, and the
+  # steps now hand their scripts real credentials — object-storage keys, a
+  # database URL. Those are matched on by nobody (the default is command and
+  # args) but they are written to a file that gets committed, which is how a
+  # live Hetzner S3 key ended up in a cassette in the clear.
+  #
+  # Redacted by variable *name* rather than by value: a value-based filter only
+  # catches the secrets we thought to enumerate, and the whole point of a leak
+  # is that it is the one you did not think of.
+  @sensitive_env_names ~w(SECRET TOKEN PASSWORD CREDENTIAL PRIVATE)
+  @sensitive_env_exact ~w(AWS_ACCESS_KEY_ID DATABASE_URL)
+
+  defp redact_recorded_env(body) do
+    case Jason.decode(body) do
+      {:ok, %{"commands" => commands} = cassette} when is_list(commands) ->
+        cassette
+        |> Map.put("commands", Enum.map(commands, &redact_command_env/1))
+        |> Jason.encode!(pretty: true)
+
+      _ ->
+        body
+    end
+  end
+
+  defp redact_command_env(%{"opts" => %{"env" => env} = opts} = command) when is_map(env) do
+    redacted =
+      Map.new(env, fn {name, value} ->
+        if is_binary(value) and sensitive_env_name?(name),
+          do: {name, "<REDACTED>"},
+          else: {name, value}
+      end)
+
+    %{command | "opts" => %{opts | "env" => redacted}}
+  end
+
+  defp redact_command_env(command), do: command
+
+  defp sensitive_env_name?(name) do
+    upper = String.upcase(name)
+    upper in @sensitive_env_exact or Enum.any?(@sensitive_env_names, &String.contains?(upper, &1))
+  end
+
+  # A step that shells out to a generated script runs it by absolute path —
+  # the script lives in the project, and `System.cmd` resolves a relative
+  # command against the *process* cwd rather than the environment's. Under a
+  # spex that project is a fresh temp directory, so the recorded command names
+  # a path that will never exist again and the cassette cannot match itself on
+  # replay.
+  #
+  # Rewritten to a glob rather than dropped from the match: `*/bin/backup`
+  # still requires the script, and only forgives where it lived.
+  defp wildcard_working_directories(body) do
+    case Jason.decode(body) do
+      {:ok, %{"commands" => commands} = cassette} when is_list(commands) ->
+        cassette
+        |> Map.put("commands", Enum.map(commands, &wildcard_command_path/1))
+        |> Jason.encode!(pretty: true)
+
+      _ ->
+        body
+    end
+  end
+
+  # Only the directory the run happened to get, taken from the recorded `cd`
+  # so a command that legitimately names an absolute path elsewhere is left
+  # alone.
+  defp wildcard_command_path(%{"command" => command, "opts" => %{"cd" => cd}} = entry)
+       when is_binary(command) and is_binary(cd) do
+    if String.starts_with?(command, cd <> "/") do
+      %{entry | "command" => "*" <> String.trim_leading(command, cd)}
+    else
+      entry
+    end
+  end
+
+  defp wildcard_command_path(entry), do: entry
 
   # Headers alone are not enough, and the gap is not hypothetical.
   #

@@ -14,6 +14,7 @@ defmodule CodeMySpecSpex.Story968.Criterion8014Spex do
   """
 
   use CodeMySpecSpex.Case
+  use ExCliVcr
 
   @endpoint CodeMySpecWeb.Endpoint
 
@@ -43,7 +44,7 @@ defmodule CodeMySpecSpex.Story968.Criterion8014Spex do
         tear_down_after(context.scope, [:storage])
 
         html =
-          with_provider_cassette(@install_cassette, fn ->
+          with_full_cassette @install_cassette do
             # Hetzner issues object-storage keys only in its console, so they are
             # pasted per project — without them the backups step pauses asking for
             # them and never reaches the schedule this criterion is about.
@@ -59,11 +60,11 @@ defmodule CodeMySpecSpex.Story968.Criterion8014Spex do
             view
             |> element("[data-test='setup-step'][data-step='backups'] [data-test='run-step']")
             |> render_click()
-          end)
+          end
 
-        File.write!("/private/tmp/claude-501/-Users-johndavenport-Documents-github-code-my-spec/c359ad14-715c-4b86-84fb-bd0b9e0d21aa/scratchpad/8014c.html", html)
         assert html =~ ~r/data-step="backups"[^>]*data-state="done"/,
-               "expected the backup step to complete before checking for dumps"
+               "expected the backup step to complete before checking for dumps, got: " <>
+                 (html |> Floki.parse_document!() |> Floki.find("[data-step='backups']") |> Floki.text() |> String.replace(~r/\s+/, " ") |> String.slice(0, 600))
 
         {:ok, Map.put(context, :view, view)}
       end
