@@ -68,10 +68,26 @@ defmodule CodeMySpec.Provisioning.Cloudflare do
   @doc """
   Whether a domain can be registered, and what it costs.
 
-  Returns `{:ok, %{available: boolean, price: number | nil, currency: binary}}`.
-  The price is shown before the confirmation gate, so a nil price is worth
-  surfacing rather than defaulting — Sam should not be asked to confirm a
-  purchase whose cost we could not read.
+  Returns `{:ok, %{name, supported_tld, availability, price, current_registrar}}`.
+
+  ## What Cloudflare will actually tell us
+
+  Verified against the live API rather than the docs: the registrar returns
+  full detail — `available`, `can_register`, `current_registrar`, expiry — only
+  for domains **already associated with the account**. For any other name it
+  returns `{name, supported_tld}` and nothing else:
+
+      astralbi.com        -> available=false, current_registrar="Hostinger, UAB"
+      sams-new-thing.com  -> %{"name" => ..., "supported_tld" => true}
+
+  So availability and price are not answerable for a name Sam does not
+  already hold. `:unknown` says that, rather than an absent `available` field
+  being read as `false` — which is what the earlier version did, quietly
+  reporting every new name as taken.
+
+  This is why registering a new name is a dashboard errand rather than an API
+  call: the API cannot price it, and setup will not ask Sam to confirm a
+  purchase whose cost it could not read.
   """
   @spec check_availability(Scope.t(), String.t()) :: {:ok, map()} | error()
   def check_availability(%Scope{} = scope, name) when is_binary(name) do
@@ -84,14 +100,34 @@ defmodule CodeMySpec.Provisioning.Cloudflare do
 
   defp availability_from(%{"result" => result}) when is_map(result) do
     %{
-      available: result["available"] == true,
+      name: result["name"],
+      supported_tld: result["supported_tld"] == true,
+      availability: availability(result),
       price: result["price"],
       currency: result["currency"] || "USD",
-      can_register: result["can_register"] == true
+      can_register: result["can_register"] == true,
+      current_registrar: result["current_registrar"]
     }
   end
 
-  defp availability_from(_), do: %{available: false, price: nil, currency: "USD", can_register: false}
+  defp availability_from(_),
+    do: %{
+      name: nil,
+      supported_tld: false,
+      availability: :unknown,
+      price: nil,
+      currency: "USD",
+      can_register: false,
+      current_registrar: nil
+    }
+
+  # Absent is not false. A name Cloudflare says nothing about is one it cannot
+  # price or sell through the API — a different answer from "taken", and the
+  # difference decides whether Sam is offered a purchase or sent to the
+  # dashboard.
+  defp availability(%{"available" => true}), do: :available
+  defp availability(%{"available" => false}), do: :taken
+  defp availability(_), do: :unknown
 
   ## Registration
 
@@ -184,8 +220,27 @@ defmodule CodeMySpec.Provisioning.Cloudflare do
   """
   @spec owned?(Scope.t(), String.t()) :: {:ok, boolean()} | error()
   def owned?(%Scope{} = scope, name) when is_binary(name) do
-    with {:ok, domains} <- list_domains(scope) do
-      {:ok, Enum.any?(domains, &(&1["name"] == name))}
+    # A domain is an ordinary way in if the account either registered it *or*
+    # manages its DNS. The registrar list alone is too narrow: a domain bought
+    # elsewhere but run as a Cloudflare zone is one setup can adopt and write
+    # records to, and treating it as unknown would send Sam to buy a name he
+    # already controls.
+    with {:ok, zone_owned} <- zone_owned?(scope, name) do
+      if zone_owned do
+        {:ok, true}
+      else
+        with {:ok, domains} <- list_domains(scope) do
+          {:ok, Enum.any?(domains, &(&1["name"] == name))}
+        end
+      end
+    end
+  end
+
+  defp zone_owned?(scope, name) do
+    case find_zone(scope, name) do
+      {:ok, _zone} -> {:ok, true}
+      {:error, :not_found} -> {:ok, false}
+      {:error, _} = error -> error
     end
   end
 
@@ -235,22 +290,57 @@ defmodule CodeMySpec.Provisioning.Cloudflare do
   @spec find_zone(Scope.t(), String.t()) :: {:ok, body()} | {:error, :not_found} | error()
   def find_zone(%Scope{} = scope, name) do
     with {:ok, zones} <- list_zones(scope) do
-      case Enum.find(zones, &(&1["name"] == name)) do
+      # A zone is a registrable domain, but a project's domain need not be one:
+      # `app.example.com` is served from the `example.com` zone, and so is
+      # `uat.app.example.com`. Matching only exact names meant any subdomain
+      # failed with :not_found — which reads as "the domain is not on this
+      # account" when the account holds it perfectly well, one level up.
+      #
+      # Longest match wins: with both `example.com` and `app.example.com` as
+      # zones, a record for `uat.app.example.com` belongs in the more specific
+      # one. Matching on a label boundary so `notexample.com` never matches
+      # `example.com`.
+      zones
+      |> Enum.filter(&zone_covers?(&1["name"], name))
+      |> Enum.max_by(&String.length(&1["name"]), fn -> nil end)
+      |> case do
         nil -> {:error, :not_found}
         zone -> {:ok, zone}
       end
     end
   end
 
-  @doc """
-  The account id, read from the zone list.
+  defp zone_covers?(zone_name, name) when is_binary(zone_name) and is_binary(name) do
+    name == zone_name or String.ends_with?(name, "." <> zone_name)
+  end
 
-  There is no `account.read` scope, so this is the only path. An account with
-  no zones yet yields `{:error, :no_account_visible}` rather than a confusing
-  downstream 4xx.
+  defp zone_covers?(_, _), do: false
+
+  @doc """
+  The account id.
+
+  `GET /accounts` first, the zone list second.
+
+  This used to read the zone list alone, on the belief that there is no
+  account-read scope. There is — the endpoint answers 200 for a grant with no
+  zone visibility at all — and the zones-only path failed for precisely the
+  case setup exists to serve: a Cloudflare account with no zones in it yet.
+  The failure surfaced as `:no_account_visible`, which reads like a
+  permissions problem and is not one.
+
+  The zone fallback stays because it costs a call only when the first path
+  returns nothing, and a grant scoped to one zone rather than the account is a
+  configuration somebody has.
   """
   @spec account_id(Scope.t()) :: {:ok, String.t()} | {:error, :no_account_visible} | error()
   def account_id(%Scope{} = scope) do
+    case request(scope, :get, "/accounts") do
+      {:ok, %{"result" => [%{"id" => id} | _]}} when is_binary(id) -> {:ok, id}
+      _ -> account_id_from_zones(scope)
+    end
+  end
+
+  defp account_id_from_zones(scope) do
     with {:ok, zones} <- list_zones(scope) do
       zones
       |> Enum.find_value(fn zone -> get_in(zone, ["account", "id"]) end)
@@ -272,16 +362,42 @@ defmodule CodeMySpec.Provisioning.Cloudflare do
   @spec create_dns_record(Scope.t(), String.t(), String.t(), String.t(), keyword()) ::
           {:ok, body()} | error()
   def create_dns_record(%Scope{} = scope, zone_id, name, content, opts \\ []) do
-    payload = %{
-      type: Keyword.get(opts, :type, "A"),
-      name: name,
-      content: content,
-      ttl: Keyword.get(opts, :ttl, 60),
-      proxied: Keyword.get(opts, :proxied, false)
-    }
+    # MX records carry a priority and Cloudflare rejects one without it. It is
+    # not cosmetic for inbound mail either: Resend only receives when its MX is
+    # the lowest-priority record for the name, so a missing or higher value
+    # means mail goes somewhere else and nothing reports a problem.
+    payload =
+      %{
+        type: Keyword.get(opts, :type, "A"),
+        name: name,
+        content: content,
+        ttl: Keyword.get(opts, :ttl, 60),
+        proxied: Keyword.get(opts, :proxied, false)
+      }
+      |> maybe_put(:priority, Keyword.get(opts, :priority))
 
     request(scope, :post, "/zones/#{zone_id}/dns_records", json: payload)
   end
+
+  defp priority_matches?(_existing, nil), do: true
+  defp priority_matches?(existing, priority), do: existing["priority"] == priority
+
+  defp update_dns_record(scope, zone_id, id, name, content, opts) do
+    payload =
+      %{
+        type: Keyword.get(opts, :type, "A"),
+        name: name,
+        content: content,
+        ttl: Keyword.get(opts, :ttl, 60),
+        proxied: Keyword.get(opts, :proxied, false)
+      }
+      |> maybe_put(:priority, Keyword.get(opts, :priority))
+
+    request(scope, :put, "/zones/#{zone_id}/dns_records/#{id}", json: payload)
+  end
+
+  defp maybe_put(map, _key, nil), do: map
+  defp maybe_put(map, key, value), do: Map.put(map, key, value)
 
   @doc "DNS records in a zone."
   @spec list_dns_records(Scope.t(), String.t()) :: {:ok, [body()]} | error()
@@ -304,26 +420,57 @@ defmodule CodeMySpec.Provisioning.Cloudflare do
   def ensure_dns_record(%Scope{} = scope, zone_id, name, content, opts \\ []) do
     type = Keyword.get(opts, :type, "A")
 
-    with {:ok, records} <- list_dns_records(scope, zone_id) do
+    # `:records` lets a caller writing several records into one zone list it
+    # once instead of once per record. Beyond the saved round-trips this makes
+    # the call count a function of how many records are written rather than of
+    # how many times the zone happened to be listed, which is what a sequential
+    # cassette needs in order to replay the same way it recorded.
+    with {:ok, records} <-
+           (case Keyword.fetch(opts, :records) do
+              {:ok, records} -> {:ok, records}
+              :error -> list_dns_records(scope, zone_id)
+            end) do
       case Enum.find(records, &(&1["name"] == name and &1["type"] == type)) do
         nil ->
           create_dns_record(scope, zone_id, name, content, opts)
 
+        # For MX, identical content at a different priority is NOT the same
+        # record: Resend only receives on the lowest-priority MX, so leaving a
+        # higher one in place delivers mail somewhere else silently.
+        # Already there and already right. Marked as adopted so teardown leaves
+        # it alone — a record that predates setup is the user's, not ours.
         %{"content" => ^content} = existing ->
-          {:ok, %{"result" => existing}}
+          if priority_matches?(existing, Keyword.get(opts, :priority)) do
+            {:ok, %{"result" => Map.put(existing, "__adopted__", true)}}
+          else
+            update_dns_record(scope, zone_id, existing["id"], name, content, opts)
+          end
 
         %{"id" => id} ->
-          payload = %{
-            type: type,
-            name: name,
-            content: content,
-            ttl: Keyword.get(opts, :ttl, 60),
-            proxied: Keyword.get(opts, :proxied, false)
-          }
+          payload =
+            %{
+              type: type,
+              name: name,
+              content: content,
+              ttl: Keyword.get(opts, :ttl, 60),
+              proxied: Keyword.get(opts, :proxied, false)
+            }
+            |> maybe_put(:priority, Keyword.get(opts, :priority))
 
           request(scope, :put, "/zones/#{zone_id}/dns_records/#{id}", json: payload)
       end
     end
+  end
+
+  @doc """
+  Delete a DNS record. Teardown only — setup never destroys.
+
+  Exists so live tests can remove what they published; a test that leaves
+  records in a production zone is worse than no test.
+  """
+  @spec delete_dns_record(Scope.t(), String.t(), String.t()) :: {:ok, body()} | error()
+  def delete_dns_record(%Scope{} = scope, zone_id, record_id) do
+    request(scope, :delete, "/zones/#{zone_id}/dns_records/#{record_id}")
   end
 
   ## Credential check
@@ -369,12 +516,22 @@ defmodule CodeMySpec.Provisioning.Cloudflare do
   defp handle_response({:error, reason}), do: {:error, reason}
 
   defp access_token(%Scope{} = scope) do
-    case Integrations.get_integration(scope, :cloudflare) do
-      {:ok, %{access_token: token}} when is_binary(token) and token != "" -> {:ok, token}
-      _ -> configured_token()
+    case Integrations.fetch_access_token(scope, :cloudflare) do
+      {:ok, token} when is_binary(token) and token != "" ->
+        {:ok, token}
+
+      # No integration at all: the environment is the intended source, which
+      # is how the CLI and tests supply a credential.
+      {:error, :not_found} ->
+        configured_token()
+
+      # Connected but unusable — expired past renewal, or the provider refused
+      # the refresh. Falling through to the environment here would quietly use
+      # a different account's credential and report success, so the reason has
+      # to surface instead.
+      {:error, reason} ->
+        {:error, {:cloudflare_token_unusable, reason}}
     end
-  rescue
-    _ -> configured_token()
   end
 
   defp configured_token do

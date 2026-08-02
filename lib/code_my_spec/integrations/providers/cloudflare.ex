@@ -93,7 +93,7 @@ defmodule CodeMySpec.Integrations.Providers.Cloudflare do
       code_verifier: true,
       redirect_uri: build_redirect_uri(),
       authorization_params: [
-        scope: Enum.join(@scopes, " ")
+        scope: Enum.join(scopes(), " ")
       ]
     ]
   end
@@ -101,9 +101,62 @@ defmodule CodeMySpec.Integrations.Providers.Cloudflare do
   @impl true
   def strategy, do: Assent.Strategy.OAuth2
 
-  @doc "The scopes this integration requests."
+  @doc """
+  The scopes this integration requests.
+
+  ## Why `offline_access` is not in the list by default
+
+  Without it Cloudflare issues no refresh token, so the grant dies at its
+  expiry with nothing to renew from — which is what happened to the first
+  connection here: no refresh token stored, and by the time anything needed
+  it the grant was already dead.
+
+  ## How to make a client that allows it
+
+  `offline_access` is not a scope you select — it is not among the 381
+  permission names `GET /oauth/scopes` returns, which is why hunting for it in
+  the dashboard's scope picker finds nothing.
+
+  Cloudflare adds it to a client's scopes *automatically* when the client
+  carries `refresh_token` in its **grant types**. So the setting to change is
+  the grant type, not the scope list:
+
+      grant_types: ["authorization_code", "refresh_token"]
+      -> scopes come back with "offline_access" appended
+
+  Verified 2026-07-31: with `authorization_code` alone the authorize endpoint
+  answers `invalid_scope` — "The OAuth 2.0 Client is not allowed to request
+  scope 'offline_access'" — and with both grant types the same request is
+  accepted. Grant types can be edited on an existing client; a new one is not
+  required.
+
+  It was off by default because Cloudflare rejects it unless the *client
+  registration* carries it, and the original one did not:
+
+      scope=offline_access  → invalid_scope, "The OAuth 2.0 Client is not
+                              allowed to request scope 'offline_access'"
+      scope=offline         → the same
+      scope=<base scopes>   → accepted
+
+  Both were probed against `dash.cloudflare.com/oauth2/auth` directly. The
+  authorization server supports them — its discovery document lists
+  `offline_access`, `offline` and `openid` under `scopes_supported`, and
+  `refresh_token` under `grant_types_supported` — so this is a property of the
+  client, not of Cloudflare.
+
+  Requesting it unconditionally against a client that disallows it makes
+  Cloudflare impossible to connect at all, which is strictly worse than a
+  token that has to be re-granted — so the flag stays, and points at whether
+  the configured client was created with the refresh grant.
+  """
   @spec scopes() :: [String.t()]
-  def scopes, do: @scopes
+  def scopes do
+    if Application.get_env(:code_my_spec, :cloudflare_offline_access, false) do
+      ["offline_access" | @scopes]
+    else
+      @scopes
+    end
+  end
 
   @doc """
   Sandbox registrar scopes, for exercising domain registration without buying

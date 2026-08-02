@@ -86,6 +86,11 @@ defmodule CodeMySpec.Provisioning.Resend do
       "uat.example.com"
   """
   @spec sending_domain(String.t(), String.t()) :: String.t()
+  # Resend publishes its own record set *under* the domain it is given: the
+  # bounce MX and SPF land on `send.<domain>`, DKIM on
+  # `resend._domainkey.<domain>`. So the domain handed over here is the base,
+  # not the sending host — prefixing it with `send.` produces
+  # `send.send.<domain>` and leaves the real records nowhere the spex looks.
   def sending_domain(domain, "prod"), do: domain
   def sending_domain(domain, "production"), do: domain
   def sending_domain(domain, environment), do: "#{environment}.#{domain}"
@@ -116,9 +121,15 @@ defmodule CodeMySpec.Provisioning.Resend do
   @doc "Register a sending domain. Prefer `ensure_domain/3`."
   @spec create_domain(Scope.t(), String.t(), keyword()) :: {:ok, body()} | error()
   def create_domain(%Scope{} = scope, name, opts \\ []) do
-    payload = %{name: name, region: Keyword.get(opts, :region, @default_region)}
+    payload =
+      %{name: name, region: Keyword.get(opts, :region, @default_region)}
+      |> maybe_put(:capabilities, Keyword.get(opts, :capabilities))
+
     request(scope, :post, "/domains", json: payload)
   end
+
+  defp maybe_put(map, _key, nil), do: map
+  defp maybe_put(map, key, value), do: Map.put(map, key, value)
 
   @doc """
   Return the sending domain, registering it only if absent.
@@ -131,7 +142,11 @@ defmodule CodeMySpec.Provisioning.Resend do
     case find_domain(scope, name) do
       {:ok, domain} ->
         Logger.info("[Resend] sending domain #{name} already registered — reusing")
-        {:ok, domain}
+        # Marked adopted so teardown leaves it alone. Setup found this domain;
+        # it did not make it, and removing something a user already had is not
+        # cleanup — it is destruction. Resend's capabilities are creation-only,
+        # so a delete-and-recreate silently drops inbound mail.
+        {:ok, Map.put(domain, "__adopted__", true)}
 
       {:error, :not_found} ->
         create_domain(scope, name, opts)
@@ -199,6 +214,190 @@ defmodule CodeMySpec.Provisioning.Resend do
   defp apex_name?(name, domain), do: name in ["@", "", domain]
 
   @doc """
+  Ensure a domain exists with receiving enabled.
+
+  ## Capabilities are set at creation and cannot be changed
+
+  `POST /domains` takes `capabilities: %{sending:, receiving:}` and defaults
+  receiving to `"disabled"`. `PATCH /domains/:id` exposes tracking and TLS and
+  nothing else — there is no field to turn receiving on afterwards.
+
+  So a domain that already exists with receiving disabled cannot be upgraded
+  through the API, and this says so rather than reporting success and leaving
+  mail silently undelivered. Deleting and recreating it is not something setup
+  will do on its own: the domain may be sending production mail, and
+  recreating it rotates the DKIM key.
+  """
+  @spec ensure_receiving_domain(Scope.t(), String.t(), keyword()) ::
+          {:ok, body()} | {:error, term()}
+  def ensure_receiving_domain(%Scope{} = scope, name, opts \\ []) do
+    case find_domain(scope, name) do
+      {:ok, domain} ->
+        if receiving?(domain) do
+          {:ok, domain}
+        else
+          {:error, {:receiving_disabled, name}}
+        end
+
+      {:error, :not_found} ->
+        create_domain(
+          scope,
+          name,
+          Keyword.put(opts, :capabilities, %{sending: "enabled", receiving: "enabled"})
+        )
+
+      {:error, _} = error ->
+        error
+    end
+  end
+
+  @doc "Whether a domain accepts inbound mail."
+  @spec receiving?(body()) :: boolean()
+  def receiving?(%{"capabilities" => %{"receiving" => "enabled"}}), do: true
+  def receiving?(_), do: false
+
+  @doc "Whether a domain can send."
+  @spec sending?(body()) :: boolean()
+  def sending?(%{"capabilities" => %{"sending" => "enabled"}}), do: true
+  def sending?(_), do: false
+
+  @doc "Every webhook on the account."
+  @spec list_webhooks(Scope.t()) :: {:ok, [body()]} | error()
+  def list_webhooks(%Scope{} = scope) do
+    with {:ok, %{"data" => webhooks}} <- request(scope, :get, "/webhooks") do
+      {:ok, webhooks}
+    end
+  end
+
+  @doc """
+  Ensure an enabled webhook delivers `email.received` to `endpoint`.
+
+  ## Existing-but-disabled is the case that matters
+
+  Resend keeps disabled webhooks in the list, and a disabled one looks
+  configured from every angle except the only one that counts: nothing is
+  delivered. This account already had exactly that — a `dev.codemyspec.com`
+  webhook, subscribed to the right event, disabled. Creating-if-absent would
+  have found it, called the step done, and delivered nothing.
+  """
+  @spec ensure_webhook(Scope.t(), String.t(), keyword()) :: {:ok, body()} | error()
+  def ensure_webhook(%Scope{} = scope, endpoint, opts \\ []) do
+    events = Keyword.get(opts, :events, ["email.received"])
+
+    with {:ok, webhooks} <- list_webhooks(scope) do
+      case Enum.find(webhooks, &(&1["endpoint"] == endpoint)) do
+        nil ->
+          request(scope, :post, "/webhooks", json: %{endpoint: endpoint, events: events})
+
+        %{"status" => "enabled"} = webhook ->
+          {:ok, webhook}
+
+        %{"id" => id} = webhook ->
+          case update_webhook_status(scope, id, "enabled") do
+            {:ok, updated} -> {:ok, Map.merge(webhook, updated)}
+            {:error, reason} -> {:error, {:webhook_disabled, endpoint, reason}}
+          end
+      end
+    end
+  end
+
+  @doc """
+  The MX records a receiving domain needs published.
+
+  ## Filtering on type alone is wrong, and quietly so
+
+  A receiving domain returns **two** MX records, and only one of them is for
+  receiving:
+
+      %{"record" => "SPF",       "name" => "send", "value" => "feedback-smtp...amazonses.com"}
+      %{"record" => "Receiving", "name" => "",     "value" => "inbound-smtp...amazonaws.com"}
+
+  The first is the bounce/SPF record that belongs on `send.<domain>` and is
+  part of *sending*. Publishing it at the apex as though it were the inbound
+  MX breaks receiving and sending at once — which is the exact failure
+  criterion 8032 exists to prevent. `record` is what distinguishes them;
+  `type` does not.
+
+  Resend also will not deliver unless its MX is the **lowest** priority for
+  the name, so the priority it hands back is not advisory either.
+  """
+  @spec mx_records(body()) :: [body()]
+  def mx_records(domain) do
+    domain
+    |> records()
+    |> Enum.filter(fn record ->
+      String.upcase(to_string(record["type"] || "")) == "MX" and
+        to_string(record["record"]) == "Receiving"
+    end)
+  end
+
+  @doc """
+  Set a webhook's status.
+
+  Public because `ensure_webhook/3` needs it, and because a live test has to
+  be able to *create* the disabled case in order to prove the step handles it.
+  """
+  @spec update_webhook_status(Scope.t(), String.t(), String.t()) :: {:ok, body()} | error()
+  def update_webhook_status(%Scope{} = scope, id, status) do
+    request(scope, :patch, "/webhooks/#{id}", json: %{status: status})
+  end
+
+  @doc """
+  The address a probe sends from for an environment.
+
+  Named rather than inlined because criterion 8021 asserts on it: the message
+  has to come from Sam's own sending domain, and a probe that quietly fell
+  back to a platform address would pass a test that means nothing.
+  """
+  @spec probe_from(Scope.t(), String.t()) :: String.t() | nil
+  def probe_from(%Scope{active_project: %{domain: base}}, environment)
+      when is_binary(base) and base != "" do
+    "setup@" <> sending_domain(base, environment)
+  end
+
+  def probe_from(_scope, _environment), do: nil
+
+  @doc """
+  Send a real message and report what the provider accepted.
+
+  Story 969 is proven by a message leaving, not by a domain reading
+  "verified" — a domain can verify and still refuse to send if the sending
+  identity is wrong, and that failure only shows up on the send.
+
+  `delivered@resend.dev` is Resend's own sink address, so a probe costs
+  nothing and lands nowhere real.
+  """
+  @spec send_probe(Scope.t(), String.t(), keyword()) :: {:ok, map()} | error()
+  def send_probe(%Scope{} = scope, to, opts \\ []) do
+    environment = Keyword.get(opts, :environment, "prod")
+
+    case probe_from(scope, environment) do
+      nil ->
+        {:error, :no_domain}
+
+      from ->
+        payload = %{
+          from: from,
+          to: [to],
+          subject: Keyword.get(opts, :subject, "CodeMySpec setup probe"),
+          text: Keyword.get(opts, :text, "Setup sent this to prove the domain can send.")
+        }
+
+        with {:ok, %{"id" => id}} <- request(scope, :post, "/emails", json: payload) do
+          {:ok, %{id: id, from: from, to: to}}
+        end
+    end
+  end
+
+  @doc "Delete a domain. Teardown only — setup never destroys."
+  @spec delete_domain(Scope.t(), String.t()) :: {:ok, body()} | error()
+  def delete_domain(%Scope{} = scope, id), do: request(scope, :delete, "/domains/#{id}")
+
+  @doc "Delete a webhook. Teardown only — setup never destroys."
+  @spec delete_webhook(Scope.t(), String.t()) :: {:ok, body()} | error()
+  def delete_webhook(%Scope{} = scope, id), do: request(scope, :delete, "/webhooks/#{id}")
+
+  @doc """
   Records the provider is not satisfied with.
 
   This is what a give-up reports instead of "verification timed out" — the
@@ -230,6 +429,14 @@ defmodule CodeMySpec.Provisioning.Resend do
     interval = Keyword.get(opts, :interval_ms, @default_interval_ms)
     sleep = Keyword.get(opts, :sleep, &Process.sleep/1)
 
+    # Ask Resend to look before waiting to see whether it has. It does not
+    # re-check a pending domain on its own — verification happens when you
+    # trigger it — so polling alone waits out the whole window and then
+    # reports a domain unverified whose records were correct the entire time.
+    # The result is deliberately ignored: it answers 400 for a domain already
+    # verified, which is not a failure of anything.
+    _ = verify_domain(scope, domain_id)
+
     poll(scope, domain_id, 1, max, interval, sleep)
   end
 
@@ -243,6 +450,12 @@ defmodule CodeMySpec.Provisioning.Resend do
 
       {:ok, _domain} ->
         sleep.(interval)
+
+        # Re-trigger periodically rather than every attempt: DNS that was not
+        # yet visible on the first check becomes visible later, and a poll
+        # that never asks again would miss it.
+        if rem(attempt, 5) == 0, do: verify_domain(scope, domain_id)
+
         poll(scope, domain_id, attempt + 1, max, interval, sleep)
 
       {:error, _} = error ->
@@ -258,24 +471,42 @@ defmodule CodeMySpec.Provisioning.Resend do
 
   ## Internals
 
+  # Resend allows ten requests a second. Verifying a sending domain per
+  # environment polls well past that, and a setup run that dies on a 429 has
+  # failed for a reason that has nothing to do with the user's configuration —
+  # it just asked too quickly. Backing off is the difference between a
+  # provisioning routine and a race.
+  @rate_limit_attempts 5
+  @rate_limit_backoff_ms 1_100
+
   defp request(scope, method, path, opts \\ []) do
     case access_token(scope) do
-      {:ok, token} ->
-        [
-          method: method,
-          url: @api_base <> path,
-          headers: [
-            {"authorization", "Bearer #{token}"},
-            {"content-type", "application/json"}
-          ]
-        ]
-        |> Keyword.merge(opts)
-        |> Keyword.merge(plug_opt())
-        |> Req.request()
-        |> handle_response()
+      {:ok, token} -> send_request(token, method, path, opts, @rate_limit_attempts)
+      :error -> {:error, :resend_not_connected}
+    end
+  end
 
-      :error ->
-        {:error, :resend_not_connected}
+  defp send_request(token, method, path, opts, attempts_left) do
+    response =
+      [
+        method: method,
+        url: @api_base <> path,
+        headers: [
+          {"authorization", "Bearer #{token}"},
+          {"content-type", "application/json"}
+        ]
+      ]
+      |> Keyword.merge(opts)
+      |> Keyword.merge(plug_opt())
+      |> Req.request()
+
+    case response do
+      {:ok, %Req.Response{status: 429}} when attempts_left > 1 ->
+        Process.sleep(@rate_limit_backoff_ms)
+        send_request(token, method, path, opts, attempts_left - 1)
+
+      other ->
+        handle_response(other)
     end
   end
 
@@ -287,13 +518,28 @@ defmodule CodeMySpec.Provisioning.Resend do
 
   defp handle_response({:error, reason}), do: {:error, reason}
 
+  # `fetch_access_token/2` rather than reading the stored value: Resend's
+  # access tokens live fifteen minutes, so the stored one is dead more often
+  # than not. It refreshes under a lock, which matters here more than for any
+  # other provider — Resend rotates the refresh token on every use, and two
+  # concurrent refreshes can cost the user the whole grant.
   defp access_token(%Scope{} = scope) do
-    case Integrations.get_integration(scope, :resend) do
-      {:ok, %{access_token: token}} when is_binary(token) and token != "" -> {:ok, token}
-      _ -> configured_key()
+    case Integrations.fetch_access_token(scope, :resend) do
+      {:ok, token} when is_binary(token) and token != "" ->
+        {:ok, token}
+
+      # No integration at all: the environment is the intended source, which
+      # is how the CLI and tests supply a credential.
+      {:error, :not_found} ->
+        configured_key()
+
+      # Connected but unusable — expired past renewal, or the provider refused
+      # the refresh. Falling through to the environment here would quietly use
+      # a different account's credential and report success, so the reason has
+      # to surface instead.
+      {:error, reason} ->
+        {:error, {:resend_token_unusable, reason}}
     end
-  rescue
-    _ -> configured_key()
   end
 
   defp configured_key do

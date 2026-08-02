@@ -48,6 +48,11 @@ defmodule CodeMySpec.Provisioning.CloudflareTest do
 
     test "registers once confirmed" do
       stub(fn
+        # Registration resolves the account first, and that now goes to
+        # /accounts before falling back to the zone list.
+        %{method: "GET", request_path: "/client/v4/accounts"} = conn ->
+          json(conn, 200, ok([%{"id" => @account}]))
+
         %{method: "GET", request_path: "/client/v4/zones"} = conn ->
           json(conn, 200, zones_payload())
 
@@ -178,16 +183,35 @@ defmodule CodeMySpec.Provisioning.CloudflareTest do
   end
 
   describe "account_id/1" do
-    test "reads the account off the zone list" do
-      stub(fn conn -> json(conn, 200, zones_payload()) end)
+    # `GET /accounts` is the primary path. The stub is per-path on purpose: a
+    # blanket stub answered /accounts with the zone list, and the first zone's
+    # id was read as an account id — a green test asserting the wrong thing.
+    test "reads the account from the accounts endpoint" do
+      stub(fn
+        %{request_path: "/client/v4/accounts"} = conn ->
+          json(conn, 200, ok([%{"id" => @account, "name" => "Sam"}]))
+
+        conn ->
+          flunk("account_id went to #{conn.request_path} before trying /accounts")
+      end)
 
       assert {:ok, @account} = Cloudflare.account_id(@scope)
     end
 
-    # No account.read scope exists, so an account with no zones is genuinely
-    # unable to self-serve. Say so plainly rather than emitting a confusing
-    # downstream 4xx.
-    test "says so when no zone exposes an account" do
+    # A grant scoped to one zone rather than the whole account is a
+    # configuration somebody has, and it can still self-serve.
+    test "falls back to the zone list when /accounts shows nothing" do
+      stub(fn
+        %{request_path: "/client/v4/accounts"} = conn -> json(conn, 200, ok([]))
+        conn -> json(conn, 200, zones_payload())
+      end)
+
+      assert {:ok, @account} = Cloudflare.account_id(@scope)
+    end
+
+    # This used to be the *only* path, and it failed for precisely the case
+    # setup exists to serve: a Cloudflare account with no zones in it yet.
+    test "says so when neither path exposes an account" do
       stub(fn conn -> json(conn, 200, ok([])) end)
 
       assert {:error, :no_account_visible} = Cloudflare.account_id(@scope)

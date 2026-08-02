@@ -27,12 +27,18 @@ defmodule CodeMySpec.Provisioning.Resource do
     field :kind, :string
     field :location, :string
     field :identifier, :string
+
+    # "created" or "adopted". Teardown removes only what setup created —
+    # deleting a resource setup merely found destroys something the user
+    # already had. Defaults to "adopted" precisely because that is the safe
+    # reading of a resource whose origin nobody recorded.
+    field :origin, :string, default: "adopted"
   end
 
   @doc false
   def changeset(resource, attrs) do
     resource
-    |> cast(attrs, [:kind, :location, :identifier])
+    |> cast(attrs, [:kind, :location, :identifier, :origin])
     |> validate_required([:kind, :location])
   end
 end

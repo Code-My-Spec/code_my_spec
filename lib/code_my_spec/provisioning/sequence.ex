@@ -42,6 +42,12 @@ defmodule CodeMySpec.Provisioning.Sequence do
     },
     %{key: :server, label: "Server", option: nil, why: "the box both environments start on"},
     %{
+      key: :secrets,
+      label: "Secrets",
+      option: nil,
+      why: "one age key per environment, so UAT's key cannot open production's"
+    },
+    %{
       key: :domain,
       label: "Domain",
       option: :domain,
@@ -112,13 +118,13 @@ defmodule CodeMySpec.Provisioning.Sequence do
   The steps a project's enabled options include, in order.
 
   `enabled` is the set of option atoms that are on. A step with no `:option`
-  is unconditional — the repository, the server, the deploy and the callback
-  credential are what "set up" means.
+  is unconditional — the repository, the server, its secrets, the deploy and
+  the callback credential are what "set up" means.
 
   ## Examples
 
       iex> CodeMySpec.Provisioning.Sequence.for_options([]) |> Enum.map(& &1.key)
-      [:repository, :server, :deploy, :callback_credential]
+      [:repository, :server, :secrets, :deploy, :callback_credential]
   """
   @spec for_options([atom()] | MapSet.t()) :: [step()]
   def for_options(enabled) do
