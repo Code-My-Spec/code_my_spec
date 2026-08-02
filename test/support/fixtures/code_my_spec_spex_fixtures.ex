@@ -1040,6 +1040,43 @@ defmodule CodeMySpecSpex.Fixtures do
   def repository_name(project), do: CodeMySpec.Provisioning.Repository.default_name(project)
 
   @doc """
+  Create a repository in the spex organisation, as a precondition.
+
+  Criteria whose premise is "a repository already exists" — adopt rather than
+  duplicate, a name collision, a push that gets rejected — have to put it
+  there. They used to inherit one from a previous run, which meant they passed
+  on a dirty account and failed on a clean one: exactly backwards.
+
+  `commits: true` gives it an initial commit, which is what makes a fresh
+  history unable to fast-forward onto it.
+  """
+  @spec create_spex_repository(String.t(), keyword()) :: :ok | {:error, term()}
+  def create_spex_repository(name, opts \\ []) do
+    with token when is_binary(token) <- System.get_env("GITHUB_SPEX_ADMIN_TOKEN"),
+         owner when is_binary(owner) <- System.get_env("GITHUB_SPEX_OWNER") do
+      Req.post("https://api.github.com/orgs/#{owner}/repos",
+        headers: [
+          {"authorization", "Bearer #{token}"},
+          {"accept", "application/vnd.github+json"}
+        ],
+        # Public, deliberately. The app's own grant has to *see* this repository
+        # for the collision to be detected at all, and a private one in an org
+        # it reads through a narrow scope is invisible to it — so setup found
+        # no collision and quietly created its own. The organisation is a
+        # throwaway holding nothing but spex repositories.
+        json: %{name: name, private: false, auto_init: Keyword.get(opts, :commits, false)}
+      )
+      |> case do
+        {:ok, %{status: status}} when status in [201, 422] -> :ok
+        {:ok, %{status: status, body: body}} -> {:error, {status, body}}
+        other -> other
+      end
+    else
+      _ -> :ok
+    end
+  end
+
+  @doc """
   Delete a repository a spex created, using a **harness-only** credential.
 
   Deliberately not the app's OAuth grant. Adding `delete_repo` there would give

@@ -274,6 +274,23 @@ defmodule CodeMySpecSpex.Case do
   def only_environments(scope, names), do: Fixtures.set_environments(scope, names)
 
   @doc """
+  Put a repository at the name setup would use, before setup runs.
+
+  For the criteria whose subject is a repository that is *already there*. They
+  were passing only because an earlier run had left one behind — a premise that
+  holds on a dirty account and fails on a clean one. Now they state it.
+
+  `commits: true` when the criterion needs the push to be rejected: a fresh
+  history cannot fast-forward onto a repository that already carries one.
+  """
+  def existing_repository(project, opts \\ []) do
+    name = Fixtures.repository_name(project)
+    Fixtures.create_spex_repository(name, opts)
+    tear_down_repository(project)
+    project
+  end
+
+  @doc """
   Remove the repository this spex creates, when a harness token allows it.
 
   The app's own grant deliberately cannot delete repositories — see

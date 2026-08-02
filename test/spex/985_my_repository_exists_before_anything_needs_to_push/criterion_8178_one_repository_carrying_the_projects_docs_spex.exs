@@ -27,6 +27,10 @@ defmodule CodeMySpecSpex.Story985.Criterion8178Spex do
   spex "One repository, carrying the project's docs" do
     scenario "the step creates a single repository and records it as the remote" do
       given_ "Sam is on the setup status page with GitHub connected", context do
+        # The repository this makes lives in the throwaway organisation and goes
+        # away with the spex, so the next recording starts from one that is not there.
+        tear_down_repository(context.project)
+
         {:ok, view, _html} =
           live(context.conn, "/app/projects/#{context.project.id}/provisioning")
 
