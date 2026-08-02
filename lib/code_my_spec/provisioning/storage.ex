@@ -293,6 +293,29 @@ defmodule CodeMySpec.Provisioning.Storage do
   end
 
   @doc """
+  Remove many objects in one request.
+
+  One round trip per object made emptying a bucket the slow half of teardown,
+  and teardown runs in `on_exit` where slow means "killed by a timeout, and the
+  bucket leaks". S3 takes up to a thousand keys at a time.
+  """
+  @spec delete_objects(String.t(), [String.t()], credentials(), keyword()) :: :ok | {:error, term()}
+  def delete_objects(_bucket, [], _credentials, _opts), do: :ok
+
+  def delete_objects(bucket, keys, credentials, opts) do
+    location = Keyword.get(opts, :location, @default_location)
+
+    keys
+    |> Enum.chunk_every(1000)
+    |> Enum.reduce_while(:ok, fn chunk, :ok ->
+      case ExAws.S3.delete_multiple_objects(bucket, chunk) |> run(credentials, location) do
+        {:ok, _} -> {:cont, :ok}
+        {:error, reason} -> {:halt, {:error, reason}}
+      end
+    end)
+  end
+
+  @doc """
   Delete a bucket. Only used by teardown in tests; setup never destroys.
 
   Retries, because Ceph answers 409 for around half a minute after the last
@@ -308,14 +331,35 @@ defmodule CodeMySpec.Provisioning.Storage do
     delete_bucket(bucket, credentials, location, opts, attempts)
   end
 
+  # Backing off rather than sleeping a flat ten seconds each time. Ceph usually
+  # catches up in well under a second, so a fixed interval spent the entire
+  # budget waiting on the common case: eight attempts at ten seconds is eighty
+  # seconds per bucket, and clearing a dozen of them read as a hang rather than
+  # as a retry. Doubling from half a second covers the same worst case in a
+  # quarter of the time and returns almost immediately when the bucket was
+  # ready all along.
   defp delete_bucket(bucket, credentials, location, opts, attempts) do
+    interval = Keyword.get(opts, :delete_interval_ms, 500)
+
+    delete_bucket(bucket, credentials, location, opts, attempts, interval)
+  end
+
+  defp delete_bucket(bucket, credentials, location, opts, attempts, interval) do
     case ExAws.S3.delete_bucket(bucket) |> run(credentials, location) do
       {:ok, _} ->
         :ok
 
       {:error, _} when attempts > 1 ->
-        Process.sleep(Keyword.get(opts, :delete_interval_ms, 10_000))
-        delete_bucket(bucket, credentials, location, opts, attempts - 1)
+        Process.sleep(interval)
+
+        delete_bucket(
+          bucket,
+          credentials,
+          location,
+          opts,
+          attempts - 1,
+          min(interval * 2, Keyword.get(opts, :max_delete_interval_ms, 8_000))
+        )
 
       {:error, reason} ->
         {:error, reason}
