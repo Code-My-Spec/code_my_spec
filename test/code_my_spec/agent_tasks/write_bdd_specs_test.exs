@@ -23,17 +23,32 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecsTest do
 
   defp create_story_with_component(scope, opts \\ %{}) do
     component =
-      component_fixture(scope, Map.merge(%{type: "liveview", module_name: "MyAppWeb.UserLoginLive"}, opts[:component] || %{}))
+      component_fixture(
+        scope,
+        Map.merge(
+          %{type: "liveview", module_name: "MyAppWeb.UserLoginLive"},
+          opts[:component] || %{}
+        )
+      )
 
     story =
-      story_fixture(scope, Map.merge(%{
-        title: "User Login Feature",
-        component_id: component.id,
-        criteria: []
-      }, opts[:story] || %{}))
+      story_fixture(
+        scope,
+        Map.merge(
+          %{
+            title: "User Login Feature",
+            component_id: component.id,
+            criteria: []
+          },
+          opts[:story] || %{}
+        )
+      )
 
     c1 = criterion_fixture(scope, story, %{description: "User can log in with valid credentials"})
-    c2 = criterion_fixture(scope, story, %{description: "User sees error with invalid credentials"})
+
+    c2 =
+      criterion_fixture(scope, story, %{description: "User sees error with invalid credentials"})
+
     story = %{story | criteria: [c1, c2]}
 
     {story, component}
@@ -123,7 +138,9 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecsTest do
       assert prompt =~ "bdd/spex/"
     end
 
-    test "names HTTP/controller as the likely surface for controller components", %{tmp_dir: tmp_dir} do
+    test "names HTTP/controller as the likely surface for controller components", %{
+      tmp_dir: tmp_dir
+    } do
       scope = scope_with_cwd(tmp_dir)
 
       {story, _component} =
@@ -175,6 +192,125 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecsTest do
       assert message =~ "has no surface component linked"
       assert message =~ "set_story_component"
     end
+  end
+
+  # ============================================================================
+  # Prompt guidance that used to be generic
+  # ============================================================================
+
+  describe "command/2 — a component with no implementation yet" do
+    test "frames a stub as the starting point, not as a file to go read", %{tmp_dir: tmp_dir} do
+      scope = scope_with_cwd(tmp_dir)
+
+      {story, _component} =
+        create_story_with_component(scope,
+          component: %{type: "context", module_name: "MyApp.Qa"}
+        )
+
+      File.mkdir_p!(Path.join(tmp_dir, "lib/my_app"))
+      File.write!(Path.join(tmp_dir, "lib/my_app/qa.ex"), "defmodule MyApp.Qa do\nend\n")
+
+      assert {:ok, prompt} = WriteBddSpecs.command(scope, task_for_story(story))
+
+      assert prompt =~ "this component is a stub",
+             """
+             Telling an agent to "open the file to see the public API" when the
+             file is an empty module sends it to learn nothing, then work out
+             on its own that the instruction did not apply.
+
+             #{prompt}
+             """
+
+      refute prompt =~ "open the file before writing specs to see the public API"
+    end
+
+    test "still surfaces the moduledoc when there is a real implementation", %{tmp_dir: tmp_dir} do
+      scope = scope_with_cwd(tmp_dir)
+
+      {story, _component} =
+        create_story_with_component(scope,
+          component: %{type: "context", module_name: "MyApp.Qa"}
+        )
+
+      File.mkdir_p!(Path.join(tmp_dir, "lib/my_app"))
+
+      File.write!(
+        Path.join(tmp_dir, "lib/my_app/qa.ex"),
+        """
+        defmodule MyApp.Qa do
+          @moduledoc "Records QA attempts."
+          def list_attempts(scope), do: []
+        end
+        """
+      )
+
+      assert {:ok, prompt} = WriteBddSpecs.command(scope, task_for_story(story))
+
+      refute prompt =~ "this component is a stub",
+             "a module with functions has an interface worth reading"
+    end
+  end
+
+  describe "command/2 — per-criterion surface" do
+    test "reads the surface off each scenario's When step", %{tmp_dir: tmp_dir} do
+      scope = scope_with_cwd(tmp_dir)
+
+      component =
+        component_fixture(scope, %{type: "context", module_name: "MyApp.Qa"})
+
+      story = story_fixture(scope, %{component_id: component.id, criteria: []})
+
+      mcp =
+        criterion_fixture(scope, story, %{
+          description: "attempts are listed",
+          body: "Given a story\nWhen the agent calls list_qa_attempts\nThen it sees them"
+        })
+
+      live =
+        criterion_fixture(scope, story, %{
+          description: "attempts show on the page",
+          body: "Given a story\nWhen the user navigates to the story page\nThen they see them"
+        })
+
+      assert {:ok, prompt} = WriteBddSpecs.command(scope, %{story_id: story.id})
+
+      mcp_block = criterion_block(prompt, mcp.id)
+      live_block = criterion_block(prompt, live.id)
+
+      assert mcp_block =~ "MCP tool"
+
+      assert live_block =~ "LiveView",
+             """
+             One sentence above the list cannot describe a story whose criteria
+             span surfaces, and that is the normal case — a tool and the view
+             that shows its result. The scenario already said which is which.
+
+             #{prompt}
+             """
+    end
+
+    test "says nothing when the scenario body names no surface", %{tmp_dir: tmp_dir} do
+      scope = scope_with_cwd(tmp_dir)
+      component = component_fixture(scope, %{type: "context", module_name: "MyApp.Qa"})
+      story = story_fixture(scope, %{component_id: component.id, criteria: []})
+
+      criterion =
+        criterion_fixture(scope, story, %{
+          description: "something happens",
+          body: "Given a thing\nWhen it changes\nThen it is different"
+        })
+
+      assert {:ok, prompt} = WriteBddSpecs.command(scope, %{story_id: story.id})
+
+      refute criterion_block(prompt, criterion.id) =~ "**Surface**",
+             "a wrong surface is worse than none — the agent trusts it"
+    end
+  end
+
+  defp criterion_block(prompt, criterion_id) do
+    prompt
+    |> String.split(~r/^### Criterion /m)
+    |> Enum.find("", &String.starts_with?(&1, "#{criterion_id}:"))
   end
 
   # ============================================================================
