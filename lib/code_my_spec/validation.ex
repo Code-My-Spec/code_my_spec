@@ -314,10 +314,27 @@ defmodule CodeMySpec.Validation do
   defp check_blocking_problems(scope, changed_files, config) do
     sources = active_blocking_sources(config)
 
+    # Only problems whose analyzer has seen the current working copy.
+    #
+    # A finding recorded against bytes that no longer exist is not evidence of
+    # anything, and handing it back is worse than saying nothing: for "nesting
+    # too deep" or "alias not alphabetically ordered" there is no idempotent
+    # second fix, so the agent has to invent a *different* refactor of correct
+    # code — and that edit produces the next stale snapshot for the next stop to
+    # read. Drill 6 lost most of a run to exactly this: four credo findings
+    # handed back at the same line numbers against code already corrected, while
+    # `mix credo --strict` reported clean.
+    #
+    # Stale means silent, not passing. The analyzer is already enqueued; its
+    # result lands and blocks the next stop if the problems are real. That is the
+    # async model this system already chose — surface the most recent result —
+    # and this is the missing half of it: a result is only "most recent" if it
+    # describes what is on disk now.
     problems_by_source =
       scope
       |> Problems.list_project_problems(sources: sources)
       |> Enum.group_by(& &1.source)
+      |> Map.filter(fn {source, _problems} -> Analysis.fresh?(scope, source) end)
 
     scope_context = %{
       changed_file_paths: Enum.map(changed_files, & &1.path),
@@ -362,8 +379,7 @@ defmodule CodeMySpec.Validation do
         {block_acc ++ block, advisory_acc ++ advisory}
       end)
 
-    {compiler_block ++ configurable_block,
-     compiler_advisory ++ configurable_advisory}
+    {compiler_block ++ configurable_block, compiler_advisory ++ configurable_advisory}
   end
 
   defp partition_compiler(problems, :block), do: {problems, []}

@@ -220,13 +220,32 @@ defmodule CodeMySpecSpex.Fixtures do
           source: source,
           severity: :error,
           message: "nesting too deep",
-          file: "lib/my_app/accounts.ex",
+          file_path: "lib/my_app/accounts.ex",
+          category: "readability",
           line: 61
         },
         attrs
       )
     ])
   end
+
+  @doc """
+  Set an analyzer's blocking mode.
+
+  `:block_all` isolates the question a freshness scenario is asking. The default
+  is `:block_changed`, which additionally scopes blocking to files touched this
+  turn — real behaviour, and a different rule; leaving it on would make a
+  freshness scenario pass or fail for reasons that have nothing to do with
+  freshness.
+  """
+  def set_analyzer_mode(%Scope{} = scope, field, mode) do
+    CodeMySpec.Configurations.get_or_create(scope)
+    {:ok, config} = CodeMySpec.Configurations.update(scope, %{field => mode})
+    config
+  end
+
+  @doc "The stop hook's blocking decision, as the hook itself asks for it."
+  def validate_stop(%Scope{} = scope), do: CodeMySpec.Validation.validate_stop(scope, nil)
 
   @doc "Files the harness scanned but could classify into no role."
   def unclassified_files(%Scope{} = scope),
