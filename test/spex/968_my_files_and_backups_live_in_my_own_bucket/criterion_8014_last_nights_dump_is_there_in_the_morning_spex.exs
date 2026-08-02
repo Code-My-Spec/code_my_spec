@@ -30,8 +30,16 @@ defmodule CodeMySpecSpex.Story968.Criterion8014Spex do
         {:ok, view, _html} =
           live(context.conn, "/app/projects/#{context.project.id}/provisioning")
 
+        # The bucket the dumps land in is real; it goes away with the spex.
+        tear_down_after(context.scope, [:storage])
+
         html =
           with_provider_cassette(@install_cassette, fn ->
+            # Hetzner issues object-storage keys only in its console, so they are
+            # pasted per project — without them the backups step pauses asking for
+            # them and never reaches the schedule this criterion is about.
+            paste_storage_credentials(view)
+
             view
             |> element("[data-test='setup-step'][data-step='backups'] [data-test='run-step']")
             |> render_click()
