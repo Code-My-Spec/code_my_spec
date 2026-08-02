@@ -1,63 +1,47 @@
-defmodule CodeMySpecLocalWeb.ContentLive.Show do
+defmodule CodeMySpecWeb.ContentLive.Show do
   @moduledoc """
   Detail view for a single content snapshot row (story 712) — renders the full
   processed content (HTML) plus metadata and any parse errors. The full content
   lives here, not in the index table.
   """
-  use CodeMySpecLocalWeb, :live_view
+  use CodeMySpecWeb, :live_view
 
-  import CodeMySpecLocalWeb.ContentLive.Helpers
+  import CodeMySpecWeb.ContentLive.Helpers
 
   alias CodeMySpec.ContentPublishing
-  alias CodeMySpec.Projects
-  alias CodeMySpec.Users.Scope
 
   @impl true
   def mount(_params, _session, socket) do
     {:ok,
      assign(socket,
-       projects: Projects.list_local_projects(),
-       project: nil,
-       slug: nil,
+       section: :content,
+       page_title: "Content",
        current_scope: nil,
        row: nil
      )}
   end
 
   @impl true
-  def handle_params(%{"project_name" => name, "id" => id}, _uri, socket) do
-    with {:ok, project} <- Projects.get_project_by_name(name),
-         {:ok, scope} <- Scope.for_local_project(project) do
-      # row may be nil (unknown / non-integer id) — the view renders a
-      # not-found state rather than crashing.
-      row = ContentPublishing.get_snapshot(scope, id)
-
-      {:noreply,
-       assign(socket, project: project, slug: project_slug(project), current_scope: scope, row: row)}
-    else
-      _ -> {:noreply, socket}
-    end
+  def handle_params(%{"id" => id}, _uri, %{assigns: %{scope: %{} = scope}} = socket) do
+    # row may be nil (unknown / non-integer id) — the view renders a
+    # not-found state rather than crashing.
+    {:noreply, assign(socket, current_scope: scope, row: ContentPublishing.get_snapshot(scope, id))}
   end
+
+  def handle_params(_params, _uri, socket), do: {:noreply, socket}
 
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app
-      flash={@flash}
-      projects={@projects}
-      project={@project}
-      section={:content}
-      page_title="Content"
-    >
       <div :if={!@row && @slug} class="p-6" data-test="content-not-found">
-        <.link navigate={~p"/app/projects/#{@slug}/content"} class="link link-primary text-sm">
+        <.link navigate={path(@socket, ~p"/app/projects/#{@slug}/content")} class="link link-primary text-sm">
           ← Back to Content
         </.link>
         <p class="mt-4 text-base-content/60">Content not found.</p>
       </div>
 
       <div :if={@row}>
-        <.link navigate={~p"/app/projects/#{@slug}/content"} class="link link-primary text-sm">
+        <.link navigate={path(@socket, ~p"/app/projects/#{@slug}/content")} class="link link-primary text-sm">
           ← Back to Content
         </.link>
 
@@ -97,7 +81,6 @@ defmodule CodeMySpecLocalWeb.ContentLive.Show do
           {raw(@row.processed_content)}
         </div>
       </div>
-    </Layouts.app>
     """
   end
 end

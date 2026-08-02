@@ -1,4 +1,4 @@
-defmodule CodeMySpecLocalWeb.ContentLive.Helpers do
+defmodule CodeMySpecWeb.ContentLive.Helpers do
   @moduledoc false
   # Shared display helpers for the content admin index + detail views.
 

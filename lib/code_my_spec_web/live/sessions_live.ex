@@ -1,23 +1,18 @@
-defmodule CodeMySpecLocalWeb.SessionsLive do
+defmodule CodeMySpecWeb.SessionsLive do
   @moduledoc """
   Human interface for project sessions.
   """
-  use CodeMySpecLocalWeb, :live_view
+  use CodeMySpecWeb, :live_view
 
   alias CodeMySpec.Configurations
-  alias CodeMySpec.Projects
   alias CodeMySpec.Sessions
   alias CodeMySpec.Sessions.Session
-  alias CodeMySpec.Users.Scope
 
   @impl true
   def mount(_params, _session, socket) do
-    projects = Projects.list_local_projects()
-
     {:ok,
      assign(socket,
-       projects: projects,
-       project: nil,
+       section: :sessions,
        sessions: [],
        session: nil,
        task: nil,
@@ -26,42 +21,30 @@ defmodule CodeMySpecLocalWeb.SessionsLive do
   end
 
   @impl true
-  def handle_params(params, _uri, socket) do
+  def handle_params(params, _uri, %{assigns: %{scope: %{}}} = socket) do
     {:noreply, apply_action(socket, socket.assigns.live_action, params)}
   end
 
-  defp apply_action(socket, :index, %{"project_name" => name}) do
-    case load_project(name) do
-      {:ok, project, scope} ->
-        sessions = Sessions.list_sessions(scope)
+  def handle_params(_params, _uri, socket), do: {:noreply, socket}
 
-        assign(socket,
-          project: project,
-          sessions: sessions,
-          session: nil,
-          task: nil,
-          page_title: "#{project.name} — Sessions",
-          error: nil
-        )
-
-      {:error, reason} ->
-        assign(socket, error: "Failed to load project: #{inspect(reason)}")
-    end
+  defp apply_action(%{assigns: %{scope: scope, project: project}} = socket, :index, _params) do
+    assign(socket,
+      sessions: Sessions.list_sessions(scope),
+      session: nil,
+      task: nil,
+      page_title: "#{project.name} — Sessions",
+      error: nil
+    )
   end
 
-  defp apply_action(socket, :show, %{"project_name" => name, "id" => id}) do
-    case load_project(name) do
-      {:ok, project, scope} -> assign_session(socket, project, scope, id)
-      {:error, reason} -> assign(socket, error: "Failed to load project: #{inspect(reason)}")
-    end
-  end
+  defp apply_action(%{assigns: %{scope: scope, project: project}} = socket, :show, %{"id" => id}),
+    do: assign_session(socket, project, scope, id)
 
-  defp apply_action(socket, :task_show, %{"project_name" => name, "id" => id, "task_id" => task_id}) do
-    case load_project(name) do
-      {:ok, project, scope} -> assign_task(socket, project, scope, id, task_id)
-      {:error, reason} -> assign(socket, error: "Failed to load project: #{inspect(reason)}")
-    end
-  end
+  defp apply_action(%{assigns: %{scope: scope, project: project}} = socket, :task_show, %{
+         "id" => id,
+         "task_id" => task_id
+       }),
+       do: assign_task(socket, project, scope, id, task_id)
 
   defp assign_session(socket, project, scope, id) do
     case Sessions.get_session(scope, id) do
@@ -105,23 +88,9 @@ defmodule CodeMySpecLocalWeb.SessionsLive do
     end
   end
 
-  defp load_project(name) do
-    with {:ok, project} <- Projects.get_project_by_name(name),
-         {:ok, scope} <- Scope.for_local_project(project) do
-      {:ok, project, scope}
-    end
-  end
-
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app
-      flash={@flash}
-      projects={@projects}
-      project={@project}
-      section={:sessions}
-      page_title={assigns[:page_title]}
-    >
       <div :if={@error} role="alert" class="alert alert-error">
         <span>{@error}</span>
       </div>
@@ -137,7 +106,6 @@ defmodule CodeMySpecLocalWeb.SessionsLive do
       <div :if={@live_action == :task_show && @task && !@error}>
         {render_task(assigns)}
       </div>
-    </Layouts.app>
     """
   end
 
@@ -174,7 +142,7 @@ defmodule CodeMySpecLocalWeb.SessionsLive do
           <tr
             :for={session <- @sessions}
             class="hover cursor-pointer"
-            phx-click={JS.navigate(~p"/app/projects/#{slug(@project)}/sessions/#{session.id}")}
+            phx-click={JS.navigate(path(@socket, ~p"/app/projects/#{slug(@project)}/sessions/#{session.id}"))}
           >
             <td><span class={"badge badge-sm #{status_class(session.status)}"}>{session.status}</span></td>
             <td class="font-medium">{format_type(session.type)}</td>
@@ -194,7 +162,7 @@ defmodule CodeMySpecLocalWeb.SessionsLive do
   defp render_show(assigns) do
     ~H"""
     <div class="mb-4">
-      <.link navigate={~p"/app/projects/#{slug(@project)}/sessions"} class="btn btn-ghost btn-sm gap-1">
+      <.link navigate={path(@socket, ~p"/app/projects/#{slug(@project)}/sessions")} class="btn btn-ghost btn-sm gap-1">
         ← Sessions
       </.link>
     </div>
@@ -274,7 +242,7 @@ defmodule CodeMySpecLocalWeb.SessionsLive do
           <tr
             :for={task <- @session.tasks || []}
             class="hover cursor-pointer"
-            phx-click={JS.navigate(~p"/app/projects/#{slug(@project)}/sessions/#{@session.id}/tasks/#{task.id}")}
+            phx-click={JS.navigate(path(@socket, ~p"/app/projects/#{slug(@project)}/sessions/#{@session.id}/tasks/#{task.id}"))}
           >
             <td><span class={"badge badge-sm #{status_class(task.status)}"}>{task.status}</span></td>
             <td class="font-medium">{format_type(task.session_type)}</td>
@@ -299,7 +267,7 @@ defmodule CodeMySpecLocalWeb.SessionsLive do
   defp render_task(assigns) do
     ~H"""
     <div class="mb-4">
-      <.link navigate={~p"/app/projects/#{slug(@project)}/sessions/#{@session.id}"} class="btn btn-ghost btn-sm gap-1">
+      <.link navigate={path(@socket, ~p"/app/projects/#{slug(@project)}/sessions/#{@session.id}")} class="btn btn-ghost btn-sm gap-1">
         ← Session
       </.link>
     </div>

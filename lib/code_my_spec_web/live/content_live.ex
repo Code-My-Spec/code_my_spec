@@ -1,4 +1,4 @@
-defmodule CodeMySpecLocalWeb.ContentLive do
+defmodule CodeMySpecWeb.ContentLive do
   @moduledoc """
   Local-first content publishing admin (story 712).
 
@@ -9,22 +9,19 @@ defmodule CodeMySpecLocalWeb.ContentLive do
   snapshot — no SaaS round-trip. Full per-file content lives on the detail
   page (`ContentLive.Show`), not in the table.
   """
-  use CodeMySpecLocalWeb, :live_view
+  use CodeMySpecWeb, :live_view
 
-  import CodeMySpecLocalWeb.ContentLive.Helpers
+  import CodeMySpecWeb.ContentLive.Helpers
 
-  alias CodeMySpec.ContentPublishing
   alias CodeMySpec.Projects
-  alias CodeMySpec.Users.Scope
+  alias CodeMySpec.ContentPublishing
 
   @impl true
   def mount(_params, _session, socket) do
     {:ok,
      assign(socket,
-       projects: Projects.list_local_projects(),
-       project: nil,
-       slug: nil,
-       scope: nil,
+       section: :content,
+       page_title: "Content",
        current_scope: nil,
        rows: [],
        counts: %{success: 0, error: 0},
@@ -37,18 +34,11 @@ defmodule CodeMySpecLocalWeb.ContentLive do
   end
 
   @impl true
-  def handle_params(%{"project_name" => name}, _uri, socket) do
-    case load(name) do
-      {:ok, project, scope} ->
-        {:noreply,
-         socket
-         |> assign(project: project, slug: project_slug(project), scope: scope, current_scope: scope)
-         |> reload()}
-
-      {:error, _reason} ->
-        {:noreply, socket}
-    end
+  def handle_params(_params, _uri, %{assigns: %{scope: %{} = scope}} = socket) do
+    {:noreply, socket |> assign(current_scope: scope) |> reload()}
   end
+
+  def handle_params(_params, _uri, socket), do: {:noreply, socket}
 
   @impl true
   def handle_event("save-settings", %{"settings" => attrs}, socket) do
@@ -129,13 +119,6 @@ defmodule CodeMySpecLocalWeb.ContentLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app
-      flash={@flash}
-      projects={@projects}
-      project={@project}
-      section={:content}
-      page_title="Content"
-    >
       <div :if={@project}>
         <div class="mb-6 flex justify-between items-start gap-4">
           <div>
@@ -271,7 +254,7 @@ defmodule CodeMySpecLocalWeb.ContentLive do
               <td class="font-mono text-xs">{row.metadata["expires_at"] || "never"}</td>
               <td>
                 <.link
-                  navigate={~p"/app/projects/#{@slug}/content/#{row.id}"}
+                  navigate={path(@socket, ~p"/app/projects/#{@slug}/content/#{row.id}")}
                   data-test={"content-row-link-#{filename(row)}"}
                   class="link link-primary text-xs"
                 >
@@ -287,24 +270,19 @@ defmodule CodeMySpecLocalWeb.ContentLive do
           </tbody>
         </table>
       </div>
-    </Layouts.app>
     """
   end
 
   # -- internals --
 
-  defp load(name) do
-    with {:ok, project} <- Projects.get_project_by_name(name),
-         {:ok, scope} <- Scope.for_local_project(project) do
-      {:ok, project, scope}
-    end
-  end
-
+  # Settings just changed on the project we're already scoped to, so refresh the
+  # struct in place. Rebuilding the scope here would mean knowing how this app
+  # builds one, which is the host's job — and only one of the two hosts could.
   defp reassign(socket, project) do
-    {:ok, scope} = Scope.for_local_project(project)
+    scope = %{socket.assigns.scope | active_project: project}
 
     socket
-    |> assign(project: project, slug: project_slug(project), scope: scope, current_scope: scope)
+    |> assign(project: project, scope: scope, current_scope: scope)
     |> reload()
   end
 

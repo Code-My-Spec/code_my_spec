@@ -1,4 +1,4 @@
-defmodule CodeMySpecLocalWeb.ProblemsLive do
+defmodule CodeMySpecWeb.ProblemsLive do
   @moduledoc """
   Persisted Problems viewer.
 
@@ -10,24 +10,18 @@ defmodule CodeMySpecLocalWeb.ProblemsLive do
   Read-only. Problems are written by the validation pipeline; this view
   just exposes them.
   """
-  use CodeMySpecLocalWeb, :live_view
+  use CodeMySpecWeb, :live_view
 
   alias CodeMySpec.Problems
-  alias CodeMySpec.Projects
-  alias CodeMySpec.Users.Scope
 
   @per_page 25
   @sources ~w(compiler credo exunit spex spec_validation qa_validation)
 
   @impl true
   def mount(_params, _session, socket) do
-    projects = Projects.list_local_projects()
-
     {:ok,
      assign(socket,
-       projects: projects,
-       project: nil,
-       scope: nil,
+       section: :problems,
        page: 1,
        filter: :all,
        result: nil,
@@ -36,34 +30,25 @@ defmodule CodeMySpecLocalWeb.ProblemsLive do
   end
 
   @impl true
-  def handle_params(%{"project_name" => name} = params, _uri, socket) do
-    case load_project_and_scope(name) do
-      {:ok, project, scope} ->
-        page = parse_page(params["page"])
-        filter = parse_filter(params["filter"])
+  def handle_params(params, _uri, %{assigns: %{scope: %{} = scope, project: project}} = socket) do
+    page = parse_page(params["page"])
+    filter = parse_filter(params["filter"])
 
-        result =
-          Problems.list_problems_paginated(scope,
-            page: page,
-            per_page: @per_page,
-            filter: filter
-          )
+    result =
+      Problems.list_problems_paginated(scope,
+        page: page,
+        per_page: @per_page,
+        filter: filter
+      )
 
-        {:noreply,
-         assign(socket,
-           project: project,
-           scope: scope,
-           slug: project_slug(project),
-           page: page,
-           filter: filter,
-           result: result,
-           page_title: "#{project.name} — Problems",
-           error: nil
-         )}
-
-      {:error, reason} ->
-        {:noreply, assign(socket, error: "Failed to load project: #{inspect(reason)}")}
-    end
+    {:noreply,
+     assign(socket,
+       page: page,
+       filter: filter,
+       result: result,
+       page_title: "#{project.name} — Problems",
+       error: nil
+     )}
   end
 
   @impl true
@@ -92,13 +77,6 @@ defmodule CodeMySpecLocalWeb.ProblemsLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app
-      flash={@flash}
-      projects={@projects}
-      project={@project}
-      section={:problems}
-      page_title={assigns[:page_title]}
-    >
       <div :if={@error} role="alert" class="alert alert-error">
         <span>{@error}</span>
       </div>
@@ -218,7 +196,6 @@ defmodule CodeMySpecLocalWeb.ProblemsLive do
           </div>
         </nav>
       </div>
-    </Layouts.app>
     """
   end
 
@@ -265,17 +242,4 @@ defmodule CodeMySpecLocalWeb.ProblemsLive do
     end
   end
 
-  defp project_slug(project) do
-    (project.name || "project")
-    |> String.downcase()
-    |> String.replace(~r/[^a-z0-9]+/, "-")
-    |> String.trim("-")
-  end
-
-  defp load_project_and_scope(name) do
-    with {:ok, project} <- Projects.get_project_by_name(name),
-         {:ok, scope} <- Scope.for_local_project(project) do
-      {:ok, project, scope}
-    end
-  end
 end

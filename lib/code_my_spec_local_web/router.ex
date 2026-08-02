@@ -27,12 +27,9 @@ defmodule CodeMySpecLocalWeb.Router do
       live "/app/projects/new", ProjectsLive.Form, :new
       live "/app/projects/:project_name", HomeLive
       live "/app/projects/:project_name/edit", ProjectsLive.Form, :edit
+      live "/app/projects/:project_name/files", FilesLive
       live "/app/projects/:project_name/init", InitLive, :index
       live "/app/projects/:project_name/init/:step", InitLive, :show
-      live "/app/projects/:project_name/files", FilesLive
-      live "/app/projects/:project_name/content", ContentLive
-      live "/app/projects/:project_name/content/:id", ContentLive.Show
-      live "/app/projects/:project_name/problems", ProblemsLive
       live "/app/projects/:project_name/next-task", Tasks.NextTaskLive
       live "/app/projects/:project_name/tasks", Tasks.TaskQueueLive
       live "/app/projects/:project_name/progress", AgentProgressLive
@@ -69,9 +66,6 @@ defmodule CodeMySpecLocalWeb.Router do
            RequirementsLive,
            :story_req_show
 
-      live "/app/projects/:project_name/sessions", SessionsLive, :index
-      live "/app/projects/:project_name/sessions/:id", SessionsLive, :show
-      live "/app/projects/:project_name/sessions/:id/tasks/:task_id", SessionsLive, :task_show
       live "/app/projects/:project_name/knowledge", MarkdownBrowserLive, :knowledge
       live "/app/projects/:project_name/knowledge/*path", MarkdownBrowserLive, :knowledge
       live "/app/projects/:project_name/project-knowledge", MarkdownBrowserLive, :project_knowledge
@@ -126,6 +120,13 @@ defmodule CodeMySpecLocalWeb.Router do
 
       live "/app/projects/:project_id/issues", IssuesLive.Index, :index
       live "/app/projects/:project_id/issues/:id", IssuesLive.Show, :show
+
+      live "/app/projects/:project_id/content", ContentLive
+      live "/app/projects/:project_id/content/:id", ContentLive.Show
+      live "/app/projects/:project_id/problems", ProblemsLive
+      live "/app/projects/:project_id/sessions", SessionsLive, :index
+      live "/app/projects/:project_id/sessions/:id", SessionsLive, :show
+      live "/app/projects/:project_id/sessions/:id/tasks/:task_id", SessionsLive, :task_show
     end
   end
 
