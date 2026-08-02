@@ -47,7 +47,8 @@ defmodule CodeMySpecLocalWeb.MessagesController do
         session_id(conn),
         params,
         response,
-        agent_role(conn)
+        agent_role(conn),
+        store: store_state(conn)
       )
 
     :ok
@@ -60,6 +61,13 @@ defmodule CodeMySpecLocalWeb.MessagesController do
     case get_req_header(conn, "x-agent-role") do
       [role | _] when role != "" -> role
       _ -> "main"
+    end
+  end
+
+  defp store_state(conn) do
+    case get_req_header(conn, "x-recorder-store") do
+      ["unwritable" | _] -> :unwritable
+      _ -> :available
     end
   end
 

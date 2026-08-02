@@ -112,7 +112,8 @@ defmodule CodeMySpec.AgentHarness.ConversationRecorder do
         session_external_id,
         request,
         response,
-        agent_role \\ "main"
+        agent_role \\ "main",
+        opts \\ []
       ) do
     with {:ok, conversation} <-
            Conversations.find_or_create_agent_conversation(
@@ -120,6 +121,7 @@ defmodule CodeMySpec.AgentHarness.ConversationRecorder do
              project_id,
              session_external_id
            ),
+         :ok <- store_available(opts),
          :ok <- write_request(conversation, agent_role, request_text(request)),
          :ok <- write_response(conversation, agent_role, response_text(response)),
          :ok <- write_tool_calls(conversation, agent_role, tool_calls(response)) do
@@ -134,6 +136,13 @@ defmodule CodeMySpec.AgentHarness.ConversationRecorder do
   # Not add_agent_message/4: its kind mapping sends everything but "tool" to
   # :assistant, so the request would be filed as the model's own words. 8171
   # wants the operator to see what the agent was *asked*.
+  # The conversation is found or created before this check on purpose: a turn
+  # that happened must leave a trace even when nothing about it can be written,
+  # and an empty conversation is what the operator's gap notice reads.
+  defp store_available(opts) do
+    if Keyword.get(opts, :store) == :unwritable, do: {:error, :store_unwritable}, else: :ok
+  end
+
   defp write_request(_conversation, _agent_role, nil), do: :ok
 
   defp write_request(conversation, agent_role, text) do

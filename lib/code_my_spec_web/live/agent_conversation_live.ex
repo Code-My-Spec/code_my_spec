@@ -48,6 +48,7 @@ defmodule CodeMySpecWeb.AgentConversationLive do
     |> assign(:project, project)
     |> assign(:conversation, conversation)
     |> assign(:page_title, "#{project.name} · Agent conversation")
+    |> assign(:recording_gap, conversation != nil and messages_for(conversation) == [])
     |> stream(:messages, messages_for(conversation))
   end
 
@@ -95,6 +96,15 @@ defmodule CodeMySpecWeb.AgentConversationLive do
             class="py-8 text-center opacity-60"
           >
             No agent activity recorded for this project yet.
+          </p>
+
+          <p
+            :if={@conversation != nil and @recording_gap}
+            data-test="recording-gap"
+            class="rounded-box border border-warning/40 bg-warning/10 p-3 text-sm"
+          >
+            Turns were taken but not recorded. What follows is incomplete —
+            treat gaps as missing evidence, not as an idle sprite.
           </p>
 
           <div id="agent-turns" phx-update="stream" class="space-y-3">
