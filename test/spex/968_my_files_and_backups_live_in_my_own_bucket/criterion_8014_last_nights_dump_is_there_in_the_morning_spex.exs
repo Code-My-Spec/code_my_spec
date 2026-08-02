@@ -14,7 +14,6 @@ defmodule CodeMySpecSpex.Story968.Criterion8014Spex do
   """
 
   use CodeMySpecSpex.Case
-  use ExCliVcr
 
   @endpoint CodeMySpecWeb.Endpoint
 

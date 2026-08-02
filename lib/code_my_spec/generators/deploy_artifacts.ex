@@ -411,11 +411,28 @@ defmodule CodeMySpec.Generators.DeployArtifacts do
 
     cmd_schedule() {
       local environment="${1:?usage: bin/backup schedule <environment>}"
-      local line="0 4 * * * $ROOT/bin/backup dump $environment >> /var/log/$APP-backup.log 2>&1"
+      local unit="$APP-backup-$environment"
+      local line="0 4 * * * $APP $ROOT/bin/backup dump $environment >> /var/log/$APP-backup.log 2>&1"
 
-      # Idempotent: re-running setup must not stack duplicate cron entries.
-      ( crontab -l 2>/dev/null | grep -v "bin/backup dump $environment" || true
-        echo "$line" ) | crontab -
+      # A drop-in file, never `crontab -`. Rewriting the invoking user's
+      # crontab is wrong twice over: setup does not necessarily run on the box
+      # the schedule belongs to — during development it runs on a laptop, where
+      # it installed a job pointing at a temp directory — and `crontab -` is
+      # interactive enough to block forever when it cannot get at the spool,
+      # which is a setup step that hangs rather than fails.
+      #
+      # Overwriting one file is also idempotent for free, where the read-filter-
+      # write dance around `crontab -` is only idempotent if you get it right.
+      if [[ -w /etc/cron.d ]]; then
+        printf '%s\\n' "$line" > "/etc/cron.d/$unit"
+        echo "installed /etc/cron.d/$unit"
+      else
+        # Not the target box. Leave the schedule in the project so the deploy
+        # installs it, rather than silently scheduling nothing.
+        mkdir -p "$ROOT/deploy"
+        printf '%s\\n' "$line" > "$ROOT/deploy/$unit.cron"
+        echo "wrote deploy/$unit.cron — the deploy installs it into /etc/cron.d"
+      fi
       echo "scheduled nightly backup for $environment"
     }
 

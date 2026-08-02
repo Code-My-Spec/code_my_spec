@@ -24,6 +24,7 @@ defmodule CodeMySpecSpex.Story968.Criterion8015Spex do
   setup :real_working_directory
   setup :connect_providers
   setup :real_backup_database
+  setup :several_nights_later
 
   spex "A backup that stops running does not fail silently" do
     scenario "stalled backups are visible rather than assumed healthy" do
@@ -40,7 +41,7 @@ defmodule CodeMySpecSpex.Story968.Criterion8015Spex do
         # The bucket the dumps land in is real; it goes away with the spex.
         tear_down_after(context.scope, [:storage])
 
-        with_provider_cassette(@install_cassette, fn ->
+        with_full_cassette @install_cassette do
 
           # Hetzner issues object-storage keys only in its console, so they are
 
@@ -60,7 +61,7 @@ defmodule CodeMySpecSpex.Story968.Criterion8015Spex do
           view
           |> element("[data-test='setup-step'][data-step='backups'] [data-test='run-step']")
           |> render_click()
-        end)
+        end
 
         {:ok, Map.put(context, :view, view)}
       end

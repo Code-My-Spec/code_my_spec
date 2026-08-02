@@ -52,7 +52,7 @@ defmodule CodeMySpecWeb.ProvisioningLive do
   alias CodeMySpec.Provisioning.Repository
   alias CodeMySpec.Projects
   alias CodeMySpec.Users.Scope
-  alias CodeMySpec.Provisioning.{Cloudflare, Credentials, Dns, Resend, Sops, Steps, Storage}
+  alias CodeMySpec.Provisioning.{Backups, Cloudflare, Credentials, Dns, Resend, Sops, Steps, Storage}
 
   # The environments setup manages. Named once so the probe form, the resource
   # grouping and the storage step cannot disagree about what exists.
@@ -740,6 +740,24 @@ defmodule CodeMySpecWeb.ProvisioningLive do
         no dumps in any bucket yet
       </p>
 
+      <%!-- A backup that stopped running looks exactly like one that is working,
+            right up until somebody needs it. "never" and "stalled" are reported
+            apart because "it never ran" and "it stopped last Tuesday" send Sam
+            to different places. --%>
+      <div
+        :if={@backup_health}
+        data-test="backup-health"
+        data-state={@backup_health.state}
+        data-last-successful-at={@backup_health.last_seen}
+        data-stale-after-hours={@backup_health.stale_after_hours}
+      >
+        {case @backup_health.state do
+          "healthy" -> "backups are landing (newest #{@backup_health.last_seen})"
+          "stalled" -> "backups have stopped landing — newest is #{@backup_health.last_seen}"
+          "never" -> "no dump has ever landed"
+        end}
+      </div>
+
       <div
         :for={dump <- @backups}
         data-test="backup-dump"
@@ -1053,7 +1071,12 @@ defmodule CodeMySpecWeb.ProvisioningLive do
   # the page until the morning somebody needs a dump. So the bucket is re-read
   # on demand rather than trusted from when the step last ran.
   def handle_event("refresh_backups", _params, socket) do
-    {:noreply, assign(socket, :backups, list_backups(socket))}
+    dumps = list_backups(socket)
+
+    {:noreply,
+     socket
+     |> assign(:backups, dumps)
+     |> assign(:backup_health, Backups.health(dumps, step_opts()))}
   end
 
   # The artifacts a deploy assumes it can find. `Generators.audit/2` says what
@@ -1290,6 +1313,7 @@ defmodule CodeMySpecWeb.ProvisioningLive do
 
     socket
     |> assign_new(:backups, fn -> [] end)
+    |> assign_new(:backup_health, fn -> nil end)
     |> assign(:options, options)
     |> assign(:available_options, available_options())
     |> assign(:plan, plan)

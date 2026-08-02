@@ -25,6 +25,11 @@ defmodule CodeMySpecSpex.Case do
       use CodeMySpecLocalWeb, :verified_routes
       use SexySpex
 
+      # Half of setup is a subprocess, so `with_full_cassette` — which needs
+      # this import — is reachable from every spex rather than from the ones
+      # that remembered to ask for it.
+      use ExCliVcr
+
       import Plug.Conn
       import Phoenix.ConnTest
       import Phoenix.LiveViewTest
@@ -174,6 +179,33 @@ defmodule CodeMySpecSpex.Case do
   encrypted env file; here there is no such box, so the test database — which is
   a real Postgres with real tables — stands in for it.
   """
+  @doc """
+  Advance the clock the backup health check reads, by several nights.
+
+      setup :several_nights_later
+
+  A criterion about backups that stopped landing needs dumps that are old.
+  S3 sets `last_modified` itself, so a dump cannot be backdated and the only
+  honest lever is the other side of the comparison: ask whether backups are
+  current *later*, which is exactly what "the scheduled dump has failed for
+  several nights" means.
+  """
+  def several_nights_later(context) do
+    previous = Application.get_env(:code_my_spec, :provisioning_step_opts, [])
+
+    Application.put_env(
+      :code_my_spec,
+      :provisioning_step_opts,
+      Keyword.put(previous, :now, fn -> DateTime.add(DateTime.utc_now(), 5, :day) end)
+    )
+
+    ExUnit.Callbacks.on_exit(fn ->
+      Application.put_env(:code_my_spec, :provisioning_step_opts, previous)
+    end)
+
+    context
+  end
+
   def real_backup_database(context) do
     url = Fixtures.database_url()
 
@@ -966,16 +998,24 @@ defmodule CodeMySpecSpex.Case do
         {:ok, Map.put(context, :view, view)}
       end
   """
-  def run_steps(view, keys, cassette_name) when is_list(keys) do
-    with_provider_cassette(cassette_name, fn ->
-      for key <- keys do
-        view
-        |> Phoenix.LiveViewTest.element(
-          "[data-test='setup-step'][data-step='#{key}'] [data-test='run-step']"
-        )
-        |> Phoenix.LiveViewTest.render_click()
+  # A macro, and recording both halves: the deploy and backups steps shell out
+  # as well as calling providers, and a cassette holding only the HTTP half
+  # passes while recording then fails on replay — naming the subprocess, which
+  # was not the thing that changed.
+  defmacro run_steps(view, keys, cassette_name) do
+    quote do
+      view = unquote(view)
+
+      with_full_cassette unquote(cassette_name) do
+        for key <- unquote(keys) do
+          view
+          |> Phoenix.LiveViewTest.element(
+            "[data-test='setup-step'][data-step='#{key}'] [data-test='run-step']"
+          )
+          |> Phoenix.LiveViewTest.render_click()
+        end
       end
-    end)
+    end
   end
 
   @doc """
