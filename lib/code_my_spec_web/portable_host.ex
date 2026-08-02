@@ -19,6 +19,20 @@ defmodule CodeMySpecWeb.PortableHost do
   alias CodeMySpec.Users.Scope
 
   def on_mount(:default, params, _session, socket) do
+    if project_scoped?(params) do
+      mount_project_scope(params, socket)
+    else
+      # A route in this live_session that doesn't name a project isn't ours to
+      # speak for — AgentConversationLive keys off :project_name and resolves
+      # its own. Assigning defaults here clobbered what it had already loaded.
+      {:cont, socket}
+    end
+  end
+
+  defp project_scoped?(%{"project_id" => _}), do: true
+  defp project_scoped?(_), do: false
+
+  defp mount_project_scope(params, socket) do
     socket =
       socket
       |> assign(
@@ -73,7 +87,7 @@ defmodule CodeMySpecWeb.PortableHost do
     end
   end
 
-  defp put_scope(_params, _uri, socket), do: {:cont, fail(socket, "No project in the URL.")}
+  defp put_scope(_params, _uri, socket), do: {:cont, socket}
 
   defp fail(socket, message),
     do: assign(socket, scope: nil, project: nil, scope_error: message)

@@ -60,7 +60,7 @@ defmodule CodeMySpecSpex.Story983.Criterion8160Spex do
         # it up — and without the row the gate reports "no BDD spec files"
         # instead of the pending state under test.
         {:ok, sync_live, _html} =
-          live(context.conn, ~p"/projects/#{context.project.name}/files")
+          live(context.conn, ~p"/app/projects/#{context.project.name}/files")
 
         sync_live |> element("button[phx-click='sync']") |> render_click()
 

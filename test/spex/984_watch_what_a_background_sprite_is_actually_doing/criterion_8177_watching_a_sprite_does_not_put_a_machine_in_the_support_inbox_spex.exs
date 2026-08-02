@@ -32,7 +32,7 @@ defmodule CodeMySpecSpex.Story984.Criterion8177Spex do
       end
 
       when_ "the operator opens the customer support inbox", context do
-        {:ok, view, html} = live(context.conn, "/app/inbox")
+        {:ok, view, html} = live(context.conn, "/app/projects/#{context.project.id}/inbox")
 
         {:ok, context |> Map.put(:inbox, view) |> Map.put(:inbox_html, html)}
       end

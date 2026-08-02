@@ -49,7 +49,7 @@ defmodule CodeMySpecSpex.Story983.Criterion8157Spex do
 
       when_ "the user releases it for development", context do
         {:ok, index_live, _html} =
-          live(context.conn, ~p"/projects/#{context.project.name}/stories")
+          live(context.conn, ~p"/app/projects/#{context.project.name}/stories")
 
         html =
           index_live

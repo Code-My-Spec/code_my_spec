@@ -32,6 +32,16 @@ defmodule CodeMySpecLocalWeb.PortableHost do
   alias CodeMySpec.Users.Scope
 
   def on_mount(:default, params, _session, socket) do
+    if match?(%{"project_id" => _}, params) do
+      mount_project_scope(params, socket)
+    else
+      # Routes in this session that don't name a project aren't ours to speak
+      # for — see CodeMySpecWeb.PortableHost.
+      {:cont, socket}
+    end
+  end
+
+  defp mount_project_scope(params, socket) do
     socket =
       socket
       |> assign(
@@ -77,7 +87,10 @@ defmodule CodeMySpecLocalWeb.PortableHost do
     end
   end
 
-  defp put_scope(_params, _uri, socket), do: {:cont, fail(socket, "No project in the URL.")}
+  # A route in this live_session that doesn't name a project isn't ours to
+  # speak for — AgentConversationLive keys off :project_name and resolves its
+  # own. Assigning nils here clobbered the project it had already loaded.
+  defp put_scope(_params, _uri, socket), do: {:cont, socket}
 
   defp fail(socket, message),
     do: assign(socket, scope: nil, project: nil, scope_error: message)
