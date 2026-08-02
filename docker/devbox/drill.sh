@@ -99,15 +99,14 @@ else
 
   log "Creating $VOLUME with a bare ${APP}.git"
   docker volume create "$VOLUME" >/dev/null
-  # Owned by the agent uid, not root. The sprite pushes as `agent`, and git
-  # refuses a repository owned by someone else ("detected dubious ownership") —
-  # so a root-owned bare repo produces a sprite that commits and then cannot
-  # push, which is the same stranded-work failure by a different route.
+  # Left root-owned here on purpose: sprite.sh clones as root at startup, and
+  # git refuses a repository owned by someone else. Ownership is handed to the
+  # agent after the clone, below — the agent is who pushes, and a repo it
+  # cannot write is how a run's work ends up stranded in a container.
   docker run --rm -v "$VOLUME:/w" --entrypoint sh alpine/git -c "
     set -e
     mkdir -p /w/.origin
     git init --bare -q /w/.origin/${APP}.git
-    chown -R 1000:1000 /w/.origin
   "
 
   if [ -n "$SEED" ]; then
@@ -117,7 +116,6 @@ else
       set -e
       git clone -q --bare /seed /tmp/seed.git
       git --git-dir=/tmp/seed.git push -q --mirror /w/.origin/${APP}.git
-      chown -R 1000:1000 /w/.origin
     "
   fi
 fi
@@ -146,16 +144,20 @@ docker run -d --name "$NAME" \
 # actually works the graph. Starting one without the other gives a sprite that
 # scans a directory forever and looks healthy doing it — which is exactly what
 # drill 11 was still doing seventeen hours after its agent finished.
+log "Waiting for the harness to accept a manifest"
+for _ in $(seq 1 30); do
+  docker logs "$NAME" 2>&1 | grep -q "accepted the manifest" && break
+  sleep 2
+done
+
+docker logs "$NAME" 2>&1 | grep -q "accepted the manifest" \
+  || die "harness never accepted a manifest — check: docker logs $NAME"
+
+# The clone is done, so the bare repo can belong to the agent now. Doing it
+# before the clone breaks root; not doing it at all breaks the push.
+docker exec -u root "$NAME" chown -R 1000:1000 /workspace/.origin 2>/dev/null || true
+
 if [ "$WITH_AGENT" = "1" ]; then
-  log "Waiting for the harness to accept a manifest"
-  for _ in $(seq 1 30); do
-    docker logs "$NAME" 2>&1 | grep -q "accepted the manifest" && break
-    sleep 2
-  done
-
-  docker logs "$NAME" 2>&1 | grep -q "accepted the manifest" \
-    || die "harness never accepted a manifest — check: docker logs $NAME"
-
   log "Starting the agent"
   docker exec -d -u agent \
     -e MIX_HOME=/home/agent/.mix \

@@ -535,7 +535,13 @@ import json, pathlib
 
 p = pathlib.Path("/home/agent/.claude/mcp-needs-auth-cache.json")
 if p.exists():
-    cache = json.loads(p.read_text())
+    # A half-written or empty cache is not a reason to refuse to boot. This ran
+    # under `set -e`, so a JSONDecodeError here killed the whole sprite — a
+    # container that had run once could not be restarted.
+    try:
+        cache = json.loads(p.read_text() or "{}")
+    except (ValueError, OSError):
+        cache = {}
     stale = [k for k in cache if "codemyspec" in k]
     for k in stale:
         cache.pop(k)

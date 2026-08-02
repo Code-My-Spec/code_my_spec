@@ -133,9 +133,10 @@ defmodule CodeMySpec.AgentHarness.ConversationRecorder do
     end
   end
 
-  # Not add_agent_message/4: its kind mapping sends everything but "tool" to
-  # :assistant, so the request would be filed as the model's own words. 8171
-  # wants the operator to see what the agent was *asked*.
+  # "user" has to map to :user in Conversations, or the kind mapping files the
+  # request as the model's own words. It carries the agent role for the same
+  # reason the response does: a sub-agent's question showing unattributed while
+  # its answer is tagged is half an attribution.
   # The conversation is found or created before this check on purpose: a turn
   # that happened must leave a trace even when nothing about it can be written,
   # and an empty conversation is what the operator's gap notice reads.
@@ -147,7 +148,7 @@ defmodule CodeMySpec.AgentHarness.ConversationRecorder do
 
   defp write_request(conversation, agent_role, text) do
     conversation
-    |> Conversations.add_message(:user, text, "agent:#{agent_role}")
+    |> Conversations.add_agent_message(agent_role, "user", text)
     |> normalize()
   end
 
