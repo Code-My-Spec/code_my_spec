@@ -42,6 +42,7 @@ defmodule CodeMySpecWeb.Router do
     get "/product", PageController, :product
     get "/agents", PageController, :agents
     get "/design-system", PageController, :design_system
+    get "/behavior", PageController, :behavior
     get "/vibe-coding-rebuild", PageController, :vibe_coding_rebuild
     get "/developers", PageController, :developers
     get "/install", PageController, :install

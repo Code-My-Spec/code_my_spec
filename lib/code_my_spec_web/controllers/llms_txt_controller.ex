@@ -22,6 +22,14 @@ defmodule CodeMySpecWeb.LlmsTxtController do
         "Free to build (harness + content engine, your own AI keys), $100/month per user to operate and grow, or built with you from $500 (quoted)"
     },
     %{
+      title: "Behavior",
+      url: "/behavior",
+      description:
+        "Describe what the software should do in plain sentences, agree the rules in a " <>
+          "conversation, and every change after that is checked against them — so a feature that " <>
+          "worked last month cannot quietly stop working"
+    },
+    %{
       title: "Design system",
       url: "/design-system",
       description:
