@@ -160,6 +160,38 @@ defmodule CodeMySpec.Issues do
   end
 
   @doc """
+  Report an issue from an end user of a generated app.
+
+  The deploy key identifies the *project*; the person reporting is not
+  authenticated and is not expected to be. That is the whole point — someone
+  hitting a bug in a shipped app has no CodeMySpec account and should not need
+  one to say so.
+
+  Before this, the feedback widget filed through the OAuth path, so a generated
+  project could not accept feedback until its owner had generated client
+  credentials and set `CODEMYSPEC_CLIENT_ID` / `CODEMYSPEC_CLIENT_SECRET`. Two
+  QA drills reported the widget rendering fine and failing only on submit, which
+  is the worst shape for that failure: it looks like it works.
+
+  Scoped `"app"`, not `"framework"` — this is feedback about the generated app,
+  not about CodeMySpec.
+  """
+  @spec report_widget_issue(String.t(), String.t(), map()) :: {:ok, term()} | {:error, term()}
+  def report_widget_issue(account_id, project_id, attrs)
+      when is_binary(account_id) and is_binary(project_id) and is_map(attrs) do
+    scope = %Scope{active_account_id: account_id, active_project_id: project_id}
+
+    attrs =
+      attrs
+      |> Map.new(fn {k, v} -> {to_string(k), v} end)
+      |> Map.put("scope", "app")
+      |> Map.put_new("source", "widget")
+      |> Map.put_new("severity", "medium")
+
+    create_issue(scope, attrs)
+  end
+
+  @doc """
   Creates issues from a validated QA result document.
 
   Parses the issues section, upserts each issue (skipping duplicates by title + story_id),

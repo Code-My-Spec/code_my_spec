@@ -261,6 +261,11 @@ defmodule CodeMySpecWeb.Router do
     pipe_through :api
 
     post "/users", WidgetUsersController, :upsert
+
+    # Issue intake from an end user of a generated app. Deploy-key auth on the
+    # app, none on the reporter — someone hitting a bug in a shipped product has
+    # no CodeMySpec account and should not need one to report it.
+    post "/issues", WidgetIssuesController, :create
   end
 
   # (analytics/event route removed — browser events fire via gtag.js directly)
