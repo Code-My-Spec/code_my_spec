@@ -46,8 +46,10 @@ defmodule CodeMySpecWeb.ProvisioningLive do
 
   use CodeMySpecWeb, :live_view
 
+  alias CodeMySpec.Generators.DeployArtifacts
   alias CodeMySpec.ProjectSecrets
   alias CodeMySpec.Provisioning
+  alias CodeMySpec.Provisioning.Repository
   alias CodeMySpec.Projects
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.Provisioning.{Cloudflare, Credentials, Dns, Resend, Sops, Steps, Storage}
@@ -64,6 +66,9 @@ defmodule CodeMySpecWeb.ProvisioningLive do
         Everything your project needs, in the order it needs it.
       </:subtitle>
       <:actions>
+        <.button data-test="generate-project" phx-click="generate_project" class="btn-ghost">
+          Generate deploy files
+        </.button>
         <.button data-test="start-setup" phx-click="start_setup">Run setup</.button>
         <.button :if={@halted_at} data-test="resume-setup" phx-click="resume_setup">
           Resume
@@ -1017,6 +1022,36 @@ defmodule CodeMySpecWeb.ProvisioningLive do
   # and will go on saying so.
   def handle_event("refresh_mail_dns", _params, socket) do
     {:noreply, load(socket, socket.assigns.options)}
+  end
+
+  # The artifacts a deploy assumes it can find. `Generators.audit/2` says what
+  # is missing and why; this is the button that puts it there, so a project
+  # that predates the generator does not have to be recreated to become
+  # deployable (story 970).
+  def handle_event("generate_project", _params, socket) do
+    scope = socket.assigns.current_scope
+    project = project(scope)
+
+    case DeployArtifacts.generate(scope.environment,
+           app: Repository.default_name(project),
+           host: project.domain || "example.com",
+           owner: System.get_env("GITHUB_SPEX_OWNER") || "your-org"
+         ) do
+      {:ok, []} ->
+        {:noreply,
+         socket
+         |> put_flash(:info, "Every deploy file is already in place.")
+         |> load(socket.assigns.options)}
+
+      {:ok, written} ->
+        {:noreply,
+         socket
+         |> put_flash(:info, "Wrote #{Enum.join(written, ", ")}.")
+         |> load(socket.assigns.options)}
+
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, "Could not generate: #{inspect(reason)}")}
+    end
   end
 
   def handle_event("start_setup", _params, socket) do

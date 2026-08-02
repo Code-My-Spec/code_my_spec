@@ -24,6 +24,10 @@ defmodule CodeMySpecSpex.Story970.Criterion7974Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  # A real directory on disk, shared with the page. The generator writes
+  # through the project's registered environment; a spex holding its own
+  # in-memory one reads an empty tree and concludes nothing was generated.
+  setup :real_working_directory
   setup :connect_providers
 
   spex "A fresh project's first push produces an image" do
@@ -34,7 +38,7 @@ defmodule CodeMySpecSpex.Story970.Criterion7974Spex do
 
         view |> element("[data-test='generate-project']") |> render_click()
 
-        {:ok, entries} = Environments.list_directory(context.environment, ".")
+        entries = project_tree(context.environment)
 
         {:ok, context |> Map.put(:view, view) |> Map.put(:generated, entries)}
       end
@@ -83,7 +87,7 @@ defmodule CodeMySpecSpex.Story970.Criterion7974Spex do
       end
 
       then_ "Sam added no files of his own to make that happen", context do
-        {:ok, now} = Environments.list_directory(context.environment, ".")
+        now = project_tree(context.environment)
 
         assert now == context.generated,
                "expected the tree to be unchanged from what the generator produced:\n  added: #{inspect(now -- context.generated)}"

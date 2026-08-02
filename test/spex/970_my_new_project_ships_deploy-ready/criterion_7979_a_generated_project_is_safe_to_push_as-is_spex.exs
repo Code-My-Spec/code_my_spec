@@ -28,6 +28,10 @@ defmodule CodeMySpecSpex.Story970.Criterion7979Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  # A real directory on disk, shared with the page. The generator writes
+  # through the project's registered environment; a spex holding its own
+  # in-memory one reads an empty tree and concludes nothing was generated.
+  setup :real_working_directory
 
   spex "A generated project is safe to push as-is" do
     scenario "the tree carries encrypted scaffolding and no plaintext env file" do
@@ -41,7 +45,19 @@ defmodule CodeMySpecSpex.Story970.Criterion7979Spex do
       end
 
       when_ "he looks for its environment files", context do
-        {:ok, entries} = Environments.list_directory(context.environment, ".")
+        top = project_tree(context.environment)
+
+        # `list_directory/2` lists one level, so the env files have to be asked
+        # for where they live. Prefixed back to full paths, because what the
+        # assertions below are about is the *shape* — `envs/…​.enc.…` present,
+        # a plaintext `.env` absent — not which directory the listing came from.
+        envs =
+          case Environments.list_directory(context.environment, "envs") do
+            {:ok, names} -> Enum.map(names, &("envs/" <> &1))
+            _ -> []
+          end
+
+        entries = top ++ envs
 
         {:ok, Map.put(context, :entries, entries)}
       end

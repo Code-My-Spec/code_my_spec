@@ -274,6 +274,40 @@ defmodule CodeMySpecSpex.Case do
   def only_environments(scope, names), do: Fixtures.set_environments(scope, names)
 
   @doc """
+  Every file in the project tree, as paths relative to its root.
+
+  `Environments.list_directory/2` lists one level, which is right for what it
+  is. The generated artifacts are nested — `config/deploy.yml`,
+  `lib/…_web/router.ex`, `envs/prod.enc.env` — so a criterion asking "did the
+  generator produce this" has to see the whole tree, not the top of it.
+  Listing one level and finding only `config` reads as "nothing was
+  generated".
+  """
+  def project_tree(env, path \\ ".", depth \\ 6)
+
+  def project_tree(_env, _path, 0), do: []
+
+  def project_tree(env, path, depth) do
+    case CodeMySpec.Environments.list_directory(env, path) do
+      {:ok, names} ->
+        Enum.flat_map(names, fn name ->
+          child = if path in [".", ""], do: name, else: path <> "/" <> name
+
+          # A directory lists; a file does not. Cheaper than a stat call
+          # through an abstraction that does not offer one.
+          case CodeMySpec.Environments.list_directory(env, child) do
+            {:ok, []} -> [child]
+            {:ok, _} -> [child | project_tree(env, child, depth - 1)]
+            _ -> [child]
+          end
+        end)
+
+      _ ->
+        []
+    end
+  end
+
+  @doc """
   Put a repository at the name setup would use, before setup runs.
 
   For the criteria whose subject is a repository that is *already there*. They
