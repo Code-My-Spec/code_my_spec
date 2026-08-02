@@ -24,6 +24,7 @@ defmodule CodeMySpecSpex.Story966.Criterion8156Spex do
 
   @uat_only_cassette "hetzner_uat_server_only"
   @prod_added_cassette "hetzner_prod_server_added"
+  @given_cassette "966_8156_credentials"
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -39,7 +40,24 @@ defmodule CodeMySpecSpex.Story966.Criterion8156Spex do
         # `options[<key>]`. A submit carrying a `provisioning` map changed
         # nothing at all — the page kept every default and the criterion
         # passed while asserting the opposite of what it says.
-        choose_all_setup_options_except(view, [:prod])
+        # Production is off because the project has no production environment,
+        # not because a checkbox is unticked — there is no `prod` option on the
+        # setup form, and there never was. Environments are rows; the steps fan
+        # out over whichever ones exist.
+        only_environments(context.scope, ["uat"])
+
+        # Hetzner has no OAuth, so its token is pasted per project; without it
+        # the server step stops at `hetzner_not_configured` and nothing is
+        # provisioned at all. And the repository an earlier recording made
+        # still exists, so setup would pause asking whose it is — it is this
+        # project's.
+        own_repository(context.project)
+        tear_down_after(context.scope, [:server])
+        tear_down_repository(context.project)
+
+        with_provider_cassette(@given_cassette, fn ->
+          paste_provider_credentials(view)
+        end)
 
         html =
           with_provider_cassette(@uat_only_cassette, fn ->

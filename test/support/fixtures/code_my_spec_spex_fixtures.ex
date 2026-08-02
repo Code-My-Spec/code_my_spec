@@ -1009,6 +1009,33 @@ defmodule CodeMySpecSpex.Fixtures do
     |> CodeMySpec.Repo.update!()
   end
 
+  @doc """
+  Give a project exactly these environments, and no others.
+
+  Environments are rows, so "production is turned off" means the project does
+  not have one — not that some option is unchecked. There is no `prod` toggle
+  on the setup form and there never was; the options are domain, email,
+  storage and the rest.
+  """
+  @spec set_environments(Scope.t(), [String.t()]) :: [String.t()]
+  def set_environments(%Scope{active_project: %{id: project_id}} = scope, names) do
+    alias CodeMySpec.Provisioning.{Environment, EnvironmentRepository}
+
+    # Seed first, so the initial rows exist and can be pruned to the set asked
+    # for rather than racing whatever creates them lazily.
+    EnvironmentRepository.list(scope)
+
+    for environment <- CodeMySpec.Repo.all(Environment),
+        environment.project_id == project_id,
+        environment.name not in names do
+      CodeMySpec.Repo.delete!(environment)
+    end
+
+    for name <- names, do: EnvironmentRepository.put(scope, name, %{})
+
+    EnvironmentRepository.names(scope)
+  end
+
   @doc "The repository name setup would use for this project."
   def repository_name(project), do: CodeMySpec.Provisioning.Repository.default_name(project)
 

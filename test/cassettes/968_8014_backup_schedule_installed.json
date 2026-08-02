@@ -1,0 +1,109 @@
+{
+  "interactions": [
+    {
+      "recorded_at": "2026-08-02T16:53:24.958348Z",
+      "request": {
+        "body": "",
+        "body_type": "text",
+        "headers": {
+          "accept-encoding": [
+            "gzip"
+          ],
+          "host": [
+            "fsn1.your-objectstorage.com"
+          ],
+          "user-agent": [
+            "req/0.5.17"
+          ],
+          "x-amz-content-sha256": [
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          ],
+          "x-amz-date": [
+            "20260802T165324Z"
+          ]
+        },
+        "method": "GET",
+        "query_string": "",
+        "uri": "https://fsn1.your-objectstorage.com/"
+      },
+      "response": {
+        "body": "<?xml version=\"1.0\" encoding=\"UTF-8\"?><ListAllMyBucketsResult xmlns=\"http://s3.amazonaws.com/doc/2006-03-01/\"><Owner><ID>p13614200</ID><DisplayName>p13614200</DisplayName></Owner><Buckets><Bucket><Name>spex-story963-criterion7970-prod</Name><CreationDate>2026-08-02T14:26:04.646Z</CreationDate></Bucket><Bucket><Name>spex-story963-criterion7970-uat</Name><CreationDate>2026-08-02T14:26:06.051Z</CreationDate></Bucket><Bucket><Name>spex-story968-criterion8016-prod</Name><CreationDate>2026-08-02T15:33:46.756Z</CreationDate></Bucket><Bucket><Name>spex-story968-criterion8016-uat</Name><CreationDate>2026-08-02T15:33:48.146Z</CreationDate></Bucket><Bucket><Name>spex-story968-criterion8017-prod</Name><CreationDate>2026-08-02T15:34:04.212Z</CreationDate></Bucket><Bucket><Name>spex-story968-criterion8017-uat</Name><CreationDate>2026-08-02T15:34:06.171Z</CreationDate></Bucket><Bucket><Name>spex-story968-criterion8054-prod</Name><CreationDate>2026-08-02T15:34:21.545Z</CreationDate></Bucket><Bucket><Name>spex-story968-criterion8054-uat</Name><CreationDate>2026-08-02T15:34:22.911Z</CreationDate></Bucket></Buckets></ListAllMyBucketsResult>",
+        "body_type": "text",
+        "headers": {
+          "content-type": [
+            "application/xml"
+          ],
+          "date": [
+            "Sun, 02 Aug 2026 16:53:24 GMT"
+          ],
+          "strict-transport-security": [
+            "max-age=63072000"
+          ],
+          "transfer-encoding": [
+            "chunked"
+          ],
+          "x-amz-request-id": [
+            "tx00000d5c0e10bfced9d36-006a6f7604-7ff9c124-fsn1-prod1-ceph3"
+          ],
+          "x-debug-bucket": [
+            ""
+          ]
+        },
+        "status": 200
+      }
+    },
+    {
+      "recorded_at": "2026-08-02T16:53:25.113139Z",
+      "request": {
+        "body": "",
+        "body_type": "text",
+        "headers": {
+          "accept-encoding": [
+            "gzip"
+          ],
+          "host": [
+            "fsn1.your-objectstorage.com"
+          ],
+          "user-agent": [
+            "req/0.5.17"
+          ],
+          "x-amz-content-sha256": [
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          ],
+          "x-amz-date": [
+            "20260802T165324Z"
+          ]
+        },
+        "method": "GET",
+        "query_string": "",
+        "uri": "https://fsn1.your-objectstorage.com/"
+      },
+      "response": {
+        "body": "<?xml version=\"1.0\" encoding=\"UTF-8\"?><ListAllMyBucketsResult xmlns=\"http://s3.amazonaws.com/doc/2006-03-01/\"><Owner><ID>p13614200</ID><DisplayName>p13614200</DisplayName></Owner><Buckets><Bucket><Name>spex-story963-criterion7970-prod</Name><CreationDate>2026-08-02T14:26:04.646Z</CreationDate></Bucket><Bucket><Name>spex-story963-criterion7970-uat</Name><CreationDate>2026-08-02T14:26:06.051Z</CreationDate></Bucket><Bucket><Name>spex-story968-criterion8016-prod</Name><CreationDate>2026-08-02T15:33:46.756Z</CreationDate></Bucket><Bucket><Name>spex-story968-criterion8016-uat</Name><CreationDate>2026-08-02T15:33:48.146Z</CreationDate></Bucket><Bucket><Name>spex-story968-criterion8017-prod</Name><CreationDate>2026-08-02T15:34:04.212Z</CreationDate></Bucket><Bucket><Name>spex-story968-criterion8017-uat</Name><CreationDate>2026-08-02T15:34:06.171Z</CreationDate></Bucket><Bucket><Name>spex-story968-criterion8054-prod</Name><CreationDate>2026-08-02T15:34:21.545Z</CreationDate></Bucket><Bucket><Name>spex-story968-criterion8054-uat</Name><CreationDate>2026-08-02T15:34:22.911Z</CreationDate></Bucket></Buckets></ListAllMyBucketsResult>",
+        "body_type": "text",
+        "headers": {
+          "content-type": [
+            "application/xml"
+          ],
+          "date": [
+            "Sun, 02 Aug 2026 16:53:25 GMT"
+          ],
+          "strict-transport-security": [
+            "max-age=63072000"
+          ],
+          "transfer-encoding": [
+            "chunked"
+          ],
+          "x-amz-request-id": [
+            "tx0000012fe180c03c16c99-006a6f7605-7f4101d5-fsn1-prod1-ceph3"
+          ],
+          "x-debug-bucket": [
+            ""
+          ]
+        },
+        "status": 200
+      }
+    }
+  ],
+  "version": "2.0"
+}

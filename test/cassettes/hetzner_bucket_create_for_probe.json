@@ -1,7 +1,7 @@
 {
   "interactions": [
     {
-      "recorded_at": "2026-08-02T16:10:46.727424Z",
+      "recorded_at": "2026-08-02T16:50:56.193971Z",
       "request": {
         "body": "",
         "body_type": "text",
@@ -19,7 +19,7 @@
             "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
           ],
           "x-amz-date": [
-            "20260802T161046Z"
+            "20260802T165055Z"
           ]
         },
         "method": "GET",
@@ -34,7 +34,7 @@
             "application/xml"
           ],
           "date": [
-            "Sun, 02 Aug 2026 16:10:46 GMT"
+            "Sun, 02 Aug 2026 16:50:56 GMT"
           ],
           "strict-transport-security": [
             "max-age=63072000"
@@ -43,7 +43,7 @@
             "chunked"
           ],
           "x-amz-request-id": [
-            "tx0000038ed02543cb4a79d-006a6f6c06-7f83756b-fsn1-prod1-ceph3"
+            "tx0000097f473f584028cdf-006a6f7570-7f4101d5-fsn1-prod1-ceph3"
           ],
           "x-debug-bucket": [
             ""
@@ -53,7 +53,7 @@
       }
     },
     {
-      "recorded_at": "2026-08-02T16:10:46.867440Z",
+      "recorded_at": "2026-08-02T16:50:56.344426Z",
       "request": {
         "body": "",
         "body_type": "text",
@@ -71,7 +71,7 @@
             "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
           ],
           "x-amz-date": [
-            "20260802T161046Z"
+            "20260802T165056Z"
           ]
         },
         "method": "GET",
@@ -86,7 +86,7 @@
             "application/xml"
           ],
           "date": [
-            "Sun, 02 Aug 2026 16:10:46 GMT"
+            "Sun, 02 Aug 2026 16:50:56 GMT"
           ],
           "strict-transport-security": [
             "max-age=63072000"
@@ -95,7 +95,7 @@
             "chunked"
           ],
           "x-amz-request-id": [
-            "tx00000aa5cf5b2d09c1908-006a6f6c06-7ff9c124-fsn1-prod1-ceph3"
+            "tx00000e195436916a7f0e0-006a6f7570-7f4101d5-fsn1-prod1-ceph3"
           ],
           "x-debug-bucket": [
             ""
@@ -105,7 +105,7 @@
       }
     },
     {
-      "recorded_at": "2026-08-02T16:10:47.002551Z",
+      "recorded_at": "2026-08-02T16:50:56.485280Z",
       "request": {
         "body": "",
         "body_type": "text",
@@ -123,7 +123,7 @@
             "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
           ],
           "x-amz-date": [
-            "20260802T161046Z"
+            "20260802T165056Z"
           ]
         },
         "method": "GET",
@@ -138,7 +138,7 @@
             "application/xml"
           ],
           "date": [
-            "Sun, 02 Aug 2026 16:10:46 GMT"
+            "Sun, 02 Aug 2026 16:50:56 GMT"
           ],
           "strict-transport-security": [
             "max-age=63072000"
@@ -147,7 +147,7 @@
             "chunked"
           ],
           "x-amz-request-id": [
-            "tx00000747983abd982d36f-006a6f6c06-7ff9c124-fsn1-prod1-ceph3"
+            "tx00000b0796db9a6426653-006a6f7570-7ff9c124-fsn1-prod1-ceph3"
           ],
           "x-debug-bucket": [
             ""
@@ -157,7 +157,7 @@
       }
     },
     {
-      "recorded_at": "2026-08-02T16:10:47.624098Z",
+      "recorded_at": "2026-08-02T16:50:57.119146Z",
       "request": {
         "body": "<CreateBucketConfiguration xmlns=\"http://s3.amazonaws.com/doc/2006-03-01/\">\n  <LocationConstraint>fsn1</LocationConstraint>\n</CreateBucketConfiguration>\n",
         "body_type": "text",
@@ -178,7 +178,7 @@
             "d0247a684612d2f8a0dfd054cfbb39cf3098c94a37844aed8fbe62d39e583230"
           ],
           "x-amz-date": [
-            "20260802T161047Z"
+            "20260802T165056Z"
           ]
         },
         "method": "PUT",
@@ -193,7 +193,7 @@
             "0"
           ],
           "date": [
-            "Sun, 02 Aug 2026 16:10:47 GMT"
+            "Sun, 02 Aug 2026 16:50:57 GMT"
           ],
           "location": [
             "/spex-story968-criterion8013-prod"
@@ -212,7 +212,7 @@
       }
     },
     {
-      "recorded_at": "2026-08-02T16:10:47.753324Z",
+      "recorded_at": "2026-08-02T16:50:57.241333Z",
       "request": {
         "body": "",
         "body_type": "text",
@@ -230,7 +230,7 @@
             "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
           ],
           "x-amz-date": [
-            "20260802T161047Z"
+            "20260802T165057Z"
           ]
         },
         "method": "HEAD",
@@ -251,13 +251,13 @@
             "application/xml"
           ],
           "date": [
-            "Sun, 02 Aug 2026 16:10:47 GMT"
+            "Sun, 02 Aug 2026 16:50:57 GMT"
           ],
           "strict-transport-security": [
             "max-age=63072000"
           ],
           "x-amz-request-id": [
-            "tx0000071f33a60e730402a-006a6f6c07-31227082-fsn1-prod1-ceph5"
+            "tx00000e2fe0326990d5799-006a6f7571-31570f14-fsn1-prod1-ceph5"
           ],
           "x-debug-bucket": [
             "spex-story968-criterion8013-prod"
@@ -267,7 +267,7 @@
       }
     },
     {
-      "recorded_at": "2026-08-02T16:10:48.381846Z",
+      "recorded_at": "2026-08-02T16:50:57.860951Z",
       "request": {
         "body": "",
         "body_type": "text",
@@ -285,7 +285,62 @@
             "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
           ],
           "x-amz-date": [
-            "20260802T161048Z"
+            "20260802T165057Z"
+          ]
+        },
+        "method": "HEAD",
+        "query_string": "",
+        "uri": "https://fsn1.your-objectstorage.com/spex-story968-criterion8013-prod/"
+      },
+      "response": {
+        "body": "",
+        "body_type": "text",
+        "headers": {
+          "accept-ranges": [
+            "bytes"
+          ],
+          "content-length": [
+            "284"
+          ],
+          "content-type": [
+            "application/xml"
+          ],
+          "date": [
+            "Sun, 02 Aug 2026 16:50:57 GMT"
+          ],
+          "strict-transport-security": [
+            "max-age=63072000"
+          ],
+          "x-amz-request-id": [
+            "tx000002ba3056188e122bd-006a6f7571-2ad3dc80-fsn1-prod1-ceph5"
+          ],
+          "x-debug-bucket": [
+            "spex-story968-criterion8013-prod"
+          ]
+        },
+        "status": 404
+      }
+    },
+    {
+      "recorded_at": "2026-08-02T16:50:58.491946Z",
+      "request": {
+        "body": "",
+        "body_type": "text",
+        "headers": {
+          "accept-encoding": [
+            "gzip"
+          ],
+          "host": [
+            "fsn1.your-objectstorage.com"
+          ],
+          "user-agent": [
+            "req/0.5.17"
+          ],
+          "x-amz-content-sha256": [
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          ],
+          "x-amz-date": [
+            "20260802T165058Z"
           ]
         },
         "method": "HEAD",
@@ -300,13 +355,13 @@
             "0"
           ],
           "date": [
-            "Sun, 02 Aug 2026 16:10:48 GMT"
+            "Sun, 02 Aug 2026 16:50:58 GMT"
           ],
           "strict-transport-security": [
             "max-age=63072000"
           ],
           "x-amz-request-id": [
-            "tx00000ee8fcabc0a52952e-006a6f6c08-2f240b76-fsn1-prod1-ceph5"
+            "tx00000f467fb3e5ba36866-006a6f7572-2dae5bae-fsn1-prod1-ceph5"
           ],
           "x-debug-bucket": [
             "spex-story968-criterion8013-prod"
@@ -337,7 +392,7 @@
       }
     },
     {
-      "recorded_at": "2026-08-02T16:10:49.036246Z",
+      "recorded_at": "2026-08-02T16:50:59.070095Z",
       "request": {
         "body": "<CreateBucketConfiguration xmlns=\"http://s3.amazonaws.com/doc/2006-03-01/\">\n  <LocationConstraint>fsn1</LocationConstraint>\n</CreateBucketConfiguration>\n",
         "body_type": "text",
@@ -358,7 +413,7 @@
             "d0247a684612d2f8a0dfd054cfbb39cf3098c94a37844aed8fbe62d39e583230"
           ],
           "x-amz-date": [
-            "20260802T161048Z"
+            "20260802T165058Z"
           ]
         },
         "method": "PUT",
@@ -373,7 +428,7 @@
             "0"
           ],
           "date": [
-            "Sun, 02 Aug 2026 16:10:49 GMT"
+            "Sun, 02 Aug 2026 16:50:59 GMT"
           ],
           "location": [
             "/spex-story968-criterion8013-uat"
@@ -392,7 +447,7 @@
       }
     },
     {
-      "recorded_at": "2026-08-02T16:10:49.157947Z",
+      "recorded_at": "2026-08-02T16:50:59.190653Z",
       "request": {
         "body": "",
         "body_type": "text",
@@ -410,7 +465,7 @@
             "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
           ],
           "x-amz-date": [
-            "20260802T161049Z"
+            "20260802T165059Z"
           ]
         },
         "method": "HEAD",
@@ -431,13 +486,13 @@
             "application/xml"
           ],
           "date": [
-            "Sun, 02 Aug 2026 16:10:49 GMT"
+            "Sun, 02 Aug 2026 16:50:59 GMT"
           ],
           "strict-transport-security": [
             "max-age=63072000"
           ],
           "x-amz-request-id": [
-            "tx000008565712ff8409c3f-006a6f6c09-2ad3dc80-fsn1-prod1-ceph5"
+            "tx000000077d31673a7887c-006a6f7573-31102ad0-fsn1-prod1-ceph5"
           ],
           "x-debug-bucket": [
             "spex-story968-criterion8013-uat"
@@ -447,7 +502,7 @@
       }
     },
     {
-      "recorded_at": "2026-08-02T16:10:49.783421Z",
+      "recorded_at": "2026-08-02T16:50:59.817317Z",
       "request": {
         "body": "",
         "body_type": "text",
@@ -465,62 +520,7 @@
             "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
           ],
           "x-amz-date": [
-            "20260802T161049Z"
-          ]
-        },
-        "method": "HEAD",
-        "query_string": "",
-        "uri": "https://fsn1.your-objectstorage.com/spex-story968-criterion8013-uat/"
-      },
-      "response": {
-        "body": "",
-        "body_type": "text",
-        "headers": {
-          "accept-ranges": [
-            "bytes"
-          ],
-          "content-length": [
-            "283"
-          ],
-          "content-type": [
-            "application/xml"
-          ],
-          "date": [
-            "Sun, 02 Aug 2026 16:10:49 GMT"
-          ],
-          "strict-transport-security": [
-            "max-age=63072000"
-          ],
-          "x-amz-request-id": [
-            "tx00000876346eff001a7ca-006a6f6c09-30eb41e1-fsn1-prod1-ceph5"
-          ],
-          "x-debug-bucket": [
-            "spex-story968-criterion8013-uat"
-          ]
-        },
-        "status": 404
-      }
-    },
-    {
-      "recorded_at": "2026-08-02T16:10:50.411057Z",
-      "request": {
-        "body": "",
-        "body_type": "text",
-        "headers": {
-          "accept-encoding": [
-            "gzip"
-          ],
-          "host": [
-            "fsn1.your-objectstorage.com"
-          ],
-          "user-agent": [
-            "req/0.5.17"
-          ],
-          "x-amz-content-sha256": [
-            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
-          ],
-          "x-amz-date": [
-            "20260802T161050Z"
+            "20260802T165059Z"
           ]
         },
         "method": "HEAD",
@@ -535,13 +535,13 @@
             "0"
           ],
           "date": [
-            "Sun, 02 Aug 2026 16:10:50 GMT"
+            "Sun, 02 Aug 2026 16:50:59 GMT"
           ],
           "strict-transport-security": [
             "max-age=63072000"
           ],
           "x-amz-request-id": [
-            "tx00000917d50062e2e9482-006a6f6c0a-3035abfc-fsn1-prod1-ceph5"
+            "tx00000affad4af3959c948-006a6f7573-311b81e5-fsn1-prod1-ceph5"
           ],
           "x-debug-bucket": [
             "spex-story968-criterion8013-uat"

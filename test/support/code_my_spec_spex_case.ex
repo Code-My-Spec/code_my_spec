@@ -246,6 +246,16 @@ defmodule CodeMySpecSpex.Case do
   Criteria that assert on a step being mid-run assert first and settle after.
   """
   @doc """
+  Give the project exactly these environments.
+
+  "Sam has turned production off" is a statement about which environments the
+  project has, not about a checkbox — there is no `prod` option on the setup
+  form. Steps fan out over whatever environments exist, so removing one is what
+  turning it off means.
+  """
+  def only_environments(scope, names), do: Fixtures.set_environments(scope, names)
+
+  @doc """
   Remove the repository this spex creates, when a harness token allows it.
 
   The app's own grant deliberately cannot delete repositories — see
