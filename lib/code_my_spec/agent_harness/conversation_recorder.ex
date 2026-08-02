@@ -104,11 +104,16 @@ defmodule CodeMySpec.AgentHarness.ConversationRecorder do
   or `{:error, reason}` if the conversation or a message could not be written.
   The caller is expected to ignore the error — see the moduledoc.
   """
-  @spec record_turn(String.t(), String.t(), String.t(), map(), map()) ::
+  @spec record_turn(String.t(), String.t(), String.t(), map(), map(), String.t()) ::
           :ok | {:error, term()}
-  def record_turn(account_id, project_id, session_external_id, request, response) do
-    agent_role = agent_role(request)
-
+  def record_turn(
+        account_id,
+        project_id,
+        session_external_id,
+        request,
+        response,
+        agent_role \\ "main"
+      ) do
     with {:ok, conversation} <-
            Conversations.find_or_create_agent_conversation(
              account_id,
@@ -196,16 +201,6 @@ defmodule CodeMySpec.AgentHarness.ConversationRecorder do
   end
 
   def request_text(_request), do: nil
-
-  # A sub-agent's work is distinguishable from its parent's (8172). Claude Code
-  # names the spawned agent in the system prompt rather than in a field, so the
-  # role is read from there and falls back to the main agent.
-  @doc false
-  @spec agent_role(map()) :: String.t()
-  def agent_role(%{"metadata" => %{"agent_role" => role}}) when is_binary(role) and role != "",
-    do: role
-
-  def agent_role(_request), do: "main"
 
   defp join([]), do: nil
   defp join(parts), do: Enum.join(parts, "\n")

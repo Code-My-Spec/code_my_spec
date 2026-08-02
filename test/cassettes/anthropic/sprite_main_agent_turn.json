@@ -1,0 +1,156 @@
+{
+  "interactions": [
+    {
+      "recorded_at": "2026-08-02T20:06:53.260700Z",
+      "request": {
+        "body_json": {
+          "max_tokens": 64,
+          "messages": [
+            {
+              "content": "delegate the QA pass",
+              "role": "user"
+            }
+          ],
+          "model": "claude-opus-5"
+        },
+        "body_type": "json",
+        "headers": {
+          "accept": [
+            "application/json"
+          ],
+          "accept-encoding": [
+            "gzip"
+          ],
+          "anthropic-version": [
+            "2023-06-01"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "user-agent": [
+            "req/0.5.17"
+          ]
+        },
+        "method": "POST",
+        "query_string": "",
+        "uri": "https://api.anthropic.com/v1/messages"
+      },
+      "response": {
+        "body_json": {
+          "content": [
+            {
+              "signature": "CAIS0gMKhwEIEBgCKkDJwmbx9ONd682rfrHl0pUj/kYhBVnWZI7buHVyrbfvYyK0iwFAcFKkWosxd9KAu3M+KokmHKqlWhJoFcTEG20uMg1jbGF1ZGUtb3B1cy01OAFCCHRoaW5raW5nWiQxZmM2MmQ2Yi0yMjljLTQ2ODEtYWEyNC01NzE1NTdhMjYwMjQSDAHOHrDRnnpZnZ9K9hoMZT9V5c3ravxpJwlPIjDkSY7EMJFNAVrQKwOWn+p0jPSh4k4jj0DuPcfbcr7Fk5qlXgrmS0ZyHJHZGc08I5wq9wH+nvcZNh02KvPUkqqgBb660EazEzNgasOqlPgjbfO9RYS34hv3iTKvWUUdyJJ4HJ/4klLBIn6ZK9TsB9a4rVZxDcHYhxhtPcS3fcS0nIWIDxbbR2xx9IDu/04nnSX64wIR4RFo5FDXaQAKErtHhbaaZON+fTt51YZqWe5YT3J8V0YpzizoM5Wn+AJ2g9i6syz99ZPHeoQKtlPGaIHwm/GzbaALAQvoQkp7hoHXe6tbNW5jbDYBb0PSzcNws3nxUdXISVsatsBqJ/PFvR1FS8g8dLNOx/IcdJMSw6yOAokJy6GIPBwBBEHbCBgTomQmO8WShjikOExKGAE=",
+              "thinking": "",
+              "type": "thinking"
+            }
+          ],
+          "id": "msg_011CdeXNvu7moPq543u2yuE9",
+          "model": "claude-opus-5",
+          "role": "assistant",
+          "stop_details": null,
+          "stop_reason": "max_tokens",
+          "stop_sequence": null,
+          "type": "message",
+          "usage": {
+            "cache_creation": {
+              "ephemeral_1h_input_tokens": 0,
+              "ephemeral_5m_input_tokens": 0
+            },
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 0,
+            "inference_geo": "global",
+            "input_tokens": 14,
+            "output_tokens": 64,
+            "output_tokens_details": {
+              "thinking_tokens": 64
+            },
+            "service_tier": "standard"
+          }
+        },
+        "body_type": "json",
+        "headers": {
+          "anthropic-organization-id": [
+            "1fc62d6b-229c-4681-aa24-571557a26024"
+          ],
+          "anthropic-ratelimit-input-tokens-limit": [
+            "10000000"
+          ],
+          "anthropic-ratelimit-input-tokens-remaining": [
+            "10000000"
+          ],
+          "anthropic-ratelimit-input-tokens-reset": [
+            "2026-08-02T20:06:51Z"
+          ],
+          "anthropic-ratelimit-output-tokens-limit": [
+            "2000000"
+          ],
+          "anthropic-ratelimit-output-tokens-remaining": [
+            "2000000"
+          ],
+          "anthropic-ratelimit-output-tokens-reset": [
+            "2026-08-02T20:06:53Z"
+          ],
+          "anthropic-ratelimit-requests-limit": [
+            "10000"
+          ],
+          "anthropic-ratelimit-requests-remaining": [
+            "9999"
+          ],
+          "anthropic-ratelimit-requests-reset": [
+            "2026-08-02T20:06:51Z"
+          ],
+          "anthropic-ratelimit-tokens-limit": [
+            "12000000"
+          ],
+          "anthropic-ratelimit-tokens-remaining": [
+            "12000000"
+          ],
+          "anthropic-ratelimit-tokens-reset": [
+            "2026-08-02T20:06:51Z"
+          ],
+          "cf-cache-status": [
+            "DYNAMIC"
+          ],
+          "cf-ray": [
+            "a24fb4995857db3d-YUL"
+          ],
+          "connection": [
+            "keep-alive"
+          ],
+          "content-security-policy": [
+            "default-src 'none'; frame-ancestors 'none'"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "date": [
+            "Sun, 02 Aug 2026 20:06:53 GMT"
+          ],
+          "request-id": [
+            "req_011CdeXNvQr8aiwocsxqvWDM"
+          ],
+          "server": [
+            "cloudflare"
+          ],
+          "strict-transport-security": [
+            "max-age=31536000; includeSubDomains; preload"
+          ],
+          "traceresponse": [
+            "00-c5d065401142d1661bfc7c8a1d481d23-58f0f00b33275c93-01"
+          ],
+          "transfer-encoding": [
+            "chunked"
+          ],
+          "vary": [
+            "Accept-Encoding"
+          ],
+          "x-robots-tag": [
+            "none"
+          ]
+        },
+        "status": 200
+      }
+    }
+  ],
+  "version": "2.0"
+}

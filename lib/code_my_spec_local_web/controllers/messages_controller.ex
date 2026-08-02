@@ -46,10 +46,21 @@ defmodule CodeMySpecLocalWeb.MessagesController do
         scope.active_project_id,
         session_id(conn),
         params,
-        response
+        response,
+        agent_role(conn)
       )
 
     :ok
+  end
+
+  # Claude Code spawns a sub-agent as a separate process with its own turns, and
+  # the sprite tags them on the way out. Without it a QA sub-agent's work merges
+  # into its parent's and the conversation reads as one confused agent (8172).
+  defp agent_role(conn) do
+    case get_req_header(conn, "x-agent-role") do
+      [role | _] when role != "" -> role
+      _ -> "main"
+    end
   end
 
   # One conversation per agent session. Falls back to the project so a turn

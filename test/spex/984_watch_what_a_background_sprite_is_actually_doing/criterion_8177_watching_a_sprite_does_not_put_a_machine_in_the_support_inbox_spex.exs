@@ -72,7 +72,12 @@ defmodule CodeMySpecSpex.Story984.Criterion8177Spex do
     end
   end
 
-  @cassette_opts [cassette_dir: "test/cassettes/anthropic"]
+  # The credential never lands in the cassette — recording sends a real key
+  # and the file is committed.
+  @cassette_opts [
+    cassette_dir: "test/cassettes/anthropic",
+    filter_request_headers: ["authorization", "x-api-key"]
+  ]
 
   # The cassette hands back a plug; the recorder picks it up from its own
   # app config, the same seam Ads uses. Restored afterwards so one spec
