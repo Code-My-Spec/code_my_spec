@@ -58,7 +58,7 @@ defmodule CodeMySpecLocalWeb.InitLive do
 
       <div :if={@step}>
         <div class="mb-4">
-          <.link navigate={~p"/projects/#{@slug}/init"} class="btn btn-ghost btn-sm gap-1">
+          <.link navigate={~p"/app/projects/#{@slug}/init"} class="btn btn-ghost btn-sm gap-1">
             ← Back to checklist
           </.link>
         </div>
@@ -122,7 +122,7 @@ defmodule CodeMySpecLocalWeb.InitLive do
               <span :if={!step.done} class="badge badge-ghost badge-sm">○</span>
               <.link
                 :if={!step.done}
-                navigate={~p"/projects/#{@slug}/init/#{step.id}"}
+                navigate={~p"/app/projects/#{@slug}/init/#{step.id}"}
                 class="link link-primary flex-1"
               >
                 {step.name}

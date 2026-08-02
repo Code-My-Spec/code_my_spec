@@ -174,7 +174,7 @@ defmodule CodeMySpecLocalWeb.SessionsLive do
           <tr
             :for={session <- @sessions}
             class="hover cursor-pointer"
-            phx-click={JS.navigate(~p"/projects/#{slug(@project)}/sessions/#{session.id}")}
+            phx-click={JS.navigate(~p"/app/projects/#{slug(@project)}/sessions/#{session.id}")}
           >
             <td><span class={"badge badge-sm #{status_class(session.status)}"}>{session.status}</span></td>
             <td class="font-medium">{format_type(session.type)}</td>
@@ -194,7 +194,7 @@ defmodule CodeMySpecLocalWeb.SessionsLive do
   defp render_show(assigns) do
     ~H"""
     <div class="mb-4">
-      <.link navigate={~p"/projects/#{slug(@project)}/sessions"} class="btn btn-ghost btn-sm gap-1">
+      <.link navigate={~p"/app/projects/#{slug(@project)}/sessions"} class="btn btn-ghost btn-sm gap-1">
         ← Sessions
       </.link>
     </div>
@@ -274,7 +274,7 @@ defmodule CodeMySpecLocalWeb.SessionsLive do
           <tr
             :for={task <- @session.tasks || []}
             class="hover cursor-pointer"
-            phx-click={JS.navigate(~p"/projects/#{slug(@project)}/sessions/#{@session.id}/tasks/#{task.id}")}
+            phx-click={JS.navigate(~p"/app/projects/#{slug(@project)}/sessions/#{@session.id}/tasks/#{task.id}")}
           >
             <td><span class={"badge badge-sm #{status_class(task.status)}"}>{task.status}</span></td>
             <td class="font-medium">{format_type(task.session_type)}</td>
@@ -299,7 +299,7 @@ defmodule CodeMySpecLocalWeb.SessionsLive do
   defp render_task(assigns) do
     ~H"""
     <div class="mb-4">
-      <.link navigate={~p"/projects/#{slug(@project)}/sessions/#{@session.id}"} class="btn btn-ghost btn-sm gap-1">
+      <.link navigate={~p"/app/projects/#{slug(@project)}/sessions/#{@session.id}"} class="btn btn-ghost btn-sm gap-1">
         ← Session
       </.link>
     </div>

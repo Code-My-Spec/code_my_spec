@@ -1,31 +1,22 @@
-defmodule CodeMySpecLocalWeb.StoryLive.Index do
-  use CodeMySpecLocalWeb, :live_view
+defmodule CodeMySpecWeb.StoryLive.Index do
+  use CodeMySpecWeb, :live_view
 
-  alias CodeMySpec.Projects
   alias CodeMySpec.Stories
   alias CodeMySpec.Stories.Markdown
-  alias CodeMySpec.Users.Scope
 
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app
-      flash={@flash}
-      projects={@projects}
-      project={@project}
-      section={:stories}
-      page_title={Map.get(assigns, :page_title, "Stories")}
-    >
       <div :if={@project} role="tablist" class="tabs tabs-bordered mb-6">
         <.link
-          navigate={~p"/projects/#{@slug}/stories"}
+          navigate={path(@socket, ~p"/app/projects/#{@slug}/stories")}
           role="tab"
           class={["tab", "tab-active"]}
         >
           Stories
         </.link>
         <.link
-          navigate={~p"/projects/#{@slug}/stories/scheduler"}
+          navigate={path(@socket, ~p"/app/projects/#{@slug}/stories/scheduler")}
           role="tab"
           class="tab"
         >
@@ -50,10 +41,10 @@ defmodule CodeMySpecLocalWeb.StoryLive.Index do
             <button phx-click="export_markdown" class="btn btn-sm btn-outline">
               <.icon name="hero-arrow-down-tray" /> Export
             </button>
-            <.button navigate={~p"/projects/#{@slug}/stories/import"} class="btn btn-sm btn-outline">
+            <.button navigate={path(@socket, ~p"/app/projects/#{@slug}/stories/import")} class="btn btn-sm btn-outline">
               <.icon name="hero-arrow-up-tray" /> Import
             </.button>
-            <.button navigate={~p"/projects/#{@slug}/stories/new"} class="btn btn-sm">
+            <.button navigate={path(@socket, ~p"/app/projects/#{@slug}/stories/new")} class="btn btn-sm">
               <.icon name="hero-plus" /> New Story
             </.button>
           </div>
@@ -70,7 +61,7 @@ defmodule CodeMySpecLocalWeb.StoryLive.Index do
             <div class="flex items-start justify-between mb-4">
               <h2
                 class="card-title text-2xl cursor-pointer hover:text-primary flex-1"
-                phx-click={JS.navigate(~p"/projects/#{@slug}/stories/#{story.id}")}
+                phx-click={JS.navigate(path(@socket, ~p"/app/projects/#{@slug}/stories/#{story.id}"))}
               >
                 {story.title}
               </h2>
@@ -187,18 +178,18 @@ defmodule CodeMySpecLocalWeb.StoryLive.Index do
             <div class="flex items-center justify-between">
               <div class="card-actions">
                 <.link
-                  navigate={~p"/projects/#{@slug}/stories/#{story.id}/three-amigos"}
+                  navigate={path(@socket, ~p"/app/projects/#{@slug}/stories/#{story.id}/three-amigos")}
                   class="btn btn-sm btn-outline"
                 >
                   <.icon name="hero-squares-2x2" class="size-4" /> Three Amigos
                 </.link>
                 <.link
-                  navigate={~p"/projects/#{@slug}/stories/#{story.id}/gherkin"}
+                  navigate={path(@socket, ~p"/app/projects/#{@slug}/stories/#{story.id}/gherkin")}
                   class="btn btn-sm btn-outline"
                 >
                   <.icon name="hero-document-text" class="size-4" /> Gherkin
                 </.link>
-                <.link navigate={~p"/projects/#{@slug}/stories/#{story.id}/edit"} class="btn btn-sm btn-outline">
+                <.link navigate={path(@socket, ~p"/app/projects/#{@slug}/stories/#{story.id}/edit")} class="btn btn-sm btn-outline">
                   Edit
                 </.link>
                 <button
@@ -220,18 +211,15 @@ defmodule CodeMySpecLocalWeb.StoryLive.Index do
           </div>
         </div>
       </div>
-    </Layouts.app>
     """
   end
 
   @impl true
   def mount(_params, _session, socket) do
-    projects = Projects.list_local_projects()
-
     {:ok,
      socket
      |> assign(
-       projects: projects,
+       section: :stories,
        project: nil,
        scope: nil,
        slug: nil,
@@ -244,21 +232,14 @@ defmodule CodeMySpecLocalWeb.StoryLive.Index do
   end
 
   @impl true
-  def handle_params(%{"project_name" => name}, _uri, socket) do
-    case load_project_and_scope(name) do
-      {:ok, project, scope} ->
-        socket =
-          socket
-          |> assign(project: project, scope: scope, slug: project_slug(project), error: nil)
-          |> maybe_subscribe(scope)
-          |> stream(:stories, Stories.list_project_stories_by_priority(scope), reset: true)
-
-        {:noreply, socket}
-
-      {:error, msg} ->
-        {:noreply, assign(socket, error: "#{msg}")}
-    end
+  def handle_params(_params, _uri, %{assigns: %{scope: %{} = scope}} = socket) do
+    {:noreply,
+     socket
+     |> maybe_subscribe(scope)
+     |> stream(:stories, Stories.list_project_stories_by_priority(scope), reset: true)}
   end
+
+  def handle_params(_params, _uri, socket), do: {:noreply, socket}
 
   defp maybe_subscribe(%{assigns: %{subscribed?: true}} = socket, _scope), do: socket
 
@@ -362,19 +343,6 @@ defmodule CodeMySpecLocalWeb.StoryLive.Index do
 
   def handle_info(_msg, socket), do: {:noreply, socket}
 
-  defp load_project_and_scope(name) do
-    with {:ok, project} <- Projects.get_project_by_name(name),
-         {:ok, scope} <- Scope.for_local_project(project) do
-      {:ok, project, scope}
-    end
-  end
-
-  defp project_slug(project) do
-    (project.name || "project")
-    |> String.downcase()
-    |> String.replace(~r/[^a-z0-9]+/, "-")
-    |> String.trim("-")
-  end
 
   defp parse_acceptance_criteria(nil), do: []
   defp parse_acceptance_criteria(""), do: []

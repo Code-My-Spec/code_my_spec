@@ -426,7 +426,7 @@ defmodule CodeMySpecLocalWeb.FilesLive do
     ~H"""
     <.link
       :if={@file.component}
-      navigate={~p"/projects/#{@slug}/components/#{@file.component.id}"}
+      navigate={~p"/app/projects/#{@slug}/components/#{@file.component.id}"}
       data-test="file-component-link"
       class="link link-primary text-sm"
     >

@@ -357,6 +357,31 @@ defmodule CodeMySpecWeb.Router do
       live "/projects/:id/edit", ProjectLive.Form, :edit
     end
 
+    # Portable UI — these LiveViews are mounted by CodeMySpecLocalWeb.Router
+    # at the same paths. `layout:` picks the cloud chrome, `on_mount` supplies
+    # the scope; nothing app-specific is baked into the views themselves.
+    # Same path shape as the local mount is what lets them keep plain `~p`.
+    live_session :portable,
+      layout: {CodeMySpecWeb.Layouts, :live},
+      on_mount: [
+        {CodeMySpecWeb.Live.CurrentPathHook, :default},
+        {CodeMySpecWeb.UserAuth, :require_authenticated},
+        {CodeMySpecWeb.UserAuth, :require_at_least_one_account},
+        {CodeMySpecWeb.UserAuth, :require_active_account},
+        {CodeMySpecWeb.Live.NotificationsHook, :default},
+        {CodeMySpecWeb.PortableHost, :default}
+      ] do
+      # Static segments first so they win over `:id`.
+      live "/projects/:project_id/stories", StoryLive.Index, :index
+      live "/projects/:project_id/stories/scheduler", StoryLive.Scheduler, :index
+      live "/projects/:project_id/stories/new", StoryLive.Form, :new
+      live "/projects/:project_id/stories/import", StoryLive.Import, :import
+      live "/projects/:project_id/stories/:id", StoryLive.Show, :show
+      live "/projects/:project_id/stories/:id/edit", StoryLive.Form, :edit
+      live "/projects/:project_id/stories/:id/three-amigos", StoryLive.ThreeAmigos
+      live "/projects/:project_id/stories/:id/gherkin", StoryLive.Gherkin
+    end
+
     live_session :require_active_project,
       on_mount: [
         {CodeMySpecWeb.Live.CurrentPathHook, :default},

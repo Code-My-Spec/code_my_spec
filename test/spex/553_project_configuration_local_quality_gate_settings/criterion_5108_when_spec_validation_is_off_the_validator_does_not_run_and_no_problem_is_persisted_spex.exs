@@ -73,7 +73,7 @@ defmodule CodeMySpecSpex.Story553.Criterion5108Spex do
         {:ok, problems_live, _html} =
           live(
             context.conn,
-            ~p"/projects/#{context.project.name}/problems?filter=spec_validation"
+            ~p"/app/projects/#{context.project.name}/problems?filter=spec_validation"
           )
 
         html = render(problems_live)

@@ -8,6 +8,8 @@
 @source "../css";
 @source "../js";
 @source "../../lib/code_my_spec_local_web";
+/* Story LiveViews are shared with the cloud app and live in its tree. */
+@source "../../lib/code_my_spec_web/live/story_live";
 
 @plugin "@tailwindcss/typography";
 @plugin "../vendor/heroicons";
@@ -449,6 +451,27 @@
         letter-spacing: 0.22em;
         text-transform: uppercase;
         color: var(--color-cms-red);
+    }
+
+    /* Component form of the same motif — see CoreComponents.eyebrow/1. The
+       cloud bundle defines .cms-eyebrow too, with its own treatment; that is
+       how one shared LiveView renders native in both zones. */
+    .cms-eyebrow {
+        display: flex;
+        align-items: center;
+        gap: 0.5em;
+        font-family: var(--font-mono);
+        font-size: 10px;
+        font-weight: 600;
+        letter-spacing: 0.22em;
+        text-transform: uppercase;
+        color: var(--color-cms-red);
+    }
+    .cms-eyebrow-muted {
+        color: var(--color-cms-text-dim);
+    }
+    .cms-eyebrow-warn {
+        color: var(--color-cms-amber, #ffb84a);
     }
 
     .cms-onboarding-heading {

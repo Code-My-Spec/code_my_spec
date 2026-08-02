@@ -41,7 +41,7 @@ defmodule CodeMySpecLocalWeb.PersonasLive.Show do
              socket
              |> assign(project: project, slug: project_slug(project), error: nil)
              |> put_flash(:error, "Persona not found")
-             |> push_navigate(to: ~p"/projects/#{project_slug(project)}/personas")}
+             |> push_navigate(to: ~p"/app/projects/#{project_slug(project)}/personas")}
 
           persona ->
             socket =
@@ -91,7 +91,7 @@ defmodule CodeMySpecLocalWeb.PersonasLive.Show do
          socket
          |> put_flash(:info, "Story linked")
          |> load_state(scope, persona)
-         |> push_patch(to: ~p"/projects/#{socket.assigns.slug}/personas/#{persona.slug}")}
+         |> push_patch(to: ~p"/app/projects/#{socket.assigns.slug}/personas/#{persona.slug}")}
 
       {:error, reason} ->
         {:noreply, put_flash(socket, :error, "Could not link: #{inspect(reason)}")}
@@ -123,7 +123,7 @@ defmodule CodeMySpecLocalWeb.PersonasLive.Show do
     {:noreply,
      socket
      |> load_state(socket.assigns.scope, persona)
-     |> push_patch(to: ~p"/projects/#{socket.assigns.slug}/personas/#{persona.slug}")}
+     |> push_patch(to: ~p"/app/projects/#{socket.assigns.slug}/personas/#{persona.slug}")}
   end
 
   def handle_info(_msg, socket), do: {:noreply, socket}
@@ -158,17 +158,17 @@ defmodule CodeMySpecLocalWeb.PersonasLive.Show do
             {@persona.headline || "No headline"}
           </:subtitle>
           <:actions>
-            <.button navigate={~p"/projects/#{@slug}/personas"} class="btn btn-ghost btn-sm">
+            <.button navigate={~p"/app/projects/#{@slug}/personas"} class="btn btn-ghost btn-sm">
               <.icon name="hero-arrow-left" /> Back
             </.button>
             <.button
-              patch={~p"/projects/#{@slug}/personas/#{@persona.slug}/edit"}
+              patch={~p"/app/projects/#{@slug}/personas/#{@persona.slug}/edit"}
               class="btn btn-primary btn-sm"
             >
               <.icon name="hero-pencil-square" /> Edit
             </.button>
             <.button
-              patch={~p"/projects/#{@slug}/personas/#{@persona.slug}/link"}
+              patch={~p"/app/projects/#{@slug}/personas/#{@persona.slug}/link"}
               class="btn btn-secondary btn-sm"
             >
               <.icon name="hero-link" /> Link to story
@@ -251,11 +251,11 @@ defmodule CodeMySpecLocalWeb.PersonasLive.Show do
               action={:edit}
               persona={@persona}
               scope={@scope}
-              return_to={~p"/projects/#{@slug}/personas/#{@persona.slug}"}
+              return_to={~p"/app/projects/#{@slug}/personas/#{@persona.slug}"}
             />
           </div>
           <form method="dialog" class="modal-backdrop">
-            <button phx-click={JS.patch(~p"/projects/#{@slug}/personas/#{@persona.slug}")}>
+            <button phx-click={JS.patch(~p"/app/projects/#{@slug}/personas/#{@persona.slug}")}>
               close
             </button>
           </form>
@@ -302,7 +302,7 @@ defmodule CodeMySpecLocalWeb.PersonasLive.Show do
             </ul>
           </div>
           <form method="dialog" class="modal-backdrop">
-            <button phx-click={JS.patch(~p"/projects/#{@slug}/personas/#{@persona.slug}")}>
+            <button phx-click={JS.patch(~p"/app/projects/#{@slug}/personas/#{@persona.slug}")}>
               close
             </button>
           </form>

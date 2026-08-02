@@ -1,21 +1,12 @@
-defmodule CodeMySpecLocalWeb.StoryLive.Import do
-  use CodeMySpecLocalWeb, :live_view
+defmodule CodeMySpecWeb.StoryLive.Import do
+  use CodeMySpecWeb, :live_view
 
-  alias CodeMySpec.Projects
   alias CodeMySpec.Stories
   alias CodeMySpec.Stories.Markdown
-  alias CodeMySpec.Users.Scope
 
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app
-      flash={@flash}
-      projects={@projects}
-      project={@project}
-      section={:stories}
-      page_title="Import Stories"
-    >
       <div :if={@error} role="alert" class="alert alert-error">
         <span>{@error}</span>
       </div>
@@ -94,24 +85,21 @@ defmodule CodeMySpecLocalWeb.StoryLive.Import do
             <.button type="submit" phx-disable-with="Importing...">
               Import Stories
             </.button>
-            <.button navigate={~p"/projects/#{@slug}/stories"} class="btn btn-secondary">
+            <.button navigate={path(@socket, ~p"/app/projects/#{@slug}/stories")} class="btn btn-secondary">
               Cancel
             </.button>
           </footer>
         </form>
       </div>
-    </Layouts.app>
     """
   end
 
   @impl true
   def mount(_params, _session, socket) do
-    projects = Projects.list_local_projects()
-
     {:ok,
      socket
      |> assign(
-       projects: projects,
+       section: :stories,
        project: nil,
        scope: nil,
        slug: nil,
@@ -124,23 +112,6 @@ defmodule CodeMySpecLocalWeb.StoryLive.Import do
        max_entries: 1,
        max_file_size: 1_000_000
      )}
-  end
-
-  @impl true
-  def handle_params(%{"project_name" => name}, _uri, socket) do
-    case load_project_and_scope(name) do
-      {:ok, project, scope} ->
-        {:noreply,
-         assign(socket,
-           project: project,
-           scope: scope,
-           slug: project_slug(project),
-           error: nil
-         )}
-
-      {:error, msg} ->
-        {:noreply, assign(socket, error: "#{msg}")}
-    end
   end
 
   @impl true
@@ -199,7 +170,7 @@ defmodule CodeMySpecLocalWeb.StoryLive.Import do
         {:noreply,
          socket
          |> put_flash(:info, "Successfully imported #{count} stories")
-         |> push_navigate(to: ~p"/projects/#{socket.assigns.slug}/stories")}
+         |> push_navigate(to: path(socket, ~p"/app/projects/#{socket.assigns.slug}/stories"))}
 
       false ->
         {:noreply, put_flash(socket, :error, "Failed to import some stories")}
@@ -216,19 +187,6 @@ defmodule CodeMySpecLocalWeb.StoryLive.Import do
   defp error_to_string(:too_many_files), do: "Only one file allowed"
   defp error_to_string(err), do: "Upload error: #{inspect(err)}"
 
-  defp load_project_and_scope(name) do
-    with {:ok, project} <- Projects.get_project_by_name(name),
-         {:ok, scope} <- Scope.for_local_project(project) do
-      {:ok, project, scope}
-    end
-  end
-
-  defp project_slug(project) do
-    (project.name || "project")
-    |> String.downcase()
-    |> String.replace(~r/[^a-z0-9]+/, "-")
-    |> String.trim("-")
-  end
 
   defp markdown_placeholder_content() do
     "## Story Title\n\nStory description here.\n\n**Acceptance Criteria**\n- Criterion 1\n- Criterion 2\n\n## Another Story\n\nAnother story description."

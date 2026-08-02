@@ -1,31 +1,22 @@
-defmodule CodeMySpecLocalWeb.StoryLive.Form do
-  use CodeMySpecLocalWeb, :live_view
+defmodule CodeMySpecWeb.StoryLive.Form do
+  use CodeMySpecWeb, :live_view
 
   alias CodeMySpec.AcceptanceCriteria.Criterion
-  alias CodeMySpec.Projects
   alias CodeMySpec.Stories
   alias CodeMySpec.Stories.Story
-  alias CodeMySpec.Users.Scope
 
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app
-      flash={@flash}
-      projects={@projects}
-      project={@project}
-      section={:stories}
-      page_title={@page_title}
-    >
       <div :if={@error} role="alert" class="alert alert-error">
         <span>{@error}</span>
       </div>
 
       <div :if={!@error && @form} class="flex flex-col gap-6">
         <div data-test="story-form-header">
-          <div class="cms-onboarding-eyebrow mb-2">
-            {if @live_action == :new, do: "// new story", else: "// edit story"}
-          </div>
+          <.section_eyebrow class="mb-2">
+            {if @live_action == :new, do: "new story", else: "edit story"}
+          </.section_eyebrow>
           <h1 class="cms-onboarding-heading">{@page_title}</h1>
           <p :if={@live_action == :new} class="cms-onboarding-sub mt-2">
             Write the behaviour you want the harness to deliver. The agent
@@ -48,9 +39,7 @@ defmodule CodeMySpecLocalWeb.StoryLive.Form do
           class="flex flex-col gap-1 border-l-2 pl-4"
           style="border-color: var(--color-cms-amber, #ffb84a);"
         >
-          <div class="cms-onboarding-eyebrow" style="color: var(--color-cms-amber, #ffb84a);">
-            // or be interviewed
-          </div>
+          <.section_eyebrow tone="warn">or be interviewed</.section_eyebrow>
           <p class="text-sm" style="color: var(--color-cms-text-dim);">
             Paste <code class="kbd kbd-sm">/codemyspec:product interview</code>
             into Claude Code — the agent will ask questions and draft the story for you.
@@ -143,23 +132,20 @@ defmodule CodeMySpecLocalWeb.StoryLive.Form do
             <.button phx-disable-with="Saving...">
               <span>▸</span> Save Story
             </.button>
-            <.button navigate={return_path(@slug, @return_to, @story)} class="btn-ghost">
+            <.button navigate={return_path(@socket, @slug, @return_to, @story)} class="btn-ghost">
               Cancel
             </.button>
           </footer>
         </.form>
       </div>
-    </Layouts.app>
     """
   end
 
   @impl true
   def mount(_params, _session, socket) do
-    projects = Projects.list_local_projects()
-
     {:ok,
      assign(socket,
-       projects: projects,
+       section: :stories,
        project: nil,
        scope: nil,
        slug: nil,
@@ -172,26 +158,14 @@ defmodule CodeMySpecLocalWeb.StoryLive.Form do
   end
 
   @impl true
-  def handle_params(params, _uri, socket) do
-    case load_project_and_scope(params["project_name"]) do
-      {:ok, project, scope} ->
-        socket =
-          socket
-          |> assign(
-            project: project,
-            scope: scope,
-            slug: project_slug(project),
-            return_to: return_to(params["return_to"]),
-            error: nil
-          )
-          |> apply_action(socket.assigns.live_action, params, scope)
-
-        {:noreply, socket}
-
-      {:error, msg} ->
-        {:noreply, assign(socket, error: "#{msg}")}
-    end
+  def handle_params(params, _uri, %{assigns: %{scope: %{} = scope}} = socket) do
+    {:noreply,
+     socket
+     |> assign(return_to: return_to(params["return_to"]))
+     |> apply_action(socket.assigns.live_action, params, scope)}
   end
+
+  def handle_params(_params, _uri, socket), do: {:noreply, socket}
 
   defp return_to("show"), do: "show"
   defp return_to(_), do: "index"
@@ -267,7 +241,7 @@ defmodule CodeMySpecLocalWeb.StoryLive.Form do
         {:noreply,
          socket
          |> put_flash(:info, "Story updated successfully")
-         |> push_navigate(to: return_path(socket.assigns.slug, socket.assigns.return_to, story))}
+         |> push_navigate(to: return_path(socket, socket.assigns.slug, socket.assigns.return_to, story))}
 
       {:error, %Ecto.Changeset{} = changeset} ->
         {:noreply, assign(socket, form: to_form(changeset))}
@@ -280,27 +254,17 @@ defmodule CodeMySpecLocalWeb.StoryLive.Form do
         {:noreply,
          socket
          |> put_flash(:info, "Story created successfully")
-         |> push_navigate(to: return_path(socket.assigns.slug, socket.assigns.return_to, story))}
+         |> push_navigate(to: return_path(socket, socket.assigns.slug, socket.assigns.return_to, story))}
 
       {:error, %Ecto.Changeset{} = changeset} ->
         {:noreply, assign(socket, form: to_form(changeset))}
     end
   end
 
-  defp return_path(slug, "index", _story), do: ~p"/projects/#{slug}/stories"
-  defp return_path(slug, "show", story), do: ~p"/projects/#{slug}/stories/#{story.id}"
+  defp return_path(ctx, slug, "index", _story),
+    do: path(ctx, ~p"/app/projects/#{slug}/stories")
 
-  defp load_project_and_scope(name) do
-    with {:ok, project} <- Projects.get_project_by_name(name),
-         {:ok, scope} <- Scope.for_local_project(project) do
-      {:ok, project, scope}
-    end
-  end
+  defp return_path(ctx, slug, "show", story),
+    do: path(ctx, ~p"/app/projects/#{slug}/stories/#{story.id}")
 
-  defp project_slug(project) do
-    (project.name || "project")
-    |> String.downcase()
-    |> String.replace(~r/[^a-z0-9]+/, "-")
-    |> String.trim("-")
-  end
 end

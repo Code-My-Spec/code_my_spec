@@ -90,6 +90,25 @@ defmodule CodeMySpecWeb do
     end
   end
 
+  @doc """
+  The component library this build imports as `<.button>`, `<.header>`, and
+  friends.
+
+  Both web apps share one component vocabulary; what differs between them is
+  CSS, not markup, so the default serves the local terminal zone and the cloud
+  zone equally well. The seam is here for when that stops being true — point
+  `:core_components` at another module and this build's views pick it up, with
+  no LiveView changes. A replacement must cover the same surface, since every
+  `use CodeMySpecWeb, :html` caller imports it.
+  """
+  @core_components Application.compile_env(
+                     :code_my_spec,
+                     :core_components,
+                     CodeMySpecWeb.CoreComponents
+                   )
+
+  def core_components, do: @core_components
+
   defp html_helpers do
     quote do
       # Translation
@@ -97,8 +116,8 @@ defmodule CodeMySpecWeb do
 
       # HTML escaping functionality
       import Phoenix.HTML
-      # Core UI components
-      import CodeMySpecWeb.CoreComponents
+      # Core UI components — see `CodeMySpecWeb.core_components/0`
+      import unquote(core_components())
       # Marketing-zone components (eyebrow, install_card)
       import CodeMySpecWeb.MarketingComponents
 

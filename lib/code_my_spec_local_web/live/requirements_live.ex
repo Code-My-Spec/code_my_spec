@@ -415,14 +415,14 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
 
       <div :if={@live_action in [:index, :stories] && @project} role="tablist" class="tabs tabs-bordered mb-4">
         <.link
-          patch={~p"/projects/#{project_slug(@project)}/requirements"}
+          patch={~p"/app/projects/#{project_slug(@project)}/requirements"}
           role="tab"
           class={["tab", @live_action == :index && "tab-active"]}
         >
           Project
         </.link>
         <.link
-          patch={~p"/projects/#{project_slug(@project)}/requirements/stories"}
+          patch={~p"/app/projects/#{project_slug(@project)}/requirements/stories"}
           role="tab"
           class={["tab", @live_action == :stories && "tab-active"]}
         >

@@ -68,7 +68,7 @@ defmodule CodeMySpecLocalWeb.EpicsLive.Index do
       nil ->
         socket
         |> put_flash(:error, "Epic not found")
-        |> push_patch(to: ~p"/projects/#{socket.assigns.slug}/epics")
+        |> push_patch(to: ~p"/app/projects/#{socket.assigns.slug}/epics")
 
       epic ->
         socket
@@ -280,7 +280,7 @@ defmodule CodeMySpecLocalWeb.EpicsLive.Index do
             filing a story does not release it; the release button does.
           </:subtitle>
           <:actions>
-            <.button patch={~p"/projects/#{@slug}/epics/new"} class="btn btn-primary">
+            <.button patch={~p"/app/projects/#{@slug}/epics/new"} class="btn btn-primary">
               <.icon name="hero-plus" /> New epic
             </.button>
           </:actions>
@@ -314,7 +314,7 @@ defmodule CodeMySpecLocalWeb.EpicsLive.Index do
                   </div>
                   <div class="flex items-center gap-1 shrink-0">
                     <.button
-                      patch={~p"/projects/#{@slug}/epics/#{epic.slug}/edit"}
+                      patch={~p"/app/projects/#{@slug}/epics/#{epic.slug}/edit"}
                       class="btn btn-ghost btn-xs"
                     >
                       Edit
@@ -425,11 +425,11 @@ defmodule CodeMySpecLocalWeb.EpicsLive.Index do
               action={@live_action}
               epic={@epic}
               scope={@scope}
-              return_to={~p"/projects/#{@slug}/epics"}
+              return_to={~p"/app/projects/#{@slug}/epics"}
             />
           </div>
           <form method="dialog" class="modal-backdrop">
-            <button phx-click={JS.patch(~p"/projects/#{@slug}/epics")}>close</button>
+            <button phx-click={JS.patch(~p"/app/projects/#{@slug}/epics")}>close</button>
           </form>
         </dialog>
       </div>

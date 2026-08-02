@@ -67,7 +67,7 @@ defmodule CodeMySpecLocalWeb.ProjectsLive.Index do
     case Projects.get_project_by_id(project_id) do
       %{local_path: lp} = project when is_binary(lp) ->
         slug = project_slug(project)
-        {:noreply, push_navigate(socket, to: ~p"/projects/#{slug}")}
+        {:noreply, push_navigate(socket, to: ~p"/app/projects/#{slug}")}
 
       _ ->
         # Unknown id (or known but not linked locally) — fall back to
@@ -103,13 +103,13 @@ defmodule CodeMySpecLocalWeb.ProjectsLive.Index do
             Local codebases CodeMySpec is pointed at.
           </p>
         </div>
-        <.link navigate={~p"/projects/new"} class="btn btn-primary" data-test="new-project">
+        <.link navigate={~p"/app/projects/new"} class="btn btn-primary" data-test="new-project">
           New project
         </.link>
       </div>
 
       <div :if={@projects == []} class="text-base-content/60">
-        No projects yet. <.link navigate={~p"/projects/new"} class="link">Create one</.link>.
+        No projects yet. <.link navigate={~p"/app/projects/new"} class="link">Create one</.link>.
       </div>
 
       <div :if={@projects != []} class="grid gap-4 sm:grid-cols-2">
@@ -118,14 +118,14 @@ defmodule CodeMySpecLocalWeb.ProjectsLive.Index do
           class="card bg-base-200 border border-base-300 hover:border-primary transition"
         >
           <div class="card-body">
-            <.link navigate={~p"/projects/#{project_slug(project)}"} class="hover:underline">
+            <.link navigate={~p"/app/projects/#{project_slug(project)}"} class="hover:underline">
               <h2 class="card-title">{project.name}</h2>
               <p :if={project.local_path} class="text-sm opacity-60 font-mono truncate">
                 {project.local_path}
               </p>
             </.link>
             <div class="card-actions justify-end mt-2">
-              <.link navigate={~p"/projects/#{project_slug(project)}/edit"} class="btn btn-xs btn-ghost">
+              <.link navigate={~p"/app/projects/#{project_slug(project)}/edit"} class="btn btn-xs btn-ghost">
                 Edit
               </.link>
               <button
@@ -171,7 +171,7 @@ defmodule CodeMySpecLocalWeb.ProjectsLive.Index do
   defp auth_rung(assigns) do
     ~H"""
     <.link
-      navigate={~p"/auth"}
+      navigate={~p"/app/auth"}
       data-test="auth-rung"
       data-state="active"
       class="cms-onboarding cms-onboarding-link block"

@@ -1,58 +1,56 @@
-defmodule CodeMySpecLocalWeb.StoryLive.Gherkin do
+defmodule CodeMySpecWeb.StoryLive.Gherkin do
   @moduledoc """
   Renders a story's Three Amigos artifacts as a `.feature`-formatted
   Gherkin document. The DB is the source of truth; this view assembles
   the deliverable on demand via `BddRules.GherkinRenderer`.
 
-  Mounted at `/projects/:project_name/stories/:id/gherkin`. Live-updates
+  Mounted at `/app/stories/:id/gherkin` and
+  `/app/projects/:project_id/stories/:id/gherkin`. Live-updates
   when underlying records change so the spec reflects the wall in real
   time.
   """
 
-  use CodeMySpecLocalWeb, :live_view
+  use CodeMySpecWeb, :live_view
 
   alias CodeMySpec.AcceptanceCriteria
   alias CodeMySpec.BddRules
   alias CodeMySpec.BddRules.GherkinRenderer
-  alias CodeMySpec.Projects
   alias CodeMySpec.Questions
   alias CodeMySpec.Stories
-  alias CodeMySpec.Users.Scope
 
   @impl true
   def mount(_params, _session, socket) do
-    projects = Projects.list_local_projects()
-
     {:ok,
      assign(socket,
-       projects: projects,
+       section: :stories,
        project: nil,
        scope: nil,
+       slug: nil,
        story: nil,
        error: nil,
+       page_title: "Gherkin",
        gherkin: "",
        subscribed?: false
      )}
   end
 
   @impl true
-  def handle_params(%{"project_name" => name, "id" => id}, _uri, socket) do
-    with {:ok, project, scope} <- load_project_and_scope(name),
-         {:ok, story_id} <- parse_id(id),
+  def handle_params(%{"id" => id}, _uri, %{assigns: %{scope: %{} = scope}} = socket) do
+    with {:ok, story_id} <- parse_id(id),
          %Stories.Story{} = story <- Stories.get_story(scope, story_id) do
       socket =
         socket
-        |> assign(project: project, scope: scope)
         |> maybe_subscribe(scope)
         |> assign_view(scope, story)
 
       {:noreply, socket}
     else
-      {:error, msg} -> {:noreply, assign(socket, error: "#{msg}", story: nil, gherkin: "")}
       :error -> {:noreply, assign(socket, error: "Invalid story id.", story: nil, gherkin: "")}
       nil -> {:noreply, assign(socket, error: "Story not found.", story: nil, gherkin: "")}
     end
   end
+
+  def handle_params(_params, _uri, socket), do: {:noreply, socket}
 
   defp maybe_subscribe(%{assigns: %{subscribed?: true}} = socket, _scope), do: socket
 
@@ -103,36 +101,16 @@ defmodule CodeMySpecLocalWeb.StoryLive.Gherkin do
     end
   end
 
-  defp load_project_and_scope(name) do
-    with {:ok, project} <- Projects.get_project_by_name(name),
-         {:ok, scope} <- Scope.for_local_project(project) do
-      {:ok, project, scope}
-    end
-  end
-
-  defp project_slug(project) do
-    (project.name || "project")
-    |> String.downcase()
-    |> String.replace(~r/[^a-z0-9]+/, "-")
-    |> String.trim("-")
-  end
 
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app
-      flash={@flash}
-      projects={@projects}
-      project={@project}
-      section={:stories}
-      page_title={Map.get(assigns, :page_title, "Gherkin")}
-    >
       <.header>
         Gherkin — {if @story, do: @story.title, else: "Story"}
         <:subtitle :if={@story && @project}>
           Rendered from
           <.link
-            navigate={~p"/projects/#{project_slug(@project)}/stories/#{@story.id}/three-amigos"}
+            navigate={path(@socket, ~p"/app/projects/#{@slug}/stories/#{@story.id}/three-amigos")}
             class="link link-primary"
           >
             Three Amigos
@@ -143,13 +121,13 @@ defmodule CodeMySpecLocalWeb.StoryLive.Gherkin do
         <:actions>
           <.button
             :if={@story && @project}
-            navigate={~p"/projects/#{project_slug(@project)}/stories/#{@story.id}"}
+            navigate={path(@socket, ~p"/app/projects/#{@slug}/stories/#{@story.id}")}
           >
             <.icon name="hero-arrow-left" /> Back to story
           </.button>
           <.button
             :if={@story && @project}
-            navigate={~p"/projects/#{project_slug(@project)}/stories/#{@story.id}/three-amigos"}
+            navigate={path(@socket, ~p"/app/projects/#{@slug}/stories/#{@story.id}/three-amigos")}
           >
             <.icon name="hero-squares-2x2" /> Three Amigos wall
           </.button>
@@ -171,7 +149,6 @@ defmodule CodeMySpecLocalWeb.StoryLive.Gherkin do
           downstream.
         </p>
       </div>
-    </Layouts.app>
     """
   end
 end

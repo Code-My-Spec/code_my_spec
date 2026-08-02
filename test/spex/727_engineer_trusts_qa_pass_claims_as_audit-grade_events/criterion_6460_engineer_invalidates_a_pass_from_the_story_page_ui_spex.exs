@@ -48,7 +48,7 @@ defmodule CodeMySpecSpex.Story727.Criterion6460Spex do
         attempt_id = extract_attempt_id(response_text(submit_response))
 
         {:ok, view, _html} =
-          live(context.conn, ~p"/projects/#{context.project.name}/stories/#{context.story.id}")
+          live(context.conn, ~p"/app/projects/#{context.project.name}/stories/#{context.story.id}")
 
         {:ok, context |> Map.put(:view, view) |> Map.put(:attempt_id, attempt_id)}
       end

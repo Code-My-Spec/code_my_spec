@@ -271,7 +271,7 @@ defmodule CodeMySpecLocalWeb.ContentLive do
               <td class="font-mono text-xs">{row.metadata["expires_at"] || "never"}</td>
               <td>
                 <.link
-                  navigate={~p"/projects/#{@slug}/content/#{row.id}"}
+                  navigate={~p"/app/projects/#{@slug}/content/#{row.id}"}
                   data-test={"content-row-link-#{filename(row)}"}
                   class="link link-primary text-xs"
                 >

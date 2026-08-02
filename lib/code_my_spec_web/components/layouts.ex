@@ -15,6 +15,28 @@ defmodule CodeMySpecWeb.Layouts do
   embed_templates "layouts/*"
 
   @doc """
+  Layout entry point for `live_session ..., layout: {__MODULE__, :live}`.
+
+  The cloud half of the same contract `CodeMySpecLocalWeb.Layouts.live/1`
+  implements: portable LiveViews render content only, and the router decides
+  which chrome wraps it.
+  """
+  attr :inner_content, :any, required: true
+
+  def live(assigns) do
+    ~H"""
+    <.app
+      flash={@flash}
+      current_scope={@current_scope}
+      current_path={@current_path}
+      pending_notifications={@pending_notifications}
+    >
+      {@inner_content}
+    </.app>
+    """
+  end
+
+  @doc """
   Renders your app layout.
 
   This function is typically invoked from every template,
@@ -142,6 +164,9 @@ defmodule CodeMySpecWeb.Layouts do
             --%>
             <%= if onboarding_complete?(@current_scope) do %>
               <li><a href={~p"/app/projects"}>Projects</a></li>
+              <li :if={project = active_project(@current_scope)}>
+                <a href={~p"/app/projects/#{project.id}/stories"}>Stories</a>
+              </li>
               <li><a href={~p"/app/issues"}>Issues</a></li>
               <li><a href={~p"/app/users"}>Users</a></li>
               <li><a href={~p"/app/inbox"}>Chats</a></li>
@@ -181,6 +206,11 @@ defmodule CodeMySpecWeb.Layouts do
   # (`cli_first_connected_at`): a user can connect the plugin from a separate
   # machine, so requiring a local connect here hid the menu from people who
   # were actually set up (audit S2 originally gated on both).
+  # Stories are addressed per-project, so the nav entry only makes sense once
+  # a project is selected.
+  defp active_project(%{active_project: %{__struct__: _} = project}), do: project
+  defp active_project(_), do: nil
+
   defp onboarding_complete?(nil), do: false
 
   defp onboarding_complete?(%{active_project: %{__struct__: _}}), do: true

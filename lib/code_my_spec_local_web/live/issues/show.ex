@@ -92,7 +92,7 @@ defmodule CodeMySpecLocalWeb.IssuesLive.Show do
 
       <div :if={!@error && @issue}>
         <div class="mb-4">
-          <.link navigate={~p"/projects/#{@slug}/issues"} class="btn btn-ghost btn-sm gap-1">
+          <.link navigate={~p"/app/projects/#{@slug}/issues"} class="btn btn-ghost btn-sm gap-1">
             ← Issues
           </.link>
         </div>
@@ -168,7 +168,7 @@ defmodule CodeMySpecLocalWeb.IssuesLive.Show do
           </div>
           <div :if={@issue.story_id}>
             <div class="text-xs text-base-content/50 uppercase tracking-wide">Story</div>
-            <.link navigate={~p"/projects/#{@slug}/stories/#{@issue.story_id}"} class="link link-primary">
+            <.link navigate={~p"/app/projects/#{@slug}/stories/#{@issue.story_id}"} class="link link-primary">
               #{@issue.story_id}
             </.link>
           </div>

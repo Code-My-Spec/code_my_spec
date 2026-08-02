@@ -131,7 +131,7 @@ defmodule CodeMySpecLocalWeb.EpicsLive.Show do
           {@epic.name}
           <:subtitle>{@epic.description}</:subtitle>
           <:actions>
-            <.link navigate={~p"/projects/#{@slug}/epics"} class="btn btn-ghost btn-sm">
+            <.link navigate={~p"/app/projects/#{@slug}/epics"} class="btn btn-ghost btn-sm">
               Back to epics
             </.link>
             <button

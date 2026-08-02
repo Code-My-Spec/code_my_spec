@@ -68,21 +68,21 @@ defmodule CodeMySpecLocalWeb.ArchitectureLive do
 
         <div role="tablist" class="tabs tabs-bordered mb-6">
           <.link
-            patch={~p"/projects/#{@slug}/architecture"}
+            patch={~p"/app/projects/#{@slug}/architecture"}
             role="tab"
             class={["tab", @live_action == :dependency_graph && "tab-active"]}
           >
             Dependency Graph
           </.link>
           <.link
-            patch={~p"/projects/#{@slug}/architecture/overview"}
+            patch={~p"/app/projects/#{@slug}/architecture/overview"}
             role="tab"
             class={["tab", @live_action == :overview && "tab-active"]}
           >
             Component Overview
           </.link>
           <.link
-            patch={~p"/projects/#{@slug}/architecture/namespaces"}
+            patch={~p"/app/projects/#{@slug}/architecture/namespaces"}
             role="tab"
             class={["tab", @live_action == :namespaces && "tab-active"]}
           >

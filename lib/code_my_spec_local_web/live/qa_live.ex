@@ -260,7 +260,7 @@ defmodule CodeMySpecLocalWeb.QaLive do
       </td>
       <td class="font-medium">
         <.link
-          navigate={~p"/projects/#{@project.name}/stories/#{@attempt.story_id}"}
+          navigate={~p"/app/projects/#{@project.name}/stories/#{@attempt.story_id}"}
           class="link link-hover"
         >
           {story_title(@attempt)}

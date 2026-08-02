@@ -57,7 +57,7 @@ defmodule CodeMySpecLocalWeb.PersonasLive.Index do
       nil ->
         socket
         |> put_flash(:error, "Persona not found")
-        |> push_patch(to: ~p"/projects/#{socket.assigns.slug}/personas")
+        |> push_patch(to: ~p"/app/projects/#{socket.assigns.slug}/personas")
 
       persona ->
         socket
@@ -127,7 +127,7 @@ defmodule CodeMySpecLocalWeb.PersonasLive.Index do
             <code>.code_my_spec/personas/</code>.
           </:subtitle>
           <:actions>
-            <.button patch={~p"/projects/#{@slug}/personas/new"} class="btn btn-primary">
+            <.button patch={~p"/app/projects/#{@slug}/personas/new"} class="btn btn-primary">
               <.icon name="hero-plus" /> New persona
             </.button>
           </:actions>
@@ -160,13 +160,13 @@ defmodule CodeMySpecLocalWeb.PersonasLive.Index do
 
               <div class="card-actions justify-end pt-2">
                 <.link
-                  navigate={~p"/projects/#{@slug}/personas/#{persona.slug}"}
+                  navigate={~p"/app/projects/#{@slug}/personas/#{persona.slug}"}
                   class="btn btn-ghost btn-sm"
                 >
                   View
                 </.link>
                 <.button
-                  patch={~p"/projects/#{@slug}/personas/#{persona.slug}/edit"}
+                  patch={~p"/app/projects/#{@slug}/personas/#{persona.slug}/edit"}
                   class="btn btn-ghost btn-sm"
                 >
                   Edit
@@ -198,11 +198,11 @@ defmodule CodeMySpecLocalWeb.PersonasLive.Index do
               action={@live_action}
               persona={@persona}
               scope={@scope}
-              return_to={~p"/projects/#{@slug}/personas"}
+              return_to={~p"/app/projects/#{@slug}/personas"}
             />
           </div>
           <form method="dialog" class="modal-backdrop">
-            <button phx-click={JS.patch(~p"/projects/#{@slug}/personas")}>close</button>
+            <button phx-click={JS.patch(~p"/app/projects/#{@slug}/personas")}>close</button>
           </form>
         </dialog>
       </div>

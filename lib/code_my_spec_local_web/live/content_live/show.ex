@@ -50,14 +50,14 @@ defmodule CodeMySpecLocalWeb.ContentLive.Show do
       page_title="Content"
     >
       <div :if={!@row && @slug} class="p-6" data-test="content-not-found">
-        <.link navigate={~p"/projects/#{@slug}/content"} class="link link-primary text-sm">
+        <.link navigate={~p"/app/projects/#{@slug}/content"} class="link link-primary text-sm">
           ← Back to Content
         </.link>
         <p class="mt-4 text-base-content/60">Content not found.</p>
       </div>
 
       <div :if={@row}>
-        <.link navigate={~p"/projects/#{@slug}/content"} class="link link-primary text-sm">
+        <.link navigate={~p"/app/projects/#{@slug}/content"} class="link link-primary text-sm">
           ← Back to Content
         </.link>
 

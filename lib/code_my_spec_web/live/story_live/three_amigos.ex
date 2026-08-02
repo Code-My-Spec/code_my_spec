@@ -1,40 +1,37 @@
-defmodule CodeMySpecLocalWeb.StoryLive.ThreeAmigos do
+defmodule CodeMySpecWeb.StoryLive.ThreeAmigos do
   @moduledoc """
-  Three Amigos cluster wall — local CLI surface.
+  Three Amigos cluster wall.
 
-  Mounted at `/projects/:project_name/stories/:id/three-amigos` for the
-  developer running `cms server`. The agent (running in Claude Code on
-  the same machine) calls MCP tools that mutate stories / rules /
-  scenarios / questions through context modules — those mutations
-  broadcast on PubSub, so this LiveView sees cards land in real time as
-  the session unfolds.
+  Mounted at `/app/stories/:id/three-amigos` and
+  `/app/projects/:project_id/stories/:id/three-amigos`. The agent calls MCP
+  tools that mutate stories / rules / scenarios / questions through context
+  modules — those mutations broadcast on PubSub, so this LiveView sees cards
+  land in real time as the session unfolds.
 
   Three states: `:listening` (no artifacts), `:active` (populated), and
   `:sealed` (readiness gate cleared).
   """
 
-  use CodeMySpecLocalWeb, :live_view
+  use CodeMySpecWeb, :live_view
 
   alias CodeMySpec.AcceptanceCriteria
   alias CodeMySpec.BddRules
   alias CodeMySpec.Personas
-  alias CodeMySpec.Projects
   alias CodeMySpec.Questions
   alias CodeMySpec.Requirements.BddRulesChecker
   alias CodeMySpec.Stories
-  alias CodeMySpec.Users.Scope
 
   @impl true
   def mount(_params, _session, socket) do
-    projects = Projects.list_local_projects()
-
     {:ok,
      assign(socket,
-       projects: projects,
+       section: :stories,
        project: nil,
        scope: nil,
+       slug: nil,
        story: nil,
        error: nil,
+       page_title: "Three Amigos",
        menu_open: nil,
        editing: nil,
        confirming_delete: nil,
@@ -43,26 +40,26 @@ defmodule CodeMySpecLocalWeb.StoryLive.ThreeAmigos do
   end
 
   @impl true
-  def handle_params(%{"project_name" => project_name, "id" => story_id}, _uri, socket) do
-    with {:ok, project, scope} <- load_project_and_scope(project_name),
-         {:ok, story_id_int} <- parse_story_id(story_id),
+  def handle_params(%{"id" => story_id}, _uri, %{assigns: %{scope: %{} = scope}} = socket) do
+    with {:ok, story_id_int} <- parse_story_id(story_id),
          {:story, %Stories.Story{} = story} <-
            {:story, Stories.get_story(scope, story_id_int)} do
       socket =
         socket
-        |> assign(project: project, scope: scope)
         |> maybe_subscribe(scope)
         |> assign_session_state(scope, story)
 
       {:noreply, socket}
     else
       {:error, msg} ->
-        {:noreply, assign(socket, error: "#{msg}")}
+        {:noreply, assign(socket, error: msg)}
 
       {:story, nil} ->
         {:noreply, assign(socket, error: "Story not found in this project.")}
     end
   end
+
+  def handle_params(_params, _uri, socket), do: {:noreply, socket}
 
   defp maybe_subscribe(%{assigns: %{subscribed?: true}} = socket, _scope), do: socket
 
@@ -314,13 +311,6 @@ defmodule CodeMySpecLocalWeb.StoryLive.ThreeAmigos do
     end
   end
 
-  defp load_project_and_scope(name) do
-    with {:ok, project} <- Projects.get_project_by_name(name),
-         {:ok, scope} <- Scope.for_local_project(project) do
-      {:ok, project, scope}
-    end
-  end
-
   defp scenarios_for_rule(scenarios, rule_id) do
     Enum.filter(scenarios, &(&1.rule_id == rule_id))
   end
@@ -330,13 +320,6 @@ defmodule CodeMySpecLocalWeb.StoryLive.ThreeAmigos do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app
-      flash={@flash}
-      projects={@projects}
-      project={@project}
-      section={:stories}
-      page_title={Map.get(assigns, :page_title, "Three Amigos")}
-    >
       <div :if={@error} role="alert" class="alert alert-error">
         <span>{@error}</span>
       </div>
@@ -398,7 +381,6 @@ defmodule CodeMySpecLocalWeb.StoryLive.ThreeAmigos do
 
         <.delete_confirm_modal :if={@confirming_delete} confirming_delete={@confirming_delete} />
       </div>
-    </Layouts.app>
     """
   end
 

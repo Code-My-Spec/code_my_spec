@@ -18,7 +18,7 @@ defmodule CodeMySpecSpex.Story958.Criterion7940Spex do
     scenario "The story is created parked" do
       given_ "the user is on the new story form", context do
         {:ok, form_live, _html} =
-          live(context.conn, ~p"/projects/#{context.project.name}/stories/new")
+          live(context.conn, ~p"/app/projects/#{context.project.name}/stories/new")
 
         {:ok, Map.put(context, :form_live, form_live)}
       end
@@ -40,7 +40,7 @@ defmodule CodeMySpecSpex.Story958.Criterion7940Spex do
 
       then_ "it is not ready for development", context do
         {:ok, _index_live, html} =
-          live(context.conn, ~p"/projects/#{context.project.name}/stories")
+          live(context.conn, ~p"/app/projects/#{context.project.name}/stories")
 
         # Anchor: the story really was created, so the readiness claim below
         # is about the flag and not about an empty page.

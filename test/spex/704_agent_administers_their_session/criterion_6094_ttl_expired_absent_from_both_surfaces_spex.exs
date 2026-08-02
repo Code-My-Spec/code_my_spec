@@ -57,7 +57,7 @@ defmodule CodeMySpecSpex.Story704.Criterion6094Spex do
         {:ok, view, _html} =
           live(
             context.conn,
-            ~p"/projects/#{context.project.name}/sessions/#{context.session_db_id}"
+            ~p"/app/projects/#{context.project.name}/sessions/#{context.session_db_id}"
           )
 
         frame = %Frame{assigns: %{current_scope: context.scope}}

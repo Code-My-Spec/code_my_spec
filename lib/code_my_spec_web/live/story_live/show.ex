@@ -1,26 +1,16 @@
-defmodule CodeMySpecLocalWeb.StoryLive.Show do
-  use CodeMySpecLocalWeb, :live_view
+defmodule CodeMySpecWeb.StoryLive.Show do
+  use CodeMySpecWeb, :live_view
 
   alias CodeMySpec.AcceptanceCriteria
   alias CodeMySpec.Components
-  alias CodeMySpec.Projects
   alias CodeMySpec.Qa
   alias CodeMySpec.Stories
   alias CodeMySpec.Tags
-  alias CodeMySpec.Users
-  alias CodeMySpec.Users.Scope
-  alias CodeMySpecLocalWeb.QaHistoryComponent
+  alias CodeMySpecWeb.StoryLive.QaHistoryComponent
 
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app
-      flash={@flash}
-      projects={@projects}
-      project={@project}
-      section={:stories}
-      page_title={Map.get(assigns, :page_title, "Story")}
-    >
       <div :if={@error} role="alert" class="alert alert-error">
         <span>{@error}</span>
       </div>
@@ -28,18 +18,18 @@ defmodule CodeMySpecLocalWeb.StoryLive.Show do
       <div :if={!@error && @story && @project}>
         <.header>
           Story {@story.id}
-          <:subtitle>This is a story record from your local database.</:subtitle>
+          <:subtitle>Story detail, acceptance criteria, tags, and QA history.</:subtitle>
           <:actions>
-            <.button navigate={~p"/projects/#{@slug}/stories"}>
+            <.button navigate={path(@socket, ~p"/app/projects/#{@slug}/stories")}>
               <.icon name="hero-arrow-left" />
             </.button>
-            <.button navigate={~p"/projects/#{@slug}/stories/#{@story.id}/three-amigos"}>
+            <.button navigate={path(@socket, ~p"/app/projects/#{@slug}/stories/#{@story.id}/three-amigos")}>
               <.icon name="hero-squares-2x2" /> Three Amigos
             </.button>
-            <.button navigate={~p"/projects/#{@slug}/stories/#{@story.id}/gherkin"}>
+            <.button navigate={path(@socket, ~p"/app/projects/#{@slug}/stories/#{@story.id}/gherkin")}>
               <.icon name="hero-document-text" /> View Gherkin
             </.button>
-            <.button navigate={~p"/projects/#{@slug}/stories/#{@story.id}/edit?return_to=show"}>
+            <.button navigate={path(@socket, ~p"/app/projects/#{@slug}/stories/#{@story.id}/edit?return_to=show")}>
               <.icon name="hero-pencil-square" /> Edit story
             </.button>
           </:actions>
@@ -133,18 +123,14 @@ defmodule CodeMySpecLocalWeb.StoryLive.Show do
           invalidating_attempt_id={@invalidating_attempt_id}
         />
       </div>
-    </Layouts.app>
     """
   end
 
   @impl true
-  def mount(_params, session, socket) do
-    projects = Projects.list_local_projects()
-    current_user = load_current_user(session)
-
+  def mount(_params, _session, socket) do
     {:ok,
      assign(socket,
-       projects: projects,
+       section: :stories,
        project: nil,
        scope: nil,
        slug: nil,
@@ -153,7 +139,6 @@ defmodule CodeMySpecLocalWeb.StoryLive.Show do
        tags: [],
        qa_attempts: [],
        invalidating_attempt_id: nil,
-       current_user: current_user,
        error: nil,
        page_title: "Story",
        subscribed?: false
@@ -161,9 +146,8 @@ defmodule CodeMySpecLocalWeb.StoryLive.Show do
   end
 
   @impl true
-  def handle_params(%{"project_name" => name, "id" => id}, _uri, socket) do
-    with {:ok, project, scope} <- load_project_and_scope(name),
-         %Stories.Story{} = story <- Stories.get_story(scope, id) do
+  def handle_params(%{"id" => id}, _uri, %{assigns: %{scope: %{} = scope}} = socket) do
+    with %Stories.Story{} = story <- Stories.get_story(scope, id) do
       tags = Tags.list_story_tags(scope, story)
       qa_attempts = Qa.list_qa_attempts(scope, story.id)
       component = story.component_id && Components.get_component(scope, story.component_id)
@@ -171,9 +155,6 @@ defmodule CodeMySpecLocalWeb.StoryLive.Show do
       socket =
         socket
         |> assign(
-          project: project,
-          scope: scope,
-          slug: project_slug(project),
           story: story,
           component: component,
           tags: tags,
@@ -186,10 +167,11 @@ defmodule CodeMySpecLocalWeb.StoryLive.Show do
 
       {:noreply, socket}
     else
-      {:error, msg} -> {:noreply, assign(socket, error: "#{msg}")}
       nil -> {:noreply, assign(socket, error: "Story not found.")}
     end
   end
+
+  def handle_params(_params, _uri, socket), do: {:noreply, socket}
 
   defp maybe_subscribe(%{assigns: %{subscribed?: true}} = socket, _scope), do: socket
 
@@ -303,7 +285,7 @@ defmodule CodeMySpecLocalWeb.StoryLive.Show do
     {:noreply,
      socket
      |> put_flash(:error, "The current story was deleted.")
-     |> push_navigate(to: ~p"/projects/#{slug}/stories")}
+     |> push_navigate(to: path(socket, ~p"/app/projects/#{slug}/stories"))}
   end
 
   def handle_info({type, %CodeMySpec.Stories.Story{}}, socket)
@@ -325,38 +307,16 @@ defmodule CodeMySpecLocalWeb.StoryLive.Show do
 
   def handle_info(_msg, socket), do: {:noreply, socket}
 
-  # Build a scope for invalidation that uses the authenticated user (if any),
-  # falling back to the project scope's user. This ensures the FK constraint
-  # on `invalidated_by_user_id` is satisfied when accessed from the browser.
+  # Attribute the invalidation to the signed-in user rather than to whoever
+  # the project scope happens to carry, so the `invalidated_by_user_id` FK
+  # records the person who actually clicked the button.
   defp build_invalidation_scope(socket) do
     base_scope = socket.assigns.scope
 
-    case socket.assigns.current_user do
-      nil -> base_scope
-      user -> %{base_scope | user: user, user_id: user.id}
+    case socket.assigns.current_scope do
+      %{user: %{} = user} -> %{base_scope | user: user, user_id: user.id}
+      _ -> base_scope
     end
   end
 
-  defp load_current_user(session) do
-    with token when is_binary(token) <- session["user_token"],
-         {user, _token} when not is_nil(user) <- Users.get_user_by_session_token(token) do
-      user
-    else
-      _ -> nil
-    end
-  end
-
-  defp load_project_and_scope(name) do
-    with {:ok, project} <- Projects.get_project_by_name(name),
-         {:ok, scope} <- Scope.for_local_project(project) do
-      {:ok, project, scope}
-    end
-  end
-
-  defp project_slug(project) do
-    (project.name || "project")
-    |> String.downcase()
-    |> String.replace(~r/[^a-z0-9]+/, "-")
-    |> String.trim("-")
-  end
 end

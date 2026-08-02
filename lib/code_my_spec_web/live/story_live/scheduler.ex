@@ -1,31 +1,22 @@
-defmodule CodeMySpecLocalWeb.StoryLive.Scheduler do
-  use CodeMySpecLocalWeb, :live_view
+defmodule CodeMySpecWeb.StoryLive.Scheduler do
+  use CodeMySpecWeb, :live_view
 
-  alias CodeMySpec.Projects
   alias CodeMySpec.Stories
   alias CodeMySpec.Stories.Story
-  alias CodeMySpec.Users.Scope
 
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app
-      flash={@flash}
-      projects={@projects}
-      project={@project}
-      section={:scheduler}
-      page_title="Story Scheduler"
-    >
       <div :if={@project} role="tablist" class="tabs tabs-bordered mb-6">
         <.link
-          navigate={~p"/projects/#{@slug}/stories"}
+          navigate={path(@socket, ~p"/app/projects/#{@slug}/stories")}
           role="tab"
           class="tab"
         >
           Stories
         </.link>
         <.link
-          navigate={~p"/projects/#{@slug}/stories/scheduler"}
+          navigate={path(@socket, ~p"/app/projects/#{@slug}/stories/scheduler")}
           role="tab"
           class={["tab", "tab-active"]}
         >
@@ -123,18 +114,15 @@ defmodule CodeMySpecLocalWeb.StoryLive.Scheduler do
           }
         </script>
       </div>
-    </Layouts.app>
     """
   end
 
   @impl true
   def mount(_params, _session, socket) do
-    projects = Projects.list_local_projects()
-
     {:ok,
      socket
      |> assign(
-       projects: projects,
+       section: :scheduler,
        project: nil,
        scope: nil,
        slug: nil,
@@ -147,29 +135,17 @@ defmodule CodeMySpecLocalWeb.StoryLive.Scheduler do
   end
 
   @impl true
-  def handle_params(%{"project_name" => name}, _uri, socket) do
-    case load_project_and_scope(name) do
-      {:ok, project, scope} ->
-        stories = Stories.list_project_stories_by_priority(scope)
+  def handle_params(_params, _uri, %{assigns: %{scope: %{} = scope}} = socket) do
+    stories = Stories.list_project_stories_by_priority(scope)
 
-        socket =
-          socket
-          |> assign(
-            project: project,
-            scope: scope,
-            slug: project_slug(project),
-            error: nil,
-            story_count: length(stories)
-          )
-          |> maybe_subscribe(scope)
-          |> stream(:stories, stories, reset: true)
-
-        {:noreply, socket}
-
-      {:error, msg} ->
-        {:noreply, assign(socket, error: "#{msg}")}
-    end
+    {:noreply,
+     socket
+     |> assign(story_count: length(stories))
+     |> maybe_subscribe(scope)
+     |> stream(:stories, stories, reset: true)}
   end
+
+  def handle_params(_params, _uri, socket), do: {:noreply, socket}
 
   defp maybe_subscribe(%{assigns: %{subscribed?: true}} = socket, _scope), do: socket
 
@@ -215,17 +191,4 @@ defmodule CodeMySpecLocalWeb.StoryLive.Scheduler do
 
   def handle_info(_msg, socket), do: {:noreply, socket}
 
-  defp load_project_and_scope(name) do
-    with {:ok, project} <- Projects.get_project_by_name(name),
-         {:ok, scope} <- Scope.for_local_project(project) do
-      {:ok, project, scope}
-    end
-  end
-
-  defp project_slug(project) do
-    (project.name || "project")
-    |> String.downcase()
-    |> String.replace(~r/[^a-z0-9]+/, "-")
-    |> String.trim("-")
-  end
 end
