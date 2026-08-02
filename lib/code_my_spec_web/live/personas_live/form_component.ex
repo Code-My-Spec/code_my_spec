@@ -1,9 +1,9 @@
-defmodule CodeMySpecLocalWeb.PersonasLive.FormComponent do
+defmodule CodeMySpecWeb.PersonasLive.FormComponent do
   @moduledoc """
   Create and edit personas. Validates via the Persona changeset; saves through
   the Personas context. Notifies the parent on save with `:persona_saved`.
   """
-  use CodeMySpecLocalWeb, :live_component
+  use CodeMySpecWeb, :live_component
 
   alias CodeMySpec.Personas
   alias CodeMySpec.Personas.Persona

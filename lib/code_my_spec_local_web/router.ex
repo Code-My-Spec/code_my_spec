@@ -70,12 +70,6 @@ defmodule CodeMySpecLocalWeb.Router do
            RequirementsLive,
            :story_req_show
 
-      live "/app/projects/:project_name/personas", PersonasLive.Index, :index
-      live "/app/projects/:project_name/personas/new", PersonasLive.Index, :new
-      live "/app/projects/:project_name/personas/:slug", PersonasLive.Show, :show
-      live "/app/projects/:project_name/personas/:slug/edit", PersonasLive.Show, :edit
-      live "/app/projects/:project_name/personas/:slug/link", PersonasLive.Show, :link
-
       live "/app/projects/:project_name/issues", IssuesLive.Index, :index
       live "/app/projects/:project_name/issues/:id", IssuesLive.Show, :show
       live "/app/projects/:project_name/qa", QaLive
@@ -124,6 +118,12 @@ defmodule CodeMySpecLocalWeb.Router do
       live "/app/projects/:project_id/epics/new", EpicsLive.Index, :new
       live "/app/projects/:project_id/epics/:slug", EpicsLive.Show, :show
       live "/app/projects/:project_id/epics/:slug/edit", EpicsLive.Index, :edit
+
+      live "/app/projects/:project_id/personas", PersonasLive.Index, :index
+      live "/app/projects/:project_id/personas/new", PersonasLive.Index, :new
+      live "/app/projects/:project_id/personas/:slug", PersonasLive.Show, :show
+      live "/app/projects/:project_id/personas/:slug/edit", PersonasLive.Show, :edit
+      live "/app/projects/:project_id/personas/:slug/link", PersonasLive.Show, :link
     end
   end
 

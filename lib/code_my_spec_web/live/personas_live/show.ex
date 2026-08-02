@@ -1,27 +1,20 @@
-defmodule CodeMySpecLocalWeb.PersonasLive.Show do
+defmodule CodeMySpecWeb.PersonasLive.Show do
   @moduledoc """
   Shows a single persona — DB metadata, linked stories, and the on-disk
   research path. Markdown content (`summary.md`, `sources.md`) lives on disk
   under `.code_my_spec/personas/<slug>/`.
   """
-  use CodeMySpecLocalWeb, :live_view
+  use CodeMySpecWeb, :live_view
 
   alias CodeMySpec.Personas
-  alias CodeMySpec.Projects
   alias CodeMySpec.Stories
-  alias CodeMySpec.Users.Scope
-  alias CodeMySpecLocalWeb.PersonasLive.FormComponent
+  alias CodeMySpecWeb.PersonasLive.FormComponent
 
   @impl true
   def mount(_params, _session, socket) do
-    projects = Projects.list_local_projects()
-
     {:ok,
      assign(socket,
-       projects: projects,
-       project: nil,
-       scope: nil,
-       slug: nil,
+       section: :personas,
        error: nil,
        page_title: "Persona",
        persona: nil,
@@ -32,36 +25,25 @@ defmodule CodeMySpecLocalWeb.PersonasLive.Show do
   end
 
   @impl true
-  def handle_params(%{"project_name" => name, "slug" => persona_slug} = params, _url, socket) do
-    case load_project_and_scope(name) do
-      {:ok, project, scope} ->
-        case Personas.get_persona_by_slug(scope, persona_slug) do
-          nil ->
-            {:noreply,
-             socket
-             |> assign(project: project, slug: project_slug(project), error: nil)
-             |> put_flash(:error, "Persona not found")
-             |> push_navigate(to: ~p"/app/projects/#{project_slug(project)}/personas")}
+  def handle_params(%{"slug" => persona_slug} = params, _url, %{assigns: %{scope: %{} = scope}} = socket) do
+    case Personas.get_persona_by_slug(scope, persona_slug) do
+      nil ->
+        {:noreply,
+         socket
+         |> put_flash(:error, "Persona not found")
+         |> push_navigate(to: path(socket, ~p"/app/projects/#{socket.assigns.slug}/personas"))}
 
-          persona ->
-            socket =
-              socket
-              |> assign(
-                project: project,
-                scope: scope,
-                slug: project_slug(project),
-                error: nil
-              )
-              |> load_state(scope, persona)
-              |> apply_action(socket.assigns.live_action, params, scope)
+      persona ->
+        socket =
+          socket
+          |> load_state(scope, persona)
+          |> apply_action(socket.assigns.live_action, params, scope)
 
-            {:noreply, socket}
-        end
-
-      {:error, msg} ->
-        {:noreply, assign(socket, error: "#{msg}")}
+        {:noreply, socket}
     end
   end
+
+  def handle_params(_params, _url, socket), do: {:noreply, socket}
 
   defp apply_action(socket, :edit, _params, _scope) do
     assign(socket, :page_title, "Edit Persona")
@@ -91,7 +73,7 @@ defmodule CodeMySpecLocalWeb.PersonasLive.Show do
          socket
          |> put_flash(:info, "Story linked")
          |> load_state(scope, persona)
-         |> push_patch(to: ~p"/app/projects/#{socket.assigns.slug}/personas/#{persona.slug}")}
+         |> push_patch(to: path(socket, ~p"/app/projects/#{socket.assigns.slug}/personas/#{persona.slug}"))}
 
       {:error, reason} ->
         {:noreply, put_flash(socket, :error, "Could not link: #{inspect(reason)}")}
@@ -123,7 +105,7 @@ defmodule CodeMySpecLocalWeb.PersonasLive.Show do
     {:noreply,
      socket
      |> load_state(socket.assigns.scope, persona)
-     |> push_patch(to: ~p"/app/projects/#{socket.assigns.slug}/personas/#{persona.slug}")}
+     |> push_patch(to: path(socket, ~p"/app/projects/#{socket.assigns.slug}/personas/#{persona.slug}"))}
   end
 
   def handle_info(_msg, socket), do: {:noreply, socket}
@@ -139,13 +121,6 @@ defmodule CodeMySpecLocalWeb.PersonasLive.Show do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app
-      flash={@flash}
-      projects={@projects}
-      project={@project}
-      section={:personas}
-      page_title={@page_title}
-    >
       <div :if={@error} role="alert" class="alert alert-error">
         <span>{@error}</span>
       </div>
@@ -158,17 +133,17 @@ defmodule CodeMySpecLocalWeb.PersonasLive.Show do
             {@persona.headline || "No headline"}
           </:subtitle>
           <:actions>
-            <.button navigate={~p"/app/projects/#{@slug}/personas"} class="btn btn-ghost btn-sm">
+            <.button navigate={path(@socket, ~p"/app/projects/#{@slug}/personas")} class="btn btn-ghost btn-sm">
               <.icon name="hero-arrow-left" /> Back
             </.button>
             <.button
-              patch={~p"/app/projects/#{@slug}/personas/#{@persona.slug}/edit"}
+              patch={path(@socket, ~p"/app/projects/#{@slug}/personas/#{@persona.slug}/edit")}
               class="btn btn-primary btn-sm"
             >
               <.icon name="hero-pencil-square" /> Edit
             </.button>
             <.button
-              patch={~p"/app/projects/#{@slug}/personas/#{@persona.slug}/link"}
+              patch={path(@socket, ~p"/app/projects/#{@slug}/personas/#{@persona.slug}/link")}
               class="btn btn-secondary btn-sm"
             >
               <.icon name="hero-link" /> Link to story
@@ -251,11 +226,11 @@ defmodule CodeMySpecLocalWeb.PersonasLive.Show do
               action={:edit}
               persona={@persona}
               scope={@scope}
-              return_to={~p"/app/projects/#{@slug}/personas/#{@persona.slug}"}
+              return_to={path(@socket, ~p"/app/projects/#{@slug}/personas/#{@persona.slug}")}
             />
           </div>
           <form method="dialog" class="modal-backdrop">
-            <button phx-click={JS.patch(~p"/app/projects/#{@slug}/personas/#{@persona.slug}")}>
+            <button phx-click={JS.patch(path(@socket, ~p"/app/projects/#{@slug}/personas/#{@persona.slug}"))}>
               close
             </button>
           </form>
@@ -302,13 +277,12 @@ defmodule CodeMySpecLocalWeb.PersonasLive.Show do
             </ul>
           </div>
           <form method="dialog" class="modal-backdrop">
-            <button phx-click={JS.patch(~p"/app/projects/#{@slug}/personas/#{@persona.slug}")}>
+            <button phx-click={JS.patch(path(@socket, ~p"/app/projects/#{@slug}/personas/#{@persona.slug}"))}>
               close
             </button>
           </form>
         </dialog>
       </div>
-    </Layouts.app>
     """
   end
 
@@ -322,17 +296,4 @@ defmodule CodeMySpecLocalWeb.PersonasLive.Show do
     end)
   end
 
-  defp load_project_and_scope(name) do
-    with {:ok, project} <- Projects.get_project_by_name(name),
-         {:ok, scope} <- Scope.for_local_project(project) do
-      {:ok, project, scope}
-    end
-  end
-
-  defp project_slug(project) do
-    (project.name || "project")
-    |> String.downcase()
-    |> String.replace(~r/[^a-z0-9]+/, "-")
-    |> String.trim("-")
-  end
 end

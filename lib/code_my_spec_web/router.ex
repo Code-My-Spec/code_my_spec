@@ -385,6 +385,12 @@ defmodule CodeMySpecWeb.Router do
       live "/projects/:project_id/epics/new", EpicsLive.Index, :new
       live "/projects/:project_id/epics/:slug", EpicsLive.Show, :show
       live "/projects/:project_id/epics/:slug/edit", EpicsLive.Index, :edit
+
+      live "/projects/:project_id/personas", PersonasLive.Index, :index
+      live "/projects/:project_id/personas/new", PersonasLive.Index, :new
+      live "/projects/:project_id/personas/:slug", PersonasLive.Show, :show
+      live "/projects/:project_id/personas/:slug/edit", PersonasLive.Show, :edit
+      live "/projects/:project_id/personas/:slug/link", PersonasLive.Show, :link
     end
 
     # Project-scoped surfaces. The project is named in the route and put on the
