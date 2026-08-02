@@ -22,13 +22,19 @@ defmodule CodeMySpecSpex.Story964.Criterion7986Spex do
   spex "The console-only key pair is asked for with directions" do
     scenario "the S3 key pair field carries where-to-get-it and a one-look warning" do
       given_ "the object storage option is on", context do
-        # Storage is on by default, so intake must ask for the S3 pair.
+        # Turned on rather than assumed on. The whole criterion is that
+        # *this option* is what makes intake ask for the console-only key
+        # pair, and taking the option from the defaults would leave the spex
+        # passing even if the two came apart.
+        view = mount_provisioning(context)
+        choose_setup_options(view, [:storage])
+
         {:ok, context}
       end
 
       when_ "setup asks Sam for the object storage key pair", context do
         {:ok, view, html} =
-          live(context.conn, "/app/projects/#{context.project.id}/credentials")
+          live(context.conn, "/app/projects/#{context.project.id}/provisioning")
 
         {:ok, context |> Map.put(:view, view) |> Map.put(:html, html)}
       end

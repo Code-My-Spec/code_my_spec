@@ -67,6 +67,13 @@ defmodule CodeMySpec.Generators.DeployBoilerplate do
       description: "deploy script",
       why:
         "the only supported deploy entry point; enforces migrate-before-swap and refuses to run on a dirty tree"
+    },
+    %{
+      key: :backup_script,
+      path: "bin/backup",
+      description: "backup script",
+      why:
+        "dumps straight from the server to the bucket and restores from it, so a database dump never passes through the control plane"
     }
   ]
 

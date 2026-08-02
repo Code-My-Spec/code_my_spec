@@ -71,6 +71,26 @@ defmodule CodeMySpec.GitHub do
   end
 
   @doc """
+  The login the grant belongs to.
+
+  Needed because "adopt an existing repository rather than create a second
+  one" cannot be checked without knowing whose account to look in. Guessing
+  from the project would check the wrong account and report a name free that
+  is not — so ask GitHub who the token is.
+  """
+  @spec authenticated_login(Scope.t()) ::
+          {:ok, String.t()} | {:error, :github_not_connected} | {:error, term()}
+  def authenticated_login(%Scope{} = scope) do
+    with {:ok, token} <- get_auth(scope),
+         {:ok, %{"login" => login}} <- request(:get, "/user", token, []) do
+      {:ok, login}
+    else
+      {:ok, _body} -> {:error, :no_login}
+      other -> other
+    end
+  end
+
+  @doc """
   Repositories the grant can see, most recently pushed first.
 
   Needed because this is an OAuth App: there is no installation screen where
@@ -135,6 +155,14 @@ defmodule CodeMySpec.GitHub do
       {:ok, %Req.Response{status: status, body: body}} when status in 200..299 ->
         {:ok, body}
 
+      # A 401 is a revoked or expired authorization, not a request problem —
+      # the token GitHub was handed is no longer good. Surfacing it as
+      # `:github_not_connected` is what lets the caller say "reconnect GitHub"
+      # rather than "could not create the repository", which points Sam at the
+      # wrong thing (criterion 8181).
+      {:ok, %Req.Response{status: 401, body: _body}} ->
+        {:error, :github_not_connected}
+
       {:ok, %Req.Response{status: status, body: body}} ->
         {:error, {:github_error, status, body}}
 
@@ -144,9 +172,11 @@ defmodule CodeMySpec.GitHub do
   end
 
   defp get_auth(%Scope{} = scope) do
-    case Integrations.get_integration(scope, :github) do
-      {:ok, integration} -> {:ok, integration.access_token}
+    case Integrations.fetch_access_token(scope, :github) do
+      {:ok, token} -> {:ok, token}
       {:error, :not_found} -> {:error, :github_not_connected}
+      {:error, :reauthorize_required} -> {:error, :github_not_connected}
+      {:error, _reason} -> {:error, :github_not_connected}
     end
   end
 

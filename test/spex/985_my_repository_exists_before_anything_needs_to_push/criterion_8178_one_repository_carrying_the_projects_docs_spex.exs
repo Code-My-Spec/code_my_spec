@@ -14,13 +14,15 @@ defmodule CodeMySpecSpex.Story985.Criterion8178Spex do
   """
 
   use CodeMySpecSpex.Case
+  use ExCliVcr
 
   @endpoint CodeMySpecWeb.Endpoint
 
-  @cassette "github_repo_create_ok"
+  @cassette "github_repo_docs_single"
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :connect_providers
 
   spex "One repository, carrying the project's docs" do
     scenario "the step creates a single repository and records it as the remote" do
@@ -33,11 +35,11 @@ defmodule CodeMySpecSpex.Story985.Criterion8178Spex do
 
       when_ "the repository step runs", context do
         html =
-          ReqCassette.with_cassette(@cassette, [mode: :replay], fn ->
+          with_full_cassette @cassette do
             context.view
             |> element("[data-test='setup-step'][data-step='repository'] [data-test='run-step']")
             |> render_click()
-          end)
+          end
 
         {:ok, Map.put(context, :html, html)}
       end
@@ -46,7 +48,13 @@ defmodule CodeMySpecSpex.Story985.Criterion8178Spex do
         repos =
           context.html
           |> Floki.parse_document!()
-          |> Floki.find("[data-test='provisioned-resource'][data-kind='repository']")
+          # Scoped to the step — the page renders each resource twice (under
+          # the step and in the record at the bottom), so an unscoped count
+          # sees one repository as two.
+          |> Floki.find(
+            "[data-test='setup-step'][data-step='repository'] " <>
+              "[data-test='provisioned-resource'][data-kind='repository']"
+          )
 
         assert length(repos) == 1,
                "expected one repository, got #{length(repos)}"

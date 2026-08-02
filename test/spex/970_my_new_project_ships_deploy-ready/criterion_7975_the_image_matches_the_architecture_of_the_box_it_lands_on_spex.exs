@@ -25,6 +25,7 @@ defmodule CodeMySpecSpex.Story970.Criterion7975Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :connect_providers
 
   spex "The image matches the architecture of the box it lands on" do
     scenario "an ARM box receives an image that starts" do
@@ -39,7 +40,7 @@ defmodule CodeMySpecSpex.Story970.Criterion7975Spex do
 
       when_ "the image is built and deployed", context do
         html =
-          ReqCassette.with_cassette(@cassette, [mode: :replay], fn ->
+          with_provider_cassette(@cassette, fn ->
             context.view
             |> element("[data-test='setup-step'][data-step='deploy'] [data-test='run-step']")
             |> render_click()

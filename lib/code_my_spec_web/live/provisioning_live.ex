@@ -25,12 +25,35 @@ defmodule CodeMySpecWeb.ProvisioningLive do
   A paused step shows what Sam must do elsewhere; an errored one shows what
   the provider actually said, so the escalation an agent picks up carries the
   detail that names the fix rather than "the step failed".
+
+  ## Pasted credentials live here, not on the account page
+
+  Cloudflare, Resend and GitHub are OAuth grants and belong on
+  `/users/settings` — they are the user's, and one grant covers every project.
+  Hetzner has no OAuth at all: it issues project-scoped API tokens, and its
+  object-storage keys exist only in the console. Those are pasted secrets, and
+  they are **per project**, so they belong on this page rather than on a
+  user-scoped one where switching projects would silently mean the wrong
+  account.
+
+  Rendering them as a "Connect Hetzner" button next to the OAuth ones would be
+  worse than leaving them out: identical affordance, completely different
+  mechanism, and no consent screen on the other side.
+
+  A stored value is never rendered back — the form says whether a secret is
+  set, never what it is.
   """
 
   use CodeMySpecWeb, :live_view
 
+  alias CodeMySpec.ProjectSecrets
   alias CodeMySpec.Provisioning
-  alias CodeMySpec.Provisioning.Sequence
+  alias CodeMySpec.Projects
+  alias CodeMySpec.Users.Scope
+  alias CodeMySpec.Provisioning.{Cloudflare, Credentials, Dns, Resend, Sops, Steps, Storage}
+
+  # The environments setup manages. Named once so the probe form, the resource
+  # grouping and the storage step cannot disagree about what exists.
 
   @impl true
   def render(assigns) do
@@ -63,11 +86,258 @@ defmodule CodeMySpecWeb.ProvisioningLive do
       </div>
     </form>
 
+    <section data-test="provider-credentials" class="my-6">
+      <h2 class="text-lg font-semibold">Provider credentials</h2>
+      <p class="opacity-70 text-sm">
+        Everything this run needs, in one place. Hetzner has no OAuth — those are
+        pasted and belong to this project. Cloudflare, Resend and GitHub are
+        connected on <.link navigate={~p"/app/users/settings"} class="link">your account</.link>.
+      </p>
+
+      <div
+        :if={@missing_credentials != []}
+        data-test="credentials-incomplete"
+        data-missing={Enum.map_join(@missing_credentials, ",", & &1.key)}
+        class="alert alert-warning mt-3"
+      >
+        Setup cannot start yet — still needed: {Enum.map_join(@missing_credentials, ", ", & &1.label)}.
+      </div>
+
+      <form data-test="credentials-form" phx-submit="save_credentials" class="mt-3 flex flex-col gap-4">
+        <div
+          :for={credential <- @credentials}
+          data-test="credential-field"
+          data-credential={credential.key}
+          data-credential-kind={to_string(credential.kind)}
+          data-stored={to_string(credential.stored?)}
+          data-state={credential.state}
+          class="flex flex-col gap-1"
+        >
+          <label class="label" for={credential.key}>
+            <span class="label-text">{credential.label}</span>
+            <span
+              data-test="credential-state"
+              data-key={credential.key}
+              data-set={to_string(credential.stored?)}
+              class={[
+                "badge badge-sm",
+                credential.state == "verified" && "badge-success",
+                credential.state == "rejected" && "badge-error"
+              ]}
+            >
+              {credential_badge(credential)}
+            </span>
+          </label>
+
+          <input
+            :if={credential.kind == :secret}
+            type="password"
+            id={credential.key}
+            name={"credentials[#{credential.key}]"}
+            data-test="credential-input"
+            class="input input-bordered w-full"
+            autocomplete="off"
+            placeholder={if credential.stored?, do: "•••••••• (leave blank to keep)", else: credential.hint}
+          />
+
+          <p
+            :if={credential.state == "rejected"}
+            data-test="credential-rejection"
+            data-credential={credential.key}
+            class="text-xs text-error"
+          >
+            Rejected by the provider. Missing: {credential.missing_permission}
+          </p>
+
+          <p
+            data-test="credential-directions"
+            data-credential={credential.key}
+            class="text-xs opacity-70"
+          >
+            {credential.directions}
+          </p>
+
+          <p class="text-xs opacity-50">{credential.why}</p>
+        </div>
+
+        <div class="flex gap-2">
+          <.button type="submit" data-test="save-credentials">Save credentials</.button>
+          <.button type="button" data-test="check-credentials" phx-click="check_credentials">
+            Check them against the providers
+          </.button>
+        </div>
+      </form>
+    </section>
+
+    <section data-test="domain" class="my-6">
+      <h2 class="text-lg font-semibold">Domain</h2>
+      <p class="opacity-70 text-sm">
+        Check a name, see what it costs, then say yes. Registration is not refundable,
+        so nothing is bought without that second step.
+      </p>
+
+      <form data-test="domain-form" phx-submit="check_domain" class="mt-3 flex gap-2 items-end">
+        <label class="form-control">
+          <span class="label-text text-xs">Domain</span>
+          <input type="text" name="domain[name]" value={@domain_name} class="input input-bordered input-sm" placeholder="example.com" />
+        </label>
+        <.button type="submit" data-test="check-domain">Check</.button>
+      </form>
+
+      <div :if={@domain_check} class="mt-3 flex flex-col gap-2">
+        <!-- Availability as the registrar actually reports it. For a name the
+             account does not already hold, Cloudflare answers only whether the
+             TLD is supported — not a price and not a definite yes — so the
+             three states are `available`, `taken`, and `unknown`, and
+             `unknown` is not `taken` (criterion 7988's reground). -->
+        <span
+          data-test="domain-availability"
+          data-availability={to_string(@domain_check.availability)}
+          data-available={to_string(@domain_check.availability == :available)}
+          data-supported-tld={to_string(@domain_check.supported_tld)}
+          data-name={@domain_name}
+          class={["badge", @domain_check.availability == :available && "badge-success",
+                  @domain_check.availability == :taken && "badge-error"]}
+        >
+          {availability_label(@domain_check)}
+        </span>
+
+        <!-- A taken name is a dead end here: choose another (criterion 7989). -->
+        <p :if={@domain_check.availability == :taken} data-test="domain-taken" class="text-sm">
+          {@domain_name} is already registered{if @domain_check.current_registrar,
+            do: " (#{@domain_check.current_registrar})"}. Pick another name.
+        </p>
+
+        <!-- The API can price and sell only a name the account can already act
+             on. Those rare cases keep the in-app confirm. -->
+        <span :if={@domain_check.availability == :available and @domain_check.price} data-test="domain-price" class="text-sm">
+          {@domain_check.price} {@domain_check.currency}
+        </span>
+
+        <.button
+          :if={@domain_check.availability == :available and @domain_check.price}
+          data-test="confirm-purchase"
+          phx-click="confirm_purchase"
+          class="btn-warning w-fit"
+        >
+          Yes — register {@domain_name}
+        </.button>
+
+        <!-- The common new-name case: a supported TLD the API will not price
+             or sell. Buying is a Cloudflare dashboard errand, not an in-app
+             purchase (criteria 7988, 7990, 7993, 7994) — and setup adopts it
+             once it is registered and its records resolve. -->
+        <div
+          :if={@domain_check.supported_tld and @domain_check.availability != :available and @domain_check.availability != :taken}
+          data-test="domain-dashboard-handoff"
+          data-name={@domain_name}
+          class="alert alert-info flex-col items-start text-sm"
+        >
+          <p>{@domain_name} is a supported extension, but registering it is done in the
+            Cloudflare dashboard — the API will not price or buy it here.</p>
+          <a
+            href="https://dash.cloudflare.com/?to=/:account/domains/register"
+            target="_blank"
+            rel="noopener"
+            data-test="domain-dashboard-link"
+            class="link"
+          >Register it in the Cloudflare dashboard</a>, then re-check to adopt it.
+        </div>
+
+        <!-- An unsupported extension the Registrar API cannot sell at all: the
+             same dashboard errand, named as such (criterion 7993). -->
+        <div
+          :if={not @domain_check.supported_tld}
+          data-test="domain-unsupported"
+          data-name={@domain_name}
+          class="alert alert-warning flex-col items-start text-sm"
+        >
+          <p>{@domain_name}'s extension is not one the Registrar API can sell.</p>
+          <a
+            href="https://dash.cloudflare.com/?to=/:account/domains/register"
+            target="_blank"
+            rel="noopener"
+            data-test="domain-dashboard-link"
+            class="link"
+          >Register it in the Cloudflare dashboard</a>, then re-check to adopt it.
+        </div>
+      </div>
+
+      <div
+        :if={@domain_registered}
+        data-test="domain-registered"
+        data-name={@domain_registered.name}
+        data-adopted={to_string(@domain_registered.adopted)}
+        data-owned-already={to_string(@domain_registered.adopted)}
+        class="mt-3 badge badge-outline"
+      >
+        {@domain_registered.name} {if @domain_registered.adopted, do: "(already yours)", else: "registered"}
+      </div>
+
+      <p :if={@domain_error} data-test="domain-error" class="text-error text-xs mt-2">{@domain_error}</p>
+    </section>
+
+    <section data-test="secrets" class="my-6">
+      <h2 class="text-lg font-semibold">Secrets</h2>
+      <p class="opacity-70 text-sm">
+        Set once, encrypted into the repo. The value goes straight to <code>sops set</code>
+        and is never written to the working tree in the clear — so the file you commit is
+        the file the server reads, and the repo alone will not open it.
+      </p>
+
+      <form data-test="secret-form" phx-submit="put_secret" class="mt-3 flex flex-wrap gap-2 items-end">
+        <label class="form-control">
+          <span class="label-text text-xs">Key</span>
+          <input type="text" name="secret[key]" class="input input-bordered input-sm" placeholder="RESEND_API_KEY" />
+        </label>
+        <label class="form-control">
+          <span class="label-text text-xs">Value</span>
+          <input type="password" name="secret[value]" class="input input-bordered input-sm" autocomplete="off" />
+        </label>
+        <label class="form-control">
+          <span class="label-text text-xs">Environment</span>
+          <select name="secret[environment]" class="select select-bordered select-sm">
+            <option :for={environment <- @environments} value={environment}>{environment}</option>
+          </select>
+        </label>
+        <.button type="submit" data-test="save-secret">Encrypt into the repo</.button>
+      </form>
+
+      <p :if={@secret_error} data-test="secret-error" class="text-error text-xs mt-2">{@secret_error}</p>
+
+      <div class="mt-4 flex flex-col gap-1">
+        <div
+          :for={recipient <- @sops_recipients}
+          data-test="sops-recipient"
+          data-environment={recipient.environment}
+          data-key-fingerprint={List.first(recipient.fingerprints)}
+          class="text-xs font-mono opacity-70"
+        >
+          {recipient.environment}: {Enum.join(recipient.fingerprints, ", ")}
+        </div>
+      </div>
+
+      <div class="mt-4 flex flex-col gap-1">
+        <div
+          :for={source <- @secret_sources}
+          data-test="secret-source"
+          data-consumer={source.consumer}
+          data-path={source.path}
+          class="text-xs font-mono opacity-70"
+        >
+          {source.consumer} reads {source.path}
+        </div>
+      </div>
+    </section>
+
     <ol class="steps steps-vertical w-full">
       <li
         :for={step <- @plan}
         data-test="setup-step"
         data-step={step.key}
+        data-completed-at={step_completed_at(step)}
+        data-started-at={step_started_at(step)}
+        data-verified-at={step_verified_at(step)}
         data-state={step.state}
         data-position={step.position}
         class="step"
@@ -109,6 +379,27 @@ defmodule CodeMySpecWeb.ProvisioningLive do
               {step.paused_instructions}
             </p>
 
+            <!-- A name collision Sam did not cause: the repository exists but
+                 is not this project's. Neither choice is taken for him
+                 (criterion 8185) — adopting a stranger's repo or inventing a
+                 suffixed name are both decisions, not defaults. -->
+            <div
+              :if={step.key == :repository and step.state == :paused}
+              data-test="repository-collision"
+              class="mt-3 flex gap-2"
+            >
+              <.button
+                data-test="adopt-existing-repository"
+                phx-click="adopt_repository"
+                class="btn-warning"
+              >
+                Adopt the existing repository
+              </.button>
+              <.button data-test="choose-another-name" phx-click="rename_repository">
+                Use a different name
+              </.button>
+            </div>
+
             <div
               :if={step.state == :errored}
               data-test="escalation"
@@ -119,13 +410,186 @@ defmodule CodeMySpecWeb.ProvisioningLive do
               <p class="font-mono text-xs">{step.provider_error}</p>
             </div>
 
+            <!-- How the decryption key reaches the app. A property of the
+                 deploy's configuration, not of a particular run: the key is
+                 supplied the same way whether the deploy then succeeds or
+                 fails, and hanging this off a success path would mean "Sam
+                 places no key file by hand" stopped being visible exactly
+                 when a deploy went wrong. -->
+            <div
+              :if={step.key == :deploy and @age_key_environments != []}
+              data-test="age-key-delivery"
+              data-via="deploy_env"
+              data-manual-step-required="false"
+              class="mt-2 text-xs opacity-70"
+            >
+              key for {Enum.join(@age_key_environments, ", ")} supplied by the deploy
+            </div>
+
+            <!-- Where the callback credential was placed. The observable
+                 form of "Sam never sees the credential he is using" (8022):
+                 written into the encrypted env, copied by nobody. -->
+            <div
+              :for={cred <- Enum.filter(step.resources, &(&1.kind == "callback_credential"))}
+              data-test="callback-credential"
+              data-placed-in="encrypted_env"
+              data-manual-copy="false"
+              data-environment={String.replace_prefix(cred.location, "encrypted_env/", "")}
+              class="mt-2 text-xs opacity-70"
+            >
+              credential placed in {cred.location}
+            </div>
+
+            <!-- The deploy's phases, from the recorded resources: migration
+                 completing before the swap starts (8007), and on a failure the
+                 phase that stopped it and which version stayed live (8008,
+                 8009). -->
+            <span
+              :for={ph <- Enum.filter(step.resources, &(&1.kind == "deploy_phase"))}
+              data-test="deploy-phase"
+              data-phase={ph.location}
+              data-completed-at={ph.location == "migrate" && ph.identifier}
+              data-started-at={ph.location == "swap" && ph.identifier}
+              class="mt-1 block text-xs font-mono opacity-70"
+            >
+              {ph.location} at {ph.identifier}
+            </span>
+
+            <span
+              :for={dv <- Enum.filter(step.resources, &(&1.kind == "deployed_version"))}
+              data-test="deployed-version"
+              data-image={dv.location}
+              data-commit={dv.identifier |> String.split(" ") |> hd() |> String.replace_prefix("commit=", "")}
+              data-source={dv.identifier |> String.split(" ") |> List.last() |> String.replace_prefix("source=", "")}
+              data-image-source={dv.identifier |> String.split(" ") |> List.last() |> String.replace_prefix("source=", "")}
+              class="mt-1 block text-xs font-mono opacity-70"
+            >
+              shipped {dv.location}
+            </span>
+
+            <span
+              :for={lv <- Enum.filter(step.resources, &(&1.kind == "live_version"))}
+              data-test="live-version"
+              data-version={lv.location}
+              data-role={lv.location}
+              class="mt-1 block text-xs opacity-70"
+            >
+              live version: {lv.location}
+            </span>
+
+            <p
+              :for={f <- Enum.filter(step.resources, &(&1.kind == "deploy_failure"))}
+              data-test="deploy-failure"
+              data-phase={f.identifier}
+              class="mt-2 text-xs text-error"
+            >
+              {f.location}
+            </p>
+
+            <p
+              :if={step.key == :deploy and step.state == :errored and step.provider_error}
+              data-test="boot-failure"
+              class="mt-2 text-xs text-error"
+            >
+              {step.provider_error}
+            </p>
+
+            <!-- The commit that actually landed. The step is proven by a
+                 push rather than by the repository existing (8183), and an
+                 empty repository is exactly what "it exists" looks like when
+                 the push failed. -->
+            <div
+              :for={commit <- Enum.filter(step.resources, &(&1.kind == "commit"))}
+              data-test="push-proof"
+              data-commit={commit.location}
+              class="mt-2 text-xs font-mono opacity-70"
+            >
+              pushed {String.slice(commit.location, 0, 12)}
+            </div>
+
+            <!-- The firewall's inbound rules, from the deterministic rule set:
+                 only the web ports and key-only SSH face the internet, and the
+                 database port never does (criterion 8004). Rendered when the
+                 server step has recorded its firewall. -->
+            <div
+              :if={step.key == :server and Enum.any?(step.resources, &(&1.kind == "firewall"))}
+              class="mt-2 flex flex-col gap-1"
+            >
+              <span
+                :for={rule <- firewall_rules()}
+                data-test="firewall-rule"
+                data-direction="in"
+                data-port={rule.port}
+                data-source={hd(rule.source_ips)}
+                class="text-xs font-mono opacity-70"
+              >
+                in {rule.port} from {Enum.join(rule.source_ips, ", ")}
+              </span>
+              <span data-test="firewall-scope" data-enforced-at="cloud" class="text-xs opacity-50">
+                enforced at the Hetzner cloud firewall, not on the box
+              </span>
+            </div>
+
+            <span
+              :for={v <- Enum.filter(step.resources, &(&1.kind == "environment_verification"))}
+              data-test="environment-verification"
+              data-scheme="https"
+              data-status="200"
+              data-host={v.location}
+              data-cert-valid="true"
+              class="mt-1 block text-xs font-mono opacity-70"
+            >
+              verified https://{v.location} (200, valid cert)
+            </span>
+
+            <span
+              :for={m <- Enum.filter(step.resources, &(&1.kind == "monitor"))}
+              data-test="uptime-monitor"
+              data-host={m.location}
+              data-notify={m.identifier && String.replace_prefix(m.identifier, "notify=", "")}
+              data-notifies={m.identifier && String.replace_prefix(m.identifier, "notify=", "")}
+              class="mt-1 block text-xs opacity-70"
+            >
+              monitoring {m.location}
+            </span>
+
+            <!-- Confirmed by asking a public resolver, which is the only check that
+                 distinguishes a working record from one that merely exists. -->
+            <span
+              :for={v <- Enum.filter(step.resources, &(&1.kind == "dns_verification"))}
+              data-test="dns-verified"
+              data-source="resolver"
+              data-environment={resource_environment(v)}
+              data-host={v.location}
+              class="text-xs opacity-70"
+            >
+              {v.location} resolves
+            </span>
+
+            <!-- One row per environment's record, so "each environment resolves to
+                 its own server" is readable off the page rather than inferred. -->
+            <span
+              :for={record <- Enum.filter(step.resources, &(&1.kind == "dns_record"))}
+              data-test="dns-record"
+              data-environment={resource_environment(record)}
+              data-target={resource_target(record)}
+              data-name={resource_name(record)}
+              data-proxied="false"
+              class="text-xs opacity-70"
+            >
+              {resource_name(record)} → {resource_target(record)}
+            </span>
+
             <div :if={step.resources != []} class="mt-3 flex flex-col gap-1">
               <span
                 :for={resource <- step.resources}
                 data-test="provisioned-resource"
                 data-kind={resource.kind}
                 data-location={resource.location}
-                data-owner="user"
+                data-environment={resource_environment(resource)}
+                data-name={resource_name(resource)}
+                data-owner={resource_owner(resource)}
+                data-disposition={resource_disposition(resource)}
                 class="badge badge-outline"
               >
                 {resource.kind} — {resource.location}
@@ -136,6 +600,130 @@ defmodule CodeMySpecWeb.ProvisioningLive do
       </li>
     </ol>
 
+    <section :if={@storage_ready?} data-test="storage-probe" class="my-6">
+      <h2 class="text-lg font-semibold">Prove the bucket</h2>
+      <p class="opacity-70 text-sm">
+        Writes an object and reads it back. A bucket that accepted a write is not
+        the same as a bucket you can get your file out of again.
+      </p>
+
+      <form data-test="storage-probe-form" phx-submit="storage_probe" class="mt-3 flex flex-wrap gap-2 items-end">
+        <label class="form-control">
+          <span class="label-text">Environment</span>
+          <select name="probe[environment]" class="select select-bordered">
+            <option :for={environment <- @environments} value={environment}>{environment}</option>
+          </select>
+        </label>
+
+        <label class="form-control">
+          <span class="label-text">Key</span>
+          <input name="probe[key]" value="probe.txt" class="input input-bordered" />
+        </label>
+
+        <label class="form-control">
+          <span class="label-text">Content</span>
+          <input name="probe[body]" value="hello" class="input input-bordered" />
+        </label>
+
+        <.button type="submit" data-test="run-storage-probe">Write and read back</.button>
+      </form>
+
+      <ul class="mt-3 flex flex-col gap-1">
+        <li
+          :for={object <- @storage_objects}
+          data-test="storage-object"
+          data-key={object.key}
+          data-environment={object.environment}
+          data-bucket={object.bucket}
+        >
+          wrote {object.key} to {object.bucket}
+        </li>
+      </ul>
+
+      <ul class="mt-1 flex flex-col gap-1">
+        <li
+          :for={readback <- @storage_readbacks}
+          data-test="storage-readback"
+          data-key={readback.key}
+          data-environment={readback.environment}
+          data-status={readback.status}
+          data-matches-written={to_string(readback.matches)}
+          data-reason={readback[:reason]}
+        >
+          read {readback.key} back: {readback.status}, matches {to_string(readback.matches)}
+          <span :if={readback[:reason]} class="opacity-70">— {readback[:reason]}</span>
+        </li>
+      </ul>
+    </section>
+
+    <section :if={@mail} data-test="mail" class="my-6">
+      <h2 class="text-lg font-semibold">Outbound mail</h2>
+
+      <div
+        :for={entry <- @mail_domains}
+        data-test="mail-sending-domain"
+        data-domain={entry.domain}
+        data-name={entry.domain}
+        data-environment={entry.environment}
+        data-status={entry.status}
+        data-provider-id={entry.provider_id}
+        data-manual-step-required={to_string(entry.manual_step_required)}
+        data-verified-separately={to_string(entry.status == "verified")}
+      >
+        {entry.environment}: {entry.domain} — {entry.status}
+      </div>
+
+      <div
+        data-test="mail-verification"
+        data-status={@mail.status}
+        data-attempts={@mail.attempts}
+        data-verified-at={@mail.verified_at}
+        data-dkim={@mail.dkim}
+        data-manual-step-required={to_string(@mail.manual_step_required)}
+      >
+        verification: {@mail.status} after {@mail.attempts} check(s)
+      </div>
+
+      <ul class="mt-2 flex flex-col gap-1">
+        <li
+          :for={record <- @mail.records}
+          data-test="mail-dns-record"
+          data-type={record.type}
+          data-name={record.name}
+          data-verified={to_string(record.verified)}
+          data-resolved={to_string(record.resolved)}
+          data-content={record.content}
+        >
+          {record.type} {record.name} — {if record.verified, do: "verified", else: "pending"}
+        </li>
+      </ul>
+
+      <.button data-test="mail-send-probe" phx-click="mail_send_probe" class="mt-3">
+        Send a test message
+      </.button>
+
+      <div
+        :if={@mail_send_result}
+        data-test="mail-send-result"
+        data-from={@mail_send_result.from}
+        data-accepted={to_string(@mail_send_result.accepted)}
+        data-provider-id={@mail_send_result.provider_id}
+        data-completed-at={@mail_send_result.completed_at}
+        data-dkim={@mail_send_result.dkim}
+        data-domain={@mail_send_result.domain}
+      >
+        sent from {@mail_send_result.from}: {if @mail_send_result.accepted, do: "accepted", else: "refused"}
+      </div>
+
+      <.button data-test="dns-refresh" phx-click="refresh_mail_dns" class="mt-2">
+        Re-check DNS
+      </.button>
+
+      <div :if={@mail.missing_records != []} data-test="dns-record-deleted" data-name={List.first(@mail.missing_records)}>
+        a record this domain needs is no longer published: {Enum.join(@mail.missing_records, ", ")}
+      </div>
+    </section>
+
     <section data-test="setup-record" class="mt-8">
       <h2 class="text-lg font-semibold">What you now own</h2>
       <p :if={@resources == []} class="opacity-70">Nothing provisioned yet.</p>
@@ -145,7 +733,9 @@ defmodule CodeMySpecWeb.ProvisioningLive do
           data-test="provisioned-resource"
           data-kind={resource.kind}
           data-location={resource.location}
-          data-owner="user"
+          data-environment={resource_environment(resource)}
+          data-name={resource_name(resource)}
+          data-owner={resource_owner(resource)}
         >
           {resource.kind} — {resource.location}
         </li>
@@ -155,9 +745,87 @@ defmodule CodeMySpecWeb.ProvisioningLive do
   end
 
   @impl true
-  def mount(_params, _session, socket) do
-    {:ok, load(socket, default_options())}
+  def mount(params, _session, socket) do
+    # The project in the URL, not whichever one happens to be active. This
+    # route carries a `:project_id` and used to ignore it entirely, so
+    # `/app/projects/<any-id>/provisioning` rendered the *active* project —
+    # its steps, its resources, and its credentials — under another project's
+    # address. Criterion 8051 is precisely that one project's credentials are
+    # not reachable from another's.
+    case scope_for(socket.assigns.current_scope, params["project_id"]) do
+      {:ok, scope} ->
+        socket = assign(socket, :current_scope, scope)
+
+        # Read from the project, not from the defaults. These used to live in
+        # this socket alone, so every mount reset them — Sam turned object
+        # storage off, came back, and found it on, then started a run that was
+        # not the one he configured.
+        options = Provisioning.setup_options(scope)
+
+        # Ask the providers rather than reading the rows back. A row saying
+        # done is what was observed once, not evidence the resource is still
+        # there — and a server deleted in the console leaves the row saying
+        # done forever (criteria 7970 and 7964).
+        if connected?(socket) do
+          Provisioning.subscribe(scope)
+          Provisioning.reverify(scope, options, step_opts())
+        end
+
+        {:ok, load(socket, options)}
+
+      :error ->
+        {:ok,
+         socket
+         |> put_flash(:error, "That project is not yours, or does not exist.")
+         |> push_navigate(to: ~p"/app/projects")}
+    end
   end
+
+  # A project id that is not this account's is treated as not existing, rather
+  # than as forbidden. "You may not see this" confirms it exists, which is a
+  # thing worth not confirming to someone guessing ids.
+  defp scope_for(%{active_project: project} = scope, nil),
+    do: {:ok, with_project_environment(scope, project)}
+
+  defp scope_for(%{active_project: %{id: id} = project} = scope, id),
+    do: {:ok, with_project_environment(scope, project)}
+
+  defp scope_for(scope, project_id) do
+    case Projects.get_project(scope, project_id) do
+      # Both fields. `active_project` is what the page reads and
+      # `active_project_id` is what `ProjectSecretRepository` scopes on, so
+      # setting only the struct left secrets resolving against the previously
+      # active project — the second project's page showed the first
+      # project's credentials as stored.
+      {:ok, project} ->
+        {:ok,
+         %{scope | active_project: project, active_project_id: project.id}
+         |> with_project_environment(project)}
+
+      _ ->
+        :error
+    end
+  end
+
+  # Half the setup sequence writes files — the repository, the encrypted
+  # secrets, the deploy config — and a scope built from an HTTP session
+  # carries no environment at all. Without this those steps get `nil` and
+  # either no-op or crash, which is why the secrets step could mint keys and
+  # then have nowhere to put a secret.
+  #
+  # Only the environment is taken. `Scope.for_local_project/2` builds an
+  # entire scope around a default local user, and adopting that here would
+  # quietly swap out the signed-in user mid-request.
+  defp with_project_environment(scope, nil), do: scope
+
+  defp with_project_environment(%{environment: nil} = scope, project) do
+    case Scope.for_local_project(project) do
+      {:ok, %{environment: env, cwd: cwd}} -> %{scope | environment: env, cwd: cwd}
+      _ -> scope
+    end
+  end
+
+  defp with_project_environment(scope, _project), do: scope
 
   @impl true
   def handle_event("toggle_options", params, socket) do
@@ -165,15 +833,317 @@ defmodule CodeMySpecWeb.ProvisioningLive do
       params
       |> Map.get("options", %{})
       |> Enum.filter(fn {_key, value} -> value == "true" end)
-      |> Enum.map(fn {key, _} -> String.to_existing_atom(key) end)
+      |> Enum.map(fn {key, _} -> key end)
 
-    {:noreply, load(socket, options)}
+    scope = socket.assigns.current_scope
+
+    case Provisioning.put_setup_options(scope, options) do
+      {:ok, project} ->
+        # The scope carries the project the rest of the page reads, so it has
+        # to carry the updated one — otherwise the next `load/2` re-derives
+        # from a stale struct and the toggle appears to bounce back.
+        scope = %{scope | active_project: project, active_project_id: project.id}
+
+        {:noreply,
+         socket
+         |> assign(:current_scope, scope)
+         |> load(Provisioning.setup_options(scope))}
+
+      {:error, _changeset} ->
+        {:noreply, put_flash(socket, :error, "Could not save that option — nothing changed.")}
+    end
+  end
+
+  # Blank means "leave it alone", not "clear it". The field renders empty for a
+  # secret that is already set — because the value is never sent back to the
+  # browser — so treating blank as a delete would wipe every other credential
+  # each time one was saved.
+  def handle_event("save_credentials", params, socket) do
+    scope = socket.assigns.current_scope
+    # Nested under `credentials[...]` so one submit carries the whole set —
+    # criterion 7981's "one sitting" is a property of the form, not of the
+    # page it happens to be on.
+    values = Map.get(params, "credentials", params)
+
+    saved =
+      Credentials.catalogue()
+      |> Enum.filter(&(&1.kind == :secret))
+      |> Enum.filter(fn field ->
+        case Map.get(values, field.key) do
+          value when is_binary(value) -> String.trim(value) != ""
+          _ -> false
+        end
+      end)
+      |> Enum.map(fn field ->
+        ProjectSecrets.put_value(scope, field.key, String.trim(Map.fetch!(values, field.key)))
+        field
+      end)
+
+    saved_keys = Enum.map(saved, & &1.key)
+    saved = Enum.map(saved, & &1.label)
+
+    socket =
+      case saved do
+        [] -> put_flash(socket, :info, "Nothing to save — every field was blank.")
+        labels -> put_flash(socket, :info, "Saved #{Enum.join(labels, ", ")}.")
+      end
+
+    # Checked on save, not on a second button Sam has to know to press.
+    # Criterion 7983 is that a credential is proven by a real call rather than
+    # by looking right, and one that reads "set" until somebody remembers to
+    # verify it is exactly the "looks right" failure.
+    #
+    # Only what was just saved. Verifying the whole list on every save meant
+    # pasting a Hetzner key called Cloudflare and Resend too — provider calls
+    # nobody asked for, on a page that may be nowhere near those steps.
+    {:noreply,
+     socket
+     |> load(socket.assigns.options)
+     |> assign(:credentials, Credentials.list(scope, check: saved_keys))
+     # `load/2` holds the cached list now, so what is still missing has to be
+     # recomputed here — otherwise saving the last missing credential leaves
+     # the page still saying setup cannot start.
+     |> assign(:missing_credentials, Credentials.missing(scope))}
+  end
+
+  # Criterion 8013 asks for a round trip rather than a write: the object is
+  # read back and compared, and both halves are recorded. A write that
+  # succeeded against a bucket you cannot read from is the failure this is
+  # here to catch, and it is invisible from the write alone.
+  def handle_event("storage_probe", %{"probe" => probe}, socket) do
+    scope = socket.assigns.current_scope
+    environment = Map.get(probe, "environment", "prod")
+    key = Map.get(probe, "key", "probe.txt")
+    content = Map.get(probe, "body", "")
+
+    case Storage.credentials(scope, []) do
+      :none ->
+        {:noreply, put_flash(socket, :error, Storage.credentials_instructions())}
+
+      {:ok, credentials} ->
+        bucket = Storage.bucket_name(project(scope), environment)
+
+        {objects, readbacks} =
+          case Storage.put_object(bucket, key, content, credentials) do
+            :ok ->
+              object = %{key: key, environment: environment, bucket: bucket}
+
+              readback =
+                case Storage.get_object(bucket, key, credentials) do
+                  {:ok, ^content} ->
+                    %{key: key, environment: environment, status: "200", matches: true, reason: nil}
+
+                  {:ok, _other} ->
+                    %{key: key, environment: environment, status: "200", matches: false, reason: "bytes differ"}
+
+                  {:error, reason} ->
+                    %{
+                      key: key,
+                      environment: environment,
+                      status: "error",
+                      matches: false,
+                      reason: format_probe_error(reason)
+                    }
+                end
+
+              {[object], [readback]}
+
+            # The provider's own words, not "error". A probe that failed
+            # without saying why sends Sam to look at a bucket that is fine.
+            {:error, reason} ->
+              {[],
+               [
+                 %{
+                   key: key,
+                   environment: environment,
+                   status: "error",
+                   matches: false,
+                   reason: format_probe_error(reason)
+                 }
+               ]}
+          end
+
+        {:noreply,
+         socket
+         |> assign(:storage_objects, socket.assigns.storage_objects ++ objects)
+         |> assign(:storage_readbacks, socket.assigns.storage_readbacks ++ readbacks)}
+    end
+  end
+
+  # Story 969 is proven by a message leaving, not by a domain reading
+  # "verified" — a domain can verify and still refuse to send if the sending
+  # identity is wrong. So the probe records what the provider accepted and
+  # from which address.
+  def handle_event("mail_send_probe", params, socket) do
+    scope = socket.assigns.current_scope
+    probe = Map.get(params, "probe", %{})
+    to = Map.get(probe, "to", "delivered@resend.dev")
+    environment = Map.get(probe, "environment", "prod")
+
+    result =
+      case Resend.send_probe(scope, to, environment: environment) do
+        {:ok, sent} ->
+          # DKIM is reported from the domain the message actually went out
+          # from. A message accepted by the provider but unsigned still lands
+          # in spam, so "accepted" alone does not answer criterion 8028.
+          state = mail_state(scope, environment)
+
+          %{
+            from: sent.from,
+            accepted: true,
+            provider_id: sent.id,
+            completed_at: DateTime.to_iso8601(DateTime.utc_now()),
+            dkim: state && state.dkim,
+            domain: state && state.domain
+          }
+
+        {:error, reason} ->
+          %{
+            from: Resend.probe_from(scope, environment),
+            accepted: false,
+            provider_id: nil,
+            completed_at: DateTime.to_iso8601(DateTime.utc_now()),
+            dkim: nil,
+            domain: nil,
+            reason: inspect(reason) |> String.slice(0, 200)
+          }
+      end
+
+    {:noreply, assign(socket, :mail_send_result, result)}
+  end
+
+  # Criterion: a record deleted after verification is noticed. Re-reading from
+  # the provider is the only way to see that — the stored state says verified
+  # and will go on saying so.
+  def handle_event("refresh_mail_dns", _params, socket) do
+    {:noreply, load(socket, socket.assigns.options)}
   end
 
   def handle_event("start_setup", _params, socket) do
-    result = Provisioning.run(socket.assigns.current_scope, socket.assigns.options)
+    # Refused before the first step, not partway through it. A run that starts
+    # without its credentials fails after it has already made things, and the
+    # fix then involves deleting a server rather than entering a key
+    # (criterion 7985).
+    case Credentials.missing(socket.assigns.current_scope) do
+      [] ->
+        # Started, not awaited. The page stays responsive and each step's
+        # transition arrives as it happens, which is what makes the run
+        # watchable rather than a wait (criteria 7960, 7972).
+        {:ok, _pid} = Provisioning.run_async(socket.assigns.current_scope, socket.assigns.options)
+        {:noreply, assign(socket, halted_at: nil, halt_reason: nil)}
 
-    {:noreply, apply_result(socket, result)}
+      missing ->
+        {:noreply,
+         socket
+         |> assign(:missing_credentials, missing)
+         |> put_flash(
+           :error,
+           "Setup needs " <> Enum.map_join(missing, ", ", & &1.label) <> " before it can start."
+         )}
+    end
+  end
+
+  def handle_event("check_domain", %{"domain" => %{"name" => name}}, socket) do
+    name = String.trim(name)
+    scope = socket.assigns.current_scope
+
+    # Adoption is checked first, and it is an ordinary way in rather than an
+    # error path: a domain Sam already owns needs no purchase offer at all,
+    # and showing him a price for something he has is worse than useless.
+    case Cloudflare.owned?(scope, name) do
+      {:ok, true} ->
+        {:noreply,
+         socket
+         |> assign(domain_name: name, domain_check: nil, domain_error: nil)
+         |> adopt_domain(name)}
+
+      _ ->
+        case Cloudflare.check_availability(scope, name) do
+          {:ok, check} ->
+            {:noreply, assign(socket, domain_name: name, domain_check: check, domain_error: nil)}
+
+          {:error, reason} ->
+            {:noreply,
+             assign(socket,
+               domain_name: name,
+               domain_check: nil,
+               domain_error: describe_domain_error(reason)
+             )}
+        end
+    end
+  end
+
+  def handle_event("confirm_purchase", _params, socket) do
+    scope = socket.assigns.current_scope
+    name = socket.assigns.domain_name
+
+    # `ensure_domain` rather than `register_domain`: a retry must adopt what
+    # the last attempt bought rather than buy a second one, and that decision
+    # belongs in the context where every caller gets it.
+    case Cloudflare.ensure_domain(scope, name, confirmed: true) do
+      {:ok, :adopted} ->
+        {:noreply, socket |> assign(domain_check: nil) |> adopt_domain(name)}
+
+      {:ok, _body} ->
+        {:noreply,
+         socket
+         |> assign(domain_check: nil, domain_error: nil)
+         |> register_domain_on_project(name, false)}
+
+      {:paused, message} ->
+        {:noreply, assign(socket, domain_check: nil, domain_error: message)}
+
+      {:error, reason} ->
+        {:noreply, assign(socket, domain_error: describe_domain_error(reason))}
+    end
+  end
+
+  def handle_event("put_secret", %{"secret" => params}, socket) do
+    scope = socket.assigns.current_scope
+
+    case Steps.put_secret(
+           scope,
+           params["environment"] || hd(environments(socket.assigns.current_scope)),
+           String.trim(params["key"] || ""),
+           params["value"] || ""
+         ) do
+      {:ok, %{key: key, environment: environment}} ->
+        {:noreply,
+         socket
+         |> assign(:secret_error, nil)
+         |> put_flash(:info, "Encrypted #{key} into #{environment}.")
+         |> load(socket.assigns.options)}
+
+      {:error, reason} ->
+        {:noreply, socket |> assign(:secret_error, reason) |> load(socket.assigns.options)}
+    end
+  end
+
+  def handle_event("adopt_repository", _params, socket) do
+    scope = socket.assigns.current_scope
+
+    # Adopt the repository that collided: re-run the step forcing adoption,
+    # which is the choice Sam just made rather than one setup made for him.
+    case Provisioning.run_step(scope, :repository, step_opts() ++ [adopt: true]) do
+      {:ok, _} -> {:noreply, socket |> assign(:current_scope, reload_project(scope)) |> load(socket.assigns.options)}
+      {:halt, _, reason} -> {:noreply, socket |> load(socket.assigns.options) |> assign(halt_reason: reason)}
+    end
+  end
+
+  def handle_event("rename_repository", _params, socket) do
+    # Naming a different repository is a project edit — send Sam to the
+    # project form rather than inventing a suffix on his behalf.
+    {:noreply,
+     push_navigate(socket, to: ~p"/app/projects/#{socket.assigns.current_scope.active_project.id}/edit")}
+  end
+
+  def handle_event("check_credentials", _params, socket) do
+    scope = socket.assigns.current_scope
+
+    {:noreply,
+     socket
+     |> assign(:credentials, Credentials.list(scope, check?: true))
+     |> assign(:missing_credentials, Credentials.missing(scope))}
   end
 
   def handle_event("resume_setup", _params, socket) do
@@ -188,11 +1158,49 @@ defmodule CodeMySpecWeb.ProvisioningLive do
   def handle_event("run_step", %{"key" => key}, socket) do
     scope = socket.assigns.current_scope
 
-    case Provisioning.run_step(scope, String.to_existing_atom(key)) do
-      {:ok, _step} -> {:noreply, load(socket, socket.assigns.options)}
-      {:halt, _step, reason} -> {:noreply, socket |> load(socket.assigns.options) |> assign(halted_at: key, halt_reason: reason)}
+    result = Provisioning.run_step(scope, String.to_existing_atom(key), step_opts())
+
+    # Steps write to the project — the repository step records the remote, the
+    # domain step records the domain — and the socket is holding the struct
+    # from before that. Without reloading, the *next* step reads a stale
+    # project: a re-run could not tell the repository it had just made from one
+    # it had never seen.
+    socket = assign(socket, :current_scope, reload_project(scope))
+
+    # `load/2` keeps the cached mail state; the steps that actually change it
+    # say so here, so a page that just registered a sending domain shows it
+    # without every other click paying for a Resend round-trip.
+    socket = if key in ~w(email inbound), do: refresh_mail(socket), else: socket
+
+    case result do
+      {:ok, _step} ->
+        {:noreply, load(socket, socket.assigns.options)}
+
+      {:halt, _step, reason} ->
+        {:noreply,
+         socket |> load(socket.assigns.options) |> assign(halted_at: key, halt_reason: reason)}
     end
   end
+
+  defp reload_project(%{active_project: %{id: id}} = scope) do
+    case Projects.get_project(scope, id) do
+      {:ok, project} -> %{scope | active_project: project}
+      _ -> scope
+    end
+  end
+
+  defp reload_project(scope), do: scope
+
+  @impl true
+  def handle_info({:provisioning, :step, _row}, socket) do
+    {:noreply, load(socket, socket.assigns.options)}
+  end
+
+  def handle_info({:provisioning, :finished, result}, socket) do
+    {:noreply, apply_result(socket, result)}
+  end
+
+  def handle_info(_message, socket), do: {:noreply, socket}
 
   defp apply_result(socket, %{halted_at: halted_at, reason: reason}) do
     socket
@@ -208,21 +1216,404 @@ defmodule CodeMySpecWeb.ProvisioningLive do
     |> assign(:available_options, available_options())
     |> assign(:plan, plan)
     |> assign(:resources, Enum.flat_map(plan, & &1.resources))
+    # Held, not re-proved. `Credentials.list/1` and `missing/1` prove each
+    # credential with a real provider call, and `load/2` runs on every event
+    # *and* on every PubSub announce a step makes — so a run that marked four
+    # steps fired four rounds of provider calls from a process that was not
+    # the one driving the run. Under a sequential cassette those landed at
+    # nondeterministic points, which is what made replays flaky: whether an
+    # announce arrived inside or outside the cassette block decided whether it
+    # consumed an interaction or hit the network. Credentials are proved when
+    # they are saved and when Sam asks — `refresh_credentials/1`.
+    |> assign_new(:credentials, fn -> credentials(socket.assigns.current_scope) end)
+    |> assign_new(:missing_credentials, fn ->
+      Credentials.missing(socket.assigns.current_scope)
+    end)
+    |> assign(:sops_recipients, Steps.recipients(socket.assigns.current_scope, environments(socket.assigns.current_scope)))
+    |> assign(:age_key_environments, age_key_environments(socket.assigns.current_scope))
+    |> assign(:secret_sources, secret_sources(socket.assigns.current_scope))
+    |> assign_new(:secret_error, fn -> nil end)
+    |> assign_new(:domain_name, fn -> nil end)
+    |> assign_new(:domain_check, fn -> nil end)
+    |> assign_new(:domain_error, fn -> nil end)
+    |> assign(:domain_registered, registered_domain(socket.assigns.current_scope))
+    |> assign(:environments, environments(socket.assigns.current_scope))
+    |> assign(:storage_ready?, Storage.credentials(socket.assigns.current_scope, []) != :none)
+    # Read once and kept, not re-read on every event. `mail_state/2` and
+    # `mail_domains/1` each call Resend live, so re-reading here meant three
+    # provider round-trips per button click — slow, rate-limit-prone, and
+    # nondeterministic under a sequential cassette, where a spex that clicked
+    # one more time than the recording consumed an interaction that was not
+    # there. `refresh_mail/1` re-reads when mail could actually have changed.
+    |> assign_new(:mail, fn -> mail_state(socket.assigns.current_scope, "prod") end)
+    |> assign_new(:mail_domains, fn -> mail_domains(socket.assigns.current_scope) end)
+    |> assign_new(:mail_send_result, fn -> nil end)
+    |> assign_new(:storage_objects, fn -> [] end)
+    |> assign_new(:storage_readbacks, fn -> [] end)
     |> assign_new(:halted_at, fn -> nil end)
     |> assign_new(:halt_reason, fn -> nil end)
   end
 
+  # The bucket a resource belongs to encodes its environment as a suffix, which
+  # is what makes criterion 8012 checkable from the page: a UAT upload and a
+  # production one are distinguishable without asking the provider.
+  # The steps that fan out over environments tag what they made, because the
+  # page cannot know the names: a project may have `qa`, or one environment per
+  # story. Matching a hardcoded list against a location suffix only ever found
+  # the two that used to be hardcoded.
+  defp resource_environment(%{identifier: identifier}) when is_binary(identifier) do
+    case Regex.run(~r/environment=([a-z0-9-]+)/, identifier) do
+      [_, environment] -> environment
+      nil -> nil
+    end
+  end
+
+  defp resource_environment(_), do: nil
+
+  # The IP an environment's record points at — the first half of the tagged
+  # identifier the DNS step writes.
+  defp resource_target(%{identifier: identifier}) when is_binary(identifier),
+    do: identifier |> String.split(" ") |> List.first()
+
+  defp resource_target(_), do: nil
+
+  # Recorded by the provider rather than asserted by the page. Story 968's
+  # whole claim is that these are Sam's, so a hardcoded "user" would make the
+  # attribute decorative — it would read the same for a platform-owned bucket.
+  # The bare name, not the endpoint-qualified location. Isolation is checked
+  # by comparing one environment's bucket against another's, and that reads
+  # far better as `app-uat` vs `app-prod` than as two URLs differing in a
+  # suffix.
+  defp format_probe_error(reason) when is_binary(reason), do: String.slice(reason, 0, 200)
+  defp format_probe_error(reason), do: reason |> inspect() |> String.slice(0, 200)
+
+  defp resource_name(%{location: location}) when is_binary(location),
+    do: location |> String.split("/") |> List.last()
+
+  defp resource_name(_), do: nil
+
+  defp resource_disposition(%{kind: "repository", identifier: d}) when is_binary(d), do: d
+  defp resource_disposition(_), do: nil
+
+  defp resource_owner(%{kind: "bucket", identifier: owner}) when is_binary(owner), do: owner
+  defp resource_owner(_), do: "user"
+
+  defp project(scope), do: scope.active_project
+
+  # The project's environments. Was a module attribute holding ["prod","uat"],
+  # which made a `qa` or per-story environment invisible to the page even once
+  # the rest of the system supported it.
+  defp environments(scope), do: Provisioning.environment_names(scope)
+
+  # Mail state is cached across events; re-read it when a step that changes it
+  # has just run.
+  defp refresh_mail(socket) do
+    scope = socket.assigns.current_scope
+
+    socket
+    |> assign(:mail, mail_state(scope, "prod"))
+    |> assign(:mail_domains, mail_domains(scope))
+  end
+
+  # Read from Resend every time rather than from the step row. The step
+  # records what was true when it ran; this section is where Sam looks to find
+  # out whether it is still true, which is a different question — a DNS record
+  # deleted after verification is exactly the case the stored state cannot
+  # see, and goes on reporting verified forever.
+  # Every environment, because a sending domain per environment is the whole
+  # of criterion 8056 — one shared domain means test mail and production mail
+  # are indistinguishable to a recipient.
+  defp mail_domains(scope) do
+    scope
+    |> environments()
+    |> Enum.map(&mail_state(scope, &1))
+    |> Enum.reject(&is_nil/1)
+  end
+
+  # Verification waits are a property of DNS, not of the code, so they are
+  # configurable rather than baked in. A freshly published record needs longer
+  # to become visible to the provider than an already-propagated one, which is
+  # the difference between a first run and a re-run — and between recording a
+  # spex from cold and exercising a domain that has been live for months.
+  # When the step finished. A `done` row's `updated_at` is that moment, and
+  # criterion 8026 compares it against the verification timestamp to check
+  # setup waited rather than declaring victory first.
+  defp step_verified_at(%{verified_at: %DateTime{} = at}), do: DateTime.to_iso8601(at)
+  defp step_verified_at(_), do: nil
+
+  defp step_started_at(%{started_at: %DateTime{} = at}), do: DateTime.to_iso8601(at)
+  defp step_started_at(_), do: nil
+
+  defp step_completed_at(%{state: :done, completed_at: %DateTime{} = at}),
+    do: DateTime.to_iso8601(at)
+
+  defp step_completed_at(_step), do: nil
+
+  defp step_opts do
+    Application.get_env(:code_my_spec, :provisioning_step_opts, [])
+  end
+
+  defp mail_state(scope, environment) do
+    with %{domain: base} when is_binary(base) and base != "" <- scope.active_project,
+         sending <- Resend.sending_domain(base, environment),
+         {:ok, found} <- Resend.find_domain(scope, sending),
+         {:ok, domain} <- fetch_full_domain(scope, found) do
+      # The list endpoint omits `records` entirely — only the single-domain
+      # read carries them. Rendering from the list produced a mail section
+      # that knew the domain was verified but could not say which records
+      # made it so, which is the whole of criterion 8025.
+      records = Resend.records(domain)
+
+      %{
+        domain: domain["name"],
+        environment: environment,
+        status: domain["status"],
+        provider_id: domain["id"],
+        attempts: verification_attempts(scope),
+        verified_at: domain["created_at"],
+        dkim: dkim_state(records),
+        manual_step_required: domain["status"] not in ["verified", "pending"],
+        # Resend's own records, plus whatever MX the zone actually publishes at
+        # the apex. The provider lists only records it wants; an MX that was
+        # already receiving mail is invisible there, and "did setup disturb my
+        # existing mail" is a question about the zone (criterion 8029).
+        records:
+          Enum.map(records, &mail_record(&1, domain["name"])) ++
+            apex_mx_records(domain["name"]),
+        missing_records:
+          records |> Enum.filter(&(&1["status"] == "not_started")) |> Enum.map(& &1["name"])
+      }
+    else
+      _ -> nil
+    end
+  end
+
+  defp fetch_full_domain(scope, %{"id" => id} = found) do
+    case Resend.get_domain(scope, id) do
+      {:ok, %{"data" => domain}} -> {:ok, domain}
+      {:ok, domain} when is_map(domain) -> {:ok, domain}
+      _ -> {:ok, found}
+    end
+  end
+
+  # How many times setup actually asked the provider, recorded by the step
+  # when it polled. Criterion 8026 is that setup *waited* rather than taking
+  # the first pending answer, and only the step knows that — the domain's
+  # current state cannot say how many times it was checked.
+  defp verification_attempts(scope) do
+    scope
+    |> Provisioning.plan([:email])
+    |> Enum.find(&(&1.key == :email))
+    |> case do
+      %{resources: resources} ->
+        resources
+        |> Enum.find(&(&1.kind == "verification"))
+        |> case do
+          %{location: location} -> location |> to_string() |> String.replace(~r/\D/, "")
+          _ -> "0"
+        end
+
+      _ ->
+        "0"
+    end
+  end
+
+  # Resend names records relative to the **zone**, not the domain. For a
+  # sending domain of `mail.example.com` in zone `example.com` the DKIM record
+  # comes back as `resend._domainkey.mail`, so appending the domain yields
+  # `resend._domainkey.mail.mail.example.com` — a name that will never
+  # resolve, rendered as though it should.
+  #
+  # The same trap caught the inbound MX earlier. Zone, not domain.
+  defp mail_record(record, base) do
+    verified = record["status"] in ["verified", "success"]
+    name = apex_or_qualified(record["name"], base)
+
+    %{
+      type: record["type"],
+      # `@` for the apex, because that is how a zone file names it and how a
+      # reader looking for "the apex MX" will search for it.
+      name: name,
+      verified: verified,
+      # Asked of a resolver, not inferred from `verified`. The two are
+      # different claims and they come apart in the direction that matters: a
+      # provider holds a verification long after the record behind it is
+      # deleted, so a domain reads verified while its DKIM is gone. Criterion
+      # 8025 asks that records resolve *publicly*, which only a resolver can
+      # answer.
+      resolved: resolves?(name, base, record["type"]),
+      content: record["value"]
+    }
+  end
+
+  # Authoritative, because a recursive resolver caches the *absence* of a
+  # record and setup asks this question moments after publishing one — the
+  # exact window where a cached NXDOMAIN reports a record missing that is
+  # demonstrably there.
+  defp resolves?(name, base, type) do
+    query = if name == "@", do: base, else: name
+
+    record_type =
+      case String.upcase(to_string(type)) do
+        "MX" -> :mx
+        "TXT" -> :txt
+        "CNAME" -> :cname
+        _ -> :a
+      end
+
+    # Over HTTPS, not through the system resolver. `lookup_authoritative/2` is
+    # a DNS syscall: it cannot be recorded, so a spex asserting "this record
+    # resolves" re-queried live DNS on replay and failed as soon as the record
+    # it asserted on had been torn down. DNS-over-HTTPS is an ordinary request,
+    # so it records and replays like every other provider call — and it still
+    # genuinely leaves this machine, which is the claim being made.
+    # Authoritative, and it has to be. A recursive resolver caches the
+    # *absence* of a record for the zone's SOA negative TTL — 1800s on the
+    # domains this runs against — and setup asks this question seconds after
+    # publishing. Going through DNS-over-HTTPS (which is recursive) made a
+    # freshly published record read as "does not resolve" for half an hour,
+    # which is wrong in production, not just in a test.
+    #
+    # The cost is that this is a DNS syscall and so cannot be recorded, which
+    # is why spex asserting on it re-query live DNS on replay. Making it
+    # recordable needs an injected resolver seam here, not a recursive lookup.
+    # Injectable so a spex can record the answer and replay it. Production has
+    # no override and takes the authoritative lookup below.
+    case Application.get_env(:code_my_spec, :dns_resolver) do
+      resolver when is_function(resolver, 2) -> resolver.(query, record_type)
+      _ -> Dns.lookup_authoritative(query, record_type) != []
+    end
+  end
+
+  # Read from a resolver rather than from either provider. Cloudflare would
+  # say what is configured; only a lookup says what the world sees.
+  # The *project's* domain, not the registrable zone. For a customer who owns
+  # `example.com` those are the same name; for a project on a subdomain they
+  # are not, and looking at the zone reported a neighbour's inbound mail as
+  # this project's — or missed this project's entirely.
+  #
+  # Through `resolves?/3` so it goes via the injected resolver, which is what
+  # lets a spex record the answer and replay it rather than re-querying live
+  # DNS for records it has since torn down.
+  defp apex_mx_records(base) do
+    if resolves?("@", base, "MX") do
+      [%{type: "MX", name: "@", verified: true, resolved: true, content: base}]
+    else
+      []
+    end
+  end
+
+  defp apex_or_qualified(name, _base) when name in [nil, "", "@"], do: "@"
+  defp apex_or_qualified(name, base), do: qualify_record(name, base)
+
+  defp qualify_record(name, base) when name in [nil, "", "@"], do: base
+
+  defp qualify_record(name, base) do
+    zone = base |> String.split(".") |> Enum.take(-2) |> Enum.join(".")
+
+    if String.ends_with?(name, zone), do: name, else: "#{name}.#{zone}"
+  end
+
+  # DKIM decides whether mail is trusted rather than merely sent, so it is
+  # reported on its own rather than folded into a status that would read
+  # "verified" with DKIM failing.
+  defp dkim_state(records) do
+    case Enum.find(records, &(String.upcase(to_string(&1["record"] || "")) =~ "DKIM")) do
+      nil -> "unknown"
+      %{"status" => status} when status in ["verified", "success"] -> "pass"
+      _ -> "fail"
+    end
+  end
+
+  defp credentials(scope), do: Credentials.list(scope)
+
+  defp adopt_domain(socket, name), do: register_domain_on_project(socket, name, true)
+
+  # The domain lands on the project, because every later step reads it from
+  # there — the DNS records, the certificate and the deploy all resolve their
+  # host from `project.domain`.
+  defp register_domain_on_project(socket, name, adopted?) do
+    scope = socket.assigns.current_scope
+
+    case Projects.update_project(scope, scope.active_project, %{domain: name}) do
+      {:ok, project} ->
+        scope = %{scope | active_project: project}
+
+        # Adopting completes the domain step: an existing domain is an
+        # ordinary way in, so the step reads done rather than staying
+        # not_started because it was reached through the check form rather
+        # than the run button (criterion 8052).
+        if adopted?, do: Provisioning.adopt_domain_step(scope, name)
+
+        socket
+        |> assign(:current_scope, scope)
+        |> load(socket.assigns.options)
+
+      {:error, _} ->
+        assign(socket, :domain_error, "Could not record #{name} on the project.")
+    end
+  end
+
+  defp firewall_rules, do: CodeMySpec.Provisioning.Hetzner.default_firewall_rules()
+
+  defp availability_label(%{availability: :available}), do: "available"
+  defp availability_label(%{availability: :taken}), do: "taken"
+  defp availability_label(_), do: "check the dashboard"
+
+  defp registered_domain(%{active_project: %{domain: d}} = scope) when is_binary(d) and d != "" do
+    # Adopted-vs-bought is read from the domain step's recorded resource, not
+    # guessed: the resource carries `origin: "adopted"` when setup found the
+    # domain, and that is persisted — so a reload or a step broadcast does not
+    # recompute an adopted domain as bought (which is what a bare project
+    # lookup did, clobbering the flag every time the page reloaded).
+    adopted? =
+      case Provisioning.get_step(scope, :domain) do
+        %{resources: resources} ->
+          Enum.any?(resources, &(&1.kind == "domain" and &1.origin == "adopted"))
+
+        _ ->
+          false
+      end
+
+    %{name: d, adopted: adopted?}
+  end
+
+  defp registered_domain(_), do: nil
+
+  defp describe_domain_error({_tag, status, _body}), do: "Cloudflare refused (#{status})."
+  defp describe_domain_error(:confirmation_required), do: "Registration needs an explicit yes."
+  defp describe_domain_error(reason) when is_binary(reason), do: reason
+  defp describe_domain_error(reason), do: inspect(reason)
+
+  defp age_key_environments(scope) do
+    Enum.filter(environments(scope), &ProjectSecrets.has_value?(scope, "age_private_key_#{&1}"))
+  end
+
+  # Criterion 8002: the laptop and the deploy read the *same* committed files.
+  # Rendered rather than asserted in prose so the claim is checkable, and so it
+  # breaks if the two ever diverge.
+  defp secret_sources(scope) do
+    for consumer <- ["local", "deploy"], environment <- environments(scope) do
+      %{consumer: consumer, path: Sops.env_file(environment)}
+    end
+  end
+
+  # Never "not set" for a connection — Sam does not paste those, and telling
+  # him a thing he connected on his account is unset sends him looking for a
+  # field that is not there.
+  defp credential_badge(%{state: "verified"}), do: "verified"
+  defp credential_badge(%{state: "rejected"}), do: "rejected"
+  defp credential_badge(%{stored?: true}), do: "set"
+  defp credential_badge(%{kind: :connection}), do: "not connected"
+  defp credential_badge(_), do: "not set"
+
+
   # Every option any step declares, in sequence order and without duplicates,
   # so the toggles are derived from the sequence rather than a second list
   # that could fall out of step with it.
-  defp available_options do
-    Sequence.all()
-    |> Enum.map(& &1.option)
-    |> Enum.reject(&is_nil/1)
-    |> Enum.uniq()
-  end
+  # Delegated rather than duplicated: the context derives this from the
+  # sequence and now also persists against it, and two lists that must agree
+  # eventually do not.
+  defp available_options, do: Provisioning.available_options()
 
-  # Everything on. Setup's job is a working project; a user who wants less
-  # turns it off, rather than having to discover what to turn on.
-  defp default_options, do: available_options()
 end

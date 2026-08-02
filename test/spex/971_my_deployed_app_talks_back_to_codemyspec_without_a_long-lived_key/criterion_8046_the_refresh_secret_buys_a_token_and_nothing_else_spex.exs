@@ -23,6 +23,8 @@ defmodule CodeMySpecSpex.Story971.Criterion8046Spex do
   spex "The refresh secret buys a token and nothing else" do
     scenario "the refresh secret is accepted at the exchange and refused everywhere else" do
       given_ "the app holds its refresh secret", context do
+        app_holds_refresh_secret(context.scope)
+
         conn =
           Phoenix.ConnTest.build_conn()
           |> Plug.Conn.put_req_header("content-type", "application/json")
@@ -57,7 +59,7 @@ defmodule CodeMySpecSpex.Story971.Criterion8046Spex do
         refused =
           Phoenix.ConnTest.build_conn()
           |> Plug.Conn.put_req_header("authorization", "Bearer #{context.refresh_secret}")
-          |> get("/api/content/sync")
+          |> post("/api/content/sync", %{})
 
         assert refused.status in [401, 403],
                "expected the refresh secret to be refused at the content surface, got #{refused.status}"
@@ -65,7 +67,7 @@ defmodule CodeMySpecSpex.Story971.Criterion8046Spex do
         accepted =
           Phoenix.ConnTest.build_conn()
           |> Plug.Conn.put_req_header("authorization", "Bearer #{context.access_token}")
-          |> get("/api/content/sync")
+          |> post("/api/content/sync", %{})
 
         refute accepted.status in [401, 403],
                "expected the access token to be accepted where the refresh secret was refused, got #{accepted.status}"

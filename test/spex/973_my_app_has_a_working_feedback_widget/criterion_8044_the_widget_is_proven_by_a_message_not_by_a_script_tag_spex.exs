@@ -21,21 +21,29 @@ defmodule CodeMySpecSpex.Story973.Criterion8044Spex do
 
   @cassette "widget_step_proves_message_before_done"
 
+  @given_cassette "973_8044_site_deployed"
+
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :connect_providers
 
   spex "The widget is proven by a message, not by a script tag" do
     scenario "the step confirms an end-to-end message before reporting done" do
-      given_ "the widget step has configured everything", context do
-        {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/provisioning")
+      # Renamed and made true. The old title said the widget step had
+      # already configured everything — but that step is what the `when_`
+      # runs, so the precondition was describing the thing under test. What
+      # it actually needs is a deployed site for the proof message to travel
+      # from.
+      given_ "Sam's site is deployed", context do
+        view = mount_provisioning(context)
+        run_steps(view, [:repository, :server, :secrets, :domain, :dns, :deploy], @given_cassette)
 
         {:ok, Map.put(context, :view, view)}
       end
 
       when_ "it verifies itself", context do
         html =
-          ReqCassette.with_cassette(@cassette, [mode: :replay], fn ->
+          with_provider_cassette(@cassette, fn ->
             context.view
             |> element("[data-test='setup-step'][data-step='widget'] [data-test='run-step']")
             |> render_click()

@@ -34,6 +34,14 @@ defmodule CodeMySpecWeb.CmsUsersController do
           total: total
         })
 
+      # An aged-out token, not a wrong one. `reason` is what tells the app to
+      # renew and retry rather than go looking at its configuration —
+      # criterion 8023 is precisely this distinction.
+      {:error, :expired} ->
+        conn
+        |> put_status(:unauthorized)
+        |> json(%{error: "Access token expired", reason: "expired"})
+
       {:error, :unauthorized} ->
         conn |> put_status(:unauthorized) |> json(%{error: "Invalid deployment key"})
 
@@ -64,7 +72,18 @@ defmodule CodeMySpecWeb.CmsUsersController do
   defp parse_page_size(_), do: @default_page_size
 
   # Auth — mirrors the content sync deploy-key check (constant-time compare).
+  # See `ContentSyncController` — a token proves the caller exchanged a secret
+  # we issued, and stands in for the configured key without widening this to
+  # authorize any project that happens to hold a deploy key.
   defp validate_deploy_key(conn) do
+    case CodeMySpecWeb.AppCredential.token(conn) do
+      {:ok, _project} -> :ok
+      {:error, :expired} -> {:error, :expired}
+      {:error, _} -> validate_configured_deploy_key(conn)
+    end
+  end
+
+  defp validate_configured_deploy_key(conn) do
     with {:ok, expected} <- expected_deploy_key(),
          {:ok, provided} <- bearer_token(conn) do
       if secure_compare(expected, provided), do: :ok, else: {:error, :unauthorized}

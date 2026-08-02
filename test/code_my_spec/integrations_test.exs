@@ -178,6 +178,238 @@ defmodule CodeMySpec.IntegrationsTest do
     end
   end
 
+  describe "a login must not downgrade a richer integration" do
+    # The bug this covers, end to end: a user connects Google for provisioning
+    # (offline access, adwords scope, refresh token), then later signs in with
+    # Google. The login flow deliberately drops `prompt=consent` and asks only
+    # for `email profile`, so Google returns a response with no refresh_token —
+    # which used to be written straight over the good one. The integration then
+    # had no way to renew and died at its next expiry.
+    setup %{scope: scope} do
+      {:ok, _} =
+        create_test_integration(scope, :google,
+          access_token: "provisioning-token",
+          refresh_token: "the-only-way-to-renew",
+          granted_scopes: ["email", "profile", "https://www.googleapis.com/auth/adwords"],
+          expires_at: DateTime.add(DateTime.utc_now(), 3600, :second)
+        )
+
+      # Exactly what Google returns for a sign-in: no refresh_token, narrow scope.
+      login_token = %{
+        "access_token" => "login-token",
+        "expires_in" => 3600,
+        "scope" => "openid email profile"
+      }
+
+      %{login_token: login_token}
+    end
+
+    test "a login response with no refresh token leaves the stored one intact",
+         %{scope: scope, login_token: login_token} do
+      Integrations.save_integration(scope, :google, login_token, %{
+        provider_user_id: "u1",
+        email: "a@b.c",
+        name: "A"
+      })
+
+      {:ok, stored} = Integrations.get_integration(scope, :google)
+
+      assert stored.refresh_token == "the-only-way-to-renew",
+             "signing in erased the refresh token, leaving the grant unable to renew"
+    end
+
+    test "the narrower login scopes do not erase what was already granted",
+         %{scope: scope, login_token: login_token} do
+      Integrations.save_integration(scope, :google, login_token, %{
+        provider_user_id: "u1",
+        email: "a@b.c",
+        name: "A"
+      })
+
+      {:ok, stored} = Integrations.get_integration(scope, :google)
+
+      assert "https://www.googleapis.com/auth/adwords" in stored.granted_scopes,
+             "a sign-in reported the grant no longer has scopes it still has"
+    end
+
+    test "the fresher access token is still taken", %{scope: scope, login_token: login_token} do
+      Integrations.save_integration(scope, :google, login_token, %{
+        provider_user_id: "u1",
+        email: "a@b.c",
+        name: "A"
+      })
+
+      {:ok, stored} = Integrations.get_integration(scope, :google)
+      assert stored.access_token == "login-token"
+    end
+
+    test "a first connection still stores what the provider returned", %{scope: scope} do
+      Integrations.save_integration(
+        scope,
+        :cloudflare,
+        %{
+          "access_token" => "cf-token",
+          "refresh_token" => "cf-refresh",
+          "expires_in" => 3600,
+          "scope" => "zone.read"
+        },
+        %{provider_user_id: "u1", email: nil, name: "CF"}
+      )
+
+      {:ok, stored} = Integrations.get_integration(scope, :cloudflare)
+
+      assert stored.refresh_token == "cf-refresh"
+      assert stored.granted_scopes == ["zone.read"]
+    end
+  end
+
+  describe "fetch_access_token/2" do
+    test "returns the stored token when it is comfortably valid", %{scope: scope} do
+      {:ok, _} =
+        create_test_integration(scope, :google,
+          access_token: "still-good",
+          refresh_token: "rt",
+          expires_at: DateTime.add(DateTime.utc_now(), 3600, :second)
+        )
+
+      assert {:ok, "still-good"} = Integrations.fetch_access_token(scope, :google)
+    end
+
+    # The whole point of the margin. Checking against the exact expiry hands
+    # back a token that dies inside the request that used it — a failure that
+    # depends on timing and shows up under load.
+    test "treats a token expiring within the margin as stale", %{scope: scope} do
+      {:ok, integration} =
+        create_test_integration(scope, :google,
+          access_token: "about-to-die",
+          refresh_token: "rt",
+          expires_at: DateTime.add(DateTime.utc_now(), 30, :second)
+        )
+
+      refute Integrations.fresh?(integration),
+             "a token with 30 seconds left is not fresh enough to start a request with"
+    end
+
+    test "a token past the margin but not yet expired is still fresh", %{scope: scope} do
+      {:ok, integration} =
+        create_test_integration(scope, :google,
+          access_token: "fine",
+          refresh_token: "rt",
+          expires_at: DateTime.add(DateTime.utc_now(), 600, :second)
+        )
+
+      assert Integrations.fresh?(integration)
+    end
+
+    # GitHub's user tokens carry no refresh token and are stored with an expiry
+    # a year out. Demanding a reconnect for those would break every GitHub
+    # call, so "no refresh token" must not by itself mean "reauthorize".
+    test "returns a long-lived token that has no refresh token", %{scope: scope} do
+      {:ok, _} =
+        create_test_integration(scope, :github,
+          access_token: "gho_long_lived",
+          refresh_token: nil,
+          expires_at: DateTime.add(DateTime.utc_now(), 365 * 24 * 3600, :second)
+        )
+
+      assert {:ok, "gho_long_lived"} = Integrations.fetch_access_token(scope, :github)
+    end
+
+    # Nothing to renew with, so the only honest answer is "reconnect" —
+    # more useful than a 401 surfacing from somewhere deeper.
+    test "asks for reauthorization when expired with no refresh token", %{scope: scope} do
+      {:ok, _} =
+        create_test_integration(scope, :github,
+          access_token: "gho_dead",
+          refresh_token: nil,
+          expires_at: DateTime.add(DateTime.utc_now(), -60, :second)
+        )
+
+      assert {:error, :reauthorize_required} = Integrations.fetch_access_token(scope, :github)
+    end
+
+    test "returns :not_found when the provider was never connected", %{scope: scope} do
+      assert {:error, :not_found} = Integrations.fetch_access_token(scope, :google)
+    end
+
+    # The rotation guard. Resend issues a new refresh token on every refresh
+    # and invalidates the old one, so a second refresh that did not need to
+    # happen spends a token somebody else is now relying on. `refresh_serialized`
+    # re-reads under the row lock precisely so the second caller sees the first
+    # caller's result instead of refreshing again.
+    #
+    # The lock itself is not exercised here: every process in the Ecto sandbox
+    # shares one connection, so `FOR UPDATE` cannot block and a concurrency
+    # test would pass without proving anything. What is proven is the re-check
+    # that makes holding the lock worthwhile.
+    test "a second call after a refresh does not refresh again", %{scope: scope} do
+      {:ok, _} =
+        create_test_integration(scope, :google,
+          access_token: "expired",
+          refresh_token: "rt-original",
+          expires_at: DateTime.add(DateTime.utc_now(), -60, :second)
+        )
+
+      {:ok, calls} = Agent.start_link(fn -> 0 end)
+
+      plug = fn conn ->
+        Agent.update(calls, &(&1 + 1))
+
+        conn
+        |> Plug.Conn.put_resp_content_type("application/json")
+        |> Plug.Conn.resp(
+          200,
+          Jason.encode!(%{
+            "access_token" => "renewed",
+            "refresh_token" => "rt-rotated",
+            "expires_in" => 3600,
+            "token_type" => "Bearer"
+          })
+        )
+      end
+
+      with_assent_plug(plug, fn ->
+        assert {:ok, "renewed"} = Integrations.fetch_access_token(scope, :google)
+        assert {:ok, "renewed"} = Integrations.fetch_access_token(scope, :google)
+      end)
+
+      assert Agent.get(calls, & &1) == 1,
+             "the token endpoint was hit more than once — a rotating refresh token would already be spent"
+    end
+
+    # Rotation only helps if the new value is what gets stored. Keeping the old
+    # one leaves the grant one refresh away from presenting a spent token.
+    test "the rotated refresh token replaces the one that was used", %{scope: scope} do
+      {:ok, _} =
+        create_test_integration(scope, :google,
+          access_token: "expired",
+          refresh_token: "rt-original",
+          expires_at: DateTime.add(DateTime.utc_now(), -60, :second)
+        )
+
+      plug = fn conn ->
+        conn
+        |> Plug.Conn.put_resp_content_type("application/json")
+        |> Plug.Conn.resp(
+          200,
+          Jason.encode!(%{
+            "access_token" => "renewed",
+            "refresh_token" => "rt-rotated",
+            "expires_in" => 3600,
+            "token_type" => "Bearer"
+          })
+        )
+      end
+
+      with_assent_plug(plug, fn ->
+        assert {:ok, "renewed"} = Integrations.fetch_access_token(scope, :google)
+      end)
+
+      {:ok, stored} = Integrations.get_integration(scope, :google)
+      assert stored.refresh_token == "rt-rotated"
+    end
+  end
+
   describe "Google login cassette shape (one-time recording)" do
     # Records a real Google OIDC login flow into
     # test/cassettes/oauth/google_login_shape.json — captures the actual

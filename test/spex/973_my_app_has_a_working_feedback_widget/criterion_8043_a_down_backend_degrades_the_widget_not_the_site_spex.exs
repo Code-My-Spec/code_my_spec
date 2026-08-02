@@ -18,21 +18,28 @@ defmodule CodeMySpecSpex.Story973.Criterion8043Spex do
 
   @cassette "widget_backend_unreachable_page_still_renders"
 
+  @given_cassette "973_8043_widget_installed"
+
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :connect_providers
 
   spex "A down backend degrades the widget, not the site" do
     scenario "the page renders normally while the widget fails quietly" do
+      # Installed for real, because the criterion is about how an installed
+      # widget behaves when its backend is gone. With nothing installed, "the
+      # page renders and the widget fails quietly" is satisfied by a page
+      # that never had a widget — passing for the wrong reason.
       given_ "the widget is installed on Sam's site", context do
-        {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/provisioning")
+        view = mount_provisioning(context)
+        run_steps(view, [:repository, :server, :secrets, :domain, :dns, :deploy, :widget], @given_cassette)
 
         {:ok, Map.put(context, :view, view)}
       end
 
       when_ "CodeMySpec is unreachable and a visitor loads the site", context do
         html =
-          ReqCassette.with_cassette(@cassette, [mode: :replay], fn ->
+          with_provider_cassette(@cassette, fn ->
             context.view
             |> element("[data-test='widget-degradation-probe']")
             |> render_click()

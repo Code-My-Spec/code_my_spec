@@ -46,4 +46,25 @@ defmodule CodeMySpec.EnvironmentFixtures do
 
     env
   end
+
+  @doc """
+  A `:local` environment rooted at a real directory.
+
+  For the spex whose subject is a real subprocess. `sops` and `age` are
+  binaries: they read and write actual files, and a memory environment is
+  invisible to them — the encrypt appeared to succeed and the file it was
+  supposed to write was never there.
+  """
+  @spec local_environment_fixture(keyword()) :: Environments.Environment.t()
+  def local_environment_fixture(opts \\ []) do
+    working_dir =
+      Keyword.get_lazy(opts, :working_dir, fn ->
+        dir = Path.join(System.tmp_dir!(), "spex-local-#{System.unique_integer([:positive])}")
+        File.mkdir_p!(dir)
+        dir
+      end)
+
+    {:ok, env} = Environments.create(:local, working_dir: working_dir)
+    env
+  end
 end

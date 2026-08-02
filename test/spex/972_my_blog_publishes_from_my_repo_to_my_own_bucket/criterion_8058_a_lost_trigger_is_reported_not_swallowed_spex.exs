@@ -26,6 +26,7 @@ defmodule CodeMySpecSpex.Story972.Criterion8058Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :connect_providers
 
   spex "A lost trigger is reported, not swallowed" do
     scenario "a publish whose trigger cannot land reports the failure" do
@@ -45,7 +46,7 @@ defmodule CodeMySpecSpex.Story972.Criterion8058Spex do
 
       when_ "the trigger fails to land", context do
         html =
-          ReqCassette.with_cassette(@cassette, [mode: :replay], fn ->
+          with_provider_cassette(@cassette, fn ->
             context.view
             |> element("[data-test='content-publish']")
             |> render_click()

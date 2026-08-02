@@ -1,57 +1,34 @@
 defmodule CodeMySpec.Google.Auth do
   @moduledoc """
-  Shared Google OAuth token resolution. Looks up the scope's Google
-  integration, refreshes the access token if it's past its
-  `expires_at`, and returns a valid token for use as an
-  `Authorization: Bearer ...` header.
+  Google's name for `Integrations.fetch_access_token/2`.
 
-  Used by both `CodeMySpec.Google.Analytics` (Tesla-wrapped admin API
-  client) and `CodeMySpec.Analytics.GoogleAnalytics.ReportingClient`
-  (Req-based data API client). Centralized so refresh logic only
-  lives in one place.
+  This module used to own the refresh logic, and was the only provider that
+  had any — Google's tokens expire in an hour, so the problem surfaced here
+  first. Its two flaws only showed up when the same logic was needed four more
+  times: it compared against the exact expiry, so a token with two seconds
+  left passed and then failed mid-request; and it did not serialise, so
+  concurrent callers both refreshed.
+
+  Both are fixed in `Integrations.fetch_access_token/2`, which every provider
+  now shares. This stays as a named entry point because Google's callers read
+  better for it.
   """
 
   alias CodeMySpec.Integrations
-  alias CodeMySpec.Integrations.Integration
   alias CodeMySpec.Users.Scope
 
   @doc """
-  Resolves a valid Google access token for the given scope.
-
-  Looks up the Google integration on the scope. If the integration's
-  token is expired, refreshes it via Integrations.refresh_token/2 and
-  returns the refreshed access_token. Otherwise returns the existing
-  access_token.
+  A Google access token that is valid now, refreshing first if needed.
 
   ## Returns
 
-  - `{:ok, access_token}` — the token string ready for a Bearer header.
-  - `{:error, :not_found}` — no Google integration on the scope.
-  - `{:error, :no_refresh_token}` — token expired but no refresh_token
-    is stored to refresh with.
-  - `{:error, reason}` — refresh attempt failed (network, provider).
+  - `{:ok, access_token}` — ready for a Bearer header
+  - `{:error, :not_found}` — no Google integration on the scope
+  - `{:error, :reauthorize_required}` — expired with nothing to refresh with
+  - `{:error, reason}` — the provider refused the refresh
   """
   @spec get_valid_token(Scope.t()) :: {:ok, String.t()} | {:error, term()}
   def get_valid_token(%Scope{} = scope) do
-    with {:ok, integration} <- Integrations.get_integration(scope, :google) do
-      maybe_refresh(scope, integration)
-    end
-  end
-
-  defp maybe_refresh(scope, %Integration{} = integration) do
-    if expired?(integration) do
-      case Integrations.refresh_token(scope, :google) do
-        {:ok, refreshed} -> {:ok, refreshed.access_token}
-        {:error, _} = error -> error
-      end
-    else
-      {:ok, integration.access_token}
-    end
-  end
-
-  defp expired?(%Integration{expires_at: nil}), do: true
-
-  defp expired?(%Integration{expires_at: %DateTime{} = expires_at}) do
-    DateTime.compare(DateTime.utc_now(), expires_at) == :gt
+    Integrations.fetch_access_token(scope, :google)
   end
 end

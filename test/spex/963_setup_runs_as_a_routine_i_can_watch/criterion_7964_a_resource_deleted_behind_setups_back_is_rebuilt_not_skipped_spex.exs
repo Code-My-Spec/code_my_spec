@@ -19,19 +19,33 @@ defmodule CodeMySpecSpex.Story963.Criterion7964Spex do
 
   @endpoint CodeMySpecWeb.Endpoint
 
-  @create_cassette "hetzner_server_create_ok"
+  @create_cassette "963_7964_hetzner_server_create_ok"
   @gone_cassette "hetzner_server_missing_then_recreated"
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :connect_providers
 
   spex "A resource deleted behind setup's back is rebuilt, not skipped" do
     scenario "the server step runs again when the server is gone" do
       given_ "the server step previously succeeded", context do
-        {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/provisioning")
+        view = mount_provisioning(context)
 
-        ReqCassette.with_cassette(@create_cassette, [mode: :replay], fn ->
+        # Everything the server step needs before it can reach Hetzner, and
+        # a teardown registered before anything is made — a recording that
+        # fails partway must still not leave a box running.
+        tear_down_after(context.scope, [:server])
+
+        # The repository too, so the next recording starts from one that does not
+        # exist — a repository carrying an earlier run's commits rejects a fresh
+        # push as non-fast-forward (which is 8184's subject, not this one's).
+        tear_down_repository(context.project)
+
+        with_provider_cassette(@create_cassette, fn ->
+          # Saving a credential proves it with a real call now, so this is a
+          # provider interaction and belongs inside the cassette.
+          paste_provider_credentials(view)
+
           view
           |> element("[data-test='setup-step'][data-step='server'] [data-test='run-step']")
           |> render_click()
@@ -46,7 +60,7 @@ defmodule CodeMySpecSpex.Story963.Criterion7964Spex do
       when_ "Sam has deleted that server and setup runs again", context do
         # The cassette answers the existence check with "not found", which
         # is how setup learns the resource is gone.
-        ReqCassette.with_cassette(@gone_cassette, [mode: :replay], fn ->
+        with_provider_cassette(@gone_cassette, fn ->
           context.view |> element("[data-test='start-setup']") |> render_click()
         end)
 

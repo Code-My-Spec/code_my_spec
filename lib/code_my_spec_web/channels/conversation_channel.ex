@@ -13,6 +13,7 @@ defmodule CodeMySpecWeb.ConversationChannel do
   use CodeMySpecWeb, :channel
   require Logger
 
+  alias CodeMySpec.AppTokens
   alias CodeMySpec.Conversations
   alias CodeMySpec.Conversations.Message
   alias CodeMySpec.Issues
@@ -98,6 +99,39 @@ defmodule CodeMySpecWeb.ConversationChannel do
   end
 
   @impl true
+  @doc """
+  Swap in a fresh socket token without dropping the connection.
+
+  A socket token ages out in fifteen minutes; a conversation does not. The
+  widget fetches a new one and sends it here, and the connection carries on —
+  criterion 8055 is that a visitor mid-conversation notices nothing, and a
+  disconnect/reconnect is noticed even when it is fast, because the socket
+  drops messages in flight and the channel rejoins from scratch.
+
+  A token for a *different* project is refused rather than accepted, because
+  accepting it would silently move an open conversation between projects.
+  Refusal leaves the existing credential in place — the visitor keeps the
+  session they already had, and only loses it when it genuinely expires.
+  """
+  def handle_in("reauth", %{"socket_token" => token}, socket) when is_binary(token) do
+    case AppTokens.verify_socket_token(token) do
+      {:ok, %{id: id}} ->
+        if id == socket.assigns[:project_id] do
+          {:reply, {:ok, %{status: "ok"}}, socket}
+        else
+          Logger.warning("[ConversationChannel] reauth refused — token names a different project")
+          {:reply, {:error, %{reason: "project_mismatch"}}, socket}
+        end
+
+      {:error, reason} ->
+        {:reply, {:error, %{reason: to_string(reason)}}, socket}
+    end
+  end
+
+  def handle_in("reauth", _payload, socket) do
+    {:reply, {:error, %{reason: "missing_socket_token"}}, socket}
+  end
+
   def handle_in("send_message", payload, socket) do
     body = Map.get(payload, "body", "")
     attachments = valid_chat_attachments(Map.get(payload, "attachments"), socket.assigns.project_id)

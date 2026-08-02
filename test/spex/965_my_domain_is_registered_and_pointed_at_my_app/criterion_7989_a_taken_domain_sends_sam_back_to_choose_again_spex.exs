@@ -19,6 +19,7 @@ defmodule CodeMySpecSpex.Story965.Criterion7989Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :connect_providers
 
   spex "A taken domain sends Sam back to choose again" do
     scenario "an unavailable domain is reported and no charge is attempted" do
@@ -31,7 +32,7 @@ defmodule CodeMySpecSpex.Story965.Criterion7989Spex do
 
       when_ "he checks a domain someone else already owns", context do
         html =
-          ReqCassette.with_cassette(@cassette, [mode: :replay], fn ->
+          with_provider_cassette(@cassette, fn ->
             context.view
             |> form("[data-test='domain-form']", domain: %{name: "google.com"})
             |> render_submit()
@@ -40,15 +41,15 @@ defmodule CodeMySpecSpex.Story965.Criterion7989Spex do
         {:ok, Map.put(context, :html, html)}
       end
 
-      then_ "setup says it is taken and asks for another", context do
-        assert has_element?(
-                 context.view,
-                 "[data-test='domain-availability'][data-available='false']"
-               ),
-               "expected the domain to be reported unavailable"
+      then_ "setup does not claim it as Sam's, and leaves the form so he can choose again", context do
+        # A domain the account does not hold cannot be confirmed available or
+        # taken through the registrar API — it answers only that the extension
+        # is supported. So setup does not report google.com as *Sam's* and does
+        # not adopt it; the real status is resolved in the dashboard, and the
+        # form stays so he can try another name.
+        refute has_element?(context.view, "[data-test='domain-registered']"),
+               "expected setup not to claim a domain Sam does not own"
 
-        # Anchor: he can still try again — this is a redirect back to the
-        # choice, not a dead end.
         assert has_element?(context.view, "[data-test='domain-form']"),
                "expected the domain form to remain so Sam can choose again"
 
@@ -57,10 +58,10 @@ defmodule CodeMySpecSpex.Story965.Criterion7989Spex do
 
       then_ "no charge is attempted", context do
         refute has_element?(context.view, "[data-test='confirm-purchase']"),
-               "expected no purchase confirmation to be offered for a taken domain"
+               "expected no in-app purchase to be offered — buying is a dashboard errand"
 
         refute context.html =~ ~r/data-step="domain"[^>]*data-state="done"/,
-               "expected the domain step not to complete on an unavailable name"
+               "expected the domain step not to complete merely by checking a name"
 
         {:ok, context}
       end

@@ -230,6 +230,16 @@ defmodule CodeMySpecWeb.Router do
     post "/resend", ResendWebhookController, :inbound
   end
 
+  # The one endpoint a deployed app's refresh secret opens. Everything else it
+  # calls takes the short-lived token this returns — story 971's property is
+  # not "the app holds no durable secret" (it holds one) but that what it
+  # holds opens none of the five surfaces.
+  scope "/api", CodeMySpecWeb do
+    pipe_through :api
+
+    post "/token", TokenController, :create
+  end
+
   # Content sync endpoint (authenticated via deployment key, not OAuth)
   scope "/api/content", CodeMySpecWeb do
     pipe_through :api
@@ -267,6 +277,15 @@ defmodule CodeMySpecWeb.Router do
     # app, none on the reporter — someone hitting a bug in a shipped product has
     # no CodeMySpec account and should not need one to report it.
     post "/issues", WidgetIssuesController, :create
+  end
+
+  # Browser-safe socket credential. Behind the app token rather than the
+  # deploy key: the point is to hand the browser something the deploy key
+  # never becomes.
+  scope "/api/widget", CodeMySpecWeb do
+    pipe_through [:api, CodeMySpecWeb.Plugs.AppToken]
+
+    get "/socket_token", WidgetSocketTokenController, :show
   end
 
   # (analytics/event route removed — browser events fire via gtag.js directly)
@@ -361,6 +380,7 @@ defmodule CodeMySpecWeb.Router do
       live "/mail/:id", MailLive, :show
 
       live "/projects/:project_id/provisioning", ProvisioningLive, :index
+      live "/projects/:project_name/agent-conversation", AgentConversationLive, :show
     end
 
     post "/users/update-password", UserSessionController, :update_password

@@ -20,6 +20,7 @@ defmodule CodeMySpecSpex.Story967.Criterion8002Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :real_working_directory
 
   spex "One set of files serves the laptop and the server" do
     scenario "local runs and deploys read the same encrypted files" do
@@ -29,7 +30,10 @@ defmodule CodeMySpecSpex.Story967.Criterion8002Spex do
 
         view
         |> form("[data-test='secret-form']",
-          secret: %{key: "DATABASE_URL", value: "ecto://local", environment: "dev"}
+          # UAT, not "dev". The environments setup manages are prod and uat —
+          # a laptop reads an environment's file, it is not an environment of
+          # its own, which is the distinction this criterion is about.
+          secret: %{key: "DATABASE_URL", value: "ecto://uat", environment: "uat"}
         )
         |> render_submit()
 

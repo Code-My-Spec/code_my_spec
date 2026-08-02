@@ -108,7 +108,7 @@ defmodule CodeMySpec.Provisioning.Repository do
           | {:error, term()}
   def ensure(%Scope{} = scope, project, opts \\ []) do
     name = Keyword.get(opts, :name) || default_name(project)
-    owner = Keyword.get(opts, :owner)
+    owner = Keyword.get(opts, :owner) || authenticated_owner(scope)
 
     case existing(scope, owner, name) do
       {:ok, repo} -> resolve_existing(repo, name, opts)
@@ -117,9 +117,19 @@ defmodule CodeMySpec.Provisioning.Repository do
     end
   end
 
-  # Without an owner there is nothing to look up, so treat the name as free and
-  # let GitHub arbitrate on create. Guessing an owner would check the wrong
-  # account and report a free name that is not.
+  # Whose account to look in, when the caller did not say. Falling straight to
+  # create without this made "adopt rather than duplicate" depend on the caller
+  # already knowing the owner — so the ordinary path created a second
+  # repository, and GitHub's 422 was the first anyone heard of it.
+  defp authenticated_owner(scope) do
+    case GitHub.authenticated_login(scope) do
+      {:ok, login} -> login
+      _ -> nil
+    end
+  end
+
+  # Still nil when GitHub will not say who the token is. Treat the name as free
+  # and let GitHub arbitrate on create, rather than guessing an account.
   defp existing(_scope, nil, _name), do: {:error, :not_found}
   defp existing(scope, owner, name), do: GitHub.get_repository(scope, owner, name)
 
@@ -140,11 +150,18 @@ defmodule CodeMySpec.Provisioning.Repository do
     end
   end
 
+  # Deliberately no `auto_init`. GitHub's README commit and the initial commit
+  # `push/3` makes are unrelated histories, so the push that immediately
+  # follows is rejected as a non-fast-forward — the repository is created and
+  # then unusable as a remote. Found live: "Updates were rejected because the
+  # remote contains work that you do not have locally."
+  #
+  # The repository we create must be empty, because we are the ones putting
+  # the first commit in it.
   defp create(scope, name, opts) do
     attrs = %{
       name: name,
-      private: Keyword.get(opts, :private, true),
-      auto_init: true
+      private: Keyword.get(opts, :private, true)
     }
 
     created =

@@ -18,25 +18,27 @@ defmodule CodeMySpecSpex.Story966.Criterion8005Spex do
 
   @cassette "github_ci_image_published_then_deployed"
 
+  @given_cassette "966_8005_repo_pushed"
+
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :real_working_directory
+  setup :connect_providers
 
   spex "The deployed image is the one the repo built" do
     scenario "the running version is traceable to the commit CI built" do
       given_ "Sam's project is pushed to its remote", context do
-        {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/provisioning")
+        context = stage_deploy(context, :ok)
+        view = mount_provisioning(context)
 
         {:ok, Map.put(context, :view, view)}
       end
 
       when_ "the deploy runs", context do
         html =
-          ReqCassette.with_cassette(@cassette, [mode: :replay], fn ->
-            context.view
-            |> element("[data-test='setup-step'][data-step='deploy'] [data-test='run-step']")
-            |> render_click()
-          end)
+          context.view
+          |> element("[data-test='setup-step'][data-step='deploy'] [data-test='run-step']")
+          |> render_click()
 
         {:ok, Map.put(context, :html, html)}
       end

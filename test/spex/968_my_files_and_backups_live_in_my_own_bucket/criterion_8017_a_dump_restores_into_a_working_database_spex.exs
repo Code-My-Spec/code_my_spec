@@ -16,21 +16,30 @@ defmodule CodeMySpecSpex.Story968.Criterion8017Spex do
 
   @cassette "backup_restore_into_scratch_db"
 
+  @given_cassette "968_8017_dump_taken"
+
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :connect_providers
 
   spex "A dump restores into a working database" do
     scenario "the restore completes and the source data is present" do
       given_ "a dump is in the bucket", context do
-        {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/provisioning")
+        # The dump under test has to exist. Restoring nothing into an
+        # empty database succeeds trivially, so without this the `then_`
+        # asserting "the source data is present" was the first thing to
+        # notice, and it reads as a restore bug rather than a missing dump.
+        view = mount_provisioning(context)
+        paste_storage_credentials(view)
+
+        run_steps(view, [:storage, :backups], @given_cassette)
 
         {:ok, Map.put(context, :view, view)}
       end
 
       when_ "it is restored into an empty database", context do
         html =
-          ReqCassette.with_cassette(@cassette, [mode: :replay], fn ->
+          with_provider_cassette(@cassette, fn ->
             context.view
             |> element("[data-test='backup-restore-probe']")
             |> render_click()

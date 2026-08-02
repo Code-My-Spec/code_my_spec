@@ -66,6 +66,11 @@ defmodule CodeMySpec.ContentPublishing.Ctas do
       portable_spec_cta
       design_gate_cta
       build_speed_cta
+      verified_before_ship_cta
+      enforced_spec_cta
+      harness_not_model_cta
+      repo_native_memory_cta
+      skill_as_software_cta
     )
 
   @doc """
@@ -165,6 +170,61 @@ defmodule CodeMySpec.ContentPublishing.Ctas do
       "label" => "Start free",
       "path" => "/install",
       "campaign" => "owned-code"
+    }
+
+  # Operator-facing names below. All card shape: a reader who ships an app but
+  # does not read the code needs an obvious next step, and reads an understated
+  # monospace note as "not for me".
+  defp defaults("verified_before_ship_cta"),
+    do: %{
+      "shape" => "card",
+      "headline" => "The agent said the rollback was impossible. It was not.",
+      "sub" => "CodeMySpec verifies the running app before it reaches a customer.",
+      "label" => "Start free",
+      "path" => "/install",
+      "campaign" => "verified-before-ship"
+    }
+
+  defp defaults("enforced_spec_cta"),
+    do: %{
+      "shape" => "card",
+      "headline" => "A spec nothing enforces is just a nicer prompt.",
+      "sub" => "CodeMySpec blocks the build when the code stops matching the spec.",
+      "label" => "Start free",
+      "path" => "/install",
+      "campaign" => "enforced-spec"
+    }
+
+  defp defaults("harness_not_model_cta"),
+    do: %{
+      "shape" => "card",
+      "headline" => "Changing only the scaffold moved a benchmark 13.7 points. Same model.",
+      "sub" => "The harness is the variable you control. CodeMySpec is the harness.",
+      "label" => "Start free",
+      "path" => "/install",
+      "campaign" => "harness-not-model"
+    }
+
+  defp defaults("repo_native_memory_cta"),
+    do: %{
+      "shape" => "aside",
+      "headline" => "Most agent memory is a file somebody wrote by hand.",
+      "sub" => "Which is fine, until it stops matching the code.",
+      "body" => "CodeMySpec derives context from the repo, so it cannot drift from what is actually there.",
+      "label" => "See what repo-derived context looks like",
+      "path" => "/install",
+      "campaign" => "repo-native-memory"
+    }
+
+  defp defaults("skill_as_software_cta"),
+    do: %{
+      "shape" => "aside",
+      "headline" => "A skill is software you are writing for an agent.",
+      "sub" => "It deserves the same gates your other software gets.",
+      "body" => "CodeMySpec runs specs, tests, and QA over what the agent produces.",
+      "label" => "Put gates around your agent",
+      "path" => "/install",
+      "campaign" => "skill-as-software"
     }
 
   # Engineer-facing names below. All `:aside`: understated, monospace, inline

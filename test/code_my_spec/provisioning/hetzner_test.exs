@@ -9,6 +9,8 @@ defmodule CodeMySpec.Provisioning.HetznerTest do
   use ExUnit.Case, async: false
 
   alias CodeMySpec.Provisioning.Hetzner
+
+  doctest Hetzner, only: [fingerprint: 1]
   alias CodeMySpec.Users.Scope
 
   @scope %Scope{}
@@ -28,11 +30,11 @@ defmodule CodeMySpec.Provisioning.HetznerTest do
     # Criterion 8004: the database port must never answer from the internet.
     # The cheapest way to keep that true is to have no code path that opens
     # it, so the public rule set is a fixed list rather than a parameter.
-    test "opens only the web ports to the internet" do
-      assert Hetzner.public_ports() == ["80", "443"]
+    test "opens the deploy and web ports to the internet, and nothing else" do
+      assert Hetzner.public_ports() == ["22", "80", "443"]
 
       ports = Enum.map(Hetzner.default_firewall_rules(), & &1.port)
-      assert ports == ["80", "443"]
+      assert ports == ["22", "80", "443"]
     end
 
     test "every default rule is inbound from anywhere" do
@@ -44,7 +46,23 @@ defmodule CodeMySpec.Provisioning.HetznerTest do
 
     test "the database port is absent, not merely unlisted" do
       refute "5432" in Enum.map(Hetzner.default_firewall_rules(), & &1.port)
-      refute "22" in Enum.map(Hetzner.default_firewall_rules(), & &1.port)
+    end
+
+    # 22 is open because kamal deploys over it as root to the host IP. Leaving
+    # it closed made the deploy step impossible, which is how it was found —
+    # the server provisioned fine and nothing could ever be put on it.
+    #
+    # This is safe only because every server is created with an SSH key
+    # attached, which is what makes Hetzner disable root password login. If
+    # that ever stops being true, 22 open to the world is a password-guessing
+    # target, so the two facts are asserted together.
+    test "ssh is open, and the server that answers it takes keys only" do
+      assert "22" in Enum.map(Hetzner.default_firewall_rules(), & &1.port)
+
+      # Enforced, not documented: without a key Hetzner sets a root password,
+      # and a root password reachable on an open 22 is the one combination
+      # that must not be possible.
+      assert {:error, :ssh_key_required} = Hetzner.create_server(@scope, "keyless")
     end
   end
 
@@ -81,7 +99,7 @@ defmodule CodeMySpec.Provisioning.HetznerTest do
         json(conn, 201, %{"server" => %{"id" => 1, "name" => payload["name"]}})
       end)
 
-      assert {:ok, %{"server" => %{"id" => 1}}} = Hetzner.create_server(@scope, "box")
+      assert {:ok, %{"server" => %{"id" => 1}}} = Hetzner.create_server(@scope, "box", ssh_key_ids: [1])
     end
 
     test "an explicit option beats the arch default" do
@@ -91,7 +109,7 @@ defmodule CodeMySpec.Provisioning.HetznerTest do
         json(conn, 201, %{"server" => %{"id" => 1}})
       end)
 
-      assert {:ok, _} = Hetzner.create_server(@scope, "box", location: "hel1")
+      assert {:ok, _} = Hetzner.create_server(@scope, "box", location: "hel1", ssh_key_ids: [1])
     end
 
     test "surfaces the provider's own error rather than a generic one" do
@@ -99,7 +117,7 @@ defmodule CodeMySpec.Provisioning.HetznerTest do
         json(conn, 400, %{"error" => %{"code" => "invalid_input", "message" => "server type 104 is deprecated"}})
       end)
 
-      assert {:error, {:hetzner_error, 400, body}} = Hetzner.create_server(@scope, "box")
+      assert {:error, {:hetzner_error, 400, body}} = Hetzner.create_server(@scope, "box", ssh_key_ids: [1])
       assert body["error"]["message"] =~ "deprecated"
     end
   end
@@ -116,7 +134,7 @@ defmodule CodeMySpec.Provisioning.HetznerTest do
           conn
       end)
 
-      assert {:ok, %{"id" => 7}} = Hetzner.ensure_server(@scope, "box")
+      assert {:ok, %{"id" => 7}} = Hetzner.ensure_server(@scope, "box", ssh_key_ids: [1])
     end
 
     test "creates when absent" do
@@ -125,7 +143,7 @@ defmodule CodeMySpec.Provisioning.HetznerTest do
         %{method: "POST"} = conn -> json(conn, 201, %{"server" => %{"id" => 9, "name" => "box"}})
       end)
 
-      assert {:ok, %{"id" => 9}} = Hetzner.ensure_server(@scope, "box")
+      assert {:ok, %{"id" => 9}} = Hetzner.ensure_server(@scope, "box", ssh_key_ids: [1])
     end
   end
 

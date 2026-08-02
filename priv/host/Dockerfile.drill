@@ -1,0 +1,26 @@
+# A box to rehearse provisioning on. Debian to match the target, systemd
+# absent on purpose — the unit is written and validated here, not started,
+# because systemd in a container proves something about the container rather
+# than about the host.
+FROM debian:12
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      postgresql sudo age curl ca-certificates procps gnupg \
+      erlang-base erlang-crypto \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN curl -sSL -o /usr/local/bin/sops \
+      https://github.com/getsops/sops/releases/download/v3.9.1/sops-v3.9.1.linux.amd64 \
+    && chmod +x /usr/local/bin/sops
+
+# `systemctl`/`caddy` stubs so the script's control flow runs end to end. They
+# record what they were asked to do rather than pretending to succeed
+# silently — a drill that quietly skips the unit file proves nothing about it.
+RUN printf '#!/bin/sh\necho "[stub systemctl] $*" >> /var/log/drill.log\nexit 0\n' > /usr/bin/systemctl \
+    && printf '#!/bin/sh\necho "[stub caddy] $*" >> /var/log/drill.log\nexit 0\n' > /usr/bin/caddy \
+    && chmod +x /usr/bin/systemctl /usr/bin/caddy
+
+COPY provision_app.sh verify_isolation.sh /host/
+COPY templates /host/templates
+RUN chmod +x /host/*.sh
+WORKDIR /host

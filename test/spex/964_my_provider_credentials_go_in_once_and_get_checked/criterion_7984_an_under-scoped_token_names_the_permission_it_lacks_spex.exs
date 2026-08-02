@@ -23,24 +23,28 @@ defmodule CodeMySpecSpex.Story964.Criterion7984Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :connect_providers
 
   spex "An under-scoped token names the permission it lacks" do
     scenario "a DNS-only Cloudflare token is rejected naming Registrar write" do
       given_ "Sam is on credential entry", context do
         {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/credentials")
+          live(context.conn, "/app/projects/#{context.project.id}/provisioning")
 
         {:ok, Map.put(context, :view, view)}
       end
 
-      when_ "he submits a Cloudflare token that cannot register domains", context do
+      # Checked, not submitted. Cloudflare is connected by OAuth on the
+      # account — there is no token field to type into, and the under-scoping
+      # is a property of the grant rather than of something Sam pasted. So the
+      # question "can this credential do the job" is answered by using it,
+      # which is what the check does.
+      when_ "his Cloudflare grant is checked against the provider", context do
         html =
-          ReqCassette.with_cassette(@cassette, [mode: :replay], fn ->
+          with_provider_cassette(@cassette, fn ->
             context.view
-            |> form("[data-test='credentials-form']",
-              credentials: %{cloudflare_token: "dns-edit-only-token"}
-            )
-            |> render_submit()
+            |> element("[data-test='check-credentials']")
+            |> render_click()
           end)
 
         {:ok, Map.put(context, :html, html)}

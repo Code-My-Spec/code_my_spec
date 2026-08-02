@@ -17,11 +17,21 @@ defmodule CodeMySpecSpex.Story965.Criterion7996Spex do
 
   @endpoint CodeMySpecWeb.Endpoint
 
-  @dns_cassette "cloudflare_dns_records_created_per_environment"
+  # Its own cassette, not 7995's. A cassette shared by two spex replays one
+  # spex's recorded sequence against the other's calls, and sequential matching
+  # then fails on whichever makes one more request than the recording did.
+  @dns_cassette "965_7996_dns_records_for_certificate"
+
+  # Separate from @dns_cassette. `with_provider_cassette` deletes the cassette
+  # file when it opens in record mode, so two blocks naming the same cassette
+  # in one spex means the second erases what the first recorded — and replay
+  # then fails on requests that genuinely happened.
+  @given_cassette "965_7996_server"
   @cert_cassette "kamal_proxy_certificate_issued"
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :connect_providers
 
   spex "The records let the proxy get its certificate" do
     scenario "the challenge reaches the server and the certificate is issued" do
@@ -29,13 +39,53 @@ defmodule CodeMySpecSpex.Story965.Criterion7996Spex do
         {:ok, view, _html} =
           live(context.conn, "/app/projects/#{context.project.id}/provisioning")
 
+        # Registered *after* the LiveView is mounted, so it runs *before*
+        # LiveViewTest tears it down — `on_exit` callbacks run in reverse order
+        # of registration. That matters because the sandbox is in shared mode:
+        # one connection is checked out and every process borrows it, so once
+        # the process holding it exits the connection is gone for good and no
+        # retry can get it back. Teardown has to do its reads while the
+        # LiveView is still up.
+        tear_down_after(context.scope, [:dns, :server])
+
+        # The DNS step has nothing to write records under without a verified
+        # domain, so it fails on the missing domain — which reads as the
+        # certificate claim failing when it never got that far.
+        # Its own subdomain. Two spex sharing one name share a DNS namespace:
+        # whichever runs second finds the first's records already there,
+        # *adopts* them instead of creating them, and adopted resources are
+        # never torn down — so the records leak and the recording contains no
+        # creation at all.
+        own_domain(context.project, "c7996.astralbi.com")
+
+        # DNS points a name at a server, so there has to be one. Without it the
+        # step writes no records at all and the certificate claim fails for a
+        # reason that has nothing to do with certificates.
+        with_provider_cassette(@given_cassette, fn ->
+          paste_provider_credentials(view)
+
+          view
+          |> element("[data-test='setup-step'][data-step='server'] [data-test='run-step']")
+          |> render_click()
+        end)
+
         html =
-          ReqCassette.with_cassette(@dns_cassette, [mode: :replay], fn ->
+          with_provider_cassette(@dns_cassette, fn ->
             view
             |> element("[data-test='setup-step'][data-step='dns'] [data-test='run-step']")
             |> render_click()
+
+            # A step announces its state over PubSub, and the LiveView reloads
+            # when it receives that. `render_click/1` returns before the
+            # announcement has been handled, so the reload could land after the
+            # cassette block exited — hitting the network instead of the
+            # cassette, and taking the LiveView (and its database connection)
+            # down with it. Rendering again forces a round-trip, which flushes
+            # the pending message while the plug is still installed.
+            render(view)
           end)
 
+        File.write!("/private/tmp/claude-501/-Users-johndavenport-Documents-github-code-my-spec/c359ad14-715c-4b86-84fb-bd0b9e0d21aa/scratchpad/7996d.html", html)
         {:ok, context |> Map.put(:view, view) |> Map.put(:dns_html, html)}
       end
 
@@ -59,8 +109,10 @@ defmodule CodeMySpecSpex.Story965.Criterion7996Spex do
       end
 
       when_ "the proxy requests a certificate for that hostname", context do
+        stage_certificate(context)
+
         html =
-          ReqCassette.with_cassette(@cert_cassette, [mode: :replay], fn ->
+          with_provider_cassette(@cert_cassette, fn ->
             context.view
             |> element("[data-test='setup-step'][data-step='tls'] [data-test='run-step']")
             |> render_click()

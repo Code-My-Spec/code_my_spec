@@ -20,6 +20,11 @@ defmodule CodeMySpecWeb.ProjectLive.Index do
         id="projects"
         rows={@streams.projects}
         row_click={fn {_id, project} -> JS.navigate(~p"/app/projects/#{project}") end}
+        row_attrs={
+          fn {_id, project} ->
+            %{"data-test" => "project-row", "data-id" => project.id, "data-name" => project.name}
+          end
+        }
       >
         <:col :let={{_id, project}} label="Name">{project.name}</:col>
         <:col :let={{_id, project}} label="Code repo">{project.code_repo}</:col>

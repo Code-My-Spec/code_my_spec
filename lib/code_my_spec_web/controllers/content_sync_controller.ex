@@ -40,15 +40,23 @@ defmodule CodeMySpecWeb.ContentSyncController do
         message: "Content synced successfully"
       })
     else
+      # An aged-out token, not a wrong one. `reason` is what tells the app to
+      # renew and retry rather than go looking at its configuration —
+      # criterion 8023 is precisely this distinction.
+      {:error, :expired} ->
+        conn
+        |> put_status(:unauthorized)
+        |> json(%{status: "error", error: "Access token expired", reason: "expired"})
+
       {:error, :unauthorized} ->
         conn
         |> put_status(:unauthorized)
-        |> json(%{status: "error", error: "Invalid deployment key"})
+        |> json(%{status: "error", error: "Invalid deployment key", reason: "invalid"})
 
       {:error, :missing_deploy_key} ->
         conn
         |> put_status(:unauthorized)
-        |> json(%{status: "error", error: "Missing deployment key"})
+        |> json(%{status: "error", error: "Missing deployment key", reason: "invalid"})
 
       {:error, :deploy_key_not_configured} ->
         conn
@@ -62,10 +70,34 @@ defmodule CodeMySpecWeb.ContentSyncController do
     end
   end
 
+  # Authenticate before complaining about the body. A malformed request from
+  # an unauthenticated caller is still an unauthenticated caller, and telling
+  # it which parameters it is missing hands the endpoint's contract to someone
+  # who has not proved they may use it — criterion 8045 is that what the
+  # environment holds opens none of the five surfaces, and "opens" includes
+  # learning their shape.
   def sync(conn, _params) do
-    conn
-    |> put_status(:bad_request)
-    |> json(%{status: "error", error: "Missing required parameters: content, synced_at"})
+    case validate_deploy_key(conn) do
+      :ok ->
+        conn
+        |> put_status(:bad_request)
+        |> json(%{status: "error", error: "Missing required parameters: content, synced_at"})
+
+      {:error, :expired} ->
+        conn
+        |> put_status(:unauthorized)
+        |> json(%{status: "error", error: "Access token expired", reason: "expired"})
+
+      {:error, reason} when reason in [:unauthorized, :missing_deploy_key] ->
+        conn
+        |> put_status(:unauthorized)
+        |> json(%{status: "error", error: "Unauthorized", reason: "invalid"})
+
+      {:error, :deploy_key_not_configured} ->
+        conn
+        |> put_status(:internal_server_error)
+        |> json(%{status: "error", error: "Deploy key not configured on server"})
+    end
   end
 
   @doc """
@@ -83,8 +115,13 @@ defmodule CodeMySpecWeb.ContentSyncController do
         |> put_status(:accepted)
         |> json(%{status: "accepted", sync_id: Ecto.UUID.generate()})
 
+      {:error, :expired} ->
+        conn
+        |> put_status(:unauthorized)
+        |> json(%{status: "error", error: "Access token expired", reason: "expired"})
+
       {:error, :unauthorized} ->
-        conn |> put_status(:unauthorized) |> json(%{status: "error", error: "Invalid deployment key"})
+        conn |> put_status(:unauthorized) |> json(%{status: "error", error: "Invalid deployment key", reason: "invalid"})
 
       {:error, :missing_deploy_key} ->
         conn |> put_status(:unauthorized) |> json(%{status: "error", error: "Missing deployment key"})
@@ -117,7 +154,20 @@ defmodule CodeMySpecWeb.ContentSyncController do
   # ============================================================================
 
   @spec validate_deploy_key(Plug.Conn.t()) :: :ok | {:error, atom()}
+  # A short-lived access token is accepted in place of the configured key.
+  # Only in place of it: the token path does not identify a project here, it
+  # only proves the caller exchanged a refresh secret we issued. This surface
+  # authorizes on "the key I was configured with", and widening it to "any
+  # project" would be a different endpoint wearing this one's name.
   defp validate_deploy_key(conn) do
+    case CodeMySpecWeb.AppCredential.token(conn) do
+      {:ok, _project} -> :ok
+      {:error, :expired} -> {:error, :expired}
+      {:error, _} -> validate_configured_deploy_key(conn)
+    end
+  end
+
+  defp validate_configured_deploy_key(conn) do
     with {:ok, expected_key} <- get_expected_deploy_key(),
          {:ok, provided_key} <- extract_bearer_token(conn) do
       if secure_compare(expected_key, provided_key) do

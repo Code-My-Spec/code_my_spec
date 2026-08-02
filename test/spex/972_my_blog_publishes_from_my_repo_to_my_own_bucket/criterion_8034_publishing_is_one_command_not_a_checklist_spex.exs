@@ -22,6 +22,7 @@ defmodule CodeMySpecSpex.Story972.Criterion8034Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :connect_providers
 
   spex "Publishing is one command, not a checklist" do
     scenario "one publish action takes the post all the way out" do
@@ -41,7 +42,7 @@ defmodule CodeMySpecSpex.Story972.Criterion8034Spex do
 
       when_ "he runs the publish command", context do
         html =
-          ReqCassette.with_cassette(@cassette, [mode: :replay], fn ->
+          with_provider_cassette(@cassette, fn ->
             context.view
             |> element("[data-test='content-publish']")
             |> render_click()

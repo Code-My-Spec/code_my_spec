@@ -21,10 +21,23 @@ defmodule CodeMySpecSpex.Story969.Criterion8026Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :connect_providers
 
   spex "Setup waits for verification rather than assuming it" do
     scenario "the step polls to verified before reporting done" do
       given_ "the records have been published", context do
+        # Its own subdomain. Every criterion in this story used one shared name,
+        # so whichever ran second found the first's sending domain already
+        # registered and *adopted* it — and an adopted resource is never torn
+        # down. Recorded alone each one passed; run together they replayed each
+        # other's state.
+        project = own_domain(context.project, "c8026.astralbi.com")
+        # Published, not verified. The claim is that setup *waits*, and a
+        # domain handed over already verified leaves it nothing to wait for —
+        # the step finds it done on its first look and reports one attempt.
+        published_sending_domains(context.scope, project)
+        tear_down_after(context.scope, [:email])
+
         {:ok, view, _html} =
           live(context.conn, "/app/projects/#{context.project.id}/provisioning")
 
@@ -33,7 +46,7 @@ defmodule CodeMySpecSpex.Story969.Criterion8026Spex do
 
       when_ "setup checks the domain's status", context do
         html =
-          ReqCassette.with_cassette(@cassette, [mode: :replay], fn ->
+          with_provider_cassette(@cassette, fn ->
             context.view
             |> element("[data-test='setup-step'][data-step='email'] [data-test='run-step']")
             |> render_click()

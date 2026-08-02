@@ -24,9 +24,11 @@ defmodule CodeMySpecSpex.Story963.Criterion7968Spex do
         {:ok, view, _html} =
           live(context.conn, "/app/projects/#{context.project.id}/provisioning")
 
-        view
-        |> form("[data-test='setup-options-form']", provisioning: %{email: false})
-        |> render_submit()
+        # The options form is `phx-change`, and its params are
+        # `options[<key>]`. A submit carrying a `provisioning` map changed
+        # nothing at all — the page kept every default and the criterion
+        # passed while asserting the opposite of what it says.
+        choose_all_setup_options_except(view, [:email])
 
         {:ok, Map.put(context, :view, view)}
       end

@@ -19,6 +19,7 @@ defmodule CodeMySpecSpex.Story973.Criterion8040Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :connect_providers
 
   spex "A visitor finds the widget on the live site" do
     scenario "the widget renders and can be opened on the deployed site" do
@@ -31,7 +32,7 @@ defmodule CodeMySpecSpex.Story973.Criterion8040Spex do
 
       when_ "the widget step has run", context do
         html =
-          ReqCassette.with_cassette(@cassette, [mode: :replay], fn ->
+          with_provider_cassette(@cassette, fn ->
             context.view
             |> element("[data-test='setup-step'][data-step='widget'] [data-test='run-step']")
             |> render_click()

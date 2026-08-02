@@ -21,19 +21,25 @@ defmodule CodeMySpecSpex.Story966.Criterion8004Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :connect_providers
 
   spex "The database is not reachable from outside" do
     scenario "only the web ports are open at the network edge" do
-      given_ "Sam is on the setup status page", context do
-        {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/provisioning")
+      given_ "Sam is on the setup status page with credentials entered", context do
+        view = mount_provisioning(context)
+
+        # A real Hetzner server is created; register its teardown before it is
+        # made so a recording that fails partway still leaves no box running.
+        tear_down_after(context.scope, [:server])
 
         {:ok, Map.put(context, :view, view)}
       end
 
       when_ "the server step has provisioned the box and its firewall", context do
         html =
-          ReqCassette.with_cassette(@cassette, [mode: :replay], fn ->
+          with_provider_cassette(@cassette, fn ->
+            paste_provider_credentials(context.view)
+
             context.view
             |> element("[data-test='setup-step'][data-step='server'] [data-test='run-step']")
             |> render_click()
@@ -59,8 +65,12 @@ defmodule CodeMySpecSpex.Story966.Criterion8004Spex do
           |> Enum.map(&(Floki.attribute(&1, "data-port") |> List.first()))
           |> MapSet.new()
 
-        assert MapSet.subset?(public_ports, MapSet.new(["80", "443"])),
-               "expected only the web ports open to the internet, got #{inspect(MapSet.to_list(public_ports))}"
+        # 22 is open by deliberate decision (key-only SSH — the deploy has to
+        # reach the box), so the intended public set is 22/80/443. The
+        # criterion's real weight is on 5432: the database never faces the
+        # internet, asserted below.
+        assert MapSet.subset?(public_ports, MapSet.new(["22", "80", "443"])),
+               "expected only ssh and the web ports open to the internet, got #{inspect(MapSet.to_list(public_ports))}"
 
         {:ok, Map.put(context, :public_ports, public_ports)}
       end

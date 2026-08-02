@@ -19,21 +19,45 @@ defmodule CodeMySpecSpex.Story969.Criterion8028Spex do
 
   @cassette "resend_send_probe_message_accepted"
 
+  # The `given_` registers and verifies a sending domain and then mounts the
+  # page, which reads mail state from Resend — all real provider calls. Left
+  # outside a cassette they hit the live API while recording and the network
+  # while replaying, so the page came up knowing about a verified domain when
+  # recording and knowing nothing when replaying, and the send-probe control
+  # the `when_` clicks was simply absent.
+  @given_cassette "969_8028_verified_domain"
+
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :connect_providers
 
   spex "A real message arrives from Sam's domain" do
     scenario "the probe send is accepted and authenticated" do
       given_ "the domain is verified and the app is deployed", context do
-        {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/provisioning")
+        # Its own subdomain. Every criterion in this story used one shared name,
+        # so whichever ran second found the first's sending domain already
+        # registered and *adopted* it — and an adopted resource is never torn
+        # down. Recorded alone each one passed; run together they replayed each
+        # other's state.
+        project = own_domain(context.project, "c8028.astralbi.com")
+        tear_down_after(context.scope, [:email])
+
+        view =
+          with_provider_cassette(@given_cassette, fn ->
+            verified_sending_domains(context.scope, project)
+
+            {:ok, view, _html} =
+              live(context.conn, "/app/projects/#{context.project.id}/provisioning")
+
+            view
+          end)
 
         {:ok, Map.put(context, :view, view)}
       end
 
       when_ "the app sends a message", context do
         html =
-          ReqCassette.with_cassette(@cassette, [mode: :replay], fn ->
+          with_provider_cassette(@cassette, fn ->
             context.view
             |> element("[data-test='mail-send-probe']")
             |> render_click()

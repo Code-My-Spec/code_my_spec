@@ -58,6 +58,29 @@ defmodule CodeMySpec.Integrations.IntegrationRepository do
   end
 
   @doc """
+  Read an integration and hold a row lock on it until the transaction ends.
+
+  Must be called inside a transaction. Exists so a token refresh can be
+  serialised per grant: providers that rotate the refresh token invalidate the
+  old one, so two concurrent refreshes race to use a value the other has
+  already spent — and losing that race can revoke the whole grant rather than
+  merely failing.
+  """
+  @spec lock_integration(Scope.t(), atom()) :: {:ok, Integration.t()} | {:error, :not_found}
+  def lock_integration(%Scope{user: nil}, _provider), do: {:error, :not_found}
+
+  def lock_integration(%Scope{user: user}, provider) do
+    Integration
+    |> where([i], i.user_id == ^user.id and i.provider == ^provider)
+    |> lock("FOR UPDATE")
+    |> Repo.one()
+    |> case do
+      nil -> {:error, :not_found}
+      integration -> {:ok, integration}
+    end
+  end
+
+  @doc """
   Returns all integrations for the scoped user, ordered by most recently created.
 
   ## Examples

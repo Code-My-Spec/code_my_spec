@@ -20,23 +20,23 @@ defmodule CodeMySpecSpex.Story966.Criterion8010Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :connect_providers
 
   spex "Sam finds out when his site stops answering" do
     scenario "every public hostname has a monitor before the environment is done" do
       given_ "Sam is on the setup status page", context do
-        {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/provisioning")
+        own_domain(context.project, "staged.example.com")
+        context = stage_monitor(context, ["staged.example.com"])
+        view = mount_provisioning(context)
 
         {:ok, Map.put(context, :view, view)}
       end
 
       when_ "setup finishes an environment", context do
         html =
-          ReqCassette.with_cassette(@cassette, [mode: :replay], fn ->
-            context.view
+          context.view
             |> element("[data-test='setup-step'][data-step='monitoring'] [data-test='run-step']")
             |> render_click()
-          end)
 
         {:ok, Map.put(context, :html, html)}
       end

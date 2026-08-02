@@ -21,21 +21,29 @@ defmodule CodeMySpecSpex.Story965.Criterion8052Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :connect_providers
 
   spex "An existing domain is an ordinary way in, not an error path" do
     scenario "a domain Sam already owns is adopted without any purchase offer" do
+      # Ownership is the whole precondition here, and it was left entirely
+      # to the cassette. `own_domain/2` exists for exactly this — the
+      # criterion is that an already-owned domain is an ordinary way in, so
+      # the domain has to be genuinely owned before the step runs.
       given_ "Sam already owns his domain", context do
-        {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/provisioning")
+        # astralbi.com is a real Cloudflare zone the account manages —
+        # owned by DNS even though registered elsewhere, which is exactly the
+        # "ordinary way in" this criterion is about.
+        own_domain(context.project, "astralbi.com")
+        view = mount_provisioning(context)
 
         {:ok, Map.put(context, :view, view)}
       end
 
       when_ "the domain step runs", context do
         html =
-          ReqCassette.with_cassette(@cassette, [mode: :replay], fn ->
+          with_provider_cassette(@cassette, fn ->
             context.view
-            |> form("[data-test='domain-form']", domain: %{name: "already-mine.com"})
+            |> form("[data-test='domain-form']", domain: %{name: "astralbi.com"})
             |> render_submit()
           end)
 

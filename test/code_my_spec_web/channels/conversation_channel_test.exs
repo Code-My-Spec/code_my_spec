@@ -167,4 +167,46 @@ defmodule CodeMySpecWeb.ConversationChannelTest do
 
     assert Issues.list_issues(scope) == []
   end
+
+  describe "criterion 8055 — a visitor mid-conversation notices no expiry" do
+    # Sam's call was that the socket re-authenticates in place rather than
+    # dropping and reconnecting. A reconnect is noticed even when it is fast:
+    # the channel rejoins from scratch and anything in flight is lost.
+    test "a fresh socket token is swapped in on the open channel", %{scope: scope} do
+      {:ok, _reply, channel} = join_widget(scope.active_project.id, "eu-reauth", "u@example.com")
+
+      {token, _ttl} = CodeMySpec.AppTokens.issue_socket_token(scope.active_project)
+
+      ref = push(channel, "reauth", %{"socket_token" => token})
+      assert_reply ref, :ok, %{status: "ok"}
+
+      # Still the same channel, still able to talk — the point of re-auth in
+      # place rather than a reconnect.
+      ref = push(channel, "send_message", %{"body" => "still here"})
+      assert_reply ref, :ok, _
+    end
+
+    test "a token naming another project is refused and leaves the session alone", %{scope: scope} do
+      {:ok, _reply, channel} = join_widget(scope.active_project.id, "eu-other", "u2@example.com")
+
+      other = CodeMySpec.ProjectsFixtures.project_fixture(scope, %{name: "other project"})
+      {token, _ttl} = CodeMySpec.AppTokens.issue_socket_token(other)
+
+      ref = push(channel, "reauth", %{"socket_token" => token})
+      assert_reply ref, :error, %{reason: "project_mismatch"}
+
+      ref = push(channel, "send_message", %{"body" => "unaffected"})
+      assert_reply ref, :ok, _
+    end
+
+    test "a garbage token is refused with a reason the widget can act on", %{scope: scope} do
+      {:ok, _reply, channel} = join_widget(scope.active_project.id, "eu-bad", "u3@example.com")
+
+      ref = push(channel, "reauth", %{"socket_token" => "nonsense"})
+      assert_reply ref, :error, %{reason: "invalid"}
+
+      ref = push(channel, "reauth", %{})
+      assert_reply ref, :error, %{reason: "missing_socket_token"}
+    end
+  end
 end

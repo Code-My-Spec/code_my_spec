@@ -17,6 +17,7 @@ defmodule CodeMySpecSpex.Story985.Criterion8184Spex do
   """
 
   use CodeMySpecSpex.Case
+  use ExCliVcr
 
   @endpoint CodeMySpecWeb.Endpoint
 
@@ -24,23 +25,31 @@ defmodule CodeMySpecSpex.Story985.Criterion8184Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :connect_providers
 
   spex "A repository that exists but rejects the push is not done" do
     scenario "the step reports the push failure and stays incomplete" do
-      given_ "Sam is on the setup status page and the repository already exists", context do
-        {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/provisioning")
+      # The repository is already the project's own — recorded on it, so setup
+      # adopts rather than prompting — and its remote has diverged (an
+      # auto-init README commit the local push does not descend from). That is
+      # what makes the push a non-fast-forward, which is the failure under
+      # test rather than a missing repo.
+      given_ "the project's repository already exists and its remote has diverged", context do
+        url = "https://github.com/johns10/spex-story985-criterion8184.git"
+        CodeMySpecSpex.Fixtures.set_code_repo(context.project, url)
+
+        view = mount_provisioning(context)
 
         {:ok, Map.put(context, :view, view)}
       end
 
       when_ "the repository step runs and the push is refused", context do
         html =
-          ReqCassette.with_cassette(@cassette, [mode: :replay], fn ->
+          with_full_cassette @cassette do
             context.view
             |> element("[data-test='setup-step'][data-step='repository'] [data-test='run-step']")
             |> render_click()
-          end)
+          end
 
         {:ok, Map.put(context, :html, html)}
       end

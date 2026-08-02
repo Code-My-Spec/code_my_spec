@@ -25,6 +25,7 @@ defmodule CodeMySpecSpex.Story967.Criterion8049Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :real_working_directory
 
   spex "An agent working in the repo sees only ciphertext" do
     scenario "neither the tree nor the process environment yields a secret value" do

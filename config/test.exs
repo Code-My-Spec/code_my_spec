@@ -124,3 +124,15 @@ config :code_my_spec, analysis_mode: :inline
 # Static harness socket secret in tests — deterministic and avoids writing a
 # generated secret into the developer's ~/.codemyspec on `mix test`.
 config :code_my_spec, harness_secret: "test-harness-secret"
+config :code_my_spec, :allow_spex_clock, true
+config :code_my_spec, :provisioning_run_async, false
+
+# Provider OAuth client creds, so a spex recording can refresh a short-lived
+# access token mid-run (Resend's live ~15 min, and verifying a sending domain
+# polls longer). Env-sourced during recording; a placeholder otherwise, where
+# no refresh is attempted because the fixture token reads as fresh.
+config :code_my_spec,
+  resend_client_id: System.get_env("RESEND_CLIENT_ID", "test-resend-client"),
+  resend_client_secret: System.get_env("RESEND_CLIENT_SECRET", "test-resend-secret"),
+  cloudflare_client_id: System.get_env("CLOUDFLARE_CLIENT_ID", "test-cloudflare-client"),
+  cloudflare_client_secret: System.get_env("CLOUDFLARE_CLIENT_SECRET", "test-cloudflare-secret")

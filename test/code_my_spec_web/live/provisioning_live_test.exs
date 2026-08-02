@@ -3,11 +3,22 @@ defmodule CodeMySpecWeb.ProvisioningLiveTest do
 
   import Phoenix.LiveViewTest
 
+  alias CodeMySpec.ProjectSecrets
   alias CodeMySpec.Provisioning.{Sequence, StepRepository}
 
   setup [:register_log_in_setup_account, :setup_active_account, :setup_active_project]
 
   defp path(project), do: "/app/projects/#{project.id}/provisioning"
+
+  # The page verifies against providers on mount; these tests are about
+  # rendering, so the provider's answer is supplied rather than reached for.
+  defp stub_verifier(fun) do
+    previous = Application.get_env(:code_my_spec, :provisioning_step_opts, [])
+    Application.put_env(:code_my_spec, :provisioning_step_opts, Keyword.put(previous, :verify, fun))
+    ExUnit.Callbacks.on_exit(fn ->
+      Application.put_env(:code_my_spec, :provisioning_step_opts, previous)
+    end)
+  end
 
   describe "the plan is visible before anything runs" do
     # Criterion 7959: Sam sees the shape of the run before it starts, rather
@@ -63,12 +74,49 @@ defmodule CodeMySpecWeb.ProvisioningLiveTest do
   end
 
   describe "a step's state is rendered from what actually happened" do
+    # The page re-checks a done step against its provider on mount rather than
+    # reading the row back, so the verifier has to say the resource is there —
+    # a seeded row alone is exactly what this page deliberately no longer
+    # trusts.
     test "a done step shows done", %{conn: conn, project: project, scope: scope} do
       StepRepository.upsert(scope, :repository, %{state: :done, position: 0})
+      stub_verifier(fn _scope, _key -> {:ok, :satisfied, []} end)
 
       {:ok, _view, html} = live(conn, path(project))
 
       assert html =~ ~r/data-step="repository"[^>]*data-state="done"/
+    end
+
+    # The other half of the same behaviour: a resource that has gone from the
+    # provider drops back so the next run rebuilds it (criterion 7964).
+    test "a done step whose resource is gone drops back to not_started", %{
+      conn: conn,
+      project: project,
+      scope: scope
+    } do
+      StepRepository.upsert(scope, :repository, %{state: :done, position: 0})
+      stub_verifier(fn _scope, _key -> {:ok, :absent} end)
+
+      {:ok, _view, html} = live(conn, path(project))
+
+      assert html =~ ~r/data-step="repository"[^>]*data-state="not_started"/,
+             "a step whose resource is gone kept claiming done"
+    end
+
+    # A provider that cannot be reached is not evidence the resource is gone,
+    # and treating it as such would un-mark finished work over a timeout.
+    test "an unreachable provider leaves the step alone", %{
+      conn: conn,
+      project: project,
+      scope: scope
+    } do
+      StepRepository.upsert(scope, :repository, %{state: :done, position: 0})
+      stub_verifier(fn _scope, _key -> {:error, :timeout} end)
+
+      {:ok, _view, html} = live(conn, path(project))
+
+      assert html =~ ~r/data-step="repository"[^>]*data-state="done"/,
+             "a timeout un-marked a step that was finished"
     end
 
     # Paused and errored render differently on purpose: one tells Sam what to
@@ -202,6 +250,70 @@ defmodule CodeMySpecWeb.ProvisioningLiveTest do
                view,
                "[data-test='setup-step'][data-step='server'] [data-test='retry-step']"
              )
+    end
+  end
+
+  describe "pasted provider credentials" do
+    # Hetzner has no OAuth: project-scoped API tokens, and object-storage keys
+    # that exist only in the console. The storage step pauses telling Sam to
+    # save them on the project, so there has to be somewhere to do that.
+    test "the page offers the credentials Hetzner cannot grant over OAuth", %{
+      conn: conn,
+      project: project
+    } do
+      {:ok, _view, html} = live(conn, path(project))
+
+      for key <- ["hetzner_api_token", "hetzner_s3_access_key_id", "hetzner_s3_secret_access_key"] do
+        assert html =~ ~s(data-key="#{key}"), "expected a field for #{key}"
+        assert html =~ ~s(data-set="false"), "expected #{key} to report itself unset"
+      end
+    end
+
+    test "saving a credential records it and reports it set", %{conn: conn, project: project, scope: scope} do
+      {:ok, view, _html} = live(conn, path(project))
+
+      html =
+        view
+        |> form("form[phx-submit='save_credentials']", %{
+          "credentials" => %{"hetzner_api_token" => "tok-abc"}
+        })
+        |> render_submit()
+
+      assert html =~ ~s(data-key="hetzner_api_token")
+      assert html =~ ~r/data-key="hetzner_api_token"[^>]*data-set="true"/
+
+      assert {:ok, "tok-abc"} = ProjectSecrets.fetch_value(scope, "hetzner_api_token")
+    end
+
+    # The field renders empty for a secret that is already set, because the
+    # value is never sent back to the browser. Treating blank as a delete would
+    # therefore wipe every other credential each time one was saved.
+    test "a blank field leaves an existing credential alone", %{conn: conn, project: project, scope: scope} do
+      ProjectSecrets.put_value(scope, "hetzner_api_token", "keep-me")
+
+      {:ok, view, _html} = live(conn, path(project))
+
+      view
+      |> form("form[phx-submit='save_credentials']", %{
+        "credentials" => %{
+          "hetzner_api_token" => "",
+          "hetzner_s3_access_key_id" => "new-key"
+        }
+      })
+      |> render_submit()
+
+      assert {:ok, "keep-me"} = ProjectSecrets.fetch_value(scope, "hetzner_api_token")
+      assert {:ok, "new-key"} = ProjectSecrets.fetch_value(scope, "hetzner_s3_access_key_id")
+    end
+
+    # A secret rendered back into the page is a secret in every browser cache
+    # and screenshot from then on.
+    test "a stored value is never rendered back", %{conn: conn, project: project, scope: scope} do
+      ProjectSecrets.put_value(scope, "hetzner_api_token", "super-secret-value")
+
+      {:ok, _view, html} = live(conn, path(project))
+
+      refute html =~ "super-secret-value"
     end
   end
 end

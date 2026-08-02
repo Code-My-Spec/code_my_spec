@@ -58,6 +58,7 @@ defmodule CodeMySpec.GeneratorsTest do
           ".sops.yaml",
           "rel/overlays/bin/migrate",
           "bin/deploy",
+          "bin/backup",
           "envs/prod.enc.env",
           "envs/uat.enc.env"
         ] do

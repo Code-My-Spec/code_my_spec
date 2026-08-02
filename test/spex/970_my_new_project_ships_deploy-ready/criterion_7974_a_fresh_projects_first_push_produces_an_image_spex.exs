@@ -24,6 +24,7 @@ defmodule CodeMySpecSpex.Story970.Criterion7974Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :connect_providers
 
   spex "A fresh project's first push produces an image" do
     scenario "the generated project builds and publishes without Sam adding files" do
@@ -52,9 +53,9 @@ defmodule CodeMySpecSpex.Story970.Criterion7974Spex do
 
       when_ "he pushes it to a fresh repo and the build runs", context do
         html =
-          ReqCassette.with_cassette(@cassette, [mode: :replay], fn ->
+          with_provider_cassette(@cassette, fn ->
             context.view
-            |> element("[data-test='setup-step'][data-step='repo'] [data-test='run-step']")
+            |> element("[data-test='setup-step'][data-step='repository'] [data-test='run-step']")
             |> render_click()
           end)
 

@@ -22,6 +22,8 @@ defmodule CodeMySpecSpex.Story971.Criterion8023Spex do
   spex "A refusal says why, so the app knows to renew" do
     scenario "expiry and a bad credential are distinguishable, and expiry drives a retry" do
       given_ "the app's credential has expired", context do
+        app_holds_refresh_secret(context.scope)
+
         conn =
           Phoenix.ConnTest.build_conn()
           |> Plug.Conn.put_req_header("content-type", "application/json")
@@ -43,12 +45,12 @@ defmodule CodeMySpecSpex.Story971.Criterion8023Spex do
             "x-spex-clock-advance-seconds",
             to_string(context.expires_in + 60)
           )
-          |> get("/api/content/sync")
+          |> post("/api/content/sync", %{})
 
         bogus =
           Phoenix.ConnTest.build_conn()
           |> Plug.Conn.put_req_header("authorization", "Bearer not-a-real-token")
-          |> get("/api/content/sync")
+          |> post("/api/content/sync", %{})
 
         {:ok, context |> Map.put(:expired, expired) |> Map.put(:bogus, bogus)}
       end
@@ -80,7 +82,7 @@ defmodule CodeMySpecSpex.Story971.Criterion8023Spex do
         retried =
           Phoenix.ConnTest.build_conn()
           |> Plug.Conn.put_req_header("authorization", "Bearer #{body["access_token"]}")
-          |> get("/api/content/sync")
+          |> post("/api/content/sync", %{})
 
         refute retried.status in [401, 403],
                "expected the retry after renewal to succeed, got #{retried.status}"

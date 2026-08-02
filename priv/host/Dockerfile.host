@@ -1,0 +1,84 @@
+# A real host: systemd as PID 1, real Postgres, real Caddy, real releases.
+#
+# The drill image stubs systemd and Caddy, which is right for rehearsing the
+# provisioning script. This one exists for the question the stubs cannot
+# answer: does the unit actually start, does sops actually put secrets in the
+# process environment, and does the isolation hold against a running app
+# rather than against a shell.
+#
+# Needs --privileged (or cgroup mounts) to run systemd.
+
+# ---------------------------------------------------------------- builder
+FROM hexpm/elixir:1.17.3-erlang-27.1.2-debian-bookworm-20241111 AS builder
+
+RUN apt-get update && apt-get install -y --no-install-recommends build-essential git \
+    && rm -rf /var/lib/apt/lists/*
+RUN mix local.hex --force && mix local.rebar --force
+
+WORKDIR /build
+COPY testapp/mix.exs ./
+RUN MIX_ENV=prod RELEASE_APP=app1 mix deps.get
+
+COPY testapp/lib ./lib
+
+# One source, two releases. The release name has to match the unit, the Unix
+# user, the database and bin/<name>; building both from here is what keeps
+# them agreeing.
+RUN MIX_ENV=prod RELEASE_APP=app1 mix release app1 --path /out/app1 \
+    && MIX_ENV=prod RELEASE_APP=app2 mix release app2 --path /out/app2
+
+# ------------------------------------------------------------------- host
+FROM debian:12
+
+ENV DEBIAN_FRONTEND=noninteractive container=docker
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      systemd systemd-sysv postgresql caddy age curl ca-certificates \
+      procps sudo libncurses6 locales netcat-openbsd iptables \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN curl -sSL -o /usr/local/bin/sops \
+      https://github.com/getsops/sops/releases/download/v3.9.1/sops-v3.9.1.linux.amd64 \
+    && chmod +x /usr/local/bin/sops
+
+# systemd in a container: strip the units that assume real hardware, or boot
+# hangs waiting for devices that will never appear.
+RUN find /etc/systemd/system /lib/systemd/system \
+      -path '*.wants/*' \
+      \( -name '*getty*' -o -name '*udev*' -o -name '*mount*' -o -name '*swap*' \) \
+      -exec rm -f {} + 2>/dev/null || true
+
+# The global options block must be the first thing in the Caddyfile. It moves
+# the admin API off its default TCP port (127.0.0.1:2019) — which every tenant
+# on the box can reach and use to read or rewrite ALL apps' routing — onto a
+# unix socket in a caddy-owned 0750 dir a tenant cannot traverse to. A pen test
+# used the TCP admin API as app1 to dump app2's routes and POST /load the whole
+# ingress down; the socket closes that while keeping graceful `caddy reload`
+# (run as the caddy user during provisioning) working. /run/caddy's mode is
+# asserted by harden_host.sh, since RuntimeDirectory defaults to 0755.
+RUN mkdir -p /etc/caddy/sites \
+    && printf '{\n\tadmin unix//run/caddy/admin.sock\n}\n\nimport /etc/caddy/sites/*.caddy\n' \
+       > /etc/caddy/Caddyfile
+
+# The admin socket lives in /run/caddy, which the stock debian caddy unit does
+# not create — so caddy fails to bind it at boot. RuntimeDirectory creates it
+# before ExecStart every boot; 0750 caddy:caddy is also what keeps a tenant
+# from traversing to the socket. This is the systemd half of the admin-socket
+# fix; harden_host.sh re-asserts the mode for a box already running.
+RUN mkdir -p /etc/systemd/system/caddy.service.d \
+    && printf '[Service]\nRuntimeDirectory=caddy\nRuntimeDirectoryMode=0750\n' \
+       > /etc/systemd/system/caddy.service.d/runtime-dir.conf
+
+COPY --from=builder /out/app1 /srv/releases/app1
+COPY --from=builder /out/app2 /srv/releases/app2
+
+COPY provision_app.sh verify_isolation.sh harden_host.sh breach_host.sh /host/
+COPY templates /host/templates
+RUN chmod +x /host/*.sh
+
+# Postgres must be up before any app unit starts; the unit's After= says so
+# but the service has to be enabled for that to mean anything.
+RUN systemctl enable postgresql caddy
+
+STOPSIGNAL SIGRTMIN+3
+CMD ["/sbin/init"]

@@ -19,21 +19,31 @@ defmodule CodeMySpecSpex.Story972.Criterion8039Spex do
 
   @cassette "content_step_proves_render_before_done"
 
+  @given_cassette "972_8039_site_deployed"
+
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :connect_providers
 
   spex "The pipeline is proven end to end before it is called done" do
     scenario "the step confirms a rendered post before reporting done" do
-      given_ "the publishing step has configured everything", context do
-        {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/provisioning")
+      # Renamed, and made true. The old title said the publishing step had
+      # already configured everything, but the `when_` is that step running —
+      # so the precondition described the thing under test. What it actually
+      # needs is somewhere to publish *to*: a bucket and a deployed site, or
+      # the render proof has nothing to fetch and the step fails for a reason
+      # that has nothing to do with proving a render.
+      given_ "Sam's site is deployed and his storage is ready", context do
+        view = mount_provisioning(context)
+        paste_storage_credentials(view)
+        run_steps(view, [:repository, :server, :secrets, :domain, :dns, :deploy, :storage], @given_cassette)
 
         {:ok, Map.put(context, :view, view)}
       end
 
       when_ "it verifies itself", context do
         html =
-          ReqCassette.with_cassette(@cassette, [mode: :replay], fn ->
+          with_provider_cassette(@cassette, fn ->
             context.view
             |> element("[data-test='setup-step'][data-step='content'] [data-test='run-step']")
             |> render_click()

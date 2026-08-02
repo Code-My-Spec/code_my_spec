@@ -39,6 +39,9 @@ defmodule CodeMySpec.Provisioning.ResendTest do
   describe "one sending domain per environment" do
     # Criterion 8056: test mail must never be mistakable for real mail, and a
     # UAT reputation problem must not touch production's domain.
+    # The base domain, not the sending host: Resend publishes its own bounce MX
+    # on `send.<domain>`. Prefixing it here produced `send.send.<domain>` and
+    # left the real records nowhere anything looked for them.
     test "production sends from the bare domain, others from a subdomain" do
       assert Resend.sending_domain(@domain, "prod") == "example.com"
       assert Resend.sending_domain(@domain, "production") == "example.com"
@@ -112,16 +115,72 @@ defmodule CodeMySpec.Provisioning.ResendTest do
     end
   end
 
+  describe "rate limiting" do
+    # Resend allows ten requests a second, and verifying a sending domain per
+    # environment polls well past that. A run that died on a 429 would have
+    # failed for a reason with nothing to do with the user's configuration.
+    test "a rate-limited request is retried rather than surfaced as a failure" do
+      {:ok, calls} = Agent.start_link(fn -> 0 end)
+
+      stub(fn conn ->
+        n = Agent.get_and_update(calls, &{&1 + 1, &1 + 1})
+
+        if n == 1 do
+          json(conn, 429, %{"name" => "rate_limit_exceeded", "message" => "Too many requests."})
+        else
+          json(conn, 200, %{"data" => []})
+        end
+      end)
+
+      assert {:ok, []} = Resend.list_domains(@scope)
+      assert Agent.get(calls, & &1) == 2, "the 429 was not retried"
+    end
+
+    test "a persistent rate limit is eventually reported rather than retried forever" do
+      stub(fn conn ->
+        json(conn, 429, %{"name" => "rate_limit_exceeded", "message" => "Too many requests."})
+      end)
+
+      assert {:error, {:resend_error, 429, _}} = Resend.list_domains(@scope)
+    end
+  end
+
   describe "poll_until_verified/3" do
+    # Found against the live API: Resend does not re-check a pending domain on
+    # its own. Polling without triggering waits out the entire window and then
+    # reports unverified for a domain whose records were correct throughout —
+    # and the report names records at fault that are not at fault.
+    test "asks the provider to look before waiting to see whether it has" do
+      {:ok, calls} = Agent.start_link(fn -> [] end)
+
+      stub(fn conn ->
+        Agent.update(calls, &(&1 ++ [conn.method]))
+        json(conn, 200, %{"id" => "d1", "status" => "verified", "records" => @live_records})
+      end)
+
+      {:ok, _} = Resend.poll_until_verified(@scope, "d1", interval_ms: 0, sleep: fn _ -> :ok end)
+
+      assert "POST" in Agent.get(calls, & &1),
+             "polling never triggered verification, so the provider was never asked to check"
+    end
+
     # Criterion 8026: publishing records and declaring victory leaves an
     # unverified domain and mail that 403s on the first send.
     test "polls until verified and reports how many attempts it took" do
       {:ok, counter} = Agent.start_link(fn -> 0 end)
 
+      # Only the reads advance the sequence. The POST that triggers
+      # verification is not an attempt — counting it would make the reported
+      # attempt count one higher than the number of times setup actually
+      # looked.
       stub(fn conn ->
-        n = Agent.get_and_update(counter, &{&1 + 1, &1 + 1})
-        status = if n >= 3, do: "verified", else: "pending"
-        json(conn, 200, %{"id" => "d1", "status" => status, "records" => @live_records})
+        if conn.method == "POST" do
+          json(conn, 200, %{"id" => "d1", "object" => "domain"})
+        else
+          n = Agent.get_and_update(counter, &{&1 + 1, &1 + 1})
+          status = if n >= 3, do: "verified", else: "pending"
+          json(conn, 200, %{"id" => "d1", "status" => status, "records" => @live_records})
+        end
       end)
 
       assert {:ok, %{attempts: 3, verified_at: %DateTime{}}} =
@@ -193,6 +252,52 @@ defmodule CodeMySpec.Provisioning.ResendTest do
       stub(fn conn -> json(conn, 401, %{"message" => "invalid"}) end)
 
       refute Resend.credential_valid?(@scope)
+    end
+  end
+
+  describe "mx_records/1" do
+    # Shape taken verbatim from a live verified receiving domain. A receiving
+    # domain returns two MX records and only one of them is for receiving; the
+    # other is the bounce/SPF record that belongs on send.<domain>.
+    @live_shape %{
+      "records" => [
+        %{
+          "record" => "SPF",
+          "name" => "send",
+          "type" => "MX",
+          "priority" => 10,
+          "value" => "feedback-smtp.us-east-1.amazonses.com",
+          "status" => "verified"
+        },
+        %{
+          "record" => "Receiving",
+          "name" => "",
+          "type" => "MX",
+          "priority" => 10,
+          "value" => "inbound-smtp.us-east-1.amazonaws.com",
+          "status" => "verified"
+        }
+      ]
+    }
+
+    # Filtering on type alone takes both. Publishing the sending record as the
+    # inbound MX breaks receiving and sending at once — criterion 8032.
+    test "returns only the receiving record, not the sending bounce MX" do
+      assert [record] = Resend.mx_records(@live_shape)
+
+      assert record["record"] == "Receiving"
+      assert record["value"] =~ "inbound-smtp"
+      refute record["value"] =~ "feedback-smtp"
+    end
+
+    test "carries the priority, which decides whether mail arrives at all" do
+      [record] = Resend.mx_records(@live_shape)
+
+      assert record["priority"] == 10
+    end
+
+    test "a domain with no records has no MX to publish" do
+      assert Resend.mx_records(%{}) == []
     end
   end
 end

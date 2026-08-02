@@ -394,6 +394,13 @@ defmodule CodeMySpecWeb.CoreComponents do
     default: &Function.identity/1,
     doc: "the function for mapping each row before calling the :col and :action slots"
 
+  # Rows need to be addressable by what they are, not by their position. A QA
+  # pass or a spex that finds "the second-project row" by index breaks the
+  # first time the sort changes, and finds the wrong row rather than failing.
+  attr :row_attrs, :any,
+    default: nil,
+    doc: "a function returning extra attributes for each <tr>, e.g. data-test hooks"
+
   slot :col, required: true do
     attr :label, :string
   end
@@ -418,7 +425,7 @@ defmodule CodeMySpecWeb.CoreComponents do
           </tr>
         </thead>
         <tbody id={@id} phx-update={is_struct(@rows, Phoenix.LiveView.LiveStream) && "stream"}>
-          <tr :for={row <- @rows} id={@row_id && @row_id.(row)}>
+          <tr :for={row <- @rows} id={@row_id && @row_id.(row)} {(@row_attrs && @row_attrs.(row)) || %{}}>
             <td
               :for={col <- @col}
               phx-click={@row_click && @row_click.(row)}

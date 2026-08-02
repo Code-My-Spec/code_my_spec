@@ -20,10 +20,17 @@ defmodule CodeMySpecSpex.Story974.Criterion8033Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :connect_providers
 
   spex "The inbox is proven by a message, not by configuration" do
     scenario "the step confirms an end-to-end delivery before reporting done" do
       given_ "the inbound records are published", context do
+        # Its own subdomain. Sharing one name across a story means whichever
+        # criterion runs second finds the first's domain already registered and
+        # *adopts* it — and an adopted resource is never torn down, so each one
+        # replays the others' state.
+        own_domain(context.project, "c8033.astralbi.com")
+
         {:ok, view, _html} =
           live(context.conn, "/app/projects/#{context.project.id}/provisioning")
 
@@ -32,7 +39,7 @@ defmodule CodeMySpecSpex.Story974.Criterion8033Spex do
 
       when_ "setup verifies the step", context do
         html =
-          ReqCassette.with_cassette(@cassette, [mode: :replay], fn ->
+          with_provider_cassette(@cassette, fn ->
             context.view
             |> element("[data-test='setup-step'][data-step='inbound'] [data-test='run-step']")
             |> render_click()

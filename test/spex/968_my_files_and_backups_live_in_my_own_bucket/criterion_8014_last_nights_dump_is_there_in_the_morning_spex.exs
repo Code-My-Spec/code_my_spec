@@ -17,11 +17,12 @@ defmodule CodeMySpecSpex.Story968.Criterion8014Spex do
 
   @endpoint CodeMySpecWeb.Endpoint
 
-  @install_cassette "backup_schedule_installed"
+  @install_cassette "968_8014_backup_schedule_installed"
   @listing_cassette "hetzner_bucket_list_dumps_after_run"
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :connect_providers
 
   spex "Last night's dump is there in the morning" do
     scenario "a dump dated from the scheduled run is in the bucket" do
@@ -30,7 +31,7 @@ defmodule CodeMySpecSpex.Story968.Criterion8014Spex do
           live(context.conn, "/app/projects/#{context.project.id}/provisioning")
 
         html =
-          ReqCassette.with_cassette(@install_cassette, [mode: :replay], fn ->
+          with_provider_cassette(@install_cassette, fn ->
             view
             |> element("[data-test='setup-step'][data-step='backups'] [data-test='run-step']")
             |> render_click()
@@ -44,7 +45,7 @@ defmodule CodeMySpecSpex.Story968.Criterion8014Spex do
 
       when_ "a scheduled run has passed", context do
         html =
-          ReqCassette.with_cassette(@listing_cassette, [mode: :replay], fn ->
+          with_provider_cassette(@listing_cassette, fn ->
             context.view
             |> element("[data-test='backups-refresh']")
             |> render_click()

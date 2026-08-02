@@ -53,6 +53,7 @@ defmodule CodeMySpec.Provisioning.Step do
     # build from. Story 985 criterion 8182.
     :repository,
     :server,
+    :secrets,
     :domain,
     :dns,
     :tls,
@@ -92,6 +93,13 @@ defmodule CodeMySpec.Provisioning.Step do
     field :provider_error, :string
     field :paused_instructions, :string
 
+    # When the step began, as distinct from `updated_at` (when it last
+    # changed). Ordering claims need both ends.
+    field :started_at, :utc_datetime_usec
+
+    # When this was last checked against the provider — not when it last ran.
+    field :verified_at, :utc_datetime_usec
+
     embeds_many :resources, Resource, on_replace: :delete
 
     belongs_to :project, Project, type: :binary_id
@@ -117,7 +125,9 @@ defmodule CodeMySpec.Provisioning.Step do
       :attempted,
       :provider_error,
       :paused_instructions,
-      :project_id
+      :project_id,
+      :started_at,
+      :verified_at
     ])
     |> cast_embed(:resources)
     |> validate_required([:key, :state, :position, :project_id])

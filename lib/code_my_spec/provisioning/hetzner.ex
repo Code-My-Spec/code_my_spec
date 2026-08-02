@@ -21,12 +21,24 @@ defmodule CodeMySpec.Provisioning.Hetzner do
 
   ## Only the web ports face the internet
 
-  `default_firewall_rules/0` opens 80 and 443 to the world and nothing else.
-  Story 966's criterion 8004 asserts the database port never answers from
-  outside, and the cheapest way to keep that true is to never have a code path
-  that opens it — so the public rule set is a fixed list, not a parameter.
-  Anything else an environment needs (Postgres, SSH) is reachable over the
-  private network or not at all.
+  `default_firewall_rules/0` opens 22, 80 and 443 to the world and nothing
+  else. Story 966's criterion 8004 asserts the database port never answers
+  from outside, and the cheapest way to keep that true is to never have a code
+  path that opens it — so the public rule set is a fixed list, not a
+  parameter. Postgres is reachable over the private network or not at all.
+
+  22 is on the list because the deploy runs over it: kamal connects as root to
+  the host IP, so a server behind a firewall that drops 22 is a server nothing
+  can deploy to. An earlier version left it closed and the whole sequence
+  stopped dead at the deploy step — a firewall rule that makes the product
+  impossible is not a security control, it is a bug with a good excuse.
+
+  Password authentication is not a concern here, and that is enforced rather
+  than assumed: `create_server/3` refuses without `:ssh_key_ids`. Hetzner
+  disables root password login for any server created with a key, so the
+  refusal is what keeps an internet-facing 22 from being a password-guessing
+  target. A server created without a key and reachable on 22 is the one
+  combination that must not be possible, so there is no code path to it.
 
   ## Idempotence
 
@@ -46,8 +58,9 @@ defmodule CodeMySpec.Provisioning.Hetzner do
 
   @token_key "hetzner_api_token"
 
-  # 80 and 443, and deliberately nothing else. See the moduledoc.
-  @public_ports ["80", "443"]
+  # 22 for the deploy, 80 and 443 for traffic, and deliberately nothing else.
+  # Postgres is never on this list. See the moduledoc.
+  @public_ports ["22", "80", "443"]
 
   @type body :: map()
   @type error ::
@@ -102,12 +115,74 @@ defmodule CodeMySpec.Provisioning.Hetzner do
   Create a server. Prefer `ensure_server/3` — this one does not check first.
 
   `opts` accepts `:arch` (`:arm`, the default, or `:x86`), and `:server_type` /
-  `:location` / `:image` / `:firewall_ids` to override individually.
+  `:location` / `:image` / `:firewall_ids` / `:ssh_key_ids` to override
+  individually.
+
+  Attaching an SSH key at creation is not optional in practice. A server made
+  without one has a root password Hetzner emails to the account owner and
+  nothing else — so the deploy step, which has to reach the box to configure
+  it, cannot. Provisioning a server nobody can log into is not provisioning a
+  server.
   """
   @spec create_server(Scope.t(), String.t(), keyword()) :: {:ok, body()} | error()
   def create_server(%Scope{} = scope, name, opts \\ []) when is_binary(name) do
-    defaults = defaults_for(Keyword.get(opts, :arch, :arm))
+    case Keyword.get(opts, :ssh_key_ids) do
+      nil -> {:error, :ssh_key_required}
+      [] -> {:error, :ssh_key_required}
+      _ -> do_create_server(scope, name, opts)
+    end
+  end
 
+  defp do_create_server(scope, name, opts) do
+    arch = Keyword.get(opts, :arch, :arm)
+
+    case create_in(scope, name, defaults_for(arch), opts) do
+      {:error, {:hetzner_error, 412, _}} = unavailable ->
+        # 412 `resource_unavailable` means Hetzner has none of that type in
+        # that location right now — a capacity fact about the region, not
+        # anything wrong with the request. Hetzner's own message is "error
+        # during placement", which tells Sam nothing he can act on.
+        #
+        # The other architecture is a real answer rather than a workaround:
+        # the image is built to match the box (criterion 7975), so the choice
+        # is ours to make as long as we record which one we made.
+        case fallback_for(arch) do
+          nil -> unavailable
+          other -> retry_elsewhere(scope, name, arch, other, opts, unavailable)
+        end
+
+      result ->
+        result
+    end
+  end
+
+  defp retry_elsewhere(scope, name, arch, other, opts, unavailable) do
+    Logger.info("[Hetzner] #{defaults_for(arch).server_type} unavailable — trying #{other.server_type} in #{other.location}")
+
+    case create_in(scope, name, other, opts) do
+      {:ok, server} ->
+        {:ok, server}
+
+      {:error, {:hetzner_error, 412, _}} ->
+        # Both sold out. Say so in terms Sam can act on, rather than passing
+        # up a message about placement.
+        {:error,
+         {:capacity_unavailable,
+          "Hetzner has no #{defaults_for(arch).server_type} in #{defaults_for(arch).location} " <>
+            "or #{other.server_type} in #{other.location} right now. This is a capacity " <>
+            "shortage at Hetzner, not a problem with your account — try another location or " <>
+            "wait and re-run this step."}}
+
+      _other ->
+        unavailable
+    end
+  end
+
+  defp fallback_for(:arm), do: defaults_for(:x86)
+  defp fallback_for(:x86), do: defaults_for(:arm)
+  defp fallback_for(_), do: nil
+
+  defp create_in(scope, name, defaults, opts) do
     payload =
       %{
         name: name,
@@ -117,6 +192,7 @@ defmodule CodeMySpec.Provisioning.Hetzner do
         start_after_create: true
       }
       |> maybe_put(:firewalls, firewall_refs(Keyword.get(opts, :firewall_ids)))
+      |> maybe_put(:ssh_keys, Keyword.get(opts, :ssh_key_ids))
 
     request(scope, :post, "/servers", json: payload)
   end
@@ -132,7 +208,8 @@ defmodule CodeMySpec.Provisioning.Hetzner do
     case find_server(scope, name) do
       {:ok, server} ->
         Logger.info("[Hetzner] server #{name} already exists — reusing")
-        {:ok, server}
+        # Adopted rather than created, so teardown leaves it alone.
+        {:ok, Map.put(server, "__adopted__", true)}
 
       {:error, :not_found} ->
         with {:ok, %{"server" => server}} <- create_server(scope, name, opts), do: {:ok, server}
@@ -186,7 +263,7 @@ defmodule CodeMySpec.Provisioning.Hetzner do
   def ensure_firewall(%Scope{} = scope, name) when is_binary(name) do
     case find_firewall(scope, name) do
       {:ok, firewall} ->
-        {:ok, firewall}
+        {:ok, Map.put(firewall, "__adopted__", true)}
 
       {:error, :not_found} ->
         with {:ok, %{"firewall" => firewall}} <- create_firewall(scope, name),
@@ -247,6 +324,114 @@ defmodule CodeMySpec.Provisioning.Hetzner do
   end
 
   ## Internals
+
+  @doc """
+  Return the account's copy of this exact public key, uploading it if absent.
+
+  ## Matched by fingerprint, and that is the whole point
+
+  An earlier version matched by name and reused whatever it found. A project
+  re-provisioned with a fresh keypair then got the *old* key attached to its
+  new server while setup held the *new* private half, so the server came up
+  perfectly and nothing could log into it. The symptom was a silent SSH
+  timeout several minutes later, which points nowhere near the cause.
+
+  A fingerprint identifies the key material itself, so this can only ever
+  return something the caller can actually authenticate with. When the name is
+  already taken by different material, the upload gets a suffixed name rather
+  than replacing anything — setup does not destroy resources, and someone
+  else's key under a colliding name is exactly the kind of thing that must not
+  quietly disappear.
+  """
+  @spec ensure_ssh_key(Scope.t(), String.t(), String.t()) :: {:ok, body()} | error()
+  def ensure_ssh_key(%Scope{} = scope, name, public_key) when is_binary(name) do
+    public_key = String.trim(public_key)
+    print = fingerprint(public_key)
+
+    case find_ssh_key_by_fingerprint(scope, print) do
+      {:ok, key} ->
+        Logger.info("[Hetzner] ssh key #{print} already uploaded — reusing")
+        {:ok, Map.put(key, "__adopted__", true)}
+
+      {:error, :not_found} ->
+        upload_ssh_key(scope, name, public_key, print)
+
+      {:error, _} = error ->
+        error
+    end
+  end
+
+  defp upload_ssh_key(scope, name, public_key, print) do
+    case request(scope, :post, "/ssh_keys", json: %{name: name, public_key: public_key}) do
+      {:ok, %{"ssh_key" => key}} ->
+        {:ok, key}
+
+      {:error, {:hetzner_error, 409, _}} ->
+        # The name is taken by different material. Suffixing is deliberate:
+        # deleting somebody's key to free a name is not setup's business.
+        suffix = print |> String.replace(":", "") |> String.slice(0, 8)
+
+        with {:ok, %{"ssh_key" => key}} <-
+               request(scope, :post, "/ssh_keys",
+                 json: %{name: "#{name}-#{suffix}", public_key: public_key}
+               ),
+             do: {:ok, key}
+
+      {:error, _} = error ->
+        error
+    end
+  end
+
+  @doc """
+  Hetzner's fingerprint for an OpenSSH public key: colon-separated MD5 of the
+  decoded blob.
+
+  ## Examples
+
+      iex> CodeMySpec.Provisioning.Hetzner.fingerprint(
+      ...>   "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGZoRhKeFsyeaIykmsp/bzMzH0RMp/ltqu7hnsXxPeLp doctest"
+      ...> )
+      "a1:53:7e:3f:09:2b:7c:2d:61:fa:35:d8:a7:00:1e:71"
+  """
+  @spec fingerprint(String.t()) :: String.t()
+  def fingerprint(public_key) do
+    public_key
+    |> String.trim()
+    |> String.split(~r/\s+/)
+    |> Enum.at(1)
+    |> Base.decode64!()
+    |> then(&:crypto.hash(:md5, &1))
+    |> Base.encode16(case: :lower)
+    |> String.replace(~r/(..)(?!$)/, "\\1:")
+  end
+
+  @doc "Find an SSH key by its fingerprint."
+  @spec find_ssh_key_by_fingerprint(Scope.t(), String.t()) :: {:ok, body()} | error()
+  def find_ssh_key_by_fingerprint(%Scope{} = scope, print) when is_binary(print) do
+    with {:ok, %{"ssh_keys" => keys}} <- request(scope, :get, "/ssh_keys?fingerprint=#{print}", []) do
+      case keys do
+        [key | _] -> {:ok, key}
+        [] -> {:error, :not_found}
+      end
+    end
+  end
+
+  @doc "Find an SSH key by name."
+  @spec find_ssh_key(Scope.t(), String.t()) :: {:ok, body()} | error()
+  def find_ssh_key(%Scope{} = scope, name) when is_binary(name) do
+    with {:ok, %{"ssh_keys" => keys}} <- request(scope, :get, "/ssh_keys?name=#{name}", []) do
+      case keys do
+        [key | _] -> {:ok, key}
+        [] -> {:error, :not_found}
+      end
+    end
+  end
+
+  @doc "Delete an SSH key. Teardown only; setup never destroys."
+  @spec delete_ssh_key(Scope.t(), integer()) :: {:ok, body()} | error()
+  def delete_ssh_key(%Scope{} = scope, id) do
+    request(scope, :delete, "/ssh_keys/#{id}", [])
+  end
 
   defp firewall_refs(nil), do: nil
   defp firewall_refs([]), do: nil

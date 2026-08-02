@@ -98,19 +98,27 @@ defmodule CodeMySpecLocalWeb.StoryLive.Index do
                 >
                   {if story.ready_for_dev == true, do: "Park", else: "Release"}
                 </button>
+                <%!-- Named after enforcement, not spec colour. `specs_ready` carries one
+                fact — whether spex failures block the agent on this story — and
+                the manual toggle is exactly where that comes apart from "the
+                specs pass". Parking a shipped story clears the latch without
+                touching a spec file, and the badge then asserted the specs were
+                failing, which is the opposite of the situation criterion 8169
+                exists to support. The button beside it already said
+                "Unenforce"/"Enforce"; now they agree. --%>
                 <span
                   :if={story.specs_ready == true}
                   data-test="story-specs-ready"
                   class="badge badge-info"
                 >
-                  Specs green
+                  Enforced
                 </span>
                 <span
                   :if={story.specs_ready != true}
                   data-test="story-specs-not-ready"
                   class="badge badge-ghost"
                 >
-                  Specs not green
+                  Not enforced
                 </span>
                 <button
                   type="button"

@@ -19,21 +19,52 @@ defmodule CodeMySpecSpex.Story965.Criterion7995Spex do
 
   @cassette "cloudflare_dns_records_created_per_environment"
 
+  @given_cassette "965_7995_domain_and_servers"
+
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :connect_providers
 
   spex "Each environment resolves to its own server" do
     scenario "each environment's hostname points at the server serving it" do
+      # Both halves made true. "Each environment resolves to its own
+      # server" cannot be observed without servers to resolve to, and the DNS
+      # step in the `when_` has nothing to point anywhere without a domain —
+      # it fails on the missing domain, which reads as a DNS bug.
       given_ "Sam has a domain and a provisioned server per environment", context do
-        {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/provisioning")
+        view = mount_provisioning(context)
+        # Its own subdomain. Two spex sharing one name share a DNS namespace:
+        # whichever runs second finds the first's records already there,
+        # *adopts* them instead of creating them, and adopted resources are
+        # never torn down — so the records leak and the recording contains no
+        # creation at all.
+        own_domain(context.project, "c7995.astralbi.com")
+
+        # Registered before anything is made: this spex provisions a real
+        # server and writes real DNS records, and a recording that fails
+        # partway must still not leave a box running or a record pointing at
+        # nothing.
+        tear_down_after(context.scope, [:dns, :server])
+
+        # Hetzner has no OAuth, so its token is pasted per project — without it
+        # the server step stops at `hetzner_not_configured` and the DNS step
+        # then has no server to point at, which reads as a DNS failure.
+        # Saving a credential proves it with a real provider call, so it
+        # belongs inside the cassette.
+        with_provider_cassette(@given_cassette, fn ->
+          paste_provider_credentials(view)
+
+          view
+          |> element("[data-test='setup-step'][data-step='server'] [data-test='run-step']")
+          |> render_click()
+        end)
 
         {:ok, Map.put(context, :view, view)}
       end
 
       when_ "the DNS step runs", context do
         html =
-          ReqCassette.with_cassette(@cassette, [mode: :replay], fn ->
+          with_provider_cassette(@cassette, fn ->
             context.view
             |> element("[data-test='setup-step'][data-step='dns'] [data-test='run-step']")
             |> render_click()

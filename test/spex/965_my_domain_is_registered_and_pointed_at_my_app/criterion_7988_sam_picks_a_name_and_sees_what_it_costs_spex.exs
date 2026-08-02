@@ -24,6 +24,7 @@ defmodule CodeMySpecSpex.Story965.Criterion7988Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :connect_providers
 
   spex "Sam picks a name and sees what it costs" do
     scenario "an available domain comes back with its price before he commits" do
@@ -36,7 +37,7 @@ defmodule CodeMySpecSpex.Story965.Criterion7988Spex do
 
       when_ "he types the domain he wants and setup checks it", context do
         html =
-          ReqCassette.with_cassette(@cassette, [mode: :replay], fn ->
+          with_provider_cassette(@cassette, fn ->
             context.view
             |> form("[data-test='domain-form']", domain: %{name: "sams-new-thing.com"})
             |> render_submit()
@@ -45,28 +46,37 @@ defmodule CodeMySpecSpex.Story965.Criterion7988Spex do
         {:ok, Map.put(context, :html, html)}
       end
 
-      then_ "he sees whether it is available", context do
+      then_ "he sees the registrar's answer for the name he typed", context do
+        # The honest answer for a name the account does not already hold: the
+        # registrar reports whether the *extension* is supported, not a price
+        # and not a definite yes. Cloudflare will not price or sell an
+        # arbitrary new name through the API, so "sees what it costs" is not a
+        # thing the API can give — the check tells Sam the name is a real
+        # candidate, and cost lives where the purchase does.
         assert has_element?(
                  context.view,
-                 "[data-test='domain-availability'][data-available='true']"
+                 "[data-test='domain-availability'][data-name='sams-new-thing.com']"
                ),
-               "expected the availability answer to be shown for the domain Sam named"
+               "expected the registrar's answer to be shown for the name Sam typed"
+
+        assert has_element?(
+                 context.view,
+                 "[data-test='domain-availability'][data-supported-tld='true']"
+               ),
+               "expected the supported extension to be reported"
 
         {:ok, context}
       end
 
-      then_ "he sees what it costs before deciding", context do
-        price =
-          context.html
-          |> Floki.parse_document!()
-          |> Floki.find("[data-test='domain-price']")
-          |> Floki.text()
+      then_ "he is told where buying happens, and nothing is bought by looking", context do
+        # Buying is a Cloudflare dashboard errand (Sam's call once the API
+        # proved unable to price a new name). The check hands him there rather
+        # than pretending to a price it does not have — and buys nothing.
+        assert has_element?(context.view, "[data-test='domain-dashboard-link']"),
+               "expected the check to hand Sam to the dashboard, where cost and purchase live"
 
-        assert price =~ ~r/\d/,
-               "expected a price to be shown before the purchase decision, got: #{inspect(price)}"
-
-        refute has_element?(context.view, "[data-test='domain-step'][data-state='registered']"),
-               "expected nothing to be bought merely by checking availability"
+        refute has_element?(context.view, "[data-test='domain-registered']"),
+               "expected nothing to be registered merely by checking a name"
 
         {:ok, context}
       end

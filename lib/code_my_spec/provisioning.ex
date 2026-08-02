@@ -40,6 +40,8 @@ defmodule CodeMySpec.Provisioning do
 
   require Logger
 
+  alias CodeMySpec.Projects
+  alias CodeMySpec.Projects.Project
   alias CodeMySpec.Provisioning.{Sequence, Step, StepRepository, Steps}
   alias CodeMySpec.Users.Scope
 
@@ -72,6 +74,84 @@ defmodule CodeMySpec.Provisioning do
   @spec runner(atom()) :: module() | nil
   def runner(key), do: Map.get(@runners, key)
 
+  @doc "The persisted step row for `key`, or nil."
+  @spec get_step(Scope.t(), atom()) :: Step.t() | nil
+  def get_step(%Scope{} = scope, key), do: StepRepository.get(scope, key)
+
+  @doc """
+  Record a domain adopted through the check form as the domain step's
+  completion.
+
+  Adopting an existing domain is an ordinary success (criterion 8052), so the
+  domain step should read done — not stay `:not_started` because the *step*
+  was never run. The resource is marked `origin: "adopted"` so teardown leaves
+  it alone: setup found the domain, it did not create it.
+  """
+  @spec adopt_domain_step(Scope.t(), String.t()) :: Step.t()
+  def adopt_domain_step(%Scope{} = scope, name) do
+    mark(scope, :domain, :done, %{
+      resources: [%{kind: "domain", location: "cloudflare/#{name}", origin: "adopted"}]
+    })
+  end
+
+  ## Options
+
+  @doc """
+  Every optional part of setup, as atoms.
+
+  Derived from the sequence rather than listed separately, so adding a step
+  with a new option cannot leave the toggle behind.
+  """
+  @spec available_options() :: [atom()]
+  def available_options do
+    Sequence.all() |> Enum.map(& &1.option) |> Enum.reject(&is_nil/1) |> Enum.uniq()
+  end
+
+  @doc """
+  The options a project has chosen.
+
+  A project that has never chosen gets everything. Setup's job is a working
+  project, and a user who wants less turns it off rather than having to
+  discover what to turn on.
+
+  `nil` and `[]` are deliberately different: `nil` is "never chosen" and
+  yields the full set, `[]` is "chose none of the optional parts" and yields
+  none. Collapsing them would make turning everything off indistinguishable
+  from never having opened the page — and the page would helpfully turn it all
+  back on.
+  """
+  @spec setup_options(Project.t() | Scope.t()) :: [atom()]
+  def setup_options(%Scope{active_project: project}), do: setup_options(project)
+  def setup_options(%Project{setup_options: nil}), do: available_options()
+
+  def setup_options(%Project{setup_options: stored}) do
+    available = available_options()
+    by_name = Map.new(available, &{to_string(&1), &1})
+
+    # Looked up rather than `String.to_existing_atom/1`: a stored option whose
+    # step was later removed should be ignored, not raise. The row outlives the
+    # code that wrote it.
+    stored |> Enum.flat_map(&List.wrap(Map.get(by_name, &1))) |> Enum.uniq()
+  end
+
+  def setup_options(_), do: available_options()
+
+  @doc """
+  Persist the project's chosen options.
+
+  They used to live in the LiveView socket alone, which meant every mount
+  reset them: Sam turned object storage off, came back, and found it on — then
+  started a run that was not the one he configured.
+  """
+  @spec put_setup_options(Scope.t(), [atom() | String.t()]) ::
+          {:ok, Project.t()} | {:error, Ecto.Changeset.t()}
+  def put_setup_options(%Scope{active_project: %Project{} = project} = scope, options) do
+    known = MapSet.new(available_options(), &to_string/1)
+    stored = options |> Enum.map(&to_string/1) |> Enum.filter(&MapSet.member?(known, &1)) |> Enum.uniq()
+
+    Projects.update_project(scope, project, %{setup_options: stored})
+  end
+
   ## Plan
 
   @doc """
@@ -82,6 +162,18 @@ defmodule CodeMySpec.Provisioning do
   absent, not present-and-skipped (criterion 7968).
   """
   @spec plan(Scope.t(), [atom()]) :: [map()]
+  @doc """
+  The project's deployment environments, by name.
+
+  Callers that fan out over environments — the setup page, the steps — ask
+  here rather than carrying a list. `prod` and `uat` are rows a project starts
+  with, not a fixed set, so a project may have `qa` or one environment per
+  story without a code change.
+  """
+  @spec environment_names(Scope.t()) :: [String.t()]
+  def environment_names(%Scope{} = scope),
+    do: CodeMySpec.Provisioning.EnvironmentRepository.names(scope)
+
   def plan(%Scope{} = scope, enabled_options) do
     persisted = scope |> StepRepository.list() |> Map.new(&{&1.key, &1})
 
@@ -99,6 +191,12 @@ defmodule CodeMySpec.Provisioning do
         attempted: row && row.attempted,
         provider_error: row && row.provider_error,
         paused_instructions: row && row.paused_instructions,
+        # When the step last changed state. A `done` row's timestamp is when
+        # it finished, which is what makes "setup waited for verification
+        # rather than declaring victory first" checkable rather than asserted.
+        completed_at: row && row.updated_at,
+        started_at: row && row.started_at,
+        verified_at: row && row.verified_at,
         resources: (row && row.resources) || []
       }
     end)
@@ -156,8 +254,26 @@ defmodule CodeMySpec.Provisioning do
   end
 
   defp run_and_record(scope, key, execute, opts) do
-    _ = mark(scope, key, :running, %{})
+    # Stamped when the step actually begins, not when the row is created — a
+    # step that was never run has no start, and an ordering comparison against
+    # a row's insertion time would answer for steps that never ran.
+    _ = mark(scope, key, :running, %{started_at: DateTime.utc_now()})
 
+    execute_and_record(scope, key, execute, opts)
+  rescue
+    # A step that raises must halt the run as an errored step, not crash the
+    # runner and leave itself stuck :running. A provider client that throws, a
+    # missing binary, a shell-out that blows up — all of them should stop the
+    # sequence and name themselves, which is what every returned error already
+    # does. Without this, the step's row stays :running forever and anything
+    # watching the page waits on a run that is already dead.
+    error ->
+      reason = Exception.message(error)
+      row = mark(scope, key, :errored, error_attrs(key, reason))
+      {:halt, row, reason}
+  end
+
+  defp execute_and_record(scope, key, execute, opts) do
     case execute.(scope, key, opts) do
       {:ok, resources} ->
         {:ok, mark(scope, key, :done, %{resources: resources})}
@@ -165,6 +281,17 @@ defmodule CodeMySpec.Provisioning do
       {:paused, instructions} ->
         row = mark(scope, key, :paused, %{paused_instructions: instructions})
         {:halt, row, instructions}
+
+      # A step that got partway records what it made before it failed.
+      # Without this the resources are real and unrecorded, which is the
+      # worst combination: nothing can find them to clean up, and nothing
+      # knows they exist to bill for. Teardown works from what a step
+      # recorded, so a failure that records nothing leaks by construction.
+      {:error, reason, partial} when is_list(partial) ->
+        row =
+          mark(scope, key, :errored, Map.put(error_attrs(key, reason), :resources, partial))
+
+        {:halt, row, describe(reason)}
 
       {:error, reason} ->
         row = mark(scope, key, :errored, error_attrs(key, reason))
@@ -186,6 +313,123 @@ defmodule CodeMySpec.Provisioning do
       nil -> Steps.verify(key, scope, opts)
       verifier -> verifier.(scope, key)
     end
+  end
+
+  @doc """
+  Watch a project's setup as it runs.
+
+  Story 963 is called "setup runs as a routine I can watch", and watching is
+  only possible if something is published while the run is still going. A
+  synchronous run that returns its whole result at the end is a routine you
+  wait for, not one you watch.
+  """
+  @spec subscribe(Scope.t()) :: :ok | {:error, term()}
+  def subscribe(%Scope{active_project_id: id}) when is_binary(id),
+    do: Phoenix.PubSub.subscribe(CodeMySpec.PubSub, topic(id))
+
+  def subscribe(_scope), do: :ok
+
+  defp topic(project_id), do: "provisioning:#{project_id}"
+
+  defp announce(%Scope{active_project_id: id}, message) when is_binary(id),
+    do: Phoenix.PubSub.broadcast(CodeMySpec.PubSub, topic(id), message)
+
+  defp announce(_scope, _message), do: :ok
+
+  @doc """
+  Start the sequence in the background and return immediately.
+
+  The caller gets `{:ok, pid}` and then `{:provisioning, :step, row}` messages
+  as each step changes — which is what makes a step visibly move to `running`
+  while the page is open, rather than the whole run landing at once when it
+  finishes (criteria 7960 and 7972).
+
+  Running it in a task rather than inline also means a step that takes two
+  minutes does not hold a LiveView's process hostage for two minutes; setup
+  steps talk to providers, and providers are slow.
+  """
+  @spec run_async(Scope.t(), [atom()], keyword()) :: {:ok, pid() | :sync}
+  def run_async(%Scope{} = scope, enabled_options, opts \\ []) do
+    if Application.get_env(:code_my_spec, :provisioning_run_async, true) do
+      spawn_run(scope, enabled_options, opts)
+    else
+      # Synchronously under test, so the run shares the ExUnit sandbox
+      # connection instead of a detached task racing the test's lifetime —
+      # the same reason content pull runs inline in test. The transitions are
+      # still broadcast, so a spex that polls the page after the run sees the
+      # final state. The two criteria that assert a step is *mid-run* opt back
+      # into async explicitly.
+      result = run(scope, enabled_options, opts)
+      announce(scope, {:provisioning, :finished, result})
+      {:ok, :sync}
+    end
+  end
+
+  defp spawn_run(scope, enabled_options, opts) do
+    parent = self()
+
+    {:ok, pid} =
+      Task.start(fn ->
+        # The caller is subscribed to the topic, not linked to this task, so a
+        # step that raises must not take the page down with it — it is
+        # reported like any other failure.
+        result =
+          try do
+            run(scope, enabled_options, opts)
+          rescue
+            error -> %{steps: [], halted_at: :unknown, reason: Exception.message(error)}
+          end
+
+        announce(scope, {:provisioning, :finished, result})
+        send(parent, {:provisioning, :finished, result})
+      end)
+
+    {:ok, pid}
+  end
+
+  @doc """
+  Re-check every step that claims to be done, against its provider.
+
+  A persisted row says what was observed once. It is not evidence the resource
+  still exists — somebody deletes a server in the console, and the row goes on
+  saying done forever. So opening the page asks the providers rather than
+  reading the rows back (criterion 7970), and a step whose resource has gone
+  drops to `:not_started` so the next run rebuilds it rather than skipping it
+  (criterion 7964).
+
+  Only `:done` steps are checked. A step that errored or never ran has nothing
+  to confirm, and asking would be a provider call per page load for no answer.
+
+  Failures leave the row alone. A provider being unreachable is not evidence
+  the resource is gone, and treating it as such would rebuild live
+  infrastructure on the strength of a timeout.
+  """
+  @spec reverify(Scope.t(), [atom()], keyword()) :: :ok
+  def reverify(%Scope{} = scope, enabled_options, opts \\ []) do
+    now = DateTime.utc_now()
+
+    for step <- Sequence.for_options(enabled_options),
+        row = StepRepository.get(scope, step.key),
+        row && row.state == :done do
+      case verify(scope, step.key, opts) do
+        {:ok, :satisfied, resources} ->
+          mark(scope, step.key, :done, %{resources: resources, verified_at: now})
+
+        {:ok, :absent} ->
+          # State only — the recorded resources stay. `:absent` can mean a
+          # partial setup as easily as a deleted one (the storage step reports
+          # absent when one of two buckets is missing), and clearing the list
+          # would lose the record of what *was* made. Teardown removes only
+          # what a step recorded, so wiping that leaks whatever is still there.
+          Logger.info("[Provisioning] #{step.key} no longer verifies — marking not_started")
+          mark(scope, step.key, :not_started, %{verified_at: now})
+
+        {:error, _reason} ->
+          :unreachable
+      end
+    end
+
+    :ok
   end
 
   ## Resuming
@@ -256,11 +500,19 @@ defmodule CodeMySpec.Provisioning do
   defp describe(reason) when is_atom(reason), do: to_string(reason)
   defp describe(reason), do: inspect(reason)
 
+  # Every state change is announced. Doing it here rather than at each call
+  # site means a transition cannot be added without being published — and a
+  # step that moves without telling anyone is exactly the "watch it run"
+  # failure, invisible until someone reloads.
   defp mark(scope, key, state, attrs) do
-    StepRepository.upsert(
-      scope,
-      key,
-      Map.merge(attrs, %{state: state, position: Sequence.position(key)})
-    )
+    row =
+      StepRepository.upsert(
+        scope,
+        key,
+        Map.merge(attrs, %{state: state, position: Sequence.position(key)})
+      )
+
+    announce(scope, {:provisioning, :step, row})
+    row
   end
 end

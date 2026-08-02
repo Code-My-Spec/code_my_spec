@@ -20,19 +20,20 @@ defmodule CodeMySpecSpex.Story963.Criterion7970Spex do
 
   @endpoint CodeMySpecWeb.Endpoint
 
-  @create_cassette "hetzner_bucket_create_ok"
+  @create_cassette "963_7970_hetzner_bucket_create_ok"
   @verify_cassette "hetzner_bucket_head_exists"
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :connect_providers
 
   spex "A step's state is checked against the provider, not remembered" do
     scenario "opening the page re-checks the bucket rather than trusting the old result" do
       given_ "the bucket step succeeded earlier", context do
-        {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/provisioning")
+        view = mount_provisioning(context)
+        paste_storage_credentials(view)
 
-        ReqCassette.with_cassette(@create_cassette, [mode: :replay], fn ->
+        with_provider_cassette(@create_cassette, fn ->
           view
           |> element("[data-test='setup-step'][data-step='storage'] [data-test='run-step']")
           |> render_click()
@@ -43,7 +44,7 @@ defmodule CodeMySpecSpex.Story963.Criterion7970Spex do
 
       when_ "Sam opens the status page later", context do
         {view, html} =
-          ReqCassette.with_cassette(@verify_cassette, [mode: :replay], fn ->
+          with_provider_cassette(@verify_cassette, fn ->
             {:ok, view, html} =
               live(context.conn, "/app/projects/#{context.project.id}/provisioning")
 

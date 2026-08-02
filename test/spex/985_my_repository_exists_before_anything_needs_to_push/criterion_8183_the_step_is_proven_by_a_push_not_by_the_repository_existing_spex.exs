@@ -18,6 +18,7 @@ defmodule CodeMySpecSpex.Story985.Criterion8183Spex do
   """
 
   use CodeMySpecSpex.Case
+  use ExCliVcr
 
   @endpoint CodeMySpecWeb.Endpoint
 
@@ -25,6 +26,7 @@ defmodule CodeMySpecSpex.Story985.Criterion8183Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :connect_providers
 
   spex "The step is proven by a push, not by the repository existing" do
     scenario "the step records the commit that landed and only then completes" do
@@ -37,11 +39,11 @@ defmodule CodeMySpecSpex.Story985.Criterion8183Spex do
 
       when_ "the repository step runs", context do
         html =
-          ReqCassette.with_cassette(@cassette, [mode: :replay], fn ->
+          with_full_cassette @cassette do
             context.view
             |> element("[data-test='setup-step'][data-step='repository'] [data-test='run-step']")
             |> render_click()
-          end)
+          end
 
         {:ok, Map.put(context, :html, html)}
       end

@@ -17,14 +17,19 @@ defmodule CodeMySpecSpex.Story972.Criterion8036Spex do
 
   @endpoint CodeMySpecWeb.Endpoint
 
-  @cassette "content_publish_then_render_on_site"
+  @cassette "972_8036_content_publish_then_render_on_site"
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :connect_providers
 
   spex "The post appears on the live site" do
     scenario "the published post renders at its address on the deployed site" do
-      given_ "Sam has published a post", context do
+      # Renamed from "Sam has published a post". It never published — it
+      # wrote a file — and the publish is what the `when_` does. Naming the
+      # precondition after the action under test is how a scenario reads as
+      # covering two things while covering one.
+      given_ "Sam has written a post in his repo", context do
         :ok =
           Environments.write_file(
             context.environment,
@@ -38,9 +43,9 @@ defmodule CodeMySpecSpex.Story972.Criterion8036Spex do
         {:ok, Map.put(context, :view, view)}
       end
 
-      when_ "he visits its address on his deployed site", context do
+      when_ "he publishes, and the pipeline fetches its address on the deployed site", context do
         html =
-          ReqCassette.with_cassette(@cassette, [mode: :replay], fn ->
+          with_provider_cassette(@cassette, fn ->
             context.view
             |> element("[data-test='content-publish']")
             |> render_click()

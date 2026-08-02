@@ -24,21 +24,27 @@ defmodule CodeMySpecSpex.Story964.Criterion7983Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :connect_providers
 
   spex "A credential is proven by a real call, not by looking right" do
     scenario "the Hetzner token is confirmed against Hetzner before it reads verified" do
       given_ "Sam is on credential entry", context do
         {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/credentials")
+          live(context.conn, "/app/projects/#{context.project.id}/provisioning")
 
         {:ok, Map.put(context, :view, view)}
       end
 
+      # The real token when recording, a placeholder otherwise. Recording with
+      # a literal "valid-looking-token" would capture a 401 — a cassette that
+      # replays perfectly and proves the opposite of the criterion.
       when_ "he submits his Hetzner API token", context do
-        ReqCassette.with_cassette(@cassette, [mode: :replay], fn ->
+        with_provider_cassette(@cassette, fn ->
           context.view
           |> form("[data-test='credentials-form']",
-            credentials: %{hetzner_api_token: "valid-looking-token"}
+            credentials: %{
+              hetzner_api_token: System.get_env("HETZNER_API_TOKEN", "spex-placeholder-token")
+            }
           )
           |> render_submit()
         end)

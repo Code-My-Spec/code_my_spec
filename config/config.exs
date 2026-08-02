@@ -30,6 +30,17 @@ config :code_my_spec,
 # `https://www.googleapis.com/auth/adwords` — see config/dev.exs.
 config :code_my_spec, google_oauth_scopes: "email profile"
 
+# Cloudflare issues a refresh token only when the OAuth client was *created*
+# with `refresh_token` among its grant types — it then adds `offline_access`
+# to the client's scopes itself. Without it a grant simply dies at its expiry
+# (~16h) with nothing to renew from, which is survivable interactively and a
+# real hazard for an unattended provisioning run.
+#
+# On for the client in `envs/.env`, which was created with both grant types.
+# A client created without them must set this to false or connecting fails
+# outright with invalid_scope.
+config :code_my_spec, :cloudflare_offline_access, true
+
 # Configures the endpoint
 config :code_my_spec, CodeMySpecWeb.Endpoint,
   url: [host: "localhost"],
