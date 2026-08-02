@@ -28,6 +28,7 @@ defmodule Mix.Tasks.Cms.ProvisioningLeaks do
   that depends on whether a recording is in flight.
   """
   use Mix.Task
+  use Boundary, classify_to: CodeMySpec
 
   alias CodeMySpec.Provisioning.{Hetzner, Storage, Teardown}
   alias CodeMySpec.Users.Scope
