@@ -30,6 +30,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
 
   require Logger
 
+  alias CodeMySpec.AgentHarness.ConversationRecorder
   alias CodeMySpec.Accounts
   alias CodeMySpec.Analysis
   alias CodeMySpec.Files
@@ -123,6 +124,29 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   # nothing" and "the scan did not run" arrive as the same empty list. A
   # genuinely empty project has no rows to lose, so refusing costs nothing and
   # a harness bug stops being indistinguishable from an empty checkout.
+  # A completed model turn from the sprite's proxy. The records live here
+  # because this is where the operator reads them — the sprite holds a working
+  # copy, the server holds what happened, same split as observations.
+  #
+  # Never replies. The harness sends this as a cast and the agent's turn was
+  # answered long before it arrived; a reply would only be something for nobody
+  # to wait on. A failure is logged and dropped, and the operator sees the gap.
+  def handle_in("record_turn", payload, socket) do
+    scope = socket.assigns.scope
+
+    _ =
+      ConversationRecorder.record_turn(
+        scope.active_account_id,
+        scope.active_project_id,
+        payload["session_id"] || "sprite",
+        payload["request"] || %{},
+        payload["response"] || %{},
+        payload["agent_role"] || "main"
+      )
+
+    {:noreply, socket}
+  end
+
   def handle_in("observations", %{"observations" => []}, socket) do
     {:reply, {:error, %{"reason" => "empty_manifest"}}, socket}
   end
