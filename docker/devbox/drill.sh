@@ -154,6 +154,9 @@ if [ "$WITH_AGENT" = "1" ]; then
   docker exec -d -u agent \
     -e MIX_HOME=/home/agent/.mix \
     -e APP_DIR="/workspace/${APP}" \
+    -e MCP_TOOL_TIMEOUT="${MCP_TOOL_TIMEOUT:-180000}" \
+    -e MCP_TOOL_IDLE_TIMEOUT="${MCP_TOOL_IDLE_TIMEOUT:-180000}" \
+    -e AGENT_HANG_TIMEOUT="${AGENT_HANG_TIMEOUT:-420}" \
     -w "/workspace/${APP}" \
     "$NAME" /usr/local/bin/devbox-agent
 fi

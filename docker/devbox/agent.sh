@@ -33,6 +33,42 @@ BACKOFF_CAP=300
 fails=0
 attempt=0
 
+# How long a turn may go without the transcript growing before it is called
+# hung. Generous: a legitimate turn can think for minutes, and killing a
+# working agent is worse than waiting.
+HANG_TIMEOUT="${AGENT_HANG_TIMEOUT:-420}"
+
+# Let the MCP client give up on a tool that never returns, so the agent gets an
+# error instead of the run getting a wall. Only set if the operator has not.
+export MCP_TOOL_TIMEOUT="${MCP_TOOL_TIMEOUT:-180000}"
+export MCP_TOOL_IDLE_TIMEOUT="${MCP_TOOL_IDLE_TIMEOUT:-180000}"
+
+newest_transcript_mtime() {
+  find /home/agent/.claude/projects -name '*.jsonl' -printf '%T@\n' 2>/dev/null \
+    | sort -n | tail -1 | cut -d. -f1
+}
+
+# Kills the agent when its transcript stops growing. Deliberately kills rather
+# than reports: the retry loop below already knows how to start a fresh attempt,
+# and a non-zero exit is the only language it understands.
+watchdog() {
+  local pid="$1" last now quiet
+  while kill -0 "${pid}" 2>/dev/null; do
+    sleep 30
+    last="$(newest_transcript_mtime)"
+    [ -n "${last}" ] || continue
+    now="$(date +%s)"
+    quiet=$(( now - last ))
+    if [ "${quiet}" -gt "${HANG_TIMEOUT}" ]; then
+      log "no transcript activity for ${quiet}s — the turn is hung, killing it so the retry can take over"
+      kill -TERM "${pid}" 2>/dev/null || true
+      sleep 10
+      kill -KILL "${pid}" 2>/dev/null || true
+      return
+    fi
+  done
+}
+
 log() { printf '\n\033[1;35m[agent-supervisor] %s\033[0m\n' "$*" | tee -a "${LOG}"; }
 
 # A sprite is disposable — sprite.sh says so in its own header, on the grounds
@@ -170,8 +206,24 @@ while true; do
 
   log "starting agent (attempt ${attempt})"
 
-  claude --permission-mode bypassPermissions -p "${PROMPT}" >>"${LOG}" 2>&1
+  # A hung tool call never exits, so the non-zero-exit retry below cannot see
+  # it. Drill 13 blocked on a Vibium browser_evaluate that never returned and
+  # sat there for 55 minutes looking exactly like a long turn.
+  #
+  # MCP_TOOL_TIMEOUT is the first line — the client abandons the call and hands
+  # the agent a tool error it can file and route around. The watchdog is the
+  # second, because it catches a hang wherever it happens rather than only
+  # inside an MCP call: the transcript is append-only with timestamps, so a
+  # process that is alive while its transcript has not grown is stuck.
+  claude --permission-mode bypassPermissions -p "${PROMPT}" >>"${LOG}" 2>&1 &
+  claude_pid=$!
+
+  watchdog "${claude_pid}" &
+  watchdog_pid=$!
+
+  wait "${claude_pid}"
   code=$?
+  kill "${watchdog_pid}" 2>/dev/null || true
 
   elapsed=$(( $(date +%s) - started ))
 
