@@ -38,6 +38,15 @@ defmodule CodeMySpecSpex.Story985.Criterion8184Spex do
         url = "https://github.com/johns10/spex-story985-criterion8184.git"
         CodeMySpecSpex.Fixtures.set_code_repo(context.project, url)
 
+
+        # The repository is already there — that is the premise. It used to be
+        # there because an earlier run left it, which made this pass on a dirty
+        # account and fail on a clean one.
+        existing_repository(context.project, commits: true)
+
+        # And it is this project's, so setup adopts rather than asking.
+        own_repository(context.project)
+
         view = mount_provisioning(context)
 
         {:ok, Map.put(context, :view, view)}

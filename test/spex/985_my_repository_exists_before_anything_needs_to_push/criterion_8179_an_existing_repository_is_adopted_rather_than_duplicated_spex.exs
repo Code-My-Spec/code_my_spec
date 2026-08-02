@@ -31,6 +31,15 @@ defmodule CodeMySpecSpex.Story985.Criterion8179Spex do
       # repository that merely happens to exist is criterion 8185's case, and
       # that one stops and asks rather than adopting.
       given_ "setup already created the repository on an earlier run", context do
+
+        # The repository is already there — that is the premise. It used to be
+        # there because an earlier run left it, which made this pass on a dirty
+        # account and fail on a clean one.
+        existing_repository(context.project)
+
+        # And it is this project's, so setup adopts rather than asking.
+        own_repository(context.project)
+
         view = mount_provisioning(context)
 
         with_full_cassette @given_cassette do

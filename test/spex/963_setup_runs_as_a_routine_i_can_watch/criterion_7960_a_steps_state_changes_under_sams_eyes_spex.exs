@@ -29,6 +29,11 @@ defmodule CodeMySpecSpex.Story963.Criterion7960Spex do
   spex "A step's state changes under Sam's eyes" do
     scenario "the server step moves to done on the open page, and the next starts" do
       given_ "Sam is watching the status page with setup ready to run", context do
+        # Before the page mounts. The LiveView reads the project once, at mount;
+        # claiming the repository afterwards updates the row but not the socket,
+        # so the step still saw a repository belonging to nobody and paused.
+        own_repository(context.project)
+
         {:ok, view, _html} =
           live(context.conn, "/app/projects/#{context.project.id}/provisioning")
 

@@ -1,0 +1,124 @@
+{
+  "interactions": [
+    {
+      "recorded_at": "2026-08-02T16:50:29.687413Z",
+      "request": {
+        "body": "hello",
+        "body_type": "text",
+        "headers": {
+          "accept-encoding": [
+            "gzip"
+          ],
+          "content-length": [
+            "5"
+          ],
+          "host": [
+            "fsn1.your-objectstorage.com"
+          ],
+          "user-agent": [
+            "req/0.5.17"
+          ],
+          "x-amz-content-sha256": [
+            "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
+          ],
+          "x-amz-date": [
+            "20260802T165029Z"
+          ]
+        },
+        "method": "PUT",
+        "query_string": "",
+        "uri": "https://fsn1.your-objectstorage.com/spex-story968-criterion8012-uat/probe.txt"
+      },
+      "response": {
+        "body": "",
+        "body_type": "text",
+        "headers": {
+          "accept-ranges": [
+            "bytes"
+          ],
+          "content-length": [
+            "0"
+          ],
+          "date": [
+            "Sun, 02 Aug 2026 16:50:29 GMT"
+          ],
+          "etag": [
+            "\"5d41402abc4b2a76b9719d911017c592\""
+          ],
+          "strict-transport-security": [
+            "max-age=63072000"
+          ],
+          "x-amz-request-id": [
+            "tx0000086e772016e400eda-006a6f7555-31570f14-fsn1-prod1-ceph5"
+          ],
+          "x-debug-bucket": [
+            "spex-story968-criterion8012-uat"
+          ]
+        },
+        "status": 200
+      }
+    },
+    {
+      "recorded_at": "2026-08-02T16:50:29.853026Z",
+      "request": {
+        "body": "",
+        "body_type": "text",
+        "headers": {
+          "accept-encoding": [
+            "gzip"
+          ],
+          "host": [
+            "fsn1.your-objectstorage.com"
+          ],
+          "user-agent": [
+            "req/0.5.17"
+          ],
+          "x-amz-content-sha256": [
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          ],
+          "x-amz-date": [
+            "20260802T165029Z"
+          ]
+        },
+        "method": "GET",
+        "query_string": "",
+        "uri": "https://fsn1.your-objectstorage.com/spex-story968-criterion8012-uat/probe.txt"
+      },
+      "response": {
+        "body": "hello",
+        "body_type": "text",
+        "headers": {
+          "accept-ranges": [
+            "bytes"
+          ],
+          "content-type": [
+            "binary/octet-stream"
+          ],
+          "date": [
+            "Sun, 02 Aug 2026 16:50:29 GMT"
+          ],
+          "etag": [
+            "\"5d41402abc4b2a76b9719d911017c592\""
+          ],
+          "last-modified": [
+            "Sun, 02 Aug 2026 16:50:29 GMT"
+          ],
+          "strict-transport-security": [
+            "max-age=63072000"
+          ],
+          "x-amz-request-id": [
+            "tx00000337084d2f27f160d-006a6f7555-2ad3dc80-fsn1-prod1-ceph5"
+          ],
+          "x-debug-bucket": [
+            "spex-story968-criterion8012-uat"
+          ],
+          "x-rgw-object-type": [
+            "Normal"
+          ]
+        },
+        "status": 200
+      }
+    }
+  ],
+  "version": "2.0"
+}

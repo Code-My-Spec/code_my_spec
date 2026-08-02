@@ -915,9 +915,23 @@ defmodule CodeMySpec.Provisioning.Steps do
       case Hetzner.ensure_server(scope, name, opts) do
         {:ok, server} ->
           ip = get_in(server, ["public_net", "ipv4", "ip"])
-          EnvironmentRepository.put(scope, environment.name, %{server_name: name, ip: ip})
 
-          {:cont, {:ok, [server_resource(server, environment.name) | acc]}}
+          # Halting on a failed write-back rather than discarding it. The box
+          # exists at this point; if the row does not record it, nothing can
+          # find it again — the page cannot show it and teardown cannot remove
+          # it, so it leaks and the step still says done. A silent write is the
+          # worst of the three outcomes.
+
+          case EnvironmentRepository.put(scope, environment.name, %{server_name: name, ip: ip}) do
+            {:ok, _environment} ->
+              {:cont, {:ok, [server_resource(server, environment.name) | acc]}}
+
+            {:error, reason} ->
+              {:halt,
+               {:error,
+                "provisioned #{name} but could not record it against the #{environment.name} " <>
+                  "environment: #{format(reason)}", acc}}
+          end
 
         {:error, reason} ->
           {:halt, {:error, format(reason), acc}}

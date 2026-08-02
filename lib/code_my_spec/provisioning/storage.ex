@@ -253,11 +253,33 @@ defmodule CodeMySpec.Provisioning.Storage do
           {:ok, binary()} | {:error, term()}
   def get_object(bucket, key, credentials, opts \\ []) do
     location = Keyword.get(opts, :location, @default_location)
+    get_object(bucket, key, credentials, location, opts, Keyword.get(opts, :attempts, 6))
+  end
 
-    with {:ok, %{body: body}} <- ExAws.S3.get_object(bucket, key) |> run(credentials, location) do
-      {:ok, body}
+  defp get_object(bucket, key, credentials, location, opts, attempts) do
+    case ExAws.S3.get_object(bucket, key) |> run(credentials, location) do
+      {:ok, %{body: body}} ->
+        {:ok, body}
+
+      # `NoSuchBucket` on a bucket we have just written to is Hetzner's Ceph
+      # catching up, not a missing bucket: the gateway that answers the read
+      # need not be the one that took the write. Retried narrowly — only this
+      # code, never `NoSuchKey` — because a genuinely absent object must stay
+      # an immediate answer rather than an eight-second wait.
+      {:error, reason} ->
+        if attempts > 1 and no_such_bucket?(reason) do
+          Process.sleep(Keyword.get(opts, :interval_ms, 1_000))
+          get_object(bucket, key, credentials, location, opts, attempts - 1)
+        else
+          {:error, reason}
+        end
     end
   end
+
+  defp no_such_bucket?({:http_error, 404, %{body: body}}) when is_binary(body),
+    do: String.contains?(body, "NoSuchBucket")
+
+  defp no_such_bucket?(_), do: false
 
   @doc "Remove one object. Used to empty a bucket before deleting it."
   @spec delete_object(String.t(), String.t(), credentials(), keyword()) :: :ok | {:error, term()}
@@ -268,6 +290,29 @@ defmodule CodeMySpec.Provisioning.Storage do
       {:ok, _} -> :ok
       {:error, reason} -> {:error, reason}
     end
+  end
+
+  @doc """
+  Remove many objects in one request.
+
+  One round trip per object made emptying a bucket the slow half of teardown,
+  and teardown runs in `on_exit` where slow means "killed by a timeout, and the
+  bucket leaks". S3 takes up to a thousand keys at a time.
+  """
+  @spec delete_objects(String.t(), [String.t()], credentials(), keyword()) :: :ok | {:error, term()}
+  def delete_objects(_bucket, [], _credentials, _opts), do: :ok
+
+  def delete_objects(bucket, keys, credentials, opts) do
+    location = Keyword.get(opts, :location, @default_location)
+
+    keys
+    |> Enum.chunk_every(1000)
+    |> Enum.reduce_while(:ok, fn chunk, :ok ->
+      case ExAws.S3.delete_multiple_objects(bucket, chunk) |> run(credentials, location) do
+        {:ok, _} -> {:cont, :ok}
+        {:error, reason} -> {:halt, {:error, reason}}
+      end
+    end)
   end
 
   @doc """
@@ -286,14 +331,35 @@ defmodule CodeMySpec.Provisioning.Storage do
     delete_bucket(bucket, credentials, location, opts, attempts)
   end
 
+  # Backing off rather than sleeping a flat ten seconds each time. Ceph usually
+  # catches up in well under a second, so a fixed interval spent the entire
+  # budget waiting on the common case: eight attempts at ten seconds is eighty
+  # seconds per bucket, and clearing a dozen of them read as a hang rather than
+  # as a retry. Doubling from half a second covers the same worst case in a
+  # quarter of the time and returns almost immediately when the bucket was
+  # ready all along.
   defp delete_bucket(bucket, credentials, location, opts, attempts) do
+    interval = Keyword.get(opts, :delete_interval_ms, 500)
+
+    delete_bucket(bucket, credentials, location, opts, attempts, interval)
+  end
+
+  defp delete_bucket(bucket, credentials, location, opts, attempts, interval) do
     case ExAws.S3.delete_bucket(bucket) |> run(credentials, location) do
       {:ok, _} ->
         :ok
 
       {:error, _} when attempts > 1 ->
-        Process.sleep(Keyword.get(opts, :delete_interval_ms, 10_000))
-        delete_bucket(bucket, credentials, location, opts, attempts - 1)
+        Process.sleep(interval)
+
+        delete_bucket(
+          bucket,
+          credentials,
+          location,
+          opts,
+          attempts - 1,
+          min(interval * 2, Keyword.get(opts, :max_delete_interval_ms, 8_000))
+        )
 
       {:error, reason} ->
         {:error, reason}

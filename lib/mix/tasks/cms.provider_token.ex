@@ -25,6 +25,7 @@ defmodule Mix.Tasks.Cms.ProviderToken do
   captures exactly the token.
   """
   use Mix.Task
+  use Boundary, classify_to: CodeMySpec
 
   alias CodeMySpec.Integrations
   alias CodeMySpec.Integrations.Integration

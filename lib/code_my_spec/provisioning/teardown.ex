@@ -269,7 +269,7 @@ defmodule CodeMySpec.Provisioning.Teardown do
   defp empty_bucket(bucket, credentials, opts) do
     case Storage.list_dumps(bucket, credentials, Keyword.put(opts, :prefix, "")) do
       {:ok, objects} ->
-        for %{key: key} <- objects, do: Storage.delete_object(bucket, key, credentials, opts)
+        Storage.delete_objects(bucket, Enum.map(objects, & &1.key), credentials, opts)
         :ok
 
       _ ->

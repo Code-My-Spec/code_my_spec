@@ -28,6 +28,11 @@ defmodule CodeMySpecSpex.Story963.Criterion7966Spex do
   spex "The domain purchase round-trip resumes on return" do
     scenario "an unsupported TLD pauses with instructions and resumes when the domain exists" do
       given_ "the domain Sam wants has a TLD the Registrar API cannot sell", context do
+        # Before the page mounts. The LiveView reads the project once, at mount;
+        # claiming the repository afterwards updates the row but not the socket,
+        # so the step still saw a repository belonging to nobody and paused.
+        own_repository(context.project)
+
         {:ok, view, _html} =
           live(context.conn, "/app/projects/#{context.project.id}/provisioning")
 
@@ -43,10 +48,6 @@ defmodule CodeMySpecSpex.Story963.Criterion7966Spex do
         # push as non-fast-forward (which is 8184's subject, not this one's).
         tear_down_repository(context.project)
 
-        # The repository an earlier recording made still exists, so setup would
-        # pause asking whose it is. It is this project's — stating that lets the
-        # run reach the steps under test.
-        own_repository(context.project)
 
         with_provider_cassette(@given_cassette, fn ->
           paste_provider_credentials(view)

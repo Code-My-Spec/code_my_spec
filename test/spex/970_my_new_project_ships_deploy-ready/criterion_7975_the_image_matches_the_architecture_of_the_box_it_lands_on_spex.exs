@@ -25,6 +25,10 @@ defmodule CodeMySpecSpex.Story970.Criterion7975Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  # A real directory on disk, shared with the page. The generator writes
+  # through the project's registered environment; a spex holding its own
+  # in-memory one reads an empty tree and concludes nothing was generated.
+  setup :real_working_directory
   setup :connect_providers
 
   spex "The image matches the architecture of the box it lands on" do
@@ -77,7 +81,7 @@ defmodule CodeMySpecSpex.Story970.Criterion7975Spex do
       end
 
       then_ "the generated build config can target the host's architecture", context do
-        {:ok, entries} = Environments.list_directory(context.environment, ".")
+        entries = project_tree(context.environment)
 
         workflow =
           Enum.find(entries, &String.contains?(&1, ".github/workflows"))

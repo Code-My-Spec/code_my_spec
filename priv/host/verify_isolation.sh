@@ -12,6 +12,11 @@
 #   - a readable key file is readable by anyone who can traverse to it
 #   - all apps share one epmd, and a known cookie is remote code execution
 #
+# The last check is the exception: it asserts a *positive* — that Caddy serves
+# this app's hostname from this app. It belongs here rather than in a
+# functional test because getting it wrong is a tenant boundary failure, and
+# it is invisible to every other check (both apps are healthy either way).
+#
 # Each check asserts a *failure*. A check that errors for the wrong reason —
 # psql missing, app not provisioned — would look identical to isolation
 # working, so each one confirms the positive case first: `app` really can read
@@ -168,6 +173,48 @@ elif as_app "curl -s -m 3 -o /dev/null http://127.0.0.1:$other_port/" 2>/dev/nul
   note "run harden_host.sh: only root+caddy may open app ports on loopback"
 else
   ok "$APP cannot reach $OTHER's app port :$other_port (Caddy is the only path)"
+fi
+
+# ------------------------------------------------------ 7. who Caddy serves
+# The one functional property that is silent when it is wrong. Every check
+# above can pass on a box where Caddy sends $APP's hostname to $OTHER's app:
+# both apps are healthy, both are isolated from each other's data, and the
+# wrong tenant is answering the request. Nothing notices until somebody reads
+# somebody else's page.
+#
+# Asked through Caddy on the public port, because the routing *is* the thing
+# under test — hitting the app's own port would prove only that the app runs.
+# The test app answers with its own release name, which is what makes this
+# checkable at all.
+app_host="$(sed -n 's/^\([^ {]*\) *{.*/\1/p' "/etc/caddy/sites/$APP.caddy" 2>/dev/null | head -1)"
+
+if [[ -z "$app_host" ]]; then
+  note "no caddy block for $APP — routing check skipped"
+elif ! command -v curl >/dev/null 2>&1; then
+  note "curl not installed — routing check skipped"
+else
+  # Over HTTPS, following the redirect. Caddy answers plain HTTP with a 308 to
+  # https, so asking on port 80 returns a redirect rather than the app — which
+  # reads as "inconclusive" and quietly checks nothing. `-k` because the
+  # certificate is Caddy's internal CA on a test host.
+  served="$(curl -sk -L --max-time 5 --resolve "$app_host:443:127.0.0.1" \
+    "https://$app_host/" 2>/dev/null || true)"
+
+  case "$served" in
+    "")
+      note "$app_host did not answer through caddy — routing check inconclusive"
+      ;;
+    *"$APP is up"*)
+      ok "$app_host is served by $APP"
+      ;;
+    *"$OTHER is up"*)
+      bad "$app_host is served by $OTHER — caddy is routing this host to the wrong app"
+      note "check /etc/caddy/sites/$APP.caddy and /etc/caddy/sites/$OTHER.caddy"
+      ;;
+    *)
+      note "$app_host answered something unrecognised — routing check inconclusive"
+      ;;
+  esac
 fi
 
 echo

@@ -20,7 +20,10 @@ defmodule CodeMySpecSpex.Story968.Criterion8017Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  # The generated deploy files land on disk, and the backups step reads them.
+  setup :real_working_directory
   setup :connect_providers
+  setup :real_backup_database
 
   spex "A dump restores into a working database" do
     scenario "the restore completes and the source data is present" do
@@ -30,6 +33,12 @@ defmodule CodeMySpecSpex.Story968.Criterion8017Spex do
         # asserting "the source data is present" was the first thing to
         # notice, and it reads as a restore bug rather than a missing dump.
         view = mount_provisioning(context)
+
+        # The backups step refuses on a project that is not deploy-ready, and it
+        # is right to: a dump schedule on a project that cannot be deployed is a
+        # schedule for nothing. Generating those files is what makes the premise
+        # true (story 970).
+        view |> element("[data-test='generate-project']") |> render_click()
         paste_storage_credentials(view)
 
         run_steps(view, [:storage, :backups], @given_cassette)
@@ -39,11 +48,11 @@ defmodule CodeMySpecSpex.Story968.Criterion8017Spex do
 
       when_ "it is restored into an empty database", context do
         html =
-          with_provider_cassette(@cassette, fn ->
+          with_full_cassette @cassette do
             context.view
             |> element("[data-test='backup-restore-probe']")
             |> render_click()
-          end)
+          end
 
         {:ok, Map.put(context, :html, html)}
       end

@@ -26,6 +26,11 @@ defmodule CodeMySpecSpex.Story963.Criterion7963Spex do
   spex "A re-run picks up where it stopped" do
     scenario "the earlier steps stay done and the run resumes at the email step" do
       given_ "setup stopped at the email step with earlier steps succeeded", context do
+        # Before the page mounts. The LiveView reads the project once, at mount;
+        # claiming the repository afterwards updates the row but not the socket,
+        # so the step still saw a repository belonging to nobody and paused.
+        own_repository(context.project)
+
         {:ok, view, _html} =
           live(context.conn, "/app/projects/#{context.project.id}/provisioning")
 
@@ -41,10 +46,6 @@ defmodule CodeMySpecSpex.Story963.Criterion7963Spex do
         # push as non-fast-forward (which is 8184's subject, not this one's).
         tear_down_repository(context.project)
 
-        # The repository an earlier recording made still exists, so setup would
-        # pause asking whose it is. It is this project's — stating that lets the
-        # run reach the steps under test.
-        own_repository(context.project)
 
         with_provider_cassette(@given_cassette, fn ->
           paste_provider_credentials(view)

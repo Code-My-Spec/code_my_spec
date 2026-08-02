@@ -26,6 +26,14 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignmentTest do
 
     scope = user_scope_fixture(user, account, updated_project) |> Map.put(:cwd, project_dir)
 
+    # Clear the spec directory on the way *in* as well as out. The checkout
+    # comes from a shared pool and `.code_my_spec/spec` is a submodule the pool
+    # reset does not clean, so a test that wrote specs here and did not tidy up
+    # hands this one a tree that already looks aligned — every "detects a
+    # missing X" assertion then finds nothing and fails, under some seeds only.
+    # Establishing the precondition beats trusting the previous test to.
+    File.rm_rf(Path.join(project_dir, ".code_my_spec/spec"))
+
     on_exit(fn ->
       # Clean up .code_my_spec/spec files we created (it's a submodule, pool reset won't clean it)
       docs_spec_dir = Path.join(project_dir, ".code_my_spec/spec")

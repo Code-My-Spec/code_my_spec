@@ -1,0 +1,25 @@
+{
+  "commands": [
+    {
+      "args": [],
+      "command": "age-keygen",
+      "exit_code": 0,
+      "opts": {
+        "stderr_to_stdout": true
+      },
+      "output": "Public key: age1lswfdyrtjk6vkfhan6t50869k2rcqhqj70v4n60es7dnk4d3psksykrgwq\n# created: 2026-08-02T18:05:57-04:00\n# public key: age1lswfdyrtjk6vkfhan6t50869k2rcqhqj70v4n60es7dnk4d3psksykrgwq\nAGE-SECRET-KEY-<REDACTED>\n",
+      "recorded_at": "2026-08-02T22:05:57.352625Z"
+    },
+    {
+      "args": [],
+      "command": "age-keygen",
+      "exit_code": 0,
+      "opts": {
+        "stderr_to_stdout": true
+      },
+      "output": "Public key: age19trcd48hqp22wspm3g7xjnnqntz749mk907aepjejfa7j0qhzqpspk6gky\n# created: 2026-08-02T18:05:57-04:00\n# public key: age19trcd48hqp22wspm3g7xjnnqntz749mk907aepjejfa7j0qhzqpspk6gky\nAGE-SECRET-KEY-<REDACTED>\n",
+      "recorded_at": "2026-08-02T22:05:57.357255Z"
+    }
+  ],
+  "ports": []
+}

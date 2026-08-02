@@ -24,6 +24,7 @@ defmodule CodeMySpecSpex.Story966.Criterion8156Spex do
 
   @uat_only_cassette "hetzner_uat_server_only"
   @prod_added_cassette "hetzner_prod_server_added"
+  @given_cassette "966_8156_credentials"
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -32,6 +33,11 @@ defmodule CodeMySpecSpex.Story966.Criterion8156Spex do
   spex "UAT stands alone, and prod arrives on its own box when Sam is ready" do
     scenario "turning production on adds a server and leaves UAT's alone" do
       given_ "Sam has turned production off and only UAT is set up", context do
+        # Before the page mounts. The LiveView reads the project once, at mount;
+        # claiming the repository afterwards updates the row but not the socket,
+        # so the step still saw a repository belonging to nobody and paused.
+        own_repository(context.project)
+
         {:ok, view, _html} =
           live(context.conn, "/app/projects/#{context.project.id}/provisioning")
 
@@ -39,19 +45,36 @@ defmodule CodeMySpecSpex.Story966.Criterion8156Spex do
         # `options[<key>]`. A submit carrying a `provisioning` map changed
         # nothing at all — the page kept every default and the criterion
         # passed while asserting the opposite of what it says.
-        choose_all_setup_options_except(view, [:prod])
+        # Production is off because the project has no production environment,
+        # not because a checkbox is unticked — there is no `prod` option on the
+        # setup form, and there never was. Environments are rows; the steps fan
+        # out over whichever ones exist.
+        only_environments(context.scope, ["uat"])
+
+        tear_down_after(context.scope, [:server])
+        tear_down_repository(context.project)
+
+        with_provider_cassette(@given_cassette, fn ->
+          paste_provider_credentials(view)
+        end)
 
         html =
-          with_provider_cassette(@uat_only_cassette, fn ->
+          with_full_cassette @uat_only_cassette do
             view |> element("[data-test='start-setup']") |> render_click()
-          end)
+
+            # The click starts the run and returns; the step transitions
+            # arrive afterwards, so reading what `render_click/1` handed back
+            # shows the page as it was *before* anything ran — every step
+            # not_started, which reads as "nothing was provisioned".
+            await_provisioning(view)
+          end
 
         servers = servers_by_environment(html)
 
         # Anchor: UAT really was provisioned on its own, and production was
         # genuinely absent rather than merely unlisted.
         assert Map.has_key?(servers, "uat"),
-               "expected UAT to be provisioned, got #{inspect(servers)}"
+               "expected UAT to be provisioned, got #{inspect(servers)}. " <> diagnose(html)
 
         refute Map.has_key?(servers, "prod"),
                "expected no production server while the option is off, got #{inspect(servers)}"
@@ -63,14 +86,23 @@ defmodule CodeMySpecSpex.Story966.Criterion8156Spex do
       end
 
       when_ "he later turns production on and runs setup again", context do
+        # Adding the environment, because that is what turning production on
+        # is here — there is no `prod` checkbox, and the steps fan out over
+        # whichever environment rows exist.
         context.view
-        |> form("[data-test='setup-options-form']", provisioning: %{prod: true})
+        |> form("[data-test='add-environment-form']", environment: %{name: "prod"})
         |> render_submit()
 
         html =
-          with_provider_cassette(@prod_added_cassette, fn ->
+          with_full_cassette @prod_added_cassette do
             context.view |> element("[data-test='start-setup']") |> render_click()
-          end)
+
+            # Waiting for production's server specifically. "Nothing is
+            # running" cannot distinguish this run finishing from the previous
+            # one having finished, and the previous one halted — so that wait
+            # returns the page as it was before this run wrote anything.
+            await_environment_server(context.view, "prod")
+          end
 
         {:ok, Map.put(context, :html, html)}
       end
@@ -79,7 +111,8 @@ defmodule CodeMySpecSpex.Story966.Criterion8156Spex do
         servers = servers_by_environment(context.html)
 
         assert is_binary(servers["prod"]) and servers["prod"] != "",
-               "expected production to have a server of its own, got #{inspect(servers)}"
+               "expected production to have a server of its own, got #{inspect(servers)}. " <>
+                 diagnose(context.html)
 
         refute servers["prod"] == servers["uat"],
                "expected production and UAT never to share a server, both #{inspect(servers["prod"])}"
@@ -94,6 +127,38 @@ defmodule CodeMySpecSpex.Story966.Criterion8156Spex do
         {:ok, context}
       end
     end
+  end
+
+  # What the page actually said, for when an assertion fails and the interesting
+  # part is which step stopped and what each environment thinks it is running on.
+  defp diagnose(html) do
+    parsed = Floki.parse_document!(html)
+
+    environments =
+      parsed
+      |> Floki.find("[data-test='environment']")
+      |> Enum.map_join(" | ", fn e ->
+        name = e |> Floki.attribute("data-environment") |> List.first()
+        server = e |> Floki.attribute("data-server") |> List.first()
+        "#{name}=#{inspect(server)}"
+      end)
+
+    steps =
+      parsed
+      |> Floki.find("[data-test='setup-step']")
+      |> Enum.map_join(", ", fn s ->
+        name = s |> Floki.attribute("data-step") |> List.first()
+        state = s |> Floki.attribute("data-state") |> List.first()
+
+        if state in ["errored", "paused"] do
+          detail = s |> Floki.text() |> String.replace(~r/\s+/, " ") |> String.slice(0, 160)
+          "#{name}=#{state} (#{detail})"
+        else
+          "#{name}=#{state}"
+        end
+      end)
+
+    "environments: #{environments}. steps: #{steps}"
   end
 
   defp servers_by_environment(html) do

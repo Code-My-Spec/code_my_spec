@@ -25,6 +25,11 @@ defmodule CodeMySpecSpex.Case do
       use CodeMySpecLocalWeb, :verified_routes
       use SexySpex
 
+      # Half of setup is a subprocess, so `with_full_cassette` — which needs
+      # this import — is reachable from every spex rather than from the ones
+      # that remembered to ask for it.
+      use ExCliVcr
+
       import Plug.Conn
       import Phoenix.ConnTest
       import Phoenix.LiveViewTest
@@ -53,6 +58,24 @@ defmodule CodeMySpecSpex.Case do
     Application.put_env(:code_my_spec, :dns_resolver, Fixtures.dns_resolver(cassette_mode()))
     on_exit(fn -> Application.delete_env(:code_my_spec, :dns_resolver) end)
 
+    # Repositories go to the throwaway organisation when one is configured, so
+    # a recording never creates anything in somebody's personal account. The
+    # step already supports this (`:org` to create there, `:owner` to look for
+    # an existing one); it only needed telling.
+    if owner = System.get_env("GITHUB_SPEX_OWNER") do
+      previous_step_opts = Application.get_env(:code_my_spec, :provisioning_step_opts, [])
+
+      Application.put_env(
+        :code_my_spec,
+        :provisioning_step_opts,
+        Keyword.merge(previous_step_opts, org: owner, owner: owner)
+      )
+
+      on_exit(fn ->
+        Application.put_env(:code_my_spec, :provisioning_step_opts, previous_step_opts)
+      end)
+    end
+
     {:ok, conn: Phoenix.ConnTest.build_conn()}
   end
 
@@ -69,6 +92,8 @@ defmodule CodeMySpecSpex.Case do
   deliberate act it is.
   """
   def connect_providers(%{scope: scope} = context) do
+    refuse_to_run_on_residue()
+
     for provider <- [:github, :cloudflare, :resend] do
       grant = live_grant(provider)
 
@@ -145,6 +170,97 @@ defmodule CodeMySpecSpex.Case do
   HTTP-01 challenge reaches the origin rather than terminating at Cloudflare.
   That is the part the records decide, and the part this criterion is about.
   """
+  @doc """
+  Point the backup script at a database that really exists.
+
+      setup :real_backup_database
+
+  A backup criterion cannot be proved against a stub: the claim is that a dump
+  restores with rows in it, and only a real `pg_dump`/`psql` round-trip can say
+  so. On a provisioned box `bin/backup` reads `DATABASE_URL` out of the app's
+  encrypted env file; here there is no such box, so the test database — which is
+  a real Postgres with real tables — stands in for it.
+  """
+  # A criterion whose premise is "this resource exists" has to be the thing that
+  # creates it. When a previous run crashed before `on_exit`, the resource is
+  # still there and the criterion passes without ever having created it —
+  # silently, and only until someone runs the suite against a clean account.
+  #
+  # So a run that starts on residue stops instead, naming what it found. Not
+  # deleted automatically: a recording may be in flight, and deleting somebody
+  # else's live resource is worse than refusing to start.
+  #
+  # Once per BEAM — the check costs a provider round trip and the answer cannot
+  # change while the suite that would change it is the one asking.
+  defp refuse_to_run_on_residue do
+    case :persistent_term.get({__MODULE__, :residue_checked}, nil) do
+      nil ->
+        :persistent_term.put({__MODULE__, :residue_checked}, true)
+        leaked = Fixtures.leaked_spex_resources()
+
+        if leaked != [] do
+          raise """
+          this account already holds spex resources from an earlier run:
+
+            #{Enum.join(leaked, "\n  ")}
+
+          A criterion whose premise is "this exists" would pass on them without
+          creating anything. Clear them first:
+
+            MIX_ENV=test mix cms.provisioning_leaks --delete
+          """
+        end
+
+      _ ->
+        :ok
+    end
+  end
+
+  @doc """
+  Advance the clock the backup health check reads, by several nights.
+
+      setup :several_nights_later
+
+  A criterion about backups that stopped landing needs dumps that are old.
+  S3 sets `last_modified` itself, so a dump cannot be backdated and the only
+  honest lever is the other side of the comparison: ask whether backups are
+  current *later*, which is exactly what "the scheduled dump has failed for
+  several nights" means.
+  """
+  def several_nights_later(context) do
+    previous = Application.get_env(:code_my_spec, :provisioning_step_opts, [])
+
+    Application.put_env(
+      :code_my_spec,
+      :provisioning_step_opts,
+      Keyword.put(previous, :now, fn -> DateTime.add(DateTime.utc_now(), 5, :day) end)
+    )
+
+    ExUnit.Callbacks.on_exit(fn ->
+      Application.put_env(:code_my_spec, :provisioning_step_opts, previous)
+    end)
+
+    context
+  end
+
+  def real_backup_database(context) do
+    url = Fixtures.database_url()
+
+    previous = Application.get_env(:code_my_spec, :provisioning_step_opts, [])
+
+    Application.put_env(
+      :code_my_spec,
+      :provisioning_step_opts,
+      Keyword.put(previous, :database_url, url)
+    )
+
+    ExUnit.Callbacks.on_exit(fn ->
+      Application.put_env(:code_my_spec, :provisioning_step_opts, previous)
+    end)
+
+    context
+  end
+
   def stage_certificate(context) do
     previous = Application.get_env(:code_my_spec, :provisioning_step_opts, [])
 
@@ -246,6 +362,67 @@ defmodule CodeMySpecSpex.Case do
   Criteria that assert on a step being mid-run assert first and settle after.
   """
   @doc """
+  Give the project exactly these environments.
+
+  "Sam has turned production off" is a statement about which environments the
+  project has, not about a checkbox — there is no `prod` option on the setup
+  form. Steps fan out over whatever environments exist, so removing one is what
+  turning it off means.
+  """
+  def only_environments(scope, names), do: Fixtures.set_environments(scope, names)
+
+  @doc """
+  Every file in the project tree, as paths relative to its root.
+
+  `Environments.list_directory/2` lists one level, which is right for what it
+  is. The generated artifacts are nested — `config/deploy.yml`,
+  `lib/…_web/router.ex`, `envs/prod.enc.env` — so a criterion asking "did the
+  generator produce this" has to see the whole tree, not the top of it.
+  Listing one level and finding only `config` reads as "nothing was
+  generated".
+  """
+  def project_tree(env, path \\ ".", depth \\ 6)
+
+  def project_tree(_env, _path, 0), do: []
+
+  def project_tree(env, path, depth) do
+    case CodeMySpec.Environments.list_directory(env, path) do
+      {:ok, names} ->
+        Enum.flat_map(names, fn name ->
+          child = if path in [".", ""], do: name, else: path <> "/" <> name
+
+          # A directory lists; a file does not. Cheaper than a stat call
+          # through an abstraction that does not offer one.
+          case CodeMySpec.Environments.list_directory(env, child) do
+            {:ok, []} -> [child]
+            {:ok, _} -> [child | project_tree(env, child, depth - 1)]
+            _ -> [child]
+          end
+        end)
+
+      _ ->
+        []
+    end
+  end
+
+  @doc """
+  Put a repository at the name setup would use, before setup runs.
+
+  For the criteria whose subject is a repository that is *already there*. They
+  were passing only because an earlier run had left one behind — a premise that
+  holds on a dirty account and fails on a clean one. Now they state it.
+
+  `commits: true` when the criterion needs the push to be rejected: a fresh
+  history cannot fast-forward onto a repository that already carries one.
+  """
+  def existing_repository(project, opts \\ []) do
+    name = Fixtures.repository_name(project)
+    Fixtures.create_spex_repository(name, opts)
+    tear_down_repository(project)
+    project
+  end
+
+  @doc """
   Remove the repository this spex creates, when a harness token allows it.
 
   The app's own grant deliberately cannot delete repositories — see
@@ -316,6 +493,43 @@ defmodule CodeMySpecSpex.Case do
     # nothing has happened.
     await_start(view, System.monotonic_time(:millisecond) + 5_000)
     settle(view, deadline)
+  end
+
+  @doc """
+  Wait until an environment shows a server on the page.
+
+  `await_provisioning/2` waits for "nothing is running", which cannot tell a
+  finished *previous* run from a finished current one — after a halted run
+  every step is already in a settled state, so the wait can return the page as
+  it was before the new run wrote anything. Waiting for the thing the
+  assertion is about is the honest version of that wait.
+  """
+  def await_environment_server(view, environment, timeout \\ 90_000) do
+    deadline = System.monotonic_time(:millisecond) + timeout
+    await_environment_server(view, environment, deadline, nil)
+  end
+
+  defp await_environment_server(view, environment, deadline, _last) do
+    html = Phoenix.LiveViewTest.render(view)
+
+    server =
+      html
+      |> Floki.parse_document!()
+      |> Floki.find("[data-test='environment'][data-environment='#{environment}']")
+      |> Floki.attribute("data-server")
+      |> List.first()
+
+    cond do
+      is_binary(server) and server != "" ->
+        html
+
+      System.monotonic_time(:millisecond) > deadline ->
+        html
+
+      true ->
+        Process.sleep(500)
+        await_environment_server(view, environment, deadline, server)
+    end
   end
 
   defp await_start(view, deadline) do
@@ -858,16 +1072,24 @@ defmodule CodeMySpecSpex.Case do
         {:ok, Map.put(context, :view, view)}
       end
   """
-  def run_steps(view, keys, cassette_name) when is_list(keys) do
-    with_provider_cassette(cassette_name, fn ->
-      for key <- keys do
-        view
-        |> Phoenix.LiveViewTest.element(
-          "[data-test='setup-step'][data-step='#{key}'] [data-test='run-step']"
-        )
-        |> Phoenix.LiveViewTest.render_click()
+  # A macro, and recording both halves: the deploy and backups steps shell out
+  # as well as calling providers, and a cassette holding only the HTTP half
+  # passes while recording then fails on replay — naming the subprocess, which
+  # was not the thing that changed.
+  defmacro run_steps(view, keys, cassette_name) do
+    quote do
+      view = unquote(view)
+
+      with_full_cassette unquote(cassette_name) do
+        for key <- unquote(keys) do
+          view
+          |> Phoenix.LiveViewTest.element(
+            "[data-test='setup-step'][data-step='#{key}'] [data-test='run-step']"
+          )
+          |> Phoenix.LiveViewTest.render_click()
+        end
       end
-    end)
+    end
   end
 
   @doc """
@@ -945,6 +1167,8 @@ defmodule CodeMySpecSpex.Case do
           scrubbed =
             path
             |> File.read!()
+            |> redact_recorded_env()
+            |> wildcard_working_directories()
             |> then(fn body ->
               Enum.reduce(sensitive_patterns(), body, fn {pattern, replacement}, acc ->
                 String.replace(acc, pattern, replacement)
@@ -958,6 +1182,83 @@ defmodule CodeMySpecSpex.Case do
 
     :ok
   end
+
+  # ExCliVcr records the *whole* environment each command was given, and the
+  # steps now hand their scripts real credentials — object-storage keys, a
+  # database URL. Those are matched on by nobody (the default is command and
+  # args) but they are written to a file that gets committed, which is how a
+  # live Hetzner S3 key ended up in a cassette in the clear.
+  #
+  # Redacted by variable *name* rather than by value: a value-based filter only
+  # catches the secrets we thought to enumerate, and the whole point of a leak
+  # is that it is the one you did not think of.
+  @sensitive_env_names ~w(SECRET TOKEN PASSWORD CREDENTIAL PRIVATE)
+  @sensitive_env_exact ~w(AWS_ACCESS_KEY_ID DATABASE_URL)
+
+  defp redact_recorded_env(body) do
+    case Jason.decode(body) do
+      {:ok, %{"commands" => commands} = cassette} when is_list(commands) ->
+        cassette
+        |> Map.put("commands", Enum.map(commands, &redact_command_env/1))
+        |> Jason.encode!(pretty: true)
+
+      _ ->
+        body
+    end
+  end
+
+  defp redact_command_env(%{"opts" => %{"env" => env} = opts} = command) when is_map(env) do
+    redacted =
+      Map.new(env, fn {name, value} ->
+        if is_binary(value) and sensitive_env_name?(name),
+          do: {name, "<REDACTED>"},
+          else: {name, value}
+      end)
+
+    %{command | "opts" => %{opts | "env" => redacted}}
+  end
+
+  defp redact_command_env(command), do: command
+
+  defp sensitive_env_name?(name) do
+    upper = String.upcase(name)
+    upper in @sensitive_env_exact or Enum.any?(@sensitive_env_names, &String.contains?(upper, &1))
+  end
+
+  # A step that shells out to a generated script runs it by absolute path —
+  # the script lives in the project, and `System.cmd` resolves a relative
+  # command against the *process* cwd rather than the environment's. Under a
+  # spex that project is a fresh temp directory, so the recorded command names
+  # a path that will never exist again and the cassette cannot match itself on
+  # replay.
+  #
+  # Rewritten to a glob rather than dropped from the match: `*/bin/backup`
+  # still requires the script, and only forgives where it lived.
+  defp wildcard_working_directories(body) do
+    case Jason.decode(body) do
+      {:ok, %{"commands" => commands} = cassette} when is_list(commands) ->
+        cassette
+        |> Map.put("commands", Enum.map(commands, &wildcard_command_path/1))
+        |> Jason.encode!(pretty: true)
+
+      _ ->
+        body
+    end
+  end
+
+  # Only the directory the run happened to get, taken from the recorded `cd`
+  # so a command that legitimately names an absolute path elsewhere is left
+  # alone.
+  defp wildcard_command_path(%{"command" => command, "opts" => %{"cd" => cd}} = entry)
+       when is_binary(command) and is_binary(cd) do
+    if String.starts_with?(command, cd <> "/") do
+      %{entry | "command" => "*" <> String.trim_leading(command, cd)}
+    else
+      entry
+    end
+  end
+
+  defp wildcard_command_path(entry), do: entry
 
   # Headers alone are not enough, and the gap is not hypothetical.
   #

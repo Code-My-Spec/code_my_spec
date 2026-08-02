@@ -24,6 +24,10 @@ defmodule CodeMySpecSpex.Story970.Criterion7980Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  # A real directory on disk, shared with the page. The generator writes
+  # through the project's registered environment; a spex holding its own
+  # in-memory one reads an empty tree and concludes nothing was generated.
+  setup :real_working_directory
 
   spex "Sam can work locally before he owns any infrastructure" do
     scenario "the project runs locally with no provider credentials configured" do
@@ -33,7 +37,7 @@ defmodule CodeMySpecSpex.Story970.Criterion7980Spex do
 
         view |> element("[data-test='generate-project']") |> render_click()
 
-        {:ok, entries} = Environments.list_directory(context.environment, ".")
+        entries = project_tree(context.environment)
 
         {:ok, context |> Map.put(:view, view) |> Map.put(:entries, entries)}
       end

@@ -28,6 +28,10 @@ defmodule CodeMySpecSpex.Story985.Criterion8181Spex do
   spex "A revoked GitHub connection stops the step rather than falling back" do
     scenario "the step stops and asks Sam to reconnect" do
       given_ "Sam is on the setup status page having revoked the installation", context do
+        # The repository this makes lives in the throwaway organisation and goes
+        # away with the spex, so the next recording starts from one that is not there.
+        tear_down_repository(context.project)
+
         {:ok, view, _html} =
           live(context.conn, "/app/projects/#{context.project.id}/provisioning")
 

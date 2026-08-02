@@ -22,7 +22,10 @@ defmodule CodeMySpecSpex.Story968.Criterion8014Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  # The generated deploy files land on disk, and the backups step reads them.
+  setup :real_working_directory
   setup :connect_providers
+  setup :real_backup_database
 
   spex "Last night's dump is there in the morning" do
     scenario "a dump dated from the scheduled run is in the bucket" do
@@ -30,15 +33,37 @@ defmodule CodeMySpecSpex.Story968.Criterion8014Spex do
         {:ok, view, _html} =
           live(context.conn, "/app/projects/#{context.project.id}/provisioning")
 
+        # The backups step refuses on a project that is not deploy-ready, and it
+        # is right to: a dump schedule on a project that cannot be deployed is a
+        # schedule for nothing. Generating those files is what makes the premise
+        # true (story 970).
+        view |> element("[data-test='generate-project']") |> render_click()
+
+        # The bucket the dumps land in is real; it goes away with the spex.
+        tear_down_after(context.scope, [:storage])
+
         html =
-          with_provider_cassette(@install_cassette, fn ->
+          with_full_cassette @install_cassette do
+            # Hetzner issues object-storage keys only in its console, so they are
+            # pasted per project — without them the backups step pauses asking for
+            # them and never reaches the schedule this criterion is about.
+            paste_storage_credentials(view)
+
+            # Backups land in the bucket the storage step makes, so that has to exist
+            # first — otherwise the dump fails with NoSuchBucket, which is true and
+            # says nothing about the schedule under test.
+            view
+            |> element("[data-test='setup-step'][data-step='storage'] [data-test='run-step']")
+            |> render_click()
+
             view
             |> element("[data-test='setup-step'][data-step='backups'] [data-test='run-step']")
             |> render_click()
-          end)
+          end
 
         assert html =~ ~r/data-step="backups"[^>]*data-state="done"/,
-               "expected the backup step to complete before checking for dumps"
+               "expected the backup step to complete before checking for dumps, got: " <>
+                 (html |> Floki.parse_document!() |> Floki.find("[data-step='backups']") |> Floki.text() |> String.replace(~r/\s+/, " ") |> String.slice(0, 600))
 
         {:ok, Map.put(context, :view, view)}
       end

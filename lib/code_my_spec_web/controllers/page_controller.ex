@@ -906,6 +906,43 @@ defmodule CodeMySpecWeb.PageController do
     )
   end
 
+  # The sibling of @design_faqs. Same shape of worry, other axis: "how do I stop
+  # it breaking" rather than "how do I stop it looking generic".
+  @behavior_faqs [
+    %{
+      q: "Do I have to write any of this in code?",
+      a:
+        "No. You describe what the software should do in ordinary sentences, and you agree the " <>
+          "rules in a conversation. Turning those into something that runs is the machine's job, " <>
+          "not yours."
+    },
+    %{
+      q: "What actually stops the AI changing something I did not ask it to?",
+      a:
+        "Every rule you agreed becomes a check that runs on every change. If a change breaks one " <>
+          "of them, it shows up immediately rather than three weeks later when a customer finds it."
+    },
+    %{
+      q: "How is this different from the tests a developer would write?",
+      a:
+        "Tests are written after the fact, by whoever wrote the code, in the language of the code. " <>
+          "These are written before it, in your words, from the conversation about what the software " <>
+          "should do. You can read every one of them without knowing anything technical."
+    },
+    %{
+      q: "What happens when I change my mind about a rule?",
+      a:
+        "You change the rule, and the check changes with it. Deciding once does not mean deciding " <>
+          "forever — it means nothing gets to change quietly, without you."
+    },
+    %{
+      q: "Does this slow me down?",
+      a:
+        "It moves the work earlier. The conversation takes an afternoon; finding out in production " <>
+          "that a feature you shipped last month stopped working takes considerably longer."
+    }
+  ]
+
   def design_system(conn, _params) do
     base_url = CodeMySpecWeb.Endpoint.url()
     canonical = "#{base_url}/design-system"
@@ -957,6 +994,55 @@ defmodule CodeMySpecWeb.PageController do
       canonical_url: canonical,
       json_ld_list: json_ld_list,
       faqs: @design_faqs
+    )
+  end
+
+  def behavior(conn, _params) do
+    base_url = CodeMySpecWeb.Endpoint.url()
+    canonical = "#{base_url}/behavior"
+
+    meta = %{
+      page_title: "Decide What It Does Once | CodeMySpec",
+      meta_description:
+        "AI-built apps break because nobody wrote down what they were supposed to do. Describe the " <>
+          "behavior once, in your own words, and every change after that gets checked against it.",
+      og_title: "Decide what it does once",
+      og_description:
+        "Your app keeps breaking because nothing wrote down what it was supposed to do. Agree the " <>
+          "rules in plain English, and every change after that has to keep them true."
+    }
+
+    json_ld_list =
+      Enum.map(
+        [
+          %{
+            "@context" => "https://schema.org",
+            "@type" => "BreadcrumbList",
+            "itemListElement" => [
+              %{"@type" => "ListItem", "position" => 1, "name" => "Home", "item" => base_url},
+              %{
+                "@type" => "ListItem",
+                "position" => 2,
+                "name" => "Product",
+                "item" => "#{base_url}/product"
+              },
+              %{"@type" => "ListItem", "position" => 3, "name" => "Behavior", "item" => canonical}
+            ]
+          },
+          CodeMySpecWeb.MarketingComponents.faq_json_ld(@behavior_faqs)
+        ],
+        &Jason.encode!/1
+      )
+
+    render(conn, :behavior,
+      page_title: meta.page_title,
+      meta_description: meta.meta_description,
+      og_title: meta.og_title,
+      og_description: meta.og_description,
+      og_image: CodeMySpecWeb.ImageUrl.image_url("og-behavior.png", base_url),
+      canonical_url: canonical,
+      json_ld_list: json_ld_list,
+      faqs: @behavior_faqs
     )
   end
 

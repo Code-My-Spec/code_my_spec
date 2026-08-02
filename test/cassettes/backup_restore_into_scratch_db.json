@@ -1,0 +1,109 @@
+{
+  "interactions": [
+    {
+      "recorded_at": "2026-08-02T19:57:46.413846Z",
+      "request": {
+        "body": "",
+        "body_type": "text",
+        "headers": {
+          "accept-encoding": [
+            "gzip"
+          ],
+          "host": [
+            "fsn1.your-objectstorage.com"
+          ],
+          "user-agent": [
+            "req/0.5.17"
+          ],
+          "x-amz-content-sha256": [
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          ],
+          "x-amz-date": [
+            "20260802T195746Z"
+          ]
+        },
+        "method": "GET",
+        "query_string": "list-type=2&prefix=dumps%2F",
+        "uri": "https://fsn1.your-objectstorage.com/spex-story968-criterion8017-prod/"
+      },
+      "response": {
+        "body": "<?xml version=\"1.0\" encoding=\"UTF-8\"?><ListBucketResult xmlns=\"http://s3.amazonaws.com/doc/2006-03-01/\"><Name>spex-story968-criterion8017-prod</Name><Prefix>dumps/</Prefix><MaxKeys>1000</MaxKeys><IsTruncated>false</IsTruncated><Contents><Key>dumps/prod/spex-story968-criterion8017-2026-08-02T19-56-52Z.sql.gz</Key><LastModified>2026-08-02T19:56:53.312Z</LastModified><ETag>&quot;6e335d4a59a1a65305a72f7cc7ddcad7&quot;</ETag><Size>15091</Size><StorageClass>STANDARD</StorageClass><Type>Normal</Type></Contents><Contents><Key>dumps/prod/spex-story968-criterion8017-2026-08-02T19-57-43Z.sql.gz</Key><LastModified>2026-08-02T19:57:44.499Z</LastModified><ETag>&quot;a78964c4c0908f9d5734ab3a70f1e47b&quot;</ETag><Size>15095</Size><StorageClass>STANDARD</StorageClass><Type>Normal</Type></Contents><KeyCount>2</KeyCount></ListBucketResult>",
+        "body_type": "text",
+        "headers": {
+          "content-type": [
+            "application/xml"
+          ],
+          "date": [
+            "Sun, 02 Aug 2026 19:57:46 GMT"
+          ],
+          "strict-transport-security": [
+            "max-age=63072000"
+          ],
+          "transfer-encoding": [
+            "chunked"
+          ],
+          "x-amz-request-id": [
+            "tx0000032009952c2a28194-006a6fa13a-3010ddac-fsn1-prod1-ceph5"
+          ],
+          "x-debug-bucket": [
+            "spex-story968-criterion8017-prod"
+          ]
+        },
+        "status": 200
+      }
+    },
+    {
+      "recorded_at": "2026-08-02T19:57:46.582467Z",
+      "request": {
+        "body": "",
+        "body_type": "text",
+        "headers": {
+          "accept-encoding": [
+            "gzip"
+          ],
+          "host": [
+            "fsn1.your-objectstorage.com"
+          ],
+          "user-agent": [
+            "req/0.5.17"
+          ],
+          "x-amz-content-sha256": [
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          ],
+          "x-amz-date": [
+            "20260802T195746Z"
+          ]
+        },
+        "method": "GET",
+        "query_string": "list-type=2&prefix=dumps%2F",
+        "uri": "https://fsn1.your-objectstorage.com/spex-story968-criterion8017-uat/"
+      },
+      "response": {
+        "body": "<?xml version=\"1.0\" encoding=\"UTF-8\"?><ListBucketResult xmlns=\"http://s3.amazonaws.com/doc/2006-03-01/\"><Name>spex-story968-criterion8017-uat</Name><Prefix>dumps/</Prefix><MaxKeys>1000</MaxKeys><IsTruncated>false</IsTruncated><KeyCount>0</KeyCount></ListBucketResult>",
+        "body_type": "text",
+        "headers": {
+          "content-type": [
+            "application/xml"
+          ],
+          "date": [
+            "Sun, 02 Aug 2026 19:57:46 GMT"
+          ],
+          "strict-transport-security": [
+            "max-age=63072000"
+          ],
+          "transfer-encoding": [
+            "chunked"
+          ],
+          "x-amz-request-id": [
+            "tx0000023346d0e80f69919-006a6fa13a-3010ddac-fsn1-prod1-ceph5"
+          ],
+          "x-debug-bucket": [
+            "spex-story968-criterion8017-uat"
+          ]
+        },
+        "status": 200
+      }
+    }
+  ],
+  "version": "2.0"
+}

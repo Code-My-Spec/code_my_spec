@@ -323,6 +323,9 @@ defmodule CodeMySpecWeb.Layouts do
                       <.link href={~p"/design-system"} class="whitespace-nowrap">Design system</.link>
                     </li>
                     <li>
+                      <.link href={~p"/behavior"} class="whitespace-nowrap">Behavior</.link>
+                    </li>
+                    <li>
                       <.link href={~p"/agents"} class="whitespace-nowrap">Supported agents</.link>
                     </li>
                     <li>
@@ -388,6 +391,11 @@ defmodule CodeMySpecWeb.Layouts do
                   <li>
                     <a href="/design-system" class="hover:text-primary transition-colors">
                       Design system
+                    </a>
+                  </li>
+                  <li>
+                    <a href="/behavior" class="hover:text-primary transition-colors">
+                      Behavior
                     </a>
                   </li>
                   <li>

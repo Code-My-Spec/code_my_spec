@@ -1,0 +1,277 @@
+<Layouts.marketing flash={@flash} current_scope={@current_scope} page_title={@page_title}>
+  <%!-- ───────────── HERO ─────────────
+        Sibling of /design-system. That page opens in the vocabulary of "my site
+        looks like everyone else's"; this one opens in the vocabulary people
+        actually use for the other half — "it keeps breaking" and "it changed
+        something I didn't ask it to". Nobody says "unreliable". --%>
+  <section class="bg-base-200 border-b border-base-300">
+    <div class="max-w-6xl mx-auto px-6 py-16 lg:py-20">
+      <div class="max-w-3xl">
+        <div class="badge badge-primary badge-outline gap-2 mb-6">
+          <span class="inline-block w-1.5 h-1.5 rounded-full bg-primary"></span>
+          Plain English · no tests to write · no code to read
+        </div>
+        <h1 class="text-4xl md:text-5xl lg:text-6xl font-bold tracking-tight leading-[1.05]">
+          Decide what it does <span class="text-primary">once.</span>
+        </h1>
+      </div>
+
+      <%!-- Same treatment as /design-system's hero: self-hosted rather than a
+           YouTube embed, poster plus native controls, preload="none" so the page
+           pays only for the poster until someone presses play. --%>
+      <figure class="mt-10">
+        <div class="rounded-box overflow-hidden border border-base-300 shadow-sm bg-base-300">
+          <video
+            id="behavior-hero-video"
+            class="w-full aspect-video block"
+            controls
+            playsinline
+            preload="none"
+            width="1920"
+            height="1080"
+            poster="https://images.codemyspec.com/behavior-hero-poster.jpg"
+          >
+            <source src="https://images.codemyspec.com/behavior-hero.mp4" type="video/mp4" />
+            Your browser cannot play this video.
+          </video>
+        </div>
+        <figcaption class="text-sm text-base-content/60 mt-3">
+          One story, from a sentence you wrote to a check that keeps it true. 2 min.
+        </figcaption>
+      </figure>
+
+      <div class="max-w-3xl mt-10">
+        <p class="text-lg text-base-content/70 leading-relaxed">
+          <strong class="text-base-content">
+            Describe what your software should do, in your own words. Agree the rules in a
+            conversation. Everything built after that has to keep those rules true.
+          </strong>
+          You never write a test and you never read the code.
+        </p>
+        <div class="mt-8 flex flex-wrap items-center gap-4">
+          <.link navigate={~p"/install"} class="btn btn-primary btn-lg">Install the plugin — free</.link>
+          <.link navigate={~p"/design-system"} class="btn btn-ghost btn-lg">
+            The other half: how it looks →
+          </.link>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <%!-- ───────────── THE PROBLEM ───────────── --%>
+  <section class="border-b border-base-300">
+    <div class="max-w-6xl mx-auto px-6 py-16 lg:py-24">
+      <.eyebrow name="why it keeps breaking" />
+      <h2 class="text-3xl md:text-4xl font-bold tracking-tight mt-3 max-w-3xl">
+        Nobody wrote down what it was supposed to do.
+      </h2>
+      <div class="mt-4 max-w-2xl space-y-4 text-lg text-base-content/70 leading-relaxed">
+        <p>
+          <strong class="text-base-content">
+            You described a feature once, in a chat, and then it scrolled away.
+          </strong>
+          Nothing kept a record of what you asked for. So when you add the next feature, nothing
+          is checking that the last one still works — and the first time you find out it doesn't
+          is when a customer tells you.
+        </p>
+        <p>
+          This is the same failure as a project that looks like every other project, pointed at a
+          different target. There, nobody decided how it should look, so the model used the average.
+          Here, nobody decided what it should do, so every change is a guess about what you meant
+          three weeks ago.
+        </p>
+      </div>
+      <p class="mt-8 max-w-2xl text-sm text-base-content/60 leading-relaxed">
+        The longer version, with what actually goes wrong in production, is in
+        <.link
+          navigate={~p"/blog/ai-app-breaks-in-production"}
+          class="link link-hover text-base-content/80"
+        >
+          why AI-built apps break in production
+        </.link>
+        .
+      </p>
+    </div>
+  </section>
+
+  <%!-- ───────────── HOW IT WORKS ───────────── --%>
+  <section class="border-b border-base-300 bg-base-200">
+    <div class="max-w-6xl mx-auto px-6 py-16 lg:py-24">
+      <.eyebrow name="how it works" />
+      <h2 class="text-3xl md:text-4xl font-bold tracking-tight mt-3 max-w-3xl">
+        A conversation, then rules that outlive it.
+      </h2>
+      <p class="text-lg text-base-content/70 mt-4 max-w-2xl leading-relaxed">
+        <strong class="text-base-content">
+          You write one sentence about what you want. Everything after that comes out of talking it
+          through.
+        </strong>
+        No document to maintain, and nothing to keep in sync by hand.
+      </p>
+
+      <div class="grid md:grid-cols-3 gap-5 mt-12">
+        <div class="card bg-base-100 border border-base-300 border-t-4 border-t-primary shadow-sm">
+          <div class="card-body">
+            <span class="text-xs font-semibold uppercase tracking-[0.15em] text-primary">
+              You say it
+            </span>
+            <h3 class="card-title mt-1">One sentence, your words.</h3>
+            <p class="text-base-content/70">
+              "I want to group my work into projects and release them when I'm ready." That is the
+              whole input. No diagrams, no tickets, nothing technical.
+            </p>
+          </div>
+        </div>
+
+        <div class="card bg-base-100 border border-base-300 border-t-4 border-t-secondary shadow-sm">
+          <div class="card-body">
+            <span class="text-xs font-semibold uppercase tracking-[0.15em] text-secondary">
+              You talk it through
+            </span>
+            <h3 class="card-title mt-1">The rules fall out.</h3>
+            <p class="text-base-content/70">
+              The conversation turns that sentence into the rules that actually govern it, and an
+              example of each — including the ones where things go wrong. Questions nobody can
+              answer get raised, not guessed.
+            </p>
+          </div>
+        </div>
+
+        <div class="card bg-base-100 border border-base-300 border-t-4 border-t-accent shadow-sm">
+          <div class="card-body">
+            <span class="text-xs font-semibold uppercase tracking-[0.15em] text-accent">
+              It holds
+            </span>
+            <h3 class="card-title mt-1">Every rule becomes a check.</h3>
+            <p class="text-base-content/70">
+              Each example turns into something that runs. Change anything, and every rule you ever
+              agreed to is checked again before the change is allowed to stand.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <%!-- ───────────── TWO CHECKS ─────────────
+        The distinction the video is built around, and the thing most people
+        have not seen: constant checking is a different job from the final
+        walkthrough, and conflating them loses both. --%>
+  <section class="border-b border-base-300">
+    <div class="max-w-6xl mx-auto px-6 py-16 lg:py-24">
+      <.eyebrow name="two checks, two jobs" />
+      <h2 class="text-3xl md:text-4xl font-bold tracking-tight mt-3 max-w-3xl">
+        A supervisor on site, and an inspector at the end.
+      </h2>
+      <p class="text-lg text-base-content/70 mt-4 max-w-2xl leading-relaxed">
+        If you were putting up a building you would not choose between the two, and you would not
+        confuse them either.
+      </p>
+
+      <div class="grid md:grid-cols-2 gap-6 mt-12">
+        <div class="card bg-base-100 border border-base-300 shadow-sm">
+          <div class="card-body">
+            <span class="text-xs font-semibold uppercase tracking-[0.15em] text-primary">
+              Every single change
+            </span>
+            <h3 class="card-title mt-1">The supervisor.</h3>
+            <p class="text-base-content/70">
+              Every rule you agreed to runs again, on every change, holding the work up against
+              what was decided. Something stops being true and you hear about it that hour, not
+              that quarter.
+            </p>
+          </div>
+        </div>
+
+        <div class="card bg-base-100 border border-base-300 shadow-sm">
+          <div class="card-body">
+            <span class="text-xs font-semibold uppercase tracking-[0.15em] text-secondary">
+              Once, at the end
+            </span>
+            <h3 class="card-title mt-1">The inspector.</h3>
+            <p class="text-base-content/70">
+              Before a piece of work is called done, an agent opens the application and uses it the
+              way you would — clicking through the real thing, not reading the code that built it.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <%!-- ───────────── HONEST LIMITS ─────────────
+        Mirrors /design-system's section of the same name. Naming the limits is
+        what makes the rest credible, and this audience has been oversold to. --%>
+  <section class="border-b border-base-300 bg-base-200">
+    <div class="max-w-6xl mx-auto px-6 py-16 lg:py-24">
+      <.eyebrow name="what it does not do" />
+      <h2 class="text-3xl md:text-4xl font-bold tracking-tight mt-3 max-w-3xl">
+        It cannot decide whether the idea was right.
+      </h2>
+      <div class="mt-4 max-w-2xl space-y-4 text-lg text-base-content/70 leading-relaxed">
+        <p>
+          It will hold your software to what you said. It will not tell you that what you said was
+          a bad idea, that customers wanted something else, or that the feature was not worth
+          building. Deciding whether it is good enough stays yours.
+        </p>
+        <p>
+          It also cannot check a rule nobody agreed to. If a case never comes up in the
+          conversation, nothing is watching it — which is the honest reason the conversation is
+          worth an afternoon.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <%!-- ───────────── HOW IT FITS ───────────── --%>
+  <section class="border-b border-base-300">
+    <div class="max-w-6xl mx-auto px-6 py-16 lg:py-24">
+      <.eyebrow name="how it fits" />
+      <h2 class="text-3xl md:text-4xl font-bold tracking-tight mt-3 max-w-3xl">
+        The other half of the same decision.
+      </h2>
+      <div class="mt-4 max-w-2xl space-y-4 text-lg text-base-content/70 leading-relaxed">
+        <p>
+          Two questions get asked about AI-built software more than any others. Why does it look
+          like everything else, and why does it keep breaking. They have the same answer: nobody
+          decided, so the machine decided.
+        </p>
+      </div>
+      <div class="mt-8 flex flex-wrap items-center gap-4">
+        <.link navigate={~p"/design-system"} class="btn btn-outline">
+          Decide how it looks once →
+        </.link>
+        <.link navigate={~p"/product"} class="btn btn-ghost">See the whole process →</.link>
+      </div>
+    </div>
+  </section>
+
+  <%!-- ───────────── FAQ ───────────── --%>
+  <section class="border-b border-base-300 bg-base-200">
+    <div class="max-w-6xl mx-auto px-6 py-16 lg:py-24">
+      <.eyebrow name="questions" />
+      <h2 class="text-3xl md:text-4xl font-bold tracking-tight mt-3 mb-8 max-w-3xl">
+        Questions we get.
+      </h2>
+      <.faq faqs={@faqs} name="behavior-faq" class="max-w-3xl" />
+    </div>
+  </section>
+
+  <%!-- ───────────── CTA ───────────── --%>
+  <section class="bg-base-200">
+    <div class="max-w-6xl mx-auto px-6 py-16 lg:py-24 text-center">
+      <h2 class="text-3xl md:text-4xl font-bold tracking-tight">
+        Decide what it does once.
+      </h2>
+      <p class="text-lg text-base-content/70 mt-4 max-w-xl mx-auto leading-relaxed">
+        Free to build with. Bring the software you already started.
+      </p>
+      <div class="mt-8 flex flex-wrap items-center justify-center gap-4">
+        <.link navigate={~p"/install"} class="btn btn-primary btn-lg">Install the plugin — free</.link>
+        <.link navigate={~p"/vibe-coding-rebuild"} class="btn btn-ghost btn-lg">
+          Or have it rebuilt for you →
+        </.link>
+      </div>
+    </div>
+  </section>
+</Layouts.marketing>

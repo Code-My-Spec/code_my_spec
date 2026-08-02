@@ -17,11 +17,11 @@ defmodule CodeMySpecSpex.Story974.Criterion8032Spex do
 
   @endpoint CodeMySpecWeb.Endpoint
 
-  @sending_cassette # Its own cassette. This shared a name with 969's criterion 8025, and record
+  # Its own cassette. This shared a name with 969's criterion 8025, and record
   # mode deletes the cassette file when it opens — so recording this story
   # silently destroyed another story's recording. Cassette names are global;
   # they need a story prefix.
-  "974_8032_sending_records_published"
+  @sending_cassette "974_8032_sending_records_published"
   @inbound_cassette "resend_inbound_records_published"
 
   setup :register_log_in_setup_account

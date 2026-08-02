@@ -46,11 +46,13 @@ defmodule CodeMySpecWeb.ProvisioningLive do
 
   use CodeMySpecWeb, :live_view
 
+  alias CodeMySpec.Generators.DeployArtifacts
   alias CodeMySpec.ProjectSecrets
   alias CodeMySpec.Provisioning
+  alias CodeMySpec.Provisioning.Repository
   alias CodeMySpec.Projects
   alias CodeMySpec.Users.Scope
-  alias CodeMySpec.Provisioning.{Cloudflare, Credentials, Dns, Resend, Sops, Steps, Storage}
+  alias CodeMySpec.Provisioning.{Backups, Cloudflare, Credentials, Dns, Resend, Sops, Steps, Storage}
 
   # The environments setup manages. Named once so the probe form, the resource
   # grouping and the storage step cannot disagree about what exists.
@@ -64,6 +66,9 @@ defmodule CodeMySpecWeb.ProvisioningLive do
         Everything your project needs, in the order it needs it.
       </:subtitle>
       <:actions>
+        <.button data-test="generate-project" phx-click="generate_project" class="btn-ghost">
+          Generate deploy files
+        </.button>
         <.button data-test="start-setup" phx-click="start_setup">Run setup</.button>
         <.button :if={@halted_at} data-test="resume-setup" phx-click="resume_setup">
           Resume
@@ -440,6 +445,42 @@ defmodule CodeMySpecWeb.ProvisioningLive do
               credential placed in {cred.location}
             </div>
 
+            <!-- A dump is a file until something has read it back. The step
+                 restores into a scratch database and counts the rows; that
+                 count is the whole claim, so it is on the page rather than
+                 folded into "done" (8054). -->
+            <span
+              :for={pr <- Enum.filter(step.resources, &(&1.kind == "restore_proof"))}
+              data-test="backup-restore-proof"
+              data-target={pr.location}
+              data-rows={pr.identifier |> String.split(" ") |> hd() |> String.replace_prefix("rows=", "")}
+              data-completed-at={pr.identifier |> String.split(" ") |> List.last() |> String.replace_prefix("proven_at=", "")}
+              data-content-verified={
+                pr.identifier
+                |> String.split(" ")
+                |> hd()
+                |> String.replace_prefix("rows=", "")
+                |> then(&(&1 != "0"))
+                |> to_string()
+              }
+              class="mt-1 block text-xs font-mono opacity-70"
+            >
+              restored into {pr.location}: {pr.identifier}
+            </span>
+
+            <!-- Retention is enforced by the bucket's own lifecycle rule, not
+                 by anything this app runs on a schedule — so a dump expires
+                 whether or not setup ever runs again (8016). -->
+            <span
+              :for={r <- Enum.filter(step.resources, &(&1.kind == "retention"))}
+              data-test="backup-retention"
+              data-days={r.location |> String.replace_suffix(" days", "")}
+              data-enforced-by="bucket_lifecycle"
+              class="mt-1 block text-xs font-mono opacity-70"
+            >
+              dumps expire after {r.location}
+            </span>
+
             <!-- The deploy's phases, from the recorded resources: migration
                  completing before the swap starts (8007), and on a failure the
                  phase that stopped it and which version stayed live (8008,
@@ -721,6 +762,100 @@ defmodule CodeMySpecWeb.ProvisioningLive do
 
       <div :if={@mail.missing_records != []} data-test="dns-record-deleted" data-name={List.first(@mail.missing_records)}>
         a record this domain needs is no longer published: {Enum.join(@mail.missing_records, ", ")}
+      </div>
+    </section>
+
+    <%!-- Environments never share a server (966/8156). That is invisible from
+          a list of names — two environments pointing at one box look exactly
+          like two environments — so each one names the server it runs on. --%>
+    <section data-test="environments-panel">
+      <h2>Environments</h2>
+
+      <%!-- Turning production on is adding an environment, not ticking a box.
+            There is no `prod` option on the setup form and never was — the
+            steps fan out over whichever environment rows exist, which is what
+            lets a project have `qa`, or one per story, without a code change. --%>
+      <.form
+        for={%{}}
+        as={:environment}
+        data-test="add-environment-form"
+        phx-submit="add_environment"
+      >
+        <input type="text" name="environment[name]" data-test="environment-name" />
+        <.button type="submit" data-test="add-environment">Add environment</.button>
+      </.form>
+
+      <div
+        :for={environment <- @environment_rows}
+        data-test="environment"
+        data-environment={environment.name}
+        data-server={environment.server_name}
+        data-host={environment.host}
+        data-ip={environment.ip}
+      >
+        {environment.name}: {environment.server_name || "no server yet"}
+      </div>
+    </section>
+
+    <section data-test="backups-panel">
+      <h2>Backups</h2>
+
+      <.button data-test="backups-refresh" phx-click="refresh_backups" class="mt-2">
+        Check the bucket
+      </.button>
+
+      <.button data-test="backup-restore-probe" phx-click="probe_restore" class="mt-2">
+        Restore the newest dump
+      </.button>
+
+      <%!-- `data-content-verified` is not the exit status. A restore of an
+            empty dump exits 0, so the rows that came back are the claim. --%>
+      <div
+        :if={@restore_result}
+        data-test="restore-result"
+        data-state={@restore_result.state}
+        data-rows-restored={@restore_result.rows}
+        data-content-verified={to_string(@restore_result.rows > 0)}
+        data-target={Map.get(@restore_result, :target)}
+      >
+        {if @restore_result.state == "succeeded",
+          do: "restored #{@restore_result.rows} rows into #{@restore_result.target}",
+          else: "restore failed: #{@restore_result.reason}"}
+      </div>
+
+      <p :if={@backups == []} data-test="no-backups">
+        no dumps in any bucket yet
+      </p>
+
+      <%!-- A backup that stopped running looks exactly like one that is working,
+            right up until somebody needs it. "never" and "stalled" are reported
+            apart because "it never ran" and "it stopped last Tuesday" send Sam
+            to different places. --%>
+      <div
+        :if={@backup_health}
+        data-test="backup-health"
+        data-state={@backup_health.state}
+        data-last-successful-at={@backup_health.last_seen}
+        data-stale-after-hours={@backup_health.stale_after_hours}
+      >
+        {case @backup_health.state do
+          "healthy" -> "backups are landing (newest #{@backup_health.last_seen})"
+          "stalled" -> "backups have stopped landing — newest is #{@backup_health.last_seen}"
+          "never" -> "no dump has ever landed"
+        end}
+      </div>
+
+      <div
+        :for={dump <- @backups}
+        data-test="backup-dump"
+        data-key={dump.key}
+        data-environment={dump.environment}
+        data-bucket={dump.bucket}
+        data-taken-at={dump.taken_at}
+        data-age-days={dump.age_days}
+        data-size={dump.size}
+      >
+        {dump.environment}: {dump.key} ({dump.taken_at})
       </div>
     </section>
 
@@ -1019,6 +1154,104 @@ defmodule CodeMySpecWeb.ProvisioningLive do
     {:noreply, load(socket, socket.assigns.options)}
   end
 
+  # Backups are the one piece of setup whose failure mode is silence: the step
+  # says "done" once, and a schedule that quietly stops looks identical from
+  # the page until the morning somebody needs a dump. So the bucket is re-read
+  # on demand rather than trusted from when the step last ran.
+  # A dump that has never been read back is a file. This is the button that
+  # reads one back — into a scratch database, counting what came back, because
+  # `pg_restore` exiting 0 over an empty dump is a successful restore of
+  # nothing (8017).
+  def handle_event("probe_restore", _params, socket) do
+    scope = socket.assigns.current_scope
+    opts = socket.assigns.options
+    dumps = list_backups(socket)
+
+    result =
+      case {Storage.credentials(scope, opts), dumps} do
+        {:none, _} ->
+          %{state: "failed", rows: 0, reason: Storage.credentials_instructions()}
+
+        {_, []} ->
+          %{state: "failed", rows: 0, reason: "there is no dump in the bucket to restore"}
+
+        {{:ok, credentials}, [newest | _]} ->
+          # `opts` here is the list of enabled steps, not a keyword list —
+          # merging it is what crashed the probe.
+          restore_opts =
+            step_opts()
+            |> Keyword.put(:bucket, newest.bucket)
+            |> Keyword.put(:credentials, credentials)
+
+          case Backups.restore_proof(scope.environment, newest.key, restore_opts) do
+            {:ok, proof} ->
+              %{state: "succeeded", rows: proof.rows, target: proof.target, reason: nil}
+
+            {:error, reason} ->
+              %{state: "failed", rows: 0, reason: reason}
+          end
+      end
+
+    {:noreply, socket |> assign(:backups, dumps) |> assign(:restore_result, result)}
+  end
+
+  # Adding an environment is how production gets turned on. It provisions on
+  # the next run rather than migrating onto anything that already exists —
+  # sharing a box was tried and abandoned, because prod-affecting
+  # infrastructure changes cannot be validated in a UAT that lives on it.
+  def handle_event("add_environment", %{"environment" => %{"name" => name}}, socket) do
+    scope = socket.assigns.current_scope
+    name = String.trim(name)
+
+    if name == "" do
+      {:noreply, put_flash(socket, :error, "an environment needs a name")}
+    else
+      case Provisioning.put_environment(scope, name) do
+        {:ok, _environment} -> {:noreply, load(socket, socket.assigns.options)}
+        {:error, reason} -> {:noreply, put_flash(socket, :error, inspect(reason))}
+      end
+    end
+  end
+
+  def handle_event("refresh_backups", _params, socket) do
+    dumps = list_backups(socket)
+
+    {:noreply,
+     socket
+     |> assign(:backups, dumps)
+     |> assign(:backup_health, Backups.health(dumps, step_opts()))}
+  end
+
+  # The artifacts a deploy assumes it can find. `Generators.audit/2` says what
+  # is missing and why; this is the button that puts it there, so a project
+  # that predates the generator does not have to be recreated to become
+  # deployable (story 970).
+  def handle_event("generate_project", _params, socket) do
+    scope = socket.assigns.current_scope
+    project = project(scope)
+
+    case DeployArtifacts.generate(scope.environment,
+           app: Repository.default_name(project),
+           host: project.domain || "example.com",
+           owner: System.get_env("GITHUB_SPEX_OWNER") || "your-org"
+         ) do
+      {:ok, []} ->
+        {:noreply,
+         socket
+         |> put_flash(:info, "Every deploy file is already in place.")
+         |> load(socket.assigns.options)}
+
+      {:ok, written} ->
+        {:noreply,
+         socket
+         |> put_flash(:info, "Wrote #{Enum.join(written, ", ")}.")
+         |> load(socket.assigns.options)}
+
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, "Could not generate: #{inspect(reason)}")}
+    end
+  end
+
   def handle_event("start_setup", _params, socket) do
     # Refused before the first step, not partway through it. A run that starts
     # without its credentials fails after it has already made things, and the
@@ -1029,7 +1262,17 @@ defmodule CodeMySpecWeb.ProvisioningLive do
         # Started, not awaited. The page stays responsive and each step's
         # transition arrives as it happens, which is what makes the run
         # watchable rather than a wait (criteria 7960, 7972).
-        {:ok, _pid} = Provisioning.run_async(socket.assigns.current_scope, socket.assigns.options)
+        # With `step_opts()`, like every other run. Without them a full run got
+        # none of what a single step gets — no provider options, no target
+        # organisation, no injected probe — so it behaved differently from
+        # running the same steps one at a time, which is the one thing a
+        # "run everything" button must not do.
+        {:ok, _pid} =
+          Provisioning.run_async(
+            socket.assigns.current_scope,
+            socket.assigns.options,
+            step_opts()
+          )
         {:noreply, assign(socket, halted_at: nil, halt_reason: nil)}
 
       missing ->
@@ -1212,6 +1455,10 @@ defmodule CodeMySpecWeb.ProvisioningLive do
     plan = Provisioning.plan(socket.assigns.current_scope, options)
 
     socket
+    |> assign_new(:backups, fn -> [] end)
+    |> assign_new(:backup_health, fn -> nil end)
+    |> assign_new(:restore_result, fn -> nil end)
+    |> assign(:environment_rows, Provisioning.environments(socket.assigns.current_scope))
     |> assign(:options, options)
     |> assign(:available_options, available_options())
     |> assign(:plan, plan)
@@ -1237,7 +1484,11 @@ defmodule CodeMySpecWeb.ProvisioningLive do
     |> assign_new(:domain_check, fn -> nil end)
     |> assign_new(:domain_error, fn -> nil end)
     |> assign(:domain_registered, registered_domain(socket.assigns.current_scope))
-    |> assign(:environments, environments(socket.assigns.current_scope))
+    |> then(fn socket ->
+      names = environments(socket.assigns.current_scope)
+      Process.put(:cms_environment_names, names)
+      assign(socket, :environments, names)
+    end)
     |> assign(:storage_ready?, Storage.credentials(socket.assigns.current_scope, []) != :none)
     # Read once and kept, not re-read on every event. `mail_state/2` and
     # `mail_domains/1` each call Resend live, so re-reading here meant three
@@ -1261,14 +1512,42 @@ defmodule CodeMySpecWeb.ProvisioningLive do
   # page cannot know the names: a project may have `qa`, or one environment per
   # story. Matching a hardcoded list against a location suffix only ever found
   # the two that used to be hardcoded.
-  defp resource_environment(%{identifier: identifier}) when is_binary(identifier) do
+  defp resource_environment(resource) do
+    tagged(resource) || suffixed(resource)
+  end
+
+  # Steps that fan out over environments tag what they made, because the page
+  # cannot know the names: a project may have `qa`, or one per story.
+  defp tagged(%{identifier: identifier}) when is_binary(identifier) do
     case Regex.run(~r/environment=([a-z0-9-]+)/, identifier) do
       [_, environment] -> environment
       nil -> nil
     end
   end
 
-  defp resource_environment(_), do: nil
+  defp tagged(_), do: nil
+
+  # Not everything carries the tag. A bucket encodes its environment as a
+  # suffix on the name — `app-uat` — and that is what makes criterion 8012
+  # checkable from the page at all. Reading only the tag reported every bucket
+  # as belonging to no environment.
+  #
+  # Matched against the project's own environments rather than a pattern, so a
+  # name that merely happens to end in `-something` is not mistaken for one.
+  defp suffixed(%{location: location}) when is_binary(location) do
+    Enum.find(environment_names(), fn environment ->
+      String.ends_with?(location, "-" <> environment)
+    end)
+  end
+
+  defp suffixed(_), do: nil
+
+  # Read from the process dictionary rather than threaded through every render
+  # helper: `resource_environment/1` is called from four places in the template
+  # and the list is the same for the whole render.
+  defp environment_names do
+    Process.get(:cms_environment_names, [])
+  end
 
   # The IP an environment's record points at — the first half of the tagged
   # identifier the DNS step writes.
@@ -1304,6 +1583,41 @@ defmodule CodeMySpecWeb.ProvisioningLive do
   # which made a `qa` or per-story environment invisible to the page even once
   # the rest of the system supported it.
   defp environments(scope), do: Provisioning.environment_names(scope)
+
+  # Age in whole days, so the page can answer "is anything older than the
+  # retention window still here?" without the reader doing date arithmetic.
+  defp age_days(%{taken_at: taken_at}) when is_binary(taken_at) do
+    case DateTime.from_iso8601(taken_at) do
+      {:ok, at, _} -> DateTime.diff(now(), at, :day)
+      _ -> 0
+    end
+  end
+
+  defp age_days(_), do: 0
+
+  defp now, do: Keyword.get(step_opts(), :now, &DateTime.utc_now/0).()
+
+  # Every environment's bucket, because "is there a dump?" is a question about
+  # the whole project — a prod bucket filling up while uat's has been empty for
+  # a month is exactly the state a single-bucket view hides.
+  defp list_backups(socket) do
+    scope = socket.assigns.current_scope
+    opts = socket.assigns.options
+    project = project(scope)
+
+    case Storage.credentials(scope, opts) do
+      :none ->
+        []
+
+      {:ok, credentials} ->
+        for environment <- environments(scope),
+            bucket = Storage.bucket_name(project, environment),
+            {:ok, dumps} <- [Storage.list_dumps(bucket, credentials, opts)],
+            dump <- dumps do
+          Map.merge(dump, %{environment: environment, bucket: bucket, age_days: age_days(dump)})
+        end
+    end
+  end
 
   # Mail state is cached across events; re-read it when a step that changes it
   # has just run.

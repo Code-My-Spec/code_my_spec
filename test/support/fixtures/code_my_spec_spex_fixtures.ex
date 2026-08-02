@@ -1225,8 +1225,85 @@ defmodule CodeMySpecSpex.Fixtures do
     |> CodeMySpec.Repo.update!()
   end
 
+  @doc """
+  Give a project exactly these environments, and no others.
+
+  Environments are rows, so "production is turned off" means the project does
+  not have one — not that some option is unchecked. There is no `prod` toggle
+  on the setup form and there never was; the options are domain, email,
+  storage and the rest.
+  """
+  @spec set_environments(Scope.t(), [String.t()]) :: [String.t()]
+  def set_environments(%Scope{active_project: %{id: project_id}} = scope, names) do
+    alias CodeMySpec.Provisioning.{Environment, EnvironmentRepository}
+
+    # Seed first, so the initial rows exist and can be pruned to the set asked
+    # for rather than racing whatever creates them lazily.
+    EnvironmentRepository.list(scope)
+
+    for environment <- CodeMySpec.Repo.all(Environment),
+        environment.project_id == project_id,
+        environment.name not in names do
+      CodeMySpec.Repo.delete!(environment)
+    end
+
+    for name <- names, do: EnvironmentRepository.put(scope, name, %{})
+
+    EnvironmentRepository.names(scope)
+  end
+
   @doc "The repository name setup would use for this project."
   def repository_name(project), do: CodeMySpec.Provisioning.Repository.default_name(project)
+
+  @doc """
+  Create a repository in the spex organisation, as a precondition.
+
+  Criteria whose premise is "a repository already exists" — adopt rather than
+  duplicate, a name collision, a push that gets rejected — have to put it
+  there. They used to inherit one from a previous run, which meant they passed
+  on a dirty account and failed on a clean one: exactly backwards.
+
+  `commits: true` gives it an initial commit, which is what makes a fresh
+  history unable to fast-forward onto it.
+  """
+  @spec create_spex_repository(String.t(), keyword()) :: :ok | {:error, term()}
+  def create_spex_repository(name, opts \\ []) do
+    with token when is_binary(token) <- System.get_env("GITHUB_SPEX_ADMIN_TOKEN"),
+         owner when is_binary(owner) <- System.get_env("GITHUB_SPEX_OWNER") do
+      Req.post("https://api.github.com/orgs/#{owner}/repos",
+        headers: [
+          {"authorization", "Bearer #{token}"},
+          {"accept", "application/vnd.github+json"}
+        ],
+        # Public, deliberately. The app's own grant has to *see* this repository
+        # for the collision to be detected at all, and a private one in an org
+        # it reads through a narrow scope is invisible to it — so setup found
+        # no collision and quietly created its own. The organisation is a
+        # throwaway holding nothing but spex repositories.
+        json: %{name: name, private: false, auto_init: Keyword.get(opts, :commits, false)}
+      )
+      |> case do
+        {:ok, %{status: status}} when status in [201, 422] ->
+          :ok
+
+        {:ok, %{status: status, body: body}} ->
+          raise "could not create #{owner}/#{name}: #{status} #{inspect(body, limit: 5)}"
+
+        other ->
+          raise "could not create #{owner}/#{name}: #{inspect(other, limit: 5)}"
+      end
+    else
+      # Loudly, not silently. A criterion whose premise is "this repository
+      # already exists" cannot be checked without it, and returning :ok here
+      # let the step create its own and report success — the opposite of the
+      # collision under test, passing for the wrong reason.
+      _ ->
+        raise """
+        GITHUB_SPEX_ADMIN_TOKEN and GITHUB_SPEX_OWNER must both be set to create
+        the repository this criterion's premise depends on.
+        """
+    end
+  end
 
   @doc """
   Delete a repository a spex created, using a **harness-only** credential.
@@ -1283,7 +1360,7 @@ defmodule CodeMySpecSpex.Fixtures do
   """
   def own_repository(project) do
     name = CodeMySpec.Provisioning.Repository.default_name(project)
-    owner = "johns10"
+    owner = System.get_env("GITHUB_SPEX_OWNER", "johns10")
     set_code_repo(project, "https://github.com/#{owner}/#{name}")
   end
 
@@ -1474,5 +1551,72 @@ defmodule CodeMySpecSpex.Fixtures do
       Supervisor.stop(pid)
     end
   end
+
+  @doc """
+  A connection URL for the test database.
+
+  The spex boundary cannot reach `Repo` directly, and a backup criterion needs
+  a real database to dump — this is the bridge for it.
+  """
+  @spec database_url() :: String.t()
+  def database_url do
+    config = CodeMySpec.Repo.config()
+
+    "postgres://#{config[:username]}:#{config[:password]}@" <>
+      "#{config[:hostname]}/#{config[:database]}"
+  end
+
+  @doc """
+  Hetzner resources left behind by an earlier spex run.
+
+  Named `spex-` by convention, which is also what makes them safe to identify:
+  anything without that prefix is somebody's real infrastructure and is never
+  reported here. Returns `[]` when the credentials are absent — a developer
+  without them cannot have leaked anything.
+  """
+  @spec leaked_spex_resources() :: [String.t()]
+  def leaked_spex_resources do
+    with token when is_binary(token) and token != "" <- System.get_env("HETZNER_API_TOKEN"),
+         id when is_binary(id) and id != "" <- System.get_env("HETZNER_S3_ACCESS_KEY_ID"),
+         secret when is_binary(secret) and secret != "" <-
+           System.get_env("HETZNER_S3_SECRET_ACCESS_KEY") do
+      credentials = [
+        access_key_id: id,
+        secret_access_key: secret,
+        region: System.get_env("HETZNER_S3_REGION", "fsn1")
+      ]
+
+      previous = Application.get_env(:code_my_spec, CodeMySpec.Provisioning.Hetzner, [])
+
+      Application.put_env(
+        :code_my_spec,
+        CodeMySpec.Provisioning.Hetzner,
+        Keyword.put(previous, :api_token, token)
+      )
+
+      servers =
+        case CodeMySpec.Provisioning.Hetzner.list_servers(%CodeMySpec.Users.Scope{}) do
+          {:ok, list} -> Enum.map(list, &(&1["name"] || &1[:name]))
+          _ -> []
+        end
+
+      buckets =
+        case CodeMySpec.Provisioning.Storage.list_buckets(credentials, []) do
+          {:ok, list} -> Enum.map(list, &name_of/1)
+          _ -> []
+        end
+
+      Application.put_env(:code_my_spec, CodeMySpec.Provisioning.Hetzner, previous)
+
+      Enum.filter(servers ++ buckets, &String.starts_with?(to_string(&1), "spex-"))
+    else
+      _ -> []
+    end
+  end
+
+  defp name_of(%{name: name}), do: name
+  defp name_of(%{"name" => name}), do: name
+  defp name_of(name) when is_binary(name), do: name
+  defp name_of(other), do: inspect(other)
 
 end

@@ -18,13 +18,16 @@ defmodule CodeMySpecSpex.Story968.Criterion8054Spex do
 
   @endpoint CodeMySpecWeb.Endpoint
 
-  @cassette "backup_step_proves_restore_before_done"
+  @cassette "968_8054_backup_step_proves_restore_before_done"
 
   @given_cassette "968_8054_storage_ready"
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  # The generated deploy files land on disk, and the backups step reads them.
+  setup :real_working_directory
   setup :connect_providers
+  setup :real_backup_database
 
   spex "Sam knows he has a backup, not just a file" do
     scenario "the backup step proves a restore before it reports done" do
@@ -33,6 +36,12 @@ defmodule CodeMySpecSpex.Story968.Criterion8054Spex do
         # backups step fails on missing storage, and the failure reads as
         # "restore verification broken" rather than "nowhere to write".
         view = mount_provisioning(context)
+
+        # The backups step refuses on a project that is not deploy-ready, and it
+        # is right to: a dump schedule on a project that cannot be deployed is a
+        # schedule for nothing. Generating those files is what makes the premise
+        # true (story 970).
+        view |> element("[data-test='generate-project']") |> render_click()
         paste_storage_credentials(view)
 
         # Storage only: the backup step is what the `when_` runs, and
@@ -45,11 +54,11 @@ defmodule CodeMySpecSpex.Story968.Criterion8054Spex do
 
       when_ "it verifies itself", context do
         html =
-          with_provider_cassette(@cassette, fn ->
+          with_full_cassette @cassette do
             context.view
             |> element("[data-test='setup-step'][data-step='backups'] [data-test='run-step']")
             |> render_click()
-          end)
+          end
 
         {:ok, Map.put(context, :html, html)}
       end
@@ -62,7 +71,13 @@ defmodule CodeMySpecSpex.Story968.Criterion8054Spex do
           |> Floki.find("[data-test='backup-restore-proof']")
 
         # Anchor: a proof was recorded, not merely a dump listing.
-        assert proof != [], "expected the backup step to record a restore proof"
+        assert proof != [],
+               "expected the backup step to record a restore proof, backups step reads: " <>
+                 (parsed
+                  |> Floki.find("[data-step='backups']")
+                  |> Floki.text()
+                  |> String.replace(~r/\s+/, " ")
+                  |> String.slice(0, 400))
 
         target = proof |> Floki.attribute("data-target") |> List.first()
         verified = proof |> Floki.attribute("data-content-verified") |> List.first()

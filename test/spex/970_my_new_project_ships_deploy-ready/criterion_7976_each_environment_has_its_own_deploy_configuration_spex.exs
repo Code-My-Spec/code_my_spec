@@ -22,6 +22,10 @@ defmodule CodeMySpecSpex.Story970.Criterion7976Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  # A real directory on disk, shared with the page. The generator writes
+  # through the project's registered environment; a spex holding its own
+  # in-memory one reads an empty tree and concludes nothing was generated.
+  setup :real_working_directory
 
   spex "Each environment has its own deploy configuration" do
     scenario "one config per environment, each naming its own host and discriminator" do
@@ -35,7 +39,7 @@ defmodule CodeMySpecSpex.Story970.Criterion7976Spex do
       end
 
       when_ "he looks at its deploy configuration", context do
-        {:ok, entries} = Environments.list_directory(context.environment, ".")
+        entries = project_tree(context.environment)
 
         configs =
           Enum.filter(entries, fn path ->

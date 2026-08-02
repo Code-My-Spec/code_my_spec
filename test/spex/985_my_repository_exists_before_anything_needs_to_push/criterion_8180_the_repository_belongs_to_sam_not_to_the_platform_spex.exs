@@ -29,6 +29,10 @@ defmodule CodeMySpecSpex.Story985.Criterion8180Spex do
   spex "The repository belongs to Sam, not to the platform" do
     scenario "the created repository is owned by Sam's own account" do
       given_ "Sam is on the setup status page with GitHub connected", context do
+        # The repository this makes lives in the throwaway organisation and goes
+        # away with the spex, so the next recording starts from one that is not there.
+        tear_down_repository(context.project)
+
         {:ok, view, _html} =
           live(context.conn, "/app/projects/#{context.project.id}/provisioning")
 
