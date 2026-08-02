@@ -78,17 +78,44 @@ defmodule CodeMySpecWeb.IssuesLive.Index do
      |> assign(:filter_status, "all")
      |> assign(:filter_severity, "all")
      |> assign(:status_options, @statuses)
-     |> assign(:severity_options, @severities)
+     |> assign(:severity_options, @severities)}
+  end
+
+  # Filters live in the query string, not just in assigns — a filtered list is
+  # then a link you can send someone, and it survives a reload.
+  @impl true
+  def handle_params(params, _uri, %{assigns: %{scope: %{}}} = socket) do
+    {:noreply,
+     socket
+     |> assign(:filter_status, param(params["status"], @statuses, socket.assigns.filter_status))
+     |> assign(
+       :filter_severity,
+       param(params["severity"], @severities, socket.assigns.filter_severity)
+     )
      |> load_issues()}
   end
 
+  def handle_params(_params, _uri, socket), do: {:noreply, socket}
+
+  defp param(value, allowed, fallback) when is_binary(value) do
+    if value in allowed, do: value, else: fallback
+  end
+
+  defp param(_value, _allowed, fallback), do: fallback
+
   @impl true
   def handle_event("filter", params, socket) do
+    query =
+      [
+        status: params["status"] || socket.assigns.filter_status,
+        severity: params["severity"] || socket.assigns.filter_severity
+      ]
+      |> Enum.reject(fn {_k, v} -> v in [nil, "all"] end)
+
     {:noreply,
-     socket
-     |> assign(:filter_status, params["status"] || socket.assigns.filter_status)
-     |> assign(:filter_severity, params["severity"] || socket.assigns.filter_severity)
-     |> load_issues()}
+     push_patch(socket,
+       to: path(socket, ~p"/app/projects/#{socket.assigns.slug}/issues?#{query}")
+     )}
   end
 
   @impl true
