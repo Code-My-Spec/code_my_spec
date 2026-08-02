@@ -21,6 +21,8 @@ defmodule CodeMySpecSpex.Story967.Criterion8000Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :real_working_directory
+  setup :connect_providers
 
   spex "A missing secret refuses the boot by name" do
     scenario "the boot fails naming the absent key rather than starting anyway" do
@@ -33,7 +35,7 @@ defmodule CodeMySpecSpex.Story967.Criterion8000Spex do
         # supplied.
         view
         |> form("[data-test='secret-form']",
-          secret: %{key: "DATABASE_URL", value: "ecto://...", environment: "prod"}
+          secret: %{key: "DATABASE_URL", value: "ecto://...", environment: "uat"}
         )
         |> render_submit()
 
@@ -42,7 +44,7 @@ defmodule CodeMySpecSpex.Story967.Criterion8000Spex do
 
       when_ "the app boots", context do
         html =
-          ReqCassette.with_cassette(@cassette, [mode: :replay], fn ->
+          with_provider_cassette(@cassette, fn ->
             context.view
             |> element("[data-test='setup-step'][data-step='deploy'] [data-test='run-step']")
             |> render_click()

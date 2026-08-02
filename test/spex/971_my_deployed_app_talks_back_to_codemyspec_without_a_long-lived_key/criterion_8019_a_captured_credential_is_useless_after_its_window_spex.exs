@@ -23,6 +23,8 @@ defmodule CodeMySpecSpex.Story971.Criterion8019Spex do
   spex "A captured credential is useless after its window" do
     scenario "an expired token is refused with no revocation step" do
       given_ "someone captured the token the app was using", context do
+        app_holds_refresh_secret(context.scope)
+
         conn =
           Phoenix.ConnTest.build_conn()
           |> Plug.Conn.put_req_header("content-type", "application/json")
@@ -35,7 +37,7 @@ defmodule CodeMySpecSpex.Story971.Criterion8019Spex do
         working =
           Phoenix.ConnTest.build_conn()
           |> Plug.Conn.put_req_header("authorization", "Bearer #{body["access_token"]}")
-          |> get("/api/content/sync")
+          |> post("/api/content/sync", %{})
 
         refute working.status in [401, 403],
                "expected the freshly captured token to work before its window passes"
@@ -54,7 +56,7 @@ defmodule CodeMySpecSpex.Story971.Criterion8019Spex do
             "x-spex-clock-advance-seconds",
             to_string(context.expires_in + 60)
           )
-          |> get("/api/content/sync")
+          |> post("/api/content/sync", %{})
 
         {:ok, Map.put(context, :conn, conn)}
       end

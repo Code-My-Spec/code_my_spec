@@ -20,6 +20,8 @@ defmodule CodeMySpecSpex.Story967.Criterion7999Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :real_working_directory
+  setup :connect_providers
 
   spex "The deploy carries the key, Sam does not" do
     scenario "the key travels as deploy configuration, not as a file placed by hand" do
@@ -29,7 +31,7 @@ defmodule CodeMySpecSpex.Story967.Criterion7999Spex do
 
         view
         |> form("[data-test='secret-form']",
-          secret: %{key: "SECRET_KEY_BASE", value: "generated-value", environment: "prod"}
+          secret: %{key: "SECRET_KEY_BASE", value: "generated-value", environment: "uat"}
         )
         |> render_submit()
 
@@ -38,7 +40,7 @@ defmodule CodeMySpecSpex.Story967.Criterion7999Spex do
 
       when_ "Sam deploys that environment", context do
         html =
-          ReqCassette.with_cassette(@cassette, [mode: :replay], fn ->
+          with_provider_cassette(@cassette, fn ->
             context.view
             |> element("[data-test='setup-step'][data-step='deploy'] [data-test='run-step']")
             |> render_click()

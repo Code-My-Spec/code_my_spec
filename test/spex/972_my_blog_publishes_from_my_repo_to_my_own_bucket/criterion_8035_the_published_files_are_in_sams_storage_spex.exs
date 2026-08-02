@@ -22,6 +22,7 @@ defmodule CodeMySpecSpex.Story972.Criterion8035Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :connect_providers
 
   spex "The published files are in Sam's storage" do
     scenario "the published objects are recorded in Sam's own bucket" do
@@ -37,7 +38,7 @@ defmodule CodeMySpecSpex.Story972.Criterion8035Spex do
           live(context.conn, "/app/projects/#{context.project.id}/provisioning")
 
         html =
-          ReqCassette.with_cassette(@cassette, [mode: :replay], fn ->
+          with_provider_cassette(@cassette, fn ->
             view |> element("[data-test='content-publish']") |> render_click()
           end)
 

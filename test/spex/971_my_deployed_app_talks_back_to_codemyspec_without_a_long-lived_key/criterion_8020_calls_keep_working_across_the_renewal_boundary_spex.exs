@@ -21,6 +21,8 @@ defmodule CodeMySpecSpex.Story971.Criterion8020Spex do
   spex "Calls keep working across the renewal boundary" do
     scenario "a call after one full lifetime succeeds without intervention" do
       given_ "a deployed app has been running longer than one credential lifetime", context do
+        app_holds_refresh_secret(context.scope)
+
         conn =
           Phoenix.ConnTest.build_conn()
           |> Plug.Conn.put_req_header("content-type", "application/json")
@@ -51,7 +53,7 @@ defmodule CodeMySpecSpex.Story971.Criterion8020Spex do
         conn =
           Phoenix.ConnTest.build_conn()
           |> Plug.Conn.put_req_header("authorization", "Bearer #{renewed_body["access_token"]}")
-          |> get("/api/content/sync")
+          |> post("/api/content/sync", %{})
 
         {:ok,
          context

@@ -17,10 +17,10 @@ defmodule CodeMySpecSpex.Story971.Criterion8021Spex do
   @endpoint CodeMySpecWeb.Endpoint
 
   @surfaces [
-    {"content sync", :get, "/api/content/sync"},
+    {"content sync", :post, "/api/content/sync"},
     {"framework issues", :post, "/api/framework/issues"},
-    {"user provisioning", :post, "/api/cms_users"},
-    {"widget users", :post, "/api/widget_users"},
+    {"user provisioning", :get, "/api/cms/users"},
+    {"widget users", :post, "/api/widget/users"},
     {"widget socket", :get, "/api/widget/socket_token"}
   ]
 
@@ -30,6 +30,8 @@ defmodule CodeMySpecSpex.Story971.Criterion8021Spex do
   spex "One credential covers content, issues, users and the widget" do
     scenario "a single token is accepted by all five surfaces" do
       given_ "a deployed app holds a valid credential", context do
+        app_holds_refresh_secret(context.scope)
+
         conn =
           Phoenix.ConnTest.build_conn()
           |> Plug.Conn.put_req_header("content-type", "application/json")

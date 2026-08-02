@@ -22,10 +22,14 @@ defmodule CodeMySpecSpex.Story971.Criterion8022Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :real_working_directory
+  setup :connect_providers
 
   spex "Sam never sees the credential he is using" do
     scenario "setup places the credential and the environment authenticates with it" do
       given_ "Sam is on the setup status page", context do
+        app_holds_refresh_secret(context.scope)
+
         {:ok, view, _html} =
           live(context.conn, "/app/projects/#{context.project.id}/provisioning")
 
@@ -34,7 +38,7 @@ defmodule CodeMySpecSpex.Story971.Criterion8022Spex do
 
       when_ "setup finishes placing the callback credential", context do
         html =
-          ReqCassette.with_cassette(@cassette, [mode: :replay], fn ->
+          with_provider_cassette(@cassette, fn ->
             context.view
             |> element("[data-test='setup-step'][data-step='callback_credential'] [data-test='run-step']")
             |> render_click()

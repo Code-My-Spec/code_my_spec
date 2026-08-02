@@ -23,25 +23,38 @@ defmodule CodeMySpecSpex.Story966.Criterion8009Spex do
 
   @cassette "kamal_deploy_healthcheck_fails"
 
+  @given_cassette "966_8009_version_serving"
+
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :real_working_directory
+  setup :connect_providers
 
   spex "An unhealthy deploy does not become the live version" do
     scenario "a version failing its health check is not swapped in" do
       given_ "a version is deployed and serving", context do
-        {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/provisioning")
+        # A version genuinely deployed and serving, via the staged deploy (a
+        # controllable bin/deploy stub + injected health probe) rather than a
+        # real kamal run — the criterion is about what happens to *this* live
+        # version when the next deploy fails, not about kamal.
+        context = stage_deploy(context, :ok)
+        view = mount_provisioning(context)
 
-        {:ok, Map.put(context, :view, view)}
+        view
+        |> element("[data-test='setup-step'][data-step='deploy'] [data-test='run-step']")
+        |> render_click()
+
+        {:ok, context |> Map.put(:view, view)}
       end
 
       when_ "a new version boots but fails its health check", context do
+        # The next deploy is set to fail; nothing else changes.
+        stage_deploy(context, :health_fails)
+
         html =
-          ReqCassette.with_cassette(@cassette, [mode: :replay], fn ->
-            context.view
-            |> element("[data-test='setup-step'][data-step='deploy'] [data-test='run-step']")
-            |> render_click()
-          end)
+          context.view
+          |> element("[data-test='setup-step'][data-step='deploy'] [data-test='run-step']")
+          |> render_click()
 
         {:ok, Map.put(context, :html, html)}
       end

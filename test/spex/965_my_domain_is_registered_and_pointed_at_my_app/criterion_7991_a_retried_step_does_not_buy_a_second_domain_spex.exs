@@ -17,34 +17,37 @@ defmodule CodeMySpecSpex.Story965.Criterion7991Spex do
 
   @endpoint CodeMySpecWeb.Endpoint
 
-  @register_cassette "cloudflare_domain_register_ok"
+  @register_cassette "965_7991_cloudflare_domain_register_ok"
   @already_owned_cassette "cloudflare_domain_already_owned"
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :connect_providers
 
   spex "A retried step does not buy a second domain" do
     scenario "re-running the domain step recognises the domain is already owned" do
-      given_ "Sam confirmed and the domain was registered", context do
-        {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/provisioning")
+      # Regrounded on adoption. Buying a new name is a dashboard errand, so
+      # "does not buy a second domain" is really "re-running adopts the same
+      # owned domain rather than acting twice". astralbi.com is a real zone the
+      # account manages.
+      given_ "setup already adopted the domain Sam owns", context do
+        own_domain(context.project, "astralbi.com")
+        view = mount_provisioning(context)
 
-        ReqCassette.with_cassette(@register_cassette, [mode: :replay], fn ->
+        with_provider_cassette(@register_cassette, fn ->
           view
-          |> form("[data-test='domain-form']", domain: %{name: "sams-new-thing.com"})
+          |> form("[data-test='domain-form']", domain: %{name: "astralbi.com"})
           |> render_submit()
-
-          view |> element("[data-test='confirm-purchase']") |> render_click()
         end)
 
         assert render(view) =~ ~r/data-step="domain"[^>]*data-state="done"/,
-               "expected the first registration to complete"
+               "expected adopting the owned domain to complete the step"
 
         {:ok, Map.put(context, :view, view)}
       end
 
       when_ "the domain step runs again", context do
-        ReqCassette.with_cassette(@already_owned_cassette, [mode: :replay], fn ->
+        with_provider_cassette(@already_owned_cassette, fn ->
           context.view
           |> element("[data-test='setup-step'][data-step='domain'] [data-test='run-step']")
           |> render_click()
@@ -70,7 +73,10 @@ defmodule CodeMySpecSpex.Story965.Criterion7991Spex do
         registrations =
           context.html
           |> Floki.parse_document!()
-          |> Floki.find("[data-test='provisioned-resource'][data-kind='domain']")
+          |> Floki.find(
+            "[data-test='setup-step'][data-step='domain'] " <>
+              "[data-test='provisioned-resource'][data-kind='domain']"
+          )
 
         assert length(registrations) == 1,
                "expected exactly one domain registration after two runs, got #{length(registrations)}"

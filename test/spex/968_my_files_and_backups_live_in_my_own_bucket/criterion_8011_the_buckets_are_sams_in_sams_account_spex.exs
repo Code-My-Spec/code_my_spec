@@ -15,10 +15,11 @@ defmodule CodeMySpecSpex.Story968.Criterion8011Spex do
 
   @endpoint CodeMySpecWeb.Endpoint
 
-  @cassette "hetzner_bucket_create_ok"
+  @cassette "968_8011_hetzner_bucket_create_ok"
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :connect_providers
 
   spex "The buckets are Sam's, in Sam's account" do
     scenario "the created buckets are recorded under Sam's own account" do
@@ -26,12 +27,15 @@ defmodule CodeMySpecSpex.Story968.Criterion8011Spex do
         {:ok, view, _html} =
           live(context.conn, "/app/projects/#{context.project.id}/provisioning")
 
+        paste_storage_credentials(view)
+        tear_down_after(context.scope, [:storage])
+
         {:ok, Map.put(context, :view, view)}
       end
 
       when_ "the storage step has run", context do
         html =
-          ReqCassette.with_cassette(@cassette, [mode: :replay], fn ->
+          with_provider_cassette(@cassette, fn ->
             context.view
             |> element("[data-test='setup-step'][data-step='storage'] [data-test='run-step']")
             |> render_click()
@@ -45,6 +49,9 @@ defmodule CodeMySpecSpex.Story968.Criterion8011Spex do
           context.html
           |> Floki.parse_document!()
           |> Floki.find("[data-test='provisioned-resource'][data-kind='bucket']")
+
+
+
 
         # Anchor: buckets were recorded at all.
         assert buckets != [], "expected the storage step to record the buckets it created"

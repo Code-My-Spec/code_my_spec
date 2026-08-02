@@ -24,19 +24,21 @@ defmodule CodeMySpecSpex.Story966.Criterion8007Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :real_working_directory
+  setup :connect_providers
 
   spex "Migrations land before the swap, not after" do
     scenario "the migration completes before traffic moves to the new version" do
       given_ "a deploy carries a schema change", context do
-        {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/provisioning")
+        context = stage_deploy(context, :ok)
+        view = mount_provisioning(context)
 
         {:ok, Map.put(context, :view, view)}
       end
 
       when_ "the deploy runs", context do
         html =
-          ReqCassette.with_cassette(@cassette, [mode: :replay], fn ->
+          with_provider_cassette(@cassette, fn ->
             context.view
             |> element("[data-test='setup-step'][data-step='deploy'] [data-test='run-step']")
             |> render_click()

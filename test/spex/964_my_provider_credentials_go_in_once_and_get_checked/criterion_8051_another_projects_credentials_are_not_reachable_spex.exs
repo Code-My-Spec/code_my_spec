@@ -22,7 +22,7 @@ defmodule CodeMySpecSpex.Story964.Criterion8051Spex do
     scenario "a second project's intake is empty while the first is populated" do
       given_ "the first project has a credential stored", context do
         {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/credentials")
+          live(context.conn, "/app/projects/#{context.project.id}/provisioning")
 
         view
         |> form("[data-test='credentials-form']",
@@ -58,7 +58,7 @@ defmodule CodeMySpecSpex.Story964.Criterion8051Spex do
           |> List.first()
 
         {:ok, view, html} =
-          live(context.conn, "/app/projects/#{second_id}/credentials")
+          live(context.conn, "/app/projects/#{second_id}/provisioning")
 
         {:ok, context |> Map.put(:view, view) |> Map.put(:html, html)}
       end

@@ -20,10 +20,20 @@ defmodule CodeMySpecSpex.Story969.Criterion8056Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :connect_providers
 
   spex "Test mail cannot pass for production mail" do
     scenario "each environment has its own sending domain" do
       given_ "both environments can send", context do
+        # Its own subdomain. Every criterion in this story used one shared name,
+        # so whichever ran second found the first's sending domain already
+        # registered and *adopted* it — and an adopted resource is never torn
+        # down. Recorded alone each one passed; run together they replayed each
+        # other's state.
+        project = own_domain(context.project, "c8056.astralbi.com")
+        verified_sending_domains(context.scope, project)
+        tear_down_after(context.scope, [:email])
+
         {:ok, view, _html} =
           live(context.conn, "/app/projects/#{context.project.id}/provisioning")
 
@@ -32,7 +42,7 @@ defmodule CodeMySpecSpex.Story969.Criterion8056Spex do
 
       when_ "the email step has run for each", context do
         html =
-          ReqCassette.with_cassette(@cassette, [mode: :replay], fn ->
+          with_provider_cassette(@cassette, fn ->
             context.view
             |> element("[data-test='setup-step'][data-step='email'] [data-test='run-step']")
             |> render_click()

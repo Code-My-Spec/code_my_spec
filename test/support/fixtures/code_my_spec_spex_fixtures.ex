@@ -51,6 +51,337 @@ defmodule CodeMySpecSpex.Fixtures do
   alias CodeMySpec.Configurations
   alias CodeMySpec.Requirements.RequirementGraph
 
+  @doc """
+  Register a sending domain and publish everything except its DKIM record.
+
+  Produces the state criterion 8027 is about: a domain that is genuinely stuck
+  with a *specific* fault, rather than one where nothing resolves. Reading a
+  healthy account and asserting the unhappy path proves nothing, and inventing
+  the record set would encode what I think Resend asks for rather than what it
+  does.
+
+  Returns the resources it created so the caller can remove them — the Resend
+  domain and every DNS record published for it.
+  """
+  @spec publish_all_records_except_dkim(Scope.t(), String.t()) ::
+          {:ok, map()} | {:error, term()}
+  def publish_all_records_except_dkim(scope, sending_domain) do
+    publish_records(scope, sending_domain, :except_dkim)
+  end
+
+  defp publish_records(scope, sending_domain, which) do
+    alias CodeMySpec.Provisioning.{Cloudflare, Resend}
+
+    zone_name = sending_domain |> String.split(".") |> Enum.take(-2) |> Enum.join(".")
+
+    with {:ok, domain} <- Resend.ensure_domain(scope, sending_domain),
+         {:ok, full} <- Resend.get_domain(scope, domain["id"]),
+         {:ok, zone} <- Cloudflare.find_zone(scope, zone_name) do
+      records = Resend.records(full["data"] || full)
+
+      keep =
+        case which do
+          :all -> records
+          :except_dkim -> Enum.reject(records, &dkim?/1)
+        end
+
+      published =
+        keep
+        |> Enum.map(fn record ->
+          name = qualify(record["name"], zone_name)
+
+          # Raise rather than ignore. This used to discard the result, so a
+          # record Cloudflare refused simply never existed — and every
+          # assertion downstream failed with "does not resolve", which is true
+          # and says nothing about why.
+          case Cloudflare.ensure_dns_record(scope, zone["id"], name, record["value"],
+                 type: record["type"],
+                 priority: record["priority"]
+               ) do
+            {:ok, _} ->
+              :ok
+
+            other ->
+              raise "could not publish #{record["type"]} #{name}: #{inspect(other, limit: 5)}"
+          end
+
+          %{kind: "dns_record", location: "cloudflare/#{name}", type: record["type"]}
+        end)
+
+      # Deliberately NOT probing the records over DNS-over-HTTPS here. Asking a
+      # recursive resolver for a record that was written a moment ago caches
+      # the *absence* of it for the zone's SOA negative TTL — 1800s — so the
+      # probe intended to confirm propagation was the very thing that hid the
+      # record from every check afterwards.
+
+      # Resend evaluates a record only when asked. Without this the domain sits
+      # at "pending" on every record — including the ones that are published
+      # and resolving — so a criterion about *which* record is at fault sees no
+      # difference between them. Triggering once lets the provider mark the
+      # propagated records verified and leave the withheld one pending, which
+      # is the state under test.
+      Resend.verify_domain(scope, domain["id"])
+      await_partial_verification(scope, domain["id"])
+
+      {:ok,
+       %{
+         domain_id: domain["id"],
+         zone_id: zone["id"],
+         published: published,
+         withheld: (records -- keep) |> Enum.map(& &1["name"])
+       }}
+    end
+  end
+
+  # Resend does not update record statuses synchronously with the verify call.
+  # Wait until at least one record has flipped to verified, re-triggering as we
+  # go — that is the state the withheld-record criteria are about, and reading
+  # too early shows everything pending, which is indistinguishable from nothing
+  # having been published.
+  defp await_partial_verification(scope, domain_id, attempts \\ 20) do
+    Enum.reduce_while(1..attempts, :ok, fn attempt, _acc ->
+      case CodeMySpec.Provisioning.Resend.get_domain(scope, domain_id) do
+        {:ok, body} ->
+          records = CodeMySpec.Provisioning.Resend.records(body["data"] || body)
+
+          if Enum.any?(records, &(&1["status"] == "verified")) do
+            {:halt, :ok}
+          else
+            if rem(attempt, 5) == 0, do: CodeMySpec.Provisioning.Resend.verify_domain(scope, domain_id)
+            Process.sleep(3_000)
+            {:cont, :ok}
+          end
+
+        _ ->
+          Process.sleep(3_000)
+          {:cont, :ok}
+      end
+    end)
+  end
+
+  defp dkim?(record) do
+    String.contains?(String.upcase(to_string(record["record"] || "")), "DKIM") or
+      String.contains?(to_string(record["name"] || ""), "_domainkey")
+  end
+
+  defp qualify(name, zone) when name in [nil, "", "@"], do: zone
+  defp qualify(name, zone), do: "#{name}.#{zone}"
+
+  @doc "The sending domain an environment uses, so spex need not know the rule."
+  @spec sending_domain(String.t(), String.t()) :: String.t()
+  def sending_domain(base, environment),
+    do: CodeMySpec.Provisioning.Resend.sending_domain(base, environment)
+
+  @doc """
+  Register a sending domain and publish every record it asks for.
+
+  The happy-path counterpart: a domain that genuinely verifies, because its
+  records genuinely resolve. Needed because setup registers a sending domain
+  per environment and is not satisfied until all of them verify — so a
+  recording of the successful path has to make UAT real too, not just
+  production.
+  """
+  @spec publish_all_records(Scope.t(), String.t(), keyword()) :: {:ok, map()} | {:error, term()}
+  def publish_all_records(scope, sending_domain, opts \\ []) do
+    with {:ok, created} <- publish_records(scope, sending_domain, :all) do
+      # Publishing is not verifying. A `given_` that says "the domain is
+      # verified" and only publishes records leaves it pending, and Resend
+      # answers 403 to a send from a pending domain — so the spex fails on an
+      # assertion about sending for a reason that is entirely about setup.
+      #
+      # Resend does not re-check on its own either; `poll_until_verified`
+      # triggers the check and waits for it.
+      case CodeMySpec.Provisioning.Resend.poll_until_verified(scope, created.domain_id, opts) do
+        {:ok, _} -> {:ok, created}
+        {:error, reason} -> {:error, {:never_verified, sending_domain, reason}}
+      end
+    end
+  end
+
+  @doc """
+  Publish every record the provider asks for, but do **not** wait for it to
+  verify.
+
+  For "setup waits for verification rather than assuming it": if the fixture
+  verifies the domain first, the step finds it already verified on its first
+  look and there is nothing left to wait for — the criterion then asserts
+  polling against a run that never had to poll.
+  """
+  @spec publish_all_records_unverified(Scope.t(), String.t()) :: {:ok, map()} | {:error, term()}
+  def publish_all_records_unverified(scope, sending_domain) do
+    publish_records(scope, sending_domain, :all)
+  end
+
+  @doc "Remove what `publish_all_records_except_dkim/2` created."
+  @spec remove_published_records(Scope.t(), map()) :: :ok
+  def remove_published_records(scope, %{domain_id: domain_id, zone_id: zone_id, published: published}) do
+    alias CodeMySpec.Provisioning.{Cloudflare, Resend}
+
+    with {:ok, records} <- Cloudflare.list_dns_records(scope, zone_id) do
+      names = MapSet.new(published, &String.replace(&1.location, "cloudflare/", ""))
+
+      for %{"id" => id, "name" => name} <- records, MapSet.member?(names, name) do
+        Cloudflare.delete_dns_record(scope, zone_id, id)
+      end
+    end
+
+    Resend.delete_domain(scope, domain_id)
+    :ok
+  end
+
+  @doc """
+  Publish an MX at the zone apex, as a domain already receiving mail would
+  have. Returns the record so a caller can assert it survived.
+  """
+  @spec publish_apex_mx(Scope.t(), String.t()) :: {:ok, map()} | {:error, term()}
+  def publish_apex_mx(scope, domain) do
+    alias CodeMySpec.Provisioning.Cloudflare
+
+    # The *project's* apex, not the Cloudflare zone root. These used to be the
+    # same thing, so a spex asserting "Sam already receives mail here" published
+    # an MX on `astralbi.com` itself — a record shared by every other spex in
+    # the account, left behind afterwards, and read by them as an apex MX of
+    # their own. Criterion 8025 saw it as a bounce MX at `@` and failed on a
+    # record it had never written.
+    with {:ok, zone} <- Cloudflare.find_zone(scope, domain),
+         {:ok, _} <-
+           Cloudflare.ensure_dns_record(scope, zone["id"], domain, "inbound-smtp.spex.invalid",
+             type: "MX",
+             priority: 10
+           ) do
+      {:ok, %{zone_id: zone["id"], name: domain}}
+    end
+  end
+
+  @dns_table "test/cassettes/dns_resolutions.json"
+
+  @doc """
+  A resolver for `ProvisioningLive` that is honest while recording and
+  deterministic while replaying.
+
+  DNS resolution cannot go in a cassette: the authoritative lookup setup needs
+  is a syscall, not HTTP, and it has to stay authoritative because a recursive
+  resolver caches the *absence* of a record for the zone's negative TTL (1800s
+  here) — long after setup published it. So while recording, this asks real
+  DNS and writes the answer down; while replaying, it reads the answer back.
+  The recorded claim is a real one, and it stops being re-asked of the world
+  once the records it was about have been torn down.
+  """
+  @spec dns_resolver(:record | :replay) :: (String.t(), atom() -> boolean())
+  def dns_resolver(:record) do
+    fn name, type ->
+      resolved = CodeMySpec.Provisioning.Dns.lookup_authoritative(name, type) != []
+      remember_resolution(name, type, resolved)
+      resolved
+    end
+  end
+
+  def dns_resolver(:replay) do
+    table = read_resolutions()
+    fn name, type -> Map.get(table, key(name, type), false) end
+  end
+
+  defp key(name, type), do: "#{name}|#{type}"
+
+  defp read_resolutions do
+    case File.read(@dns_table) do
+      {:ok, body} -> Jason.decode!(body)
+      _ -> %{}
+    end
+  end
+
+  defp remember_resolution(name, type, resolved) do
+    table = read_resolutions() |> Map.put(key(name, type), resolved)
+    File.mkdir_p!(Path.dirname(@dns_table))
+    File.write!(@dns_table, Jason.encode_to_iodata!(table, pretty: true))
+  end
+
+  @doc "Remove the apex MX `publish_apex_mx/2` wrote, so it does not outlive the spex."
+  @spec remove_apex_mx(Scope.t(), String.t()) :: :ok
+  def remove_apex_mx(scope, domain) do
+    alias CodeMySpec.Provisioning.Cloudflare
+
+    with {:ok, zone} <- Cloudflare.find_zone(scope, domain),
+         {:ok, records} <- Cloudflare.list_dns_records(scope, zone["id"]) do
+      for %{"id" => id, "name" => name, "type" => "MX"} <- records, name == domain do
+        Cloudflare.delete_dns_record(scope, zone["id"], id)
+      end
+    end
+
+    :ok
+  end
+
+  @doc """
+  Register a refresh secret against the project, as the `callback_credential`
+  step does when it provisions one.
+
+  Story 971's spex POST a known secret to `/api/token`. Until it is registered
+  the exchange refuses it, and every one of those spex fails in `given_` with
+  a 401 that reads like the endpoint is broken.
+  """
+  @spec register_refresh_secret(Scope.t(), String.t()) :: {:ok, term()} | {:error, term()}
+  def register_refresh_secret(scope, secret) do
+    CodeMySpec.AppTokens.put_refresh_secret(scope.active_project, secret)
+  end
+
+  @doc "The domain currently on a project, for diagnosing setup preconditions."
+  def project_domain(project_id) do
+    CodeMySpec.Repo.get!(CodeMySpec.Projects.Project, project_id).domain
+  end
+
+  @doc """
+  Remove everything the named provisioning steps recorded creating.
+
+  Here rather than in the spex Case because the boundary says so: spex reach
+  the app only through this module. That is worth keeping for teardown
+  especially — it is the one operation that destroys, so having exactly one
+  door to it is the point rather than an inconvenience.
+  """
+  @spec tear_down_steps(Scope.t(), [atom()], keyword()) :: [{atom(), term()}]
+  def tear_down_steps(scope, keys, opts \\ []) do
+    Enum.map(keys, fn key ->
+      {key, CodeMySpec.Provisioning.Teardown.step(scope, key, opts)}
+    end)
+  end
+
+  @doc """
+  Connect an OAuth provider for the scope's user.
+
+  ## Why this is a fixture rather than a UI action
+
+  Every other piece of spex setup is driven through the app's own surface.
+  This cannot be: connecting a provider means a redirect to Cloudflare or
+  GitHub, a human consent screen, and a callback carrying a code only they can
+  mint. The alternative to a fixture is not "drive it properly" — it is having
+  no spex for anything that touches a provider.
+
+  The token is deliberately a placeholder. Provider HTTP in spex is served
+  from a cassette, so what matters is that the credential *lookup* succeeds;
+  a real token here would be a secret in the repository for no benefit.
+  """
+  @spec connect_provider(Scope.t(), atom(), keyword()) :: {:ok, term()}
+  def connect_provider(scope, provider, opts \\ []) do
+    CodeMySpec.Integrations.IntegrationRepository.upsert_integration(scope, provider, %{
+      access_token: Keyword.get(opts, :access_token, "spex-placeholder-token"),
+      refresh_token: Keyword.get(opts, :refresh_token, "spex-placeholder-refresh"),
+      expires_at:
+        Keyword.get(opts, :expires_at, DateTime.add(DateTime.utc_now(), 3600, :second)),
+      granted_scopes: Keyword.get(opts, :granted_scopes, []),
+      provider_metadata: %{
+        provider_user_id: "spex",
+        email: "spex@example.com",
+        name: "Spex User"
+      }
+    })
+  end
+
+  @doc "Remove a provider connection, for the revoked-credential cases."
+  @spec disconnect_provider(Scope.t(), atom()) :: :ok
+  def disconnect_provider(scope, provider) do
+    CodeMySpec.Integrations.delete_integration(scope, provider)
+    :ok
+  end
+
   def generate_user_session_token(user), do: Users.generate_user_session_token(user)
   def select_active_account(scope, account_id), do: UserPreferences.select_active_account(scope, account_id)
   def select_active_project(scope, project_id), do: UserPreferences.select_active_project(scope, project_id)
@@ -66,6 +397,7 @@ defmodule CodeMySpecSpex.Fixtures do
 
   # -- Environments --
   defdelegate memory_environment_fixture(opts \\ []), to: EnvironmentFixtures
+  defdelegate local_environment_fixture(opts \\ []), to: EnvironmentFixtures
   defdelegate register_environment(project_id, env), to: Environments, as: :register
   defdelegate unregister_environment(project_id), to: Environments, as: :unregister
 
@@ -643,6 +975,102 @@ defmodule CodeMySpecSpex.Fixtures do
     |> CodeMySpec.Repo.update!()
   end
 
+  @doc """
+  Record a repository on the project, so setup adopts it rather than prompting.
+
+  The difference between adopting (8179/8184) and stopping to ask (8185) is
+  whether the project already points at the repository — this is how a spex
+  establishes the "already ours" side of that fork.
+  """
+  @doc """
+  Mint a widget socket token for the scope's project.
+
+  The browser-safe credential the widget presents on the socket. A spex cannot
+  reach `AppTokens` across the boundary, so this bridges it.
+  """
+  def mint_socket_token(%Scope{active_project: project}) do
+    CodeMySpec.AppTokens.issue_socket_token(project)
+  end
+
+  @doc "Write one secret into an environment's encrypted env (via the step)."
+  def put_encrypted_secret(scope, environment, key, value) do
+    CodeMySpec.Provisioning.Steps.put_secret(scope, environment, key, value)
+  end
+
+  @doc "Write a file into an environment (bridge to Environments)."
+  def write_env_file(env, path, content), do: Environments.write_file(env, path, content)
+
+  @doc "Run a command in an environment (bridge to Environments)."
+  def env_cmd(env, command, args), do: Environments.cmd(env, command, args)
+
+  def set_code_repo(project, url) do
+    project
+    |> Ecto.Changeset.change(code_repo: url)
+    |> CodeMySpec.Repo.update!()
+  end
+
+  @doc "The repository name setup would use for this project."
+  def repository_name(project), do: CodeMySpec.Provisioning.Repository.default_name(project)
+
+  @doc """
+  Delete a repository a spex created, using a **harness-only** credential.
+
+  Deliberately not the app's OAuth grant. Adding `delete_repo` there would give
+  CodeMySpec the power to delete repositories on every user's account, forever,
+  to solve a problem that only exists while recording tests — a bad trade for a
+  cleanup convenience. Instead this reads `GITHUB_SPEX_ADMIN_TOKEN`, a
+  short-lived fine-grained token that belongs to the person recording and can be
+  scoped to the spex repositories alone.
+
+  Returns `:ok` when there is no token, so a machine without one records
+  normally — it just leaves the repository behind, which is the situation we
+  are already in.
+  """
+  @spec delete_spex_repository(String.t()) :: :ok | {:error, term()}
+  def delete_spex_repository(name) do
+    case System.get_env("GITHUB_SPEX_ADMIN_TOKEN") do
+      token when is_binary(token) and token != "" ->
+        # Guarded twice: only names this harness generates, and only through a
+        # token whose scope the operator chose. A teardown that could delete an
+        # arbitrary repository is worse than a repository left behind.
+        if String.starts_with?(name, "spex-") do
+          owner = System.get_env("GITHUB_SPEX_OWNER", "johns10")
+
+          Req.delete("https://api.github.com/repos/#{owner}/#{name}",
+            headers: [
+              {"authorization", "Bearer #{token}"},
+              {"accept", "application/vnd.github+json"}
+            ]
+          )
+          |> case do
+            {:ok, %{status: status}} when status in [204, 404] -> :ok
+            {:ok, %{status: status, body: body}} -> {:error, {status, body}}
+            other -> other
+          end
+        else
+          {:error, {:refused, name}}
+        end
+
+      _ ->
+        :ok
+    end
+  end
+
+  @doc """
+  Point the project at the repository setup would make for it.
+
+  A re-run finding its own work adopts silently; a repository setup did not
+  make is Sam's to decide about (criteria 8179 vs 8185). Recording repeatedly
+  puts us in the first case — the repository really was made by an earlier run
+  of this same spex — but the project row is fresh each time, so setup sees a
+  stranger's repository and pauses. This states the fact that is true.
+  """
+  def own_repository(project) do
+    name = CodeMySpec.Provisioning.Repository.default_name(project)
+    owner = "johns10"
+    set_code_repo(project, "https://github.com/#{owner}/#{name}")
+  end
+
   @doc "Set a project's sending domain without verifying it."
   def set_project_domain(project, domain) do
     project
@@ -708,4 +1136,127 @@ defmodule CodeMySpecSpex.Fixtures do
     {:ok, _} = CodeMySpec.Files.FileSync.sync_changed(scope, base_dir: scope.cwd)
     CodeMySpec.AnalysisFixtures.fresh_analysis_runs_fixture(scope, sources)
   end
+
+  @doc """
+  The connected provider grant from the **dev** database, for recording.
+
+  Cloudflare and Resend rotate their refresh token on every use and revoke the
+  grant when a spent one is presented. Exporting a token into the environment
+  makes a second copy of a single-use credential — the app refreshes, the
+  stored token rotates, and the exported copy is now spent, so the next
+  recording run kills the grant. That is what used to force a manual reconnect
+  between recordings; it was never the refresh logic failing.
+
+  So the integration row is the single owner, and recording borrows from it.
+  Read over a connection of its own because the spex sandbox owns
+  `CodeMySpec.Repo` and points it at the test database, which holds no
+  integrations. Tokens are Cloak-encrypted at rest and the vault key is shared
+  across environments, so the test node can read what the dev app wrote.
+
+  Returns `%{access_token:, refresh_token:, expires_at:}`.
+  """
+  def live_provider_grant(provider) do
+    case :persistent_term.get({__MODULE__, :grant, provider}, nil) do
+      nil ->
+        # A provider whose grant is dead must not stop a recording that does not
+        # use it — a revoked Resend connection would otherwise block every
+        # Cloudflare and Hetzner spex on the machine. The placeholder produces
+        # 401s, so a spex that genuinely needed this provider still fails, and
+        # says why here rather than as an unexplained refusal later.
+        grant =
+          try do
+            refresh_dev_grant(provider)
+          rescue
+            error ->
+              IO.warn("""
+              #{provider} is not usable for recording: #{Exception.message(error)}
+
+              Spex that actually call #{provider} will fail. Others are unaffected.
+              """)
+
+              placeholder_grant()
+          end
+
+        :persistent_term.put({__MODULE__, :grant, provider}, grant)
+        grant
+
+      cached ->
+        cached
+    end
+  end
+
+  defp placeholder_grant do
+    %{
+      access_token: "spex-placeholder-token",
+      refresh_token: nil,
+      expires_at: DateTime.add(DateTime.utc_now(), 3600, :second)
+    }
+  end
+
+  # Refreshes **in the dev database** — through a dynamic repo, so the app's own
+  # `fetch_access_token/2` runs: same row lock, same rotation, same persistence.
+  # The rotated refresh token lands back where it came from, which is the whole
+  # point. Only the access token travels into the test database, and it travels
+  # without its refresh token: an access token is not single-use, so a copy of
+  # one cannot cost anybody the grant.
+  defp refresh_dev_grant(provider) do
+    config =
+      :code_my_spec
+      |> Application.get_env(CodeMySpec.Repo, [])
+      |> Keyword.merge(
+        name: :spex_dev_repo,
+        database: "code_my_spec_dev",
+        pool: DBConnection.ConnectionPool,
+        pool_size: 1,
+        log: false
+      )
+
+    {:ok, pid} = CodeMySpec.Repo.start_link(config)
+    previous = CodeMySpec.Repo.put_dynamic_repo(:spex_dev_repo)
+
+    try do
+      # Most recently updated wins: a provider reconnected in the app leaves the
+      # older row behind, and the newer one is the live grant.
+      integration =
+        CodeMySpec.Integrations.Integration
+        |> CodeMySpec.Repo.all()
+        |> Enum.filter(&(&1.provider == provider))
+        |> Enum.max_by(& &1.updated_at, DateTime, fn -> nil end)
+
+      unless integration do
+        raise """
+        recording needs a connected #{provider}, and code_my_spec_dev has none.
+
+        Connect it in the running app, then re-run. Never export a provider
+        token into the environment: Cloudflare and Resend rotate their refresh
+        token on every use and revoke the grant when a spent one is presented,
+        so a second copy of it is what kills the connection.
+        """
+      end
+
+      scope = %Scope{user: CodeMySpec.Repo.get!(CodeMySpec.Users.User, integration.user_id)}
+
+      case CodeMySpec.Integrations.fetch_access_token(scope, provider) do
+        {:ok, access_token} ->
+          # Re-read: fetch_access_token may have refreshed, moving expires_at.
+          fresh =
+            CodeMySpec.Repo.get!(CodeMySpec.Integrations.Integration, integration.id)
+
+          %{access_token: access_token, refresh_token: nil, expires_at: fresh.expires_at}
+
+        {:error, reason} ->
+          raise """
+          could not obtain a #{provider} token from code_my_spec_dev: #{inspect(reason)}
+
+          Reconnect #{provider} in the running app. If this says the refresh
+          token was already used or the grant was revoked, something else is
+          holding a second copy of it.
+          """
+      end
+    after
+      CodeMySpec.Repo.put_dynamic_repo(previous)
+      Supervisor.stop(pid)
+    end
+  end
+
 end

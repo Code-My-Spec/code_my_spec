@@ -15,23 +15,29 @@ defmodule CodeMySpecSpex.Story966.Criterion8003Spex do
 
   @endpoint CodeMySpecWeb.Endpoint
 
-  @cassette "hetzner_server_create_ok"
+  @cassette "966_8003_hetzner_server_create_ok"
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :connect_providers
 
   spex "The server shows up in Sam's own console" do
     scenario "the provisioned server is recorded under Sam's own account" do
-      given_ "Sam is on the setup status page", context do
-        {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/provisioning")
+      given_ "Sam is on the setup status page with credentials entered", context do
+        view = mount_provisioning(context)
+
+        # A real Hetzner server is created; register its teardown before it is
+        # made so a recording that fails partway still leaves no box running.
+        tear_down_after(context.scope, [:server])
 
         {:ok, Map.put(context, :view, view)}
       end
 
       when_ "the server step has run", context do
         html =
-          ReqCassette.with_cassette(@cassette, [mode: :replay], fn ->
+          with_provider_cassette(@cassette, fn ->
+            paste_provider_credentials(context.view)
+
             context.view
             |> element("[data-test='setup-step'][data-step='server'] [data-test='run-step']")
             |> render_click()

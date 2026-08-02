@@ -24,6 +24,8 @@ defmodule CodeMySpecSpex.Story967.Criterion8001Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :real_working_directory
+  setup :connect_providers
 
   spex "Rotating a key is a re-encrypt and a redeploy" do
     scenario "the new value takes effect with no code change" do
@@ -33,7 +35,7 @@ defmodule CodeMySpecSpex.Story967.Criterion8001Spex do
 
         view
         |> form("[data-test='secret-form']",
-          secret: %{key: "RESEND_API_KEY", value: @old_value, environment: "prod"}
+          secret: %{key: "RESEND_API_KEY", value: @old_value, environment: "uat"}
         )
         |> render_submit()
 
@@ -45,12 +47,12 @@ defmodule CodeMySpecSpex.Story967.Criterion8001Spex do
       when_ "Sam sets the new value and redeploys", context do
         context.view
         |> form("[data-test='secret-form']",
-          secret: %{key: "RESEND_API_KEY", value: @new_value, environment: "prod"}
+          secret: %{key: "RESEND_API_KEY", value: @new_value, environment: "uat"}
         )
         |> render_submit()
 
         html =
-          ReqCassette.with_cassette(@cassette, [mode: :replay], fn ->
+          with_provider_cassette(@cassette, fn ->
             context.view
             |> element("[data-test='setup-step'][data-step='deploy'] [data-test='run-step']")
             |> render_click()
@@ -63,7 +65,7 @@ defmodule CodeMySpecSpex.Story967.Criterion8001Spex do
         assert context.html =~ ~r/data-step="deploy"[^>]*data-state="done"/,
                "expected the redeploy to succeed with the rotated secret"
 
-        {:ok, contents} = Environments.read_file(context.environment, "envs/prod.enc.env")
+        {:ok, contents} = Environments.read_file(context.environment, "envs/uat.enc.env")
 
         refute contents =~ @old_value,
                "expected the old value not to remain in the encrypted file"

@@ -23,16 +23,23 @@ defmodule CodeMySpecSpex.Story964.Criterion7982Spex do
         {:ok, view, _html} =
           live(context.conn, "/app/projects/#{context.project.id}/provisioning")
 
-        view
-        |> form("[data-test='setup-options-form']", provisioning: %{email: false})
-        |> render_submit()
+        # Both mail options. Resend backs sending *and* receiving, so turning
+        # off only `:email` leaves `:inbound` still needing the same
+        # credential — and the criterion would fail against correct
+        # behaviour. "The email option" is the mail feature, not one step.
+        #
+        # The form is phx-change and its params are
+        # `options[<key>]`, so a submit with a `provisioning` map changed
+        # nothing — the page kept every default and the criterion passed for
+        # the wrong reason.
+        choose_all_setup_options_except(view, [:email, :inbound])
 
         {:ok, context}
       end
 
       when_ "he opens credential entry", context do
         {:ok, view, html} =
-          live(context.conn, "/app/projects/#{context.project.id}/credentials")
+          live(context.conn, "/app/projects/#{context.project.id}/provisioning")
 
         {:ok, context |> Map.put(:view, view) |> Map.put(:html, html)}
       end

@@ -22,13 +22,23 @@ defmodule CodeMySpecSpex.Story963.Criterion7959Spex do
   spex "Sam sees the whole plan before anything runs" do
     scenario "the status page lists every step in order, none of them started" do
       given_ "Sam has a project with setup options chosen", context do
-        # No step has been run: the project carries its setup options and
-        # nothing has executed yet. Deliberately not pre-seeding any step
-        # rows — the page is expected to render the plan from the options,
-        # which is the behaviour under test.
-        {:ok, context}
+        # Chosen through the form, not assumed from the defaults. The plan
+        # under test is rendered *from* these options, so a spex that let
+        # them default would stop testing the relationship the moment the
+        # defaults changed — and would fail in the `then_` counting steps,
+        # which points at the plan rather than at the options behind it.
+        #
+        # Still no step rows pre-seeded: the page renders the plan from the
+        # options alone, and that is the behaviour under test.
+        view = mount_provisioning(context)
+        options = all_setup_options(view)
+
+        {:ok, Map.put(context, :options, options)}
       end
 
+      # A fresh mount on purpose. The options chosen above are persisted to
+      # the project, so opening the page again is the journey Sam actually
+      # takes — and if that ever stops being true, this is where it shows.
       when_ "he opens the setup status page", context do
         {:ok, view, html} =
           live(context.conn, "/app/projects/#{context.project.id}/provisioning")

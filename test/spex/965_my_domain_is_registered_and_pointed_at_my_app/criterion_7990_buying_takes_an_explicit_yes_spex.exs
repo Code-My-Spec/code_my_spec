@@ -19,50 +19,55 @@ defmodule CodeMySpecSpex.Story965.Criterion7990Spex do
 
   @endpoint CodeMySpecWeb.Endpoint
 
-  @check_cassette "cloudflare_domain_check_available_with_price"
+  @check_cassette "cloudflare_domain_check_new_name"
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :connect_providers
 
   spex "Buying takes an explicit yes" do
-    scenario "an available, priced domain is not registered until Sam confirms" do
-      given_ "Sam has been shown an available domain and its price", context do
+    scenario "checking a new name never registers it — the yes happens in the dashboard" do
+      # Regrounded on what the Registrar API actually does. It will not price
+      # or sell an arbitrary new name, so there is no in-app price to show and
+      # no in-app purchase to confirm — the honest guarantee is stronger and
+      # simpler: *setup never buys a domain by itself*. The explicit yes is
+      # Sam registering it in the dashboard, which setup then adopts (8052).
+      given_ "Sam checks a name he might want", context do
         {:ok, view, _html} =
           live(context.conn, "/app/projects/#{context.project.id}/provisioning")
 
-        ReqCassette.with_cassette(@check_cassette, [mode: :replay], fn ->
-          view
-          |> form("[data-test='domain-form']", domain: %{name: "sams-new-thing.com"})
-          |> render_submit()
-        end)
-
-        html = render(view)
-
-        assert has_element?(view, "[data-test='domain-price']"),
-               "expected the price to be on screen before the confirmation gate"
+        html =
+          with_provider_cassette(@check_cassette, fn ->
+            view
+            |> form("[data-test='domain-form']", domain: %{name: "sams-new-thing.com"})
+            |> render_submit()
+          end)
 
         {:ok, context |> Map.put(:view, view) |> Map.put(:html, html)}
       end
 
-      when_ "he has not confirmed the purchase", context do
-        # Deliberately no click. The absence of the confirmation is the
-        # condition under test.
+      when_ "he has done nothing but check it", context do
+        # No confirmation, no dashboard trip — just the check. The absence of
+        # any purchase is the condition under test.
         {:ok, context}
       end
 
-      then_ "setup does not register it", context do
+      then_ "nothing is registered", context do
         refute context.html =~ ~r/data-step="domain"[^>]*data-state="done"/,
-               "expected no registration without an explicit confirmation"
+               "expected no registration from merely checking a name"
 
         refute has_element?(context.view, "[data-test='domain-registered']"),
-               "expected the domain not to be registered before Sam said yes"
+               "expected the domain not to be claimed before Sam registered it himself"
 
         {:ok, context}
       end
 
-      then_ "it waits on him rather than proceeding", context do
-        assert has_element?(context.view, "[data-test='confirm-purchase']"),
-               "expected setup to offer a confirmation and wait for it"
+      then_ "the yes is handed to the dashboard rather than taken in-app", context do
+        # There is no in-app confirm button for a name the API cannot sell —
+        # setup cannot buy it, so it does not pretend to. The explicit action
+        # is the dashboard link, and setup holds rather than pressing on.
+        assert has_element?(context.view, "[data-test='domain-dashboard-link']"),
+               "expected the purchase to be handed to the dashboard"
 
         refute has_element?(context.view, "[data-test='setup-step'][data-state='running']"),
                "expected setup to hold rather than press on to later steps"

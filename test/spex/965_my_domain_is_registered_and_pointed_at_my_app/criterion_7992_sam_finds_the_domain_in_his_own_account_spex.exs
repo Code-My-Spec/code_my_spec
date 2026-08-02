@@ -19,23 +19,25 @@ defmodule CodeMySpecSpex.Story965.Criterion7992Spex do
 
   @endpoint CodeMySpecWeb.Endpoint
 
-  @register_cassette "cloudflare_domain_register_ok"
+  @register_cassette "965_7992_cloudflare_domain_register_ok"
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :connect_providers
 
   spex "Sam finds the domain in his own account" do
     scenario "the registered domain is recorded under Sam's own account" do
-      given_ "setup registered the domain Sam confirmed", context do
-        {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/provisioning")
+      # The domain Sam has is one he owns (a Cloudflare zone), adopted rather
+      # than bought — buying is a dashboard errand. "In his own account" is
+      # about the adopted domain being recorded under his ownership.
+      given_ "setup adopted the domain Sam owns", context do
+        own_domain(context.project, "astralbi.com")
+        view = mount_provisioning(context)
 
-        ReqCassette.with_cassette(@register_cassette, [mode: :replay], fn ->
+        with_provider_cassette(@register_cassette, fn ->
           view
-          |> form("[data-test='domain-form']", domain: %{name: "sams-new-thing.com"})
+          |> form("[data-test='domain-form']", domain: %{name: "astralbi.com"})
           |> render_submit()
-
-          view |> element("[data-test='confirm-purchase']") |> render_click()
         end)
 
         {:ok, Map.put(context, :view, view)}
@@ -44,7 +46,12 @@ defmodule CodeMySpecSpex.Story965.Criterion7992Spex do
       when_ "Sam looks at where the domain lives", context do
         html =
           context.view
-          |> element("[data-test='provisioned-resource'][data-kind='domain']")
+          # Scoped to the step — the page renders each resource twice (step and
+          # record), and `element/2` demands exactly one.
+          |> element(
+            "[data-test='setup-step'][data-step='domain'] " <>
+              "[data-test='provisioned-resource'][data-kind='domain']"
+          )
           |> render()
 
         {:ok, Map.put(context, :resource, html)}

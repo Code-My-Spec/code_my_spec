@@ -21,21 +21,49 @@ defmodule CodeMySpecSpex.Story969.Criterion8029Spex do
   @endpoint CodeMySpecWeb.Endpoint
 
   @existing_cassette "cloudflare_apex_mx_already_present"
-  @sending_cassette "resend_domain_records_published_and_resolved"
+  # Its own cassette, not 8025's. `with_provider_cassette` deletes the file
+  # when it opens in record mode, so two spex naming the same cassette means
+  # whichever records second erases the first's interactions.
+  @sending_cassette "969_8029_records_published_and_resolved"
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :connect_providers
 
   spex "Existing inbound mail survives the sending setup" do
     scenario "apex MX is untouched by publishing the sending records" do
       given_ "Sam already receives mail at his domain", context do
-        {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/provisioning")
+        # Its own subdomain. Every criterion in this story used one shared name,
+        # so whichever ran second found the first's sending domain already
+        # registered and *adopted* it — and an adopted resource is never torn
+        # down. Recorded alone each one passed; run together they replayed each
+        # other's state.
+        project = own_domain(context.project, "c8029.astralbi.com")
 
+        # "Already receives mail" has to be true before the step runs, or the
+        # criterion asserts that setup left alone something that was never
+        # there.
+        tear_down_after(context.scope, [:email])
+
+        # Publishing the apex MX, registering the sending domain and mounting
+        # the page are all real provider calls. Outside a cassette they reach
+        # the live API while recording and the network while replaying, so the
+        # page came up knowing about a verified domain when recording and
+        # nothing when replaying.
         before =
-          ReqCassette.with_cassette(@existing_cassette, [mode: :replay], fn ->
+          with_provider_cassette(@existing_cassette, fn ->
+            existing_apex_mx(context.scope, project)
+            verified_sending_domains(context.scope, project)
+
+            {:ok, view, _html} =
+              live(context.conn, "/app/projects/#{context.project.id}/provisioning")
+
+            Process.put(:spex_view, view)
+
             view |> element("[data-test='dns-refresh']") |> render_click()
           end)
+
+        view = Process.get(:spex_view)
 
         apex_before = apex_mx(before)
 
@@ -48,7 +76,7 @@ defmodule CodeMySpecSpex.Story969.Criterion8029Spex do
 
       when_ "the email step publishes its sending records", context do
         html =
-          ReqCassette.with_cassette(@sending_cassette, [mode: :replay], fn ->
+          with_provider_cassette(@sending_cassette, fn ->
             context.view
             |> element("[data-test='setup-step'][data-step='email'] [data-test='run-step']")
             |> render_click()

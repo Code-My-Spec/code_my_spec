@@ -21,14 +21,20 @@ defmodule CodeMySpecSpex.Story964.Criterion7981Spex do
   spex "One sitting covers every credential the run will need" do
     scenario "every credential the chosen options need is asked for at once" do
       given_ "Sam has chosen his setup options", context do
-        # Default options: every piece of the posture is on, so intake
-        # should ask for the full credential set.
-        {:ok, context}
+        # Turned on explicitly rather than relying on every option defaulting
+        # to on. "One sitting covers every credential the run will need" is
+        # only a real question when every option is genuinely on, and if the
+        # defaults ever narrow, this criterion would quietly start asserting
+        # something much weaker while still passing.
+        view = mount_provisioning(context)
+        options = all_setup_options(view)
+
+        {:ok, Map.put(context, :options, options)}
       end
 
       when_ "he opens credential entry", context do
         {:ok, view, html} =
-          live(context.conn, "/app/projects/#{context.project.id}/credentials")
+          live(context.conn, "/app/projects/#{context.project.id}/provisioning")
 
         {:ok, context |> Map.put(:view, view) |> Map.put(:html, html)}
       end
@@ -48,7 +54,10 @@ defmodule CodeMySpecSpex.Story964.Criterion7981Spex do
           |> Enum.map(&(Floki.attribute(&1, "data-credential") |> List.first()))
           |> MapSet.new()
 
-        for credential <- ["hetzner_api_token", "hetzner_s3_key", "cloudflare_token", "resend"] do
+        # Prefixes, because the S3 pair is two fields — `hetzner_s3_access_key_id`
+        # and `hetzner_s3_secret_access_key` — and the criterion is that the
+        # pair is asked for, not that it arrives as one field.
+        for credential <- ["hetzner_api_token", "hetzner_s3", "cloudflare_token", "resend"] do
           assert Enum.any?(asked, &String.starts_with?(&1 || "", credential)),
                  "expected intake to ask for #{credential}, got #{inspect(MapSet.to_list(asked))}"
         end

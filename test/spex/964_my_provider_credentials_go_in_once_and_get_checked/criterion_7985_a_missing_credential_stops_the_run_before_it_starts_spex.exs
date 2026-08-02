@@ -33,8 +33,12 @@ defmodule CodeMySpecSpex.Story964.Criterion7985Spex do
       when_ "he tries to start setup", context do
         html =
           context.view
-          |> element("[data-test='start-setup']")
-          |> render_click()
+            |> element("[data-test='start-setup']")
+            |> render_click()
+
+            # Started, not finished: the click returns as soon as the run
+            # begins, so the page is read once the run settles.
+            await_provisioning(context.view)
 
         {:ok, Map.put(context, :html, html)}
       end

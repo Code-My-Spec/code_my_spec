@@ -15,11 +15,12 @@ defmodule CodeMySpecSpex.Story968.Criterion8015Spex do
 
   @endpoint CodeMySpecWeb.Endpoint
 
-  @install_cassette "backup_schedule_installed"
+  @install_cassette "968_8015_backup_schedule_installed"
   @stalled_cassette "hetzner_bucket_list_dumps_stale"
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :connect_providers
 
   spex "A backup that stops running does not fail silently" do
     scenario "stalled backups are visible rather than assumed healthy" do
@@ -27,7 +28,7 @@ defmodule CodeMySpecSpex.Story968.Criterion8015Spex do
         {:ok, view, _html} =
           live(context.conn, "/app/projects/#{context.project.id}/provisioning")
 
-        ReqCassette.with_cassette(@install_cassette, [mode: :replay], fn ->
+        with_provider_cassette(@install_cassette, fn ->
           view
           |> element("[data-test='setup-step'][data-step='backups'] [data-test='run-step']")
           |> render_click()
@@ -38,7 +39,7 @@ defmodule CodeMySpecSpex.Story968.Criterion8015Spex do
 
       when_ "the scheduled dump has failed for several nights", context do
         html =
-          ReqCassette.with_cassette(@stalled_cassette, [mode: :replay], fn ->
+          with_provider_cassette(@stalled_cassette, fn ->
             context.view
             |> element("[data-test='backups-refresh']")
             |> render_click()

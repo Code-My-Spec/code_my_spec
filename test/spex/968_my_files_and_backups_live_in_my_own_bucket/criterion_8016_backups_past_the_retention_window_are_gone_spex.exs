@@ -18,21 +18,30 @@ defmodule CodeMySpecSpex.Story968.Criterion8016Spex do
 
   @cassette "hetzner_bucket_list_dumps_after_expiry"
 
+  @given_cassette "968_8016_backups_installed"
+
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :connect_providers
 
   spex "Backups past the retention window are gone" do
     scenario "no dump older than the retention window remains" do
       given_ "backups have been running longer than the retention window", context do
-        {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/provisioning")
+        # A bucket with a retention policy on it, and dumps in it. The
+        # criterion is that old dumps are *gone*, which is indistinguishable
+        # from "the bucket was always empty" unless the schedule genuinely
+        # ran — mounting the page proved neither.
+        view = mount_provisioning(context)
+        paste_storage_credentials(view)
+
+        run_steps(view, [:storage, :backups], @given_cassette)
 
         {:ok, Map.put(context, :view, view)}
       end
 
       when_ "Sam lists the bucket", context do
         html =
-          ReqCassette.with_cassette(@cassette, [mode: :replay], fn ->
+          with_provider_cassette(@cassette, fn ->
             context.view
             |> element("[data-test='backups-refresh']")
             |> render_click()

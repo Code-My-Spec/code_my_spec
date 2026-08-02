@@ -27,6 +27,7 @@ defmodule CodeMySpecSpex.Story966.Criterion8156Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :connect_providers
 
   spex "UAT stands alone, and prod arrives on its own box when Sam is ready" do
     scenario "turning production on adds a server and leaves UAT's alone" do
@@ -34,12 +35,14 @@ defmodule CodeMySpecSpex.Story966.Criterion8156Spex do
         {:ok, view, _html} =
           live(context.conn, "/app/projects/#{context.project.id}/provisioning")
 
-        view
-        |> form("[data-test='setup-options-form']", provisioning: %{prod: false})
-        |> render_submit()
+        # The options form is `phx-change`, and its params are
+        # `options[<key>]`. A submit carrying a `provisioning` map changed
+        # nothing at all — the page kept every default and the criterion
+        # passed while asserting the opposite of what it says.
+        choose_all_setup_options_except(view, [:prod])
 
         html =
-          ReqCassette.with_cassette(@uat_only_cassette, [mode: :replay], fn ->
+          with_provider_cassette(@uat_only_cassette, fn ->
             view |> element("[data-test='start-setup']") |> render_click()
           end)
 
@@ -65,7 +68,7 @@ defmodule CodeMySpecSpex.Story966.Criterion8156Spex do
         |> render_submit()
 
         html =
-          ReqCassette.with_cassette(@prod_added_cassette, [mode: :replay], fn ->
+          with_provider_cassette(@prod_added_cassette, fn ->
             context.view |> element("[data-test='start-setup']") |> render_click()
           end)
 

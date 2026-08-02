@@ -20,10 +20,10 @@ defmodule CodeMySpecSpex.Story971.Criterion8045Spex do
   @endpoint CodeMySpecWeb.Endpoint
 
   @surfaces [
-    {"content sync", :get, "/api/content/sync"},
+    {"content sync", :post, "/api/content/sync"},
     {"framework issues", :post, "/api/framework/issues"},
-    {"user provisioning", :post, "/api/cms_users"},
-    {"widget users", :post, "/api/widget_users"},
+    {"user provisioning", :get, "/api/cms/users"},
+    {"widget users", :post, "/api/widget/users"},
     {"widget socket", :get, "/api/widget/socket_token"}
   ]
 
@@ -33,6 +33,8 @@ defmodule CodeMySpecSpex.Story971.Criterion8045Spex do
   spex "What the environment holds opens none of the five surfaces" do
     scenario "the stored credential is refused by every authenticated surface" do
       given_ "a deployed environment is calling CodeMySpec successfully", context do
+        app_holds_refresh_secret(context.scope)
+
         conn =
           Phoenix.ConnTest.build_conn()
           |> Plug.Conn.put_req_header("content-type", "application/json")

@@ -27,7 +27,7 @@ defmodule CodeMySpecSpex.Story964.Criterion8050Spex do
     scenario "credentials entered once are found again from a fresh connection" do
       given_ "Sam entered his credentials for the project", context do
         {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/credentials")
+          live(context.conn, "/app/projects/#{context.project.id}/provisioning")
 
         view
         |> form("[data-test='credentials-form']",
@@ -44,7 +44,7 @@ defmodule CodeMySpecSpex.Story964.Criterion8050Spex do
         fresh_conn = Phoenix.ConnTest.build_conn() |> log_in_user(context.user)
 
         {:ok, view, html} =
-          live(fresh_conn, "/app/projects/#{context.project.id}/credentials")
+          live(fresh_conn, "/app/projects/#{context.project.id}/provisioning")
 
         {:ok, context |> Map.put(:view, view) |> Map.put(:html, html)}
       end

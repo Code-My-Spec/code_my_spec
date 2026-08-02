@@ -24,21 +24,43 @@ defmodule CodeMySpecSpex.Story969.Criterion8025Spex do
 
   @cassette "resend_domain_records_published_and_resolved"
 
+  # Registering the sending domain and mounting the page are real provider
+  # calls. Outside a cassette they reach the live API while recording and the
+  # network while replaying, so the page knew about a verified domain when
+  # recording and nothing when replaying.
+  @given_cassette "969_8025_verified_domain"
+
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :connect_providers
 
   spex "The signing and bounce records resolve publicly" do
     scenario "each record the provider asked for resolves from a public resolver" do
       given_ "the mail provider has told setup which records it needs", context do
-        {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/provisioning")
+        # Its own subdomain. Every criterion in this story used one shared name,
+        # so whichever ran second found the first's sending domain already
+        # registered and *adopted* it — and an adopted resource is never torn
+        # down. Recorded alone each one passed; run together they replayed each
+        # other's state.
+        project = own_domain(context.project, "c8025.astralbi.com")
+        tear_down_after(context.scope, [:email])
+
+        view =
+          with_provider_cassette(@given_cassette, fn ->
+            verified_sending_domains(context.scope, project)
+
+            {:ok, view, _html} =
+              live(context.conn, "/app/projects/#{context.project.id}/provisioning")
+
+            view
+          end)
 
         {:ok, Map.put(context, :view, view)}
       end
 
       when_ "the email step publishes them", context do
         html =
-          ReqCassette.with_cassette(@cassette, [mode: :replay], fn ->
+          with_provider_cassette(@cassette, fn ->
             context.view
             |> element("[data-test='setup-step'][data-step='email'] [data-test='run-step']")
             |> render_click()

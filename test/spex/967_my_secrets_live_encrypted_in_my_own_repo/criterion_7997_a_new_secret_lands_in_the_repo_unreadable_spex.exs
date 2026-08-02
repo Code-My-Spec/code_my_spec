@@ -26,6 +26,7 @@ defmodule CodeMySpecSpex.Story967.Criterion7997Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :real_working_directory
 
   spex "A new secret lands in the repo unreadable" do
     scenario "the value is ciphertext in the file and plaintext nowhere in the tree" do

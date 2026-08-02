@@ -30,18 +30,21 @@ defmodule CodeMySpecSpex.Story964.Criterion7987Spex do
     scenario "no credential value appears anywhere in the working tree" do
       given_ "Sam is on credential entry", context do
         {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/credentials")
+          live(context.conn, "/app/projects/#{context.project.id}/provisioning")
 
         {:ok, Map.put(context, :view, view)}
       end
 
       when_ "he enters all his credentials", context do
         context.view
+        # The pasted credentials — the ones with a field. Cloudflare and
+        # Resend are connected on the account by OAuth, so there is no value
+        # to type and none that could reach the repo from here.
         |> form("[data-test='credentials-form']",
           credentials: %{
             hetzner_api_token: @secret_value,
-            cloudflare_token: @secret_value,
-            resend_api_key: @secret_value
+            hetzner_s3_access_key_id: @secret_value,
+            hetzner_s3_secret_access_key: @secret_value
           }
         )
         |> render_submit()
@@ -71,7 +74,7 @@ defmodule CodeMySpecSpex.Story964.Criterion7987Spex do
         # Anchor: proves the refute above is not passing because intake
         # silently dropped everything.
         {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/credentials")
+          live(context.conn, "/app/projects/#{context.project.id}/provisioning")
 
         assert has_element?(
                  view,

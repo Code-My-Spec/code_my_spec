@@ -17,25 +17,31 @@ defmodule CodeMySpecSpex.Story966.Criterion8006Spex do
 
   @cassette "environment_https_probe_ok"
 
+  @given_cassette "966_8006_environment_deployed"
+
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :real_working_directory
+  setup :connect_providers
 
   spex "Sam's app answers on his domain over a valid certificate" do
     scenario "the environment answers over HTTPS with a trusted certificate" do
       given_ "an environment has deployed", context do
-        {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/provisioning")
+        # A deployed environment, staged: the injected probe returns a healthy
+        # 200-over-HTTPS answer, which is what a real kamal-proxy cert issuance
+        # produces. The domain is set so the tls step has a host to verify.
+        own_domain(context.project, "staged.example.com")
+        context = stage_deploy(context, :ok)
+        view = mount_provisioning(context)
 
         {:ok, Map.put(context, :view, view)}
       end
 
       when_ "setup verifies the environment over HTTPS", context do
         html =
-          ReqCassette.with_cassette(@cassette, [mode: :replay], fn ->
-            context.view
-            |> element("[data-test='setup-step'][data-step='verify'] [data-test='run-step']")
-            |> render_click()
-          end)
+          context.view
+          |> element("[data-test='setup-step'][data-step='tls'] [data-test='run-step']")
+          |> render_click()
 
         {:ok, Map.put(context, :html, html)}
       end

@@ -17,20 +17,31 @@ defmodule CodeMySpecSpex.Story974.Criterion8032Spex do
 
   @endpoint CodeMySpecWeb.Endpoint
 
-  @sending_cassette "resend_domain_records_published_and_resolved"
+  @sending_cassette # Its own cassette. This shared a name with 969's criterion 8025, and record
+  # mode deletes the cassette file when it opens — so recording this story
+  # silently destroyed another story's recording. Cassette names are global;
+  # they need a story prefix.
+  "974_8032_sending_records_published"
   @inbound_cassette "resend_inbound_records_published"
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :connect_providers
 
   spex "Receiving mail does not break sending it" do
     scenario "the sending domain stays verified after inbound records are published" do
       given_ "the app already sends verified mail from Sam's domain", context do
+        # Its own subdomain. Sharing one name across a story means whichever
+        # criterion runs second finds the first's domain already registered and
+        # *adopts* it — and an adopted resource is never torn down, so each one
+        # replays the others' state.
+        own_domain(context.project, "c8032.astralbi.com")
+
         {:ok, view, _html} =
           live(context.conn, "/app/projects/#{context.project.id}/provisioning")
 
         before =
-          ReqCassette.with_cassette(@sending_cassette, [mode: :replay], fn ->
+          with_provider_cassette(@sending_cassette, fn ->
             view
             |> element("[data-test='setup-step'][data-step='email'] [data-test='run-step']")
             |> render_click()
@@ -48,7 +59,7 @@ defmodule CodeMySpecSpex.Story974.Criterion8032Spex do
 
       when_ "the inbound step publishes its records", context do
         html =
-          ReqCassette.with_cassette(@inbound_cassette, [mode: :replay], fn ->
+          with_provider_cassette(@inbound_cassette, fn ->
             context.view
             |> element("[data-test='setup-step'][data-step='inbound'] [data-test='run-step']")
             |> render_click()

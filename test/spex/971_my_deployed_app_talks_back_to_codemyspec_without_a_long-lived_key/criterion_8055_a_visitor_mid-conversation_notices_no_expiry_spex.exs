@@ -27,51 +27,49 @@ defmodule CodeMySpecSpex.Story971.Criterion8055Spex do
 
   spex "A visitor mid-conversation notices no expiry" do
     scenario "the socket re-authenticates in place and the conversation continues" do
-      given_ "a visitor has the widget open and the connection's token is about to lapse",
-              context do
-        conn =
-          Phoenix.ConnTest.build_conn()
-          |> Plug.Conn.put_req_header("content-type", "application/json")
-          |> post("/api/token", %{"refresh_secret" => "refresh-secret"})
-
-        body = Phoenix.ConnTest.json_response(conn, 200)
+      # The socket authenticates with a *socket token* (the browser-safe
+      # credential minted by `GET /api/widget/socket_token`), not an access
+      # token — the two carry different salts on purpose. The visitor's
+      # identity travels as connect params, which the conversation join
+      # requires.
+      given_ "a visitor has the widget open on a fresh socket token", context do
+        {token, _expires_in} = mint_socket_token(context.scope)
 
         {:ok, socket} =
           Phoenix.ChannelTest.connect(
             CodeMySpecWeb.WidgetSocket,
-            %{"token" => body["access_token"]},
+            %{
+              "socket_token" => token,
+              "user_id" => "visitor-probe",
+              "user_email" => "visitor@example.com"
+            },
             %{}
           )
 
         {:ok, _reply, channel} =
-          subscribe_and_join(
-            socket,
-            "conversation:visitor-probe",
-            %{}
-          )
+          subscribe_and_join(socket, "conversation:visitor-probe", %{})
 
-        # Anchor: the conversation is live before expiry is in play.
-        ref = Phoenix.ChannelTest.push(channel, "message", %{"body" => "before expiry"})
-        assert_reply(ref, :ok, %{}, 1000)
+        # Anchor: the conversation is live before renewal is in play.
+        ref = Phoenix.ChannelTest.push(channel, "send_message", %{"body" => "before renewal"})
+        assert_reply(ref, :ok, _, 1000)
 
-        {:ok,
-         context
-         |> Map.put(:channel, channel)
-         |> Map.put(:expires_in, body["expires_in"])}
+        {:ok, Map.put(context, :channel, channel)}
       end
 
-      when_ "the token expires", context do
-        ref =
-          Phoenix.ChannelTest.push(context.channel, "clock_advance", %{
-            "seconds" => context.expires_in + 60
-          })
+      # The token nears its window, so the widget fetches a fresh one and
+      # re-authenticates *on the open channel* rather than dropping and
+      # reconnecting — a reconnect loses in-flight messages and rejoins from
+      # scratch, which the visitor would notice even when it is fast.
+      when_ "the widget renews the token in place", context do
+        {fresh, _expires_in} = mint_socket_token(context.scope)
 
-        assert_reply(ref, :ok, %{}, 1000)
+        ref = Phoenix.ChannelTest.push(context.channel, "reauth", %{"socket_token" => fresh})
+        assert_reply(ref, :ok, %{status: "ok"}, 1000)
 
         {:ok, context}
       end
 
-      then_ "the connection presents a fresh one and stays open", context do
+      then_ "the connection stays open across the renewal", context do
         refute_push("disconnect", %{}, 300)
 
         assert Process.alive?(context.channel.channel_pid),
@@ -81,9 +79,9 @@ defmodule CodeMySpecSpex.Story971.Criterion8055Spex do
       end
 
       then_ "the visitor's conversation continues uninterrupted", context do
-        ref = Phoenix.ChannelTest.push(context.channel, "message", %{"body" => "after expiry"})
+        ref = Phoenix.ChannelTest.push(context.channel, "send_message", %{"body" => "after renewal"})
 
-        assert_reply(ref, :ok, %{}, 1000)
+        assert_reply(ref, :ok, _, 1000)
 
         {:ok, context}
       end

@@ -15,11 +15,13 @@ defmodule CodeMySpecSpex.Story963.Criterion7963Spex do
 
   @endpoint CodeMySpecWeb.Endpoint
 
-  @first_run_cassette "setup_run_stops_at_email"
+  @first_run_cassette "963_7963_setup_run_stops_at_email"
   @resume_cassette "setup_resume_from_email_ok"
+  @given_cassette "963_7963_credentials"
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :connect_providers
 
   spex "A re-run picks up where it stopped" do
     scenario "the earlier steps stay done and the run resumes at the email step" do
@@ -27,8 +29,34 @@ defmodule CodeMySpecSpex.Story963.Criterion7963Spex do
         {:ok, view, _html} =
           live(context.conn, "/app/projects/#{context.project.id}/provisioning")
 
-        ReqCassette.with_cassette(@first_run_cassette, [mode: :replay], fn ->
+        # Hetzner has no OAuth, so its token is pasted per project — without it
+        # the server step stops at `hetzner_not_configured` and every claim
+        # downstream fails for a reason that is not the one under test. Saving a
+        # credential proves it with a real provider call, so it belongs inside a
+        # cassette.
+        tear_down_after(context.scope, [:server])
+
+        # The repository too, so the next recording starts from one that does not
+        # exist — a repository carrying an earlier run's commits rejects a fresh
+        # push as non-fast-forward (which is 8184's subject, not this one's).
+        tear_down_repository(context.project)
+
+        # The repository an earlier recording made still exists, so setup would
+        # pause asking whose it is. It is this project's — stating that lets the
+        # run reach the steps under test.
+        own_repository(context.project)
+
+        with_provider_cassette(@given_cassette, fn ->
+          paste_provider_credentials(view)
+        end)
+
+        with_provider_cassette(@first_run_cassette, fn ->
           view |> element("[data-test='start-setup']") |> render_click()
+
+          # The repository an earlier recording made cannot be deleted (the grant
+          # has no `delete_repo` scope), so the run pauses on the name and every
+          # step under test stays not_started. Adopting is the honest answer.
+          adopt_repository_if_paused(view)
         end)
 
         html = render(view)
@@ -40,7 +68,7 @@ defmodule CodeMySpecSpex.Story963.Criterion7963Spex do
       end
 
       when_ "Sam fixes the credential and runs setup again", context do
-        ReqCassette.with_cassette(@resume_cassette, [mode: :replay], fn ->
+        with_provider_cassette(@resume_cassette, fn ->
           context.view |> element("[data-test='start-setup']") |> render_click()
         end)
 

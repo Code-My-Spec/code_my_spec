@@ -20,21 +20,32 @@ defmodule CodeMySpecSpex.Story968.Criterion8054Spex do
 
   @cassette "backup_step_proves_restore_before_done"
 
+  @given_cassette "968_8054_storage_ready"
+
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :connect_providers
 
   spex "Sam knows he has a backup, not just a file" do
     scenario "the backup step proves a restore before it reports done" do
       given_ "the backup step has taken its first dump", context do
-        {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/provisioning")
+        # The bucket the dump lands in has to exist first. Without it the
+        # backups step fails on missing storage, and the failure reads as
+        # "restore verification broken" rather than "nowhere to write".
+        view = mount_provisioning(context)
+        paste_storage_credentials(view)
+
+        # Storage only: the backup step is what the `when_` runs, and
+        # running it here too would make the criterion assert about a second
+        # invocation rather than the first.
+        run_steps(view, [:storage], @given_cassette)
 
         {:ok, Map.put(context, :view, view)}
       end
 
       when_ "it verifies itself", context do
         html =
-          ReqCassette.with_cassette(@cassette, [mode: :replay], fn ->
+          with_provider_cassette(@cassette, fn ->
             context.view
             |> element("[data-test='setup-step'][data-step='backups'] [data-test='run-step']")
             |> render_click()

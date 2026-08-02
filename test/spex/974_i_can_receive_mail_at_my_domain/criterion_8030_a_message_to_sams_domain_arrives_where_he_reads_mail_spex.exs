@@ -19,10 +19,17 @@ defmodule CodeMySpecSpex.Story974.Criterion8030Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :connect_providers
 
   spex "A message to Sam's domain arrives where he reads mail" do
     scenario "an inbound probe is delivered to Sam's destination" do
       given_ "the inbound step has run", context do
+        # Its own subdomain. Sharing one name across a story means whichever
+        # criterion runs second finds the first's domain already registered and
+        # *adopts* it — and an adopted resource is never torn down, so each one
+        # replays the others' state.
+        own_domain(context.project, "c8030.astralbi.com")
+
         {:ok, view, _html} =
           live(context.conn, "/app/projects/#{context.project.id}/provisioning")
 
@@ -31,7 +38,7 @@ defmodule CodeMySpecSpex.Story974.Criterion8030Spex do
 
       when_ "someone sends a message to an address at his domain", context do
         html =
-          ReqCassette.with_cassette(@cassette, [mode: :replay], fn ->
+          with_provider_cassette(@cassette, fn ->
             context.view
             |> element("[data-test='mail-inbound-probe']")
             |> render_click()
