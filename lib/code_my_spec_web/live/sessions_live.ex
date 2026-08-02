@@ -142,7 +142,7 @@ defmodule CodeMySpecWeb.SessionsLive do
           <tr
             :for={session <- @sessions}
             class="hover cursor-pointer"
-            phx-click={JS.navigate(path(@socket, ~p"/app/projects/#{slug(@project)}/sessions/#{session.id}"))}
+            phx-click={JS.navigate(path(@socket, ~p"/app/projects/#{@slug}/sessions/#{session.id}"))}
           >
             <td><span class={"badge badge-sm #{status_class(session.status)}"}>{session.status}</span></td>
             <td class="font-medium">{format_type(session.type)}</td>
@@ -162,7 +162,7 @@ defmodule CodeMySpecWeb.SessionsLive do
   defp render_show(assigns) do
     ~H"""
     <div class="mb-4">
-      <.link navigate={path(@socket, ~p"/app/projects/#{slug(@project)}/sessions")} class="btn btn-ghost btn-sm gap-1">
+      <.link navigate={path(@socket, ~p"/app/projects/#{@slug}/sessions")} class="btn btn-ghost btn-sm gap-1">
         ← Sessions
       </.link>
     </div>
@@ -242,7 +242,7 @@ defmodule CodeMySpecWeb.SessionsLive do
           <tr
             :for={task <- @session.tasks || []}
             class="hover cursor-pointer"
-            phx-click={JS.navigate(path(@socket, ~p"/app/projects/#{slug(@project)}/sessions/#{@session.id}/tasks/#{task.id}"))}
+            phx-click={JS.navigate(path(@socket, ~p"/app/projects/#{@slug}/sessions/#{@session.id}/tasks/#{task.id}"))}
           >
             <td><span class={"badge badge-sm #{status_class(task.status)}"}>{task.status}</span></td>
             <td class="font-medium">{format_type(task.session_type)}</td>
@@ -267,7 +267,7 @@ defmodule CodeMySpecWeb.SessionsLive do
   defp render_task(assigns) do
     ~H"""
     <div class="mb-4">
-      <.link navigate={path(@socket, ~p"/app/projects/#{slug(@project)}/sessions/#{@session.id}")} class="btn btn-ghost btn-sm gap-1">
+      <.link navigate={path(@socket, ~p"/app/projects/#{@slug}/sessions/#{@session.id}")} class="btn btn-ghost btn-sm gap-1">
         ← Session
       </.link>
     </div>
@@ -341,10 +341,4 @@ defmodule CodeMySpecWeb.SessionsLive do
     end
   end
 
-  defp slug(project) do
-    (project.name || "project")
-    |> String.downcase()
-    |> String.replace(~r/[^a-z0-9]+/, "-")
-    |> String.trim("-")
-  end
 end

@@ -1,4 +1,4 @@
-defmodule CodeMySpecLocalWeb.RequirementsLive do
+defmodule CodeMySpecWeb.RequirementsLive do
   @moduledoc """
   Human interface for the requirements graph.
 
@@ -7,7 +7,7 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
   `GraphProjector` for Mermaid rendering. Pages render the computed
   data directly as HTML — no intermediate markdown.
   """
-  use CodeMySpecLocalWeb, :live_view
+  use CodeMySpecWeb, :live_view
 
   require Logger
 
@@ -19,7 +19,6 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
   alias CodeMySpec.AgentTasks.ProjectSetup
   alias CodeMySpec.ProjectSync.Sync, as: ProjectSync
   alias CodeMySpec.Components
-  alias CodeMySpec.Projects
   alias CodeMySpec.Requirements
   alias CodeMySpec.Requirements.GraphProjector
   alias CodeMySpec.Requirements.RequirementDefinitionData
@@ -27,13 +26,10 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
 
   @impl true
   def mount(_params, _session, socket) do
-    projects = Projects.list_local_projects()
-
     {:ok,
      assign(socket,
-       projects: projects,
-       project: nil,
-       scope: nil,
+       section: :requirements,
+       page_title: "Requirements",
        page: nil,
        graph_data: nil,
        watching?: false,
@@ -46,9 +42,9 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
   # --- Handle params ---
 
   @impl true
-  def handle_params(%{"project_name" => name, "name" => req_name, "child_id" => child_id}, _uri, %{assigns: %{live_action: :child}} = socket) do
-    with_project(socket, name, fn project, scope ->
-      slug = project_slug(project)
+  def handle_params(%{"name" => req_name, "child_id" => child_id}, _uri, %{assigns: %{live_action: :child}} = socket) do
+    with_project(socket, fn project, scope ->
+      slug = socket.assigns.slug
       mod = ProjectSetup.find_step(child_id)
 
       if mod do
@@ -66,16 +62,16 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
     end)
   end
 
-  def handle_params(%{"project_name" => name, "name" => req_name}, _uri, %{assigns: %{live_action: :show}} = socket) do
-    with_project(socket, name, fn project, scope ->
+  def handle_params(%{"name" => req_name}, _uri, %{assigns: %{live_action: :show}} = socket) do
+    with_project(socket, fn project, scope ->
       handle_show_for_project(project, scope, req_name, socket)
     end)
   end
 
-  def handle_params(%{"project_name" => name, "story_id" => story_id, "name" => req_name}, _uri, %{assigns: %{live_action: :story_req_show}} = socket) do
-    with_project(socket, name, fn project, scope ->
+  def handle_params(%{"story_id" => story_id, "name" => req_name}, _uri, %{assigns: %{live_action: :story_req_show}} = socket) do
+    with_project(socket, fn project, scope ->
       story = Stories.get_story!(scope, story_id)
-      slug = project_slug(project)
+      slug = socket.assigns.slug
       node = find_entity_node(scope, "story", story.id, req_name)
 
       if node do
@@ -96,10 +92,10 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
     end)
   end
 
-  def handle_params(%{"project_name" => name, "component_id" => component_id, "name" => req_name}, _uri, %{assigns: %{live_action: :component_req_prompt}} = socket) do
-    with_project(socket, name, fn project, scope ->
+  def handle_params(%{"component_id" => component_id, "name" => req_name}, _uri, %{assigns: %{live_action: :component_req_prompt}} = socket) do
+    with_project(socket, fn project, scope ->
       component = Components.get_component!(scope, component_id)
-      slug = project_slug(project)
+      slug = socket.assigns.slug
       node = find_entity_node(scope, "component", component.id, req_name)
 
       if node && node.satisfied_by do
@@ -122,27 +118,27 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
     end)
   end
 
-  def handle_params(%{"project_name" => name, "component_id" => component_id, "name" => req_name}, _uri, %{assigns: %{live_action: :component_req_show}} = socket) do
-    with_project(socket, name, fn project, scope ->
+  def handle_params(%{"component_id" => component_id, "name" => req_name}, _uri, %{assigns: %{live_action: :component_req_show}} = socket) do
+    with_project(socket, fn project, scope ->
       component = Components.get_component!(scope, component_id)
-      slug = project_slug(project)
+      slug = socket.assigns.slug
       node = find_entity_node(scope, "component", component.id, req_name)
 
       assign_component_req(socket, project, scope, component, slug, req_name, node)
     end)
   end
 
-  def handle_params(%{"project_name" => name}, _uri, %{assigns: %{live_action: :components_graph}} = socket) do
-    with_project(socket, name, fn project, scope ->
+  def handle_params(%{}, _uri, %{assigns: %{live_action: :components_graph}} = socket) do
+    with_project(socket, fn project, scope ->
       assign_graph(socket, project, scope, GraphProjector.components_graph(scope))
     end)
   end
 
-  def handle_params(%{"project_name" => name}, _uri, %{assigns: %{live_action: :components}} = socket) do
-    with_project(socket, name, fn project, scope ->
+  def handle_params(%{}, _uri, %{assigns: %{live_action: :components}} = socket) do
+    with_project(socket, fn project, scope ->
       components = Components.list_components(scope)
       nodes = Requirements.compute_all(scope)
-      slug = project_slug(project)
+      slug = socket.assigns.slug
 
       items =
         Enum.map(components, fn component ->
@@ -167,17 +163,17 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
     end)
   end
 
-  def handle_params(%{"project_name" => name, "component_id" => component_id}, _uri, %{assigns: %{live_action: :component_graph}} = socket) do
-    with_project(socket, name, fn project, scope ->
+  def handle_params(%{"component_id" => component_id}, _uri, %{assigns: %{live_action: :component_graph}} = socket) do
+    with_project(socket, fn project, scope ->
       assign_graph(socket, project, scope, GraphProjector.component_graph(scope, component_id))
     end)
   end
 
-  def handle_params(%{"project_name" => name, "component_id" => component_id}, _uri, %{assigns: %{live_action: :component_show}} = socket) do
-    with_project(socket, name, fn project, scope ->
+  def handle_params(%{"component_id" => component_id}, _uri, %{assigns: %{live_action: :component_show}} = socket) do
+    with_project(socket, fn project, scope ->
       component = Components.get_component!(scope, component_id)
       nodes = Requirements.compute_all(scope)
-      slug = project_slug(project)
+      slug = socket.assigns.slug
       {satisfied, total} = entity_counts(nodes, "component", component.id)
 
       stories =
@@ -205,11 +201,11 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
     end)
   end
 
-  def handle_params(%{"project_name" => name, "story_id" => story_id}, _uri, %{assigns: %{live_action: :story_show}} = socket) do
-    with_project(socket, name, fn project, scope ->
+  def handle_params(%{"story_id" => story_id}, _uri, %{assigns: %{live_action: :story_show}} = socket) do
+    with_project(socket, fn project, scope ->
       story = Stories.get_story!(scope, story_id)
       nodes = Requirements.compute_all(scope)
-      slug = project_slug(project)
+      slug = socket.assigns.slug
       {satisfied, total} = entity_counts(nodes, "story", story.id)
 
       req_items =
@@ -232,11 +228,11 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
     end)
   end
 
-  def handle_params(%{"project_name" => name}, _uri, %{assigns: %{live_action: :stories}} = socket) do
-    with_project(socket, name, fn project, scope ->
+  def handle_params(%{}, _uri, %{assigns: %{live_action: :stories}} = socket) do
+    with_project(socket, fn project, scope ->
       {:ok, stories} = Stories.list_project_stories(scope)
       nodes = Requirements.compute_all(scope)
-      slug = project_slug(project)
+      slug = socket.assigns.slug
 
       items =
         Enum.map(stories, fn story ->
@@ -256,8 +252,8 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
     end)
   end
 
-  def handle_params(%{"project_name" => name} = params, _uri, %{assigns: %{live_action: :graph}} = socket) do
-    with_project(socket, name, fn project, scope ->
+  def handle_params(%{} = params, _uri, %{assigns: %{live_action: :graph}} = socket) do
+    with_project(socket, fn project, scope ->
       socket = maybe_watch(socket, scope)
 
       base =
@@ -277,8 +273,8 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
     end)
   end
 
-  def handle_params(%{"project_name" => name}, _uri, socket) do
-    with_project(socket, name, fn project, scope ->
+  def handle_params(%{}, _uri, socket) do
+    with_project(socket, fn project, scope ->
       nodes = Requirements.compute_all(scope)
       actionable = Requirements.next_actionable_project(scope)
       actionable_names = MapSet.new(actionable, & &1.name)
@@ -287,7 +283,7 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
         kind: :index,
         satisfied: Enum.count(nodes, &(&1.entity_type == "project" and &1.satisfied)),
         total: Enum.count(nodes, &(&1.entity_type == "project")),
-        items: project_req_items(nodes, project_slug(project), actionable_names)
+        items: project_req_items(nodes, socket.assigns.slug, actionable_names)
       }
 
       assign_page(socket, project, scope, page)
@@ -397,12 +393,6 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app
-      flash={@flash}
-      projects={@projects}
-      project={@project}
-      section={section_for(@live_action)}
-    >
       <div :if={@error} role="alert" class="alert alert-error">
         <span>{@error}</span>
       </div>
@@ -411,18 +401,18 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
         <span>Setup error: {@setup_error}</span>
       </div>
 
-      <.graph_view :if={@graph_data} project={@project} graph_data={@graph_data} />
+      <.graph_view :if={@graph_data} project={@project} graph_data={@graph_data} slug={@slug} socket={@socket} />
 
       <div :if={@live_action in [:index, :stories] && @project} role="tablist" class="tabs tabs-bordered mb-4">
         <.link
-          patch={~p"/app/projects/#{project_slug(@project)}/requirements"}
+          patch={path(@socket, ~p"/app/projects/#{@slug}/requirements")}
           role="tab"
           class={["tab", @live_action == :index && "tab-active"]}
         >
           Project
         </.link>
         <.link
-          patch={~p"/app/projects/#{project_slug(@project)}/requirements/stories"}
+          patch={path(@socket, ~p"/app/projects/#{@slug}/requirements/stories")}
           role="tab"
           class={["tab", @live_action == :stories && "tab-active"]}
         >
@@ -435,7 +425,6 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
       <.entity_view :if={@page && @page.kind == :entity} page={@page} />
       <.requirement_view :if={@page && @page.kind == :requirement} page={@page} />
       <.command_view :if={@page && @page.kind == :command} page={@page} />
-    </Layouts.app>
     """
   end
 
@@ -444,11 +433,17 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
   attr :project, :map, required: true
   attr :graph_data, :any, required: true
 
+  # Host-provided assigns have to be declared: a component invoked as
+  # `<.graph_view ...>` receives only what it names, so @slug and @socket
+  # would raise KeyError the first time a graph renders.
+  attr :slug, :string, required: true
+  attr :socket, :map, required: true
+
   defp graph_view(assigns) do
     ~H"""
     <div id="graph-page">
       <div class="mb-4">
-        <.link navigate={"/app/projects/#{project_slug(@project)}/requirements"} class="btn btn-ghost btn-sm gap-1">
+        <.link navigate={"/app/projects/#{@slug}/requirements"} class="btn btn-ghost btn-sm gap-1">
           ← Back to requirements
         </.link>
       </div>
@@ -676,39 +671,6 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
     """
   end
 
-  defp section_for(action)
-       when action in [:components, :components_graph, :component_show, :component_graph,
-                       :component_req_show, :component_req_prompt],
-       do: :components
-
-  defp section_for(action) when action in [:stories, :story_show, :story_req_show],
-    do: :requirements_stories
-
-  defp section_for(:graph), do: :requirements_graph
-  defp section_for(_), do: :requirements
-
-  # --- Data builders ---
-
-  defp project_req_items(nodes, slug, actionable_names) do
-    definition_order =
-      RequirementDefinitionData.project_requirements()
-      |> Enum.with_index()
-      |> Map.new(fn {defn, idx} -> {defn.name, idx} end)
-
-    nodes
-    |> Enum.filter(&(&1.entity_type == "project"))
-    |> Enum.sort_by(fn n -> Map.get(definition_order, n.name, 999) end)
-    |> Enum.map(fn n ->
-      %{
-        name: n.name,
-        description: n.description,
-        satisfied: n.satisfied,
-        actionable: MapSet.member?(actionable_names, n.name),
-        to: "/app/projects/#{slug}/requirements/#{n.name}"
-      }
-    end)
-  end
-
   defp entity_req_items(nodes, entity_type, entity_id, to_fun) do
     entity_nodes = entity_nodes(nodes, entity_type, entity_id)
     actionable = MapSet.new(actionable_nodes(entity_nodes), & &1.name)
@@ -753,7 +715,7 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
     node = Enum.find(nodes, &(&1.entity_type == "project" and &1.name == req_name))
 
     if node do
-      slug = project_slug(project)
+      slug = socket.assigns.slug
 
       {command, setup_error} =
         case show_command(node, scope) do
@@ -834,12 +796,34 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
     error -> "Error: #{inspect(error)}"
   end
 
-  defp with_project(socket, name, fun) do
-    case load_project_and_scope(name) do
-      {:ok, project, scope} -> fun.(project, scope)
-      {:error, msg} -> {:noreply, assign(socket, error: "#{msg}", page: nil, graph_data: nil)}
-    end
+  # The host resolves the project from the route before any handle_params runs,
+  # so this is now a guard rather than a lookup — every clause still funnels
+  # through it, which is what kept this view's migration to a handful of lines.
+  defp project_req_items(nodes, slug, actionable_names) do
+    definition_order =
+      RequirementDefinitionData.project_requirements()
+      |> Enum.with_index()
+      |> Map.new(fn {defn, idx} -> {defn.name, idx} end)
+
+    nodes
+    |> Enum.filter(&(&1.entity_type == "project"))
+    |> Enum.sort_by(fn n -> Map.get(definition_order, n.name, 999) end)
+    |> Enum.map(fn n ->
+      %{
+        name: n.name,
+        description: n.description,
+        satisfied: n.satisfied,
+        actionable: MapSet.member?(actionable_names, n.name),
+        to: "/app/projects/#{slug}/requirements/#{n.name}"
+      }
+    end)
   end
+
+  defp with_project(%{assigns: %{scope: %{} = scope, project: project}} = _socket, fun),
+    do: fun.(project, scope)
+
+  defp with_project(socket, _fun),
+    do: {:noreply, assign(socket, error: socket.assigns.scope_error, page: nil, graph_data: nil)}
 
   defp assign_page(socket, project, scope, page) do
     {:noreply,
@@ -888,17 +872,4 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
      )}
   end
 
-  defp load_project_and_scope(name) do
-    with {:ok, project} <- Projects.get_project_by_name(name),
-         {:ok, scope} <- CodeMySpec.Users.Scope.for_local_project(project) do
-      {:ok, project, scope}
-    end
-  end
-
-  defp project_slug(project) do
-    (project.name || "project")
-    |> String.downcase()
-    |> String.replace(~r/[^a-z0-9]+/, "-")
-    |> String.trim("-")
-  end
 end

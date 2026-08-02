@@ -83,7 +83,7 @@ defmodule CodeMySpecLocalWeb do
       # `local_app.css` theming those components' classes, not from a
       # second copy of the components.
       import unquote(CodeMySpecWeb.core_components())
-      import CodeMySpecLocalWeb.Markdown, only: [md_html: 1]
+      import CodeMySpecWeb.Markdown, only: [md_html: 1]
 
       alias CodeMySpecLocalWeb.Layouts
       alias Phoenix.LiveView.JS

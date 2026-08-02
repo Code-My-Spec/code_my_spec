@@ -1,4 +1,4 @@
-defmodule CodeMySpecLocalWeb.FilesLive do
+defmodule CodeMySpecWeb.FilesLive do
   @moduledoc """
   Files projection viewer.
 
@@ -7,16 +7,14 @@ defmodule CodeMySpecLocalWeb.FilesLive do
   reading server logs or DB rows. Re-sync is delegated to the same FileSync
   + ComponentSync pipeline that the `/sync` page drives.
   """
-  use CodeMySpecLocalWeb, :live_view
+  use CodeMySpecWeb, :live_view
 
   alias CodeMySpec.Components
   alias CodeMySpec.Files
   alias CodeMySpec.Files.ComponentSync, as: FileComponentSync
   alias CodeMySpec.Files.FileSync
-  alias CodeMySpec.Projects
   alias CodeMySpec.ProjectSync.Sync, as: ProjectSync
   alias CodeMySpec.Requirements
-  alias CodeMySpec.Users.Scope
 
   require Logger
 
@@ -24,13 +22,10 @@ defmodule CodeMySpecLocalWeb.FilesLive do
 
   @impl true
   def mount(_params, _session, socket) do
-    projects = Projects.list_local_projects()
-
     {:ok,
      assign(socket,
-       projects: projects,
-       project: nil,
-       scope: nil,
+       section: :files,
+       page_title: "Files",
        page: 1,
        filter: :all,
        result: nil,
@@ -43,33 +38,28 @@ defmodule CodeMySpecLocalWeb.FilesLive do
   end
 
   @impl true
-  def handle_params(%{"project_name" => name} = params, _uri, socket) do
-    case load_project_and_scope(name) do
-      {:ok, project, scope} ->
-        page = parse_page(params["page"])
-        filter = parse_filter(params["filter"])
-        result = Files.list_files_paginated(scope, page: page, per_page: @per_page, filter: filter)
+  def handle_params(params, _uri, %{assigns: %{scope: %{} = scope, project: project}} = socket) do
+    page = parse_page(params["page"])
+    filter = parse_filter(params["filter"])
+    result = Files.list_files_paginated(scope, page: page, per_page: @per_page, filter: filter)
 
-        if connected?(socket) and socket.assigns.project != project do
-          ProjectSync.subscribe(scope)
-        end
-
-        {:noreply,
-         assign(socket,
-           project: project,
-           scope: scope,
-           slug: project_slug(project),
-           page: page,
-           filter: filter,
-           result: result,
-           page_title: "#{project.name} — Files",
-           error: nil
-         )}
-
-      {:error, reason} ->
-        {:noreply, assign(socket, error: "Failed to load project: #{inspect(reason)}")}
+    # The host re-resolves scope on every handle_params, so subscribe once.
+    if connected?(socket) and !socket.assigns[:watching?] do
+      ProjectSync.subscribe(scope)
     end
+
+    {:noreply,
+     assign(socket,
+       watching?: connected?(socket),
+       page: page,
+       filter: filter,
+       result: result,
+       page_title: "#{project.name} — Files",
+       error: nil
+     )}
   end
+
+  def handle_params(_params, _uri, socket), do: {:noreply, socket}
 
   @impl true
   def handle_info({:watcher_synced, %{path: path, at: at}}, socket) do
@@ -180,13 +170,6 @@ defmodule CodeMySpecLocalWeb.FilesLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app
-      flash={@flash}
-      projects={@projects}
-      project={@project}
-      section={:files}
-      page_title={assigns[:page_title]}
-    >
       <div :if={@error} role="alert" class="alert alert-error">
         <span>{@error}</span>
       </div>
@@ -351,7 +334,7 @@ defmodule CodeMySpecLocalWeb.FilesLive do
                   <.validity_badge file={file} />
                 </td>
                 <td>
-                  <.component_cell file={file} slug={@slug} />
+                  <.component_cell file={file} slug={@slug} socket={@socket} />
                 </td>
                 <td class="font-mono text-xs">{file.size}</td>
                 <td
@@ -405,7 +388,6 @@ defmodule CodeMySpecLocalWeb.FilesLive do
           </div>
         </nav>
       </div>
-    </Layouts.app>
     """
   end
 
@@ -422,11 +404,16 @@ defmodule CodeMySpecLocalWeb.FilesLive do
   attr :file, :any, required: true
   attr :slug, :string, required: true
 
+  # A function component gets no @socket of its own, and a portable view can't
+  # fall back to a bare ~p — the sigil resolves through the endpoint it compiled
+  # against, not the one serving this app.
+  attr :socket, :map, required: true
+
   defp component_cell(assigns) do
     ~H"""
     <.link
       :if={@file.component}
-      navigate={~p"/app/projects/#{@slug}/components/#{@file.component.id}"}
+      navigate={path(@socket, ~p"/app/projects/#{@slug}/components/#{@file.component.id}")}
       data-test="file-component-link"
       class="link link-primary text-sm"
     >
@@ -493,17 +480,4 @@ defmodule CodeMySpecLocalWeb.FilesLive do
     end
   end
 
-  defp project_slug(project) do
-    (project.name || "project")
-    |> String.downcase()
-    |> String.replace(~r/[^a-z0-9]+/, "-")
-    |> String.trim("-")
-  end
-
-  defp load_project_and_scope(name) do
-    with {:ok, project} <- Projects.get_project_by_name(name),
-         {:ok, scope} <- Scope.for_local_project(project) do
-      {:ok, project, scope}
-    end
-  end
 end

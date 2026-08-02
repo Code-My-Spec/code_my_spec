@@ -1,6 +1,6 @@
-defmodule CodeMySpecLocalWeb.Markdown do
+defmodule CodeMySpecWeb.Markdown do
   @moduledoc """
-  Renders genuinely-markdown payloads to safe HTML for the local dashboard.
+  Renders genuinely-markdown payloads to safe HTML for the local dashboard and the cloud app.
 
   Use this ONLY for content that is authored as markdown — agent prompts and
   commands from `*.command/2`, the next-task prompt, on-disk spec docs, and the

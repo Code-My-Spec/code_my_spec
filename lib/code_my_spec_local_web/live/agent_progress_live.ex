@@ -427,7 +427,7 @@ defmodule CodeMySpecLocalWeb.AgentProgressLive do
     ~H"""
     <div class="space-y-3">
       <div data-test="task-help-body" class="cms-help-body prose prose-sm prose-invert max-w-none">
-        {CodeMySpecLocalWeb.Markdown.md_html(@help.body)}
+        {CodeMySpecWeb.Markdown.md_html(@help.body)}
       </div>
       <a :if={@help.video_url} data-test="task-help-video" href={@help.video_url} class="cms-help-video">
         <span class="text-2xl leading-none pl-1">▶</span>

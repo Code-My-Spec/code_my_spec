@@ -178,6 +178,7 @@ defmodule CodeMySpecWeb.QaLive do
                 attempt={attempt}
                 project={@project}
                 socket={@socket}
+                slug={@slug}
               />
             </tbody>
           </table>
@@ -230,6 +231,7 @@ defmodule CodeMySpecWeb.QaLive do
   # and a portable view can't use a bare `~p` — the sigil resolves through the
   # endpoint it compiled against, which isn't the one serving the local app.
   attr :socket, :map, required: true
+  attr :slug, :string, required: true
 
   defp attempt_row(assigns) do
     invalidated? = match?([_ | _], assigns.attempt.invalidations)
@@ -247,7 +249,7 @@ defmodule CodeMySpecWeb.QaLive do
       </td>
       <td class="font-medium">
         <.link
-          navigate={path(@socket, ~p"/app/projects/#{@project.name}/stories/#{@attempt.story_id}")}
+          navigate={path(@socket, ~p"/app/projects/#{@slug}/stories/#{@attempt.story_id}")}
           class="link link-hover"
         >
           {story_title(@attempt)}

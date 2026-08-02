@@ -120,6 +120,9 @@ defmodule CodeMySpecWeb do
       import unquote(core_components())
       # Marketing-zone components (eyebrow, install_card)
       import CodeMySpecWeb.MarketingComponents
+      # Markdown rendering for agent prompts and on-disk docs — shared, because
+      # the views that render them are.
+      import CodeMySpecWeb.Markdown, only: [md_html: 1]
 
       # Common modules used in templates
       alias CodeMySpecWeb.ExternalLinks

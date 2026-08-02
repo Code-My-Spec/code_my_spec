@@ -16,6 +16,9 @@ defmodule CodeMySpecWeb.LinkResolutionTest do
   """
   use ExUnit.Case, async: true
 
+  # Assigns the host puts on the socket; a component must declare any it uses.
+  @host_assigns ~w(slug project scope socket scope_error projects)
+
   # Views and components only — routers and endpoints are where paths are
   # *declared*, and scanning them would just assert routes match themselves.
   @local_only ["lib/code_my_spec_local_web/live", "lib/code_my_spec_local_web/components"]
@@ -137,6 +140,81 @@ defmodule CodeMySpecWeb.LinkResolutionTest do
     views are mounted by both routers, so every link has to exist in both:
 
     #{Enum.join(dead, "\n")}
+    """
+  end
+
+  test "no function component in a portable view reaches for a host assign" do
+    # A helper called as `render_index(assigns)` receives the whole assigns map
+    # and sees everything. A component invoked as `<.thing attr={..}>` gets only
+    # what it declares, so a host assign used there raises KeyError the first
+    # time it renders — clean compile, failure only once it's on screen.
+    offenders = Enum.flat_map(portable_sources(), &offenders_in/1)
+
+    assert offenders == [], """
+    A function component in a portable view uses a host-provided assign it never
+    declared. Pass it down as a declared attr.
+
+    #{Enum.map_join(offenders, "\n", fn {f, n, l} -> "  #{Path.relative_to_cwd(f)}:#{n}  #{l}" end)}
+    """
+  end
+
+  defp offenders_in(file) do
+    src = File.read!(file)
+
+    src
+    |> String.split("\n")
+    |> Enum.with_index(1)
+    |> Enum.reduce({nil, MapSet.new(), MapSet.new(), []}, fn {line, n},
+                                                            {fun, declared, pending, acc} ->
+      attr = Regex.run(~r/^\s*attr :([a-z_]+)/, line)
+      defn = Regex.run(~r/^  defp? ([a-z_]+)\(assigns\)/, line)
+
+      cond do
+        # `attr` declarations precede the definition they belong to
+        attr -> {fun, declared, MapSet.put(pending, Enum.at(attr, 1)), acc}
+        defn -> {Enum.at(defn, 1), pending, MapSet.new(), acc}
+        String.starts_with?(String.trim(line), "#") -> {fun, declared, pending, acc}
+        true -> {fun, declared, pending, flag(file, n, line, fun, declared, src) ++ acc}
+      end
+    end)
+    |> elem(3)
+  end
+
+  defp flag(file, n, line, fun, declared, src) do
+    used =
+      if fun && String.contains?(src, "<." <> fun) do
+        Regex.scan(~r/@([a-z_]+)/, line)
+        |> Enum.map(&Enum.at(&1, 1))
+        |> Enum.filter(&(&1 in @host_assigns))
+        |> Enum.reject(&MapSet.member?(declared, &1))
+        |> Enum.uniq()
+      else
+        []
+      end
+
+    if used == [],
+      do: [],
+      else: [{file, n, "uses @" <> Enum.join(used, ", @") <> " — " <> String.trim(line)}]
+  end
+
+  test "every portable view assigns the layout's required assigns" do
+    # The router-level layout reads :page_title and :section from the socket.
+    # Before the migration each view passed them as literal attrs on its own
+    # `<Layouts.app page_title="...">`, so dropping the wrapper silently left
+    # them unassigned — a KeyError on first render, which took down nine spex
+    # once and eighty another time before this check existed.
+    missing =
+      for file <- portable_sources(),
+          src = File.read!(file),
+          key <- ["page_title", "section"],
+          # matches both `page_title: "x"` and `assign(:page_title, "x")`
+          not Regex.match?(~r/:?\b#{key}\b\s*[,:]/, src),
+          do: "#{Path.relative_to_cwd(file)} never assigns :#{key}"
+
+    assert missing == [], """
+    A portable view doesn't assign something the layout reads:
+
+    #{Enum.join(missing, "\n")}
     """
   end
 end
