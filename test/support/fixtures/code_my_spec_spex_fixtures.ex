@@ -1336,4 +1336,18 @@ defmodule CodeMySpecSpex.Fixtures do
     end
   end
 
+  @doc """
+  A connection URL for the test database.
+
+  The spex boundary cannot reach `Repo` directly, and a backup criterion needs
+  a real database to dump — this is the bridge for it.
+  """
+  @spec database_url() :: String.t()
+  def database_url do
+    config = CodeMySpec.Repo.config()
+
+    "postgres://#{config[:username]}:#{config[:password]}@" <>
+      "#{config[:hostname]}/#{config[:database]}"
+  end
+
 end

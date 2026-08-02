@@ -22,7 +22,10 @@ defmodule CodeMySpecSpex.Story968.Criterion8016Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  # The generated deploy files land on disk, and the backups step reads them.
+  setup :real_working_directory
   setup :connect_providers
+  setup :real_backup_database
 
   spex "Backups past the retention window are gone" do
     scenario "no dump older than the retention window remains" do
@@ -32,6 +35,12 @@ defmodule CodeMySpecSpex.Story968.Criterion8016Spex do
         # from "the bucket was always empty" unless the schedule genuinely
         # ran — mounting the page proved neither.
         view = mount_provisioning(context)
+
+        # The backups step refuses on a project that is not deploy-ready, and it
+        # is right to: a dump schedule on a project that cannot be deployed is a
+        # schedule for nothing. Generating those files is what makes the premise
+        # true (story 970).
+        view |> element("[data-test='generate-project']") |> render_click()
         paste_storage_credentials(view)
 
         run_steps(view, [:storage, :backups], @given_cassette)

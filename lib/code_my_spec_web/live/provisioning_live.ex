@@ -729,6 +729,30 @@ defmodule CodeMySpecWeb.ProvisioningLive do
       </div>
     </section>
 
+    <section data-test="backups-panel">
+      <h2>Backups</h2>
+
+      <.button data-test="backups-refresh" phx-click="refresh_backups" class="mt-2">
+        Check the bucket
+      </.button>
+
+      <p :if={@backups == []} data-test="no-backups">
+        no dumps in any bucket yet
+      </p>
+
+      <div
+        :for={dump <- @backups}
+        data-test="backup-dump"
+        data-key={dump.key}
+        data-environment={dump.environment}
+        data-bucket={dump.bucket}
+        data-taken-at={dump.taken_at}
+        data-size={dump.size}
+      >
+        {dump.environment}: {dump.key} ({dump.taken_at})
+      </div>
+    </section>
+
     <section data-test="setup-record" class="mt-8">
       <h2 class="text-lg font-semibold">What you now own</h2>
       <p :if={@resources == []} class="opacity-70">Nothing provisioned yet.</p>
@@ -1024,6 +1048,14 @@ defmodule CodeMySpecWeb.ProvisioningLive do
     {:noreply, load(socket, socket.assigns.options)}
   end
 
+  # Backups are the one piece of setup whose failure mode is silence: the step
+  # says "done" once, and a schedule that quietly stops looks identical from
+  # the page until the morning somebody needs a dump. So the bucket is re-read
+  # on demand rather than trusted from when the step last ran.
+  def handle_event("refresh_backups", _params, socket) do
+    {:noreply, assign(socket, :backups, list_backups(socket))}
+  end
+
   # The artifacts a deploy assumes it can find. `Generators.audit/2` says what
   # is missing and why; this is the button that puts it there, so a project
   # that predates the generator does not have to be recreated to become
@@ -1257,6 +1289,7 @@ defmodule CodeMySpecWeb.ProvisioningLive do
     plan = Provisioning.plan(socket.assigns.current_scope, options)
 
     socket
+    |> assign_new(:backups, fn -> [] end)
     |> assign(:options, options)
     |> assign(:available_options, available_options())
     |> assign(:plan, plan)
@@ -1381,6 +1414,28 @@ defmodule CodeMySpecWeb.ProvisioningLive do
   # which made a `qa` or per-story environment invisible to the page even once
   # the rest of the system supported it.
   defp environments(scope), do: Provisioning.environment_names(scope)
+
+  # Every environment's bucket, because "is there a dump?" is a question about
+  # the whole project — a prod bucket filling up while uat's has been empty for
+  # a month is exactly the state a single-bucket view hides.
+  defp list_backups(socket) do
+    scope = socket.assigns.current_scope
+    opts = socket.assigns.options
+    project = project(scope)
+
+    case Storage.credentials(scope, opts) do
+      :none ->
+        []
+
+      {:ok, credentials} ->
+        for environment <- environments(scope),
+            bucket = Storage.bucket_name(project, environment),
+            {:ok, dumps} <- [Storage.list_dumps(bucket, credentials, opts)],
+            dump <- dumps do
+          Map.merge(dump, %{environment: environment, bucket: bucket})
+        end
+    end
+  end
 
   # Mail state is cached across events; re-read it when a step that changes it
   # has just run.

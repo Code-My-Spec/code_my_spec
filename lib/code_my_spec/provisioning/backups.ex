@@ -112,9 +112,10 @@ defmodule CodeMySpec.Provisioning.Backups do
   @spec take_dump(Environments.Environment.t(), String.t(), keyword()) ::
           {:ok, String.t()} | {:error, String.t()}
   def take_dump(env, environment, opts \\ []) do
-    script = Keyword.get(opts, :backup_script, "bin/backup")
+    script = resolve_script(env, Keyword.get(opts, :backup_script, "bin/backup"))
 
-    case Environments.cmd(env, script, ["dump", environment], stderr_to_stdout: true) do
+    case Environments.cmd(env, script, ["dump", environment],
+           stderr_to_stdout: true, env: script_env(opts)) do
       {output, 0} ->
         case capture(output, "key") do
           nil -> {:error, "the backup script did not report the key it wrote: #{String.trim(to_string(output))}"}
@@ -138,10 +139,11 @@ defmodule CodeMySpec.Provisioning.Backups do
           {:ok, Proof.t()} | {:error, String.t()}
   def restore_proof(env, key, opts \\ []) do
     now = Keyword.get(opts, :now, &DateTime.utc_now/0)
-    script = Keyword.get(opts, :backup_script, "bin/backup")
+    script = resolve_script(env, Keyword.get(opts, :backup_script, "bin/backup"))
     target = Keyword.get(opts, :scratch_database, "scratch")
 
-    case Environments.cmd(env, script, ["restore", key, target], stderr_to_stdout: true) do
+    case Environments.cmd(env, script, ["restore", key, target],
+           stderr_to_stdout: true, env: script_env(opts)) do
       {output, 0} ->
         case rows(output) do
           n when n > 0 ->
@@ -166,9 +168,10 @@ defmodule CodeMySpec.Provisioning.Backups do
   @spec install_schedule(Environments.Environment.t(), String.t(), keyword()) ::
           :ok | {:error, String.t()}
   def install_schedule(env, environment, opts \\ []) do
-    script = Keyword.get(opts, :backup_script, "bin/backup")
+    script = resolve_script(env, Keyword.get(opts, :backup_script, "bin/backup"))
 
-    case Environments.cmd(env, script, ["schedule", environment], stderr_to_stdout: true) do
+    case Environments.cmd(env, script, ["schedule", environment],
+           stderr_to_stdout: true, env: script_env(opts)) do
       {_output, 0} -> :ok
       {output, status} -> {:error, "installing the backup schedule failed (exit #{status}): #{String.trim(to_string(output))}"}
     end
@@ -240,4 +243,35 @@ defmodule CodeMySpec.Provisioning.Backups do
       _ -> :infinity
     end
   end
+  # Relative to the *project*, not to whatever directory the caller happens to
+  # be in. `System.cmd/3` resolves a relative command against the running
+  # process's cwd, not the environment's, so `bin/backup` was looked for beside
+  # the server rather than beside the project and failed with :enoent — an
+  # error that names nothing and reads like the script was never generated.
+  # The step has already resolved the bucket and the object-storage keys to get
+  # this far, so it hands them to the script rather than leaving it to find them
+  # again — the script's own sops fallback is for a human running it by hand,
+  # not for the path where the caller knows the answer. `DATABASE_URL` is passed
+  # only when a caller supplies one; otherwise the script sources it from the
+  # app's encrypted env file, which is where it lives on a real box.
+  defp script_env(opts) do
+    credentials = Keyword.get(opts, :credentials, [])
+    location = Keyword.get(credentials, :region, "nbg1")
+
+    [
+      {"BACKUP_BUCKET", Keyword.get(opts, :bucket)},
+      {"BACKUP_ENDPOINT", "https://#{location}.your-objectstorage.com"},
+      {"AWS_ACCESS_KEY_ID", Keyword.get(credentials, :access_key_id)},
+      {"AWS_SECRET_ACCESS_KEY", Keyword.get(credentials, :secret_access_key)},
+      {"AWS_REGION", location},
+      {"DATABASE_URL", Keyword.get(opts, :database_url)}
+    ]
+    |> Enum.reject(fn {_k, v} -> is_nil(v) or v == "" end)
+  end
+
+  defp resolve_script(%{cwd: cwd}, script) when is_binary(cwd) and cwd != "" do
+    if Path.type(script) == :absolute, do: script, else: Path.join(cwd, script)
+  end
+
+  defp resolve_script(_env, script), do: script
 end

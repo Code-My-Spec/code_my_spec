@@ -62,8 +62,20 @@ defmodule CodeMySpec.Generators.DeployArtifacts do
       end
     end)
     |> case do
-      {:ok, written} -> {:ok, Enum.reverse(written)}
-      error -> error
+      {:ok, written} ->
+        written = Enum.reverse(written)
+
+        # A script that is not executable fails with :enoent, which reads as
+        # "the generator never wrote it" rather than "it wrote it without the
+        # bit that lets it run".
+        for path <- written, String.starts_with?(path, "bin/") or String.contains?(path, "overlays/bin/") do
+          Environments.cmd(env, "chmod", ["+x", path])
+        end
+
+        {:ok, written}
+
+      error ->
+        error
     end
   end
 
@@ -306,29 +318,113 @@ defmodule CodeMySpec.Generators.DeployArtifacts do
     """
   end
 
+  # Three subcommands, because `Provisioning.Backups` drives this script rather
+  # than a human: `dump` reports the key it wrote, `restore` reports how many
+  # rows came back, and `schedule` installs the nightly run. The `key=`/`rows=`
+  # lines are the contract — the step parses them, so prose alone would read as
+  # a backup that silently proved nothing.
+  #
+  # It sources its own secrets when they are not already set, so the same script
+  # works under systemd, under cron, and typed by hand during an incident — the
+  # moment you least want to discover the backup tool only runs inside a unit
+  # file.
   defp backup_script(app) do
     """
     #!/usr/bin/env bash
     #
-    # Dump the database and put it in object storage.
+    # Dump the database, put it in object storage, and prove a dump restores.
     #
-    #   bin/backup
+    #   bin/backup dump <environment>
+    #   bin/backup restore <key> <target-database>
+    #   bin/backup schedule <environment>
     #
-    # A dump nobody has restored is a file, not a backup — `bin/restore` reads
-    # one back into a scratch database, and the schedule proves itself that way
-    # rather than by the dump merely existing.
+    # A dump nobody has restored is a file, not a backup — `restore` reads one
+    # back into a scratch database and counts what came back, so the schedule
+    # proves itself rather than trusting that the dump exists.
     set -euo pipefail
 
-    STAMP="$(date -u +%Y-%m-%dT%H-%M-%SZ)"
-    DUMP="/tmp/#{app}-${STAMP}.sql.gz"
+    APP=#{app}
+    ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-    pg_dump "${DATABASE_URL:?DATABASE_URL must be set}" | gzip > "$DUMP"
+    # Under systemd these are already in the environment. Run by hand they are
+    # not, and a backup script that only works inside its unit file is no use
+    # in the incident where you need it.
+    load_secrets() {
+      local environment="${1:-prod}" file="$ROOT/envs/${1:-prod}.enc.env"
+      [[ -n "${DATABASE_URL:-}" ]] && return 0
+      [[ -f "$file" ]] || return 0
+      set -a
+      # shellcheck disable=SC1090
+      if command -v sops >/dev/null 2>&1; then source <(sops -d "$file"); else source "$file"; fi
+      set +a
+    }
 
-    aws s3 cp "$DUMP" "s3://${BACKUP_BUCKET:?BACKUP_BUCKET must be set}/#{app}/${STAMP}.sql.gz" \\
-      --endpoint-url "${BACKUP_ENDPOINT:?BACKUP_ENDPOINT must be set}"
+    cmd_dump() {
+      local environment="${1:?usage: bin/backup dump <environment>}"
+      load_secrets "$environment"
 
-    rm -f "$DUMP"
-    echo "backed up #{app} at ${STAMP}"
+      local stamp key dump
+      stamp="$(date -u +%Y-%m-%dT%H-%M-%SZ)"
+      # Under `dumps/` because that is the prefix the app lists to answer
+      # "are backups still arriving?" — a dump outside it is invisible.
+      key="dumps/$environment/$APP-$stamp.sql.gz"
+      dump="$(mktemp -t "$APP-XXXXXX").sql.gz"
+
+      pg_dump "${DATABASE_URL:?DATABASE_URL must be set}" | gzip > "$dump"
+      aws s3 cp "$dump" "s3://${BACKUP_BUCKET:?BACKUP_BUCKET must be set}/$key" \\
+        --endpoint-url "${BACKUP_ENDPOINT:?BACKUP_ENDPOINT must be set}" >&2
+      rm -f "$dump"
+
+      # The step parses this line.
+      echo "key=$key"
+    }
+
+    cmd_restore() {
+      local key="${1:?usage: bin/backup restore <key> <target>}"
+      local target="${2:?usage: bin/backup restore <key> <target>}"
+      load_secrets "${BACKUP_ENVIRONMENT:-prod}"
+
+      local dump
+      dump="$(mktemp -t "$APP-restore-XXXXXX").sql.gz"
+      aws s3 cp "s3://${BACKUP_BUCKET:?BACKUP_BUCKET must be set}/$key" "$dump" \\
+        --endpoint-url "${BACKUP_ENDPOINT:?BACKUP_ENDPOINT must be set}" >&2
+
+      # A scratch database, dropped first: restoring over a database that
+      # already has rows would count those rows and pass on a broken dump.
+      local admin="${DATABASE_URL%/*}"
+      psql "$admin/postgres" -c "DROP DATABASE IF EXISTS \\"$target\\"" >&2
+      psql "$admin/postgres" -c "CREATE DATABASE \\"$target\\"" >&2
+      gunzip -c "$dump" | psql "$admin/$target" >&2
+      rm -f "$dump"
+
+      # Rows across every user table — an empty restore is the failure this
+      # whole subcommand exists to catch.
+      local rows
+      rows="$(psql "$admin/$target" -tAc "
+        select coalesce(sum(n_live_tup), 0) from pg_stat_user_tables
+      ")"
+      psql "$admin/postgres" -c "DROP DATABASE IF EXISTS \\"$target\\"" >&2
+
+      # The step parses this line.
+      echo "rows=${rows:-0}"
+    }
+
+    cmd_schedule() {
+      local environment="${1:?usage: bin/backup schedule <environment>}"
+      local line="0 4 * * * $ROOT/bin/backup dump $environment >> /var/log/$APP-backup.log 2>&1"
+
+      # Idempotent: re-running setup must not stack duplicate cron entries.
+      ( crontab -l 2>/dev/null | grep -v "bin/backup dump $environment" || true
+        echo "$line" ) | crontab -
+      echo "scheduled nightly backup for $environment"
+    }
+
+    case "${1:-}" in
+      dump)     shift; cmd_dump "$@" ;;
+      restore)  shift; cmd_restore "$@" ;;
+      schedule) shift; cmd_schedule "$@" ;;
+      *) echo "usage: bin/backup {dump <environment>|restore <key> <target>|schedule <environment>}" >&2; exit 64 ;;
+    esac
     """
   end
 

@@ -24,7 +24,10 @@ defmodule CodeMySpecSpex.Story968.Criterion8054Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  # The generated deploy files land on disk, and the backups step reads them.
+  setup :real_working_directory
   setup :connect_providers
+  setup :real_backup_database
 
   spex "Sam knows he has a backup, not just a file" do
     scenario "the backup step proves a restore before it reports done" do
@@ -33,6 +36,12 @@ defmodule CodeMySpecSpex.Story968.Criterion8054Spex do
         # backups step fails on missing storage, and the failure reads as
         # "restore verification broken" rather than "nowhere to write".
         view = mount_provisioning(context)
+
+        # The backups step refuses on a project that is not deploy-ready, and it
+        # is right to: a dump schedule on a project that cannot be deployed is a
+        # schedule for nothing. Generating those files is what makes the premise
+        # true (story 970).
+        view |> element("[data-test='generate-project']") |> render_click()
         paste_storage_credentials(view)
 
         # Storage only: the backup step is what the `when_` runs, and

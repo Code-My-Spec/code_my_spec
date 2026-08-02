@@ -20,13 +20,22 @@ defmodule CodeMySpecSpex.Story968.Criterion8015Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  # The generated deploy files land on disk, and the backups step reads them.
+  setup :real_working_directory
   setup :connect_providers
+  setup :real_backup_database
 
   spex "A backup that stops running does not fail silently" do
     scenario "stalled backups are visible rather than assumed healthy" do
       given_ "the backup schedule was installed", context do
         {:ok, view, _html} =
           live(context.conn, "/app/projects/#{context.project.id}/provisioning")
+
+        # The backups step refuses on a project that is not deploy-ready, and it
+        # is right to: a dump schedule on a project that cannot be deployed is a
+        # schedule for nothing. Generating those files is what makes the premise
+        # true (story 970).
+        view |> element("[data-test='generate-project']") |> render_click()
 
         # The bucket the dumps land in is real; it goes away with the spex.
         tear_down_after(context.scope, [:storage])
@@ -40,6 +49,13 @@ defmodule CodeMySpecSpex.Story968.Criterion8015Spex do
           # them and never reaches the schedule this criterion is about.
 
           paste_storage_credentials(view)
+
+          # Backups land in the bucket the storage step makes, so that has to exist
+          # first — otherwise the dump fails with NoSuchBucket, which is true and
+          # says nothing about the schedule under test.
+          view
+          |> element("[data-test='setup-step'][data-step='storage'] [data-test='run-step']")
+          |> render_click()
 
           view
           |> element("[data-test='setup-step'][data-step='backups'] [data-test='run-step']")

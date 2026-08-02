@@ -91,7 +91,7 @@ defmodule CodeMySpec.Provisioning.Deploy do
   @spec run(CodeMySpec.Environments.Environment.t(), String.t(), keyword()) :: Result.t()
   def run(env, environment, opts \\ []) do
     now = Keyword.get(opts, :now, &DateTime.utc_now/0)
-    script = Keyword.get(opts, :deploy_script, "bin/deploy")
+    script = resolve_script(env, Keyword.get(opts, :deploy_script, "bin/deploy"))
 
     with {:ok, migrate_out, result} <- migrate(env, environment, script, now),
          {:ok, result} <- health(result, opts, now),
@@ -234,4 +234,14 @@ defmodule CodeMySpec.Provisioning.Deploy do
       plug -> [plug: plug]
     end
   end
+  # Relative to the *project*, not to whatever directory the caller happens to
+  # be in. `System.cmd/3` resolves a relative command against the running
+  # process's cwd, not the environment's, so `bin/backup` was looked for beside
+  # the server rather than beside the project and failed with :enoent — an
+  # error that names nothing and reads like the script was never generated.
+  defp resolve_script(%{cwd: cwd}, script) when is_binary(cwd) and cwd != "" do
+    if Path.type(script) == :absolute, do: script, else: Path.join(cwd, script)
+  end
+
+  defp resolve_script(_env, script), do: script
 end

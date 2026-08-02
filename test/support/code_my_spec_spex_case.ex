@@ -163,6 +163,35 @@ defmodule CodeMySpecSpex.Case do
   HTTP-01 challenge reaches the origin rather than terminating at Cloudflare.
   That is the part the records decide, and the part this criterion is about.
   """
+  @doc """
+  Point the backup script at a database that really exists.
+
+      setup :real_backup_database
+
+  A backup criterion cannot be proved against a stub: the claim is that a dump
+  restores with rows in it, and only a real `pg_dump`/`psql` round-trip can say
+  so. On a provisioned box `bin/backup` reads `DATABASE_URL` out of the app's
+  encrypted env file; here there is no such box, so the test database — which is
+  a real Postgres with real tables — stands in for it.
+  """
+  def real_backup_database(context) do
+    url = Fixtures.database_url()
+
+    previous = Application.get_env(:code_my_spec, :provisioning_step_opts, [])
+
+    Application.put_env(
+      :code_my_spec,
+      :provisioning_step_opts,
+      Keyword.put(previous, :database_url, url)
+    )
+
+    ExUnit.Callbacks.on_exit(fn ->
+      Application.put_env(:code_my_spec, :provisioning_step_opts, previous)
+    end)
+
+    context
+  end
+
   def stage_certificate(context) do
     previous = Application.get_env(:code_my_spec, :provisioning_step_opts, [])
 
