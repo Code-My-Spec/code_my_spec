@@ -155,6 +155,13 @@ defmodule CodeMySpec.Files do
   # large hex doc corpora can easily run thousands of tracked files.
   @upsert_chunk_size 500
 
+  # Fields the scanner computes for its own decisions and that are not columns.
+  # `insert_all` rejects an unknown key outright, so dropping them here rather
+  # than in each caller means a new scratch field cannot break a sync path that
+  # happens not to clear it — which is exactly how `:declared_module` broke
+  # `sync_path/3` and `sync_changed/2` while the full sync was fine.
+  @scanner_scratch [:declared_module, :raw_role]
+
   @spec upsert_files(Scope.t(), [map()]) :: {integer(), [File.t()] | nil}
   def upsert_files(%Scope{active_project_id: project_id}, file_attrs_list)
       when is_list(file_attrs_list) do
@@ -163,6 +170,7 @@ defmodule CodeMySpec.Files do
     entries =
       Enum.map(file_attrs_list, fn attrs ->
         attrs
+        |> Map.drop(@scanner_scratch)
         |> Map.put(:project_id, project_id)
         |> Map.put(:inserted_at, now)
         |> Map.put(:updated_at, now)
@@ -210,6 +218,7 @@ defmodule CodeMySpec.Files do
 
     entry =
       attrs
+      |> Map.drop(@scanner_scratch)
       |> Map.put(:project_id, project_id)
       |> Map.put(:inserted_at, now)
       |> Map.put(:updated_at, now)

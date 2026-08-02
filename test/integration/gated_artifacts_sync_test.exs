@@ -178,4 +178,30 @@ defmodule CodeMySpec.Integration.GatedArtifactsSyncTest do
              """
     end
   end
+
+  describe "a module Phoenix does not put where its name suggests" do
+    test "is owned by what it declares, not by its path", %{scope: scope} do
+      # Phoenix's own layout: the module is `MyApp.CoreComponents`, the file is
+      # under `components/`. Deriving from the path gives
+      # `MyApp.Components.CoreComponents`, which matches no component — so the
+      # file is owned by nothing and `implementation_file` can never pass. The
+      # QA drill hit four of these and rightly refused to move framework files.
+      spec = Path.join(scope.cwd, ".code_my_spec/spec/my_app/core_components.spec.md")
+      spec |> Path.dirname() |> File.mkdir_p!()
+      File.write!(spec, "# MyApp.CoreComponents\n\nShared UI.\n\n## Type\n\nmodule\n")
+
+      impl = Path.join(scope.cwd, "lib/my_app/components/core_components.ex")
+      impl |> Path.dirname() |> File.mkdir_p!()
+      File.write!(impl, "defmodule MyApp.CoreComponents do\nend\n")
+
+      assert {:ok, _} = FileSync.sync(scope, base_dir: scope.cwd)
+      assert {:ok, _} = CodeMySpec.Files.ComponentSync.sync_from_files(scope)
+
+      record = Files.get_by_path(scope, "lib/my_app/components/core_components.ex")
+
+      assert record.component_id,
+             "the file declares MyApp.CoreComponents; nothing else should be " <>
+               "needed to know which component owns it"
+    end
+  end
 end

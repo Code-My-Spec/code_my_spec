@@ -71,8 +71,8 @@ defmodule CodeMySpec.Files.Scanner do
     env
     |> stream_files()
     |> Enum.to_list()
-    |> resolve_owners(read_model)
     |> then(&fingerprint_entries(env, &1))
+    |> resolve_owners(read_model)
     |> Enum.map(&validate_entry(&1, env, read_model.component_by_id, read_model.strict?))
   end
 
@@ -108,10 +108,28 @@ defmodule CodeMySpec.Files.Scanner do
 
   defp add_fingerprint(env, entry) do
     case Environments.read_file(env, entry.path) do
-      {:ok, content} -> Map.put(entry, :fingerprint, fingerprint(content))
-      {:error, _} -> Map.put(entry, :fingerprint, nil)
+      {:ok, content} ->
+        entry
+        |> Map.put(:fingerprint, fingerprint(content))
+        |> put_declared_module(content)
+
+      {:error, _} ->
+        Map.put(entry, :fingerprint, nil)
     end
   end
+
+  # What the file says it is, learned during the read that fingerprints it.
+  #
+  # `resolve_owners/2` prefers this over the module implied by the path, because
+  # Phoenix does not put every module where its name suggests —
+  # `MyAppWeb.CoreComponents` lives under `components/`, `MyAppWeb.ErrorHTML`
+  # under `controllers/`. Deriving from the path makes those owned by nothing,
+  # and their `implementation_file` requirements unsatisfiable by any correct
+  # work.
+  defp put_declared_module(%{role: :implementation} = entry, content),
+    do: Map.put(entry, :declared_module, ComponentExtract.extract_defmodule(content))
+
+  defp put_declared_module(entry, _content), do: entry
 
   defp fingerprint(content) when is_binary(content) do
     :crypto.hash(:sha256, content) |> Base.encode16(case: :lower)
@@ -862,32 +880,55 @@ defmodule CodeMySpec.Files.Scanner do
 
     Enum.map(entries, fn entry ->
       {component_id, story_id} =
-        owner_for(entry.path, entry.role, component_by_module, story_by_id)
+        owner_for(entry, component_by_module, story_by_id)
 
-      Map.merge(entry, %{component_id: component_id, story_id: story_id})
+      # `:declared_module` is scratch for this decision and not a File field —
+      # carrying it further reaches `insert_all` and fails there.
+      entry
+      |> Map.merge(%{component_id: component_id, story_id: story_id})
+      |> Map.delete(:declared_module)
     end)
   end
 
-  defp owner_for(path, role, component_by_module, _story_by_id)
-       when role in [:implementation, :test, :spec] do
-    module_name = path_to_module_name(path, role)
+  # What the file *declares* beats what its path implies.
+  #
+  # Phoenix does not put every module where its name suggests:
+  # `E2eTodoWeb.CoreComponents` lives at
+  # `lib/e2e_todo_web/components/core_components.ex`, and `E2eTodoWeb.ErrorHTML`
+  # at `controllers/error_html.ex`. Deriving the module from the path reads
+  # those as `E2eTodoWeb.Components.CoreComponents` and
+  # `E2eTodoWeb.Controllers.ErrorHTML`, which match no component — so the files
+  # are owned by nothing and their `implementation_file` requirements can never
+  # be satisfied. The QA drill hit exactly four of these and correctly refused to
+  # relocate framework files to satisfy a checker.
+  #
+  # `Files.Scanner` already extracts the `defmodule` from every implementation
+  # file, so the answer is in the record. This is only populated after
+  # `validate_entry/4`, which runs *after* this on the harness pass — harmless,
+  # because the server re-resolves ownership on every manifest
+  # (`FileSync.reconcile/2`) where it is present, and the path remains the
+  # fallback for a spec or test that declares nothing.
+  defp owner_for(entry, component_by_module, _story_by_id)
+       when is_map_key(entry, :role) and
+              entry.role in [:implementation, :test, :spec] do
+    module_name = declared_module(entry) || path_to_module_name(entry.path, entry.role)
     {Map.get(component_by_module, module_name), nil}
   end
 
-  defp owner_for(path, :bdd_spec, _component_by_module, story_by_id) do
+  defp owner_for(%{path: path, role: :bdd_spec}, _component_by_module, story_by_id) do
     # test/spex/{story_id_and_title}/criterion_*_spex.exs → story
     story_id = extract_story_id_from_spex_path(path)
     {nil, story_by_id[story_id]}
   end
 
-  defp owner_for(path, role, _component_by_module, story_by_id)
+  defp owner_for(%{path: path, role: role}, _component_by_module, story_by_id)
        when role in [:qa_brief, :qa_result] do
     # .code_my_spec/qa/{story_id}/brief.md → story
     story_id = extract_story_id_from_qa_path(path)
     {nil, story_by_id[story_id]}
   end
 
-  defp owner_for(path, :review, component_by_module, _story_by_id) do
+  defp owner_for(%{path: path, role: :review}, component_by_module, _story_by_id) do
     # .code_my_spec/spec/metric_flow/integrations/design_review.md → MetricFlow.Integrations
     module_name =
       path
@@ -898,7 +939,17 @@ defmodule CodeMySpec.Files.Scanner do
     {Map.get(component_by_module, module_name), nil}
   end
 
-  defp owner_for(_path, _role, _component_by_module, _story_by_id), do: {nil, nil}
+  defp owner_for(_entry, _component_by_module, _story_by_id), do: {nil, nil}
+
+  # The `defmodule` the scan read out of the file, when it has been validated.
+  # String keys because this arrives from the harness as JSON.
+  defp declared_module(%{declared_module: name}) when is_binary(name) and name != "", do: name
+
+  defp declared_module(%{validation_errors: %{"data" => %{"module_name" => name}}})
+       when is_binary(name) and name != "",
+       do: name
+
+  defp declared_module(_entry), do: nil
 
   # .code_my_spec/qa/440/brief.md → 440
   defp extract_story_id_from_qa_path(path) do

@@ -446,6 +446,25 @@ defmodule CodeMySpec.Files.ComponentSync do
         f.project_id == ^project_id and f.path in ^patterns and is_nil(f.component_id)
       )
       |> Repo.update_all(set: [component_id: component.id])
+
+      # Path patterns only find files where Phoenix puts a module where its name
+      # suggests, and it often does not: `MyAppWeb.CoreComponents` lives under
+      # `components/`, `MyAppWeb.ErrorHTML` under `controllers/`. Those files are
+      # then owned by nothing and their `implementation_file` requirement cannot
+      # be satisfied by any correct work — the QA drill hit four and rightly
+      # refused to relocate framework files to please a checker.
+      #
+      # The scan already recorded the `defmodule` each implementation declares,
+      # so claim by that too. Still `is_nil(component_id)`, so a file already
+      # owned is never stolen.
+      File
+      |> where(
+        [f],
+        f.project_id == ^project_id and f.role == :implementation and
+          is_nil(f.component_id) and
+          fragment("?->'data'->>'module_name' = ?", f.validation_errors, ^module_name)
+      )
+      |> Repo.update_all(set: [component_id: component.id])
     end)
   end
 
