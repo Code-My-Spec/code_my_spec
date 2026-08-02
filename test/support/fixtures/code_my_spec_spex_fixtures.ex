@@ -1094,7 +1094,7 @@ defmodule CodeMySpecSpex.Fixtures do
   """
   def own_repository(project) do
     name = CodeMySpec.Provisioning.Repository.default_name(project)
-    owner = "johns10"
+    owner = System.get_env("GITHUB_SPEX_OWNER", "johns10")
     set_code_repo(project, "https://github.com/#{owner}/#{name}")
   end
 

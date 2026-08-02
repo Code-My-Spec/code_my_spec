@@ -33,6 +33,11 @@ defmodule CodeMySpecSpex.Story966.Criterion8156Spex do
   spex "UAT stands alone, and prod arrives on its own box when Sam is ready" do
     scenario "turning production on adds a server and leaves UAT's alone" do
       given_ "Sam has turned production off and only UAT is set up", context do
+        # Before the page mounts. The LiveView reads the project once, at mount;
+        # claiming the repository afterwards updates the row but not the socket,
+        # so the step still saw a repository belonging to nobody and paused.
+        own_repository(context.project)
+
         {:ok, view, _html} =
           live(context.conn, "/app/projects/#{context.project.id}/provisioning")
 
@@ -46,12 +51,6 @@ defmodule CodeMySpecSpex.Story966.Criterion8156Spex do
         # out over whichever ones exist.
         only_environments(context.scope, ["uat"])
 
-        # Hetzner has no OAuth, so its token is pasted per project; without it
-        # the server step stops at `hetzner_not_configured` and nothing is
-        # provisioned at all. And the repository an earlier recording made
-        # still exists, so setup would pause asking whose it is — it is this
-        # project's.
-        own_repository(context.project)
         tear_down_after(context.scope, [:server])
         tear_down_repository(context.project)
 
@@ -62,6 +61,12 @@ defmodule CodeMySpecSpex.Story966.Criterion8156Spex do
         html =
           with_provider_cassette(@uat_only_cassette, fn ->
             view |> element("[data-test='start-setup']") |> render_click()
+
+            # The click starts the run and returns; the step transitions
+            # arrive afterwards, so reading what `render_click/1` handed back
+            # shows the page as it was *before* anything ran — every step
+            # not_started, which reads as "nothing was provisioned".
+            await_provisioning(view)
           end)
 
         servers = servers_by_environment(html)

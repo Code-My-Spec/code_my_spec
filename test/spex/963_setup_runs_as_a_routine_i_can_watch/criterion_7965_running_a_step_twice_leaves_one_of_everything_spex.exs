@@ -26,6 +26,11 @@ defmodule CodeMySpecSpex.Story963.Criterion7965Spex do
   spex "Running a step twice leaves one of everything" do
     scenario "a second run of the server step converges instead of duplicating" do
       given_ "the server step already provisioned a server and a firewall", context do
+        # Before the page mounts. The LiveView reads the project once, at mount;
+        # claiming the repository afterwards updates the row but not the socket,
+        # so the step still saw a repository belonging to nobody and paused.
+        own_repository(context.project)
+
         view = mount_provisioning(context)
 
         # Everything the server step needs before it can reach Hetzner, and

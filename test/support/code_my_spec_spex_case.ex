@@ -53,6 +53,24 @@ defmodule CodeMySpecSpex.Case do
     Application.put_env(:code_my_spec, :dns_resolver, Fixtures.dns_resolver(cassette_mode()))
     on_exit(fn -> Application.delete_env(:code_my_spec, :dns_resolver) end)
 
+    # Repositories go to the throwaway organisation when one is configured, so
+    # a recording never creates anything in somebody's personal account. The
+    # step already supports this (`:org` to create there, `:owner` to look for
+    # an existing one); it only needed telling.
+    if owner = System.get_env("GITHUB_SPEX_OWNER") do
+      previous_step_opts = Application.get_env(:code_my_spec, :provisioning_step_opts, [])
+
+      Application.put_env(
+        :code_my_spec,
+        :provisioning_step_opts,
+        Keyword.merge(previous_step_opts, org: owner, owner: owner)
+      )
+
+      on_exit(fn ->
+        Application.put_env(:code_my_spec, :provisioning_step_opts, previous_step_opts)
+      end)
+    end
+
     {:ok, conn: Phoenix.ConnTest.build_conn()}
   end
 

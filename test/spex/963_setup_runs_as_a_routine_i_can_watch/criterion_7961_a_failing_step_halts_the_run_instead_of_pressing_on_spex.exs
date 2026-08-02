@@ -27,6 +27,11 @@ defmodule CodeMySpecSpex.Story963.Criterion7961Spex do
   spex "A failing step halts the run instead of pressing on" do
     scenario "the run stops at the failed domain step with later steps untouched" do
       given_ "setup is ready to run and the domain step will fail", context do
+        # Before the page mounts. The LiveView reads the project once, at mount;
+        # claiming the repository afterwards updates the row but not the socket,
+        # so the step still saw a repository belonging to nobody and paused.
+        own_repository(context.project)
+
         {:ok, view, _html} =
           live(context.conn, "/app/projects/#{context.project.id}/provisioning")
 

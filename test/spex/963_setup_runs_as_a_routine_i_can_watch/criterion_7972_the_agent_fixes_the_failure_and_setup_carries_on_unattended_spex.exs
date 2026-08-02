@@ -25,6 +25,11 @@ defmodule CodeMySpecSpex.Story963.Criterion7972Spex do
   spex "The agent fixes the failure and setup carries on unattended" do
     scenario "a DNS conflict is repaired and the run completes without Sam" do
       given_ "setup is running and the DNS step will hit a conflicting record", context do
+        # Before the page mounts. The LiveView reads the project once, at mount;
+        # claiming the repository afterwards updates the row but not the socket,
+        # so the step still saw a repository belonging to nobody and paused.
+        own_repository(context.project)
+
         {:ok, view, _html} =
           live(context.conn, "/app/projects/#{context.project.id}/provisioning")
 
@@ -40,10 +45,6 @@ defmodule CodeMySpecSpex.Story963.Criterion7972Spex do
         # push as non-fast-forward (which is 8184's subject, not this one's).
         tear_down_repository(context.project)
 
-        # The repository an earlier recording made still exists, so setup would
-        # pause asking whose it is. It is this project's — stating that lets the
-        # run reach the steps under test.
-        own_repository(context.project)
 
         with_provider_cassette(@given_cassette, fn ->
           paste_provider_credentials(view)

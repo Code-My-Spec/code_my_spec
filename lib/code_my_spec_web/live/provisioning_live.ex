@@ -1029,7 +1029,17 @@ defmodule CodeMySpecWeb.ProvisioningLive do
         # Started, not awaited. The page stays responsive and each step's
         # transition arrives as it happens, which is what makes the run
         # watchable rather than a wait (criteria 7960, 7972).
-        {:ok, _pid} = Provisioning.run_async(socket.assigns.current_scope, socket.assigns.options)
+        # With `step_opts()`, like every other run. Without them a full run got
+        # none of what a single step gets — no provider options, no target
+        # organisation, no injected probe — so it behaved differently from
+        # running the same steps one at a time, which is the one thing a
+        # "run everything" button must not do.
+        {:ok, _pid} =
+          Provisioning.run_async(
+            socket.assigns.current_scope,
+            socket.assigns.options,
+            step_opts()
+          )
         {:noreply, assign(socket, halted_at: nil, halt_reason: nil)}
 
       missing ->

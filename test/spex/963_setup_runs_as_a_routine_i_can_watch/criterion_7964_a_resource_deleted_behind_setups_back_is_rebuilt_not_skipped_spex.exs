@@ -29,6 +29,11 @@ defmodule CodeMySpecSpex.Story963.Criterion7964Spex do
   spex "A resource deleted behind setup's back is rebuilt, not skipped" do
     scenario "the server step runs again when the server is gone" do
       given_ "the server step previously succeeded", context do
+        # Before the page mounts. The LiveView reads the project once, at mount;
+        # claiming the repository afterwards updates the row but not the socket,
+        # so the step still saw a repository belonging to nobody and paused.
+        own_repository(context.project)
+
         view = mount_provisioning(context)
 
         # Everything the server step needs before it can reach Hetzner, and
