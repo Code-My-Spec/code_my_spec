@@ -7,7 +7,7 @@ defmodule CodeMySpecSpex.Story816.Criterion6586Spex do
   assigned to them.
 
   Surface:
-    * `CodeMySpecWeb.MailLive` at "/app/mail" — the inbox sidebar is scoped to
+    * `CodeMySpecWeb.MailLive` at "/app/projects/:project_id/mail" — the inbox sidebar is scoped to
       the current member: shared mailboxes plus the member's own assigned
       mailbox, never another member's assigned mailbox.
   """
@@ -45,7 +45,7 @@ defmodule CodeMySpecSpex.Story816.Criterion6586Spex do
       end
 
       when_ "the member opens the mail surface", context do
-        {:ok, _view, html} = live(context.alice_conn, "/app/mail")
+        {:ok, _view, html} = live(context.alice_conn, "/app/projects/#{context.project.id}/mail")
 
         {:ok, Map.put(context, :html, html)}
       end

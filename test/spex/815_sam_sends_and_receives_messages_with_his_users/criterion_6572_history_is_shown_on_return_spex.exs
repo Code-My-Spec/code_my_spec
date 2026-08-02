@@ -48,7 +48,7 @@ defmodule CodeMySpecSpex.Story815.Criterion6572Spex do
       end
 
       when_ "the operator opens the conversation later", context do
-        {:ok, index_view, _html} = live(context.conn, "/app/inbox")
+        {:ok, index_view, _html} = live(context.conn, "/app/projects/#{context.project.id}/inbox")
 
         {:ok, _show_view, html} =
           index_view

@@ -382,28 +382,31 @@ defmodule CodeMySpecWeb.Router do
       live "/projects/:project_id/stories/:id/gherkin", StoryLive.Gherkin
     end
 
-    live_session :require_active_project,
+    # Project-scoped surfaces. The project is named in the route and put on the
+    # scope by PortableHost — there is no session-held active project to fall
+    # back on, which is why every one of these carries :project_id.
+    live_session :project_scoped,
       on_mount: [
         {CodeMySpecWeb.Live.CurrentPathHook, :default},
         {CodeMySpecWeb.UserAuth, :require_authenticated},
         {CodeMySpecWeb.UserAuth, :require_at_least_one_account},
         {CodeMySpecWeb.UserAuth, :require_active_account},
         {CodeMySpecWeb.UserAuth, :require_at_least_one_project},
-        {CodeMySpecWeb.UserAuth, :require_active_project},
-        {CodeMySpecWeb.Live.NotificationsHook, :default}
+        {CodeMySpecWeb.Live.NotificationsHook, :default},
+        {CodeMySpecWeb.PortableHost, :default}
       ] do
-      live "/issues", IssuesLive.Index, :index
-      live "/issues/:id", IssuesLive.Show, :show
+      live "/projects/:project_id/issues", IssuesLive.Index, :index
+      live "/projects/:project_id/issues/:id", IssuesLive.Show, :show
 
-      live "/users", ProjectUsersLive.Index, :index
+      live "/projects/:project_id/users", ProjectUsersLive.Index, :index
 
-      live "/inbox", InboxLive, :index
-      live "/inbox/:id", InboxLive, :show
+      live "/projects/:project_id/inbox", InboxLive, :index
+      live "/projects/:project_id/inbox/:id", InboxLive, :show
 
-      live "/mailboxes", MailboxLive, :index
+      live "/projects/:project_id/mailboxes", MailboxLive, :index
 
-      live "/mail", MailLive, :index
-      live "/mail/:id", MailLive, :show
+      live "/projects/:project_id/mail", MailLive, :index
+      live "/projects/:project_id/mail/:id", MailLive, :show
 
       live "/projects/:project_id/provisioning", ProvisioningLive, :index
       live "/projects/:project_name/agent-conversation", AgentConversationLive, :show

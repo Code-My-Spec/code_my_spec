@@ -37,7 +37,7 @@ defmodule CodeMySpecWeb.IssuesLive.Index do
           :for={issue <- @issues}
           id={"issue-#{issue.id}"}
           class="card bg-base-100 shadow-md cursor-pointer hover:shadow-lg transition-shadow"
-          phx-click={JS.navigate(~p"/app/issues/#{issue.id}")}
+          phx-click={JS.navigate(~p"/app/projects/#{@project.id}/issues/#{issue.id}")}
         >
           <div class="card-body py-4">
             <div class="flex items-start justify-between gap-4">

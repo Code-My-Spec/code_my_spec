@@ -7,7 +7,7 @@ defmodule CodeMySpecSpex.Story816.Criterion6596Spex do
   syncing the project's mailboxes with the provider.
 
   Surface:
-    * `CodeMySpecWeb.MailboxLive` at "/app/mailboxes" (owner/admin) — clicking
+    * `CodeMySpecWeb.MailboxLive` at "/app/projects/:project_id/mailboxes" (owner/admin) — clicking
       Sync reconciles inbound mail against the provider's Receiving API,
       recording anything the webhook missed. The provider (Resend) list + body
       calls are replayed from recorded responses via `Req.Test` (shared mode).
@@ -32,7 +32,7 @@ defmodule CodeMySpecSpex.Story816.Criterion6596Spex do
         Fixtures.verify_project_domain(context.project, @domain)
         mailbox = Fixtures.mailbox_fixture(context.project, %{address: "support@#{@domain}"})
 
-        {:ok, view, _html} = live(context.conn, "/app/mailboxes")
+        {:ok, view, _html} = live(context.conn, "/app/projects/#{context.project.id}/mailboxes")
 
         {:ok, Map.merge(context, %{view: view, mailbox: mailbox})}
       end
@@ -50,7 +50,7 @@ defmodule CodeMySpecSpex.Story816.Criterion6596Spex do
                "expected the admin to see how many messages were synced"
 
         # The recovered message now shows in the mailbox inbox.
-        {:ok, _mail_view, mail_html} = live(context.conn, "/app/mail/#{context.mailbox.id}")
+        {:ok, _mail_view, mail_html} = live(context.conn, "/app/projects/#{context.project.id}/mail/#{context.mailbox.id}")
 
         assert mail_html =~ "Missed message",
                "expected the synced message to appear in the mailbox"

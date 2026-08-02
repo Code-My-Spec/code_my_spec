@@ -7,8 +7,8 @@ defmodule CodeMySpecSpex.Story816.Criterion6595Spex do
   mailboxes; members use them but cannot administer them.
 
   Surface:
-    * `CodeMySpecWeb.MailboxLive` at "/app/mailboxes" is owner/admin-only. A
-      plain member is redirected to the Mail inbox ("/app/mail") rather than
+    * `CodeMySpecWeb.MailboxLive` at "/app/projects/:project_id/mailboxes" is owner/admin-only. A
+      plain member is redirected to the Mail inbox ("/app/projects/:project_id/mail") rather than
       being shown the administration surface.
   """
 
@@ -35,13 +35,15 @@ defmodule CodeMySpecSpex.Story816.Criterion6595Spex do
       end
 
       when_ "the member opens the mailbox administration surface", context do
-        result = live(context.member_conn, "/app/mailboxes")
+        result = live(context.member_conn, "/app/projects/#{context.project.id}/mailboxes")
 
         {:ok, Map.put(context, :result, result)}
       end
 
       then_ "the member is redirected to the mail inbox", context do
-        assert {:error, {kind, %{to: "/app/mail"}}} = context.result,
+        mail_path = "/app/projects/#{context.project.id}/mail"
+
+        assert {:error, {kind, %{to: ^mail_path}}} = context.result,
                "expected the member to be redirected to the mail inbox, got: #{inspect(context.result)}"
 
         assert kind in [:redirect, :live_redirect]

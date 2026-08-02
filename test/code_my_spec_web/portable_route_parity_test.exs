@@ -23,23 +23,31 @@ defmodule CodeMySpecWeb.PortableRouteParityTest do
     |> Enum.sort()
   end
 
-  test "both routers mount every portable surface at the same path" do
+  test "every path the local app serves also exists on the cloud" do
     cloud = portable_routes(CodeMySpecWeb.Router)
     local = portable_routes(CodeMySpecLocalWeb.Router)
 
-    assert cloud != [], """
-    No portable routes found in CodeMySpecWeb.Router under #{@portable_prefix}.
-    Either the prefix changed or the portable mount was removed — this test is
-    the only guard on the shared-path invariant, so fix it rather than delete it.
+    assert local != [], """
+    No portable routes found in CodeMySpecLocalWeb.Router under
+    #{@portable_prefix}. Either the prefix changed or the portable mount was
+    removed — this test is the only guard on the shared-path invariant, so fix
+    it rather than delete it.
     """
 
-    assert cloud == local, """
-    The two routers disagree about the portable surface. Shared LiveViews build
-    links with `~p` literals verified only against CodeMySpecWeb.Router, so a
-    mismatch here means correct-looking links that 404 on one of the apps.
+    # Subset, not equality: the local router is the record of what has been
+    # migrated, while the cloud additionally serves project-scoped surfaces
+    # that have no local counterpart (mail, inbox, mailboxes). What must never
+    # happen is the local app serving a path the cloud doesn't — the shared
+    # views' `~p` literals are only verified against the cloud router, so that
+    # direction is the one nothing else would catch.
+    missing = local -- cloud
 
-    only in CodeMySpecWeb.Router:      #{inspect(cloud -- local, pretty: true)}
-    only in CodeMySpecLocalWeb.Router: #{inspect(local -- cloud, pretty: true)}
+    assert missing == [], """
+    CodeMySpecLocalWeb.Router serves paths CodeMySpecWeb.Router doesn't. Shared
+    LiveViews build links verified only against the cloud router, so these are
+    links that look correct and 404:
+
+    #{inspect(missing, pretty: true)}
     """
   end
 

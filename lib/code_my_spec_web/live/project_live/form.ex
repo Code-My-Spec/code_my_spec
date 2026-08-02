@@ -135,7 +135,9 @@ defmodule CodeMySpecWeb.ProjectLive.Form do
             <span class="font-mono">{@domain}</span>
             <span class="badge badge-success badge-sm">verified</span>
           </p>
-          <.link navigate={~p"/app/mailboxes"} class="link text-sm">Manage mailboxes</.link>
+          <.link navigate={~p"/app/projects/#{@project.id}/mailboxes"} class="link text-sm">
+            Manage mailboxes
+          </.link>
         </div>
 
         <.form

@@ -320,8 +320,8 @@ defmodule CodeMySpecWeb.StoryLive.ThreeAmigos do
   @impl true
   def render(assigns) do
     ~H"""
-      <div :if={@error} role="alert" class="alert alert-error">
-        <span>{@error}</span>
+      <div :if={@error || @scope_error} role="alert" class="alert alert-error">
+        <span>{@error || @scope_error}</span>
       </div>
 
       <div :if={!@error && @story} class={"wv4-root #{if @session_state == :sealed, do: "sealed", else: ""}"}>

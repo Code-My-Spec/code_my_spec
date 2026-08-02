@@ -49,14 +49,14 @@ defmodule CodeMySpecWeb.InboxLive do
 
   @impl true
   def handle_event("open_conversation", %{"id" => id}, socket) do
-    {:noreply, push_navigate(socket, to: ~p"/app/inbox/#{id}")}
+    {:noreply, push_navigate(socket, to: ~p"/app/projects/#{socket.assigns.project.id}/inbox/#{id}")}
   end
 
   def handle_event("start_conversation", %{"conversation" => %{"email" => email, "body" => body}}, socket) do
     {:ok, conversation} = Conversations.start_conversation(socket.assigns.current_scope, email, body)
     # A freshly-started thread means the customer isn't here yet — email them.
     maybe_notify_offline(conversation, body, socket.assigns.online)
-    {:noreply, push_navigate(socket, to: ~p"/app/inbox/#{conversation.id}")}
+    {:noreply, push_navigate(socket, to: ~p"/app/projects/#{socket.assigns.project.id}/inbox/#{conversation.id}")}
   end
 
   def handle_event("send_message", %{"message" => %{"body" => body}}, socket) do
@@ -263,7 +263,7 @@ defmodule CodeMySpecWeb.InboxLive do
       >
         <header class="flex shrink-0 items-center justify-between gap-3 border-b border-base-300 pb-3">
           <div class="flex min-w-0 items-center gap-2">
-            <.link navigate={~p"/app/inbox"} data-test="back-to-chats" class="btn btn-ghost btn-xs shrink-0">
+            <.link navigate={~p"/app/projects/#{@project.id}/inbox"} data-test="back-to-chats" class="btn btn-ghost btn-xs shrink-0">
               <.icon name="hero-arrow-left" class="size-4" /> Chats
             </.link>
             <h1 class="truncate text-lg font-semibold">{conversation_title(@conversation)}</h1>

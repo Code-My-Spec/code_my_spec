@@ -53,13 +53,18 @@ defmodule CodeMySpec.Users.Scope do
 
     case UserPreferences.get_user_preference(scope) do
       {:ok, preferences} ->
+        # Deliberately NOT reading the active project back out of preferences.
+        # A project is named in the URL and put on the scope per-request by
+        # `CodeMySpecWeb.PortableHost`; a session-held one meant a link could
+        # land on a page showing a different project than the one it named,
+        # and the auto-select that backed it silently rewrote the user's
+        # preference on the way past. The account stays — it's the tenant, and
+        # nothing in the URL identifies it.
         %__MODULE__{
           user: user,
           user_id: user.id,
           active_account: preferences.active_account,
-          active_account_id: preferences.active_account_id,
-          active_project: preferences.active_project,
-          active_project_id: preferences.active_project_id
+          active_account_id: preferences.active_account_id
         }
 
       {:error, :not_found} ->

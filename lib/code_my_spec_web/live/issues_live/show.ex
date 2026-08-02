@@ -17,7 +17,7 @@ defmodule CodeMySpecWeb.IssuesLive.Show do
           </div>
         </:subtitle>
         <:actions>
-          <.button navigate={~p"/app/issues"}>
+          <.button navigate={~p"/app/projects/#{@project.id}/issues"}>
             <.icon name="hero-arrow-left" />
           </.button>
         </:actions>

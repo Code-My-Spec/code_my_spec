@@ -51,8 +51,8 @@ defmodule CodeMySpecWeb.StoryLive.Index do
         </:actions>
       </.header>
 
-      <div :if={@error} role="alert" class="alert alert-error">
-        <span>{@error}</span>
+      <div :if={@error || @scope_error} role="alert" class="alert alert-error">
+        <span>{@error || @scope_error}</span>
       </div>
 
       <div :if={!@error && @project} id="stories" phx-update="stream" class="space-y-8">

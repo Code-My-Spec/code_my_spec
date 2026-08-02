@@ -58,7 +58,7 @@ defmodule CodeMySpecSpex.Story603.Criterion5502Spex do
       end
 
       when_ "the user visits /app/issues", context do
-        result = live(context.conn, "/app/issues")
+        result = live(context.conn, "/app/projects/#{context.project.id}/issues")
         {:ok, Map.put(context, :result, result)}
       end
 

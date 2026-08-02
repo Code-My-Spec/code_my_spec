@@ -7,7 +7,7 @@ defmodule CodeMySpecSpex.Story816.Criterion6590Spex do
   provider's retention window.
 
   Surface:
-    * `CodeMySpecWeb.MailLive` at "/app/mail" — an email persisted longer ago
+    * `CodeMySpecWeb.MailLive` at "/app/projects/:project_id/mail" — an email persisted longer ago
       than the provider's (~30-day) retention window is still shown, because
       CMS persists its own copy.
   """
@@ -41,7 +41,7 @@ defmodule CodeMySpecSpex.Story816.Criterion6590Spex do
       end
 
       when_ "Sam opens the mailbox", context do
-        {:ok, view, _html} = live(context.conn, "/app/mail")
+        {:ok, view, _html} = live(context.conn, "/app/projects/#{context.project.id}/mail")
 
         {:ok, _show_view, thread_html} =
           view

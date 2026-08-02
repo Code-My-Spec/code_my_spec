@@ -8,8 +8,8 @@ defmodule CodeMySpecWeb.StoryLive.Form do
   @impl true
   def render(assigns) do
     ~H"""
-      <div :if={@error} role="alert" class="alert alert-error">
-        <span>{@error}</span>
+      <div :if={@error || @scope_error} role="alert" class="alert alert-error">
+        <span>{@error || @scope_error}</span>
       </div>
 
       <div :if={!@error && @form} class="flex flex-col gap-6">

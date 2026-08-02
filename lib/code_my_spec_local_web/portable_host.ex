@@ -31,7 +31,7 @@ defmodule CodeMySpecLocalWeb.PortableHost do
   alias CodeMySpec.Projects
   alias CodeMySpec.Users.Scope
 
-  def on_mount(:default, _params, _session, socket) do
+  def on_mount(:default, params, _session, socket) do
     socket =
       socket
       |> assign(
@@ -39,13 +39,22 @@ defmodule CodeMySpecLocalWeb.PortableHost do
         scope: nil,
         project: nil,
         slug: nil,
-        error: nil,
+        scope_error: nil,
         # The cloud layout reads these; defaulting them here keeps the portable
         # views free of `assigns[:maybe]` lookups.
         current_scope: nil,
         current_path: "/",
         pending_notifications: 0
       )
+      # Resolved at mount as well as on :handle_params — a LiveView that loads
+      # in `mount/3` runs before the first handle_params and would otherwise
+      # see no project. The hook still re-resolves on a live patch.
+      |> then(fn socket ->
+        case params do
+          %{} = params -> elem(put_scope(params, nil, socket), 1)
+          _ -> socket
+        end
+      end)
       |> attach_hook(:portable_scope, :handle_params, &put_scope/3)
 
     {:cont, socket}
@@ -58,7 +67,7 @@ defmodule CodeMySpecLocalWeb.PortableHost do
     with {:ok, project} <- Projects.get_project_by_name(name),
          {:ok, scope} <- Scope.for_local_project(project) do
       {:cont,
-       assign(socket, scope: scope, project: project, slug: slug(project), error: nil)}
+       assign(socket, scope: scope, project: project, slug: slug(project), scope_error: nil)}
     else
       {:error, :not_found} -> {:cont, fail(socket, "Project not found.")}
       {:error, reason} -> {:cont, fail(socket, "#{reason}")}
@@ -67,7 +76,8 @@ defmodule CodeMySpecLocalWeb.PortableHost do
 
   defp put_scope(_params, _uri, socket), do: {:cont, fail(socket, "No project in the URL.")}
 
-  defp fail(socket, message), do: assign(socket, scope: nil, project: nil, error: message)
+  defp fail(socket, message),
+    do: assign(socket, scope: nil, project: nil, scope_error: message)
 
   defp slug(project) do
     (project.name || "project")

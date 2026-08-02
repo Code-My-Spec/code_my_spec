@@ -134,8 +134,8 @@ defmodule CodeMySpecWeb.StoryLive.Gherkin do
         </:actions>
       </.header>
 
-      <div :if={@error} role="alert" class="alert alert-error">
-        <span>{@error}</span>
+      <div :if={@error || @scope_error} role="alert" class="alert alert-error">
+        <span>{@error || @scope_error}</span>
       </div>
 
       <div :if={!@error && @story}>

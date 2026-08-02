@@ -27,7 +27,7 @@ defmodule CodeMySpecSpex.Story607.Criterion5529Spex do
       when_ "the user walks /app, /app/projects, /app/issues", context do
         app_result = live(context.conn, "/app")
         projects_result = live(context.conn, "/app/projects")
-        stories_result = live(context.conn, "/app/issues")
+        stories_result = live(context.conn, "/app/projects/#{context.project.id}/issues")
 
         {:ok,
          Map.merge(context, %{
@@ -49,7 +49,7 @@ defmodule CodeMySpecSpex.Story607.Criterion5529Spex do
       end
 
       then_ "/app/issues redirects to /app, never the picker", context do
-        target = redirect_target!(context.stories_result, "/app/issues")
+        target = redirect_target!(context.stories_result, "/app/projects/#{context.project.id}/issues")
         assert target == "/app"
         refute target == "/app/accounts/picker"
         {:ok, context}

@@ -34,7 +34,7 @@ defmodule CodeMySpecSpex.Story604.Criterion5507Spex do
       end
 
       then_ "an active-project-gated route loads without a picker redirect", context do
-        conn = get(context.conn, "/app/issues")
+        conn = get(context.conn, "/app/projects/#{context.project.id}/issues")
         assert_no_picker_redirect(conn.status, conn, context)
       end
     end

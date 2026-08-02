@@ -309,19 +309,6 @@ defmodule CodeMySpecWeb.UserAuth do
     end
   end
 
-  def on_mount(:require_active_project, _params, _session, socket) do
-    scope = socket.assigns.current_scope
-
-    if is_nil(scope.active_project) do
-      [first | _] = Projects.list_projects(scope)
-      {:ok, _} = UserPreferences.select_active_project(scope, first.id)
-      new_scope = Scope.for_user(scope.user)
-      {:cont, Phoenix.Component.assign(socket, :current_scope, new_scope)}
-    else
-      {:cont, socket}
-    end
-  end
-
   defp mount_current_scope(socket, session) do
     Phoenix.Component.assign_new(socket, :current_scope, fn ->
       {user, _} =

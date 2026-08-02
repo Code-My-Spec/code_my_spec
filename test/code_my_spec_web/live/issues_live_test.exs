@@ -25,27 +25,27 @@ defmodule CodeMySpecWeb.IssuesLiveTest do
     setup [:create_issue]
 
     test "lists all issues", %{conn: conn, issue: issue} do
-      {:ok, _live, html} = live(conn, ~p"/app/issues")
+      {:ok, _live, html} = live(conn, ~p"/app/projects/#{context.project.id}/issues")
 
       assert html =~ "Issues"
       assert html =~ issue.title
     end
 
     test "displays severity and status badges", %{conn: conn, issue: issue} do
-      {:ok, _live, html} = live(conn, ~p"/app/issues")
+      {:ok, _live, html} = live(conn, ~p"/app/projects/#{context.project.id}/issues")
 
       assert html =~ to_string(issue.severity)
       assert html =~ to_string(issue.status)
     end
 
     test "navigates to issue show page", %{conn: conn, issue: issue} do
-      {:ok, live_view, _html} = live(conn, ~p"/app/issues")
+      {:ok, live_view, _html} = live(conn, ~p"/app/projects/#{context.project.id}/issues")
 
       assert live_view
              |> element("#issue-#{issue.id}")
              |> render_click()
 
-      assert_redirect(live_view, ~p"/app/issues/#{issue.id}")
+      assert_redirect(live_view, ~p"/app/projects/#{context.project.id}/issues/#{issue.id}")
     end
   end
 
@@ -53,7 +53,7 @@ defmodule CodeMySpecWeb.IssuesLiveTest do
     setup [:create_issues]
 
     test "filters by status", %{conn: conn, incoming: incoming, accepted: accepted} do
-      {:ok, live_view, html} = live(conn, ~p"/app/issues")
+      {:ok, live_view, html} = live(conn, ~p"/app/projects/#{context.project.id}/issues")
 
       # Both visible initially
       assert html =~ incoming.title
@@ -70,7 +70,7 @@ defmodule CodeMySpecWeb.IssuesLiveTest do
     end
 
     test "filters by severity", %{conn: conn, incoming: incoming, accepted: accepted} do
-      {:ok, live_view, _html} = live(conn, ~p"/app/issues")
+      {:ok, live_view, _html} = live(conn, ~p"/app/projects/#{context.project.id}/issues")
 
       # Filter to critical only
       html =
@@ -87,7 +87,7 @@ defmodule CodeMySpecWeb.IssuesLiveTest do
     setup [:create_issue]
 
     test "displays issue details", %{conn: conn, issue: issue} do
-      {:ok, _live, html} = live(conn, ~p"/app/issues/#{issue.id}")
+      {:ok, _live, html} = live(conn, ~p"/app/projects/#{context.project.id}/issues/#{issue.id}")
 
       assert html =~ issue.title
       assert html =~ issue.description
@@ -96,7 +96,7 @@ defmodule CodeMySpecWeb.IssuesLiveTest do
     end
 
     test "shows accept and dismiss actions for incoming issue", %{conn: conn, issue: issue} do
-      {:ok, _live, html} = live(conn, ~p"/app/issues/#{issue.id}")
+      {:ok, _live, html} = live(conn, ~p"/app/projects/#{context.project.id}/issues/#{issue.id}")
 
       assert html =~ "Accept"
       assert html =~ "Dismiss"
@@ -104,7 +104,7 @@ defmodule CodeMySpecWeb.IssuesLiveTest do
     end
 
     test "accepts an incoming issue", %{conn: conn, issue: issue} do
-      {:ok, live_view, _html} = live(conn, ~p"/app/issues/#{issue.id}")
+      {:ok, live_view, _html} = live(conn, ~p"/app/projects/#{context.project.id}/issues/#{issue.id}")
 
       html =
         live_view
@@ -118,7 +118,7 @@ defmodule CodeMySpecWeb.IssuesLiveTest do
     end
 
     test "dismisses an incoming issue with reason", %{conn: conn, issue: issue} do
-      {:ok, live_view, _html} = live(conn, ~p"/app/issues/#{issue.id}")
+      {:ok, live_view, _html} = live(conn, ~p"/app/projects/#{context.project.id}/issues/#{issue.id}")
 
       # Open dismiss form
       live_view
@@ -138,7 +138,7 @@ defmodule CodeMySpecWeb.IssuesLiveTest do
     test "resolves an accepted issue", %{conn: conn, scope: scope, issue: issue} do
       {:ok, issue} = Issues.accept_issue(scope, issue)
 
-      {:ok, live_view, html} = live(conn, ~p"/app/issues/#{issue.id}")
+      {:ok, live_view, html} = live(conn, ~p"/app/projects/#{context.project.id}/issues/#{issue.id}")
 
       assert html =~ "Resolve"
 
@@ -161,7 +161,7 @@ defmodule CodeMySpecWeb.IssuesLiveTest do
       {:ok, issue} = Issues.accept_issue(scope, issue)
       {:ok, issue} = Issues.resolve_issue(scope, issue, "Done")
 
-      {:ok, _live, html} = live(conn, ~p"/app/issues/#{issue.id}")
+      {:ok, _live, html} = live(conn, ~p"/app/projects/#{context.project.id}/issues/#{issue.id}")
 
       refute html =~ "Accept"
       refute html =~ "Dismiss"
@@ -169,7 +169,7 @@ defmodule CodeMySpecWeb.IssuesLiveTest do
     end
 
     test "back button navigates to index", %{conn: conn, issue: issue} do
-      {:ok, live_view, _html} = live(conn, ~p"/app/issues/#{issue.id}")
+      {:ok, live_view, _html} = live(conn, ~p"/app/projects/#{context.project.id}/issues/#{issue.id}")
 
       assert live_view
              |> element("a[href='/app/issues']")

@@ -164,16 +164,21 @@ defmodule CodeMySpecWeb.Layouts do
             --%>
             <%= if onboarding_complete?(@current_scope) do %>
               <li><a href={~p"/app/projects"}>Projects</a></li>
-              <li :if={project = active_project(@current_scope)}>
-                <a href={~p"/app/projects/#{project.id}/stories"}>Stories</a>
-              </li>
-              <li><a href={~p"/app/issues"}>Issues</a></li>
-              <li><a href={~p"/app/users"}>Users</a></li>
-              <li><a href={~p"/app/inbox"}>Chats</a></li>
-              <li><a href={~p"/app/mail"}>Mail</a></li>
-              <li :if={can_manage_mailboxes?(@current_scope)}>
-                <a href={~p"/app/mailboxes"}>Mailboxes</a>
-              </li>
+              <%!--
+                Every surface below is addressed per-project, so the nav can
+                only build these links while a project is named in the URL.
+                Nothing is persisted to fall back on — see Scope.for_user/1.
+              --%>
+              <%= if project = active_project(@current_scope) do %>
+                <li><a href={~p"/app/projects/#{project.id}/stories"}>Stories</a></li>
+                <li><a href={~p"/app/projects/#{project.id}/issues"}>Issues</a></li>
+                <li><a href={~p"/app/projects/#{project.id}/users"}>Users</a></li>
+                <li><a href={~p"/app/projects/#{project.id}/inbox"}>Chats</a></li>
+                <li><a href={~p"/app/projects/#{project.id}/mail"}>Mail</a></li>
+                <li :if={can_manage_mailboxes?(@current_scope)}>
+                  <a href={~p"/app/projects/#{project.id}/mailboxes"}>Mailboxes</a>
+                </li>
+              <% end %>
               <li class="mt-auto"><a href={~p"/app/accounts"}>Accounts</a></li>
               <li><a href={~p"/app/users/settings"}>Settings</a></li>
             <% end %>

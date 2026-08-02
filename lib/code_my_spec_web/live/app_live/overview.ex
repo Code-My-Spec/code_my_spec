@@ -168,8 +168,9 @@ defmodule CodeMySpecWeb.AppLive.Overview do
 
     case Projects.create_project(scope, attrs) do
       {:ok, project} ->
-        {:ok, _} = UserPreferences.select_active_project(scope, project.id)
-        {:noreply, push_navigate(socket, to: ~p"/app")}
+        # The URL carries the project now, so creating one navigates into it
+        # rather than recording a preference and landing on a generic /app.
+        {:noreply, push_navigate(socket, to: ~p"/app/projects/#{project.id}/stories")}
 
       {:error, changeset} ->
         {:noreply, assign(socket, project_form: to_form(changeset, as: "project"))}
