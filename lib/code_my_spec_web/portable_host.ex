@@ -31,6 +31,7 @@ defmodule CodeMySpecWeb.PortableHost do
         # needs an account scope. The local app has neither yet, so a portable
         # view must not offer a link it cannot follow. Flips to true when the
         # local app gets a real cloud scope.
+        full_width: false,
         serves_attachments?: true
       )
       # Resolved here as well as on :handle_params because a LiveView that

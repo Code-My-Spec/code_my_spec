@@ -29,15 +29,9 @@ defmodule CodeMySpecLocalWeb.Router do
       live "/app/projects/:project_name/edit", ProjectsLive.Form, :edit
       live "/app/projects/:project_name/init", InitLive, :index
       live "/app/projects/:project_name/init/:step", InitLive, :show
-      live "/app/projects/:project_name/next-task", Tasks.NextTaskLive
-      live "/app/projects/:project_name/tasks", Tasks.TaskQueueLive
-      live "/app/projects/:project_name/progress", AgentProgressLive
       # Requirements view of stories (graph projection — distinct from admin).
       # Must come before the `:name` catch-all below.
 
-      live "/app/projects/:project_name/architecture", ArchitectureLive, :dependency_graph
-      live "/app/projects/:project_name/architecture/overview", ArchitectureLive, :overview
-      live "/app/projects/:project_name/architecture/namespaces", ArchitectureLive, :namespaces
 
 
 
@@ -45,13 +39,7 @@ defmodule CodeMySpecLocalWeb.Router do
 
       # Requirements view of a story (graph projection — distinct from admin Show)
 
-      live "/app/projects/:project_name/knowledge", MarkdownBrowserLive, :knowledge
-      live "/app/projects/:project_name/knowledge/*path", MarkdownBrowserLive, :knowledge
-      live "/app/projects/:project_name/project-knowledge", MarkdownBrowserLive, :project_knowledge
 
-      live "/app/projects/:project_name/project-knowledge/*path",
-           MarkdownBrowserLive,
-           :project_knowledge
     end
 
   end
@@ -108,6 +96,16 @@ defmodule CodeMySpecLocalWeb.Router do
       live "/app/projects/:project_id/sessions/:id/tasks/:task_id", SessionsLive, :task_show
 
       live "/app/projects/:project_id/files", FilesLive
+      live "/app/projects/:project_id/next-task", Tasks.NextTaskLive
+      live "/app/projects/:project_id/tasks", Tasks.TaskQueueLive
+      live "/app/projects/:project_id/progress", AgentProgressLive
+      live "/app/projects/:project_id/architecture", ArchitectureLive, :dependency_graph
+      live "/app/projects/:project_id/architecture/overview", ArchitectureLive, :overview
+      live "/app/projects/:project_id/architecture/namespaces", ArchitectureLive, :namespaces
+      live "/app/projects/:project_id/knowledge", MarkdownBrowserLive, :knowledge
+      live "/app/projects/:project_id/knowledge/*path", MarkdownBrowserLive, :knowledge
+      live "/app/projects/:project_id/project-knowledge", MarkdownBrowserLive, :project_knowledge
+      live "/app/projects/:project_id/project-knowledge/*path", MarkdownBrowserLive, :project_knowledge
       live "/app/projects/:project_id/requirements", RequirementsLive, :index
       live "/app/projects/:project_id/requirements/graph", RequirementsLive, :graph
       live "/app/projects/:project_id/requirements/stories", RequirementsLive, :stories

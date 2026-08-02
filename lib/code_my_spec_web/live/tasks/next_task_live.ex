@@ -1,27 +1,22 @@
-defmodule CodeMySpecLocalWeb.Tasks.NextTaskLive do
+defmodule CodeMySpecWeb.Tasks.NextTaskLive do
   @moduledoc """
   Preview of what the agent sees from `get_next_requirement`.
   """
-  use CodeMySpecLocalWeb, :live_view
+  use CodeMySpecWeb, :live_view
 
   require Logger
 
   alias CodeMySpec.Files.ComponentSync, as: FileComponentSync
   alias CodeMySpec.Files.FileSync
   alias CodeMySpec.McpServers.Requirements.RequirementsMapper
-  alias CodeMySpec.Projects
   alias CodeMySpec.Requirements.RequirementGraph
-  alias CodeMySpec.Users.Scope
 
   @impl true
   def mount(_params, _session, socket) do
-    projects = Projects.list_local_projects()
-
     {:ok,
      assign(socket,
-       projects: projects,
-       project: nil,
-       scope: nil,
+       section: :next_task,
+       page_title: "Next task",
        markdown: nil,
        error: nil,
        sync_status: :idle,
@@ -30,23 +25,14 @@ defmodule CodeMySpecLocalWeb.Tasks.NextTaskLive do
   end
 
   @impl true
-  def handle_params(%{"project_name" => name}, _uri, socket) do
-    with {:ok, project} <- Projects.get_project_by_name(name),
-         {:ok, scope} <- Scope.for_local_project(project) do
-      {:noreply,
-       socket
-       |> assign(
-         project: project,
-         scope: scope,
-         page_title: "#{project.name} — Next Task",
-         error: nil
-       )
-       |> recompute()}
-    else
-      {:error, reason} ->
-        {:noreply, assign(socket, error: "Failed to load project: #{inspect(reason)}")}
-    end
+  def handle_params(_params, _uri, %{assigns: %{scope: %{}, project: project}} = socket) do
+    {:noreply,
+     socket
+     |> assign(page_title: "#{project.name} — Next Task", error: nil)
+     |> recompute()}
   end
+
+  def handle_params(_params, _uri, socket), do: {:noreply, socket}
 
   @impl true
   def handle_event("sync", _params, socket) do
@@ -81,13 +67,6 @@ defmodule CodeMySpecLocalWeb.Tasks.NextTaskLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app
-      flash={@flash}
-      projects={@projects}
-      project={@project}
-      section={:next_task}
-      page_title={assigns[:page_title]}
-    >
       <div :if={@error} role="alert" class="alert alert-error">
         <span>{@error}</span>
       </div>
@@ -124,7 +103,6 @@ defmodule CodeMySpecLocalWeb.Tasks.NextTaskLive do
 
         <div :if={!@markdown} class="text-base-content/50">Loading…</div>
       </div>
-    </Layouts.app>
     """
   end
 end

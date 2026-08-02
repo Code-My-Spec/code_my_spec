@@ -44,6 +44,7 @@ defmodule CodeMySpecLocalWeb.PortableHost do
         # views free of `assigns[:maybe]` lookups.
         current_scope: nil,
         current_path: "/",
+        full_width: false,
         pending_notifications: 0,
         # see CodeMySpecWeb.PortableHost — no account scope here yet
         serves_attachments?: false

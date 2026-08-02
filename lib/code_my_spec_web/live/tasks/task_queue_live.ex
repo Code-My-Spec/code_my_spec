@@ -1,4 +1,4 @@
-defmodule CodeMySpecLocalWeb.Tasks.TaskQueueLive do
+defmodule CodeMySpecWeb.Tasks.TaskQueueLive do
   @moduledoc """
   Story 811 — the engineer's at-a-glance view of the agent's task
   queue: the requirement the agent is on right now and the ordered
@@ -14,25 +14,22 @@ defmodule CodeMySpecLocalWeb.Tasks.TaskQueueLive do
   every sync (manual or watcher-driven) re-renders the queue
   without a refresh.
   """
-  use CodeMySpecLocalWeb, :live_view
+  use CodeMySpecWeb, :live_view
 
-
-  alias CodeMySpec.Projects
-  alias CodeMySpec.Requirements.RequirementGraph
   alias CodeMySpec.Users.Scope
+
+
+  alias CodeMySpec.Requirements.RequirementGraph
 
   # Per story 811 question resolution: top 25 in the upcoming list.
   @upcoming_cap 25
 
   @impl true
   def mount(_params, _session, socket) do
-    projects = Projects.list_local_projects()
-
     {:ok,
      assign(socket,
-       projects: projects,
-       project: nil,
-       scope: nil,
+       section: :next_task,
+       page_title: "Tasks",
        active: nil,
        upcoming: [],
        error: nil
@@ -40,25 +37,19 @@ defmodule CodeMySpecLocalWeb.Tasks.TaskQueueLive do
   end
 
   @impl true
-  def handle_params(%{"project_name" => name}, _uri, socket) do
-    with {:ok, project} <- Projects.get_project_by_name(name),
-         {:ok, scope} <- Scope.for_local_project(project) do
+  def handle_params(_params, _uri, %{assigns: %{scope: %{} = scope, project: project}} = socket) do
       if connected?(socket), do: subscribe_to_state_changes(scope)
 
       {:noreply,
        socket
        |> assign(
-         project: project,
-         scope: scope,
          page_title: "#{project.name} — Task Queue",
          error: nil
        )
        |> recompute()}
-    else
-      {:error, reason} ->
-        {:noreply, assign(socket, error: "Failed to load project: #{inspect(reason)}")}
-    end
   end
+
+  def handle_params(_params, _uri, socket), do: {:noreply, socket}
 
   # Requirement satisfaction is computed fresh from Components +
   # Files + Problems on every recompute. The components context
@@ -105,13 +96,6 @@ defmodule CodeMySpecLocalWeb.Tasks.TaskQueueLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app
-      flash={@flash}
-      projects={@projects}
-      project={@project}
-      section={:task_queue}
-      page_title={assigns[:page_title]}
-    >
       <div :if={@error} role="alert" class="alert alert-error">
         <span>{@error}</span>
       </div>
@@ -189,7 +173,6 @@ defmodule CodeMySpecLocalWeb.Tasks.TaskQueueLive do
           </section>
         <% end %>
       </div>
-    </Layouts.app>
     """
   end
 

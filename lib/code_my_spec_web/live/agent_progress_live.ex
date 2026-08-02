@@ -1,4 +1,4 @@
-defmodule CodeMySpecLocalWeb.AgentProgressLive do
+defmodule CodeMySpecWeb.AgentProgressLive do
   @moduledoc """
   Story 813 — the non-technical user's live spectator screen.
 
@@ -26,14 +26,12 @@ defmodule CodeMySpecLocalWeb.AgentProgressLive do
 
   Contract source of truth: the BDD spex suite at `test/spex/813_*`.
   """
-  use CodeMySpecLocalWeb, :live_view
+  use CodeMySpecWeb, :live_view
 
-  alias CodeMySpec.Projects
   alias CodeMySpec.Requirements
   alias CodeMySpec.Requirements.RequirementGraph
   alias CodeMySpec.Sessions
   alias CodeMySpec.TaskHelp
-  alias CodeMySpec.Users.Scope
 
   # Most recent sessions shown on the timeline.
   @session_cap 10
@@ -52,9 +50,9 @@ defmodule CodeMySpecLocalWeb.AgentProgressLive do
   def mount(_params, _session, socket) do
     {:ok,
      assign(socket,
-       projects: Projects.list_local_projects(),
-       project: nil,
-       scope: nil,
+       section: :progress,
+       page_title: "Progress",
+       full_width: true,
        requirements: [],
        sessions: [],
        active_session_id: nil,
@@ -69,25 +67,23 @@ defmodule CodeMySpecLocalWeb.AgentProgressLive do
   end
 
   @impl true
-  def handle_params(%{"project_name" => name}, _uri, socket) do
-    with {:ok, project} <- Projects.get_project_by_name(name),
-         {:ok, scope} <- Scope.for_local_project(project) do
-      if connected?(socket), do: Sessions.subscribe_sessions(scope)
-
-      {:noreply,
-       socket
-       |> assign(
-         project: project,
-         scope: scope,
-         page_title: "#{project.name} — Progress",
-         error: nil
-       )
-       |> recompute_all()}
-    else
-      {:error, reason} ->
-        {:noreply, assign(socket, error: "Failed to load project: #{inspect(reason)}")}
+  def handle_params(_params, _uri, %{assigns: %{scope: %{} = scope, project: project}} = socket) do
+    # The host re-resolves scope on every handle_params, so subscribe once.
+    if connected?(socket) and !socket.assigns[:subscribed?] do
+      Sessions.subscribe_sessions(scope)
     end
+
+    {:noreply,
+     socket
+     |> assign(
+       subscribed?: connected?(socket),
+       page_title: "#{project.name} — Progress",
+       error: nil
+     )
+     |> recompute_all()}
   end
+
+  def handle_params(_params, _uri, socket), do: {:noreply, socket}
 
   # A new or advancing task: reload sessions and refocus, but skip the
   # expensive requirement-graph recompute — task lifecycle doesn't change
@@ -277,7 +273,6 @@ defmodule CodeMySpecLocalWeb.AgentProgressLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} projects={@projects} project={@project} section={:progress} full_width>
 
       <div :if={@error} role="alert" class="alert alert-error">
         <span>{@error}</span>
@@ -416,7 +411,6 @@ defmodule CodeMySpecLocalWeb.AgentProgressLive do
         </aside>
         </div>
       </div>
-    </Layouts.app>
     """
   end
 

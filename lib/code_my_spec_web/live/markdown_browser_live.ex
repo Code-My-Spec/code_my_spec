@@ -1,4 +1,4 @@
-defmodule CodeMySpecLocalWeb.MarkdownBrowserLive do
+defmodule CodeMySpecWeb.MarkdownBrowserLive do
   @moduledoc """
   Generic browser for directories of markdown files.
 
@@ -11,44 +11,36 @@ defmodule CodeMySpecLocalWeb.MarkdownBrowserLive do
   Directory listings are structured data and render as a list of links;
   a `.md` file's contents are markdown and render through `md_html/1`.
   """
-  use CodeMySpecLocalWeb, :live_view
+  use CodeMySpecWeb, :live_view
 
   alias CodeMySpec.Knowledge
-  alias CodeMySpec.Projects
-  alias CodeMySpec.Users.Scope
 
   # Library config (titles) lives in CodeMySpec.Knowledge.
   @libraries Knowledge.libraries()
 
   @impl true
   def mount(_params, _session, socket) do
-    projects = Projects.list_local_projects()
-    {:ok, assign(socket, projects: projects, project: nil, view: nil, error: nil)}
+    {:ok,
+     assign(socket, section: :knowledge, page_title: "Knowledge", view: nil, error: nil)}
   end
 
   @impl true
-  def handle_params(%{"project_name" => project_name} = params, _uri, socket)
-      when not is_map_key(params, "path") do
-    load_view(socket, project_name, [])
-  end
+  def handle_params(params, _uri, %{assigns: %{scope: %{}}} = socket),
+    do: load_view(socket, Map.get(params, "path", []))
 
-  def handle_params(%{"project_name" => project_name, "path" => path_segments}, _uri, socket) do
-    load_view(socket, project_name, path_segments)
-  end
+  def handle_params(_params, _uri, socket), do: {:noreply, socket}
 
-  defp load_view(socket, project_name, path_segments) do
+  defp load_view(socket, path_segments) do
     library = socket.assigns.live_action
     config = Map.fetch!(@libraries, library)
-    base_url = "/app/projects/#{project_name}/#{library_path(library)}"
 
-    with {:ok, project} <- Projects.get_project_by_name(project_name),
-         {:ok, scope} <- Scope.for_local_project(project),
-         {:ok, result} <- Knowledge.browse(scope, library, path_segments) do
+    base_url = "/app/projects/#{socket.assigns.slug}/#{library_path(library)}"
+
+    with {:ok, result} <- Knowledge.browse(socket.assigns.scope, library, path_segments) do
       view = build_view(result, config, base_url, path_segments)
 
       {:noreply,
        assign(socket,
-         project: project,
          library: library,
          view: view,
          page_title: elem(view, 1).title,
@@ -65,20 +57,12 @@ defmodule CodeMySpecLocalWeb.MarkdownBrowserLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app
-      flash={@flash}
-      projects={@projects}
-      project={@project}
-      section={assigns[:library]}
-      page_title={assigns[:page_title]}
-    >
       <div :if={@error} role="alert" class="alert alert-error">
         <span>{@error}</span>
       </div>
 
       <.dir_view :if={match?({:dir, _}, @view)} dir={elem(@view, 1)} />
       <.file_view :if={match?({:file, _}, @view)} file={elem(@view, 1)} />
-    </Layouts.app>
     """
   end
 

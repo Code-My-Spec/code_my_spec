@@ -33,6 +33,7 @@ defmodule CodeMySpecLocalWeb.Layouts do
       project={@project}
       section={@section}
       page_title={@page_title}
+      full_width={@full_width}
     >
       {@inner_content}
     </.app>
