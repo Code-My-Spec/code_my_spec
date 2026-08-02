@@ -38,6 +38,15 @@ attempt=0
 # working agent is worse than waiting.
 HANG_TIMEOUT="${AGENT_HANG_TIMEOUT:-420}"
 
+# The agent's model calls go through this sprite's own harness, which forwards
+# them upstream and records both halves for whoever is watching. Without this
+# the proxy exists and nothing points at it — the conversation view stays empty
+# while the sprite works, which is the whole thing story 984 set out to fix.
+#
+# Overridable: an operator pointing somewhere else has a reason, and a drill
+# that silently rewrote it would be hiding the one variable under test.
+export ANTHROPIC_BASE_URL="${ANTHROPIC_BASE_URL:-http://127.0.0.1:4003}"
+
 # Let the MCP client give up on a tool that never returns, so the agent gets an
 # error instead of the run getting a wall. Only set if the operator has not.
 export MCP_TOOL_TIMEOUT="${MCP_TOOL_TIMEOUT:-180000}"

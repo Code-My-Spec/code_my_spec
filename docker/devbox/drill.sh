@@ -13,6 +13,7 @@
 #   ./docker/devbox/drill.sh --seed /path/to/repo # start from existing code
 #   ./docker/devbox/drill.sh --n 12 --reuse       # re-enter drill 12's workspace
 #   ./docker/devbox/drill.sh --no-agent           # harness only, drive it yourself
+#   ./docker/devbox/drill.sh --prompt "..."       # a short run instead of the whole graph
 #
 # Defaults target the local E2E stack (:4102 + code_my_spec_e2e), which is
 # where drills have always run. Override with CMS_SERVER_URL / CMS_PROJECT_ID /
@@ -36,6 +37,7 @@ SEED=""
 N=""
 REUSE=0
 WITH_AGENT=1
+AGENT_PROMPT=""
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -44,6 +46,7 @@ while [ $# -gt 0 ]; do
     --n)     N="$2";     shift 2 ;;
     --reuse) REUSE=1;    shift ;;
     --no-agent) WITH_AGENT=0; shift ;;
+    --prompt) AGENT_PROMPT="$2"; shift 2 ;;
     -h|--help) sed -n '2,18p' "$0"; exit 0 ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
@@ -165,6 +168,8 @@ if [ "$WITH_AGENT" = "1" ]; then
     -e MCP_TOOL_TIMEOUT="${MCP_TOOL_TIMEOUT:-180000}" \
     -e MCP_TOOL_IDLE_TIMEOUT="${MCP_TOOL_IDLE_TIMEOUT:-180000}" \
     -e AGENT_HANG_TIMEOUT="${AGENT_HANG_TIMEOUT:-420}" \
+    ${AGENT_PROMPT:+-e AGENT_PROMPT="$AGENT_PROMPT"} \
+    ${ANTHROPIC_BASE_URL:+-e ANTHROPIC_BASE_URL="$ANTHROPIC_BASE_URL"} \
     -w "/workspace/${APP}" \
     "$NAME" /usr/local/bin/devbox-agent
 fi
