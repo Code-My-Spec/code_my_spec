@@ -59,7 +59,7 @@ defmodule CodeMySpecSpex.Story966.Criterion8156Spex do
         end)
 
         html =
-          with_provider_cassette(@uat_only_cassette, fn ->
+          with_full_cassette @uat_only_cassette do
             view |> element("[data-test='start-setup']") |> render_click()
 
             # The click starts the run and returns; the step transitions
@@ -67,7 +67,7 @@ defmodule CodeMySpecSpex.Story966.Criterion8156Spex do
             # shows the page as it was *before* anything ran — every step
             # not_started, which reads as "nothing was provisioned".
             await_provisioning(view)
-          end)
+          end
 
         servers = servers_by_environment(html)
 
@@ -94,9 +94,15 @@ defmodule CodeMySpecSpex.Story966.Criterion8156Spex do
         |> render_submit()
 
         html =
-          with_provider_cassette(@prod_added_cassette, fn ->
+          with_full_cassette @prod_added_cassette do
             context.view |> element("[data-test='start-setup']") |> render_click()
-          end)
+
+            # Waiting for production's server specifically. "Nothing is
+            # running" cannot distinguish this run finishing from the previous
+            # one having finished, and the previous one halted — so that wait
+            # returns the page as it was before this run wrote anything.
+            await_environment_server(context.view, "prod")
+          end
 
         {:ok, Map.put(context, :html, html)}
       end

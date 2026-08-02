@@ -921,6 +921,7 @@ defmodule CodeMySpec.Provisioning.Steps do
           # find it again — the page cannot show it and teardown cannot remove
           # it, so it leaks and the step still says done. A silent write is the
           # worst of the three outcomes.
+
           case EnvironmentRepository.put(scope, environment.name, %{server_name: name, ip: ip}) do
             {:ok, _environment} ->
               {:cont, {:ok, [server_resource(server, environment.name) | acc]}}

@@ -458,6 +458,43 @@ defmodule CodeMySpecSpex.Case do
     settle(view, deadline)
   end
 
+  @doc """
+  Wait until an environment shows a server on the page.
+
+  `await_provisioning/2` waits for "nothing is running", which cannot tell a
+  finished *previous* run from a finished current one — after a halted run
+  every step is already in a settled state, so the wait can return the page as
+  it was before the new run wrote anything. Waiting for the thing the
+  assertion is about is the honest version of that wait.
+  """
+  def await_environment_server(view, environment, timeout \\ 90_000) do
+    deadline = System.monotonic_time(:millisecond) + timeout
+    await_environment_server(view, environment, deadline, nil)
+  end
+
+  defp await_environment_server(view, environment, deadline, _last) do
+    html = Phoenix.LiveViewTest.render(view)
+
+    server =
+      html
+      |> Floki.parse_document!()
+      |> Floki.find("[data-test='environment'][data-environment='#{environment}']")
+      |> Floki.attribute("data-server")
+      |> List.first()
+
+    cond do
+      is_binary(server) and server != "" ->
+        html
+
+      System.monotonic_time(:millisecond) > deadline ->
+        html
+
+      true ->
+        Process.sleep(500)
+        await_environment_server(view, environment, deadline, server)
+    end
+  end
+
   defp await_start(view, deadline) do
     html = Phoenix.LiveViewTest.render(view)
 
