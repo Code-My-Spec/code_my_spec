@@ -445,6 +445,42 @@ defmodule CodeMySpecWeb.ProvisioningLive do
               credential placed in {cred.location}
             </div>
 
+            <!-- A dump is a file until something has read it back. The step
+                 restores into a scratch database and counts the rows; that
+                 count is the whole claim, so it is on the page rather than
+                 folded into "done" (8054). -->
+            <span
+              :for={pr <- Enum.filter(step.resources, &(&1.kind == "restore_proof"))}
+              data-test="backup-restore-proof"
+              data-target={pr.location}
+              data-rows={pr.identifier |> String.split(" ") |> hd() |> String.replace_prefix("rows=", "")}
+              data-completed-at={pr.identifier |> String.split(" ") |> List.last() |> String.replace_prefix("proven_at=", "")}
+              data-content-verified={
+                pr.identifier
+                |> String.split(" ")
+                |> hd()
+                |> String.replace_prefix("rows=", "")
+                |> then(&(&1 != "0"))
+                |> to_string()
+              }
+              class="mt-1 block text-xs font-mono opacity-70"
+            >
+              restored into {pr.location}: {pr.identifier}
+            </span>
+
+            <!-- Retention is enforced by the bucket's own lifecycle rule, not
+                 by anything this app runs on a schedule — so a dump expires
+                 whether or not setup ever runs again (8016). -->
+            <span
+              :for={r <- Enum.filter(step.resources, &(&1.kind == "retention"))}
+              data-test="backup-retention"
+              data-days={r.location |> String.replace_suffix(" days", "")}
+              data-enforced-by="bucket_lifecycle"
+              class="mt-1 block text-xs font-mono opacity-70"
+            >
+              dumps expire after {r.location}
+            </span>
+
             <!-- The deploy's phases, from the recorded resources: migration
                  completing before the swap starts (8007), and on a failure the
                  phase that stopped it and which version stayed live (8008,
@@ -736,6 +772,25 @@ defmodule CodeMySpecWeb.ProvisioningLive do
         Check the bucket
       </.button>
 
+      <.button data-test="backup-restore-probe" phx-click="probe_restore" class="mt-2">
+        Restore the newest dump
+      </.button>
+
+      <%!-- `data-content-verified` is not the exit status. A restore of an
+            empty dump exits 0, so the rows that came back are the claim. --%>
+      <div
+        :if={@restore_result}
+        data-test="restore-result"
+        data-state={@restore_result.state}
+        data-rows-restored={@restore_result.rows}
+        data-content-verified={to_string(@restore_result.rows > 0)}
+        data-target={Map.get(@restore_result, :target)}
+      >
+        {if @restore_result.state == "succeeded",
+          do: "restored #{@restore_result.rows} rows into #{@restore_result.target}",
+          else: "restore failed: #{@restore_result.reason}"}
+      </div>
+
       <p :if={@backups == []} data-test="no-backups">
         no dumps in any bucket yet
       </p>
@@ -765,6 +820,7 @@ defmodule CodeMySpecWeb.ProvisioningLive do
         data-environment={dump.environment}
         data-bucket={dump.bucket}
         data-taken-at={dump.taken_at}
+        data-age-days={dump.age_days}
         data-size={dump.size}
       >
         {dump.environment}: {dump.key} ({dump.taken_at})
@@ -1070,6 +1126,43 @@ defmodule CodeMySpecWeb.ProvisioningLive do
   # says "done" once, and a schedule that quietly stops looks identical from
   # the page until the morning somebody needs a dump. So the bucket is re-read
   # on demand rather than trusted from when the step last ran.
+  # A dump that has never been read back is a file. This is the button that
+  # reads one back — into a scratch database, counting what came back, because
+  # `pg_restore` exiting 0 over an empty dump is a successful restore of
+  # nothing (8017).
+  def handle_event("probe_restore", _params, socket) do
+    scope = socket.assigns.current_scope
+    opts = socket.assigns.options
+    dumps = list_backups(socket)
+
+    result =
+      case {Storage.credentials(scope, opts), dumps} do
+        {:none, _} ->
+          %{state: "failed", rows: 0, reason: Storage.credentials_instructions()}
+
+        {_, []} ->
+          %{state: "failed", rows: 0, reason: "there is no dump in the bucket to restore"}
+
+        {{:ok, credentials}, [newest | _]} ->
+          # `opts` here is the list of enabled steps, not a keyword list —
+          # merging it is what crashed the probe.
+          restore_opts =
+            step_opts()
+            |> Keyword.put(:bucket, newest.bucket)
+            |> Keyword.put(:credentials, credentials)
+
+          case Backups.restore_proof(scope.environment, newest.key, restore_opts) do
+            {:ok, proof} ->
+              %{state: "succeeded", rows: proof.rows, target: proof.target, reason: nil}
+
+            {:error, reason} ->
+              %{state: "failed", rows: 0, reason: reason}
+          end
+      end
+
+    {:noreply, socket |> assign(:backups, dumps) |> assign(:restore_result, result)}
+  end
+
   def handle_event("refresh_backups", _params, socket) do
     dumps = list_backups(socket)
 
@@ -1314,6 +1407,7 @@ defmodule CodeMySpecWeb.ProvisioningLive do
     socket
     |> assign_new(:backups, fn -> [] end)
     |> assign_new(:backup_health, fn -> nil end)
+    |> assign_new(:restore_result, fn -> nil end)
     |> assign(:options, options)
     |> assign(:available_options, available_options())
     |> assign(:plan, plan)
@@ -1439,6 +1533,19 @@ defmodule CodeMySpecWeb.ProvisioningLive do
   # the rest of the system supported it.
   defp environments(scope), do: Provisioning.environment_names(scope)
 
+  # Age in whole days, so the page can answer "is anything older than the
+  # retention window still here?" without the reader doing date arithmetic.
+  defp age_days(%{taken_at: taken_at}) when is_binary(taken_at) do
+    case DateTime.from_iso8601(taken_at) do
+      {:ok, at, _} -> DateTime.diff(now(), at, :day)
+      _ -> 0
+    end
+  end
+
+  defp age_days(_), do: 0
+
+  defp now, do: Keyword.get(step_opts(), :now, &DateTime.utc_now/0).()
+
   # Every environment's bucket, because "is there a dump?" is a question about
   # the whole project — a prod bucket filling up while uat's has been empty for
   # a month is exactly the state a single-bucket view hides.
@@ -1456,7 +1563,7 @@ defmodule CodeMySpecWeb.ProvisioningLive do
             bucket = Storage.bucket_name(project, environment),
             {:ok, dumps} <- [Storage.list_dumps(bucket, credentials, opts)],
             dump <- dumps do
-          Map.merge(dump, %{environment: environment, bucket: bucket})
+          Map.merge(dump, %{environment: environment, bucket: bucket, age_days: age_days(dump)})
         end
     end
   end

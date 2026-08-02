@@ -48,11 +48,11 @@ defmodule CodeMySpecSpex.Story968.Criterion8017Spex do
 
       when_ "it is restored into an empty database", context do
         html =
-          with_provider_cassette(@cassette, fn ->
+          with_full_cassette @cassette do
             context.view
             |> element("[data-test='backup-restore-probe']")
             |> render_click()
-          end)
+          end
 
         {:ok, Map.put(context, :html, html)}
       end

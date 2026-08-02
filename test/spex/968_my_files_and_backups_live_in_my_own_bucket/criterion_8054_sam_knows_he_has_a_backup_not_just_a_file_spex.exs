@@ -18,7 +18,7 @@ defmodule CodeMySpecSpex.Story968.Criterion8054Spex do
 
   @endpoint CodeMySpecWeb.Endpoint
 
-  @cassette "backup_step_proves_restore_before_done"
+  @cassette "968_8054_backup_step_proves_restore_before_done"
 
   @given_cassette "968_8054_storage_ready"
 
@@ -54,11 +54,11 @@ defmodule CodeMySpecSpex.Story968.Criterion8054Spex do
 
       when_ "it verifies itself", context do
         html =
-          with_provider_cassette(@cassette, fn ->
+          with_full_cassette @cassette do
             context.view
             |> element("[data-test='setup-step'][data-step='backups'] [data-test='run-step']")
             |> render_click()
-          end)
+          end
 
         {:ok, Map.put(context, :html, html)}
       end
@@ -71,7 +71,13 @@ defmodule CodeMySpecSpex.Story968.Criterion8054Spex do
           |> Floki.find("[data-test='backup-restore-proof']")
 
         # Anchor: a proof was recorded, not merely a dump listing.
-        assert proof != [], "expected the backup step to record a restore proof"
+        assert proof != [],
+               "expected the backup step to record a restore proof, backups step reads: " <>
+                 (parsed
+                  |> Floki.find("[data-step='backups']")
+                  |> Floki.text()
+                  |> String.replace(~r/\s+/, " ")
+                  |> String.slice(0, 400))
 
         target = proof |> Floki.attribute("data-target") |> List.first()
         verified = proof |> Floki.attribute("data-content-verified") |> List.first()
