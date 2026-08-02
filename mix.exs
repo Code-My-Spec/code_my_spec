@@ -85,6 +85,7 @@ defmodule CodeMySpec.MixProject do
        depth: 1},
       {:swoosh, "~> 1.21"},
       {:req, "~> 0.5.15"},
+      {:req_llm, "~> 1.0"},
       {:telemetry_metrics, "~> 1.0"},
       {:telemetry_poller, "~> 1.0"},
       {:gettext, "~> 0.26"},
