@@ -69,8 +69,6 @@ defmodule CodeMySpecLocalWeb.Router do
            RequirementsLive,
            :story_req_show
 
-      live "/app/projects/:project_name/issues", IssuesLive.Index, :index
-      live "/app/projects/:project_name/issues/:id", IssuesLive.Show, :show
       live "/app/projects/:project_name/sessions", SessionsLive, :index
       live "/app/projects/:project_name/sessions/:id", SessionsLive, :show
       live "/app/projects/:project_name/sessions/:id/tasks/:task_id", SessionsLive, :task_show
@@ -125,6 +123,9 @@ defmodule CodeMySpecLocalWeb.Router do
 
       live "/app/projects/:project_id/qa", QaLive
       live "/app/projects/:project_id/configuration", ConfigurationLive
+
+      live "/app/projects/:project_id/issues", IssuesLive.Index, :index
+      live "/app/projects/:project_id/issues/:id", IssuesLive.Show, :show
     end
   end
 

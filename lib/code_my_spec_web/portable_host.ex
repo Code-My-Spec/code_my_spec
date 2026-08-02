@@ -21,7 +21,18 @@ defmodule CodeMySpecWeb.PortableHost do
   def on_mount(:default, params, _session, socket) do
     socket =
       socket
-      |> assign(scope: nil, project: nil, slug: nil, scope_error: nil, projects: [])
+      |> assign(
+        scope: nil,
+        project: nil,
+        slug: nil,
+        scope_error: nil,
+        projects: [],
+        # S3-backed issue attachments are served by a cloud controller that
+        # needs an account scope. The local app has neither yet, so a portable
+        # view must not offer a link it cannot follow. Flips to true when the
+        # local app gets a real cloud scope.
+        serves_attachments?: true
+      )
       # Resolved here as well as on :handle_params because a LiveView that
       # loads in `mount/3` — mail, mailboxes, project users — runs before the
       # first handle_params and would otherwise see no project at all. The

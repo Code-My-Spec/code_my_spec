@@ -45,7 +45,13 @@ defmodule CodeMySpecWeb.LinkResolutionTest do
       # static assets, served by Plug.Static rather than the router
       String.starts_with?(path, "/local/") or
       # section_path/1 renders a bare "/overview" into the terminal prompt strip
-      path == "/overview"
+      path == "/overview" or
+      # Controller-served attachment bytes, not navigation. These live only in
+      # the cloud router because serving them needs an account scope the local
+      # app doesn't have yet; the portable view that links to one hides it
+      # behind the host's `serves_attachments?` capability. Delete this clause
+      # when the local app gets a cloud scope and can mount the controllers.
+      String.ends_with?(path, "/screenshot")
   end
 
   defp path_literals(paths) do

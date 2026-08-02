@@ -9,7 +9,6 @@ defmodule CodeMySpecWeb.IssuesLive.Index do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_scope={@current_scope} pending_notifications={@pending_notifications}>
       <.header>
         Issues
         <:actions>
@@ -37,7 +36,7 @@ defmodule CodeMySpecWeb.IssuesLive.Index do
           :for={issue <- @issues}
           id={"issue-#{issue.id}"}
           class="card bg-base-100 shadow-md cursor-pointer hover:shadow-lg transition-shadow"
-          phx-click={JS.navigate(~p"/app/projects/#{@project.id}/issues/#{issue.id}")}
+          phx-click={JS.navigate(path(@socket, ~p"/app/projects/#{@project.id}/issues/#{issue.id}"))}
         >
           <div class="card-body py-4">
             <div class="flex items-start justify-between gap-4">
@@ -63,7 +62,6 @@ defmodule CodeMySpecWeb.IssuesLive.Index do
           </div>
         </div>
       </div>
-    </Layouts.app>
     """
   end
 
@@ -75,6 +73,7 @@ defmodule CodeMySpecWeb.IssuesLive.Index do
 
     {:ok,
      socket
+     |> assign(:section, :issues)
      |> assign(:page_title, "Issues")
      |> assign(:filter_status, "all")
      |> assign(:filter_severity, "all")

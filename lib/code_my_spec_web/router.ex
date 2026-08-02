@@ -394,6 +394,9 @@ defmodule CodeMySpecWeb.Router do
 
       live "/projects/:project_id/qa", QaLive
       live "/projects/:project_id/configuration", ConfigurationLive
+
+      live "/projects/:project_id/issues", IssuesLive.Index, :index
+      live "/projects/:project_id/issues/:id", IssuesLive.Show, :show
     end
 
     # Project-scoped surfaces. The project is named in the route and put on the
@@ -409,9 +412,6 @@ defmodule CodeMySpecWeb.Router do
         {CodeMySpecWeb.Live.NotificationsHook, :default},
         {CodeMySpecWeb.PortableHost, :default}
       ] do
-      live "/projects/:project_id/issues", IssuesLive.Index, :index
-      live "/projects/:project_id/issues/:id", IssuesLive.Show, :show
-
       live "/projects/:project_id/users", ProjectUsersLive.Index, :index
 
       live "/projects/:project_id/inbox", InboxLive, :index

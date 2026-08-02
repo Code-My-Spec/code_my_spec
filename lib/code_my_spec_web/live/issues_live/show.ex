@@ -6,7 +6,6 @@ defmodule CodeMySpecWeb.IssuesLive.Show do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_scope={@current_scope} pending_notifications={@pending_notifications}>
       <.header>
         {@issue.title}
         <:subtitle>
@@ -17,7 +16,7 @@ defmodule CodeMySpecWeb.IssuesLive.Show do
           </div>
         </:subtitle>
         <:actions>
-          <.button navigate={~p"/app/projects/#{@project.id}/issues"}>
+          <.button navigate={path(@socket, ~p"/app/projects/#{@project.id}/issues")}>
             <.icon name="hero-arrow-left" />
           </.button>
         </:actions>
@@ -27,10 +26,10 @@ defmodule CodeMySpecWeb.IssuesLive.Show do
         <:item title="Description">
           <p class="whitespace-pre-wrap">{@issue.description}</p>
         </:item>
-        <:item :if={has_screenshot?(@issue)} title="Screenshot">
-          <a href={~p"/app/issues/#{@issue.id}/screenshot"} target="_blank" rel="noopener">
+        <:item :if={has_screenshot?(@issue) and @serves_attachments?} title="Screenshot">
+          <a href={path(@socket, ~p"/app/issues/#{@issue.id}/screenshot")} target="_blank" rel="noopener">
             <img
-              src={~p"/app/issues/#{@issue.id}/screenshot"}
+              src={path(@socket, ~p"/app/issues/#{@issue.id}/screenshot")}
               alt="Reported screenshot"
               class="max-h-96 rounded border border-base-300"
             />
@@ -108,7 +107,6 @@ defmodule CodeMySpecWeb.IssuesLive.Show do
           </div>
         </form>
       </div>
-    </Layouts.app>
     """
   end
 
@@ -122,6 +120,7 @@ defmodule CodeMySpecWeb.IssuesLive.Show do
 
     {:ok,
      socket
+     |> assign(:section, :issues)
      |> assign(:page_title, issue.title)
      |> assign(:issue, issue)
      |> assign(:show_form, nil)}

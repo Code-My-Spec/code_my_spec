@@ -44,7 +44,9 @@ defmodule CodeMySpecLocalWeb.PortableHost do
         # views free of `assigns[:maybe]` lookups.
         current_scope: nil,
         current_path: "/",
-        pending_notifications: 0
+        pending_notifications: 0,
+        # see CodeMySpecWeb.PortableHost — no account scope here yet
+        serves_attachments?: false
       )
       # Resolved at mount as well as on :handle_params — a LiveView that loads
       # in `mount/3` runs before the first handle_params and would otherwise
