@@ -222,6 +222,39 @@ defmodule CodeMySpecLocalWeb.EpicsLive.Index do
 
   defp ready_count(epic), do: Enum.count(epic_stories(epic), &(&1.ready_for_dev == true))
 
+  # Readiness control for one story on the board.
+
+  # One component for both columns because the board previously gave the same
+  # information two different affordances: unfiled stories got a working
+  # toggle, stories already inside an epic got a static badge. Flipping one of
+  # those meant leaving the board for the epic's Show page — and the board gave no
+  # sign of it, so it looked like per-story readiness worked everywhere and
+  # silently didn't for exactly the stories just filed.
+  #
+  # Sharing it also restores the colour the unfiled column had lost: that
+  # button carried `badge badge-sm` with no variant, so it read the same
+  # whether the story was ready or parked. The badge is the status; it has to
+  # look like it.
+  attr :story, :map, required: true
+
+  defp story_readiness_toggle(assigns) do
+    ~H"""
+    <button
+      type="button"
+      phx-click="toggle_story_ready"
+      phx-value-id={@story.id}
+      data-test={if @story.ready_for_dev == true, do: "story-ready", else: "story-not-ready"}
+      title="Toggle readiness for development"
+      class={[
+        "badge badge-sm shrink-0 cursor-pointer",
+        if(@story.ready_for_dev == true, do: "badge-success", else: "badge-ghost")
+      ]}
+    >
+      {if @story.ready_for_dev == true, do: "ready", else: "parked"}
+    </button>
+    """
+  end
+
   defp noun(1), do: "story"
   defp noun(_), do: "stories"
 
@@ -280,7 +313,10 @@ defmodule CodeMySpecLocalWeb.EpicsLive.Index do
                     </p>
                   </div>
                   <div class="flex items-center gap-1 shrink-0">
-                    <.button patch={~p"/projects/#{@slug}/epics/#{epic.slug}/edit"} class="btn btn-ghost btn-xs">
+                    <.button
+                      patch={~p"/projects/#{@slug}/epics/#{epic.slug}/edit"}
+                      class="btn btn-ghost btn-xs"
+                    >
                       Edit
                     </.button>
                     <button
@@ -325,20 +361,7 @@ defmodule CodeMySpecLocalWeb.EpicsLive.Index do
                     class="cursor-grab active:cursor-grabbing rounded bg-base-200 px-3 py-2 flex items-center justify-between gap-2"
                   >
                     <span class="truncate text-sm">{story.title}</span>
-                    <span
-                      :if={story.ready_for_dev == true}
-                      data-test="story-ready"
-                      class="badge badge-success badge-sm shrink-0"
-                    >
-                      ready
-                    </span>
-                    <span
-                      :if={story.ready_for_dev != true}
-                      data-test="story-not-ready"
-                      class="badge badge-ghost badge-sm shrink-0"
-                    >
-                      parked
-                    </span>
+                    <.story_readiness_toggle story={story} />
                   </li>
                 </ul>
               </div>
@@ -367,14 +390,7 @@ defmodule CodeMySpecLocalWeb.EpicsLive.Index do
                     class="cursor-grab active:cursor-grabbing rounded bg-base-200 px-3 py-2 flex items-center justify-between gap-2"
                   >
                     <span class="truncate text-sm">{story.title}</span>
-                    <button
-                      type="button"
-                      phx-click="toggle_story_ready"
-                      phx-value-id={story.id}
-                      class="badge badge-sm shrink-0 cursor-pointer"
-                    >
-                      {if story.ready_for_dev == true, do: "ready", else: "parked"}
-                    </button>
+                    <.story_readiness_toggle story={story} />
                   </li>
                 </ul>
 
