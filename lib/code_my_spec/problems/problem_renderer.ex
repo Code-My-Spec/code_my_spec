@@ -174,25 +174,27 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
 
   def render_stop_response([], _advisory, _opts), do: ""
 
-  def render_stop_response(blocking, advisory, _opts) do
+  def render_stop_response(blocking, advisory, opts) do
+    stale = opts |> Keyword.get(:stale_sources, []) |> MapSet.new()
+
     header = "Fix these problems before stopping:\n\n"
     advisory_section = render_advisory_section(advisory)
 
-    blocking_section = render_blocking_section(blocking)
+    blocking_section = render_blocking_section(blocking, stale)
 
-    raw = header <> blocking_section <> advisory_section
+    raw = header <> blocking_section <> advisory_section <> stale_footer(blocking, stale)
 
     enforce_total_cap(raw, blocking, advisory)
   end
 
-  defp render_blocking_section(blocking) do
+  defp render_blocking_section(blocking, stale) do
     blocking
     |> Enum.group_by(& &1.source)
     |> Enum.sort_by(fn {source, _} -> source end)
-    |> Enum.map_join("\n", &render_blocking_group/1)
+    |> Enum.map_join("\n", &render_blocking_group(&1, stale))
   end
 
-  defp render_blocking_group({source, items}) do
+  defp render_blocking_group({source, items}, stale) do
     count = length(items)
     visible = Enum.take(items, @per_source_list_cap)
 
@@ -204,7 +206,31 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
         n -> "\n  ... #{n} more #{source} problems (use get_issue to inspect)"
       end
 
-    "#{source} (#{count}):\n#{details}#{overflow}"
+    "#{source} (#{count})#{stale_marker(source, stale)}:\n#{details}#{overflow}"
+  end
+
+  # Marked, not dropped: dropping opens an escape at the last stop of a run
+  # and hides an analyzer that fails every time.
+  defp stale_marker(source, stale) do
+    if MapSet.member?(stale, source), do: " — stale", else: ""
+  end
+
+  defp stale_footer(blocking, stale) do
+    blocking
+    |> Enum.map(& &1.source)
+    |> Enum.uniq()
+    |> Enum.filter(&MapSet.member?(stale, &1))
+    |> case do
+      [] ->
+        ""
+
+      sources ->
+        "\n\nSources marked stale (#{Enum.join(Enum.sort(sources), ", ")}) last ran " <>
+          "before your most recent edit. Analysis is running now. Do not re-fix " <>
+          "anything you have already corrected — stop again and let the rerun " <>
+          "replace these. If they persist across several stops with no change, " <>
+          "the analyzer itself is failing; report that rather than editing around it."
+    end
   end
 
   defp render_blocking_line(%Problem{} = problem) do

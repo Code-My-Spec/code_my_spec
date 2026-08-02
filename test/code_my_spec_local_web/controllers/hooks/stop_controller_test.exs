@@ -22,7 +22,7 @@ defmodule CodeMySpecLocalWeb.Hooks.StopControllerTest do
   make to "handle" a malformed payload, and it would turn every hook-payload
   glitch into an unvalidated stop. That is what this file exists to prevent.
   """
-  use CodeMySpecTest.DataCase, async: true
+  use CodeMySpecTest.DataCase, async: false
 
   import CodeMySpec.SessionsFixtures
   import CodeMySpec.UsersFixtures
@@ -107,7 +107,7 @@ defmodule CodeMySpecLocalWeb.Hooks.StopControllerTest do
           post_stop(scope, %{"session_id" => session.external_conversation_id})
         end)
 
-      refute log =~ "no session record",
+      refute log =~ "#{session.external_conversation_id} has no session record",
              "a warning on the healthy path is noise, and noise is why nobody " <>
                "reads the ones that matter"
     end

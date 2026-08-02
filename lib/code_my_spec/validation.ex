@@ -314,27 +314,12 @@ defmodule CodeMySpec.Validation do
   defp check_blocking_problems(scope, changed_files, config) do
     sources = active_blocking_sources(config)
 
-    # Only problems whose analyzer has seen the current working copy.
-    #
-    # A finding recorded against bytes that no longer exist is not evidence of
-    # anything, and handing it back is worse than saying nothing: for "nesting
-    # too deep" or "alias not alphabetically ordered" there is no idempotent
-    # second fix, so the agent has to invent a *different* refactor of correct
-    # code — and that edit produces the next stale snapshot for the next stop to
-    # read. Drill 6 lost most of a run to exactly this: four credo findings
-    # handed back at the same line numbers against code already corrected, while
-    # `mix credo --strict` reported clean.
-    #
-    # Stale means silent, not passing. The analyzer is already enqueued; its
-    # result lands and blocks the next stop if the problems are real. That is the
-    # async model this system already chose — surface the most recent result —
-    # and this is the missing half of it: a result is only "most recent" if it
-    # describes what is on disk now.
+    # Problems are an eventually consistent projection: block on what is
+    # recorded, report staleness, let the run this kicks off replace it.
     problems_by_source =
       scope
       |> Problems.list_project_problems(sources: sources)
       |> Enum.group_by(& &1.source)
-      |> Map.filter(fn {source, _problems} -> Analysis.fresh?(scope, source) end)
 
     scope_context = %{
       changed_file_paths: Enum.map(changed_files, & &1.path),
@@ -345,8 +330,13 @@ defmodule CodeMySpec.Validation do
         |> Enum.uniq()
     }
 
+    stale_sources =
+      problems_by_source
+      |> Map.keys()
+      |> Enum.reject(&Analysis.fresh?(scope, &1))
+
     {blocking, advisory} = partition_problems(problems_by_source, config, scope_context)
-    decide(blocking, advisory)
+    decide(blocking, advisory, stale_sources)
   end
 
   defp active_blocking_sources(config) do
@@ -405,15 +395,19 @@ defmodule CodeMySpec.Validation do
     &(&1.component_id in ids)
   end
 
-  defp decide([], []), do: :ok
+  defp decide([], [], _stale), do: :ok
 
-  defp decide([], advisory) do
+  defp decide([], advisory, _stale) do
     Logger.warning("[Validation] #{length(advisory)} advisory problem(s) not blocking")
     :ok
   end
 
-  defp decide(blocking, advisory) do
-    {:error, Problems.render_stop_response(blocking, advisory)}
+  defp decide(blocking, advisory, stale_sources) do
+    if stale_sources != [] do
+      Logger.info("[Validation] blocking on stale sources: #{Enum.join(stale_sources, ", ")}")
+    end
+
+    {:error, Problems.render_stop_response(blocking, advisory, stale_sources: stale_sources)}
   end
 
   defp log_changed_files(changed_files) do
