@@ -1,26 +1,20 @@
-defmodule CodeMySpecLocalWeb.InitLive do
+defmodule CodeMySpecWeb.InitLive do
   @moduledoc """
   Human interface for the project init checklist.
 
   Scoped under `/projects/:project_name/init[/:step]`. The project's
   `local_path` is the working directory the checklist evaluates against.
   """
-  use CodeMySpecLocalWeb, :live_view
+  use CodeMySpecWeb, :live_view
 
   alias CodeMySpec.AgentTasks.Init
-  alias CodeMySpec.Projects
-  alias CodeMySpec.Users.Scope
 
   @impl true
   def mount(_params, _session, socket) do
-    projects = Projects.list_local_projects()
-
     {:ok,
      assign(socket,
-       projects: projects,
-       project: nil,
-       scope: nil,
-       slug: nil,
+       section: :init,
+       page_title: "Init",
        steps: [],
        step: nil,
        error: nil
@@ -28,37 +22,24 @@ defmodule CodeMySpecLocalWeb.InitLive do
   end
 
   @impl true
-  def handle_params(%{"project_name" => name, "step" => step_id}, _uri, socket) do
-    case load_project_and_scope(name) do
-      {:ok, project, scope} -> load_step(socket, project, scope, step_id)
-      {:error, msg} -> {:noreply, assign(socket, error: "#{msg}")}
-    end
-  end
+  def handle_params(%{"step" => step_id}, _uri, %{assigns: %{scope: %{} = scope, project: project}} = socket),
+    do: load_step(socket, project, scope, step_id)
 
-  def handle_params(%{"project_name" => name}, _uri, socket) do
-    case load_project_and_scope(name) do
-      {:ok, project, scope} -> load_checklist(socket, project, scope)
-      {:error, msg} -> {:noreply, assign(socket, error: "#{msg}")}
-    end
-  end
+  def handle_params(_params, _uri, %{assigns: %{scope: %{} = scope, project: project}} = socket),
+    do: load_checklist(socket, project, scope)
+
+  def handle_params(_params, _uri, socket), do: {:noreply, socket}
 
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app
-      flash={@flash}
-      projects={@projects}
-      project={@project}
-      section={:init}
-      page_title={assigns[:page_title] || "Project Init"}
-    >
       <div :if={@error} role="alert" class="alert alert-error">
         <span>{@error}</span>
       </div>
 
       <div :if={@step}>
         <div class="mb-4">
-          <.link navigate={~p"/app/projects/#{@slug}/init"} class="btn btn-ghost btn-sm gap-1">
+          <.link navigate={path(@socket, ~p"/app/projects/#{@slug}/init")} class="btn btn-ghost btn-sm gap-1">
             ← Back to checklist
           </.link>
         </div>
@@ -122,7 +103,7 @@ defmodule CodeMySpecLocalWeb.InitLive do
               <span :if={!step.done} class="badge badge-ghost badge-sm">○</span>
               <.link
                 :if={!step.done}
-                navigate={~p"/app/projects/#{@slug}/init/#{step.id}"}
+                navigate={path(@socket, ~p"/app/projects/#{@slug}/init/#{step.id}")}
                 class="link link-primary flex-1"
               >
                 {step.name}
@@ -133,7 +114,6 @@ defmodule CodeMySpecLocalWeb.InitLive do
           </li>
         </ul>
       </div>
-    </Layouts.app>
     """
   end
 
@@ -148,8 +128,7 @@ defmodule CodeMySpecLocalWeb.InitLive do
      assign(socket,
        project: project,
        scope: scope,
-       slug: project_slug(project),
-       steps: steps,
+              steps: steps,
        step: nil,
        page_title: "#{project.name} — Init (#{done}/#{total})",
        error: nil
@@ -163,8 +142,7 @@ defmodule CodeMySpecLocalWeb.InitLive do
          assign(socket,
            project: project,
            scope: scope,
-           slug: project_slug(project),
-           step: %{
+                      step: %{
              name: Init.step_name(mod),
              id: Init.step_id(mod),
              status: status,
@@ -175,7 +153,7 @@ defmodule CodeMySpecLocalWeb.InitLive do
          )}
 
       {:error, :not_found} ->
-        {:noreply, assign(socket, project: project, scope: scope, slug: project_slug(project), error: "Step not found: #{step_id}")}
+        {:noreply, assign(socket, error: "Step not found: #{step_id}")}
     end
   end
 
@@ -206,17 +184,4 @@ defmodule CodeMySpecLocalWeb.InitLive do
 
   defp step_prompt(_mod, _scope, :done), do: nil
 
-  defp load_project_and_scope(name) do
-    with {:ok, project} <- Projects.get_project_by_name(name),
-         {:ok, scope} <- Scope.for_local_project(project) do
-      {:ok, project, scope}
-    end
-  end
-
-  defp project_slug(project) do
-    (project.name || "project")
-    |> String.downcase()
-    |> String.replace(~r/[^a-z0-9]+/, "-")
-    |> String.trim("-")
-  end
 end

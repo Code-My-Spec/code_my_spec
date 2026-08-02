@@ -372,6 +372,9 @@ defmodule CodeMySpecWeb.Router do
         {CodeMySpecWeb.PortableHost, :default}
       ] do
       # Static segments first so they win over `:id`.
+      live "/projects/:project_id/init", InitLive, :index
+      live "/projects/:project_id/init/:step", InitLive, :show
+
       live "/projects/:project_id/stories", StoryLive.Index, :index
       live "/projects/:project_id/stories/scheduler", StoryLive.Scheduler, :index
       live "/projects/:project_id/stories/new", StoryLive.Form, :new

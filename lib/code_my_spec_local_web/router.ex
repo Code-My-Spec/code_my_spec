@@ -17,6 +17,7 @@ defmodule CodeMySpecLocalWeb.Router do
       pipe_through :browser
 
       live "/app/auth", AuthLive, :index
+      live "/app/projects/:project_name", HomeLive
 
       # Everything lives under /app so the local routes match the cloud's,
       # which is what lets one LiveView be mounted by both routers. `/` stays
@@ -25,10 +26,7 @@ defmodule CodeMySpecLocalWeb.Router do
       live "/app", ProjectsLive.Index, :index
       live "/app/projects", ProjectsLive.Index, :index
       live "/app/projects/new", ProjectsLive.Form, :new
-      live "/app/projects/:project_name", HomeLive
       live "/app/projects/:project_name/edit", ProjectsLive.Form, :edit
-      live "/app/projects/:project_name/init", InitLive, :index
-      live "/app/projects/:project_name/init/:step", InitLive, :show
       # Requirements view of stories (graph projection — distinct from admin).
       # Must come before the `:name` catch-all below.
 
@@ -61,6 +59,9 @@ defmodule CodeMySpecLocalWeb.Router do
       pipe_through :browser
 
       # Static segments first so they win over `:id`.
+      live "/app/projects/:project_id/init", InitLive, :index
+      live "/app/projects/:project_id/init/:step", InitLive, :show
+
       live "/app/projects/:project_id/stories", StoryLive.Index, :index
       live "/app/projects/:project_id/stories/scheduler", StoryLive.Scheduler, :index
       live "/app/projects/:project_id/stories/new", StoryLive.Form, :new
