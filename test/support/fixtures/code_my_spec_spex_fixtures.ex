@@ -478,6 +478,75 @@ defmodule CodeMySpecSpex.Fixtures do
     reply
   end
 
+  @doc """
+  Deliver a completed model turn the way a sprite's harness does.
+
+  The proxy that produces this lives in `cms_harness` and runs on the sprite,
+  so a spec here cannot dispatch to it — and should not want to. What the
+  server owns is what it does with a turn once it arrives, which is exactly
+  what arrives on this channel. Same reasoning as `deliver_manifest/2`.
+  """
+  def record_turn(%Scope{} = scope, request, response, opts \\ []) do
+    socket = %Phoenix.Socket{assigns: %{scope: scope}}
+
+    {:noreply, _socket} =
+      CodeMySpecWeb.HarnessProjectChannel.handle_in(
+        "record_turn",
+        %{
+          "session_id" => Keyword.get(opts, :session_id, "sprite"),
+          "agent_role" => Keyword.get(opts, :agent_role, "main"),
+          "request" => request,
+          "response" => response
+        },
+        socket
+      )
+
+    :ok
+  end
+
+  @doc """
+  Report a turn whose recording fails.
+
+  Exercises the recorder directly rather than through the channel: the failure
+  under test is the store's, and the channel has no opinion about it.
+  """
+  def record_turn_with_broken_store(%Scope{} = scope, request, response) do
+    CodeMySpec.AgentHarness.ConversationRecorder.record_turn(
+      scope.active_account_id,
+      scope.active_project_id,
+      "sprite",
+      request,
+      response,
+      "main",
+      store: :unwritable
+    )
+  end
+
+  @doc "An Anthropic-shaped response body, for a spec that needs one."
+  def model_response(blocks) when is_list(blocks) do
+    %{
+      "id" => "msg_spex",
+      "type" => "message",
+      "role" => "assistant",
+      "model" => "claude-opus-5",
+      "content" => blocks,
+      "stop_reason" => "end_turn"
+    }
+  end
+
+  def text_block(text), do: %{"type" => "text", "text" => text}
+
+  def tool_block(name, input),
+    do: %{"type" => "tool_use", "id" => "toolu_spex", "name" => name, "input" => input}
+
+  def user_request(content) do
+    %{
+      "model" => "claude-opus-5",
+      "max_tokens" => 256,
+      "messages" => [%{"role" => "user", "content" => content}]
+    }
+  end
+
   defp serialize_observation(entry) do
     %{
       "path" => entry.path,

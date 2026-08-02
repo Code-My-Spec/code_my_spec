@@ -4,17 +4,20 @@ defmodule CodeMySpecSpex.Story984.Criterion8171Spex do
   Criterion 8171 — A completed turn leaves a request and a response
   on the conversation.
 
-  Surface: the recorder's HTTP endpoint on the local harness (where a
-  sprite's agent points ANTHROPIC_BASE_URL), observed through the
-  operator's conversation LiveView on the cloud endpoint. The turn is
-  driven end to end — nothing is pre-seeded, because the criterion is
-  about what taking a turn *produces*.
+  Surface: the harness channel, observed through the operator's conversation
+  LiveView.
+
+  This used to dispatch at the local endpoint, because the proxy lived in the
+  CLI app. It does not: a sprite runs `cms_harness`, which is where the proxy
+  is now, and the record reaches the server over the channel the same way
+  observations do. A spec here cannot drive a process on the sprite, and does
+  not need to — what the server owns is what it does with a turn once it
+  arrives.
   """
 
   use CodeMySpecSpex.Case
-  import ReqCassette
 
-  alias CodeMySpec.AgentHarness.ConversationRecorder
+  alias CodeMySpecSpex.Fixtures
 
   @endpoint CodeMySpecWeb.Endpoint
 
@@ -23,22 +26,14 @@ defmodule CodeMySpecSpex.Story984.Criterion8171Spex do
 
   spex "A sprite's agent turn is recorded" do
     scenario "A completed turn leaves a request and a response on the conversation" do
-      when_ "the agent takes one model turn through the recorder", context do
-        response =
-          with_recorder_cassette("sprite_agent_single_turn", fn ->
-            Phoenix.ConnTest.build_conn()
-            |> Plug.Conn.put_req_header("content-type", "application/json")
-            |> Plug.Conn.put_req_header("x-working-dir", context.scope.cwd)
-            |> Phoenix.ConnTest.dispatch(CodeMySpecLocalWeb.Endpoint, :post, "/v1/messages", %{
-              "model" => "claude-opus-5",
-              "max_tokens" => 64,
-              "messages" => [%{"role" => "user", "content" => "count the open problems"}]
-            })
-          end)
+      when_ "a sprite reports one completed model turn", context do
+        Fixtures.record_turn(
+          context.scope,
+          Fixtures.user_request("count the open problems"),
+          Fixtures.model_response([Fixtures.text_block("There are 3 open problems.")])
+        )
 
-        assert response.status == 200
-
-        {:ok, Map.put(context, :turn, response)}
+        {:ok, context}
       end
 
       then_ "the operator's conversation shows what the agent was asked", context do
@@ -65,33 +60,4 @@ defmodule CodeMySpecSpex.Story984.Criterion8171Spex do
       end
     end
   end
-
-  # The credential never lands in the cassette. Recording sends a real key and
-  # the file is committed, so filtering here is what keeps one out of the repo.
-  @cassette_opts [
-    cassette_dir: "test/cassettes/anthropic",
-    filter_request_headers: ["authorization", "x-api-key"]
-  ]
-
-  # The cassette hands back a plug; the recorder picks it up from its own
-  # app config, the same seam Ads uses. Restored afterwards so one spec
-  # cannot leak a stubbed upstream into the next.
-  defp with_recorder_cassette(name, fun) do
-    with_cassette name, @cassette_opts, fn plug ->
-      original = Application.get_env(:code_my_spec, ConversationRecorder, [])
-
-      Application.put_env(
-        :code_my_spec,
-        ConversationRecorder,
-        Keyword.put(original, :plug, plug)
-      )
-
-      try do
-        fun.()
-      after
-        Application.put_env(:code_my_spec, ConversationRecorder, original)
-      end
-    end
-  end
-
 end
