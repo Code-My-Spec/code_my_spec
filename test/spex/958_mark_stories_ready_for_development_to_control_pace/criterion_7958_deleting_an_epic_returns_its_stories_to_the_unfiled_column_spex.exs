@@ -52,7 +52,7 @@ defmodule CodeMySpecSpex.Story958.Criterion7958Spex do
       end
 
       when_ "the user deletes the epic", context do
-        {:ok, board, _html} = live(context.conn, "/projects/#{context.project.name}/epics")
+        {:ok, board, _html} = live(context.conn, "/app/projects/#{context.project.name}/epics")
 
         render_click(board, "delete", %{"id" => context.epic_id})
 
@@ -60,7 +60,7 @@ defmodule CodeMySpecSpex.Story958.Criterion7958Spex do
       end
 
       then_ "both stories still exist and appear in the unfiled column", context do
-        {:ok, _board, html} = live(context.conn, "/projects/#{context.project.name}/epics")
+        {:ok, _board, html} = live(context.conn, "/app/projects/#{context.project.name}/epics")
 
         refute html =~ "Stone Age",
                "expected the epic to be gone from the board, got: #{html}"

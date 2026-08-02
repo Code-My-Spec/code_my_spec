@@ -41,7 +41,7 @@ defmodule CodeMySpecSpex.Story563.Criterion5900Spex do
           end
         )
 
-        {:ok, sync_live, _html} = live(context.conn, "/projects/#{context.project.name}/files")
+        {:ok, sync_live, _html} = live(context.conn, "/app/projects/#{context.project.name}/files")
         sync_live |> element("button[phx-click='sync']") |> render_click()
 
         urgent = Fixtures.get_component_by_module_name(context.scope, "UrgentContext")

@@ -65,7 +65,7 @@ defmodule CodeMySpecSpex.Story811.Criterion6490Spex do
       end
 
       when_ "Sam opens the task queue view", context do
-        {:ok, view, html} = live(context.conn, "/projects/#{context.project.name}/tasks")
+        {:ok, view, html} = live(context.conn, "/app/projects/#{context.project.name}/tasks")
         {:ok, Map.merge(context, %{view: view, html: html})}
       end
 

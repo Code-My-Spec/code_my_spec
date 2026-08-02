@@ -27,7 +27,7 @@ defmodule CodeMySpecSpex.Story687.Criterion5950Spex do
       when_ "the founder opens the files page and clicks the spec file's component link",
             context do
         {:ok, files_live, _html} =
-          live(context.conn, "/projects/#{context.project.name}/files")
+          live(context.conn, "/app/projects/#{context.project.name}/files")
 
         row_selector =
           "[data-test='file-row'][data-file-path*='example_context.spec.md']"

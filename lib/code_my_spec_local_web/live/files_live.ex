@@ -481,7 +481,7 @@ defmodule CodeMySpecLocalWeb.FilesLive do
     page = Keyword.get(opts, :page, 1)
     filter = Keyword.get(opts, :filter, :all)
 
-    base = "/projects/#{slug}/files"
+    base = "/app/projects/#{slug}/files"
 
     params = []
     params = if page > 1, do: [{"page", page} | params], else: params

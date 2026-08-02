@@ -45,7 +45,7 @@ defmodule CodeMySpecSpex.Story604.Criterion5507Spex do
   defp assert_no_picker_redirect(302, conn, context) do
     target = redirected_to(conn)
 
-    refute target =~ ~r"/projects/picker",
+    refute target =~ ~r"/app/projects/picker",
            "expected scope.active_project to be set after onboarding submit — got picker redirect to #{target}"
 
     {:ok, context}

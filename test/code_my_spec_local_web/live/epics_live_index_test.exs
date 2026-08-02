@@ -44,7 +44,7 @@ defmodule CodeMySpecLocalWeb.EpicsLive.IndexTest do
   defp board(project_name) do
     build_conn()
     |> Plug.Conn.put_req_header("x-working-dir", File.cwd!())
-    |> live("/projects/#{project_name}/epics")
+    |> live("/app/projects/#{project_name}/epics")
   end
 
   describe "readiness control" do

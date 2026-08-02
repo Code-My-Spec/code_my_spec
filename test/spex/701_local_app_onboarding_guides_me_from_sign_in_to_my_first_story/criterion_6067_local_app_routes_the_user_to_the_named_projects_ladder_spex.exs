@@ -44,7 +44,7 @@ defmodule CodeMySpecSpex.Story701.Criterion6067Spex do
           |> String.replace(~r/[^a-z0-9]+/, "-")
           |> String.trim("-")
 
-        assert target == "/projects/#{slug}",
+        assert target == "/app/projects/#{slug}",
                "expected redirect to /projects/#{slug}; got: #{target}"
 
         {:ok, context}

@@ -34,7 +34,7 @@ defmodule CodeMySpecSpex.Story127.Criterion5923Spex do
         :ok = Environments.write_file(context.environment, @impl_path, content_v1())
 
         {:ok, files_live, _html} =
-          live(context.conn, "/projects/#{context.project.name}/files")
+          live(context.conn, "/app/projects/#{context.project.name}/files")
 
         files_live
         |> element("[data-test='sync-button']")
@@ -45,7 +45,7 @@ defmodule CodeMySpecSpex.Story127.Criterion5923Spex do
 
       given_ "we capture the projected mtime for the v1 row", context do
         {:ok, _, html} =
-          live(context.conn, "/projects/#{context.project.name}/files")
+          live(context.conn, "/app/projects/#{context.project.name}/files")
 
         captured_mtime = extract_raw_mtime(html, @impl_path)
         assert is_binary(captured_mtime), "expected initial mtime to be rendered"
@@ -61,7 +61,7 @@ defmodule CodeMySpecSpex.Story127.Criterion5923Spex do
       then_ "the row shows v2's fingerprint but its mtime still equals the captured v1 mtime",
             context do
         {:ok, _, html} =
-          live(context.conn, "/projects/#{context.project.name}/files")
+          live(context.conn, "/app/projects/#{context.project.name}/files")
 
         post_sync_mtime = extract_raw_mtime(html, @impl_path)
 
@@ -84,7 +84,7 @@ defmodule CodeMySpecSpex.Story127.Criterion5923Spex do
         :ok = Environments.write_file(context.environment, @impl_path, content_v1())
 
         {:ok, files_live, _html} =
-          live(context.conn, "/projects/#{context.project.name}/files")
+          live(context.conn, "/app/projects/#{context.project.name}/files")
 
         files_live
         |> element("[data-test='sync-button']")
@@ -96,7 +96,7 @@ defmodule CodeMySpecSpex.Story127.Criterion5923Spex do
       given_ "the agent has edited to v2 and the watcher fired a single-path event",
              context do
         {:ok, _, html} =
-          live(context.conn, "/projects/#{context.project.name}/files")
+          live(context.conn, "/app/projects/#{context.project.name}/files")
 
         captured_v1_mtime = extract_raw_mtime(html, @impl_path)
         assert is_binary(captured_v1_mtime), "expected v1 mtime to be rendered"
@@ -109,7 +109,7 @@ defmodule CodeMySpecSpex.Story127.Criterion5923Spex do
 
       when_ "the engineer triggers a follow-up full sync", context do
         {:ok, files_live, _html} =
-          live(context.conn, "/projects/#{context.project.name}/files")
+          live(context.conn, "/app/projects/#{context.project.name}/files")
 
         files_live
         |> element("[data-test='sync-button']")
@@ -120,7 +120,7 @@ defmodule CodeMySpecSpex.Story127.Criterion5923Spex do
 
       then_ "the row's mtime is no longer the stale v1 value", context do
         {:ok, _, html} =
-          live(context.conn, "/projects/#{context.project.name}/files")
+          live(context.conn, "/app/projects/#{context.project.name}/files")
 
         catch_up_mtime = extract_raw_mtime(html, @impl_path)
 

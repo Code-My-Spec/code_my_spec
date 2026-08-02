@@ -32,7 +32,7 @@ defmodule CodeMySpecSpex.Story78.Criterion5577Spex do
         :ok = Environments.write_file(context.environment, @off_path_review, valid_review())
 
         {:ok, sync_live, _html} =
-          live(context.conn, "/projects/#{context.project.name}/files")
+          live(context.conn, "/app/projects/#{context.project.name}/files")
 
         sync_live
         |> element("button[phx-click='sync']")

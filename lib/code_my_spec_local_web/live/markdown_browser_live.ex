@@ -39,7 +39,7 @@ defmodule CodeMySpecLocalWeb.MarkdownBrowserLive do
   defp load_view(socket, project_name, path_segments) do
     library = socket.assigns.live_action
     config = Map.fetch!(@libraries, library)
-    base_url = "/projects/#{project_name}/#{library_path(library)}"
+    base_url = "/app/projects/#{project_name}/#{library_path(library)}"
 
     with {:ok, project} <- Projects.get_project_by_name(project_name),
          {:ok, scope} <- Scope.for_local_project(project),

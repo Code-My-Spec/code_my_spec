@@ -90,7 +90,7 @@ defmodule CodeMySpecSpex.Story813.Criterion6550Spex do
 
       when_ "the user opens the progress view", context do
         {:ok, view, _html} =
-          live(context.conn, "/projects/#{context.project.name}/progress")
+          live(context.conn, "/app/projects/#{context.project.name}/progress")
 
         {:ok, Map.put(context, :view, view)}
       end

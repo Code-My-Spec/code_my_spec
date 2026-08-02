@@ -46,7 +46,7 @@ defmodule CodeMySpecSpex.Story712.Criterion6268Spex do
         end
 
         # No `.git` directory is created — this is a plain folder.
-        {:ok, view, _html} = live(context.conn, "/projects/#{context.project.name}/content")
+        {:ok, view, _html} = live(context.conn, "/app/projects/#{context.project.name}/content")
 
         view
         |> form("[data-test='content-source-form']", source: %{path: @source})

@@ -46,7 +46,7 @@ defmodule CodeMySpecSpex.Story124.Criterion5260Spex do
 
       then_ "the project setup page shows all steps done", context do
         {:ok, view, _html} =
-          live(context.conn, "/projects/#{context.project.name}/requirements/project_setup")
+          live(context.conn, "/app/projects/#{context.project.name}/requirements/project_setup")
 
         assert render(view) =~ "Project Setup (12/12)"
         {:ok, Map.put(context, :view, view)}

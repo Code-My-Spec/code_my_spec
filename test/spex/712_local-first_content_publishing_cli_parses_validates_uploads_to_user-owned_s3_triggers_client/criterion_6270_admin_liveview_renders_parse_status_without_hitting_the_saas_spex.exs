@@ -51,7 +51,7 @@ defmodule CodeMySpecSpex.Story712.Criterion6270Spex do
           Body.
           """)
 
-        {:ok, view, _html} = live(context.conn, "/projects/#{context.project.name}/content")
+        {:ok, view, _html} = live(context.conn, "/app/projects/#{context.project.name}/content")
 
         view
         |> form("[data-test='content-source-form']", source: %{path: @source})
@@ -65,7 +65,7 @@ defmodule CodeMySpecSpex.Story712.Criterion6270Spex do
       when_ "Sam opens the admin content surface", context do
         # Re-mount the page to prove everything renders from the persisted
         # local snapshot, not from transient socket state.
-        {:ok, view, html} = live(context.conn, "/projects/#{context.project.name}/content")
+        {:ok, view, html} = live(context.conn, "/app/projects/#{context.project.name}/content")
         {:ok, Map.merge(context, %{view: view, html: html})}
       end
 

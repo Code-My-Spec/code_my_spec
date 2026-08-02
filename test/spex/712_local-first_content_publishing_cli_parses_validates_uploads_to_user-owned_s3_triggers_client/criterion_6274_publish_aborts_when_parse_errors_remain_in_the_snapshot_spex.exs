@@ -51,7 +51,7 @@ defmodule CodeMySpecSpex.Story712.Criterion6274Spex do
           Body.
           """)
 
-        {:ok, view, _html} = live(context.conn, "/projects/#{context.project.name}/content")
+        {:ok, view, _html} = live(context.conn, "/app/projects/#{context.project.name}/content")
 
         view
         |> form("[data-test='content-settings-form']",

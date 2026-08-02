@@ -30,7 +30,7 @@ defmodule CodeMySpecSpex.Story127.Criterion6085Spex do
     scenario "agent writes a file in a watched subtree; projection updates with no click" do
       given_ "the engineer has a linked project with no files synced yet", context do
         {:ok, files_live, _html} =
-          live(context.conn, "/projects/#{context.project.name}/files")
+          live(context.conn, "/app/projects/#{context.project.name}/files")
 
         refute has_element?(files_live, "[data-file-path=\"#{@impl_path}\"]")
         {:ok, context}
@@ -46,7 +46,7 @@ defmodule CodeMySpecSpex.Story127.Criterion6085Spex do
       then_ "the new file appears in the projection without any engineer action",
             context do
         {:ok, files_live, _html} =
-          live(context.conn, "/projects/#{context.project.name}/files")
+          live(context.conn, "/app/projects/#{context.project.name}/files")
 
         assert has_element?(files_live, "[data-file-path=\"#{@impl_path}\"]")
         {:ok, context}

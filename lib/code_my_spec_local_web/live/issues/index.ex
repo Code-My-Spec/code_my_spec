@@ -134,7 +134,7 @@ defmodule CodeMySpecLocalWeb.IssuesLive.Index do
               <tr
                 :for={issue <- @issues}
                 class="hover cursor-pointer"
-                phx-click={JS.navigate("/projects/#{@slug}/issues/#{issue.id}")}
+                phx-click={JS.navigate("/app/projects/#{@slug}/issues/#{issue.id}")}
               >
                 <td><span class={"badge badge-sm #{status_badge(issue.status)}"}>{issue.status}</span></td>
                 <td><span class={"badge badge-sm badge-outline #{severity_badge(issue.severity)}"}>{issue.severity}</span></td>
@@ -192,8 +192,8 @@ defmodule CodeMySpecLocalWeb.IssuesLive.Index do
       |> URI.encode_query()
 
     case query do
-      "" -> "/projects/#{slug}/issues"
-      q -> "/projects/#{slug}/issues?#{q}"
+      "" -> "/app/projects/#{slug}/issues"
+      q -> "/app/projects/#{slug}/issues?#{q}"
     end
   end
 

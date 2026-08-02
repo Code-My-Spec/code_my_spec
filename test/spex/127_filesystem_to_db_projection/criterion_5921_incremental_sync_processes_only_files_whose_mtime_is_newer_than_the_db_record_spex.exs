@@ -35,7 +35,7 @@ defmodule CodeMySpecSpex.Story127.Criterion5921Spex do
         :ok = Environments.write_file(context.environment, @impl_b, impl_b())
 
         {:ok, files_live, _html} =
-          live(context.conn, "/projects/#{context.project.name}/files")
+          live(context.conn, "/app/projects/#{context.project.name}/files")
 
         files_live
         |> element("[data-test='sync-button']")
@@ -47,7 +47,7 @@ defmodule CodeMySpecSpex.Story127.Criterion5921Spex do
       given_ "we snapshot bravo's mtime so we can prove it stays untouched",
              context do
         {:ok, _, html} =
-          live(context.conn, "/projects/#{context.project.name}/files")
+          live(context.conn, "/app/projects/#{context.project.name}/files")
 
         bravo_mtime = extract_raw_mtime(html, @impl_b)
         alpha_v1_mtime = extract_raw_mtime(html, @impl_a)
@@ -85,7 +85,7 @@ defmodule CodeMySpecSpex.Story127.Criterion5921Spex do
                "freestyle clean run should allow, got: #{inspect(context.response)}"
 
         {:ok, _, html} =
-          live(context.conn, "/projects/#{context.project.name}/files")
+          live(context.conn, "/app/projects/#{context.project.name}/files")
 
         alpha_post_mtime = extract_raw_mtime(html, @impl_a)
 

@@ -45,7 +45,7 @@ defmodule CodeMySpecSpex.Story688.Criterion5974Spex do
 
       when_ "the engineer clicks the sync button on /files", context do
         {:ok, files_live, _html} =
-          live(context.conn, "/projects/#{context.project.name}/files")
+          live(context.conn, "/app/projects/#{context.project.name}/files")
 
         files_live
         |> element("[data-test='sync-button']")

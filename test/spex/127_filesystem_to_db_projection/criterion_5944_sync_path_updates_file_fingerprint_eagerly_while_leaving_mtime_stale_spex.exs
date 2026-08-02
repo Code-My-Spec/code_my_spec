@@ -30,7 +30,7 @@ defmodule CodeMySpecSpex.Story127.Criterion5944Spex do
         :ok = Environments.write_file(context.environment, @impl_path, content_a())
 
         {:ok, files_live, _html} =
-          live(context.conn, "/projects/#{context.project.name}/files")
+          live(context.conn, "/app/projects/#{context.project.name}/files")
 
         files_live
         |> element("[data-test='sync-button']")
@@ -42,7 +42,7 @@ defmodule CodeMySpecSpex.Story127.Criterion5944Spex do
       given_ "the projection shows the fingerprint of content A on the impl row",
              context do
         {:ok, files_live, _html} =
-          live(context.conn, "/projects/#{context.project.name}/files")
+          live(context.conn, "/app/projects/#{context.project.name}/files")
 
         assert has_element?(
                  files_live,
@@ -57,7 +57,7 @@ defmodule CodeMySpecSpex.Story127.Criterion5944Spex do
         :ok = Environments.write_file(context.environment, @impl_path, content_b())
 
         {:ok, files_live, _html} =
-          live(context.conn, "/projects/#{context.project.name}/files")
+          live(context.conn, "/app/projects/#{context.project.name}/files")
 
         files_live
         |> element("[data-test='sync-button']")

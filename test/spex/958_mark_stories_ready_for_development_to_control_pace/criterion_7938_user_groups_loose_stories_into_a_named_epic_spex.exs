@@ -48,7 +48,7 @@ defmodule CodeMySpecSpex.Story958.Criterion7938Spex do
 
       when_ "the user creates an epic named \"Gods and Religion\"", context do
         {:ok, new_live, _html} =
-          live(context.conn, "/projects/#{context.project.name}/epics/new")
+          live(context.conn, "/app/projects/#{context.project.name}/epics/new")
 
         new_live
         |> form("[data-test='epic-form']",
@@ -63,7 +63,7 @@ defmodule CodeMySpecSpex.Story958.Criterion7938Spex do
       end
 
       and_ "drags those stories into it", context do
-        {:ok, board, _html} = live(context.conn, "/projects/#{context.project.name}/epics")
+        {:ok, board, _html} = live(context.conn, "/app/projects/#{context.project.name}/epics")
 
         epic_id = epic_id_on_board!(board)
 
@@ -76,7 +76,7 @@ defmodule CodeMySpecSpex.Story958.Criterion7938Spex do
 
       then_ "the epic lists those stories as its members", context do
         {:ok, _epic_live, html} =
-          live(context.conn, "/projects/#{context.project.name}/epics/gods-and-religion")
+          live(context.conn, "/app/projects/#{context.project.name}/epics/gods-and-religion")
 
         assert html =~ "Gods and Religion",
                "expected the epic page to render, got: #{html}"

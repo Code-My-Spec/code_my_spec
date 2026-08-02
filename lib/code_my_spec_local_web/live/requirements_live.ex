@@ -56,7 +56,7 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
           kind: :command,
           title: ProjectSetup.step_name(mod),
           command: generate_command(mod, scope),
-          back: %{label: "← Back to #{req_name}", to: "/projects/#{slug}/requirements/#{req_name}"}
+          back: %{label: "← Back to #{req_name}", to: "/app/projects/#{slug}/requirements/#{req_name}"}
         }
 
         assign_page(socket, project, scope, page)
@@ -82,7 +82,7 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
         page = %{
           kind: :requirement,
           node: node,
-          back: %{label: "← Back to #{story.title}", to: "/projects/#{slug}/stories/#{story_id}"},
+          back: %{label: "← Back to #{story.title}", to: "/app/projects/#{slug}/stories/#{story_id}"},
           prereqs: [],
           dependents: [],
           command: nil,
@@ -111,7 +111,7 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
           command: fetch_prompt_text(node.satisfied_by, scope, task),
           back: %{
             label: "← Back to #{req_name}",
-            to: "/projects/#{slug}/components/#{component_id}/requirements/#{req_name}"
+            to: "/app/projects/#{slug}/components/#{component_id}/requirements/#{req_name}"
           }
         }
 
@@ -150,7 +150,7 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
 
           %{
             label: component.module_name,
-            to: "/projects/#{slug}/components/#{component.id}",
+            to: "/app/projects/#{slug}/components/#{component.id}",
             satisfied: satisfied,
             total: total
           }
@@ -160,7 +160,7 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
         kind: :list,
         title: "Components",
         items: items,
-        back: %{label: "← Back to project", to: "/projects/#{slug}"}
+        back: %{label: "← Back to project", to: "/app/projects/#{slug}"}
       }
 
       assign_page(socket, project, scope, page)
@@ -183,11 +183,11 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
       stories =
         scope
         |> Stories.list_component_stories(component.id)
-        |> Enum.map(fn s -> %{label: s.title, to: "/projects/#{slug}/stories/#{s.id}"} end)
+        |> Enum.map(fn s -> %{label: s.title, to: "/app/projects/#{slug}/stories/#{s.id}"} end)
 
       req_items =
         entity_req_items(nodes, "component", component.id, fn n ->
-          "/projects/#{slug}/components/#{component.id}/requirements/#{n.name}"
+          "/app/projects/#{slug}/components/#{component.id}/requirements/#{n.name}"
         end)
 
       page = %{
@@ -198,7 +198,7 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
         total: total,
         stories: stories,
         req_items: req_items,
-        back: %{label: "← Back to requirements", to: "/projects/#{slug}/requirements"}
+        back: %{label: "← Back to requirements", to: "/app/projects/#{slug}/requirements"}
       }
 
       assign_page(socket, project, scope, page)
@@ -214,7 +214,7 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
 
       req_items =
         entity_req_items(nodes, "story", story.id, fn n ->
-          "/projects/#{slug}/stories/#{story.id}/requirements/#{n.name}"
+          "/app/projects/#{slug}/stories/#{story.id}/requirements/#{n.name}"
         end)
 
       page = %{
@@ -225,7 +225,7 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
         total: total,
         stories: nil,
         req_items: req_items,
-        back: %{label: "← Back to stories", to: "/projects/#{slug}/stories"}
+        back: %{label: "← Back to stories", to: "/app/projects/#{slug}/stories"}
       }
 
       assign_page(socket, project, scope, page)
@@ -244,7 +244,7 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
 
           %{
             label: story.title,
-            to: "/projects/#{slug}/stories/#{story.id}",
+            to: "/app/projects/#{slug}/stories/#{story.id}",
             satisfied: satisfied,
             total: total
           }
@@ -448,7 +448,7 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
     ~H"""
     <div id="graph-page">
       <div class="mb-4">
-        <.link navigate={"/projects/#{project_slug(@project)}/requirements"} class="btn btn-ghost btn-sm gap-1">
+        <.link navigate={"/app/projects/#{project_slug(@project)}/requirements"} class="btn btn-ghost btn-sm gap-1">
           ← Back to requirements
         </.link>
       </div>
@@ -704,7 +704,7 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
         description: n.description,
         satisfied: n.satisfied,
         actionable: MapSet.member?(actionable_names, n.name),
-        to: "/projects/#{slug}/requirements/#{n.name}"
+        to: "/app/projects/#{slug}/requirements/#{n.name}"
       }
     end)
   end
@@ -733,7 +733,7 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
       %{
         name: prereq_name,
         satisfied: !!(prereq && prereq.satisfied),
-        to: "/projects/#{slug}/requirements/#{prereq_name}"
+        to: "/app/projects/#{slug}/requirements/#{prereq_name}"
       }
     end)
   end
@@ -742,7 +742,7 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
     all_nodes
     |> Enum.filter(&(&1.entity_type == "project" and node.name in &1.prerequisites))
     |> Enum.map(fn n ->
-      %{name: n.name, satisfied: n.satisfied, to: "/projects/#{slug}/requirements/#{n.name}"}
+      %{name: n.name, satisfied: n.satisfied, to: "/app/projects/#{slug}/requirements/#{n.name}"}
     end)
   end
 
@@ -764,7 +764,7 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
       page = %{
         kind: :requirement,
         node: node,
-        back: %{label: "← Back to requirements", to: "/projects/#{slug}/requirements"},
+        back: %{label: "← Back to requirements", to: "/app/projects/#{slug}/requirements"},
         prereqs: prereq_data(node, nodes, slug),
         dependents: dependent_data(node, nodes, slug),
         command: command,
@@ -860,13 +860,13 @@ defmodule CodeMySpecLocalWeb.RequirementsLive do
   defp assign_component_req(socket, project, scope, component, slug, req_name, node) do
     prompt_to =
       if node.satisfied_by,
-        do: "/projects/#{slug}/components/#{component.id}/requirements/#{req_name}/prompt",
+        do: "/app/projects/#{slug}/components/#{component.id}/requirements/#{req_name}/prompt",
         else: nil
 
     page = %{
       kind: :requirement,
       node: node,
-      back: %{label: "← Back to #{component.module_name}", to: "/projects/#{slug}/components/#{component.id}"},
+      back: %{label: "← Back to #{component.module_name}", to: "/app/projects/#{slug}/components/#{component.id}"},
       prereqs: [],
       dependents: [],
       command: nil,

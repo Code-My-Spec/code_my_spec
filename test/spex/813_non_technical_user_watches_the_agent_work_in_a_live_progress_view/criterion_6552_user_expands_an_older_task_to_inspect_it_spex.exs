@@ -71,7 +71,7 @@ defmodule CodeMySpecSpex.Story813.Criterion6552Spex do
 
       when_ "the user expands the older task", context do
         {:ok, view, _html} =
-          live(context.conn, "/projects/#{context.project.name}/progress")
+          live(context.conn, "/app/projects/#{context.project.name}/progress")
 
         view
         |> element(

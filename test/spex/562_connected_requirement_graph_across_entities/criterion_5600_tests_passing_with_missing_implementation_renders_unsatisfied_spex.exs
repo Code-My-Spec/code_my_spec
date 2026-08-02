@@ -39,7 +39,7 @@ defmodule CodeMySpecSpex.Story562.Criterion5600Spex do
           )
 
         {:ok, sync_live, _html} =
-          live(context.conn, "/projects/#{context.project.name}/files")
+          live(context.conn, "/app/projects/#{context.project.name}/files")
 
         sync_live |> element("button[phx-click='sync']") |> render_click()
 
@@ -48,7 +48,7 @@ defmodule CodeMySpecSpex.Story562.Criterion5600Spex do
 
       when_ "the engineer opens the requirements graph", context do
         {:ok, _live, html} =
-          live(context.conn, "/projects/#{context.project.name}/requirements/graph?preload=true")
+          live(context.conn, "/app/projects/#{context.project.name}/requirements/graph?preload=true")
 
         {:ok, Map.put(context, :graph, GraphAssertions.extract_graph!(html))}
       end
