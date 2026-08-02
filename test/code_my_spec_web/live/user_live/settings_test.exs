@@ -16,6 +16,41 @@ defmodule CodeMySpecWeb.UserLive.SettingsTest do
       assert html =~ "Save Password"
     end
 
+    # Every provider setup acts on has to be connectable from here, or the
+    # credential can only be obtained by someone who knows the /auth/:provider
+    # URL by heart. Cloudflare and Resend were reachable but unlinked.
+    test "offers every provider setup needs, not just the sign-in ones", %{conn: conn} do
+      {:ok, _lv, html} =
+        conn
+        |> log_in_user(user_fixture())
+        |> live(~p"/app/users/settings")
+
+      for {provider, label} <- [
+            {"github", "GitHub"},
+            {"google", "Google"},
+            {"cloudflare", "Cloudflare"},
+            {"resend", "Resend"}
+          ] do
+        assert html =~ "Connect #{label}",
+               "expected a connect button for #{label}"
+
+        assert html =~ ~s|href="/auth/#{provider}"|,
+               "expected #{label}'s button to point at its OAuth entry point"
+      end
+    end
+
+    # Cloudflare and Resend are not sign-in providers, and a row that looks
+    # exactly like GitHub's invites the assumption that they are.
+    test "says what the infrastructure providers are for", %{conn: conn} do
+      {:ok, _lv, html} =
+        conn
+        |> log_in_user(user_fixture())
+        |> live(~p"/app/users/settings")
+
+      assert html =~ "point DNS at your server"
+      assert html =~ "receive mail at it"
+    end
+
     test "redirects if user is not logged in", %{conn: conn} do
       assert {:error, redirect} = live(conn, ~p"/app/users/settings")
 

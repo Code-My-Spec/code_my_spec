@@ -1,0 +1,124 @@
+{
+  "interactions": [
+    {
+      "recorded_at": "2026-08-02T16:10:50.637054Z",
+      "request": {
+        "body": "round-trip-probe-contents",
+        "body_type": "text",
+        "headers": {
+          "accept-encoding": [
+            "gzip"
+          ],
+          "content-length": [
+            "25"
+          ],
+          "host": [
+            "fsn1.your-objectstorage.com"
+          ],
+          "user-agent": [
+            "req/0.5.17"
+          ],
+          "x-amz-content-sha256": [
+            "a127d318f90eaa3f3156213cdc3e47243a700676ae51d6df0342df45be64a889"
+          ],
+          "x-amz-date": [
+            "20260802T161050Z"
+          ]
+        },
+        "method": "PUT",
+        "query_string": "",
+        "uri": "https://fsn1.your-objectstorage.com/spex-story968-criterion8013-prod/round-trip.txt"
+      },
+      "response": {
+        "body": "",
+        "body_type": "text",
+        "headers": {
+          "accept-ranges": [
+            "bytes"
+          ],
+          "content-length": [
+            "0"
+          ],
+          "date": [
+            "Sun, 02 Aug 2026 16:10:50 GMT"
+          ],
+          "etag": [
+            "\"b45d4fbf4cba1450cfcb3d5277cbd9d2\""
+          ],
+          "strict-transport-security": [
+            "max-age=63072000"
+          ],
+          "x-amz-request-id": [
+            "tx00000669af97ff67a507d-006a6f6c0a-311b81e5-fsn1-prod1-ceph5"
+          ],
+          "x-debug-bucket": [
+            "spex-story968-criterion8013-prod"
+          ]
+        },
+        "status": 200
+      }
+    },
+    {
+      "recorded_at": "2026-08-02T16:10:50.764486Z",
+      "request": {
+        "body": "",
+        "body_type": "text",
+        "headers": {
+          "accept-encoding": [
+            "gzip"
+          ],
+          "host": [
+            "fsn1.your-objectstorage.com"
+          ],
+          "user-agent": [
+            "req/0.5.17"
+          ],
+          "x-amz-content-sha256": [
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          ],
+          "x-amz-date": [
+            "20260802T161050Z"
+          ]
+        },
+        "method": "GET",
+        "query_string": "",
+        "uri": "https://fsn1.your-objectstorage.com/spex-story968-criterion8013-prod/round-trip.txt"
+      },
+      "response": {
+        "body": "round-trip-probe-contents",
+        "body_type": "text",
+        "headers": {
+          "accept-ranges": [
+            "bytes"
+          ],
+          "content-type": [
+            "binary/octet-stream"
+          ],
+          "date": [
+            "Sun, 02 Aug 2026 16:10:50 GMT"
+          ],
+          "etag": [
+            "\"b45d4fbf4cba1450cfcb3d5277cbd9d2\""
+          ],
+          "last-modified": [
+            "Sun, 02 Aug 2026 16:10:50 GMT"
+          ],
+          "strict-transport-security": [
+            "max-age=63072000"
+          ],
+          "x-amz-request-id": [
+            "tx000001fd1bec2073f0e03-006a6f6c0a-2ad3dc80-fsn1-prod1-ceph5"
+          ],
+          "x-debug-bucket": [
+            "spex-story968-criterion8013-prod"
+          ],
+          "x-rgw-object-type": [
+            "Normal"
+          ]
+        },
+        "status": 200
+      }
+    }
+  ],
+  "version": "2.0"
+}

@@ -67,7 +67,8 @@ defmodule CodeMySpecWeb.ContentSyncControllerTest do
 
       assert json_response(conn, 401) == %{
                "status" => "error",
-               "error" => "Invalid deployment key"
+               "error" => "Invalid deployment key",
+               "reason" => "invalid"
              }
 
       # Verify content was NOT synced
@@ -83,7 +84,8 @@ defmodule CodeMySpecWeb.ContentSyncControllerTest do
 
       assert json_response(conn, 401) == %{
                "status" => "error",
-               "error" => "Missing deployment key"
+               "error" => "Missing deployment key",
+               "reason" => "invalid"
              }
     end
 
@@ -96,7 +98,8 @@ defmodule CodeMySpecWeb.ContentSyncControllerTest do
 
       assert json_response(conn, 401) == %{
                "status" => "error",
-               "error" => "Missing deployment key"
+               "error" => "Missing deployment key",
+               "reason" => "invalid"
              }
     end
 

@@ -1,0 +1,1169 @@
+{
+  "interactions": [
+    {
+      "recorded_at": "2026-08-02T15:12:56.564513Z",
+      "request": {
+        "body": "",
+        "body_type": "text",
+        "headers": {
+          "accept": [
+            "application/vnd.github+json"
+          ],
+          "accept-encoding": [
+            "gzip"
+          ],
+          "user-agent": [
+            "CodeMySpec"
+          ],
+          "x-github-api-version": [
+            "2022-11-28"
+          ]
+        },
+        "method": "GET",
+        "query_string": "",
+        "uri": "https://api.github.com/user"
+      },
+      "response": {
+        "body_json": {
+          "starred_url": "https://api.github.com/users/johns10/starred{/owner}{/repo}",
+          "gravatar_id": "",
+          "bio": null,
+          "notification_email": "johns10@gmail.com",
+          "type": "User",
+          "location": "Toronto, CA",
+          "events_url": "https://api.github.com/users/johns10/events{/privacy}",
+          "received_events_url": "https://api.github.com/users/johns10/received_events",
+          "gists_url": "https://api.github.com/users/johns10/gists{/gist_id}",
+          "blog": "",
+          "following": 2,
+          "hireable": null,
+          "site_admin": false,
+          "updated_at": "2026-06-11T10:04:55Z",
+          "public_repos": 79,
+          "organizations_url": "https://api.github.com/users/johns10/orgs",
+          "name": "John Davenport",
+          "id": 3057629,
+          "email": "johns10@gmail.com",
+          "following_url": "https://api.github.com/users/johns10/following{/other_user}",
+          "login": "johns10",
+          "avatar_url": "https://avatars.githubusercontent.com/u/3057629?v=4",
+          "twitter_username": null,
+          "url": "https://api.github.com/users/johns10",
+          "subscriptions_url": "https://api.github.com/users/johns10/subscriptions",
+          "user_view_type": "public",
+          "followers_url": "https://api.github.com/users/johns10/followers",
+          "repos_url": "https://api.github.com/users/johns10/repos",
+          "public_gists": 0,
+          "html_url": "https://github.com/johns10",
+          "node_id": "MDQ6VXNlcjMwNTc2Mjk=",
+          "company": null,
+          "created_at": "2012-12-16T19:32:19Z",
+          "followers": 17
+        },
+        "body_type": "json",
+        "headers": {
+          "access-control-allow-origin": [
+            "*"
+          ],
+          "access-control-expose-headers": [
+            "ETag, Link, Location, Retry-After, X-GitHub-OTP, X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Used, X-RateLimit-Resource, X-RateLimit-Reset, X-OAuth-Scopes, X-Accepted-OAuth-Scopes, X-Poll-Interval, X-GitHub-Media-Type, X-GitHub-SSO, X-GitHub-Request-Id, Deprecation, Sunset, Warning"
+          ],
+          "cache-control": [
+            "private, max-age=60, s-maxage=60"
+          ],
+          "content-security-policy": [
+            "default-src 'none'"
+          ],
+          "content-type": [
+            "application/json; charset=utf-8"
+          ],
+          "date": [
+            "Sun, 02 Aug 2026 15:12:56 GMT"
+          ],
+          "etag": [
+            "W/\"f1c091e89bc0b94e8962dbab7a94728bd18a67f2bbd53c83e85b8943dd510090\""
+          ],
+          "last-modified": [
+            "Thu, 11 Jun 2026 10:04:55 GMT"
+          ],
+          "referrer-policy": [
+            "origin-when-cross-origin, strict-origin-when-cross-origin"
+          ],
+          "server": [
+            "github.com"
+          ],
+          "strict-transport-security": [
+            "max-age=31536000; includeSubdomains; preload"
+          ],
+          "transfer-encoding": [
+            "chunked"
+          ],
+          "vary": [
+            "Accept, Authorization, Cookie, X-GitHub-OTP,Accept-Encoding, Accept, X-Requested-With"
+          ],
+          "x-accepted-oauth-scopes": [
+            ""
+          ],
+          "x-content-type-options": [
+            "nosniff"
+          ],
+          "x-frame-options": [
+            "deny"
+          ],
+          "x-github-api-version-selected": [
+            "2022-11-28"
+          ],
+          "x-github-edge-region": [
+            "iad"
+          ],
+          "x-github-media-type": [
+            "github.v3; format=json"
+          ],
+          "x-github-request-id": [
+            "DEB2:4A772:9BF532D:226F0381:6A6F5E78"
+          ],
+          "x-oauth-client-id": [
+            "Ov23liFpnT7j3bK5OC1L"
+          ],
+          "x-oauth-scopes": [
+            "repo, user:email"
+          ],
+          "x-ratelimit-limit": [
+            "5000"
+          ],
+          "x-ratelimit-remaining": [
+            "4957"
+          ],
+          "x-ratelimit-reset": [
+            "1785686299"
+          ],
+          "x-ratelimit-resource": [
+            "core"
+          ],
+          "x-ratelimit-used": [
+            "43"
+          ],
+          "x-xss-protection": [
+            "0"
+          ]
+        },
+        "status": 200
+      }
+    },
+    {
+      "recorded_at": "2026-08-02T15:12:56.766794Z",
+      "request": {
+        "body": "",
+        "body_type": "text",
+        "headers": {
+          "accept": [
+            "application/vnd.github+json"
+          ],
+          "accept-encoding": [
+            "gzip"
+          ],
+          "user-agent": [
+            "CodeMySpec"
+          ],
+          "x-github-api-version": [
+            "2022-11-28"
+          ]
+        },
+        "method": "GET",
+        "query_string": "",
+        "uri": "https://api.github.com/repos/johns10/spex-story963-criterion7972"
+      },
+      "response": {
+        "body_json": {
+          "delete_branch_on_merge": false,
+          "mirror_url": null,
+          "pushed_at": "2026-08-02T14:35:04Z",
+          "allow_update_branch": false,
+          "svn_url": "https://github.com/johns10/spex-story963-criterion7972",
+          "open_issues_count": 0,
+          "forks_url": "https://api.github.com/repos/johns10/spex-story963-criterion7972/forks",
+          "watchers_count": 0,
+          "issues_url": "https://api.github.com/repos/johns10/spex-story963-criterion7972/issues{/number}",
+          "disabled": false,
+          "collaborators_url": "https://api.github.com/repos/johns10/spex-story963-criterion7972/collaborators{/collaborator}",
+          "has_wiki": true,
+          "statuses_url": "https://api.github.com/repos/johns10/spex-story963-criterion7972/statuses/{sha}",
+          "merge_commit_title": "MERGE_MESSAGE",
+          "homepage": null,
+          "allow_auto_merge": false,
+          "full_name": "johns10/spex-story963-criterion7972",
+          "stargazers_count": 0,
+          "subscription_url": "https://api.github.com/repos/johns10/spex-story963-criterion7972/subscription",
+          "use_squash_pr_title_as_default": false,
+          "stargazers_url": "https://api.github.com/repos/johns10/spex-story963-criterion7972/stargazers",
+          "events_url": "https://api.github.com/repos/johns10/spex-story963-criterion7972/events",
+          "has_projects": true,
+          "archive_url": "https://api.github.com/repos/johns10/spex-story963-criterion7972/{archive_format}{/ref}",
+          "commits_url": "https://api.github.com/repos/johns10/spex-story963-criterion7972/commits{/sha}",
+          "merges_url": "https://api.github.com/repos/johns10/spex-story963-criterion7972/merges",
+          "downloads_url": "https://api.github.com/repos/johns10/spex-story963-criterion7972/downloads",
+          "blobs_url": "https://api.github.com/repos/johns10/spex-story963-criterion7972/git/blobs{/sha}",
+          "comments_url": "https://api.github.com/repos/johns10/spex-story963-criterion7972/comments{/number}",
+          "contributors_url": "https://api.github.com/repos/johns10/spex-story963-criterion7972/contributors",
+          "subscribers_url": "https://api.github.com/repos/johns10/spex-story963-criterion7972/subscribers",
+          "squash_merge_commit_message": "COMMIT_MESSAGES",
+          "git_tags_url": "https://api.github.com/repos/johns10/spex-story963-criterion7972/git/tags{/sha}",
+          "updated_at": "2026-08-02T14:35:27Z",
+          "issue_events_url": "https://api.github.com/repos/johns10/spex-story963-criterion7972/issues/events{/number}",
+          "visibility": "private",
+          "pull_request_creation_policy": "all",
+          "description": null,
+          "name": "spex-story963-criterion7972",
+          "id": 1320268098,
+          "labels_url": "https://api.github.com/repos/johns10/spex-story963-criterion7972/labels{/name}",
+          "branches_url": "https://api.github.com/repos/johns10/spex-story963-criterion7972/branches{/branch}",
+          "network_count": 0,
+          "private": true,
+          "issue_comment_url": "https://api.github.com/repos/johns10/spex-story963-criterion7972/issues/comments{/number}",
+          "merge_commit_message": "PR_TITLE",
+          "releases_url": "https://api.github.com/repos/johns10/spex-story963-criterion7972/releases{/id}",
+          "notifications_url": "https://api.github.com/repos/johns10/spex-story963-criterion7972/notifications{?since,all,participating}",
+          "hooks_url": "https://api.github.com/repos/johns10/spex-story963-criterion7972/hooks",
+          "allow_squash_merge": true,
+          "default_branch": "main",
+          "web_commit_signoff_required": false,
+          "teams_url": "https://api.github.com/repos/johns10/spex-story963-criterion7972/teams",
+          "topics": [],
+          "compare_url": "https://api.github.com/repos/johns10/spex-story963-criterion7972/compare/{base}...{head}",
+          "deployments_url": "https://api.github.com/repos/johns10/spex-story963-criterion7972/deployments",
+          "git_url": "git://github.com/johns10/spex-story963-criterion7972.git",
+          "allow_merge_commit": true,
+          "git_refs_url": "https://api.github.com/repos/johns10/spex-story963-criterion7972/git/refs{/sha}",
+          "pulls_url": "https://api.github.com/repos/johns10/spex-story963-criterion7972/pulls{/number}",
+          "url": "https://api.github.com/repos/johns10/spex-story963-criterion7972",
+          "has_issues": true,
+          "contents_url": "https://api.github.com/repos/johns10/spex-story963-criterion7972/contents/{+path}",
+          "size": 0,
+          "allow_rebase_merge": true,
+          "owner": {
+            "avatar_url": "https://avatars.githubusercontent.com/u/3057629?v=4",
+            "events_url": "https://api.github.com/users/johns10/events{/privacy}",
+            "followers_url": "https://api.github.com/users/johns10/followers",
+            "following_url": "https://api.github.com/users/johns10/following{/other_user}",
+            "gists_url": "https://api.github.com/users/johns10/gists{/gist_id}",
+            "gravatar_id": "",
+            "html_url": "https://github.com/johns10",
+            "id": 3057629,
+            "login": "johns10",
+            "node_id": "MDQ6VXNlcjMwNTc2Mjk=",
+            "organizations_url": "https://api.github.com/users/johns10/orgs",
+            "received_events_url": "https://api.github.com/users/johns10/received_events",
+            "repos_url": "https://api.github.com/users/johns10/repos",
+            "site_admin": false,
+            "starred_url": "https://api.github.com/users/johns10/starred{/owner}{/repo}",
+            "subscriptions_url": "https://api.github.com/users/johns10/subscriptions",
+            "type": "User",
+            "url": "https://api.github.com/users/johns10",
+            "user_view_type": "public"
+          },
+          "git_commits_url": "https://api.github.com/repos/johns10/spex-story963-criterion7972/git/commits{/sha}",
+          "tags_url": "https://api.github.com/repos/johns10/spex-story963-criterion7972/tags",
+          "permissions": {
+            "admin": true,
+            "maintain": true,
+            "pull": true,
+            "push": true,
+            "triage": true
+          },
+          "language": "Elixir",
+          "fork": false,
+          "has_discussions": false,
+          "watchers": 0,
+          "html_url": "https://github.com/johns10/spex-story963-criterion7972",
+          "open_issues": 0,
+          "is_template": false,
+          "node_id": "R_kgDOTrGxQg",
+          "milestones_url": "https://api.github.com/repos/johns10/spex-story963-criterion7972/milestones{/number}",
+          "license": null,
+          "forks_count": 0,
+          "squash_merge_commit_title": "COMMIT_OR_PR_TITLE",
+          "allow_forking": true,
+          "has_pages": false,
+          "trees_url": "https://api.github.com/repos/johns10/spex-story963-criterion7972/git/trees{/sha}",
+          "ssh_url": "git@github.com:johns10/spex-story963-criterion7972.git",
+          "temp_clone_token": "AAXKPXONOQLQONM6ZH3AAPTKN5P2I",
+          "has_pull_requests": true,
+          "assignees_url": "https://api.github.com/repos/johns10/spex-story963-criterion7972/assignees{/user}",
+          "clone_url": "https://github.com/johns10/spex-story963-criterion7972.git",
+          "forks": 0,
+          "archived": false,
+          "subscribers_count": 0,
+          "keys_url": "https://api.github.com/repos/johns10/spex-story963-criterion7972/keys{/key_id}",
+          "has_downloads": false,
+          "created_at": "2026-08-02T14:35:01Z",
+          "languages_url": "https://api.github.com/repos/johns10/spex-story963-criterion7972/languages"
+        },
+        "body_type": "json",
+        "headers": {
+          "access-control-allow-origin": [
+            "*"
+          ],
+          "access-control-expose-headers": [
+            "ETag, Link, Location, Retry-After, X-GitHub-OTP, X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Used, X-RateLimit-Resource, X-RateLimit-Reset, X-OAuth-Scopes, X-Accepted-OAuth-Scopes, X-Poll-Interval, X-GitHub-Media-Type, X-GitHub-SSO, X-GitHub-Request-Id, Deprecation, Sunset, Warning"
+          ],
+          "cache-control": [
+            "private, max-age=60, s-maxage=60"
+          ],
+          "content-security-policy": [
+            "default-src 'none'"
+          ],
+          "content-type": [
+            "application/json; charset=utf-8"
+          ],
+          "date": [
+            "Sun, 02 Aug 2026 15:12:56 GMT"
+          ],
+          "etag": [
+            "W/\"8ddb3be48be3885478dd1828c13b12cce24925d841fd31f0a9051d974bd47a0f\""
+          ],
+          "last-modified": [
+            "Sun, 02 Aug 2026 14:35:27 GMT"
+          ],
+          "referrer-policy": [
+            "origin-when-cross-origin, strict-origin-when-cross-origin"
+          ],
+          "server": [
+            "github.com"
+          ],
+          "strict-transport-security": [
+            "max-age=31536000; includeSubdomains; preload"
+          ],
+          "transfer-encoding": [
+            "chunked"
+          ],
+          "vary": [
+            "Accept, Authorization, Cookie, X-GitHub-OTP,Accept-Encoding, Accept, X-Requested-With"
+          ],
+          "x-accepted-oauth-scopes": [
+            "repo"
+          ],
+          "x-content-type-options": [
+            "nosniff"
+          ],
+          "x-frame-options": [
+            "deny"
+          ],
+          "x-github-api-version-selected": [
+            "2022-11-28"
+          ],
+          "x-github-edge-region": [
+            "iad"
+          ],
+          "x-github-media-type": [
+            "github.v3; format=json"
+          ],
+          "x-github-request-id": [
+            "DEB2:4A772:9BF5431:226F0720:6A6F5E78"
+          ],
+          "x-oauth-client-id": [
+            "Ov23liFpnT7j3bK5OC1L"
+          ],
+          "x-oauth-scopes": [
+            "repo, user:email"
+          ],
+          "x-ratelimit-limit": [
+            "5000"
+          ],
+          "x-ratelimit-remaining": [
+            "4956"
+          ],
+          "x-ratelimit-reset": [
+            "1785686299"
+          ],
+          "x-ratelimit-resource": [
+            "core"
+          ],
+          "x-ratelimit-used": [
+            "44"
+          ],
+          "x-xss-protection": [
+            "0"
+          ]
+        },
+        "status": 200
+      }
+    },
+    {
+      "recorded_at": "2026-08-02T15:12:56.922127Z",
+      "request": {
+        "body": "",
+        "body_type": "text",
+        "headers": {
+          "accept": [
+            "application/vnd.github+json"
+          ],
+          "accept-encoding": [
+            "gzip"
+          ],
+          "user-agent": [
+            "CodeMySpec"
+          ],
+          "x-github-api-version": [
+            "2022-11-28"
+          ]
+        },
+        "method": "GET",
+        "query_string": "",
+        "uri": "https://api.github.com/user"
+      },
+      "response": {
+        "body_json": {
+          "starred_url": "https://api.github.com/users/johns10/starred{/owner}{/repo}",
+          "gravatar_id": "",
+          "bio": null,
+          "notification_email": "johns10@gmail.com",
+          "type": "User",
+          "location": "Toronto, CA",
+          "events_url": "https://api.github.com/users/johns10/events{/privacy}",
+          "received_events_url": "https://api.github.com/users/johns10/received_events",
+          "gists_url": "https://api.github.com/users/johns10/gists{/gist_id}",
+          "blog": "",
+          "following": 2,
+          "hireable": null,
+          "site_admin": false,
+          "updated_at": "2026-06-11T10:04:55Z",
+          "public_repos": 79,
+          "organizations_url": "https://api.github.com/users/johns10/orgs",
+          "name": "John Davenport",
+          "id": 3057629,
+          "email": "johns10@gmail.com",
+          "following_url": "https://api.github.com/users/johns10/following{/other_user}",
+          "login": "johns10",
+          "avatar_url": "https://avatars.githubusercontent.com/u/3057629?v=4",
+          "twitter_username": null,
+          "url": "https://api.github.com/users/johns10",
+          "subscriptions_url": "https://api.github.com/users/johns10/subscriptions",
+          "user_view_type": "public",
+          "followers_url": "https://api.github.com/users/johns10/followers",
+          "repos_url": "https://api.github.com/users/johns10/repos",
+          "public_gists": 0,
+          "html_url": "https://github.com/johns10",
+          "node_id": "MDQ6VXNlcjMwNTc2Mjk=",
+          "company": null,
+          "created_at": "2012-12-16T19:32:19Z",
+          "followers": 17
+        },
+        "body_type": "json",
+        "headers": {
+          "access-control-allow-origin": [
+            "*"
+          ],
+          "access-control-expose-headers": [
+            "ETag, Link, Location, Retry-After, X-GitHub-OTP, X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Used, X-RateLimit-Resource, X-RateLimit-Reset, X-OAuth-Scopes, X-Accepted-OAuth-Scopes, X-Poll-Interval, X-GitHub-Media-Type, X-GitHub-SSO, X-GitHub-Request-Id, Deprecation, Sunset, Warning"
+          ],
+          "cache-control": [
+            "private, max-age=60, s-maxage=60"
+          ],
+          "content-security-policy": [
+            "default-src 'none'"
+          ],
+          "content-type": [
+            "application/json; charset=utf-8"
+          ],
+          "date": [
+            "Sun, 02 Aug 2026 15:12:56 GMT"
+          ],
+          "etag": [
+            "W/\"f1c091e89bc0b94e8962dbab7a94728bd18a67f2bbd53c83e85b8943dd510090\""
+          ],
+          "last-modified": [
+            "Thu, 11 Jun 2026 10:04:55 GMT"
+          ],
+          "referrer-policy": [
+            "origin-when-cross-origin, strict-origin-when-cross-origin"
+          ],
+          "server": [
+            "github.com"
+          ],
+          "strict-transport-security": [
+            "max-age=31536000; includeSubdomains; preload"
+          ],
+          "transfer-encoding": [
+            "chunked"
+          ],
+          "vary": [
+            "Accept, Authorization, Cookie, X-GitHub-OTP,Accept-Encoding, Accept, X-Requested-With"
+          ],
+          "x-accepted-oauth-scopes": [
+            ""
+          ],
+          "x-content-type-options": [
+            "nosniff"
+          ],
+          "x-frame-options": [
+            "deny"
+          ],
+          "x-github-api-version-selected": [
+            "2022-11-28"
+          ],
+          "x-github-edge-region": [
+            "iad"
+          ],
+          "x-github-media-type": [
+            "github.v3; format=json"
+          ],
+          "x-github-request-id": [
+            "DEB2:4A772:9BF557E:226F0BA6:6A6F5E78"
+          ],
+          "x-oauth-client-id": [
+            "Ov23liFpnT7j3bK5OC1L"
+          ],
+          "x-oauth-scopes": [
+            "repo, user:email"
+          ],
+          "x-ratelimit-limit": [
+            "5000"
+          ],
+          "x-ratelimit-remaining": [
+            "4955"
+          ],
+          "x-ratelimit-reset": [
+            "1785686299"
+          ],
+          "x-ratelimit-resource": [
+            "core"
+          ],
+          "x-ratelimit-used": [
+            "45"
+          ],
+          "x-xss-protection": [
+            "0"
+          ]
+        },
+        "status": 200
+      }
+    },
+    {
+      "recorded_at": "2026-08-02T15:12:57.107260Z",
+      "request": {
+        "body": "",
+        "body_type": "text",
+        "headers": {
+          "accept": [
+            "application/vnd.github+json"
+          ],
+          "accept-encoding": [
+            "gzip"
+          ],
+          "user-agent": [
+            "CodeMySpec"
+          ],
+          "x-github-api-version": [
+            "2022-11-28"
+          ]
+        },
+        "method": "GET",
+        "query_string": "",
+        "uri": "https://api.github.com/repos/johns10/spex-story963-criterion7972"
+      },
+      "response": {
+        "body_json": {
+          "delete_branch_on_merge": false,
+          "mirror_url": null,
+          "pushed_at": "2026-08-02T14:35:04Z",
+          "allow_update_branch": false,
+          "svn_url": "https://github.com/johns10/spex-story963-criterion7972",
+          "open_issues_count": 0,
+          "forks_url": "https://api.github.com/repos/johns10/spex-story963-criterion7972/forks",
+          "watchers_count": 0,
+          "issues_url": "https://api.github.com/repos/johns10/spex-story963-criterion7972/issues{/number}",
+          "disabled": false,
+          "collaborators_url": "https://api.github.com/repos/johns10/spex-story963-criterion7972/collaborators{/collaborator}",
+          "has_wiki": true,
+          "statuses_url": "https://api.github.com/repos/johns10/spex-story963-criterion7972/statuses/{sha}",
+          "merge_commit_title": "MERGE_MESSAGE",
+          "homepage": null,
+          "allow_auto_merge": false,
+          "full_name": "johns10/spex-story963-criterion7972",
+          "stargazers_count": 0,
+          "subscription_url": "https://api.github.com/repos/johns10/spex-story963-criterion7972/subscription",
+          "use_squash_pr_title_as_default": false,
+          "stargazers_url": "https://api.github.com/repos/johns10/spex-story963-criterion7972/stargazers",
+          "events_url": "https://api.github.com/repos/johns10/spex-story963-criterion7972/events",
+          "has_projects": true,
+          "archive_url": "https://api.github.com/repos/johns10/spex-story963-criterion7972/{archive_format}{/ref}",
+          "commits_url": "https://api.github.com/repos/johns10/spex-story963-criterion7972/commits{/sha}",
+          "merges_url": "https://api.github.com/repos/johns10/spex-story963-criterion7972/merges",
+          "downloads_url": "https://api.github.com/repos/johns10/spex-story963-criterion7972/downloads",
+          "blobs_url": "https://api.github.com/repos/johns10/spex-story963-criterion7972/git/blobs{/sha}",
+          "comments_url": "https://api.github.com/repos/johns10/spex-story963-criterion7972/comments{/number}",
+          "contributors_url": "https://api.github.com/repos/johns10/spex-story963-criterion7972/contributors",
+          "subscribers_url": "https://api.github.com/repos/johns10/spex-story963-criterion7972/subscribers",
+          "squash_merge_commit_message": "COMMIT_MESSAGES",
+          "git_tags_url": "https://api.github.com/repos/johns10/spex-story963-criterion7972/git/tags{/sha}",
+          "updated_at": "2026-08-02T14:35:27Z",
+          "issue_events_url": "https://api.github.com/repos/johns10/spex-story963-criterion7972/issues/events{/number}",
+          "visibility": "private",
+          "pull_request_creation_policy": "all",
+          "description": null,
+          "name": "spex-story963-criterion7972",
+          "id": 1320268098,
+          "labels_url": "https://api.github.com/repos/johns10/spex-story963-criterion7972/labels{/name}",
+          "branches_url": "https://api.github.com/repos/johns10/spex-story963-criterion7972/branches{/branch}",
+          "network_count": 0,
+          "private": true,
+          "issue_comment_url": "https://api.github.com/repos/johns10/spex-story963-criterion7972/issues/comments{/number}",
+          "merge_commit_message": "PR_TITLE",
+          "releases_url": "https://api.github.com/repos/johns10/spex-story963-criterion7972/releases{/id}",
+          "notifications_url": "https://api.github.com/repos/johns10/spex-story963-criterion7972/notifications{?since,all,participating}",
+          "hooks_url": "https://api.github.com/repos/johns10/spex-story963-criterion7972/hooks",
+          "allow_squash_merge": true,
+          "default_branch": "main",
+          "web_commit_signoff_required": false,
+          "teams_url": "https://api.github.com/repos/johns10/spex-story963-criterion7972/teams",
+          "topics": [],
+          "compare_url": "https://api.github.com/repos/johns10/spex-story963-criterion7972/compare/{base}...{head}",
+          "deployments_url": "https://api.github.com/repos/johns10/spex-story963-criterion7972/deployments",
+          "git_url": "git://github.com/johns10/spex-story963-criterion7972.git",
+          "allow_merge_commit": true,
+          "git_refs_url": "https://api.github.com/repos/johns10/spex-story963-criterion7972/git/refs{/sha}",
+          "pulls_url": "https://api.github.com/repos/johns10/spex-story963-criterion7972/pulls{/number}",
+          "url": "https://api.github.com/repos/johns10/spex-story963-criterion7972",
+          "has_issues": true,
+          "contents_url": "https://api.github.com/repos/johns10/spex-story963-criterion7972/contents/{+path}",
+          "size": 0,
+          "allow_rebase_merge": true,
+          "owner": {
+            "avatar_url": "https://avatars.githubusercontent.com/u/3057629?v=4",
+            "events_url": "https://api.github.com/users/johns10/events{/privacy}",
+            "followers_url": "https://api.github.com/users/johns10/followers",
+            "following_url": "https://api.github.com/users/johns10/following{/other_user}",
+            "gists_url": "https://api.github.com/users/johns10/gists{/gist_id}",
+            "gravatar_id": "",
+            "html_url": "https://github.com/johns10",
+            "id": 3057629,
+            "login": "johns10",
+            "node_id": "MDQ6VXNlcjMwNTc2Mjk=",
+            "organizations_url": "https://api.github.com/users/johns10/orgs",
+            "received_events_url": "https://api.github.com/users/johns10/received_events",
+            "repos_url": "https://api.github.com/users/johns10/repos",
+            "site_admin": false,
+            "starred_url": "https://api.github.com/users/johns10/starred{/owner}{/repo}",
+            "subscriptions_url": "https://api.github.com/users/johns10/subscriptions",
+            "type": "User",
+            "url": "https://api.github.com/users/johns10",
+            "user_view_type": "public"
+          },
+          "git_commits_url": "https://api.github.com/repos/johns10/spex-story963-criterion7972/git/commits{/sha}",
+          "tags_url": "https://api.github.com/repos/johns10/spex-story963-criterion7972/tags",
+          "permissions": {
+            "admin": true,
+            "maintain": true,
+            "pull": true,
+            "push": true,
+            "triage": true
+          },
+          "language": "Elixir",
+          "fork": false,
+          "has_discussions": false,
+          "watchers": 0,
+          "html_url": "https://github.com/johns10/spex-story963-criterion7972",
+          "open_issues": 0,
+          "is_template": false,
+          "node_id": "R_kgDOTrGxQg",
+          "milestones_url": "https://api.github.com/repos/johns10/spex-story963-criterion7972/milestones{/number}",
+          "license": null,
+          "forks_count": 0,
+          "squash_merge_commit_title": "COMMIT_OR_PR_TITLE",
+          "allow_forking": true,
+          "has_pages": false,
+          "trees_url": "https://api.github.com/repos/johns10/spex-story963-criterion7972/git/trees{/sha}",
+          "ssh_url": "git@github.com:johns10/spex-story963-criterion7972.git",
+          "temp_clone_token": "AAXKPXILJSAULKHNW5P4PATKN5P2K",
+          "has_pull_requests": true,
+          "assignees_url": "https://api.github.com/repos/johns10/spex-story963-criterion7972/assignees{/user}",
+          "clone_url": "https://github.com/johns10/spex-story963-criterion7972.git",
+          "forks": 0,
+          "archived": false,
+          "subscribers_count": 0,
+          "keys_url": "https://api.github.com/repos/johns10/spex-story963-criterion7972/keys{/key_id}",
+          "has_downloads": false,
+          "created_at": "2026-08-02T14:35:01Z",
+          "languages_url": "https://api.github.com/repos/johns10/spex-story963-criterion7972/languages"
+        },
+        "body_type": "json",
+        "headers": {
+          "access-control-allow-origin": [
+            "*"
+          ],
+          "access-control-expose-headers": [
+            "ETag, Link, Location, Retry-After, X-GitHub-OTP, X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Used, X-RateLimit-Resource, X-RateLimit-Reset, X-OAuth-Scopes, X-Accepted-OAuth-Scopes, X-Poll-Interval, X-GitHub-Media-Type, X-GitHub-SSO, X-GitHub-Request-Id, Deprecation, Sunset, Warning"
+          ],
+          "cache-control": [
+            "private, max-age=60, s-maxage=60"
+          ],
+          "content-security-policy": [
+            "default-src 'none'"
+          ],
+          "content-type": [
+            "application/json; charset=utf-8"
+          ],
+          "date": [
+            "Sun, 02 Aug 2026 15:12:57 GMT"
+          ],
+          "etag": [
+            "W/\"8ddb3be48be3885478dd1828c13b12cce24925d841fd31f0a9051d974bd47a0f\""
+          ],
+          "last-modified": [
+            "Sun, 02 Aug 2026 14:35:27 GMT"
+          ],
+          "referrer-policy": [
+            "origin-when-cross-origin, strict-origin-when-cross-origin"
+          ],
+          "server": [
+            "github.com"
+          ],
+          "strict-transport-security": [
+            "max-age=31536000; includeSubdomains; preload"
+          ],
+          "transfer-encoding": [
+            "chunked"
+          ],
+          "vary": [
+            "Accept, Authorization, Cookie, X-GitHub-OTP,Accept-Encoding, Accept, X-Requested-With"
+          ],
+          "x-accepted-oauth-scopes": [
+            "repo"
+          ],
+          "x-content-type-options": [
+            "nosniff"
+          ],
+          "x-frame-options": [
+            "deny"
+          ],
+          "x-github-api-version-selected": [
+            "2022-11-28"
+          ],
+          "x-github-edge-region": [
+            "iad"
+          ],
+          "x-github-media-type": [
+            "github.v3; format=json"
+          ],
+          "x-github-request-id": [
+            "DEB2:4A772:9BF5657:226F0EB8:6A6F5E78"
+          ],
+          "x-oauth-client-id": [
+            "Ov23liFpnT7j3bK5OC1L"
+          ],
+          "x-oauth-scopes": [
+            "repo, user:email"
+          ],
+          "x-ratelimit-limit": [
+            "5000"
+          ],
+          "x-ratelimit-remaining": [
+            "4954"
+          ],
+          "x-ratelimit-reset": [
+            "1785686299"
+          ],
+          "x-ratelimit-resource": [
+            "core"
+          ],
+          "x-ratelimit-used": [
+            "46"
+          ],
+          "x-xss-protection": [
+            "0"
+          ]
+        },
+        "status": 200
+      }
+    },
+    {
+      "recorded_at": "2026-08-02T15:12:57.726453Z",
+      "request": {
+        "body": "",
+        "body_type": "text",
+        "headers": {
+          "accept": [
+            "application/vnd.github+json"
+          ],
+          "accept-encoding": [
+            "gzip"
+          ],
+          "user-agent": [
+            "CodeMySpec"
+          ],
+          "x-github-api-version": [
+            "2022-11-28"
+          ]
+        },
+        "method": "GET",
+        "query_string": "",
+        "uri": "https://api.github.com/user"
+      },
+      "response": {
+        "body_json": {
+          "starred_url": "https://api.github.com/users/johns10/starred{/owner}{/repo}",
+          "gravatar_id": "",
+          "bio": null,
+          "notification_email": "johns10@gmail.com",
+          "type": "User",
+          "location": "Toronto, CA",
+          "events_url": "https://api.github.com/users/johns10/events{/privacy}",
+          "received_events_url": "https://api.github.com/users/johns10/received_events",
+          "gists_url": "https://api.github.com/users/johns10/gists{/gist_id}",
+          "blog": "",
+          "following": 2,
+          "hireable": null,
+          "site_admin": false,
+          "updated_at": "2026-06-11T10:04:55Z",
+          "public_repos": 79,
+          "organizations_url": "https://api.github.com/users/johns10/orgs",
+          "name": "John Davenport",
+          "id": 3057629,
+          "email": "johns10@gmail.com",
+          "following_url": "https://api.github.com/users/johns10/following{/other_user}",
+          "login": "johns10",
+          "avatar_url": "https://avatars.githubusercontent.com/u/3057629?v=4",
+          "twitter_username": null,
+          "url": "https://api.github.com/users/johns10",
+          "subscriptions_url": "https://api.github.com/users/johns10/subscriptions",
+          "user_view_type": "public",
+          "followers_url": "https://api.github.com/users/johns10/followers",
+          "repos_url": "https://api.github.com/users/johns10/repos",
+          "public_gists": 0,
+          "html_url": "https://github.com/johns10",
+          "node_id": "MDQ6VXNlcjMwNTc2Mjk=",
+          "company": null,
+          "created_at": "2012-12-16T19:32:19Z",
+          "followers": 17
+        },
+        "body_type": "json",
+        "headers": {
+          "access-control-allow-origin": [
+            "*"
+          ],
+          "access-control-expose-headers": [
+            "ETag, Link, Location, Retry-After, X-GitHub-OTP, X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Used, X-RateLimit-Resource, X-RateLimit-Reset, X-OAuth-Scopes, X-Accepted-OAuth-Scopes, X-Poll-Interval, X-GitHub-Media-Type, X-GitHub-SSO, X-GitHub-Request-Id, Deprecation, Sunset, Warning"
+          ],
+          "cache-control": [
+            "private, max-age=60, s-maxage=60"
+          ],
+          "content-security-policy": [
+            "default-src 'none'"
+          ],
+          "content-type": [
+            "application/json; charset=utf-8"
+          ],
+          "date": [
+            "Sun, 02 Aug 2026 15:12:57 GMT"
+          ],
+          "etag": [
+            "W/\"f1c091e89bc0b94e8962dbab7a94728bd18a67f2bbd53c83e85b8943dd510090\""
+          ],
+          "last-modified": [
+            "Thu, 11 Jun 2026 10:04:55 GMT"
+          ],
+          "referrer-policy": [
+            "origin-when-cross-origin, strict-origin-when-cross-origin"
+          ],
+          "server": [
+            "github.com"
+          ],
+          "strict-transport-security": [
+            "max-age=31536000; includeSubdomains; preload"
+          ],
+          "transfer-encoding": [
+            "chunked"
+          ],
+          "vary": [
+            "Accept, Authorization, Cookie, X-GitHub-OTP,Accept-Encoding, Accept, X-Requested-With"
+          ],
+          "x-accepted-oauth-scopes": [
+            ""
+          ],
+          "x-content-type-options": [
+            "nosniff"
+          ],
+          "x-frame-options": [
+            "deny"
+          ],
+          "x-github-api-version-selected": [
+            "2022-11-28"
+          ],
+          "x-github-edge-region": [
+            "iad"
+          ],
+          "x-github-media-type": [
+            "github.v3; format=json"
+          ],
+          "x-github-request-id": [
+            "DEB2:4A772:9BF5AA7:226F1D82:6A6F5E79"
+          ],
+          "x-oauth-client-id": [
+            "Ov23liFpnT7j3bK5OC1L"
+          ],
+          "x-oauth-scopes": [
+            "repo, user:email"
+          ],
+          "x-ratelimit-limit": [
+            "5000"
+          ],
+          "x-ratelimit-remaining": [
+            "4953"
+          ],
+          "x-ratelimit-reset": [
+            "1785686299"
+          ],
+          "x-ratelimit-resource": [
+            "core"
+          ],
+          "x-ratelimit-used": [
+            "47"
+          ],
+          "x-xss-protection": [
+            "0"
+          ]
+        },
+        "status": 200
+      }
+    },
+    {
+      "recorded_at": "2026-08-02T15:12:57.931803Z",
+      "request": {
+        "body": "",
+        "body_type": "text",
+        "headers": {
+          "accept": [
+            "application/vnd.github+json"
+          ],
+          "accept-encoding": [
+            "gzip"
+          ],
+          "user-agent": [
+            "CodeMySpec"
+          ],
+          "x-github-api-version": [
+            "2022-11-28"
+          ]
+        },
+        "method": "GET",
+        "query_string": "",
+        "uri": "https://api.github.com/repos/johns10/spex-story963-criterion7972"
+      },
+      "response": {
+        "body_json": {
+          "delete_branch_on_merge": false,
+          "mirror_url": null,
+          "pushed_at": "2026-08-02T14:35:04Z",
+          "allow_update_branch": false,
+          "svn_url": "https://github.com/johns10/spex-story963-criterion7972",
+          "open_issues_count": 0,
+          "forks_url": "https://api.github.com/repos/johns10/spex-story963-criterion7972/forks",
+          "watchers_count": 0,
+          "issues_url": "https://api.github.com/repos/johns10/spex-story963-criterion7972/issues{/number}",
+          "disabled": false,
+          "collaborators_url": "https://api.github.com/repos/johns10/spex-story963-criterion7972/collaborators{/collaborator}",
+          "has_wiki": true,
+          "statuses_url": "https://api.github.com/repos/johns10/spex-story963-criterion7972/statuses/{sha}",
+          "merge_commit_title": "MERGE_MESSAGE",
+          "homepage": null,
+          "allow_auto_merge": false,
+          "full_name": "johns10/spex-story963-criterion7972",
+          "stargazers_count": 0,
+          "subscription_url": "https://api.github.com/repos/johns10/spex-story963-criterion7972/subscription",
+          "use_squash_pr_title_as_default": false,
+          "stargazers_url": "https://api.github.com/repos/johns10/spex-story963-criterion7972/stargazers",
+          "events_url": "https://api.github.com/repos/johns10/spex-story963-criterion7972/events",
+          "has_projects": true,
+          "archive_url": "https://api.github.com/repos/johns10/spex-story963-criterion7972/{archive_format}{/ref}",
+          "commits_url": "https://api.github.com/repos/johns10/spex-story963-criterion7972/commits{/sha}",
+          "merges_url": "https://api.github.com/repos/johns10/spex-story963-criterion7972/merges",
+          "downloads_url": "https://api.github.com/repos/johns10/spex-story963-criterion7972/downloads",
+          "blobs_url": "https://api.github.com/repos/johns10/spex-story963-criterion7972/git/blobs{/sha}",
+          "comments_url": "https://api.github.com/repos/johns10/spex-story963-criterion7972/comments{/number}",
+          "contributors_url": "https://api.github.com/repos/johns10/spex-story963-criterion7972/contributors",
+          "subscribers_url": "https://api.github.com/repos/johns10/spex-story963-criterion7972/subscribers",
+          "squash_merge_commit_message": "COMMIT_MESSAGES",
+          "git_tags_url": "https://api.github.com/repos/johns10/spex-story963-criterion7972/git/tags{/sha}",
+          "updated_at": "2026-08-02T14:35:27Z",
+          "issue_events_url": "https://api.github.com/repos/johns10/spex-story963-criterion7972/issues/events{/number}",
+          "visibility": "private",
+          "pull_request_creation_policy": "all",
+          "description": null,
+          "name": "spex-story963-criterion7972",
+          "id": 1320268098,
+          "labels_url": "https://api.github.com/repos/johns10/spex-story963-criterion7972/labels{/name}",
+          "branches_url": "https://api.github.com/repos/johns10/spex-story963-criterion7972/branches{/branch}",
+          "network_count": 0,
+          "private": true,
+          "issue_comment_url": "https://api.github.com/repos/johns10/spex-story963-criterion7972/issues/comments{/number}",
+          "merge_commit_message": "PR_TITLE",
+          "releases_url": "https://api.github.com/repos/johns10/spex-story963-criterion7972/releases{/id}",
+          "notifications_url": "https://api.github.com/repos/johns10/spex-story963-criterion7972/notifications{?since,all,participating}",
+          "hooks_url": "https://api.github.com/repos/johns10/spex-story963-criterion7972/hooks",
+          "allow_squash_merge": true,
+          "default_branch": "main",
+          "web_commit_signoff_required": false,
+          "teams_url": "https://api.github.com/repos/johns10/spex-story963-criterion7972/teams",
+          "topics": [],
+          "compare_url": "https://api.github.com/repos/johns10/spex-story963-criterion7972/compare/{base}...{head}",
+          "deployments_url": "https://api.github.com/repos/johns10/spex-story963-criterion7972/deployments",
+          "git_url": "git://github.com/johns10/spex-story963-criterion7972.git",
+          "allow_merge_commit": true,
+          "git_refs_url": "https://api.github.com/repos/johns10/spex-story963-criterion7972/git/refs{/sha}",
+          "pulls_url": "https://api.github.com/repos/johns10/spex-story963-criterion7972/pulls{/number}",
+          "url": "https://api.github.com/repos/johns10/spex-story963-criterion7972",
+          "has_issues": true,
+          "contents_url": "https://api.github.com/repos/johns10/spex-story963-criterion7972/contents/{+path}",
+          "size": 0,
+          "allow_rebase_merge": true,
+          "owner": {
+            "avatar_url": "https://avatars.githubusercontent.com/u/3057629?v=4",
+            "events_url": "https://api.github.com/users/johns10/events{/privacy}",
+            "followers_url": "https://api.github.com/users/johns10/followers",
+            "following_url": "https://api.github.com/users/johns10/following{/other_user}",
+            "gists_url": "https://api.github.com/users/johns10/gists{/gist_id}",
+            "gravatar_id": "",
+            "html_url": "https://github.com/johns10",
+            "id": 3057629,
+            "login": "johns10",
+            "node_id": "MDQ6VXNlcjMwNTc2Mjk=",
+            "organizations_url": "https://api.github.com/users/johns10/orgs",
+            "received_events_url": "https://api.github.com/users/johns10/received_events",
+            "repos_url": "https://api.github.com/users/johns10/repos",
+            "site_admin": false,
+            "starred_url": "https://api.github.com/users/johns10/starred{/owner}{/repo}",
+            "subscriptions_url": "https://api.github.com/users/johns10/subscriptions",
+            "type": "User",
+            "url": "https://api.github.com/users/johns10",
+            "user_view_type": "public"
+          },
+          "git_commits_url": "https://api.github.com/repos/johns10/spex-story963-criterion7972/git/commits{/sha}",
+          "tags_url": "https://api.github.com/repos/johns10/spex-story963-criterion7972/tags",
+          "permissions": {
+            "admin": true,
+            "maintain": true,
+            "pull": true,
+            "push": true,
+            "triage": true
+          },
+          "language": "Elixir",
+          "fork": false,
+          "has_discussions": false,
+          "watchers": 0,
+          "html_url": "https://github.com/johns10/spex-story963-criterion7972",
+          "open_issues": 0,
+          "is_template": false,
+          "node_id": "R_kgDOTrGxQg",
+          "milestones_url": "https://api.github.com/repos/johns10/spex-story963-criterion7972/milestones{/number}",
+          "license": null,
+          "forks_count": 0,
+          "squash_merge_commit_title": "COMMIT_OR_PR_TITLE",
+          "allow_forking": true,
+          "has_pages": false,
+          "trees_url": "https://api.github.com/repos/johns10/spex-story963-criterion7972/git/trees{/sha}",
+          "ssh_url": "git@github.com:johns10/spex-story963-criterion7972.git",
+          "temp_clone_token": "AAXKPXILJSAULKHNW5P4PATKN5P2K",
+          "has_pull_requests": true,
+          "assignees_url": "https://api.github.com/repos/johns10/spex-story963-criterion7972/assignees{/user}",
+          "clone_url": "https://github.com/johns10/spex-story963-criterion7972.git",
+          "forks": 0,
+          "archived": false,
+          "subscribers_count": 0,
+          "keys_url": "https://api.github.com/repos/johns10/spex-story963-criterion7972/keys{/key_id}",
+          "has_downloads": false,
+          "created_at": "2026-08-02T14:35:01Z",
+          "languages_url": "https://api.github.com/repos/johns10/spex-story963-criterion7972/languages"
+        },
+        "body_type": "json",
+        "headers": {
+          "access-control-allow-origin": [
+            "*"
+          ],
+          "access-control-expose-headers": [
+            "ETag, Link, Location, Retry-After, X-GitHub-OTP, X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Used, X-RateLimit-Resource, X-RateLimit-Reset, X-OAuth-Scopes, X-Accepted-OAuth-Scopes, X-Poll-Interval, X-GitHub-Media-Type, X-GitHub-SSO, X-GitHub-Request-Id, Deprecation, Sunset, Warning"
+          ],
+          "cache-control": [
+            "private, max-age=60, s-maxage=60"
+          ],
+          "content-security-policy": [
+            "default-src 'none'"
+          ],
+          "content-type": [
+            "application/json; charset=utf-8"
+          ],
+          "date": [
+            "Sun, 02 Aug 2026 15:12:57 GMT"
+          ],
+          "etag": [
+            "W/\"8ddb3be48be3885478dd1828c13b12cce24925d841fd31f0a9051d974bd47a0f\""
+          ],
+          "last-modified": [
+            "Sun, 02 Aug 2026 14:35:27 GMT"
+          ],
+          "referrer-policy": [
+            "origin-when-cross-origin, strict-origin-when-cross-origin"
+          ],
+          "server": [
+            "github.com"
+          ],
+          "strict-transport-security": [
+            "max-age=31536000; includeSubdomains; preload"
+          ],
+          "transfer-encoding": [
+            "chunked"
+          ],
+          "vary": [
+            "Accept, Authorization, Cookie, X-GitHub-OTP,Accept-Encoding, Accept, X-Requested-With"
+          ],
+          "x-accepted-oauth-scopes": [
+            "repo"
+          ],
+          "x-content-type-options": [
+            "nosniff"
+          ],
+          "x-frame-options": [
+            "deny"
+          ],
+          "x-github-api-version-selected": [
+            "2022-11-28"
+          ],
+          "x-github-edge-region": [
+            "iad"
+          ],
+          "x-github-media-type": [
+            "github.v3; format=json"
+          ],
+          "x-github-request-id": [
+            "DEB2:4A772:9BF5B7B:226F204E:6A6F5E79"
+          ],
+          "x-oauth-client-id": [
+            "Ov23liFpnT7j3bK5OC1L"
+          ],
+          "x-oauth-scopes": [
+            "repo, user:email"
+          ],
+          "x-ratelimit-limit": [
+            "5000"
+          ],
+          "x-ratelimit-remaining": [
+            "4952"
+          ],
+          "x-ratelimit-reset": [
+            "1785686299"
+          ],
+          "x-ratelimit-resource": [
+            "core"
+          ],
+          "x-ratelimit-used": [
+            "48"
+          ],
+          "x-xss-protection": [
+            "0"
+          ]
+        },
+        "status": 200
+      }
+    }
+  ],
+  "version": "2.0"
+}
