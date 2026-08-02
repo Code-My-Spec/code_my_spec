@@ -93,10 +93,17 @@ defmodule CodeMySpec.StaticAnalysis.Pipeline do
 
   # Analyzer atom → ProjectConfiguration field that gates it.
   # Atoms not in this map are always eligible.
+  # `spex_stale` is deliberately absent: the `spex` config decides whether
+  # a spex failure BLOCKS the stop, not whether the suite runs. The
+  # specs-passing gate needs a fresh run to flip a story to specs-ready,
+  # so letting `spex: :off` suppress the analyzer would make
+  # `bdd_specs_passing` permanently unsatisfiable and clamp every story
+  # behind it — the failure mode that got the node deleted in bab2f792.
+  #
+  # Same split credo already has: the mode decides blocking, not looking.
   @config_gated_analyzers %{
     credo: :credo,
     exunit_stale: :exunit,
-    spex_stale: :spex,
     validate_spec: :spec_validation,
     validate_bdd: :spec_validation,
     validate_qa: :qa_validation

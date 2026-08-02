@@ -22,8 +22,6 @@ defmodule CodeMySpec.Requirements.Preloader do
           files_by_project: [File.t()],
           files_by_path: %{String.t() => File.t()},
           problems_by_component: %{Ecto.UUID.t() => %{String.t() => integer()}},
-          problems_by_story: %{integer() => %{String.t() => integer()}},
-          problems_by_source: %{String.t() => integer()},
           analysis_fresh: %{String.t() => boolean()},
           components: [Component.t()],
           stories: [Story.t()]

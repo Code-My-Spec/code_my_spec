@@ -27,6 +27,21 @@ defmodule CodeMySpec.Stories.StoriesRepository do
     |> Repo.preload([:criteria, :tags])
   end
 
+  @doc """
+  Ids of stories whose specs-ready latch is set.
+
+  Deliberately narrow: the stop hook calls this on every stop to decide
+  which spex failures may block, so it reads `active_project_id` directly
+  and skips the `:criteria` / `:tags` preloads the general list functions
+  carry.
+  """
+  def list_specs_ready_story_ids(%Scope{active_project_id: project_id}) do
+    Story
+    |> where([s], s.project_id == ^project_id and s.specs_ready == true)
+    |> select([s], s.id)
+    |> Repo.all()
+  end
+
   def list_project_stories(%Scope{} = scope) do
     stories =
       Story

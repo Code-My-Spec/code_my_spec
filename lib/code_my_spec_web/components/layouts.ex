@@ -555,54 +555,72 @@ defmodule CodeMySpecWeb.Layouts do
     """
   end
 
+
   @doc """
-  Renders the end-of-blog-post author signature with install commands.
+  End-of-post install signature.
 
-  Used at the bottom of every published blog post (called from the three
-  `content_html` templates: default, article, tutorial). Reads as the
-  author telling you what they use — a warm end-of-post card with a
-  clear free-signup CTA and the two install commands in a code block.
+  Ships on every published blog post, so it reads as the author's signature
+  rather than a per-post pitch.
 
-  The signup URL is UTM-tagged (`source=blog`, `medium=signature`,
-  `campaign=post-cta`) so blog → register conversion can be measured
-  separately from nav, homepage, and Reddit-comment paths.
+  ## Why it is this quiet
 
-  See `.code_my_spec/issues/blog-post-install-signature.md` for the
-  full content + measurement plan.
+  The audience is senior Phoenix engineers and technical founders, who read an
+  aggressive end-of-post CTA as marketing smell — and once they do, the post
+  loses credibility retroactively. So: author voice, one CTA, commands as
+  copy-pasteable terminal text rather than buttons, and honesty about the
+  signup gate instead of promising a frictionless install.
+
+  The absence of urgency framing is enforced, not merely intended — the
+  contract test refutes "GET STARTED", "Limited time", "Join thousands",
+  "10x", and any exclamation mark anywhere in the rendered output.
+
+  Both links carry the same UTM triple so blog→register conversion is
+  attributable separately from the nav, homepage and Reddit-comment paths,
+  which is the whole reason this block exists.
   """
   def install_signature(assigns) do
     ~H"""
-    <aside class="not-prose mt-12 card bg-base-200 border border-base-300">
+    <aside class="not-prose mt-12 card border border-base-300 bg-base-200/40">
       <div class="card-body gap-4">
-        <p class="text-base-content">
+        <p class="text-base-content/80">
           I built this with
           <a
             href="/case-studies/market-my-spec?utm_source=blog&utm_medium=signature&utm_campaign=post-cta"
-            data-event-label="cta-signature-case-study"
-            class="link link-primary font-medium"
+            class="link"
           >
             CodeMySpec
           </a>
           — the harness I work in.
         </p>
-        <p class="text-base-content/70">
-          Sign up (free, no card) then install:
-        </p>
 
-        <a
-          href="/users/register?utm_source=blog&utm_medium=signature&utm_campaign=post-cta"
-          data-event-label="cta-signature-register"
-          class="btn btn-primary w-fit"
-        >
-          Create your free account
-        </a>
+        <p class="text-base-content/80">Sign up (free, no card) then install:</p>
 
         <div class="mockup-code text-sm">
-          <pre><code>/plugin marketplace add Code-My-Spec/plugins</code></pre>
-          <pre><code>/plugin install codemyspec@codemyspec</code></pre>
+          <p data-prefix="$">
+            <code>/plugin marketplace add Code-My-Spec/plugins</code>
+          </p>
+          <p data-prefix="$">
+            <code>/plugin install codemyspec@codemyspec</code>
+          </p>
         </div>
 
-        <p class="text-base-content/60">— John</p>
+        <div>
+          <%!--
+            A plain anchor, not <.link>. The component renders href through
+            dynamic attribute escaping, which turns & into &amp; — and the
+            UTM triple has to survive verbatim for the analytics split this
+            block exists for. A literal href in HEEx is left as authored.
+          --%>
+          <a
+            href="/users/register?utm_source=blog&utm_medium=signature&utm_campaign=post-cta"
+            data-event-label="cta-signature-register"
+            class="btn btn-primary"
+          >
+            Create your free account
+          </a>
+        </div>
+
+        <p class="text-base-content/70">— John</p>
       </div>
     </aside>
     """

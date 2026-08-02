@@ -1,0 +1,112 @@
+{
+  "interactions": [
+    {
+      "recorded_at": "2026-07-30T22:47:41.054932Z",
+      "request": {
+        "body": "",
+        "body_type": "text",
+        "headers": {
+          "accept": [
+            "application/vnd.github+json"
+          ],
+          "accept-encoding": [
+            "gzip"
+          ],
+          "user-agent": [
+            "CodeMySpec"
+          ],
+          "x-github-api-version": [
+            "2022-11-28"
+          ]
+        },
+        "method": "GET",
+        "query_string": "",
+        "uri": "https://api.github.com/repos/johns10/cms-free-name-probe-9f2a"
+      },
+      "response": {
+        "body_json": {
+          "documentation_url": "https://docs.github.com/rest/repos/repos#get-a-repository",
+          "message": "Not Found",
+          "status": "404"
+        },
+        "body_type": "json",
+        "headers": {
+          "access-control-allow-origin": [
+            "*"
+          ],
+          "access-control-expose-headers": [
+            "ETag, Link, Location, Retry-After, X-GitHub-OTP, X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Used, X-RateLimit-Resource, X-RateLimit-Reset, X-OAuth-Scopes, X-Accepted-OAuth-Scopes, X-Poll-Interval, X-GitHub-Media-Type, X-GitHub-SSO, X-GitHub-Request-Id, Deprecation, Sunset, Warning"
+          ],
+          "content-security-policy": [
+            "default-src 'none'"
+          ],
+          "content-type": [
+            "application/json; charset=utf-8"
+          ],
+          "date": [
+            "Thu, 30 Jul 2026 22:47:41 GMT"
+          ],
+          "referrer-policy": [
+            "origin-when-cross-origin, strict-origin-when-cross-origin"
+          ],
+          "server": [
+            "github.com"
+          ],
+          "strict-transport-security": [
+            "max-age=31536000; includeSubdomains; preload"
+          ],
+          "transfer-encoding": [
+            "chunked"
+          ],
+          "vary": [
+            "Accept-Encoding, Accept, X-Requested-With"
+          ],
+          "x-accepted-oauth-scopes": [
+            "repo"
+          ],
+          "x-content-type-options": [
+            "nosniff"
+          ],
+          "x-frame-options": [
+            "deny"
+          ],
+          "x-github-api-version-selected": [
+            "2022-11-28"
+          ],
+          "x-github-media-type": [
+            "github.v3; format=json"
+          ],
+          "x-github-request-id": [
+            "EA1A:23D17F:2244466:74813DF:6A6BD48C"
+          ],
+          "x-oauth-client-id": [
+            "178c6fc778ccc68e1d6a"
+          ],
+          "x-oauth-scopes": [
+            "admin:public_key, gist, read:org, repo, workflow, write:packages"
+          ],
+          "x-ratelimit-limit": [
+            "5000"
+          ],
+          "x-ratelimit-remaining": [
+            "4980"
+          ],
+          "x-ratelimit-reset": [
+            "1785455050"
+          ],
+          "x-ratelimit-resource": [
+            "core"
+          ],
+          "x-ratelimit-used": [
+            "20"
+          ],
+          "x-xss-protection": [
+            "0"
+          ]
+        },
+        "status": 404
+      }
+    }
+  ],
+  "version": "2.0"
+}

@@ -29,6 +29,7 @@ defmodule CodeMySpecWeb.SitemapController do
     "/case-studies/keel",
     "/case-studies/legwork",
     "/case-studies/ear-witness",
+    "/case-studies/broken-oaths",
     "/author/john-davenport",
     "/pages/founder-story",
     "/pages/about",

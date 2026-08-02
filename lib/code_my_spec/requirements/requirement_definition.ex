@@ -29,6 +29,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinition do
           | :file_valid
           | :path_exists
           | :field_present
+          | :field_true
           | :no_problems
           | :tests_passing
           | :delegate
@@ -68,6 +69,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinition do
     :file_valid,
     :path_exists,
     :field_present,
+    :field_true,
     :no_problems,
     :tests_passing,
     :delegate

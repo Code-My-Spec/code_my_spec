@@ -10,6 +10,7 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
   - `:file_valid`    — File record with configured role has valid: true
   - `:path_exists`   — File at configured path exists in project file list
   - `:field_present` — Field on entity struct is not nil
+  - `:field_true`    — Boolean field on entity struct is exactly `true`
   - `:no_problems`   — Zero Problem records from configured source
   - `:tests_passing` — Zero exunit Problems
   """
@@ -89,6 +90,19 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
       {false, %{reason: "#{field} is not set"}}
     else
       {true, %{status: "#{field} is set"} |> Map.put(field, value)}
+    end
+  end
+
+  # Distinct from :field_present because `false` is a legitimate value that
+  # must read as unsatisfied — :field_present only rejects nil, so a latch
+  # sitting at `false` would report satisfied.
+  defp check(%{check_type: :field_true, config: config}, _scope, entity, _files, _ctx) do
+    field = config_field(config)
+
+    if Map.get(entity, field) == true do
+      {true, %{status: "#{field} is set"}}
+    else
+      {false, %{reason: "#{field} is not set"}}
     end
   end
 

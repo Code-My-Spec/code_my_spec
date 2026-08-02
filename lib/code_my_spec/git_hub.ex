@@ -46,6 +46,74 @@ defmodule CodeMySpec.GitHub do
     end
   end
 
+  @doc """
+  Fetch a repository by owner and name.
+
+  Returns `{:error, :not_found}` for a 404 rather than a generic error, because
+  "this name is free" and "GitHub is unhappy" are different answers and callers
+  branch on them.
+  """
+  @spec get_repository(Scope.t(), String.t(), String.t()) ::
+          {:ok, map()}
+          | {:error, :not_found}
+          | {:error, :github_not_connected}
+          | {:error, {:github_error, integer(), term()}}
+          | {:error, term()}
+  def get_repository(%Scope{} = scope, owner, name)
+      when is_binary(owner) and is_binary(name) do
+    with {:ok, token} <- get_auth(scope) do
+      case request(:get, "/repos/#{owner}/#{name}", token, []) do
+        {:ok, repo} -> {:ok, repo}
+        {:error, {:github_error, 404, _}} -> {:error, :not_found}
+        other -> other
+      end
+    end
+  end
+
+  @doc """
+  Repositories the grant can see, most recently pushed first.
+
+  Needed because this is an OAuth App: there is no installation screen where
+  the user picks repositories, so choosing one is our job. `affiliation`
+  defaults to `owner` — repositories Sam owns are the ones he can make a
+  project's remote.
+  """
+  @spec list_repositories(Scope.t(), keyword()) ::
+          {:ok, [map()]} | {:error, :github_not_connected} | {:error, term()}
+  def list_repositories(%Scope{} = scope, opts \\ []) do
+    affiliation = Keyword.get(opts, :affiliation, "owner")
+    per_page = Keyword.get(opts, :per_page, 100)
+
+    with {:ok, token} <- get_auth(scope),
+         {:ok, repos} when is_list(repos) <-
+           request(
+             :get,
+             "/user/repos?affiliation=#{affiliation}&sort=pushed&per_page=#{per_page}",
+             token,
+             []
+           ) do
+      {:ok, repos}
+    else
+      {:ok, _not_a_list} -> {:ok, []}
+      {:error, _} = error -> error
+    end
+  end
+
+  @doc """
+  Create a repository inside an organisation.
+
+  A different endpoint from `create_repository/2`, not a parameter on it —
+  GitHub treats org repositories as a separate resource with its own
+  permission.
+  """
+  @spec create_org_repository(Scope.t(), String.t(), map()) ::
+          {:ok, map()} | {:error, :github_not_connected} | {:error, term()}
+  def create_org_repository(%Scope{} = scope, org, attrs) when is_binary(org) do
+    with {:ok, token} <- get_auth(scope) do
+      request(:post, "/orgs/#{org}/repos", token, json: attrs)
+    end
+  end
+
   # Private Helpers
 
   defp request(method, path, token, opts) do

@@ -17,6 +17,11 @@ defmodule CodeMySpec.Validation do
     task block; others are advisory
   - `:dont_block` — problems are persisted but never block
 
+  Spex is filtered per-story before the mode applies: a spex failure only
+  counts toward blocking when the owning story's `specs_ready` latch is
+  set. Failures on stories still mid-build are advisory regardless of
+  mode, which is what makes enabling spex project-wide survivable.
+
   The blocking check runs even when no files changed this turn — outstanding
   problems from a prior run still apply.
   """
@@ -24,6 +29,7 @@ defmodule CodeMySpec.Validation do
   require Logger
 
   alias CodeMySpec.Analysis
+  alias CodeMySpec.BddSpecs.Parser
   alias CodeMySpec.Configurations
   alias CodeMySpec.Configurations.ProjectConfiguration
   alias CodeMySpec.FileEdits
@@ -32,6 +38,7 @@ defmodule CodeMySpec.Validation do
   alias CodeMySpec.Files.FileSync
   alias CodeMySpec.Problems
   alias CodeMySpec.StaticAnalysis
+  alias CodeMySpec.Stories
   alias CodeMySpec.Users.Scope
 
   # Analyzer atoms that execute as mix subprocesses → their Analysis source.
@@ -255,10 +262,13 @@ defmodule CodeMySpec.Validation do
   defp run_pipeline(scope, task, [], config, opts) do
     excluded = StaticAnalysis.task_excluded_analyzers(task)
 
+    # `:spex_stale` runs whatever its mode: the specs-passing gate depends
+    # on a current spex run existing, and the mode only governs blocking.
+    # See the note on `@config_gated_analyzers` in StaticAnalysis.Pipeline.
     enabled =
       for {analyzer, source} <- @subprocess_analyzers,
           analyzer not in excluded,
-          mode_for(config, config_field(analyzer)) != :off,
+          analyzer == :spex_stale or mode_for(config, config_field(analyzer)) != :off,
           do: source
 
     Analysis.ensure_stale_runs(
@@ -327,7 +337,8 @@ defmodule CodeMySpec.Validation do
         changed_files
         |> Enum.map(& &1.component_id)
         |> Enum.reject(&is_nil/1)
-        |> Enum.uniq()
+        |> Enum.uniq(),
+      specs_ready_story_ids: specs_ready_story_ids(scope)
     }
 
     stale_sources =
@@ -365,8 +376,10 @@ defmodule CodeMySpec.Validation do
         mode = mode_for(config, field)
         problems = Map.get(problems_by_source, source, [])
 
-        {block, advisory} = apply_mode(problems, mode, scope_fn, scope_context)
-        {block_acc ++ block, advisory_acc ++ advisory}
+        {enforced, unenforced} = split_by_story_enforcement(source, problems, scope_context)
+
+        {block, advisory} = apply_mode(enforced, mode, scope_fn, scope_context)
+        {block_acc ++ block, advisory_acc ++ advisory ++ unenforced}
       end)
 
     {compiler_block ++ configurable_block, compiler_advisory ++ configurable_advisory}
@@ -377,6 +390,34 @@ defmodule CodeMySpec.Validation do
   # Errors always block; only warnings are gated by compile_warnings.
   defp partition_compiler(problems, :dont_block) do
     Enum.split_with(problems, &(&1.severity == :error))
+  end
+
+  # Spex enforcement is per-story, and it runs BEFORE the configured mode
+  # rather than as another mode. A story that has never gone green is
+  # *supposed* to be red — its specs are the contract driving the
+  # implementation that hasn't been written yet. Blocking on that is what
+  # kept `ProjectConfiguration.spex` pinned at `:off`.
+  #
+  # Demoted problems stay advisory rather than being dropped: the failure
+  # is still real and still belongs on the Problems page, it just isn't
+  # the agent's problem yet.
+  #
+  # Every other source is story-agnostic and passes through untouched.
+  defp split_by_story_enforcement("spex", problems, %{specs_ready_story_ids: ready_ids}) do
+    Enum.split_with(problems, fn problem ->
+      case Parser.derive_story_id(problem.file_path) do
+        nil -> true
+        story_id -> MapSet.member?(ready_ids, story_id)
+      end
+    end)
+  end
+
+  defp split_by_story_enforcement(_source, problems, _ctx), do: {problems, []}
+
+  defp specs_ready_story_ids(scope) do
+    scope
+    |> Stories.list_specs_ready_story_ids()
+    |> MapSet.new()
   end
 
   defp apply_mode(_problems, :off, _scope_fn, _ctx), do: {[], []}

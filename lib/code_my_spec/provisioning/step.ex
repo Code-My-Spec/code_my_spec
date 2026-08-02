@@ -48,6 +48,10 @@ defmodule CodeMySpec.Provisioning.Step do
   # never appear in it (criterion 7968). Free-text keys would make both
   # unstateable.
   @keys [
+    # First in the sequence, and that ordering is load-bearing: CI publishes
+    # the image the deploy pulls, so a deploy with no remote has nothing to
+    # build from. Story 985 criterion 8182.
+    :repository,
     :server,
     :domain,
     :dns,

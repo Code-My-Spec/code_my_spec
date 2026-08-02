@@ -54,6 +54,46 @@ defmodule CodeMySpec.BddSpecs.Spex do
         )
       )
 
+    if replay_only?(opts) do
+      replay(Keyword.fetch!(opts, :output_file), environment)
+    else
+      shell_out(args, opts, environment, project_root, quiet, temp_file, caller_provided_file)
+    end
+  rescue
+    exception ->
+      Logger.error("[Spex] Execution error: #{Exception.message(exception)}")
+      {:error, {:execution_error, Exception.message(exception)}}
+  end
+
+  # `:output_file` is the test-only escape hatch — the caller has already
+  # supplied the run's JSONL, so there is nothing for a subprocess to
+  # produce. Shelling out anyway meant the exit code came from an
+  # ExCliVcr recording rather than from the results in hand, which made a
+  # *passing* spex run unsimulatable: every stop-hook cassette records
+  # `mix spex --jsonl=*` at exit 1, so supplying an empty (green) JSONL
+  # tripped `runners.ex`'s `{:ok, [], exit_code != 0}` "suite did not run"
+  # guard.
+  #
+  # Same shape the Credo analyzer already uses for its own
+  # `:output_file` short-circuit. Exit status is derived from the parsed
+  # failures, which is the thing the caller actually cares about.
+  defp replay_only?(opts), do: Keyword.has_key?(opts, :output_file)
+
+  # `nil` env on purpose: a caller-provided output file is a real path on
+  # the host disk, not something inside the project's (possibly in-memory)
+  # environment. Same choice `parse_and_return_failures/4` makes.
+  defp replay(output_file, _environment) do
+    case parse_jsonl(output_file, nil) do
+      {:ok, failures} ->
+        Logger.info("[Spex] Replaying #{length(failures)} failure(s) from #{output_file}")
+        {:ok, failures, if(failures == [], do: 0, else: 1)}
+
+      {:error, reason} ->
+        {:error, {:parse_error, inspect(reason)}}
+    end
+  end
+
+  defp shell_out(args, _opts, environment, project_root, quiet, temp_file, caller_provided_file) do
     args = expand_directory_args(args, project_root, environment)
     spex_args = build_args(args, temp_file, quiet)
     command = "mix " <> Enum.join(spex_args, " ")

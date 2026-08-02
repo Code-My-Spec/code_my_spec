@@ -41,6 +41,12 @@ defmodule CodeMySpec.Integrations.IntegrationRepository do
   """
   @spec get_integration(Scope.t(), provider()) ::
           {:ok, Integration.t()} | {:error, :not_found}
+  # A scope with no user has no integrations, which is the documented
+  # {:error, :not_found} rather than a BadMapError on `user.id`. Reached by
+  # any "is this provider connected?" check on an unauthenticated scope —
+  # the exact question a provisioning step asks before it does anything.
+  def get_integration(%Scope{user: nil}, _provider), do: {:error, :not_found}
+
   def get_integration(%Scope{user: user}, provider) do
     Integration
     |> where([i], i.user_id == ^user.id and i.provider == ^provider)

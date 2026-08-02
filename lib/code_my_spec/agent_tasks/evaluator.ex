@@ -84,7 +84,12 @@ defmodule CodeMySpec.AgentTasks.Evaluator do
       CodeMySpec.AgentTasks.QaStory,
       CodeMySpec.AgentTasks.TriageIssues,
       CodeMySpec.AgentTasks.FixIssues,
-      CodeMySpec.AgentTasks.WriteBddSpecs
+      CodeMySpec.AgentTasks.WriteBddSpecs,
+      # The specs-passing gate SETS `specs_ready` as a side effect of
+      # passing. The calculator's `:field_true` check can only read the
+      # latch, so without this the stop hook would evaluate the field,
+      # find it false, and block forever — nothing would ever flip it.
+      CodeMySpec.AgentTasks.FixBddSpecs
     ]
   end
 

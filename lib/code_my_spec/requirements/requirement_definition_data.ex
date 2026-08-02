@@ -735,6 +735,18 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         execution_type: :main_agent
       }),
       new!(%{
+        id: 3,
+        name: "bdd_specs_passing",
+        node_scope: :self,
+        check_type: :field_true,
+        config: %{field: :specs_ready},
+        satisfied_by: AgentTasks.FixBddSpecs,
+        artifact_type: :tests,
+        description: "BDD specs have gone green on a fresh spex run",
+        prerequisites: [2],
+        execution_type: :main_agent
+      }),
+      new!(%{
         id: 4,
         name: "qa_complete",
         node_scope: :self,
@@ -743,7 +755,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         satisfied_by: AgentTasks.QaStory,
         artifact_type: :review,
         description: "QA complete: at least one valid DB-backed pass attempt exists",
-        prerequisites: [2],
+        prerequisites: [3],
         execution_type: :sub_agent,
         subagent_role: :qa
       }),

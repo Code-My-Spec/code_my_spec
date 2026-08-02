@@ -1,4 +1,8 @@
-ExUnit.start(exclude: [:scenario, :e2e, :pending, :record_google_login_shape, :record_github_login_shape])
+# :live hits real provider APIs and creates real resources. Never in the
+# normal suite — run it deliberately with `mix test --only live`.
+ExUnit.start(
+  exclude: [:scenario, :e2e, :pending, :live, :record_google_login_shape, :record_github_login_shape]
+)
 Ecto.Adapters.SQL.Sandbox.mode(CodeMySpec.Repo, :manual)
 
 # Auto-load envs/test.env (gitignored) for e2e tests so OAuth client_id /

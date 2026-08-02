@@ -3,7 +3,9 @@ defmodule CodeMySpec.AgentTasks.FixBddSpecsTest do
 
   alias CodeMySpec.AgentTasks.FixBddSpecs
   alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.Stories
 
+  import CodeMySpec.AnalysisFixtures
   import CodeMySpec.UsersFixtures
   import CodeMySpec.StoriesFixtures
   import CodeMySpec.AcceptanceCriteriaFixtures
@@ -24,6 +26,27 @@ defmodule CodeMySpec.AgentTasks.FixBddSpecsTest do
 
   defp task do
     %{}
+  end
+
+  defp story_task(story) do
+    %{story_id: story.id}
+  end
+
+  # The gate needs a File row with role :bdd_spec owned by the story —
+  # that is what "the story has specs at all" means to it.
+  defp create_bdd_spec_file(scope, story) do
+    {_count, _} =
+      CodeMySpec.Files.upsert_files(scope, [
+        %{
+          path: spex_file_path(story),
+          role: :bdd_spec,
+          story_id: story.id,
+          valid: true,
+          mtime: DateTime.utc_now()
+        }
+      ])
+
+    :ok
   end
 
   defp create_implemented_component(scope, module_name \\ "MyAppWeb.UserLive") do
@@ -146,40 +169,80 @@ defmodule CodeMySpec.AgentTasks.FixBddSpecsTest do
   # evaluate/2 Tests
   # ============================================================================
 
+  # ============================================================================
+  # evaluate/2 — the specs-passing gate
+  #
+  # `evaluate/2` is scoped to ONE story (the task's entity) and is a latch:
+  # it requires a fresh green spex run for that story and, on a pass, sets
+  # `specs_ready`. This is deliberately narrower than `command/2`, which
+  # still builds a project-wide fix prompt.
+  # ============================================================================
+
   describe "evaluate/2" do
-    test "returns {:ok, :valid} when no spex problems exist", %{tmp_dir: tmp_dir} do
-      scope = scope_with_env(tmp_dir)
-
-      assert {:ok, :valid} = FixBddSpecs.evaluate(scope, task())
-    end
-
-    test "returns {:ok, :valid} when all failures are for unimplemented components", %{
+    test "sets specs_ready when the story's specs are green on a fresh run", %{
       tmp_dir: tmp_dir
     } do
       scope = scope_with_env(tmp_dir)
-      component = create_unimplemented_component(scope)
+      component = create_implemented_component(scope)
       story = create_story_with_component(scope, component)
-      create_spex_problem(scope, story)
+      create_bdd_spec_file(scope, story)
+      fresh_analysis_runs_fixture(scope, ["spex"])
 
-      assert {:ok, :valid} = FixBddSpecs.evaluate(scope, task())
+      refute story.specs_ready == true
+
+      assert {:ok, :valid} = FixBddSpecs.evaluate(scope, story_task(story))
+
+      assert Stories.get_story(scope, story.id).specs_ready == true
     end
 
-    test "returns {:ok, :invalid, feedback} when relevant failures remain", %{tmp_dir: tmp_dir} do
+    test "reports pending, not failure, when the spex run is stale", %{tmp_dir: tmp_dir} do
       scope = scope_with_env(tmp_dir)
       component = create_implemented_component(scope)
       story = create_story_with_component(scope, component)
-      create_spex_problem(scope, story)
+      create_bdd_spec_file(scope, story)
 
-      assert {:ok, :invalid, feedback} = FixBddSpecs.evaluate(scope, task())
+      # No fresh run stamped — the ledger has nothing current for spex.
+      assert {:ok, :invalid, feedback} = FixBddSpecs.evaluate(scope, story_task(story))
+
+      assert feedback =~ "analysis pending"
+      refute feedback =~ "BDD spec failure"
+      refute Stories.get_story(scope, story.id).specs_ready == true
+    end
+
+    test "refuses the flip when the story has no BDD spec files", %{tmp_dir: tmp_dir} do
+      scope = scope_with_env(tmp_dir)
+      component = create_implemented_component(scope)
+      story = create_story_with_component(scope, component)
+      fresh_analysis_runs_fixture(scope, ["spex"])
+
+      assert {:ok, :invalid, feedback} = FixBddSpecs.evaluate(scope, story_task(story))
+
+      assert feedback =~ "no BDD spec files"
+      refute Stories.get_story(scope, story.id).specs_ready == true
+    end
+
+    test "returns {:ok, :invalid, feedback} when the story's own specs fail", %{
+      tmp_dir: tmp_dir
+    } do
+      scope = scope_with_env(tmp_dir)
+      component = create_implemented_component(scope)
+      story = create_story_with_component(scope, component)
+      create_bdd_spec_file(scope, story)
+      create_spex_problem(scope, story)
+      fresh_analysis_runs_fixture(scope, ["spex"])
+
+      assert {:ok, :invalid, feedback} = FixBddSpecs.evaluate(scope, story_task(story))
       assert feedback =~ "BDD spec failure"
       assert feedback =~ story.title
       assert feedback =~ "Expected user to see welcome message"
+      refute Stories.get_story(scope, story.id).specs_ready == true
     end
 
     test "feedback includes count of remaining failures", %{tmp_dir: tmp_dir} do
       scope = scope_with_env(tmp_dir)
       component = create_implemented_component(scope)
       story = create_story_with_component(scope, component)
+      create_bdd_spec_file(scope, story)
 
       # Create multiple problems
       create_spex_problem(scope, story)
@@ -194,8 +257,51 @@ defmodule CodeMySpec.AgentTasks.FixBddSpecsTest do
         line: 2
       })
 
-      assert {:ok, :invalid, feedback} = FixBddSpecs.evaluate(scope, task())
+      fresh_analysis_runs_fixture(scope, ["spex"])
+
+      assert {:ok, :invalid, feedback} = FixBddSpecs.evaluate(scope, story_task(story))
       assert feedback =~ "2 BDD spec failure(s)"
+    end
+
+    test "another story's failing spec does not hold this story short of ready", %{
+      tmp_dir: tmp_dir
+    } do
+      scope = scope_with_env(tmp_dir)
+      component = create_implemented_component(scope)
+
+      green_story = create_story_with_component(scope, component, "Green Story")
+      create_bdd_spec_file(scope, green_story)
+
+      red_story = create_story_with_component(scope, component, "Red Story")
+      create_bdd_spec_file(scope, red_story)
+      create_spex_problem(scope, red_story)
+
+      fresh_analysis_runs_fixture(scope, ["spex"])
+
+      assert {:ok, :valid} = FixBddSpecs.evaluate(scope, story_task(green_story))
+      assert Stories.get_story(scope, green_story.id).specs_ready == true
+
+      assert {:ok, :invalid, _feedback} = FixBddSpecs.evaluate(scope, story_task(red_story))
+      refute Stories.get_story(scope, red_story.id).specs_ready == true
+    end
+
+    test "an already-latched story stays valid even with a stale run", %{tmp_dir: tmp_dir} do
+      scope = scope_with_env(tmp_dir)
+      component = create_implemented_component(scope)
+      story = create_story_with_component(scope, component)
+      create_bdd_spec_file(scope, story)
+      {:ok, story} = Stories.set_specs_ready(scope, story, true)
+
+      # No fresh run — freshness gates the flip, never the state.
+      assert {:ok, :valid} = FixBddSpecs.evaluate(scope, story_task(story))
+      assert Stories.get_story(scope, story.id).specs_ready == true
+    end
+
+    test "returns invalid when the task carries no story", %{tmp_dir: tmp_dir} do
+      scope = scope_with_env(tmp_dir)
+
+      assert {:ok, :invalid, feedback} = FixBddSpecs.evaluate(scope, task())
+      assert feedback =~ "No story found"
     end
   end
 end

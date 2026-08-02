@@ -52,6 +52,12 @@ defmodule CodeMySpec.Stories do
   """
   def list_stories(scope), do: impl().list_stories(scope)
   def list_project_stories(scope), do: impl().list_project_stories(scope)
+
+  @doc """
+  Ids of stories whose specs-ready latch is set. Used by the stop hook to
+  decide which spex failures are allowed to block.
+  """
+  def list_specs_ready_story_ids(scope), do: impl().list_specs_ready_story_ids(scope)
   def project_has_stories?(scope), do: impl().project_has_stories?(scope)
 
   @doc """
@@ -139,6 +145,23 @@ defmodule CodeMySpec.Stories do
       broadcast(scope, {:updated, story})
       {:ok, story}
     end
+  end
+
+  @doc """
+  Sets or clears the story's specs-ready latch.
+
+  The latch is what `bdd_specs_passing` checks and what the stop hook
+  consults before letting a spex failure block. Three callers write it:
+  the specs-passing gate sets it on a fresh green run, the chain-restart
+  path clears it when the story's BDD specs are rewritten, and the user
+  flips it by hand from the project UI.
+
+  Deliberately narrower than `update_story/3` — the latch carries
+  enforcement consequences, so the write path is named rather than
+  buried in a generic attrs map.
+  """
+  def set_specs_ready(%Scope{} = scope, %Story{} = story, ready?) when is_boolean(ready?) do
+    update_story(scope, story, %{specs_ready: ready?})
   end
 
   @doc """

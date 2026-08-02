@@ -23,7 +23,7 @@ defmodule CodeMySpecWeb.AuthorLive do
             </p>
 
             <p>
-              CodeMySpec is my current project: an AI development harness for Elixir/Phoenix applications that enforces the full loop from user stories through architecture, BDD specs, implementation, and QA. I built six production applications with it —
+              CodeMySpec is my current project: an AI development harness for Elixir/Phoenix applications that enforces the full loop from user stories through architecture, BDD specs, implementation, and QA. I built seven production applications with it —
               <a href="/case-studies/metric-flow">MetricFlow</a>
               (40 commits, 13 days, zero human-written code), Fuellytics (a fuel card fraud detection platform with 5-validator pipeline, Claude Vision OCR, and Stripe Issuing integration),
               <a href="/case-studies/market-my-spec">Market My Spec</a>
@@ -31,9 +31,11 @@ defmodule CodeMySpecWeb.AuthorLive do
               <a href="/case-studies/cleaner-crm">Cleaner CRM</a>
               (a three-persona cleaning-business CRM two-shotted with Claude Fable 5 in three days; I typed 0.4% of the characters in the build conversation),
               <a href="/case-studies/keel">Keel</a>
-              (an agent-first double-entry ledger running my own cross-border books; the agent found $227k of phantom income Quicken had miscounted), and
+              (an agent-first double-entry ledger running my own cross-border books; the agent found $227k of phantom income Quicken had miscounted),
               <a href="/case-studies/legwork">Legwork</a>
-              (an outbound-process composer built in a weekend, where the agent works five-stage runbooks over OAuth-authenticated MCP and the human keeps the launch gate) — to prove the methodology works before asking anyone else to use it.
+              (an outbound-process composer built in a weekend, where the agent works five-stage runbooks over OAuth-authenticated MCP and the human keeps the launch gate), and
+              <a href="/case-studies/broken-oaths">Broken Oaths</a>
+              (a persistent hex-globe 4X strategy game, the most complicated thing I have built this way: 108,734 lines of Elixir in a 12-day sprint, live in production with real playtesters) — to prove the methodology works before asking anyone else to use it.
             </p>
 
             <h2>Career Path</h2>
@@ -85,6 +87,10 @@ defmodule CodeMySpecWeb.AuthorLive do
               <li>
                 <strong>Legwork</strong>
                 — Outbound-process composer: five-stage prose runbooks an LLM agent works via 16 OAuth-authenticated MCP tools, with a human launch gate. Built in one weekend with Claude Opus 4.8; gating real prospects on day two. <a href="/case-studies/legwork">7 stories, 47 BDD criteria, honest teardown</a>.
+              </li>
+              <li>
+                <strong>Broken Oaths</strong>
+                — Persistent hex-globe 4X strategy game where losing a war makes you a vassal rather than a corpse: Goldberg polyhedron mesh, per-world GenServer simulation, feudal vassalage and rebellion. Built in a 12-day sprint; 108,734 lines of Elixir, 0.25% of the conversation typed by a human. <a href="/case-studies/broken-oaths">52 stories, 387 BDD criteria, honest teardown</a>.
               </li>
               <li>
                 <strong>IC Insure</strong>

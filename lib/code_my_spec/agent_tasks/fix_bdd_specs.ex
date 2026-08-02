@@ -21,8 +21,10 @@ defmodule CodeMySpec.AgentTasks.FixBddSpecs do
       "when a story's BDD spec files exist but one or more criteria fail."
   end
 
+  alias CodeMySpec.Analysis
   alias CodeMySpec.BddSpecs.Parser
   alias CodeMySpec.Components
+  alias CodeMySpec.Files
   alias CodeMySpec.Problems
   alias CodeMySpec.Requirements
   alias CodeMySpec.Stories
@@ -55,27 +57,80 @@ defmodule CodeMySpec.AgentTasks.FixBddSpecs do
   end
 
   @doc """
-  Check that no relevant spex failures remain.
+  Evaluate the specs-passing gate for the task's story and, on a pass,
+  set the story's specs-ready latch.
+
+  The gate is a latch, not a running tally. It requires a *fresh* spex
+  run showing every one of the story's own specs green; once that lands,
+  `Stories.set_specs_ready/3` records it and `bdd_specs_passing` reads
+  the field from then on. A later edit that stales the run leaves the
+  latch alone — that asymmetry is the whole reason the node can exist
+  again. bab2f792 removed it because freshness was re-evaluated forever,
+  so nearly any edit dropped it back to "analysis pending" and clamped
+  qa_complete behind it.
+
+  Staleness is reported as *pending*, never as *failure*: an agent told
+  its specs failed goes hunting for a bug that isn't there.
 
   Returns:
-  - `{:ok, :valid}` when no relevant failures exist
-  - `{:ok, :invalid, feedback}` when relevant failures remain
+  - `{:ok, :valid}` when the story's specs are green on a fresh run
+  - `{:ok, :invalid, feedback}` when specs fail, are missing, or the run
+    is not yet current
   """
-  def evaluate(scope, _task) do
-    problems = Problems.list_project_problems(scope, source: "spex")
+  def evaluate(scope, task) do
+    case story_for(scope, task) do
+      nil ->
+        {:ok, :invalid, "No story found for this task — cannot evaluate the specs-passing gate."}
 
-    if Enum.empty?(problems) do
-      {:ok, :valid}
-    else
-      relevant = filter_relevant_problems(scope, problems)
-
-      if Enum.empty?(relevant) do
-        {:ok, :valid}
-      else
-        feedback = build_feedback(relevant)
-        {:ok, :invalid, feedback}
-      end
+      story ->
+        evaluate_story(scope, story)
     end
+  end
+
+  defp evaluate_story(scope, story) do
+    cond do
+      story.specs_ready == true ->
+        # Already latched. A stale run or a fresh failure elsewhere must
+        # not un-latch it; only a chain restart or a manual clear does.
+        {:ok, :valid}
+
+      not has_bdd_specs?(scope, story) ->
+        {:ok, :invalid, no_specs_message(story)}
+
+      not Analysis.fresh?(scope, "spex") ->
+        {:ok, :invalid, analysis_pending_message(story)}
+
+      true ->
+        case story_spex_problems(scope, story) do
+          [] ->
+            {:ok, _story} = Stories.set_specs_ready(scope, story, true)
+            {:ok, :valid}
+
+          problems ->
+            {:ok, :invalid, build_feedback(Enum.map(problems, &{&1, story}))}
+        end
+    end
+  end
+
+  defp story_for(scope, %{story_id: story_id}) when not is_nil(story_id),
+    do: Stories.get_story(scope, story_id)
+
+  defp story_for(_scope, _task), do: nil
+
+  # Spex problems whose file belongs to THIS story. Without the scoping a
+  # single red spex anywhere in the project would hold every story short
+  # of ready — the exact symptom the deleted per-story checker guarded
+  # against.
+  defp story_spex_problems(scope, story) do
+    scope
+    |> Problems.list_project_problems(source: "spex")
+    |> Enum.filter(&(Parser.derive_story_id(&1.file_path) == story.id))
+  end
+
+  defp has_bdd_specs?(scope, story) do
+    scope
+    |> Files.list_story_files(story.id)
+    |> Enum.any?(&(&1.role == :bdd_spec))
   end
 
   # ============================================================================
@@ -127,6 +182,32 @@ defmodule CodeMySpec.AgentTasks.FixBddSpecs do
     # Fix BDD Specs
 
     All BDD specs are passing. Nothing to fix.
+    """
+  end
+
+  defp no_specs_message(story) do
+    """
+    # Specs Passing — not yet
+
+    Story #{story.id} (#{story.title}) has no BDD spec files on disk, so there is
+    nothing for a spex run to prove. Write the story's specs first
+    (`bdd_specs_exist`), then come back to this gate.
+    """
+  end
+
+  # Deliberately worded as pending rather than failing. A stale run means
+  # "we don't know yet", and an agent told its specs failed will go looking
+  # for a bug that isn't there.
+  defp analysis_pending_message(story) do
+    """
+    # Specs Passing — analysis pending
+
+    Story #{story.id} (#{story.title}) cannot be flipped to specs-ready yet: the
+    latest spex run does not cover the current state of the code. This is
+    **not** a spec failure — nothing is known to be broken.
+
+    Call `await_analysis` to wait for the in-flight spex run to land, then
+    evaluate this requirement again.
     """
   end
 

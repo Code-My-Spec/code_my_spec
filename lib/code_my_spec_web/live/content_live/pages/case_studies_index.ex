@@ -14,6 +14,20 @@ defmodule CodeMySpecWeb.ContentLive.Pages.CaseStudiesIndex do
 
   @case_studies [
     %{
+      slug: "broken-oaths",
+      title: "Broken Oaths",
+      tagline: "A persistent hex-globe 4X. Twelve days. The hardest thing the harness has built.",
+      summary:
+        "A massively multiplayer 4X strategy game where losing a war makes you a vassal rather than a corpse. Built in a 12-day sprint in July 2026: 108,734 lines of Elixir, 279 executable BDD spex, seven production releases, real playtesters by day six. Also the build where 20 of 52 stories carry no QA record at all, and where the case-study tooling was caught fabricating its own evidence.",
+      og_image: "og-broken-oaths.png",
+      stats: [
+        %{label: "Sprint Days", value: "12"},
+        %{label: "Lines of Elixir", value: "108,734"},
+        %{label: "Typed by John", value: "0.25%"}
+      ],
+      published_at: "2026-07-30"
+    },
+    %{
       slug: "ear-witness",
       title: "EarWitness",
       tagline: "Live build in progress. The requirements are public before the code exists.",

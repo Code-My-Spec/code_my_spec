@@ -66,6 +66,17 @@ defmodule CodeMySpec.Configurations.ProjectConfiguration do
     field :compile_warnings, Ecto.Enum, values: @compile_modes, default: :block
     field :credo, Ecto.Enum, values: @analyzer_modes, default: :block_changed
     field :exunit, Ecto.Enum, values: @analyzer_modes, default: :block_all
+    # Off for NEW projects, on for existing ones (see the migration that
+    # flips established projects to `:block_all`). A project on its first
+    # day has no story that has ever gone green, so enforcement has
+    # nothing to protect and only adds noise; an established project has
+    # shipped stories worth holding the line on.
+    #
+    # Turning it on later costs nothing, because the mode governs BLOCKING
+    # only — the suite runs either way, since the specs-passing gate needs
+    # a current run to flip a story. So a young project still accumulates
+    # specs-ready stories while the mode is `:off`, and they are already
+    # protected the moment the mode changes.
     field :spex, Ecto.Enum, values: @analyzer_modes, default: :off
     field :spec_validation, Ecto.Enum, values: @analyzer_modes, default: :block_changed
     field :qa_validation, Ecto.Enum, values: @analyzer_modes, default: :block_changed
