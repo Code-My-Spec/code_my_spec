@@ -1067,12 +1067,25 @@ defmodule CodeMySpecSpex.Fixtures do
         json: %{name: name, private: false, auto_init: Keyword.get(opts, :commits, false)}
       )
       |> case do
-        {:ok, %{status: status}} when status in [201, 422] -> :ok
-        {:ok, %{status: status, body: body}} -> {:error, {status, body}}
-        other -> other
+        {:ok, %{status: status}} when status in [201, 422] ->
+          :ok
+
+        {:ok, %{status: status, body: body}} ->
+          raise "could not create #{owner}/#{name}: #{status} #{inspect(body, limit: 5)}"
+
+        other ->
+          raise "could not create #{owner}/#{name}: #{inspect(other, limit: 5)}"
       end
     else
-      _ -> :ok
+      # Loudly, not silently. A criterion whose premise is "this repository
+      # already exists" cannot be checked without it, and returning :ok here
+      # let the step create its own and report success — the opposite of the
+      # collision under test, passing for the wrong reason.
+      _ ->
+        raise """
+        GITHUB_SPEX_ADMIN_TOKEN and GITHUB_SPEX_OWNER must both be set to create
+        the repository this criterion's premise depends on.
+        """
     end
   end
 
