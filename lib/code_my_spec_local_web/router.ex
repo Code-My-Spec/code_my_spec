@@ -173,6 +173,15 @@ defmodule CodeMySpecLocalWeb.Router do
 
   # ── Agent tasks (skill-invoked) ──────────────────────────────────
 
+  # The Anthropic-shaped surface a sprite's agent points ANTHROPIC_BASE_URL at.
+  # Same scope chain as the hooks: the project comes from configuration, and
+  # the header is the override.
+  scope "/v1", CodeMySpecLocalWeb do
+    pipe_through :hook
+
+    post "/messages", MessagesController, :create
+  end
+
   scope "/api", CodeMySpecLocalWeb do
     pipe_through :hook
 

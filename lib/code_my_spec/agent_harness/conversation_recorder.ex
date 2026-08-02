@@ -18,40 +18,101 @@ defmodule CodeMySpec.AgentHarness.ConversationRecorder do
 
   alias CodeMySpec.Conversations
 
+  @upstream "https://api.anthropic.com"
+
+  @doc """
+  Forward one turn upstream and record both halves.
+
+  The proxy half of story 984: a sprite points ANTHROPIC_BASE_URL here, so this
+  is a pass-through that happens to observe. The upstream response is returned
+  unchanged — an agent must not be able to tell it is being watched, or the
+  watching has altered the thing it set out to measure.
+  """
+  @spec forward(map(), keyword()) :: {:ok, map()} | {:error, term()}
+  def forward(request, opts \\ []) do
+    [
+      url: Keyword.get(opts, :base_url, @upstream) <> "/v1/messages",
+      json: request,
+      headers: passthrough_headers(opts),
+      decode_json: [keys: :strings],
+      # The agent already has its own retry and backoff; a second layer here
+      # would turn one slow turn into several and hide the latency from both.
+      retry: false,
+      receive_timeout: Keyword.get(opts, :receive_timeout, 600_000)
+    ]
+    |> Req.new()
+    |> attach_test_plug()
+    |> Req.post()
+    |> handle_response()
+  end
+
+  defp handle_response({:ok, %Req.Response{status: 200, body: body}}), do: {:ok, body}
+
+  defp handle_response({:ok, %Req.Response{status: status, body: body}}),
+    do: {:error, {:upstream_status, status, body}}
+
+  defp handle_response({:error, reason}), do: {:error, reason}
+
+  defp passthrough_headers(opts) do
+    Keyword.get(opts, :headers, [])
+  end
+
+  defp attach_test_plug(req) do
+    case Application.get_env(:code_my_spec, __MODULE__, [])[:plug] do
+      nil -> req
+      plug -> Req.merge(req, plug: plug)
+    end
+  end
+
   @doc """
   Record one completed turn.
 
-  `request` and `response` are the decoded Anthropic payloads. Returns `:ok`
-  regardless — see the moduledoc.
+  `request` and `response` are the decoded Anthropic payloads. Returns `:ok`,
+  or `{:error, reason}` if the conversation or a message could not be written.
+  The caller is expected to ignore the error — see the moduledoc.
   """
-  @spec record_turn(String.t(), String.t(), String.t(), map(), map()) :: :ok
+  @spec record_turn(String.t(), String.t(), String.t(), map(), map()) ::
+          :ok | {:error, term()}
   def record_turn(account_id, project_id, session_external_id, request, response) do
-    safely(fn ->
-      {:ok, conversation} =
-        Conversations.find_or_create_agent_conversation(
-          account_id,
-          project_id,
-          session_external_id
-        )
+    agent_role = agent_role(request)
 
-      agent_role = agent_role(request)
-
-      # Not add_agent_message/4: its kind mapping sends everything but "tool"
-      # to :assistant, so the request would be filed as the model's own words.
-      # 8171 wants the operator to see what the agent was *asked*.
-      case request_text(request) do
-        nil -> :ok
-        text -> Conversations.add_message(conversation, :user, text, "agent:#{agent_role}")
-      end
-
-      case response_text(response) do
-        nil -> :ok
-        text -> Conversations.add_agent_message(conversation, agent_role, :assistant, text)
-      end
-
+    with {:ok, conversation} <-
+           Conversations.find_or_create_agent_conversation(
+             account_id,
+             project_id,
+             session_external_id
+           ),
+         :ok <- write_request(conversation, agent_role, request_text(request)),
+         :ok <- write_response(conversation, agent_role, response_text(response)) do
       :ok
-    end)
+    else
+      {:error, reason} = error ->
+        Logger.warning("[ConversationRecorder] recording failed: #{inspect(reason)}")
+        error
+    end
   end
+
+  # Not add_agent_message/4: its kind mapping sends everything but "tool" to
+  # :assistant, so the request would be filed as the model's own words. 8171
+  # wants the operator to see what the agent was *asked*.
+  defp write_request(_conversation, _agent_role, nil), do: :ok
+
+  defp write_request(conversation, agent_role, text) do
+    conversation
+    |> Conversations.add_message(:user, text, "agent:#{agent_role}")
+    |> normalize()
+  end
+
+  defp write_response(_conversation, _agent_role, nil), do: :ok
+
+  defp write_response(conversation, agent_role, text) do
+    conversation
+    |> Conversations.add_agent_message(agent_role, :assistant, text)
+    |> normalize()
+  end
+
+  defp normalize({:ok, _record}), do: :ok
+  defp normalize({:error, reason}), do: {:error, reason}
 
   # A turn that only calls tools is still legible afterwards (8173). The model
   # answers with `tool_use` blocks and no prose, so rendering only `text` would
@@ -111,17 +172,4 @@ defmodule CodeMySpec.AgentHarness.ConversationRecorder do
   end
 
   defp summarize(_input), do: ""
-
-  defp safely(fun) do
-    _ = fun.()
-    :ok
-  rescue
-    e ->
-      Logger.warning("[ConversationRecorder] recording failed: #{Exception.message(e)}")
-      :ok
-  catch
-    kind, reason ->
-      Logger.warning("[ConversationRecorder] recording failed: #{inspect({kind, reason})}")
-      :ok
-  end
 end
