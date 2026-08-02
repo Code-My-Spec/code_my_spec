@@ -53,8 +53,41 @@ defmodule CodeMySpec.AgentHarness.ConversationRecorder do
 
   defp handle_response({:error, reason}), do: {:error, reason}
 
+  # A sprite's agent authenticates as itself, and forwarding its credential is
+  # the whole reason this proxy holds none. But a caller that sends no
+  # credential at all cannot reach Anthropic, so the harness may be configured
+  # with one as a fallback — never as an override, so an agent's own key always
+  # wins and the proxy cannot silently spend someone else's quota.
   defp passthrough_headers(opts) do
-    Keyword.get(opts, :headers, [])
+    headers = Keyword.get(opts, :headers, [])
+
+    # anthropic-version goes on every request regardless of credential. It is
+    # required by the API, and keeping it unconditional keeps the header set
+    # stable — a cassette recorded with a key has to replay without one, which
+    # it cannot do if the presence of a key changes which headers are sent.
+    headers = ensure_version(headers)
+
+    if Enum.any?(headers, fn {name, _} -> name in ["authorization", "x-api-key"] end) do
+      headers
+    else
+      case fallback_key() do
+        nil -> headers
+        key -> [{"x-api-key", key} | headers]
+      end
+    end
+  end
+
+  defp ensure_version(headers) do
+    if Enum.any?(headers, fn {name, _} -> name == "anthropic-version" end) do
+      headers
+    else
+      [{"anthropic-version", "2023-06-01"} | headers]
+    end
+  end
+
+  defp fallback_key do
+    Application.get_env(:code_my_spec, __MODULE__, [])[:api_key] ||
+      System.get_env("ANTHROPIC_API_KEY")
   end
 
   defp attach_test_plug(req) do
@@ -120,10 +153,10 @@ defmodule CodeMySpec.AgentHarness.ConversationRecorder do
   @doc false
   @spec response_text(map()) :: String.t() | nil
   def response_text(%{"content" => content}) when is_list(content) do
-    content
-    |> Enum.map(&block_text/1)
-    |> Enum.reject(&is_nil/1)
-    |> join()
+    case content |> Enum.map(&block_text/1) |> Enum.reject(&is_nil/1) |> join() do
+      nil -> thinking_only(content)
+      text -> text
+    end
   end
 
   def response_text(_response), do: nil
@@ -136,6 +169,19 @@ defmodule CodeMySpec.AgentHarness.ConversationRecorder do
 
   defp block_text(%{"type" => "thinking"}), do: nil
   defp block_text(_block), do: nil
+
+  # A turn can be nothing but thinking — a small max_tokens spends the budget
+  # before any prose is emitted, and the first turn recorded here was exactly
+  # that. Thinking is not the model\'s answer, so it is not shown as one, but a
+  # blank conversation for a turn that happened is the same failure 8173 names
+  # for tool-only turns: the operator sees nothing and concludes nothing ran.
+  defp thinking_only(content) do
+    if Enum.any?(content, &(is_map(&1) and &1["type"] == "thinking")) do
+      "(thought, but reached the token limit before answering)"
+    else
+      nil
+    end
+  end
 
   @doc false
   @spec request_text(map()) :: String.t() | nil

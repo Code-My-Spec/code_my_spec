@@ -1,0 +1,242 @@
+{
+  "interactions": [
+    {
+      "recorded_at": "2026-08-02T20:00:42.174510Z",
+      "request": {
+        "body_json": {
+          "max_tokens": 64,
+          "messages": [
+            {
+              "content": "count the open problems",
+              "role": "user"
+            }
+          ],
+          "model": "claude-opus-5"
+        },
+        "body_type": "json",
+        "headers": {
+          "accept": [
+            "application/json"
+          ],
+          "accept-encoding": [
+            "gzip"
+          ],
+          "anthropic-version": [
+            "2023-06-01"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "user-agent": [
+            "req/0.5.17"
+          ]
+        },
+        "method": "POST",
+        "query_string": "",
+        "uri": "https://api.anthropic.com/v1/messages"
+      },
+      "response": {
+        "body_json": {
+          "content": [
+            {
+              "signature": "CAISxwMKhwEIEBgCKkBgQcjLo51OPvomPwSv2GibvQtG9WIlg4/uwWK3KMhITsNDuQwTtf8WsVLuYJIy8vffcMBwD4Ilfdx5USWf9Nv3Mg1jbGF1ZGUtb3B1cy01OAFCCHRoaW5raW5nWiQxZmM2MmQ2Yi0yMjljLTQ2ODEtYWEyNC01NzE1NTdhMjYwMjQSDAfZYAsICjyDhW4HtxoMQc6UXFD83kUKlA9LIjBcVKLVZKUv+yJvzfivR9xze8qxS2PJ2lKoXDdHZDnyTGcFpZ/fzbAjYHdXsFRU4LMq7AGWzPDzkvQ2RzsKBG3ZX21N+7UIbvu2EjQki+BvvWUzHQxBGljtigk6h4HH2UNvKR+v056VzKoLsA48nz2qP1gkka8oYFDMEBAP5DaUWaYUsfYWffUSWLtQsODJVlSHddlM6l1MNMVy4fbmtMrRK10pgpa62XSRWMgsCCT/2LyfP8+eQ4GBIUSjCg4HZa9GO+5UjU2uG7vsm7SFDem4g/GA4W8dpobXD2NhUTgEzWlwjgvm/2LQv6KYimh0StNkd24gDzr6zmVt05dt3adOFONOPktD83fAL1k+hu89U8jAJkxFw7tn1U5u2i+zwxgB",
+              "thinking": "",
+              "type": "thinking"
+            }
+          ],
+          "id": "msg_011CdeWude3KtYUpfYx4JqPe",
+          "model": "claude-opus-5",
+          "role": "assistant",
+          "stop_details": null,
+          "stop_reason": "max_tokens",
+          "stop_sequence": null,
+          "type": "message",
+          "usage": {
+            "cache_creation": {
+              "ephemeral_1h_input_tokens": 0,
+              "ephemeral_5m_input_tokens": 0
+            },
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 0,
+            "inference_geo": "global",
+            "input_tokens": 11,
+            "output_tokens": 64,
+            "output_tokens_details": {
+              "thinking_tokens": 64
+            },
+            "service_tier": "standard"
+          }
+        },
+        "body_type": "json",
+        "headers": {
+          "anthropic-organization-id": [
+            "1fc62d6b-229c-4681-aa24-571557a26024"
+          ],
+          "anthropic-ratelimit-input-tokens-limit": [
+            "10000000"
+          ],
+          "anthropic-ratelimit-input-tokens-remaining": [
+            "10000000"
+          ],
+          "anthropic-ratelimit-input-tokens-reset": [
+            "2026-08-02T20:00:41Z"
+          ],
+          "anthropic-ratelimit-output-tokens-limit": [
+            "2000000"
+          ],
+          "anthropic-ratelimit-output-tokens-remaining": [
+            "2000000"
+          ],
+          "anthropic-ratelimit-output-tokens-reset": [
+            "2026-08-02T20:00:42Z"
+          ],
+          "anthropic-ratelimit-requests-limit": [
+            "10000"
+          ],
+          "anthropic-ratelimit-requests-remaining": [
+            "9999"
+          ],
+          "anthropic-ratelimit-requests-reset": [
+            "2026-08-02T20:00:40Z"
+          ],
+          "anthropic-ratelimit-tokens-limit": [
+            "12000000"
+          ],
+          "anthropic-ratelimit-tokens-remaining": [
+            "12000000"
+          ],
+          "anthropic-ratelimit-tokens-reset": [
+            "2026-08-02T20:00:41Z"
+          ],
+          "cf-cache-status": [
+            "DYNAMIC"
+          ],
+          "cf-ray": [
+            "a24fab8e99d2a28d-YUL"
+          ],
+          "connection": [
+            "keep-alive"
+          ],
+          "content-security-policy": [
+            "default-src 'none'; frame-ancestors 'none'"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "date": [
+            "Sun, 02 Aug 2026 20:00:42 GMT"
+          ],
+          "request-id": [
+            "req_011CdeWud2q3dZhP6c9HdkPw"
+          ],
+          "server": [
+            "cloudflare"
+          ],
+          "strict-transport-security": [
+            "max-age=31536000; includeSubDomains; preload"
+          ],
+          "traceresponse": [
+            "00-765b99aae975973135edb4741b38e211-241f2f5bac0898bd-01"
+          ],
+          "transfer-encoding": [
+            "chunked"
+          ],
+          "vary": [
+            "Accept-Encoding"
+          ],
+          "x-robots-tag": [
+            "none"
+          ]
+        },
+        "status": 200
+      }
+    },
+    {
+      "recorded_at": "2026-08-02T20:02:10.647581Z",
+      "request": {
+        "body_json": {
+          "max_tokens": 64,
+          "messages": [
+            {
+              "content": "count the open problems",
+              "role": "user"
+            }
+          ],
+          "model": "claude-opus-5"
+        },
+        "body_type": "json",
+        "headers": {
+          "accept": [
+            "application/json"
+          ],
+          "accept-encoding": [
+            "gzip"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "user-agent": [
+            "req/0.5.17"
+          ]
+        },
+        "method": "POST",
+        "query_string": "",
+        "uri": "https://api.anthropic.com/v1/messages"
+      },
+      "response": {
+        "body_json": {
+          "error": {
+            "message": "x-api-key header is required",
+            "type": "authentication_error"
+          },
+          "request_id": "req_011CdeX2F1hznMMsrvfX1YQy",
+          "type": "error"
+        },
+        "body_type": "json",
+        "headers": {
+          "cf-cache-status": [
+            "DYNAMIC"
+          ],
+          "cf-ray": [
+            "a24fadc01e15a28f-YUL"
+          ],
+          "connection": [
+            "keep-alive"
+          ],
+          "content-security-policy": [
+            "default-src 'none'; frame-ancestors 'none'"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "date": [
+            "Sun, 02 Aug 2026 20:02:10 GMT"
+          ],
+          "request-id": [
+            "req_011CdeX2F1hznMMsrvfX1YQy"
+          ],
+          "server": [
+            "cloudflare"
+          ],
+          "strict-transport-security": [
+            "max-age=31536000; includeSubDomains; preload"
+          ],
+          "transfer-encoding": [
+            "chunked"
+          ],
+          "vary": [
+            "Accept-Encoding"
+          ],
+          "x-robots-tag": [
+            "none"
+          ],
+          "x-should-retry": [
+            "false"
+          ]
+        },
+        "status": 401
+      }
+    }
+  ],
+  "version": "2.0"
+}
