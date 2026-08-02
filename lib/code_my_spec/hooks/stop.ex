@@ -50,6 +50,8 @@ defmodule CodeMySpec.Hooks.Stop do
     Logger.info("[StopHook] [#{req_id}] session: #{session_id}")
 
     session = session_id && Sessions.get_by_external_id(scope, session_id)
+    warn_unresolved_session(scope, session_id, session, req_id)
+
     active_task = session && Session.active_task(session)
     # Computed once here so the cond below doesn't pay the
     # Configurations.get_or_create cost (which inserts on miss) twice
@@ -58,6 +60,35 @@ defmodule CodeMySpec.Hooks.Stop do
 
     do_decide(scope, session_id, session, active_task, idle_sub, validation_opts, req_id)
   end
+
+  # Allow stays the default — a stop hook that fails closed on its own
+  # plumbing would wedge every agent on this machine. But allowing silently
+  # means a hook that never sends `session_id`, or one pointed at a session
+  # this server has no record of, succeeds forever and looks identical to a
+  # healthy run. Nothing here is per-turn noise: both cases are broken
+  # configuration, and an unattended run is exactly where nobody is watching
+  # the 200s go by.
+  #
+  # A stop before `init_project` is not broken — there is no project to hold
+  # sessions yet — so that one stays quiet.
+  defp warn_unresolved_session(%{active_project_id: nil}, _session_id, _session, _req_id), do: :ok
+
+  defp warn_unresolved_session(_scope, nil, _session, req_id) do
+    Logger.warning(
+      "[StopHook] [#{req_id}] no session_id in payload — allowing, but this hook " <>
+        "cannot attribute work to a task. Check the hook's --data-binary payload."
+    )
+  end
+
+  defp warn_unresolved_session(_scope, session_id, nil, req_id) do
+    Logger.warning(
+      "[StopHook] [#{req_id}] session_id #{session_id} has no session record — " <>
+        "allowing, but task evaluation is skipped. Usually a stale MCP connection; " <>
+        "reconnect with /mcp or re-fire the session-start hook."
+    )
+  end
+
+  defp warn_unresolved_session(_scope, _session_id, _session, _req_id), do: :ok
 
   defp do_decide(scope, session_id, nil, _active_task, _idle_sub, validation_opts, req_id) do
     run_and_decide(scope, session_id, nil, nil, validation_opts, req_id)

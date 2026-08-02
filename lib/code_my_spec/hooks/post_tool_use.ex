@@ -12,6 +12,18 @@ defmodule CodeMySpec.Hooks.PostToolUse do
 
   Database only: it records *that* a path was written, never reads the file. A
   harness with no database can only forward it.
+
+  So a `file_path` that does not exist is recorded like any other, and that is
+  deliberate rather than an oversight — a QA probe asked. The hook records what
+  the tool *claimed*; the scanner establishes what is actually on disk. Stat-ing
+  the path here would buy nothing and cost correctness: the hook has no working
+  copy on the light harness, and a file legitimately written and then moved or
+  deleted in the same turn would be dropped from attribution by a check that
+  ran a moment too late.
+
+  Nothing downstream is harmed by an over-broad record. Attribution only ever
+  *narrows* the stop hook's blocking scope, and a path with no file has no
+  problems to match, so a phantom entry scopes nothing in.
   """
 
   require Logger
@@ -50,11 +62,13 @@ defmodule CodeMySpec.Hooks.PostToolUse do
 
   defp mark_active(_scope, _params), do: :ok
 
-  defp track_edit(%{
-         "tool_name" => tool,
-         "tool_input" => input,
-         "session_id" => session_id
-       } = params)
+  defp track_edit(
+         %{
+           "tool_name" => tool,
+           "tool_input" => input,
+           "session_id" => session_id
+         } = params
+       )
        when tool in @edit_tools and is_binary(session_id) do
     agent_id = Map.get(params, "agent_id")
 

@@ -26,6 +26,7 @@ defmodule CodeMySpecLocalWeb.Hooks.StopControllerTest do
 
   import CodeMySpec.SessionsFixtures
   import CodeMySpec.UsersFixtures
+  import ExUnit.CaptureLog
   import Plug.Conn
   import Plug.Test
 
@@ -49,7 +50,8 @@ defmodule CodeMySpecLocalWeb.Hooks.StopControllerTest do
   describe "payloads that name no resolvable session" do
     for {label, params} <- @degenerate do
       test "#{label} decides the same as a resolvable session", %{scope: scope} do
-        session = session_fixture(scope, %{
+        session =
+          session_fixture(scope, %{
             external_conversation_id: "resolvable-#{System.unique_integer([:positive])}"
           })
 
@@ -66,6 +68,58 @@ defmodule CodeMySpecLocalWeb.Hooks.StopControllerTest do
       for {_label, params} <- @degenerate do
         assert is_map(post_stop(scope, params))
       end
+    end
+  end
+
+  describe "visibility when the session cannot be resolved" do
+    test "a payload with no session_id warns", %{scope: scope} do
+      log = capture_log(fn -> post_stop(scope, %{"cwd" => "/tmp/proj"}) end)
+
+      assert log =~ "no session_id in payload",
+             """
+             Allow is the right verdict, but a hook that never sends session_id
+             answers 200 forever and is indistinguishable from a healthy run.
+             An unattended drill is exactly where nobody is watching the 200s
+             go by.
+             """
+    end
+
+    test "a session_id with no record warns and names the recovery", %{scope: scope} do
+      log =
+        capture_log(fn ->
+          post_stop(scope, %{"session_id" => "00000000-0000-0000-0000-000000000000"})
+        end)
+
+      assert log =~ "has no session record"
+
+      assert log =~ "/mcp",
+             "this is the stale-MCP-connection failure; the log should say how to recover"
+    end
+
+    test "a resolvable session says nothing", %{scope: scope} do
+      session =
+        session_fixture(scope, %{
+          external_conversation_id: "quiet-#{System.unique_integer([:positive])}"
+        })
+
+      log =
+        capture_log(fn ->
+          post_stop(scope, %{"session_id" => session.external_conversation_id})
+        end)
+
+      refute log =~ "no session record",
+             "a warning on the healthy path is noise, and noise is why nobody " <>
+               "reads the ones that matter"
+    end
+
+    test "a stop before init_project stays quiet", %{scope: scope} do
+      unbound = %{scope | active_project_id: nil, active_project: nil}
+
+      log = capture_log(fn -> post_stop(unbound, %{}) end)
+
+      refute log =~ "no session_id in payload",
+             "there is no project to hold sessions yet — that is a normal " <>
+               "bootstrap state, not broken configuration"
     end
   end
 
