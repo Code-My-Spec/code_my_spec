@@ -253,11 +253,33 @@ defmodule CodeMySpec.Provisioning.Storage do
           {:ok, binary()} | {:error, term()}
   def get_object(bucket, key, credentials, opts \\ []) do
     location = Keyword.get(opts, :location, @default_location)
+    get_object(bucket, key, credentials, location, opts, Keyword.get(opts, :attempts, 6))
+  end
 
-    with {:ok, %{body: body}} <- ExAws.S3.get_object(bucket, key) |> run(credentials, location) do
-      {:ok, body}
+  defp get_object(bucket, key, credentials, location, opts, attempts) do
+    case ExAws.S3.get_object(bucket, key) |> run(credentials, location) do
+      {:ok, %{body: body}} ->
+        {:ok, body}
+
+      # `NoSuchBucket` on a bucket we have just written to is Hetzner's Ceph
+      # catching up, not a missing bucket: the gateway that answers the read
+      # need not be the one that took the write. Retried narrowly — only this
+      # code, never `NoSuchKey` — because a genuinely absent object must stay
+      # an immediate answer rather than an eight-second wait.
+      {:error, reason} ->
+        if attempts > 1 and no_such_bucket?(reason) do
+          Process.sleep(Keyword.get(opts, :interval_ms, 1_000))
+          get_object(bucket, key, credentials, location, opts, attempts - 1)
+        else
+          {:error, reason}
+        end
     end
   end
+
+  defp no_such_bucket?({:http_error, 404, %{body: body}}) when is_binary(body),
+    do: String.contains?(body, "NoSuchBucket")
+
+  defp no_such_bucket?(_), do: false
 
   @doc "Remove one object. Used to empty a bucket before deleting it."
   @spec delete_object(String.t(), String.t(), credentials(), keyword()) :: :ok | {:error, term()}

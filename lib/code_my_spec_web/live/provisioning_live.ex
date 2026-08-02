@@ -1237,7 +1237,11 @@ defmodule CodeMySpecWeb.ProvisioningLive do
     |> assign_new(:domain_check, fn -> nil end)
     |> assign_new(:domain_error, fn -> nil end)
     |> assign(:domain_registered, registered_domain(socket.assigns.current_scope))
-    |> assign(:environments, environments(socket.assigns.current_scope))
+    |> then(fn socket ->
+      names = environments(socket.assigns.current_scope)
+      Process.put(:cms_environment_names, names)
+      assign(socket, :environments, names)
+    end)
     |> assign(:storage_ready?, Storage.credentials(socket.assigns.current_scope, []) != :none)
     # Read once and kept, not re-read on every event. `mail_state/2` and
     # `mail_domains/1` each call Resend live, so re-reading here meant three
@@ -1261,14 +1265,42 @@ defmodule CodeMySpecWeb.ProvisioningLive do
   # page cannot know the names: a project may have `qa`, or one environment per
   # story. Matching a hardcoded list against a location suffix only ever found
   # the two that used to be hardcoded.
-  defp resource_environment(%{identifier: identifier}) when is_binary(identifier) do
+  defp resource_environment(resource) do
+    tagged(resource) || suffixed(resource)
+  end
+
+  # Steps that fan out over environments tag what they made, because the page
+  # cannot know the names: a project may have `qa`, or one per story.
+  defp tagged(%{identifier: identifier}) when is_binary(identifier) do
     case Regex.run(~r/environment=([a-z0-9-]+)/, identifier) do
       [_, environment] -> environment
       nil -> nil
     end
   end
 
-  defp resource_environment(_), do: nil
+  defp tagged(_), do: nil
+
+  # Not everything carries the tag. A bucket encodes its environment as a
+  # suffix on the name — `app-uat` — and that is what makes criterion 8012
+  # checkable from the page at all. Reading only the tag reported every bucket
+  # as belonging to no environment.
+  #
+  # Matched against the project's own environments rather than a pattern, so a
+  # name that merely happens to end in `-something` is not mistaken for one.
+  defp suffixed(%{location: location}) when is_binary(location) do
+    Enum.find(environment_names(), fn environment ->
+      String.ends_with?(location, "-" <> environment)
+    end)
+  end
+
+  defp suffixed(_), do: nil
+
+  # Read from the process dictionary rather than threaded through every render
+  # helper: `resource_environment/1` is called from four places in the template
+  # and the list is the same for the whole render.
+  defp environment_names do
+    Process.get(:cms_environment_names, [])
+  end
 
   # The IP an environment's record points at — the first half of the tagged
   # identifier the DNS step writes.
