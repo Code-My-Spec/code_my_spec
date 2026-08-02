@@ -29,7 +29,6 @@ defmodule CodeMySpecLocalWeb.Router do
       live "/app/projects/:project_name/edit", ProjectsLive.Form, :edit
       live "/app/projects/:project_name/init", InitLive, :index
       live "/app/projects/:project_name/init/:step", InitLive, :show
-      live "/app/projects/:project_name/configuration", ConfigurationLive
       live "/app/projects/:project_name/files", FilesLive
       live "/app/projects/:project_name/content", ContentLive
       live "/app/projects/:project_name/content/:id", ContentLive.Show
@@ -72,7 +71,6 @@ defmodule CodeMySpecLocalWeb.Router do
 
       live "/app/projects/:project_name/issues", IssuesLive.Index, :index
       live "/app/projects/:project_name/issues/:id", IssuesLive.Show, :show
-      live "/app/projects/:project_name/qa", QaLive
       live "/app/projects/:project_name/sessions", SessionsLive, :index
       live "/app/projects/:project_name/sessions/:id", SessionsLive, :show
       live "/app/projects/:project_name/sessions/:id/tasks/:task_id", SessionsLive, :task_show
@@ -124,6 +122,9 @@ defmodule CodeMySpecLocalWeb.Router do
       live "/app/projects/:project_id/personas/:slug", PersonasLive.Show, :show
       live "/app/projects/:project_id/personas/:slug/edit", PersonasLive.Show, :edit
       live "/app/projects/:project_id/personas/:slug/link", PersonasLive.Show, :link
+
+      live "/app/projects/:project_id/qa", QaLive
+      live "/app/projects/:project_id/configuration", ConfigurationLive
     end
   end
 

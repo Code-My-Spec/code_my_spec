@@ -1,4 +1,4 @@
-defmodule CodeMySpecLocalWeb.QaLive do
+defmodule CodeMySpecWeb.QaLive do
   @moduledoc """
   Project-wide QA attempts index.
 
@@ -8,22 +8,17 @@ defmodule CodeMySpecLocalWeb.QaLive do
   toggle filters to include older attempts and/or invalidated attempts.
   """
 
-  use CodeMySpecLocalWeb, :live_view
+  use CodeMySpecWeb, :live_view
 
-  alias CodeMySpec.Projects
   alias CodeMySpec.Qa
-  alias CodeMySpec.Users.Scope
 
   @per_page 25
 
   @impl true
   def mount(_params, _session, socket) do
-    projects = Projects.list_local_projects()
-
     {:ok,
      assign(socket,
-       projects: projects,
-       project: nil,
+       section: :qa,
        attempts: [],
        page_attempts: [],
        include_older: false,
@@ -37,26 +32,20 @@ defmodule CodeMySpecLocalWeb.QaLive do
   end
 
   @impl true
-  def handle_params(%{"project_name" => name} = params, _uri, socket) do
-    with {:ok, project} <- Projects.get_project_by_name(name),
-         {:ok, scope} <- Scope.for_local_project(project) do
-      socket =
-        socket
-        |> assign(
-          project: project,
-          scope: scope,
-          page: parse_page(params),
-          page_title: "#{project.name} — QA",
-          error: nil
-        )
-        |> load_attempts()
+  def handle_params(params, _uri, %{assigns: %{scope: %{} = _scope, project: project}} = socket) do
+    socket =
+      socket
+      |> assign(
+        page: parse_page(params),
+        page_title: "#{project.name} — QA",
+        error: nil
+      )
+      |> load_attempts()
 
-      {:noreply, socket}
-    else
-      {:error, reason} ->
-        {:noreply, assign(socket, error: "Failed to load project: #{inspect(reason)}")}
-    end
+    {:noreply, socket}
   end
+
+  def handle_params(_params, _uri, socket), do: {:noreply, socket}
 
   @impl true
   def handle_event("toggle_older", _params, socket) do
@@ -129,13 +118,6 @@ defmodule CodeMySpecLocalWeb.QaLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app
-      flash={@flash}
-      projects={@projects}
-      project={@project}
-      section={:qa}
-      page_title={assigns[:page_title]}
-    >
       <div :if={@error} role="alert" class="alert alert-error">
         <span>{@error}</span>
       </div>
@@ -195,6 +177,7 @@ defmodule CodeMySpecLocalWeb.QaLive do
                 :for={attempt <- @page_attempts}
                 attempt={attempt}
                 project={@project}
+                socket={@socket}
               />
             </tbody>
           </table>
@@ -237,12 +220,16 @@ defmodule CodeMySpecLocalWeb.QaLive do
           </div>
         </nav>
       </div>
-    </Layouts.app>
     """
   end
 
   attr :attempt, :map, required: true
   attr :project, :map, required: true
+
+  # Function components don't get @socket the way a LiveView's own render does,
+  # and a portable view can't use a bare `~p` — the sigil resolves through the
+  # endpoint it compiled against, which isn't the one serving the local app.
+  attr :socket, :map, required: true
 
   defp attempt_row(assigns) do
     invalidated? = match?([_ | _], assigns.attempt.invalidations)
@@ -260,7 +247,7 @@ defmodule CodeMySpecLocalWeb.QaLive do
       </td>
       <td class="font-medium">
         <.link
-          navigate={~p"/app/projects/#{@project.name}/stories/#{@attempt.story_id}"}
+          navigate={path(@socket, ~p"/app/projects/#{@project.name}/stories/#{@attempt.story_id}")}
           class="link link-hover"
         >
           {story_title(@attempt)}

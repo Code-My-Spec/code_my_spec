@@ -391,6 +391,9 @@ defmodule CodeMySpecWeb.Router do
       live "/projects/:project_id/personas/:slug", PersonasLive.Show, :show
       live "/projects/:project_id/personas/:slug/edit", PersonasLive.Show, :edit
       live "/projects/:project_id/personas/:slug/link", PersonasLive.Show, :link
+
+      live "/projects/:project_id/qa", QaLive
+      live "/projects/:project_id/configuration", ConfigurationLive
     end
 
     # Project-scoped surfaces. The project is named in the route and put on the

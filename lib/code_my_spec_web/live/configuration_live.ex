@@ -1,4 +1,4 @@
-defmodule CodeMySpecLocalWeb.ConfigurationLive do
+defmodule CodeMySpecWeb.ConfigurationLive do
   @moduledoc """
   Local quality gate configuration.
 
@@ -6,42 +6,33 @@ defmodule CodeMySpecLocalWeb.ConfigurationLive do
   ProjectConfiguration and take effect immediately — the requirements graph
   and the stop hook pipeline both read from this record.
   """
-  use CodeMySpecLocalWeb, :live_view
+  use CodeMySpecWeb, :live_view
 
   alias CodeMySpec.Configurations
-  alias CodeMySpec.Projects
-  alias CodeMySpec.Users.Scope
 
   @analyzer_modes [:off, :block_all, :block_changed, :dont_block]
   @compile_modes [:block, :dont_block]
 
   @impl true
   def mount(_params, _session, socket) do
-    projects = Projects.list_local_projects()
-    {:ok, assign(socket, projects: projects, project: nil, error: nil)}
+    {:ok, assign(socket, section: :configuration, error: nil)}
   end
 
   @impl true
-  def handle_params(%{"project_name" => name}, _uri, socket) do
-    case load_project_and_scope(name) do
-      {:ok, project, scope} ->
-        configuration = Configurations.get_or_create(scope)
+  def handle_params(_params, _uri, %{assigns: %{scope: %{} = scope, project: project}} = socket) do
+    configuration = Configurations.get_or_create(scope)
 
-        {:noreply,
-         assign(socket,
-           project: project,
-           scope: scope,
-           configuration: configuration,
-           analyzer_modes: @analyzer_modes,
-           compile_modes: @compile_modes,
-           page_title: "#{project.name} — Configuration",
-           error: nil
-         )}
-
-      {:error, msg} ->
-        {:noreply, assign(socket, error: "#{msg}")}
-    end
+    {:noreply,
+     assign(socket,
+       configuration: configuration,
+       analyzer_modes: @analyzer_modes,
+       compile_modes: @compile_modes,
+       page_title: "#{project.name} — Configuration",
+       error: nil
+     )}
   end
+
+  def handle_params(_params, _uri, socket), do: {:noreply, socket}
 
   @impl true
   def handle_event("save", %{"configuration" => attrs}, socket) do
@@ -62,13 +53,6 @@ defmodule CodeMySpecLocalWeb.ConfigurationLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app
-      flash={@flash}
-      projects={@projects}
-      project={@project}
-      section={:configuration}
-      page_title={assigns[:page_title]}
-    >
       <div :if={@error} role="alert" class="alert alert-error">
         <span>{@error}</span>
       </div>
@@ -180,7 +164,6 @@ defmodule CodeMySpecLocalWeb.ConfigurationLive do
           </div>
         </form>
       </div>
-    </Layouts.app>
     """
   end
 
@@ -249,10 +232,4 @@ defmodule CodeMySpecLocalWeb.ConfigurationLive do
   defp format_mode(:dont_block), do: "Don't Block"
   defp format_mode(:block), do: "Block"
 
-  defp load_project_and_scope(name) do
-    with {:ok, project} <- Projects.get_project_by_name(name),
-         {:ok, scope} <- Scope.for_local_project(project) do
-      {:ok, project, scope}
-    end
-  end
 end
