@@ -1,0 +1,11 @@
+# Caddy block for one app. Rendered per app by provision_app.sh.
+#
+# Substituted by provision_app.sh: DOMAIN and PORT
+#
+# TLS is automatic — no directive needed, and adding one is how you end up
+# with a certificate Caddy is not managing. Websockets need no configuration
+# either: reverse_proxy upgrades them by default, which is what LiveView
+# depends on.
+{{DOMAIN}} {
+	reverse_proxy localhost:{{PORT}}
+}

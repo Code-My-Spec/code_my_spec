@@ -1,0 +1,52 @@
+# systemd unit for one Phoenix release. Rendered per app by provision_app.sh.
+#
+# Substituted by provision_app.sh: APP and PORT
+[Unit]
+Description={{APP}} (Phoenix release)
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=exec
+User={{APP}}
+Group={{APP}}
+WorkingDirectory=/opt/{{APP}}
+
+# sops decrypts into the process environment and never onto disk. `exec` so
+# the release is PID 1 of this unit rather than a child of a shell — without
+# it systemd tracks the shell, and a stop signal reaches the wrong process.
+ExecStart=/usr/local/bin/sops exec-env /opt/{{APP}}/secrets.enc.yaml 'exec bin/{{APP}} start'
+
+Restart=always
+RestartSec=2
+
+# Where sops looks for the age key. Without this it reads
+# ~/.config/sops/age/keys.txt and fails with "no master key was able to
+# decrypt" — which reads like the wrong recipients rather than the right key
+# in a place nothing was told about.
+Environment=SOPS_AGE_KEY_FILE=/etc/{{APP}}/age.key
+
+Environment=PORT={{PORT}}
+Environment=PHX_SERVER=true
+
+# Every app shares one epmd on this box. A node whose cookie another node
+# knows is an `:erpc` away from arbitrary code execution as this user, so an
+# app that does not cluster does not join distribution at all. Apps that DO
+# cluster must set a unique cookie in rel/env.sh.eex instead of this.
+Environment=RELEASE_DISTRIBUTION=none
+
+# Hardening. ProtectSystem=strict makes the whole filesystem read-only except
+# what is listed below, so a compromised app cannot write another app's files
+# even where it can read them.
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+NoNewPrivileges=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+ReadWritePaths=/opt/{{APP}}/tmp
+
+[Install]
+WantedBy=multi-user.target
