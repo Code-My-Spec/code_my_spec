@@ -17,7 +17,7 @@ defmodule CodeMySpec.AgentTasks.QaStory do
 
   require Logger
 
-  alias CodeMySpec.{BddSpecs, Components, Environments, Issues, Paths, Stories}
+  alias CodeMySpec.{Components, Environments, Files, Issues, Paths, Stories}
   alias CodeMySpec.Documents
   alias CodeMySpec.Documents.DocumentSpecProjector
   alias CodeMySpec.Utils
@@ -88,7 +88,10 @@ defmodule CodeMySpec.AgentTasks.QaStory do
           # this story. The legacy file-validation chain (plan/brief/
           # result on disk) is obsolete once `submit_qa_result` has
           # landed, so skip it.
-          Logger.info("[QaStory] evaluate(#{story_id}): DB attempt satisfies qa_complete; skipping legacy file checks")
+          Logger.info(
+            "[QaStory] evaluate(#{story_id}): DB attempt satisfies qa_complete; skipping legacy file checks"
+          )
+
           {:ok, :valid}
 
         subagent_owns?(task) ->
@@ -100,7 +103,10 @@ defmodule CodeMySpec.AgentTasks.QaStory do
           # which agent is stopping, so this guard prevents the
           # parent's stop from getting slammed with demand-submit
           # feedback for the sub-agent's in-flight task.
-          Logger.info("[QaStory] evaluate(#{story_id}): task is owned by sub-agent #{task.agent_id}; skipping demand-submit on parent stop")
+          Logger.info(
+            "[QaStory] evaluate(#{story_id}): task is owned by sub-agent #{task.agent_id}; skipping demand-submit on parent stop"
+          )
+
           {:ok, :valid}
 
         attempts != [] ->
@@ -233,9 +239,7 @@ defmodule CodeMySpec.AgentTasks.QaStory do
       Logger.info("[QaStory] ensure_issues_filed(#{story_id}): no issues to file")
       :ok
     else
-      Logger.info(
-        "[QaStory] ensure_issues_filed(#{story_id}): #{length(created)} issues filed"
-      )
+      Logger.info("[QaStory] ensure_issues_filed(#{story_id}): #{length(created)} issues filed")
 
       :ok
     end
@@ -334,7 +338,7 @@ defmodule CodeMySpec.AgentTasks.QaStory do
     story_id = story.id
     endpoint_module = endpoint_module_name(scope)
     criteria_text = format_criteria(Map.get(story, :criteria, []))
-    spec_paths = collect_spec_file_paths(env, story_id)
+    spec_paths = collect_spec_file_paths(scope, story_id)
     specs_text = format_spec_paths(spec_paths)
     existing_scripts = list_scripts(env)
     scripts_section = build_scripts_section(existing_scripts)
@@ -525,9 +529,22 @@ defmodule CodeMySpec.AgentTasks.QaStory do
     end
   end
 
-  defp collect_spec_file_paths(env, story_id) do
-    specs = BddSpecs.list_specs_for_story(env, story_id)
-    Enum.map(specs, & &1.file_path)
+  # From the synced File records, not from a disk.
+  #
+  # `BddSpecs.list_specs_for_story/2` walks the working copy and has no clause
+  # for a nil environment, so `start_task` raised a FunctionClauseError for
+  # `qa_complete` on every story — the QA drill worked around it by following
+  # the playbook by hand, which only works for an agent that knows to.
+  #
+  # Only the paths are wanted here, and those are exactly what the scan already
+  # recorded: role `:bdd_spec`, owned by this story. This works with or without
+  # a working copy.
+  defp collect_spec_file_paths(scope, story_id) do
+    scope
+    |> Files.list_files()
+    |> Enum.filter(&(&1.role == :bdd_spec and &1.story_id == story_id))
+    |> Enum.map(& &1.path)
+    |> Enum.sort()
   end
 
   # ============================================================================
