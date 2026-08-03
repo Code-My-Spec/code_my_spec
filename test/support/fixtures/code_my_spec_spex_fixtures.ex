@@ -148,12 +148,18 @@ defmodule CodeMySpecSpex.Fixtures do
             {:halt, :ok}
           else
             if rem(attempt, 5) == 0, do: CodeMySpec.Provisioning.Resend.verify_domain(scope, domain_id)
-            Process.sleep(3_000)
+            # Through `Wait`, like every other pause in the provisioning path.
+            # A direct sleep here waited three seconds per attempt on replay
+            # too, where the answer is already recorded and there is nothing to
+            # wait for — twenty-one seconds per domain, which was the whole of
+            # story 969's runtime and hid behind provider calls that turned out
+            # to cost under half a second.
+            CodeMySpec.Provisioning.Wait.sleep(3_000)
             {:cont, :ok}
           end
 
         _ ->
-          Process.sleep(3_000)
+          CodeMySpec.Provisioning.Wait.sleep(3_000)
           {:cont, :ok}
       end
     end)
