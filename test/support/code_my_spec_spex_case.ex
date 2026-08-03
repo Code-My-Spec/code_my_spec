@@ -226,6 +226,49 @@ defmodule CodeMySpecSpex.Case do
   end
 
   @doc """
+  Drive a run from a script instead of from providers.
+
+      setup {:scripted_run, %{domain: {:error, "Cloudflare said no"}}}
+
+  Story 963's criteria are claims about the **runner**: a failing step halts
+  the rest, a re-run picks up where it stopped, retrying one step leaves the
+  others alone, an option turned off never appears. None of them are claims
+  about Hetzner or Cloudflare, and proving them through real providers made
+  each one mint a server and a repository, need a cassette per outcome, and
+  fail for reasons that had nothing to do with the ordering under test.
+
+  `Provisioning.run_step/3` already takes `:verify` and `:execute` for exactly
+  this. Scripting them makes the failure modes the criteria are *about* —
+  errored, paused, a provider's own message — reachable directly, and reachable
+  reliably, instead of being coaxed out of a real provider that would rather
+  succeed.
+
+  Steps not named in the script succeed with no resources. `:verify` is
+  scripted too: without it, the run asks providers whether each step is already
+  satisfied and short-circuits past the very step the criterion wants to watch.
+  """
+  def scripted_run(context, script \\ %{}) do
+    Fixtures.store_provider_secrets(context.scope)
+
+    previous = Application.get_env(:code_my_spec, :provisioning_step_opts, [])
+
+    Application.put_env(
+      :code_my_spec,
+      :provisioning_step_opts,
+      Keyword.merge(previous,
+        verify: fn _scope, _key -> {:ok, :absent} end,
+        execute: fn _scope, key, _opts -> Map.get(script, key, {:ok, []}) end
+      )
+    )
+
+    ExUnit.Callbacks.on_exit(fn ->
+      Application.put_env(:code_my_spec, :provisioning_step_opts, previous)
+    end)
+
+    context
+  end
+
+  @doc """
   Advance the clock the backup health check reads, by several nights.
 
       setup :several_nights_later

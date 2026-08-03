@@ -1403,4 +1403,30 @@ defmodule CodeMySpecSpex.Fixtures do
   defp name_of(name) when is_binary(name), do: name
   defp name_of(other), do: inspect(other)
 
+  @doc """
+  Put the pasted-in provider secrets on file, without proving them.
+
+  `Credentials.missing/1` reads storage, and `start_setup` refuses to run
+  while anything is missing — rightly, since a run that starts without its
+  credentials fails after it has already made things. A criterion about the
+  *runner* still has to get past that gate, and proving a credential against a
+  real provider is story 964's claim, not the runner's.
+  """
+  @spec store_provider_secrets(Scope.t()) :: :ok
+  def store_provider_secrets(%Scope{} = scope) do
+    for {key, env} <- [
+          {"hetzner_api_token", "HETZNER_API_TOKEN"},
+          {"hetzner_s3_access_key_id", "HETZNER_S3_ACCESS_KEY_ID"},
+          {"hetzner_s3_secret_access_key", "HETZNER_S3_SECRET_ACCESS_KEY"}
+        ] do
+      CodeMySpec.ProjectSecrets.put_value(
+        scope,
+        key,
+        System.get_env(env, "spex-placeholder-#{key}")
+      )
+    end
+
+    :ok
+  end
+
 end
