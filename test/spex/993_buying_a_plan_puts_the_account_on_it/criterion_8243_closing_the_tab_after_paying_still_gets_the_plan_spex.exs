@@ -33,11 +33,9 @@ defmodule CodeMySpecSpex.Story993.Criterion8243Spex do
 
   spex "The tier arrives without the browser" do
     scenario "Closing the tab after paying still gets the plan" do
-      given_ "an account that has just paid and whose tab is gone", context do
-        # No LiveView, no session, no page — the browser is simply not here.
-        {:ok, Map.put(context, :account, context.account)}
-      end
-
+      # No given_: a new account already starts free, and the point of this
+      # criterion is that nothing else happens first — no LiveView is mounted
+      # and no session is held, so the tier cannot arrive from a page.
       when_ "Stripe reports the payment succeeded", context do
         body =
           Jason.encode!(%{
