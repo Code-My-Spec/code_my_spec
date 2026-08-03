@@ -26,6 +26,11 @@ defmodule CodeMySpecSpex.Story967.Criterion8001Spex do
   setup :setup_active_project
   setup :real_working_directory
   setup :connect_providers
+  # The claim here is that rotating a secret re-encrypts and takes effect —
+  # the deploy is how it takes effect, not what is under test. Story 966 owns
+  # whether a real deploy works; dragging one in here would make this
+  # criterion fail for reasons that have nothing to do with secrets.
+  setup :stage_deploy
 
   spex "Rotating a key is a re-encrypt and a redeploy" do
     scenario "the new value takes effect with no code change" do
