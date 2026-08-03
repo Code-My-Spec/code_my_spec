@@ -651,8 +651,20 @@ defmodule CodeMySpecSpex.Case do
   defp await_start(view, deadline) do
     html = Phoenix.LiveViewTest.render(view)
 
+    # Started means *any* step has moved, not that every step has. The old
+    # test — nothing is `not_started` — is only true of a run that got all the
+    # way to the end, so a run that halts partway (the usual case for the
+    # criteria about halting) never looked started and polled out the whole
+    # five-second window. That was five seconds on every such criterion, and
+    # eleven on the one that resumes.
+    started? =
+      Enum.any?(
+        ~w(running done errored paused),
+        &(html =~ ~s(data-state="#{&1}"))
+      )
+
     cond do
-      html =~ ~s(data-state="running") or not (html =~ ~s(data-state="not_started")) -> :started
+      started? -> :started
       System.monotonic_time(:millisecond) > deadline -> :never_started
       true -> Process.sleep(50) && await_start(view, deadline)
     end
