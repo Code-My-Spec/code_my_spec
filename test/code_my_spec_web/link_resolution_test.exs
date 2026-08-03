@@ -232,7 +232,11 @@ defmodule CodeMySpecWeb.LinkResolutionTest do
     # AgentProgressLive — story 813, parked before it was wired into nav.
     "/app/projects/:project_id/progress",
     # ProvisioningLive. Arrived on main with no nav entry and no inbound link.
-    "/app/projects/:project_id/provisioning"
+    "/app/projects/:project_id/provisioning",
+    # AgentConversationLive — a read-only view of one sprite's turns. It only
+    # became visible to this guard when its route moved from :project_name to
+    # :project_id and started matching the portable shape. Nothing links it.
+    "/app/projects/:project_id/agent-conversation"
   ]
 
   @doc false
