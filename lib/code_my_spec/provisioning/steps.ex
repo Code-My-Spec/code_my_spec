@@ -372,74 +372,6 @@ defmodule CodeMySpec.Provisioning.Steps do
   end
 
 
-  # The image a deploy runs, built now rather than when the project was made.
-  #
-  # Three ways in, and the order matters. An explicit `:image` wins, because a
-  # criterion about deploying is not a criterion about building and should not
-  # buy a builder to prove its point. Otherwise a build happens — but only when
-  # one is configured: the deploy step predates the builder, and a project
-  # whose image is already somewhere must keep deploying rather than start
-  # failing on a builder nobody asked it to use.
-  defp image_for(scope, environment, opts) do
-    case {Keyword.get(opts, :image), Keyword.get(opts, :build)} do
-      {reference, _} when is_binary(reference) ->
-        {:ok, %{reference: reference, built: false}}
-
-      {nil, nil} ->
-        {:ok, :not_built}
-
-      {nil, _build} ->
-        build_image(scope, environment, opts)
-    end
-  end
-
-  defp build_image(scope, environment, opts) do
-    with {:ok, _bucket} <- Registry.ensure(scope, opts),
-         {:ok, tag} <- image_tag(scope, opts),
-         {:ok, build} <- Builder.build(scope, tag, builder_opts(environment, opts)),
-         {:ok, reference} <- Registry.reference(scope, tag, opts) do
-      {:ok, %{reference: reference, built: true, architecture: build.architecture}}
-    end
-  end
-
-  # The commit is the tag, because "which image is this" and "which code is
-  # this" should not be two questions.
-  defp image_tag(scope, opts) do
-    case Keyword.get(opts, :tag) || head_commit(scope) do
-      sha when is_binary(sha) and sha != "" -> {:ok, String.slice(sha, 0, 12)}
-      _ -> {:error, "cannot tag an image: the project has no commit to build"}
-    end
-  end
-
-  defp head_commit(scope) do
-    case Environments.cmd(env(scope), "git", ["rev-parse", "HEAD"], stderr_to_stdout: true) do
-      {sha, 0} -> String.trim(sha)
-      _ -> nil
-    end
-  end
-
-  # The architecture the environment's box runs, not a default. An image built
-  # for the other one fails at container start, which is a deploy that looks
-  # healthy until the swap.
-  defp builder_opts(environment, opts) do
-    Keyword.put_new(opts, :architecture, architecture_for(environment, opts))
-  end
-
-  defp architecture_for(_environment, opts), do: Keyword.get(opts, :architecture, :arm)
-
-  defp deploy_opts(opts, host, %{reference: reference}),
-    do: opts |> Keyword.put(:host, host) |> Keyword.put(:image, reference)
-
-  defp deploy_opts(opts, host, :not_built), do: Keyword.put(opts, :host, host)
-
-  defp image_resources(%{reference: reference, built: true}),
-    do: [%{kind: "published_image", location: reference, identifier: "built=true"}]
-
-  defp image_resources(%{reference: reference}),
-    do: [%{kind: "published_image", location: reference, identifier: "built=false"}]
-
-  defp image_resources(:not_built), do: []
-
   def run(:monitoring, %Scope{} = scope, opts) do
     hosts = Keyword.get(opts, :hosts) || List.wrap(domain(scope))
 
@@ -681,6 +613,74 @@ defmodule CodeMySpec.Provisioning.Steps do
 
   # Named rather than silently succeeding — see the moduledoc.
   def run(key, _scope, _opts), do: {:error, {:not_implemented, key}}
+
+  # The image a deploy runs, built now rather than when the project was made.
+  #
+  # Three ways in, and the order matters. An explicit `:image` wins, because a
+  # criterion about deploying is not a criterion about building and should not
+  # buy a builder to prove its point. Otherwise a build happens — but only when
+  # one is configured: the deploy step predates the builder, and a project
+  # whose image is already somewhere must keep deploying rather than start
+  # failing on a builder nobody asked it to use.
+  defp image_for(scope, environment, opts) do
+    case {Keyword.get(opts, :image), Keyword.get(opts, :build)} do
+      {reference, _} when is_binary(reference) ->
+        {:ok, %{reference: reference, built: false}}
+
+      {nil, nil} ->
+        {:ok, :not_built}
+
+      {nil, _build} ->
+        build_image(scope, environment, opts)
+    end
+  end
+
+  defp build_image(scope, environment, opts) do
+    with {:ok, _bucket} <- Registry.ensure(scope, opts),
+         {:ok, tag} <- image_tag(scope, opts),
+         {:ok, build} <- Builder.build(scope, tag, builder_opts(environment, opts)),
+         {:ok, reference} <- Registry.reference(scope, tag, opts) do
+      {:ok, %{reference: reference, built: true, architecture: build.architecture}}
+    end
+  end
+
+  # The commit is the tag, because "which image is this" and "which code is
+  # this" should not be two questions.
+  defp image_tag(scope, opts) do
+    case Keyword.get(opts, :tag) || head_commit(scope) do
+      sha when is_binary(sha) and sha != "" -> {:ok, String.slice(sha, 0, 12)}
+      _ -> {:error, "cannot tag an image: the project has no commit to build"}
+    end
+  end
+
+  defp head_commit(scope) do
+    case Environments.cmd(env(scope), "git", ["rev-parse", "HEAD"], stderr_to_stdout: true) do
+      {sha, 0} -> String.trim(sha)
+      _ -> nil
+    end
+  end
+
+  # The architecture the environment's box runs, not a default. An image built
+  # for the other one fails at container start, which is a deploy that looks
+  # healthy until the swap.
+  defp builder_opts(environment, opts) do
+    Keyword.put_new(opts, :architecture, architecture_for(environment, opts))
+  end
+
+  defp architecture_for(_environment, opts), do: Keyword.get(opts, :architecture, :arm)
+
+  defp deploy_opts(opts, host, %{reference: reference}),
+    do: opts |> Keyword.put(:host, host) |> Keyword.put(:image, reference)
+
+  defp deploy_opts(opts, host, :not_built), do: Keyword.put(opts, :host, host)
+
+  defp image_resources(%{reference: reference, built: true}),
+    do: [%{kind: "published_image", location: reference, identifier: "built=true"}]
+
+  defp image_resources(%{reference: reference}),
+    do: [%{kind: "published_image", location: reference, identifier: "built=false"}]
+
+  defp image_resources(:not_built), do: []
 
   ## Helpers
 

@@ -16,6 +16,7 @@ defmodule CodeMySpec.Provisioning.Builder do
   Publishing is `Registry`'s. This owns the box and the build.
   """
 
+  alias CodeMySpec.Provisioning.Builder.Remote
   alias CodeMySpec.Provisioning.Hetzner
   alias CodeMySpec.Users.Scope
 
@@ -89,7 +90,9 @@ defmodule CodeMySpec.Provisioning.Builder do
   end
 
   defp run(scope, server, ref, architecture, opts) do
-    build_fun = Keyword.get(opts, :build, &docker_build/4)
+    build_fun = Keyword.get(opts, :build, fn scope, server, ref, architecture ->
+        docker_build(scope, server, ref, architecture, opts)
+      end)
     now = Keyword.get(opts, :now, &DateTime.utc_now/0)
 
     with {:ok, image} <- build_fun.(scope, server, ref, architecture),
@@ -113,8 +116,19 @@ defmodule CodeMySpec.Provisioning.Builder do
   defp matches?(%{architecture: built}, wanted, _opts),
     do: {:error, {:architecture_mismatch, built: built, wanted: wanted}}
 
-  defp docker_build(_scope, _server, _ref, _architecture),
-    do: {:error, :build_not_configured}
+  # The real thing, on the box this module just made. Everything it needs that
+  # is not the box — where the source is, where the image goes, which key opens
+  # the door — arrives in `opts`, because the builder should not be the module
+  # that knows how a project is addressed.
+  defp docker_build(_scope, server, ref, _architecture, opts) do
+    case Keyword.get(opts, :reference) do
+      nil ->
+        {:error, :no_image_reference}
+
+      reference ->
+        Remote.build(server, ref, reference, opts)
+    end
+  end
 
   # Best effort, and deliberately not part of the return. A failure to destroy
   # is worth knowing about, but it must not turn a successful build into a
