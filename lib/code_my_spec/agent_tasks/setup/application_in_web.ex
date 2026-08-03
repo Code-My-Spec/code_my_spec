@@ -49,8 +49,7 @@ defmodule CodeMySpec.AgentTasks.Setup.ApplicationInWeb do
   defp wrap({:invalid, reason}), do: {:ok, :invalid, reason}
 
   def command(scope, _task) do
-    env = scope.environment
-    app_name = Helpers.extract_app_name(env) || "your_app"
+    app_name = Helpers.app_name(scope)
     module_name = Macro.camelize(app_name)
 
     {:ok, """

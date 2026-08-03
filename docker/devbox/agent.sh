@@ -33,6 +33,51 @@ BACKOFF_CAP=300
 fails=0
 attempt=0
 
+# How long a turn may go without the transcript growing before it is called
+# hung. Generous: a legitimate turn can think for minutes, and killing a
+# working agent is worse than waiting.
+HANG_TIMEOUT="${AGENT_HANG_TIMEOUT:-420}"
+
+# The agent's model calls go through this sprite's own harness, which forwards
+# them upstream and records both halves for whoever is watching. Without this
+# the proxy exists and nothing points at it — the conversation view stays empty
+# while the sprite works, which is the whole thing story 984 set out to fix.
+#
+# Overridable: an operator pointing somewhere else has a reason, and a drill
+# that silently rewrote it would be hiding the one variable under test.
+export ANTHROPIC_BASE_URL="${ANTHROPIC_BASE_URL:-http://127.0.0.1:4003}"
+
+# Let the MCP client give up on a tool that never returns, so the agent gets an
+# error instead of the run getting a wall. Only set if the operator has not.
+export MCP_TOOL_TIMEOUT="${MCP_TOOL_TIMEOUT:-180000}"
+export MCP_TOOL_IDLE_TIMEOUT="${MCP_TOOL_IDLE_TIMEOUT:-180000}"
+
+newest_transcript_mtime() {
+  find /home/agent/.claude/projects -name '*.jsonl' -printf '%T@\n' 2>/dev/null \
+    | sort -n | tail -1 | cut -d. -f1
+}
+
+# Kills the agent when its transcript stops growing. Deliberately kills rather
+# than reports: the retry loop below already knows how to start a fresh attempt,
+# and a non-zero exit is the only language it understands.
+watchdog() {
+  local pid="$1" last now quiet
+  while kill -0 "${pid}" 2>/dev/null; do
+    sleep 30
+    last="$(newest_transcript_mtime)"
+    [ -n "${last}" ] || continue
+    now="$(date +%s)"
+    quiet=$(( now - last ))
+    if [ "${quiet}" -gt "${HANG_TIMEOUT}" ]; then
+      log "no transcript activity for ${quiet}s — the turn is hung, killing it so the retry can take over"
+      kill -TERM "${pid}" 2>/dev/null || true
+      sleep 10
+      kill -KILL "${pid}" 2>/dev/null || true
+      return
+    fi
+  done
+}
+
 log() { printf '\n\033[1;35m[agent-supervisor] %s\033[0m\n' "$*" | tee -a "${LOG}"; }
 
 # A sprite is disposable — sprite.sh says so in its own header, on the grounds
@@ -65,18 +110,117 @@ stop, so the harness considered nothing further actionable." \
   log "committed $(git rev-parse --short HEAD)"
 
   # Push is best-effort and never fatal: a sprite that committed locally has
-  # already saved the work from container disposal, which is the point. The
-  # token is scrubbed from any output because git echoes the remote back on
-  # failure.
-  if [ -n "${GITHUB_TOKEN:-}" ] && [ -n "${REPO_URL:-}" ]; then
-    git push -q "https://x-access-token:${GITHUB_TOKEN}@${REPO_URL#https://}" HEAD 2>&1 \
+  # already saved the work from container disposal, which is the point.
+  #
+  # A token is one way to authenticate a push, not a precondition for pushing.
+  # This used to require GITHUB_TOKEN before it would try at all, so a sprite
+  # whose origin is the bare repo in its own volume — which needs no
+  # credentials — committed and then declined to push, and the work lived
+  # exactly as long as the container. Drill 13 ended that way.
+  #
+  # So: rewrite the URL only when there is a token AND an https remote to put it
+  # in. Otherwise push the remote as configured, which covers file://, ssh, and
+  # https where a credential helper already answers.
+  local remote
+  remote="$(git remote get-url origin 2>/dev/null || echo "")"
+
+  if [ -z "${remote}" ]; then
+    log "no origin remote — committed locally, nothing to push to"
+    return 0
+  fi
+
+  if [ -n "${GITHUB_TOKEN:-}" ] && [ "${remote#https://}" != "${remote}" ]; then
+    # The token is scrubbed from output because git echoes the remote back on
+    # failure.
+    git push -q "https://x-access-token:${GITHUB_TOKEN}@${remote#https://}" HEAD 2>&1 \
       | sed 's/x-access-token:[^@]*@/x-access-token:***@/g' \
-      && log "pushed to ${REPO_URL}" \
+      && log "pushed to ${remote}" \
       || log "push failed — work is committed locally but not pushed"
   else
-    log "no GITHUB_TOKEN/REPO_URL — committed locally, not pushed"
+    git push -q origin HEAD 2>&1 \
+      && log "pushed to ${remote}" \
+      || log "push failed — work is committed locally but not pushed"
   fi
 }
+
+# --- the stop hook has to actually reach the harness ---------------------------
+# This loop's exit condition is "a clean exit means the stop hook allowed the
+# stop". That sentence is only true if the stop hook can reach the harness. When
+# it cannot, curl fails, Claude Code treats an unreachable hook as a hook with no
+# opinion, and every stop is allowed — so the supervisor commits and reports
+# success on the first turn, having gated nothing.
+#
+# That is not a hypothetical either. A full drill ran this way: the plugin posted
+# to 4003, the harness listened on 4004, and the run was declared clean. Nothing
+# in the log said otherwise, because there is nothing to say — the failure is
+# silence.
+#
+# So: probe once, up front, and refuse to run rather than produce a green result
+# that means nothing. A sprite that will not start is a page; a sprite that
+# rubber-stamps its own work is a lie that takes a day to find.
+# The whole URL comes out of the plugin, not just the port. Probing a path this
+# script names itself proves less than it looks: `/api/hooks/session_start` 404s
+# against a harness that serves `/api/hooks/session-start`, and curl calls a 404
+# a successful request — so an underscore here would have reported healthy hooks
+# against a route nothing serves. Take the URL the hooks actually use.
+hook_url() {
+  python3 - <<'PY' 2>/dev/null || true
+import json, pathlib, re, collections
+
+roots = []
+try:
+    installed = json.loads(
+        pathlib.Path("/home/agent/.claude/plugins/installed_plugins.json").read_text()
+    )
+    for entries in installed.get("plugins", {}).values():
+        for entry in entries:
+            if entry.get("installPath"):
+                roots.append(pathlib.Path(entry["installPath"]))
+except Exception:
+    pass
+
+urls = collections.Counter()
+for root in roots:
+    hooks = root / "hooks" / "hooks.json"
+    if hooks.exists():
+        urls.update(re.findall(r"https?://localhost:\d+/[A-Za-z0-9._/-]+", hooks.read_text()))
+
+if urls:
+    print(urls.most_common(1)[0][0])
+PY
+}
+
+URL="$(hook_url)"
+
+if [ -z "${URL}" ]; then
+  log "FATAL: no hook URL found in the installed plugin. Either the plugin is not"
+  log "       installed or its hooks.json changed shape. Without hooks the stop hook"
+  log "       cannot gate, so a clean exit would prove nothing. Refusing to start."
+  exit 78
+fi
+
+STATUS="$(curl -sS -o /dev/null -w '%{http_code}' -m 10 "${URL}" \
+  -X POST -H 'Content-Type: application/json' -d '{}' 2>/dev/null || echo 000)"
+
+case "${STATUS}" in
+  2*)
+    log "hooks reach the harness — ${URL} answered ${STATUS}"
+    ;;
+  000)
+    log "FATAL: nothing is answering ${URL}, which is where the installed plugin"
+    log "       posts its hooks. The stop hook would fail open and every stop would"
+    log "       be allowed, so this run would report success without the harness"
+    log "       ever gating it. Refusing to start."
+    log "       Fix: serve the harness on the port in that URL and restart."
+    exit 78
+    ;;
+  *)
+    log "FATAL: ${URL} answered ${STATUS}. Something is listening but not serving the"
+    log "       hook route, so hooks would fail and every stop would be allowed."
+    log "       Refusing to start rather than reporting a run nothing gated."
+    exit 78
+    ;;
+esac
 
 while true; do
   attempt=$((attempt + 1))
@@ -91,8 +235,24 @@ while true; do
 
   log "starting agent (attempt ${attempt})"
 
-  claude --permission-mode bypassPermissions -p "${PROMPT}" >>"${LOG}" 2>&1
+  # A hung tool call never exits, so the non-zero-exit retry below cannot see
+  # it. Drill 13 blocked on a Vibium browser_evaluate that never returned and
+  # sat there for 55 minutes looking exactly like a long turn.
+  #
+  # MCP_TOOL_TIMEOUT is the first line — the client abandons the call and hands
+  # the agent a tool error it can file and route around. The watchdog is the
+  # second, because it catches a hang wherever it happens rather than only
+  # inside an MCP call: the transcript is append-only with timestamps, so a
+  # process that is alive while its transcript has not grown is stuck.
+  claude --permission-mode bypassPermissions -p "${PROMPT}" >>"${LOG}" 2>&1 &
+  claude_pid=$!
+
+  watchdog "${claude_pid}" &
+  watchdog_pid=$!
+
+  wait "${claude_pid}"
   code=$?
+  kill "${watchdog_pid}" 2>/dev/null || true
 
   elapsed=$(( $(date +%s) - started ))
 

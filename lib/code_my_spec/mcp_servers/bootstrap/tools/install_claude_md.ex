@@ -23,6 +23,10 @@ defmodule CodeMySpec.McpServers.Bootstrap.Tools.InstallClaudeMd do
       :ok ->
         {:reply, BootstrapMapper.install_success("CLAUDE.md"), frame}
 
+      {:error, :no_working_copy} ->
+        {:reply, BootstrapMapper.error(Validators.no_working_copy_message("install_claude_md")),
+         frame}
+
       {:error, reason} ->
         {:reply, BootstrapMapper.error("Failed to install CLAUDE.md: #{inspect(reason)}"), frame}
     end
@@ -33,6 +37,11 @@ defmodule CodeMySpec.McpServers.Bootstrap.Tools.InstallClaudeMd do
   `init_project` runs it directly — see
   `CodeMySpec.McpServers.Bootstrap.Installers`.
   """
+  # No working copy here. Refusing is the whole point: the previous behaviour
+  # was to root a `:local` environment at the server's own checkout and write
+  # there, reporting success. See `Validators.mcp_working_dir/1`.
+  def install(nil), do: {:error, :no_working_copy}
+
   def install(env) do
     app_name = extract_app_name(env)
     managed_section = Content.claude_md_content(app_name)

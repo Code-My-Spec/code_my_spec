@@ -353,6 +353,33 @@ defmodule CodeMySpecWeb.CoreComponents do
   end
 
   @doc """
+  Renders a `// section marker` eyebrow.
+
+  The `//` motif runs through both apps as a hand-written
+  `<div class="cms-onboarding-eyebrow">// thing</div>`. This is that, as a
+  component: the slashes come from the component so callers write the label
+  only, and the treatment comes from `.cms-eyebrow` in each app's CSS bundle —
+  mono/red in the local terminal zone, tracked small-caps in the cloud zone.
+
+  ## Examples
+
+      <.section_eyebrow>new story</.section_eyebrow>
+      <.section_eyebrow tone="warn">or be interviewed</.section_eyebrow>
+  """
+  attr :tone, :string, default: "accent", values: ~w(accent muted warn)
+  attr :class, :string, default: nil
+  slot :inner_block, required: true
+
+  def section_eyebrow(assigns) do
+    ~H"""
+    <p class={["cms-eyebrow", "cms-eyebrow-#{@tone}", @class]}>
+      <span aria-hidden="true">//</span>
+      <span>{render_slot(@inner_block)}</span>
+    </p>
+    """
+  end
+
+  @doc """
   Renders a header with title.
   """
   slot :inner_block, required: true

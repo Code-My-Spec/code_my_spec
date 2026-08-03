@@ -81,6 +81,47 @@ defmodule CodeMySpec.Analysis.RunsRepository do
   end
 
   @doc """
+  Fetch one still-`:running` run of this project by id.
+
+  Scoped and status-checked together on purpose: a result arriving for a run
+  that is already closed, or that belongs to another project, is not a late
+  answer to apply — it is a harness talking about something this server is not
+  tracking, and reconciling it would rewrite a source's Problems off a run
+  nobody is waiting for.
+  """
+  @spec get_running_run(Scope.t(), integer()) :: Run.t() | nil
+  def get_running_run(%Scope{active_project_id: project_id}, run_id) do
+    Run
+    |> where([r], r.id == ^run_id and r.project_id == ^project_id and r.status == :running)
+    |> Repo.one()
+  end
+
+  @doc """
+  Mark every `:running` run of this project `:failed`.
+
+  For the moment a project's remote executor provably cannot answer any of them:
+  its channel closed, or a new one joined and the old queue is gone.
+  """
+  @spec fail_running(Scope.t(), term()) :: {:ok, non_neg_integer()}
+  def fail_running(%Scope{active_project_id: project_id}, reason) do
+    now = DateTime.utc_now()
+
+    {count, _} =
+      Run
+      |> where([r], r.project_id == ^project_id and r.status == :running)
+      |> Repo.update_all(
+        set: [
+          status: :failed,
+          finished_at: now,
+          updated_at: now,
+          stats: %{"error" => String.slice(inspect(reason), 0, 500)}
+        ]
+      )
+
+    {:ok, count}
+  end
+
+  @doc """
   Mark stranded `:running` rows as `:failed`.
 
   Called at boot: a run left `:running` by a previous server process died with

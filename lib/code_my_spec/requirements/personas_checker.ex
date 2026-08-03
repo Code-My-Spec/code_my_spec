@@ -6,44 +6,56 @@ defmodule CodeMySpec.Requirements.PersonasChecker do
 
     * A `personas` row (always true for anything list returns — proof by construction)
     * `.code_my_spec/personas/<slug>/summary.md` that validates as `persona_summary`
-    * `.code_my_spec/personas/<slug>/sources.md` with at least one non-empty line
+    * `.code_my_spec/personas/<slug>/sources.md` with one well-formed entry per line
 
   Personas are project-scoped. Story linkage is enforced by the Three Amigos
   flow later, not here — `personas_complete` only certifies that the project
   has at least one persona with research on disk.
 
+  ## Decided at sync, read here
+
+  This used to read and validate both files itself, through `scope.environment`.
+  On the light harness there is no environment — the server holds no working
+  copy — so it answered "Environment is not available" no matter what the agent
+  wrote. One wrote the research, watched it sync, and was still told it could
+  not be verified.
+
+  The validation now runs in `Files.Scanner` on the machine that has the files,
+  and lands in `validation_errors` keyed by concern. This reads the verdict.
+  Same rules, same messages, no filesystem — the pattern the `Setup.*` steps
+  already use.
+
+  One rule was dropped in the move, deliberately: this used to list the
+  persona folder and flag any file other than `summary.md`/`sources.md`.
+  Unclassified files are never synced, so there is nothing here to see them
+  with. Restoring it means giving strays a role of their own. That trade —
+  a tidiness rule for a checker that could not return true at all on the
+  light harness — is worth making, but it is a loss, not a simplification.
+
   Returns `{boolean(), map()}` per the checker contract (see `IssuesChecker`).
-  Failure reasons are markdown-formatted and list each failing persona with its
-  specific missing or invalid artifact so the stop-hook feedback can direct the
-  next turn surgically.
   """
 
-  alias CodeMySpec.Documents
-  alias CodeMySpec.Environments
+  alias CodeMySpec.Files
+  alias CodeMySpec.Files.File, as: FileRecord
   alias CodeMySpec.Personas
   alias CodeMySpec.Users.Scope
 
   @spec complete?(Scope.t(), term()) :: {boolean(), map()}
-  def complete?(%Scope{active_project_id: project_id, environment: env} = scope, _entity)
+  def complete?(%Scope{active_project_id: project_id} = scope, _entity)
       when not is_nil(project_id) do
-    personas = Personas.list_personas(scope)
-
-    cond do
-      personas == [] ->
+    case Personas.list_personas(scope) do
+      [] ->
         {false,
          %{
-           reason:
-             "No personas on this project. Start a persona research session to add one."
+           reason: "No personas on this project. Start a persona research session to add one."
          }}
 
-      is_nil(env) ->
-        {false,
-         %{reason: "Environment is not available — cannot verify persona artifacts on disk."}}
+      personas ->
+        by_path = synced_persona_files(scope)
 
-      true ->
         gaps =
           personas
-          |> Enum.map(&check_persona(env, &1))
+          |> Enum.map(&check_persona(by_path, &1))
           |> Enum.reject(&(&1 == :ok))
 
         if gaps == [] do
@@ -58,105 +70,44 @@ defmodule CodeMySpec.Requirements.PersonasChecker do
     {false, %{reason: "No active project in scope — cannot check personas."}}
   end
 
+  defp synced_persona_files(scope) do
+    scope
+    |> Files.list_files()
+    |> Enum.filter(&(&1.role in [:persona_summary, :persona_sources]))
+    |> Map.new(&{&1.path, &1})
+  end
+
   # Returns :ok or {slug, [gap_messages]}
-  defp check_persona(env, persona) do
+  defp check_persona(by_path, persona) do
     slug = persona.slug
-    summary_path = Personas.summary_path(slug)
-    sources_path = Personas.sources_path(slug)
 
-    summary_gap = check_summary(env, summary_path)
-    sources_gap = check_sources(env, sources_path)
-    stray_gaps = check_stray_files(env, slug)
-
-    gaps = Enum.reject([summary_gap, sources_gap | stray_gaps], &(&1 == :ok))
+    gaps =
+      [
+        gap(by_path, Personas.summary_path(slug), "summary", "`summary.md` missing"),
+        gap(by_path, Personas.sources_path(slug), "sources", "`sources.md` missing")
+      ]
+      |> Enum.reject(&is_nil/1)
 
     case gaps do
       [] -> :ok
-      gaps -> {slug, Enum.map(gaps, fn {:gap, message} -> message end)}
+      gaps -> {slug, gaps}
     end
   end
 
-  # Flags any files in the persona folder other than summary.md and sources.md.
-  defp check_stray_files(env, slug) do
-    case Environments.list_directory(env, Personas.persona_folder(slug)) do
-      {:ok, entries} ->
-        strays = entries -- ["summary.md", "sources.md"]
-        Enum.map(strays, fn name -> {:gap, "stray file `#{name}` — only summary.md and sources.md are allowed"} end)
-
-      _ ->
-        []
+  # Not synced at all means the file is not there. Synced with an error against
+  # its concern means it is there and wrong, and the message is the one the
+  # validator wrote at sync time.
+  defp gap(by_path, path, concern, missing_message) do
+    case Map.get(by_path, path) do
+      nil -> missing_message
+      %FileRecord{validation_errors: errors} -> concern_error(errors, concern)
     end
   end
 
-  defp check_summary(env, path) do
-    case Environments.read_file(env, path) do
-      {:ok, ""} ->
-        {:gap, "`summary.md` is empty"}
+  defp concern_error(%{"errors" => errors}, concern) when is_map(errors),
+    do: Map.get(errors, concern)
 
-      {:ok, content} ->
-        case Documents.create_dynamic_document(content, "persona_summary") do
-          {:ok, _document} -> :ok
-          {:error, reason} -> {:gap, "`summary.md` invalid — #{reason}"}
-        end
-
-      {:error, _reason} ->
-        {:gap, "`summary.md` missing"}
-    end
-  end
-
-  defp check_sources(env, path) do
-    case Environments.read_file(env, path) do
-      {:ok, content} ->
-        validate_sources_content(content)
-
-      {:error, _reason} ->
-        {:gap, "`sources.md` missing"}
-    end
-  end
-
-  # workflow.md spec: "Link list with URL, title, and access date per
-  # entry — one per line." A bare non-empty file is no longer enough —
-  # criterion 5147 / issue c5bf0eda. Entries are markdown list items
-  # (lines starting with `- ` or `* `). Each must carry a URL token
-  # and a YYYY-MM-DD date token; the title sits between them.
-  defp validate_sources_content(content) do
-    entries = entry_lines(content)
-    first_invalid = Enum.find(entries, &(not valid_entry?(&1)))
-
-    cond do
-      entries == [] ->
-        {:gap,
-         "`sources.md` has no entries — expected one markdown list item per source " <>
-           "(URL — title — access date)"}
-
-      first_invalid != nil ->
-        {:gap,
-         "`sources.md` entry missing URL or YYYY-MM-DD date: " <>
-           String.slice(first_invalid, 0, 80)}
-
-      true ->
-        :ok
-    end
-  end
-
-  defp entry_lines(content) do
-    content
-    |> String.split("\n", trim: true)
-    |> Enum.map(&String.trim/1)
-    |> Enum.filter(&entry_line?/1)
-  end
-
-  defp entry_line?(line) do
-    String.starts_with?(line, "- ") or String.starts_with?(line, "* ")
-  end
-
-  defp valid_entry?(line) do
-    contains_url?(line) and contains_date?(line)
-  end
-
-  defp contains_url?(line), do: Regex.match?(~r{https?://\S+}, line)
-
-  defp contains_date?(line), do: Regex.match?(~r/\b\d{4}-\d{2}-\d{2}\b/, line)
+  defp concern_error(_, _), do: nil
 
   defp format_gaps(gaps) do
     sections =

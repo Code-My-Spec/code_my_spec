@@ -44,7 +44,7 @@ defmodule CodeMySpecSpex.Story689.Criterion5983Spex do
         :ok = Environments.write_file(context.environment, @hex_doc_path, @hex_doc_content)
 
         {:ok, files_live, _html} =
-          live(context.conn, "/projects/#{context.project.name}/files")
+          live(context.conn, "/app/projects/#{context.project.id}/files")
 
         files_live
         |> element("[data-test='sync-button']")

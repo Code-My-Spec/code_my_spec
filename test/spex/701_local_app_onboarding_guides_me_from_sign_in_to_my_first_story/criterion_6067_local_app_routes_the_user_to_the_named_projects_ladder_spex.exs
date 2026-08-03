@@ -6,7 +6,7 @@ defmodule CodeMySpecSpex.Story701.Criterion6067Spex do
   landing and routes the user directly to that project's ladder.
 
   Spec asserts that landing on /?project=<id> auto-navigates the user
-  to /projects/<project_name>/ for that project rather than dropping
+  to /app/projects/<project_id>/ for that project rather than dropping
   them on a picker.
   """
 
@@ -37,15 +37,9 @@ defmodule CodeMySpecSpex.Story701.Criterion6067Spex do
 
         assert kind in [:redirect, :live_redirect]
 
-        # The local app routes by slug, not raw project name.
-        slug =
-          (context.project.name || "project")
-          |> String.downcase()
-          |> String.replace(~r/[^a-z0-9]+/, "-")
-          |> String.trim("-")
-
-        assert target == "/projects/#{slug}",
-               "expected redirect to /projects/#{slug}; got: #{target}"
+        # The local app addresses a project by id, same as the cloud.
+        assert target == "/app/projects/#{context.project.id}",
+               "expected redirect to /app/projects/#{context.project.id}; got: #{target}"
 
         {:ok, context}
       end

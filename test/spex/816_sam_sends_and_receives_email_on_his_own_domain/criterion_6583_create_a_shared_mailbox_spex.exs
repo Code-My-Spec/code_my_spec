@@ -7,7 +7,7 @@ defmodule CodeMySpecSpex.Story816.Criterion6583Spex do
   or shared with no user.
 
   Surface (forward-looking — red until built):
-    * `CodeMySpecWeb.MailboxLive` at "/app/mailboxes" — submitting the
+    * `CodeMySpecWeb.MailboxLive` at "/app/projects/:project_id/mailboxes" — submitting the
       new-mailbox form with no assigned user creates a shared mailbox.
   """
 
@@ -27,7 +27,7 @@ defmodule CodeMySpecSpex.Story816.Criterion6583Spex do
       given_ "the domain is verified", context do
         Fixtures.verify_project_domain(context.project, @domain)
 
-        {:ok, view, _html} = live(context.conn, "/app/mailboxes")
+        {:ok, view, _html} = live(context.conn, "/app/projects/#{context.project.id}/mailboxes")
 
         {:ok, Map.put(context, :view, view)}
       end

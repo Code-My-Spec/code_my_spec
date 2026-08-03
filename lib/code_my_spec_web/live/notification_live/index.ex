@@ -81,6 +81,8 @@ defmodule CodeMySpecWeb.NotificationLive.Index do
       flash={@flash}
       current_scope={@current_scope}
       pending_notifications={@pending_notifications}
+      project={assigns[:project]}
+      projects={assigns[:projects] || []}
     >
       <div class="mx-auto max-w-2xl">
         <.header>

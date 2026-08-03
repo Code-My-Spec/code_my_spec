@@ -5,9 +5,44 @@ defmodule CodeMySpec.Files do
 
   import Ecto.Query
 
+  alias CodeMySpec.Components
+  alias CodeMySpec.Configurations
   alias CodeMySpec.Files.File
+  alias CodeMySpec.Files.Scanner.ReadModel
   alias CodeMySpec.Repo
   alias CodeMySpec.Users.Scope
+
+  @doc """
+  Build the `ReadModel` a scan needs: component module names, the project's
+  story ids, and whether validation is strict.
+
+  Here rather than on `Scanner` because it is the one part of scanning that
+  touches a database, and `Scanner` now ships in `cms_scan` so the light harness
+  can classify files without one. Everything else in that module is a function
+  of (environment, read model); this is where the read model comes from when
+  there *is* a database. A harness fetches the same struct over its channel.
+  """
+  @spec read_model(Scope.t()) :: ReadModel.t()
+  def read_model(%Scope{} = scope) do
+    components = Components.list_components(scope)
+
+    %ReadModel{
+      component_by_module: Map.new(components, &{&1.module_name, &1.id}),
+      component_by_id: Map.new(components, &{&1.id, &1}),
+      story_ids: project_story_ids(scope),
+      strict?: Configurations.require_specs?(scope)
+    }
+  end
+
+  defp project_story_ids(%Scope{active_project_id: nil}), do: MapSet.new()
+
+  defp project_story_ids(%Scope{} = scope) do
+    CodeMySpec.Stories.Story
+    |> where([s], s.project_id == ^scope.active_project_id)
+    |> select([s], s.id)
+    |> Repo.all()
+    |> MapSet.new()
+  end
 
   @doc "List all files for the project."
   @spec list_files(Scope.t()) :: [File.t()]
@@ -120,6 +155,13 @@ defmodule CodeMySpec.Files do
   # large hex doc corpora can easily run thousands of tracked files.
   @upsert_chunk_size 500
 
+  # Fields the scanner computes for its own decisions and that are not columns.
+  # `insert_all` rejects an unknown key outright, so dropping them here rather
+  # than in each caller means a new scratch field cannot break a sync path that
+  # happens not to clear it — which is exactly how `:declared_module` broke
+  # `sync_path/3` and `sync_changed/2` while the full sync was fine.
+  @scanner_scratch [:declared_module, :raw_role]
+
   @spec upsert_files(Scope.t(), [map()]) :: {integer(), [File.t()] | nil}
   def upsert_files(%Scope{active_project_id: project_id}, file_attrs_list)
       when is_list(file_attrs_list) do
@@ -128,6 +170,7 @@ defmodule CodeMySpec.Files do
     entries =
       Enum.map(file_attrs_list, fn attrs ->
         attrs
+        |> Map.drop(@scanner_scratch)
         |> Map.put(:project_id, project_id)
         |> Map.put(:inserted_at, now)
         |> Map.put(:updated_at, now)
@@ -175,6 +218,7 @@ defmodule CodeMySpec.Files do
 
     entry =
       attrs
+      |> Map.drop(@scanner_scratch)
       |> Map.put(:project_id, project_id)
       |> Map.put(:inserted_at, now)
       |> Map.put(:updated_at, now)
@@ -182,7 +226,17 @@ defmodule CodeMySpec.Files do
     {1, [file]} =
       Repo.insert_all(File, [entry],
         on_conflict:
-          {:replace, [:role, :size, :fingerprint, :component_id, :story_id, :valid, :validation_errors, :updated_at]},
+          {:replace,
+           [
+             :role,
+             :size,
+             :fingerprint,
+             :component_id,
+             :story_id,
+             :valid,
+             :validation_errors,
+             :updated_at
+           ]},
         conflict_target: [:project_id, :path],
         returning: true
       )
@@ -295,7 +349,10 @@ defmodule CodeMySpec.Files do
   @spec has_file?(Scope.t(), Ecto.UUID.t(), atom()) :: boolean()
   def has_file?(%Scope{active_project_id: project_id}, component_id, role) do
     File
-    |> where([f], f.project_id == ^project_id and f.component_id == ^component_id and f.role == ^role)
+    |> where(
+      [f],
+      f.project_id == ^project_id and f.component_id == ^component_id and f.role == ^role
+    )
     |> Repo.exists?()
   end
 
@@ -305,7 +362,8 @@ defmodule CodeMySpec.Files do
   @spec has_valid_file?(Scope.t(), Ecto.UUID.t(), atom()) :: boolean()
   def has_valid_file?(%Scope{active_project_id: project_id}, component_id, role) do
     File
-    |> where([f],
+    |> where(
+      [f],
       f.project_id == ^project_id and
         f.component_id == ^component_id and
         f.role == ^role and

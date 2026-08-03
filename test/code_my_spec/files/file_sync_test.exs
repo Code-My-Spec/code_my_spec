@@ -98,7 +98,13 @@ defmodule CodeMySpec.Files.FileSyncTest do
 
       # Seed some files
       write_file(tmp_dir, "lib/my_app/accounts.ex", "defmodule MyApp.Accounts do\nend")
-      write_file(tmp_dir, ".code_my_spec/spec/my_app/accounts.spec.md", "# MyApp.Accounts\n\n## Type\n\nschema")
+
+      write_file(
+        tmp_dir,
+        ".code_my_spec/spec/my_app/accounts.spec.md",
+        "# MyApp.Accounts\n\n## Type\n\nschema"
+      )
+
       write_file(tmp_dir, "CLAUDE.md", "# Project")
 
       {:ok, result} = FileSync.sync(scope, base_dir: tmp_dir)
@@ -166,7 +172,12 @@ defmodule CodeMySpec.Files.FileSyncTest do
         })
 
       write_file(tmp_dir, "lib/my_app/accounts.ex", "defmodule MyApp.Accounts do\nend")
-      write_file(tmp_dir, ".code_my_spec/spec/my_app/accounts.spec.md", "# MyApp.Accounts\n\n## Type\n\nschema")
+
+      write_file(
+        tmp_dir,
+        ".code_my_spec/spec/my_app/accounts.spec.md",
+        "# MyApp.Accounts\n\n## Type\n\nschema"
+      )
 
       {:ok, _} = FileSync.sync(scope, base_dir: tmp_dir)
 
@@ -216,7 +227,11 @@ defmodule CodeMySpec.Files.FileSyncTest do
 
       spec_file = Files.get_by_path(scope, ".code_my_spec/spec/my_app/user_live/index.spec.md")
       assert spec_file.valid == true
-      assert spec_file.validation_errors == nil
+      # A clean spec now carries the component identity the scan extracted —
+      # `ComponentSync` reads it instead of reopening the file. "No errors" is
+      # the claim being made here, which is what nil used to stand for.
+      assert spec_file.validation_errors["errors"] == %{}
+      assert spec_file.validation_errors["data"]["module_name"] != nil
 
       impl_file = Files.get_by_path(scope, "lib/my_app/accounts.ex")
       assert impl_file.valid == true
@@ -226,7 +241,11 @@ defmodule CodeMySpec.Files.FileSyncTest do
       {scope, tmp_dir} = setup_project()
 
       # Spec missing required sections
-      write_file(tmp_dir, ".code_my_spec/spec/my_app/broken.spec.md", "# MyApp.Broken\n\n## Type\n\nschema\n")
+      write_file(
+        tmp_dir,
+        ".code_my_spec/spec/my_app/broken.spec.md",
+        "# MyApp.Broken\n\n## Type\n\nschema\n"
+      )
 
       {:ok, _} = FileSync.sync(scope, base_dir: tmp_dir)
 
@@ -278,8 +297,15 @@ defmodule CodeMySpec.Files.FileSyncTest do
       {:ok, _} = FileSync.sync(scope, base_dir: tmp_dir)
 
       spec_file = Files.get_by_path(scope, ".code_my_spec/spec/my_app/tasks.spec.md")
-      assert spec_file.valid == true, "CRLF context spec invalid: #{inspect(spec_file.validation_errors)}"
-      assert spec_file.validation_errors == nil
+
+      assert spec_file.valid == true,
+             "CRLF context spec invalid: #{inspect(spec_file.validation_errors)}"
+
+      # A clean spec now carries the component identity the scan extracted —
+      # `ComponentSync` reads it instead of reopening the file. "No errors" is
+      # the claim being made here, which is what nil used to stand for.
+      assert spec_file.validation_errors["errors"] == %{}
+      assert spec_file.validation_errors["data"]["module_name"] != nil
     end
 
     test "validates a CRLF schema spec (type resolves to schema, not default spec)" do
@@ -313,8 +339,15 @@ defmodule CodeMySpec.Files.FileSyncTest do
       {:ok, _} = FileSync.sync(scope, base_dir: tmp_dir)
 
       spec_file = Files.get_by_path(scope, ".code_my_spec/spec/my_app/task.spec.md")
-      assert spec_file.valid == true, "CRLF schema spec invalid: #{inspect(spec_file.validation_errors)}"
-      assert spec_file.validation_errors == nil
+
+      assert spec_file.valid == true,
+             "CRLF schema spec invalid: #{inspect(spec_file.validation_errors)}"
+
+      # A clean spec now carries the component identity the scan extracted —
+      # `ComponentSync` reads it instead of reopening the file. "No errors" is
+      # the claim being made here, which is what nil used to stand for.
+      assert spec_file.validation_errors["errors"] == %{}
+      assert spec_file.validation_errors["data"]["module_name"] != nil
     end
 
     test "validates test files against spec test assertions" do
@@ -487,7 +520,12 @@ defmodule CodeMySpec.Files.FileSyncTest do
       assert result.total_files >= 2
 
       # Bump mtime explicitly instead of sleeping past the 1s POSIX granularity
-      write_file(tmp_dir, "lib/my_app/accounts.ex", "defmodule MyApp.Accounts do\n  # changed\nend")
+      write_file(
+        tmp_dir,
+        "lib/my_app/accounts.ex",
+        "defmodule MyApp.Accounts do\n  # changed\nend"
+      )
+
       File.touch!(Path.join(tmp_dir, "lib/my_app/accounts.ex"), :erlang.system_time(:second) + 2)
 
       {:ok, result} = FileSync.sync_changed(scope, base_dir: tmp_dir)
@@ -574,7 +612,12 @@ defmodule CodeMySpec.Files.FileSyncTest do
       {scope, tmp_dir} = setup_project()
 
       # Invalid spec — missing required sections
-      write_file(tmp_dir, ".code_my_spec/spec/my_app/broken.spec.md", "# MyApp.Broken\n\n## Type\n\nschema\n")
+      write_file(
+        tmp_dir,
+        ".code_my_spec/spec/my_app/broken.spec.md",
+        "# MyApp.Broken\n\n## Type\n\nschema\n"
+      )
+
       abs_path = Path.join(tmp_dir, ".code_my_spec/spec/my_app/broken.spec.md")
 
       {:ok, _} = FileSync.sync_path(scope, abs_path, base_dir: tmp_dir)

@@ -69,6 +69,15 @@ defmodule CodeMySpec.AgentTasks.QaSetupTest do
     """)
   end
 
+  # `evaluate/2` reads the synced record, not the file — the plan is parsed
+  # during the scan, on the machine that holds it, so a server with no working
+  # copy can still tell whether it is valid. Syncing here means these tests
+  # exercise the classifier and the validator too, not just the checker.
+  defp sync!(scope) do
+    {:ok, _} = CodeMySpec.Files.FileSync.sync(scope, base_dir: scope.environment.cwd)
+    :ok
+  end
+
   defp write_qa_plan(env, content \\ nil) do
     write_file!(
       env,
@@ -162,7 +171,6 @@ defmodule CodeMySpec.AgentTasks.QaSetupTest do
       assert {:ok, prompt} = QaSetup.command(scope, task)
       assert prompt =~ ".code_my_spec/qa/plan.md"
     end
-
   end
 
   # ============================================================================
@@ -177,6 +185,7 @@ defmodule CodeMySpec.AgentTasks.QaSetupTest do
       task: task
     } do
       write_qa_plan(scope.environment)
+      sync!(scope)
 
       assert {:ok, :valid} = QaSetup.evaluate(scope, task)
     end
@@ -202,6 +211,8 @@ defmodule CodeMySpec.AgentTasks.QaSetupTest do
       Some overview content.
       """)
 
+      sync!(scope)
+
       assert {:ok, :invalid, feedback} = QaSetup.evaluate(scope, task)
       assert feedback =~ "missing required section"
       assert feedback =~ "Tools Registry"
@@ -224,9 +235,45 @@ defmodule CodeMySpec.AgentTasks.QaSetupTest do
       Tools here.
       """)
 
+      sync!(scope)
+
       assert {:ok, :invalid, feedback} = QaSetup.evaluate(scope, task)
       assert feedback =~ "Seed Strategy"
     end
+  end
 
+  describe "the journey plan shares the role but not the schema" do
+    setup [:create_scope, :create_task]
+
+    test "a valid journey plan is not marked invalid by the qa_plan spec", %{scope: scope} do
+      write_file!(scope.environment, ".code_my_spec/qa/journey_plan.md", """
+      # QA Journey Plan
+
+      ## Journeys
+
+      ### Capture a task
+      1. Log in
+      2. Type a task
+      3. See it listed
+      """)
+
+      sync!(scope)
+
+      record = CodeMySpec.Files.get_by_path(scope, CodeMySpec.Paths.qa_journey_plan())
+
+      assert record, "journey_plan.md must classify and sync"
+
+      error = record.validation_errors["errors"]["plan"]
+
+      # `qa_plan` requires App Overview / Tools Registry / Seed Strategy. If the
+      # journey plan is being judged by that schema, the complaint names them.
+      if error do
+        refute error =~ "tools registry",
+               "the journey plan is being validated against the qa_plan schema, " <>
+                 "which tells an agent to fix a file that is already correct"
+
+        refute error =~ "seed strategy"
+      end
+    end
   end
 end

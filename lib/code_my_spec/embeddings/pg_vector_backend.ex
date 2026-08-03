@@ -89,48 +89,74 @@ defmodule CodeMySpec.Embeddings.PgVectorBackend do
   @impl true
   def store_chunk(project_id, source, path, index, chunk, hash, file_hash) do
     with {:ok, embedding} <- Serving.embed(chunk) do
-      now = DateTime.utc_now() |> DateTime.truncate(:second)
+      store_embedded_chunk(project_id, source, path, index, chunk, hash, file_hash, embedding)
+    end
+  end
 
-      # The conflict target must match whichever partial unique index applies,
-      # so shared rows (project_id IS NULL) name their own.
-      conflict =
-        if is_nil(project_id) do
-          "(source, path, chunk_index) WHERE project_id IS NULL"
-        else
-          "(project_id, source, path, chunk_index) WHERE project_id IS NOT NULL"
-        end
+  @doc """
+  Store a chunk whose vector was computed somewhere else.
 
-      sql = """
-      INSERT INTO doc_embeddings
-        (id, project_id, source, path, chunk_index, content, content_hash, file_hash,
-         embedding, inserted_at, updated_at)
-      VALUES ($1::text::uuid, $2::text::uuid, $3, $4, $5, $6, $7, $8, $9::text::vector, $10, $11)
-      ON CONFLICT #{conflict} DO UPDATE SET
-        content = excluded.content,
-        content_hash = excluded.content_hash,
-        file_hash = excluded.file_hash,
-        embedding = excluded.embedding,
-        updated_at = excluded.updated_at
-      """
+  The light harness embeds on the machine that holds the file, because
+  embedding needs the file's *content* and no file content crosses the wire.
+  So the vector arrives already made and this server never loads a model —
+  which is why `Ortex` is not a dependency of the web build.
 
-      params = [
-        UUID.uuid4(),
-        project_id,
-        source,
-        path,
-        index,
-        chunk,
-        hash,
-        file_hash,
-        encode_vector(embedding),
-        now,
-        now
-      ]
+  Identical to `store_chunk/7` past the embedding step, deliberately: one INSERT
+  and one conflict target for both paths, so a row written by a harness and a
+  row written locally cannot differ in shape.
+  """
+  @spec store_embedded_chunk(
+          String.t() | nil,
+          String.t(),
+          String.t(),
+          integer(),
+          String.t(),
+          String.t(),
+          String.t(),
+          [float()]
+        ) :: :ok | {:error, term()}
+  def store_embedded_chunk(project_id, source, path, index, chunk, hash, file_hash, embedding) do
+    now = DateTime.utc_now() |> DateTime.truncate(:second)
 
-      case AdaptersSQL.query(Repo, sql, params) do
-        {:ok, _} -> :ok
-        {:error, reason} -> {:error, reason}
+    # The conflict target must match whichever partial unique index applies,
+    # so shared rows (project_id IS NULL) name their own.
+    conflict =
+      if is_nil(project_id) do
+        "(source, path, chunk_index) WHERE project_id IS NULL"
+      else
+        "(project_id, source, path, chunk_index) WHERE project_id IS NOT NULL"
       end
+
+    sql = """
+    INSERT INTO doc_embeddings
+      (id, project_id, source, path, chunk_index, content, content_hash, file_hash,
+       embedding, inserted_at, updated_at)
+    VALUES ($1::text::uuid, $2::text::uuid, $3, $4, $5, $6, $7, $8, $9::text::vector, $10, $11)
+    ON CONFLICT #{conflict} DO UPDATE SET
+      content = excluded.content,
+      content_hash = excluded.content_hash,
+      file_hash = excluded.file_hash,
+      embedding = excluded.embedding,
+      updated_at = excluded.updated_at
+    """
+
+    params = [
+      UUID.uuid4(),
+      project_id,
+      source,
+      path,
+      index,
+      chunk,
+      hash,
+      file_hash,
+      encode_vector(embedding),
+      now,
+      now
+    ]
+
+    case AdaptersSQL.query(Repo, sql, params) do
+      {:ok, _} -> :ok
+      {:error, reason} -> {:error, reason}
     end
   end
 

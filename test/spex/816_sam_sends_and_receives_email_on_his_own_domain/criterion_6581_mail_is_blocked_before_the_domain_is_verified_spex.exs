@@ -7,7 +7,7 @@ defmodule CodeMySpecSpex.Story816.Criterion6581Spex do
   send or receive email.
 
   Surface:
-    * `CodeMySpecWeb.MailLive` at "/app/mail" — when the project's domain is
+    * `CodeMySpecWeb.MailLive` at "/app/projects/:project_id/mail" — when the project's domain is
       not yet verified, the mail inbox gates sending/receiving behind
       verification rather than letting mail flow.
   """
@@ -32,7 +32,7 @@ defmodule CodeMySpecSpex.Story816.Criterion6581Spex do
       end
 
       when_ "Sam opens the mail surface", context do
-        {:ok, view, html} = live(context.conn, "/app/mail")
+        {:ok, view, html} = live(context.conn, "/app/projects/#{context.project.id}/mail")
 
         {:ok, Map.merge(context, %{view: view, html: html})}
       end

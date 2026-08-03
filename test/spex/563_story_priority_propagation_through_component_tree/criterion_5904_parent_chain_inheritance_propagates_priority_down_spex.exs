@@ -73,7 +73,7 @@ defmodule CodeMySpecSpex.Story563.Criterion5904Spex do
         write_context_with_review(env, "LowContext", "LowContext.Other")
         write_schema_spec_only(env, "LowContext.Other")
 
-        {:ok, sync_live, _html} = live(context.conn, "/projects/#{context.project.name}/files")
+        {:ok, sync_live, _html} = live(context.conn, "/app/projects/#{context.project.id}/files")
         sync_live |> element("button[phx-click='sync']") |> render_click()
 
         high = Fixtures.get_component_by_module_name(context.scope, "HighContext")

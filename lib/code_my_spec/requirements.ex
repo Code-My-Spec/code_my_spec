@@ -8,7 +8,7 @@ defmodule CodeMySpec.Requirements do
   """
 
   alias CodeMySpec.Components.Component
-  alias CodeMySpec.Components.Registry, as: ComponentRegistry
+  alias CodeMySpec.Requirements.Registry, as: RequirementsRegistry
   alias CodeMySpec.Files
   alias CodeMySpec.Requirements.Requirement
   alias CodeMySpec.Requirements.RequirementCalculator
@@ -81,7 +81,7 @@ defmodule CodeMySpec.Requirements do
   Returns a list of maps with requirement definition fields plus `:satisfied`.
   """
   def compute_component_requirements(scope, %Component{} = component) do
-    definitions = ComponentRegistry.get_requirements_for_type(component.type)
+    definitions = RequirementsRegistry.get_requirements_for_type(component.type)
     files = Files.list_component_files(scope, component.id)
 
     Enum.map(definitions, fn definition ->

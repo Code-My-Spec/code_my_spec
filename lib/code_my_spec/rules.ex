@@ -57,7 +57,9 @@ defmodule CodeMySpec.Rules do
   # rather than a second implementation: a bare File.ls! here would read the
   # host's disk even when the caller's project lives on a sprite, and the two
   # branches would drift.
-  defp load_all_rules(nil), do: load_all_rules(Environment.new(:local, File.cwd!()))
+  # No environment, no rules to load — the caller gets an empty list rather
+  # than this server's own `.code_my_spec/rules/`.
+  defp load_all_rules(nil), do: []
 
   defp parse_env_rule_file(env, path) do
     case Environments.read_file(env, path) do

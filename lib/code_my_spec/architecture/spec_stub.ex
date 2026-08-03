@@ -16,7 +16,6 @@ defmodule CodeMySpec.Architecture.SpecStub do
   """
 
   alias CodeMySpec.Environments
-  alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Paths
 
   @doc """
@@ -58,18 +57,36 @@ defmodule CodeMySpec.Architecture.SpecStub do
   end
 
   @doc """
-  Writes a stub spec for a component using the environment derived from
-  the scope. Falls back to a CLI environment rooted at the scope's cwd
-  (or the current working directory) if `scope.environment` is nil.
+  Writes a stub spec for a component through the scope's environment.
 
-  Used by callers in non-`Architecture` boundaries (e.g. `McpServers`)
-  that should not reference `Environment` directly.
+  Returns `{:error, :no_working_copy}` when the scope has none, rather than
+  rooting one at the current directory.
+
+  That fallback existed and it wrote this project's stubs into the *server's*
+  own checkout. Drill 7 left eight `e2e_todo` spec files in the code_my_spec
+  repository, and the consequence in the container was the mirror image: the
+  spec directory stayed empty, so no component had dependency edges, so every
+  component read as an orphan, so `architecture_designed` could not pass. One
+  fabricated environment, and the requirement was unsatisfiable while the agent
+  did everything right.
+
+  The caller decides what to do about a missing working copy — see
+  `McpServers.Components.Tools.CreateComponent`, which hands the stub to the
+  agent to write instead.
   """
   @spec write_for_scope(map(), map()) :: :ok | {:error, term()}
-  def write_for_scope(scope, attrs) do
-    env = scope.environment || Environment.new(:cli, scope.cwd || File.cwd!())
-    write(env, attrs)
-  end
+  def write_for_scope(%{environment: nil}, _attrs), do: {:error, :no_working_copy}
+
+  def write_for_scope(scope, attrs), do: write(scope.environment, attrs)
+
+  @doc """
+  The stub's path and body, without writing anything.
+
+  For callers that cannot write — the server has no disk on the light harness —
+  and must hand the content to whoever does.
+  """
+  @spec render(map()) :: {String.t(), String.t()}
+  def render(attrs), do: {path_for(attrs.module_name), render_template(attrs)}
 
   defp render_template(attrs) do
     base = """

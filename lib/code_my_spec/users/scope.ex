@@ -53,6 +53,18 @@ defmodule CodeMySpec.Users.Scope do
 
     case UserPreferences.get_user_preference(scope) do
       {:ok, preferences} ->
+        # The active project is a *fallback*, not the answer. Every LiveView
+        # under /app/projects/:project_id gets its project from the URL, put on
+        # the scope per-request by the PortableHosts, which overwrite whatever
+        # is here — so the bug this used to cause (a link landing on a page
+        # showing a different project than the one it named) stays fixed.
+        #
+        # It is still read because the REST API has no project in its URL:
+        # /api/issues is what `Issues.RemoteClient` calls from the shipped CLI,
+        # and IssuesRepository.resolve_project_id/1 has no other way to know
+        # which project a request means. Removing it 500s that endpoint.
+        # Deleting this for real means project-scoping the API routes, which
+        # is a breaking change for CLIs already in the field.
         %__MODULE__{
           user: user,
           user_id: user.id,

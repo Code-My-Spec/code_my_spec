@@ -1,41 +1,14 @@
 defmodule CodeMySpec.Components.RegistryTest do
+  @moduledoc """
+  What a component type *is* — a plain table and lookups over it, no database
+  and no requirement definitions. `has_children?/1` moved to
+  `Requirements.RegistryTest` along with the function, because answering it
+  means reading the requirement graph template.
+  """
+
   use ExUnit.Case, async: true
 
   alias CodeMySpec.Components.Registry
-
-  describe "has_children?/1" do
-    test "true for context (template has :child-scoped defs)" do
-      assert Registry.has_children?("context")
-    end
-
-    test "true for coordination_context (shares :context_graph template)" do
-      assert Registry.has_children?("coordination_context")
-    end
-
-    test "true for live_context (template has :child-scoped defs)" do
-      assert Registry.has_children?("live_context")
-    end
-
-    test "false for schema (template is :self only)" do
-      refute Registry.has_children?("schema")
-    end
-
-    test "false for repository (uses :default_graph, no :child)" do
-      refute Registry.has_children?("repository")
-    end
-
-    test "false for liveview (template is :self only)" do
-      refute Registry.has_children?("liveview")
-    end
-
-    test "false for controller (uses :default_graph, no :child)" do
-      refute Registry.has_children?("controller")
-    end
-
-    test "false for unknown type (falls back to default_graph)" do
-      refute Registry.has_children?("does_not_exist")
-    end
-  end
 
   describe "dependency_order/1" do
     test "schema sorts first (closest to data)" do

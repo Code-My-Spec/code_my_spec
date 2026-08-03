@@ -168,6 +168,23 @@ defmodule CodeMySpecWeb.Router do
   scope "/mcp" do
     pipe_through :mcp_protected
 
+    # The harness tools, served from the server rather than from a process on
+    # the developer's machine.
+    #
+    # Scope arrives the same way it does for every other server-mounted MCP
+    # server: `require_oauth_token` identifies the user and
+    # `ProjectScopeOverride` picks the project from `X-Project-ID`. Anubis
+    # copies `conn.assigns` wholesale into the request context, so the
+    # `current_scope` those plugs build reaches the tools untouched — which is
+    # the same route `working_dir` takes on the local mount.
+    #
+    # `Validators.validate_local_scope/2` already prefers a frame scope that
+    # carries an `active_project_id` and only falls back to resolving one from a
+    # working directory. Here there is no working directory and no fallback: a
+    # request without a project is refused rather than guessed at.
+    forward "/harness", Anubis.Server.Transport.StreamableHTTP.Plug,
+      server: CodeMySpec.McpServers.LocalServer
+
     forward "/components", Anubis.Server.Transport.StreamableHTTP.Plug,
       server: CodeMySpec.McpServers.ComponentsServer
 
@@ -190,6 +207,9 @@ defmodule CodeMySpecWeb.Router do
 
     resources "/issues", IssuesController, only: [:index, :show, :create, :update]
 
+    # One project's authored graph, one request, one transaction (story 991).
+    post "/migrations", MigrationsController, :create
+
     post "/uploads/presign", UploadController, :create
 
     post "/notifications/push", NotificationController, :push
@@ -197,7 +217,6 @@ defmodule CodeMySpecWeb.Router do
     post "/permissions/request", PermissionController, :create
     post "/permissions/:id/respond", PermissionController, :respond
     get "/permissions/:id/status", PermissionController, :status
-
   end
 
   # Questions are the one API a sprite needs, and a sprite has no user to run
@@ -206,6 +225,10 @@ defmodule CodeMySpecWeb.Router do
   # credential widened, and only here.
   scope "/api", CodeMySpecWeb do
     pipe_through [:api, CodeMySpecWeb.Plugs.DeployKeyOrOAuth]
+
+    # A sprite trades its deploy key for a real OAuth token here, then uses that
+    # everywhere else. Keeps the deploy key narrow — see SpriteTokenController.
+    post "/sprite/token", SpriteTokenController, :create
 
     post "/questions/ask", QuestionController, :ask
     post "/questions/:id/answer", QuestionController, :answer
@@ -277,6 +300,11 @@ defmodule CodeMySpecWeb.Router do
     pipe_through :api
 
     post "/users", WidgetUsersController, :upsert
+
+    # Issue intake from an end user of a generated app. Deploy-key auth on the
+    # app, none on the reporter — someone hitting a bug in a shipped product has
+    # no CodeMySpec account and should not need one to report it.
+    post "/issues", WidgetIssuesController, :create
   end
 
   # Browser-safe socket credential. Behind the app token rather than the
@@ -356,31 +384,107 @@ defmodule CodeMySpecWeb.Router do
       live "/projects/:id/edit", ProjectLive.Form, :edit
     end
 
-    live_session :require_active_project,
+    # Portable UI — these LiveViews are mounted by CodeMySpecLocalWeb.Router
+    # at the same paths. `layout:` picks the cloud chrome, `on_mount` supplies
+    # the scope; nothing app-specific is baked into the views themselves.
+    # Same path shape as the local mount is what lets them keep plain `~p`.
+    live_session :portable,
+      layout: {CodeMySpecWeb.Layouts, :live},
+      on_mount: [
+        {CodeMySpecWeb.Live.CurrentPathHook, :default},
+        {CodeMySpecWeb.UserAuth, :require_authenticated},
+        {CodeMySpecWeb.UserAuth, :require_at_least_one_account},
+        {CodeMySpecWeb.UserAuth, :require_active_account},
+        {CodeMySpecWeb.Live.NotificationsHook, :default},
+        {CodeMySpecWeb.PortableHost, :default}
+      ] do
+      # Static segments first so they win over `:id`.
+      live "/projects/:project_id/init", InitLive, :index
+      live "/projects/:project_id/init/:step", InitLive, :show
+
+      live "/projects/:project_id/stories", StoryLive.Index, :index
+      live "/projects/:project_id/stories/scheduler", StoryLive.Scheduler, :index
+      live "/projects/:project_id/stories/new", StoryLive.Form, :new
+      live "/projects/:project_id/stories/import", StoryLive.Import, :import
+      live "/projects/:project_id/stories/:id", StoryLive.Show, :show
+      live "/projects/:project_id/stories/:id/edit", StoryLive.Form, :edit
+      live "/projects/:project_id/stories/:id/three-amigos", StoryLive.ThreeAmigos
+      live "/projects/:project_id/stories/:id/gherkin", StoryLive.Gherkin
+
+      live "/projects/:project_id/epics", EpicsLive.Index, :index
+      live "/projects/:project_id/epics/new", EpicsLive.Index, :new
+      live "/projects/:project_id/epics/:slug", EpicsLive.Show, :show
+      live "/projects/:project_id/epics/:slug/edit", EpicsLive.Index, :edit
+
+      live "/projects/:project_id/personas", PersonasLive.Index, :index
+      live "/projects/:project_id/personas/new", PersonasLive.Index, :new
+      live "/projects/:project_id/personas/:slug", PersonasLive.Show, :show
+      live "/projects/:project_id/personas/:slug/edit", PersonasLive.Show, :edit
+      live "/projects/:project_id/personas/:slug/link", PersonasLive.Show, :link
+
+      live "/projects/:project_id/qa", QaLive
+      live "/projects/:project_id/configuration", ConfigurationLive
+
+      live "/projects/:project_id/issues", IssuesLive.Index, :index
+      live "/projects/:project_id/issues/:id", IssuesLive.Show, :show
+
+      live "/projects/:project_id/content", ContentLive
+      live "/projects/:project_id/content/:id", ContentLive.Show
+      live "/projects/:project_id/problems", ProblemsLive
+      live "/projects/:project_id/sessions", SessionsLive, :index
+      live "/projects/:project_id/sessions/:id", SessionsLive, :show
+      live "/projects/:project_id/sessions/:id/tasks/:task_id", SessionsLive, :task_show
+
+      live "/projects/:project_id/files", FilesLive
+      live "/projects/:project_id/next-task", Tasks.NextTaskLive
+      live "/projects/:project_id/tasks", Tasks.TaskQueueLive
+      live "/projects/:project_id/progress", AgentProgressLive
+      live "/projects/:project_id/architecture", ArchitectureLive, :dependency_graph
+      live "/projects/:project_id/architecture/overview", ArchitectureLive, :overview
+      live "/projects/:project_id/architecture/namespaces", ArchitectureLive, :namespaces
+      live "/projects/:project_id/knowledge", MarkdownBrowserLive, :knowledge
+      live "/projects/:project_id/knowledge/*path", MarkdownBrowserLive, :knowledge
+      live "/projects/:project_id/project-knowledge", MarkdownBrowserLive, :project_knowledge
+      live "/projects/:project_id/project-knowledge/*path", MarkdownBrowserLive, :project_knowledge
+      live "/projects/:project_id/requirements", RequirementsLive, :index
+      live "/projects/:project_id/requirements/graph", RequirementsLive, :graph
+      live "/projects/:project_id/requirements/stories", RequirementsLive, :stories
+      live "/projects/:project_id/requirements/:name", RequirementsLive, :show
+      live "/projects/:project_id/requirements/:name/:child_id", RequirementsLive, :child
+      live "/projects/:project_id/components", RequirementsLive, :components
+      live "/projects/:project_id/components/graph", RequirementsLive, :components_graph
+      live "/projects/:project_id/components/:component_id", RequirementsLive, :component_show
+      live "/projects/:project_id/components/:component_id/graph", RequirementsLive, :component_graph
+      live "/projects/:project_id/components/:component_id/requirements/:name", RequirementsLive, :component_req_show
+      live "/projects/:project_id/components/:component_id/requirements/:name/prompt", RequirementsLive, :component_req_prompt
+      live "/projects/:project_id/stories/:story_id/requirements/:name", RequirementsLive, :story_req_show
+    end
+
+    # Project-scoped surfaces. The project is named in the route and put on the
+    # scope by PortableHost — there is no session-held active project to fall
+    # back on, which is why every one of these carries :project_id.
+    live_session :project_scoped,
       on_mount: [
         {CodeMySpecWeb.Live.CurrentPathHook, :default},
         {CodeMySpecWeb.UserAuth, :require_authenticated},
         {CodeMySpecWeb.UserAuth, :require_at_least_one_account},
         {CodeMySpecWeb.UserAuth, :require_active_account},
         {CodeMySpecWeb.UserAuth, :require_at_least_one_project},
-        {CodeMySpecWeb.UserAuth, :require_active_project},
-        {CodeMySpecWeb.Live.NotificationsHook, :default}
+        {CodeMySpecWeb.Live.NotificationsHook, :default},
+        {CodeMySpecWeb.PortableHost, :default}
       ] do
-      live "/issues", IssuesLive.Index, :index
-      live "/issues/:id", IssuesLive.Show, :show
+      live "/projects/:project_id/users", ProjectUsersLive.Index, :index
 
-      live "/users", ProjectUsersLive.Index, :index
+      live "/projects/:project_id/inbox", InboxLive, :index
+      live "/projects/:project_id/inbox/:id", InboxLive, :show
 
-      live "/inbox", InboxLive, :index
-      live "/inbox/:id", InboxLive, :show
+      live "/projects/:project_id/mailboxes", MailboxLive, :index
 
-      live "/mailboxes", MailboxLive, :index
-
-      live "/mail", MailLive, :index
-      live "/mail/:id", MailLive, :show
+      live "/projects/:project_id/mail", MailLive, :index
+      live "/projects/:project_id/mail/:id", MailLive, :show
 
       live "/projects/:project_id/provisioning", ProvisioningLive, :index
-      live "/projects/:project_name/agent-conversation", AgentConversationLive, :show
+      live "/projects/:project_id/agent-conversation", AgentConversationLive, :show
     end
 
     post "/users/update-password", UserSessionController, :update_password

@@ -78,7 +78,7 @@ defmodule CodeMySpecLocalWeb.AuthLive do
             </div>
             <div class="card-actions justify-end mt-4">
               <button phx-click="sign_out" class="btn btn-ghost btn-sm">Sign out</button>
-              <.link navigate={~p"/projects"} class="btn btn-primary btn-sm">
+              <.link navigate={~p"/app/projects"} class="btn btn-primary btn-sm">
                 Projects &rarr;
               </.link>
             </div>

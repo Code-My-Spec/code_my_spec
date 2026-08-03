@@ -30,7 +30,7 @@ defmodule CodeMySpecSpex.Story815.Criterion6570Spex do
   spex "The account can start a conversation with a registered user" do
     scenario "Account starts a conversation" do
       given_ "the account has the inbox open", context do
-        {:ok, view, _html} = live(context.conn, "/app/inbox")
+        {:ok, view, _html} = live(context.conn, "/app/projects/#{context.project.id}/inbox")
         {:ok, Map.put(context, :view, view)}
       end
 

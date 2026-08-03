@@ -7,7 +7,7 @@ defmodule CodeMySpecSpex.Story816.Criterion6580Spex do
   send or receive email.
 
   Surface:
-    * `CodeMySpecWeb.MailLive` at "/app/mail" — the operator's mail inbox.
+    * `CodeMySpecWeb.MailLive` at "/app/projects/:project_id/mail" — the operator's mail inbox.
       With a verified project domain and a mailbox, composing and sending
       delivers the email from the mailbox address.
   """
@@ -29,7 +29,7 @@ defmodule CodeMySpecSpex.Story816.Criterion6580Spex do
         Fixtures.verify_project_domain(context.project, @domain)
         Fixtures.mailbox_fixture(context.project, %{address: "support@#{@domain}"})
 
-        {:ok, view, _html} = live(context.conn, "/app/mail")
+        {:ok, view, _html} = live(context.conn, "/app/projects/#{context.project.id}/mail")
 
         {:ok, Map.put(context, :view, view)}
       end

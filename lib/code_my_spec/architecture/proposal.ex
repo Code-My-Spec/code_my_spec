@@ -694,11 +694,18 @@ defmodule CodeMySpec.Architecture.Proposal do
   defp resolve_env(opts) do
     case Keyword.get(opts, :env) do
       nil ->
-        working_dir = Keyword.get(opts, :working_dir, File.cwd!())
+        # Executing a proposal writes spec files. Defaulting the directory
+        # to this process's meant writing them into the server's own
+        # checkout, so the caller must say where.
+        case Keyword.get(opts, :working_dir) do
+          nil ->
+            {:error, :no_working_copy}
 
-        case Environments.create(:cli, working_dir: working_dir) do
-          {:ok, env} -> {:ok, env, true}
-          {:error, _} = err -> err
+          working_dir ->
+            case Environments.create(:cli, working_dir: working_dir) do
+              {:ok, env} -> {:ok, env, true}
+              {:error, _} = err -> err
+            end
         end
 
       env ->
@@ -712,9 +719,7 @@ defmodule CodeMySpec.Architecture.Proposal do
     with {:ok, created_components} <- write_all_spec_files(env, components) do
       linked_count = sync_and_link_components(scope, created_components)
 
-      Logger.debug(
-        "[Proposal] sync_and_link_components complete, linked_count: #{linked_count}"
-      )
+      Logger.debug("[Proposal] sync_and_link_components complete, linked_count: #{linked_count}")
 
       warnings =
         collect_warnings(proposal) ++ removed_component_warnings(proposal, pre_existing_db_names)

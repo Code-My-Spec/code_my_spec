@@ -8,7 +8,10 @@ defmodule CodeMySpecWeb.ProjectLive.Show do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_scope={@current_scope} pending_notifications={@pending_notifications}>
+    <Layouts.app flash={@flash} current_scope={@current_scope} pending_notifications={@pending_notifications}
+      project={assigns[:project]}
+      projects={assigns[:projects] || []}
+    >
       <.header>
         Project {@project.name}
         <:subtitle>This is a project record from your database.</:subtitle>

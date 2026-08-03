@@ -98,7 +98,7 @@ defmodule CodeMySpecSpex.Story983.Criterion8164Spex do
 
       then_ "the failure is still recorded as a visible problem", context do
         {:ok, _problems_live, html} =
-          live(context.conn, ~p"/projects/#{context.project.name}/problems?filter=spex")
+          live(context.conn, ~p"/app/projects/#{context.project.id}/problems?filter=spex")
 
         assert html =~ "Problems"
 

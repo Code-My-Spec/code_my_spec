@@ -16,19 +16,24 @@ defmodule CodeMySpecWeb.AgentConversationLive do
   use CodeMySpecWeb, :live_view
 
   alias CodeMySpec.Conversations
-  alias CodeMySpec.Projects
 
   @impl true
-  def mount(%{"project_name" => project_name}, _session, socket) do
-    case Projects.get_project_by_name(socket.assigns.current_scope, project_name) do
-      {:ok, project} ->
-        {:ok, mount_project(socket, project)}
+  def mount(_params, _session, socket), do: {:ok, socket}
 
-      {:error, :not_found} ->
-        {:ok,
+  # The project comes off the scope, not out of a lookup here: `PortableHost`
+  # resolves `:project_id` for every route in this live_session. It attaches on
+  # `handle_params`, which is why this cannot run in `mount`.
+  @impl true
+  def handle_params(_params, _uri, socket) do
+    case socket.assigns[:project] do
+      nil ->
+        {:noreply,
          socket
          |> put_flash(:error, "That project is not yours, or does not exist.")
          |> push_navigate(to: ~p"/app/projects")}
+
+      project ->
+        {:noreply, mount_project(socket, project)}
     end
   end
 
@@ -48,7 +53,8 @@ defmodule CodeMySpecWeb.AgentConversationLive do
     |> assign(:project, project)
     |> assign(:conversation, conversation)
     |> assign(:page_title, "#{project.name} · Agent conversation")
-    |> stream(:messages, messages_for(conversation))
+    |> assign(:recording_gap, conversation != nil and messages_for(conversation) == [])
+    |> stream(:messages, messages_for(conversation), reset: true)
   end
 
   # `active_project_id` is what `Conversations.get_agent_conversation/2` scopes
@@ -76,6 +82,8 @@ defmodule CodeMySpecWeb.AgentConversationLive do
       flash={@flash}
       current_scope={@current_scope}
       pending_notifications={@pending_notifications}
+      project={assigns[:project]}
+      projects={assigns[:projects] || []}
     >
       <div
         data-test="agent-conversation"
@@ -95,6 +103,15 @@ defmodule CodeMySpecWeb.AgentConversationLive do
             class="py-8 text-center opacity-60"
           >
             No agent activity recorded for this project yet.
+          </p>
+
+          <p
+            :if={@conversation != nil and @recording_gap}
+            data-test="recording-gap"
+            class="rounded-box border border-warning/40 bg-warning/10 p-3 text-sm"
+          >
+            Turns were taken but not recorded. What follows is incomplete —
+            treat gaps as missing evidence, not as an idle sprite.
           </p>
 
           <div id="agent-turns" phx-update="stream" class="space-y-3">

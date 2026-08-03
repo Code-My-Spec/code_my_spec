@@ -26,7 +26,7 @@ defmodule CodeMySpecSpex.Story811.Criterion6493Spex do
   spex "Queue shifts up when the agent completes the active task" do
     scenario "completing the active task promotes the next queued task without refresh" do
       given_ "Sam has the task queue open with an active task", context do
-        {:ok, view, html} = live(context.conn, "/projects/#{context.project.name}/tasks")
+        {:ok, view, html} = live(context.conn, "/app/projects/#{context.project.id}/tasks")
         {:ok, Map.merge(context, %{view: view, initial_html: html})}
       end
 

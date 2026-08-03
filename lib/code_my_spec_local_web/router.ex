@@ -16,90 +16,109 @@ defmodule CodeMySpecLocalWeb.Router do
     scope "/", CodeMySpecLocalWeb do
       pipe_through :browser
 
-      live "/auth", AuthLive, :index
+      live "/app/auth", AuthLive, :index
+      live "/app/projects/:project_id", HomeLive
 
+      # Everything lives under /app so the local routes match the cloud's,
+      # which is what lets one LiveView be mounted by both routers. `/` stays
+      # as the local app's landing surface — it's what a developer types.
       live "/", ProjectsLive.Index, :index
-      live "/projects", ProjectsLive.Index, :index
-      live "/projects/new", ProjectsLive.Form, :new
-      live "/projects/:project_name", HomeLive
-      live "/projects/:project_name/edit", ProjectsLive.Form, :edit
-      live "/projects/:project_name/init", InitLive, :index
-      live "/projects/:project_name/init/:step", InitLive, :show
-      live "/projects/:project_name/configuration", ConfigurationLive
-      live "/projects/:project_name/files", FilesLive
-      live "/projects/:project_name/content", ContentLive
-      live "/projects/:project_name/content/:id", ContentLive.Show
-      live "/projects/:project_name/problems", ProblemsLive
-      live "/projects/:project_name/next-task", Tasks.NextTaskLive
-      live "/projects/:project_name/tasks", Tasks.TaskQueueLive
-      live "/projects/:project_name/progress", AgentProgressLive
-      live "/projects/:project_name/requirements", RequirementsLive, :index
-      live "/projects/:project_name/requirements/graph", RequirementsLive, :graph
+      live "/app", ProjectsLive.Index, :index
+      live "/app/projects", ProjectsLive.Index, :index
+      live "/app/projects/new", ProjectsLive.Form, :new
+      live "/app/projects/:id/edit", ProjectsLive.Form, :edit
       # Requirements view of stories (graph projection — distinct from admin).
       # Must come before the `:name` catch-all below.
-      live "/projects/:project_name/requirements/stories", RequirementsLive, :stories
-      live "/projects/:project_name/requirements/:name", RequirementsLive, :show
-      live "/projects/:project_name/requirements/:name/:child_id", RequirementsLive, :child
 
-      live "/projects/:project_name/architecture", ArchitectureLive, :dependency_graph
-      live "/projects/:project_name/architecture/overview", ArchitectureLive, :overview
-      live "/projects/:project_name/architecture/namespaces", ArchitectureLive, :namespaces
 
-      live "/projects/:project_name/components", RequirementsLive, :components
-      live "/projects/:project_name/components/graph", RequirementsLive, :components_graph
-      live "/projects/:project_name/components/:component_id", RequirementsLive, :component_show
 
-      live "/projects/:project_name/components/:component_id/graph",
-           RequirementsLive,
-           :component_graph
 
-      live "/projects/:project_name/components/:component_id/requirements/:name",
-           RequirementsLive,
-           :component_req_show
 
-      live "/projects/:project_name/components/:component_id/requirements/:name/prompt",
-           RequirementsLive,
-           :component_req_prompt
 
-      # Stories admin — static segments first so they win over `:id`
-      live "/projects/:project_name/stories", StoryLive.Index, :index
-      live "/projects/:project_name/stories/scheduler", StoryLive.Scheduler, :index
-      live "/projects/:project_name/stories/new", StoryLive.Form, :new
-      live "/projects/:project_name/stories/import", StoryLive.Import, :import
-      live "/projects/:project_name/stories/:id", StoryLive.Show, :show
-      live "/projects/:project_name/stories/:id/edit", StoryLive.Form, :edit
-      live "/projects/:project_name/stories/:id/three-amigos", StoryLive.ThreeAmigos
-      live "/projects/:project_name/stories/:id/gherkin", StoryLive.Gherkin
       # Requirements view of a story (graph projection — distinct from admin Show)
-      live "/projects/:project_name/stories/:story_id/requirements/:name",
-           RequirementsLive,
-           :story_req_show
+
+
+    end
+
+  end
+
+  # ── Portable UI ──────────────────────────────────────────────────
+  #
+  # These LiveViews live in `CodeMySpecWeb` and are mounted by the cloud
+  # router too, at the same paths. Nothing app-specific is baked into them:
+  # `layout:` picks the terminal chrome, `on_mount` supplies the local scope.
+  # Migrating a surface out of `live_session :local` means moving its routes
+  # here and deleting its layout wrapper — see `CodeMySpecLocalWeb.PortableHost`.
+  #
+  # Its own `scope` block because the `CodeMySpecLocalWeb` alias above would
+  # otherwise resolve these to `CodeMySpecLocalWeb.CodeMySpecWeb.*`.
+  live_session :portable,
+    on_mount: [{CodeMySpecLocalWeb.PortableHost, :default}],
+    layout: {CodeMySpecLocalWeb.Layouts, :live} do
+    scope "/", CodeMySpecWeb do
+      pipe_through :browser
+
+      # Static segments first so they win over `:id`.
+      live "/app/projects/:project_id/init", InitLive, :index
+      live "/app/projects/:project_id/init/:step", InitLive, :show
+
+      live "/app/projects/:project_id/stories", StoryLive.Index, :index
+      live "/app/projects/:project_id/stories/scheduler", StoryLive.Scheduler, :index
+      live "/app/projects/:project_id/stories/new", StoryLive.Form, :new
+      live "/app/projects/:project_id/stories/import", StoryLive.Import, :import
+      live "/app/projects/:project_id/stories/:id", StoryLive.Show, :show
+      live "/app/projects/:project_id/stories/:id/edit", StoryLive.Form, :edit
+      live "/app/projects/:project_id/stories/:id/three-amigos", StoryLive.ThreeAmigos
+      live "/app/projects/:project_id/stories/:id/gherkin", StoryLive.Gherkin
 
       # Epics — static segments first so they win over `:slug`
-      live "/projects/:project_name/epics", EpicsLive.Index, :index
-      live "/projects/:project_name/epics/new", EpicsLive.Index, :new
-      live "/projects/:project_name/epics/:slug", EpicsLive.Show, :show
-      live "/projects/:project_name/epics/:slug/edit", EpicsLive.Index, :edit
+      live "/app/projects/:project_id/epics", EpicsLive.Index, :index
+      live "/app/projects/:project_id/epics/new", EpicsLive.Index, :new
+      live "/app/projects/:project_id/epics/:slug", EpicsLive.Show, :show
+      live "/app/projects/:project_id/epics/:slug/edit", EpicsLive.Index, :edit
 
-      live "/projects/:project_name/personas", PersonasLive.Index, :index
-      live "/projects/:project_name/personas/new", PersonasLive.Index, :new
-      live "/projects/:project_name/personas/:slug", PersonasLive.Show, :show
-      live "/projects/:project_name/personas/:slug/edit", PersonasLive.Show, :edit
-      live "/projects/:project_name/personas/:slug/link", PersonasLive.Show, :link
+      live "/app/projects/:project_id/personas", PersonasLive.Index, :index
+      live "/app/projects/:project_id/personas/new", PersonasLive.Index, :new
+      live "/app/projects/:project_id/personas/:slug", PersonasLive.Show, :show
+      live "/app/projects/:project_id/personas/:slug/edit", PersonasLive.Show, :edit
+      live "/app/projects/:project_id/personas/:slug/link", PersonasLive.Show, :link
 
-      live "/projects/:project_name/issues", IssuesLive.Index, :index
-      live "/projects/:project_name/issues/:id", IssuesLive.Show, :show
-      live "/projects/:project_name/qa", QaLive
-      live "/projects/:project_name/sessions", SessionsLive, :index
-      live "/projects/:project_name/sessions/:id", SessionsLive, :show
-      live "/projects/:project_name/sessions/:id/tasks/:task_id", SessionsLive, :task_show
-      live "/projects/:project_name/knowledge", MarkdownBrowserLive, :knowledge
-      live "/projects/:project_name/knowledge/*path", MarkdownBrowserLive, :knowledge
-      live "/projects/:project_name/project-knowledge", MarkdownBrowserLive, :project_knowledge
+      live "/app/projects/:project_id/qa", QaLive
+      live "/app/projects/:project_id/configuration", ConfigurationLive
 
-      live "/projects/:project_name/project-knowledge/*path",
-           MarkdownBrowserLive,
-           :project_knowledge
+      live "/app/projects/:project_id/issues", IssuesLive.Index, :index
+      live "/app/projects/:project_id/issues/:id", IssuesLive.Show, :show
+
+      live "/app/projects/:project_id/content", ContentLive
+      live "/app/projects/:project_id/content/:id", ContentLive.Show
+      live "/app/projects/:project_id/problems", ProblemsLive
+      live "/app/projects/:project_id/sessions", SessionsLive, :index
+      live "/app/projects/:project_id/sessions/:id", SessionsLive, :show
+      live "/app/projects/:project_id/sessions/:id/tasks/:task_id", SessionsLive, :task_show
+
+      live "/app/projects/:project_id/files", FilesLive
+      live "/app/projects/:project_id/next-task", Tasks.NextTaskLive
+      live "/app/projects/:project_id/tasks", Tasks.TaskQueueLive
+      live "/app/projects/:project_id/progress", AgentProgressLive
+      live "/app/projects/:project_id/architecture", ArchitectureLive, :dependency_graph
+      live "/app/projects/:project_id/architecture/overview", ArchitectureLive, :overview
+      live "/app/projects/:project_id/architecture/namespaces", ArchitectureLive, :namespaces
+      live "/app/projects/:project_id/knowledge", MarkdownBrowserLive, :knowledge
+      live "/app/projects/:project_id/knowledge/*path", MarkdownBrowserLive, :knowledge
+      live "/app/projects/:project_id/project-knowledge", MarkdownBrowserLive, :project_knowledge
+      live "/app/projects/:project_id/project-knowledge/*path", MarkdownBrowserLive, :project_knowledge
+      live "/app/projects/:project_id/requirements", RequirementsLive, :index
+      live "/app/projects/:project_id/requirements/graph", RequirementsLive, :graph
+      live "/app/projects/:project_id/requirements/stories", RequirementsLive, :stories
+      live "/app/projects/:project_id/requirements/:name", RequirementsLive, :show
+      live "/app/projects/:project_id/requirements/:name/:child_id", RequirementsLive, :child
+      live "/app/projects/:project_id/components", RequirementsLive, :components
+      live "/app/projects/:project_id/components/graph", RequirementsLive, :components_graph
+      live "/app/projects/:project_id/components/:component_id", RequirementsLive, :component_show
+      live "/app/projects/:project_id/components/:component_id/graph", RequirementsLive, :component_graph
+      live "/app/projects/:project_id/components/:component_id/requirements/:name", RequirementsLive, :component_req_show
+      live "/app/projects/:project_id/components/:component_id/requirements/:name/prompt", RequirementsLive, :component_req_prompt
+      live "/app/projects/:project_id/stories/:story_id/requirements/:name", RequirementsLive, :story_req_show
     end
   end
 

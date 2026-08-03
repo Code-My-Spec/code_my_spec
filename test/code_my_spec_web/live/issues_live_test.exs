@@ -9,12 +9,16 @@ defmodule CodeMySpecWeb.IssuesLiveTest do
   setup [:register_log_in_setup_account, :setup_active_account, :setup_active_project]
 
   defp create_issue(%{scope: scope}) do
-    issue = issue_fixture(scope, %{title: "Test bug", severity: :high, description: "Something broke"})
+    issue =
+      issue_fixture(scope, %{title: "Test bug", severity: :high, description: "Something broke"})
+
     %{issue: issue}
   end
 
   defp create_issues(%{scope: scope}) do
-    incoming = issue_fixture(scope, %{title: "Incoming issue", severity: :medium, status: :incoming})
+    incoming =
+      issue_fixture(scope, %{title: "Incoming issue", severity: :medium, status: :incoming})
+
     accepted = issue_fixture(scope, %{title: "Accepted issue", severity: :critical})
     {:ok, accepted} = Issues.accept_issue(scope, accepted)
 
@@ -24,36 +28,41 @@ defmodule CodeMySpecWeb.IssuesLiveTest do
   describe "Index" do
     setup [:create_issue]
 
-    test "lists all issues", %{conn: conn, issue: issue} do
-      {:ok, _live, html} = live(conn, ~p"/app/issues")
+    test "lists all issues", %{project: project, conn: conn, issue: issue} do
+      {:ok, _live, html} = live(conn, ~p"/app/projects/#{project.id}/issues")
 
       assert html =~ "Issues"
       assert html =~ issue.title
     end
 
-    test "displays severity and status badges", %{conn: conn, issue: issue} do
-      {:ok, _live, html} = live(conn, ~p"/app/issues")
+    test "displays severity and status badges", %{project: project, conn: conn, issue: issue} do
+      {:ok, _live, html} = live(conn, ~p"/app/projects/#{project.id}/issues")
 
       assert html =~ to_string(issue.severity)
       assert html =~ to_string(issue.status)
     end
 
-    test "navigates to issue show page", %{conn: conn, issue: issue} do
-      {:ok, live_view, _html} = live(conn, ~p"/app/issues")
+    test "navigates to issue show page", %{project: project, conn: conn, issue: issue} do
+      {:ok, live_view, _html} = live(conn, ~p"/app/projects/#{project.id}/issues")
 
       assert live_view
              |> element("#issue-#{issue.id}")
              |> render_click()
 
-      assert_redirect(live_view, ~p"/app/issues/#{issue.id}")
+      assert_redirect(live_view, ~p"/app/projects/#{project.id}/issues/#{issue.id}")
     end
   end
 
   describe "Index filtering" do
     setup [:create_issues]
 
-    test "filters by status", %{conn: conn, incoming: incoming, accepted: accepted} do
-      {:ok, live_view, html} = live(conn, ~p"/app/issues")
+    test "filters by status", %{
+      project: project,
+      conn: conn,
+      incoming: incoming,
+      accepted: accepted
+    } do
+      {:ok, live_view, html} = live(conn, ~p"/app/projects/#{project.id}/issues")
 
       # Both visible initially
       assert html =~ incoming.title
@@ -69,8 +78,13 @@ defmodule CodeMySpecWeb.IssuesLiveTest do
       refute html =~ incoming.title
     end
 
-    test "filters by severity", %{conn: conn, incoming: incoming, accepted: accepted} do
-      {:ok, live_view, _html} = live(conn, ~p"/app/issues")
+    test "filters by severity", %{
+      project: project,
+      conn: conn,
+      incoming: incoming,
+      accepted: accepted
+    } do
+      {:ok, live_view, _html} = live(conn, ~p"/app/projects/#{project.id}/issues")
 
       # Filter to critical only
       html =
@@ -86,8 +100,8 @@ defmodule CodeMySpecWeb.IssuesLiveTest do
   describe "Show" do
     setup [:create_issue]
 
-    test "displays issue details", %{conn: conn, issue: issue} do
-      {:ok, _live, html} = live(conn, ~p"/app/issues/#{issue.id}")
+    test "displays issue details", %{project: project, conn: conn, issue: issue} do
+      {:ok, _live, html} = live(conn, ~p"/app/projects/#{project.id}/issues/#{issue.id}")
 
       assert html =~ issue.title
       assert html =~ issue.description
@@ -95,16 +109,20 @@ defmodule CodeMySpecWeb.IssuesLiveTest do
       assert html =~ to_string(issue.status)
     end
 
-    test "shows accept and dismiss actions for incoming issue", %{conn: conn, issue: issue} do
-      {:ok, _live, html} = live(conn, ~p"/app/issues/#{issue.id}")
+    test "shows accept and dismiss actions for incoming issue", %{
+      project: project,
+      conn: conn,
+      issue: issue
+    } do
+      {:ok, _live, html} = live(conn, ~p"/app/projects/#{project.id}/issues/#{issue.id}")
 
       assert html =~ "Accept"
       assert html =~ "Dismiss"
       refute html =~ "Resolve"
     end
 
-    test "accepts an incoming issue", %{conn: conn, issue: issue} do
-      {:ok, live_view, _html} = live(conn, ~p"/app/issues/#{issue.id}")
+    test "accepts an incoming issue", %{project: project, conn: conn, issue: issue} do
+      {:ok, live_view, _html} = live(conn, ~p"/app/projects/#{project.id}/issues/#{issue.id}")
 
       html =
         live_view
@@ -117,8 +135,8 @@ defmodule CodeMySpecWeb.IssuesLiveTest do
       assert html =~ "Resolve"
     end
 
-    test "dismisses an incoming issue with reason", %{conn: conn, issue: issue} do
-      {:ok, live_view, _html} = live(conn, ~p"/app/issues/#{issue.id}")
+    test "dismisses an incoming issue with reason", %{project: project, conn: conn, issue: issue} do
+      {:ok, live_view, _html} = live(conn, ~p"/app/projects/#{project.id}/issues/#{issue.id}")
 
       # Open dismiss form
       live_view
@@ -135,10 +153,10 @@ defmodule CodeMySpecWeb.IssuesLiveTest do
       assert html =~ "dismissed"
     end
 
-    test "resolves an accepted issue", %{conn: conn, scope: scope, issue: issue} do
+    test "resolves an accepted issue", %{project: project, conn: conn, scope: scope, issue: issue} do
       {:ok, issue} = Issues.accept_issue(scope, issue)
 
-      {:ok, live_view, html} = live(conn, ~p"/app/issues/#{issue.id}")
+      {:ok, live_view, html} = live(conn, ~p"/app/projects/#{project.id}/issues/#{issue.id}")
 
       assert html =~ "Resolve"
 
@@ -157,22 +175,27 @@ defmodule CodeMySpecWeb.IssuesLiveTest do
       assert html =~ "resolved"
     end
 
-    test "shows no actions for terminal states", %{conn: conn, scope: scope, issue: issue} do
+    test "shows no actions for terminal states", %{
+      project: project,
+      conn: conn,
+      scope: scope,
+      issue: issue
+    } do
       {:ok, issue} = Issues.accept_issue(scope, issue)
       {:ok, issue} = Issues.resolve_issue(scope, issue, "Done")
 
-      {:ok, _live, html} = live(conn, ~p"/app/issues/#{issue.id}")
+      {:ok, _live, html} = live(conn, ~p"/app/projects/#{project.id}/issues/#{issue.id}")
 
       refute html =~ "Accept"
       refute html =~ "Dismiss"
       refute html =~ "Resolve"
     end
 
-    test "back button navigates to index", %{conn: conn, issue: issue} do
-      {:ok, live_view, _html} = live(conn, ~p"/app/issues/#{issue.id}")
+    test "back button navigates to index", %{project: project, conn: conn, issue: issue} do
+      {:ok, live_view, _html} = live(conn, ~p"/app/projects/#{project.id}/issues/#{issue.id}")
 
       assert live_view
-             |> element("a[href='/app/issues']")
+             |> element("a[href='/app/projects/#{project.id}/issues']")
              |> has_element?()
     end
   end

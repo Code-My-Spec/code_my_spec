@@ -23,7 +23,7 @@ defmodule CodeMySpecSpex.Story687.Criterion5947Spex do
 
       when_ "the founder opens the files page", context do
         {:ok, files_live, html} =
-          live(context.conn, "/projects/#{context.project.name}/files")
+          live(context.conn, "/app/projects/#{context.project.id}/files")
 
         {:ok, Map.merge(context, %{files_live: files_live, html: html})}
       end

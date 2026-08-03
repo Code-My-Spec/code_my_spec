@@ -16,7 +16,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
      graph projector uses to lay out late_project nodes at the bottom band)
   """
 
-  alias CodeMySpec.Components.Registry, as: ComponentRegistry
+  alias CodeMySpec.Requirements.Registry, as: RequirementsRegistry
   alias CodeMySpec.Requirements.GraphCache
   alias CodeMySpec.Requirements.GraphFingerprint
   alias CodeMySpec.Requirements.Preloader
@@ -292,7 +292,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
 
   defp child_supports_def_name?(child, name) do
     child.type
-    |> ComponentRegistry.get_requirements_for_type()
+    |> RequirementsRegistry.get_requirements_for_type()
     |> Enum.any?(&(&1.name == name))
   end
 
@@ -310,7 +310,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   # have gone green. bab2f792 pointed these terminals straight at
   # qa_complete when the gate was removed; this puts the seam back.
   defp surface_exit_edge(surface, story, ctx, config) do
-    if ComponentRegistry.has_children?(surface.type) do
+    if RequirementsRegistry.has_children?(surface.type) do
       container_exit_edges(surface, story, ctx, config)
     else
       leaf_exit_edge(surface, story, config)
@@ -358,11 +358,11 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   defp child_terminal_name(parent_type, child_type, config) do
     child_own_names =
       child_type
-      |> ComponentRegistry.get_requirements_for_type()
+      |> RequirementsRegistry.get_requirements_for_type()
       |> MapSet.new(& &1.name)
 
     parent_type
-    |> ComponentRegistry.get_requirements_for_type()
+    |> RequirementsRegistry.get_requirements_for_type()
     |> filter_definitions_by_config(config)
     |> Enum.filter(&(&1.node_scope == :child and &1.name in child_own_names))
     |> List.last()
@@ -374,14 +374,14 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
 
   defp first_filtered_def(type, config) do
     type
-    |> ComponentRegistry.get_requirements_for_type()
+    |> RequirementsRegistry.get_requirements_for_type()
     |> filter_definitions_by_config(config)
     |> List.first()
   end
 
   defp last_filtered_def(type, config) do
     type
-    |> ComponentRegistry.get_requirements_for_type()
+    |> RequirementsRegistry.get_requirements_for_type()
     |> filter_definitions_by_config(config)
     |> List.last()
   end
@@ -478,7 +478,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
 
   defp dep_terminal_def(dep_comp, config) do
     dep_comp.type
-    |> ComponentRegistry.get_requirements_for_type()
+    |> RequirementsRegistry.get_requirements_for_type()
     |> filter_definitions_by_config(config)
     |> List.last()
   end
@@ -486,7 +486,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   defp cross_context_target(comp, dep_comp, config) do
     comp_defs =
       comp.type
-      |> ComponentRegistry.get_requirements_for_type()
+      |> RequirementsRegistry.get_requirements_for_type()
       |> filter_definitions_by_config(config)
 
     if siblings?(comp, dep_comp),
@@ -591,7 +591,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     # graph and the project shows 0/0 everywhere.
     container_ids =
       ctx.components
-      |> Enum.filter(&ComponentRegistry.has_children?(&1.type))
+      |> Enum.filter(&RequirementsRegistry.has_children?(&1.type))
       |> MapSet.new(& &1.id)
 
     children_by_parent =

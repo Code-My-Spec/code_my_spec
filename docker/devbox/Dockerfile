@@ -9,8 +9,14 @@
 # Build (BuildKit named contexts avoid vendoring cms_new into this repo):
 #
 #   docker build -f docker/devbox/Dockerfile \
-#     --build-context cms_new=../cms_new \
+#     --build-context cms_new=/abs/path/to/cms_new \
+#     --build-context cms_harness=/abs/path/to/cms_harness \
+#     --build-context cms_scan=/abs/path/to/cms_scan \
 #     -t codemyspec/devbox .
+#
+# Absolute paths for the contexts. A relative one is resolved against the build
+# context root, which inside a git worktree is the worktree — so `../cms_new`
+# finds nothing and the build fails somewhere much later than the mistake.
 #
 # Run (note the host port): a CodeMySpec developer almost certainly has
 # something on 4000/4003/4004 already — the dev server, cli_demo and dev_cli
@@ -110,6 +116,53 @@ RUN cd relay && go build -trimpath -ldflags "-s -w" -o cms-mcp-relay .
 RUN mix deps.get \
   && mix compile \
   && mix release code_my_spec_cli --path /opt/cms
+
+# =============================================================================
+# Stage 1b — the light harness
+#
+# A second, much smaller release. The light harness owns the disk and nothing
+# else: it watches a working copy, scans it, and ships the conclusions to the
+# server, which owns the database. So this stage has no Rust and no Go — no
+# NIFs to build and no relay to link, because the relay it uses is the one the
+# stage above already produced.
+#
+# cms_scan is copied as a *sibling* of cms_harness rather than into it: the
+# dependency is `{:cms_scan, path: "../cms_scan"}`, so the layout on disk is
+# part of the contract. Flattening them here would fail at deps.get with a
+# message about a missing path, several minutes into a build.
+FROM ${ELIXIR_IMAGE} AS harness-builder
+
+# Rust, because the harness embeds. Inference is local so file content never
+# crosses the wire, and that means Ortex — whose NIF crate compiles from source
+# when no precompiled artifact matches the platform. This stage started without
+# Rust, on the reasoning that the harness runs no analyzers of its own; adding
+# embeddings changed that.
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends \
+       build-essential ca-certificates cmake curl git pkg-config \
+  && rm -rf /var/lib/apt/lists/*
+
+RUN curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal
+ENV PATH="/root/.cargo/bin:${PATH}"
+
+ENV MIX_ENV=prod
+WORKDIR /src/cms_harness
+
+RUN mix local.hex --force && mix local.rebar --force
+
+COPY --from=cms_scan . /src/cms_scan
+COPY --from=cms_harness . /src/cms_harness
+
+# A named build context ignores this repo's .dockerignore, so whatever is in
+# those working copies comes along — including a `_build` and `deps` compiled on
+# the host. Beam files built by macOS in a Linux image fail in ways that read as
+# anything but "wrong architecture", so they are removed rather than trusted.
+RUN rm -rf /src/cms_harness/_build /src/cms_harness/deps \
+           /src/cms_scan/_build /src/cms_scan/deps
+
+RUN mix deps.get \
+  && mix compile \
+  && mix release --path /opt/cms_harness
 
 # =============================================================================
 # Stage 2 — the devbox itself
@@ -256,6 +309,11 @@ RUN cd /opt/cms_new \
 # Copied from the builder stage: only the assembled release lands here, not
 # the source or the Rust/Go toolchains that produced it.
 COPY --from=cms-builder /opt/cms /opt/cms
+
+# Both harnesses ship. Which one serves a project is a runtime choice
+# (CMS_LIGHT_HARNESS=1 in sprite.sh), not a separate image — a drill that can
+# only be run by rebuilding is a drill that does not get run.
+COPY --from=harness-builder /opt/cms_harness /opt/cms_harness
 
 # A wrapper rather than a symlink, matching the brew formula: the release
 # launcher resolves RELEASE_ROOT relative to its own path, and a symlink in

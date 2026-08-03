@@ -118,7 +118,7 @@ defmodule CodeMySpec.Personas do
   """
   @spec persona_folder(String.t()) :: String.t()
   def persona_folder(slug) when is_binary(slug) do
-    ".code_my_spec/personas/#{slug}"
+    Path.join(CodeMySpec.Paths.personas_dir(), slug)
   end
 
   @doc "Returns the summary.md path for the given slug."

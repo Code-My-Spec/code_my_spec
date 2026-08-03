@@ -6,6 +6,7 @@ defmodule CodeMySpec.AgentTasks.PersonaResearch do
   """
 
   alias CodeMySpec.Requirements.{CheckerResult, PersonasChecker}
+  alias CodeMySpec.Users.Scope
 
   @spec analyzers() :: [atom()]
   def analyzers, do: []
@@ -20,9 +21,26 @@ defmodule CodeMySpec.AgentTasks.PersonaResearch do
   end
 
   @spec command(term(), map()) :: {:ok, String.t()}
-  def command(_scope, _task) do
-    {:ok, prompt()}
+  def command(scope, _task) do
+    {:ok, prompt() <> outstanding_section(scope)}
   end
+
+  # Name what is actually missing, rather than making the agent rediscover it.
+  #
+  # The prompt used to say "produce one persona" and stop there, so an agent
+  # arriving without conversation history had to call `list_personas`, guess
+  # which one was unresearched, and hope. `PersonasChecker` already knows —
+  # it is the thing about to judge this task — so ask it and print its answer.
+  # Naming the checker's own gaps, rather than inferring from `type: proto`,
+  # also means the prompt cannot drift from the bar it is graded against.
+  defp outstanding_section(%Scope{} = scope) do
+    case PersonasChecker.complete?(scope, nil) do
+      {false, %{reason: reason}} -> "\n## Outstanding\n\n#{reason}\n"
+      _ -> ""
+    end
+  end
+
+  defp outstanding_section(_scope), do: ""
 
   @spec evaluate(term(), map()) ::
           {:ok, :valid} | {:ok, :invalid, String.t()}

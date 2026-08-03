@@ -16,7 +16,7 @@ defmodule CodeMySpecSpex.Fixtures do
   """
   use Boundary,
     top_level?: true,
-    deps: [CodeMySpec, CodeMySpec.Environments, CodeMySpec.Repo, CodeMySpecTest]
+    deps: [CodeMySpec, CodeMySpec.Environments, CodeMySpec.Repo, CodeMySpecTest, CodeMySpecWeb]
 
   alias CodeMySpec.{
     AccountsFixtures,
@@ -147,7 +147,9 @@ defmodule CodeMySpecSpex.Fixtures do
           if Enum.any?(records, &(&1["status"] == "verified")) do
             {:halt, :ok}
           else
-            if rem(attempt, 5) == 0, do: CodeMySpec.Provisioning.Resend.verify_domain(scope, domain_id)
+            if rem(attempt, 5) == 0,
+              do: CodeMySpec.Provisioning.Resend.verify_domain(scope, domain_id)
+
             # Through `Wait`, like every other pause in the provisioning path.
             # A direct sleep here waited three seconds per attempt on replay
             # too, where the answer is already recorded and there is nothing to
@@ -220,7 +222,11 @@ defmodule CodeMySpecSpex.Fixtures do
 
   @doc "Remove what `publish_all_records_except_dkim/2` created."
   @spec remove_published_records(Scope.t(), map()) :: :ok
-  def remove_published_records(scope, %{domain_id: domain_id, zone_id: zone_id, published: published}) do
+  def remove_published_records(scope, %{
+        domain_id: domain_id,
+        zone_id: zone_id,
+        published: published
+      }) do
     alias CodeMySpec.Provisioning.{Cloudflare, Resend}
 
     with {:ok, records} <- Cloudflare.list_dns_records(scope, zone_id) do
@@ -370,8 +376,7 @@ defmodule CodeMySpecSpex.Fixtures do
     CodeMySpec.Integrations.IntegrationRepository.upsert_integration(scope, provider, %{
       access_token: Keyword.get(opts, :access_token, "spex-placeholder-token"),
       refresh_token: Keyword.get(opts, :refresh_token, "spex-placeholder-refresh"),
-      expires_at:
-        Keyword.get(opts, :expires_at, DateTime.add(DateTime.utc_now(), 3600, :second)),
+      expires_at: Keyword.get(opts, :expires_at, DateTime.add(DateTime.utc_now(), 3600, :second)),
       granted_scopes: Keyword.get(opts, :granted_scopes, []),
       provider_metadata: %{
         provider_user_id: "spex",
@@ -389,8 +394,12 @@ defmodule CodeMySpecSpex.Fixtures do
   end
 
   def generate_user_session_token(user), do: Users.generate_user_session_token(user)
-  def select_active_account(scope, account_id), do: UserPreferences.select_active_account(scope, account_id)
-  def select_active_project(scope, project_id), do: UserPreferences.select_active_project(scope, project_id)
+
+  def select_active_account(scope, account_id),
+    do: UserPreferences.select_active_account(scope, account_id)
+
+  def select_active_project(scope, project_id),
+    do: UserPreferences.select_active_project(scope, project_id)
 
   defdelegate google_integration_fixture(user, attrs \\ %{}), to: IntegrationsFixtures
 
@@ -440,6 +449,315 @@ defmodule CodeMySpecSpex.Fixtures do
   def notify_file_changed(%Scope{} = scope, rel_path) when is_binary(rel_path) do
     ProjectSync.Sync.sync_path(scope, Path.join(scope.cwd, rel_path))
   end
+
+  @doc """
+  The harness's side of the wire, for Story 987.
+
+  Scans the working copy with the real `Scanner.observe/2` — the same function
+  the harness runs, kept identical by cms_scan's drift test — serialises the
+  result the way the harness does, and pushes it through the **real channel
+  handler**.
+
+  Going through the channel is the whole point. An earlier version of this
+  bridge called `FileSync.reconcile/2` and `ComponentSync.sync_from_files/1`
+  directly, which meant it reimplemented the behaviour under test: the spex
+  passed against code where the channel never called `ComponentSync` at all, so
+  they proved the bridge worked and nothing else.
+
+  The read model defaults to **empty**, because that is what a sprite holds. It
+  fetches once on join, before the project has any stories or components, so
+  every ownership decision made from the harness's copy is made against nothing.
+  Passing a populated one would hide exactly the bug this story is about.
+  """
+  def deliver_manifest(%Scope{} = scope, opts \\ []) do
+    read_model = Keyword.get(opts, :read_model, %CodeMySpec.Files.Scanner.ReadModel{})
+
+    observations =
+      scope.environment
+      |> CodeMySpec.Files.Scanner.observe(read_model)
+      |> Enum.map(&serialize_observation/1)
+
+    socket = %Phoenix.Socket{assigns: %{scope: scope}}
+
+    {:reply, reply, _socket} =
+      CodeMySpecWeb.HarnessProjectChannel.handle_in(
+        "observations",
+        %{"observations" => observations},
+        socket
+      )
+
+    reply
+  end
+
+  @doc """
+  Deliver a completed model turn the way a sprite's harness does.
+
+  The proxy that produces this lives in `cms_harness` and runs on the sprite,
+  so a spec here cannot dispatch to it — and should not want to. What the
+  server owns is what it does with a turn once it arrives, which is exactly
+  what arrives on this channel. Same reasoning as `deliver_manifest/2`.
+  """
+  def record_turn(%Scope{} = scope, request, response, opts \\ []) do
+    socket = %Phoenix.Socket{assigns: %{scope: scope}}
+
+    {:noreply, _socket} =
+      CodeMySpecWeb.HarnessProjectChannel.handle_in(
+        "record_turn",
+        %{
+          "session_id" => Keyword.get(opts, :session_id, "sprite"),
+          "agent_role" => Keyword.get(opts, :agent_role, "main"),
+          "request" => request,
+          "response" => response
+        },
+        socket
+      )
+
+    :ok
+  end
+
+  @doc """
+  Report a turn whose recording fails.
+
+  Exercises the recorder directly rather than through the channel: the failure
+  under test is the store's, and the channel has no opinion about it.
+  """
+  def record_turn_with_broken_store(%Scope{} = scope, request, response) do
+    CodeMySpec.AgentHarness.ConversationRecorder.record_turn(
+      scope.active_account_id,
+      scope.active_project_id,
+      "sprite",
+      request,
+      response,
+      "main",
+      store: :unwritable
+    )
+  end
+
+  @doc "An Anthropic-shaped response body, for a spec that needs one."
+  def model_response(blocks) when is_list(blocks) do
+    %{
+      "id" => "msg_spex",
+      "type" => "message",
+      "role" => "assistant",
+      "model" => "claude-opus-5",
+      "content" => blocks,
+      "stop_reason" => "end_turn"
+    }
+  end
+
+  def text_block(text), do: %{"type" => "text", "text" => text}
+
+  def tool_block(name, input),
+    do: %{"type" => "tool_use", "id" => "toolu_spex", "name" => name, "input" => input}
+
+  def user_request(content) do
+    %{
+      "model" => "claude-opus-5",
+      "max_tokens" => 256,
+      "messages" => [%{"role" => "user", "content" => content}]
+    }
+  end
+
+  # -- Migration (Story 991) --------------------------------------------------
+
+  @doc """
+  Build the payload a local harness sends when migrating a project.
+
+  Local ids are whatever the caller says they are — the point of the wire
+  format is that the cloud does not trust them, so a spec is free to use small
+  integers and strings that make the references readable.
+  """
+  def migration_payload(opts \\ []) do
+    %{
+      "stories" => stringify_all(Keyword.get(opts, :stories, [])),
+      "rules" => stringify_all(Keyword.get(opts, :rules, [])),
+      "criteria" => stringify_all(Keyword.get(opts, :criteria, [])),
+      "personas" => stringify_all(Keyword.get(opts, :personas, [])),
+      "persona_stories" => stringify_all(Keyword.get(opts, :persona_stories, [])),
+      "epics" => stringify_all(Keyword.get(opts, :epics, []))
+    }
+  end
+
+  @doc """
+  Author a story the way Sam does, so a spec can migrate real records rather
+  than a payload it wrote itself.
+  """
+  def authored_story(%Scope{} = scope, title, opts \\ []) do
+    {:ok, story} =
+      CodeMySpec.Stories.create_story(scope, %{
+        title: title,
+        story: Keyword.get(opts, :story, "As Sam, I want #{title}, so that reasons.")
+      })
+
+    story
+  end
+
+  @doc """
+  A second project to migrate into.
+
+  Story 991 has two ends and they are different projects. A spec that uses one
+  project as both cannot observe anything the migration does — the rows it
+  reads and the rows it writes are the same rows.
+  """
+  def other_project_scope(%Scope{} = scope, name) do
+    project = CodeMySpec.ProjectsFixtures.project_fixture(scope, %{name: name})
+    %{scope | active_project: project, active_project_id: project.id}
+  end
+
+  @doc "Read the local project the way the migration does."
+  def exported(%Scope{} = scope), do: CodeMySpec.Migration.export_project(scope)
+
+  @doc "The kinds the cloud recomputes instead of carrying over."
+  def derived_kinds, do: CodeMySpec.Migration.derived_kinds()
+
+  @doc "Read a story back off the local harness."
+  def local_story(%Scope{} = scope, id), do: CodeMySpec.Stories.get_story(scope, id)
+
+  @doc "Put an account on a paid plan — story 991's precondition."
+  def paid(%Scope{} = scope) do
+    account =
+      scope.active_account |> Ecto.Changeset.change(%{plan: :paid}) |> CodeMySpec.Repo.update!()
+
+    %{scope | active_account: account}
+  end
+
+  @doc "Migrate a project the way the local harness does — through the endpoint."
+  def migrate(%Scope{} = scope, payload) do
+    Phoenix.ConnTest.build_conn()
+    |> Plug.Conn.put_req_header("content-type", "application/json")
+    |> Plug.Conn.assign(:current_scope, scope)
+    |> CodeMySpecWeb.MigrationsController.create(payload)
+  end
+
+  def cloud_stories(%Scope{} = scope) do
+    case CodeMySpec.Stories.list_project_stories(scope) do
+      {:ok, stories} -> stories
+      stories when is_list(stories) -> stories
+      _ -> []
+    end
+  end
+
+  def cloud_story(%Scope{} = scope, title),
+    do: scope |> cloud_stories() |> Enum.find(&(&1.title == title))
+
+  def cloud_rule(%Scope{} = scope, story, statement) do
+    scope
+    |> CodeMySpec.BddRules.list_rules_for_story(story.id)
+    |> Enum.find(&(&1.statement == statement))
+  end
+
+  def cloud_criteria(%Scope{} = scope, story),
+    do: CodeMySpec.AcceptanceCriteria.list_story_criteria(scope, story.id)
+
+  defp stringify_all(records), do: Enum.map(records, &stringify/1)
+
+  defp stringify(record) when is_map(record),
+    do: Map.new(record, fn {k, v} -> {to_string(k), v} end)
+
+  defp serialize_observation(entry) do
+    %{
+      "path" => entry.path,
+      "role" => to_string(entry.role),
+      "mtime" => entry.mtime && DateTime.to_iso8601(entry.mtime),
+      "size" => entry.size,
+      "fingerprint" => entry.fingerprint,
+      "valid" => entry.valid,
+      "validation_errors" => entry.validation_errors || %{},
+      "component_id" => entry[:component_id],
+      "story_id" => entry[:story_id]
+    }
+  end
+
+  # Paths and domain calls a spex needs. Re-exported rather than referenced
+  # directly, because `CodeMySpecSpex` may not depend on `CodeMySpec` — the
+  # bridge is the sanctioned crossing.
+  defdelegate qa_plan_path(), to: CodeMySpec.Paths, as: :qa_plan
+  defdelegate qa_journey_plan_path(), to: CodeMySpec.Paths, as: :qa_journey_plan
+  defdelegate qa_journey_result_path(), to: CodeMySpec.Paths, as: :qa_journey_result
+  defdelegate persona_summary_path(slug), to: CodeMySpec.Personas, as: :summary_path
+  defdelegate persona_sources_path(slug), to: CodeMySpec.Personas, as: :sources_path
+  defdelegate create_persona(scope, attrs), to: CodeMySpec.Personas
+  defdelegate list_components(scope), to: CodeMySpec.Components
+
+  @doc "Attempt to write a component's stub spec through the scope's environment."
+  defdelegate write_component_stub(scope, attrs),
+    to: CodeMySpec.Architecture.SpecStub,
+    as: :write_for_scope
+
+  @doc """
+  Whether a named requirement is satisfied for an entity, read off the computed
+  graph — the same graph `get_next_requirement` serves an agent from.
+
+  Read from the whole graph rather than a single check because that is what an
+  agent sees: a checker returning true while the graph still lists the
+  requirement open is exactly the disagreement this story exists to catch.
+  """
+  def requirement_satisfied?(%Scope{} = scope, name, entity_type, entity_id) do
+    scope
+    |> CodeMySpec.Requirements.compute_all()
+    |> Enum.any?(fn r ->
+      to_string(r.name) == name and
+        to_string(r.entity_type) == to_string(entity_type) and
+        to_string(r.entity_id) == to_string(entity_id) and
+        r.satisfied
+    end)
+  end
+
+  @doc """
+  The full computed requirement, not just whether it is satisfied.
+
+  Story 988 is about the *shape* of a verdict — whether an agent can tell "not
+  yet known" from "not done" — so a boolean is exactly the thing that cannot be
+  asserted on.
+  """
+  def requirement(%Scope{} = scope, name, entity_type, entity_id) do
+    scope
+    |> CodeMySpec.Requirements.compute_all()
+    |> Enum.find(fn r ->
+      to_string(r.name) == name and
+        to_string(r.entity_type) == to_string(entity_type) and
+        to_string(r.entity_id) == to_string(entity_id)
+    end)
+  end
+
+  @doc "Record a problem against a project, as an analyzer's reconciler would."
+  def record_problem(%Scope{} = scope, source, attrs \\ %{}) do
+    CodeMySpec.Problems.create_problems(scope, [
+      Map.merge(
+        %{
+          source: source,
+          severity: :error,
+          message: "nesting too deep",
+          file_path: "lib/my_app/accounts.ex",
+          category: "readability",
+          line: 61
+        },
+        attrs
+      )
+    ])
+  end
+
+  @doc """
+  Set an analyzer's blocking mode.
+
+  `:block_all` isolates the question a freshness scenario is asking. The default
+  is `:block_changed`, which additionally scopes blocking to files touched this
+  turn — real behaviour, and a different rule; leaving it on would make a
+  freshness scenario pass or fail for reasons that have nothing to do with
+  freshness.
+  """
+  def set_analyzer_mode(%Scope{} = scope, field, mode) do
+    CodeMySpec.Configurations.get_or_create(scope)
+    {:ok, config} = CodeMySpec.Configurations.update(scope, %{field => mode})
+    config
+  end
+
+  @doc "The stop hook's blocking decision, as the hook itself asks for it."
+  def validate_stop(%Scope{} = scope), do: CodeMySpec.Validation.validate_stop(scope, nil)
+
+  @doc "Files the harness scanned but could classify into no role."
+  def unclassified_files(%Scope{} = scope),
+    do: CodeMySpec.Files.Scanner.unclassified(scope.environment)
 
   # -- Project Setup (Story 124) --
   defdelegate satisfy_setup_steps(env, steps), to: SetupFixtures, as: :satisfy
@@ -757,7 +1075,6 @@ defmodule CodeMySpecSpex.Fixtures do
   full agent run.
   """
   defdelegate session_fixture(scope, attrs \\ %{}), to: SessionsFixtures
-
 
   # -- Sessions (QA spex fixture setup, Stories 726/727) --
   @doc """

@@ -57,7 +57,6 @@ defmodule CodeMySpec.Files.FileSync do
   # to FileSync — `deps/`, `_build/`, `node_modules/`, `priv/`, `assets/`, `.git/`
   # are never touched. Keep in sync with `classify/1`.
 
-
   @doc """
   Sync all trackable files from the filesystem into the DB.
 
@@ -93,54 +92,21 @@ defmodule CodeMySpec.Files.FileSync do
     # One read model for the whole pass. The pre-split code queried components
     # twice — once for ownership, once for validation — and the config flag
     # separately; scanning now states what it needs and gets it once.
-    read_model = Scanner.read_model(scope)
+    read_model = Files.read_model(scope)
 
-    file_entries = Scanner.stream_files(env) |> Enum.to_list()
+    observations = Scanner.observe(env, read_model)
 
     scan_ms = System.monotonic_time(:millisecond) - start
 
-    # Snapshot existing rows up front so we can compute fingerprint diffs
-    # (real "changed paths") and capture the role of files that are about
-    # to be removed (so embedding cleanup knows the source/path tuple).
-    existing_records = Files.list_files(scope)
-    existing_by_path = Map.new(existing_records, &{&1.path, &1})
+    %{
+      upserted: upserted,
+      removed: removed,
+      changed_entries: changed_entries,
+      removed_records: removed_records
+    } = reconcile(scope, observations)
 
-    {upserted, changed_entries} =
-      case file_entries do
-        [] ->
-          {0, []}
-
-        _ ->
-          validated_entries =
-            file_entries
-            |> Scanner.resolve_owners(read_model)
-            |> then(&Scanner.fingerprint_entries(env, &1))
-            |> Enum.map(
-              &Scanner.validate_entry(&1, env, read_model.component_by_id, read_model.strict?)
-            )
-
-          changed = changed_entries(validated_entries, existing_by_path)
-
-          {count, _} = Files.upsert_files(scope, validated_entries)
-          {count, changed}
-      end
-
+    file_entries = observations
     validate_ms = System.monotonic_time(:millisecond) - start - scan_ms
-
-    # Remove files no longer on disk + their orphaned problems (otherwise
-    # stale failures from deleted files keep blocking stop hooks).
-    current_paths = Enum.map(file_entries, & &1.path)
-    current_path_set = MapSet.new(current_paths)
-
-    removed_records =
-      Enum.reject(existing_records, &MapSet.member?(current_path_set, &1.path))
-
-    {removed, _} = Files.delete_removed(scope, current_paths)
-    {:ok, orphaned} = Problems.clear_problems_for_missing_files(scope, current_paths)
-
-    if orphaned > 0 do
-      Logger.info("[FileSync] Cleared #{orphaned} orphaned problem(s) from deleted files")
-    end
 
     if embed?, do: sync_embeddings(scope, env, changed_entries, removed_records)
 
@@ -162,6 +128,84 @@ defmodule CodeMySpec.Files.FileSync do
        changed_paths: changed_paths,
        total_files: length(file_entries)
      }}
+  end
+
+  @doc """
+  Turn observations into File rows.
+
+  The interpretation half of sync. Takes what `Files.Scanner` saw — path, role,
+  fingerprint, validity, owning component or story, and no file content — and
+  reconciles it against what is stored: upserting what is there, removing what
+  is not, and clearing problems belonging to files that no longer exist.
+
+  Split out because the two halves need different machines. Observing has to
+  happen where the files are; this needs only the database, and a harness that
+  holds none can send its observations here instead of writing rows itself.
+
+  Note that it takes the *whole* observation set rather than a delta. That is
+  what lets it tell a deletion from an omission — a stream of per-file updates
+  cannot, and would silently retain rows for files that had gone.
+  """
+  @spec reconcile(Scope.t(), [map()]) :: map()
+  def reconcile(%Scope{} = scope, observations) when is_list(observations) do
+    # Snapshot existing rows up front so we can compute fingerprint diffs
+    # (real "changed paths") and capture the role of files that are about
+    # to be removed (so embedding cleanup knows the source/path tuple).
+    existing_records = Files.list_files(scope)
+    existing_by_path = Map.new(existing_records, &{&1.path, &1})
+
+    # Ownership is decided here, against this server's live domain, and whatever
+    # the harness worked out is discarded.
+    #
+    # The harness fetches its read model once, when it joins the channel. A
+    # sprite joins before the project has any stories, so `story_ids` is empty
+    # for the rest of the session — and `resolve_owners/2` refuses to link a
+    # spex file to a story the read model has never heard of, which is the right
+    # rule against a *fresh* read model and exactly wrong against a stale one.
+    #
+    # Drill 12 wrote 32 BDD spec files across 9 stories. All 32 synced; not one
+    # carried a story id, so `bdd_specs_exist` could not pass for any story, and
+    # that gates all 69 `implementation_file` requirements behind it. The agent
+    # read the frozen graph as a dead file watcher — the fourth run to reach for
+    # that explanation and the fourth time it was something else.
+    #
+    # Re-resolving here costs one read-model build per manifest and removes the
+    # whole class: the harness reports what a file *is*, and the server, which
+    # owns the database, decides what it *belongs to*.
+    observations = Scanner.resolve_owners(observations, Files.read_model(scope))
+
+    {upserted, changed} =
+      case observations do
+        [] ->
+          {0, []}
+
+        _ ->
+          changed = changed_entries(observations, existing_by_path)
+          {count, _} = Files.upsert_files(scope, observations)
+          {count, changed}
+      end
+
+    # Remove files no longer on disk + their orphaned problems (otherwise
+    # stale failures from deleted files keep blocking stop hooks).
+    current_paths = Enum.map(observations, & &1.path)
+    current_path_set = MapSet.new(current_paths)
+
+    removed_records =
+      Enum.reject(existing_records, &MapSet.member?(current_path_set, &1.path))
+
+    {removed, _} = Files.delete_removed(scope, current_paths)
+    {:ok, orphaned} = Problems.clear_problems_for_missing_files(scope, current_paths)
+
+    if orphaned > 0 do
+      Logger.info("[FileSync] Cleared #{orphaned} orphaned problem(s) from deleted files")
+    end
+
+    %{
+      upserted: upserted,
+      removed: removed,
+      changed_entries: changed,
+      removed_records: removed_records
+    }
   end
 
   # Entries whose fingerprint differs from the existing DB row (or that
@@ -210,9 +254,7 @@ defmodule CodeMySpec.Files.FileSync do
 
     elapsed = System.monotonic_time(:millisecond) - start
 
-    Logger.info(
-      "[FileSync] embed_only: #{length(embeddable_records)} files in #{elapsed}ms"
-    )
+    Logger.info("[FileSync] embed_only: #{length(embeddable_records)} files in #{elapsed}ms")
 
     {:ok, %{embedded: length(embeddable_records), elapsed_ms: elapsed}}
   end
@@ -327,7 +369,7 @@ defmodule CodeMySpec.Files.FileSync do
           {0, []}
 
         _ ->
-          read_model = Scanner.read_model(scope)
+          read_model = Files.read_model(scope)
 
           entries_with_owners = Scanner.resolve_owners(mtime_changed_entries, read_model)
           entries_with_fingerprints = Scanner.fingerprint_entries(env, entries_with_owners)
@@ -476,7 +518,7 @@ defmodule CodeMySpec.Files.FileSync do
         entry =
           cond do
             owner_bearing_role?(role) ->
-              read_model = Scanner.read_model(scope)
+              read_model = Files.read_model(scope)
               [entry] = Scanner.resolve_owners([entry], read_model)
               [entry] = Scanner.fingerprint_entries(env, [entry])
               Scanner.validate_entry(entry, env, read_model.component_by_id, read_model.strict?)
@@ -492,7 +534,12 @@ defmodule CodeMySpec.Files.FileSync do
 
             true ->
               [entry] = Scanner.fingerprint_entries(env, [entry])
-              entry |> Map.put(:component_id, nil) |> Map.put(:story_id, nil) |> Map.put(:valid, true) |> Map.put(:validation_errors, nil)
+
+              entry
+              |> Map.put(:component_id, nil)
+              |> Map.put(:story_id, nil)
+              |> Map.put(:valid, true)
+              |> Map.put(:validation_errors, nil)
           end
 
         embedding_changed_entries =
@@ -558,5 +605,5 @@ defmodule CodeMySpec.Files.FileSync do
 
   @doc false
   def resolve_owners(scope, entries),
-    do: Scanner.resolve_owners(entries, Scanner.read_model(scope))
+    do: Scanner.resolve_owners(entries, Files.read_model(scope))
 end

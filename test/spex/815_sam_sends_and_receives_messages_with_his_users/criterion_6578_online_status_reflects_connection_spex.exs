@@ -9,7 +9,7 @@ defmodule CodeMySpecSpex.Story815.Criterion6578Spex do
     * `CodeMySpecWeb.WidgetSocket` + `CodeMySpecWeb.ConversationChannel` — a
       user's presence is tracked via `CodeMySpecWeb.Presence` while their
       widget is connected.
-    * `CodeMySpecWeb.InboxLive` at "/app/inbox" — each conversation shows the
+    * `CodeMySpecWeb.InboxLive` at "/app/projects/:project_id/inbox" — each conversation shows the
       user's live online/offline status, updated over PubSub without a reload.
       Status text is "Online" / "Offline".
   """
@@ -28,7 +28,7 @@ defmodule CodeMySpecSpex.Story815.Criterion6578Spex do
   spex "The account sees a user's live online status" do
     scenario "Online status reflects connection" do
       given_ "the operator has the inbox open and the user is connected", context do
-        {:ok, view, _html} = live(context.conn, "/app/inbox")
+        {:ok, view, _html} = live(context.conn, "/app/projects/#{context.project.id}/inbox")
 
         {:ok, _reply, channel} =
           CodeMySpecWeb.WidgetSocket

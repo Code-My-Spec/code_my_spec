@@ -36,8 +36,8 @@ defmodule CodeMySpecLocalWeb.ProjectsLive.Form do
     |> assign(:form, to_form(change_project(socket, project)))
   end
 
-  defp apply_action(socket, :edit, %{"project_name" => name}) do
-    case Projects.get_project_by_name(name) do
+  defp apply_action(socket, :edit, %{"id" => name}) do
+    case Projects.get_project_by_id(name) do
       {:ok, %Project{} = project} ->
         socket
         |> assign(:page_title, "Edit #{project.name}")
@@ -47,7 +47,7 @@ defmodule CodeMySpecLocalWeb.ProjectsLive.Form do
       {:error, :not_found} ->
         socket
         |> put_flash(:error, "Project not found")
-        |> push_navigate(to: ~p"/projects")
+        |> push_navigate(to: ~p"/app/projects")
     end
   end
 
@@ -69,7 +69,7 @@ defmodule CodeMySpecLocalWeb.ProjectsLive.Form do
         {:noreply,
          socket
          |> put_flash(:info, "Project created")
-         |> push_navigate(to: ~p"/projects/#{project.name}")}
+         |> push_navigate(to: ~p"/app/projects/#{project.id}")}
 
       {:error, %Ecto.Changeset{} = changeset} ->
         {:noreply, assign(socket, form: to_form(changeset))}
@@ -82,7 +82,7 @@ defmodule CodeMySpecLocalWeb.ProjectsLive.Form do
         {:noreply,
          socket
          |> put_flash(:info, "Project updated")
-         |> push_navigate(to: ~p"/projects/#{project.name}")}
+         |> push_navigate(to: ~p"/app/projects/#{project.id}")}
 
       {:error, %Ecto.Changeset{} = changeset} ->
         {:noreply, assign(socket, form: to_form(changeset))}
@@ -153,7 +153,7 @@ defmodule CodeMySpecLocalWeb.ProjectsLive.Form do
           <.button type="submit" phx-disable-with="Saving..." class="btn btn-primary">
             Save project
           </.button>
-          <.link navigate={~p"/projects"} class="btn btn-ghost">Cancel</.link>
+          <.link navigate={~p"/app/projects"} class="btn btn-ghost">Cancel</.link>
         </div>
       </.form>
     </Layouts.app>

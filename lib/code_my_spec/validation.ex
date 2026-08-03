@@ -95,8 +95,30 @@ defmodule CodeMySpec.Validation do
     result
   end
 
-  defp do_validate_stop(%Scope{cwd: nil}, _task, _opts) do
+  # No project bound yet — a stop hook firing before `init_project`. There is
+  # nothing to check and nothing to check it against.
+  defp do_validate_stop(%Scope{active_project_id: nil}, _task, _opts) do
     {:ok, %{changed_files: [], analysis: %{enqueued: [], memoized: []}}}
+  end
+
+  # No working copy on this machine. Until the light harness that is a project
+  # nobody can look at, and this clause answered `{:ok, …}` — no analysis, no
+  # blocking check, an unconditional allow. That was right while the only way to
+  # reach it was a caller with no project on disk anywhere. It stopped being
+  # right the moment a harness started holding the disk on the other end of a
+  # channel, because the stop hook then arrived here on every single agent turn
+  # and got an answer computed from nothing.
+  #
+  # So the question is no longer "is there a working copy here" but "is there
+  # one anywhere I can reach". A harness holding this project is the yes.
+  defp do_validate_stop(%Scope{cwd: nil} = scope, task, opts) do
+    case Analysis.remote_executor(scope) do
+      {:ok, _harness} ->
+        remote_validate_stop(scope, task, opts)
+
+      :none ->
+        {:ok, %{changed_files: [], analysis: %{enqueued: [], memoized: []}}}
+    end
   end
 
   defp do_validate_stop(%Scope{cwd: cwd} = scope, task, opts) do
@@ -120,6 +142,62 @@ defmodule CodeMySpec.Validation do
 
     with :ok <- check_blocking_problems(scope, changed_files, config) do
       {:ok, %{changed_files: changed_files, analysis: analysis}}
+    end
+  end
+
+  # The same pipeline, minus the two steps that need a disk here.
+  #
+  # `FileSync.sync_changed/2` is skipped because the harness has already done
+  # its equivalent: it scanned its own working copy and reconciled the whole
+  # manifest over the channel, so the File rows this reads are current with the
+  # disk by a different route. `StaticAnalysis.run_analyzers/5` — the in-process
+  # validators — is skipped because those read file contents, which never cross
+  # the wire.
+  #
+  # Everything that is left is database work and runs unchanged: the same
+  # changed-file scoping, the same configuration modes, the same
+  # `Analysis.ensure_stale_runs/3` (dispatched to the harness rather than to a
+  # local queue), and the same blocking check. The point is that the *decision*
+  # is identical; only where the tools ran differs.
+  defp remote_validate_stop(scope, task, opts) do
+    changed_files = remote_changed_files(scope, task, opts)
+    config = Configurations.get_or_create(scope)
+
+    analysis = run_pipeline(scope, task, changed_files, config, opts)
+
+    if Keyword.get(opts, :await, false), do: Analysis.await_all(scope)
+
+    with :ok <- check_blocking_problems(scope, changed_files, config) do
+      {:ok, %{changed_files: changed_files, analysis: analysis}}
+    end
+  end
+
+  # With a task, the same answer the local path gives: every File row whose
+  # mtime moved since the task started. mtime comes off the harness's manifest,
+  # so this needs no disk.
+  defp remote_changed_files(scope, %{started_at: started_at}, _opts)
+       when not is_nil(started_at) do
+    Files.changed_since(scope, started_at)
+  end
+
+  # Without a task, the local path uses the paths its own scan found dirty.
+  # There is no scan here, so the equivalent is what this session actually
+  # wrote — PostToolUse records every Write/Edit, and the harness sends those
+  # paths project-relative precisely so they resolve to File rows here.
+  #
+  # Empty means the agent wrote nothing this session, which is a quiet stop and
+  # is treated as one. It does not mean "could not tell": a session that edited
+  # something has those edits recorded, and a project with no harness never
+  # reaches this function at all.
+  defp remote_changed_files(scope, _task, opts) do
+    case Keyword.get(opts, :session_id) do
+      session_id when is_binary(session_id) ->
+        session_id
+        |> attributed_paths(Keyword.get(opts, :agent_id))
+        |> then(&Files.get_by_paths(scope, &1))
+
+      _ ->
+        []
     end
   end
 
@@ -246,6 +324,8 @@ defmodule CodeMySpec.Validation do
   defp check_blocking_problems(scope, changed_files, config) do
     sources = active_blocking_sources(config)
 
+    # Problems are an eventually consistent projection: block on what is
+    # recorded, report staleness, let the run this kicks off replace it.
     problems_by_source =
       scope
       |> Problems.list_project_problems(sources: sources)
@@ -261,8 +341,13 @@ defmodule CodeMySpec.Validation do
       specs_ready_story_ids: specs_ready_story_ids(scope)
     }
 
+    stale_sources =
+      problems_by_source
+      |> Map.keys()
+      |> Enum.reject(&Analysis.fresh?(scope, &1))
+
     {blocking, advisory} = partition_problems(problems_by_source, config, scope_context)
-    decide(blocking, advisory)
+    decide(blocking, advisory, stale_sources)
   end
 
   defp active_blocking_sources(config) do
@@ -297,8 +382,7 @@ defmodule CodeMySpec.Validation do
         {block_acc ++ block, advisory_acc ++ advisory ++ unenforced}
       end)
 
-    {compiler_block ++ configurable_block,
-     compiler_advisory ++ configurable_advisory}
+    {compiler_block ++ configurable_block, compiler_advisory ++ configurable_advisory}
   end
 
   defp partition_compiler(problems, :block), do: {problems, []}
@@ -352,15 +436,19 @@ defmodule CodeMySpec.Validation do
     &(&1.component_id in ids)
   end
 
-  defp decide([], []), do: :ok
+  defp decide([], [], _stale), do: :ok
 
-  defp decide([], advisory) do
+  defp decide([], advisory, _stale) do
     Logger.warning("[Validation] #{length(advisory)} advisory problem(s) not blocking")
     :ok
   end
 
-  defp decide(blocking, advisory) do
-    {:error, Problems.render_stop_response(blocking, advisory)}
+  defp decide(blocking, advisory, stale_sources) do
+    if stale_sources != [] do
+      Logger.info("[Validation] blocking on stale sources: #{Enum.join(stale_sources, ", ")}")
+    end
+
+    {:error, Problems.render_stop_response(blocking, advisory, stale_sources: stale_sources)}
   end
 
   defp log_changed_files(changed_files) do

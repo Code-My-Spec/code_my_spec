@@ -223,14 +223,18 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
     body =
       case path && Environments.read_file(env, path) do
         {:ok, source} ->
-          """
-          Source: `#{path}`
+          if stub_source?(source) do
+            stub_framing(path)
+          else
+            """
+            Source: `#{path}`
 
-          #{extract_moduledoc(source)}\
-          """
+            #{extract_moduledoc(source)}\
+            """
+          end
 
         _ ->
-          "Source: `#{inferred_path_hint(module_name)}` (couldn't read — open the file before writing specs to see the public API)"
+          stub_framing(inferred_path_hint(module_name))
       end
 
     """
@@ -238,6 +242,33 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
 
     #{body}\
     """
+  end
+
+  # "Open the file to see the public API" is bad advice when there is no
+  # public API — a component created by `create_component` is a stub, and the
+  # specs about to be written are what define its interface. An agent told to
+  # go read it opens an empty module, learns nothing, and has to work out on
+  # its own that the instruction did not apply.
+  defp stub_framing(path) do
+    """
+    Source: `#{path}` — **this component is a stub.** There is no
+    implementation to read yet, and that is the normal starting point here
+    rather than something missing.
+
+    Write the spex against the surfaces named in the scenario bodies below.
+    They *are* the contract: the implementation gets built to satisfy them,
+    so anything you invent here becomes the public API by default. Do not
+    infer an interface from the empty module.\
+    """
+  end
+
+  # A module with no function definitions. `defstruct`/`use`/`alias` alone
+  # still count as a stub — none of them give a spec-writer a surface to
+  # drive. Deliberately textual: this runs against a file read through the
+  # environment, and parsing it to decide how to phrase a prompt would buy
+  # precision nobody needs.
+  defp stub_source?(source) do
+    not Regex.match?(~r/^\s{2,}(def|defdelegate|defmacro)\s/m, source)
   end
 
   # If other specs in the same story already exist, point at one so the
@@ -290,8 +321,7 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
   defp surface_hint("controller"), do: "HTTP (a controller endpoint, possibly with cassette)"
 
   defp surface_hint(_),
-    do:
-      "MCP tool or HTTP — depends on whether an agent or a hook drives the criterion"
+    do: "MCP tool or HTTP — depends on whether an agent or a hook drives the criterion"
 
   defp criteria_section(story, criteria) do
     sections =
@@ -302,6 +332,7 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
         ### Criterion #{criterion.id}: #{criterion.description}
 
         **Expected file path**: `#{spec_path}`\
+        #{criterion_surface_line(criterion)}\
         """
       end)
 
@@ -310,6 +341,53 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
 
     #{sections}\
     """
+  end
+
+  # The scenario already said which surface it drives — "calls
+  # list_qa_attempts", "navigates to the story page", "writes result.md" — so
+  # read it off the `when_` step instead of asking the agent to re-derive it.
+  #
+  # This is per criterion on purpose. A story's criteria routinely span
+  # surfaces (an MCP tool and the LiveView that shows its result), which is
+  # exactly the case one sentence above the list cannot describe, and the case
+  # where the component-type hint degrades to "depends".
+  defp criterion_surface_line(%{body: body}) when is_binary(body) do
+    case infer_surface(when_steps(body)) do
+      nil -> ""
+      surface -> "\n\n**Surface** (from the `When` step): #{surface}"
+    end
+  end
+
+  defp criterion_surface_line(_criterion), do: ""
+
+  defp when_steps(body) do
+    body
+    |> String.split("\n")
+    |> Enum.filter(&Regex.match?(~r/^\s*(when_?|and)\b/i, &1))
+    |> Enum.join(" ")
+    |> String.downcase()
+  end
+
+  # First match wins, so the order is the ranking: a phrase that names a page
+  # or a file is describing that surface even if it also says "calls". The
+  # bare-verb MCP pattern is last among the specific ones for that reason.
+  #
+  # Returns nil rather than guessing. A wrong surface is worse than none here,
+  # because the agent has no reason to doubt it and will write the whole spec
+  # against it.
+  defp infer_surface(text) do
+    Enum.find_value(
+      [
+        {~r/\b(navigat\w*|visit\w*|clicks?|renders?|live_?view|page|button|form)\b/, "LiveView"},
+        {~r/\b(writes?|edits?|deletes?|creates?)\b[^\n]*\.(md|ex|exs|json|ya?ml)\b/,
+         "filesystem"},
+        {~r/\b(hooks?|manifest|scans?)\b/, "HTTP (hook endpoint)"},
+        {~r/\b(endpoints?|controllers?|https?|curl|webhooks?|request)\b/, "HTTP"},
+        {~r/\b(mcp|tools?|get_next_requirement|start_task)\b/, "MCP tool"},
+        {~r/\bcalls?\s+[a-z][a-z0-9_]*\b/, "MCP tool"}
+      ],
+      fn {pattern, surface} -> Regex.match?(pattern, text) && surface end
+    )
   end
 
   defp procedure_section(spex_module) do
@@ -403,7 +481,13 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
   # had no @moduledoc and no sibling specs, which is a plausible-looking answer
   # rather than a visible failure.
   defp environment(%{environment: %Environment{} = env}), do: env
-  defp environment(scope), do: Environment.new(:local, Map.get(scope, :cwd) || File.cwd!())
+
+  defp environment(scope) do
+    case Map.get(scope, :cwd) do
+      cwd when is_binary(cwd) -> Environment.new(:local, cwd)
+      _ -> nil
+    end
+  end
 
   defp inferred_path_hint(module_name) when is_binary(module_name) do
     relative =

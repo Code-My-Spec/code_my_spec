@@ -8,7 +8,7 @@ defmodule CodeMySpecSpex.Story815.Criterion6579Spex do
   Surfaces (forward-looking — red until built):
     * `CodeMySpecWeb.WidgetSocket` + `CodeMySpecWeb.ConversationChannel` — each
       conversation is scoped to a project via the socket's `project_id` assign.
-    * `CodeMySpecWeb.InboxLive` at "/app/inbox" — a single, account-wide inbox
+    * `CodeMySpecWeb.InboxLive` at "/app/projects/:project_id/inbox" — a single, account-wide inbox
       that lists conversations across every project the account owns.
   """
 
@@ -76,7 +76,7 @@ defmodule CodeMySpecSpex.Story815.Criterion6579Spex do
       end
 
       when_ "the operator opens the inbox", context do
-        {:ok, _view, html} = live(context.conn, "/app/inbox")
+        {:ok, _view, html} = live(context.conn, "/app/projects/#{context.project.id}/inbox")
         {:ok, Map.put(context, :html, html)}
       end
 

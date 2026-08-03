@@ -16,7 +16,6 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
   Returns `{:ok, prompt}` on success or `{:error, reason}` on failure.
   """
 
-
   alias CodeMySpec.AgentTasks
   alias CodeMySpec.Components
   alias CodeMySpec.Environments
@@ -298,10 +297,12 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
     %{scope | environment: Environment.new(:local, cwd)}
   end
 
-  defp ensure_environment(%{environment: nil} = scope) do
-    cwd = File.cwd!()
-    %{scope | environment: Environment.new(:local, cwd)}
-  end
+  # A scope with no cwd gets no environment. It used to get one rooted at this
+  # server's directory, which is a working copy of the wrong project — every
+  # file a bootstrap task then read or wrote belonged to code_my_spec, not to
+  # the caller. Bootstrap prompts render without one; see
+  # `Setup.Helpers.app_name/1`, which reads the synced mix.exs instead.
+  defp ensure_environment(%{environment: nil} = scope), do: scope
 
   defp ensure_environment(scope), do: scope
 

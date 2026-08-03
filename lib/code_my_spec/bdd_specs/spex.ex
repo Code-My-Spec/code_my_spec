@@ -40,7 +40,8 @@ defmodule CodeMySpec.BddSpecs.Spex do
     project_root = environment.cwd
     quiet = Keyword.get(opts, :quiet, false)
 
-    caller_provided_file = Keyword.has_key?(opts, :output_file) or Keyword.has_key?(opts, :jsonl_path)
+    caller_provided_file =
+      Keyword.has_key?(opts, :output_file) or Keyword.has_key?(opts, :jsonl_path)
 
     temp_file =
       Keyword.get(
@@ -107,6 +108,7 @@ defmodule CodeMySpec.BddSpecs.Spex do
       {_raw_output, exit_code} ->
         result =
           parse_and_return_failures(temp_file, exit_code, environment, caller_provided_file)
+
         unless caller_provided_file, do: cleanup_temp_file(temp_file, environment)
         result
     end
@@ -135,7 +137,7 @@ defmodule CodeMySpec.BddSpecs.Spex do
   @spec parse_jsonl(String.t(), Environment.t() | nil) ::
           {:ok, [Failure.t()]} | {:error, term()}
   def parse_jsonl(path, env_or_nil \\ nil) do
-    env = env_or_nil || Environment.new(:local, File.cwd!())
+    env = env_or_nil
 
     case Environments.read_file(env, path) do
       {:ok, ""} ->

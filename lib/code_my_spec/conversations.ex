@@ -165,6 +165,7 @@ defmodule CodeMySpec.Conversations do
   # Harness kind -> Message role. Tool calls render distinctly; everything else
   # (assistant prose, status lines) is assistant-voiced.
   defp agent_message_role("tool"), do: :tool
+  defp agent_message_role("user"), do: :user
   defp agent_message_role(_kind), do: :assistant
 
   @doc """

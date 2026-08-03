@@ -10,7 +10,7 @@ defmodule CodeMySpecSpex.Story816.Criterion6585Spex do
     * Inbound provider webhook at "/webhooks/resend" — an `email.received`
       event addressed to an address with no specific mailbox is routed to the
       project's catch-all mailbox.
-    * `CodeMySpecWeb.MailLive` at "/app/mail".
+    * `CodeMySpecWeb.MailLive` at "/app/projects/:project_id/mail".
   """
 
   use CodeMySpecSpex.Case
@@ -51,7 +51,7 @@ defmodule CodeMySpecSpex.Story816.Criterion6585Spex do
       end
 
       then_ "the email appears in the catch-all mailbox", context do
-        {:ok, view, _html} = live(context.conn, "/app/mail")
+        {:ok, view, _html} = live(context.conn, "/app/projects/#{context.project.id}/mail")
 
         {:ok, _show_view, thread_html} =
           view

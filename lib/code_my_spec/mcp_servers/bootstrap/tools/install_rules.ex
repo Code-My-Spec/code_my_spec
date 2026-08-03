@@ -25,6 +25,10 @@ defmodule CodeMySpec.McpServers.Bootstrap.Tools.InstallRules do
       {:error, {:source_dir, :enoent}} ->
         {:reply, BootstrapMapper.error(stale_server_message("priv/rules")), frame}
 
+      {:error, :no_working_copy} ->
+        {:reply, BootstrapMapper.error(Validators.no_working_copy_message("install_rules")),
+         frame}
+
       {:error, reason} ->
         {:reply, BootstrapMapper.error("Failed to install rules: #{inspect(reason)}"), frame}
     end
@@ -49,6 +53,11 @@ defmodule CodeMySpec.McpServers.Bootstrap.Tools.InstallRules do
   straight from disk; only the destination is routed through the environment
   so specs can install into an in-memory project.
   """
+  # No working copy here. Refusing is the whole point: the previous behaviour
+  # was to root a `:local` environment at the server's own checkout and write
+  # there, reporting success. See `Validators.mcp_working_dir/1`.
+  def install(nil), do: {:error, :no_working_copy}
+
   def install(env) do
     source_dir = Application.app_dir(:code_my_spec, "priv/rules")
     target_dir = CodeMySpec.Paths.rules_dir()

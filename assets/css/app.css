@@ -179,3 +179,26 @@ body {
 }
 
 /* This file is for your main application CSS */
+
+/* `// section marker` eyebrow — see CoreComponents.eyebrow/1. The local
+   bundle defines .cms-eyebrow with a mono/red terminal treatment; this is
+   the cloud zone's version of the same component. */
+@layer components {
+    .cms-eyebrow {
+        display: flex;
+        align-items: center;
+        gap: 0.5em;
+        font-size: 0.75rem;
+        font-weight: 600;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        color: var(--color-primary);
+    }
+    .cms-eyebrow-muted {
+        color: var(--color-base-content);
+        opacity: 0.6;
+    }
+    .cms-eyebrow-warn {
+        color: var(--color-warning);
+    }
+}

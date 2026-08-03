@@ -43,7 +43,7 @@ defmodule CodeMySpecSpex.Story688.Criterion5972Spex do
         :ok = Environments.write_file(context.environment, @spec_path, @spec_content)
 
         {:ok, files_live, _html} =
-          live(context.conn, "/projects/#{context.project.name}/files")
+          live(context.conn, "/app/projects/#{context.project.id}/files")
 
         files_live
         |> element("[data-test='sync-button']")
@@ -54,7 +54,7 @@ defmodule CodeMySpecSpex.Story688.Criterion5972Spex do
 
       when_ "the engineer re-syncs without changing anything on disk", context do
         {:ok, files_live, _html} =
-          live(context.conn, "/projects/#{context.project.name}/files")
+          live(context.conn, "/app/projects/#{context.project.id}/files")
 
         files_live
         |> element("[data-test='sync-button']")

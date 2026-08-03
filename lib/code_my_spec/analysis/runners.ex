@@ -17,6 +17,28 @@ defmodule CodeMySpec.Analysis.Runners do
   resolves components through the Files table, which is a database join this
   side has no business doing. Runners used to set `project_id` too; the value
   was overwritten on the way in every time.
+
+  ## Execution and conversion are separate, because they are on separate machines
+
+  `run/4` executes locally. `from_raw/2` converts what an analyzer printed into
+  the same result map without executing anything, and that is the entry point
+  the light harness's results come in through: the harness has the disk and the
+  toolchain, the server has the `Problem` schema, so the harness runs the tool
+  and sends the diagnostics and this converts them.
+
+  `run/4` goes through `from_raw/2` as well. That is the point — a Problem row
+  produced from a harness run and one produced from a server run come out of the
+  same function, so the two paths cannot disagree about what a diagnostic means.
+
+  The raw shape is per source and is the wire contract with `CmsHarness.Analysis`:
+
+      compiler  %{"exit_status" => int, "diagnostics" => [%{"file", "line", "severity", "message"}]}
+      credo     %{"exit_status" => int, "diagnostics" => [credo issue json]}
+      exunit    %{"exit_status" => int, "execution_status" => "success"|"failure"|"error",
+                  "output" => raw stdout, "stats" => map,
+                  "diagnostics" => [%{"file", "line", "message"}]}
+      spex      %{"exit_status" => int,
+                  "diagnostics" => [%{"spex", "scenario", "file", "line", "message"}]}
   """
 
   alias CodeMySpec.BddSpecs.Spex
@@ -41,25 +63,24 @@ defmodule CodeMySpec.Analysis.Runners do
     execute_opts = [environment: scope.environment] |> maybe_output_file(opts)
     result = Compile.execute(execute_opts)
 
-    problems =
-      result.data.compiler_results
-      |> Enum.map(&ProblemConverter.from_compiler/1)
-
-    {errors, warnings} = Enum.split_with(problems, &(&1.severity == :error))
-
-    {:ok,
-     %{
-       problems: problems,
-       output: cap(format_problem_lines(problems)),
-       exit_status: result.exit_code,
-       stats: %{"errors" => length(errors), "warnings" => length(warnings)}
-     }}
+    from_raw("compiler", %{
+      "exit_status" => result.exit_code,
+      "diagnostics" => result.data.compiler_results,
+      "diagnostics_available" => Map.get(result.data, :diagnostics_available, true)
+    })
   end
 
   # Credo scope follows the run kind: no args → project-wide sweep (full,
   # memoizable); path args → scoped `--files` run over the changed set
   # (partial — refreshes only those files' problems, mirrors the old
   # pipeline's per-turn scoping and its recorded cassettes).
+  #
+  # This one does not decompose into execute-then-convert the way the other
+  # three do: `StaticRunner.run/3` owns availability checks and project
+  # validation as well as the shell-out, and hands back `%Problem{}` structs
+  # already. What it uses to build them is `ProblemConverter.from_credo/1` —
+  # the same function `from_raw/2` calls — so the two paths still agree about
+  # what a credo issue means, which is the property that matters.
   def run("credo", %Scope{} = scope, args, opts) do
     files = if args == [], do: nil, else: args
     runner_opts = [files: files] |> maybe_output_file(opts)
@@ -67,12 +88,7 @@ defmodule CodeMySpec.Analysis.Runners do
     case StaticRunner.run(scope, :credo, runner_opts) do
       {:ok, problems} ->
         {:ok,
-         %{
-           problems: problems,
-           output: cap(format_problem_lines(problems)),
-           exit_status: if(problems == [], do: 0, else: 1),
-           stats: %{"issues" => length(problems)}
-         }}
+         summarize(problems, if(problems == [], do: 0, else: 1), %{"issues" => length(problems)})}
 
       {:error, reason} ->
         {:error, reason}
@@ -83,36 +99,21 @@ defmodule CodeMySpec.Analysis.Runners do
     exec_opts = [environment: scope.environment] |> maybe_output_file(opts)
 
     case Tests.execute(args, exec_opts) do
-      # `mix test` exited nonzero without reporting a single failure: bad args,
-      # a compile error, missing deps. The suite never ran, so this result says
-      # nothing about the code.
-      #
-      # Returning `{:ok, problems: []}` here was actively harmful. The
-      # Reconciler clears a source's Problems wholesale before inserting, so an
-      # empty result wiped every real exunit Problem and then finished the run
-      # `:completed` at the current fingerprint — and `tests_passing` checks
-      # exactly those two things (a fresh completed run, zero problems). A
-      # `mix test` that failed to start therefore reported the component's
-      # tests as passing.
-      #
-      # Failing the run leaves it `:failed`: never fresh, never
-      # problem-clearing, and re-enqueued on the next stop.
-      {:ok, %{execution_status: :error} = test_run} ->
-        {:error, {:test_suite_did_not_run, test_run.exit_code, error_excerpt(test_run.raw_output)}}
-
       {:ok, test_run} ->
-        problems =
-          test_run.failures
-          |> Enum.map(&ProblemConverter.from_test_failure(&1.error))
-          |> Enum.map(&%{&1 | source: "exunit"})
-
-        {:ok,
-         %{
-           problems: problems,
-           output: cap(test_run.raw_output || ""),
-           exit_status: test_run.exit_code,
-           stats: stats_map(test_run.stats)
-         }}
+        from_raw("exunit", %{
+          "exit_status" => test_run.exit_code,
+          "execution_status" => to_string(test_run.execution_status),
+          "output" => test_run.raw_output || "",
+          "stats" => stats_map(test_run.stats),
+          "diagnostics" =>
+            Enum.map(test_run.failures || [], fn failure ->
+              %{
+                "file" => failure.error && failure.error.file,
+                "line" => failure.error && failure.error.line,
+                "message" => (failure.error && failure.error.message) || failure.full_title
+              }
+            end)
+        })
 
       {:error, reason} ->
         {:error, reason}
@@ -123,39 +124,171 @@ defmodule CodeMySpec.Analysis.Runners do
     exec_opts = [environment: scope.environment] |> maybe_output_file(opts)
 
     case Spex.execute(args, exec_opts) do
-      # The same trap as exunit above. `Spex.parse_jsonl/1` answers `{:ok, []}`
-      # for a missing file, so "the run never happened" and "everything is
-      # clean" are indistinguishable by the failure list alone — the nonzero
-      # exit is the only thing separating them. Fail the run rather than let an
-      # empty result clear every spex Problem and finish `:completed`.
-      {:ok, [], exit_code} when exit_code != 0 ->
-        {:error, {:spex_suite_did_not_run, exit_code}}
-
       {:ok, failures, exit_code} ->
-        problems =
-          failures
-          |> Enum.map(&spex_failure_to_problem/1)
-          |> Enum.map(&%{&1 | source: "spex"})
-
-        {:ok,
-         %{
-           problems: problems,
-           output: cap(format_problem_lines(problems)),
-           exit_status: exit_code,
-           stats: %{"failures" => length(failures)}
-         }}
+        from_raw("spex", %{
+          "exit_status" => exit_code,
+          "diagnostics" =>
+            Enum.map(failures, fn failure ->
+              %{
+                "spex" => failure.spex,
+                "scenario" => failure.scenario,
+                "file" => failure.error && failure.error.file,
+                "line" => failure.error && failure.error.line,
+                "message" => failure.error && failure.error.message
+              }
+            end)
+        })
 
       {:error, reason} ->
         {:error, reason}
     end
   end
 
+  @doc """
+  Convert what an analyzer printed into a runner result, without running
+  anything.
+
+  This is what a light harness's `analysis_result` goes through: the tool ran on
+  the machine with the disk, and the `%Problem{}` schema is here.
+  """
+  @spec from_raw(String.t(), map()) :: {:ok, result()} | {:error, term()}
+  def from_raw("compiler", raw) do
+    problems = raw |> diagnostics() |> Enum.map(&ProblemConverter.from_compiler/1)
+    {errors, warnings} = Enum.split_with(problems, &(&1.severity == :error))
+
+    # A build that failed and said nothing is not a clean build.
+    #
+    # `Compile` deliberately returns no diagnostics when it cannot tell a real
+    # compile error from a transient one — a config change forcing a rebuild,
+    # build-lock contention, a project without the `:diagnostics` compiler. That
+    # restraint is right: synthesising a problem out of Mix's progress banner
+    # would block stops on a phantom.
+    #
+    # But the result was still recorded `:completed` with zero problems, and
+    # `:completed` with zero problems is how this system says "looked, and it is
+    # clean". So "the compiler failed and I could not tell you why" and "the code
+    # is fine" arrived identically — the exact collapse this project exists to
+    # prevent, on the analyzer that matters most.
+    #
+    # Failing the run says the third thing. It does not block: a failed run is
+    # re-enqueued on the next stop rather than turned into a Problem, so no
+    # phantom error blocks anybody. What it stops doing is claiming success.
+    #
+    # Keyed on whether diagnostics were *available*, not on the exit status.
+    # `mix compile --return-errors` exits 0 even on a compile error — that is
+    # what the flag is for — so exit status says nothing about whether the code
+    # compiled. An earlier version of this check keyed on exit status and was
+    # therefore inert for the exact case it was written for.
+    if raw["diagnostics_available"] == false do
+      {:error, {:compile_diagnostics_unavailable, raw["exit_status"]}}
+    else
+      {:ok,
+       summarize(problems, raw["exit_status"], %{
+         "errors" => length(errors),
+         "warnings" => length(warnings)
+       })}
+    end
+  end
+
+  def from_raw("credo", raw) do
+    problems = raw |> diagnostics() |> Enum.map(&ProblemConverter.from_credo/1)
+    {:ok, summarize(problems, raw["exit_status"], %{"issues" => length(problems)})}
+  end
+
+  # `mix test` exited nonzero without reporting a single failure: bad args, a
+  # compile error, missing deps. The suite never ran, so this result says
+  # nothing about the code.
+  #
+  # Returning `{:ok, problems: []}` here was actively harmful. The Reconciler
+  # clears a source's Problems wholesale before inserting, so an empty result
+  # wiped every real exunit Problem and then finished the run `:completed` at
+  # the current fingerprint — and `tests_passing` checks exactly those two
+  # things (a fresh completed run, zero problems). A `mix test` that failed to
+  # start therefore reported the component's tests as passing.
+  #
+  # Failing the run leaves it `:failed`: never fresh, never problem-clearing,
+  # and re-enqueued on the next stop.
+  def from_raw("exunit", %{"execution_status" => "error"} = raw) do
+    {:error, {:test_suite_did_not_run, raw["exit_status"], error_excerpt(raw["output"])}}
+  end
+
+  def from_raw("exunit", %{"execution_status" => status} = raw) when is_binary(status) do
+    problems =
+      raw
+      |> diagnostics()
+      |> Enum.map(fn failure ->
+        ProblemConverter.from_test_failure(%CodeMySpec.Tests.TestError{
+          file: failure["file"],
+          line: failure["line"],
+          message: failure["message"]
+        })
+      end)
+      |> Enum.map(&%{&1 | source: "exunit"})
+
+    {:ok,
+     %{
+       problems: problems,
+       output: cap(raw["output"] || ""),
+       exit_status: raw["exit_status"],
+       stats: raw["stats"] || %{}
+     }}
+  end
+
+  # The same trap as exunit above. `Spex.parse_jsonl/1` answers `{:ok, []}` for
+  # a missing file, so "the run never happened" and "everything is clean" are
+  # indistinguishable by the failure list alone — the nonzero exit is the only
+  # thing separating them. Fail the run rather than let an empty result clear
+  # every spex Problem and finish `:completed`.
+  def from_raw("spex", raw) do
+    exit_code = raw["exit_status"]
+
+    case {diagnostics(raw), exit_code} do
+      {[], code} when code != 0 -> {:error, {:spex_suite_did_not_run, code}}
+      {failures, code} -> {:ok, spex_result(failures, code)}
+    end
+  end
+
+  # An exunit payload with no `execution_status`, or any source this server does
+  # not know, is refused rather than read charitably. Both would otherwise
+  # produce a `:completed` run with no problems, which is the one answer that
+  # must never be reached by accident.
+  def from_raw(source, _raw), do: {:error, {:unreadable_result, source}}
+
+  defp spex_result(failures, exit_code) do
+    problems =
+      failures
+      |> Enum.map(&spex_failure_to_problem/1)
+      |> Enum.map(&%{&1 | source: "spex"})
+
+    summarize(problems, exit_code, %{"failures" => length(failures)})
+  end
+
+  # `diagnostics` is required, not defaulted. A payload arriving without the key
+  # is version skew or a bug, and defaulting it to `[]` would report the source
+  # clean — which is the failure this whole path exists to prevent. It raises.
+  defp diagnostics(%{"diagnostics" => diagnostics}) when is_list(diagnostics), do: diagnostics
+
+  defp diagnostics(raw) do
+    raise ArgumentError,
+          "analysis result carries no diagnostics list; refusing to read it as a clean run: " <>
+            inspect(Map.keys(raw))
+  end
+
+  defp summarize(problems, exit_status, stats) do
+    %{
+      problems: problems,
+      output: cap(format_problem_lines(problems)),
+      exit_status: exit_status,
+      stats: stats
+    }
+  end
+
   defp spex_failure_to_problem(failure) do
     ProblemConverter.from_test_failure(%{
-      file: failure.error && failure.error.file,
-      line: failure.error && failure.error.line,
-      test: "#{failure.spex} — #{failure.scenario}",
-      message: (failure.error && failure.error.message) || "Spex scenario failed"
+      file: failure["file"],
+      line: failure["line"],
+      test: "#{failure["spex"]} — #{failure["scenario"]}",
+      message: failure["message"] || "Spex scenario failed"
     })
   end
 

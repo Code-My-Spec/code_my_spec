@@ -48,9 +48,18 @@ defmodule CodeMySpec.Analysis.Execution do
     end
   end
 
-  defp skip_for_compile_errors?(_scope, %Run{source: "compiler"}), do: false
+  @doc """
+  Should this run be skipped because the project does not compile?
 
-  defp skip_for_compile_errors?(scope, _run) do
+  Public because the light harness path asks the same question from
+  `Analysis.dispatch_remote/3` — there the skip has to happen before the run is
+  sent, since the machine that would answer it is not this one. Same rule,
+  decided a step earlier.
+  """
+  @spec skip_for_compile_errors?(Scope.t(), Run.t()) :: boolean()
+  def skip_for_compile_errors?(_scope, %Run{source: "compiler"}), do: false
+
+  def skip_for_compile_errors?(scope, _run) do
     scope
     |> Problems.list_project_problems(source: "compiler", severity: :error)
     |> Enum.any?()

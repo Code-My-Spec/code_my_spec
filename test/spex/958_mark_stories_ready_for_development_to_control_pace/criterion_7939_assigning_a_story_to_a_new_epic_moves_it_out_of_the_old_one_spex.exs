@@ -63,7 +63,7 @@ defmodule CodeMySpecSpex.Story958.Criterion7939Spex do
       end
 
       when_ "the user drags it into epic \"Stone Age\"", context do
-        {:ok, board, _html} = live(context.conn, "/projects/#{context.project.name}/epics")
+        {:ok, board, _html} = live(context.conn, "/app/projects/#{context.project.id}/epics")
 
         render_hook(board, "move_story", %{
           "story_id" => context.story_id,
@@ -75,7 +75,7 @@ defmodule CodeMySpecSpex.Story958.Criterion7939Spex do
 
       then_ "the story belongs only to \"Stone Age\"", context do
         {:ok, _live, html} =
-          live(context.conn, "/projects/#{context.project.name}/epics/stone-age")
+          live(context.conn, "/app/projects/#{context.project.id}/epics/stone-age")
 
         assert html =~ "Stone Age",
                "expected the Stone Age epic page to render, got: #{html}"
@@ -88,7 +88,7 @@ defmodule CodeMySpecSpex.Story958.Criterion7939Spex do
 
       and_ "\"Political Systems\" no longer lists it", context do
         {:ok, _live, html} =
-          live(context.conn, "/projects/#{context.project.name}/epics/political-systems")
+          live(context.conn, "/app/projects/#{context.project.id}/epics/political-systems")
 
         # Anchor: the page really rendered, so the refute below is meaningful.
         assert html =~ "Political Systems",

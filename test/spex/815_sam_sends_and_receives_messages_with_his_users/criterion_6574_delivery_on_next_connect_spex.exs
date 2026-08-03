@@ -7,7 +7,7 @@ defmodule CodeMySpecSpex.Story815.Criterion6574Spex do
   next connect.
 
   Surfaces (forward-looking — red until built):
-    * `CodeMySpecWeb.InboxLive` at "/app/inbox" — the operator sends a message
+    * `CodeMySpecWeb.InboxLive` at "/app/projects/:project_id/inbox" — the operator sends a message
       to a user who is not currently connected.
     * `CodeMySpecWeb.WidgetSocket` + `CodeMySpecWeb.ConversationChannel` — when
       the user later connects, the server pushes the stored message as
@@ -28,7 +28,7 @@ defmodule CodeMySpecSpex.Story815.Criterion6574Spex do
   spex "A message sent to an offline user is delivered on next connect" do
     scenario "Delivery on next connect" do
       given_ "the user is offline", context do
-        {:ok, view, _html} = live(context.conn, "/app/inbox")
+        {:ok, view, _html} = live(context.conn, "/app/projects/#{context.project.id}/inbox")
         {:ok, Map.put(context, :view, view)}
       end
 

@@ -11,6 +11,28 @@ defmodule CodeMySpec.Environments do
   drives the `:memory` adapter (`CodeMySpec.Support.InMemoryEnvironment`),
   so reaching through `Environments.write_file/3` etc. never touches the
   real filesystem.
+
+  ## No environment is a configuration, not a bug
+
+  Every file operation here accepts `nil` and answers instead of raising. That
+  is the light harness: the server holds no working copy, so `scope.environment`
+  is legitimately nil and there is no disk to reach.
+
+  Until these clauses existed, each of these raised `FunctionClauseError` on the
+  way to building an agent's task prompt, and a requirement whose prompt cannot
+  be rendered cannot be worked. An agent driving a real project hit it on nine
+  requirements in a row — `technical_strategy`, `code_generation`, the four QA
+  plans, `release` — and could get no further than a stack trace naming
+  `glob/2`, `write_file/3` or `list_directory/2`.
+
+  The answers are the ones callers already handle: `{:error, :no_environment}`
+  where a result was expected, `[]` for a search that found nothing reachable,
+  `false` for existence. Note the asymmetry that leaves behind — "no disk" and
+  "not there" are now the same reply for `file_exists?/2`, which is fine for
+  rendering a prompt and is *not* fine for deciding a requirement is unmet. A
+  checker that must tell those apart has to say so itself; see
+  `CodeMySpec.AgentTasks.Setup.Context.dir_status/2`, which returns
+  `:unobservable` rather than pretending to know.
   """
 
   use Boundary, top_level?: true, deps: [], exports: :all
@@ -191,6 +213,8 @@ defmodule CodeMySpec.Environments do
   """
   @spec read_file(env :: Environment.t(), path :: String.t()) ::
           {:ok, String.t()} | {:error, term()}
+  def read_file(nil, _path), do: {:error, :no_environment}
+
   def read_file(%Environment{type: type} = env, path) do
     impl(type).read_file(env, path)
   end
@@ -200,6 +224,8 @@ defmodule CodeMySpec.Environments do
   """
   @spec list_directory(env :: Environment.t(), path :: String.t()) ::
           {:ok, [String.t()]} | {:error, term()}
+  def list_directory(nil, _path), do: {:error, :no_environment}
+
   def list_directory(%Environment{type: type} = env, path) do
     impl(type).list_directory(env, path)
   end
@@ -209,6 +235,8 @@ defmodule CodeMySpec.Environments do
   """
   @spec write_file(env :: Environment.t(), path :: String.t(), content :: String.t()) ::
           :ok | {:error, term()}
+  def write_file(nil, _path, _content), do: {:error, :no_environment}
+
   def write_file(%Environment{type: type} = env, path, content) do
     impl(type).write_file(env, path, content)
   end
@@ -218,6 +246,8 @@ defmodule CodeMySpec.Environments do
   """
   @spec delete_file(env :: Environment.t(), path :: String.t()) ::
           :ok | {:error, term()}
+  def delete_file(nil, _path), do: {:error, :no_environment}
+
   def delete_file(%Environment{type: type} = env, path) do
     impl(type).delete_file(env, path)
   end
@@ -261,6 +291,8 @@ defmodule CodeMySpec.Environments do
     impl(environment).code_environment_teardown_command(environment, attrs)
   end
 
+  def file_exists?(nil, _path), do: false
+
   def file_exists?(%Environment{type: type} = env, path) do
     impl(type).file_exists?(env, path)
   end
@@ -270,6 +302,8 @@ defmodule CodeMySpec.Environments do
   """
   @spec stat(env :: Environment.t(), path :: String.t()) ::
           {:ok, %{mtime: DateTime.t(), size: non_neg_integer()}} | {:error, term()}
+  def stat(nil, _path), do: {:error, :no_environment}
+
   def stat(%Environment{type: type} = env, path) do
     impl(type).stat(env, path)
   end
@@ -278,6 +312,8 @@ defmodule CodeMySpec.Environments do
   Ensure a directory exists, creating it and any parents if needed.
   """
   @spec ensure_dir(env :: Environment.t(), path :: String.t()) :: :ok | {:error, term()}
+  def ensure_dir(nil, _path), do: {:error, :no_environment}
+
   def ensure_dir(%Environment{type: type} = env, path) do
     impl(type).ensure_dir(env, path)
   end
@@ -286,6 +322,8 @@ defmodule CodeMySpec.Environments do
   Find files matching a glob pattern relative to the environment's working directory.
   """
   @spec glob(env :: Environment.t(), pattern :: String.t()) :: [String.t()]
+  def glob(nil, _pattern), do: []
+
   def glob(%Environment{type: type} = env, pattern) do
     impl(type).glob(env, pattern)
   end
@@ -298,7 +336,11 @@ defmodule CodeMySpec.Environments do
   """
   @spec stream_files(env :: Environment.t(), roots :: [String.t()], opts :: keyword()) ::
           Enumerable.t()
-  def stream_files(%Environment{type: type} = env, roots, opts \\ []) do
+  def stream_files(env, roots, opts \\ [])
+
+  def stream_files(nil, _roots, _opts), do: []
+
+  def stream_files(%Environment{type: type} = env, roots, opts) do
     impl(type).stream_files(env, roots, opts)
   end
 
@@ -310,7 +352,11 @@ defmodule CodeMySpec.Environments do
   """
   @spec cmd(Environment.t(), String.t(), [String.t()], keyword()) ::
           {String.t(), non_neg_integer()}
-  def cmd(%Environment{type: type} = env, command, args, opts \\ []),
+  def cmd(env, command, args, opts \\ [])
+
+  def cmd(nil, _command, _args, _opts), do: {"no environment", 1}
+
+  def cmd(%Environment{type: type} = env, command, args, opts),
     do: impl(type).cmd(env, command, args, opts)
 
   @doc """
@@ -320,6 +366,8 @@ defmodule CodeMySpec.Environments do
   why this is not `file_exists?/2`.
   """
   @spec exec_file_exists?(Environment.t(), String.t()) :: boolean()
+  def exec_file_exists?(nil, _path), do: false
+
   def exec_file_exists?(%Environment{type: type} = env, path),
     do: impl(type).exec_file_exists?(env, path)
 end

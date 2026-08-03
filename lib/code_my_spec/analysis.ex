@@ -17,11 +17,37 @@ defmodule CodeMySpec.Analysis do
   - `await_run/4` — model-invoked (`mix test` rewrite) and MCP callers:
     join-or-start, block until finished, get the run back with output.
   - `runs_in_flight?/1`, `status/1` — decision + UI gauge reads.
+
+  ## Two places a run can execute
+
+  Deciding what is stale is a database question; running `mix` is a disk one,
+  and since the light harness those are on different machines. So a run is
+  dispatched one of two ways:
+
+  - **Locally**, through the per-project `ProjectServer` — the `cms server`
+    process, which has the working copy.
+  - **To a harness**, when one holds this project's channel. The row is opened
+    here, the tool runs there, and the result comes back as `analysis_result`
+    for `Runners.from_raw/2` and the Reconciler.
+
+  `HarnessRegistry` is what decides, and its answer is a live process rather
+  than a stored flag: a harness that goes away stops being an executor at the
+  moment its channel closes, not at the moment somebody notices.
   """
 
   require Logger
 
-  alias CodeMySpec.Analysis.{Execution, Fingerprint, ProjectServer, Run, RunsRepository}
+  alias CodeMySpec.Analysis.{
+    Execution,
+    Fingerprint,
+    HarnessRegistry,
+    ProjectServer,
+    Reconciler,
+    Run,
+    Runners,
+    RunsRepository
+  }
+
   alias CodeMySpec.Users.Scope
 
   # `:async` (default) runs jobs through the per-project ProjectServer —
@@ -179,6 +205,62 @@ defmodule CodeMySpec.Analysis do
     end
   end
 
+  @doc """
+  Record what a harness's analyzer printed.
+
+  The other end of `dispatch_remote/3`: the run row is already open, the tool
+  has run on the machine with the disk, and this is where the diagnostics become
+  Problems — through `Runners.from_raw/2`, the same conversion a local run goes
+  through, and then the same Reconciler.
+
+  Every outcome closes the row. An unreadable payload and a tool that would not
+  start both `fail` it rather than completing it empty, because a `:completed`
+  run with no problems is how this server says "looked, and it is clean".
+  """
+  @spec record_remote_result(Scope.t(), map()) :: {:ok, Run.t()} | {:error, term()}
+  def record_remote_result(%Scope{} = scope, %{"run_id" => run_id} = payload)
+      when is_integer(run_id) do
+    case RunsRepository.get_running_run(scope, run_id) do
+      nil ->
+        {:error, :unknown_run}
+
+      %Run{} = run ->
+        apply_remote_result(scope, run, payload)
+    end
+  end
+
+  def record_remote_result(_scope, _payload), do: {:error, :invalid_result}
+
+  defp apply_remote_result(scope, run, %{"status" => "ok", "result" => raw}) when is_map(raw) do
+    case Runners.from_raw(run.source, raw) do
+      {:ok, result} ->
+        Reconciler.reconcile(scope, run, result, notify: true)
+
+      {:error, reason} ->
+        Reconciler.fail(run, reason)
+        {:error, reason}
+    end
+  rescue
+    # `from_raw/2` raises on a payload it refuses to read as clean. The run is
+    # failed rather than left open, so the next stop re-enqueues it instead of
+    # reporting analysis pending forever.
+    exception ->
+      Reconciler.fail(run, Exception.message(exception))
+      {:error, Exception.message(exception)}
+  end
+
+  defp apply_remote_result(_scope, run, %{"status" => "error"} = payload) do
+    reason = payload["error"] || "the harness reported a failure with no reason"
+    Reconciler.fail(run, reason)
+    {:error, reason}
+  end
+
+  defp apply_remote_result(_scope, run, payload) do
+    reason = "unreadable analysis_result: #{inspect(Map.keys(payload))}"
+    Reconciler.fail(run, reason)
+    {:error, reason}
+  end
+
   @doc "Block until every in-flight run for the project has finished."
   @spec await_all(Scope.t(), keyword()) :: :ok
   def await_all(%Scope{} = scope, opts \\ []) do
@@ -191,9 +273,24 @@ defmodule CodeMySpec.Analysis do
   @spec runs_in_flight?(Scope.t()) :: boolean()
   def runs_in_flight?(%Scope{} = scope), do: in_flight(scope) != []
 
-  @doc "Sources currently running or queued."
+  @doc """
+  Sources currently running or queued.
+
+  For a harness-served project the ledger is the answer: the queue is on the
+  other machine, and a `:running` row is the server's only record that it asked
+  for something and has not been told the outcome. Those rows cannot strand —
+  the channel closes them when it goes, and a fresh join closes any that
+  outlived a hard kill.
+  """
   @spec in_flight(Scope.t()) :: [String.t()]
-  def in_flight(%Scope{active_project_id: project_id}) do
+  def in_flight(%Scope{} = scope) do
+    case remote_executor(scope) do
+      {:ok, _pid} -> RunsRepository.running_sources(scope)
+      :none -> local_in_flight(scope)
+    end
+  end
+
+  defp local_in_flight(%Scope{active_project_id: project_id}) do
     case Registry.lookup(CodeMySpec.Analysis.Registry, project_id) do
       [{pid, _}] -> ProjectServer.in_flight(pid)
       [] -> []
@@ -202,6 +299,62 @@ defmodule CodeMySpec.Analysis do
     # Registry not started — web build or a test app without the Analysis
     # subtree. No registry, no in-flight runs.
     ArgumentError -> []
+  end
+
+  @doc """
+  The light harness holding this project, or `:none`.
+
+  A pid, not a boolean: it is both the answer to "can an analyzer run for this
+  project" and the thing a run is dispatched to, and keeping those the same
+  fact is what stops a run being enqueued for a harness that has gone.
+  """
+  @spec remote_executor(Scope.t()) :: {:ok, pid()} | :none
+  def remote_executor(%Scope{active_project_id: nil}), do: :none
+
+  def remote_executor(%Scope{active_project_id: project_id}) do
+    case Registry.lookup(HarnessRegistry, to_string(project_id)) do
+      [{pid, _}] -> {:ok, pid}
+      [] -> :none
+    end
+  rescue
+    # No registry — an application build that does not mount the harness
+    # channel. Nothing is serving this project remotely.
+    ArgumentError -> :none
+  end
+
+  @doc """
+  Register the calling process as the executor for `project_id`.
+
+  Called from the harness channel at join. The registration dies with the
+  channel, which is what makes `remote_executor/1` a liveness answer rather than
+  a stored one.
+  """
+  @spec register_executor(String.t()) :: :ok | {:error, {:already_registered, pid()}}
+  def register_executor(project_id) do
+    case Registry.register(HarnessRegistry, to_string(project_id), :analysis) do
+      {:ok, _} -> :ok
+      {:error, {:already_registered, pid}} -> {:error, {:already_registered, pid}}
+    end
+  end
+
+  @doc """
+  Close out every `:running` run for the project as failed.
+
+  Called when a harness's channel goes, and again when a new one joins. Both are
+  moments at which an open run provably cannot be finished: the queue that was
+  going to answer it is gone. Left alone, those rows make `in_flight/1` report
+  analysis pending on every subsequent stop — which allows the stop with a note
+  that results apply next time, forever.
+  """
+  @spec fail_in_flight(Scope.t(), term()) :: {:ok, non_neg_integer()}
+  def fail_in_flight(%Scope{} = scope, reason) do
+    {:ok, count} = RunsRepository.fail_running(scope, reason)
+
+    if count > 0 do
+      Logger.warning("[Analysis] closed #{count} stranded run(s): #{inspect(reason)}")
+    end
+
+    {:ok, count}
   end
 
   @doc """
@@ -294,6 +447,13 @@ defmodule CodeMySpec.Analysis do
   defp runner_opt_passthrough(opts), do: Keyword.take(opts, @passthrough_opts)
 
   defp dispatch(scope, job) do
+    case remote_executor(scope) do
+      {:ok, channel} -> dispatch_remote(scope, job, channel)
+      :none -> dispatch_local(scope, job)
+    end
+  end
+
+  defp dispatch_local(scope, job) do
     case mode() do
       :inline ->
         run_inline(scope, job)
@@ -301,6 +461,50 @@ defmodule CodeMySpec.Analysis do
       :async ->
         {:ok, server} = ensure_server(scope)
         ProjectServer.ensure_run(server, scope, job)
+    end
+  end
+
+  # The row is opened here and the work happens there. Opening it first is what
+  # makes the request recoverable: if the harness never answers, the row stays
+  # `:running` until its channel closes and is failed then — where a
+  # fire-and-forget push would leave no trace that anything was ever asked for.
+  #
+  # Single-flight is the same rule the ProjectServer applies locally, and for
+  # the same physical reason: two `mix test` processes in one `_build` corrupt
+  # it. The harness refuses a duplicate as well; this stops the row being opened
+  # in the first place.
+  defp dispatch_remote(scope, job, channel) do
+    if job.source in RunsRepository.running_sources(scope) do
+      Logger.info("[Analysis] #{job.source} already running on the harness — not re-sending")
+      {:ok, :joined, nil}
+    else
+      case RunsRepository.start_run(scope, %{
+             source: job.source,
+             kind: job.kind,
+             args: %{"args" => job.args},
+             input_fingerprint: job.fingerprint
+           }) do
+        {:ok, run} ->
+          # The same skip the local `Execution.execute/3` applies, decided one
+          # step earlier because the machine that would apply it is not this
+          # one. Analyzers and test suites against code that does not compile
+          # emit garbage, and the skip is what makes a quiet stop re-run the
+          # compiler afterwards — `needs_run?/5` looks for this exact reason.
+          if Execution.skip_for_compile_errors?(scope, run) do
+            Reconciler.fail(run, :skipped_compile_errors)
+            {:ok, :skipped, run.id}
+          else
+            send(
+              channel,
+              {:run_analysis, [%{"run_id" => run.id, "source" => job.source, "args" => job.args}]}
+            )
+
+            {:ok, :started, run.id}
+          end
+
+        {:error, reason} ->
+          {:error, reason}
+      end
     end
   end
 

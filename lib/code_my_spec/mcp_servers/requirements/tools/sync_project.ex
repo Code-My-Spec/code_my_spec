@@ -9,7 +9,6 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.SyncProject do
 
   use Anubis.Server.Component, type: :tool
 
-
   alias Anubis.Server.Response
   alias CodeMySpec.Files.ComponentSync, as: FileComponentSync
   alias CodeMySpec.Files.FileSync
@@ -24,6 +23,23 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.SyncProject do
       {:ok, scope} -> run_sync(scope, frame)
       {:error, reason} -> {:reply, Response.tool() |> Response.error("#{reason}"), frame}
     end
+  end
+
+  # Nothing to scan from here. On the light harness the working copy is on the
+  # harness, which watches it and pushes what it sees — so sync is continuous
+  # and this tool has no files to walk. It used to try anyway and crash inside
+  # FileSync, surfacing as a bare -32603 with no indication that the call was
+  # simply in the wrong place.
+  defp run_sync(%{cwd: nil} = _scope, frame) do
+    text = """
+    Nothing to sync from here — this server holds no working copy.
+
+    The harness watches the project's files and reports what changes, so the \
+    graph is already current. Write your file and re-check the requirement; \
+    there is no sync step to run.
+    """
+
+    {:reply, Response.tool() |> Response.text(text), frame}
   end
 
   defp run_sync(scope, frame) do

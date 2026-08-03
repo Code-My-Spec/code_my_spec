@@ -151,8 +151,11 @@ defmodule CodeMySpec.AgentTasks.ComponentCode do
   defp read_spec(%{environment: %Environment{} = env}, path),
     do: Environments.read_file(env, path)
 
-  defp read_spec(_scope, path),
-    do: Environments.read_file(Environment.new(:local, File.cwd!()), path)
+  # Reads through the caller's environment. It used to build one at this
+  # server's current directory, which read *this* repository's specs for
+  # somebody else's project.
+  defp read_spec(scope, path),
+    do: Environments.read_file(Map.get(scope, :environment), path)
 
   defp substantive_spec?(content) do
     line_count = content |> String.split("\n") |> length()
@@ -161,21 +164,23 @@ defmodule CodeMySpec.AgentTasks.ComponentCode do
     line_count > 15 or has_api_section?
   end
 
-  defp implementation_steps(""), do: """
-      1. Read the test file to understand the expected behavior and any test fixtures
-      2. Read the linked story's BDD spex (under `test/spex/<story_id>_*/`) — they are the contract for this component's public API
-      3. Create all necessary module files
-      4. Implement all public API functions implied by the spex and tests
-      5. Ensure the implementation satisfies the tests
-      6. Create schemas, migrations, or supporting code as needed
-      """
+  defp implementation_steps(""),
+    do: """
+    1. Read the test file to understand the expected behavior and any test fixtures
+    2. Read the linked story's BDD spex (under `test/spex/<story_id>_*/`) — they are the contract for this component's public API
+    3. Create all necessary module files
+    4. Implement all public API functions implied by the spex and tests
+    5. Ensure the implementation satisfies the tests
+    6. Create schemas, migrations, or supporting code as needed
+    """
 
-  defp implementation_steps(_), do: """
-      1. Read the spec file to understand the component architecture
-      2. Read the test file to understand the expected behavior and any test fixtures
-      3. Create all necessary module files following the component spec
-      4. Implement all public API functions specified in the spec
-      5. Ensure the implementation satisfies the tests
-      6. Create schemas, migrations, or supporting code as needed
-      """
+  defp implementation_steps(_),
+    do: """
+    1. Read the spec file to understand the component architecture
+    2. Read the test file to understand the expected behavior and any test fixtures
+    3. Create all necessary module files following the component spec
+    4. Implement all public API functions specified in the spec
+    5. Ensure the implementation satisfies the tests
+    6. Create schemas, migrations, or supporting code as needed
+    """
 end

@@ -75,13 +75,17 @@ defmodule CodeMySpec.Files.ComponentSync do
     end
   end
 
-  defp query_files(%Scope{active_project_id: project_id}, changed_paths) when is_list(changed_paths) do
+  defp query_files(%Scope{active_project_id: project_id}, changed_paths)
+       when is_list(changed_paths) do
     {
       File
       |> where([f], f.project_id == ^project_id and f.role == :spec and f.path in ^changed_paths)
       |> Repo.all(),
       File
-      |> where([f], f.project_id == ^project_id and f.role == :implementation and f.path in ^changed_paths)
+      |> where(
+        [f],
+        f.project_id == ^project_id and f.role == :implementation and f.path in ^changed_paths
+      )
       |> Repo.all()
     }
   end
@@ -149,7 +153,32 @@ defmodule CodeMySpec.Files.ComponentSync do
   # Spec files: the H1 line (e.g. `# CodeMySpec.Git.Behaviour`) is the
   # authoritative module identifier. Path is purely storage — the file
   # can live anywhere; the H1 inside is what names it.
-  defp parse_spec_file(%File{path: path} = _file, env) do
+  # Prefers what the scan already worked out. `Files.Scanner` extracts the
+  # component's identity while it has the bytes, so this needs no disk — which
+  # is the point, because on the light harness there is none, and a spec that
+  # cannot be read is indistinguishable here from a component that no longer
+  # exists. `cleanup_removed/3` then prunes it.
+  #
+  # Falls back to reading for File rows written before the scanner stored this.
+  defp parse_spec_file(%File{validation_errors: errors} = file, env) do
+    case stored_component_data(errors) do
+      %{"module_name" => name} = data when is_binary(name) ->
+        %{
+          module_name: name,
+          type: data["type"],
+          description: data["description"],
+          dependencies: data["dependencies"] || []
+        }
+
+      _ ->
+        parse_spec_file_from_disk(file, env)
+    end
+  end
+
+  defp stored_component_data(%{"data" => data}) when is_map(data), do: data
+  defp stored_component_data(_), do: nil
+
+  defp parse_spec_file_from_disk(%File{path: path} = _file, env) do
     case Environments.read_file(env, path) do
       {:ok, raw_content} ->
         # Normalize CRLF → LF before regex extraction. Spec files written
@@ -199,7 +228,24 @@ defmodule CodeMySpec.Files.ComponentSync do
   # inferred from impl content — it lives in the spec (and may move to
   # a module attribute later). Type defaults are owned by
   # `Components.upsert_component`.
-  defp parse_impl_file(%File{path: path} = _file, env) do
+  defp parse_impl_file(%File{validation_errors: errors} = file, env) do
+    case stored_component_data(errors) do
+      %{"module_name" => name} when is_binary(name) ->
+        %{module_name: name, type: nil, description: nil, dependencies: []}
+
+      # An impl file with no defmodule (a script, an .exs) has no component
+      # identity, and the scan recorded that as an explicit nil. Distinguish it
+      # from "nothing stored yet" so a known-empty answer is not re-derived by
+      # opening the file.
+      %{"module_name" => nil} ->
+        nil
+
+      _ ->
+        parse_impl_file_from_disk(file, env)
+    end
+  end
+
+  defp parse_impl_file_from_disk(%File{path: path} = _file, env) do
     case Environments.read_file(env, path) do
       {:ok, content} ->
         case Regex.run(~r/^defmodule\s+([A-Z][a-zA-Z0-9_.]*)\s+do/m, content) do
@@ -309,7 +355,9 @@ defmodule CodeMySpec.Files.ComponentSync do
 
   defp find_nearest_ancestor(module_name, component_map) do
     case parent_module_name(module_name) do
-      nil -> nil
+      nil ->
+        nil
+
       parent_name ->
         case Map.get(component_map, parent_name) do
           nil -> find_nearest_ancestor(parent_name, component_map)
@@ -393,7 +441,29 @@ defmodule CodeMySpec.Files.ComponentSync do
       ]
 
       File
-      |> where([f], f.project_id == ^project_id and f.path in ^patterns and is_nil(f.component_id))
+      |> where(
+        [f],
+        f.project_id == ^project_id and f.path in ^patterns and is_nil(f.component_id)
+      )
+      |> Repo.update_all(set: [component_id: component.id])
+
+      # Path patterns only find files where Phoenix puts a module where its name
+      # suggests, and it often does not: `MyAppWeb.CoreComponents` lives under
+      # `components/`, `MyAppWeb.ErrorHTML` under `controllers/`. Those files are
+      # then owned by nothing and their `implementation_file` requirement cannot
+      # be satisfied by any correct work — the QA drill hit four and rightly
+      # refused to relocate framework files to please a checker.
+      #
+      # The scan already recorded the `defmodule` each implementation declares,
+      # so claim by that too. Still `is_nil(component_id)`, so a file already
+      # owned is never stolen.
+      File
+      |> where(
+        [f],
+        f.project_id == ^project_id and f.role == :implementation and
+          is_nil(f.component_id) and
+          fragment("?->'data'->>'module_name' = ?", f.validation_errors, ^module_name)
+      )
       |> Repo.update_all(set: [component_id: component.id])
     end)
   end
@@ -405,7 +475,8 @@ defmodule CodeMySpec.Files.ComponentSync do
   end
 
   # Phoenix convention: LiveViews live in `live/`, controllers in `controllers/`
-  defp source_path_for_type(module_path, type) when type in ["liveview", "liveview_component", "live_context"] do
+  defp source_path_for_type(module_path, type)
+       when type in ["liveview", "liveview_component", "live_context"] do
     inject_dir_segment(module_path, "live")
   end
 

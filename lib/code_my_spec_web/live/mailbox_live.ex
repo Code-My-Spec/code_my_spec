@@ -38,7 +38,7 @@ defmodule CodeMySpecWeb.MailboxLive do
       {:ok,
        socket
        |> put_flash(:error, "Only account owners and admins can administer mailboxes.")
-       |> redirect(to: ~p"/app/mail")}
+       |> redirect(to: ~p"/app/projects/#{socket.assigns.project.id}/mail")}
     end
   end
 
@@ -118,7 +118,10 @@ defmodule CodeMySpecWeb.MailboxLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_scope={@current_scope} pending_notifications={@pending_notifications}>
+    <Layouts.app flash={@flash} current_scope={@current_scope} pending_notifications={@pending_notifications}
+      project={assigns[:project]}
+      projects={assigns[:projects] || []}
+    >
       <div class="mx-auto w-full max-w-4xl">
         <header class="flex items-center justify-between gap-3 pb-4">
           <h1 class="text-2xl font-semibold">Mailboxes</h1>
@@ -141,7 +144,7 @@ defmodule CodeMySpecWeb.MailboxLive do
             >
               <.icon name="hero-arrow-path" class="size-4" /> Sync mail
             </button>
-            <.link navigate={~p"/app/mail"} class="btn btn-ghost btn-sm">
+            <.link navigate={~p"/app/projects/#{@project.id}/mail"} class="btn btn-ghost btn-sm">
               <.icon name="hero-envelope" class="size-4" /> Go to Mail
             </.link>
           </div>

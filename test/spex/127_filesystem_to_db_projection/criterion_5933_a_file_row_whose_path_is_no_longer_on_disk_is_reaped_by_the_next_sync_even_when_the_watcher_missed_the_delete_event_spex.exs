@@ -34,7 +34,7 @@ defmodule CodeMySpecSpex.Story127.Criterion5933Spex do
         :ok = Environments.write_file(context.environment, @test_path, test_content())
 
         {:ok, files_live, _html} =
-          live(context.conn, "/projects/#{context.project.name}/files")
+          live(context.conn, "/app/projects/#{context.project.id}/files")
 
         files_live
         |> element("[data-test='sync-button']")
@@ -45,7 +45,7 @@ defmodule CodeMySpecSpex.Story127.Criterion5933Spex do
 
       given_ "both files appear in the Files projection", context do
         {:ok, files_live, _html} =
-          live(context.conn, "/projects/#{context.project.name}/files")
+          live(context.conn, "/app/projects/#{context.project.id}/files")
 
         assert has_element?(files_live, "[data-file-path=\"#{@impl_path}\"]")
         assert has_element?(files_live, "[data-file-path=\"#{@test_path}\"]")
@@ -57,7 +57,7 @@ defmodule CodeMySpecSpex.Story127.Criterion5933Spex do
         :ok = Environments.delete_file(context.environment, @test_path)
 
         {:ok, files_live, _html} =
-          live(context.conn, "/projects/#{context.project.name}/files")
+          live(context.conn, "/app/projects/#{context.project.id}/files")
 
         files_live
         |> element("[data-test='sync-button']")

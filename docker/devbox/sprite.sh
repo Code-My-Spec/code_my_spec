@@ -40,9 +40,30 @@ else
     # it never lands in .git/config on a volume that outlives the container.
     git clone "https://x-access-token:${GITHUB_TOKEN}@${REPO_URL#https://}" "${APP_DIR}" 2>&1 \
       | sed 's/x-access-token:[^@]*@/x-access-token:***@/g'
-    git -C "${APP_DIR}" remote set-url origin "${REPO_URL}"
+    clone_status=$?
+    [ "${clone_status}" -eq 0 ] && git -C "${APP_DIR}" remote set-url origin "${REPO_URL}"
   else
     git clone "${REPO_URL}" "${APP_DIR}"
+    clone_status=$?
+  fi
+
+  # `set -e` used to end the run here on git's bare exit 128, with the last line
+  # of output being git's own — which says the host did not resolve and nothing
+  # about what that meant for the sprite.
+  #
+  # Deliberately not falling through to "generate a new project". An
+  # unreachable remote and an empty new remote look identical from here, and
+  # guessing wrong means scaffolding a fresh tree over a repository that
+  # already has history, then committing it. A sprite that stops is
+  # recoverable; one that forks a project's history quietly is not.
+  if [ "${clone_status}" -ne 0 ]; then
+    log "FATAL: could not clone ${REPO_URL} (git exited ${clone_status})."
+    log "       Not generating a new project instead: an unreachable repo and an"
+    log "       empty new one are indistinguishable from here, and guessing wrong"
+    log "       means scaffolding over history that already exists."
+    log "       If this project has no repository yet, create it empty and point"
+    log "       REPO_URL at it — an empty clone does reach the generate path."
+    exit 1
   fi
 fi
 
@@ -66,6 +87,20 @@ if [ -z "$(git -C "${APP_DIR}" log --oneline -1 2>/dev/null)" ]; then
   #
   # The value is fenced in a sentinel because release boot writes to stdout and
   # command substitution would swallow it into the app name.
+  # On the light-harness path the project's identity comes from the server, on
+  # the same exchange that gets the token. Reading it out of Postgres here is a
+  # database dependency in the launcher of a harness whose whole premise is
+  # holding no database — and there is no reason for that container to hold
+  # credentials for one.
+  if [ "${CMS_LIGHT_HARNESS:-}" = "1" ]; then
+    : "${CMS_SERVER_URL:?CMS_LIGHT_HARNESS=1 needs CMS_SERVER_URL}"
+    : "${CMS_DEPLOY_KEY:?CMS_LIGHT_HARNESS=1 needs CMS_DEPLOY_KEY}"
+
+    APP_NAME="$(curl -sS --max-time 30 -X POST "${CMS_SERVER_URL}/api/sprite/token" \
+      -H "Authorization: Bearer ${CMS_DEPLOY_KEY}" \
+      -H "Content-Type: application/json" -d '{}' \
+      | python3 -c 'import json, sys; print(json.load(sys.stdin).get("app_name") or "")')"
+  else
   APP_NAME="$(CMS_PROJECT_ID="$CMS_PROJECT_ID" /opt/cms/bin/code_my_spec_cli eval '
     {:ok, _} = Application.ensure_all_started(:ecto_sql)
     {:ok, _} = Application.ensure_all_started(:postgrex)
@@ -83,6 +118,7 @@ if [ -z "$(git -C "${APP_DIR}" log --oneline -1 2>/dev/null)" ]; then
 
     IO.puts("__CMS_APP__" <> Macro.underscore(module_name))
   ' | sed -n 's/^__CMS_APP__//p' | tail -1)"
+  fi
 
   [ -n "${APP_NAME}" ] || { echo "could not resolve module_name for ${CMS_PROJECT_ID}" >&2; exit 1; }
   log "Generating ${APP_NAME} with mix cms.new"
@@ -158,6 +194,108 @@ git config --global --add safe.directory "${APP_DIR}" 2>/dev/null || true
 su agent -c "git config --global --add safe.directory '${APP_DIR}'" 2>/dev/null || true
 chown -R agent:agent "${APP_DIR}" 2>/dev/null || true
 
+# --- talking to the server -----------------------------------------------------
+# Defined here because the plugin install below needs them: the manifest has to
+# carry the token before Claude Code snapshots it.
+
+exchange_token() {
+  : "${CMS_SERVER_URL:?CMS_LIGHT_HARNESS=1 needs CMS_SERVER_URL}"
+  : "${CMS_DEPLOY_KEY:?CMS_LIGHT_HARNESS=1 needs CMS_DEPLOY_KEY}"
+
+  log "Trading the deploy key for an access token"
+
+  CMS_ACCESS_TOKEN="$(curl -sS -X POST "${CMS_SERVER_URL}/api/sprite/token" \
+    -H "Authorization: Bearer ${CMS_DEPLOY_KEY}" \
+    -H "Content-Type: application/json" -d '{}' \
+    | python3 -c 'import sys, json; print(json.load(sys.stdin).get("access_token", ""))')"
+
+  # Refuse rather than start half-configured. A harness that comes up with no
+  # token serves hooks perfectly well and gives the agent no tools at all, and
+  # "no tools" reads as a broken plugin rather than as a failed exchange.
+  [ -n "${CMS_ACCESS_TOKEN}" ] || {
+    log "FATAL: could not trade the deploy key for an access token at ${CMS_SERVER_URL}."
+    log "       The agent would come up with no harness tools. Refusing to start."
+    exit 1
+  }
+
+  export CMS_ACCESS_TOKEN
+}
+
+patch_marketplace_manifest() {
+  python3 - "${CMS_SERVER_URL}/mcp/harness" "${CMS_ACCESS_TOKEN}" "${CMS_PROJECT_ID}" <<'PATCH'
+import json, pathlib, sys
+
+url, token, project_id = sys.argv[1:4]
+manifest = pathlib.Path(
+    "/home/agent/.claude/plugins/marketplaces/codemyspec"
+    "/plugins/codemyspec/.claude-plugin/plugin.json"
+)
+
+if not manifest.exists():
+    print(f"WARNING: no marketplace manifest at {manifest} — the agent will have no "
+          "harness tools.")
+    raise SystemExit(0)
+
+m = json.loads(manifest.read_text())
+
+# A remote MCP server, not a spawned bridge. Claude Code connects to this URL
+# itself and sends these headers on every request; the shipped manifest points
+# at a local `cms server` instead, and this repoints it at the CodeMySpec
+# server, which needs a token and an explicit project because it has no disk to
+# resolve a working directory against.
+#
+# Replaced wholesale rather than merged: the shipped entry may still be a stdio
+# relay, and leaving `command` beside `url` is an ambiguous manifest.
+m.setdefault("mcpServers", {})["local"] = {
+    "type": "http",
+    "url": url,
+    "headers": {
+        "Authorization": f"Bearer {token}",
+        "X-Project-ID": project_id,
+    },
+}
+
+manifest.write_text(json.dumps(m, indent=2))
+print(f"pointed the plugin's MCP at {url}")
+PATCH
+
+  chown -R agent:agent /home/agent/.claude 2>/dev/null || true
+}
+
+# --- the agent's credentials ---------------------------------------------------
+# Claude Code needs to be logged in, and nothing here logs it in. Two ways to
+# supply that, both from outside:
+#
+#   1. A volume holding an already-authenticated home (how this has been done
+#      so far — `cms-agent-home-v2` on the dev machine):
+#
+#        docker run -v cms-agent-home-v2:/home/agent/.claude ...
+#
+#   2. A long-lived token, which is what an unattended sprite on a fresh host
+#      wants:
+#
+#        claude setup-token                    # on a machine with a browser
+#        docker run -e CLAUDE_CODE_OAUTH_TOKEN=... ...
+#
+# Checked here rather than discovered at the first agent turn, because
+# "Not logged in" arrives as a turn that does nothing and looks like a hung
+# sprite. On macOS the credential lives in the Keychain, not in ~/.claude, so
+# bind-mounting the host's directory carries config and no auth — that looks
+# like it should work and does not.
+if [ -z "${CLAUDE_CODE_OAUTH_TOKEN:-}" ] && [ ! -f /home/agent/.claude/.credentials.json ]; then
+  log "WARNING: no Claude credential. Mount an authenticated home at"
+  log "         /home/agent/.claude, or pass CLAUDE_CODE_OAUTH_TOKEN."
+  log "         The agent will start and every turn will report 'Not logged in'."
+fi
+
+# The image symlinks ~/.claude.json into ~/.claude so both survive one volume.
+# A mounted volume replaces the directory the symlink pointed into, so it is
+# re-made here rather than baked.
+if [ -f /home/agent/.claude/claude.json ]; then
+  ln -sfn /home/agent/.claude/claude.json /home/agent/.claude.json
+  chown -h agent:agent /home/agent/.claude.json 2>/dev/null || true
+fi
+
 # --- the agent's harness tools -------------------------------------------------
 # Without the plugin the agent has no `get_next_requirement`, no `start_task`,
 # and — the part that actually ends the run — no stop hook, so nothing forces it
@@ -177,12 +315,76 @@ if [ -d /home/agent/.claude ]; then
   log "Installing the CodeMySpec plugin"
   su agent -c "claude plugin marketplace add Code-My-Spec/plugins" >/dev/null 2>&1 \
     || log "WARNING: could not add the codemyspec marketplace — the agent will have no harness tools"
+
+  # Patch the marketplace copy *before* installing, and reinstall if something
+  # is already there.
+  #
+  # Claude Code snapshots a plugin's MCP config when it installs, into
+  # plugins/cache/<marketplace>/<plugin>/<version>/. Editing that snapshot
+  # afterwards does nothing — not even adding a whole new server, which is how
+  # this was finally pinned down. Install-then-patch leaves the agent with no
+  # harness tools and a log that says only that the server "never finished
+  # connecting".
+  if [ "${CMS_LIGHT_HARNESS:-}" = "1" ]; then
+    exchange_token
+    patch_marketplace_manifest
+    su agent -c "claude plugin uninstall codemyspec@codemyspec" >/dev/null 2>&1 || true
+  fi
+
   su agent -c "claude plugin install codemyspec@codemyspec" >/dev/null 2>&1 \
     || log "WARNING: could not install the codemyspec plugin — the agent will have no harness tools"
   su agent -c "claude plugin list" 2>/dev/null | grep -q codemyspec \
     && log "Plugin installed" \
     || log "WARNING: codemyspec plugin is NOT installed; expect 'no MCP tools' and a run that stops at the first stop hook"
 fi
+
+# --- which port the hooks actually post to -------------------------------------
+# Read from the installed plugin rather than assumed, because guessing it wrong
+# does not fail: the hooks POST into a closed port, curl exits non-zero, and
+# Claude Code treats a hook that could not be reached as a hook with nothing to
+# say. Session ids are never injected and the stop hook never gates, so the run
+# looks like a harness that approves of everything.
+#
+# A whole drill was lost to this. The published plugin posts to 4003; this script
+# had 4004 (taken from the newer copy in the repo) and a comment claiming 4005.
+# All three disagreed, and the run still reported success — the agent noticed the
+# silence and drove the hooks by hand with curl.
+#
+# The installed manifest is the only authority: it is the file the running hooks
+# were read from.
+detect_harness_port() {
+  python3 - <<'PY' 2>/dev/null || true
+import json, pathlib, re, collections
+
+roots = []
+try:
+    installed = json.loads(
+        pathlib.Path("/home/agent/.claude/plugins/installed_plugins.json").read_text()
+    )
+    for entries in installed.get("plugins", {}).values():
+        for entry in entries:
+            if entry.get("installPath"):
+                roots.append(pathlib.Path(entry["installPath"]))
+except Exception:
+    pass
+
+# Fallback for a layout change in installed_plugins.json: any hooks.json under
+# the plugin cache is still closer to the truth than a hardcoded number.
+if not roots:
+    roots = list(pathlib.Path("/home/agent/.claude/plugins").glob("*/*/*/*"))
+
+ports = collections.Counter()
+for root in roots:
+    hooks = root / "hooks" / "hooks.json"
+    if hooks.exists():
+        ports.update(re.findall(r"localhost:(\d+)", hooks.read_text()))
+
+if ports:
+    print(ports.most_common(1)[0][0])
+PY
+}
+
+DETECTED_HARNESS_PORT="$(detect_harness_port)"
 
 # --- dependencies -------------------------------------------------------------
 # Also on the clone path, not just after generating. A sprite that attaches to
@@ -267,6 +469,94 @@ export CMS_DEPLOY_KEY="${CMS_DEPLOY_KEY:-}"
 export HOME=/home/agent
 export MIX_HOME=/home/agent/.mix
 export HEX_HOME=/home/agent/.hex
+
+# CMS_LIGHT_HARNESS=1 serves this project with the light harness instead of the
+# full local application.
+#
+# Opt-in, and deliberately not the default yet: the CLI path below is what every
+# drill so far has run on, and switching the thing under test at the same time as
+# the thing being tested makes a failed drill say nothing about either.
+#
+# Two differences, and only two:
+#
+#   * It serves the hooks on whatever port the installed plugin posts to, found
+#     by reading that plugin's hooks.json above. The harness serves those paths
+#     already, so nothing about the plugin changes — see
+#     cms_harness/config/runtime.exs.
+#   * The MCP tools come from the server rather than from a process here. A
+#     deploy key cannot reach them (the mount takes an OAuth token), so the key
+#     is traded for one first. That token is what the agent's MCP client holds.
+if [ "${CMS_LIGHT_HARNESS:-}" = "1" ]; then
+  # The token was exchanged and written into the plugin manifest before the
+  # install above, because that is the only moment Claude Code reads it.
+  [ -n "${CMS_ACCESS_TOKEN:-}" ] || exchange_token
+
+  # The token and project id ride the plugin manifest as request headers —
+  # see patch_marketplace_manifest. Nothing in this container reads them from
+  # the environment any more; Claude Code holds the connection itself.
+
+  if [ -n "${CMS_HARNESS_PORT:-}" ]; then
+    :
+  elif [ -n "${DETECTED_HARNESS_PORT:-}" ]; then
+    export CMS_HARNESS_PORT="${DETECTED_HARNESS_PORT}"
+    log "Hooks post to ${CMS_HARNESS_PORT} (read from the installed plugin)"
+  else
+    export CMS_HARNESS_PORT=4003
+    log "WARNING: could not read a hook port from the installed plugin; guessing ${CMS_HARNESS_PORT}. If hooks do not fire, this is why."
+  fi
+  export CMS_PROJECT_DIR="${APP_DIR}"
+
+  # Where the embedding model is. `mix release` copies priv/ in, so the CLI
+  # release already carries one — found rather than shipped a second time.
+  # Resolved by glob because the path contains the release's version, and
+  # hardcoding that means it works until the next version bump and then does
+  # not, in a way that looks like the model is missing.
+  if [ -z "${CMS_MODEL_PATH:-}" ]; then
+    for candidate in /opt/cms/lib/code_my_spec-*/priv/models; do
+      if [ -f "${candidate}/all-MiniLM-L6-v2.onnx" ]; then
+        export CMS_MODEL_PATH="${candidate}"
+        break
+      fi
+    done
+  fi
+
+  if [ -n "${CMS_MODEL_PATH:-}" ]; then
+    log "Embedding model: ${CMS_MODEL_PATH}"
+  else
+    log "WARNING: no embedding model found under /opt/cms. Search will be"
+    log "         degraded; set CMS_MODEL_PATH if one lives elsewhere."
+  fi
+
+  # A failed auth is cached, and the cache outlives the run. This home is a
+  # volume reused across drills, so a single 401 disables the MCP server for
+  # every later run, presenting as "the server never finished connecting".
+  python3 - <<'RESET'
+import json, pathlib
+
+p = pathlib.Path("/home/agent/.claude/mcp-needs-auth-cache.json")
+if p.exists():
+    # A half-written or empty cache is not a reason to refuse to boot. This ran
+    # under `set -e`, so a JSONDecodeError here killed the whole sprite — a
+    # container that had run once could not be restarted.
+    try:
+        cache = json.loads(p.read_text() or "{}")
+    except (ValueError, OSError):
+        cache = {}
+    stale = [k for k in cache if "codemyspec" in k]
+    for k in stale:
+        cache.pop(k)
+    if stale:
+        p.write_text(json.dumps(cache))
+        print(f"cleared a cached auth failure for {', '.join(stale)}")
+RESET
+
+  chown -R agent:agent /home/agent/.claude 2>/dev/null || true
+
+  log "Starting the light harness on ${CMS_HARNESS_PORT} against ${CMS_SERVER_URL}"
+
+  exec setpriv --reuid=agent --regid=agent --init-groups \
+    /opt/cms_harness/bin/cms_harness start
+fi
 
 exec setpriv --reuid=agent --regid=agent --init-groups \
   /opt/cms/bin/code_my_spec_cli start

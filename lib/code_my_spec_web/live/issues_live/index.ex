@@ -5,11 +5,14 @@ defmodule CodeMySpecWeb.IssuesLive.Index do
 
   @statuses ~w(all incoming accepted dismissed resolved)
   @severities ~w(all critical high medium low info)
+  # The local index this view replaced could filter by scope; the cloud one
+  # could not, so the merge quietly dropped it. Restored here rather than
+  # left as a capability the move cost us.
+  @scopes ~w(all app qa docs framework)
 
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_scope={@current_scope} pending_notifications={@pending_notifications}>
       <.header>
         Issues
         <:actions>
@@ -21,6 +24,11 @@ defmodule CodeMySpecWeb.IssuesLive.Index do
             </select>
             <select class="select select-sm select-bordered" name="severity">
               <option :for={s <- @severity_options} value={s} selected={s == @filter_severity}>
+                {String.capitalize(s)}
+              </option>
+            </select>
+            <select class="select select-sm select-bordered" name="scope">
+              <option :for={s <- @scope_options} value={s} selected={s == @filter_scope}>
                 {String.capitalize(s)}
               </option>
             </select>
@@ -37,7 +45,7 @@ defmodule CodeMySpecWeb.IssuesLive.Index do
           :for={issue <- @issues}
           id={"issue-#{issue.id}"}
           class="card bg-base-100 shadow-md cursor-pointer hover:shadow-lg transition-shadow"
-          phx-click={JS.navigate(~p"/app/issues/#{issue.id}")}
+          phx-click={JS.navigate(path(@socket, ~p"/app/projects/#{@project.id}/issues/#{issue.id}"))}
         >
           <div class="card-body py-4">
             <div class="flex items-start justify-between gap-4">
@@ -63,7 +71,6 @@ defmodule CodeMySpecWeb.IssuesLive.Index do
           </div>
         </div>
       </div>
-    </Layouts.app>
     """
   end
 
@@ -75,21 +82,53 @@ defmodule CodeMySpecWeb.IssuesLive.Index do
 
     {:ok,
      socket
+     |> assign(:section, :issues)
      |> assign(:page_title, "Issues")
      |> assign(:filter_status, "all")
      |> assign(:filter_severity, "all")
+     |> assign(:filter_scope, "all")
      |> assign(:status_options, @statuses)
-     |> assign(:severity_options, @severities)
+     |> assign(:scope_options, @scopes)
+     |> assign(:severity_options, @severities)}
+  end
+
+  # Filters live in the query string, not just in assigns — a filtered list is
+  # then a link you can send someone, and it survives a reload.
+  @impl true
+  def handle_params(params, _uri, %{assigns: %{scope: %{}}} = socket) do
+    {:noreply,
+     socket
+     |> assign(:filter_status, param(params["status"], @statuses, socket.assigns.filter_status))
+     |> assign(
+       :filter_severity,
+       param(params["severity"], @severities, socket.assigns.filter_severity)
+     )
+     |> assign(:filter_scope, param(params["scope"], @scopes, socket.assigns.filter_scope))
      |> load_issues()}
   end
 
+  def handle_params(_params, _uri, socket), do: {:noreply, socket}
+
+  defp param(value, allowed, fallback) when is_binary(value) do
+    if value in allowed, do: value, else: fallback
+  end
+
+  defp param(_value, _allowed, fallback), do: fallback
+
   @impl true
   def handle_event("filter", params, socket) do
+    query =
+      [
+        status: params["status"] || socket.assigns.filter_status,
+        severity: params["severity"] || socket.assigns.filter_severity,
+        scope: params["scope"] || socket.assigns.filter_scope
+      ]
+      |> Enum.reject(fn {_k, v} -> v in [nil, "all"] end)
+
     {:noreply,
-     socket
-     |> assign(:filter_status, params["status"] || socket.assigns.filter_status)
-     |> assign(:filter_severity, params["severity"] || socket.assigns.filter_severity)
-     |> load_issues()}
+     push_patch(socket,
+       to: path(socket, ~p"/app/projects/#{socket.assigns.slug}/issues?#{query}")
+     )}
   end
 
   @impl true
@@ -107,6 +146,7 @@ defmodule CodeMySpecWeb.IssuesLive.Index do
     []
     |> maybe_add(:status, assigns.filter_status)
     |> maybe_add(:severity, assigns.filter_severity)
+    |> maybe_add(:scope, assigns.filter_scope)
   end
 
   defp maybe_add(filters, _key, "all"), do: filters

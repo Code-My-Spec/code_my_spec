@@ -8,7 +8,7 @@ defmodule CodeMySpecSpex.Story816.Criterion6584Spex do
   Surfaces (forward-looking — red until built):
     * Inbound provider webhook at "/webhooks/resend" — an `email.received`
       event is routed by its To-address to the matching mailbox and persisted.
-    * `CodeMySpecWeb.MailLive` at "/app/mail" — the operator opens the
+    * `CodeMySpecWeb.MailLive` at "/app/projects/:project_id/mail" — the operator opens the
       mailbox and sees the received email.
   """
 
@@ -50,7 +50,7 @@ defmodule CodeMySpecSpex.Story816.Criterion6584Spex do
       end
 
       then_ "the email appears in the support mailbox", context do
-        {:ok, view, _html} = live(context.conn, "/app/mail")
+        {:ok, view, _html} = live(context.conn, "/app/projects/#{context.project.id}/mail")
 
         {:ok, _show_view, thread_html} =
           view

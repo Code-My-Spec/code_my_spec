@@ -38,9 +38,10 @@ defmodule CodeMySpec.AgentTasks.Setup.Context do
   @doc """
   Load setup-relevant File records for the project.
 
-  Also stashes `scope.environment` so the one residual filesystem-bound step
-  (ProjectStructure: directories aren't synced) can stat dirs without each
-  step having to dig the env out of the scope itself.
+  Also stashes `scope.environment` so `dir_status/2` can stat a directory when
+  there is a disk — directories aren't synced, so they are the one thing not
+  answerable from File records alone. It is nil on the light harness, which
+  `dir_status/2` treats as "cannot tell" rather than "not there".
   """
   @spec load(Scope.t()) :: t()
   def load(%Scope{active_project_id: nil} = scope) do
@@ -109,12 +110,41 @@ defmodule CodeMySpec.AgentTasks.Setup.Context do
   def app_name(ctx), do: data(ctx, "mix.exs", :app_name)
 
   @doc """
-  Stat a directory through the stashed environment. Used by ProjectStructure
-  (directories aren't tracked as File records).
+  Whether a directory is there, when that can be determined at all.
+
+  Three states rather than two, because on the light harness there is a real
+  third one. The server has no disk — that is the whole design — so
+  `scope.environment` is nil and there is nothing to stat. Answering `false` in
+  that case is worse than not answering: it reports a directory as missing that
+  may well exist, and no `mkdir` the agent runs can change the reply, because
+  directories are not synced. That produced a requirement an agent could work at
+  forever, and one did.
+
+  What can still be known without a disk: a directory that holds a synced file
+  exists. That is decided first and works everywhere, harness or local.
+
+    * `:present`      — a synced file lives under it, or a stat found it
+    * `:absent`       — there is a disk and it is not there
+    * `:unobservable` — no disk, no synced file. Not evidence of absence.
   """
-  @spec dir_exists?(t(), String.t()) :: boolean()
-  def dir_exists?(%__MODULE__{environment: nil}, _path), do: false
-  def dir_exists?(%__MODULE__{environment: env}, path), do: Environments.file_exists?(env, path)
+  @spec dir_status(t(), String.t()) :: :present | :absent | :unobservable
+  def dir_status(%__MODULE__{} = ctx, path) do
+    cond do
+      holds_synced_file?(ctx, path) -> :present
+      ctx.environment -> stat(ctx.environment, path)
+      true -> :unobservable
+    end
+  end
+
+  defp stat(env, path) do
+    if Environments.file_exists?(env, path), do: :present, else: :absent
+  end
+
+  # Prefix match on the separator so `spec/foo` is not proven by `spec/foobar`.
+  defp holds_synced_file?(%__MODULE__{files_by_path: by_path}, path) do
+    prefix = String.trim_trailing(path, "/") <> "/"
+    Enum.any?(by_path, fn {p, _} -> String.starts_with?(p, prefix) end)
+  end
 
   defp get_errors(%{"errors" => e}) when is_map(e), do: e
   defp get_errors(_), do: %{}

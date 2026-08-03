@@ -62,7 +62,7 @@ defmodule CodeMySpecWeb.MailLive do
 
   @impl true
   def handle_event("open_mailbox", %{"id" => id}, socket) do
-    {:noreply, push_navigate(socket, to: ~p"/app/mail/#{id}")}
+    {:noreply, push_navigate(socket, to: ~p"/app/projects/#{socket.assigns.project.id}/mail/#{id}")}
   end
 
   # Thread selection lives in the URL (?thread=KEY) so a reload stays on the
@@ -139,8 +139,8 @@ defmodule CodeMySpecWeb.MailLive do
     |> assign(:current_thread, key && Enum.find(threads, &(&1.key == key)))
   end
 
-  defp thread_path(mailbox, nil), do: ~p"/app/mail/#{mailbox.id}"
-  defp thread_path(mailbox, key), do: ~p"/app/mail/#{mailbox.id}?thread=#{key}"
+  defp thread_path(mailbox, nil), do: ~p"/app/projects/#{mailbox.project_id}/mail/#{mailbox.id}"
+  defp thread_path(mailbox, key), do: ~p"/app/projects/#{mailbox.project_id}/mail/#{mailbox.id}?thread=#{key}"
 
   defp reply_subject(%{subject: subject}) when is_binary(subject), do: prefix_re(subject)
   defp reply_subject(_), do: "Re:"
@@ -291,14 +291,17 @@ defmodule CodeMySpecWeb.MailLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_scope={@current_scope} pending_notifications={@pending_notifications}>
+    <Layouts.app flash={@flash} current_scope={@current_scope} pending_notifications={@pending_notifications}
+      project={assigns[:project]}
+      projects={assigns[:projects] || []}
+    >
       <div class="w-full">
         <header class="flex items-center justify-between gap-3 pb-4">
           <div class="flex items-center gap-2">
             <.icon name="hero-envelope" class="size-6 text-primary" />
             <h1 class="text-2xl font-semibold">Mail</h1>
           </div>
-          <.link :if={@can_administer?} navigate={~p"/app/mailboxes"} class="btn btn-ghost btn-sm">
+          <.link :if={@can_administer?} navigate={~p"/app/projects/#{@project.id}/mailboxes"} class="btn btn-ghost btn-sm">
             <.icon name="hero-cog-6-tooth" class="size-4" /> Manage mailboxes
           </.link>
         </header>

@@ -44,7 +44,9 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
     orphans = ArchitectureChecker.orphans(scope)
     component_count = Components.count_components(scope)
 
-    env = scope.environment || Environment.new(:cli, working_dir || File.cwd!())
+    # The caller's environment or none. Inventing one at this server's
+    # directory made `proposal_exists?` answer about *this* repository.
+    env = scope.environment || cli_env(working_dir)
     proposal_exists? = Environments.file_exists?(env, @proposal_path)
     record_session_start_state(env, proposal_exists?)
 
@@ -79,8 +81,8 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
   - {:ok, :invalid, feedback} if proposal has errors or execution fails
   """
   def evaluate(scope, _task) do
-    working_dir = (scope.environment && scope.environment.cwd) || File.cwd!()
-    env = scope.environment || Environment.new(:cli, working_dir)
+    working_dir = scope.environment && scope.environment.cwd
+    env = scope.environment
 
     # Don't clear the marker on evaluate — `command/2` owns the lifecycle.
     # A failing patch-mode evaluate (e.g. unlinked story) used to clear the
@@ -115,8 +117,8 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
   @spec execute_proposal(map()) ::
           {:ok, :valid} | {:ok, :valid, String.t()} | {:ok, :invalid, String.t()}
   def execute_proposal(scope) do
-    working_dir = (scope.environment && scope.environment.cwd) || File.cwd!()
-    env = scope.environment || Environment.new(:cli, working_dir)
+    working_dir = scope.environment && scope.environment.cwd
+    env = scope.environment
     evaluate_initial_mode(scope, env, working_dir)
   end
 
@@ -198,8 +200,34 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
     "## Warnings\n\n#{bullets}"
   end
 
+  # `module_name` is the only authority. It is what the sprite names the
+  # generated app after, so it is the one value guaranteed to match the modules
+  # and boundaries actually on disk.
+  #
+  # This module used to derive a second app name alongside this one, by
+  # stripping every non-alphanumeric out of the project's *display* name and
+  # camelizing the result. For a project called "e2e-todo" that produced
+  # `E2etodo` while the repo defined `E2eTodo` — one letter apart, and a module
+  # tree no boundary claims. Two derivations in one file, disagreeing, and the
+  # prompt handed out the wrong one: an agent registered fourteen components
+  # under `E2etodo.` before noticing and refused to paper over it in code.
+  # Only when a directory was actually supplied. `nil` means this server has
+  # no working copy for the project, which every caller below handles.
+  defp cli_env(nil), do: nil
+  defp cli_env(working_dir), do: Environment.new(:cli, working_dir)
+
   defp get_app_name(%{module_name: module_name}) when is_binary(module_name), do: module_name
-  defp get_app_name(%{name: name}) when is_binary(name), do: Macro.camelize(name)
+
+  # Last resort only. Underscore first so `-` and ` ` are word boundaries —
+  # `Macro.camelize/1` alone leaves "e2e-todo" as "E2e-todo", which is not a
+  # module name at all.
+  defp get_app_name(%{name: name}) when is_binary(name) do
+    name
+    |> String.replace(~r/[^a-zA-Z0-9]+/, "_")
+    |> Macro.underscore()
+    |> Macro.camelize()
+  end
+
   defp get_app_name(_), do: raise("Project must have module_name or name for architecture design")
 
   defp proposal_not_found_feedback do
@@ -233,7 +261,7 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
   defp build_prompt(project, stories, orphans, component_count, output_dir, proposal_exists?) do
     stories_section = format_stories(stories, orphans)
     orphans_section = format_orphans_section(orphans)
-    app_name = derive_app_name(project.name)
+    app_name = get_app_name(project)
 
     architecture_section =
       if component_count > 0 do
@@ -374,12 +402,6 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
     Stop when your edits are complete. The evaluator checks that every
     story has a linked component AND no orphan contexts remain.
     """
-  end
-
-  defp derive_app_name(project_name) do
-    project_name
-    |> String.replace(~r/[^a-zA-Z0-9]/, "")
-    |> Macro.camelize()
   end
 
   defp format_stories([], []) do

@@ -17,7 +17,18 @@ defmodule CodeMySpecWeb do
   those modules here.
   """
 
-  use Boundary, top_level?: true, deps: [CodeMySpec, CodeMySpec.Environments, CodeMySpec.McpServers], exports: :all
+  use Boundary,
+    top_level?: true,
+    deps: [
+      CodeMySpec,
+      CodeMySpec.Environments,
+      # The harness channel decides hooks. `Hooks` is its own top-level boundary
+      # rather than domain code because the stop decision reaches into
+      # McpServers, which `CodeMySpec` deliberately does not depend on.
+      CodeMySpec.Hooks,
+      CodeMySpec.McpServers
+    ],
+    exports: :all
 
   def static_paths, do: ~w(assets fonts images favicon.ico robots.txt sw.js manifest.json 2b3072f808084089a59fa6ee3a6555b3.txt)
 
@@ -79,6 +90,25 @@ defmodule CodeMySpecWeb do
     end
   end
 
+  @doc """
+  The component library this build imports as `<.button>`, `<.header>`, and
+  friends.
+
+  Both web apps share one component vocabulary; what differs between them is
+  CSS, not markup, so the default serves the local terminal zone and the cloud
+  zone equally well. The seam is here for when that stops being true — point
+  `:core_components` at another module and this build's views pick it up, with
+  no LiveView changes. A replacement must cover the same surface, since every
+  `use CodeMySpecWeb, :html` caller imports it.
+  """
+  @core_components Application.compile_env(
+                     :code_my_spec,
+                     :core_components,
+                     CodeMySpecWeb.CoreComponents
+                   )
+
+  def core_components, do: @core_components
+
   defp html_helpers do
     quote do
       # Translation
@@ -86,10 +116,13 @@ defmodule CodeMySpecWeb do
 
       # HTML escaping functionality
       import Phoenix.HTML
-      # Core UI components
-      import CodeMySpecWeb.CoreComponents
+      # Core UI components — see `CodeMySpecWeb.core_components/0`
+      import unquote(core_components())
       # Marketing-zone components (eyebrow, install_card)
       import CodeMySpecWeb.MarketingComponents
+      # Markdown rendering for agent prompts and on-disk docs — shared, because
+      # the views that render them are.
+      import CodeMySpecWeb.Markdown, only: [md_html: 1]
 
       # Common modules used in templates
       alias CodeMySpecWeb.ExternalLinks

@@ -36,7 +36,7 @@ defmodule CodeMySpecSpex.Story561.Criterion5620Spex do
           )
 
         {:ok, sync_live, _html} =
-          live(context.conn, "/projects/#{context.project.name}/files")
+          live(context.conn, "/app/projects/#{context.project.id}/files")
 
         sync_live |> element("button[phx-click='sync']") |> render_click()
         {:ok, context}
@@ -44,7 +44,7 @@ defmodule CodeMySpecSpex.Story561.Criterion5620Spex do
 
       when_ "the engineer opens the requirements graph in the blocked state", context do
         {:ok, _live, html} =
-          live(context.conn, "/projects/#{context.project.name}/requirements/graph?preload=true")
+          live(context.conn, "/app/projects/#{context.project.id}/requirements/graph?preload=true")
 
         {:ok, Map.put(context, :blocked_graph, GraphAssertions.extract_graph!(html))}
       end
@@ -58,7 +58,7 @@ defmodule CodeMySpecSpex.Story561.Criterion5620Spex do
           )
 
         {:ok, sync_live, _html} =
-          live(context.conn, "/projects/#{context.project.name}/files")
+          live(context.conn, "/app/projects/#{context.project.id}/files")
 
         sync_live |> element("button[phx-click='sync']") |> render_click()
         {:ok, context}
@@ -66,7 +66,7 @@ defmodule CodeMySpecSpex.Story561.Criterion5620Spex do
 
       and_ "the engineer re-opens the requirements graph in the unblocked state", context do
         {:ok, _live, html} =
-          live(context.conn, "/projects/#{context.project.name}/requirements/graph?preload=true")
+          live(context.conn, "/app/projects/#{context.project.id}/requirements/graph?preload=true")
 
         {:ok, Map.put(context, :unblocked_graph, GraphAssertions.extract_graph!(html))}
       end

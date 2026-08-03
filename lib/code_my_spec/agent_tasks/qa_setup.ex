@@ -5,7 +5,8 @@ defmodule CodeMySpec.AgentTasks.QaSetup do
   See spec: `.code_my_spec/spec/code_my_spec/agent_tasks/qa_setup.spec.md`.
   """
 
-  alias CodeMySpec.Documents
+  alias CodeMySpec.Files
+  alias CodeMySpec.Files.File, as: FileRecord
   alias CodeMySpec.Documents.DocumentSpecProjector
   alias CodeMySpec.{Environments, Paths}
 
@@ -67,38 +68,41 @@ defmodule CodeMySpec.AgentTasks.QaSetup do
   spec. Returns `{:ok, :valid}` or `{:ok, :invalid, feedback}`.
   """
   def evaluate(scope, _task) do
-    env = scope.environment
     plan_path = Paths.qa_plan()
 
-    case Environments.read_file(env, plan_path) do
-      {:ok, content} when is_binary(content) and byte_size(content) > 0 ->
-        validate_content(plan_path, content)
-
-      _ ->
-        spec = DocumentSpecProjector.project_spec(@doc_type)
-
-        {:ok, :invalid,
-         "QA plan not found at `#{plan_path}`. Write the plan and stop the session again.\n\n## QA Plan Format\n\n#{spec}"}
-    end
-  end
-
-  # ============================================================================
-  # Validation
-  # ============================================================================
-
-  defp validate_content(plan_path, content) do
-    case Documents.create_dynamic_document(content, @doc_type) do
-      {:ok, _document} ->
+    # The synced record first. `Files.Scanner` parses the plan against the same
+    # document spec at sync time, on the machine that has it — this server may
+    # have no working copy at all, and reading one it does not have reported the
+    # plan missing while it sat in the agent's directory. Two drills ended that
+    # way.
+    case Files.get_by_path(scope, plan_path) do
+      %FileRecord{valid: true} ->
         {:ok, :valid}
 
-      {:error, reason} ->
-        spec = DocumentSpecProjector.project_spec(@doc_type)
-        friendly = translate_error(reason)
+      %FileRecord{validation_errors: errors} ->
+        {:ok, :invalid, plan_feedback(plan_path, qa_plan_error(errors))}
 
+      nil ->
         {:ok, :invalid,
-         "QA plan at `#{plan_path}` is #{friendly}. Update the plan and stop the session again.\n\n## QA Plan Format\n\n#{spec}"}
+         plan_feedback(
+           plan_path,
+           "QA plan not found at `#{plan_path}`. Write the plan and stop the session again."
+         )}
     end
   end
+
+  # The scanner stores the validator's raw error; the wording an agent reads is
+  # shaped here, where the prompt is built. "Missing required sections: tools
+  # registry" tells you less than "missing required section(s): `## Tools
+  # Registry`", and this is the text someone acts on.
+  defp qa_plan_error(%{"errors" => %{"plan" => reason}}) when is_binary(reason) do
+    case Regex.run(~r/^`plan\.md` invalid — (.*)$/s, reason) do
+      [_, inner] -> "QA plan " <> translate_error(inner)
+      _ -> reason
+    end
+  end
+
+  defp qa_plan_error(_), do: "QA plan is not valid."
 
   defp translate_error("Missing required sections: " <> sections) do
     formatted =
@@ -125,6 +129,15 @@ defmodule CodeMySpec.AgentTasks.QaSetup do
     |> String.split(" ")
     |> Enum.map_join(" ", &String.capitalize/1)
   end
+
+  defp plan_feedback(_plan_path, reason) do
+    spec = DocumentSpecProjector.project_spec(@doc_type)
+    "#{reason}\n\n## QA Plan Format\n\n#{spec}"
+  end
+
+  # ============================================================================
+  # Validation
+  # ============================================================================
 
   # ============================================================================
   # Discovery

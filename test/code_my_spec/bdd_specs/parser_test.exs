@@ -661,7 +661,7 @@ defmodule CodeMySpec.BddSpecs.ParserTest do
     end
 
     test "extracts story_id from directory name like '456_dashboard'" do
-      path = "/projects/456_dashboard/spec.ex"
+      path = "/app/projects/456_dashboard/spec.ex"
       assert Parser.derive_story_id(path) == 456
     end
 

@@ -658,7 +658,12 @@ defmodule CodeMySpec.BddSpecsTest do
       File.write!(file_path, valid_spex_content())
       on_exit(fn -> File.rm_rf!(dir) end)
 
-      result = BddSpecs.validate_spec_syntax(file_path)
+      result =
+        BddSpecs.validate_spec_syntax(
+          file_path,
+          CodeMySpec.Environments.Environment.new(:local, File.cwd!())
+        )
+
       assert result == :ok
     end
 
@@ -669,7 +674,12 @@ defmodule CodeMySpec.BddSpecsTest do
       File.write!(file_path, invalid_spex_content_no_spex_macro())
       on_exit(fn -> File.rm_rf!(dir) end)
 
-      result = BddSpecs.validate_spec_syntax(file_path)
+      result =
+        BddSpecs.validate_spec_syntax(
+          file_path,
+          CodeMySpec.Environments.Environment.new(:local, File.cwd!())
+        )
+
       assert {:error, reasons} = result
       assert is_list(reasons)
       assert Enum.any?(reasons, &String.contains?(&1, "spex"))
@@ -682,7 +692,12 @@ defmodule CodeMySpec.BddSpecsTest do
       File.write!(file_path, invalid_spex_content_malformed_scenario())
       on_exit(fn -> File.rm_rf!(dir) end)
 
-      result = BddSpecs.validate_spec_syntax(file_path)
+      result =
+        BddSpecs.validate_spec_syntax(
+          file_path,
+          CodeMySpec.Environments.Environment.new(:local, File.cwd!())
+        )
+
       # Malformed scenarios might pass or fail depending on validation strictness
       # At minimum, it should not crash
       assert result == :ok or match?({:error, _}, result)
@@ -717,7 +732,12 @@ defmodule CodeMySpec.BddSpecsTest do
       File.write!(file_path, valid_content)
       on_exit(fn -> File.rm_rf!(dir) end)
 
-      result = BddSpecs.validate_spec_syntax(file_path)
+      result =
+        BddSpecs.validate_spec_syntax(
+          file_path,
+          CodeMySpec.Environments.Environment.new(:local, File.cwd!())
+        )
+
       assert result == :ok
     end
 
@@ -725,7 +745,12 @@ defmodule CodeMySpec.BddSpecsTest do
       nonexistent_path =
         "/tmp/nonexistent_spec_#{System.unique_integer([:positive])}/not_here.ex"
 
-      result = BddSpecs.validate_spec_syntax(nonexistent_path)
+      result =
+        BddSpecs.validate_spec_syntax(
+          nonexistent_path,
+          CodeMySpec.Environments.Environment.new(:local, File.cwd!())
+        )
+
       assert {:error, reasons} = result
       assert is_list(reasons)
       assert Enum.any?(reasons, &String.contains?(&1, "not found"))

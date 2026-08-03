@@ -31,6 +31,16 @@ defmodule CodeMySpecWeb.AppLive.Overview do
       Phoenix.PubSub.subscribe(CodeMySpec.PubSub, CliChannel.status_topic(scope.user.id))
     end
 
+    # No "send them to their last project" redirect here. Story 603 specifies
+    # this path: `/app` is the primary app view, and criterion 5501 is exactly
+    # "user with an account and a project sees the primary app view on /app".
+    # Bouncing them to the last project satisfied the idea that a bookmark
+    # should pick a landing page, and broke twelve criteria that had already
+    # decided what this page is for.
+    #
+    # The stored project still earns its keep — it answers for `/api/issues`,
+    # which has no URL to read a project from — and choosing a project is the
+    # sidebar picker's job now, which is a better answer than a redirect.
     case ensure_active_account(scope) do
       {:ok, scope} ->
         {:ok, assign_steps(socket, scope)}
@@ -167,8 +177,10 @@ defmodule CodeMySpecWeb.AppLive.Overview do
     attrs = Map.put(params, "module_name", derive_module_name(params["name"] || ""))
 
     case Projects.create_project(scope, attrs) do
-      {:ok, project} ->
-        {:ok, _} = UserPreferences.select_active_project(scope, project.id)
+      {:ok, _project} ->
+        # Back to /app, as before — only the preference write is gone. Nothing
+        # downstream requires an active project any more, so there is no state
+        # to pre-select and no gate that would bounce the user if we didn't.
         {:noreply, push_navigate(socket, to: ~p"/app")}
 
       {:error, changeset} ->
@@ -315,7 +327,10 @@ defmodule CodeMySpecWeb.AppLive.Overview do
 
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_scope={@current_scope} pending_notifications={@pending_notifications}>
+    <Layouts.app flash={@flash} current_scope={@current_scope} pending_notifications={@pending_notifications}
+      project={assigns[:project]}
+      projects={assigns[:projects] || []}
+    >
       <div
         id="onboarding-page"
         phx-hook=".SignUpTracking"

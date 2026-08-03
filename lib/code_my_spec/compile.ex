@@ -61,25 +61,36 @@ defmodule CodeMySpec.Compile do
       Environments.cmd(env, "mix", ["compile", "--return-errors"], cmd_opts)
 
     Logger.debug("[Compile] exit_code=#{exit_code}")
-    Logger.debug("[Compile] output_file exists?=#{output_exists?(env, output_file, injected_file)}")
+
+    Logger.debug(
+      "[Compile] output_file exists?=#{output_exists?(env, output_file, injected_file)}"
+    )
+
     Logger.debug("[Compile] raw output (first 500 chars): #{String.slice(output, 0, 500)}")
 
-    result_data =
+    {result_data, diagnostics_available} =
       case read_output(env, output_file, injected_file) do
         {:ok, content} when byte_size(content) > 0 ->
           Logger.debug("[Compile] Read JSONL from diagnostics file (#{byte_size(content)} bytes)")
-          parse_jsonl(content)
+          {parse_jsonl(content), true}
 
         {:ok, _} ->
           Logger.debug("[Compile] Diagnostics file exists but empty — clean compilation")
-          []
+          {[], true}
 
         {:error, _reason} when exit_code == 0 ->
-          Logger.debug(
-            "[Compile] Diagnostics file not found but compilation succeeded — treating as clean"
+          # `mix compile --return-errors` exits 0 even on a compile error — that
+          # is what the flag is for — so a zero exit says nothing about whether
+          # the code compiled. The only thing that distinguishes "compiled
+          # cleanly" from "nobody was recording" is whether the :diagnostics
+          # compiler wrote its file, and here it did not.
+          Logger.warning(
+            "[Compile] no diagnostics file was written. The :diagnostics compiler " <>
+              "(from client_utils) is what produces it, so this project is almost " <>
+              "certainly missing it from its `compilers:` list. Nothing was checked."
           )
 
-          []
+          {[], false}
 
         {:error, _reason} ->
           # Non-zero exit, no diagnostics file. This is NOT automatically a code
@@ -99,7 +110,7 @@ defmodule CodeMySpec.Compile do
                   String.slice(output, 0, 500)
               )
 
-              []
+              {[], false}
 
             errors ->
               Logger.warning(
@@ -107,13 +118,13 @@ defmodule CodeMySpec.Compile do
                   "#{length(errors)} compiler error(s) from raw output"
               )
 
-              errors
+              {errors, true}
           end
       end
 
     %{
       status: if(exit_code == 0, do: :ok, else: :error),
-      data: %{compiler_results: result_data},
+      data: %{compiler_results: result_data, diagnostics_available: diagnostics_available},
       exit_code: exit_code,
       output_file: output_file
     }
