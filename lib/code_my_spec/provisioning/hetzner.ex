@@ -427,8 +427,6 @@ defmodule CodeMySpec.Provisioning.Hetzner do
     end
   end
 
-  @doc "Delete an SSH key. Teardown only; setup never destroys."
-  @spec delete_ssh_key(Scope.t(), integer()) :: {:ok, body()} | error()
   @doc """
   Every SSH key on the account.
 
@@ -443,6 +441,8 @@ defmodule CodeMySpec.Provisioning.Hetzner do
     end
   end
 
+  @doc "Delete an SSH key. Teardown only; setup never destroys."
+  @spec delete_ssh_key(Scope.t(), integer()) :: {:ok, body()} | error()
   def delete_ssh_key(%Scope{} = scope, id) do
     request(scope, :delete, "/ssh_keys/#{id}", [])
   end
