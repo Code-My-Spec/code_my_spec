@@ -28,6 +28,16 @@ defmodule CodeMySpecSpex.Story991.Criterion8222Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :paid_account
+
+  # Story 991 requires an account already on a plan; migrating is not how Sam
+  # buys one. Criterion 8228 is the spec for what happens without it.
+  defp paid_account(context) do
+    {:ok, account} =
+      CodeMySpec.Accounts.update_account(context.scope, context.scope.active_account, %{plan: :paid})
+
+    {:ok, Map.put(context, :scope, %{context.scope | active_account: account})}
+  end
 
   spex "An authored project arrives whole" do
     scenario "Sam's stories and their scenarios arrive intact" do

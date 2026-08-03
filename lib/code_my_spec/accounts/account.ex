@@ -20,6 +20,11 @@ defmodule CodeMySpec.Accounts.Account do
     field :name, :string
     field :slug, :string
 
+    # Free is the harness someone runs on their own machine; paid is the cloud.
+    # Story 991 turns on the distinction — migrating a project to the cloud
+    # requires an account already on a plan.
+    field :plan, Ecto.Enum, values: [:free, :paid], default: :free
+
     has_many :members, CodeMySpec.Accounts.Member, on_delete: :delete_all
     has_many :users, through: [:members, :user]
 
@@ -28,7 +33,7 @@ defmodule CodeMySpec.Accounts.Account do
 
   def changeset(account, attrs) do
     account
-    |> cast(attrs, [:name, :slug])
+    |> cast(attrs, [:name, :slug, :plan])
     |> validate_required([:name])
     |> validate_length(:name, min: 1, max: 100)
     |> validate_slug()

@@ -41,6 +41,19 @@ defmodule CodeMySpec.Migration do
   """
   @spec import_project(Scope.t(), map()) :: {:ok, map()} | {:error, term()}
   def import_project(%Scope{} = scope, payload) when is_map(payload) do
+    case plan(scope) do
+      :paid -> do_import(scope, payload)
+      _ -> {:error, :plan_required}
+    end
+  end
+
+  # Checked before the transaction opens rather than inside it. Sam is told a
+  # plan is what is missing, not that something went wrong, and nothing is
+  # written on the way to finding out.
+  defp plan(%Scope{active_account: %{plan: plan}}), do: plan
+  defp plan(_scope), do: nil
+
+  defp do_import(scope, payload) do
     Repo.transaction(fn ->
       # Personas and their links come before criteria, not after. A criterion
       # cannot be created for a story with no linked persona — the harness
@@ -77,19 +90,49 @@ defmodule CodeMySpec.Migration do
     do: collect(epics, &Epics.create_epic(scope, attrs(&1, Epics.Epic)))
 
   defp put_stories(scope, stories, epics) do
+    existing = scope |> project_stories() |> Map.new(&{&1.title, &1})
+
     collect(stories, fn story ->
-      story
-      |> attrs(Stories.Story)
-      |> put_ref(:epic_id, epics[story["epic_local_id"]])
-      |> then(&Stories.create_story(scope, &1))
+      case existing[story["title"]] do
+        %{} = already ->
+          {:ok, already}
+
+        nil ->
+          story
+          |> attrs(Stories.Story)
+          |> put_ref(:epic_id, epics[story["epic_local_id"]])
+          |> then(&Stories.create_story(scope, &1))
+      end
     end)
+  end
+
+  # Idempotence by natural key rather than by remembering local ids. Migrating
+  # twice must not produce two of anything, and the second run has no memory of
+  # the first — so the question it can answer is "is this story already here",
+  # not "did I write this before". A title within a project is the identity Sam
+  # would use himself.
+  defp project_stories(scope) do
+    case Stories.list_project_stories(scope) do
+      {:ok, stories} -> stories
+      stories when is_list(stories) -> stories
+      _ -> []
+    end
   end
 
   defp put_rules(scope, rules, stories) do
     collect(rules, fn rule ->
       case stories[rule["story_local_id"]] do
-        nil -> {:error, {:unknown_story, rule["story_local_id"]}}
-        story -> BddRules.create_rule(scope, story.id, attrs(rule, BddRules.Rule))
+        nil ->
+          {:error, {:unknown_story, rule["story_local_id"]}}
+
+        story ->
+          case Enum.find(
+                 BddRules.list_rules_for_story(scope, story.id),
+                 &(&1.statement == rule["statement"])
+               ) do
+            %{} = already -> {:ok, already}
+            nil -> BddRules.create_rule(scope, story.id, attrs(rule, BddRules.Rule))
+          end
       end
     end)
   end
@@ -101,28 +144,63 @@ defmodule CodeMySpec.Migration do
           {:error, {:unknown_story, criterion["story_local_id"]}}
 
         story ->
-          criterion
-          |> attrs(AcceptanceCriteria.Criterion)
-          |> put_ref(:rule_id, rules[criterion["rule_local_id"]])
-          |> then(&AcceptanceCriteria.create_criterion(scope, story, &1))
+          case Enum.find(
+                 AcceptanceCriteria.list_story_criteria(scope, story.id),
+                 &(&1.description == criterion["description"])
+               ) do
+            %{} = already ->
+              {:ok, already}
+
+            nil ->
+              criterion
+              |> attrs(AcceptanceCriteria.Criterion)
+              |> put_ref(:rule_id, rules[criterion["rule_local_id"]])
+              |> then(&AcceptanceCriteria.create_criterion(scope, story, &1))
+          end
       end
     end)
   end
 
-  defp put_personas(scope, personas),
-    do: collect(personas, &Personas.create_persona(scope, attrs(&1, Personas.Persona)))
+  defp put_personas(scope, personas) do
+    existing = Personas.list_personas(scope)
+
+    collect(personas, fn persona ->
+      # Matched on slug or name, because the harness derives its own slug and
+      # the one the payload carried may not be the one it kept. Missing here is
+      # not a near miss: the unique index catches it instead, and a constraint
+      # violation inside the transaction takes the whole migration down.
+      case Enum.find(existing, &(&1.slug == persona["slug"] or &1.name == persona["name"])) do
+        %{} = already -> {:ok, already}
+        nil -> Personas.create_persona(scope, attrs(persona, Personas.Persona))
+      end
+    end)
+  end
 
   defp link_personas(scope, links, stories, personas) do
     Enum.reduce_while(links, :ok, fn link, _acc ->
       with %{} = persona <- personas[link["persona_local_id"]],
            %{} = story <- stories[link["story_local_id"]],
-           {:ok, _} <- Personas.link_persona_to_story(scope, persona.id, story.id) do
+           :ok <- ensure_linked(scope, persona, story) do
         {:cont, :ok}
       else
         nil -> {:halt, {:error, {:unknown_persona_link, link}}}
         {:error, reason} -> {:halt, {:error, reason}}
       end
     end)
+  end
+
+  # A link that already exists is the migration being run twice, which the
+  # story explicitly allows. Inserting it again trips a unique constraint and
+  # takes the whole transaction down with it.
+  defp ensure_linked(scope, persona, story) do
+    if Enum.any?(Personas.list_personas_for_story(scope, story.id), &(&1.id == persona.id)) do
+      :ok
+    else
+      case Personas.link_persona_to_story(scope, persona.id, story.id) do
+        {:ok, _} -> :ok
+        {:error, reason} -> {:error, reason}
+      end
+    end
   end
 
   @wire_only ~w(local_id story_local_id rule_local_id epic_local_id persona_local_id)
