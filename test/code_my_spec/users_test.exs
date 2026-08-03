@@ -365,7 +365,16 @@ defmodule CodeMySpec.UsersTest do
 
     test "raises when unconfirmed user has password set" do
       user = unconfirmed_user_fixture()
-      {1, nil} = Repo.update_all(User, set: [hashed_password: "hashed"])
+
+      # This user, not every user. The unqualified update assumed the fixture
+      # was the only row in the table, so it broke the moment anything else
+      # created a user — and the failure named a row count rather than the
+      # password it was trying to set.
+      {1, nil} =
+        Repo.update_all(
+          from(u in User, where: u.id == ^user.id),
+          set: [hashed_password: "hashed"]
+        )
       {encoded_token, _hashed_token} = generate_user_magic_link_token(user)
 
       assert_raise RuntimeError, ~r/magic link log in is not allowed/, fn ->

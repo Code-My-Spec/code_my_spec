@@ -1390,7 +1390,16 @@ defmodule CodeMySpecWeb.ProvisioningLive do
   end
 
   def handle_event("resume_setup", _params, socket) do
-    result = Provisioning.resume(socket.assigns.current_scope, socket.assigns.options)
+    # With `step_opts()`, like every other path that runs a step. Resuming
+    # without them gave the run no provider options, no target organisation
+    # and no injected probe — so a resumed run behaved differently from the
+    # same steps run any other way, which is the one thing resume must not do.
+    result =
+      Provisioning.resume(
+        socket.assigns.current_scope,
+        socket.assigns.options,
+        step_opts()
+      )
 
     {:noreply, apply_result(socket, result)}
   end

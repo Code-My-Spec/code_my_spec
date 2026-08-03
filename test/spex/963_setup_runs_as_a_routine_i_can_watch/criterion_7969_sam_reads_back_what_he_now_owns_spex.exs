@@ -15,8 +15,6 @@ defmodule CodeMySpecSpex.Story963.Criterion7969Spex do
 
   @endpoint CodeMySpecWeb.Endpoint
 
-  @cassette "setup_full_run_ok"
-  @given_cassette "963_7969_credentials"
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -25,39 +23,24 @@ defmodule CodeMySpecSpex.Story963.Criterion7969Spex do
   spex "Sam reads back what he now owns" do
     scenario "the record lists each provisioned resource and where it lives" do
       given_ "setup has completed", context do
-        # Before the page mounts. The LiveView reads the project once, at mount;
-        # claiming the repository afterwards updates the row but not the socket,
-        # so the step still saw a repository belonging to nobody and paused.
-        own_repository(context.project)
+        # The claim is that the record reads back what the run reported, with
+        # each resource's kind and where it lives. What the steps report is the
+        # input to that; whether Hetzner really made a box is story 966's
+        # claim, and buying one here only made this criterion slower and more
+        # fragile.
+        context =
+          scripted_run(context, %{
+            repository: {:ok, [%{kind: "repository", location: "github/sam/his-app"}]},
+            server: {:ok, [%{kind: "server", location: "hetzner/49.12.1.1/his-app-prod"}]},
+            domain: {:ok, [%{kind: "domain", location: "cloudflare/his-app.com"}]},
+            storage: {:ok, [%{kind: "bucket", location: "his-app-prod"}]}
+          })
 
         {:ok, view, _html} =
           live(context.conn, "/app/projects/#{context.project.id}/provisioning")
 
-        # Hetzner has no OAuth, so its token is pasted per project — without it
-        # the server step stops at `hetzner_not_configured` and every claim
-        # downstream fails for a reason that is not the one under test. Saving a
-        # credential proves it with a real provider call, so it belongs inside a
-        # cassette.
-        tear_down_after(context.scope, [:server])
-
-        # The repository too, so the next recording starts from one that does not
-        # exist — a repository carrying an earlier run's commits rejects a fresh
-        # push as non-fast-forward (which is 8184's subject, not this one's).
-        tear_down_repository(context.project)
-
-
-        with_provider_cassette(@given_cassette, fn ->
-          paste_provider_credentials(view)
-        end)
-
-        with_provider_cassette(@cassette, fn ->
-          view |> element("[data-test='start-setup']") |> render_click()
-
-          # The repository an earlier recording made cannot be deleted (the grant
-          # has no `delete_repo` scope), so the run pauses on the name and every
-          # step under test stays not_started. Adopting is the honest answer.
-          adopt_repository_if_paused(view)
-        end)
+        view |> element("[data-test='start-setup']") |> render_click()
+        await_provisioning(view)
 
         {:ok, Map.put(context, :view, view)}
       end

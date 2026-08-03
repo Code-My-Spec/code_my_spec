@@ -29,6 +29,8 @@ defmodule CodeMySpec.Provisioning.Dns do
   every case, and it is the answer the criteria ask for.
   """
 
+  alias CodeMySpec.Provisioning.Wait
+
   require Logger
 
   @default_timeout 3_000
@@ -66,7 +68,7 @@ defmodule CodeMySpec.Provisioning.Dns do
     Enum.reduce_while(1..attempts, false, fn attempt, _acc ->
       case doh_lookup(name, type, opts) do
         [] when attempt < attempts ->
-          Process.sleep(interval)
+          Wait.sleep(interval)
           {:cont, false}
 
         [] ->

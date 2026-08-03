@@ -155,14 +155,6 @@ defmodule CodeMySpec.Provisioning do
   ## Plan
 
   @doc """
-  The whole plan for a project, in order, before anything runs.
-
-  Every step carries its current state, so Sam sees the shape of the run and
-  where it stands at once (criterion 7959). Steps his options exclude are
-  absent, not present-and-skipped (criterion 7968).
-  """
-  @spec plan(Scope.t(), [atom()]) :: [map()]
-  @doc """
   The project's deployment environments, by name.
 
   Callers that fan out over environments — the setup page, the steps — ask
@@ -204,6 +196,14 @@ defmodule CodeMySpec.Provisioning do
   defp derived_host("prod", domain), do: domain
   defp derived_host(name, domain), do: "#{name}.#{domain}"
 
+  @doc """
+  The whole plan for a project, in order, before anything runs.
+
+  Every step carries its current state, so Sam sees the shape of the run and
+  where it stands at once (criterion 7959). Steps his options exclude are
+  absent, not present-and-skipped (criterion 7968).
+  """
+  @spec plan(Scope.t(), [atom()]) :: [map()]
   def plan(%Scope{} = scope, enabled_options) do
     persisted = scope |> StepRepository.list() |> Map.new(&{&1.key, &1})
 

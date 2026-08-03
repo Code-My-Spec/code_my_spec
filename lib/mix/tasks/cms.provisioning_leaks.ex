@@ -57,6 +57,7 @@ defmodule Mix.Tasks.Cms.ProvisioningLeaks do
     Application.put_env(:code_my_spec, CodeMySpec.Provisioning.Hetzner, api_token: token)
 
     report("Hetzner servers", server_names(%Scope{}), false)
+    report("Hetzner SSH keys", ssh_key_names(%Scope{}), false)
     report("Hetzner buckets", bucket_names(credentials), delete?, &delete_bucket(&1, credentials))
   end
 
@@ -85,6 +86,16 @@ defmodule Mix.Tasks.Cms.ProvisioningLeaks do
     case Hetzner.list_servers(scope) do
       {:ok, servers} -> Enum.map(servers, &name_of/1)
       other -> Mix.shell().error("could not list servers: #{inspect(other)}") || []
+    end
+  end
+
+  # Keys leak the same way servers do and are easier to miss: they cost nothing,
+  # so nobody notices seven of them. They are still a credential per recording
+  # sitting in the account.
+  defp ssh_key_names(scope) do
+    case CodeMySpec.Provisioning.Hetzner.list_ssh_keys(scope) do
+      {:ok, keys} -> Enum.map(keys, &name_of/1)
+      _ -> []
     end
   end
 

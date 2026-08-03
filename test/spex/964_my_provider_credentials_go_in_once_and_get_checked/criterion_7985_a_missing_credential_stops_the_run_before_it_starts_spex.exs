@@ -31,14 +31,13 @@ defmodule CodeMySpecSpex.Story964.Criterion7985Spex do
       end
 
       when_ "he tries to start setup", context do
+        # Deliberately not awaiting a run. The claim is that setup refuses,
+        # so there is nothing to wait for — and waiting for a run that must
+        # never begin spends the whole timeout proving it, every time.
         html =
           context.view
-            |> element("[data-test='start-setup']")
-            |> render_click()
-
-            # Started, not finished: the click returns as soon as the run
-            # begins, so the page is read once the run settles.
-            await_provisioning(context.view)
+          |> element("[data-test='start-setup']")
+          |> render_click()
 
         {:ok, Map.put(context, :html, html)}
       end

@@ -39,12 +39,14 @@ defmodule CodeMySpec.Provisioning.Steps do
 
   alias CodeMySpec.Provisioning.{
     Backups,
+    Builder,
     Cloudflare,
     ContentPublishing,
     Deploy,
     Dns,
     EnvironmentRepository,
     Hetzner,
+    Registry,
     Repository,
     Resend,
     Sops,
@@ -76,22 +78,19 @@ defmodule CodeMySpec.Provisioning.Steps do
   skips real work, a false "absent" merely repeats an idempotent step.
   """
   @spec verify(atom(), Scope.t(), keyword()) :: verdict()
-  def verify(:repository, %Scope{} = scope, opts) do
-    project = project(scope)
-    name = Keyword.get(opts, :name) || Repository.default_name(project)
-
-    case Keyword.get(opts, :owner) do
-      nil ->
-        {:ok, :absent}
-
-      owner ->
-        case CodeMySpec.GitHub.get_repository(scope, owner, name) do
-          {:ok, repo} -> {:ok, :satisfied, [repo_resource(repo)]}
-          {:error, :not_found} -> {:ok, :absent}
-          {:error, reason} -> {:error, reason}
-        end
-    end
-  end
+  # Deliberately never satisfied from the provider.
+  #
+  # The other steps can be verified by asking whether the resource is there,
+  # because for them existing *is* the claim. This step's claim is that the
+  # project's history reached the remote — "the step is proven by a push, not
+  # by the repository existing" (8183). A repository can exist and be the wrong
+  # one (8185), or be the right one and reject the push (8184), and asking
+  # GitHub whether it exists cannot tell any of those apart.
+  #
+  # So the decision is left to `run/3`, which adopts or asks, pushes, and
+  # reports what actually happened. Re-running is cheap and idempotent: a push
+  # of a history the remote already has is "Everything up-to-date".
+  def verify(:repository, %Scope{} = _scope, _opts), do: {:ok, :absent}
 
   def verify(:server, %Scope{} = scope, opts) do
     name = server_name(scope, opts)
@@ -356,12 +355,18 @@ defmodule CodeMySpec.Provisioning.Steps do
     version = Keyword.get(opts, :deployed_version)
 
     with {:ok, delivery} <- check_secrets(scope, environment),
+         {:ok, image} <- image_for(scope, environment, opts),
          :ok <- require_script(scope, "bin/deploy"),
-         result <- Deploy.run(env(scope), environment, Keyword.put(opts, :host, host)) do
+         result <- Deploy.run(env(scope), environment, deploy_opts(opts, host, image)) do
       case deploy_outcome(result, environment, host) do
-        {:ok, resources} -> {:ok, [delivery | version_resources(version) ++ resources]}
-        {:error, reason, resources} -> {:error, reason, [delivery | resources]}
-        other -> other
+        {:ok, resources} ->
+          {:ok, [delivery | version_resources(version) ++ image_resources(image) ++ resources]}
+
+        {:error, reason, resources} ->
+          {:error, reason, [delivery | resources]}
+
+        other ->
+          other
       end
     end
   end
@@ -608,6 +613,74 @@ defmodule CodeMySpec.Provisioning.Steps do
 
   # Named rather than silently succeeding — see the moduledoc.
   def run(key, _scope, _opts), do: {:error, {:not_implemented, key}}
+
+  # The image a deploy runs, built now rather than when the project was made.
+  #
+  # Three ways in, and the order matters. An explicit `:image` wins, because a
+  # criterion about deploying is not a criterion about building and should not
+  # buy a builder to prove its point. Otherwise a build happens — but only when
+  # one is configured: the deploy step predates the builder, and a project
+  # whose image is already somewhere must keep deploying rather than start
+  # failing on a builder nobody asked it to use.
+  defp image_for(scope, environment, opts) do
+    case {Keyword.get(opts, :image), Keyword.get(opts, :build)} do
+      {reference, _} when is_binary(reference) ->
+        {:ok, %{reference: reference, built: false}}
+
+      {nil, nil} ->
+        {:ok, :not_built}
+
+      {nil, _build} ->
+        build_image(scope, environment, opts)
+    end
+  end
+
+  defp build_image(scope, environment, opts) do
+    with {:ok, _bucket} <- Registry.ensure(scope, opts),
+         {:ok, tag} <- image_tag(scope, opts),
+         {:ok, build} <- Builder.build(scope, tag, builder_opts(environment, opts)),
+         {:ok, reference} <- Registry.reference(scope, tag, opts) do
+      {:ok, %{reference: reference, built: true, architecture: build.architecture}}
+    end
+  end
+
+  # The commit is the tag, because "which image is this" and "which code is
+  # this" should not be two questions.
+  defp image_tag(scope, opts) do
+    case Keyword.get(opts, :tag) || head_commit(scope) do
+      sha when is_binary(sha) and sha != "" -> {:ok, String.slice(sha, 0, 12)}
+      _ -> {:error, "cannot tag an image: the project has no commit to build"}
+    end
+  end
+
+  defp head_commit(scope) do
+    case Environments.cmd(env(scope), "git", ["rev-parse", "HEAD"], stderr_to_stdout: true) do
+      {sha, 0} -> String.trim(sha)
+      _ -> nil
+    end
+  end
+
+  # The architecture the environment's box runs, not a default. An image built
+  # for the other one fails at container start, which is a deploy that looks
+  # healthy until the swap.
+  defp builder_opts(environment, opts) do
+    Keyword.put_new(opts, :architecture, architecture_for(environment, opts))
+  end
+
+  defp architecture_for(_environment, opts), do: Keyword.get(opts, :architecture, :arm)
+
+  defp deploy_opts(opts, host, %{reference: reference}),
+    do: opts |> Keyword.put(:host, host) |> Keyword.put(:image, reference)
+
+  defp deploy_opts(opts, host, :not_built), do: Keyword.put(opts, :host, host)
+
+  defp image_resources(%{reference: reference, built: true}),
+    do: [%{kind: "published_image", location: reference, identifier: "built=true"}]
+
+  defp image_resources(%{reference: reference}),
+    do: [%{kind: "published_image", location: reference, identifier: "built=false"}]
+
+  defp image_resources(:not_built), do: []
 
   ## Helpers
 

@@ -429,6 +429,20 @@ defmodule CodeMySpec.Provisioning.Hetzner do
 
   @doc "Delete an SSH key. Teardown only; setup never destroys."
   @spec delete_ssh_key(Scope.t(), integer()) :: {:ok, body()} | error()
+  @doc """
+  Every SSH key on the account.
+
+  For the leak audit. Keys are easy to leak and easy to miss — they cost
+  nothing, so nobody notices seven of them, and each is still a credential a
+  recording left behind.
+  """
+  @spec list_ssh_keys(Scope.t()) :: {:ok, [map()]} | {:error, term()}
+  def list_ssh_keys(%Scope{} = scope) do
+    with {:ok, %{"ssh_keys" => keys}} <- request(scope, :get, "/ssh_keys", []) do
+      {:ok, keys}
+    end
+  end
+
   def delete_ssh_key(%Scope{} = scope, id) do
     request(scope, :delete, "/ssh_keys/#{id}", [])
   end

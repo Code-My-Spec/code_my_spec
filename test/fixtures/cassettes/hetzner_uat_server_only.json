@@ -8,7 +8,7 @@
       "command": "git",
       "exit_code": 128,
       "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-19462",
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-16485",
         "env": {
           "SCRIPT_PATH": null,
           "RELEASE_ROOT": null,
@@ -48,7 +48,7 @@
         "stderr_to_stdout": true
       },
       "output": "fatal: not a git repository (or any of the parent directories): .git\n",
-      "recorded_at": "2026-08-02T22:05:48.069137Z"
+      "recorded_at": "2026-08-03T06:35:15.191557Z"
     },
     {
       "args": [
@@ -59,7 +59,7 @@
       "command": "git",
       "exit_code": 0,
       "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-19462",
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-16485",
         "env": {
           "SCRIPT_PATH": null,
           "RELEASE_ROOT": null,
@@ -98,8 +98,8 @@
         },
         "stderr_to_stdout": true
       },
-      "output": "Initialized empty Git repository in /private/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-19462/.git/\n",
-      "recorded_at": "2026-08-02T22:05:48.080507Z"
+      "output": "Initialized empty Git repository in /private/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-16485/.git/\n",
+      "recorded_at": "2026-08-03T06:35:15.203882Z"
     },
     {
       "args": [
@@ -109,7 +109,7 @@
       "command": "git",
       "exit_code": 128,
       "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-19462",
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-16485",
         "env": {
           "SCRIPT_PATH": null,
           "RELEASE_ROOT": null,
@@ -149,7 +149,7 @@
         "stderr_to_stdout": true
       },
       "output": "fatal: ambiguous argument 'HEAD': unknown revision or path not in the working tree.\nUse '--' to separate paths from revisions, like this:\n'git <command> [<revision>...] -- [<file>...]'\nHEAD\n",
-      "recorded_at": "2026-08-02T22:05:48.086073Z"
+      "recorded_at": "2026-08-03T06:35:15.209164Z"
     },
     {
       "args": [
@@ -159,7 +159,7 @@
       "command": "git",
       "exit_code": 0,
       "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-19462",
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-16485",
         "env": {
           "SCRIPT_PATH": null,
           "RELEASE_ROOT": null,
@@ -199,7 +199,7 @@
         "stderr_to_stdout": true
       },
       "output": "",
-      "recorded_at": "2026-08-02T22:05:48.093047Z"
+      "recorded_at": "2026-08-03T06:35:15.215159Z"
     },
     {
       "args": [
@@ -210,7 +210,7 @@
       "command": "git",
       "exit_code": 0,
       "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-19462",
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-16485",
         "env": {
           "SCRIPT_PATH": null,
           "RELEASE_ROOT": null,
@@ -249,8 +249,8 @@
         },
         "stderr_to_stdout": true
       },
-      "output": "[main (root-commit) a9bb4c8] Initial commit\n 1 file changed, 1 insertion(+)\n create mode 100644 mix.exs\n",
-      "recorded_at": "2026-08-02T22:05:48.107483Z"
+      "output": "[main (root-commit) 313126b] Initial commit\n 1 file changed, 1 insertion(+)\n create mode 100644 mix.exs\n",
+      "recorded_at": "2026-08-03T06:35:15.227613Z"
     },
     {
       "args": [
@@ -262,7 +262,7 @@
       "command": "git",
       "exit_code": 0,
       "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-19462",
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-16485",
         "env": {
           "SCRIPT_PATH": null,
           "RELEASE_ROOT": null,
@@ -302,7 +302,7 @@
         "stderr_to_stdout": true
       },
       "output": "",
-      "recorded_at": "2026-08-02T22:05:48.112936Z"
+      "recorded_at": "2026-08-03T06:35:15.232161Z"
     },
     {
       "args": [
@@ -314,7 +314,7 @@
       "command": "git",
       "exit_code": 0,
       "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-19462",
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-16485",
         "env": {
           "SCRIPT_PATH": null,
           "RELEASE_ROOT": null,
@@ -354,7 +354,7 @@
         "stderr_to_stdout": true
       },
       "output": "To https://github.com/codemy-my-spec-test/spex-story966-criterion8156.git\n * [new branch]      main -> main\nbranch 'main' set up to track 'origin/main'.\n",
-      "recorded_at": "2026-08-02T22:05:49.176952Z"
+      "recorded_at": "2026-08-03T06:35:16.230976Z"
     },
     {
       "args": [
@@ -364,7 +364,7 @@
       "command": "git",
       "exit_code": 0,
       "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-19462",
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-16485",
         "env": {
           "SCRIPT_PATH": null,
           "RELEASE_ROOT": null,
@@ -403,8 +403,8 @@
         },
         "stderr_to_stdout": true
       },
-      "output": "a9bb4c8f4fd7b91d792bb81edfa4f5aaf6bdcea5\n",
-      "recorded_at": "2026-08-02T22:05:49.182711Z"
+      "output": "313126bd8238bda7e7f180a643c9d05658455ecc\n",
+      "recorded_at": "2026-08-03T06:35:16.243118Z"
     },
     {
       "args": [
@@ -415,15 +415,15 @@
         "-C",
         "spex-story966-criterion8156",
         "-f",
-        "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/cms-ssh-26210/id_ed25519"
+        "*/id_ed25519"
       ],
       "command": "ssh-keygen",
       "exit_code": 0,
       "opts": {
         "stderr_to_stdout": true
       },
-      "output": "Generating public/private ed25519 key pair.\nYour identification has been saved in /var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/cms-ssh-26210/id_ed25519\nYour public key has been saved in /var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/cms-ssh-26210/id_ed25519.pub\nThe key fingerprint is:\nSHA256:rXrKuqwp+lnLU9LQBcRxESWCNhk/tIqtBu7EUoV+G/E spex-story966-criterion8156\nThe key's randomart image is:\n+--[ED25519 256]--+\n|    .**o=+.      |\n|   .=o.+..       |\n|  ..oo+.         |\n| . +.+.. .       |\n|. + =oE S .      |\n|oo o.oo  .       |\n|.+o oo  .        |\n|=. *.o ..        |\n|o+=.*++o         |\n+----[SHA256]-----+\n",
-      "recorded_at": "2026-08-02T22:05:49.494622Z"
+      "output": "Generating public/private ed25519 key pair.\nYour identification has been saved in /var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/cms-ssh-17957/id_ed25519\nYour public key has been saved in /var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/cms-ssh-17957/id_ed25519.pub\nThe key fingerprint is:\nSHA256:4WZO34qUYpyKgxWMF+CLo8ALytY91qb9ykafsfJnkJA spex-story966-criterion8156\nThe key's randomart image is:\n+--[ED25519 256]--+\n|..               |\n|. .              |\n| + .    o        |\n|+ =    E .       |\n|=+ .    S .      |\n|*.+ ...B * .     |\n|o* . +*o= * .    |\n|o ...o*= = +     |\n|  .....+*o+      |\n+----[SHA256]-----+\n",
+      "recorded_at": "2026-08-03T06:35:16.559552Z"
     },
     {
       "args": [],
@@ -432,8 +432,8 @@
       "opts": {
         "stderr_to_stdout": true
       },
-      "output": "Public key: age1j06nahn88yxg0jfjal4p0pf7ps55rg4wmy6lgymdrssryluesfgsg7punt\n# created: 2026-08-02T18:05:50-04:00\n# public key: age1j06nahn88yxg0jfjal4p0pf7ps55rg4wmy6lgymdrssryluesfgsg7punt\nAGE-SECRET-KEY-<REDACTED>\n",
-      "recorded_at": "2026-08-02T22:05:50.576089Z"
+      "output": "Public key: age1meg2tlpcgg7r4vsxp0l4vjcmkn3lud9uyd8qny9ke7wymck6uggsrqjytg\n# created: 2026-08-03T02:35:17-04:00\n# public key: age1meg2tlpcgg7r4vsxp0l4vjcmkn3lud9uyd8qny9ke7wymck6uggsrqjytg\nAGE-SECRET-KEY-<REDACTED>\n",
+      "recorded_at": "2026-08-03T06:35:17.637142Z"
     }
   ],
   "ports": []
