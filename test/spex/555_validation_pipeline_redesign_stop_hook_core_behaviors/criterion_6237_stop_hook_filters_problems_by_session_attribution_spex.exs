@@ -109,6 +109,7 @@ defmodule CodeMySpecSpex.Story555.Criterion6237Spex do
             |> post(~p"/api/hooks/stop", %{
               "session_id" => context.session_id,
               "test_output_files" => %{
+                "spex" => Path.expand("test/fixtures/validation/spex_green.jsonl"),
                 "exunit" => fixture_path("exunit.json"),
                 "compile" => fixture_path("compile.jsonl")
               }
