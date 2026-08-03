@@ -137,9 +137,7 @@ defmodule CodeMySpec.BddSpecs.Spex do
   @spec parse_jsonl(String.t(), Environment.t() | nil) ::
           {:ok, [Failure.t()]} | {:error, term()}
   def parse_jsonl(path, env_or_nil \\ nil) do
-    env = env_or_nil
-
-    case Environments.read_file(env, path) do
+    case read_jsonl(env_or_nil, path) do
       {:ok, ""} ->
         {:ok, []}
 
@@ -153,6 +151,13 @@ defmodule CodeMySpec.BddSpecs.Spex do
         {:error, reason}
     end
   end
+
+  # A nil environment means the caller already holds the file on this machine —
+  # the `:output_file` replay seam. `Environments.read_file(nil, _)` answers
+  # `:no_environment`, so every replay failed to parse and the analyzer
+  # contributed nothing, which reads as a clean run rather than as an error.
+  defp read_jsonl(nil, path), do: File.read(path)
+  defp read_jsonl(env, path), do: Environments.read_file(env, path)
 
   # Private functions
 

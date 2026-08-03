@@ -64,6 +64,7 @@ defmodule CodeMySpecSpex.Story554.Criterion5095Spex do
             |> Plug.Conn.put_req_header("content-type", "application/json")
             |> post(~p"/api/hooks/stop", %{
               "test_output_files" => %{
+                "spex" => Path.expand("test/fixtures/validation/spex_green.jsonl"),
                 "exunit" => fixture_path("exunit.json"),
                 "compile" => fixture_path("compile.jsonl")
               }

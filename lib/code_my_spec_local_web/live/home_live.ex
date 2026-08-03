@@ -31,8 +31,8 @@ defmodule CodeMySpecLocalWeb.HomeLive do
   end
 
   @impl true
-  def handle_params(%{"project_name" => name}, _uri, socket) do
-    case load_project_and_scope(name) do
+  def handle_params(%{"project_id" => id}, _uri, socket) do
+    case load_project_and_scope(id) do
       {:ok, project, scope} ->
         if connected?(socket) do
           Phoenix.PubSub.subscribe(CodeMySpec.PubSub, "analysis:#{project.id}")
@@ -459,10 +459,16 @@ defmodule CodeMySpecLocalWeb.HomeLive do
     """
   end
 
-  defp load_project_and_scope(name) do
-    with %Projects.Project{} = project <- Projects.get_project_by_id(name),
+  defp load_project_and_scope(id) do
+    with %Projects.Project{} = project <- Projects.get_project_by_id(id),
          {:ok, scope} <- Scope.for_local_project(project) do
       {:ok, project, scope}
+    else
+      # `get_project_by_id/1` answers nil, which fell out of the `with` as nil
+      # and hit the caller's `case` with no matching clause. An unknown project
+      # is an ordinary thing to ask for; it should say so.
+      nil -> {:error, "Project not found."}
+      {:error, reason} -> {:error, reason}
     end
   end
 

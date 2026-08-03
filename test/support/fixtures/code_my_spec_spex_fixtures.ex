@@ -16,7 +16,14 @@ defmodule CodeMySpecSpex.Fixtures do
   """
   use Boundary,
     top_level?: true,
-    deps: [CodeMySpec, CodeMySpec.Environments, CodeMySpec.Repo, CodeMySpecTest, CodeMySpecWeb]
+    deps: [
+      CodeMySpec,
+      CodeMySpec.AgentHarness,
+      CodeMySpec.Environments,
+      CodeMySpec.Repo,
+      CodeMySpecTest,
+      CodeMySpecWeb
+    ]
 
   alias CodeMySpec.{
     AccountsFixtures,
