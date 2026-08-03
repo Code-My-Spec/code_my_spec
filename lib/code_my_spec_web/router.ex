@@ -256,6 +256,10 @@ defmodule CodeMySpecWeb.Router do
     pipe_through :api
 
     post "/resend", ResendWebhookController, :inbound
+
+    # Must live under /webhooks/ — CacheBodyReader only keeps the raw bytes for
+    # this prefix, and the HMAC has to be computed over exactly what Stripe sent.
+    post "/stripe", StripeWebhookController, :create
   end
 
   # The one endpoint a deployed app's refresh secret opens. Everything else it

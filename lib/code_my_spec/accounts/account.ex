@@ -20,10 +20,19 @@ defmodule CodeMySpec.Accounts.Account do
     field :name, :string
     field :slug, :string
 
-    # Free is the harness someone runs on their own machine; paid is the cloud.
-    # Story 991 turns on the distinction — migrating a project to the cloud
-    # requires an account already on a plan.
-    field :plan, Ecto.Enum, values: [:free, :paid], default: :free
+    # The tiers. `:light` is the harness someone runs on their own machine;
+    # `:pro` is our agent on our infrastructure.
+    #
+    # `:paid` predates the tiers and is still persisted in dev and prod. It is
+    # kept as a valid value rather than renamed or backfilled: deciding what an
+    # existing paid account becomes is a product question, and nobody has to
+    # answer it to start charging. The gating story has to settle it before
+    # anything branches on plan.
+    field :plan, Ecto.Enum, values: [:free, :light, :pro, :paid], default: :free
+
+    # One Stripe Customer per account, reused forever.
+    field :stripe_customer_id, :string
+    field :stripe_subscription_id, :string
 
     has_many :members, CodeMySpec.Accounts.Member, on_delete: :delete_all
     has_many :users, through: [:members, :user]
@@ -33,7 +42,7 @@ defmodule CodeMySpec.Accounts.Account do
 
   def changeset(account, attrs) do
     account
-    |> cast(attrs, [:name, :slug, :plan])
+    |> cast(attrs, [:name, :slug, :plan, :stripe_customer_id, :stripe_subscription_id])
     |> validate_required([:name])
     |> validate_length(:name, min: 1, max: 100)
     |> validate_slug()
