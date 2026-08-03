@@ -183,6 +183,9 @@ defmodule CodeMySpecWeb.Router do
 
     resources "/issues", IssuesController, only: [:index, :show, :create, :update]
 
+    # One project's authored graph, one request, one transaction (story 991).
+    post "/migrations", MigrationsController, :create
+
     post "/uploads/presign", UploadController, :create
 
     post "/notifications/push", NotificationController, :push

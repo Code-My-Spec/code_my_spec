@@ -31,17 +31,34 @@ defmodule CodeMySpecSpex.Story991.Criterion8222Spex do
 
   spex "An authored project arrives whole" do
     scenario "Sam's stories and their scenarios arrive intact" do
-      given_ "Sam has a story with a rule and two scenarios on the local harness", context do
-        payload = Fixtures.migration_payload(
-          stories: [%{local_id: 1, title: "Ship the thing"}],
-          rules: [%{local_id: "r1", story_local_id: 1, statement: "It ships once."}],
-          criteria: [
-            %{local_id: "c1", story_local_id: 1, rule_local_id: "r1",
-              description: "shipping twice is refused"},
-            %{local_id: "c2", story_local_id: 1, rule_local_id: "r1",
-              description: "a shipped thing stays shipped"}
-          ]
-        )
+      given_ "Sam has a story with a persona, a rule and two scenarios locally", context do
+        payload =
+          Fixtures.migration_payload(
+            stories: [
+              %{
+                local_id: 1,
+                title: "Ship the thing",
+                story: "As Sam, I want to ship the thing so that it is shipped."
+              }
+            ],
+            rules: [%{local_id: "r1", story_local_id: 1, statement: "It ships once."}],
+            personas: [%{local_id: "p1", name: "Solo Shipper Sam", slug: "solo-shipper-sam"}],
+            persona_stories: [%{persona_local_id: "p1", story_local_id: 1}],
+            criteria: [
+              %{
+                local_id: "c1",
+                story_local_id: 1,
+                rule_local_id: "r1",
+                description: "shipping twice is refused"
+              },
+              %{
+                local_id: "c2",
+                story_local_id: 1,
+                rule_local_id: "r1",
+                description: "a shipped thing stays shipped"
+              }
+            ]
+          )
 
         {:ok, Map.put(context, :payload, payload)}
       end

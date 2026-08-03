@@ -147,7 +147,9 @@ defmodule CodeMySpecSpex.Fixtures do
           if Enum.any?(records, &(&1["status"] == "verified")) do
             {:halt, :ok}
           else
-            if rem(attempt, 5) == 0, do: CodeMySpec.Provisioning.Resend.verify_domain(scope, domain_id)
+            if rem(attempt, 5) == 0,
+              do: CodeMySpec.Provisioning.Resend.verify_domain(scope, domain_id)
+
             Process.sleep(3_000)
             {:cont, :ok}
           end
@@ -214,7 +216,11 @@ defmodule CodeMySpecSpex.Fixtures do
 
   @doc "Remove what `publish_all_records_except_dkim/2` created."
   @spec remove_published_records(Scope.t(), map()) :: :ok
-  def remove_published_records(scope, %{domain_id: domain_id, zone_id: zone_id, published: published}) do
+  def remove_published_records(scope, %{
+        domain_id: domain_id,
+        zone_id: zone_id,
+        published: published
+      }) do
     alias CodeMySpec.Provisioning.{Cloudflare, Resend}
 
     with {:ok, records} <- Cloudflare.list_dns_records(scope, zone_id) do
@@ -364,8 +370,7 @@ defmodule CodeMySpecSpex.Fixtures do
     CodeMySpec.Integrations.IntegrationRepository.upsert_integration(scope, provider, %{
       access_token: Keyword.get(opts, :access_token, "spex-placeholder-token"),
       refresh_token: Keyword.get(opts, :refresh_token, "spex-placeholder-refresh"),
-      expires_at:
-        Keyword.get(opts, :expires_at, DateTime.add(DateTime.utc_now(), 3600, :second)),
+      expires_at: Keyword.get(opts, :expires_at, DateTime.add(DateTime.utc_now(), 3600, :second)),
       granted_scopes: Keyword.get(opts, :granted_scopes, []),
       provider_metadata: %{
         provider_user_id: "spex",
@@ -546,6 +551,59 @@ defmodule CodeMySpecSpex.Fixtures do
       "messages" => [%{"role" => "user", "content" => content}]
     }
   end
+
+  # -- Migration (Story 991) --------------------------------------------------
+
+  @doc """
+  Build the payload a local harness sends when migrating a project.
+
+  Local ids are whatever the caller says they are — the point of the wire
+  format is that the cloud does not trust them, so a spec is free to use small
+  integers and strings that make the references readable.
+  """
+  def migration_payload(opts \\ []) do
+    %{
+      "stories" => stringify_all(Keyword.get(opts, :stories, [])),
+      "rules" => stringify_all(Keyword.get(opts, :rules, [])),
+      "criteria" => stringify_all(Keyword.get(opts, :criteria, [])),
+      "personas" => stringify_all(Keyword.get(opts, :personas, [])),
+      "persona_stories" => stringify_all(Keyword.get(opts, :persona_stories, [])),
+      "epics" => stringify_all(Keyword.get(opts, :epics, []))
+    }
+  end
+
+  @doc "Migrate a project the way the local harness does — through the endpoint."
+  def migrate(%Scope{} = scope, payload) do
+    Phoenix.ConnTest.build_conn()
+    |> Plug.Conn.put_req_header("content-type", "application/json")
+    |> Plug.Conn.assign(:current_scope, scope)
+    |> CodeMySpecWeb.MigrationsController.create(payload)
+  end
+
+  def cloud_stories(%Scope{} = scope) do
+    case CodeMySpec.Stories.list_project_stories(scope) do
+      {:ok, stories} -> stories
+      stories when is_list(stories) -> stories
+      _ -> []
+    end
+  end
+
+  def cloud_story(%Scope{} = scope, title),
+    do: scope |> cloud_stories() |> Enum.find(&(&1.title == title))
+
+  def cloud_rule(%Scope{} = scope, story, statement) do
+    scope
+    |> CodeMySpec.BddRules.list_rules_for_story(story.id)
+    |> Enum.find(&(&1.statement == statement))
+  end
+
+  def cloud_criteria(%Scope{} = scope, story),
+    do: CodeMySpec.AcceptanceCriteria.list_story_criteria(scope, story.id)
+
+  defp stringify_all(records), do: Enum.map(records, &stringify/1)
+
+  defp stringify(record) when is_map(record),
+    do: Map.new(record, fn {k, v} -> {to_string(k), v} end)
 
   defp serialize_observation(entry) do
     %{
@@ -1618,5 +1676,4 @@ defmodule CodeMySpecSpex.Fixtures do
   defp name_of(%{"name" => name}), do: name
   defp name_of(name) when is_binary(name), do: name
   defp name_of(other), do: inspect(other)
-
 end
