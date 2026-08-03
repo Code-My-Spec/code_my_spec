@@ -16,8 +16,6 @@ defmodule CodeMySpecSpex.Story991.Criterion8227Spex do
 
   alias CodeMySpecSpex.Fixtures
 
-  @endpoint CodeMySpecWeb.Endpoint
-
   setup :register_log_in_setup_account
   setup :setup_active_project
 
