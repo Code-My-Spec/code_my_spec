@@ -13,7 +13,7 @@ defmodule CodeMySpec.Mail.ImageProxyTest do
   describe "signed_path/1 + verify/1" do
     test "round-trips a url through a signed same-origin path" do
       path = ImageProxy.signed_path("https://cdn.example.com/a.png")
-      assert path =~ "/app/projects/#{context.project.id}/mail/image?u="
+      assert path =~ "/app/mail/image?u="
 
       token = path |> String.split("u=") |> List.last() |> URI.decode_www_form()
       assert {:ok, "https://cdn.example.com/a.png"} = ImageProxy.verify(token)
