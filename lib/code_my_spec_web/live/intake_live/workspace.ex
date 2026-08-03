@@ -10,7 +10,11 @@ defmodule CodeMySpecWeb.IntakeLive.Workspace do
   use CodeMySpecWeb, :live_view
 
   alias CodeMySpec.{Intake, UserPreferences, Workspaces}
+  alias CodeMySpec.Intake.Interview
   alias CodeMySpec.Users.Scope
+  alias CodeMySpec.Workspaces.Workspace
+
+  require Logger
   alias CodeMySpecWeb.Plugs.IntakeSession
 
   def render(assigns) do
@@ -20,7 +24,7 @@ defmodule CodeMySpecWeb.IntakeLive.Workspace do
         // your workspace
       </div>
 
-      <.failed :if={@workspace.status == :failed} workspace={@workspace} plan={@plan} />
+      <.failed :if={@workspace.status == :failed} workspace={@workspace} />
 
       <%= if @workspace.status != :failed do %>
         <h1 class="text-3xl font-bold mb-2">Now let's decide what it actually does.</h1>
@@ -28,24 +32,68 @@ defmodule CodeMySpecWeb.IntakeLive.Workspace do
           Your application is being built while we talk. A few questions and you'll see the rules
           I derived from your answers.
         </p>
-
-        <.interview_placeholder />
-        <.boot_status workspace={@workspace} />
       <% end %>
+
+      <%!-- The interview outlives the boot. A workspace that dies is a reason
+            to retry the workspace, not to throw away a conversation the visitor
+            has already spent time on. --%>
+      <.interview
+        turn={@turn}
+        answered={@answered}
+        rules={@rules}
+        interview_error={@interview_error}
+      />
+
+      <.boot_status :if={@workspace.status != :failed} workspace={@workspace} />
     </div>
     """
   end
 
-  # The interview itself is the next component. It needs the LLM call path,
-  # which is not on main yet, so this is deliberately a seam rather than a
-  # pretend conversation.
-  defp interview_placeholder(assigns) do
+  defp interview(assigns) do
     ~H"""
     <div class="card bg-base-200 mb-6">
       <div class="card-body">
-        <p class="text-base-content/70">The story interview starts here.</p>
+        <div :for={turn <- @answered} class="mb-4">
+          <p class="text-sm text-base-content/60">{turn.question}</p>
+          <p class="font-medium">{turn.answer}</p>
+        </div>
+
+        <.interview_question :if={@turn} turn={@turn} answered={@answered} />
+        <.derived_rules :if={@rules} rules={@rules} />
+        <p :if={@interview_error} class="text-error text-sm">{@interview_error}</p>
       </div>
     </div>
+    """
+  end
+
+  defp interview_question(assigns) do
+    ~H"""
+    <p class="text-xs uppercase tracking-[0.18em] text-base-content/50 mb-2">
+      question {length(@answered) + 1} of {Interview.question_cap()}
+    </p>
+    <p class="text-lg mb-3">{@turn.question}</p>
+
+    <form phx-submit="answer">
+      <input type="hidden" name="turn_id" value={@turn.id} />
+      <textarea
+        name="answer"
+        rows="3"
+        required
+        autofocus
+        class="textarea textarea-bordered w-full"
+        placeholder="In your own words."
+      ></textarea>
+      <.button class="btn-primary mt-3">Next</.button>
+    </form>
+    """
+  end
+
+  defp derived_rules(assigns) do
+    ~H"""
+    <p class="text-xs uppercase tracking-[0.18em] text-primary mb-2">// the rules I derived</p>
+    <ul class="list-disc pl-5 space-y-1">
+      <li :for={rule <- @rules}>{rule}</li>
+    </ul>
     """
   end
 
@@ -85,11 +133,12 @@ defmodule CodeMySpecWeb.IntakeLive.Workspace do
       <span>{@workspace.error}</span>
     </div>
 
-    <p class="text-base-content/70 mb-6">
-      Your plan is safe — nothing you told us is lost. Trying again picks up where this left off.
+    <p class="text-base-content/70 mb-4">
+      Your plan is safe — nothing you told us is lost, and the conversation below is still yours.
+      Trying again picks up where this left off.
     </p>
 
-    <.button phx-click="retry" class="btn-primary">Try again</.button>
+    <.button phx-click="retry" class="btn-primary mb-6">Try again</.button>
     """
   end
 
@@ -110,9 +159,76 @@ defmodule CodeMySpecWeb.IntakeLive.Workspace do
          {:ok, workspace} <- Workspaces.boot(scope) do
       Workspaces.subscribe_workspace(workspace.project_id)
 
+      # Subscribe, then re-read. The watcher starts inside boot/1 and can
+      # record a phase before this process is subscribed; since an unchanged
+      # step is never re-broadcast, that lost message would leave the bar
+      # showing "Getting ready" for the rest of the boot.
+      workspace = Workspaces.reload(workspace) || workspace
+
       socket
       |> assign(page_title: "Your workspace")
       |> assign(scope: scope, plan: plan, workspace: workspace)
+      |> assign_interview(plan)
+    else
+      # A boot that never starts is still a boot that failed, and the visitor
+      # has to be told. Returning the bare error tuple here crashed mount/3
+      # with an ArgumentError instead — a white page at exactly the moment the
+      # story says they must be told what happened and keep their plan.
+      {:error, reason} -> failed_to_start(socket, scope, plan, reason)
+    end
+  end
+
+  defp failed_to_start(socket, scope, plan, reason) do
+    Logger.error("[IntakeLive.Workspace] could not start a workspace: #{inspect(reason)}")
+
+    socket
+    |> assign(page_title: "Your workspace")
+    |> assign(
+      scope: scope,
+      plan: plan,
+      workspace: %Workspace{status: :failed, error: "Your workspace could not be started."}
+    )
+    |> assign_interview(plan)
+  end
+
+  # The interview is loaded from the plan every time, so a reconnect — or a
+  # boot that failed under it — picks up exactly where the visitor left off.
+  defp assign_interview(socket, plan) do
+    answered = plan |> Interview.turns() |> Enum.filter(& &1.answer)
+
+    socket
+    |> assign(:answered, answered)
+    |> assign_current(plan)
+  end
+
+  defp assign_current(socket, plan) do
+    case Interview.current_turn(plan) do
+      {:ok, turn} ->
+        socket |> assign(turn: turn, rules: nil, interview_error: nil)
+
+      {:done, _turns} ->
+        assign_rules(socket, plan)
+
+      {:error, _reason} ->
+        assign(socket,
+          turn: nil,
+          rules: nil,
+          interview_error: "The interview isn't available right now."
+        )
+    end
+  end
+
+  defp assign_rules(socket, plan) do
+    case Interview.rules(plan) do
+      {:ok, rules} ->
+        assign(socket, turn: nil, rules: rules, interview_error: nil)
+
+      {:error, _reason} ->
+        assign(socket,
+          turn: nil,
+          rules: nil,
+          interview_error: "Couldn't write up the rules just now."
+        )
     end
   end
 
@@ -123,6 +239,14 @@ defmodule CodeMySpecWeb.IntakeLive.Workspace do
          {:ok, _} <- UserPreferences.select_active_project(scope, plan.project_id) do
       {:ok, Scope.for_user(scope.user)}
     end
+  end
+
+  def handle_event("answer", %{"turn_id" => turn_id, "answer" => answer}, socket) do
+    turn = Enum.find([socket.assigns.turn], &(&1 && &1.id == turn_id))
+
+    {:ok, _turn} = Interview.answer(turn, answer)
+
+    {:noreply, assign_interview(socket, socket.assigns.plan)}
   end
 
   def handle_event("retry", _params, socket) do

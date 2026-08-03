@@ -22,7 +22,7 @@ defmodule CodeMySpec.Workspaces.TrackingTest do
       assert :ok = Tracking.abandoned(workspace)
       assert Events.exists?("workspace_abandoned", project_id: workspace.project_id)
 
-      event = Repo.one!(Events.Event)
+      event = only_event("workspace_abandoned")
       assert event.data["step"] == "fetching_deps"
       assert event.data["waited_seconds"] >= 45
     end
@@ -44,7 +44,7 @@ defmodule CodeMySpec.Workspaces.TrackingTest do
     test "coming up records the wait it cost" do
       assert :ok = Tracking.running(workspace(status: :running, step: :starting_app))
 
-      event = Repo.one!(Events.Event)
+      event = only_event("workspace_running")
       assert event.event_type == "workspace_running"
       assert event.data["waited_seconds"] >= 45
     end
@@ -54,7 +54,7 @@ defmodule CodeMySpec.Workspaces.TrackingTest do
 
       assert :ok = Tracking.failed(workspace)
 
-      event = Repo.one!(Events.Event)
+      event = only_event("workspace_failed")
       assert event.event_type == "workspace_failed"
       assert event.data["step"] == "migrating"
       assert event.data["error"] == "took too long to start"
@@ -65,8 +65,16 @@ defmodule CodeMySpec.Workspaces.TrackingTest do
       # just started reports a short wait even on an old workspace row.
       Tracking.abandoned(workspace(booted_at: DateTime.utc_now(:second)))
 
-      event = Repo.one!(Events.Event)
+      event = only_event("workspace_abandoned")
       assert event.data["waited_seconds"] < 5
     end
+  end
+
+  # By type, not "the only row in the table" — that assumption held only
+  # because the sandbox starts empty, and it broke the moment anything wrote
+  # an event outside it.
+  defp only_event(event_type) do
+    import Ecto.Query
+    Repo.one!(from e in Events.Event, where: e.event_type == ^event_type)
   end
 end

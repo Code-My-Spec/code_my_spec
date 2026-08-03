@@ -12,6 +12,8 @@ defmodule CodeMySpecWeb.IntakeLive.Plan do
 
   alias CodeMySpec.Intake
   alias CodeMySpec.Intake.{Funnel, Plan}
+  alias CodeMySpec.Users.Scope
+  alias CodeMySpec.Users.User
   alias CodeMySpecWeb.Plugs.IntakeSession
 
   def render(assigns) do
@@ -129,6 +131,13 @@ defmodule CodeMySpecWeb.IntakeLive.Plan do
     else
       {:error, %Ecto.Changeset{} = changeset} ->
         {:noreply, assign(socket, :answers_form, to_form(changeset))}
+
+      # Writing the plan is a call to a model, so it can fail for reasons the
+      # visitor had nothing to do with. Keep them on the answers they already
+      # gave rather than dropping them back to a blank page.
+      {:error, _reason} ->
+        {:noreply,
+         put_flash(socket, :error, "That didn't come back. Try showing the plan again.")}
     end
   end
 
@@ -145,12 +154,19 @@ defmodule CodeMySpecWeb.IntakeLive.Plan do
         {:noreply,
          socket
          |> assign_plan(plan)
-         |> push_navigate(to: ~p"/users/register")}
+         |> push_navigate(to: gate_for(socket.assigns.current_scope))}
 
       {:error, changeset} ->
         {:noreply, assign(socket, :names_form, to_form(changeset))}
     end
   end
+
+  # The gate is a sign-up for a stranger and nothing at all for someone already
+  # signed in. Sending everyone to /users/register meant an existing customer
+  # was bounced off it by redirect_if_user_is_authenticated and landed on the
+  # marketing site, plan stranded.
+  defp gate_for(%Scope{user: %User{}}), do: ~p"/build/workspace"
+  defp gate_for(_scope), do: ~p"/users/register"
 
   defp assign_plan(socket, %Plan{} = plan) do
     socket

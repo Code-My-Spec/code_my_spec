@@ -111,6 +111,13 @@ config :code_my_spec,
   # the target app's users endpoint without hitting the network.
   project_users_req_plug: {Req.Test, CodeMySpec.ProjectUsers}
 
+# Tests write plans offline and deterministically. The LLM planner is the
+# default everywhere else; here it would make every intake test a network call
+# with a different answer each run.
+config :code_my_spec, CodeMySpec.Intake,
+  planner: CodeMySpec.Intake.Planner.Inferred,
+  interviewer: CodeMySpec.Intake.Interviewer.Scripted
+
 # Story 713: run content pull synchronously in tests so it shares the
 # ExUnit sandbox connection instead of racing the test process.
 config :code_my_spec, content_pull_async: false
