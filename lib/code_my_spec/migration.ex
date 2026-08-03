@@ -131,7 +131,21 @@ defmodule CodeMySpec.Migration do
   # Checked before the transaction opens rather than inside it. Sam is told a
   # plan is what is missing, not that something went wrong, and nothing is
   # written on the way to finding out.
-  defp plan(%Scope{active_account: %{plan: plan}}), do: plan
+  #
+  # Read from the account rather than from the scope's association: a scope
+  # built from an access token carries `active_account_id` and no loaded
+  # struct, so trusting the association reported "no plan" for an account that
+  # had one. Every spec set it explicitly and none of them caught it — the
+  # first real request did.
+  defp plan(%Scope{active_account: %{plan: plan}}) when not is_nil(plan), do: plan
+
+  defp plan(%Scope{active_account_id: id}) when not is_nil(id) do
+    case Repo.get(CodeMySpec.Accounts.Account, id) do
+      %{plan: plan} -> plan
+      nil -> nil
+    end
+  end
+
   defp plan(_scope), do: nil
 
   defp do_import(scope, payload) do
@@ -167,8 +181,20 @@ defmodule CodeMySpec.Migration do
   # payload. That is the remapping, and keeping it in one shape per kind is what
   # stops it leaking into the individual inserts.
 
-  defp put_epics(scope, epics),
-    do: collect(epics, &Epics.create_epic(scope, attrs(&1, Epics.Epic)))
+  # Epics are unique on (project_id, name), so a second run collides unless it
+  # recognises what it wrote the first time. This was the last thing standing
+  # between the real dataset and a repeatable migration — the spex covered
+  # re-running stories, rules, criteria and personas, and never an epic.
+  defp put_epics(scope, epics) do
+    existing = Epics.list_epics(scope)
+
+    collect(epics, fn epic ->
+      case Enum.find(existing, &(&1.name == epic["name"])) do
+        %{} = already -> {:ok, already}
+        nil -> Epics.create_epic(scope, attrs(epic, Epics.Epic))
+      end
+    end)
+  end
 
   defp put_stories(scope, stories, epics) do
     existing = scope |> project_stories() |> Map.new(&{&1.title, &1})
@@ -218,28 +244,66 @@ defmodule CodeMySpec.Migration do
     end)
   end
 
+  # Idempotent across runs without collapsing duplicates within one.
+  #
+  # Sam's real project has four scenarios sharing a description with a sibling
+  # under the same story. Matching on text alone dropped them — and still
+  # counted them as migrated, so the summary said 658 while 654 arrived, which
+  # is the one number he would have checked.
+  #
+  # So the rows that existed before this run are snapshotted per story and
+  # consumed as they are matched. A second migration finds its own earlier rows
+  # and reuses them one for one; two identical scenarios in the payload consume
+  # two, or insert a second. Nothing is deduped that was not already there.
   defp put_criteria(scope, criteria, stories, rules) do
-    collect(criteria, fn criterion ->
+    snapshots =
+      stories
+      |> Map.values()
+      |> Map.new(&{&1.id, AcceptanceCriteria.list_story_criteria(scope, &1.id)})
+
+    criteria
+    |> Enum.reduce_while({:ok, %{}, snapshots}, fn criterion, {:ok, acc, snaps} ->
       case stories[criterion["story_local_id"]] do
         nil ->
-          {:error, {:unknown_story, criterion["story_local_id"]}}
+          {:halt, {:error, {:unknown_story, criterion["story_local_id"]}}}
 
         story ->
-          case Enum.find(
-                 AcceptanceCriteria.list_story_criteria(scope, story.id),
-                 &(&1.description == criterion["description"])
-               ) do
-            %{} = already ->
-              {:ok, already}
+          {match, snaps} = take_match(snaps, story.id, criterion["description"])
 
-            nil ->
-              criterion
-              |> attrs(AcceptanceCriteria.Criterion)
-              |> put_ref(:rule_id, rules[criterion["rule_local_id"]])
-              |> then(&AcceptanceCriteria.create_criterion(scope, story, &1))
+          result =
+            case match do
+              %{} = already ->
+                {:ok, already}
+
+              nil ->
+                criterion
+                |> attrs(AcceptanceCriteria.Criterion)
+                |> put_ref(:rule_id, rules[criterion["rule_local_id"]])
+                |> then(&AcceptanceCriteria.create_criterion(scope, story, &1))
+            end
+
+          case result do
+            {:ok, record} -> {:cont, {:ok, Map.put(acc, criterion["local_id"], record), snaps}}
+            {:error, reason} -> {:halt, {:error, reason}}
           end
       end
     end)
+    |> case do
+      {:ok, acc, _snaps} -> {:ok, acc}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp take_match(snapshots, story_id, description) do
+    rows = Map.get(snapshots, story_id, [])
+
+    case Enum.split_with(rows, &(&1.description == description)) do
+      {[hit | rest_hits], others} ->
+        {hit, Map.put(snapshots, story_id, rest_hits ++ others)}
+
+      {[], _} ->
+        {nil, snapshots}
+    end
   end
 
   defp put_personas(scope, personas) do
