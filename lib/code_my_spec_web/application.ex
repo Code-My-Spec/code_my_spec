@@ -19,6 +19,7 @@ defmodule CodeMySpecWeb.Application do
         CodeMySpec.Environments.registry_child_spec(),
         {DNSCluster, query: Application.get_env(:code_my_spec, :dns_cluster_query) || :ignore},
         {Phoenix.PubSub, name: CodeMySpec.PubSub},
+        {Task.Supervisor, name: CodeMySpec.TaskSupervisor},
         # Which projects a light harness is holding, and therefore where their
         # analyzers run. Here rather than in `Analysis.Supervisor` because that
         # subtree only starts where analyzers run locally, and this table is

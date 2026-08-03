@@ -35,6 +35,30 @@ defmodule CodeMySpecWeb.Router do
     plug CodeMySpecWeb.Plugs.ProjectScopeOverride
   end
 
+  # Guided intake (story 990). Its own pipeline because the anonymous plan
+  # token has to be minted before the LiveView mounts — a LiveView cannot
+  # write the session itself.
+  pipeline :intake do
+    plug CodeMySpecWeb.Plugs.IntakeSession
+  end
+
+  scope "/", CodeMySpecWeb do
+    pipe_through [:browser, :intake]
+
+    live_session :intake,
+      on_mount: [{CodeMySpecWeb.UserAuth, :mount_current_scope}] do
+      live "/build", IntakeLive.Plan, :plan
+    end
+
+    live_session :intake_workspace,
+      on_mount: [
+        {CodeMySpecWeb.UserAuth, :mount_current_scope},
+        {CodeMySpecWeb.UserAuth, :require_authenticated}
+      ] do
+      live "/build/workspace", IntakeLive.Workspace, :workspace
+    end
+  end
+
   scope "/", CodeMySpecWeb do
     pipe_through :browser
 

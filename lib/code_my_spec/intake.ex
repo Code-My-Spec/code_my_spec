@@ -1,0 +1,125 @@
+defmodule CodeMySpec.Intake do
+  @moduledoc """
+  Pre-signup plans.
+
+  A visitor describes what they want to build, answers two shaping questions,
+  and gets back a plan — all before an account exists. The plan is keyed to an
+  anonymous session token and never expires, so leaving and coming back in the
+  same browser finds it waiting.
+
+  At the gate the confirmed names become an account and a project. No name
+  collision is ever surfaced: names are not unique, and the account slug
+  de-dupes itself underneath.
+  """
+
+  alias CodeMySpec.Accounts
+  alias CodeMySpec.Accounts.Account
+  alias CodeMySpec.Intake.{Plan, Planner, PlansRepository}
+  alias CodeMySpec.Projects
+  alias CodeMySpec.Users.Scope
+
+  @token_bytes 32
+
+  @doc "A fresh anonymous session token for the intake cookie."
+  @spec new_session_token() :: String.t()
+  def new_session_token do
+    @token_bytes |> :crypto.strong_rand_bytes() |> Base.url_encode64(padding: false)
+  end
+
+  @doc """
+  The plan behind this token, or nil.
+
+  A token from another browser resolves to nil — the caller offers a fresh
+  start rather than reporting a fault.
+  """
+  @spec get_plan(String.t() | nil) :: Plan.t() | nil
+  def get_plan(nil), do: nil
+  def get_plan(session_token), do: PlansRepository.get_by_token(session_token)
+
+  @doc "The plan behind this token, starting one if there isn't one yet."
+  @spec start_plan(String.t()) :: {:ok, Plan.t()} | {:error, Ecto.Changeset.t()}
+  def start_plan(session_token) when is_binary(session_token) do
+    case PlansRepository.get_by_token(session_token) do
+      nil -> PlansRepository.start(session_token)
+      %Plan{} = plan -> {:ok, plan}
+    end
+  end
+
+  @doc "Records what the visitor typed and moves on to the shaping questions."
+  @spec describe(Plan.t(), String.t()) :: {:ok, Plan.t()} | {:error, Ecto.Changeset.t()}
+  def describe(%Plan{} = plan, description) do
+    plan
+    |> Plan.description_changeset(%{description: description})
+    |> PlansRepository.update()
+  end
+
+  @doc "Records the answers to the shaping questions."
+  @spec answer(Plan.t(), map()) :: {:ok, Plan.t()} | {:error, Ecto.Changeset.t()}
+  def answer(%Plan{} = plan, attrs) do
+    plan
+    |> Plan.answers_changeset(attrs)
+    |> PlansRepository.update()
+  end
+
+  @doc """
+  Generates the plan and stores it with its proposed names.
+
+  Every inference lands on the record as something the visitor can still
+  correct — nothing here is applied silently.
+  """
+  @spec generate_plan(Plan.t()) :: {:ok, Plan.t()} | {:error, term()}
+  def generate_plan(%Plan{} = plan) do
+    with {:ok, attrs} <- Planner.generate(plan) do
+      plan
+      |> Plan.plan_changeset(attrs)
+      |> PlansRepository.update()
+    end
+  end
+
+  @doc "Applies a correction to the proposed names, overwriting them in place."
+  @spec confirm_names(Plan.t(), map()) :: {:ok, Plan.t()} | {:error, Ecto.Changeset.t()}
+  def confirm_names(%Plan{} = plan, attrs) do
+    plan
+    |> Plan.names_changeset(attrs)
+    |> PlansRepository.update()
+  end
+
+  @doc "A form-backing changeset for the name corrections."
+  @spec change_names(Plan.t(), map()) :: Ecto.Changeset.t()
+  def change_names(%Plan{} = plan, attrs \\ %{}), do: Plan.names_changeset(plan, attrs)
+
+  @doc """
+  Turns a confirmed plan into an account and a project for the signed-in user.
+
+  Goes through `Accounts.create_account/2` deliberately — that path picks an
+  available slug before inserting, so a name someone else already uses is
+  accepted rather than refused.
+
+  An already-converted plan returns what it created. A visitor who signs in
+  with an existing account gets a project added under it and no second account.
+  """
+  @spec convert(Plan.t(), Scope.t()) :: {:ok, Plan.t()} | {:error, term()}
+  def convert(%Plan{status: :converted} = plan, %Scope{}), do: {:ok, plan}
+
+  def convert(%Plan{} = plan, %Scope{} = scope) do
+    with {:ok, scope} <- ensure_account(scope, plan),
+         {:ok, project} <- Projects.create_project(scope, %{name: plan.project_name}) do
+      plan
+      |> Plan.conversion_changeset(scope.active_account, project)
+      |> PlansRepository.update()
+    end
+  end
+
+  defp ensure_account(%Scope{active_account: %Account{}} = scope, _plan), do: {:ok, scope}
+
+  defp ensure_account(%Scope{active_account_id: account_id} = scope, _plan)
+       when not is_nil(account_id) do
+    {:ok, %Scope{scope | active_account: Accounts.get_account_by_id(account_id)}}
+  end
+
+  defp ensure_account(%Scope{} = scope, %Plan{} = plan) do
+    with {:ok, account} <- Accounts.create_account(scope, %{name: plan.account_name}) do
+      {:ok, %Scope{scope | active_account: account, active_account_id: account.id}}
+    end
+  end
+end
