@@ -36,7 +36,7 @@ defmodule CodeMySpecSpex.Story991.Criterion8227Spex do
       end
 
       then_ "the story is still on the local harness, unchanged", context do
-        local = CodeMySpec.Stories.get_story(context.scope, context.story.id)
+        local = Fixtures.local_story(context.scope, context.story.id)
 
         assert local, "the local story must survive its own migration"
         assert local.title == "Something Sam wrote"
@@ -45,7 +45,7 @@ defmodule CodeMySpecSpex.Story991.Criterion8227Spex do
       end
 
       and_ "nothing about it was marked or moved", context do
-        local = CodeMySpec.Stories.get_story(context.scope, context.story.id)
+        local = Fixtures.local_story(context.scope, context.story.id)
 
         assert local.updated_at == context.story.updated_at,
                """

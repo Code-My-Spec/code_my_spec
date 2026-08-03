@@ -18,7 +18,6 @@ defmodule CodeMySpecSpex.Story991.Criterion8223Spex do
 
   use CodeMySpecSpex.Case
 
-  alias CodeMySpec.Migration
   alias CodeMySpecSpex.Fixtures
 
   @endpoint CodeMySpecWeb.Endpoint
@@ -29,14 +28,7 @@ defmodule CodeMySpecSpex.Story991.Criterion8223Spex do
 
   # Story 991 requires an account already on a plan; migrating is not how Sam
   # buys one. Criterion 8228 is the spec for what happens without it.
-  defp paid_account(context) do
-    {:ok, account} =
-      CodeMySpec.Accounts.update_account(context.scope, context.scope.active_account, %{
-        plan: :paid
-      })
-
-    {:ok, Map.put(context, :scope, %{context.scope | active_account: account})}
-  end
+  defp paid_account(context), do: {:ok, Map.put(context, :scope, Fixtures.paid(context.scope))}
 
   spex "Derived records stay behind" do
     scenario "Scanned and computed records are not carried over" do
@@ -66,10 +58,10 @@ defmodule CodeMySpecSpex.Story991.Criterion8223Spex do
       end
 
       and_ "the harness agrees about which kinds it recomputes", context do
-        assert "files" in Migration.derived_kinds()
-        assert "components" in Migration.derived_kinds()
+        assert "files" in Fixtures.derived_kinds()
+        assert "components" in Fixtures.derived_kinds()
 
-        refute "stories" in Migration.derived_kinds(),
+        refute "stories" in Fixtures.derived_kinds(),
                "a story is authored — if this ever reads as derived, Sam's work is being dropped"
 
         {:ok, context}

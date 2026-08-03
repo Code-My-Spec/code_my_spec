@@ -601,6 +601,12 @@ defmodule CodeMySpecSpex.Fixtures do
   @doc "Read the local project the way the migration does."
   def exported(%Scope{} = scope), do: CodeMySpec.Migration.export_project(scope)
 
+  @doc "The kinds the cloud recomputes instead of carrying over."
+  def derived_kinds, do: CodeMySpec.Migration.derived_kinds()
+
+  @doc "Read a story back off the local harness."
+  def local_story(%Scope{} = scope, id), do: CodeMySpec.Stories.get_story(scope, id)
+
   @doc "Put an account on a paid plan — story 991's precondition."
   def paid(%Scope{} = scope) do
     account =

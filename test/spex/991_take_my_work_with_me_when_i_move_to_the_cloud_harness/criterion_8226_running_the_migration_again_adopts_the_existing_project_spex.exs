@@ -28,14 +28,7 @@ defmodule CodeMySpecSpex.Story991.Criterion8226Spex do
 
   # Story 991 requires an account already on a plan; migrating is not how Sam
   # buys one. Criterion 8228 is the spec for what happens without it.
-  defp paid_account(context) do
-    {:ok, account} =
-      CodeMySpec.Accounts.update_account(context.scope, context.scope.active_account, %{
-        plan: :paid
-      })
-
-    {:ok, Map.put(context, :scope, %{context.scope | active_account: account})}
-  end
+  defp paid_account(context), do: {:ok, Map.put(context, :scope, Fixtures.paid(context.scope))}
 
   spex "Migrating twice is safe" do
     scenario "Running the migration again adopts the existing project" do

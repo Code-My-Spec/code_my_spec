@@ -29,8 +29,7 @@ defmodule CodeMySpecSpex.Story991.Criterion8230Spex do
         scope = Fixtures.paid(context.scope)
         Fixtures.authored_story(scope, "Belongs to the migrating project")
 
-        other = CodeMySpec.ProjectsFixtures.project_fixture(scope, %{name: "Sam's other project"})
-        other_scope = %{scope | active_project: other, active_project_id: other.id}
+        other_scope = Fixtures.other_project_scope(scope, "Sam's other project")
         Fixtures.authored_story(other_scope, "Belongs to the other project")
 
         {:ok, context |> Map.put(:scope, scope) |> Map.put(:other_scope, other_scope)}

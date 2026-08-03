@@ -50,7 +50,7 @@ defmodule CodeMySpecSpex.Story991.Criterion8224Spex do
       end
 
       then_ "his local harness still holds everything it did before", context do
-        local_story = CodeMySpec.Stories.get_story(context.local, context.story.id)
+        local_story = Fixtures.local_story(context.local, context.story.id)
 
         assert local_story, "a failed migration must not cost him the work it was copying"
         assert local_story.title == "Everything he has"
