@@ -10,6 +10,7 @@ ExUnit.start(
     :pending,
     :live,
     :docker,
+    :registry,
     :record_google_login_shape,
     :record_github_login_shape
   ]

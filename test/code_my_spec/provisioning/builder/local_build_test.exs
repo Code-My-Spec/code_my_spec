@@ -83,6 +83,64 @@ defmodule CodeMySpec.Provisioning.Builder.LocalBuildTest do
            )
   end
 
+  @tag :registry
+  test "pushes the image to a registry it can be pulled back from", ctx do
+    # A registry container stands in for the self-hosted one. It is the last
+    # step the local runner could not exercise, and skipping it left "the
+    # deploy pulls what was pushed" resting on nothing.
+    port = "5001"
+    name = "cms-build-test-registry-#{System.unique_integer([:positive])}"
+
+    {_, 0} =
+      System.cmd("docker", ["run", "-d", "--name", name, "-p", "#{port}:5000", "registry:3"],
+        stderr_to_stdout: true
+      )
+
+    on_exit(fn -> System.cmd("docker", ["rm", "-f", name], stderr_to_stdout: true) end)
+
+    await_registry(port, 30)
+
+    repository = "app-#{System.unique_integer([:positive])}"
+    reference = "127.0.0.1:#{port}/#{repository}:#{String.slice(ctx.ref, 0, 12)}"
+    on_exit(fn -> System.cmd("docker", ["rmi", "-f", reference], stderr_to_stdout: true) end)
+
+    assert {:ok, %{architecture: architecture}} =
+             Remote.build(
+               %{"ip" => "local"},
+               ctx.ref,
+               reference,
+               run: Remote.local_runner(cd: ctx.tmp),
+               repository_url: ctx.source,
+               build_dir: Path.join(ctx.tmp, "build")
+             )
+
+    assert architecture in [:arm, :x86]
+
+    # Asked of the registry, not of the local daemon: an image that is still
+    # only in the build cache would pass a `docker image inspect` and fail
+    # every deploy.
+    {tags, 0} =
+      System.cmd("curl", ["-s", "http://127.0.0.1:#{port}/v2/#{repository}/tags/list"],
+        stderr_to_stdout: true
+      )
+
+    assert tags =~ String.slice(ctx.ref, 0, 12)
+
+    # And it comes back out. Removing it locally first, so the pull cannot be
+    # answered from the cache.
+    {_, 0} = System.cmd("docker", ["rmi", "-f", reference], stderr_to_stdout: true)
+    assert {_, 0} = System.cmd("docker", ["pull", reference], stderr_to_stdout: true)
+  end
+
+  defp await_registry(_port, 0), do: flunk("the test registry never answered")
+
+  defp await_registry(port, attempts) do
+    case System.cmd("curl", ["-sf", "http://127.0.0.1:#{port}/v2/"], stderr_to_stdout: true) do
+      {_, 0} -> :ok
+      _ -> Process.sleep(500) && await_registry(port, attempts - 1)
+    end
+  end
+
   test "a Dockerfile that cannot build is reported as a failed build", ctx do
     File.write!(Path.join(ctx.source, "Dockerfile"), """
     FROM alpine:3
