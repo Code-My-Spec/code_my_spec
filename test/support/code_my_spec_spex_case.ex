@@ -37,6 +37,15 @@ defmodule CodeMySpecSpex.Case do
     end
   end
 
+  @doc """
+  The workspace runner spex drive instead of Docker.
+
+  Named here rather than referenced directly from a spex: the runner lives in
+  the test-support namespace, which spex are not allowed to reach into, and
+  Docker is an external system the criteria are not about.
+  """
+  def workspace_runner, do: CodeMySpecTest.FakeWorkspaceRunner
+
   setup tags do
     # `ownership_timeout` has to outlast the work, not the request. Recording a
     # spex waits on a provider verifying DNS — minutes, not milliseconds — and
@@ -93,6 +102,15 @@ defmodule CodeMySpecSpex.Case do
   """
   def connect_providers(%{scope: scope} = context) do
     refuse_to_run_on_residue()
+
+    # Nothing is really happening on replay, so there is nothing to wait for.
+    # The pollers still ran their sleeps between replayed reads, which is where
+    # a passing criterion's five and a half minutes went.
+    Application.put_env(
+      :code_my_spec,
+      :provisioning_waits,
+      if(recording?(), do: :real, else: :none)
+    )
 
     for provider <- [:github, :cloudflare, :resend] do
       grant = live_grant(provider)
@@ -213,6 +231,113 @@ defmodule CodeMySpecSpex.Case do
 
       _ ->
         :ok
+    end
+  end
+
+  @doc """
+  Drive a run from a script instead of from providers.
+
+      setup {:scripted_run, %{domain: {:error, "Cloudflare said no"}}}
+
+  Story 963's criteria are claims about the **runner**: a failing step halts
+  the rest, a re-run picks up where it stopped, retrying one step leaves the
+  others alone, an option turned off never appears. None of them are claims
+  about Hetzner or Cloudflare, and proving them through real providers made
+  each one mint a server and a repository, need a cassette per outcome, and
+  fail for reasons that had nothing to do with the ordering under test.
+
+  `Provisioning.run_step/3` already takes `:verify` and `:execute` for exactly
+  this. Scripting them makes the failure modes the criteria are *about* —
+  errored, paused, a provider's own message — reachable directly, and reachable
+  reliably, instead of being coaxed out of a real provider that would rather
+  succeed.
+
+  Steps not named in the script succeed with no resources. `:verify` is
+  scripted too: without it, the run asks providers whether each step is already
+  satisfied and short-circuits past the very step the criterion wants to watch.
+  """
+  def scripted_run(context, script \\ %{}) do
+    Fixtures.store_provider_secrets(context.scope)
+
+    previous = Application.get_env(:code_my_spec, :provisioning_step_opts, [])
+
+    Application.put_env(
+      :code_my_spec,
+      :provisioning_step_opts,
+      Keyword.merge(previous,
+        verify: fn _scope, _key -> {:ok, :absent} end,
+        execute: fn _scope, key, _opts ->
+          case Map.get(script, key, {:ok, []}) do
+            # A zero-arity function so a criterion can hold a step open.
+            # Scripted steps finish instantly, which makes "Sam sees a step
+            # running" unobservable — the state the criterion is about would
+            # be gone before the page could show it.
+            fun when is_function(fun, 0) -> fun.()
+            outcome -> outcome
+          end
+        end
+      )
+    )
+
+    ExUnit.Callbacks.on_exit(fn ->
+      Application.put_env(:code_my_spec, :provisioning_step_opts, previous)
+    end)
+
+    context
+  end
+
+  @doc """
+  Run setup in a task, so the page has states to show while it runs.
+
+      setup :watchable_run
+
+  Runs are synchronous under test on purpose — a detached task races the
+  test's lifetime, and the run then holds a sandbox connection nobody owns.
+  The cost is that every intermediate state is gone by the time the click
+  returns, so a criterion about *watching* a step change has nothing to watch.
+
+  Safe here because spex own their sandbox in shared mode, so the spawned run
+  uses the same connection rather than a detached one. Pair it with a script
+  that holds a step open, or the run still finishes faster than the page can
+  be read.
+  """
+  def watchable_run(context) do
+    previous = Application.get_env(:code_my_spec, :provisioning_run_async, true)
+    Application.put_env(:code_my_spec, :provisioning_run_async, true)
+
+    ExUnit.Callbacks.on_exit(fn ->
+      Application.put_env(:code_my_spec, :provisioning_run_async, previous)
+    end)
+
+    context
+  end
+
+  @doc """
+  Wait until a step reaches a state, then hand back the page.
+
+  A run is asynchronous, so a criterion that renders immediately after
+  clicking reads the page before anything has happened, and one that waits for
+  the whole run to settle has missed every intermediate state. This waits for
+  the one transition the criterion is about.
+  """
+  def await_step_state(view, step, state, timeout \\ 30_000) do
+    deadline = System.monotonic_time(:millisecond) + timeout
+    await_step_state(view, step, state, deadline, nil)
+  end
+
+  defp await_step_state(view, step, state, deadline, _last) do
+    html = Phoenix.LiveViewTest.render(view)
+
+    cond do
+      html =~ ~r/data-step="#{step}"[^>]*data-state="#{state}"/ ->
+        html
+
+      System.monotonic_time(:millisecond) > deadline ->
+        html
+
+      true ->
+        Process.sleep(100)
+        await_step_state(view, step, state, deadline, nil)
     end
   end
 
@@ -535,8 +660,20 @@ defmodule CodeMySpecSpex.Case do
   defp await_start(view, deadline) do
     html = Phoenix.LiveViewTest.render(view)
 
+    # Started means *any* step has moved, not that every step has. The old
+    # test — nothing is `not_started` — is only true of a run that got all the
+    # way to the end, so a run that halts partway (the usual case for the
+    # criteria about halting) never looked started and polled out the whole
+    # five-second window. That was five seconds on every such criterion, and
+    # eleven on the one that resumes.
+    started? =
+      Enum.any?(
+        ~w(running done errored paused),
+        &(html =~ ~s(data-state="#{&1}"))
+      )
+
     cond do
-      html =~ ~s(data-state="running") or not (html =~ ~s(data-state="not_started")) -> :started
+      started? -> :started
       System.monotonic_time(:millisecond) > deadline -> :never_started
       true -> Process.sleep(50) && await_start(view, deadline)
     end
@@ -1238,7 +1375,10 @@ defmodule CodeMySpecSpex.Case do
     case Jason.decode(body) do
       {:ok, %{"commands" => commands} = cassette} when is_list(commands) ->
         cassette
-        |> Map.put("commands", Enum.map(commands, &wildcard_command_path/1))
+        |> Map.put(
+          "commands",
+          Enum.map(commands, fn c -> c |> wildcard_command_path() |> wildcard_temp_args() end)
+        )
         |> Jason.encode!(pretty: true)
 
       _ ->
@@ -1259,6 +1399,31 @@ defmodule CodeMySpecSpex.Case do
   end
 
   defp wildcard_command_path(entry), do: entry
+
+  # The same problem one field over. `ssh-keygen -f <tmp>/id_ed25519` writes to
+  # a directory named after the run, so the recorded argument names a path that
+  # will never exist again and the recording cannot match itself.
+  #
+  # Only the temp root is forgiven: `*/id_ed25519` still requires the flag and
+  # the filename, so this cannot start matching some other command that merely
+  # happens to take a path.
+  defp wildcard_temp_args(%{"args" => args} = entry) when is_list(args) do
+    tmp = String.trim_trailing(System.tmp_dir!(), "/")
+
+    %{entry | "args" => Enum.map(args, &wildcard_temp_arg(&1, tmp))}
+  end
+
+  defp wildcard_temp_args(entry), do: entry
+
+  defp wildcard_temp_arg(arg, tmp) when is_binary(arg) do
+    if String.starts_with?(arg, tmp <> "/") do
+      "*/" <> Path.basename(arg)
+    else
+      arg
+    end
+  end
+
+  defp wildcard_temp_arg(arg, _tmp), do: arg
 
   # Headers alone are not enough, and the gap is not hypothetical.
   #

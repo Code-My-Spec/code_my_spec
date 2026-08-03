@@ -124,11 +124,40 @@ defmodule CodeMySpec.McpServers.Qa.Tools.SubmitQaResult do
         end)
       end)
       |> Enum.map_join("\n", fn {field, messages} ->
-        "  #{field}: #{Enum.join(messages, ", ")}"
+        "  #{field}: #{format_messages(messages)}"
       end)
 
     Response.error(Response.tool(), "Invalid submit_qa_result payload:\n#{errors}")
   end
+
+  # Embedded fields do not come back as a flat list of strings. `scenarios` is
+  # an embed, so `traverse_errors` returns one map per entry — and joining that
+  # raised `String.Chars not implemented for Map` *inside the error path*. The
+  # agent then got "Tool execution crashed", which reads as a broken server, so
+  # the reasonable next move is to retry the same payload rather than to add
+  # the missing field.
+  defp format_messages(messages) when is_list(messages) do
+    messages
+    |> Enum.with_index(1)
+    |> Enum.map_join(", ", fn {message, position} -> format_message(message, position) end)
+  end
+
+  defp format_messages(message), do: format_message(message, 1)
+
+  defp format_message(message, _position) when is_binary(message), do: message
+
+  # One entry's worth of embed errors. Numbered, because "a scenario is missing
+  # its observation" is not actionable when eight were submitted.
+  defp format_message(%{} = nested, position) do
+    inner =
+      Enum.map_join(nested, "; ", fn {field, messages} ->
+        "#{field}: #{format_messages(messages)}"
+      end)
+
+    "##{position} #{inner}"
+  end
+
+  defp format_message(other, _position), do: inspect(other)
 
   defp safe_to_string(value) when is_binary(value), do: value
   defp safe_to_string(value) when is_atom(value) or is_number(value), do: to_string(value)

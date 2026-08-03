@@ -1,7 +1,7 @@
 {
   "interactions": [
     {
-      "recorded_at": "2026-08-02T17:50:18.690657Z",
+      "recorded_at": "2026-08-03T02:35:45.181313Z",
       "request": {
         "body": "",
         "body_type": "text",
@@ -44,7 +44,7 @@
             "application/json; charset=utf-8"
           ],
           "date": [
-            "Sun, 02 Aug 2026 17:50:18 GMT"
+            "Mon, 03 Aug 2026 02:35:45 GMT"
           ],
           "referrer-policy": [
             "origin-when-cross-origin, strict-origin-when-cross-origin"
@@ -80,7 +80,7 @@
             "github.v3; format=json"
           ],
           "x-github-request-id": [
-            "E88B:1D6818:1C5EBF8:64398E8:6A6F835A"
+            "C47F:2AC78B:116F726:3DDC00A:6A6FFE80"
           ],
           "x-oauth-client-id": [
             "Ov23liFpnT7j3bK5OC1L"
@@ -92,16 +92,16 @@
             "5000"
           ],
           "x-ratelimit-remaining": [
-            "4912"
+            "4968"
           ],
           "x-ratelimit-reset": [
-            "1785693733"
+            "1785724579"
           ],
           "x-ratelimit-resource": [
             "core"
           ],
           "x-ratelimit-used": [
-            "88"
+            "32"
           ],
           "x-xss-protection": [
             "0"
@@ -111,117 +111,7 @@
       }
     },
     {
-      "recorded_at": "2026-08-02T17:50:18.832344Z",
-      "request": {
-        "body": "",
-        "body_type": "text",
-        "headers": {
-          "accept": [
-            "application/vnd.github+json"
-          ],
-          "accept-encoding": [
-            "gzip"
-          ],
-          "user-agent": [
-            "CodeMySpec"
-          ],
-          "x-github-api-version": [
-            "2022-11-28"
-          ]
-        },
-        "method": "GET",
-        "query_string": "",
-        "uri": "https://api.github.com/repos/codemy-my-spec-test/spex-story985-criterion8178"
-      },
-      "response": {
-        "body_json": {
-          "documentation_url": "https://docs.github.com/rest/repos/repos#get-a-repository",
-          "message": "Not Found",
-          "status": "404"
-        },
-        "body_type": "json",
-        "headers": {
-          "access-control-allow-origin": [
-            "*"
-          ],
-          "access-control-expose-headers": [
-            "ETag, Link, Location, Retry-After, X-GitHub-OTP, X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Used, X-RateLimit-Resource, X-RateLimit-Reset, X-OAuth-Scopes, X-Accepted-OAuth-Scopes, X-Poll-Interval, X-GitHub-Media-Type, X-GitHub-SSO, X-GitHub-Request-Id, Deprecation, Sunset, Warning"
-          ],
-          "content-security-policy": [
-            "default-src 'none'"
-          ],
-          "content-type": [
-            "application/json; charset=utf-8"
-          ],
-          "date": [
-            "Sun, 02 Aug 2026 17:50:18 GMT"
-          ],
-          "referrer-policy": [
-            "origin-when-cross-origin, strict-origin-when-cross-origin"
-          ],
-          "server": [
-            "github.com"
-          ],
-          "strict-transport-security": [
-            "max-age=31536000; includeSubdomains; preload"
-          ],
-          "transfer-encoding": [
-            "chunked"
-          ],
-          "vary": [
-            "Accept-Encoding, Accept, X-Requested-With"
-          ],
-          "x-accepted-oauth-scopes": [
-            "repo"
-          ],
-          "x-content-type-options": [
-            "nosniff"
-          ],
-          "x-frame-options": [
-            "deny"
-          ],
-          "x-github-api-version-selected": [
-            "2022-11-28"
-          ],
-          "x-github-edge-region": [
-            "iad"
-          ],
-          "x-github-media-type": [
-            "github.v3; format=json"
-          ],
-          "x-github-request-id": [
-            "E88B:1D6818:1C5ECA2:6439B36:6A6F835A"
-          ],
-          "x-oauth-client-id": [
-            "Ov23liFpnT7j3bK5OC1L"
-          ],
-          "x-oauth-scopes": [
-            "repo, user:email"
-          ],
-          "x-ratelimit-limit": [
-            "5000"
-          ],
-          "x-ratelimit-remaining": [
-            "4911"
-          ],
-          "x-ratelimit-reset": [
-            "1785693733"
-          ],
-          "x-ratelimit-resource": [
-            "core"
-          ],
-          "x-ratelimit-used": [
-            "89"
-          ],
-          "x-xss-protection": [
-            "0"
-          ]
-        },
-        "status": 404
-      }
-    },
-    {
-      "recorded_at": "2026-08-02T17:50:20.362755Z",
+      "recorded_at": "2026-08-03T02:35:46.670718Z",
       "request": {
         "body_json": {
           "name": "spex-story985-criterion8178",
@@ -253,7 +143,7 @@
         "body_json": {
           "delete_branch_on_merge": false,
           "mirror_url": null,
-          "pushed_at": "2026-08-02T17:50:19Z",
+          "pushed_at": "2026-08-03T02:35:46Z",
           "allow_update_branch": false,
           "svn_url": "https://github.com/codemy-my-spec-test/spex-story985-criterion8178",
           "open_issues_count": 0,
@@ -285,13 +175,13 @@
           "custom_properties": {},
           "squash_merge_commit_message": "COMMIT_MESSAGES",
           "git_tags_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story985-criterion8178/git/tags{/sha}",
-          "updated_at": "2026-08-02T17:50:19Z",
+          "updated_at": "2026-08-03T02:35:46Z",
           "issue_events_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story985-criterion8178/issues/events{/number}",
           "visibility": "private",
           "pull_request_creation_policy": "all",
           "description": null,
           "name": "spex-story985-criterion8178",
-          "id": 1320453820,
+          "id": 1321117821,
           "labels_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story985-criterion8178/labels{/name}",
           "branches_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story985-criterion8178/branches{/branch}",
           "network_count": 0,
@@ -354,7 +244,7 @@
           "html_url": "https://github.com/codemy-my-spec-test/spex-story985-criterion8178",
           "open_issues": 0,
           "is_template": false,
-          "node_id": "R_kgDOTrSGvA",
+          "node_id": "R_kgDOTr6ofQ",
           "milestones_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story985-criterion8178/milestones{/number}",
           "license": null,
           "forks_count": 0,
@@ -392,7 +282,7 @@
           "subscribers_count": 0,
           "keys_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story985-criterion8178/keys{/key_id}",
           "has_downloads": false,
-          "created_at": "2026-08-02T17:50:19Z",
+          "created_at": "2026-08-03T02:35:45Z",
           "languages_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story985-criterion8178/languages"
         },
         "body_type": "json",
@@ -413,13 +303,13 @@
             "application/json; charset=utf-8"
           ],
           "date": [
-            "Sun, 02 Aug 2026 17:50:20 GMT"
+            "Mon, 03 Aug 2026 02:35:46 GMT"
           ],
           "deprecation": [
             "Tue, 10 Mar 2026 00:00:00 GMT"
           ],
           "etag": [
-            "\"bc496ca1cd3697da0a870b7e50c0dbb700da518dbfe4d0fec05db471f7f80a4c\""
+            "\"f056c786dccf5b37caccaa33d94afae4135e35444d72e4ce758abbec72bcfbd2\""
           ],
           "link": [
             "<https://docs.github.com/en/rest/about-the-rest-api/api-versions>; rel=\"deprecation\"; type=\"text/html\""
@@ -461,7 +351,7 @@
             "github.v3; format=json"
           ],
           "x-github-request-id": [
-            "E88B:1D6818:1C5ED20:6439D4A:6A6F835A"
+            "C47F:2AC78B:116F7FC:3DDC2D1:6A6FFE81"
           ],
           "x-oauth-client-id": [
             "Ov23liFpnT7j3bK5OC1L"
@@ -473,16 +363,16 @@
             "5000"
           ],
           "x-ratelimit-remaining": [
-            "4959"
+            "4938"
           ],
           "x-ratelimit-reset": [
-            "1785693835"
+            "1785727315"
           ],
           "x-ratelimit-resource": [
             "core"
           ],
           "x-ratelimit-used": [
-            "41"
+            "62"
           ],
           "x-xss-protection": [
             "0"

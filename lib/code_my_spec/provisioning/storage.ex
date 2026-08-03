@@ -36,6 +36,8 @@ defmodule CodeMySpec.Provisioning.Storage do
   return rather than trusting that the errand was done (criterion 7967).
   """
 
+  alias CodeMySpec.Provisioning.Wait
+
   alias CodeMySpec.ProjectSecrets
   alias CodeMySpec.Users.Scope
 
@@ -268,7 +270,7 @@ defmodule CodeMySpec.Provisioning.Storage do
       # an immediate answer rather than an eight-second wait.
       {:error, reason} ->
         if attempts > 1 and no_such_bucket?(reason) do
-          Process.sleep(Keyword.get(opts, :interval_ms, 1_000))
+          Wait.sleep(Keyword.get(opts, :interval_ms, 1_000))
           get_object(bucket, key, credentials, location, opts, attempts - 1)
         else
           {:error, reason}
@@ -350,7 +352,7 @@ defmodule CodeMySpec.Provisioning.Storage do
         :ok
 
       {:error, _} when attempts > 1 ->
-        Process.sleep(interval)
+        Wait.sleep(interval)
 
         delete_bucket(
           bucket,
@@ -423,7 +425,7 @@ defmodule CodeMySpec.Provisioning.Storage do
         {:ok, resource(bucket, location, origin)}
 
       {:error, _} when attempts > 1 ->
-        Process.sleep(Keyword.get(opts, :readiness_interval_ms, 500))
+        Wait.sleep(Keyword.get(opts, :readiness_interval_ms, 500))
         await_bucket(bucket, credentials, location, opts, origin, attempts - 1)
 
       {:error, reason} ->
