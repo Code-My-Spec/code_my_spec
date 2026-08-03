@@ -278,6 +278,32 @@ defmodule CodeMySpecSpex.Case do
   end
 
   @doc """
+  Run setup in a task, so the page has states to show while it runs.
+
+      setup :watchable_run
+
+  Runs are synchronous under test on purpose — a detached task races the
+  test's lifetime, and the run then holds a sandbox connection nobody owns.
+  The cost is that every intermediate state is gone by the time the click
+  returns, so a criterion about *watching* a step change has nothing to watch.
+
+  Safe here because spex own their sandbox in shared mode, so the spawned run
+  uses the same connection rather than a detached one. Pair it with a script
+  that holds a step open, or the run still finishes faster than the page can
+  be read.
+  """
+  def watchable_run(context) do
+    previous = Application.get_env(:code_my_spec, :provisioning_run_async, true)
+    Application.put_env(:code_my_spec, :provisioning_run_async, true)
+
+    ExUnit.Callbacks.on_exit(fn ->
+      Application.put_env(:code_my_spec, :provisioning_run_async, previous)
+    end)
+
+    context
+  end
+
+  @doc """
   Wait until a step reaches a state, then hand back the page.
 
   A run is asynchronous, so a criterion that renders immediately after
