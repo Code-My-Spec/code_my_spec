@@ -36,10 +36,12 @@ defmodule CodeMySpec.Provisioning.Builder.Remote do
     run = Keyword.get(opts, :run) || ssh_runner(server, opts)
     repo = Keyword.fetch!(opts, :repository_url)
 
+    dir = Keyword.get(opts, :build_dir, "/build")
+
     with :ok <- await_ssh(run, Keyword.get(opts, :ssh_attempts, @ssh_attempts), opts),
-         :ok <- fetch(run, repo, ref),
-         :ok <- docker_build(run, reference, ref),
-         :ok <- docker_push(run, reference),
+         :ok <- fetch(run, repo, ref, dir),
+         :ok <- docker_build(run, reference, ref, dir),
+         :ok <- maybe_push(run, reference, opts),
          {:ok, architecture} <- built_architecture(run, reference) do
       {:ok, %{reference: reference, architecture: architecture}}
     end
@@ -63,8 +65,8 @@ defmodule CodeMySpec.Provisioning.Builder.Remote do
   # A shallow fetch of one commit. The builder does not need the history, and
   # a full clone of a long-lived repository is the difference between a build
   # that starts now and one that starts in a minute.
-  defp fetch(run, repo, ref) do
-    case run.(["rm -rf /build && mkdir -p /build && cd /build && git init -q && " <>
+  defp fetch(run, repo, ref, dir) do
+    case run.(["rm -rf #{dir} && mkdir -p #{dir} && cd #{dir} && git init -q && " <>
                  "git remote add origin #{repo} && git fetch -q --depth 1 origin #{ref} && " <>
                  "git checkout -q FETCH_HEAD"]) do
       {_, 0} -> :ok
@@ -72,10 +74,20 @@ defmodule CodeMySpec.Provisioning.Builder.Remote do
     end
   end
 
-  defp docker_build(run, reference, ref) do
-    case run.(["cd /build && docker build --label commit=#{ref} -t #{reference} ."]) do
+  defp docker_build(run, reference, ref, dir) do
+    case run.(["cd #{dir} && docker build --label commit=#{ref} -t #{reference} ."]) do
       {_, 0} -> :ok
       {output, status} -> {:error, {:build_failed, status, trim(output)}}
+    end
+  end
+
+  # Skippable, because a registry is the one thing a local build cannot stand
+  # in for — pushing to a real one would turn a build test into a network test.
+  # Never skipped in production: the deploy pulls what was pushed.
+  defp maybe_push(run, reference, opts) do
+    case Keyword.get(opts, :push, true) do
+      false -> :ok
+      _ -> docker_push(run, reference)
     end
   end
 
@@ -127,6 +139,21 @@ defmodule CodeMySpec.Provisioning.Builder.Remote do
         stderr_to_stdout: true
       )
     end
+  end
+
+  @doc """
+  A runner that uses the local machine instead of a box.
+
+  The same command sequence, the same real `docker build`, no cloud and no
+  SSH — which makes the interesting half of this module exercisable without
+  provisioning anything. What it does not exercise is the box: reachability,
+  the pre-warmed image, and destruction still need the real thing.
+  """
+  @spec local_runner(keyword()) :: (list() -> {String.t(), non_neg_integer()})
+  def local_runner(opts \\ []) do
+    cd = Keyword.get(opts, :cd, File.cwd!())
+
+    fn [command] -> System.cmd("sh", ["-c", command], cd: cd, stderr_to_stdout: true) end
   end
 
   defp ip(%{"public_net" => %{"ipv4" => %{"ip" => ip}}}), do: ip

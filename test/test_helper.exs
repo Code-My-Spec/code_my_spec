@@ -1,7 +1,18 @@
 # :live hits real provider APIs and creates real resources. Never in the
 # normal suite — run it deliberately with `mix test --only live`.
 ExUnit.start(
-  exclude: [:scenario, :e2e, :pending, :live, :record_google_login_shape, :record_github_login_shape]
+  # :docker builds a real image on this machine — seconds, and it needs a
+  # working daemon. Run it with `mix test --include docker` when the build
+  # sequence changes.
+  exclude: [
+    :scenario,
+    :e2e,
+    :pending,
+    :live,
+    :docker,
+    :record_google_login_shape,
+    :record_github_login_shape
+  ]
 )
 Ecto.Adapters.SQL.Sandbox.mode(CodeMySpec.Repo, :manual)
 
