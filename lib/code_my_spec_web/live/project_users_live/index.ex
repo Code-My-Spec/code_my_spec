@@ -12,7 +12,10 @@ defmodule CodeMySpecWeb.ProjectUsersLive.Index do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_scope={@current_scope} pending_notifications={@pending_notifications}>
+    <Layouts.app flash={@flash} current_scope={@current_scope} pending_notifications={@pending_notifications}
+      project={assigns[:project]}
+      projects={assigns[:projects] || []}
+    >
       <.header>
         Registered users
         <:subtitle>People who have registered for {@project.name}.</:subtitle>

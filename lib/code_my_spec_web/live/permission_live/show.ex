@@ -61,7 +61,10 @@ defmodule CodeMySpecWeb.PermissionLive.Show do
 
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_scope={@current_scope} pending_notifications={@pending_notifications}>
+    <Layouts.app flash={@flash} current_scope={@current_scope} pending_notifications={@pending_notifications}
+      project={assigns[:project]}
+      projects={assigns[:projects] || []}
+    >
       <div class="max-w-lg mx-auto">
         <%= if @request do %>
           <div class="card bg-base-200 shadow-xl">
