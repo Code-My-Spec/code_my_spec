@@ -32,7 +32,7 @@ defmodule CodeMySpecSpex.Story984.Criterion8177Spex do
       end
 
       when_ "the operator opens the customer support inbox", context do
-        {:ok, view, html} = live(context.conn, "/app/inbox")
+        {:ok, view, html} = live(context.conn, "/app/projects/#{context.project.id}/inbox")
 
         {:ok, context |> Map.put(:inbox, view) |> Map.put(:inbox_html, html)}
       end
@@ -57,7 +57,7 @@ defmodule CodeMySpecSpex.Story984.Criterion8177Spex do
 
       and_ "the sprite's conversation is reachable from its own project instead", context do
         {:ok, _view, html} =
-          live(context.conn, "/app/projects/#{context.project.name}/agent-conversation")
+          live(context.conn, "/app/projects/#{context.project.id}/agent-conversation")
 
         assert html =~ "audit the requirement graph",
                "the turns still have to be readable where an operator goes looking for them"

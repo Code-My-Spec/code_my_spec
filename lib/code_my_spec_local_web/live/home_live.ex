@@ -43,7 +43,7 @@ defmodule CodeMySpecLocalWeb.HomeLive do
          |> assign(
            project: project,
            scope: scope,
-           slug: project_slug(project),
+           slug: project.id,
            dir_param: URI.encode_www_form(scope.cwd),
            page_title: project.name,
            error: nil
@@ -283,7 +283,7 @@ defmodule CodeMySpecLocalWeb.HomeLive do
     ~H"""
     <div class="px-6 pb-5 -mt-2 flex items-center gap-3 flex-wrap">
       <.link
-        navigate={~p"/projects/#{@slug}/init"}
+        navigate={~p"/app/projects/#{@slug}/init"}
         class="cms-onboarding-cta"
         data-test="init-rung-cta"
       >
@@ -341,7 +341,7 @@ defmodule CodeMySpecLocalWeb.HomeLive do
       <div class="flex items-center gap-3 flex-wrap text-xs font-mono opacity-70">
         <span>— or write it yourself:</span>
         <.link
-          navigate={~p"/projects/#{@slug}/stories/new"}
+          navigate={~p"/app/projects/#{@slug}/stories/new"}
           class="underline hover:opacity-100"
           data-test="first-story-rung-form-link"
         >
@@ -422,21 +422,21 @@ defmodule CodeMySpecLocalWeb.HomeLive do
   defp dash_cards(assigns) do
     ~H"""
     <div data-test="project-home-dashcards" class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-      <.dash_card title="Next Task" href={~p"/projects/#{@slug}/next-task"} desc="Pick up the next actionable requirement." />
-      <.dash_card title="Files & Sync" href={~p"/projects/#{@slug}/files"} desc="Inspect tracked files and re-sync the projection." />
-      <.dash_card title="Configuration" href={~p"/projects/#{@slug}/configuration"} desc="Quality gate and analyzer settings." />
+      <.dash_card title="Next Task" href={~p"/app/projects/#{@slug}/next-task"} desc="Pick up the next actionable requirement." />
+      <.dash_card title="Files & Sync" href={~p"/app/projects/#{@slug}/files"} desc="Inspect tracked files and re-sync the projection." />
+      <.dash_card title="Configuration" href={~p"/app/projects/#{@slug}/configuration"} desc="Quality gate and analyzer settings." />
 
-      <.dash_card title="Requirements" href={~p"/projects/#{@slug}/requirements"} desc="Project-level requirement graph." />
-      <.dash_card title="Stories" href={~p"/projects/#{@slug}/stories"} desc="User stories and acceptance criteria." />
-      <.dash_card title="Scheduler" href={~p"/projects/#{@slug}/stories/scheduler"} desc="Order and prioritize the story backlog." />
+      <.dash_card title="Requirements" href={~p"/app/projects/#{@slug}/requirements"} desc="Project-level requirement graph." />
+      <.dash_card title="Stories" href={~p"/app/projects/#{@slug}/stories"} desc="User stories and acceptance criteria." />
+      <.dash_card title="Scheduler" href={~p"/app/projects/#{@slug}/stories/scheduler"} desc="Order and prioritize the story backlog." />
 
-      <.dash_card title="Personas" href={~p"/projects/#{@slug}/personas"} desc="User personas linked to stories." />
-      <.dash_card title="Issues" href={~p"/projects/#{@slug}/issues"} desc="Open problems and incoming triage." />
-      <.dash_card title="Sessions" href={~p"/projects/#{@slug}/sessions"} desc="Agent session history." />
+      <.dash_card title="Personas" href={~p"/app/projects/#{@slug}/personas"} desc="User personas linked to stories." />
+      <.dash_card title="Issues" href={~p"/app/projects/#{@slug}/issues"} desc="Open problems and incoming triage." />
+      <.dash_card title="Sessions" href={~p"/app/projects/#{@slug}/sessions"} desc="Agent session history." />
 
-      <.dash_card title="Project Init" href={~p"/projects/#{@slug}/init"} desc="Bootstrap checklist for this directory." />
-      <.dash_card title="Knowledge Base" href={~p"/projects/#{@slug}/knowledge"} desc="Shared methodology and rules." />
-      <.dash_card title="Project Knowledge" href={~p"/projects/#{@slug}/project-knowledge"} desc="Project-specific docs and specs." />
+      <.dash_card title="Project Init" href={~p"/app/projects/#{@slug}/init"} desc="Bootstrap checklist for this directory." />
+      <.dash_card title="Knowledge Base" href={~p"/app/projects/#{@slug}/knowledge"} desc="Shared methodology and rules." />
+      <.dash_card title="Project Knowledge" href={~p"/app/projects/#{@slug}/project-knowledge"} desc="Project-specific docs and specs." />
     </div>
     """
   end
@@ -460,16 +460,10 @@ defmodule CodeMySpecLocalWeb.HomeLive do
   end
 
   defp load_project_and_scope(name) do
-    with {:ok, project} <- Projects.get_project_by_name(name),
+    with %Projects.Project{} = project <- Projects.get_project_by_id(name),
          {:ok, scope} <- Scope.for_local_project(project) do
       {:ok, project, scope}
     end
   end
 
-  defp project_slug(project) do
-    (project.name || "project")
-    |> String.downcase()
-    |> String.replace(~r/[^a-z0-9]+/, "-")
-    |> String.trim("-")
-  end
 end

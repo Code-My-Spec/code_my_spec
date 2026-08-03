@@ -38,7 +38,7 @@ defmodule CodeMySpecSpex.Story701.Criterion6063Spex do
   spex "Project with stories shows the standard home, not the ladder" do
     scenario "Project with at least one story shows the standard project home" do
       given_ "the user has a project with at least one story", context do
-        {:ok, view, _html} = live(context.conn, ~p"/projects/#{context.project.name}")
+        {:ok, view, _html} = live(context.conn, ~p"/app/projects/#{context.project.id}")
         {:ok, Map.put(context, :view, view)}
       end
 

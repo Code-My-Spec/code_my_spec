@@ -18,7 +18,11 @@ defmodule CodeMySpecLocalWeb do
       CodeMySpec.AgentHarness,
       CodeMySpec.Environments,
       CodeMySpec.Hooks,
-      CodeMySpec.McpServers
+      CodeMySpec.McpServers,
+      # Story LiveViews are shared with the cloud app and live there. The edge
+      # only runs this way: CodeMySpecWeb reaches back through the
+      # `:story_host` assign, never by naming this boundary.
+      CodeMySpecWeb
     ],
     exports: :all
 
@@ -74,8 +78,12 @@ defmodule CodeMySpecLocalWeb do
   defp html_helpers do
     quote do
       import Phoenix.HTML
-      import CodeMySpecLocalWeb.CoreComponents
-      import CodeMySpecLocalWeb.Markdown, only: [md_html: 1]
+      # Same component library the cloud app imports — see
+      # `CodeMySpecWeb.core_components/0`. The terminal look comes from
+      # `local_app.css` theming those components' classes, not from a
+      # second copy of the components.
+      import unquote(CodeMySpecWeb.core_components())
+      import CodeMySpecWeb.Markdown, only: [md_html: 1]
 
       alias CodeMySpecLocalWeb.Layouts
       alias Phoenix.LiveView.JS

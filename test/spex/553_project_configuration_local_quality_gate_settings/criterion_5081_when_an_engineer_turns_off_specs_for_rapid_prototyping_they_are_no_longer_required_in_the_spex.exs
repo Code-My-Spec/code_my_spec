@@ -29,7 +29,7 @@ defmodule CodeMySpecSpex.Story553.Criterion5081Spex do
       then_ "the requirements graph has implementation but no spec requirements",
             context do
         {:ok, _graph_live, html} =
-          live(context.conn, ~p"/projects/#{context.project.name}/requirements/graph?preload=true")
+          live(context.conn, ~p"/app/projects/#{context.project.id}/requirements/graph?preload=true")
 
         # Anchor: implementation_file is not affected by this toggle, so its
         # presence proves the graph has real content (guards against vacuous refutes).

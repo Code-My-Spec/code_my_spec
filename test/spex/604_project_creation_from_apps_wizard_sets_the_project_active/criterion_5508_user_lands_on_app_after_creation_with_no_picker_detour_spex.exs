@@ -62,7 +62,7 @@ defmodule CodeMySpecSpex.Story604.Criterion5508Spex do
     refute next =~ ~r"/accounts/picker",
            "expected no account-picker bounce after onboarding submit, got: #{next}"
 
-    refute next =~ ~r"/projects/picker",
+    refute next =~ ~r"/app/projects/picker",
            "expected no project-picker bounce after onboarding submit, got: #{next}"
 
     {:ok, context}

@@ -41,10 +41,10 @@ defmodule CodeMySpecLocalWeb.EpicsLive.IndexTest do
     %{scope | active_project: project}
   end
 
-  defp board(project_name) do
+  defp board(project_id) do
     build_conn()
     |> Plug.Conn.put_req_header("x-working-dir", File.cwd!())
-    |> live("/projects/#{project_name}/epics")
+    |> live("/app/projects/#{project_id}/epics")
   end
 
   describe "readiness control" do
@@ -57,7 +57,7 @@ defmodule CodeMySpecLocalWeb.EpicsLive.IndexTest do
 
       _unfiled = story_fixture(scope, %{title: "Unfiled story", ready_for_dev: false})
 
-      case board(scope.active_project.name) do
+      case board(scope.active_project.id) do
         {:ok, _view, html} ->
           buttons =
             Regex.scan(~r/<button[^>]*phx-click="toggle_story_ready"[^>]*>/, html)
@@ -88,7 +88,7 @@ defmodule CodeMySpecLocalWeb.EpicsLive.IndexTest do
 
       _parked = story_fixture(scope, %{title: "Parked story", ready_for_dev: false})
 
-      case board(scope.active_project.name) do
+      case board(scope.active_project.id) do
         {:ok, _view, html} ->
           assert html =~ "badge-success", "a ready story should read as ready"
 

@@ -24,7 +24,7 @@ defmodule CodeMySpecSpex.Story811.Criterion6491Spex do
       given_ :fully_satisfied_project
 
       when_ "Sam opens the task queue view", context do
-        {:ok, view, html} = live(context.conn, "/projects/#{context.project.name}/tasks")
+        {:ok, view, html} = live(context.conn, "/app/projects/#{context.project.id}/tasks")
         {:ok, Map.merge(context, %{view: view, html: html})}
       end
 

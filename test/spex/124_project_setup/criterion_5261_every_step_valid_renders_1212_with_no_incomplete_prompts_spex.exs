@@ -26,7 +26,7 @@ defmodule CodeMySpecSpex.Story124.Criterion5261Spex do
 
       when_ "developer views the project setup page", context do
         {:ok, view, _html} =
-          live(context.conn, "/projects/#{context.project.name}/requirements/project_setup")
+          live(context.conn, "/app/projects/#{context.project.id}/requirements/project_setup")
 
         {:ok, Map.put(context, :view, view)}
       end

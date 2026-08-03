@@ -36,7 +36,7 @@ defmodule CodeMySpecSpex.Story127.Criterion5931Spex do
         :ok = Environments.write_file(context.environment, @impl_v1_path, impl_v1())
 
         {:ok, files_live, _html} =
-          live(context.conn, "/projects/#{context.project.name}/files")
+          live(context.conn, "/app/projects/#{context.project.id}/files")
 
         files_live
         |> element("[data-test='sync-button']")
@@ -48,7 +48,7 @@ defmodule CodeMySpecSpex.Story127.Criterion5931Spex do
       given_ "the v1 spec is showing its v1 fingerprint and ExampleContext component link",
              context do
         {:ok, files_live, _html} =
-          live(context.conn, "/projects/#{context.project.name}/files")
+          live(context.conn, "/app/projects/#{context.project.id}/files")
 
         assert has_element?(
                  files_live,
@@ -75,7 +75,7 @@ defmodule CodeMySpecSpex.Story127.Criterion5931Spex do
 
       when_ "the engineer re-syncs from the Files page", context do
         {:ok, files_live, _html} =
-          live(context.conn, "/projects/#{context.project.name}/files")
+          live(context.conn, "/app/projects/#{context.project.id}/files")
 
         files_live
         |> element("[data-test='sync-button']")

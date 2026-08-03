@@ -44,7 +44,7 @@ defmodule CodeMySpecSpex.Story815.Criterion6573Spex do
         Phoenix.ChannelTest.push(channel, "send_message", %{"body" => "Knock knock"})
         wait_for_channel(channel)
 
-        {:ok, index_view, _html} = live(context.conn, "/app/inbox")
+        {:ok, index_view, _html} = live(context.conn, "/app/projects/#{context.project.id}/inbox")
 
         {:ok, show_view, _html} =
           index_view

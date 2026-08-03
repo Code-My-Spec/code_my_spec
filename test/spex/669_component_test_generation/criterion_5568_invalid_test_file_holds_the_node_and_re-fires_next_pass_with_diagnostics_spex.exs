@@ -60,13 +60,13 @@ defmodule CodeMySpecSpex.Story669.Criterion5568Spex do
         # are validated against the components-list snapshot taken
         # *before* the component exists, so test_spec_alignment lands
         # vacuously valid on this pass.
-        {:ok, sync_live, _html} = live(context.conn, "/projects/#{context.project.name}/files")
+        {:ok, sync_live, _html} = live(context.conn, "/app/projects/#{context.project.id}/files")
         sync_live |> element("button[phx-click='sync']") |> render_click()
 
         # Second sync re-validates files against the now-existing
         # component, so `validate_test_alignment/3` sees the misaligned
         # test and marks File.valid = false.
-        {:ok, sync_live, _html} = live(context.conn, "/projects/#{context.project.name}/files")
+        {:ok, sync_live, _html} = live(context.conn, "/app/projects/#{context.project.id}/files")
         sync_live |> element("button[phx-click='sync']") |> render_click()
 
         component = Fixtures.get_component_by_module_name(context.scope, "ExampleContext")

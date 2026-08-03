@@ -15,6 +15,28 @@ defmodule CodeMySpecWeb.Layouts do
   embed_templates "layouts/*"
 
   @doc """
+  Layout entry point for `live_session ..., layout: {__MODULE__, :live}`.
+
+  The cloud half of the same contract `CodeMySpecLocalWeb.Layouts.live/1`
+  implements: portable LiveViews render content only, and the router decides
+  which chrome wraps it.
+  """
+  attr :inner_content, :any, required: true
+
+  def live(assigns) do
+    ~H"""
+    <.app
+      flash={@flash}
+      current_scope={@current_scope}
+      current_path={@current_path}
+      pending_notifications={@pending_notifications}
+    >
+      {@inner_content}
+    </.app>
+    """
+  end
+
+  @doc """
   Renders your app layout.
 
   This function is typically invoked from every template,
@@ -142,13 +164,59 @@ defmodule CodeMySpecWeb.Layouts do
             --%>
             <%= if onboarding_complete?(@current_scope) do %>
               <li><a href={~p"/app/projects"}>Projects</a></li>
-              <li><a href={~p"/app/issues"}>Issues</a></li>
-              <li><a href={~p"/app/users"}>Users</a></li>
-              <li><a href={~p"/app/inbox"}>Chats</a></li>
-              <li><a href={~p"/app/mail"}>Mail</a></li>
-              <li :if={can_manage_mailboxes?(@current_scope)}>
-                <a href={~p"/app/mailboxes"}>Mailboxes</a>
-              </li>
+              <%!--
+                The path is the breadcrumb. Every surface below is addressed
+                per-project, and the project they point at is the one named in
+                the URL — `@project`, put there by PortableHost — never the
+                stored preference. A stored one could contradict the page you
+                are looking at; the preference now only decides where bare
+                `/app` sends you, which is a different question.
+
+                With no project in the path there is nothing to build links
+                from, so the sidebar offers the choice instead of going blank.
+              --%>
+              <%= if project = assigns[:project] do %>
+                <li class="menu-title truncate" title={project.name}>{project.name}</li>
+                <li class="menu-title">Specification</li>
+                <li><a href={~p"/app/projects/#{project.id}/stories"}>Stories</a></li>
+                <li><a href={~p"/app/projects/#{project.id}/epics"}>Epics</a></li>
+                <li><a href={~p"/app/projects/#{project.id}/personas"}>Personas</a></li>
+                <li><a href={~p"/app/projects/#{project.id}/requirements"}>Requirements</a></li>
+                <li><a href={~p"/app/projects/#{project.id}/architecture"}>Architecture</a></li>
+                <li><a href={~p"/app/projects/#{project.id}/components"}>Components</a></li>
+
+                <li class="menu-title">Build</li>
+                <li><a href={~p"/app/projects/#{project.id}/next-task"}>Next task</a></li>
+                <li><a href={~p"/app/projects/#{project.id}/files"}>Files &amp; sync</a></li>
+                <li><a href={~p"/app/projects/#{project.id}/problems"}>Problems</a></li>
+                <li><a href={~p"/app/projects/#{project.id}/qa"}>QA</a></li>
+                <li><a href={~p"/app/projects/#{project.id}/sessions"}>Sessions</a></li>
+                <li><a href={~p"/app/projects/#{project.id}/issues"}>Issues</a></li>
+
+                <li class="menu-title">Project</li>
+                <li><a href={~p"/app/projects/#{project.id}/content"}>Content</a></li>
+                <li><a href={~p"/app/projects/#{project.id}/knowledge"}>Knowledge base</a></li>
+                <li>
+                  <a href={~p"/app/projects/#{project.id}/project-knowledge"}>Project knowledge</a>
+                </li>
+                <li><a href={~p"/app/projects/#{project.id}/configuration"}>Configuration</a></li>
+                <li><a href={~p"/app/projects/#{project.id}/users"}>Users</a></li>
+                <li><a href={~p"/app/projects/#{project.id}/inbox"}>Chats</a></li>
+                <li><a href={~p"/app/projects/#{project.id}/mail"}>Mail</a></li>
+                <li :if={can_manage_mailboxes?(@current_scope)}>
+                  <a href={~p"/app/projects/#{project.id}/mailboxes"}>Mailboxes</a>
+                </li>
+              <% else %>
+                <li class="menu-title">Open a project</li>
+                <li :for={p <- assigns[:projects] || []}>
+                  <a href={~p"/app/projects/#{p.id}/stories"} class="truncate" title={p.name}>
+                    {p.name}
+                  </a>
+                </li>
+                <li :if={(assigns[:projects] || []) == []} class="px-4 py-2 text-sm opacity-60">
+                  No projects yet.
+                </li>
+              <% end %>
               <li class="mt-auto"><a href={~p"/app/accounts"}>Accounts</a></li>
               <li><a href={~p"/app/users/settings"}>Settings</a></li>
             <% end %>
@@ -181,6 +249,10 @@ defmodule CodeMySpecWeb.Layouts do
   # (`cli_first_connected_at`): a user can connect the plugin from a separate
   # machine, so requiring a local connect here hid the menu from people who
   # were actually set up (audit S2 originally gated on both).
+  # `onboarding_complete?` still reads the stored project, and should: it asks
+  # whether this user has ever got set up, which a bookmark answers honestly.
+  # What it must not do is decide *which* project the nav points at — that is
+  # the path's job, and the two used to be the same helper.
   defp onboarding_complete?(nil), do: false
 
   defp onboarding_complete?(%{active_project: %{__struct__: _}}), do: true

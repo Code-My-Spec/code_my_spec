@@ -61,27 +61,22 @@ defmodule CodeMySpecWeb.ProjectLive.Picker do
   end
 
   @impl true
+  # Picking a project is navigation now. The path is what selects it — every
+  # page reads its project out of the URL — so this sends you there rather than
+  # storing a selection and hoping the next page agrees.
+  #
+  # The preference is still written, demoted to a bookmark: all it decides is
+  # where bare `/app` drops you next time. A failed write is not worth blocking
+  # the navigation the user actually asked for, so it is not checked.
   def handle_event("project-selected", %{"project-id" => project_id}, socket) do
-    current_scope = socket.assigns.current_scope
-
-    # Validate that the user has access to this project
     if Enum.any?(socket.assigns.projects, &(&1.id == project_id)) do
-      case UserPreferences.update_user_preferences(current_scope, %{active_project_id: project_id}) do
-        {:ok, _user_preference} ->
-          {:noreply,
-           socket
-           |> put_flash(:info, "Project selected successfully")
-           |> push_navigate(to: ~p"/app")}
+      UserPreferences.update_user_preferences(socket.assigns.current_scope, %{
+        active_project_id: project_id
+      })
 
-        {:error, _changeset} ->
-          {:noreply,
-           socket
-           |> put_flash(:error, "Failed to select project")}
-      end
+      {:noreply, push_navigate(socket, to: ~p"/app/projects/#{project_id}/stories")}
     else
-      {:noreply,
-       socket
-       |> put_flash(:error, "You don't have access to this project")}
+      {:noreply, put_flash(socket, :error, "You don't have access to this project")}
     end
   end
 

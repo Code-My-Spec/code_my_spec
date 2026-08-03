@@ -31,7 +31,7 @@ defmodule CodeMySpecSpex.Story124.Criterion5257Spex do
 
       given_ "developer has viewed the page with CodemyspecDeps incomplete", context do
         {:ok, view, _html} =
-          live(context.conn, "/projects/#{context.project.name}/requirements/project_setup")
+          live(context.conn, "/app/projects/#{context.project.id}/requirements/project_setup")
 
         html = render(view)
         assert html =~ "Project Setup (11/12)"
@@ -44,7 +44,7 @@ defmodule CodeMySpecSpex.Story124.Criterion5257Spex do
         Fixtures.satisfy_setup_steps(context.scope, [Fixtures.find_setup_step("codemyspec_deps")])
 
         {:ok, view, _html} =
-          live(context.conn, "/projects/#{context.project.name}/requirements/project_setup")
+          live(context.conn, "/app/projects/#{context.project.id}/requirements/project_setup")
 
         {:ok, Map.put(context, :view, view)}
       end

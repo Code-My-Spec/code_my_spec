@@ -25,7 +25,7 @@ defmodule CodeMySpecSpex.Story701.Criterion6066Spex do
   spex "Pending first-story rung is not actionable" do
     scenario "Pending first-story rung is non-actionable" do
       given_ "the user has a project but init has not been run", context do
-        {:ok, view, _html} = live(context.conn, ~p"/projects/#{context.project.name}")
+        {:ok, view, _html} = live(context.conn, ~p"/app/projects/#{context.project.id}")
         {:ok, Map.put(context, :view, view)}
       end
 

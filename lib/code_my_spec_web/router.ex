@@ -360,28 +360,104 @@ defmodule CodeMySpecWeb.Router do
       live "/projects/:id/edit", ProjectLive.Form, :edit
     end
 
-    live_session :require_active_project,
+    # Portable UI — these LiveViews are mounted by CodeMySpecLocalWeb.Router
+    # at the same paths. `layout:` picks the cloud chrome, `on_mount` supplies
+    # the scope; nothing app-specific is baked into the views themselves.
+    # Same path shape as the local mount is what lets them keep plain `~p`.
+    live_session :portable,
+      layout: {CodeMySpecWeb.Layouts, :live},
+      on_mount: [
+        {CodeMySpecWeb.Live.CurrentPathHook, :default},
+        {CodeMySpecWeb.UserAuth, :require_authenticated},
+        {CodeMySpecWeb.UserAuth, :require_at_least_one_account},
+        {CodeMySpecWeb.UserAuth, :require_active_account},
+        {CodeMySpecWeb.Live.NotificationsHook, :default},
+        {CodeMySpecWeb.PortableHost, :default}
+      ] do
+      # Static segments first so they win over `:id`.
+      live "/projects/:project_id/init", InitLive, :index
+      live "/projects/:project_id/init/:step", InitLive, :show
+
+      live "/projects/:project_id/stories", StoryLive.Index, :index
+      live "/projects/:project_id/stories/scheduler", StoryLive.Scheduler, :index
+      live "/projects/:project_id/stories/new", StoryLive.Form, :new
+      live "/projects/:project_id/stories/import", StoryLive.Import, :import
+      live "/projects/:project_id/stories/:id", StoryLive.Show, :show
+      live "/projects/:project_id/stories/:id/edit", StoryLive.Form, :edit
+      live "/projects/:project_id/stories/:id/three-amigos", StoryLive.ThreeAmigos
+      live "/projects/:project_id/stories/:id/gherkin", StoryLive.Gherkin
+
+      live "/projects/:project_id/epics", EpicsLive.Index, :index
+      live "/projects/:project_id/epics/new", EpicsLive.Index, :new
+      live "/projects/:project_id/epics/:slug", EpicsLive.Show, :show
+      live "/projects/:project_id/epics/:slug/edit", EpicsLive.Index, :edit
+
+      live "/projects/:project_id/personas", PersonasLive.Index, :index
+      live "/projects/:project_id/personas/new", PersonasLive.Index, :new
+      live "/projects/:project_id/personas/:slug", PersonasLive.Show, :show
+      live "/projects/:project_id/personas/:slug/edit", PersonasLive.Show, :edit
+      live "/projects/:project_id/personas/:slug/link", PersonasLive.Show, :link
+
+      live "/projects/:project_id/qa", QaLive
+      live "/projects/:project_id/configuration", ConfigurationLive
+
+      live "/projects/:project_id/issues", IssuesLive.Index, :index
+      live "/projects/:project_id/issues/:id", IssuesLive.Show, :show
+
+      live "/projects/:project_id/content", ContentLive
+      live "/projects/:project_id/content/:id", ContentLive.Show
+      live "/projects/:project_id/problems", ProblemsLive
+      live "/projects/:project_id/sessions", SessionsLive, :index
+      live "/projects/:project_id/sessions/:id", SessionsLive, :show
+      live "/projects/:project_id/sessions/:id/tasks/:task_id", SessionsLive, :task_show
+
+      live "/projects/:project_id/files", FilesLive
+      live "/projects/:project_id/next-task", Tasks.NextTaskLive
+      live "/projects/:project_id/tasks", Tasks.TaskQueueLive
+      live "/projects/:project_id/progress", AgentProgressLive
+      live "/projects/:project_id/architecture", ArchitectureLive, :dependency_graph
+      live "/projects/:project_id/architecture/overview", ArchitectureLive, :overview
+      live "/projects/:project_id/architecture/namespaces", ArchitectureLive, :namespaces
+      live "/projects/:project_id/knowledge", MarkdownBrowserLive, :knowledge
+      live "/projects/:project_id/knowledge/*path", MarkdownBrowserLive, :knowledge
+      live "/projects/:project_id/project-knowledge", MarkdownBrowserLive, :project_knowledge
+      live "/projects/:project_id/project-knowledge/*path", MarkdownBrowserLive, :project_knowledge
+      live "/projects/:project_id/requirements", RequirementsLive, :index
+      live "/projects/:project_id/requirements/graph", RequirementsLive, :graph
+      live "/projects/:project_id/requirements/stories", RequirementsLive, :stories
+      live "/projects/:project_id/requirements/:name", RequirementsLive, :show
+      live "/projects/:project_id/requirements/:name/:child_id", RequirementsLive, :child
+      live "/projects/:project_id/components", RequirementsLive, :components
+      live "/projects/:project_id/components/graph", RequirementsLive, :components_graph
+      live "/projects/:project_id/components/:component_id", RequirementsLive, :component_show
+      live "/projects/:project_id/components/:component_id/graph", RequirementsLive, :component_graph
+      live "/projects/:project_id/components/:component_id/requirements/:name", RequirementsLive, :component_req_show
+      live "/projects/:project_id/components/:component_id/requirements/:name/prompt", RequirementsLive, :component_req_prompt
+      live "/projects/:project_id/stories/:story_id/requirements/:name", RequirementsLive, :story_req_show
+    end
+
+    # Project-scoped surfaces. The project is named in the route and put on the
+    # scope by PortableHost — there is no session-held active project to fall
+    # back on, which is why every one of these carries :project_id.
+    live_session :project_scoped,
       on_mount: [
         {CodeMySpecWeb.Live.CurrentPathHook, :default},
         {CodeMySpecWeb.UserAuth, :require_authenticated},
         {CodeMySpecWeb.UserAuth, :require_at_least_one_account},
         {CodeMySpecWeb.UserAuth, :require_active_account},
         {CodeMySpecWeb.UserAuth, :require_at_least_one_project},
-        {CodeMySpecWeb.UserAuth, :require_active_project},
-        {CodeMySpecWeb.Live.NotificationsHook, :default}
+        {CodeMySpecWeb.Live.NotificationsHook, :default},
+        {CodeMySpecWeb.PortableHost, :default}
       ] do
-      live "/issues", IssuesLive.Index, :index
-      live "/issues/:id", IssuesLive.Show, :show
+      live "/projects/:project_id/users", ProjectUsersLive.Index, :index
 
-      live "/users", ProjectUsersLive.Index, :index
+      live "/projects/:project_id/inbox", InboxLive, :index
+      live "/projects/:project_id/inbox/:id", InboxLive, :show
 
-      live "/inbox", InboxLive, :index
-      live "/inbox/:id", InboxLive, :show
+      live "/projects/:project_id/mailboxes", MailboxLive, :index
 
-      live "/mailboxes", MailboxLive, :index
-
-      live "/mail", MailLive, :index
-      live "/mail/:id", MailLive, :show
+      live "/projects/:project_id/mail", MailLive, :index
+      live "/projects/:project_id/mail/:id", MailLive, :show
 
       live "/projects/:project_id/provisioning", ProvisioningLive, :index
       live "/projects/:project_name/agent-conversation", AgentConversationLive, :show

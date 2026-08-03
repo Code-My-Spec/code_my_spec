@@ -7,7 +7,7 @@ defmodule CodeMySpecSpex.Story815.Criterion6569Spex do
   between them.
 
   Surfaces (forward-looking — red until built):
-    * `CodeMySpecWeb.InboxLive` at "/app/inbox" — the operator's unified inbox.
+    * `CodeMySpecWeb.InboxLive` at "/app/projects/:project_id/inbox" — the operator's unified inbox.
     * `CodeMySpecWeb.WidgetSocket` + `CodeMySpecWeb.ConversationChannel` on
       topic "conversation:<end_user_id>" — the deploy-key widget ingress. A
       registered user pushes "send_message" %{"body" => ...}; the server
@@ -29,7 +29,7 @@ defmodule CodeMySpecSpex.Story815.Criterion6569Spex do
   spex "A registered user can start a conversation with the account" do
     scenario "User starts a conversation" do
       given_ "the account has the inbox open and the user has no conversation yet", context do
-        {:ok, view, html} = live(context.conn, "/app/inbox")
+        {:ok, view, html} = live(context.conn, "/app/projects/#{context.project.id}/inbox")
 
         refute html =~ @end_user_email,
                "expected no existing conversation for the user before they message"

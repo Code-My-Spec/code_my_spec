@@ -7,7 +7,7 @@ defmodule CodeMySpecSpex.Story816.Criterion6582Spex do
   or shared with no user.
 
   Surface (forward-looking — red until built):
-    * `CodeMySpecWeb.MailboxLive` at "/app/mailboxes" — the new-mailbox form
+    * `CodeMySpecWeb.MailboxLive` at "/app/projects/:project_id/mailboxes" — the new-mailbox form
       accepts an address and an optional assigned user; submitting with a
       user creates a mailbox owned by that user.
   """
@@ -31,7 +31,7 @@ defmodule CodeMySpecSpex.Story816.Criterion6582Spex do
         teammate = Fixtures.user_fixture()
         _member = Fixtures.member_fixture(teammate, context.account, :member)
 
-        {:ok, view, _html} = live(context.conn, "/app/mailboxes")
+        {:ok, view, _html} = live(context.conn, "/app/projects/#{context.project.id}/mailboxes")
 
         {:ok, Map.merge(context, %{view: view, teammate: teammate})}
       end

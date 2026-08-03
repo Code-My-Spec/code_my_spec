@@ -146,13 +146,13 @@ defmodule Mix.Tasks.Demo.Video do
 
   defp compose_filter(other), do: Mix.raise("unknown --layout: #{inspect(other)} (pip | browser-only | sxs | vstack)")
 
-  defp resolve_view("stories"), do: base_url() <> "/projects/market-my-spec/stories"
-  defp resolve_view("graph"), do: base_url() <> "/projects/market-my-spec/requirements/graph"
-  defp resolve_view("files"), do: base_url() <> "/projects/market-my-spec/files"
-  defp resolve_view("issues"), do: base_url() <> "/projects/market-my-spec/issues"
-  defp resolve_view("architecture"), do: base_url() <> "/projects/market-my-spec/architecture"
-  defp resolve_view("three-amigos:" <> id), do: base_url() <> "/projects/market-my-spec/stories/#{id}/three-amigos"
-  defp resolve_view("story:" <> id), do: base_url() <> "/projects/market-my-spec/stories/#{id}"
+  defp resolve_view("stories"), do: base_url() <> "/app/projects/market-my-spec/stories"
+  defp resolve_view("graph"), do: base_url() <> "/app/projects/market-my-spec/requirements/graph"
+  defp resolve_view("files"), do: base_url() <> "/app/projects/market-my-spec/files"
+  defp resolve_view("issues"), do: base_url() <> "/app/projects/market-my-spec/issues"
+  defp resolve_view("architecture"), do: base_url() <> "/app/projects/market-my-spec/architecture"
+  defp resolve_view("three-amigos:" <> id), do: base_url() <> "/app/projects/market-my-spec/stories/#{id}/three-amigos"
+  defp resolve_view("story:" <> id), do: base_url() <> "/app/projects/market-my-spec/stories/#{id}"
   defp resolve_view("http" <> _ = raw), do: raw
   defp resolve_view(other), do: Mix.raise("unknown --view: #{inspect(other)}")
 

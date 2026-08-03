@@ -7,7 +7,7 @@ defmodule CodeMySpecSpex.Story816.Criterion6594Spex do
   send or receive email.
 
   Surface:
-    * `CodeMySpecWeb.MailLive` at "/app/mail" — composing from a mailbox sends
+    * `CodeMySpecWeb.MailLive` at "/app/projects/:project_id/mail" — composing from a mailbox sends
       through the email provider and the message shows as Sent in the thread.
       The provider (Resend) send is replayed from a recorded response via
       `Req.Test` (shared mode); the "Sent" marker is driven by the provider's
@@ -34,7 +34,7 @@ defmodule CodeMySpecSpex.Story816.Criterion6594Spex do
         Fixtures.verify_project_domain(context.project, @domain)
         Fixtures.mailbox_fixture(context.project, %{address: "support@#{@domain}"})
 
-        {:ok, view, _html} = live(context.conn, "/app/mail")
+        {:ok, view, _html} = live(context.conn, "/app/projects/#{context.project.id}/mail")
 
         {:ok, Map.put(context, :view, view)}
       end

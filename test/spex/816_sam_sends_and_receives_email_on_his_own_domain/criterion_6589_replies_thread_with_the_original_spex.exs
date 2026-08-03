@@ -8,7 +8,7 @@ defmodule CodeMySpecSpex.Story816.Criterion6589Spex do
   Surfaces (forward-looking — red until built):
     * Inbound webhook "/webhooks/resend" delivers two emails from the same
       correspondent to the same mailbox.
-    * `CodeMySpecWeb.MailLive` at "/app/mail" — both show in one
+    * `CodeMySpecWeb.MailLive` at "/app/projects/:project_id/mail" — both show in one
       per-correspondent thread.
   """
 
@@ -64,7 +64,7 @@ defmodule CodeMySpecSpex.Story816.Criterion6589Spex do
       end
 
       then_ "both messages appear in one continuous thread", context do
-        {:ok, view, _html} = live(context.conn, "/app/mail")
+        {:ok, view, _html} = live(context.conn, "/app/projects/#{context.project.id}/mail")
 
         {:ok, show_view, _html} =
           view

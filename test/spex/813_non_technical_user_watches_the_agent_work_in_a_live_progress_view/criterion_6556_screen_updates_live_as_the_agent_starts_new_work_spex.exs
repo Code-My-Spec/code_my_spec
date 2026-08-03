@@ -26,7 +26,7 @@ defmodule CodeMySpecSpex.Story813.Criterion6556Spex do
     scenario "a newly started task appears on the open view without a reload" do
       given_ "the user is watching the progress view", context do
         {:ok, view, _html} =
-          live(context.conn, "/projects/#{context.project.name}/progress")
+          live(context.conn, "/app/projects/#{context.project.id}/progress")
 
         {:ok, Map.put(context, :view, view)}
       end

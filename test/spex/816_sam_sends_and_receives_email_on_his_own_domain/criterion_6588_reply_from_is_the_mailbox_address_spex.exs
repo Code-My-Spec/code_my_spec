@@ -7,7 +7,7 @@ defmodule CodeMySpecSpex.Story816.Criterion6588Spex do
 
   Surfaces (forward-looking — red until built):
     * Inbound webhook "/webhooks/resend" seeds a received email.
-    * `CodeMySpecWeb.MailLive` at "/app/mail" — replying from the mailbox
+    * `CodeMySpecWeb.MailLive` at "/app/projects/:project_id/mail" — replying from the mailbox
       sends with the mailbox address as the From.
   """
 
@@ -45,7 +45,7 @@ defmodule CodeMySpecSpex.Story816.Criterion6588Spex do
       end
 
       when_ "Sam replies from the support mailbox", context do
-        {:ok, view, _html} = live(context.conn, "/app/mail")
+        {:ok, view, _html} = live(context.conn, "/app/projects/#{context.project.id}/mail")
 
         {:ok, show_view, _html} =
           view

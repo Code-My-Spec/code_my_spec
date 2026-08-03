@@ -31,7 +31,7 @@ defmodule CodeMySpecSpex.Story127.Criterion5934Spex do
         :ok = Environments.write_file(context.environment, @impl_b, impl_b())
 
         {:ok, files_live, _html} =
-          live(context.conn, "/projects/#{context.project.name}/files")
+          live(context.conn, "/app/projects/#{context.project.id}/files")
 
         files_live
         |> element("[data-test='sync-button']")
@@ -42,7 +42,7 @@ defmodule CodeMySpecSpex.Story127.Criterion5934Spex do
 
       given_ "both files appear in the projection", context do
         {:ok, files_live, _html} =
-          live(context.conn, "/projects/#{context.project.name}/files")
+          live(context.conn, "/app/projects/#{context.project.id}/files")
 
         assert has_element?(files_live, "[data-file-path=\"#{@impl_a}\"]")
         assert has_element?(files_live, "[data-file-path=\"#{@impl_b}\"]")
@@ -58,7 +58,7 @@ defmodule CodeMySpecSpex.Story127.Criterion5934Spex do
 
       then_ "alpha's row is reaped while bravo's row remains", context do
         {:ok, files_live, _html} =
-          live(context.conn, "/projects/#{context.project.name}/files")
+          live(context.conn, "/app/projects/#{context.project.id}/files")
 
         refute has_element?(files_live, "[data-file-path=\"#{@impl_a}\"]")
 

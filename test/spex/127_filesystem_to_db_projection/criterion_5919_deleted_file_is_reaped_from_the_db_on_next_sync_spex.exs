@@ -26,7 +26,7 @@ defmodule CodeMySpecSpex.Story127.Criterion5919Spex do
 
       given_ "the impl file appears in the Files projection", context do
         {:ok, files_live, _html} =
-          live(context.conn, "/projects/#{context.project.name}/files")
+          live(context.conn, "/app/projects/#{context.project.id}/files")
 
         assert has_element?(files_live, "[data-file-path=\"#{@impl_path}\"]")
         {:ok, context}
@@ -36,7 +36,7 @@ defmodule CodeMySpecSpex.Story127.Criterion5919Spex do
         :ok = Environments.delete_file(context.environment, @impl_path)
 
         {:ok, files_live, _html} =
-          live(context.conn, "/projects/#{context.project.name}/files")
+          live(context.conn, "/app/projects/#{context.project.id}/files")
 
         files_live
         |> element("[data-test='sync-button']")

@@ -6,7 +6,7 @@ defmodule CodeMySpecSpex.Story607.Criterion5529Spex do
   routes never resolves to /app/accounts/picker via automatic redirect.
 
   This is the integration view of the no-auto-redirect-to-picker
-  invariant. Existence guards (/app/projects, /app/issues) redirect to
+  invariant. The existence guard (/app/projects) redirects to
   /app, and /app itself surfaces the wizard's empty state — at no point
   does the redirect chain visit the picker.
   """
@@ -18,22 +18,17 @@ defmodule CodeMySpecSpex.Story607.Criterion5529Spex do
   setup :register_and_log_in_user
 
   spex "Post-signup walk through guarded routes never resolves to the picker" do
-    scenario "/app, /app/projects, and /app/issues never redirect to the picker" do
+    scenario "/app and /app/projects never redirect to the picker" do
       given_ "the user is freshly authenticated with zero accounts and zero projects",
              context do
         {:ok, context}
       end
 
-      when_ "the user walks /app, /app/projects, /app/issues", context do
-        app_result = live(context.conn, "/app")
-        projects_result = live(context.conn, "/app/projects")
-        stories_result = live(context.conn, "/app/issues")
-
+      when_ "the user walks /app and /app/projects", context do
         {:ok,
          Map.merge(context, %{
-           app_result: app_result,
-           projects_result: projects_result,
-           stories_result: stories_result
+           app_result: live(context.conn, "/app"),
+           projects_result: live(context.conn, "/app/projects")
          })}
       end
 
@@ -48,12 +43,6 @@ defmodule CodeMySpecSpex.Story607.Criterion5529Spex do
         {:ok, context}
       end
 
-      then_ "/app/issues redirects to /app, never the picker", context do
-        target = redirect_target!(context.stories_result, "/app/issues")
-        assert target == "/app"
-        refute target == "/app/accounts/picker"
-        {:ok, context}
-      end
     end
   end
 

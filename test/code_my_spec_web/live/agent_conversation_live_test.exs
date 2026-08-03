@@ -26,6 +26,10 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
 
   setup :setup_project
 
+  # AgentConversationLive is addressed by name, not id — its route declares
+  # :project_name and it resolves with get_project_by_name/2. The pass that
+  # moved every other project URL onto ids rewrote this one too, and the view
+  # then looked a UUID up as a name and redirected away.
   defp path(project), do: "/app/projects/#{project.name}/agent-conversation"
 
   defp agent_conversation(scope, project, external_id \\ "pi:/tmp/sprite-test") do
