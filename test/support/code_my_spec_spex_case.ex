@@ -37,6 +37,15 @@ defmodule CodeMySpecSpex.Case do
     end
   end
 
+  @doc """
+  The workspace runner spex drive instead of Docker.
+
+  Named here rather than referenced directly from a spex: the runner lives in
+  the test-support namespace, which spex are not allowed to reach into, and
+  Docker is an external system the criteria are not about.
+  """
+  def workspace_runner, do: CodeMySpecTest.FakeWorkspaceRunner
+
   setup tags do
     # `ownership_timeout` has to outlast the work, not the request. Recording a
     # spex waits on a provider verifying DNS — minutes, not milliseconds — and

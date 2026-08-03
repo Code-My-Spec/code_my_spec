@@ -21,7 +21,6 @@ defmodule CodeMySpecSpex.Story990.Criterion8221Spex do
 
   import CodeMySpecSpex.SharedGivens
 
-  alias CodeMySpecTest.FakeWorkspaceRunner
 
   @endpoint CodeMySpecWeb.Endpoint
 
@@ -31,13 +30,17 @@ defmodule CodeMySpecSpex.Story990.Criterion8221Spex do
 
   setup do
     Application.put_env(:code_my_spec, CodeMySpec.Workspaces,
-      runner: FakeWorkspaceRunner,
+      runner: CodeMySpecSpex.Case.workspace_runner(),
       boot_timeout: 60_000,
       poll_interval: 20
     )
 
-    start_supervised!({FakeWorkspaceRunner, healthy?: false, alive?: true})
-    on_exit(fn -> Application.delete_env(:code_my_spec, CodeMySpec.Workspaces) end)
+    start_supervised!({CodeMySpecSpex.Case.workspace_runner(), healthy?: false, alive?: true})
+
+    on_exit(fn ->
+      Application.delete_env(:code_my_spec, :fake_workspace_alive)
+      Application.delete_env(:code_my_spec, CodeMySpec.Workspaces)
+    end)
     :ok
   end
 
@@ -73,7 +76,7 @@ defmodule CodeMySpecSpex.Story990.Criterion8221Spex do
       end
 
       when_ "the workspace dies under them", context do
-        FakeWorkspaceRunner.put_alive(false)
+        Application.put_env(:code_my_spec, :fake_workspace_alive, false)
 
         html = eventually(context.view, "didn&#39;t come up")
 

@@ -53,8 +53,15 @@ defmodule CodeMySpecTest.FakeWorkspaceRunner do
   @impl true
   def healthy?(_port), do: Agent.get(__MODULE__, & &1.healthy?)
 
+  # Config wins over the agent's own state when set, so a spex can kill the
+  # instance mid-run without calling across a boundary into this module.
   @impl true
-  def alive?(_container_name), do: Agent.get(__MODULE__, & &1.alive?)
+  def alive?(_container_name) do
+    case Application.get_env(:code_my_spec, :fake_workspace_alive) do
+      nil -> Agent.get(__MODULE__, & &1.alive?)
+      alive? -> alive?
+    end
+  end
 
   @impl true
   def logs(_container_name), do: Agent.get(__MODULE__, & &1.logs)

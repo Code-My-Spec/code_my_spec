@@ -87,12 +87,12 @@ defmodule CodeMySpec.Migration.Client do
     end
   end
 
+  # `CMS_BASE_URL` so a build can be aimed at a different server without
+  # rebuilding it — which is how this gets tested before release, and how a
+  # self-hosted server would be reached.
   defp base_url(opts) do
-    Keyword.get(
-      opts,
-      :base_url,
+    Keyword.get(opts, :base_url) || System.get_env("CMS_BASE_URL") ||
       Application.get_env(:code_my_spec, :base_url, "https://codemyspec.com")
-    )
   end
 
   defp maybe_plug(req, opts) do

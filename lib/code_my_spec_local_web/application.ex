@@ -29,8 +29,12 @@ defmodule CodeMySpecLocalWeb.Application do
   # graph to the cloud. It needs the database and nothing else — no endpoint,
   # no MCP server — so it boots the same minimum `cms mcp` does plus the Repo,
   # runs once, and halts on the outcome.
+  # Env-var fallback for the same reason `cms mcp` has one: a release that is
+  # not Burrito-packaged never threads argv through, so the subcommand alone
+  # cannot reach this.
   defp migrate_command?(argv) do
-    "migrate" in Enum.reject(argv, &(&1 in ["--", ""]))
+    "migrate" in Enum.reject(argv, &(&1 in ["--", ""])) or
+      System.get_env("CMS_MIGRATE") in ["1", "true"]
   end
 
   defp start_migrate(argv) do
@@ -67,6 +71,17 @@ defmodule CodeMySpecLocalWeb.Application do
   defp migrate_target(argv) do
     case Enum.drop_while(argv, &(&1 != "--project")) do
       ["--project", id | _] when id != "" -> {:ok, id}
+      _ -> project_id_from_env()
+    end
+  end
+
+  # `CMS_PROJECT_ID` is already this codebase's answer to "which project is
+  # this?" — `Projects.resolve_local_project/1` reads it first of all. The
+  # cloud keeps the id the project was created with, so the one variable names
+  # both ends.
+  defp project_id_from_env do
+    case System.get_env("CMS_PROJECT_ID") do
+      id when is_binary(id) and id != "" -> {:ok, id}
       _ -> {:error, :missing_project}
     end
   end
@@ -79,10 +94,10 @@ defmodule CodeMySpecLocalWeb.Application do
   end
 
   defp report_migration({:error, :missing_project}),
-    do: migration_failed("name the cloud project: cms migrate --project <cloud-project-id>")
+    do: migration_failed(no_project_message())
 
   defp report_migration({:error, :cloud_project_id_required}),
-    do: migration_failed("name the cloud project: cms migrate --project <cloud-project-id>")
+    do: migration_failed(no_project_message())
 
   defp report_migration({:error, {:refused, _status, reason}}),
     do: migration_failed(reason)
@@ -91,6 +106,11 @@ defmodule CodeMySpecLocalWeb.Application do
     do: migration_failed("could not reach the server: #{inspect(reason)}")
 
   defp report_migration({:error, reason}), do: migration_failed(inspect(reason))
+
+  defp no_project_message,
+    do:
+      "name the cloud project — either `cms migrate --project <cloud-project-id>` " <>
+        "or set CMS_PROJECT_ID"
 
   defp migration_failed(message) do
     IO.puts(:stderr, "\ncms migrate: #{message}")
