@@ -2,21 +2,28 @@ defmodule CodeMySpec.Provisioning.Registry do
   @moduledoc """
   Where built images live, and how they stop costing money.
 
-  Backed by the object storage the storage step already provisions, which is
-  the whole reason to run one: retention is the bucket lifecycle rule we have
-  already written and already debugged against Hetzner's Ceph, rather than a
-  garbage collector nobody remembers to run. Registries fill disks silently —
-  every image ever built stays until something deletes it — and that is the
-  part of self-hosting one that actually bites.
+  One registry, ours, backed by one bucket, with a repository per project.
 
-  The other reason is what it takes *out* of the deploy path. Pulling from here
-  means nothing in a deploy needs a GitHub credential, and a GitHub outage does
-  not stop Sam deploying — which was the point of moving the build off Actions
-  in the first place (story 992).
+  It was briefly designed the other way — a registry per customer, backed by
+  each customer's own bucket. That is what "self-hosted" suggested, and it is
+  the opposite of what the story asks for. Story 992 is called *my images are
+  built on infrastructure I never maintain*: a bucket Sam pays for, holding a
+  registry Sam's lifecycle rule prunes, is infrastructure Sam maintains. It
+  also meant one registry process per customer, since a registry takes exactly
+  one storage backend.
 
-  This owns the registry's bucket, its retention, and the address an image is
-  pulled from. The registry service itself runs on the shared host; this is not
-  an implementation of the registry protocol.
+  Neither criterion asked for it. 8240 wants a deploy that pulls without a
+  GitHub credential; 8241 wants old images to expire without anyone
+  remembering. One shared registry does both, and needs no extra server —
+  it belongs to the CodeMySpec deployment, beside everything else we run.
+
+  Retention is still the bucket lifecycle rule we have already written and
+  debugged against Hetzner's Ceph, which is the part of running a registry that
+  actually bites: they fill disks silently, because every image ever built
+  stays until something deletes it.
+
+  This owns the bucket, the retention and the address. Serving the registry
+  protocol is `distribution`'s job, not ours.
   """
 
   alias CodeMySpec.Provisioning.Storage
@@ -88,13 +95,17 @@ defmodule CodeMySpec.Provisioning.Registry do
     end
   end
 
-  # Its own bucket rather than a prefix inside the project's. A registry's
-  # layout is the registry's, and sharing a bucket would put its retention rule
-  # and the backups' retention rule in the same place — where the second one
-  # written wins and the first silently stops applying.
-  defp bucket_name(scope, opts) do
-    Keyword.get(opts, :bucket) || "#{project_slug(scope)}-registry"
+  # One bucket for every project, because the registry is ours. It still gets
+  # its own bucket rather than a prefix inside somebody's: a registry's layout
+  # is the registry's, and sharing would put its retention rule and the
+  # backups' retention rule in one place, where the second one written wins and
+  # the first silently stops applying.
+  defp bucket_name(_scope, opts) do
+    Keyword.get(opts, :bucket) || configured_bucket() || "codemyspec-registry"
   end
+
+  defp configured_bucket,
+    do: Application.get_env(:code_my_spec, __MODULE__, [])[:bucket]
 
   defp repository(scope, opts) do
     case Keyword.get(opts, :repository) || project_slug(scope) do
