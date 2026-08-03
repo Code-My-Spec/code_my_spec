@@ -25,7 +25,9 @@ defmodule CodeMySpecSpex.Story991.Criterion8225Spex do
   # buys one. Criterion 8228 is the spec for what happens without it.
   defp paid_account(context) do
     {:ok, account} =
-      CodeMySpec.Accounts.update_account(context.scope, context.scope.active_account, %{plan: :paid})
+      CodeMySpec.Accounts.update_account(context.scope, context.scope.active_account, %{
+        plan: :paid
+      })
 
     {:ok, Map.put(context, :scope, %{context.scope | active_account: account})}
   end

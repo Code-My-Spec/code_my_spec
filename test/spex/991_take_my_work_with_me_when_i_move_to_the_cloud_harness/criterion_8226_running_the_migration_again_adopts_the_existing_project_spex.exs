@@ -30,7 +30,9 @@ defmodule CodeMySpecSpex.Story991.Criterion8226Spex do
   # buys one. Criterion 8228 is the spec for what happens without it.
   defp paid_account(context) do
     {:ok, account} =
-      CodeMySpec.Accounts.update_account(context.scope, context.scope.active_account, %{plan: :paid})
+      CodeMySpec.Accounts.update_account(context.scope, context.scope.active_account, %{
+        plan: :paid
+      })
 
     {:ok, Map.put(context, :scope, %{context.scope | active_account: account})}
   end
@@ -47,7 +49,12 @@ defmodule CodeMySpecSpex.Story991.Criterion8226Spex do
             persona_stories: [%{persona_local_id: "p1", story_local_id: 1}],
             rules: [%{local_id: "r1", story_local_id: 1, statement: "It happens once."}],
             criteria: [
-              %{local_id: "c1", story_local_id: 1, rule_local_id: "r1", description: "just the one"}
+              %{
+                local_id: "c1",
+                story_local_id: 1,
+                rule_local_id: "r1",
+                description: "just the one"
+              }
             ]
           )
 

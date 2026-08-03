@@ -34,6 +34,87 @@ defmodule CodeMySpec.Migration do
   def derived_kinds, do: @derived
 
   @doc """
+  Read one project's authored graph off the local harness.
+
+  Reads through the contexts rather than the database, because the local
+  harness runs this same code over SQLite — so there is no second set of
+  queries to keep in step with the schema, and no raw SQL to drift.
+
+  Local ids travel as `local_id` and are the only thing tying the payload
+  together. The cloud assigns its own and rewrites every reference as it lands.
+
+  Reads nothing and writes nothing outside this project: story 991 says
+  migrating one project leaves Sam's others alone, and the surest way to keep
+  that true is to never look at them.
+  """
+  @spec export_project(Scope.t()) :: map()
+  def export_project(%Scope{} = scope) do
+    stories = list_stories(scope)
+    personas = Personas.list_personas(scope)
+
+    %{
+      "stories" => Enum.map(stories, &export_story/1),
+      "epics" => Enum.map(Epics.list_epics(scope), &export_epic/1),
+      "personas" => Enum.map(personas, &export_persona/1),
+      "persona_stories" => export_persona_links(scope, stories),
+      "rules" => Enum.flat_map(stories, &export_rules(scope, &1)),
+      "criteria" => Enum.flat_map(stories, &export_criteria(scope, &1))
+    }
+  end
+
+  defp export_story(story),
+    do: %{
+      "local_id" => story.id,
+      "title" => story.title,
+      "story" => story.story,
+      "description" => story.description,
+      "status" => story.status && to_string(story.status)
+    }
+
+  defp export_epic(epic), do: %{"local_id" => epic.id, "name" => epic.name}
+
+  defp export_persona(persona),
+    do: %{"local_id" => persona.id, "name" => persona.name, "slug" => persona.slug}
+
+  defp export_persona_links(scope, stories) do
+    Enum.flat_map(stories, fn story ->
+      scope
+      |> Personas.list_personas_for_story(story.id)
+      |> Enum.map(&%{"persona_local_id" => &1.id, "story_local_id" => story.id})
+    end)
+  end
+
+  defp export_rules(scope, story) do
+    scope
+    |> BddRules.list_rules_for_story(story.id)
+    |> Enum.map(
+      &%{"local_id" => &1.id, "story_local_id" => story.id, "statement" => &1.statement}
+    )
+  end
+
+  defp export_criteria(scope, story) do
+    scope
+    |> AcceptanceCriteria.list_story_criteria(story.id)
+    |> Enum.map(
+      &%{
+        "local_id" => &1.id,
+        "story_local_id" => story.id,
+        "rule_local_id" => &1.rule_id,
+        "description" => &1.description,
+        "body" => &1.body
+      }
+    )
+  end
+
+  defp list_stories(scope) do
+    case Stories.list_project_stories(scope) do
+      {:ok, stories} -> stories
+      stories when is_list(stories) -> stories
+      _ -> []
+    end
+  end
+
+  @doc """
   Import one project's authored graph.
 
   Returns `{:ok, summary}` where summary counts what arrived per kind, or

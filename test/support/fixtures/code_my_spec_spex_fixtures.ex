@@ -572,6 +572,43 @@ defmodule CodeMySpecSpex.Fixtures do
     }
   end
 
+  @doc """
+  Author a story the way Sam does, so a spec can migrate real records rather
+  than a payload it wrote itself.
+  """
+  def authored_story(%Scope{} = scope, title, opts \\ []) do
+    {:ok, story} =
+      CodeMySpec.Stories.create_story(scope, %{
+        title: title,
+        story: Keyword.get(opts, :story, "As Sam, I want #{title}, so that reasons.")
+      })
+
+    story
+  end
+
+  @doc """
+  A second project to migrate into.
+
+  Story 991 has two ends and they are different projects. A spec that uses one
+  project as both cannot observe anything the migration does — the rows it
+  reads and the rows it writes are the same rows.
+  """
+  def other_project_scope(%Scope{} = scope, name) do
+    project = CodeMySpec.ProjectsFixtures.project_fixture(scope, %{name: name})
+    %{scope | active_project: project, active_project_id: project.id}
+  end
+
+  @doc "Read the local project the way the migration does."
+  def exported(%Scope{} = scope), do: CodeMySpec.Migration.export_project(scope)
+
+  @doc "Put an account on a paid plan — story 991's precondition."
+  def paid(%Scope{} = scope) do
+    account =
+      scope.active_account |> Ecto.Changeset.change(%{plan: :paid}) |> CodeMySpec.Repo.update!()
+
+    %{scope | active_account: account}
+  end
+
   @doc "Migrate a project the way the local harness does — through the endpoint."
   def migrate(%Scope{} = scope, payload) do
     Phoenix.ConnTest.build_conn()
