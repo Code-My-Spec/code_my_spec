@@ -29,12 +29,8 @@ defmodule CodeMySpecSpex.Story993.Criterion8251Spex do
 
   spex "Only Stripe can grant a tier" do
     scenario "A webhook that is not really from Stripe is refused" do
-      given_ "a free account", context do
-        assert CodeMySpec.Accounts.get_account_by_id(context.account.id).plan == :free
-
-        {:ok, context}
-      end
-
+      # No given_: a new account already starts free, which is the whole
+      # precondition — the scenario is about what a forged request cannot do.
       when_ "someone posts an upgrade with a signature that does not verify", context do
         body =
           Jason.encode!(%{

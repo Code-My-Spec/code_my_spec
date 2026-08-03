@@ -32,7 +32,11 @@ defmodule CodeMySpecSpex.Story993.Criterion8247Spex do
   spex "Cancelling does not take back time already paid for" do
     scenario "Cancelling keeps the tier until the paid period ends" do
       given_ "an account on a paid tier partway through a paid month", context do
-        post_event(context.account.id, "invoice.payment_succeeded", %{"tier" => "pro"})
+        # Posted inline rather than through the helper, so this block visibly
+        # drives the endpoint it depends on instead of asserting a state it
+        # did nothing to create.
+        body = event_body(context.account.id, "invoice.payment_succeeded", %{"tier" => "pro"})
+        post(signed(body), "/webhooks/stripe", body)
 
         assert plan(context.account.id) == :pro
 
@@ -69,23 +73,28 @@ defmodule CodeMySpecSpex.Story993.Criterion8247Spex do
   # The tier belongs inside metadata, where the handler reads it — merging it
   # at the object level looked right and silently sent no tier at all.
   defp post_event(account_id, type, attrs) do
+    body = event_body(account_id, type, attrs)
+    post(signed(body), "/webhooks/stripe", body)
+  end
+
+  defp event_body(account_id, type, attrs) do
     {tier, object} = Map.pop(attrs, "tier")
     metadata = %{"account_id" => account_id} |> maybe_put("tier", tier)
 
-    body =
-      Jason.encode!(%{
-        "id" => "evt_#{System.unique_integer([:positive])}",
-        "type" => type,
-        "data" => %{"object" => Map.put(object, "metadata", metadata)}
-      })
+    Jason.encode!(%{
+      "id" => "evt_#{System.unique_integer([:positive])}",
+      "type" => type,
+      "data" => %{"object" => Map.put(object, "metadata", metadata)}
+    })
+  end
 
+  defp signed(body) do
     ts = System.system_time(:second)
     mac = :crypto.mac(:hmac, :sha256, @secret, "#{ts}.#{body}") |> Base.encode16(case: :lower)
 
     build_conn()
     |> put_req_header("content-type", "application/json")
     |> put_req_header("stripe-signature", "t=#{ts},v1=#{mac}")
-    |> post("/webhooks/stripe", body)
   end
 
   defp maybe_put(map, _key, nil), do: map
