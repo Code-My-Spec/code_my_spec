@@ -32,6 +32,8 @@ defmodule CodeMySpec.Provisioning.Teardown do
   leave resources behind that nobody is billing anybody's attention for.
   """
 
+  alias CodeMySpec.Provisioning.Wait
+
   require Logger
 
   alias CodeMySpec.Provisioning.{Cloudflare, Hetzner, Resend, Storage, StepRepository}
@@ -242,7 +244,7 @@ defmodule CodeMySpec.Provisioning.Teardown do
         true
 
       _ when attempts > 1 ->
-        Process.sleep(2_000)
+        Wait.sleep(2_000)
         absent?(lookup, attempts - 1)
 
       _ ->
@@ -258,7 +260,7 @@ defmodule CodeMySpec.Provisioning.Teardown do
       {:ok, %{"id" => id}} when attempts > 1 ->
         case Hetzner.delete_firewall(scope, id) do
           {:ok, _} -> {:ok, r}
-          _ -> Process.sleep(2_000) && retry_firewall(scope, name, r, attempts - 1)
+          _ -> Wait.sleep(2_000) && retry_firewall(scope, name, r, attempts - 1)
         end
 
       _ ->

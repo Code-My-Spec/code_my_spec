@@ -8,7 +8,7 @@
       "command": "git",
       "exit_code": 128,
       "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-16675",
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-21061",
         "env": {
           "SCRIPT_PATH": null,
           "RELEASE_ROOT": null,
@@ -48,7 +48,7 @@
         "stderr_to_stdout": true
       },
       "output": "fatal: not a git repository (or any of the parent directories): .git\n",
-      "recorded_at": "2026-08-02T15:39:20.407639Z"
+      "recorded_at": "2026-08-03T02:42:13.281919Z"
     },
     {
       "args": [
@@ -59,7 +59,7 @@
       "command": "git",
       "exit_code": 0,
       "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-16675",
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-21061",
         "env": {
           "SCRIPT_PATH": null,
           "RELEASE_ROOT": null,
@@ -98,8 +98,8 @@
         },
         "stderr_to_stdout": true
       },
-      "output": "Initialized empty Git repository in /private/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-16675/.git/\n",
-      "recorded_at": "2026-08-02T15:39:20.422456Z"
+      "output": "Initialized empty Git repository in /private/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-21061/.git/\n",
+      "recorded_at": "2026-08-03T02:42:13.292714Z"
     },
     {
       "args": [
@@ -109,7 +109,7 @@
       "command": "git",
       "exit_code": 128,
       "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-16675",
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-21061",
         "env": {
           "SCRIPT_PATH": null,
           "RELEASE_ROOT": null,
@@ -149,7 +149,7 @@
         "stderr_to_stdout": true
       },
       "output": "fatal: ambiguous argument 'HEAD': unknown revision or path not in the working tree.\nUse '--' to separate paths from revisions, like this:\n'git <command> [<revision>...] -- [<file>...]'\nHEAD\n",
-      "recorded_at": "2026-08-02T15:39:20.428128Z"
+      "recorded_at": "2026-08-03T02:42:13.297957Z"
     },
     {
       "args": [
@@ -159,7 +159,7 @@
       "command": "git",
       "exit_code": 0,
       "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-16675",
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-21061",
         "env": {
           "SCRIPT_PATH": null,
           "RELEASE_ROOT": null,
@@ -199,7 +199,7 @@
         "stderr_to_stdout": true
       },
       "output": "",
-      "recorded_at": "2026-08-02T15:39:20.435583Z"
+      "recorded_at": "2026-08-03T02:42:13.304510Z"
     },
     {
       "args": [
@@ -210,7 +210,7 @@
       "command": "git",
       "exit_code": 0,
       "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-16675",
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-21061",
         "env": {
           "SCRIPT_PATH": null,
           "RELEASE_ROOT": null,
@@ -249,1877 +249,8 @@
         },
         "stderr_to_stdout": true
       },
-      "output": "[main (root-commit) 7a1a770] Initial commit\n 1 file changed, 1 insertion(+)\n create mode 100644 mix.exs\n",
-      "recorded_at": "2026-08-02T15:39:20.449194Z"
-    },
-    {
-      "args": [
-        "remote",
-        "add",
-        "origin",
-        "https://github.com/johns10/spex-story985-criterion8182.git"
-      ],
-      "command": "git",
-      "exit_code": 0,
-      "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-16675",
-        "env": {
-          "SCRIPT_PATH": null,
-          "RELEASE_ROOT": null,
-          "ERTS_BIN": null,
-          "RELEASE_DISTRIBUTION_FLAG": null,
-          "RELEASE_DISTRIBUTION": null,
-          "EMU": null,
-          "RELEASE_COMMAND": null,
-          "PROGNAME": null,
-          "ELIXIR_VERSION": null,
-          "RELEASE_MODE": null,
-          "beforeExtra": null,
-          "REL_EXEC": null,
-          "RELEASE_PROG": null,
-          "ERL_LIBS": null,
-          "RELEASE_NODE": null,
-          "REL_EXTRA": null,
-          "RELEASE_BOOT_SCRIPT_CLEAN": null,
-          "RELEASE_NAME": null,
-          "RELEASE_VM_ARGS": null,
-          "ERLEXEC_DIR": null,
-          "ERTS_VSN": null,
-          "RELEASE_SYS_CONFIG": null,
-          "ROOTDIR": null,
-          "ERL_CONSOLE_MODE": null,
-          "parsErlang": null,
-          "RELEASE_TMP": null,
-          "REL_VSN_DIR": null,
-          "RELEASE_VSN": null,
-          "RELEASE_BOOT_SCRIPT": null,
-          "RELEASE_REMOTE_VM_ARGS": null,
-          "BINDIR": null,
-          "REL_GOTO": null,
-          "endLoop": null,
-          "RELEASE_COOKIE": null
-        },
-        "stderr_to_stdout": true
-      },
-      "output": "",
-      "recorded_at": "2026-08-02T15:39:20.453952Z"
-    },
-    {
-      "args": [
-        "push",
-        "-u",
-        "origin",
-        "main"
-      ],
-      "command": "git",
-      "exit_code": 1,
-      "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-16675",
-        "env": {
-          "SCRIPT_PATH": null,
-          "RELEASE_ROOT": null,
-          "ERTS_BIN": null,
-          "RELEASE_DISTRIBUTION_FLAG": null,
-          "RELEASE_DISTRIBUTION": null,
-          "EMU": null,
-          "RELEASE_COMMAND": null,
-          "PROGNAME": null,
-          "ELIXIR_VERSION": null,
-          "RELEASE_MODE": null,
-          "beforeExtra": null,
-          "REL_EXEC": null,
-          "RELEASE_PROG": null,
-          "ERL_LIBS": null,
-          "RELEASE_NODE": null,
-          "REL_EXTRA": null,
-          "RELEASE_BOOT_SCRIPT_CLEAN": null,
-          "RELEASE_NAME": null,
-          "RELEASE_VM_ARGS": null,
-          "ERLEXEC_DIR": null,
-          "ERTS_VSN": null,
-          "RELEASE_SYS_CONFIG": null,
-          "ROOTDIR": null,
-          "ERL_CONSOLE_MODE": null,
-          "parsErlang": null,
-          "RELEASE_TMP": null,
-          "REL_VSN_DIR": null,
-          "RELEASE_VSN": null,
-          "RELEASE_BOOT_SCRIPT": null,
-          "RELEASE_REMOTE_VM_ARGS": null,
-          "BINDIR": null,
-          "REL_GOTO": null,
-          "endLoop": null,
-          "RELEASE_COOKIE": null
-        },
-        "stderr_to_stdout": true
-      },
-      "output": "To https://github.com/johns10/spex-story985-criterion8182.git\n ! [rejected]        main -> main (fetch first)\nerror: failed to push some refs to 'https://github.com/johns10/spex-story985-criterion8182.git'\nhint: Updates were rejected because the remote contains work that you do not\nhint: have locally. This is usually caused by another repository pushing to\nhint: the same ref. If you want to integrate the remote changes, use\nhint: 'git pull' before pushing again.\nhint: See the 'Note about fast-forwards' in 'git push --help' for details.\n",
-      "recorded_at": "2026-08-02T15:39:20.890237Z"
-    },
-    {
-      "args": [
-        "rev-parse",
-        "--is-inside-work-tree"
-      ],
-      "command": "git",
-      "exit_code": 128,
-      "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-16777",
-        "env": {
-          "SCRIPT_PATH": null,
-          "RELEASE_ROOT": null,
-          "ERTS_BIN": null,
-          "RELEASE_DISTRIBUTION_FLAG": null,
-          "RELEASE_DISTRIBUTION": null,
-          "EMU": null,
-          "RELEASE_COMMAND": null,
-          "PROGNAME": null,
-          "ELIXIR_VERSION": null,
-          "RELEASE_MODE": null,
-          "beforeExtra": null,
-          "REL_EXEC": null,
-          "RELEASE_PROG": null,
-          "ERL_LIBS": null,
-          "RELEASE_NODE": null,
-          "REL_EXTRA": null,
-          "RELEASE_BOOT_SCRIPT_CLEAN": null,
-          "RELEASE_NAME": null,
-          "RELEASE_VM_ARGS": null,
-          "ERLEXEC_DIR": null,
-          "ERTS_VSN": null,
-          "RELEASE_SYS_CONFIG": null,
-          "ROOTDIR": null,
-          "ERL_CONSOLE_MODE": null,
-          "parsErlang": null,
-          "RELEASE_TMP": null,
-          "REL_VSN_DIR": null,
-          "RELEASE_VSN": null,
-          "RELEASE_BOOT_SCRIPT": null,
-          "RELEASE_REMOTE_VM_ARGS": null,
-          "BINDIR": null,
-          "REL_GOTO": null,
-          "endLoop": null,
-          "RELEASE_COOKIE": null
-        },
-        "stderr_to_stdout": true
-      },
-      "output": "fatal: not a git repository (or any of the parent directories): .git\n",
-      "recorded_at": "2026-08-02T15:39:42.595741Z"
-    },
-    {
-      "args": [
-        "init",
-        "-b",
-        "main"
-      ],
-      "command": "git",
-      "exit_code": 0,
-      "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-16777",
-        "env": {
-          "SCRIPT_PATH": null,
-          "RELEASE_ROOT": null,
-          "ERTS_BIN": null,
-          "RELEASE_DISTRIBUTION_FLAG": null,
-          "RELEASE_DISTRIBUTION": null,
-          "EMU": null,
-          "RELEASE_COMMAND": null,
-          "PROGNAME": null,
-          "ELIXIR_VERSION": null,
-          "RELEASE_MODE": null,
-          "beforeExtra": null,
-          "REL_EXEC": null,
-          "RELEASE_PROG": null,
-          "ERL_LIBS": null,
-          "RELEASE_NODE": null,
-          "REL_EXTRA": null,
-          "RELEASE_BOOT_SCRIPT_CLEAN": null,
-          "RELEASE_NAME": null,
-          "RELEASE_VM_ARGS": null,
-          "ERLEXEC_DIR": null,
-          "ERTS_VSN": null,
-          "RELEASE_SYS_CONFIG": null,
-          "ROOTDIR": null,
-          "ERL_CONSOLE_MODE": null,
-          "parsErlang": null,
-          "RELEASE_TMP": null,
-          "REL_VSN_DIR": null,
-          "RELEASE_VSN": null,
-          "RELEASE_BOOT_SCRIPT": null,
-          "RELEASE_REMOTE_VM_ARGS": null,
-          "BINDIR": null,
-          "REL_GOTO": null,
-          "endLoop": null,
-          "RELEASE_COOKIE": null
-        },
-        "stderr_to_stdout": true
-      },
-      "output": "Initialized empty Git repository in /private/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-16777/.git/\n",
-      "recorded_at": "2026-08-02T15:39:42.607876Z"
-    },
-    {
-      "args": [
-        "rev-parse",
-        "HEAD"
-      ],
-      "command": "git",
-      "exit_code": 128,
-      "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-16777",
-        "env": {
-          "SCRIPT_PATH": null,
-          "RELEASE_ROOT": null,
-          "ERTS_BIN": null,
-          "RELEASE_DISTRIBUTION_FLAG": null,
-          "RELEASE_DISTRIBUTION": null,
-          "EMU": null,
-          "RELEASE_COMMAND": null,
-          "PROGNAME": null,
-          "ELIXIR_VERSION": null,
-          "RELEASE_MODE": null,
-          "beforeExtra": null,
-          "REL_EXEC": null,
-          "RELEASE_PROG": null,
-          "ERL_LIBS": null,
-          "RELEASE_NODE": null,
-          "REL_EXTRA": null,
-          "RELEASE_BOOT_SCRIPT_CLEAN": null,
-          "RELEASE_NAME": null,
-          "RELEASE_VM_ARGS": null,
-          "ERLEXEC_DIR": null,
-          "ERTS_VSN": null,
-          "RELEASE_SYS_CONFIG": null,
-          "ROOTDIR": null,
-          "ERL_CONSOLE_MODE": null,
-          "parsErlang": null,
-          "RELEASE_TMP": null,
-          "REL_VSN_DIR": null,
-          "RELEASE_VSN": null,
-          "RELEASE_BOOT_SCRIPT": null,
-          "RELEASE_REMOTE_VM_ARGS": null,
-          "BINDIR": null,
-          "REL_GOTO": null,
-          "endLoop": null,
-          "RELEASE_COOKIE": null
-        },
-        "stderr_to_stdout": true
-      },
-      "output": "fatal: ambiguous argument 'HEAD': unknown revision or path not in the working tree.\nUse '--' to separate paths from revisions, like this:\n'git <command> [<revision>...] -- [<file>...]'\nHEAD\n",
-      "recorded_at": "2026-08-02T15:39:42.612748Z"
-    },
-    {
-      "args": [
-        "add",
-        "-A"
-      ],
-      "command": "git",
-      "exit_code": 0,
-      "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-16777",
-        "env": {
-          "SCRIPT_PATH": null,
-          "RELEASE_ROOT": null,
-          "ERTS_BIN": null,
-          "RELEASE_DISTRIBUTION_FLAG": null,
-          "RELEASE_DISTRIBUTION": null,
-          "EMU": null,
-          "RELEASE_COMMAND": null,
-          "PROGNAME": null,
-          "ELIXIR_VERSION": null,
-          "RELEASE_MODE": null,
-          "beforeExtra": null,
-          "REL_EXEC": null,
-          "RELEASE_PROG": null,
-          "ERL_LIBS": null,
-          "RELEASE_NODE": null,
-          "REL_EXTRA": null,
-          "RELEASE_BOOT_SCRIPT_CLEAN": null,
-          "RELEASE_NAME": null,
-          "RELEASE_VM_ARGS": null,
-          "ERLEXEC_DIR": null,
-          "ERTS_VSN": null,
-          "RELEASE_SYS_CONFIG": null,
-          "ROOTDIR": null,
-          "ERL_CONSOLE_MODE": null,
-          "parsErlang": null,
-          "RELEASE_TMP": null,
-          "REL_VSN_DIR": null,
-          "RELEASE_VSN": null,
-          "RELEASE_BOOT_SCRIPT": null,
-          "RELEASE_REMOTE_VM_ARGS": null,
-          "BINDIR": null,
-          "REL_GOTO": null,
-          "endLoop": null,
-          "RELEASE_COOKIE": null
-        },
-        "stderr_to_stdout": true
-      },
-      "output": "",
-      "recorded_at": "2026-08-02T15:39:42.618789Z"
-    },
-    {
-      "args": [
-        "commit",
-        "-m",
-        "Initial commit"
-      ],
-      "command": "git",
-      "exit_code": 0,
-      "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-16777",
-        "env": {
-          "SCRIPT_PATH": null,
-          "RELEASE_ROOT": null,
-          "ERTS_BIN": null,
-          "RELEASE_DISTRIBUTION_FLAG": null,
-          "RELEASE_DISTRIBUTION": null,
-          "EMU": null,
-          "RELEASE_COMMAND": null,
-          "PROGNAME": null,
-          "ELIXIR_VERSION": null,
-          "RELEASE_MODE": null,
-          "beforeExtra": null,
-          "REL_EXEC": null,
-          "RELEASE_PROG": null,
-          "ERL_LIBS": null,
-          "RELEASE_NODE": null,
-          "REL_EXTRA": null,
-          "RELEASE_BOOT_SCRIPT_CLEAN": null,
-          "RELEASE_NAME": null,
-          "RELEASE_VM_ARGS": null,
-          "ERLEXEC_DIR": null,
-          "ERTS_VSN": null,
-          "RELEASE_SYS_CONFIG": null,
-          "ROOTDIR": null,
-          "ERL_CONSOLE_MODE": null,
-          "parsErlang": null,
-          "RELEASE_TMP": null,
-          "REL_VSN_DIR": null,
-          "RELEASE_VSN": null,
-          "RELEASE_BOOT_SCRIPT": null,
-          "RELEASE_REMOTE_VM_ARGS": null,
-          "BINDIR": null,
-          "REL_GOTO": null,
-          "endLoop": null,
-          "RELEASE_COOKIE": null
-        },
-        "stderr_to_stdout": true
-      },
-      "output": "[main (root-commit) c1a87fd] Initial commit\n 1 file changed, 1 insertion(+)\n create mode 100644 mix.exs\n",
-      "recorded_at": "2026-08-02T15:39:42.631365Z"
-    },
-    {
-      "args": [
-        "remote",
-        "add",
-        "origin",
-        "https://github.com/johns10/spex-story985-criterion8182.git"
-      ],
-      "command": "git",
-      "exit_code": 0,
-      "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-16777",
-        "env": {
-          "SCRIPT_PATH": null,
-          "RELEASE_ROOT": null,
-          "ERTS_BIN": null,
-          "RELEASE_DISTRIBUTION_FLAG": null,
-          "RELEASE_DISTRIBUTION": null,
-          "EMU": null,
-          "RELEASE_COMMAND": null,
-          "PROGNAME": null,
-          "ELIXIR_VERSION": null,
-          "RELEASE_MODE": null,
-          "beforeExtra": null,
-          "REL_EXEC": null,
-          "RELEASE_PROG": null,
-          "ERL_LIBS": null,
-          "RELEASE_NODE": null,
-          "REL_EXTRA": null,
-          "RELEASE_BOOT_SCRIPT_CLEAN": null,
-          "RELEASE_NAME": null,
-          "RELEASE_VM_ARGS": null,
-          "ERLEXEC_DIR": null,
-          "ERTS_VSN": null,
-          "RELEASE_SYS_CONFIG": null,
-          "ROOTDIR": null,
-          "ERL_CONSOLE_MODE": null,
-          "parsErlang": null,
-          "RELEASE_TMP": null,
-          "REL_VSN_DIR": null,
-          "RELEASE_VSN": null,
-          "RELEASE_BOOT_SCRIPT": null,
-          "RELEASE_REMOTE_VM_ARGS": null,
-          "BINDIR": null,
-          "REL_GOTO": null,
-          "endLoop": null,
-          "RELEASE_COOKIE": null
-        },
-        "stderr_to_stdout": true
-      },
-      "output": "",
-      "recorded_at": "2026-08-02T15:39:42.636261Z"
-    },
-    {
-      "args": [
-        "push",
-        "-u",
-        "origin",
-        "main"
-      ],
-      "command": "git",
-      "exit_code": 1,
-      "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-16777",
-        "env": {
-          "SCRIPT_PATH": null,
-          "RELEASE_ROOT": null,
-          "ERTS_BIN": null,
-          "RELEASE_DISTRIBUTION_FLAG": null,
-          "RELEASE_DISTRIBUTION": null,
-          "EMU": null,
-          "RELEASE_COMMAND": null,
-          "PROGNAME": null,
-          "ELIXIR_VERSION": null,
-          "RELEASE_MODE": null,
-          "beforeExtra": null,
-          "REL_EXEC": null,
-          "RELEASE_PROG": null,
-          "ERL_LIBS": null,
-          "RELEASE_NODE": null,
-          "REL_EXTRA": null,
-          "RELEASE_BOOT_SCRIPT_CLEAN": null,
-          "RELEASE_NAME": null,
-          "RELEASE_VM_ARGS": null,
-          "ERLEXEC_DIR": null,
-          "ERTS_VSN": null,
-          "RELEASE_SYS_CONFIG": null,
-          "ROOTDIR": null,
-          "ERL_CONSOLE_MODE": null,
-          "parsErlang": null,
-          "RELEASE_TMP": null,
-          "REL_VSN_DIR": null,
-          "RELEASE_VSN": null,
-          "RELEASE_BOOT_SCRIPT": null,
-          "RELEASE_REMOTE_VM_ARGS": null,
-          "BINDIR": null,
-          "REL_GOTO": null,
-          "endLoop": null,
-          "RELEASE_COOKIE": null
-        },
-        "stderr_to_stdout": true
-      },
-      "output": "To https://github.com/johns10/spex-story985-criterion8182.git\n ! [rejected]        main -> main (fetch first)\nerror: failed to push some refs to 'https://github.com/johns10/spex-story985-criterion8182.git'\nhint: Updates were rejected because the remote contains work that you do not\nhint: have locally. This is usually caused by another repository pushing to\nhint: the same ref. If you want to integrate the remote changes, use\nhint: 'git pull' before pushing again.\nhint: See the 'Note about fast-forwards' in 'git push --help' for details.\n",
-      "recorded_at": "2026-08-02T15:39:42.996775Z"
-    },
-    {
-      "args": [
-        "rev-parse",
-        "--is-inside-work-tree"
-      ],
-      "command": "git",
-      "exit_code": 128,
-      "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-21698",
-        "env": {
-          "SCRIPT_PATH": null,
-          "RELEASE_ROOT": null,
-          "ERTS_BIN": null,
-          "RELEASE_DISTRIBUTION_FLAG": null,
-          "RELEASE_DISTRIBUTION": null,
-          "EMU": null,
-          "RELEASE_COMMAND": null,
-          "PROGNAME": null,
-          "ELIXIR_VERSION": null,
-          "RELEASE_MODE": null,
-          "beforeExtra": null,
-          "REL_EXEC": null,
-          "RELEASE_PROG": null,
-          "ERL_LIBS": null,
-          "RELEASE_NODE": null,
-          "REL_EXTRA": null,
-          "RELEASE_BOOT_SCRIPT_CLEAN": null,
-          "RELEASE_NAME": null,
-          "RELEASE_VM_ARGS": null,
-          "ERLEXEC_DIR": null,
-          "ERTS_VSN": null,
-          "RELEASE_SYS_CONFIG": null,
-          "ROOTDIR": null,
-          "ERL_CONSOLE_MODE": null,
-          "parsErlang": null,
-          "RELEASE_TMP": null,
-          "REL_VSN_DIR": null,
-          "RELEASE_VSN": null,
-          "RELEASE_BOOT_SCRIPT": null,
-          "RELEASE_REMOTE_VM_ARGS": null,
-          "BINDIR": null,
-          "REL_GOTO": null,
-          "endLoop": null,
-          "RELEASE_COOKIE": null
-        },
-        "stderr_to_stdout": true
-      },
-      "output": "fatal: not a git repository (or any of the parent directories): .git\n",
-      "recorded_at": "2026-08-02T15:40:12.761625Z"
-    },
-    {
-      "args": [
-        "init",
-        "-b",
-        "main"
-      ],
-      "command": "git",
-      "exit_code": 0,
-      "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-21698",
-        "env": {
-          "SCRIPT_PATH": null,
-          "RELEASE_ROOT": null,
-          "ERTS_BIN": null,
-          "RELEASE_DISTRIBUTION_FLAG": null,
-          "RELEASE_DISTRIBUTION": null,
-          "EMU": null,
-          "RELEASE_COMMAND": null,
-          "PROGNAME": null,
-          "ELIXIR_VERSION": null,
-          "RELEASE_MODE": null,
-          "beforeExtra": null,
-          "REL_EXEC": null,
-          "RELEASE_PROG": null,
-          "ERL_LIBS": null,
-          "RELEASE_NODE": null,
-          "REL_EXTRA": null,
-          "RELEASE_BOOT_SCRIPT_CLEAN": null,
-          "RELEASE_NAME": null,
-          "RELEASE_VM_ARGS": null,
-          "ERLEXEC_DIR": null,
-          "ERTS_VSN": null,
-          "RELEASE_SYS_CONFIG": null,
-          "ROOTDIR": null,
-          "ERL_CONSOLE_MODE": null,
-          "parsErlang": null,
-          "RELEASE_TMP": null,
-          "REL_VSN_DIR": null,
-          "RELEASE_VSN": null,
-          "RELEASE_BOOT_SCRIPT": null,
-          "RELEASE_REMOTE_VM_ARGS": null,
-          "BINDIR": null,
-          "REL_GOTO": null,
-          "endLoop": null,
-          "RELEASE_COOKIE": null
-        },
-        "stderr_to_stdout": true
-      },
-      "output": "Initialized empty Git repository in /private/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-21698/.git/\n",
-      "recorded_at": "2026-08-02T15:40:12.776365Z"
-    },
-    {
-      "args": [
-        "rev-parse",
-        "HEAD"
-      ],
-      "command": "git",
-      "exit_code": 128,
-      "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-21698",
-        "env": {
-          "SCRIPT_PATH": null,
-          "RELEASE_ROOT": null,
-          "ERTS_BIN": null,
-          "RELEASE_DISTRIBUTION_FLAG": null,
-          "RELEASE_DISTRIBUTION": null,
-          "EMU": null,
-          "RELEASE_COMMAND": null,
-          "PROGNAME": null,
-          "ELIXIR_VERSION": null,
-          "RELEASE_MODE": null,
-          "beforeExtra": null,
-          "REL_EXEC": null,
-          "RELEASE_PROG": null,
-          "ERL_LIBS": null,
-          "RELEASE_NODE": null,
-          "REL_EXTRA": null,
-          "RELEASE_BOOT_SCRIPT_CLEAN": null,
-          "RELEASE_NAME": null,
-          "RELEASE_VM_ARGS": null,
-          "ERLEXEC_DIR": null,
-          "ERTS_VSN": null,
-          "RELEASE_SYS_CONFIG": null,
-          "ROOTDIR": null,
-          "ERL_CONSOLE_MODE": null,
-          "parsErlang": null,
-          "RELEASE_TMP": null,
-          "REL_VSN_DIR": null,
-          "RELEASE_VSN": null,
-          "RELEASE_BOOT_SCRIPT": null,
-          "RELEASE_REMOTE_VM_ARGS": null,
-          "BINDIR": null,
-          "REL_GOTO": null,
-          "endLoop": null,
-          "RELEASE_COOKIE": null
-        },
-        "stderr_to_stdout": true
-      },
-      "output": "fatal: ambiguous argument 'HEAD': unknown revision or path not in the working tree.\nUse '--' to separate paths from revisions, like this:\n'git <command> [<revision>...] -- [<file>...]'\nHEAD\n",
-      "recorded_at": "2026-08-02T15:40:12.782380Z"
-    },
-    {
-      "args": [
-        "add",
-        "-A"
-      ],
-      "command": "git",
-      "exit_code": 0,
-      "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-21698",
-        "env": {
-          "SCRIPT_PATH": null,
-          "RELEASE_ROOT": null,
-          "ERTS_BIN": null,
-          "RELEASE_DISTRIBUTION_FLAG": null,
-          "RELEASE_DISTRIBUTION": null,
-          "EMU": null,
-          "RELEASE_COMMAND": null,
-          "PROGNAME": null,
-          "ELIXIR_VERSION": null,
-          "RELEASE_MODE": null,
-          "beforeExtra": null,
-          "REL_EXEC": null,
-          "RELEASE_PROG": null,
-          "ERL_LIBS": null,
-          "RELEASE_NODE": null,
-          "REL_EXTRA": null,
-          "RELEASE_BOOT_SCRIPT_CLEAN": null,
-          "RELEASE_NAME": null,
-          "RELEASE_VM_ARGS": null,
-          "ERLEXEC_DIR": null,
-          "ERTS_VSN": null,
-          "RELEASE_SYS_CONFIG": null,
-          "ROOTDIR": null,
-          "ERL_CONSOLE_MODE": null,
-          "parsErlang": null,
-          "RELEASE_TMP": null,
-          "REL_VSN_DIR": null,
-          "RELEASE_VSN": null,
-          "RELEASE_BOOT_SCRIPT": null,
-          "RELEASE_REMOTE_VM_ARGS": null,
-          "BINDIR": null,
-          "REL_GOTO": null,
-          "endLoop": null,
-          "RELEASE_COOKIE": null
-        },
-        "stderr_to_stdout": true
-      },
-      "output": "",
-      "recorded_at": "2026-08-02T15:40:12.788794Z"
-    },
-    {
-      "args": [
-        "commit",
-        "-m",
-        "Initial commit"
-      ],
-      "command": "git",
-      "exit_code": 0,
-      "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-21698",
-        "env": {
-          "SCRIPT_PATH": null,
-          "RELEASE_ROOT": null,
-          "ERTS_BIN": null,
-          "RELEASE_DISTRIBUTION_FLAG": null,
-          "RELEASE_DISTRIBUTION": null,
-          "EMU": null,
-          "RELEASE_COMMAND": null,
-          "PROGNAME": null,
-          "ELIXIR_VERSION": null,
-          "RELEASE_MODE": null,
-          "beforeExtra": null,
-          "REL_EXEC": null,
-          "RELEASE_PROG": null,
-          "ERL_LIBS": null,
-          "RELEASE_NODE": null,
-          "REL_EXTRA": null,
-          "RELEASE_BOOT_SCRIPT_CLEAN": null,
-          "RELEASE_NAME": null,
-          "RELEASE_VM_ARGS": null,
-          "ERLEXEC_DIR": null,
-          "ERTS_VSN": null,
-          "RELEASE_SYS_CONFIG": null,
-          "ROOTDIR": null,
-          "ERL_CONSOLE_MODE": null,
-          "parsErlang": null,
-          "RELEASE_TMP": null,
-          "REL_VSN_DIR": null,
-          "RELEASE_VSN": null,
-          "RELEASE_BOOT_SCRIPT": null,
-          "RELEASE_REMOTE_VM_ARGS": null,
-          "BINDIR": null,
-          "REL_GOTO": null,
-          "endLoop": null,
-          "RELEASE_COOKIE": null
-        },
-        "stderr_to_stdout": true
-      },
-      "output": "[main (root-commit) 55d710a] Initial commit\n 1 file changed, 1 insertion(+)\n create mode 100644 mix.exs\n",
-      "recorded_at": "2026-08-02T15:40:12.802834Z"
-    },
-    {
-      "args": [
-        "remote",
-        "add",
-        "origin",
-        "https://github.com/johns10/spex-story985-criterion8182.git"
-      ],
-      "command": "git",
-      "exit_code": 0,
-      "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-21698",
-        "env": {
-          "SCRIPT_PATH": null,
-          "RELEASE_ROOT": null,
-          "ERTS_BIN": null,
-          "RELEASE_DISTRIBUTION_FLAG": null,
-          "RELEASE_DISTRIBUTION": null,
-          "EMU": null,
-          "RELEASE_COMMAND": null,
-          "PROGNAME": null,
-          "ELIXIR_VERSION": null,
-          "RELEASE_MODE": null,
-          "beforeExtra": null,
-          "REL_EXEC": null,
-          "RELEASE_PROG": null,
-          "ERL_LIBS": null,
-          "RELEASE_NODE": null,
-          "REL_EXTRA": null,
-          "RELEASE_BOOT_SCRIPT_CLEAN": null,
-          "RELEASE_NAME": null,
-          "RELEASE_VM_ARGS": null,
-          "ERLEXEC_DIR": null,
-          "ERTS_VSN": null,
-          "RELEASE_SYS_CONFIG": null,
-          "ROOTDIR": null,
-          "ERL_CONSOLE_MODE": null,
-          "parsErlang": null,
-          "RELEASE_TMP": null,
-          "REL_VSN_DIR": null,
-          "RELEASE_VSN": null,
-          "RELEASE_BOOT_SCRIPT": null,
-          "RELEASE_REMOTE_VM_ARGS": null,
-          "BINDIR": null,
-          "REL_GOTO": null,
-          "endLoop": null,
-          "RELEASE_COOKIE": null
-        },
-        "stderr_to_stdout": true
-      },
-      "output": "",
-      "recorded_at": "2026-08-02T15:40:12.807972Z"
-    },
-    {
-      "args": [
-        "push",
-        "-u",
-        "origin",
-        "main"
-      ],
-      "command": "git",
-      "exit_code": 1,
-      "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-21698",
-        "env": {
-          "SCRIPT_PATH": null,
-          "RELEASE_ROOT": null,
-          "ERTS_BIN": null,
-          "RELEASE_DISTRIBUTION_FLAG": null,
-          "RELEASE_DISTRIBUTION": null,
-          "EMU": null,
-          "RELEASE_COMMAND": null,
-          "PROGNAME": null,
-          "ELIXIR_VERSION": null,
-          "RELEASE_MODE": null,
-          "beforeExtra": null,
-          "REL_EXEC": null,
-          "RELEASE_PROG": null,
-          "ERL_LIBS": null,
-          "RELEASE_NODE": null,
-          "REL_EXTRA": null,
-          "RELEASE_BOOT_SCRIPT_CLEAN": null,
-          "RELEASE_NAME": null,
-          "RELEASE_VM_ARGS": null,
-          "ERLEXEC_DIR": null,
-          "ERTS_VSN": null,
-          "RELEASE_SYS_CONFIG": null,
-          "ROOTDIR": null,
-          "ERL_CONSOLE_MODE": null,
-          "parsErlang": null,
-          "RELEASE_TMP": null,
-          "REL_VSN_DIR": null,
-          "RELEASE_VSN": null,
-          "RELEASE_BOOT_SCRIPT": null,
-          "RELEASE_REMOTE_VM_ARGS": null,
-          "BINDIR": null,
-          "REL_GOTO": null,
-          "endLoop": null,
-          "RELEASE_COOKIE": null
-        },
-        "stderr_to_stdout": true
-      },
-      "output": "To https://github.com/johns10/spex-story985-criterion8182.git\n ! [rejected]        main -> main (fetch first)\nerror: failed to push some refs to 'https://github.com/johns10/spex-story985-criterion8182.git'\nhint: Updates were rejected because the remote contains work that you do not\nhint: have locally. This is usually caused by another repository pushing to\nhint: the same ref. If you want to integrate the remote changes, use\nhint: 'git pull' before pushing again.\nhint: See the 'Note about fast-forwards' in 'git push --help' for details.\n",
-      "recorded_at": "2026-08-02T15:40:13.275948Z"
-    },
-    {
-      "args": [
-        "rev-parse",
-        "--is-inside-work-tree"
-      ],
-      "command": "git",
-      "exit_code": 128,
-      "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-20131",
-        "env": {
-          "SCRIPT_PATH": null,
-          "RELEASE_ROOT": null,
-          "ERTS_BIN": null,
-          "RELEASE_DISTRIBUTION_FLAG": null,
-          "RELEASE_DISTRIBUTION": null,
-          "EMU": null,
-          "RELEASE_COMMAND": null,
-          "PROGNAME": null,
-          "ELIXIR_VERSION": null,
-          "RELEASE_MODE": null,
-          "beforeExtra": null,
-          "REL_EXEC": null,
-          "RELEASE_PROG": null,
-          "ERL_LIBS": null,
-          "RELEASE_NODE": null,
-          "REL_EXTRA": null,
-          "RELEASE_BOOT_SCRIPT_CLEAN": null,
-          "RELEASE_NAME": null,
-          "RELEASE_VM_ARGS": null,
-          "ERLEXEC_DIR": null,
-          "ERTS_VSN": null,
-          "RELEASE_SYS_CONFIG": null,
-          "ROOTDIR": null,
-          "ERL_CONSOLE_MODE": null,
-          "parsErlang": null,
-          "RELEASE_TMP": null,
-          "REL_VSN_DIR": null,
-          "RELEASE_VSN": null,
-          "RELEASE_BOOT_SCRIPT": null,
-          "RELEASE_REMOTE_VM_ARGS": null,
-          "BINDIR": null,
-          "REL_GOTO": null,
-          "endLoop": null,
-          "RELEASE_COOKIE": null
-        },
-        "stderr_to_stdout": true
-      },
-      "output": "fatal: not a git repository (or any of the parent directories): .git\n",
-      "recorded_at": "2026-08-02T16:04:25.326170Z"
-    },
-    {
-      "args": [
-        "init",
-        "-b",
-        "main"
-      ],
-      "command": "git",
-      "exit_code": 0,
-      "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-20131",
-        "env": {
-          "SCRIPT_PATH": null,
-          "RELEASE_ROOT": null,
-          "ERTS_BIN": null,
-          "RELEASE_DISTRIBUTION_FLAG": null,
-          "RELEASE_DISTRIBUTION": null,
-          "EMU": null,
-          "RELEASE_COMMAND": null,
-          "PROGNAME": null,
-          "ELIXIR_VERSION": null,
-          "RELEASE_MODE": null,
-          "beforeExtra": null,
-          "REL_EXEC": null,
-          "RELEASE_PROG": null,
-          "ERL_LIBS": null,
-          "RELEASE_NODE": null,
-          "REL_EXTRA": null,
-          "RELEASE_BOOT_SCRIPT_CLEAN": null,
-          "RELEASE_NAME": null,
-          "RELEASE_VM_ARGS": null,
-          "ERLEXEC_DIR": null,
-          "ERTS_VSN": null,
-          "RELEASE_SYS_CONFIG": null,
-          "ROOTDIR": null,
-          "ERL_CONSOLE_MODE": null,
-          "parsErlang": null,
-          "RELEASE_TMP": null,
-          "REL_VSN_DIR": null,
-          "RELEASE_VSN": null,
-          "RELEASE_BOOT_SCRIPT": null,
-          "RELEASE_REMOTE_VM_ARGS": null,
-          "BINDIR": null,
-          "REL_GOTO": null,
-          "endLoop": null,
-          "RELEASE_COOKIE": null
-        },
-        "stderr_to_stdout": true
-      },
-      "output": "Initialized empty Git repository in /private/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-20131/.git/\n",
-      "recorded_at": "2026-08-02T16:04:25.340213Z"
-    },
-    {
-      "args": [
-        "rev-parse",
-        "HEAD"
-      ],
-      "command": "git",
-      "exit_code": 128,
-      "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-20131",
-        "env": {
-          "SCRIPT_PATH": null,
-          "RELEASE_ROOT": null,
-          "ERTS_BIN": null,
-          "RELEASE_DISTRIBUTION_FLAG": null,
-          "RELEASE_DISTRIBUTION": null,
-          "EMU": null,
-          "RELEASE_COMMAND": null,
-          "PROGNAME": null,
-          "ELIXIR_VERSION": null,
-          "RELEASE_MODE": null,
-          "beforeExtra": null,
-          "REL_EXEC": null,
-          "RELEASE_PROG": null,
-          "ERL_LIBS": null,
-          "RELEASE_NODE": null,
-          "REL_EXTRA": null,
-          "RELEASE_BOOT_SCRIPT_CLEAN": null,
-          "RELEASE_NAME": null,
-          "RELEASE_VM_ARGS": null,
-          "ERLEXEC_DIR": null,
-          "ERTS_VSN": null,
-          "RELEASE_SYS_CONFIG": null,
-          "ROOTDIR": null,
-          "ERL_CONSOLE_MODE": null,
-          "parsErlang": null,
-          "RELEASE_TMP": null,
-          "REL_VSN_DIR": null,
-          "RELEASE_VSN": null,
-          "RELEASE_BOOT_SCRIPT": null,
-          "RELEASE_REMOTE_VM_ARGS": null,
-          "BINDIR": null,
-          "REL_GOTO": null,
-          "endLoop": null,
-          "RELEASE_COOKIE": null
-        },
-        "stderr_to_stdout": true
-      },
-      "output": "fatal: ambiguous argument 'HEAD': unknown revision or path not in the working tree.\nUse '--' to separate paths from revisions, like this:\n'git <command> [<revision>...] -- [<file>...]'\nHEAD\n",
-      "recorded_at": "2026-08-02T16:04:25.345129Z"
-    },
-    {
-      "args": [
-        "add",
-        "-A"
-      ],
-      "command": "git",
-      "exit_code": 0,
-      "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-20131",
-        "env": {
-          "SCRIPT_PATH": null,
-          "RELEASE_ROOT": null,
-          "ERTS_BIN": null,
-          "RELEASE_DISTRIBUTION_FLAG": null,
-          "RELEASE_DISTRIBUTION": null,
-          "EMU": null,
-          "RELEASE_COMMAND": null,
-          "PROGNAME": null,
-          "ELIXIR_VERSION": null,
-          "RELEASE_MODE": null,
-          "beforeExtra": null,
-          "REL_EXEC": null,
-          "RELEASE_PROG": null,
-          "ERL_LIBS": null,
-          "RELEASE_NODE": null,
-          "REL_EXTRA": null,
-          "RELEASE_BOOT_SCRIPT_CLEAN": null,
-          "RELEASE_NAME": null,
-          "RELEASE_VM_ARGS": null,
-          "ERLEXEC_DIR": null,
-          "ERTS_VSN": null,
-          "RELEASE_SYS_CONFIG": null,
-          "ROOTDIR": null,
-          "ERL_CONSOLE_MODE": null,
-          "parsErlang": null,
-          "RELEASE_TMP": null,
-          "REL_VSN_DIR": null,
-          "RELEASE_VSN": null,
-          "RELEASE_BOOT_SCRIPT": null,
-          "RELEASE_REMOTE_VM_ARGS": null,
-          "BINDIR": null,
-          "REL_GOTO": null,
-          "endLoop": null,
-          "RELEASE_COOKIE": null
-        },
-        "stderr_to_stdout": true
-      },
-      "output": "",
-      "recorded_at": "2026-08-02T16:04:25.351580Z"
-    },
-    {
-      "args": [
-        "commit",
-        "-m",
-        "Initial commit"
-      ],
-      "command": "git",
-      "exit_code": 0,
-      "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-20131",
-        "env": {
-          "SCRIPT_PATH": null,
-          "RELEASE_ROOT": null,
-          "ERTS_BIN": null,
-          "RELEASE_DISTRIBUTION_FLAG": null,
-          "RELEASE_DISTRIBUTION": null,
-          "EMU": null,
-          "RELEASE_COMMAND": null,
-          "PROGNAME": null,
-          "ELIXIR_VERSION": null,
-          "RELEASE_MODE": null,
-          "beforeExtra": null,
-          "REL_EXEC": null,
-          "RELEASE_PROG": null,
-          "ERL_LIBS": null,
-          "RELEASE_NODE": null,
-          "REL_EXTRA": null,
-          "RELEASE_BOOT_SCRIPT_CLEAN": null,
-          "RELEASE_NAME": null,
-          "RELEASE_VM_ARGS": null,
-          "ERLEXEC_DIR": null,
-          "ERTS_VSN": null,
-          "RELEASE_SYS_CONFIG": null,
-          "ROOTDIR": null,
-          "ERL_CONSOLE_MODE": null,
-          "parsErlang": null,
-          "RELEASE_TMP": null,
-          "REL_VSN_DIR": null,
-          "RELEASE_VSN": null,
-          "RELEASE_BOOT_SCRIPT": null,
-          "RELEASE_REMOTE_VM_ARGS": null,
-          "BINDIR": null,
-          "REL_GOTO": null,
-          "endLoop": null,
-          "RELEASE_COOKIE": null
-        },
-        "stderr_to_stdout": true
-      },
-      "output": "[main (root-commit) 98ec778] Initial commit\n 1 file changed, 1 insertion(+)\n create mode 100644 mix.exs\n",
-      "recorded_at": "2026-08-02T16:04:25.365014Z"
-    },
-    {
-      "args": [
-        "remote",
-        "add",
-        "origin",
-        "https://github.com/johns10/spex-story985-criterion8182.git"
-      ],
-      "command": "git",
-      "exit_code": 0,
-      "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-20131",
-        "env": {
-          "SCRIPT_PATH": null,
-          "RELEASE_ROOT": null,
-          "ERTS_BIN": null,
-          "RELEASE_DISTRIBUTION_FLAG": null,
-          "RELEASE_DISTRIBUTION": null,
-          "EMU": null,
-          "RELEASE_COMMAND": null,
-          "PROGNAME": null,
-          "ELIXIR_VERSION": null,
-          "RELEASE_MODE": null,
-          "beforeExtra": null,
-          "REL_EXEC": null,
-          "RELEASE_PROG": null,
-          "ERL_LIBS": null,
-          "RELEASE_NODE": null,
-          "REL_EXTRA": null,
-          "RELEASE_BOOT_SCRIPT_CLEAN": null,
-          "RELEASE_NAME": null,
-          "RELEASE_VM_ARGS": null,
-          "ERLEXEC_DIR": null,
-          "ERTS_VSN": null,
-          "RELEASE_SYS_CONFIG": null,
-          "ROOTDIR": null,
-          "ERL_CONSOLE_MODE": null,
-          "parsErlang": null,
-          "RELEASE_TMP": null,
-          "REL_VSN_DIR": null,
-          "RELEASE_VSN": null,
-          "RELEASE_BOOT_SCRIPT": null,
-          "RELEASE_REMOTE_VM_ARGS": null,
-          "BINDIR": null,
-          "REL_GOTO": null,
-          "endLoop": null,
-          "RELEASE_COOKIE": null
-        },
-        "stderr_to_stdout": true
-      },
-      "output": "",
-      "recorded_at": "2026-08-02T16:04:25.370205Z"
-    },
-    {
-      "args": [
-        "push",
-        "-u",
-        "origin",
-        "main"
-      ],
-      "command": "git",
-      "exit_code": 0,
-      "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-20131",
-        "env": {
-          "SCRIPT_PATH": null,
-          "RELEASE_ROOT": null,
-          "ERTS_BIN": null,
-          "RELEASE_DISTRIBUTION_FLAG": null,
-          "RELEASE_DISTRIBUTION": null,
-          "EMU": null,
-          "RELEASE_COMMAND": null,
-          "PROGNAME": null,
-          "ELIXIR_VERSION": null,
-          "RELEASE_MODE": null,
-          "beforeExtra": null,
-          "REL_EXEC": null,
-          "RELEASE_PROG": null,
-          "ERL_LIBS": null,
-          "RELEASE_NODE": null,
-          "REL_EXTRA": null,
-          "RELEASE_BOOT_SCRIPT_CLEAN": null,
-          "RELEASE_NAME": null,
-          "RELEASE_VM_ARGS": null,
-          "ERLEXEC_DIR": null,
-          "ERTS_VSN": null,
-          "RELEASE_SYS_CONFIG": null,
-          "ROOTDIR": null,
-          "ERL_CONSOLE_MODE": null,
-          "parsErlang": null,
-          "RELEASE_TMP": null,
-          "REL_VSN_DIR": null,
-          "RELEASE_VSN": null,
-          "RELEASE_BOOT_SCRIPT": null,
-          "RELEASE_REMOTE_VM_ARGS": null,
-          "BINDIR": null,
-          "REL_GOTO": null,
-          "endLoop": null,
-          "RELEASE_COOKIE": null
-        },
-        "stderr_to_stdout": true
-      },
-      "output": "To https://github.com/johns10/spex-story985-criterion8182.git\n * [new branch]      main -> main\nbranch 'main' set up to track 'origin/main'.\n",
-      "recorded_at": "2026-08-02T16:04:26.369698Z"
-    },
-    {
-      "args": [
-        "rev-parse",
-        "HEAD"
-      ],
-      "command": "git",
-      "exit_code": 0,
-      "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-20131",
-        "env": {
-          "SCRIPT_PATH": null,
-          "RELEASE_ROOT": null,
-          "ERTS_BIN": null,
-          "RELEASE_DISTRIBUTION_FLAG": null,
-          "RELEASE_DISTRIBUTION": null,
-          "EMU": null,
-          "RELEASE_COMMAND": null,
-          "PROGNAME": null,
-          "ELIXIR_VERSION": null,
-          "RELEASE_MODE": null,
-          "beforeExtra": null,
-          "REL_EXEC": null,
-          "RELEASE_PROG": null,
-          "ERL_LIBS": null,
-          "RELEASE_NODE": null,
-          "REL_EXTRA": null,
-          "RELEASE_BOOT_SCRIPT_CLEAN": null,
-          "RELEASE_NAME": null,
-          "RELEASE_VM_ARGS": null,
-          "ERLEXEC_DIR": null,
-          "ERTS_VSN": null,
-          "RELEASE_SYS_CONFIG": null,
-          "ROOTDIR": null,
-          "ERL_CONSOLE_MODE": null,
-          "parsErlang": null,
-          "RELEASE_TMP": null,
-          "REL_VSN_DIR": null,
-          "RELEASE_VSN": null,
-          "RELEASE_BOOT_SCRIPT": null,
-          "RELEASE_REMOTE_VM_ARGS": null,
-          "BINDIR": null,
-          "REL_GOTO": null,
-          "endLoop": null,
-          "RELEASE_COOKIE": null
-        },
-        "stderr_to_stdout": true
-      },
-      "output": "98ec7786145317e42c000edd85dd8dbf840ada68\n",
-      "recorded_at": "2026-08-02T16:04:26.382393Z"
-    },
-    {
-      "args": [
-        "-t",
-        "ed25519",
-        "-N",
-        "",
-        "-C",
-        "spex-story985-criterion8182",
-        "-f",
-        "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/cms-ssh-20963/id_ed25519"
-      ],
-      "command": "ssh-keygen",
-      "exit_code": 0,
-      "opts": {
-        "stderr_to_stdout": true
-      },
-      "output": "Generating public/private ed25519 key pair.\nYour identification has been saved in /var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/cms-ssh-20963/id_ed25519\nYour public key has been saved in /var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/cms-ssh-20963/id_ed25519.pub\nThe key fingerprint is:\nSHA256:GJfRanHEaf7DV7Kyw+IPH7gMRknvKagLGRC2pHU5M74 spex-story985-criterion8182\nThe key's randomart image is:\n+--[ED25519 256]--+\n|.o. ..  .+..     |\n|+o..=   .o*      |\n|o. . +. +*       |\n| .  .  =oo.   . .|\n|  .  ...S .o   + |\n|   oE  o . o= o  |\n|  o   . + =..=   |\n|   . . . +.++.   |\n|    o.   .+oo.   |\n+----[SHA256]-----+\n",
-      "recorded_at": "2026-08-02T16:04:26.979139Z"
-    },
-    {
-      "args": [],
-      "command": "age-keygen",
-      "exit_code": 0,
-      "opts": {
-        "stderr_to_stdout": true
-      },
-      "output": "Public key: age1akz02a4vt7dssvszqnle0za0fmxa9ugc8ryls8089ke697wnf4vq0rv9sy\n# created: 2026-08-02T12:04:28-04:00\n# public key: age1akz02a4vt7dssvszqnle0za0fmxa9ugc8ryls8089ke697wnf4vq0rv9sy\nAGE-SECRET-KEY-<REDACTED>\n",
-      "recorded_at": "2026-08-02T16:04:28.549380Z"
-    },
-    {
-      "args": [],
-      "command": "age-keygen",
-      "exit_code": 0,
-      "opts": {
-        "stderr_to_stdout": true
-      },
-      "output": "Public key: age1rmlg9fqg8thtfqqdl3yh5smq9rcsc6pyumge6vzqfm94dgyyapksmvg90t\n# created: 2026-08-02T12:04:28-04:00\n# public key: age1rmlg9fqg8thtfqqdl3yh5smq9rcsc6pyumge6vzqfm94dgyyapksmvg90t\nAGE-SECRET-KEY-<REDACTED>\n",
-      "recorded_at": "2026-08-02T16:04:28.553546Z"
-    },
-    {
-      "args": [
-        "rev-parse",
-        "--is-inside-work-tree"
-      ],
-      "command": "git",
-      "exit_code": 128,
-      "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-21958",
-        "env": {
-          "SCRIPT_PATH": null,
-          "RELEASE_ROOT": null,
-          "ERTS_BIN": null,
-          "RELEASE_DISTRIBUTION_FLAG": null,
-          "RELEASE_DISTRIBUTION": null,
-          "EMU": null,
-          "RELEASE_COMMAND": null,
-          "PROGNAME": null,
-          "ELIXIR_VERSION": null,
-          "RELEASE_MODE": null,
-          "beforeExtra": null,
-          "REL_EXEC": null,
-          "RELEASE_PROG": null,
-          "ERL_LIBS": null,
-          "RELEASE_NODE": null,
-          "REL_EXTRA": null,
-          "RELEASE_BOOT_SCRIPT_CLEAN": null,
-          "RELEASE_NAME": null,
-          "RELEASE_VM_ARGS": null,
-          "ERLEXEC_DIR": null,
-          "ERTS_VSN": null,
-          "RELEASE_SYS_CONFIG": null,
-          "ROOTDIR": null,
-          "ERL_CONSOLE_MODE": null,
-          "parsErlang": null,
-          "RELEASE_TMP": null,
-          "REL_VSN_DIR": null,
-          "RELEASE_VSN": null,
-          "RELEASE_BOOT_SCRIPT": null,
-          "RELEASE_REMOTE_VM_ARGS": null,
-          "BINDIR": null,
-          "REL_GOTO": null,
-          "endLoop": null,
-          "RELEASE_COOKIE": null
-        },
-        "stderr_to_stdout": true
-      },
-      "output": "fatal: not a git repository (or any of the parent directories): .git\n",
-      "recorded_at": "2026-08-02T16:08:55.061541Z"
-    },
-    {
-      "args": [
-        "init",
-        "-b",
-        "main"
-      ],
-      "command": "git",
-      "exit_code": 0,
-      "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-21958",
-        "env": {
-          "SCRIPT_PATH": null,
-          "RELEASE_ROOT": null,
-          "ERTS_BIN": null,
-          "RELEASE_DISTRIBUTION_FLAG": null,
-          "RELEASE_DISTRIBUTION": null,
-          "EMU": null,
-          "RELEASE_COMMAND": null,
-          "PROGNAME": null,
-          "ELIXIR_VERSION": null,
-          "RELEASE_MODE": null,
-          "beforeExtra": null,
-          "REL_EXEC": null,
-          "RELEASE_PROG": null,
-          "ERL_LIBS": null,
-          "RELEASE_NODE": null,
-          "REL_EXTRA": null,
-          "RELEASE_BOOT_SCRIPT_CLEAN": null,
-          "RELEASE_NAME": null,
-          "RELEASE_VM_ARGS": null,
-          "ERLEXEC_DIR": null,
-          "ERTS_VSN": null,
-          "RELEASE_SYS_CONFIG": null,
-          "ROOTDIR": null,
-          "ERL_CONSOLE_MODE": null,
-          "parsErlang": null,
-          "RELEASE_TMP": null,
-          "REL_VSN_DIR": null,
-          "RELEASE_VSN": null,
-          "RELEASE_BOOT_SCRIPT": null,
-          "RELEASE_REMOTE_VM_ARGS": null,
-          "BINDIR": null,
-          "REL_GOTO": null,
-          "endLoop": null,
-          "RELEASE_COOKIE": null
-        },
-        "stderr_to_stdout": true
-      },
-      "output": "Initialized empty Git repository in /private/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-21958/.git/\n",
-      "recorded_at": "2026-08-02T16:08:55.072951Z"
-    },
-    {
-      "args": [
-        "rev-parse",
-        "HEAD"
-      ],
-      "command": "git",
-      "exit_code": 128,
-      "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-21958",
-        "env": {
-          "SCRIPT_PATH": null,
-          "RELEASE_ROOT": null,
-          "ERTS_BIN": null,
-          "RELEASE_DISTRIBUTION_FLAG": null,
-          "RELEASE_DISTRIBUTION": null,
-          "EMU": null,
-          "RELEASE_COMMAND": null,
-          "PROGNAME": null,
-          "ELIXIR_VERSION": null,
-          "RELEASE_MODE": null,
-          "beforeExtra": null,
-          "REL_EXEC": null,
-          "RELEASE_PROG": null,
-          "ERL_LIBS": null,
-          "RELEASE_NODE": null,
-          "REL_EXTRA": null,
-          "RELEASE_BOOT_SCRIPT_CLEAN": null,
-          "RELEASE_NAME": null,
-          "RELEASE_VM_ARGS": null,
-          "ERLEXEC_DIR": null,
-          "ERTS_VSN": null,
-          "RELEASE_SYS_CONFIG": null,
-          "ROOTDIR": null,
-          "ERL_CONSOLE_MODE": null,
-          "parsErlang": null,
-          "RELEASE_TMP": null,
-          "REL_VSN_DIR": null,
-          "RELEASE_VSN": null,
-          "RELEASE_BOOT_SCRIPT": null,
-          "RELEASE_REMOTE_VM_ARGS": null,
-          "BINDIR": null,
-          "REL_GOTO": null,
-          "endLoop": null,
-          "RELEASE_COOKIE": null
-        },
-        "stderr_to_stdout": true
-      },
-      "output": "fatal: ambiguous argument 'HEAD': unknown revision or path not in the working tree.\nUse '--' to separate paths from revisions, like this:\n'git <command> [<revision>...] -- [<file>...]'\nHEAD\n",
-      "recorded_at": "2026-08-02T16:08:55.077721Z"
-    },
-    {
-      "args": [
-        "add",
-        "-A"
-      ],
-      "command": "git",
-      "exit_code": 0,
-      "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-21958",
-        "env": {
-          "SCRIPT_PATH": null,
-          "RELEASE_ROOT": null,
-          "ERTS_BIN": null,
-          "RELEASE_DISTRIBUTION_FLAG": null,
-          "RELEASE_DISTRIBUTION": null,
-          "EMU": null,
-          "RELEASE_COMMAND": null,
-          "PROGNAME": null,
-          "ELIXIR_VERSION": null,
-          "RELEASE_MODE": null,
-          "beforeExtra": null,
-          "REL_EXEC": null,
-          "RELEASE_PROG": null,
-          "ERL_LIBS": null,
-          "RELEASE_NODE": null,
-          "REL_EXTRA": null,
-          "RELEASE_BOOT_SCRIPT_CLEAN": null,
-          "RELEASE_NAME": null,
-          "RELEASE_VM_ARGS": null,
-          "ERLEXEC_DIR": null,
-          "ERTS_VSN": null,
-          "RELEASE_SYS_CONFIG": null,
-          "ROOTDIR": null,
-          "ERL_CONSOLE_MODE": null,
-          "parsErlang": null,
-          "RELEASE_TMP": null,
-          "REL_VSN_DIR": null,
-          "RELEASE_VSN": null,
-          "RELEASE_BOOT_SCRIPT": null,
-          "RELEASE_REMOTE_VM_ARGS": null,
-          "BINDIR": null,
-          "REL_GOTO": null,
-          "endLoop": null,
-          "RELEASE_COOKIE": null
-        },
-        "stderr_to_stdout": true
-      },
-      "output": "",
-      "recorded_at": "2026-08-02T16:08:55.083660Z"
-    },
-    {
-      "args": [
-        "commit",
-        "-m",
-        "Initial commit"
-      ],
-      "command": "git",
-      "exit_code": 0,
-      "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-21958",
-        "env": {
-          "SCRIPT_PATH": null,
-          "RELEASE_ROOT": null,
-          "ERTS_BIN": null,
-          "RELEASE_DISTRIBUTION_FLAG": null,
-          "RELEASE_DISTRIBUTION": null,
-          "EMU": null,
-          "RELEASE_COMMAND": null,
-          "PROGNAME": null,
-          "ELIXIR_VERSION": null,
-          "RELEASE_MODE": null,
-          "beforeExtra": null,
-          "REL_EXEC": null,
-          "RELEASE_PROG": null,
-          "ERL_LIBS": null,
-          "RELEASE_NODE": null,
-          "REL_EXTRA": null,
-          "RELEASE_BOOT_SCRIPT_CLEAN": null,
-          "RELEASE_NAME": null,
-          "RELEASE_VM_ARGS": null,
-          "ERLEXEC_DIR": null,
-          "ERTS_VSN": null,
-          "RELEASE_SYS_CONFIG": null,
-          "ROOTDIR": null,
-          "ERL_CONSOLE_MODE": null,
-          "parsErlang": null,
-          "RELEASE_TMP": null,
-          "REL_VSN_DIR": null,
-          "RELEASE_VSN": null,
-          "RELEASE_BOOT_SCRIPT": null,
-          "RELEASE_REMOTE_VM_ARGS": null,
-          "BINDIR": null,
-          "REL_GOTO": null,
-          "endLoop": null,
-          "RELEASE_COOKIE": null
-        },
-        "stderr_to_stdout": true
-      },
-      "output": "[main (root-commit) ff5f7e1] Initial commit\n 1 file changed, 1 insertion(+)\n create mode 100644 mix.exs\n",
-      "recorded_at": "2026-08-02T16:08:55.096113Z"
-    },
-    {
-      "args": [
-        "remote",
-        "add",
-        "origin",
-        "https://github.com/johns10/spex-story985-criterion8182.git"
-      ],
-      "command": "git",
-      "exit_code": 0,
-      "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-21958",
-        "env": {
-          "SCRIPT_PATH": null,
-          "RELEASE_ROOT": null,
-          "ERTS_BIN": null,
-          "RELEASE_DISTRIBUTION_FLAG": null,
-          "RELEASE_DISTRIBUTION": null,
-          "EMU": null,
-          "RELEASE_COMMAND": null,
-          "PROGNAME": null,
-          "ELIXIR_VERSION": null,
-          "RELEASE_MODE": null,
-          "beforeExtra": null,
-          "REL_EXEC": null,
-          "RELEASE_PROG": null,
-          "ERL_LIBS": null,
-          "RELEASE_NODE": null,
-          "REL_EXTRA": null,
-          "RELEASE_BOOT_SCRIPT_CLEAN": null,
-          "RELEASE_NAME": null,
-          "RELEASE_VM_ARGS": null,
-          "ERLEXEC_DIR": null,
-          "ERTS_VSN": null,
-          "RELEASE_SYS_CONFIG": null,
-          "ROOTDIR": null,
-          "ERL_CONSOLE_MODE": null,
-          "parsErlang": null,
-          "RELEASE_TMP": null,
-          "REL_VSN_DIR": null,
-          "RELEASE_VSN": null,
-          "RELEASE_BOOT_SCRIPT": null,
-          "RELEASE_REMOTE_VM_ARGS": null,
-          "BINDIR": null,
-          "REL_GOTO": null,
-          "endLoop": null,
-          "RELEASE_COOKIE": null
-        },
-        "stderr_to_stdout": true
-      },
-      "output": "",
-      "recorded_at": "2026-08-02T16:08:55.101455Z"
-    },
-    {
-      "args": [
-        "push",
-        "-u",
-        "origin",
-        "main"
-      ],
-      "command": "git",
-      "exit_code": 1,
-      "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-21958",
-        "env": {
-          "SCRIPT_PATH": null,
-          "RELEASE_ROOT": null,
-          "ERTS_BIN": null,
-          "RELEASE_DISTRIBUTION_FLAG": null,
-          "RELEASE_DISTRIBUTION": null,
-          "EMU": null,
-          "RELEASE_COMMAND": null,
-          "PROGNAME": null,
-          "ELIXIR_VERSION": null,
-          "RELEASE_MODE": null,
-          "beforeExtra": null,
-          "REL_EXEC": null,
-          "RELEASE_PROG": null,
-          "ERL_LIBS": null,
-          "RELEASE_NODE": null,
-          "REL_EXTRA": null,
-          "RELEASE_BOOT_SCRIPT_CLEAN": null,
-          "RELEASE_NAME": null,
-          "RELEASE_VM_ARGS": null,
-          "ERLEXEC_DIR": null,
-          "ERTS_VSN": null,
-          "RELEASE_SYS_CONFIG": null,
-          "ROOTDIR": null,
-          "ERL_CONSOLE_MODE": null,
-          "parsErlang": null,
-          "RELEASE_TMP": null,
-          "REL_VSN_DIR": null,
-          "RELEASE_VSN": null,
-          "RELEASE_BOOT_SCRIPT": null,
-          "RELEASE_REMOTE_VM_ARGS": null,
-          "BINDIR": null,
-          "REL_GOTO": null,
-          "endLoop": null,
-          "RELEASE_COOKIE": null
-        },
-        "stderr_to_stdout": true
-      },
-      "output": "To https://github.com/johns10/spex-story985-criterion8182.git\n ! [rejected]        main -> main (fetch first)\nerror: failed to push some refs to 'https://github.com/johns10/spex-story985-criterion8182.git'\nhint: Updates were rejected because the remote contains work that you do not\nhint: have locally. This is usually caused by another repository pushing to\nhint: the same ref. If you want to integrate the remote changes, use\nhint: 'git pull' before pushing again.\nhint: See the 'Note about fast-forwards' in 'git push --help' for details.\n",
-      "recorded_at": "2026-08-02T16:08:55.574493Z"
-    },
-    {
-      "args": [
-        "rev-parse",
-        "--is-inside-work-tree"
-      ],
-      "command": "git",
-      "exit_code": 128,
-      "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-17129",
-        "env": {
-          "SCRIPT_PATH": null,
-          "RELEASE_ROOT": null,
-          "ERTS_BIN": null,
-          "RELEASE_DISTRIBUTION_FLAG": null,
-          "RELEASE_DISTRIBUTION": null,
-          "EMU": null,
-          "RELEASE_COMMAND": null,
-          "PROGNAME": null,
-          "ELIXIR_VERSION": null,
-          "RELEASE_MODE": null,
-          "beforeExtra": null,
-          "REL_EXEC": null,
-          "RELEASE_PROG": null,
-          "ERL_LIBS": null,
-          "RELEASE_NODE": null,
-          "REL_EXTRA": null,
-          "RELEASE_BOOT_SCRIPT_CLEAN": null,
-          "RELEASE_NAME": null,
-          "RELEASE_VM_ARGS": null,
-          "ERLEXEC_DIR": null,
-          "ERTS_VSN": null,
-          "RELEASE_SYS_CONFIG": null,
-          "ROOTDIR": null,
-          "ERL_CONSOLE_MODE": null,
-          "parsErlang": null,
-          "RELEASE_TMP": null,
-          "REL_VSN_DIR": null,
-          "RELEASE_VSN": null,
-          "RELEASE_BOOT_SCRIPT": null,
-          "RELEASE_REMOTE_VM_ARGS": null,
-          "BINDIR": null,
-          "REL_GOTO": null,
-          "endLoop": null,
-          "RELEASE_COOKIE": null
-        },
-        "stderr_to_stdout": true
-      },
-      "output": "fatal: not a git repository (or any of the parent directories): .git\n",
-      "recorded_at": "2026-08-02T17:43:50.829922Z"
-    },
-    {
-      "args": [
-        "init",
-        "-b",
-        "main"
-      ],
-      "command": "git",
-      "exit_code": 0,
-      "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-17129",
-        "env": {
-          "SCRIPT_PATH": null,
-          "RELEASE_ROOT": null,
-          "ERTS_BIN": null,
-          "RELEASE_DISTRIBUTION_FLAG": null,
-          "RELEASE_DISTRIBUTION": null,
-          "EMU": null,
-          "RELEASE_COMMAND": null,
-          "PROGNAME": null,
-          "ELIXIR_VERSION": null,
-          "RELEASE_MODE": null,
-          "beforeExtra": null,
-          "REL_EXEC": null,
-          "RELEASE_PROG": null,
-          "ERL_LIBS": null,
-          "RELEASE_NODE": null,
-          "REL_EXTRA": null,
-          "RELEASE_BOOT_SCRIPT_CLEAN": null,
-          "RELEASE_NAME": null,
-          "RELEASE_VM_ARGS": null,
-          "ERLEXEC_DIR": null,
-          "ERTS_VSN": null,
-          "RELEASE_SYS_CONFIG": null,
-          "ROOTDIR": null,
-          "ERL_CONSOLE_MODE": null,
-          "parsErlang": null,
-          "RELEASE_TMP": null,
-          "REL_VSN_DIR": null,
-          "RELEASE_VSN": null,
-          "RELEASE_BOOT_SCRIPT": null,
-          "RELEASE_REMOTE_VM_ARGS": null,
-          "BINDIR": null,
-          "REL_GOTO": null,
-          "endLoop": null,
-          "RELEASE_COOKIE": null
-        },
-        "stderr_to_stdout": true
-      },
-      "output": "Initialized empty Git repository in /private/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-17129/.git/\n",
-      "recorded_at": "2026-08-02T17:43:50.845214Z"
-    },
-    {
-      "args": [
-        "rev-parse",
-        "HEAD"
-      ],
-      "command": "git",
-      "exit_code": 128,
-      "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-17129",
-        "env": {
-          "SCRIPT_PATH": null,
-          "RELEASE_ROOT": null,
-          "ERTS_BIN": null,
-          "RELEASE_DISTRIBUTION_FLAG": null,
-          "RELEASE_DISTRIBUTION": null,
-          "EMU": null,
-          "RELEASE_COMMAND": null,
-          "PROGNAME": null,
-          "ELIXIR_VERSION": null,
-          "RELEASE_MODE": null,
-          "beforeExtra": null,
-          "REL_EXEC": null,
-          "RELEASE_PROG": null,
-          "ERL_LIBS": null,
-          "RELEASE_NODE": null,
-          "REL_EXTRA": null,
-          "RELEASE_BOOT_SCRIPT_CLEAN": null,
-          "RELEASE_NAME": null,
-          "RELEASE_VM_ARGS": null,
-          "ERLEXEC_DIR": null,
-          "ERTS_VSN": null,
-          "RELEASE_SYS_CONFIG": null,
-          "ROOTDIR": null,
-          "ERL_CONSOLE_MODE": null,
-          "parsErlang": null,
-          "RELEASE_TMP": null,
-          "REL_VSN_DIR": null,
-          "RELEASE_VSN": null,
-          "RELEASE_BOOT_SCRIPT": null,
-          "RELEASE_REMOTE_VM_ARGS": null,
-          "BINDIR": null,
-          "REL_GOTO": null,
-          "endLoop": null,
-          "RELEASE_COOKIE": null
-        },
-        "stderr_to_stdout": true
-      },
-      "output": "fatal: ambiguous argument 'HEAD': unknown revision or path not in the working tree.\nUse '--' to separate paths from revisions, like this:\n'git <command> [<revision>...] -- [<file>...]'\nHEAD\n",
-      "recorded_at": "2026-08-02T17:43:50.850721Z"
-    },
-    {
-      "args": [
-        "add",
-        "-A"
-      ],
-      "command": "git",
-      "exit_code": 0,
-      "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-17129",
-        "env": {
-          "SCRIPT_PATH": null,
-          "RELEASE_ROOT": null,
-          "ERTS_BIN": null,
-          "RELEASE_DISTRIBUTION_FLAG": null,
-          "RELEASE_DISTRIBUTION": null,
-          "EMU": null,
-          "RELEASE_COMMAND": null,
-          "PROGNAME": null,
-          "ELIXIR_VERSION": null,
-          "RELEASE_MODE": null,
-          "beforeExtra": null,
-          "REL_EXEC": null,
-          "RELEASE_PROG": null,
-          "ERL_LIBS": null,
-          "RELEASE_NODE": null,
-          "REL_EXTRA": null,
-          "RELEASE_BOOT_SCRIPT_CLEAN": null,
-          "RELEASE_NAME": null,
-          "RELEASE_VM_ARGS": null,
-          "ERLEXEC_DIR": null,
-          "ERTS_VSN": null,
-          "RELEASE_SYS_CONFIG": null,
-          "ROOTDIR": null,
-          "ERL_CONSOLE_MODE": null,
-          "parsErlang": null,
-          "RELEASE_TMP": null,
-          "REL_VSN_DIR": null,
-          "RELEASE_VSN": null,
-          "RELEASE_BOOT_SCRIPT": null,
-          "RELEASE_REMOTE_VM_ARGS": null,
-          "BINDIR": null,
-          "REL_GOTO": null,
-          "endLoop": null,
-          "RELEASE_COOKIE": null
-        },
-        "stderr_to_stdout": true
-      },
-      "output": "",
-      "recorded_at": "2026-08-02T17:43:50.857046Z"
-    },
-    {
-      "args": [
-        "commit",
-        "-m",
-        "Initial commit"
-      ],
-      "command": "git",
-      "exit_code": 0,
-      "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-17129",
-        "env": {
-          "SCRIPT_PATH": null,
-          "RELEASE_ROOT": null,
-          "ERTS_BIN": null,
-          "RELEASE_DISTRIBUTION_FLAG": null,
-          "RELEASE_DISTRIBUTION": null,
-          "EMU": null,
-          "RELEASE_COMMAND": null,
-          "PROGNAME": null,
-          "ELIXIR_VERSION": null,
-          "RELEASE_MODE": null,
-          "beforeExtra": null,
-          "REL_EXEC": null,
-          "RELEASE_PROG": null,
-          "ERL_LIBS": null,
-          "RELEASE_NODE": null,
-          "REL_EXTRA": null,
-          "RELEASE_BOOT_SCRIPT_CLEAN": null,
-          "RELEASE_NAME": null,
-          "RELEASE_VM_ARGS": null,
-          "ERLEXEC_DIR": null,
-          "ERTS_VSN": null,
-          "RELEASE_SYS_CONFIG": null,
-          "ROOTDIR": null,
-          "ERL_CONSOLE_MODE": null,
-          "parsErlang": null,
-          "RELEASE_TMP": null,
-          "REL_VSN_DIR": null,
-          "RELEASE_VSN": null,
-          "RELEASE_BOOT_SCRIPT": null,
-          "RELEASE_REMOTE_VM_ARGS": null,
-          "BINDIR": null,
-          "REL_GOTO": null,
-          "endLoop": null,
-          "RELEASE_COOKIE": null
-        },
-        "stderr_to_stdout": true
-      },
-      "output": "[main (root-commit) 3976725] Initial commit\n 1 file changed, 1 insertion(+)\n create mode 100644 mix.exs\n",
-      "recorded_at": "2026-08-02T17:43:50.870070Z"
+      "output": "[main (root-commit) 5794ef8] Initial commit\n 1 file changed, 1 insertion(+)\n create mode 100644 mix.exs\n",
+      "recorded_at": "2026-08-03T02:42:13.318188Z"
     },
     {
       "args": [
@@ -2131,7 +262,7 @@
       "command": "git",
       "exit_code": 0,
       "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-17129",
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-21061",
         "env": {
           "SCRIPT_PATH": null,
           "RELEASE_ROOT": null,
@@ -2171,7 +302,7 @@
         "stderr_to_stdout": true
       },
       "output": "",
-      "recorded_at": "2026-08-02T17:43:50.874982Z"
+      "recorded_at": "2026-08-03T02:42:13.323267Z"
     },
     {
       "args": [
@@ -2183,7 +314,7 @@
       "command": "git",
       "exit_code": 0,
       "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-17129",
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-21061",
         "env": {
           "SCRIPT_PATH": null,
           "RELEASE_ROOT": null,
@@ -2223,7 +354,7 @@
         "stderr_to_stdout": true
       },
       "output": "To https://github.com/codemy-my-spec-test/spex-story985-criterion8182.git\n * [new branch]      main -> main\nbranch 'main' set up to track 'origin/main'.\n",
-      "recorded_at": "2026-08-02T17:43:51.850357Z"
+      "recorded_at": "2026-08-03T02:42:14.317637Z"
     },
     {
       "args": [
@@ -2233,7 +364,7 @@
       "command": "git",
       "exit_code": 0,
       "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-17129",
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-21061",
         "env": {
           "SCRIPT_PATH": null,
           "RELEASE_ROOT": null,
@@ -2272,8 +403,8 @@
         },
         "stderr_to_stdout": true
       },
-      "output": "3976725aac318e69fd46089ea4b31918832af23d\n",
-      "recorded_at": "2026-08-02T17:43:51.856549Z"
+      "output": "5794ef8af0eb70973251a65c4a8cdb6d69300f34\n",
+      "recorded_at": "2026-08-03T02:42:14.327152Z"
     },
     {
       "args": [
@@ -2284,15 +415,15 @@
         "-C",
         "spex-story985-criterion8182",
         "-f",
-        "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/cms-ssh-23586/id_ed25519"
+        "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/cms-ssh-16675/id_ed25519"
       ],
       "command": "ssh-keygen",
       "exit_code": 0,
       "opts": {
         "stderr_to_stdout": true
       },
-      "output": "Generating public/private ed25519 key pair.\nYour identification has been saved in /var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/cms-ssh-23586/id_ed25519\nYour public key has been saved in /var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/cms-ssh-23586/id_ed25519.pub\nThe key fingerprint is:\nSHA256:LDULm6D+47I/vqBcaT4l6M1HadHXp9yH+gYVqM03aGg spex-story985-criterion8182\nThe key's randomart image is:\n+--[ED25519 256]--+\n|            .    |\n|           . .   |\n|    . o o * . .  |\n|   . o B E * =   |\n|  o   * S o * o  |\n| o ..= .   + o . |\n|. =+=       o .  |\n|.o=*o.     . .   |\n|...BO+      o.   |\n+----[SHA256]-----+\n",
-      "recorded_at": "2026-08-02T17:43:52.483624Z"
+      "output": "Generating public/private ed25519 key pair.\nYour identification has been saved in /var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/cms-ssh-16675/id_ed25519\nYour public key has been saved in /var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/cms-ssh-16675/id_ed25519.pub\nThe key fingerprint is:\nSHA256:aihDURs6YgCsYXvXolXDrOTcSk8URAAsge4xVIbxJ04 spex-story985-criterion8182\nThe key's randomart image is:\n+--[ED25519 256]--+\n|*o*++.*+.        |\n|+*o+ + *         |\n|*o*E=.* .        |\n|o*o+oO +         |\n|. =.= = S        |\n| o . o o         |\n|  o . o          |\n|   o .           |\n|                 |\n+----[SHA256]-----+\n",
+      "recorded_at": "2026-08-03T02:42:14.903355Z"
     },
     {
       "args": [],
@@ -2301,8 +432,8 @@
       "opts": {
         "stderr_to_stdout": true
       },
-      "output": "Public key: age10kqk6p69yk6lcjf3ktzg6zmscp7jjt5q0ey06lmv7rrjadtc0cjszurpmz\n# created: 2026-08-02T13:43:54-04:00\n# public key: age10kqk6p69yk6lcjf3ktzg6zmscp7jjt5q0ey06lmv7rrjadtc0cjszurpmz\nAGE-SECRET-KEY-<REDACTED>\n",
-      "recorded_at": "2026-08-02T17:43:54.044927Z"
+      "output": "Public key: age1nmta24a20ckpjuutu5k6ynecjs76x2hdhlgrfn2fs4dvh580jgns3g2vt9\n# created: 2026-08-02T22:42:16-04:00\n# public key: age1nmta24a20ckpjuutu5k6ynecjs76x2hdhlgrfn2fs4dvh580jgns3g2vt9\nAGE-SECRET-KEY-<REDACTED>\n",
+      "recorded_at": "2026-08-03T02:42:16.423487Z"
     },
     {
       "args": [],
@@ -2311,8 +442,8 @@
       "opts": {
         "stderr_to_stdout": true
       },
-      "output": "Public key: age1pge0gty69d6080tv8dn8k2q2sy5aqwwxrum4zjqvwq3hj7ugr9fstttsrj\n# created: 2026-08-02T13:43:54-04:00\n# public key: age1pge0gty69d6080tv8dn8k2q2sy5aqwwxrum4zjqvwq3hj7ugr9fstttsrj\nAGE-SECRET-KEY-<REDACTED>\n",
-      "recorded_at": "2026-08-02T17:43:54.050179Z"
+      "output": "Public key: age1m4j2qh2yqegukms92xv383d0x268k32fg4mths5pgph82v2yksmsafypew\n# created: 2026-08-02T22:42:16-04:00\n# public key: age1m4j2qh2yqegukms92xv383d0x268k32fg4mths5pgph82v2yksmsafypew\nAGE-SECRET-KEY-<REDACTED>\n",
+      "recorded_at": "2026-08-03T02:42:16.428022Z"
     },
     {
       "args": [
@@ -2322,7 +453,7 @@
       "command": "git",
       "exit_code": 128,
       "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-13354",
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-20359",
         "env": {
           "SCRIPT_PATH": null,
           "RELEASE_ROOT": null,
@@ -2362,7 +493,7 @@
         "stderr_to_stdout": true
       },
       "output": "fatal: not a git repository (or any of the parent directories): .git\n",
-      "recorded_at": "2026-08-02T17:45:34.587668Z"
+      "recorded_at": "2026-08-03T02:42:39.021991Z"
     },
     {
       "args": [
@@ -2373,7 +504,7 @@
       "command": "git",
       "exit_code": 0,
       "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-13354",
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-20359",
         "env": {
           "SCRIPT_PATH": null,
           "RELEASE_ROOT": null,
@@ -2412,8 +543,8 @@
         },
         "stderr_to_stdout": true
       },
-      "output": "Initialized empty Git repository in /private/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-13354/.git/\n",
-      "recorded_at": "2026-08-02T17:45:34.602017Z"
+      "output": "Initialized empty Git repository in /private/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-20359/.git/\n",
+      "recorded_at": "2026-08-03T02:42:39.031651Z"
     },
     {
       "args": [
@@ -2423,7 +554,7 @@
       "command": "git",
       "exit_code": 128,
       "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-13354",
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-20359",
         "env": {
           "SCRIPT_PATH": null,
           "RELEASE_ROOT": null,
@@ -2463,7 +594,7 @@
         "stderr_to_stdout": true
       },
       "output": "fatal: ambiguous argument 'HEAD': unknown revision or path not in the working tree.\nUse '--' to separate paths from revisions, like this:\n'git <command> [<revision>...] -- [<file>...]'\nHEAD\n",
-      "recorded_at": "2026-08-02T17:45:34.608087Z"
+      "recorded_at": "2026-08-03T02:42:39.036515Z"
     },
     {
       "args": [
@@ -2473,7 +604,7 @@
       "command": "git",
       "exit_code": 0,
       "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-13354",
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-20359",
         "env": {
           "SCRIPT_PATH": null,
           "RELEASE_ROOT": null,
@@ -2513,7 +644,7 @@
         "stderr_to_stdout": true
       },
       "output": "",
-      "recorded_at": "2026-08-02T17:45:34.614692Z"
+      "recorded_at": "2026-08-03T02:42:39.042634Z"
     },
     {
       "args": [
@@ -2524,7 +655,7 @@
       "command": "git",
       "exit_code": 0,
       "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-13354",
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-20359",
         "env": {
           "SCRIPT_PATH": null,
           "RELEASE_ROOT": null,
@@ -2563,8 +694,8 @@
         },
         "stderr_to_stdout": true
       },
-      "output": "[main (root-commit) a0121f8] Initial commit\n 1 file changed, 1 insertion(+)\n create mode 100644 mix.exs\n",
-      "recorded_at": "2026-08-02T17:45:34.628107Z"
+      "output": "[main (root-commit) aeb87aa] Initial commit\n 1 file changed, 1 insertion(+)\n create mode 100644 mix.exs\n",
+      "recorded_at": "2026-08-03T02:42:39.056168Z"
     },
     {
       "args": [
@@ -2576,7 +707,7 @@
       "command": "git",
       "exit_code": 0,
       "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-13354",
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-20359",
         "env": {
           "SCRIPT_PATH": null,
           "RELEASE_ROOT": null,
@@ -2616,7 +747,7 @@
         "stderr_to_stdout": true
       },
       "output": "",
-      "recorded_at": "2026-08-02T17:45:34.632947Z"
+      "recorded_at": "2026-08-03T02:42:39.061441Z"
     },
     {
       "args": [
@@ -2628,7 +759,7 @@
       "command": "git",
       "exit_code": 0,
       "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-13354",
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-20359",
         "env": {
           "SCRIPT_PATH": null,
           "RELEASE_ROOT": null,
@@ -2668,7 +799,7 @@
         "stderr_to_stdout": true
       },
       "output": "To https://github.com/codemy-my-spec-test/spex-story985-criterion8182.git\n * [new branch]      main -> main\nbranch 'main' set up to track 'origin/main'.\n",
-      "recorded_at": "2026-08-02T17:45:35.590231Z"
+      "recorded_at": "2026-08-03T02:42:40.025486Z"
     },
     {
       "args": [
@@ -2678,7 +809,7 @@
       "command": "git",
       "exit_code": 0,
       "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-13354",
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-20359",
         "env": {
           "SCRIPT_PATH": null,
           "RELEASE_ROOT": null,
@@ -2717,8 +848,8 @@
         },
         "stderr_to_stdout": true
       },
-      "output": "a0121f8292e671cb6236f3beb185d87e72d6f769\n",
-      "recorded_at": "2026-08-02T17:45:35.601505Z"
+      "output": "aeb87aa8e3087f694a42e594997cb2edf87cfb04\n",
+      "recorded_at": "2026-08-03T02:42:40.031903Z"
     },
     {
       "args": [
@@ -2729,15 +860,15 @@
         "-C",
         "spex-story985-criterion8182",
         "-f",
-        "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/cms-ssh-21922/id_ed25519"
+        "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/cms-ssh-16706/id_ed25519"
       ],
       "command": "ssh-keygen",
       "exit_code": 0,
       "opts": {
         "stderr_to_stdout": true
       },
-      "output": "Generating public/private ed25519 key pair.\nYour identification has been saved in /var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/cms-ssh-21922/id_ed25519\nYour public key has been saved in /var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/cms-ssh-21922/id_ed25519.pub\nThe key fingerprint is:\nSHA256:LMoiD/qtSL99s+sDfhbk152f5LtE67rf8POmnDeZteg spex-story985-criterion8182\nThe key's randomart image is:\n+--[ED25519 256]--+\n|                 |\n|                 |\n|                 |\n|       o         |\n|      + S . . .. |\n|   . o + . . o..o|\n|o.. + . o     *o*|\n|o=.o.. *     oo&+|\n|o.++o.=+=   .EBOX|\n+----[SHA256]-----+\n",
-      "recorded_at": "2026-08-02T17:45:36.225569Z"
+      "output": "Generating public/private ed25519 key pair.\nYour identification has been saved in /var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/cms-ssh-16706/id_ed25519\nYour public key has been saved in /var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/cms-ssh-16706/id_ed25519.pub\nThe key fingerprint is:\nSHA256:u+jCVWIwwRj6FiQh3KYayoY3UP5QsGHROQraLMUQbcM spex-story985-criterion8182\nThe key's randomart image is:\n+--[ED25519 256]--+\n|BBOB.o           |\n|o*E=O            |\n|oO=+ +           |\n|=o*.  o .        |\n|=+oo . oS        |\n|++o . .  .       |\n|.. o .  .        |\n|    o  . .       |\n|     oo .        |\n+----[SHA256]-----+\n",
+      "recorded_at": "2026-08-03T02:42:40.641287Z"
     },
     {
       "args": [],
@@ -2746,8 +877,8 @@
       "opts": {
         "stderr_to_stdout": true
       },
-      "output": "Public key: age1jfkmedxq3q2pk0tk87lnf6e5nsjra37g8ky3a9kjf44cqtdk4c7sdfsaz4\n# created: 2026-08-02T13:45:37-04:00\n# public key: age1jfkmedxq3q2pk0tk87lnf6e5nsjra37g8ky3a9kjf44cqtdk4c7sdfsaz4\nAGE-SECRET-KEY-<REDACTED>\n",
-      "recorded_at": "2026-08-02T17:45:37.768630Z"
+      "output": "Public key: age1au654ncc5j8jea6puwtve3qc7aa27tlt04yjmth5wwz8g5tcr39qx880r6\n# created: 2026-08-02T22:42:42-04:00\n# public key: age1au654ncc5j8jea6puwtve3qc7aa27tlt04yjmth5wwz8g5tcr39qx880r6\nAGE-SECRET-KEY-<REDACTED>\n",
+      "recorded_at": "2026-08-03T02:42:42.187748Z"
     },
     {
       "args": [],
@@ -2756,453 +887,8 @@
       "opts": {
         "stderr_to_stdout": true
       },
-      "output": "Public key: age1qscrdd8rxtuskjt4zpx2q5ynf9nmnys3n25j2733mlah0xux7yhqenwx4g\n# created: 2026-08-02T13:45:37-04:00\n# public key: age1qscrdd8rxtuskjt4zpx2q5ynf9nmnys3n25j2733mlah0xux7yhqenwx4g\nAGE-SECRET-KEY-<REDACTED>\n",
-      "recorded_at": "2026-08-02T17:45:37.775573Z"
-    },
-    {
-      "args": [
-        "rev-parse",
-        "--is-inside-work-tree"
-      ],
-      "command": "git",
-      "exit_code": 128,
-      "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-14627",
-        "env": {
-          "SCRIPT_PATH": null,
-          "RELEASE_ROOT": null,
-          "ERTS_BIN": null,
-          "RELEASE_DISTRIBUTION_FLAG": null,
-          "RELEASE_DISTRIBUTION": null,
-          "EMU": null,
-          "RELEASE_COMMAND": null,
-          "PROGNAME": null,
-          "ELIXIR_VERSION": null,
-          "RELEASE_MODE": null,
-          "beforeExtra": null,
-          "REL_EXEC": null,
-          "RELEASE_PROG": null,
-          "ERL_LIBS": null,
-          "RELEASE_NODE": null,
-          "REL_EXTRA": null,
-          "RELEASE_BOOT_SCRIPT_CLEAN": null,
-          "RELEASE_NAME": null,
-          "RELEASE_VM_ARGS": null,
-          "ERLEXEC_DIR": null,
-          "ERTS_VSN": null,
-          "RELEASE_SYS_CONFIG": null,
-          "ROOTDIR": null,
-          "ERL_CONSOLE_MODE": null,
-          "parsErlang": null,
-          "RELEASE_TMP": null,
-          "REL_VSN_DIR": null,
-          "RELEASE_VSN": null,
-          "RELEASE_BOOT_SCRIPT": null,
-          "RELEASE_REMOTE_VM_ARGS": null,
-          "BINDIR": null,
-          "REL_GOTO": null,
-          "endLoop": null,
-          "RELEASE_COOKIE": null
-        },
-        "stderr_to_stdout": true
-      },
-      "output": "fatal: not a git repository (or any of the parent directories): .git\n",
-      "recorded_at": "2026-08-02T17:51:34.651924Z"
-    },
-    {
-      "args": [
-        "init",
-        "-b",
-        "main"
-      ],
-      "command": "git",
-      "exit_code": 0,
-      "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-14627",
-        "env": {
-          "SCRIPT_PATH": null,
-          "RELEASE_ROOT": null,
-          "ERTS_BIN": null,
-          "RELEASE_DISTRIBUTION_FLAG": null,
-          "RELEASE_DISTRIBUTION": null,
-          "EMU": null,
-          "RELEASE_COMMAND": null,
-          "PROGNAME": null,
-          "ELIXIR_VERSION": null,
-          "RELEASE_MODE": null,
-          "beforeExtra": null,
-          "REL_EXEC": null,
-          "RELEASE_PROG": null,
-          "ERL_LIBS": null,
-          "RELEASE_NODE": null,
-          "REL_EXTRA": null,
-          "RELEASE_BOOT_SCRIPT_CLEAN": null,
-          "RELEASE_NAME": null,
-          "RELEASE_VM_ARGS": null,
-          "ERLEXEC_DIR": null,
-          "ERTS_VSN": null,
-          "RELEASE_SYS_CONFIG": null,
-          "ROOTDIR": null,
-          "ERL_CONSOLE_MODE": null,
-          "parsErlang": null,
-          "RELEASE_TMP": null,
-          "REL_VSN_DIR": null,
-          "RELEASE_VSN": null,
-          "RELEASE_BOOT_SCRIPT": null,
-          "RELEASE_REMOTE_VM_ARGS": null,
-          "BINDIR": null,
-          "REL_GOTO": null,
-          "endLoop": null,
-          "RELEASE_COOKIE": null
-        },
-        "stderr_to_stdout": true
-      },
-      "output": "Initialized empty Git repository in /private/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-14627/.git/\n",
-      "recorded_at": "2026-08-02T17:51:34.661143Z"
-    },
-    {
-      "args": [
-        "rev-parse",
-        "HEAD"
-      ],
-      "command": "git",
-      "exit_code": 128,
-      "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-14627",
-        "env": {
-          "SCRIPT_PATH": null,
-          "RELEASE_ROOT": null,
-          "ERTS_BIN": null,
-          "RELEASE_DISTRIBUTION_FLAG": null,
-          "RELEASE_DISTRIBUTION": null,
-          "EMU": null,
-          "RELEASE_COMMAND": null,
-          "PROGNAME": null,
-          "ELIXIR_VERSION": null,
-          "RELEASE_MODE": null,
-          "beforeExtra": null,
-          "REL_EXEC": null,
-          "RELEASE_PROG": null,
-          "ERL_LIBS": null,
-          "RELEASE_NODE": null,
-          "REL_EXTRA": null,
-          "RELEASE_BOOT_SCRIPT_CLEAN": null,
-          "RELEASE_NAME": null,
-          "RELEASE_VM_ARGS": null,
-          "ERLEXEC_DIR": null,
-          "ERTS_VSN": null,
-          "RELEASE_SYS_CONFIG": null,
-          "ROOTDIR": null,
-          "ERL_CONSOLE_MODE": null,
-          "parsErlang": null,
-          "RELEASE_TMP": null,
-          "REL_VSN_DIR": null,
-          "RELEASE_VSN": null,
-          "RELEASE_BOOT_SCRIPT": null,
-          "RELEASE_REMOTE_VM_ARGS": null,
-          "BINDIR": null,
-          "REL_GOTO": null,
-          "endLoop": null,
-          "RELEASE_COOKIE": null
-        },
-        "stderr_to_stdout": true
-      },
-      "output": "fatal: ambiguous argument 'HEAD': unknown revision or path not in the working tree.\nUse '--' to separate paths from revisions, like this:\n'git <command> [<revision>...] -- [<file>...]'\nHEAD\n",
-      "recorded_at": "2026-08-02T17:51:34.666160Z"
-    },
-    {
-      "args": [
-        "add",
-        "-A"
-      ],
-      "command": "git",
-      "exit_code": 0,
-      "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-14627",
-        "env": {
-          "SCRIPT_PATH": null,
-          "RELEASE_ROOT": null,
-          "ERTS_BIN": null,
-          "RELEASE_DISTRIBUTION_FLAG": null,
-          "RELEASE_DISTRIBUTION": null,
-          "EMU": null,
-          "RELEASE_COMMAND": null,
-          "PROGNAME": null,
-          "ELIXIR_VERSION": null,
-          "RELEASE_MODE": null,
-          "beforeExtra": null,
-          "REL_EXEC": null,
-          "RELEASE_PROG": null,
-          "ERL_LIBS": null,
-          "RELEASE_NODE": null,
-          "REL_EXTRA": null,
-          "RELEASE_BOOT_SCRIPT_CLEAN": null,
-          "RELEASE_NAME": null,
-          "RELEASE_VM_ARGS": null,
-          "ERLEXEC_DIR": null,
-          "ERTS_VSN": null,
-          "RELEASE_SYS_CONFIG": null,
-          "ROOTDIR": null,
-          "ERL_CONSOLE_MODE": null,
-          "parsErlang": null,
-          "RELEASE_TMP": null,
-          "REL_VSN_DIR": null,
-          "RELEASE_VSN": null,
-          "RELEASE_BOOT_SCRIPT": null,
-          "RELEASE_REMOTE_VM_ARGS": null,
-          "BINDIR": null,
-          "REL_GOTO": null,
-          "endLoop": null,
-          "RELEASE_COOKIE": null
-        },
-        "stderr_to_stdout": true
-      },
-      "output": "",
-      "recorded_at": "2026-08-02T17:51:34.671518Z"
-    },
-    {
-      "args": [
-        "commit",
-        "-m",
-        "Initial commit"
-      ],
-      "command": "git",
-      "exit_code": 0,
-      "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-14627",
-        "env": {
-          "SCRIPT_PATH": null,
-          "RELEASE_ROOT": null,
-          "ERTS_BIN": null,
-          "RELEASE_DISTRIBUTION_FLAG": null,
-          "RELEASE_DISTRIBUTION": null,
-          "EMU": null,
-          "RELEASE_COMMAND": null,
-          "PROGNAME": null,
-          "ELIXIR_VERSION": null,
-          "RELEASE_MODE": null,
-          "beforeExtra": null,
-          "REL_EXEC": null,
-          "RELEASE_PROG": null,
-          "ERL_LIBS": null,
-          "RELEASE_NODE": null,
-          "REL_EXTRA": null,
-          "RELEASE_BOOT_SCRIPT_CLEAN": null,
-          "RELEASE_NAME": null,
-          "RELEASE_VM_ARGS": null,
-          "ERLEXEC_DIR": null,
-          "ERTS_VSN": null,
-          "RELEASE_SYS_CONFIG": null,
-          "ROOTDIR": null,
-          "ERL_CONSOLE_MODE": null,
-          "parsErlang": null,
-          "RELEASE_TMP": null,
-          "REL_VSN_DIR": null,
-          "RELEASE_VSN": null,
-          "RELEASE_BOOT_SCRIPT": null,
-          "RELEASE_REMOTE_VM_ARGS": null,
-          "BINDIR": null,
-          "REL_GOTO": null,
-          "endLoop": null,
-          "RELEASE_COOKIE": null
-        },
-        "stderr_to_stdout": true
-      },
-      "output": "[main (root-commit) 3f7fa25] Initial commit\n 1 file changed, 1 insertion(+)\n create mode 100644 mix.exs\n",
-      "recorded_at": "2026-08-02T17:51:34.683691Z"
-    },
-    {
-      "args": [
-        "remote",
-        "add",
-        "origin",
-        "https://github.com/codemy-my-spec-test/spex-story985-criterion8182.git"
-      ],
-      "command": "git",
-      "exit_code": 0,
-      "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-14627",
-        "env": {
-          "SCRIPT_PATH": null,
-          "RELEASE_ROOT": null,
-          "ERTS_BIN": null,
-          "RELEASE_DISTRIBUTION_FLAG": null,
-          "RELEASE_DISTRIBUTION": null,
-          "EMU": null,
-          "RELEASE_COMMAND": null,
-          "PROGNAME": null,
-          "ELIXIR_VERSION": null,
-          "RELEASE_MODE": null,
-          "beforeExtra": null,
-          "REL_EXEC": null,
-          "RELEASE_PROG": null,
-          "ERL_LIBS": null,
-          "RELEASE_NODE": null,
-          "REL_EXTRA": null,
-          "RELEASE_BOOT_SCRIPT_CLEAN": null,
-          "RELEASE_NAME": null,
-          "RELEASE_VM_ARGS": null,
-          "ERLEXEC_DIR": null,
-          "ERTS_VSN": null,
-          "RELEASE_SYS_CONFIG": null,
-          "ROOTDIR": null,
-          "ERL_CONSOLE_MODE": null,
-          "parsErlang": null,
-          "RELEASE_TMP": null,
-          "REL_VSN_DIR": null,
-          "RELEASE_VSN": null,
-          "RELEASE_BOOT_SCRIPT": null,
-          "RELEASE_REMOTE_VM_ARGS": null,
-          "BINDIR": null,
-          "REL_GOTO": null,
-          "endLoop": null,
-          "RELEASE_COOKIE": null
-        },
-        "stderr_to_stdout": true
-      },
-      "output": "",
-      "recorded_at": "2026-08-02T17:51:34.688515Z"
-    },
-    {
-      "args": [
-        "push",
-        "-u",
-        "origin",
-        "main"
-      ],
-      "command": "git",
-      "exit_code": 0,
-      "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-14627",
-        "env": {
-          "SCRIPT_PATH": null,
-          "RELEASE_ROOT": null,
-          "ERTS_BIN": null,
-          "RELEASE_DISTRIBUTION_FLAG": null,
-          "RELEASE_DISTRIBUTION": null,
-          "EMU": null,
-          "RELEASE_COMMAND": null,
-          "PROGNAME": null,
-          "ELIXIR_VERSION": null,
-          "RELEASE_MODE": null,
-          "beforeExtra": null,
-          "REL_EXEC": null,
-          "RELEASE_PROG": null,
-          "ERL_LIBS": null,
-          "RELEASE_NODE": null,
-          "REL_EXTRA": null,
-          "RELEASE_BOOT_SCRIPT_CLEAN": null,
-          "RELEASE_NAME": null,
-          "RELEASE_VM_ARGS": null,
-          "ERLEXEC_DIR": null,
-          "ERTS_VSN": null,
-          "RELEASE_SYS_CONFIG": null,
-          "ROOTDIR": null,
-          "ERL_CONSOLE_MODE": null,
-          "parsErlang": null,
-          "RELEASE_TMP": null,
-          "REL_VSN_DIR": null,
-          "RELEASE_VSN": null,
-          "RELEASE_BOOT_SCRIPT": null,
-          "RELEASE_REMOTE_VM_ARGS": null,
-          "BINDIR": null,
-          "REL_GOTO": null,
-          "endLoop": null,
-          "RELEASE_COOKIE": null
-        },
-        "stderr_to_stdout": true
-      },
-      "output": "To https://github.com/codemy-my-spec-test/spex-story985-criterion8182.git\n * [new branch]      main -> main\nbranch 'main' set up to track 'origin/main'.\n",
-      "recorded_at": "2026-08-02T17:51:35.667496Z"
-    },
-    {
-      "args": [
-        "rev-parse",
-        "HEAD"
-      ],
-      "command": "git",
-      "exit_code": 0,
-      "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-14627",
-        "env": {
-          "SCRIPT_PATH": null,
-          "RELEASE_ROOT": null,
-          "ERTS_BIN": null,
-          "RELEASE_DISTRIBUTION_FLAG": null,
-          "RELEASE_DISTRIBUTION": null,
-          "EMU": null,
-          "RELEASE_COMMAND": null,
-          "PROGNAME": null,
-          "ELIXIR_VERSION": null,
-          "RELEASE_MODE": null,
-          "beforeExtra": null,
-          "REL_EXEC": null,
-          "RELEASE_PROG": null,
-          "ERL_LIBS": null,
-          "RELEASE_NODE": null,
-          "REL_EXTRA": null,
-          "RELEASE_BOOT_SCRIPT_CLEAN": null,
-          "RELEASE_NAME": null,
-          "RELEASE_VM_ARGS": null,
-          "ERLEXEC_DIR": null,
-          "ERTS_VSN": null,
-          "RELEASE_SYS_CONFIG": null,
-          "ROOTDIR": null,
-          "ERL_CONSOLE_MODE": null,
-          "parsErlang": null,
-          "RELEASE_TMP": null,
-          "REL_VSN_DIR": null,
-          "RELEASE_VSN": null,
-          "RELEASE_BOOT_SCRIPT": null,
-          "RELEASE_REMOTE_VM_ARGS": null,
-          "BINDIR": null,
-          "REL_GOTO": null,
-          "endLoop": null,
-          "RELEASE_COOKIE": null
-        },
-        "stderr_to_stdout": true
-      },
-      "output": "3f7fa256cfef4c10c2969ad79c650fbd1389b083\n",
-      "recorded_at": "2026-08-02T17:51:35.673795Z"
-    },
-    {
-      "args": [
-        "-t",
-        "ed25519",
-        "-N",
-        "",
-        "-C",
-        "spex-story985-criterion8182",
-        "-f",
-        "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/cms-ssh-15875/id_ed25519"
-      ],
-      "command": "ssh-keygen",
-      "exit_code": 0,
-      "opts": {
-        "stderr_to_stdout": true
-      },
-      "output": "Generating public/private ed25519 key pair.\nYour identification has been saved in /var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/cms-ssh-15875/id_ed25519\nYour public key has been saved in /var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/cms-ssh-15875/id_ed25519.pub\nThe key fingerprint is:\nSHA256:7/ItuYzX9thruuVbQ6kn3FVsLQB62PfApdH/XQSjiFQ spex-story985-criterion8182\nThe key's randomart image is:\n+--[ED25519 256]--+\n|        ..E.o.+. |\n|       . = o *.oo|\n|        + + * .o=|\n|         . . o o=|\n|        S     .o=|\n|         .  . + +|\n|          .o +.+.|\n|        .++.o=+..|\n|        .+=+==*o |\n+----[SHA256]-----+\n",
-      "recorded_at": "2026-08-02T17:51:36.273850Z"
-    },
-    {
-      "args": [],
-      "command": "age-keygen",
-      "exit_code": 0,
-      "opts": {
-        "stderr_to_stdout": true
-      },
-      "output": "Public key: age1cmelr0znx4fyk727glu0ge3z8r24c8k7tsufkre7jsg7hmdkg3cs0jmjt4\n# created: 2026-08-02T13:51:37-04:00\n# public key: age1cmelr0znx4fyk727glu0ge3z8r24c8k7tsufkre7jsg7hmdkg3cs0jmjt4\nAGE-SECRET-KEY-<REDACTED>\n",
-      "recorded_at": "2026-08-02T17:51:37.832208Z"
-    },
-    {
-      "args": [],
-      "command": "age-keygen",
-      "exit_code": 0,
-      "opts": {
-        "stderr_to_stdout": true
-      },
-      "output": "Public key: age13utc3w7sdc26vndaaweqez2z08fjg4vps3llg2fec0xft52cx32st2y2ed\n# created: 2026-08-02T13:51:37-04:00\n# public key: age13utc3w7sdc26vndaaweqez2z08fjg4vps3llg2fec0xft52cx32st2y2ed\nAGE-SECRET-KEY-<REDACTED>\n",
-      "recorded_at": "2026-08-02T17:51:37.836165Z"
+      "output": "Public key: age1rvu0f5w7mklelrzd4hv7yyydu6s0usqkfxds8ljggekdhm8mwvds929wn0\n# created: 2026-08-02T22:42:42-04:00\n# public key: age1rvu0f5w7mklelrzd4hv7yyydu6s0usqkfxds8ljggekdhm8mwvds929wn0\nAGE-SECRET-KEY-<REDACTED>\n",
+      "recorded_at": "2026-08-03T02:42:42.191120Z"
     }
   ],
   "ports": []

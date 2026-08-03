@@ -94,6 +94,15 @@ defmodule CodeMySpecSpex.Case do
   def connect_providers(%{scope: scope} = context) do
     refuse_to_run_on_residue()
 
+    # Nothing is really happening on replay, so there is nothing to wait for.
+    # The pollers still ran their sleeps between replayed reads, which is where
+    # a passing criterion's five and a half minutes went.
+    Application.put_env(
+      :code_my_spec,
+      :provisioning_waits,
+      if(recording?(), do: :real, else: :none)
+    )
+
     for provider <- [:github, :cloudflare, :resend] do
       grant = live_grant(provider)
 

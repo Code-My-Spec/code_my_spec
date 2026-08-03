@@ -1,7 +1,7 @@
 {
   "interactions": [
     {
-      "recorded_at": "2026-08-02T17:50:38.725948Z",
+      "recorded_at": "2026-08-03T02:36:17.453681Z",
       "request": {
         "body": "",
         "body_type": "text",
@@ -27,7 +27,7 @@
         "body_json": {
           "delete_branch_on_merge": false,
           "mirror_url": null,
-          "pushed_at": "2026-08-02T17:50:37Z",
+          "pushed_at": "2026-08-03T02:36:15Z",
           "allow_update_branch": false,
           "svn_url": "https://github.com/codemy-my-spec-test/spex-story985-criterion8179",
           "open_issues_count": 0,
@@ -36,7 +36,7 @@
           "issues_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story985-criterion8179/issues{/number}",
           "disabled": false,
           "collaborators_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story985-criterion8179/collaborators{/collaborator}",
-          "has_wiki": false,
+          "has_wiki": true,
           "statuses_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story985-criterion8179/statuses/{sha}",
           "merge_commit_title": "MERGE_MESSAGE",
           "homepage": null,
@@ -59,17 +59,17 @@
           "custom_properties": {},
           "squash_merge_commit_message": "COMMIT_MESSAGES",
           "git_tags_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story985-criterion8179/git/tags{/sha}",
-          "updated_at": "2026-08-02T17:50:37Z",
+          "updated_at": "2026-08-03T02:36:15Z",
           "issue_events_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story985-criterion8179/issues/events{/number}",
-          "visibility": "private",
+          "visibility": "public",
           "pull_request_creation_policy": "all",
           "description": null,
           "name": "spex-story985-criterion8179",
-          "id": 1320454121,
+          "id": 1321118520,
           "labels_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story985-criterion8179/labels{/name}",
           "branches_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story985-criterion8179/branches{/branch}",
           "network_count": 0,
-          "private": true,
+          "private": false,
           "issue_comment_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story985-criterion8179/issues/comments{/number}",
           "merge_commit_message": "PR_TITLE",
           "releases_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story985-criterion8179/releases{/id}",
@@ -128,12 +128,29 @@
           "html_url": "https://github.com/codemy-my-spec-test/spex-story985-criterion8179",
           "open_issues": 0,
           "is_template": false,
-          "node_id": "R_kgDOTrSH6Q",
+          "node_id": "R_kgDOTr6rOA",
           "milestones_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story985-criterion8179/milestones{/number}",
+          "security_and_analysis": {
+            "dependabot_security_updates": {
+              "status": "disabled"
+            },
+            "secret_scanning": {
+              "status": "disabled"
+            },
+            "secret_scanning_non_provider_patterns": {
+              "status": "disabled"
+            },
+            "secret_scanning_push_protection": {
+              "status": "disabled"
+            },
+            "secret_scanning_validity_checks": {
+              "status": "disabled"
+            }
+          },
           "license": null,
           "forks_count": 0,
           "squash_merge_commit_title": "COMMIT_OR_PR_TITLE",
-          "allow_forking": false,
+          "allow_forking": true,
           "has_pages": false,
           "organization": {
             "avatar_url": "https://avatars.githubusercontent.com/u/312172974?v=4",
@@ -158,7 +175,7 @@
           },
           "trees_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story985-criterion8179/git/trees{/sha}",
           "ssh_url": "git@github.com:codemy-my-spec-test/spex-story985-criterion8179.git",
-          "temp_clone_token": "AAXKPXOOTGQXTR2ZKYXQMQ3KN6CJU",
+          "temp_clone_token": "",
           "has_pull_requests": true,
           "assignees_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story985-criterion8179/assignees{/user}",
           "clone_url": "https://github.com/codemy-my-spec-test/spex-story985-criterion8179.git",
@@ -167,7 +184,7 @@
           "subscribers_count": 0,
           "keys_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story985-criterion8179/keys{/key_id}",
           "has_downloads": false,
-          "created_at": "2026-08-02T17:50:36Z",
+          "created_at": "2026-08-03T02:36:15Z",
           "languages_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story985-criterion8179/languages"
         },
         "body_type": "json",
@@ -188,13 +205,13 @@
             "application/json; charset=utf-8"
           ],
           "date": [
-            "Sun, 02 Aug 2026 17:50:38 GMT"
+            "Mon, 03 Aug 2026 02:36:17 GMT"
           ],
           "etag": [
-            "W/\"c8b81baa1e3e88d337f0c8d65d0e737b9eadfafebe58c8040ef3b8e3b7c55742\""
+            "W/\"080d0d38dbd5fd920ec6623c715166a6b302a10a3aacc0f00f341ce32d5663c8\""
           ],
           "last-modified": [
-            "Sun, 02 Aug 2026 17:50:37 GMT"
+            "Mon, 03 Aug 2026 02:36:15 GMT"
           ],
           "referrer-policy": [
             "origin-when-cross-origin, strict-origin-when-cross-origin"
@@ -230,7 +247,7 @@
             "github.v3; format=json"
           ],
           "x-github-request-id": [
-            "E8C2:211A0F:1CC7351:6598038:6A6F836E"
+            "C4A9:3E48A3:11A5EAC:3E94950:6A6FFEA0"
           ],
           "x-oauth-client-id": [
             "Ov23liFpnT7j3bK5OC1L"
@@ -242,16 +259,16 @@
             "5000"
           ],
           "x-ratelimit-remaining": [
-            "4910"
+            "4967"
           ],
           "x-ratelimit-reset": [
-            "1785693733"
+            "1785724579"
           ],
           "x-ratelimit-resource": [
             "core"
           ],
           "x-ratelimit-used": [
-            "90"
+            "33"
           ],
           "x-xss-protection": [
             "0"

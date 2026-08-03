@@ -76,22 +76,19 @@ defmodule CodeMySpec.Provisioning.Steps do
   skips real work, a false "absent" merely repeats an idempotent step.
   """
   @spec verify(atom(), Scope.t(), keyword()) :: verdict()
-  def verify(:repository, %Scope{} = scope, opts) do
-    project = project(scope)
-    name = Keyword.get(opts, :name) || Repository.default_name(project)
-
-    case Keyword.get(opts, :owner) do
-      nil ->
-        {:ok, :absent}
-
-      owner ->
-        case CodeMySpec.GitHub.get_repository(scope, owner, name) do
-          {:ok, repo} -> {:ok, :satisfied, [repo_resource(repo)]}
-          {:error, :not_found} -> {:ok, :absent}
-          {:error, reason} -> {:error, reason}
-        end
-    end
-  end
+  # Deliberately never satisfied from the provider.
+  #
+  # The other steps can be verified by asking whether the resource is there,
+  # because for them existing *is* the claim. This step's claim is that the
+  # project's history reached the remote — "the step is proven by a push, not
+  # by the repository existing" (8183). A repository can exist and be the wrong
+  # one (8185), or be the right one and reject the push (8184), and asking
+  # GitHub whether it exists cannot tell any of those apart.
+  #
+  # So the decision is left to `run/3`, which adopts or asks, pushes, and
+  # reports what actually happened. Re-running is cheap and idempotent: a push
+  # of a history the remote already has is "Everything up-to-date".
+  def verify(:repository, %Scope{} = _scope, _opts), do: {:ok, :absent}
 
   def verify(:server, %Scope{} = scope, opts) do
     name = server_name(scope, opts)

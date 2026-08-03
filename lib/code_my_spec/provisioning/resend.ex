@@ -49,6 +49,8 @@ defmodule CodeMySpec.Provisioning.Resend do
   (criterion 8027).
   """
 
+  alias CodeMySpec.Provisioning.Wait
+
   require Logger
 
   alias CodeMySpec.Integrations
@@ -502,7 +504,7 @@ defmodule CodeMySpec.Provisioning.Resend do
 
     case response do
       {:ok, %Req.Response{status: 429}} when attempts_left > 1 ->
-        Process.sleep(@rate_limit_backoff_ms)
+        Wait.sleep(@rate_limit_backoff_ms)
         send_request(token, method, path, opts, attempts_left - 1)
 
       other ->

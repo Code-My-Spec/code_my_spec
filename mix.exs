@@ -85,6 +85,13 @@ defmodule CodeMySpec.MixProject do
        depth: 1},
       {:swoosh, "~> 1.21"},
       {:req, "~> 0.5.15"},
+      {:req_llm, "~> 1.0"},
+      # req_llm 1.18 matches on `%Finch.Pool{}` and `Finch.Request`'s
+      # `:pool_tag`, which only exist from finch 0.22. `req` asks for `~> 0.17`,
+      # so resolution was free to pick 0.21 — and did. The build only appeared
+      # to work because `_build` held artifacts compiled against a finch that
+      # had them; a clean build has never succeeded.
+      {:finch, "~> 0.23", override: true},
       {:telemetry_metrics, "~> 1.0"},
       {:telemetry_poller, "~> 1.0"},
       {:gettext, "~> 0.26"},

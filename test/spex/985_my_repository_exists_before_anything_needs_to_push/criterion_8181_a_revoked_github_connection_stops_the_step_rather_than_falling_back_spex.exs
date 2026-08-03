@@ -32,6 +32,12 @@ defmodule CodeMySpecSpex.Story985.Criterion8181Spex do
         # away with the spex, so the next recording starts from one that is not there.
         tear_down_repository(context.project)
 
+        # Actually revoke it. The criterion's premise is a connection that no
+        # longer works, and nothing here made that true — so the step ran
+        # against a healthy grant, completed, and the assertion that it must
+        # not complete was the only thing that noticed.
+        break_provider_credential(context.scope, :github)
+
         {:ok, view, _html} =
           live(context.conn, "/app/projects/#{context.project.id}/provisioning")
 
