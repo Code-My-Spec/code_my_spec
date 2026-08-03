@@ -44,7 +44,7 @@ defmodule CodeMySpecSpex.Story687.Criterion5952Spex do
 
       when_ "the founder opens the files page and clicks Sync", context do
         {:ok, files_live, html_before} =
-          live(context.conn, "/app/projects/#{context.project.name}/files")
+          live(context.conn, "/app/projects/#{context.project.id}/files")
 
         # Confirm drift exists at mount time — the new file hasn't been
         # synced yet, so it must not be on the page before the click.

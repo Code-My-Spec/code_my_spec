@@ -41,7 +41,7 @@ defmodule CodeMySpecSpex.Story687.Criterion5949Spex do
         end
 
         {:ok, sync_live, _html} =
-          live(context.conn, "/app/projects/#{context.project.name}/files")
+          live(context.conn, "/app/projects/#{context.project.id}/files")
 
         sync_live |> element("button[phx-click='sync']") |> render_click()
 
@@ -50,7 +50,7 @@ defmodule CodeMySpecSpex.Story687.Criterion5949Spex do
 
       when_ "the founder opens the files page", context do
         {:ok, files_live, html} =
-          live(context.conn, "/app/projects/#{context.project.name}/files")
+          live(context.conn, "/app/projects/#{context.project.id}/files")
 
         {:ok, Map.merge(context, %{files_live: files_live, html: html})}
       end
@@ -80,7 +80,7 @@ defmodule CodeMySpecSpex.Story687.Criterion5949Spex do
         page_1_rows = extract_row_paths(context.html)
 
         {:ok, _page_2_live, page_2_html} =
-          live(context.conn, "/app/projects/#{context.project.name}/files?page=2")
+          live(context.conn, "/app/projects/#{context.project.id}/files?page=2")
 
         page_2_rows_first = extract_row_paths(page_2_html)
 
@@ -92,7 +92,7 @@ defmodule CodeMySpecSpex.Story687.Criterion5949Spex do
 
         # Reload page 2 in a fresh LiveView mount and compare.
         {:ok, _page_2_live_again, page_2_html_again} =
-          live(context.conn, "/app/projects/#{context.project.name}/files?page=2")
+          live(context.conn, "/app/projects/#{context.project.id}/files?page=2")
 
         page_2_rows_again = extract_row_paths(page_2_html_again)
 

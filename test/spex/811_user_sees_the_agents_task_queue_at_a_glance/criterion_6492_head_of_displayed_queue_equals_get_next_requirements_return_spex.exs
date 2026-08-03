@@ -34,7 +34,7 @@ defmodule CodeMySpecSpex.Story811.Criterion6492Spex do
       end
 
       when_ "Sam opens the task queue view", context do
-        {:ok, _view, html} = live(context.conn, "/app/projects/#{context.project.name}/tasks")
+        {:ok, _view, html} = live(context.conn, "/app/projects/#{context.project.id}/tasks")
         {:ok, Map.put(context, :html, html)}
       end
 

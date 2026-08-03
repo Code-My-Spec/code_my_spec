@@ -37,7 +37,7 @@ defmodule CodeMySpecSpex.Story984.Criterion8173Spex do
 
       then_ "the operator can see which tool was called", context do
         {:ok, _view, html} =
-          live(context.conn, "/app/projects/#{context.project.name}/agent-conversation")
+          live(context.conn, "/app/projects/#{context.project.id}/agent-conversation")
 
         assert html =~ "Bash", "expected the tool's name to appear on the conversation"
 
@@ -46,7 +46,7 @@ defmodule CodeMySpecSpex.Story984.Criterion8173Spex do
 
       and_ "they can see the arguments it was called with", context do
         {:ok, _view, html} =
-          live(context.conn, "/app/projects/#{context.project.name}/agent-conversation")
+          live(context.conn, "/app/projects/#{context.project.id}/agent-conversation")
 
         assert html =~ "mix spex",
                "a tool name without its arguments does not say what the sprite did"
@@ -56,7 +56,7 @@ defmodule CodeMySpecSpex.Story984.Criterion8173Spex do
 
       and_ "the turn does not render as empty", context do
         {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.name}/agent-conversation")
+          live(context.conn, "/app/projects/#{context.project.id}/agent-conversation")
 
         assert has_element?(view, "[data-test='tool-call']"),
                "expected the tool call to render as its own block"

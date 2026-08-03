@@ -118,7 +118,7 @@ defmodule CodeMySpecSpex.Story553.Criterion6029Spex do
 
       then_ "the Problems page does not list any credo problem", context do
         {:ok, _problems_live, html} =
-          live(context.conn, ~p"/app/projects/#{context.project.name}/problems?filter=credo")
+          live(context.conn, ~p"/app/projects/#{context.project.id}/problems?filter=credo")
 
         assert html =~ "Problems"
 

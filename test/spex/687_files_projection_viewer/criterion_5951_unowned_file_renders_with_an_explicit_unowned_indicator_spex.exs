@@ -39,7 +39,7 @@ defmodule CodeMySpecSpex.Story687.Criterion5951Spex do
           )
 
         {:ok, sync_live, _html} =
-          live(context.conn, "/app/projects/#{context.project.name}/files")
+          live(context.conn, "/app/projects/#{context.project.id}/files")
 
         sync_live |> element("button[phx-click='sync']") |> render_click()
 
@@ -48,7 +48,7 @@ defmodule CodeMySpecSpex.Story687.Criterion5951Spex do
 
       when_ "the founder opens the files page", context do
         {:ok, files_live, html} =
-          live(context.conn, "/app/projects/#{context.project.name}/files")
+          live(context.conn, "/app/projects/#{context.project.id}/files")
 
         {:ok, Map.merge(context, %{files_live: files_live, html: html})}
       end

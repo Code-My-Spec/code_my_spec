@@ -26,7 +26,7 @@ defmodule CodeMySpecSpex.Story813.Criterion6545Spex do
     scenario "the rail renders project-level requirements with status" do
       when_ "the user opens the progress view", context do
         {:ok, view, html} =
-          live(context.conn, "/app/projects/#{context.project.name}/progress")
+          live(context.conn, "/app/projects/#{context.project.id}/progress")
 
         {:ok, Map.merge(context, %{view: view, html: html})}
       end

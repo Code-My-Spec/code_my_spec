@@ -55,7 +55,7 @@ defmodule CodeMySpecSpex.Story563.Criterion5903Spex do
             Environments.write_file(env, Content.impl_path(module), Content.impl_file(module))
         end
 
-        {:ok, sync_live, _html} = live(context.conn, "/app/projects/#{context.project.name}/files")
+        {:ok, sync_live, _html} = live(context.conn, "/app/projects/#{context.project.id}/files")
         sync_live |> element("button[phx-click='sync']") |> render_click()
 
         users = Fixtures.get_component_by_module_name(context.scope, "Users")

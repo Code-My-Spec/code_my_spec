@@ -29,7 +29,7 @@ defmodule CodeMySpecSpex.Story711.Criterion6253Spex do
 
       when_ "the engineer opens the Auth per-step page", context do
         {:ok, view, html} =
-          live(context.conn, ~p"/app/projects/#{context.project.name}/init/auth")
+          live(context.conn, ~p"/app/projects/#{context.project.id}/init/auth")
 
         {:ok, Map.merge(context, %{view: view, html: html})}
       end

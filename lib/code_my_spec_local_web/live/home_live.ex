@@ -43,7 +43,7 @@ defmodule CodeMySpecLocalWeb.HomeLive do
          |> assign(
            project: project,
            scope: scope,
-           slug: project_slug(project),
+           slug: project.id,
            dir_param: URI.encode_www_form(scope.cwd),
            page_title: project.name,
            error: nil
@@ -460,16 +460,10 @@ defmodule CodeMySpecLocalWeb.HomeLive do
   end
 
   defp load_project_and_scope(name) do
-    with {:ok, project} <- Projects.get_project_by_name(name),
+    with %Projects.Project{} = project <- Projects.get_project_by_id(name),
          {:ok, scope} <- Scope.for_local_project(project) do
       {:ok, project, scope}
     end
   end
 
-  defp project_slug(project) do
-    (project.name || "project")
-    |> String.downcase()
-    |> String.replace(~r/[^a-z0-9]+/, "-")
-    |> String.trim("-")
-  end
 end

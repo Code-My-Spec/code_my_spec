@@ -52,7 +52,7 @@ defmodule CodeMySpecSpex.Story958.Criterion7941Spex do
 
       when_ "the user releases the epic's stories for development", context do
         {:ok, show_live, _html} =
-          live(context.conn, "/app/projects/#{context.project.name}/epics/stone-age")
+          live(context.conn, "/app/projects/#{context.project.id}/epics/stone-age")
 
         show_live
         |> element("[data-test='bulk-release-epic']")
@@ -63,7 +63,7 @@ defmodule CodeMySpecSpex.Story958.Criterion7941Spex do
 
       then_ "each of those ten stories is individually ready for development", context do
         {:ok, _show_live, html} =
-          live(context.conn, "/app/projects/#{context.project.name}/epics/stone-age")
+          live(context.conn, "/app/projects/#{context.project.id}/epics/stone-age")
 
         for title <- context.story_titles do
           assert html =~ title,
@@ -83,7 +83,7 @@ defmodule CodeMySpecSpex.Story958.Criterion7941Spex do
         file_story(context.frame, late_title)
 
         {:ok, _show_live, html} =
-          live(context.conn, "/app/projects/#{context.project.name}/epics/stone-age")
+          live(context.conn, "/app/projects/#{context.project.id}/epics/stone-age")
 
         assert html =~ late_title,
                "expected the late story to be in the epic, got: #{html}"

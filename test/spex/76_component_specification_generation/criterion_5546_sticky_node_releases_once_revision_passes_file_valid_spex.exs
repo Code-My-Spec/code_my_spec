@@ -30,7 +30,7 @@ defmodule CodeMySpecSpex.Story76.Criterion5546Spex do
         :ok = Environments.write_file(env, @impl_path, "defmodule ExampleContext do\nend\n")
 
         {:ok, sync_live, _html} =
-          live(context.conn, "/app/projects/#{context.project.name}/files")
+          live(context.conn, "/app/projects/#{context.project.id}/files")
 
         sync_live
         |> element("button[phx-click='sync']")
@@ -43,7 +43,7 @@ defmodule CodeMySpecSpex.Story76.Criterion5546Spex do
         :ok = Environments.write_file(context.environment, @spec_path, valid_context_spec())
 
         {:ok, sync_live, _html} =
-          live(context.conn, "/app/projects/#{context.project.name}/files")
+          live(context.conn, "/app/projects/#{context.project.id}/files")
 
         sync_live
         |> element("button[phx-click='sync']")

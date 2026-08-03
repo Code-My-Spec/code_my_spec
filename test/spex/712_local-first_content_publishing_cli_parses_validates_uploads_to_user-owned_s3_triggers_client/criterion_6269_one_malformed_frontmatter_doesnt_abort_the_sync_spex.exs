@@ -52,7 +52,7 @@ defmodule CodeMySpecSpex.Story712.Criterion6269Spex do
           Body.
           """)
 
-        {:ok, view, _html} = live(context.conn, "/app/projects/#{context.project.name}/content")
+        {:ok, view, _html} = live(context.conn, "/app/projects/#{context.project.id}/content")
 
         view
         |> form("[data-test='content-source-form']", source: %{path: @source})

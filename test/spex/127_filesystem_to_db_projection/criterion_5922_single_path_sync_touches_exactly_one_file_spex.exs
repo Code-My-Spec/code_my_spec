@@ -35,7 +35,7 @@ defmodule CodeMySpecSpex.Story127.Criterion5922Spex do
         :ok = Environments.write_file(context.environment, @impl_b, impl_b())
 
         {:ok, files_live, _html} =
-          live(context.conn, "/app/projects/#{context.project.name}/files")
+          live(context.conn, "/app/projects/#{context.project.id}/files")
 
         files_live
         |> element("[data-test='sync-button']")
@@ -47,7 +47,7 @@ defmodule CodeMySpecSpex.Story127.Criterion5922Spex do
       given_ "both files appear in the projection with their v1 fingerprints",
              context do
         {:ok, files_live, _html} =
-          live(context.conn, "/app/projects/#{context.project.name}/files")
+          live(context.conn, "/app/projects/#{context.project.id}/files")
 
         assert has_element?(
                  files_live,
@@ -74,7 +74,7 @@ defmodule CodeMySpecSpex.Story127.Criterion5922Spex do
         # refreshed its result assign; assert via a fresh mount to keep
         # the assertion independent of in-process state.
         {:ok, files_live, _html} =
-          live(context.conn, "/app/projects/#{context.project.name}/files")
+          live(context.conn, "/app/projects/#{context.project.id}/files")
 
         assert has_element?(
                  files_live,

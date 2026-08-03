@@ -22,7 +22,7 @@ defmodule CodeMySpecSpex.Story717.Criterion6543Spex do
         {:ok, view, _html} =
           live(
             context.conn,
-            "/app/projects/#{context.project.name}/requirements/graph?preload=true"
+            "/app/projects/#{context.project.id}/requirements/graph?preload=true"
           )
 
         {:ok, Map.put(context, :view, view)}

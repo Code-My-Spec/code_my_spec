@@ -36,8 +36,8 @@ defmodule CodeMySpecLocalWeb.ProjectsLive.Form do
     |> assign(:form, to_form(change_project(socket, project)))
   end
 
-  defp apply_action(socket, :edit, %{"project_name" => name}) do
-    case Projects.get_project_by_name(name) do
+  defp apply_action(socket, :edit, %{"id" => name}) do
+    case Projects.get_project_by_id(name) do
       {:ok, %Project{} = project} ->
         socket
         |> assign(:page_title, "Edit #{project.name}")
@@ -69,7 +69,7 @@ defmodule CodeMySpecLocalWeb.ProjectsLive.Form do
         {:noreply,
          socket
          |> put_flash(:info, "Project created")
-         |> push_navigate(to: ~p"/app/projects/#{project.name}")}
+         |> push_navigate(to: ~p"/app/projects/#{project.id}")}
 
       {:error, %Ecto.Changeset{} = changeset} ->
         {:noreply, assign(socket, form: to_form(changeset))}
@@ -82,7 +82,7 @@ defmodule CodeMySpecLocalWeb.ProjectsLive.Form do
         {:noreply,
          socket
          |> put_flash(:info, "Project updated")
-         |> push_navigate(to: ~p"/app/projects/#{project.name}")}
+         |> push_navigate(to: ~p"/app/projects/#{project.id}")}
 
       {:error, %Ecto.Changeset{} = changeset} ->
         {:noreply, assign(socket, form: to_form(changeset))}

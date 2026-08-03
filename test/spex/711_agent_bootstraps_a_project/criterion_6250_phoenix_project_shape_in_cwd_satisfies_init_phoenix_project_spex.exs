@@ -29,7 +29,7 @@ defmodule CodeMySpecSpex.Story711.Criterion6250Spex do
         {:ok, _view, html} =
           live(
             context.conn,
-            ~p"/app/projects/#{context.project.name}/init/phoenix_project"
+            ~p"/app/projects/#{context.project.id}/init/phoenix_project"
           )
 
         {:ok, Map.put(context, :html, html)}

@@ -66,7 +66,7 @@ defmodule CodeMySpecLocalWeb.ProjectsLive.Index do
   def handle_params(%{"project" => project_id}, _uri, socket) when is_binary(project_id) do
     case Projects.get_project_by_id(project_id) do
       %{local_path: lp} = project when is_binary(lp) ->
-        slug = project_slug(project)
+        slug = project.id
         {:noreply, push_navigate(socket, to: ~p"/app/projects/#{slug}")}
 
       _ ->
@@ -118,14 +118,14 @@ defmodule CodeMySpecLocalWeb.ProjectsLive.Index do
           class="card bg-base-200 border border-base-300 hover:border-primary transition"
         >
           <div class="card-body">
-            <.link navigate={~p"/app/projects/#{project_slug(project)}"} class="hover:underline">
+            <.link navigate={~p"/app/projects/#{project.id}"} class="hover:underline">
               <h2 class="card-title">{project.name}</h2>
               <p :if={project.local_path} class="text-sm opacity-60 font-mono truncate">
                 {project.local_path}
               </p>
             </.link>
             <div class="card-actions justify-end mt-2">
-              <.link navigate={~p"/app/projects/#{project_slug(project)}/edit"} class="btn btn-xs btn-ghost">
+              <.link navigate={~p"/app/projects/#{project.id}/edit"} class="btn btn-xs btn-ghost">
                 Edit
               </.link>
               <button
@@ -245,10 +245,4 @@ defmodule CodeMySpecLocalWeb.ProjectsLive.Index do
     """
   end
 
-  defp project_slug(project) do
-    (project.name || "project")
-    |> String.downcase()
-    |> String.replace(~r/[^a-z0-9]+/, "-")
-    |> String.trim("-")
-  end
 end

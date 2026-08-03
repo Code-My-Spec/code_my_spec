@@ -108,7 +108,7 @@ defmodule CodeMySpecSpex.Story561.Criterion6259Spex do
             Content.child_spec("LowContext.Other", type: "schema")
           )
 
-        {:ok, sync_live, _html} = live(context.conn, "/app/projects/#{context.project.name}/files")
+        {:ok, sync_live, _html} = live(context.conn, "/app/projects/#{context.project.id}/files")
         sync_live |> element("button[phx-click='sync']") |> render_click()
 
         high = Fixtures.get_component_by_module_name(context.scope, "HighContext")
@@ -171,7 +171,7 @@ defmodule CodeMySpecSpex.Story561.Criterion6259Spex do
 
       when_ "the engineer opens the requirements graph", context do
         {:ok, _live, html} =
-          live(context.conn, "/app/projects/#{context.project.name}/requirements/graph?preload=true")
+          live(context.conn, "/app/projects/#{context.project.id}/requirements/graph?preload=true")
 
         {:ok, Map.put(context, :graph, GraphAssertions.extract_graph!(html))}
       end

@@ -75,7 +75,7 @@ defmodule CodeMySpecSpex.Story958.Criterion7957Spex do
 
       when_ "the user parks the epic's stories", context do
         {:ok, show_live, _html} =
-          live(context.conn, "/app/projects/#{context.project.name}/epics/stone-age")
+          live(context.conn, "/app/projects/#{context.project.id}/epics/stone-age")
 
         show_live
         |> element("[data-test='bulk-park-epic']")

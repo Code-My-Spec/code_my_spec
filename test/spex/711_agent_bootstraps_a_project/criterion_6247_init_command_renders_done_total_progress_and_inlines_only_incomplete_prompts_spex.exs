@@ -45,7 +45,7 @@ defmodule CodeMySpecSpex.Story711.Criterion6247Spex do
         {checklist_view, checklist_html} =
           use_cmd_cassette "init_all_prereqs_pass", record: :none do
             {:ok, view, html} =
-              live(context.conn, ~p"/app/projects/#{context.project.name}/init")
+              live(context.conn, ~p"/app/projects/#{context.project.id}/init")
 
             {view, html}
           end
@@ -111,7 +111,7 @@ defmodule CodeMySpecSpex.Story711.Criterion6247Spex do
       and_ "the Auth per-step page exposes the auth prompt", context do
         {:ok, _view, auth_html} =
           use_cmd_cassette "init_all_prereqs_pass", record: :none do
-            live(context.conn, ~p"/app/projects/#{context.project.name}/init/auth")
+            live(context.conn, ~p"/app/projects/#{context.project.id}/init/auth")
           end
 
         assert auth_html =~ "badge-warning",

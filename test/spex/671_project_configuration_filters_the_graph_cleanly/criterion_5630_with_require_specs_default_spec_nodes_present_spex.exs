@@ -24,7 +24,7 @@ defmodule CodeMySpecSpex.Story671.Criterion5630Spex do
 
       when_ "the engineer renders the requirements graph (no toggles)", context do
         {:ok, _live, html} =
-          live(context.conn, "/app/projects/#{context.project.name}/requirements/graph?preload=true")
+          live(context.conn, "/app/projects/#{context.project.id}/requirements/graph?preload=true")
 
         {:ok, Map.put(context, :graph, GraphAssertions.extract_graph!(html))}
       end

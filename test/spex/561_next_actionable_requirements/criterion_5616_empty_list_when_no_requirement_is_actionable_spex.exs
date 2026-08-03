@@ -33,7 +33,7 @@ defmodule CodeMySpecSpex.Story561.Criterion5616Spex do
         # GraphContentFixtures already writes spec + impl files in the given,
         # so the schema is fully satisfied after sync. Re-sync to confirm.
         {:ok, sync_live, _html} =
-          live(context.conn, "/app/projects/#{context.project.name}/files")
+          live(context.conn, "/app/projects/#{context.project.id}/files")
 
         sync_live |> element("button[phx-click='sync']") |> render_click()
         {:ok, context}

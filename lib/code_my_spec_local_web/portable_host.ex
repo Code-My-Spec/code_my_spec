@@ -73,16 +73,17 @@ defmodule CodeMySpecLocalWeb.PortableHost do
     {:cont, socket}
   end
 
-  # The cloud's project segment carries a UUID; locally it carries the same
-  # name slug the rest of the local app routes on, so the shared `~p` literals
-  # produce URLs that read naturally in both.
-  defp put_scope(%{"project_id" => name}, _uri, socket) do
-    with {:ok, project} <- Projects.get_project_by_name(name),
+  # Both apps address a project by id. `get_project_by_id/1` rather than the
+  # scoped `get_project/2` because there is no account to scope by here — one
+  # developer, one machine. Authentication is now the only thing left that
+  # differs between this host and the cloud's.
+  defp put_scope(%{"project_id" => id}, _uri, socket) do
+    with %Projects.Project{} = project <- Projects.get_project_by_id(id),
          {:ok, scope} <- Scope.for_local_project(project) do
       {:cont,
-       assign(socket, scope: scope, project: project, slug: slug(project), scope_error: nil)}
+       assign(socket, scope: scope, project: project, slug: project.id, scope_error: nil)}
     else
-      {:error, :not_found} -> {:cont, fail(socket, "Project not found.")}
+      nil -> {:cont, fail(socket, "Project not found.")}
       {:error, reason} -> {:cont, fail(socket, "#{reason}")}
     end
   end
@@ -95,10 +96,4 @@ defmodule CodeMySpecLocalWeb.PortableHost do
   defp fail(socket, message),
     do: assign(socket, scope: nil, project: nil, scope_error: message)
 
-  defp slug(project) do
-    (project.name || "project")
-    |> String.downcase()
-    |> String.replace(~r/[^a-z0-9]+/, "-")
-    |> String.trim("-")
-  end
 end

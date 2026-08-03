@@ -25,7 +25,7 @@ defmodule CodeMySpecSpex.Story553.Criterion5086Spex do
 
       when_ "the engineer opens the configuration page for the first time", context do
         {:ok, config_live, _html} =
-          live(context.conn, ~p"/app/projects/#{context.project.name}/configuration")
+          live(context.conn, ~p"/app/projects/#{context.project.id}/configuration")
 
         {:ok, Map.put(context, :config_live, config_live)}
       end

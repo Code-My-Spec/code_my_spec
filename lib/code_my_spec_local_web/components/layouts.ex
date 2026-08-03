@@ -143,7 +143,7 @@ defmodule CodeMySpecLocalWeb.Layouts do
           </summary>
           <ul class="menu dropdown-content bg-base-300 z-10 mt-2 w-full p-1 max-h-72 overflow-y-auto border border-base-content/10">
             <li :for={p <- @projects}>
-              <.link navigate={~p"/app/projects/#{project_slug(p)}"} class={if @project.id == p.id, do: "menu-active"}>
+              <.link navigate={~p"/app/projects/#{p.id}"} class={if @project.id == p.id, do: "menu-active"}>
                 <span class="truncate">{p.name}</span>
               </.link>
             </li>
@@ -154,7 +154,7 @@ defmodule CodeMySpecLocalWeb.Layouts do
             </li>
           </ul>
         </details>
-        <div class="local-sidebar-project-slug">{project_slug(@project)}</div>
+        <div class="local-sidebar-project-slug">{display_slug(@project)}</div>
       <% else %>
         <.link navigate={~p"/app/projects"} class="local-sidebar-project-name block hover:opacity-80">
           All projects →
@@ -171,31 +171,31 @@ defmodule CodeMySpecLocalWeb.Layouts do
     ~H"""
     <div class="local-sidebar-section">
       <div class="local-sidebar-eyebrow">// workflow</div>
-      <.sidebar_item to={~p"/app/projects/#{project_slug(@project)}/next-task"} active={@section == :next_task}>Next task</.sidebar_item>
-      <.sidebar_item to={~p"/app/projects/#{project_slug(@project)}/files"} active={@section == :files}>Files &amp; sync</.sidebar_item>
-      <.sidebar_item to={~p"/app/projects/#{project_slug(@project)}/content"} active={@section == :content}>Content</.sidebar_item>
-      <.sidebar_item to={~p"/app/projects/#{project_slug(@project)}/problems"} active={@section == :problems}>Problems</.sidebar_item>
-      <.sidebar_item to={~p"/app/projects/#{project_slug(@project)}/configuration"} active={@section == :configuration}>Configuration</.sidebar_item>
+      <.sidebar_item to={~p"/app/projects/#{@project.id}/next-task"} active={@section == :next_task}>Next task</.sidebar_item>
+      <.sidebar_item to={~p"/app/projects/#{@project.id}/files"} active={@section == :files}>Files &amp; sync</.sidebar_item>
+      <.sidebar_item to={~p"/app/projects/#{@project.id}/content"} active={@section == :content}>Content</.sidebar_item>
+      <.sidebar_item to={~p"/app/projects/#{@project.id}/problems"} active={@section == :problems}>Problems</.sidebar_item>
+      <.sidebar_item to={~p"/app/projects/#{@project.id}/configuration"} active={@section == :configuration}>Configuration</.sidebar_item>
     </div>
 
     <div class="local-sidebar-section">
       <div class="local-sidebar-eyebrow">// data</div>
-      <.sidebar_item to={~p"/app/projects/#{project_slug(@project)}"} active={@section == :overview}>Overview</.sidebar_item>
-      <.sidebar_item to={~p"/app/projects/#{project_slug(@project)}/stories"} active={@section in [:stories, :scheduler]}>Stories</.sidebar_item>
-      <.sidebar_item to={~p"/app/projects/#{project_slug(@project)}/epics"} active={@section == :epics}>Epics</.sidebar_item>
-      <.sidebar_item to={~p"/app/projects/#{project_slug(@project)}/requirements"} active={@section in [:requirements, :requirements_stories]}>Requirements</.sidebar_item>
-      <.sidebar_item to={~p"/app/projects/#{project_slug(@project)}/requirements/graph"} active={@section == :requirements_graph}>Graph</.sidebar_item>
-      <.sidebar_item to={~p"/app/projects/#{project_slug(@project)}/architecture"} active={@section == :architecture}>Architecture</.sidebar_item>
-      <.sidebar_item to={~p"/app/projects/#{project_slug(@project)}/personas"} active={@section == :personas}>Personas</.sidebar_item>
-      <.sidebar_item to={~p"/app/projects/#{project_slug(@project)}/issues"} active={@section == :issues}>Issues</.sidebar_item>
-      <.sidebar_item to={~p"/app/projects/#{project_slug(@project)}/qa"} active={@section == :qa}>QA</.sidebar_item>
-      <.sidebar_item to={~p"/app/projects/#{project_slug(@project)}/sessions"} active={@section == :sessions}>Sessions</.sidebar_item>
+      <.sidebar_item to={~p"/app/projects/#{@project.id}"} active={@section == :overview}>Overview</.sidebar_item>
+      <.sidebar_item to={~p"/app/projects/#{@project.id}/stories"} active={@section in [:stories, :scheduler]}>Stories</.sidebar_item>
+      <.sidebar_item to={~p"/app/projects/#{@project.id}/epics"} active={@section == :epics}>Epics</.sidebar_item>
+      <.sidebar_item to={~p"/app/projects/#{@project.id}/requirements"} active={@section in [:requirements, :requirements_stories]}>Requirements</.sidebar_item>
+      <.sidebar_item to={~p"/app/projects/#{@project.id}/requirements/graph"} active={@section == :requirements_graph}>Graph</.sidebar_item>
+      <.sidebar_item to={~p"/app/projects/#{@project.id}/architecture"} active={@section == :architecture}>Architecture</.sidebar_item>
+      <.sidebar_item to={~p"/app/projects/#{@project.id}/personas"} active={@section == :personas}>Personas</.sidebar_item>
+      <.sidebar_item to={~p"/app/projects/#{@project.id}/issues"} active={@section == :issues}>Issues</.sidebar_item>
+      <.sidebar_item to={~p"/app/projects/#{@project.id}/qa"} active={@section == :qa}>QA</.sidebar_item>
+      <.sidebar_item to={~p"/app/projects/#{@project.id}/sessions"} active={@section == :sessions}>Sessions</.sidebar_item>
     </div>
 
     <div class="local-sidebar-section">
       <div class="local-sidebar-eyebrow">// reference</div>
-      <.sidebar_item to={~p"/app/projects/#{project_slug(@project)}/knowledge"} active={@section == :knowledge}>Knowledge base</.sidebar_item>
-      <.sidebar_item to={~p"/app/projects/#{project_slug(@project)}/project-knowledge"} active={@section == :project_knowledge}>Project knowledge</.sidebar_item>
+      <.sidebar_item to={~p"/app/projects/#{@project.id}/knowledge"} active={@section == :knowledge}>Knowledge base</.sidebar_item>
+      <.sidebar_item to={~p"/app/projects/#{@project.id}/project-knowledge"} active={@section == :project_knowledge}>Project knowledge</.sidebar_item>
     </div>
     """
   end
@@ -290,22 +290,25 @@ defmodule CodeMySpecLocalWeb.Layouts do
     |> then(&("/" <> &1))
   end
 
-  defp project_slug(project) do
-    (project.name || "project")
-    |> String.downcase()
-    |> String.replace(~r/[^a-z0-9]+/, "-")
-    |> String.trim("-")
-  end
 
   # The prompt strip is styled like a shell prompt, so users will read it
   # as their working directory. Show the real `local_path` (abbreviated to
   # `~/…` when it lives under $HOME) when we have one — falling back to a
   # branded `~/code/<slug>` only if the project hasn't been linked yet
   # (e.g. during the per-project ladder's init rung).
+  # Shown under the project name in the sidebar. Purely a caption — URLs address
+  # the project by id — so it stays the readable form rather than a UUID.
+  defp display_slug(project) do
+    (project.name || "project")
+    |> String.downcase()
+    |> String.replace(~r/[^a-z0-9]+/, "-")
+    |> String.trim("-")
+  end
+
   defp prompt_cwd(project) do
     case project.local_path do
-      nil -> "~/code/#{project_slug(project)}"
-      "" -> "~/code/#{project_slug(project)}"
+      nil -> "~/code/#{project.id}"
+      "" -> "~/code/#{project.id}"
       path -> abbreviate_home(path)
     end
   end

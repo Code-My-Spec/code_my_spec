@@ -36,7 +36,7 @@ defmodule CodeMySpecSpex.Story127.Criterion5937Spex do
         :ok = Environments.write_file(context.environment, @impl_path, impl_content())
 
         {:ok, files_live, _html} =
-          live(context.conn, "/app/projects/#{context.project.name}/files")
+          live(context.conn, "/app/projects/#{context.project.id}/files")
 
         files_live
         |> element("[data-test='sync-button']")
@@ -53,7 +53,7 @@ defmodule CodeMySpecSpex.Story127.Criterion5937Spex do
 
       when_ "the engineer triggers a sync from the Files page", context do
         {:ok, files_live, _html} =
-          live(context.conn, "/app/projects/#{context.project.name}/files")
+          live(context.conn, "/app/projects/#{context.project.id}/files")
 
         files_live
         |> element("[data-test='sync-button']")

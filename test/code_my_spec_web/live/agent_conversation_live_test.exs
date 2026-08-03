@@ -26,7 +26,7 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
 
   setup :setup_project
 
-  defp path(project), do: "/app/projects/#{project.name}/agent-conversation"
+  defp path(project), do: "/app/projects/#{project.id}/agent-conversation"
 
   defp agent_conversation(scope, project, external_id \\ "pi:/tmp/sprite-test") do
     {:ok, conversation} =

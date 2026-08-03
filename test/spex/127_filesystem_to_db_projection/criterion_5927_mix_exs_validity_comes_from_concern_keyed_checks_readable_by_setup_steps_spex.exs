@@ -28,7 +28,7 @@ defmodule CodeMySpecSpex.Story127.Criterion5927Spex do
 
       when_ "the engineer triggers a sync from the Files page", context do
         {:ok, files_live, _html} =
-          live(context.conn, "/app/projects/#{context.project.name}/files")
+          live(context.conn, "/app/projects/#{context.project.id}/files")
 
         files_live
         |> element("[data-test='sync-button']")

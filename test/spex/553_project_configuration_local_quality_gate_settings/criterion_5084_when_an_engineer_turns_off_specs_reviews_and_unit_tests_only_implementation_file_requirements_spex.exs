@@ -34,7 +34,7 @@ defmodule CodeMySpecSpex.Story553.Criterion5084Spex do
 
       then_ "only implementation_file remains in the graph", context do
         {:ok, _graph_live, html} =
-          live(context.conn, ~p"/app/projects/#{context.project.name}/requirements/graph?preload=true")
+          live(context.conn, ~p"/app/projects/#{context.project.id}/requirements/graph?preload=true")
 
         # Anchor: implementation_file is never filtered — proves the graph
         # was actually produced and not empty for unrelated reasons.

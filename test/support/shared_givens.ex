@@ -139,7 +139,7 @@ defmodule CodeMySpecSpex.SharedGivens do
     :ok = Environments.write_file(env, @impl_path, impl_file_content())
 
     {:ok, sync_live, _html} =
-      live(context.conn, "/app/projects/#{context.project.name}/files")
+      live(context.conn, "/app/projects/#{context.project.id}/files")
 
     sync_live
     |> element("button[phx-click='sync']")
@@ -176,7 +176,7 @@ defmodule CodeMySpecSpex.SharedGivens do
     :ok = Environments.write_file(env, @impl_path, impl_file_content())
 
     {:ok, sync_live, _html} =
-      live(context.conn, "/app/projects/#{context.project.name}/files")
+      live(context.conn, "/app/projects/#{context.project.id}/files")
 
     sync_live |> element("button[phx-click='sync']") |> render_click()
 
@@ -259,7 +259,7 @@ defmodule CodeMySpecSpex.SharedGivens do
     :ok = Environments.write_file(env, bdd_path, bdd_content)
 
     {:ok, sync_live, _html} =
-      live(context.conn, "/app/projects/#{context.project.name}/files")
+      live(context.conn, "/app/projects/#{context.project.id}/files")
 
     sync_live |> element("button[phx-click='sync']") |> render_click()
 
@@ -283,7 +283,7 @@ defmodule CodeMySpecSpex.SharedGivens do
   # The engineer has opened the project configuration page.
   register_given :on_configuration_page, context do
     {:ok, config_live, _html} =
-      live(context.conn, "/app/projects/#{context.project.name}/configuration")
+      live(context.conn, "/app/projects/#{context.project.id}/configuration")
 
     {:ok, Map.put(context, :config_live, config_live)}
   end
@@ -329,7 +329,7 @@ defmodule CodeMySpecSpex.SharedGivens do
       """)
 
     {:ok, sync_live, _html} =
-      live(context.conn, "/app/projects/#{context.project.name}/files")
+      live(context.conn, "/app/projects/#{context.project.id}/files")
 
     sync_live |> element("button[phx-click='sync']") |> render_click()
 
@@ -476,7 +476,7 @@ defmodule CodeMySpecSpex.SharedGivens do
       )
 
     {:ok, sync_live, _html} =
-      live(context.conn, "/app/projects/#{context.project.name}/files")
+      live(context.conn, "/app/projects/#{context.project.id}/files")
 
     sync_live |> element("button[phx-click='sync']") |> render_click()
 

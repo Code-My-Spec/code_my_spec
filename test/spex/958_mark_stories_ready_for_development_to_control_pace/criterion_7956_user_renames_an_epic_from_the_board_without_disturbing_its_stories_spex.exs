@@ -38,7 +38,7 @@ defmodule CodeMySpecSpex.Story958.Criterion7956Spex do
 
       when_ "the user renames it to \"Neolithic\" from the board", context do
         {:ok, edit_live, _html} =
-          live(context.conn, "/app/projects/#{context.project.name}/epics/stone-age/edit")
+          live(context.conn, "/app/projects/#{context.project.id}/epics/stone-age/edit")
 
         edit_live
         |> form("[data-test='epic-form']",
@@ -50,7 +50,7 @@ defmodule CodeMySpecSpex.Story958.Criterion7956Spex do
       end
 
       then_ "the epic is listed as \"Neolithic\"", context do
-        {:ok, _board, html} = live(context.conn, "/app/projects/#{context.project.name}/epics")
+        {:ok, _board, html} = live(context.conn, "/app/projects/#{context.project.id}/epics")
 
         assert html =~ "Neolithic",
                "expected the renamed epic on the board, got: #{html}"
@@ -63,7 +63,7 @@ defmodule CodeMySpecSpex.Story958.Criterion7956Spex do
 
       and_ "both stories are still filed under it", context do
         {:ok, _live, html} =
-          live(context.conn, "/app/projects/#{context.project.name}/epics/neolithic")
+          live(context.conn, "/app/projects/#{context.project.id}/epics/neolithic")
 
         assert html =~ "Neolithic",
                "expected the renamed epic page to render at its new slug, got: #{html}"

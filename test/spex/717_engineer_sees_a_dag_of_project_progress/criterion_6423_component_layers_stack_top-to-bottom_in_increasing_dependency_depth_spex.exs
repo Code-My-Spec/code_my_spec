@@ -27,7 +27,7 @@ defmodule CodeMySpecSpex.Story717.Criterion6423Spex do
 
       when_ "the engineer opens the requirements graph view with preload enabled", context do
         {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.name}/requirements/graph?preload=true")
+          live(context.conn, "/app/projects/#{context.project.id}/requirements/graph?preload=true")
 
         graph = view |> render() |> extract_graph()
 

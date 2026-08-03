@@ -34,7 +34,7 @@ defmodule CodeMySpecSpex.Story671.Criterion5639Spex do
         :ok = Environments.delete_file(context.environment, "lib/example_context.ex")
 
         {:ok, sync_live, _html} =
-          live(context.conn, "/app/projects/#{context.project.name}/files")
+          live(context.conn, "/app/projects/#{context.project.id}/files")
 
         sync_live |> element("button[phx-click='sync']") |> render_click()
         {:ok, context}
@@ -58,7 +58,7 @@ defmodule CodeMySpecSpex.Story671.Criterion5639Spex do
 
       and_ "the engineer renders the requirements graph", context do
         {:ok, _live, html} =
-          live(context.conn, "/app/projects/#{context.project.name}/requirements/graph?preload=true")
+          live(context.conn, "/app/projects/#{context.project.id}/requirements/graph?preload=true")
 
         {:ok, Map.put(context, :graph, GraphAssertions.extract_graph!(html))}
       end

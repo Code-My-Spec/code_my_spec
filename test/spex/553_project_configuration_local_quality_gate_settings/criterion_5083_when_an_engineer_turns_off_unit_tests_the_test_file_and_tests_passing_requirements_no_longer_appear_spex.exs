@@ -31,7 +31,7 @@ defmodule CodeMySpecSpex.Story553.Criterion5083Spex do
       then_ "the graph still has spec + implementation but no test requirements",
             context do
         {:ok, _graph_live, html} =
-          live(context.conn, ~p"/app/projects/#{context.project.name}/requirements/graph?preload=true")
+          live(context.conn, ~p"/app/projects/#{context.project.id}/requirements/graph?preload=true")
 
         # Anchor: implementation_file is not affected — proves graph has content.
         assert html =~ "implementation_file",
