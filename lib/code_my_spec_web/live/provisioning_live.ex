@@ -496,6 +496,34 @@ defmodule CodeMySpecWeb.ProvisioningLive do
               {ph.location} at {ph.identifier}
             </span>
 
+            <!-- The image the deploy runs, and whether this deploy built it.
+                 `built=false` is an image that already existed somewhere; a
+                 build records the architecture it produced, which is the claim
+                 worth being able to read back (8234/8235). -->
+            <span
+              :for={img <- Enum.filter(step.resources, &(&1.kind == "published_image"))}
+              data-test="published-image"
+              data-image={img.location}
+              data-built={img.identifier |> String.split(" ") |> hd() |> String.replace_prefix("built=", "")}
+              data-architecture={image_architecture(img)}
+              data-registry={img.location |> String.split("/") |> hd()}
+              class="mt-1 block text-xs font-mono opacity-70"
+            >
+              image {img.location}
+            </span>
+
+            <!-- Enforced by the registry bucket's own lifecycle rule, so old
+                 images expire whether or not setup ever runs again (8241). -->
+            <span
+              :for={r <- Enum.filter(step.resources, &(&1.kind == "image_retention"))}
+              data-test="image-retention"
+              data-days={r.location |> String.replace_suffix(" days", "")}
+              data-enforced-by="bucket_lifecycle"
+              class="mt-1 block text-xs font-mono opacity-70"
+            >
+              images expire after {r.location}
+            </span>
+
             <span
               :for={dv <- Enum.filter(step.resources, &(&1.kind == "deployed_version"))}
               data-test="deployed-version"
@@ -1564,6 +1592,23 @@ defmodule CodeMySpecWeb.ProvisioningLive do
     do: identifier |> String.split(" ") |> List.first()
 
   defp resource_target(_), do: nil
+
+  # Only a built image reports one — an image that already existed was not
+  # built here, so this page has nothing to say about what it was built for.
+  # Absent rather than guessed, for the same reason the build reads it off the
+  # image instead of echoing the request.
+  defp image_architecture(%{identifier: identifier}) when is_binary(identifier) do
+    identifier
+    |> String.split(" ")
+    |> Enum.find_value(fn part ->
+      case String.split(part, "architecture=") do
+        ["", architecture] -> architecture
+        _ -> nil
+      end
+    end)
+  end
+
+  defp image_architecture(_resource), do: nil
 
   # Recorded by the provider rather than asserted by the page. Story 968's
   # whole claim is that these are Sam's, so a hardcoded "user" would make the

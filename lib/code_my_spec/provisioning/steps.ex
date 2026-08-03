@@ -641,7 +641,13 @@ defmodule CodeMySpec.Provisioning.Steps do
          {:ok, tag} <- image_tag(scope, opts),
          {:ok, build} <- Builder.build(scope, tag, Keyword.put(opts, :architecture, architecture)),
          {:ok, reference} <- Registry.reference(scope, tag, opts) do
-      {:ok, %{reference: reference, built: true, architecture: build.architecture}}
+      {:ok,
+       %{
+         reference: reference,
+         built: true,
+         architecture: build.architecture,
+         retention_days: Registry.retention_days(opts)
+       }}
     end
   end
 
@@ -701,13 +707,34 @@ defmodule CodeMySpec.Provisioning.Steps do
 
   defp deploy_opts(opts, host, :not_built), do: Keyword.put(opts, :host, host)
 
-  defp image_resources(%{reference: reference, built: true}),
-    do: [%{kind: "published_image", location: reference, identifier: "built=true"}]
+  # The architecture rides along because it is the claim worth checking: an
+  # image built for the other one deploys cleanly and dies at container start,
+  # so "which architecture did this get built for" has to be answerable from
+  # the record rather than by rebuilding it.
+  defp image_resources(%{reference: reference, built: true} = image) do
+    [
+      %{
+        kind: "published_image",
+        location: reference,
+        identifier: "built=true architecture=#{image.architecture}"
+      }
+      | retention_resource(image)
+    ]
+  end
 
   defp image_resources(%{reference: reference}),
     do: [%{kind: "published_image", location: reference, identifier: "built=false"}]
 
   defp image_resources(:not_built), do: []
+
+  # Old images stop costing money because the registry's bucket expires them,
+  # not because anything here runs on a schedule — the same shape as the
+  # backups' retention, and recorded so it is visible without reading a
+  # bucket policy.
+  defp retention_resource(%{retention_days: days}) when is_integer(days),
+    do: [%{kind: "image_retention", location: "#{days} days", identifier: "enforced_by=bucket_lifecycle"}]
+
+  defp retention_resource(_image), do: []
 
   ## Helpers
 
