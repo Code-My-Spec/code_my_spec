@@ -165,11 +165,18 @@ defmodule CodeMySpecWeb.Layouts do
             <%= if onboarding_complete?(@current_scope) do %>
               <li><a href={~p"/app/projects"}>Projects</a></li>
               <%!--
-                Every surface below is addressed per-project, so the nav can
-                only build these links while a project is named in the URL.
-                Nothing is persisted to fall back on — see Scope.for_user/1.
+                The path is the breadcrumb. Every surface below is addressed
+                per-project, and the project they point at is the one named in
+                the URL — `@project`, put there by PortableHost — never the
+                stored preference. A stored one could contradict the page you
+                are looking at; the preference now only decides where bare
+                `/app` sends you, which is a different question.
+
+                With no project in the path there is nothing to build links
+                from, so the sidebar offers the choice instead of going blank.
               --%>
-              <%= if project = active_project(@current_scope) do %>
+              <%= if project = assigns[:project] do %>
+                <li class="menu-title truncate" title={project.name}>{project.name}</li>
                 <li class="menu-title">Specification</li>
                 <li><a href={~p"/app/projects/#{project.id}/stories"}>Stories</a></li>
                 <li><a href={~p"/app/projects/#{project.id}/epics"}>Epics</a></li>
@@ -198,6 +205,16 @@ defmodule CodeMySpecWeb.Layouts do
                 <li><a href={~p"/app/projects/#{project.id}/mail"}>Mail</a></li>
                 <li :if={can_manage_mailboxes?(@current_scope)}>
                   <a href={~p"/app/projects/#{project.id}/mailboxes"}>Mailboxes</a>
+                </li>
+              <% else %>
+                <li class="menu-title">Open a project</li>
+                <li :for={p <- assigns[:projects] || []}>
+                  <a href={~p"/app/projects/#{p.id}/stories"} class="truncate" title={p.name}>
+                    {p.name}
+                  </a>
+                </li>
+                <li :if={(assigns[:projects] || []) == []} class="px-4 py-2 text-sm opacity-60">
+                  No projects yet.
                 </li>
               <% end %>
               <li class="mt-auto"><a href={~p"/app/accounts"}>Accounts</a></li>
@@ -232,11 +249,10 @@ defmodule CodeMySpecWeb.Layouts do
   # (`cli_first_connected_at`): a user can connect the plugin from a separate
   # machine, so requiring a local connect here hid the menu from people who
   # were actually set up (audit S2 originally gated on both).
-  # Stories are addressed per-project, so the nav entry only makes sense once
-  # a project is selected.
-  defp active_project(%{active_project: %{__struct__: _} = project}), do: project
-  defp active_project(_), do: nil
-
+  # `onboarding_complete?` still reads the stored project, and should: it asks
+  # whether this user has ever got set up, which a bookmark answers honestly.
+  # What it must not do is decide *which* project the nav points at — that is
+  # the path's job, and the two used to be the same helper.
   defp onboarding_complete?(nil), do: false
 
   defp onboarding_complete?(%{active_project: %{__struct__: _}}), do: true

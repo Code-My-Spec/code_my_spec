@@ -33,12 +33,28 @@ defmodule CodeMySpecWeb.AppLive.Overview do
 
     case ensure_active_account(scope) do
       {:ok, scope} ->
-        {:ok, assign_steps(socket, scope)}
+        case last_opened_project(scope) do
+          nil -> {:ok, assign_steps(socket, scope)}
+          path -> {:ok, push_navigate(socket, to: path)}
+        end
 
       {:redirect, path} ->
         {:ok, push_navigate(socket, to: path)}
     end
   end
+
+  # The stored active project is a bookmark, not a source of truth: it decides
+  # where bare `/app` drops you and nothing else. Every page below it reads the
+  # project out of its own path, so this cannot put you on a page that
+  # contradicts its URL — the failure mode that made us stop reading it in
+  # `Scope.for_user/1` in the first place.
+  #
+  # Nil means no bookmark yet, and this page stays what it is: the onboarding
+  # ladder for someone who has no project to be sent to.
+  defp last_opened_project(%{active_project: %CodeMySpec.Projects.Project{} = project}),
+    do: ~p"/app/projects/#{project.id}/stories"
+
+  defp last_opened_project(_scope), do: nil
 
   defp ensure_active_account(scope) do
     cond do

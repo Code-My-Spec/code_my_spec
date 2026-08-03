@@ -16,6 +16,7 @@ defmodule CodeMySpecWeb.PortableHost do
   import Phoenix.LiveView, only: [attach_hook: 4]
 
   alias CodeMySpec.Projects
+  alias CodeMySpec.UserPreferences
   alias CodeMySpec.Users.Scope
 
   def on_mount(:default, params, _session, socket) do
@@ -67,12 +68,13 @@ defmodule CodeMySpecWeb.PortableHost do
     with %Scope{} = scope <- socket.assigns.current_scope,
          {:ok, _} <- Ecto.UUID.cast(id),
          {:ok, project} <- Projects.get_project(scope, id) do
+      remember(scope, project)
       scope = %Scope{scope | active_project: project, active_project_id: project.id}
 
       # `:current_scope` carries it too, so cloud views written before the
       # portable contract — mail, mailboxes, project users — keep reading
-      # `@current_scope.active_project` unchanged. This is the only place a
-      # project reaches a scope now that nothing is persisted.
+      # `@current_scope.active_project` unchanged. The URL is what puts a
+      # project on a scope; the stored one is only a starting point.
       {:cont,
        assign(socket,
          scope: scope,
@@ -88,6 +90,17 @@ defmodule CodeMySpecWeb.PortableHost do
   end
 
   defp put_scope(_params, _uri, socket), do: {:cont, socket}
+
+  # Opening a project is what makes it the one you were last in — otherwise the
+  # bookmark only ever records what the picker was used for, and bare `/app`
+  # sends you somewhere you have not been in weeks. Written only on a change,
+  # so navigating around inside one project is not a write per page.
+  defp remember(%Scope{active_project_id: same}, %{id: same}), do: :ok
+
+  defp remember(%Scope{} = scope, project) do
+    UserPreferences.update_user_preferences(scope, %{active_project_id: project.id})
+    :ok
+  end
 
   defp fail(socket, message),
     do: assign(socket, scope: nil, project: nil, scope_error: message)
