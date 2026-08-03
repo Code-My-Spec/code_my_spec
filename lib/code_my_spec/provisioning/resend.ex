@@ -429,7 +429,7 @@ defmodule CodeMySpec.Provisioning.Resend do
   def poll_until_verified(%Scope{} = scope, domain_id, opts \\ []) do
     max = Keyword.get(opts, :attempts, @default_attempts)
     interval = Keyword.get(opts, :interval_ms, @default_interval_ms)
-    sleep = Keyword.get(opts, :sleep, &Process.sleep/1)
+    sleep = Keyword.get(opts, :sleep, &Wait.sleep/1)
 
     # Ask Resend to look before waiting to see whether it has. It does not
     # re-check a pending domain on its own — verification happens when you
