@@ -170,8 +170,29 @@ defmodule CodeMySpecWeb.Layouts do
                 Nothing is persisted to fall back on — see Scope.for_user/1.
               --%>
               <%= if project = active_project(@current_scope) do %>
+                <li class="menu-title">Specification</li>
                 <li><a href={~p"/app/projects/#{project.id}/stories"}>Stories</a></li>
+                <li><a href={~p"/app/projects/#{project.id}/epics"}>Epics</a></li>
+                <li><a href={~p"/app/projects/#{project.id}/personas"}>Personas</a></li>
+                <li><a href={~p"/app/projects/#{project.id}/requirements"}>Requirements</a></li>
+                <li><a href={~p"/app/projects/#{project.id}/architecture"}>Architecture</a></li>
+                <li><a href={~p"/app/projects/#{project.id}/components"}>Components</a></li>
+
+                <li class="menu-title">Build</li>
+                <li><a href={~p"/app/projects/#{project.id}/next-task"}>Next task</a></li>
+                <li><a href={~p"/app/projects/#{project.id}/files"}>Files &amp; sync</a></li>
+                <li><a href={~p"/app/projects/#{project.id}/problems"}>Problems</a></li>
+                <li><a href={~p"/app/projects/#{project.id}/qa"}>QA</a></li>
+                <li><a href={~p"/app/projects/#{project.id}/sessions"}>Sessions</a></li>
                 <li><a href={~p"/app/projects/#{project.id}/issues"}>Issues</a></li>
+
+                <li class="menu-title">Project</li>
+                <li><a href={~p"/app/projects/#{project.id}/content"}>Content</a></li>
+                <li><a href={~p"/app/projects/#{project.id}/knowledge"}>Knowledge base</a></li>
+                <li>
+                  <a href={~p"/app/projects/#{project.id}/project-knowledge"}>Project knowledge</a>
+                </li>
+                <li><a href={~p"/app/projects/#{project.id}/configuration"}>Configuration</a></li>
                 <li><a href={~p"/app/projects/#{project.id}/users"}>Users</a></li>
                 <li><a href={~p"/app/projects/#{project.id}/inbox"}>Chats</a></li>
                 <li><a href={~p"/app/projects/#{project.id}/mail"}>Mail</a></li>

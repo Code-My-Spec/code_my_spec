@@ -217,4 +217,58 @@ defmodule CodeMySpecWeb.LinkResolutionTest do
     #{Enum.join(missing, "\n")}
     """
   end
+
+  # Surfaces with no sidebar entry, and why. The first is by design; the rest
+  # are findings this guard surfaced on its first run — mounted in both routers
+  # and linked from nowhere in either app. They are listed to keep the guard
+  # green on a known set rather than to justify them; a surface leaving this
+  # list means it either got a nav entry or got deleted.
+  @intentionally_unlinked [
+    # Onboarding entry point — reached from Home and from the setup flow, not
+    # from the nav of a project that is by definition not yet set up.
+    "/app/projects/:project_id/init",
+    # TaskQueueLive. Nothing links it in either app.
+    "/app/projects/:project_id/tasks",
+    # AgentProgressLive — story 813, parked before it was wired into nav.
+    "/app/projects/:project_id/progress",
+    # ProvisioningLive. Arrived on main with no nav entry and no inbound link.
+    "/app/projects/:project_id/provisioning"
+  ]
+
+  @doc false
+  # A migrated surface that nothing links to is invisible. Twelve of the
+  # thirteen views moved into CodeMySpecWeb were mounted in the cloud router
+  # and reachable only by typing the URL — the migration looked complete from
+  # every angle except opening the app. Route parity says both apps *serve*
+  # the surface; this says the cloud app will actually take you there.
+  test "every portable surface the cloud serves is reachable from its sidebar" do
+    sidebar = File.read!("lib/code_my_spec_web/components/layouts.ex")
+
+    served =
+      CodeMySpecWeb.Router.__routes__()
+      |> Enum.filter(&(&1.plug == Phoenix.LiveView.Plug))
+      |> Enum.map(& &1.path)
+      |> Enum.filter(&(&1 =~ ~r{^/app/projects/:project_id/[a-z-]+$}))
+      |> Enum.uniq()
+
+    unlinked =
+      served
+      |> Enum.reject(&(&1 in @intentionally_unlinked))
+      |> Enum.reject(fn path ->
+        segment = path |> String.split("/") |> List.last()
+        sidebar =~ ~s{/#{segment}"}
+      end)
+
+    assert unlinked == [], """
+    Mounted in the cloud router but absent from the cloud sidebar, so the only
+    way to reach them is to type the URL:
+
+    #{Enum.map_join(unlinked, "\n", &("  " <> &1))}
+
+    Add a nav entry in lib/code_my_spec_web/components/layouts.ex, or if the
+    surface is deliberately unlisted (reached from inside another page), name
+    it in @intentionally_unlinked with the page that links to it.
+    """
+  end
+
 end
