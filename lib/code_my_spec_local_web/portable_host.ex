@@ -80,8 +80,19 @@ defmodule CodeMySpecLocalWeb.PortableHost do
   defp put_scope(%{"project_id" => id}, _uri, socket) do
     with %Projects.Project{} = project <- Projects.get_project_by_id(id),
          {:ok, scope} <- Scope.for_local_project(project) do
+      # `:current_scope` gets the same scope, exactly as the cloud host does.
+      # Portable views are written against the cloud's assign names, and some
+      # query through `current_scope` rather than `scope` — IssuesLive does.
+      # Leaving it at its nil default meant those ran their queries with no
+      # scope at all in this app, on pages that still rendered.
       {:cont,
-       assign(socket, scope: scope, project: project, slug: project.id, scope_error: nil)}
+       assign(socket,
+         scope: scope,
+         current_scope: scope,
+         project: project,
+         slug: project.id,
+         scope_error: nil
+       )}
     else
       nil -> {:cont, fail(socket, "Project not found.")}
       {:error, reason} -> {:cont, fail(socket, "#{reason}")}
@@ -94,6 +105,6 @@ defmodule CodeMySpecLocalWeb.PortableHost do
   defp put_scope(_params, _uri, socket), do: {:cont, socket}
 
   defp fail(socket, message),
-    do: assign(socket, scope: nil, project: nil, scope_error: message)
+    do: assign(socket, scope: nil, current_scope: nil, project: nil, scope_error: message)
 
 end
