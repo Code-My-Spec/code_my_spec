@@ -47,12 +47,26 @@ defmodule CodeMySpec.Provisioning.Builder do
   #
   # Checked against the live API rather than the docs, as with the server
   # types: cax11 €0.0112/h, cax21 €0.0200/h, cpx11 2GB, cpx21 4GB.
+  # Checked against `/datacenters`, which is the only place that says what can
+  # actually be created right now. Two things it said that the docs do not:
+  #
+  #   * No ARM type is available in any datacenter today. cax11 and cax21 are
+  #     still listed and not deprecated, so this is Hetzner being sold out
+  #     rather than a removal — CAX goes in and out of stock. An arm builder is
+  #     therefore a request that may simply fail, and says so.
+  #   * There is a newer x86 generation the docs do not lead with. cpx32 is 4
+  #     cores and 8GB for €0.0673/h, against cpx21's 3 cores and 4GB for
+  #     €0.0601 — more of both forseven thousandths of a euro an hour.
+  #
+  # cpx32 is EU-only (fsn1/nbg1/hel1/sin, not ash). A builder pushes to a
+  # registry and is gone in minutes, so where it runs matters far less than
+  # what it costs and whether it exists.
   @builders %{
     arm: %{server_type: "cax21", location: "fsn1"},
-    x86: %{server_type: "cpx21", location: "ash"}
+    x86: %{server_type: "cpx32", location: "fsn1"}
   }
 
-  # Hetzner's Docker app image, not a bare OS.
+  # The Docker app image, not a bare OS.
   #
   # Every system image Hetzner offers is the same 5GB minimal cloud image —
   # Debian is not lighter than Ubuntu here, they are the same size. So the
@@ -103,12 +117,13 @@ defmodule CodeMySpec.Provisioning.Builder do
   defp start_builder(scope, ref, spec, opts) do
     create = Keyword.get(opts, :create, &Hetzner.create_server/3)
 
+    # `ssh_key_ids` is forwarded rather than dropped: `create_server/3` refuses
+    # without one, and a builder nobody can log into cannot build anything.
     create.(scope, builder_name(ref), [
       server_type: spec.server_type,
       location: spec.location,
-      # The pre-warmed image, so a deploy does not pay for the toolchain every
-      # time. Falls back to a plain OS image, which still builds — just slowly.
-      image: Keyword.get(opts, :builder_image, @builder_image)
+      image: Keyword.get(opts, :builder_image, @builder_image),
+      ssh_key_ids: Keyword.get(opts, :ssh_key_ids)
     ])
   end
 

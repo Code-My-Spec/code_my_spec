@@ -116,7 +116,7 @@ defmodule CodeMySpec.Provisioning.BuilderTest do
                  opts(build: build, create: create, architecture: :x86)
                )
 
-      assert_received {:created, "cpx21", "ash"}
+      assert_received {:created, "cpx32", "fsn1"}
     end
 
     test "refuses an architecture with no builder rather than guessing one" do
