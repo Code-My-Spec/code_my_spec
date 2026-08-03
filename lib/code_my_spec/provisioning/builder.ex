@@ -37,10 +37,33 @@ defmodule CodeMySpec.Provisioning.Builder do
   # to happen on the architecture it will run on: an image built for the other
   # one fails at container start, which is a deploy that looks healthy right up
   # until the swap.
+  #
+  # A size up from the app servers, deliberately. A builder is CPU-bound and
+  # lives for minutes, so the trade is nothing like a server that runs for
+  # months: cax21 doubles the cores and the memory of cax11 for €0.009/hour
+  # more, which on a five-minute build is a tenth of a cent. On x86 it is not
+  # even a trade — cpx11 has 2GB, and an Elixir release compile is not
+  # something to attempt in 2GB.
+  #
+  # Checked against the live API rather than the docs, as with the server
+  # types: cax11 €0.0112/h, cax21 €0.0200/h, cpx11 2GB, cpx21 4GB.
   @builders %{
-    arm: %{server_type: "cax11", location: "fsn1"},
-    x86: %{server_type: "cpx11", location: "ash"}
+    arm: %{server_type: "cax21", location: "fsn1"},
+    x86: %{server_type: "cpx21", location: "ash"}
   }
+
+  # Hetzner's Docker app image, not a bare OS.
+  #
+  # Every system image Hetzner offers is the same 5GB minimal cloud image —
+  # Debian is not lighter than Ubuntu here, they are the same size. So the
+  # weight that matters is not the image, it is what has to be installed before
+  # the box can do its job. A bare OS pays `apt-get install docker` on every
+  # single build: a minute or two, and a dependency on apt mirrors being up
+  # during a customer's deploy.
+  #
+  # `docker-ce` asks for a 40GB disk, which both cax21 and cpx21 clear
+  # comfortably. It is heavier on paper and much lighter in practice.
+  @builder_image "docker-ce"
 
   @doc """
   Build `ref` for `architecture`, and take the builder with it either way.
@@ -85,7 +108,7 @@ defmodule CodeMySpec.Provisioning.Builder do
       location: spec.location,
       # The pre-warmed image, so a deploy does not pay for the toolchain every
       # time. Falls back to a plain OS image, which still builds — just slowly.
-      image: Keyword.get(opts, :builder_image, "ubuntu-24.04")
+      image: Keyword.get(opts, :builder_image, @builder_image)
     ])
   end
 
