@@ -257,7 +257,16 @@ defmodule CodeMySpecSpex.Case do
       :provisioning_step_opts,
       Keyword.merge(previous,
         verify: fn _scope, _key -> {:ok, :absent} end,
-        execute: fn _scope, key, _opts -> Map.get(script, key, {:ok, []}) end
+        execute: fn _scope, key, _opts ->
+          case Map.get(script, key, {:ok, []}) do
+            # A zero-arity function so a criterion can hold a step open.
+            # Scripted steps finish instantly, which makes "Sam sees a step
+            # running" unobservable — the state the criterion is about would
+            # be gone before the page could show it.
+            fun when is_function(fun, 0) -> fun.()
+            outcome -> outcome
+          end
+        end
       )
     )
 
@@ -266,6 +275,35 @@ defmodule CodeMySpecSpex.Case do
     end)
 
     context
+  end
+
+  @doc """
+  Wait until a step reaches a state, then hand back the page.
+
+  A run is asynchronous, so a criterion that renders immediately after
+  clicking reads the page before anything has happened, and one that waits for
+  the whole run to settle has missed every intermediate state. This waits for
+  the one transition the criterion is about.
+  """
+  def await_step_state(view, step, state, timeout \\ 30_000) do
+    deadline = System.monotonic_time(:millisecond) + timeout
+    await_step_state(view, step, state, deadline, nil)
+  end
+
+  defp await_step_state(view, step, state, deadline, _last) do
+    html = Phoenix.LiveViewTest.render(view)
+
+    cond do
+      html =~ ~r/data-step="#{step}"[^>]*data-state="#{state}"/ ->
+        html
+
+      System.monotonic_time(:millisecond) > deadline ->
+        html
+
+      true ->
+        Process.sleep(100)
+        await_step_state(view, step, state, deadline, nil)
+    end
   end
 
   @doc """
