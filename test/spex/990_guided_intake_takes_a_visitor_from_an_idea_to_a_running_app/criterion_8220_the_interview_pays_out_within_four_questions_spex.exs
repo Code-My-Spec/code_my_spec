@@ -18,10 +18,14 @@ defmodule CodeMySpecSpex.Story990.Criterion8220Spex do
 
   import CodeMySpecSpex.SharedGivens
 
-  alias CodeMySpec.Intake.Interview
   alias CodeMySpecTest.FakeWorkspaceRunner
 
   @endpoint CodeMySpecWeb.Endpoint
+
+  # The number the story states, not the one the code happens to hold. Asking
+  # Interview.question_cap/0 would make this assertion circular — raise the cap
+  # to ten and the spex would still pass.
+  @cap 4
 
   setup :register_log_in_setup_account
 
@@ -65,14 +69,14 @@ defmodule CodeMySpecSpex.Story990.Criterion8220Spex do
       end
 
       when_ "they keep answering until it stops asking", context do
-        html = answer_until_done(context.view, Interview.question_cap() + 1, 0)
+        html = answer_until_done(context.view, @cap + 1, 0)
 
         {:ok, Map.merge(context, %{html: elem(html, 0), asked: elem(html, 1)})}
       end
 
       then_ "they were asked no more than four questions", context do
-        assert context.asked <= Interview.question_cap(),
-               "expected at most #{Interview.question_cap()} questions, was asked #{context.asked}"
+        assert context.asked <= @cap,
+               "expected at most #{@cap} questions, was asked #{context.asked}"
 
         {:ok, context}
       end
