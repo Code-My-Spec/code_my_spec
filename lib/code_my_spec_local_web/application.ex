@@ -18,11 +18,84 @@ defmodule CodeMySpecLocalWeb.Application do
   def start(_type, _args) do
     argv = cli_argv()
 
-    if mcp_relay_command?(argv) do
-      start_mcp_relay()
-    else
-      start_full(argv)
+    cond do
+      mcp_relay_command?(argv) -> start_mcp_relay()
+      migrate_command?(argv) -> start_migrate(argv)
+      true -> start_full(argv)
     end
+  end
+
+  # `cms migrate --project <cloud-project-id>` copies this checkout's authored
+  # graph to the cloud. It needs the database and nothing else — no endpoint,
+  # no MCP server — so it boots the same minimum `cms mcp` does plus the Repo,
+  # runs once, and halts on the outcome.
+  defp migrate_command?(argv) do
+    "migrate" in Enum.reject(argv, &(&1 in ["--", ""]))
+  end
+
+  defp start_migrate(argv) do
+    ensure_directories()
+
+    children = [
+      CodeMySpec.Vault,
+      CodeMySpec.Repo,
+      CodeMySpec.Environments.registry_child_spec(),
+      CodeMySpecLocalWeb.Migrator
+    ]
+
+    {:ok, pid} =
+      Supervisor.start_link(children, strategy: :one_for_one, name: CodeMySpec.Supervisor)
+
+    argv |> run_migration() |> report_migration()
+
+    {:ok, pid}
+  end
+
+  defp run_migration(argv) do
+    with {:ok, cloud_project_id} <- migrate_target(argv),
+         working_dir = File.cwd!(),
+         {:ok, project} <- CodeMySpec.Projects.resolve_local_project(working_dir),
+         {:ok, scope} <- CodeMySpec.Users.Scope.for_local_project(project, working_dir) do
+      IO.puts("Migrating #{project.name} to cloud project #{cloud_project_id}…")
+      CodeMySpec.Migration.Client.migrate(scope, cloud_project_id: cloud_project_id)
+    end
+  end
+
+  # `--project <id>` names the cloud project to fill. It is deliberately not
+  # inferred: the local project's id means nothing on the server, and guessing
+  # by name could pour one project's work into another's.
+  defp migrate_target(argv) do
+    case Enum.drop_while(argv, &(&1 != "--project")) do
+      ["--project", id | _] when id != "" -> {:ok, id}
+      _ -> {:error, :missing_project}
+    end
+  end
+
+  defp report_migration({:ok, summary}) do
+    IO.puts("\nMigrated:")
+    Enum.each(summary, fn {kind, count} -> IO.puts("  #{kind}: #{count}") end)
+    IO.puts("\nThe local copy is untouched. The two are independent from here.")
+    System.halt(0)
+  end
+
+  defp report_migration({:error, :missing_project}),
+    do: migration_failed("name the cloud project: cms migrate --project <cloud-project-id>")
+
+  defp report_migration({:error, :cloud_project_id_required}),
+    do: migration_failed("name the cloud project: cms migrate --project <cloud-project-id>")
+
+  defp report_migration({:error, {:refused, _status, reason}}),
+    do: migration_failed(reason)
+
+  defp report_migration({:error, {:unreachable, reason}}),
+    do: migration_failed("could not reach the server: #{inspect(reason)}")
+
+  defp report_migration({:error, reason}), do: migration_failed(inspect(reason))
+
+  defp migration_failed(message) do
+    IO.puts(:stderr, "\ncms migrate: #{message}")
+    IO.puts(:stderr, "Nothing was copied. The local copy is untouched.")
+    System.halt(1)
   end
 
   # `cms mcp` (or CMS_MCP_RELAY=1) boots ONLY the stdio<->server relay — no DB,
@@ -155,11 +228,13 @@ defmodule CodeMySpecLocalWeb.Application do
   # back-compat alias so a service definition still pointing at `cms start`
   # (e.g. an in-flight upgrade with a stale launchd plist) keeps working.
   defp find_subcommand(args) do
-    Enum.find(["start", "server"], &(&1 in args))
+    Enum.find(["start", "server", "migrate"], &(&1 in args))
   end
 
   defp run_subcommand("start", _args), do: :ok
   defp run_subcommand("server", _args), do: :ok
+  # Handled before the full boot, in `start_migrate/1`.
+  defp run_subcommand("migrate", _args), do: :ok
 
   defp print_and_halt(text, code) do
     IO.puts(text)
@@ -187,6 +262,12 @@ defmodule CodeMySpecLocalWeb.Application do
 
     Usage:
       cms start        Run the server in the foreground (ctrl-C to stop).
+      cms migrate --project <cloud-project-id>
+                       Copy this checkout's stories, rules, criteria, personas
+                       and epics to that project on codemyspec.com. Run it from
+                       the project directory. Needs a paid account. The local
+                       copy is left alone, and running it again adopts the
+                       cloud project rather than making a second.
       cms --version    Print version and exit.
       cms --help       Print this help and exit.
 
