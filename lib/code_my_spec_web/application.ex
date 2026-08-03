@@ -19,6 +19,7 @@ defmodule CodeMySpecWeb.Application do
         CodeMySpec.Environments.registry_child_spec(),
         {DNSCluster, query: Application.get_env(:code_my_spec, :dns_cluster_query) || :ignore},
         {Phoenix.PubSub, name: CodeMySpec.PubSub},
+        {Task.Supervisor, name: CodeMySpec.TaskSupervisor},
         CodeMySpecWeb.Presence,
         {CodeMySpec.McpServers.ComponentsServer, transport: :streamable_http},
         {CodeMySpec.McpServers.IssuesServer, transport: :streamable_http},
