@@ -7,7 +7,10 @@ defmodule CodeMySpecWeb.AccountLive.Index do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_scope={@current_scope} current_path={@current_path} pending_notifications={@pending_notifications}>
+    <Layouts.app flash={@flash} current_scope={@current_scope} current_path={@current_path} pending_notifications={@pending_notifications}
+      project={assigns[:project]}
+      projects={assigns[:projects] || []}
+    >
       <.header>
         Your Accounts
         <:subtitle>Manage your accounts</:subtitle>

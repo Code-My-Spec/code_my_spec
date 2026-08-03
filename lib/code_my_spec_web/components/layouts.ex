@@ -30,6 +30,8 @@ defmodule CodeMySpecWeb.Layouts do
       current_scope={@current_scope}
       current_path={@current_path}
       pending_notifications={@pending_notifications}
+      project={assigns[:project]}
+      projects={assigns[:projects] || []}
     >
       {@inner_content}
     </.app>
@@ -61,6 +63,16 @@ defmodule CodeMySpecWeb.Layouts do
   attr :pending_notifications, :integer,
     default: 0,
     doc: "pending questions/approvals count for the navbar badge (NotificationsHook)"
+
+  # The sidebar's two halves. `project` is the one named in the path, put there
+  # by PortableHost — nil on any page that names none, which is what makes the
+  # nav switch to the picker. `projects` is what the picker offers.
+  #
+  # Declared, not read off `assigns`: a function component only receives what
+  # it declares, so reaching for an undeclared assign here silently renders the
+  # empty branch on every page. Which is exactly what it did.
+  attr :project, :map, default: nil, doc: "project named in the current path, if any"
+  attr :projects, :list, default: [], doc: "projects this user can open (CurrentPathHook)"
 
   slot :inner_block, required: true
 
@@ -175,7 +187,7 @@ defmodule CodeMySpecWeb.Layouts do
                 With no project in the path there is nothing to build links
                 from, so the sidebar offers the choice instead of going blank.
               --%>
-              <%= if project = assigns[:project] do %>
+              <%= if project = @project do %>
                 <li class="menu-title truncate" title={project.name}>{project.name}</li>
                 <li class="menu-title">Specification</li>
                 <li><a href={~p"/app/projects/#{project.id}/stories"}>Stories</a></li>
@@ -208,12 +220,12 @@ defmodule CodeMySpecWeb.Layouts do
                 </li>
               <% else %>
                 <li class="menu-title">Open a project</li>
-                <li :for={p <- assigns[:projects] || []}>
+                <li :for={p <- @projects}>
                   <a href={~p"/app/projects/#{p.id}/stories"} class="truncate" title={p.name}>
                     {p.name}
                   </a>
                 </li>
-                <li :if={(assigns[:projects] || []) == []} class="px-4 py-2 text-sm opacity-60">
+                <li :if={@projects == []} class="px-4 py-2 text-sm opacity-60">
                   No projects yet.
                 </li>
               <% end %>

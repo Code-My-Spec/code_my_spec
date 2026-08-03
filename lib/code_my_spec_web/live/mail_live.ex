@@ -291,7 +291,10 @@ defmodule CodeMySpecWeb.MailLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_scope={@current_scope} pending_notifications={@pending_notifications}>
+    <Layouts.app flash={@flash} current_scope={@current_scope} pending_notifications={@pending_notifications}
+      project={assigns[:project]}
+      projects={assigns[:projects] || []}
+    >
       <div class="w-full">
         <header class="flex items-center justify-between gap-3 pb-4">
           <div class="flex items-center gap-2">

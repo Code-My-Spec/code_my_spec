@@ -7,7 +7,10 @@ defmodule CodeMySpecWeb.AccountLive.Form do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_scope={@current_scope} current_path={@current_path}>
+    <Layouts.app flash={@flash} current_scope={@current_scope} current_path={@current_path}
+      project={assigns[:project]}
+      projects={assigns[:projects] || []}
+    >
       <.header>
         {@page_title}
         <:subtitle>Use this form to manage account records in your database.</:subtitle>
