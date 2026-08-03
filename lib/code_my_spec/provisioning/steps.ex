@@ -636,9 +636,10 @@ defmodule CodeMySpec.Provisioning.Steps do
   end
 
   defp build_image(scope, environment, opts) do
-    with {:ok, _bucket} <- Registry.ensure(scope, opts),
+    with {:ok, architecture} <- architecture_for(scope, environment, opts),
+         {:ok, _bucket} <- Registry.ensure(scope, opts),
          {:ok, tag} <- image_tag(scope, opts),
-         {:ok, build} <- Builder.build(scope, tag, builder_opts(environment, opts)),
+         {:ok, build} <- Builder.build(scope, tag, Keyword.put(opts, :architecture, architecture)),
          {:ok, reference} <- Registry.reference(scope, tag, opts) do
       {:ok, %{reference: reference, built: true, architecture: build.architecture}}
     end
@@ -663,11 +664,37 @@ defmodule CodeMySpec.Provisioning.Steps do
   # The architecture the environment's box runs, not a default. An image built
   # for the other one fails at container start, which is a deploy that looks
   # healthy until the swap.
-  defp builder_opts(environment, opts) do
-    Keyword.put_new(opts, :architecture, architecture_for(environment, opts))
+  #
+  # Asked of Hetzner rather than assumed, because what we requested and what
+  # exists are different questions: the server step answers a sold-out region by
+  # taking the other architecture. This used to return `:arm` regardless, which
+  # made that fallback silently produce an unrunnable image.
+  defp architecture_for(scope, environment, opts) do
+    case Keyword.get(opts, :architecture) do
+      nil -> environment_architecture(scope, environment)
+      architecture -> {:ok, architecture}
+    end
   end
 
-  defp architecture_for(_environment, opts), do: Keyword.get(opts, :architecture, :arm)
+  defp environment_architecture(scope, environment) do
+    case EnvironmentRepository.get(scope, environment) do
+      %{server_name: name} when is_binary(name) -> server_architecture(scope, name)
+      _ -> {:error, "cannot build for #{environment}: it has no server yet"}
+    end
+  end
+
+  defp server_architecture(scope, name) do
+    with {:ok, server} <- Hetzner.find_server(scope, name),
+         {:ok, architecture} <- Hetzner.server_architecture(server) do
+      {:ok, architecture}
+    else
+      {:error, :not_found} ->
+        {:error, "cannot build for #{name}: the provider has no such server"}
+
+      {:error, reason} ->
+        {:error, format(reason)}
+    end
+  end
 
   defp deploy_opts(opts, host, %{reference: reference}),
     do: opts |> Keyword.put(:host, host) |> Keyword.put(:image, reference)
