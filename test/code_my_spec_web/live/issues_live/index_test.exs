@@ -1,10 +1,13 @@
 defmodule CodeMySpecWeb.IssuesLive.IndexTest do
   @moduledoc """
   These tests followed the local issues index into `CodeMySpecWeb`, where the
-  surviving view is the cloud one. Its filter model is different: two string
-  assigns, `filter_status` and `filter_severity`, defaulting to "all" — not a
-  `filters` map of atoms, and with no `scope` filter at all. The assertions
+  surviving view is the cloud one. Its filter model is different: string
+  assigns defaulting to "all" rather than a map of atoms, so the assertions
   moved to that contract because the view they described no longer exists.
+
+  Scope filtering is asserted here because the merge dropped it — the local
+  index had it, the cloud one did not — and it has since been put back. That
+  test is the record of a capability the move nearly cost silently.
 
   What did survive is the property worth keeping: filters live in the query
   string, so a filtered list is a link you can send someone and it survives a
@@ -71,6 +74,19 @@ defmodule CodeMySpecWeb.IssuesLive.IndexTest do
       assert Enum.map(socket.assigns.issues, & &1.title) == ["kept"]
     end
 
+    test "scope is filterable again, as it was on the local index" do
+      {project, scope} = setup_local_project()
+
+      issue_fixture(scope, %{title: "qa issue", scope: :qa})
+      issue_fixture(scope, %{title: "app issue", scope: :app})
+
+      socket = build_socket(project, scope)
+      {:noreply, socket} = Index.handle_params(%{"scope" => "qa"}, "/", socket)
+
+      assert socket.assigns.filter_scope == "qa"
+      assert Enum.map(socket.assigns.issues, & &1.title) == ["qa issue"]
+    end
+
     test "empty params leave both filters at all" do
       {project, scope} = setup_local_project()
 
@@ -79,6 +95,7 @@ defmodule CodeMySpecWeb.IssuesLive.IndexTest do
 
       assert socket.assigns.filter_status == "all"
       assert socket.assigns.filter_severity == "all"
+      assert socket.assigns.filter_scope == "all"
     end
 
     test "does nothing until the host has resolved a scope" do
@@ -99,10 +116,18 @@ defmodule CodeMySpecWeb.IssuesLive.IndexTest do
       socket = build_socket(project, scope)
 
       assert {:noreply, _socket} =
-               Index.handle_event("filter", %{"status" => "", "severity" => "high"}, socket)
+               Index.handle_event(
+                 "filter",
+                 %{"status" => "", "severity" => "high", "scope" => "qa"},
+                 socket
+               )
 
       assert {:noreply, _socket} =
-               Index.handle_event("filter", %{"status" => "", "severity" => ""}, socket)
+               Index.handle_event(
+                 "filter",
+                 %{"status" => "", "severity" => "", "scope" => ""},
+                 socket
+               )
     end
   end
 
@@ -151,8 +176,10 @@ defmodule CodeMySpecWeb.IssuesLive.IndexTest do
         issues: [],
         filter_status: "all",
         filter_severity: "all",
+        filter_scope: "all",
         status_options: ~w(all incoming accepted dismissed resolved),
         severity_options: ~w(all critical high medium low info),
+        scope_options: ~w(all app qa docs framework),
         error: nil,
         flash: %{}
       },

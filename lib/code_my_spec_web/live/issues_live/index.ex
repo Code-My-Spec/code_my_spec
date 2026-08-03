@@ -5,6 +5,10 @@ defmodule CodeMySpecWeb.IssuesLive.Index do
 
   @statuses ~w(all incoming accepted dismissed resolved)
   @severities ~w(all critical high medium low info)
+  # The local index this view replaced could filter by scope; the cloud one
+  # could not, so the merge quietly dropped it. Restored here rather than
+  # left as a capability the move cost us.
+  @scopes ~w(all app qa docs framework)
 
   @impl true
   def render(assigns) do
@@ -20,6 +24,11 @@ defmodule CodeMySpecWeb.IssuesLive.Index do
             </select>
             <select class="select select-sm select-bordered" name="severity">
               <option :for={s <- @severity_options} value={s} selected={s == @filter_severity}>
+                {String.capitalize(s)}
+              </option>
+            </select>
+            <select class="select select-sm select-bordered" name="scope">
+              <option :for={s <- @scope_options} value={s} selected={s == @filter_scope}>
                 {String.capitalize(s)}
               </option>
             </select>
@@ -77,7 +86,9 @@ defmodule CodeMySpecWeb.IssuesLive.Index do
      |> assign(:page_title, "Issues")
      |> assign(:filter_status, "all")
      |> assign(:filter_severity, "all")
+     |> assign(:filter_scope, "all")
      |> assign(:status_options, @statuses)
+     |> assign(:scope_options, @scopes)
      |> assign(:severity_options, @severities)}
   end
 
@@ -92,6 +103,7 @@ defmodule CodeMySpecWeb.IssuesLive.Index do
        :filter_severity,
        param(params["severity"], @severities, socket.assigns.filter_severity)
      )
+     |> assign(:filter_scope, param(params["scope"], @scopes, socket.assigns.filter_scope))
      |> load_issues()}
   end
 
@@ -108,7 +120,8 @@ defmodule CodeMySpecWeb.IssuesLive.Index do
     query =
       [
         status: params["status"] || socket.assigns.filter_status,
-        severity: params["severity"] || socket.assigns.filter_severity
+        severity: params["severity"] || socket.assigns.filter_severity,
+        scope: params["scope"] || socket.assigns.filter_scope
       ]
       |> Enum.reject(fn {_k, v} -> v in [nil, "all"] end)
 
@@ -133,6 +146,7 @@ defmodule CodeMySpecWeb.IssuesLive.Index do
     []
     |> maybe_add(:status, assigns.filter_status)
     |> maybe_add(:severity, assigns.filter_severity)
+    |> maybe_add(:scope, assigns.filter_scope)
   end
 
   defp maybe_add(filters, _key, "all"), do: filters
