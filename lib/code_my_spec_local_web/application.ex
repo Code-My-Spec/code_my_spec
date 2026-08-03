@@ -79,8 +79,12 @@ defmodule CodeMySpecLocalWeb.Application do
   # this?" — `Projects.resolve_local_project/1` reads it first of all. The
   # cloud keeps the id the project was created with, so the one variable names
   # both ends.
+  # `CMS_CLOUD_PROJECT_ID` first: the cloud mints its own id, so it is only by
+  # coincidence that it ever equals `CMS_PROJECT_ID` — which names the *local*
+  # project to `resolve_local_project/1`. Falling back to it keeps working for
+  # anyone whose ids do happen to match.
   defp project_id_from_env do
-    case System.get_env("CMS_PROJECT_ID") do
+    case System.get_env("CMS_CLOUD_PROJECT_ID") || System.get_env("CMS_PROJECT_ID") do
       id when is_binary(id) and id != "" -> {:ok, id}
       _ -> {:error, :missing_project}
     end
@@ -114,8 +118,8 @@ defmodule CodeMySpecLocalWeb.Application do
 
   defp no_project_message,
     do:
-      "name the cloud project — either `cms migrate --project <cloud-project-id>` " <>
-        "or set CMS_PROJECT_ID"
+      "name the cloud project — either `cms-migrate --project <cloud-project-id>` " <>
+        "or set CMS_CLOUD_PROJECT_ID"
 
   defp migration_failed(message) do
     IO.puts(:stderr, "\ncms migrate: #{message}")
