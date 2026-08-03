@@ -67,12 +67,18 @@ defmodule CodeMySpec.Provisioning.BuilderTest do
     test "destroys the builder when the build fails" do
       build = fn _scope, _server, _ref, _arch -> {:error, :compilation_failed} end
 
-      assert {:error, :compilation_failed} =
+      assert {:error, :compilation_failed, disposition} =
                Builder.build(scope(), "abc123", opts(build: build))
 
       # The whole point: a failed build must not leave a box running. Sam is
       # billed for it either way.
       assert_received {:destroyed, 42}
+
+      # And the failure says so, rather than leaving the caller to assume it.
+      # A leaked builder adds nothing visible to an already-failed deploy,
+      # which is why this is the disposition most worth recording.
+      assert disposition.builder_destroyed
+      assert disposition.builder == "builder-abc123"
     end
 
     test "destroys the builder when the build raises" do
@@ -90,11 +96,12 @@ defmodule CodeMySpec.Provisioning.BuilderTest do
         {:ok, %{reference: "img", architecture: :x86}}
       end
 
-      assert {:error, {:architecture_mismatch, built: :x86, wanted: :arm}} =
+      assert {:error, {:architecture_mismatch, [built: :x86, wanted: :arm]}, disposition} =
                Builder.build(scope(), "abc123", opts(build: build))
 
       # And the builder still goes, because a mismatch is a failed build.
       assert_received {:destroyed, 42}
+      assert disposition.builder_destroyed
     end
 
     test "builds on the architecture the servers run" do

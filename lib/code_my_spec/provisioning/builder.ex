@@ -27,10 +27,12 @@ defmodule CodeMySpec.Provisioning.Builder do
             image: String.t(),
             architecture: :arm | :x86,
             builder: String.t(),
+            builder_image: String.t(),
+            builder_destroyed: boolean(),
             built_at: DateTime.t()
           }
 
-    defstruct [:image, :architecture, :builder, :built_at]
+    defstruct [:image, :architecture, :builder, :builder_image, :builder_destroyed, :built_at]
   end
 
   # Hetzner's two lines, and the box each architecture builds on. A build has
@@ -96,16 +98,52 @@ defmodule CodeMySpec.Provisioning.Builder do
 
     with {:ok, spec} <- builder_spec(architecture),
          {:ok, server} <- start_builder(scope, ref, spec, opts) do
-      # `after`, not a happy-path cleanup: a builder outlives a raise, a
-      # non-zero exit and an early return alike, and each of those leaves a box
-      # nobody is watching on an invoice somebody is paying.
+      # A builder outlives a raise, a non-zero exit and an early return alike,
+      # and each of those leaves a box nobody is watching on an invoice
+      # somebody is paying. So every path destroys.
+      #
+      # Spelled out rather than left to `after` because the outcome is worth
+      # recording: "the builder was destroyed" asserted from a constant is a
+      # claim that keeps reading true after it stops being true. The abnormal
+      # paths still only have to destroy, since there is no result to decorate.
       try do
-        run(scope, server, ref, architecture, opts)
-      after
-        destroy(scope, server, opts)
+        result = run(scope, server, ref, architecture, opts)
+        record_disposition(result, server, destroy(scope, server, opts), opts)
+      rescue
+        error ->
+          _ = destroy(scope, server, opts)
+          reraise error, __STACKTRACE__
+      catch
+        kind, value ->
+          _ = destroy(scope, server, opts)
+          :erlang.raise(kind, value, __STACKTRACE__)
       end
     end
   end
+
+  defp record_disposition({:ok, %Build{} = build}, _server, disposition, opts) do
+    {:ok,
+     %{
+       build
+       | builder_destroyed: disposition == :ok,
+         builder_image: Keyword.get(opts, :builder_image, @builder_image)
+     }}
+  end
+
+  # A failed build has a disposition too, and it is the one most worth having:
+  # "the builder is destroyed even when the build fails" is exactly the claim
+  # that rots quietly, because a failed deploy already looks like a failure and
+  # a leaked box adds nothing visible to it.
+  defp record_disposition({:error, reason}, server, disposition, opts) do
+    {:error, reason,
+     %{
+       builder: server_name(server),
+       builder_image: Keyword.get(opts, :builder_image, @builder_image),
+       builder_destroyed: disposition == :ok
+     }}
+  end
+
+  defp record_disposition(other, _server, _disposition, _opts), do: other
 
   defp builder_spec(architecture) do
     case Map.fetch(@builders, architecture) do

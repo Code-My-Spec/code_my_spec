@@ -636,18 +636,39 @@ defmodule CodeMySpec.Provisioning.Steps do
   end
 
   defp build_image(scope, environment, opts) do
+    # Injectable for the same reason the builder's own create/build/destroy
+    # are: making the registry's bucket is a real call to object storage, and a
+    # criterion about *what gets built* should not have to buy one to say so.
+    # Retention is Registry's own claim and is proven where it lives.
+    ensure_registry = Keyword.get(opts, :ensure_registry, &Registry.ensure/2)
+
     with {:ok, architecture} <- architecture_for(scope, environment, opts),
-         {:ok, _bucket} <- Registry.ensure(scope, opts),
+         {:ok, _bucket} <- ensure_registry.(scope, opts),
          {:ok, tag} <- image_tag(scope, opts),
-         {:ok, build} <- Builder.build(scope, tag, Keyword.put(opts, :architecture, architecture)),
+         {:ok, build} <- build_on_builder(scope, tag, architecture, opts),
          {:ok, reference} <- Registry.reference(scope, tag, opts) do
       {:ok,
        %{
          reference: reference,
          built: true,
          architecture: build.architecture,
-         retention_days: Registry.retention_days(opts)
+         retention_days: Registry.retention_days(opts),
+         builder: build.builder,
+         builder_image: build.builder_image,
+         builder_destroyed: build.builder_destroyed
        }}
+    end
+  end
+
+  # A build that failed still made a box, so the failure carries what became of
+  # it. Returned as partial resources, which is how every other step reports
+  # "this did not finish, and here is what it made" — the same channel that
+  # lets a run that died on the second environment still clean up the first.
+  defp build_on_builder(scope, tag, architecture, opts) do
+    case Builder.build(scope, tag, Keyword.put(opts, :architecture, architecture)) do
+      {:ok, build} -> {:ok, build}
+      {:error, reason, disposition} -> {:error, format(reason), builder_resource(disposition)}
+      {:error, reason} -> {:error, format(reason)}
     end
   end
 
@@ -718,7 +739,7 @@ defmodule CodeMySpec.Provisioning.Steps do
         location: reference,
         identifier: "built=true architecture=#{image.architecture}"
       }
-      | retention_resource(image)
+      | retention_resource(image) ++ builder_resource(image)
     ]
   end
 
@@ -735,6 +756,25 @@ defmodule CodeMySpec.Provisioning.Steps do
     do: [%{kind: "image_retention", location: "#{days} days", identifier: "enforced_by=bucket_lifecycle"}]
 
   defp retention_resource(_image), do: []
+
+  # The box the image was built on, and what became of it. Recorded because a
+  # builder that quietly stops being destroyed costs money every deploy and
+  # changes nothing anyone can see — the image still arrives.
+  #
+  # `booted_from` is the pre-warmed image: the toolchain is already on it, so a
+  # deploy does not pay to install Docker every time (8239).
+  defp builder_resource(%{builder: name} = image) when is_binary(name) do
+    [
+      %{
+        kind: "builder",
+        location: name,
+        identifier:
+          "destroyed=#{image.builder_destroyed} booted_from=#{image.builder_image}"
+      }
+    ]
+  end
+
+  defp builder_resource(_image), do: []
 
   ## Helpers
 
