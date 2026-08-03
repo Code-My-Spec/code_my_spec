@@ -1366,7 +1366,10 @@ defmodule CodeMySpecSpex.Case do
     case Jason.decode(body) do
       {:ok, %{"commands" => commands} = cassette} when is_list(commands) ->
         cassette
-        |> Map.put("commands", Enum.map(commands, &wildcard_command_path/1))
+        |> Map.put(
+          "commands",
+          Enum.map(commands, fn c -> c |> wildcard_command_path() |> wildcard_temp_args() end)
+        )
         |> Jason.encode!(pretty: true)
 
       _ ->
@@ -1387,6 +1390,31 @@ defmodule CodeMySpecSpex.Case do
   end
 
   defp wildcard_command_path(entry), do: entry
+
+  # The same problem one field over. `ssh-keygen -f <tmp>/id_ed25519` writes to
+  # a directory named after the run, so the recorded argument names a path that
+  # will never exist again and the recording cannot match itself.
+  #
+  # Only the temp root is forgiven: `*/id_ed25519` still requires the flag and
+  # the filename, so this cannot start matching some other command that merely
+  # happens to take a path.
+  defp wildcard_temp_args(%{"args" => args} = entry) when is_list(args) do
+    tmp = String.trim_trailing(System.tmp_dir!(), "/")
+
+    %{entry | "args" => Enum.map(args, &wildcard_temp_arg(&1, tmp))}
+  end
+
+  defp wildcard_temp_args(entry), do: entry
+
+  defp wildcard_temp_arg(arg, tmp) when is_binary(arg) do
+    if String.starts_with?(arg, tmp <> "/") do
+      "*/" <> Path.basename(arg)
+    else
+      arg
+    end
+  end
+
+  defp wildcard_temp_arg(arg, _tmp), do: arg
 
   # Headers alone are not enough, and the gap is not hypothetical.
   #
