@@ -31,30 +31,24 @@ defmodule CodeMySpecWeb.AppLive.Overview do
       Phoenix.PubSub.subscribe(CodeMySpec.PubSub, CliChannel.status_topic(scope.user.id))
     end
 
+    # No "send them to their last project" redirect here. Story 603 specifies
+    # this path: `/app` is the primary app view, and criterion 5501 is exactly
+    # "user with an account and a project sees the primary app view on /app".
+    # Bouncing them to the last project satisfied the idea that a bookmark
+    # should pick a landing page, and broke twelve criteria that had already
+    # decided what this page is for.
+    #
+    # The stored project still earns its keep — it answers for `/api/issues`,
+    # which has no URL to read a project from — and choosing a project is the
+    # sidebar picker's job now, which is a better answer than a redirect.
     case ensure_active_account(scope) do
       {:ok, scope} ->
-        case last_opened_project(scope) do
-          nil -> {:ok, assign_steps(socket, scope)}
-          path -> {:ok, push_navigate(socket, to: path)}
-        end
+        {:ok, assign_steps(socket, scope)}
 
       {:redirect, path} ->
         {:ok, push_navigate(socket, to: path)}
     end
   end
-
-  # The stored active project is a bookmark, not a source of truth: it decides
-  # where bare `/app` drops you and nothing else. Every page below it reads the
-  # project out of its own path, so this cannot put you on a page that
-  # contradicts its URL — the failure mode that made us stop reading it in
-  # `Scope.for_user/1` in the first place.
-  #
-  # Nil means no bookmark yet, and this page stays what it is: the onboarding
-  # ladder for someone who has no project to be sent to.
-  defp last_opened_project(%{active_project: %CodeMySpec.Projects.Project{} = project}),
-    do: ~p"/app/projects/#{project.id}/stories"
-
-  defp last_opened_project(_scope), do: nil
 
   defp ensure_active_account(scope) do
     cond do
