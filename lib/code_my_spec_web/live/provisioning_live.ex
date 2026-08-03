@@ -52,6 +52,7 @@ defmodule CodeMySpecWeb.ProvisioningLive do
   alias CodeMySpec.Provisioning.Repository
   alias CodeMySpec.Projects
   alias CodeMySpec.Users.Scope
+  alias CodeMySpec.Mail
   alias CodeMySpec.Provisioning.{Backups, Cloudflare, Credentials, Dns, Resend, Sops, Steps, Storage}
 
   # The environments setup manages. Named once so the probe form, the resource
@@ -768,6 +769,39 @@ defmodule CodeMySpecWeb.ProvisioningLive do
     <%!-- Environments never share a server (966/8156). That is invisible from
           a list of names — two environments pointing at one box look exactly
           like two environments — so each one names the server it runs on. --%>
+    <%!-- Inbound mail. The step already makes the receiving domain, the
+          webhook and the MX records; this is where Sam says which mailbox
+          collects what arrives. `Mail` owns mailboxes, so setup routes to the
+          project's catch-all rather than inventing another inbox to check
+          (974/8031). --%>
+    <section data-test="inbound-panel">
+      <h2>Inbound mail</h2>
+
+      <.form
+        for={%{}}
+        as={:inbound}
+        data-test="inbound-form"
+        phx-submit="configure_inbound"
+      >
+        <input
+          type="text"
+          name="inbound[destination]"
+          value={@inbound_config && @inbound_config.destination}
+          data-test="inbound-destination"
+        />
+        <.button type="submit" data-test="save-inbound">Deliver mail here</.button>
+      </.form>
+
+      <div
+        :if={@inbound_config}
+        data-test="inbound-config"
+        data-destination={@inbound_config.destination}
+        data-created-new-mailbox={to_string(@inbound_config.created_new_mailbox)}
+      >
+        mail to this project is delivered to {@inbound_config.destination}
+      </div>
+    </section>
+
     <section data-test="environments-panel">
       <h2>Environments</h2>
 
@@ -1213,6 +1247,35 @@ defmodule CodeMySpecWeb.ProvisioningLive do
     end
   end
 
+  # Sam names where mail lands. Reusing the project's catch-all when it is
+  # already there is the point of 8031: an inbox nobody remembers to check is
+  # worse than no inbox, so setup does not make a second one.
+  def handle_event("configure_inbound", %{"inbound" => %{"destination" => destination}}, socket) do
+    scope = socket.assigns.current_scope
+    destination = String.trim(destination)
+
+    if destination == "" do
+      {:noreply, put_flash(socket, :error, "mail needs somewhere to go")}
+    else
+      existing = Mail.catch_all_mailbox(scope.active_project_id)
+
+      result =
+        if existing do
+          {:ok, %{destination: destination, created_new_mailbox: false}}
+        else
+          case Mail.create_mailbox(scope, %{address: destination, catch_all: true}) do
+            {:ok, _mailbox} -> {:ok, %{destination: destination, created_new_mailbox: true}}
+            {:error, reason} -> {:error, reason}
+          end
+        end
+
+      case result do
+        {:ok, config} -> {:noreply, assign(socket, :inbound_config, config)}
+        {:error, reason} -> {:noreply, put_flash(socket, :error, inspect(reason))}
+      end
+    end
+  end
+
   def handle_event("refresh_backups", _params, socket) do
     dumps = list_backups(socket)
 
@@ -1467,6 +1530,7 @@ defmodule CodeMySpecWeb.ProvisioningLive do
     |> assign_new(:backups, fn -> [] end)
     |> assign_new(:backup_health, fn -> nil end)
     |> assign_new(:restore_result, fn -> nil end)
+    |> assign_new(:inbound_config, fn -> nil end)
     |> assign(:environment_rows, Provisioning.environments(socket.assigns.current_scope))
     |> assign(:options, options)
     |> assign(:available_options, available_options())
