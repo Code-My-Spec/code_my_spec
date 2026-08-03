@@ -146,7 +146,12 @@ defmodule CodeMySpec.IntakeTest do
 
       assert again.account_id == converted.account_id
       assert again.project_id == converted.project_id
-      assert Repo.aggregate(Plan, :count) == 1
+
+      # About this plan, not about the table. "The whole table holds one row"
+      # only held because the sandbox starts empty, and broke the moment
+      # anything wrote a plan outside it.
+      assert again.id == converted.id
+      assert Repo.aggregate(from(p in Plan, where: p.id == ^converted.id), :count) == 1
     end
   end
 end

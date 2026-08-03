@@ -54,9 +54,27 @@ defmodule CodeMySpec.Workspaces do
     |> boot_workspace(project)
   end
 
-  defp boot_workspace(%Workspace{status: :running} = workspace, _project), do: {:ok, workspace}
+  # A stored `:running` is a claim about a container that may no longer exist —
+  # a prune, a host reboot or a teardown removes the instance and leaves the
+  # row behind. Trusting it showed the visitor "It's running" over a link that
+  # refused the connection, so the claim is checked before it is repeated.
+  defp boot_workspace(%Workspace{status: :running} = workspace, project) do
+    case still_serving?(workspace) do
+      true -> {:ok, workspace}
+      false -> start_instance(workspace, project)
+    end
+  end
 
-  defp boot_workspace(existing, %Project{} = project) do
+  defp boot_workspace(existing, %Project{} = project), do: start_instance(existing, project)
+
+  defp still_serving?(%Workspace{container_name: name, port: port})
+       when is_binary(name) and is_integer(port) do
+    Runner.alive?(name) and Runner.healthy?(port)
+  end
+
+  defp still_serving?(%Workspace{}), do: false
+
+  defp start_instance(existing, %Project{} = project) do
     container_name = container_name(project)
     app_name = app_name(project)
     port = free_port()

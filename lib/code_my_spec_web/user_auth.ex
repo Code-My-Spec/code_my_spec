@@ -148,10 +148,24 @@ defmodule CodeMySpecWeb.UserAuth do
   defp renew_session(conn, _user) do
     delete_csrf_token()
 
+    # The guided-intake token is the only way back to a plan the visitor built
+    # before they had an account, and clearing the session at the gate orphaned
+    # it — they signed up and landed back on "What do you want to build?",
+    # having lost everything, which is the exact opposite of the promise.
+    # Carried across the renewal rather than kept out of the session, so
+    # fixation protection still does its job.
+    intake_token = get_session(conn, CodeMySpecWeb.Plugs.IntakeSession.session_key())
+
     conn
     |> configure_session(renew: true)
     |> clear_session()
+    |> restore_intake_token(intake_token)
   end
+
+  defp restore_intake_token(conn, nil), do: conn
+
+  defp restore_intake_token(conn, token),
+    do: put_session(conn, CodeMySpecWeb.Plugs.IntakeSession.session_key(), token)
 
   defp maybe_write_remember_me_cookie(conn, token, %{"remember_me" => "true"}, _),
     do: write_remember_me_cookie(conn, token)

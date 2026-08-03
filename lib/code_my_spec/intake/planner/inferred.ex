@@ -11,7 +11,15 @@ defmodule CodeMySpec.Intake.Planner.Inferred do
 
   alias CodeMySpec.Intake.Plan
 
-  @stop_words ~w(a an and the for of to my our i we app application site website system tool that this it is are want build make)
+  # Pronouns earn their place here the hard way: "…so clients can book
+  # themselves in" made "themselves" the longest surviving word, and the plan
+  # read "you're building a themselves".
+  @stop_words ~w(
+    a an and the for of to my our i we so in on at with can see
+    app application site website system tool that this it is are want build make
+    themselves yourself yourselves myself ourselves himself herself itself
+    them they their he she his her you your me us who whom whose
+  )
 
   @impl true
   def generate(%Plan{description: description} = plan) when is_binary(description) do

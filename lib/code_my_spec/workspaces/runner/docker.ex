@@ -18,6 +18,11 @@ defmodule CodeMySpec.Workspaces.Runner.Docker do
 
   @impl true
   def start(container_name, app_name, port) do
+    # The name is derived from the project, so a second boot for the same
+    # project collides with whatever the first one left behind — `docker run`
+    # exits 125 and the visitor never gets a workspace. Booting replaces.
+    stop(container_name)
+
     args = [
       "run",
       "--detach",
@@ -36,15 +41,20 @@ defmodule CodeMySpec.Workspaces.Runner.Docker do
     end
   end
 
+  # An HTTP round-trip, not a TCP connect. Docker publishes the host port the
+  # moment the container starts, so a connect succeeds while the app inside is
+  # still fetching deps — which told the visitor "it's running" and handed them
+  # a link to a dead page. Any HTTP response means something is actually
+  # serving; the status does not matter.
   @impl true
   def healthy?(port) when is_integer(port) do
-    case :gen_tcp.connect(~c"127.0.0.1", port, [:binary, active: false], 1_000) do
-      {:ok, socket} ->
-        :gen_tcp.close(socket)
-        true
-
-      {:error, _reason} ->
-        false
+    case Req.get("http://127.0.0.1:#{port}/",
+           retry: false,
+           receive_timeout: 2_000,
+           connect_options: [timeout: 1_000]
+         ) do
+      {:ok, %Req.Response{}} -> true
+      _ -> false
     end
   end
 

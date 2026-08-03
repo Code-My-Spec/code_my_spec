@@ -36,6 +36,9 @@ defmodule CodeMySpecTest.FakeWorkspaceRunner do
   """
   def put_healthy(healthy?), do: Agent.update(__MODULE__, &%{&1 | healthy?: healthy?})
 
+  @doc "Kills the instance from the test — the container has gone away."
+  def put_alive(alive?), do: Agent.update(__MODULE__, &%{&1 | alive?: alive?})
+
   @doc "Every `start/3` the context made, oldest first."
   def calls, do: __MODULE__ |> Agent.get(& &1.calls) |> Enum.reverse()
 

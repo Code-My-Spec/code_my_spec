@@ -273,6 +273,12 @@ end
 config :code_my_spec, CodeMySpec.Mail.ResendClient,
   api_key: env!("RESEND_API_KEY", :string, "")
 
+# Guided intake writes its plan with a model, so req_llm needs a provider key.
+# ReqLLM resolves keys from `config :req_llm, <provider>_api_key`. Left nil when
+# unset — the planner then fails with :plan_unavailable and the visitor is told,
+# rather than the key's absence surfacing as a crash mid-flow.
+config :req_llm, anthropic_api_key: env!("ANTHROPIC_API_KEY", :string, nil)
+
 # Svix signing secret for the inbound Resend webhook (`whsec_…`). When unset
 # (e.g. tests, dev without inbound) signature verification is skipped.
 config :code_my_spec, :resend_webhook_secret, env!("RESEND_WEBHOOK_SECRET", :string, "")
