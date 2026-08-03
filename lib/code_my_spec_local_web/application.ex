@@ -88,7 +88,12 @@ defmodule CodeMySpecLocalWeb.Application do
 
   defp report_migration({:ok, summary}) do
     IO.puts("\nMigrated:")
-    Enum.each(summary, fn {kind, count} -> IO.puts("  #{kind}: #{count}") end)
+
+    Enum.each(summary, fn
+      {kind, values} when is_list(values) -> IO.puts("  #{kind}: #{Enum.join(values, ", ")}")
+      {kind, count} -> IO.puts("  #{kind}: #{count}")
+    end)
+
     IO.puts("\nThe local copy is untouched. The two are independent from here.")
     System.halt(0)
   end
