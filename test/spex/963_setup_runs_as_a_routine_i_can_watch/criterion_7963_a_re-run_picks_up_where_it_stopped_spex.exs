@@ -15,52 +15,35 @@ defmodule CodeMySpecSpex.Story963.Criterion7963Spex do
 
   @endpoint CodeMySpecWeb.Endpoint
 
-  @first_run_cassette "963_7963_setup_run_stops_at_email"
-  @resume_cassette "setup_resume_from_email_ok"
-  @given_cassette "963_7963_credentials"
 
   setup :register_log_in_setup_account
   setup :setup_active_project
   setup :connect_providers
 
   spex "A re-run picks up where it stopped" do
-    scenario "the earlier steps stay done and the run resumes at the email step" do
+    scenario "the second run resumes at the failure without redoing the rest" do
       given_ "setup stopped at the email step with earlier steps succeeded", context do
-        # Before the page mounts. The LiveView reads the project once, at mount;
-        # claiming the repository afterwards updates the row but not the socket,
-        # so the step still saw a repository belonging to nobody and paused.
-        own_repository(context.project)
+        # Fails on the first run and succeeds on the second, which is what "Sam
+        # fixes the credential and runs setup again" means. The old version
+        # needed one cassette for a run that stops and another for a run that
+        # does not, and the difference between them was invisible.
+        {:ok, attempts} = Agent.start_link(fn -> 0 end)
+
+        context =
+          scripted_run(context, %{
+            email: fn ->
+              case Agent.get_and_update(attempts, &{&1 + 1, &1 + 1}) do
+                1 -> {:error, "Resend rejected the API key"}
+                _ -> {:ok, []}
+              end
+            end
+          })
 
         {:ok, view, _html} =
           live(context.conn, "/app/projects/#{context.project.id}/provisioning")
 
-        # Hetzner has no OAuth, so its token is pasted per project — without it
-        # the server step stops at `hetzner_not_configured` and every claim
-        # downstream fails for a reason that is not the one under test. Saving a
-        # credential proves it with a real provider call, so it belongs inside a
-        # cassette.
-        tear_down_after(context.scope, [:server])
-
-        # The repository too, so the next recording starts from one that does not
-        # exist — a repository carrying an earlier run's commits rejects a fresh
-        # push as non-fast-forward (which is 8184's subject, not this one's).
-        tear_down_repository(context.project)
-
-
-        with_provider_cassette(@given_cassette, fn ->
-          paste_provider_credentials(view)
-        end)
-
-        with_provider_cassette(@first_run_cassette, fn ->
-          view |> element("[data-test='start-setup']") |> render_click()
-
-          # The repository an earlier recording made cannot be deleted (the grant
-          # has no `delete_repo` scope), so the run pauses on the name and every
-          # step under test stays not_started. Adopting is the honest answer.
-          adopt_repository_if_paused(view)
-        end)
-
-        html = render(view)
+        view |> element("[data-test='start-setup']") |> render_click()
+        html = await_provisioning(view)
 
         assert html =~ ~r/data-step="email"[^>]*data-state="errored"/,
                "expected the first run to stop at the email step"
@@ -69,11 +52,10 @@ defmodule CodeMySpecSpex.Story963.Criterion7963Spex do
       end
 
       when_ "Sam fixes the credential and runs setup again", context do
-        with_provider_cassette(@resume_cassette, fn ->
-          context.view |> element("[data-test='start-setup']") |> render_click()
-        end)
+        context.view |> element("[data-test='start-setup']") |> render_click()
+        html = await_provisioning(context.view)
 
-        {:ok, Map.put(context, :html, render(context.view))}
+        {:ok, Map.put(context, :html, html)}
       end
 
       then_ "the steps that already succeeded stay succeeded", context do
