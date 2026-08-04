@@ -1322,6 +1322,11 @@ defmodule CodeMySpecSpex.Case do
   # a location, and only the types that location can actually supply. Includes
   # an ARM type deliberately, so a scenario can ask for one and be refused the
   # way the real provider refused every ARM type during QA.
+  #
+  # Two locations, because the interesting failures are all per-location. QA
+  # found the same size quoted at another location's price (34% under for
+  # Singapore) and offered in a location that cannot supply it. Both are
+  # invisible against a single-location fixture.
   defp default_options do
     [
       %{
@@ -1330,7 +1335,18 @@ defmodule CodeMySpecSpex.Case do
         types: [
           %{name: "cpx11", architecture: "x86", cores: 2, memory: 2, disk: 40, hourly: 0.0328},
           %{name: "cax21", architecture: "arm", cores: 4, memory: 8, disk: 80, hourly: 0.0200},
+          # Deliberately absent from sin below: a size one location has and
+          # another does not is what makes an impossible pair expressible.
           %{name: "cpx31", architecture: "x86", cores: 4, memory: 8, disk: 160, hourly: 0.1178}
+        ]
+      },
+      %{
+        location: "sin",
+        city: "Singapore",
+        # The same cpx11, priced differently. Reading the first price in the
+        # list rather than the chosen location's is exactly the bug.
+        types: [
+          %{name: "cpx11", architecture: "x86", cores: 2, memory: 2, disk: 40, hourly: 0.0184}
         ]
       }
     ]

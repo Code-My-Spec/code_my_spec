@@ -32,24 +32,54 @@ defmodule CodeMySpec.Servers do
   from the catalogue means offering something nobody can buy.
   """
 
+  alias CodeMySpec.AccountSecrets
   alias CodeMySpec.Provisioning.Hetzner
   alias CodeMySpec.Servers.Server
   alias CodeMySpec.Users.Scope
 
+  @access_key_public "server_ssh_public_key"
+  @access_key_private "server_ssh_private_key"
+
   @doc """
   Every server the account can see, linked or not.
 
-  Returns `{:error, reason}` when the provider cannot be asked. That is
-  deliberately distinct from `{:ok, []}`: an empty list is a claim that the
-  account has no servers, and when the truth is "we could not ask", that claim
-  is a lie shaped like data.
+  Returns `{:error, reason, linked}` when the provider cannot be asked, where
+  `linked` is every server the account has linked, marked `unverified`.
+
+  Three outcomes, not two, because there are three facts to tell apart. An
+  empty list claims the account has no servers. An error alone claims we know
+  nothing. Neither is true when the provider is unreachable but we still hold
+  our own link records — those are ours, they need no provider call, and
+  dropping them is how a box the account is paying for leaves the screen.
+
+  What we cannot vouch for under an error is the *state* — size, address,
+  whether it is still running. Hence `unverified` rather than a size we last
+  saw and a status we are guessing at.
   """
-  @spec list(Scope.t()) :: {:ok, [Server.t()]} | {:error, term()}
+  @spec list(Scope.t()) :: {:ok, [Server.t()]} | {:error, term(), [Server.t()]}
   def list(%Scope{} = scope) do
     case reported(scope) do
       {:ok, reported} -> {:ok, merge_with_linked(scope, reported)}
-      {:error, reason} -> {:error, reason}
+      {:error, reason} -> {:error, reason, unverified_linked(scope)}
     end
+  end
+
+  defp unverified_linked(scope) do
+    scope
+    |> Server.linked_names()
+    |> Enum.sort()
+    |> Enum.map(fn name ->
+      # Not `missing` — that is a claim the provider told us it is gone, and
+      # here the provider told us nothing at all.
+      name
+      |> Server.placeholder()
+      |> Map.put(:missing, false)
+      |> Map.put(:unverified, true)
+    end)
+  rescue
+    # No account on the scope means no link records to salvage. The caller
+    # still gets its error; it just has nothing to show alongside it.
+    _ -> []
   end
 
   @doc """
@@ -87,6 +117,62 @@ defmodule CodeMySpec.Servers do
   end
 
   @doc """
+  The SSH key a new server gets, uploading one if the account has none.
+
+  Creating a server without a key is refused by `Hetzner.create_server/3`, and
+  rightly: the box would have only a root password Hetzner mails to the account
+  owner, so nothing could reach it afterwards.
+
+  The key is the account's, not the project's, and `ensure_ssh_key/3` matches
+  on fingerprint — so the box created here is the same box a later deploy run
+  can open, whichever project that run belongs to.
+  """
+  @spec access_key(Scope.t()) :: {:ok, [integer()]} | {:error, term()}
+  def access_key(%Scope{} = scope) do
+    case config(:access_key) do
+      nil -> ensure_access_key(scope)
+      fun -> fun.(scope)
+    end
+  end
+
+  defp ensure_access_key(scope) do
+    with {:ok, public} <- account_public_key(scope),
+         {:ok, key} <- Hetzner.ensure_ssh_key(scope, "codemyspec", public) do
+      {:ok, [key["id"]]}
+    end
+  end
+
+  defp account_public_key(scope) do
+    case AccountSecrets.fetch_value(scope, @access_key_public) do
+      {:ok, public} when is_binary(public) and public != "" -> {:ok, public}
+      _ -> generate_access_key(scope)
+    end
+  end
+
+  defp generate_access_key(scope) do
+    dir = Path.join(System.tmp_dir!(), "cms-ssh-#{System.unique_integer([:positive])}")
+    File.mkdir_p!(dir)
+    path = Path.join(dir, "id_ed25519")
+
+    try do
+      case System.cmd("ssh-keygen", ["-t", "ed25519", "-N", "", "-C", "codemyspec", "-f", path],
+             stderr_to_stdout: true
+           ) do
+        {_out, 0} ->
+          AccountSecrets.put_value(scope, @access_key_private, File.read!(path))
+          public = File.read!(path <> ".pub")
+          AccountSecrets.put_value(scope, @access_key_public, public)
+          {:ok, public}
+
+        {out, status} ->
+          {:error, "could not generate an access key (ssh-keygen exit #{status}): #{String.trim(out)}"}
+      end
+    after
+      File.rm_rf(dir)
+    end
+  end
+
+  @doc """
   What can actually be created, by location.
 
   Each entry is a location with the server types that location can supply
@@ -118,40 +204,52 @@ defmodule CodeMySpec.Servers do
 
   defp location_options(datacenter, by_id) do
     available = get_in(datacenter, ["server_types", "available"]) || []
+    location = get_in(datacenter, ["location", "name"]) || datacenter["name"]
 
     %{
-      location: get_in(datacenter, ["location", "name"]) || datacenter["name"],
+      location: location,
       city: get_in(datacenter, ["location", "city"]),
       types:
         available
         |> Enum.map(&Map.get(by_id, &1))
         |> Enum.reject(&(is_nil(&1) or &1["deprecated"]))
-        |> Enum.map(&describe_type/1)
+        |> Enum.map(&describe_type(&1, location))
         |> Enum.sort_by(& &1.hourly)
     }
   end
 
-  defp describe_type(type) do
+  defp describe_type(type, location) do
     %{
       name: type["name"],
       architecture: type["architecture"],
       cores: type["cores"],
       memory: type["memory"],
       disk: type["disk"],
-      hourly: hourly_price(type)
+      hourly: hourly_price(type, location)
     }
   end
 
-  # The gross figure, because that is what Sam is charged. Taking the net one
-  # would understate every quote by the VAT he actually pays.
-  defp hourly_price(%{"prices" => [%{"price_hourly" => %{"gross" => gross}} | _]}) do
-    case Float.parse(to_string(gross)) do
-      {value, _} -> Float.round(value, 4)
-      :error -> nil
+  # Priced for the location being offered, not whichever one Hetzner happened
+  # to list first. 17 of the 25 current types are priced per location, with a
+  # spread up to 272% — taking the head quoted Singapore's cpx42 at Falkenstein
+  # rates, understating it by 34%. A wrong price is worse than none: Sam
+  # consents to a figure the invoice will not match and has no reason to check.
+  defp hourly_price(%{"prices" => prices}, location) when is_list(prices) do
+    prices
+    |> Enum.find(&(&1["location"] == location))
+    |> case do
+      %{"price_hourly" => %{"gross" => gross}} ->
+        case Float.parse(to_string(gross)) do
+          {value, _} -> Float.round(value, 4)
+          :error -> nil
+        end
+
+      _ ->
+        nil
     end
   end
 
-  defp hourly_price(_type), do: nil
+  defp hourly_price(_type, _location), do: nil
 
   # Injectable so a criterion about how servers are displayed does not have to
   # buy a box to say so. The screen itself is always driven for real.
@@ -169,10 +267,24 @@ defmodule CodeMySpec.Servers do
     end
   end
 
+  # `server_type`, not `size`. `Hetzner.create_in/4` reads `:server_type`, so
+  # passing `:size` silently dropped the size Sam chose, fell back to the ARM
+  # default — available in none of the six datacenters — and, because
+  # `fallback_for/2` only stands down when `:server_type` is present, armed the
+  # cross-architecture retry this function's docs promise never happens.
   defp create(scope, attrs) do
     case config(:create) do
-      nil -> Hetzner.create_server(scope, attrs[:name] || generated_name(), Enum.to_list(attrs))
-      fun -> fun.(scope, attrs)
+      nil ->
+        with {:ok, ssh_key_ids} <- access_key(scope) do
+          Hetzner.create_server(scope, attrs[:name] || generated_name(),
+            server_type: attrs[:size],
+            location: attrs[:location],
+            ssh_key_ids: ssh_key_ids
+          )
+        end
+
+      fun ->
+        fun.(scope, attrs)
     end
   end
 
@@ -210,6 +322,7 @@ defmodule CodeMySpec.Servers do
         server
         |> Map.put(:linked, MapSet.member?(linked, server.name))
         |> Map.put(:missing, false)
+        |> Map.put(:unverified, false)
       end)
 
     gone =

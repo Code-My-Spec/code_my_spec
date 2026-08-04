@@ -88,5 +88,43 @@ defmodule CodeMySpecSpex.Story994.Criterion8267Spex do
         {:ok, context}
       end
     end
+
+    scenario "the figure quoted is the one that location charges" do
+      given_ "a size his provider prices differently in different places", context do
+        # cpx11 is €0.0328/hour in Falkenstein and €0.0184 in Singapore. QA
+        # found 17 of 25 real Hetzner types priced per location, spreads to
+        # 272%, while the quote read whichever price the provider happened to
+        # list first.
+        {:ok, stage_servers(context, [])}
+      end
+
+      when_ "he chooses it in the cheaper location", context do
+        {:ok, view, _html} = live(context.conn, ~p"/app/servers")
+
+        html =
+          view
+          |> form("[data-test='provision-form']", server: %{size: "cpx11", location: "sin"})
+          |> render_submit()
+
+        {:ok, Map.put(context, :html, html)}
+      end
+
+      then_ "he is quoted that location's price, not another's", context do
+        quoted =
+          context.html
+          |> Floki.parse_document!()
+          |> Floki.find("[data-test='provision-cost']")
+          |> Floki.text()
+
+        assert quoted =~ "0.0184",
+               "expected Singapore's price for cpx11; got: #{String.trim(quoted)}"
+
+        refute quoted =~ "0.0328",
+               "he was quoted Falkenstein's price for a machine in Singapore — a figure " <>
+                 "the invoice will not match, agreed to because it was the one on screen"
+
+        {:ok, context}
+      end
+    end
   end
 end

@@ -35,7 +35,7 @@ defmodule CodeMySpec.Provisioning.Steps do
   prevent, so it is better to be loudly incomplete.
   """
 
-  alias CodeMySpec.{Environments, ProjectSecrets, Projects}
+  alias CodeMySpec.{AccountSecrets, Environments, ProjectSecrets, Projects}
 
   alias CodeMySpec.Provisioning.{
     Backups,
@@ -54,6 +54,11 @@ defmodule CodeMySpec.Provisioning.Steps do
     Widget
   }
   alias CodeMySpec.Users.Scope
+
+  # The access key opens every box the account owns, so it lives at the
+  # account grain — see `access_public_key/2`.
+  @access_key_public "server_ssh_public_key"
+  @access_key_private "server_ssh_private_key"
 
   @type outcome ::
           {:ok, [map()]}
@@ -1334,14 +1339,25 @@ defmodule CodeMySpec.Provisioning.Steps do
     end
   end
 
+  # Account first, then the project. The key has to open every box the account
+  # owns, including one created from `/app/servers` that belongs to no project
+  # — a per-project key would lock a later deploy out of a box it can see. The
+  # project read stays for installs that generated one before the account
+  # grain existed.
   defp access_public_key(scope, name) do
-    case ProjectSecrets.fetch_value(scope, "server_ssh_public_key") do
-      {:ok, public} when is_binary(public) and public != "" ->
-        {:ok, public}
-
-      _ ->
-        generate_access_key(scope, name)
+    with :error <- stored_public_key(fn -> AccountSecrets.fetch_value(scope, @access_key_public) end),
+         :error <- stored_public_key(fn -> ProjectSecrets.fetch_value(scope, @access_key_public) end) do
+      generate_access_key(scope, name)
     end
+  end
+
+  defp stored_public_key(read) do
+    case read.() do
+      {:ok, public} when is_binary(public) and public != "" -> {:ok, public}
+      _ -> :error
+    end
+  rescue
+    _ -> :error
   end
 
   defp generate_access_key(scope, name) do
@@ -1357,8 +1373,10 @@ defmodule CodeMySpec.Provisioning.Steps do
           private = File.read!(path)
           public = File.read!(path <> ".pub")
 
-          ProjectSecrets.put_value(scope, "server_ssh_private_key", private)
-          ProjectSecrets.put_value(scope, "server_ssh_public_key", public)
+          # Written at the account grain to match where it is read from, so
+          # one key opens every box the account owns.
+          AccountSecrets.put_value(scope, @access_key_private, private)
+          AccountSecrets.put_value(scope, @access_key_public, public)
 
           {:ok, public}
 

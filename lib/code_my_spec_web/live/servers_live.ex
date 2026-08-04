@@ -51,13 +51,29 @@ defmodule CodeMySpecWeb.ServersLive do
     {:noreply, assign(socket, :show_unlinked, !socket.assigns.show_unlinked)}
   end
 
+  # Re-narrows the size list when the location changes. Availability is per
+  # location, so the sizes on offer have to follow it or the form invites pairs
+  # that cannot be built.
+  def handle_event("choose", %{"server" => %{"location" => location}}, socket) do
+    {:noreply, socket |> assign(:location, location) |> assign(:pending, nil)}
+  end
+
   # Choosing is free. This only stages what was chosen and shows the cost —
   # criterion 8267 is that nothing exists at the provider until Sam confirms.
   def handle_event("stage", %{"server" => attrs}, socket) do
-    {:noreply,
-     socket
-     |> assign(:pending, staged(attrs, socket.assigns.options))
-     |> assign(:provision_error, nil)}
+    case staged(attrs, socket.assigns.options) do
+      # No price means the pair is not one the provider offers. Saying so is
+      # the whole of criterion 8266; the alternative was a confirm button
+      # beside an empty "€/hour", which is consent to an unstated cost.
+      %{hourly: nil} = pending ->
+        {:noreply,
+         socket
+         |> assign(:pending, nil)
+         |> assign(:provision_error, unavailable_pair(pending))}
+
+      pending ->
+        {:noreply, socket |> assign(:pending, pending) |> assign(:provision_error, nil)}
+    end
   end
 
   def handle_event("provision", _params, %{assigns: %{pending: nil}} = socket) do
@@ -89,8 +105,15 @@ defmodule CodeMySpecWeb.ServersLive do
 
       # Not an empty list. "You have no servers" and "we could not ask" are
       # different facts, and only one of them is safe to imply.
-      {:error, reason} ->
-        socket |> assign(:servers, []) |> assign(:provider_error, describe(reason))
+      #
+      # The linked ones still render. They are our own records, they cost money
+      # whether or not we can reach the provider, and blanking them is how a box
+      # leaves the screen for good — the exact failure this page exists to stop.
+      {:error, reason, linked} ->
+        socket
+        |> assign(:servers, linked)
+        |> assign(:provider_error, describe(reason))
+        |> expand_when_nothing_linked(linked)
     end
   end
 
@@ -108,10 +131,13 @@ defmodule CodeMySpecWeb.ServersLive do
 
   defp load_options(socket) do
     case Servers.available_options(socket.assigns.current_scope) do
-      {:ok, options} -> assign(socket, :options, options)
-      {:error, _reason} -> assign(socket, :options, [])
+      {:ok, options} -> socket |> assign(:options, options) |> assign(:location, first_location(options))
+      {:error, _reason} -> socket |> assign(:options, []) |> assign(:location, nil)
     end
   end
+
+  defp first_location([%{location: location} | _]), do: location
+  defp first_location(_), do: nil
 
   defp staged(%{"size" => size, "location" => location}, options) do
     type =
@@ -123,6 +149,17 @@ defmodule CodeMySpecWeb.ServersLive do
     %{size: size, location: location, hourly: type && type.hourly, type: type}
   end
 
+  defp unavailable_pair(%{size: size, location: location}),
+    do:
+      "#{size} is not available in #{location} right now, so there is no price to quote. " <>
+        "Pick another location or another size — nothing was created."
+
+  # A credential that was never supplied is not an outage. Saying "could not
+  # reach the provider" sends Sam to Hetzner's status page for a problem that
+  # is entirely on this side, and retrying will never fix it.
+  defp describe(:hetzner_not_configured),
+    do: "No Hetzner API token is connected for this account. Add one to see your servers."
+
   defp describe(:unauthorized), do: "The provider refused the credential (unauthorized)."
   defp describe(:timeout), do: "The provider could not be reached before timing out."
   defp describe(reason) when is_binary(reason), do: reason
@@ -130,6 +167,11 @@ defmodule CodeMySpecWeb.ServersLive do
 
   defp describe_provision({:capacity_unavailable, where}, _pending),
     do: "#{where} is unavailable right now. Nothing was created."
+
+  defp describe_provision(:ssh_key_required, pending),
+    do:
+      "#{pending.size} in #{pending.location} was not created: no SSH key could be prepared, " <>
+        "and a server without one cannot be reached after it boots."
 
   defp describe_provision(reason, pending),
     do: "#{pending.size} in #{pending.location} could not be created: #{describe(reason)}"
@@ -185,7 +227,12 @@ defmodule CodeMySpecWeb.ServersLive do
           </div>
         </div>
 
-        <.provision_panel options={@options} pending={@pending} error={@provision_error} />
+        <.provision_panel
+          options={@options}
+          location={@location}
+          pending={@pending}
+          error={@provision_error}
+        />
       </div>
     </Layouts.app>
     """
@@ -203,7 +250,12 @@ defmodule CodeMySpecWeb.ServersLive do
       data-status={@server.status}
       data-linked={to_string(@server.linked)}
       data-missing={to_string(@server.missing)}
-      class={["card bg-base-200", @server.missing && "border border-error"]}
+      data-unverified={to_string(@server.unverified)}
+      class={[
+        "card bg-base-200",
+        @server.missing && "border border-error",
+        @server.unverified && "border border-warning"
+      ]}
     >
       <div class="card-body py-3 flex-row items-center justify-between gap-4">
         <div>
@@ -213,6 +265,9 @@ defmodule CodeMySpecWeb.ServersLive do
           <span :if={@server.status} class="badge badge-sm ml-1">{@server.status}</span>
           <span :if={@server.missing} class="badge badge-error badge-sm ml-1">
             missing at provider
+          </span>
+          <span :if={@server.unverified} class="badge badge-warning badge-sm ml-1">
+            linked — state unavailable
           </span>
         </div>
 
@@ -232,6 +287,7 @@ defmodule CodeMySpecWeb.ServersLive do
   end
 
   attr :options, :list, required: true
+  attr :location, :string, default: nil
   attr :pending, :map, default: nil
   attr :error, :string, default: nil
 
@@ -244,11 +300,16 @@ defmodule CodeMySpecWeb.ServersLive do
         that is sold out is not an option you can pick.
       </p>
 
-      <form data-test="provision-form" phx-submit="stage" class="flex flex-wrap gap-3 items-end">
+      <form
+        data-test="provision-form"
+        phx-submit="stage"
+        phx-change="choose"
+        class="flex flex-wrap gap-3 items-end"
+      >
         <label class="form-control">
           <span class="label-text">Location</span>
           <select name="server[location]" class="select select-bordered">
-            <option :for={option <- @options} value={option.location}>
+            <option :for={option <- @options} value={option.location} selected={option.location == @location}>
               {option.city} ({option.location})
             </option>
           </select>
@@ -256,9 +317,10 @@ defmodule CodeMySpecWeb.ServersLive do
 
         <label class="form-control">
           <span class="label-text">Size</span>
-          <select name="server[size]" class="select select-bordered">
-            <option :for={type <- available_types(@options)} value={type.name}>
+          <select name="server[size]" data-test="size-options" class="select select-bordered">
+            <option :for={type <- types_in(@options, @location)} value={type.name}>
               {type.name} — {type.cores} vCPU, {type.memory}GB, {type.disk}GB ({type.architecture})
+              — €{type.hourly}/hr
             </option>
           </select>
         </label>
@@ -283,12 +345,14 @@ defmodule CodeMySpecWeb.ServersLive do
     """
   end
 
-  # Flattened across locations for the size list. The form re-checks the pair
-  # on submit, so a size shown for one location cannot be bought in another.
-  defp available_types(options) do
+  # Scoped to the chosen location, never flattened across all of them.
+  # Availability is a fact about one location: `cpx11` exists in ash and hil
+  # and nowhere else, `cpx12` in the other four. A flattened list offered 21
+  # sizes against every location when none has more than 16, so most of the
+  # pairs it permitted could not be built.
+  defp types_in(options, location) do
     options
-    |> Enum.flat_map(& &1.types)
-    |> Enum.uniq_by(& &1.name)
-    |> Enum.sort_by(& &1.hourly)
+    |> Enum.find(%{types: []}, &(&1.location == location))
+    |> Map.get(:types)
   end
 end
