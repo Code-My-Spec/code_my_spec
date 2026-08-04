@@ -35,11 +35,52 @@ defmodule CodeMySpecWeb.WidgetIssuesControllerTest do
     assert issue["title"] == "Delete has no confirmation"
   end
 
+  # The defect this covers: a deployed app holding only the short-lived
+  # credential could register a visitor at /api/widget/users and then not file
+  # that visitor's feedback here, because the users controller had been
+  # migrated to AppCredential and this one still matched deploy keys only. An
+  # app that can introduce someone and not hear from them is the feedback
+  # widget failing at exactly the moment it matters.
+  test "the short-lived access token files an issue, not just the deploy key", %{
+    conn: conn,
+    project: project
+  } do
+    # Through the real door: a deployed app holds a refresh secret and trades
+    # it for the short-lived token, which is the credential under test.
+    {:ok, project} = CodeMySpec.AppTokens.put_refresh_secret(project, "widget-issues-test-secret")
+    {:ok, token, _expires_in} = CodeMySpec.AppTokens.exchange("widget-issues-test-secret")
+    _ = project
+
+    conn =
+      conn
+      |> put_req_header("authorization", "Bearer " <> token)
+      |> post(~p"/api/widget/issues", %{
+        "issue" => %{"title" => "Filed with a token", "description" => "Not a deploy key."}
+      })
+
+    assert %{"data" => issue} = json_response(conn, 201)
+    assert issue["title"] == "Filed with a token"
+  end
+
+  # Auth before the parameter complaint. A 400 to a caller who never
+  # authenticated reads as "your credential was fine, your body was not" — and
+  # that is precisely how the credential defect above survived a QA pass.
+  test "a bad credential is refused before the body is inspected", %{conn: conn} do
+    conn =
+      conn
+      |> put_req_header("authorization", "Bearer not-a-real-credential")
+      |> post(~p"/api/widget/issues", %{})
+
+    assert json_response(conn, 401),
+           "an unauthenticated caller must not learn the parameter shape, and must " <>
+             "not be told its request body was the problem"
+  end
+
   test "no credential is refused", %{conn: conn} do
     conn =
       post(conn, ~p"/api/widget/issues", %{"issue" => %{"title" => "x", "description" => "y"}})
 
-    assert json_response(conn, 401)["error"] =~ "deploy key",
+    assert json_response(conn, 401),
            "anonymous means no *reporter* login — the app still has to say which " <>
              "project this is, or anyone could file against anyone"
   end
