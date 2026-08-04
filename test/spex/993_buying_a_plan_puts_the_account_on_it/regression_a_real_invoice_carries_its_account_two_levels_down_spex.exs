@@ -67,7 +67,7 @@ defmodule CodeMySpecSpex.Story993.RealInvoiceShapeSpex do
       then_ "the account is on the tier that was paid for", context do
         assert context.status == 200
 
-        assert CodeMySpec.Accounts.get_account_by_id(context.account.id).plan == :pro,
+        assert plan_on_page(context.conn) == "pro",
                "a real invoice must grant the tier, not just be accepted and deduped"
 
         {:ok, context}
