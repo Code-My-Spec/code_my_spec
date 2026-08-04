@@ -1276,6 +1276,87 @@ defmodule CodeMySpecSpex.Case do
   end
 
   @doc """
+  What the provider reports when the servers screen asks it.
+
+  The screen is the surface under test and is driven for real; the provider
+  behind it is injected, because a criterion about how servers are displayed
+  should not have to buy a box to say so.
+
+  Pass a list of server maps, or `{:error, reason}` to make the provider
+  unreachable — the difference between "no servers" and "could not ask" is
+  itself a criterion (8259).
+
+      stage_servers(context, [%{name: "fuellytics", ip: "46.225.105.88", ...}])
+      stage_servers(context, {:error, :unauthorized})
+  """
+  def stage_servers(context, reported, opts \\ []) do
+    previous = Application.get_env(:code_my_spec, CodeMySpec.Servers, [])
+
+    staged =
+      [
+        list: fn _scope -> normalise_reported(reported) end,
+        # What the provider says it can supply. Staged too, because the
+        # provisioning form is built from availability — without it the size
+        # select is empty and every provisioning scenario fails on a form it
+        # could not fill rather than on the thing it is testing.
+        options: fn _scope -> {:ok, Keyword.get(opts, :available, default_options())} end
+      ] ++ Keyword.delete(opts, :available)
+
+    Application.put_env(
+      :code_my_spec,
+      CodeMySpec.Servers,
+      Keyword.merge(previous, staged)
+    )
+
+    ExUnit.Callbacks.on_exit(fn ->
+      Application.put_env(:code_my_spec, CodeMySpec.Servers, previous)
+    end)
+
+    context
+  end
+
+  defp normalise_reported({:error, reason}), do: {:error, reason}
+  defp normalise_reported(servers) when is_list(servers), do: {:ok, servers}
+
+  # Shaped like what `Servers.available_options/1` builds from the provider:
+  # a location, and only the types that location can actually supply. Includes
+  # an ARM type deliberately, so a scenario can ask for one and be refused the
+  # way the real provider refused every ARM type during QA.
+  defp default_options do
+    [
+      %{
+        location: "fsn1",
+        city: "Falkenstein",
+        types: [
+          %{name: "cpx11", architecture: "x86", cores: 2, memory: 2, disk: 40, hourly: 0.0328},
+          %{name: "cax21", architecture: "arm", cores: 4, memory: 8, disk: 80, hourly: 0.0200},
+          %{name: "cpx31", architecture: "x86", cores: 4, memory: 8, disk: 160, hourly: 0.1178}
+        ]
+      }
+    ]
+  end
+
+  @doc """
+  A server as the provider reports one, with sensible defaults.
+
+  Only the fields a scenario cares about need naming; the rest are filled in
+  so a spec about display is not cluttered by a provider's whole payload.
+  """
+  def provider_server(attrs \\ %{}) do
+    Map.merge(
+      %{
+        id: System.unique_integer([:positive]),
+        name: "box-#{System.unique_integer([:positive])}",
+        ip: "203.0.113.#{:rand.uniform(254)}",
+        size: "cpx11",
+        location: "fsn1",
+        status: "running"
+      },
+      Map.new(attrs)
+    )
+  end
+
+  @doc """
   Stage the monitoring step's outcome without a real UptimeRobot account.
 
   Criterion 8010 is that each public host has a monitor with somewhere to

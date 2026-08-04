@@ -257,6 +257,40 @@ defmodule CodeMySpec.Provisioning.Hetzner do
   end
 
   @doc """
+  Every datacenter, and which server types each can actually supply today.
+
+  `/datacenters` is the only endpoint that answers "can I create this right
+  now". `/server_types` lists what exists in the catalogue, which is a
+  different question: during QA every ARM type was listed and not deprecated
+  while being sold out in all six datacenters (issue 92e0b786). Offering a
+  size from the catalogue is how you offer something nobody can buy.
+
+  The `server_types.available` list holds type *ids*, so it is only useful
+  joined against `list_server_types/1`.
+  """
+  @spec list_datacenters(Scope.t()) :: {:ok, [body()]} | error()
+  def list_datacenters(%Scope{} = scope) do
+    with {:ok, %{"datacenters" => datacenters}} <- request(scope, :get, "/datacenters", []) do
+      {:ok, datacenters}
+    end
+  end
+
+  @doc """
+  The server type catalogue — cores, memory, disk, architecture and price.
+
+  Says nothing about availability; pair it with `list_datacenters/1`. Asks for
+  a full page because the default page size silently truncates the list, and a
+  missing type reads as "unavailable" rather than "not fetched".
+  """
+  @spec list_server_types(Scope.t()) :: {:ok, [body()]} | error()
+  def list_server_types(%Scope{} = scope) do
+    with {:ok, %{"server_types" => types}} <-
+           request(scope, :get, "/server_types?per_page=50", []) do
+      {:ok, types}
+    end
+  end
+
+  @doc """
   Find a server by name.
 
   This is how a step's state is checked against the provider rather than read
