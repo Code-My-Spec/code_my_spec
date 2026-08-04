@@ -1252,6 +1252,30 @@ defmodule CodeMySpecSpex.Case do
   end
 
   @doc """
+  The plan the account is on, read off the pricing page.
+
+  Asked of the app rather than the database. `then_` observes through the
+  public interface, and a spex reaching into `CodeMySpec.Accounts` also breaks
+  the `CodeMySpecSpex` boundary — which is how these turned up.
+
+  `/pricing` renders `CheckoutLive`, which badges the tier the account is
+  currently on. Returns the tier as a string, or `nil` when no tier is badged
+  (a free account, since free is not one of the purchasable tiers).
+  """
+  def plan_on_page(conn) do
+    # `dispatch/4` rather than the `get/2` macro: that one expands to whatever
+    # `@endpoint` the calling module set, and this helper lives here rather
+    # than in the spex.
+    conn
+    |> Phoenix.ConnTest.dispatch(CodeMySpecWeb.Endpoint, :get, "/pricing")
+    |> Phoenix.ConnTest.html_response(200)
+    |> Floki.parse_document!()
+    |> Floki.find("[data-test='current-plan']")
+    |> Floki.attribute("data-plan")
+    |> List.first()
+  end
+
+  @doc """
   Stage the monitoring step's outcome without a real UptimeRobot account.
 
   Criterion 8010 is that each public host has a monitor with somewhere to

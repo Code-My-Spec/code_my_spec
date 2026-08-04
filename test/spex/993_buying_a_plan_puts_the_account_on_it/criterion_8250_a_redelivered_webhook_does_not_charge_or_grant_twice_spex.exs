@@ -35,7 +35,8 @@ defmodule CodeMySpecSpex.Story993.Criterion8250Spex do
         body = event_body(context.account.id, "light")
         assert post_webhook(body).status == 200
 
-        assert CodeMySpec.Accounts.get_account_by_id(context.account.id).plan == :light
+        assert plan_on_page(context.conn) == "light",
+               "the first delivery must land, or the redelivery below proves nothing"
 
         {:ok, Map.put(context, :body, body)}
       end
@@ -51,7 +52,8 @@ defmodule CodeMySpecSpex.Story993.Criterion8250Spex do
       end
 
       then_ "the account is on exactly the tier it was already on", context do
-        assert CodeMySpec.Accounts.get_account_by_id(context.account.id).plan == :light
+        assert plan_on_page(context.conn) == "light",
+               "a redelivered event must not move the account off the tier it already had"
 
         {:ok, context}
       end

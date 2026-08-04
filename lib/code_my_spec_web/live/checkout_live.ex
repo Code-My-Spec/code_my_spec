@@ -69,7 +69,14 @@ defmodule CodeMySpecWeb.CheckoutLive do
           <p class="text-base-content/70">{tier.blurb}</p>
 
           <div class="card-actions justify-end mt-2">
-            <span :if={@current_plan == tier.id} class="badge badge-primary">Your plan</span>
+            <span
+              :if={@current_plan == tier.id}
+              data-test="current-plan"
+              data-plan={tier.id}
+              class="badge badge-primary"
+            >
+              Your plan
+            </span>
             <.button
               :if={@current_plan != tier.id}
               phx-click="choose"
