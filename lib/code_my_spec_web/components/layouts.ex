@@ -177,6 +177,12 @@ defmodule CodeMySpecWeb.Layouts do
             <%= if onboarding_complete?(@current_scope) do %>
               <li><a href={~p"/app/projects"}>Projects</a></li>
               <%!--
+                Account-scoped, so it sits with Projects rather than inside the
+                per-project block: a box is shared between projects, and one
+                left over from a project that no longer exists still bills.
+              --%>
+              <li><a href={~p"/app/servers"}>Servers</a></li>
+              <%!--
                 The path is the breadcrumb. Every surface below is addressed
                 per-project, and the project they point at is the one named in
                 the URL — `@project`, put there by PortableHost — never the
