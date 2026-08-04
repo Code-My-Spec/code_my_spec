@@ -120,7 +120,8 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
   end
 
   defp resolve_session(_scope, _session_id) do
-    {:error, "No session_id available. The PreToolUse hook should inject it automatically."}
+    {:error,
+     "No session_id available. Call `register_session` with this conversation's id (CLAUDE_SESSION_ID) to create it on this server."}
   end
 
   defp lazily_register_session(scope, session_id) do

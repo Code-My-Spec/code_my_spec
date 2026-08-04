@@ -16,8 +16,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.CancelTask do
   alias CodeMySpec.Sessions.Session
 
   schema do
-    field :session_id, :string,
-      doc: "Injected by hook — do not set manually"
+    field :session_id, :string, doc: "Injected by hook — do not set manually"
 
     field :task_id, :string, required: true, doc: "Task to cancel"
   end
@@ -46,7 +45,10 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.CancelTask do
     end
   end
 
-  defp resolve_session(_scope, _), do: {:error, "No session_id available"}
+  defp resolve_session(_scope, _),
+    do:
+      {:error,
+       "No session_id available. Call `register_session` with this conversation's id (CLAUDE_SESSION_ID) to create it on this server."}
 
   defp ensure_task(session, task_id) do
     case Session.find_task(session, task_id) do

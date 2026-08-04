@@ -66,7 +66,8 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.AskUser do
          ), frame}
 
       {:error, reason} ->
-        {:reply, Response.tool() |> Response.error("Could not reach the user: #{inspect(reason)}"), frame}
+        {:reply,
+         Response.tool() |> Response.error("Could not reach the user: #{inspect(reason)}"), frame}
     end
   end
 

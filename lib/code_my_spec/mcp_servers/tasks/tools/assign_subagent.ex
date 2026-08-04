@@ -24,8 +24,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.AssignSubagent do
   alias CodeMySpec.Sessions.Session
 
   schema do
-    field :session_id, :string,
-      doc: "Injected by hook — do not set manually"
+    field :session_id, :string, doc: "Injected by hook — do not set manually"
 
     field :agent_id, :string, required: true, doc: "Registered sub-agent id"
 
@@ -61,7 +60,10 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.AssignSubagent do
     end
   end
 
-  defp resolve_session(_scope, _), do: {:error, "No session_id available"}
+  defp resolve_session(_scope, _),
+    do:
+      {:error,
+       "No session_id available. Call `register_session` with this conversation's id (CLAUDE_SESSION_ID) to create it on this server."}
 
   defp ensure_active(scope, session, agent_id) do
     ttl = Configurations.get_or_create(scope).subagent_ttl_minutes
@@ -69,8 +71,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.AssignSubagent do
     if Enum.any?(Session.active_subagents(session, ttl), &(&1.agent_id == agent_id)) do
       :ok
     else
-      {:error,
-       "agent_id `#{agent_id}` is not an active registered sub-agent on this session"}
+      {:error, "agent_id `#{agent_id}` is not an active registered sub-agent on this session"}
     end
   end
 

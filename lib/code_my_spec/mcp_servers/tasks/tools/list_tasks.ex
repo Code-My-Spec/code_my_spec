@@ -13,8 +13,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.ListTasks do
   alias CodeMySpec.Sessions
 
   schema do
-    field :session_id, :string,
-      doc: "Injected by hook — do not set manually"
+    field :session_id, :string, doc: "Injected by hook — do not set manually"
 
     field :status, :string,
       doc: "Filter by status: active, completed, failed, cancelled (optional)"
@@ -70,17 +69,20 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.ListTasks do
     end
   end
 
-  defp resolve_session(_scope, _), do: {:error, "No session_id available"}
+  defp resolve_session(_scope, _),
+    do:
+      {:error,
+       "No session_id available. Call `register_session` with this conversation's id (CLAUDE_SESSION_ID) to create it on this server."}
 
   @valid_statuses ~w(prepared active completed failed cancelled)
 
   defp parse_status(nil), do: {:ok, nil}
+
   defp parse_status(s) when is_binary(s) do
     if s in @valid_statuses do
       {:ok, String.to_existing_atom(s)}
     else
-      {:error,
-       "Invalid status: #{inspect(s)}. Allowed: #{Enum.join(@valid_statuses, ", ")}."}
+      {:error, "Invalid status: #{inspect(s)}. Allowed: #{Enum.join(@valid_statuses, ", ")}."}
     end
   end
 end
