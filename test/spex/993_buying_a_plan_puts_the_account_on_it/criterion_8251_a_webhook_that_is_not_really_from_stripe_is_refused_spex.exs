@@ -58,7 +58,11 @@ defmodule CodeMySpecSpex.Story993.Criterion8251Spex do
       end
 
       then_ "no account is put on a paid tier", context do
-        assert CodeMySpec.Accounts.get_account_by_id(context.account.id).plan == :free
+        # No tier is badged as theirs. `free` is not one of the purchasable
+        # tiers, so "still free" is observable as the page offering both tiers
+        # to buy rather than marking either as already owned.
+        refute plan_on_page(context.conn),
+               "a forged webhook granted a paid tier"
 
         {:ok, context}
       end

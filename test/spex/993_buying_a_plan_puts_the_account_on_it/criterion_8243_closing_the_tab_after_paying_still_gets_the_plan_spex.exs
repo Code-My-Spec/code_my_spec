@@ -64,7 +64,12 @@ defmodule CodeMySpecSpex.Story993.Criterion8243Spex do
       end
 
       then_ "the account is on the tier that was paid for", context do
-        assert CodeMySpec.Accounts.get_account_by_id(context.account.id).plan == :pro,
+        # Read off the pricing page, which is the first page a returning
+        # visitor would see. Asking the database here would prove the row
+        # changed; asking the page proves the account is *on* the tier from
+        # anywhere it matters — and the browser is only involved now, after
+        # the fact, which is the whole point of the criterion.
+        assert plan_on_page(context.conn) == "pro",
                "the tier must arrive from the webhook alone, with no page involved"
 
         {:ok, context}

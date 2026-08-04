@@ -38,7 +38,7 @@ defmodule CodeMySpecSpex.Story993.Criterion8247Spex do
         body = event_body(context.account.id, "invoice.payment_succeeded", %{"tier" => "pro"})
         post(signed(body), "/webhooks/stripe", body)
 
-        assert plan(context.account.id) == :pro
+        assert plan(context.conn) == :pro
 
         {:ok, context}
       end
@@ -52,7 +52,7 @@ defmodule CodeMySpecSpex.Story993.Criterion8247Spex do
       end
 
       then_ "they still have the tier they paid for", context do
-        assert plan(context.account.id) == :pro,
+        assert plan(context.conn) == :pro,
                "cancelling must not take back the rest of a month already bought"
 
         {:ok, context}
@@ -61,14 +61,23 @@ defmodule CodeMySpecSpex.Story993.Criterion8247Spex do
       then_ "only when the period actually ends do they return to free", context do
         post_event(context.account.id, "customer.subscription.deleted", %{})
 
-        assert plan(context.account.id) == :free
+        assert plan(context.conn) == :free
 
         {:ok, context}
       end
     end
   end
 
-  defp plan(account_id), do: CodeMySpec.Accounts.get_account_by_id(account_id).plan
+  # Read off the pricing page rather than the database: a `then_` observes
+  # through the public interface, and reaching into `CodeMySpec.Accounts` also
+  # breaks the CodeMySpecSpex boundary. A free account badges no tier, since
+  # free is not one of the purchasable ones, so an absent badge is `:free`.
+  defp plan(conn) do
+    case plan_on_page(conn) do
+      nil -> :free
+      tier -> String.to_existing_atom(tier)
+    end
+  end
 
   # The tier belongs inside metadata, where the handler reads it — merging it
   # at the object level looked right and silently sent no tier at all.
