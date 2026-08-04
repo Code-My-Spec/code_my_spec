@@ -20,7 +20,12 @@ defmodule CodeMySpec.Hooks.PreToolUse do
 
   require Logger
 
-  @mcp_prefix "mcp__plugin_codemyspec_local__"
+  # Every MCP server this plugin ships, not just the local one. The tools are
+  # named `mcp__plugin_codemyspec_<server>__*`, and the cloud server
+  # (`cms_cloud`) takes the same `session_id` the local one does — matching
+  # only `local` meant its task tools got none, and dead-ended on a hook that
+  # had the id in hand and was declining to pass it on.
+  @mcp_prefix "mcp__plugin_codemyspec_"
 
   # Claude Code's Bash tool kills commands at ~2 minutes by default — far
   # shorter than a big test suite. The rewritten curl blocks for the whole
@@ -68,7 +73,9 @@ defmodule CodeMySpec.Hooks.PreToolUse do
         |> Map.put("session_id", session_id)
         |> maybe_put_agent_id(original_input, agent_id)
 
-      Logger.debug("[PreToolUse] Enriching MCP tool with session_id#{if agent_id, do: " + agent_id=#{agent_id}", else: ""}")
+      Logger.debug(
+        "[PreToolUse] Enriching MCP tool with session_id#{if agent_id, do: " + agent_id=#{agent_id}", else: ""}"
+      )
 
       %{
         "hookSpecificOutput" => %{
@@ -181,11 +188,14 @@ defmodule CodeMySpec.Hooks.PreToolUse do
   defp maybe_rewrite_test_command(scope, params, port) do
     command = get_in(params, ["tool_input", "command"]) || ""
 
-    with %{active_project_id: project_id, cwd: cwd} when not is_nil(project_id) and is_binary(cwd) <- scope,
+    with %{active_project_id: project_id, cwd: cwd} when not is_nil(project_id) and is_binary(cwd) <-
+           scope,
          {:ok, task, source, args} <- classify_test_command(command) do
       replacement = build_curl(port, cwd, source, args)
 
-      Logger.info("[PreToolUse] Rewriting mix #{task} → analysis API (#{source}, args: #{inspect(args)})")
+      Logger.info(
+        "[PreToolUse] Rewriting mix #{task} → analysis API (#{source}, args: #{inspect(args)})"
+      )
 
       %{
         "hookSpecificOutput" => %{
