@@ -29,20 +29,47 @@ defmodule CmsHarness.Config do
   The credential the socket authenticates with.
 
   A user token when someone is signed in on this machine, a project deploy key
-  when it is a sprite. The server's `UserSocket` accepts either.
+  when it is a sprite. The server's `UserSocket` accepts either, which is why
+  this one function serves the socket — and why it does *not* serve the rest.
+  `/mcp/harness` is behind `require_oauth_token`, which takes only the first, so
+  everything HTTP goes through `CmsHarness.Token.access_token/0` instead.
   """
   @spec credential() :: {:ok, String.t()} | {:error, :no_credential}
   def credential do
-    value =
-      System.get_env("CMS_TOKEN") ||
-        System.get_env("CMS_DEPLOY_KEY") ||
-        Application.get_env(:code_my_spec, :harness_token)
-
-    case value do
-      token when is_binary(token) and token != "" -> {:ok, token}
-      _ -> {:error, :no_credential}
+    case user_token() do
+      {:ok, token} -> {:ok, token}
+      {:error, :no_credential} -> deploy_key()
     end
   end
+
+  @doc """
+  A signed-in user's own access token, if this machine has one.
+
+  Kept apart from the deploy key because they are not interchangeable: this one
+  the server's OAuth pipeline accepts everywhere, and the other has to be
+  exchanged first.
+  """
+  @spec user_token() :: {:ok, String.t()} | {:error, :no_credential}
+  def user_token do
+    present(System.get_env("CMS_TOKEN") || Application.get_env(:code_my_spec, :harness_token))
+  end
+
+  @doc """
+  The project deploy key this harness was given, if any.
+
+  The durable credential on a sprite or a container: it comes from the
+  environment, buys a short-lived token from `POST /api/sprite/token`, and is
+  never presented to anything else. See `CmsHarness.Token`.
+  """
+  @spec deploy_key() :: {:ok, String.t()} | {:error, :no_credential}
+  def deploy_key do
+    present(
+      System.get_env("CMS_DEPLOY_KEY") || Application.get_env(:code_my_spec, :harness_deploy_key)
+    )
+  end
+
+  defp present(value) when is_binary(value) and value != "", do: {:ok, value}
+  defp present(_), do: {:error, :no_credential}
 
   @doc """
   The websocket URL for the server's user socket.

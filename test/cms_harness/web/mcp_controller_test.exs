@@ -150,6 +150,80 @@ defmodule CmsHarness.Web.McpControllerTest do
     end
   end
 
+  # `require_oauth_token` on the server takes a user's access token and nothing
+  # else, so a sprite — which holds a project deploy key and no user — has to
+  # trade first. See `CmsHarness.Token`.
+  describe "a harness holding only a deploy key" do
+    setup do
+      Application.delete_env(:code_my_spec, :harness_token)
+      Application.put_env(:code_my_spec, :harness_deploy_key, "a-deploy-key")
+      CmsHarness.Token.invalidate()
+
+      on_exit(fn ->
+        Application.delete_env(:code_my_spec, :harness_deploy_key)
+        CmsHarness.Token.invalidate()
+      end)
+    end
+
+    test "trades it for a token and forwards with that", %{conn: conn} do
+      %{root: dir} = project_dir(project_id: "p-9")
+
+      conn = post_rpc(conn, dir, %{"jsonrpc" => "2.0", "id" => 1, "method" => "ping"})
+
+      assert conn.status == 200
+
+      exchange = FakeUpstream.last_exchange()
+      assert exchange.method == "POST"
+      assert exchange.headers["authorization"] == "Bearer a-deploy-key"
+
+      # The deploy key itself never reaches the tool surface — that is the
+      # whole point of exchanging rather than widening it.
+      forwarded = FakeUpstream.last_request()
+      assert forwarded.path == "/mcp/harness"
+      assert forwarded.headers["authorization"] == "Bearer exchanged-token"
+    end
+
+    test "the token is reused rather than re-bought on every call", %{conn: conn} do
+      %{root: dir} = project_dir()
+
+      post_rpc(conn, dir, %{"jsonrpc" => "2.0", "id" => 1, "method" => "ping"})
+      first = FakeUpstream.last_exchange()
+
+      :persistent_term.put({FakeUpstream, :exchange}, nil)
+      post_rpc(build_conn(), dir, %{"jsonrpc" => "2.0", "id" => 2, "method" => "ping"})
+
+      assert first != nil
+      assert FakeUpstream.last_exchange() == nil
+    end
+
+    # A token about to expire is re-bought before it is presented: one that
+    # expires between the check and the request arrives as a 401 the caller
+    # cannot explain.
+    test "a token inside the refresh margin is re-bought", %{conn: conn} do
+      %{root: dir} = project_dir()
+      FakeUpstream.exchange_answers(:ok, expires_in: 60)
+
+      post_rpc(conn, dir, %{"jsonrpc" => "2.0", "id" => 1, "method" => "ping"})
+      :persistent_term.put({FakeUpstream, :exchange}, nil)
+
+      post_rpc(build_conn(), dir, %{"jsonrpc" => "2.0", "id" => 2, "method" => "ping"})
+
+      assert FakeUpstream.last_exchange() != nil
+    end
+
+    test "a refused key says so rather than forwarding without one", %{conn: conn} do
+      %{root: dir} = project_dir()
+      FakeUpstream.exchange_answers(401)
+
+      conn = post_rpc(conn, dir, %{"jsonrpc" => "2.0", "id" => 1, "method" => "ping"})
+
+      message = Jason.decode!(conn.resp_body)["error"]["message"]
+      assert message =~ "401"
+      assert message =~ "CMS_DEPLOY_KEY"
+      assert FakeUpstream.last_request().path == "/api/sprite/token"
+    end
+  end
+
   describe "refusing" do
     test "with no credential it says so instead of forwarding", %{conn: conn} do
       Application.delete_env(:code_my_spec, :harness_token)
@@ -162,7 +236,7 @@ defmodule CmsHarness.Web.McpControllerTest do
       assert conn.status == 200
       body = Jason.decode!(conn.resp_body)
       assert body["id"] == 7
-      assert body["error"]["message"] =~ "CMS_TOKEN"
+      assert body["error"]["message"] =~ "CMS_DEPLOY_KEY"
       assert FakeUpstream.last_request() == nil
     end
 

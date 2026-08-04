@@ -54,6 +54,11 @@ defmodule CmsHarness.Supervisor do
       # restarts alone.
       {DynamicSupervisor, name: CmsHarness.ProjectSupervisor, strategy: :one_for_one},
 
+      # Holds the short-lived token the deploy key buys, and serialises buying
+      # it: several hooks and an MCP call arrive at once on a cold start, and N
+      # simultaneous exchanges for one key is N-1 tokens nobody uses.
+      CmsHarness.Token,
+
       # Claude Code POSTs its hooks to a fixed URL. This is that URL.
       CmsHarness.Web.Endpoint,
 

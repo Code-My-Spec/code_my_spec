@@ -63,17 +63,54 @@ defmodule CmsHarnessTest.FakeUpstream do
   def call(conn, _opts) do
     {:ok, body, conn} = read_body(conn)
 
-    :persistent_term.put(
-      {__MODULE__, :request},
-      %{
-        method: conn.method,
-        path: conn.request_path,
-        headers: Map.new(conn.req_headers),
-        body: body
-      }
-    )
+    request = %{
+      method: conn.method,
+      path: conn.request_path,
+      headers: Map.new(conn.req_headers),
+      body: body
+    }
 
-    respond(conn, response())
+    :persistent_term.put({__MODULE__, :request}, request)
+
+    # The token exchange is its own route with its own answer, so a test can
+    # assert what the proxy forwarded without that assertion being about the
+    # exchange that had to happen first.
+    if conn.request_path == "/api/sprite/token" do
+      :persistent_term.put({__MODULE__, :exchange}, request)
+      respond_to_exchange(conn)
+    else
+      respond(conn, response())
+    end
+  end
+
+  @doc "What the last token exchange looked like, or nil."
+  @spec last_exchange() :: map() | nil
+  def last_exchange, do: :persistent_term.get({__MODULE__, :exchange}, nil)
+
+  @doc "How the token exchange should answer: `:ok`, or a status to refuse with."
+  @spec exchange_answers(:ok | pos_integer(), keyword()) :: :ok
+  def exchange_answers(answer, opts \\ []) do
+    :persistent_term.put({__MODULE__, :exchange_answer}, {answer, opts})
+  end
+
+  defp respond_to_exchange(conn) do
+    case :persistent_term.get({__MODULE__, :exchange_answer}, {:ok, []}) do
+      {:ok, opts} ->
+        body = %{
+          "access_token" => Keyword.get(opts, :token, "exchanged-token"),
+          "token_type" => "Bearer",
+          "expires_in" => Keyword.get(opts, :expires_in, 43_200)
+        }
+
+        conn
+        |> put_resp_content_type("application/json")
+        |> send_resp(200, Jason.encode!(body))
+
+      {status, _opts} ->
+        conn
+        |> put_resp_content_type("application/json")
+        |> send_resp(status, ~s({"error":"invalid_credential"}))
+    end
   end
 
   defp respond(conn, %{chunks: chunks} = response) when is_list(chunks) do
@@ -108,6 +145,8 @@ defmodule CmsHarnessTest.FakeUpstream do
   defp reset do
     :persistent_term.put({__MODULE__, :response}, @default)
     :persistent_term.put({__MODULE__, :request}, nil)
+    :persistent_term.put({__MODULE__, :exchange}, nil)
+    :persistent_term.put({__MODULE__, :exchange_answer}, {:ok, []})
   end
 
   defp stop(pid) do

@@ -31,23 +31,14 @@ defmodule CmsHarness.Web.McpController do
   `mcp__plugin_codemyspec_local__*`, so every prompt reference, every agent's
   `mcpServers: local` and the PreToolUse prefix keep working.
 
-  ## Deploy keys do not work here yet
+  ## The credential comes from `CmsHarness.Token`, not `Config.credential/0`
 
-  `CmsHarness.Config.credential/0` also accepts `CMS_DEPLOY_KEY`, and the
-  server's `UserSocket` takes one — but `/mcp/harness` is behind
-  `require_oauth_token`, which only accepts an OAuth access token. A sprite's
-  channel therefore connects while its MCP requests 401. The 401 is passed
-  through with that named in the log rather than being translated into
-  something friendlier, because the fix is on the server and a softened error
-  would hide which end owes the work.
-
-  ## No refresh
-
-  `CodeMySpec.Auth.OAuthClient` refreshes tokens, and this does not use it: that
-  module reads `ClientUser` rows through the Repo, and a harness with a Repo is
-  not the light harness. So the token here is whatever `CMS_TOKEN` holds, and it
-  expires. Giving the harness its own file-backed credential store is the next
-  piece of work, not something to fake with a database.
+  `/mcp/harness` sits behind `require_oauth_token`, which takes a user's OAuth
+  access token and nothing else — not a deploy key, which is what a sprite
+  holds. `Token.access_token/0` is the piece that reconciles those: it hands
+  back a user token when the machine has one, and otherwise trades the deploy
+  key for a short-lived one at `POST /api/sprite/token`. It also handles expiry,
+  which is why there is no refresh problem here to write about.
   """
 
   use Phoenix.Controller, formats: [:json]
@@ -56,6 +47,7 @@ defmodule CmsHarness.Web.McpController do
 
   alias CmsHarness.Config
   alias CmsHarness.ProjectIdentity
+  alias CmsHarness.Token
 
   # Everything the MCP transport puts on a request that means something to the
   # far end. `authorization` is deliberately absent — Claude Code sends none,
@@ -71,7 +63,7 @@ defmodule CmsHarness.Web.McpController do
 
   def proxy(conn, _params) do
     with {:ok, project} <- project(conn),
-         {:ok, token} <- Config.credential() do
+         {:ok, token} <- Token.access_token() do
       dispatch(conn, project, token)
     else
       {:error, reason} -> refuse(conn, reason)
@@ -236,9 +228,17 @@ defmodule CmsHarness.Web.McpController do
   defp message(:no_credential),
     do:
       "The CodeMySpec harness has no credential for the server, so it cannot " <>
-        "forward this. Set CMS_TOKEN and restart it. (A sprite's CMS_DEPLOY_KEY " <>
-        "authenticates the project channel but not MCP — the server's /mcp/harness " <>
-        "accepts only an OAuth access token.)"
+        "forward this. Set CMS_DEPLOY_KEY to this project's deploy key, or " <>
+        "CMS_TOKEN if you are signed in on this machine."
+
+  defp message({:refused, status}),
+    do:
+      "The server refused this harness's deploy key with #{status}, so there is " <>
+        "no token to forward with. Check CMS_DEPLOY_KEY against the project's " <>
+        "deploy key on #{Config.server_url()}."
+
+  defp message({:unreachable, reason}),
+    do: "The harness could not reach #{Config.server_url()} to get a token: #{inspect(reason)}"
 
   defp message(:no_working_dir),
     do:
