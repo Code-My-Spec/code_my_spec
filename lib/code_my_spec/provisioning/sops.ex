@@ -227,18 +227,44 @@ defmodule CodeMySpec.Provisioning.Sops do
   defp ensure_file(env, environment) do
     path = env_file(environment)
 
+    # Encrypted, not merely present. Writing the placeholder and encrypting it
+    # are two steps, so anything that interrupts between them leaves plaintext
+    # sitting at the `.enc.env` path — and trusting the filename accepted that
+    # forever: the step reported done, re-running it changed nothing, and every
+    # deploy failed its pre-flight with "sops metadata not found" while
+    # pointing at the wrong step.
+    #
+    # A file whose name asserts encryption that was never applied is the part
+    # worth refusing to guess about, so this asks sops rather than the
+    # filesystem, and repairs what it finds instead of reporting done over it.
     case Environments.file_exists?(env, path) do
       true ->
-        :ok
+        ensure_encrypted(env, path)
 
       _ ->
         with :ok <- Environments.write_file(env, path, "SOPS_INITIALIZED=true\n") do
-          case sops(["encrypt", "--in-place", path], cd: env.cwd) do
-            {_out, 0} -> :ok
-            {out, status} -> {:error, {:sops_failed, status, out}}
-          end
+          ensure_encrypted(env, path)
         end
     end
+  end
+
+  # Always attempt the encrypt, and treat sops' own "this is already
+  # encrypted" refusal as success.
+  #
+  # Not `sops decrypt` as the test: that needs the private key, which is not in
+  # scope here, so every encrypted file would read as plaintext and then fail
+  # the re-encrypt for the opposite reason. Asking sops to encrypt answers both
+  # questions with the key it does have — the recipient.
+  defp ensure_encrypted(env, path) do
+    case sops(["encrypt", "--in-place", path], cd: env.cwd) do
+      {_out, 0} -> :ok
+      {out, status} -> if already_encrypted?(out), do: :ok, else: {:error, {:sops_failed, status, out}}
+    end
+  end
+
+  defp already_encrypted?(output) do
+    String.contains?(output, "already being encrypted") or
+      String.contains?(output, "top-level entry called 'sops'")
   end
 
   # `cd` matters: sops resolves `.sops.yaml` from the process working
