@@ -85,5 +85,82 @@ defmodule CodeMySpecSpex.Story994.Criterion8266Spex do
         {:ok, context}
       end
     end
+
+    scenario "a size that location does not carry is never on offer" do
+      given_ "a size one location supplies and another does not", context do
+        # cpx31 exists in Falkenstein and not in Singapore. QA found the form
+        # offering every size against every location — 21 options where no
+        # location carried more than 16 — so most pairs it permitted could
+        # not be built.
+        owner = self()
+
+        context =
+          stage_servers(context, [],
+            create: fn _scope, attrs ->
+              send(owner, {:create_attempted, attrs})
+              {:ok, provider_server(%{name: "should-not-exist"})}
+            end
+          )
+
+        {:ok, view, html} = live(context.conn, ~p"/app/servers")
+
+        {:ok, context |> Map.put(:view, view) |> Map.put(:html, html)}
+      end
+
+      when_ "he picks the location that does not carry it", context do
+        html =
+          context.view
+          |> form("[data-test='provision-form']", server: %{location: "sin", size: "cpx11"})
+          |> render_change()
+
+        {:ok, Map.put(context, :html, html)}
+      end
+
+      then_ "it is not among the sizes he can choose", context do
+        offered =
+          context.html
+          |> Floki.parse_document!()
+          |> Floki.find("[data-test='size-options'] option")
+          |> Enum.map(&(&1 |> Floki.attribute("value") |> List.first()))
+
+        assert "cpx11" in offered, "the size that location does carry is missing"
+
+        refute "cpx31" in offered,
+               "a size this location cannot supply was offered as if it could be bought"
+
+        {:ok, context}
+      end
+
+      then_ "and asking for it anyway is refused by name rather than quoted blankly", context do
+        # Submitted as a raw event rather than through the form, because the
+        # form helper now refuses the value outright — which is the narrowing
+        # working. The pair still has to be caught server-side: the page can
+        # have been open since before the last of that size in Singapore went,
+        # and the sold-out race is named in the LiveView's own docs.
+        html =
+          render_submit(context.view, "stage", %{
+            "server" => %{"size" => "cpx31", "location" => "sin"}
+          })
+
+        document = Floki.parse_document!(html)
+        error = Floki.find(document, "[data-test='provision-error']")
+
+        assert error != [], "an impossible pair was accepted without complaint"
+
+        text = Floki.text(error)
+        assert text =~ "cpx31", "the message does not name the size"
+        assert text =~ "sin", "the message does not name the location"
+
+        # The cost line rendered "cpx31 in sin — €/hour" with an empty figure
+        # and a live confirm button beside it. Consent to an unstated price is
+        # not consent.
+        assert Floki.find(document, "[data-test='provision-confirm']") == [],
+               "he was offered a server to buy with no price attached to it"
+
+        refute_received {:create_attempted, _attrs}
+
+        {:ok, context}
+      end
+    end
   end
 end

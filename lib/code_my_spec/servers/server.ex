@@ -96,7 +96,8 @@ defmodule CodeMySpec.Servers.Server do
       location: nil,
       status: nil,
       linked: true,
-      missing: true
+      missing: true,
+      unverified: false
     }
   end
 end

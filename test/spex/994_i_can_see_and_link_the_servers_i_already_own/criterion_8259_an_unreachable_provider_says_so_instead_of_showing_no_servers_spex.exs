@@ -59,5 +59,55 @@ defmodule CodeMySpecSpex.Story994.Criterion8259Spex do
         {:ok, context}
       end
     end
+
+    scenario "a server he already linked survives the provider going dark" do
+      given_ "Sam has linked one of his servers", context do
+        context = stage_servers(context, [provider_server(%{name: "linked-box"})])
+
+        {:ok, view, _html} = live(context.conn, ~p"/app/servers")
+
+        view
+        |> element("[data-test='link-server'][phx-value-name='linked-box']")
+        |> render_click()
+
+        {:ok, context}
+      end
+
+      when_ "the provider can no longer be asked about it", context do
+        # QA found this by switching to a project holding no Hetzner
+        # credential. The box was running the whole time; the screen went
+        # blank because the provider call failed before our own records were
+        # ever consulted.
+        context = stage_servers(context, {:error, :unauthorized})
+
+        {:ok, _view, html} = live(context.conn, ~p"/app/servers")
+
+        {:ok, Map.put(context, :html, html)}
+      end
+
+      then_ "it is still on the screen", context do
+        row =
+          context.html
+          |> Floki.parse_document!()
+          |> Floki.find("[data-test='server'][data-name='linked-box']")
+
+        assert row != [],
+               "a server the account had linked vanished because the provider was " <>
+                 "unreachable — it is still running and still billing, and this screen " <>
+                 "is the only thing that would have said so"
+
+        {:ok, Map.put(context, :row, row)}
+      end
+
+      then_ "and it says the state could not be checked rather than inventing one", context do
+        assert Floki.attribute(context.row, "data-unverified") == ["true"],
+               "the row claimed to know a state nobody could have read"
+
+        refute Floki.attribute(context.row, "data-missing") == ["true"],
+               "an unreachable provider is not the provider saying the box is gone"
+
+        {:ok, context}
+      end
+    end
   end
 end

@@ -51,6 +51,7 @@ defmodule CodeMySpec.Provisioning.Hetzner do
 
   require Logger
 
+  alias CodeMySpec.AccountSecrets
   alias CodeMySpec.ProjectSecrets
   alias CodeMySpec.Users.Scope
 
@@ -571,15 +572,30 @@ defmodule CodeMySpec.Provisioning.Hetzner do
   # Project secret first — that is where a user's own token lives. Application
   # config is the fallback so the platform's own token can drive cassette
   # recording without a project scope.
+  # Account first, then the project, then application config.
+  #
+  # A Hetzner token names one Hetzner account, and the servers it reaches are
+  # shared across projects — so the account is where it belongs. The project
+  # read stays because installs predating the account grain stored it there,
+  # and a caller should not have to know which era it is in. The data
+  # migration copies existing tokens up, so the fallback is for stragglers.
   defp token(%Scope{} = scope) do
-    case ProjectSecrets.fetch_value(scope, @token_key) do
-      {:ok, token} when is_binary(token) and token != "" -> {:ok, token}
-      _ -> configured_token()
+    with :error <- secret(fn -> AccountSecrets.fetch_value(scope, @token_key) end),
+         :error <- secret(fn -> ProjectSecrets.fetch_value(scope, @token_key) end) do
+      configured_token()
+    end
+  end
+
+  # A scope with no active project or account cannot carry secrets. Falling
+  # through rather than crashing is what lets credential checks run before
+  # either is bound.
+  defp secret(read) do
+    case read.() do
+      {:ok, value} when is_binary(value) and value != "" -> {:ok, value}
+      _ -> :error
     end
   rescue
-    # A scope with no active project cannot carry secrets; fall back rather
-    # than crash, so credential checks can run before a project is bound.
-    _ -> configured_token()
+    _ -> :error
   end
 
   defp configured_token do
