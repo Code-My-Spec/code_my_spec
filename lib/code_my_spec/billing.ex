@@ -179,14 +179,27 @@ defmodule CodeMySpec.Billing do
     end
   end
 
-  defp account_id(event) do
-    get_in(event, ["data", "object", "metadata", "account_id"]) ||
-      get_in(event, ["data", "object", "subscription_details", "metadata", "account_id"])
+  defp account_id(event), do: metadata(event)["account_id"]
+
+  # Where the metadata actually is depends on the object. A subscription event
+  # carries it at the top; an invoice does not carry it at all — it mirrors the
+  # subscription's under `parent.subscription_details`. Guessing at that path
+  # cost a real payment: the event arrived, was deduped, and granted nothing,
+  # because the id it needed was two levels deeper than the tests pretended.
+  defp metadata(event) do
+    object = get_in(event, ["data", "object"]) || %{}
+
+    non_empty(object["metadata"]) ||
+      non_empty(get_in(object, ["parent", "subscription_details", "metadata"])) ||
+      non_empty(get_in(object, ["subscription_details", "metadata"])) ||
+      %{}
   end
 
+  defp non_empty(map) when is_map(map) and map_size(map) > 0, do: map
+  defp non_empty(_), do: nil
+
   defp tier_for(event) do
-    case get_in(event, ["data", "object", "metadata", "tier"]) ||
-           get_in(event, ["data", "object", "subscription_details", "metadata", "tier"]) do
+    case metadata(event)["tier"] do
       "light" -> :light
       "pro" -> :pro
       _ -> nil
