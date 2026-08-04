@@ -236,23 +236,64 @@ defmodule CodeMySpec.Provisioning.Repository do
              {_, 0} <- run.(["commit", "-m", "Initial commit"]) do
           :ok
         else
-          {output, status} -> {:error, "could not create the initial commit (#{status}): #{String.trim(output)}"}
+          {output, status} ->
+            {:error, "could not create the initial commit (#{status}): #{String.trim(output)}"}
         end
     end
   end
 
   # `remote add` fails when origin exists, which is an ordinary state on a
   # retry rather than an error.
+  #
+  # But an origin pointing somewhere *else* is not a retry — it is this
+  # function running in a directory that already belongs to another
+  # repository. `push/3` takes the environment's cwd with no `cd:`, so a
+  # misconfigured working directory lands here, and repointing would then push
+  # that repository's whole history to the provisioned remote. It happened:
+  # a run against a real checkout republished it and left every worktree
+  # sharing the rewritten origin. Refuse instead.
   defp set_remote(run, url) do
     case run.(["remote", "add", "origin", url]) do
       {_, 0} ->
         :ok
 
       _ ->
-        case run.(["remote", "set-url", "origin", url]) do
-          {_, 0} -> :ok
-          {output, status} -> {:error, "could not set the remote (#{status}): #{String.trim(output)}"}
+        case run.(["remote", "get-url", "origin"]) do
+          {existing, 0} ->
+            adopt_or_refuse(run, url, String.trim(existing))
+
+          _ ->
+            replace_remote(run, url)
         end
+    end
+  end
+
+  defp adopt_or_refuse(run, url, existing) do
+    if same_repo?(existing, url) do
+      replace_remote(run, url)
+    else
+      {:error,
+       "origin already points at #{existing}, not #{url} — refusing to repoint it. " <>
+         "This directory belongs to another repository; check the working directory."}
+    end
+  end
+
+  # SSH and HTTPS forms of the same repository are the same remote, and a
+  # retry may arrive by either.
+  defp same_repo?(a, b), do: normalize_remote(a) == normalize_remote(b)
+
+  defp normalize_remote(url) do
+    url
+    |> String.trim()
+    |> String.replace(~r{^git@([^:]+):}, "https://\\1/")
+    |> String.replace(~r{\.git$}, "")
+    |> String.downcase()
+  end
+
+  defp replace_remote(run, url) do
+    case run.(["remote", "set-url", "origin", url]) do
+      {_, 0} -> :ok
+      {output, status} -> {:error, "could not set the remote (#{status}): #{String.trim(output)}"}
     end
   end
 
