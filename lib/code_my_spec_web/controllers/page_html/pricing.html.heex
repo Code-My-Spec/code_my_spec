@@ -132,3 +132,9 @@
     </div>
   </section>
 </Layouts.marketing>
+
+<%!-- The buying half. Nested rather than replacing this page: it is a dead
+      view with canonical/og tags and no socket, and only buyers need one. --%>
+<section class="mx-auto max-w-4xl px-4 pb-16">
+  {live_render(@conn, CodeMySpecWeb.CheckoutLive, id: "checkout-live")}
+</section>
