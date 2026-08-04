@@ -386,6 +386,13 @@ defmodule CodeMySpecWeb.Router do
       live "/projects/new", ProjectLive.Form, :new
       live "/projects/:id", ProjectLive.Show, :show
       live "/projects/:id/edit", ProjectLive.Form, :edit
+
+      # Account-scoped rather than project-scoped, which is the whole point of
+      # story 994: a box belongs to the account and can serve several
+      # projects. Putting it behind `:project_scoped` would reintroduce the
+      # grain this exists to fix, and would hide Sam's own servers behind
+      # having picked a project first.
+      live "/servers", ServersLive, :index
     end
 
     # Portable UI — these LiveViews are mounted by CodeMySpecLocalWeb.Router
