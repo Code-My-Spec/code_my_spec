@@ -34,8 +34,9 @@ end
 tunnel_config = Application.get_env(:code_my_spec, :cloudflare_tunnel, [])
 
 if tunnel_config[:mode] == :named do
-  config :code_my_spec, :cloudflare_tunnel,
-    Keyword.put(tunnel_config, :tunnel_secret, env!("CLOUDFLARE_TUNNEL_SECRET", :string, ""))
+  config :code_my_spec,
+         :cloudflare_tunnel,
+         Keyword.put(tunnel_config, :tunnel_secret, env!("CLOUDFLARE_TUNNEL_SECRET", :string, ""))
 end
 
 # CLI mode — minimal runtime config
@@ -75,6 +76,23 @@ if config_env() in [:dev_cli, :prod_cli, :cli_demo] do
   if demo_port = System.get_env("CMS_PORT") do
     config :code_my_spec, CodeMySpecLocalWeb.Endpoint,
       http: [ip: {127, 0, 0, 1}, port: String.to_integer(demo_port)]
+  end
+
+  # `CMS_HARNESS_PORT` decides where the light harness's hooks land.
+  #
+  # The plugin's `hooks.json` posts to a URL fixed at install time, so the port
+  # is the thing to configure rather than the plugin: editing hooks.json would
+  # repoint *every* Claude Code session on the machine, including ones working
+  # against the heavy local application.
+  #
+  # Default 4005 (config.exs) so a laptop can run both. A sprite sets 4004,
+  # because there the light harness *is* what serves hooks.
+  #
+  # Not applied in test — `config/test.exs` picks a port of its own and
+  # `server: false`, and runtime config is evaluated last and would undo both.
+  if port = System.get_env("CMS_HARNESS_PORT") do
+    config :code_my_spec, CmsHarness.Web.Endpoint,
+      http: [ip: {127, 0, 0, 1}, port: String.to_integer(port)]
   end
 
   # CMS_API_BASE_URL repoints sync/auth at a local demo server instead of
@@ -270,8 +288,7 @@ end
 # provider (outbound mail still uses the per-env Mailer adapter). Sourced from
 # envs/<env>.env via Dotenvy above; empty string → client returns
 # {:error, :resend_not_configured}.
-config :code_my_spec, CodeMySpec.Mail.ResendClient,
-  api_key: env!("RESEND_API_KEY", :string, "")
+config :code_my_spec, CodeMySpec.Mail.ResendClient, api_key: env!("RESEND_API_KEY", :string, "")
 
 # Guided intake writes its plan with a model, so req_llm needs a provider key.
 # ReqLLM resolves keys from `config :req_llm, <provider>_api_key`. Left nil when

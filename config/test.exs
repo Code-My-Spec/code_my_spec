@@ -82,6 +82,19 @@ config :code_my_spec, CodeMySpecLocalWeb.Endpoint,
   secret_key_base: "uQsFkBLrXNG5yxrQkMHNLOAi5NcrEzpZut3YYEOlAFiuhpoynMd+/rJBgz6FSWsg",
   server: false
 
+# Light harness endpoint. A port of its own so a test run cannot talk to — or be
+# talked to by — a `cms harness` someone left running on 4005.
+config :code_my_spec, CmsHarness.Web.Endpoint,
+  http: [ip: {127, 0, 0, 1}, port: 4105],
+  server: false
+
+# The real values are 10s and 2s; the behaviours under test are the same at a
+# tenth of that, and the suite would otherwise spend most of its time waiting
+# for timers it already knows the shape of.
+config :code_my_spec,
+  harness_decision_timeout: 1_000,
+  harness_watch_debounce_ms: 200
+
 # In test we don't send emails
 config :code_my_spec, CodeMySpec.Mailer, adapter: Swoosh.Adapters.Test
 

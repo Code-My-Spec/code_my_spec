@@ -52,6 +52,26 @@ config :code_my_spec, CodeMySpecWeb.Endpoint,
   pubsub_server: CodeMySpec.PubSub,
   live_view: [signing_salt: "WM19jFVv"]
 
+# Configures the light harness endpoint (port 4005, localhost only)
+#
+# `server: false` here and switched on by `start_harness/0`, which only runs
+# under `cms harness`. Every other way this application starts — the
+# server, the SQLite CLI, a sprite, the test suite — compiles these modules and
+# must not open the port.
+#
+# 4005 rather than 4004 so a laptop can run both harnesses side by side during
+# the transition. A sprite sets `CMS_HARNESS_PORT=4004`, because there the light
+# harness *is* the thing serving hooks and nothing else wants the port.
+config :code_my_spec, CmsHarness.Web.Endpoint,
+  adapter: Bandit.PhoenixAdapter,
+  http: [ip: {127, 0, 0, 1}, port: 4005],
+  render_errors: [formats: [json: CmsHarness.Web.ErrorJSON], layout: false],
+  # No LiveView, no signed session, no static cache manifest — none of them has
+  # a caller. `secret_key_base` is still required by Phoenix.Endpoint, so it is
+  # here rather than being a secret the operator has to supply.
+  secret_key_base: String.duplicate("cms_harness_local_only", 4),
+  server: false
+
 # Configures the local developer web endpoint (port 4003, localhost only)
 config :code_my_spec, CodeMySpecLocalWeb.Endpoint,
   url: [host: "localhost"],

@@ -15,7 +15,18 @@ ExUnit.start(
     :record_github_login_shape
   ]
 )
+
 Ecto.Adapters.SQL.Sandbox.mode(CodeMySpec.Repo, :manual)
+
+# The light harness tree. Its tests drive real processes — a watcher on a real
+# directory, a Slipstream client against a real websocket — rather than
+# constructing them, so they need the tree `cms harness` boots.
+#
+# Started here rather than from `CodeMySpecWeb.Application`'s test children, so
+# the cloud application does not gain a compile-time reference to `CmsHarness`
+# that only the test suite ever wanted. Its endpoint is `server: false` in test,
+# so this costs a registry and an idle DynamicSupervisor.
+{:ok, _} = CmsHarness.Supervisor.start_link([])
 
 # Auto-load envs/test.env (gitignored) for e2e tests so OAuth client_id /
 # secret / test-account creds are available without manual sourcing.
