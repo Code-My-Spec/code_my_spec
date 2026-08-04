@@ -96,7 +96,14 @@ defmodule CodeMySpec.AgentTasks.ThreeAmigos do
 
   defp story_prompt(scope, story) do
     base_url = CodeMySpec.PublicUrl.local_base()
-    session_url = "#{base_url}/projects/#{project_slug(scope)}/stories/#{story.id}/three-amigos"
+
+    # `/app`-prefixed and addressed by project id. The old shape —
+    # `/projects/<name-slug>/...` — 404s: the local routes moved under `/app`
+    # and every project surface takes a UUID now. Nothing caught it because
+    # this is a string assembled into a prompt, not a `~p` the router verifies
+    # and not a link in a view.
+    session_url =
+      "#{base_url}/app/projects/#{project_id(scope)}/stories/#{story.id}/three-amigos"
     quoted_description = String.replace(story.description || "(no description)", "\n", "\n> ")
 
     """
@@ -135,15 +142,8 @@ defmodule CodeMySpec.AgentTasks.ThreeAmigos do
     """
   end
 
-  defp project_slug(%{active_project: %{name: name}}) when is_binary(name), do: slugify(name)
-  defp project_slug(_), do: "project"
-
-  defp slugify(name) do
-    name
-    |> String.downcase()
-    |> String.replace(~r/[^a-z0-9]+/, "-")
-    |> String.trim("-")
-  end
+  defp project_id(%{active_project: %{id: id}}), do: id
+  defp project_id(%{active_project_id: id}) when not is_nil(id), do: id
 
   defp playbook_section do
     """
