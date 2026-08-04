@@ -27,6 +27,23 @@ defmodule CmsHarness.Web.Router do
     post("/ask-user-question", HooksController, :handle)
   end
 
+  # The MCP surface, forwarded to the server — see `McpController`. Same URL
+  # shape the plugin already uses for the heavy harness
+  # (`/mcp?dir=${CLAUDE_PROJECT_DIR}`), so swapping one for the other is a port
+  # number and nothing else.
+  #
+  # `match :*` because streamable HTTP is three methods on one path: POST sends
+  # a message, GET opens the server→client stream, DELETE ends the session.
+  pipeline :mcp do
+    plug(:accepts, ["json", "sse"])
+  end
+
+  scope "/", CmsHarness.Web do
+    pipe_through(:mcp)
+
+    match(:*, "/mcp", McpController, :proxy)
+  end
+
   # Where a sprite's agent points ANTHROPIC_BASE_URL. Anthropic-shaped on
   # purpose: the agent is an ordinary client that happens to be observed.
   scope "/v1", CmsHarness.Web do
