@@ -29,8 +29,13 @@ defmodule CodeMySpecWeb.Plugs.CSP do
   defp policy(nonce) do
     [
       "default-src 'self'",
-      "script-src 'self' 'nonce-#{nonce}' https://www.googletagmanager.com https://static.cloudflareinsights.com",
-      "connect-src 'self' https://www.googletagmanager.com https://www.google-analytics.com https://region1.google-analytics.com https://cloudflareinsights.com",
+      # js.stripe.com must be loadable and framed: the Payment Element is
+      # Stripe's own iframe, which is what keeps card details off our origin.
+      # Without these the form silently never mounts — the page renders, the
+      # element does not, and nothing in the server logs says why.
+      "script-src 'self' 'nonce-#{nonce}' https://www.googletagmanager.com https://static.cloudflareinsights.com https://js.stripe.com",
+      "frame-src 'self' https://js.stripe.com https://hooks.stripe.com",
+      "connect-src 'self' https://www.googletagmanager.com https://www.google-analytics.com https://region1.google-analytics.com https://cloudflareinsights.com https://api.stripe.com",
       "img-src 'self' data: https://images.codemyspec.com https://www.google-analytics.com https://www.googletagmanager.com https://img.shields.io",
       # Video is served from the same bucket as the images, but media-src does
       # not inherit from img-src — without this it falls back to default-src
