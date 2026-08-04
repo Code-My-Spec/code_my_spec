@@ -114,8 +114,13 @@ defmodule CodeMySpec.Provisioning.Registry do
     end
   end
 
+  # `:registry_host`, not `:host`. The deploy step hands its whole opts list to
+  # `reference/3`, and `:host` there is already the app's own hostname — so
+  # reading it would have addressed every image at the customer's domain
+  # instead of the registry, and the deploy would have tried to pull from
+  # itself.
   defp host(opts) do
-    case Keyword.get(opts, :host) || configured_host() do
+    case Keyword.get(opts, :registry_host) || configured_host() do
       host when is_binary(host) and host != "" -> {:ok, host}
       _ -> {:error, :no_registry_host}
     end

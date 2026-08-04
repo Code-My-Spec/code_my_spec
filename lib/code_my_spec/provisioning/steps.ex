@@ -438,39 +438,81 @@ defmodule CodeMySpec.Provisioning.Steps do
   end
 
   def run(:tls, %Scope{} = scope, opts) do
-    case host(scope, opts) do
-      nil ->
-        {:error, "no domain set on the project — nothing to issue a certificate for"}
+    # Issuance is kamal-proxy's job during deploy; this step verifies it
+    # actually happened. A certificate nobody checked is a certificate that
+    # fails on a visitor rather than during setup. The probe is injectable so a
+    # spex can verify the recording without a live host.
+    probe = Keyword.get(opts, :probe, &Deploy.probe/2)
 
-      h ->
-        # Issuance is kamal-proxy's job during deploy; this step verifies it
-        # actually happened. A certificate nobody checked is a certificate
-        # that fails on a visitor rather than during setup. The probe is
-        # injectable so a spex can verify the recording without a live host.
-        probe = Keyword.get(opts, :probe, &Deploy.probe/2)
+    case tls_targets(scope, opts) do
+      [] -> {:error, "no domain set on the project — nothing to issue a certificate for"}
+      targets -> verify_certificates(targets, probe, opts)
+    end
+  end
 
-        case probe.(h, opts) do
-          :ok ->
-            # A successful probe is a 200 over HTTPS with `redirect: false` and a
-            # valid chain — so scheme, status and cert validity are all implied
-            # by it succeeding, and recorded so the page can show them (8006).
-            {:ok,
-             [
-               %{kind: "certificate", location: "https://#{h}"},
-               %{
-                 kind: "environment_verification",
-                 location: h,
-                 identifier: "scheme=https status=200 cert_valid=true"
-               }
-             ]}
+  # One target per environment, because a certificate belongs to a host and the
+  # DNS step directly above already fans out this way. Verifying the project's
+  # domain instead meant a `uat`-only project was probed at an apex the run had
+  # never pointed anywhere — and, worse, that the usual prod+uat pair reported
+  # TLS done having checked production only, so UAT's certificate was never
+  # looked at.
+  #
+  # An injected `:host` still stands in for the whole list, which is how a
+  # criterion probes one name without setting up environments.
+  defp tls_targets(scope, opts) do
+    case Keyword.get(opts, :host) do
+      host when is_binary(host) and host != "" ->
+        [%{name: nil, host: host}]
 
-          {:error, reason} ->
-            {:error,
-             "#{h} did not answer over HTTPS with a valid certificate (#{reason}). " <>
-               "Issuance needs DNS resolving to the server and the proxy reachable on 80."}
+      _ ->
+        case domain(scope) do
+          nil ->
+            []
+
+          name ->
+            scope
+            |> EnvironmentRepository.assign_hosts(name)
+            |> Enum.filter(&is_binary(&1.host))
         end
     end
   end
+
+  # Halts on the first environment without a certificate, carrying what was
+  # already verified — the same shape the storage step uses, so a run that
+  # fails on the second environment still records the first.
+  defp verify_certificates(targets, probe, opts) do
+    Enum.reduce_while(targets, {:ok, []}, fn target, {:ok, verified} ->
+      case probe.(target.host, opts) do
+        :ok ->
+          {:cont, {:ok, verified ++ certificate_resources(target)}}
+
+        {:error, reason} ->
+          {:halt, {:error, certificate_error(target, reason), verified}}
+      end
+    end)
+  end
+
+  # A successful probe is a 200 over HTTPS with `redirect: false` and a valid
+  # chain — so scheme, status and cert validity are all implied by it
+  # succeeding, and recorded so the page can show them (8006).
+  defp certificate_resources(target) do
+    [
+      %{kind: "certificate", location: "https://#{target.host}", identifier: tls_tag(target)},
+      %{
+        kind: "environment_verification",
+        location: target.host,
+        identifier: "scheme=https status=200 cert_valid=true" <> tls_tag(target)
+      }
+    ]
+  end
+
+  defp certificate_error(target, reason) do
+    "#{target.host} did not answer over HTTPS with a valid certificate (#{reason}). " <>
+      "Issuance needs DNS resolving to the server and the proxy reachable on 80."
+  end
+
+  defp tls_tag(%{name: name}) when is_binary(name), do: " environment=#{name}"
+  defp tls_tag(_target), do: ""
 
   def run(:callback_credential, %Scope{} = scope, opts) do
     environments = environments(scope, opts)
@@ -636,18 +678,39 @@ defmodule CodeMySpec.Provisioning.Steps do
   end
 
   defp build_image(scope, environment, opts) do
+    # Injectable for the same reason the builder's own create/build/destroy
+    # are: making the registry's bucket is a real call to object storage, and a
+    # criterion about *what gets built* should not have to buy one to say so.
+    # Retention is Registry's own claim and is proven where it lives.
+    ensure_registry = Keyword.get(opts, :ensure_registry, &Registry.ensure/2)
+
     with {:ok, architecture} <- architecture_for(scope, environment, opts),
-         {:ok, _bucket} <- Registry.ensure(scope, opts),
+         {:ok, _bucket} <- ensure_registry.(scope, opts),
          {:ok, tag} <- image_tag(scope, opts),
-         {:ok, build} <- Builder.build(scope, tag, Keyword.put(opts, :architecture, architecture)),
+         {:ok, build} <- build_on_builder(scope, tag, architecture, opts),
          {:ok, reference} <- Registry.reference(scope, tag, opts) do
       {:ok,
        %{
          reference: reference,
          built: true,
          architecture: build.architecture,
-         retention_days: Registry.retention_days(opts)
+         retention_days: Registry.retention_days(opts),
+         builder: build.builder,
+         builder_image: build.builder_image,
+         builder_destroyed: build.builder_destroyed
        }}
+    end
+  end
+
+  # A build that failed still made a box, so the failure carries what became of
+  # it. Returned as partial resources, which is how every other step reports
+  # "this did not finish, and here is what it made" — the same channel that
+  # lets a run that died on the second environment still clean up the first.
+  defp build_on_builder(scope, tag, architecture, opts) do
+    case Builder.build(scope, tag, Keyword.put(opts, :architecture, architecture)) do
+      {:ok, build} -> {:ok, build}
+      {:error, reason, disposition} -> {:error, format(reason), builder_resource(disposition)}
+      {:error, reason} -> {:error, format(reason)}
     end
   end
 
@@ -718,7 +781,7 @@ defmodule CodeMySpec.Provisioning.Steps do
         location: reference,
         identifier: "built=true architecture=#{image.architecture}"
       }
-      | retention_resource(image)
+      | retention_resource(image) ++ builder_resource(image)
     ]
   end
 
@@ -735,6 +798,25 @@ defmodule CodeMySpec.Provisioning.Steps do
     do: [%{kind: "image_retention", location: "#{days} days", identifier: "enforced_by=bucket_lifecycle"}]
 
   defp retention_resource(_image), do: []
+
+  # The box the image was built on, and what became of it. Recorded because a
+  # builder that quietly stops being destroyed costs money every deploy and
+  # changes nothing anyone can see — the image still arrives.
+  #
+  # `booted_from` is the pre-warmed image: the toolchain is already on it, so a
+  # deploy does not pay to install Docker every time (8239).
+  defp builder_resource(%{builder: name} = image) when is_binary(name) do
+    [
+      %{
+        kind: "builder",
+        location: name,
+        identifier:
+          "destroyed=#{image.builder_destroyed} booted_from=#{image.builder_image}"
+      }
+    ]
+  end
+
+  defp builder_resource(_image), do: []
 
   ## Helpers
 

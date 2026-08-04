@@ -512,6 +512,21 @@ defmodule CodeMySpecWeb.ProvisioningLive do
               image {img.location}
             </span>
 
+            <!-- The box the image was built on. It exists for one build and is
+                 destroyed either way (8236/8237); `booted_from` is the
+                 pre-warmed image, so no deploy pays to install the toolchain
+                 again (8239). -->
+            <span
+              :for={b <- Enum.filter(step.resources, &(&1.kind == "builder"))}
+              data-test="builder"
+              data-builder={b.location}
+              data-destroyed={identifier_field(b, "destroyed")}
+              data-booted-from={identifier_field(b, "booted_from")}
+              class="mt-1 block text-xs font-mono opacity-70"
+            >
+              built on {b.location}, destroyed after
+            </span>
+
             <!-- Enforced by the registry bucket's own lifecycle rule, so old
                  images expire whether or not setup ever runs again (8241). -->
             <span
@@ -1597,18 +1612,23 @@ defmodule CodeMySpecWeb.ProvisioningLive do
   # built here, so this page has nothing to say about what it was built for.
   # Absent rather than guessed, for the same reason the build reads it off the
   # image instead of echoing the request.
-  defp image_architecture(%{identifier: identifier}) when is_binary(identifier) do
+  defp image_architecture(resource), do: identifier_field(resource, "architecture")
+
+  # Resources tag their identifier as `key=value key=value`, which several
+  # steps already rely on. Read by name rather than by position: a resource
+  # that gains a field should not silently shift what another attribute means.
+  defp identifier_field(%{identifier: identifier}, key) when is_binary(identifier) do
     identifier
     |> String.split(" ")
     |> Enum.find_value(fn part ->
-      case String.split(part, "architecture=") do
-        ["", architecture] -> architecture
+      case String.split(part, "=", parts: 2) do
+        [^key, value] -> value
         _ -> nil
       end
     end)
   end
 
-  defp image_architecture(_resource), do: nil
+  defp identifier_field(_resource, _key), do: nil
 
   # Recorded by the provider rather than asserted by the page. Story 968's
   # whole claim is that these are Sam's, so a hardcoded "user" would make the

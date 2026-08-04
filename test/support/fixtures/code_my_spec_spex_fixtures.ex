@@ -1327,6 +1327,25 @@ defmodule CodeMySpecSpex.Fixtures do
     CodeMySpec.Provisioning.Steps.put_secret(scope, environment, key, value)
   end
 
+  @doc """
+  Run one provisioning step for real, from inside a scripted run.
+
+  `scripted_run/2` stubs every step, which is what makes a criterion about the
+  *sequence* cheap. A criterion about one particular step's behaviour needs the
+  opposite: that step real, the rest still stubbed. Scripting the key with a
+  zero-arity function that calls this gives exactly that.
+
+  The configured step opts are merged in, because that is where the seams a
+  criterion injects — the builder's `:create` / `:build` / `:destroy`, the
+  deploy script, the probe — are already being passed.
+  """
+  def run_provisioning_step(scope, key, opts \\ []) do
+    :code_my_spec
+    |> Application.get_env(:provisioning_step_opts, [])
+    |> Keyword.merge(opts)
+    |> then(&CodeMySpec.Provisioning.Steps.run(key, scope, &1))
+  end
+
   @doc "Write a file into an environment (bridge to Environments)."
   def write_env_file(env, path, content), do: Environments.write_file(env, path, content)
 
