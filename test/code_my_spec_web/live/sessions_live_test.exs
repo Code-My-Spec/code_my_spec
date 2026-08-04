@@ -16,9 +16,10 @@ defmodule CodeMySpecWeb.SessionsLiveTest do
 
   alias CodeMySpec.Sessions
   alias CodeMySpecWeb.SessionsLive
+  alias Ecto.Adapters.SQL.Sandbox
 
   setup do
-    :ok = Ecto.Adapters.SQL.Sandbox.checkout(CodeMySpec.Repo)
+    :ok = Sandbox.checkout(CodeMySpec.Repo)
   end
 
   describe "handle_params :index" do
@@ -44,7 +45,10 @@ defmodule CodeMySpecWeb.SessionsLiveTest do
     end
 
     test "does nothing until the host has resolved a scope" do
-      socket = %{build_socket(:index, nil, nil) | assigns: %{__changed__: %{}, live_action: :index, error: nil}}
+      socket = %{
+        build_socket(:index, nil, nil)
+        | assigns: %{__changed__: %{}, live_action: :index, error: nil}
+      }
 
       assert {:noreply, ^socket} = SessionsLive.handle_params(%{}, "/", socket)
     end

@@ -150,8 +150,12 @@ defmodule CodeMySpec.Provisioning.Builder.Remote do
   the pre-warmed image, and destruction still need the real thing.
   """
   @spec local_runner(keyword()) :: (list() -> {String.t(), non_neg_integer()})
-  def local_runner(opts \\ []) do
-    cd = Keyword.get(opts, :cd, File.cwd!())
+  def local_runner(opts) do
+    # Required rather than defaulted to the current directory. The sequence this
+    # runs starts with `rm -rf`, and a caller who forgot to say where should get
+    # an error rather than have it aimed at whatever repository happens to be
+    # open.
+    cd = Keyword.fetch!(opts, :cd)
 
     fn [command] -> System.cmd("sh", ["-c", command], cd: cd, stderr_to_stdout: true) end
   end

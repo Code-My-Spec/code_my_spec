@@ -19,7 +19,7 @@ defmodule CodeMySpec.Provisioning.RegistryTest do
   describe "reference/3" do
     test "addresses an image at the registry, not at GitHub" do
       assert {:ok, reference} =
-               Registry.reference(scope(), "abc123", host: "registry.example.com")
+               Registry.reference(scope(), "abc123", registry_host: "registry.example.com")
 
       assert reference == "registry.example.com/sam-s-app:abc123"
 
@@ -37,7 +37,22 @@ defmodule CodeMySpec.Provisioning.RegistryTest do
 
     test "a project with no name cannot name a repository" do
       assert {:error, :no_project} =
-               Registry.reference(%Scope{}, "abc123", host: "registry.example.com")
+               Registry.reference(%Scope{}, "abc123", registry_host: "registry.example.com")
+    end
+
+    # The deploy step hands its whole opts list to this, and `:host` there is
+    # the app's own hostname. Reading it would address every image at the
+    # customer's domain and send the deploy to pull from itself — which looks
+    # like a working reference right up until the pull.
+    test "the deploy's own host is not mistaken for the registry's" do
+      assert {:ok, reference} =
+               Registry.reference(scope(), "abc123",
+                 host: "sams-app.com",
+                 registry_host: "registry.example.com"
+               )
+
+      assert reference == "registry.example.com/sam-s-app:abc123"
+      refute reference =~ "sams-app.com"
     end
   end
 

@@ -493,6 +493,11 @@ defmodule CodeMySpec.Provisioning.Resend do
       [
         method: method,
         url: @api_base <> path,
+        # Ours is the only retry. Req retries 429 by default, which stacked
+        # underneath this loop: every attempt here was silently three attempts
+        # and 7s of backoff, so `@rate_limit_attempts` meant nothing and the
+        # test suite spent most of its runtime asleep.
+        retry: false,
         headers: [
           {"authorization", "Bearer #{token}"},
           {"content-type", "application/json"}

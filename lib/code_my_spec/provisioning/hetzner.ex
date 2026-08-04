@@ -146,14 +146,34 @@ defmodule CodeMySpec.Provisioning.Hetzner do
         # The other architecture is a real answer rather than a workaround:
         # the image is built to match the box (criterion 7975), so the choice
         # is ours to make as long as we record which one we made.
-        case fallback_for(arch) do
-          nil -> unavailable
+        case fallback_for(arch, opts) do
+          nil -> capacity_error(defaults_for(arch), opts)
           other -> retry_elsewhere(scope, name, arch, other, opts, unavailable)
         end
 
       result ->
         result
     end
+  end
+
+  # What was actually asked for, which is not the same as the defaults: a
+  # caller can pin either field. Reporting the default when an override was in
+  # play sends the reader looking at a server type nobody requested.
+  defp requested(defaults, opts) do
+    %{
+      server_type: Keyword.get(opts, :server_type, defaults.server_type),
+      location: Keyword.get(opts, :location, defaults.location)
+    }
+  end
+
+  defp capacity_error(defaults, opts) do
+    want = requested(defaults, opts)
+
+    {:error,
+     {:capacity_unavailable,
+      "Hetzner has no #{want.server_type} in #{want.location} right now. This is a capacity " <>
+        "shortage at Hetzner, not a problem with your account — try another location or " <>
+        "wait and re-run this step."}}
   end
 
   defp retry_elsewhere(scope, name, arch, other, opts, unavailable) do
@@ -176,6 +196,15 @@ defmodule CodeMySpec.Provisioning.Hetzner do
       _other ->
         unavailable
     end
+  end
+
+  # A caller who pinned `:server_type` has already said which box it wants, and
+  # `create_in/4` would re-apply that override to the retry — so "try the other
+  # architecture" would resend the identical request and call the result a
+  # second shortage. Swapping architecture under a pinned type would be worse
+  # still: the image is built to match the box, and the caller chose the box.
+  defp fallback_for(arch, opts) do
+    if Keyword.has_key?(opts, :server_type), do: nil, else: fallback_for(arch)
   end
 
   defp fallback_for(:arm), do: defaults_for(:x86)
@@ -244,6 +273,27 @@ defmodule CodeMySpec.Provisioning.Hetzner do
       end
     end
   end
+
+  @doc """
+  The architecture a server actually runs.
+
+  Read off the provider rather than inferred from what we asked for, because
+  `create_server/3` answers a sold-out region by creating the *other*
+  architecture. That is a real answer only for as long as whatever builds the
+  image is told about it — an image built for the other one passes every check
+  we have and then dies at container start.
+  """
+  @spec server_architecture(body()) :: {:ok, :arm | :x86} | {:error, term()}
+  def server_architecture(%{"server" => server}), do: server_architecture(server)
+
+  def server_architecture(%{"server_type" => %{"architecture" => architecture}}),
+    do: architecture(architecture)
+
+  def server_architecture(_server), do: {:error, :no_architecture_reported}
+
+  defp architecture("arm"), do: {:ok, :arm}
+  defp architecture("x86"), do: {:ok, :x86}
+  defp architecture(other), do: {:error, {:unknown_architecture, other}}
 
   @doc "Delete a server by id. Used to clean up after recording cassettes."
   @spec delete_server(Scope.t(), integer() | String.t()) :: {:ok, body()} | error()

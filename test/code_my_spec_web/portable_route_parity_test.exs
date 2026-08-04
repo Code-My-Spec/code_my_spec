@@ -54,8 +54,9 @@ defmodule CodeMySpecWeb.PortableRouteParityTest do
   test "both routers dispatch each portable path to the same LiveView" do
     views = fn router ->
       router.__routes__()
-      |> Enum.filter(&(&1.plug == Phoenix.LiveView.Plug))
-      |> Enum.filter(&String.starts_with?(&1.path, @portable_prefix))
+      |> Enum.filter(
+        &(&1.plug == Phoenix.LiveView.Plug and String.starts_with?(&1.path, @portable_prefix))
+      )
       |> Map.new(&{&1.path, &1.metadata.phoenix_live_view |> elem(0)})
     end
 

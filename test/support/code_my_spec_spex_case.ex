@@ -1172,6 +1172,86 @@ defmodule CodeMySpecSpex.Case do
   end
 
   @doc """
+  A setup run whose deploy step really runs and really builds — on nobody's
+  hardware.
+
+  Story 992's criteria are about the build: that deploying causes one, that the
+  architecture is checked, that the builder goes away either way. None of them
+  are about Docker, and none are about object storage, so the box, the build
+  and the registry's bucket are injected while everything the deploy step
+  itself does stays real.
+
+  Every other step is scripted, because a criterion about the build should not
+  provision a server to reach the deploy.
+
+  Options:
+
+    * `:architecture` — what the environment's box runs (default `:arm`)
+    * `:builds` — what the build produces; `:error` for a build that fails,
+      otherwise the architecture it actually produced (default: matches)
+    * `:on_destroy` — called with the builder's id when it is destroyed
+  """
+  def stage_build(context, opts \\ []) do
+    architecture = Keyword.get(opts, :architecture, :arm)
+    builds = Keyword.get(opts, :builds, architecture)
+    on_destroy = Keyword.get(opts, :on_destroy, fn _id -> :ok end)
+    tag = Keyword.get(opts, :tag, "a1b2c3d4e5f6")
+
+    context = stage_deploy(context)
+
+    build =
+      case builds do
+        :error ->
+          fn _scope, _server, _ref, _architecture -> {:error, {:build_failed, 1, "no space left on device"}} end
+
+        produced ->
+          fn _scope, _server, ref, _architecture ->
+            {:ok, %{reference: "registry.example.com/app:#{ref}", architecture: produced}}
+          end
+      end
+
+    previous = Application.get_env(:code_my_spec, :provisioning_step_opts, [])
+
+    Application.put_env(
+      :code_my_spec,
+      :provisioning_step_opts,
+      Keyword.merge(previous,
+        # No `:image`, which is what makes the deploy step build rather than
+        # run something that already exists.
+        image: nil,
+        tag: tag,
+        architecture: architecture,
+        build: build,
+        create: fn _scope, name, _o -> {:ok, %{"id" => 4242, "name" => name}} end,
+        destroy: fn _scope, id -> on_destroy.(id) && {:ok, %{"id" => id}} end,
+        ensure_registry: fn _scope, _o -> {:ok, "codemyspec-registry"} end,
+        registry_host: "registry.example.com"
+      )
+    )
+
+    ExUnit.Callbacks.on_exit(fn ->
+      Application.put_env(:code_my_spec, :provisioning_step_opts, previous)
+    end)
+
+    context
+  end
+
+  @doc """
+  Script every step but the deploy, and let the deploy build for real.
+
+  Pairs with `stage_build/2`: the sequence reaches the deploy without buying a
+  server, and the deploy step then runs its own code rather than a stub.
+  """
+  def built_deploy_run(context, opts \\ []) do
+    context = stage_build(context, opts)
+    scope = context.scope
+
+    scripted_run(context, %{
+      deploy: fn -> Fixtures.run_provisioning_step(scope, :deploy) end
+    })
+  end
+
+  @doc """
   Stage the monitoring step's outcome without a real UptimeRobot account.
 
   Criterion 8010 is that each public host has a monitor with somewhere to

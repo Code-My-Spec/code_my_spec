@@ -37,6 +37,8 @@ defmodule CodeMySpec.NoFabricatedWorkingDirectoryTest do
     "lib/code_my_spec/agent_tasks/init/cli_config.ex" => "cms init, on the user's machine",
     "lib/code_my_spec/agent_tasks/init/phoenix_project.ex" => "cms init, on the user's machine",
     "lib/code_my_spec/agent_tasks/init.ex" => "cms init, on the user's machine",
+    "lib/code_my_spec_local_web/application.ex" =>
+      "cms migrate: a CLI entrypoint, not request-reachable — cwd is the project being migrated",
 
     # The local desktop app: one machine, one project, cwd is it.
     "lib/code_my_spec_local_web/live/projects/form.ex" => "local desktop UI",

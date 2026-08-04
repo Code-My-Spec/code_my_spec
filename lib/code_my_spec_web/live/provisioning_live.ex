@@ -496,6 +496,49 @@ defmodule CodeMySpecWeb.ProvisioningLive do
               {ph.location} at {ph.identifier}
             </span>
 
+            <!-- The image the deploy runs, and whether this deploy built it.
+                 `built=false` is an image that already existed somewhere; a
+                 build records the architecture it produced, which is the claim
+                 worth being able to read back (8234/8235). -->
+            <span
+              :for={img <- Enum.filter(step.resources, &(&1.kind == "published_image"))}
+              data-test="published-image"
+              data-image={img.location}
+              data-built={img.identifier |> String.split(" ") |> hd() |> String.replace_prefix("built=", "")}
+              data-architecture={image_architecture(img)}
+              data-registry={img.location |> String.split("/") |> hd()}
+              class="mt-1 block text-xs font-mono opacity-70"
+            >
+              image {img.location}
+            </span>
+
+            <!-- The box the image was built on. It exists for one build and is
+                 destroyed either way (8236/8237); `booted_from` is the
+                 pre-warmed image, so no deploy pays to install the toolchain
+                 again (8239). -->
+            <span
+              :for={b <- Enum.filter(step.resources, &(&1.kind == "builder"))}
+              data-test="builder"
+              data-builder={b.location}
+              data-destroyed={identifier_field(b, "destroyed")}
+              data-booted-from={identifier_field(b, "booted_from")}
+              class="mt-1 block text-xs font-mono opacity-70"
+            >
+              built on {b.location}, destroyed after
+            </span>
+
+            <!-- Enforced by the registry bucket's own lifecycle rule, so old
+                 images expire whether or not setup ever runs again (8241). -->
+            <span
+              :for={r <- Enum.filter(step.resources, &(&1.kind == "image_retention"))}
+              data-test="image-retention"
+              data-days={r.location |> String.replace_suffix(" days", "")}
+              data-enforced-by="bucket_lifecycle"
+              class="mt-1 block text-xs font-mono opacity-70"
+            >
+              images expire after {r.location}
+            </span>
+
             <span
               :for={dv <- Enum.filter(step.resources, &(&1.kind == "deployed_version"))}
               data-test="deployed-version"
@@ -1564,6 +1607,28 @@ defmodule CodeMySpecWeb.ProvisioningLive do
     do: identifier |> String.split(" ") |> List.first()
 
   defp resource_target(_), do: nil
+
+  # Only a built image reports one — an image that already existed was not
+  # built here, so this page has nothing to say about what it was built for.
+  # Absent rather than guessed, for the same reason the build reads it off the
+  # image instead of echoing the request.
+  defp image_architecture(resource), do: identifier_field(resource, "architecture")
+
+  # Resources tag their identifier as `key=value key=value`, which several
+  # steps already rely on. Read by name rather than by position: a resource
+  # that gains a field should not silently shift what another attribute means.
+  defp identifier_field(%{identifier: identifier}, key) when is_binary(identifier) do
+    identifier
+    |> String.split(" ")
+    |> Enum.find_value(fn part ->
+      case String.split(part, "=", parts: 2) do
+        [^key, value] -> value
+        _ -> nil
+      end
+    end)
+  end
+
+  defp identifier_field(_resource, _key), do: nil
 
   # Recorded by the provider rather than asserted by the page. Story 968's
   # whole claim is that these are Sam's, so a hardcoded "user" would make the

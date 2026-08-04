@@ -44,24 +44,22 @@ defmodule CodeMySpecWeb.LinkResolutionTest do
   # the check catch a link left pointing at a route that moved.
   defp not_a_link?(path) do
     # slash-commands shown to the user ("/codemyspec:next"), not URLs
+    # static assets, served by Plug.Static rather than the router
+    # section_path/1 renders a bare "/overview" into the terminal prompt strip
+    # Controller-served attachment bytes, not navigation. These live only in
+    # the cloud router because serving them needs an account scope the local
+    # app doesn't have yet; the portable view that links to one hides it
+    # behind the host's `serves_attachments?` capability. Delete this clause
+    # when the local app gets a cloud scope and can mount the controllers.
     String.contains?(path, [":", " "]) or
-      # static assets, served by Plug.Static rather than the router
       String.starts_with?(path, "/local/") or
-      # section_path/1 renders a bare "/overview" into the terminal prompt strip
       path == "/overview" or
-      # Controller-served attachment bytes, not navigation. These live only in
-      # the cloud router because serving them needs an account scope the local
-      # app doesn't have yet; the portable view that links to one hides it
-      # behind the host's `serves_attachments?` capability. Delete this clause
-      # when the local app gets a cloud scope and can mount the controllers.
       String.ends_with?(path, "/screenshot")
   end
 
   defp path_literals(paths) do
     paths
-    |> Enum.flat_map(fn p ->
-      if File.dir?(p), do: Path.wildcard(p <> "/**/*.{ex,heex}"), else: [p]
-    end)
+    |> Enum.flat_map(&expand(File.dir?(&1), &1))
     |> Enum.flat_map(fn file ->
       file
       |> File.read!()
@@ -72,6 +70,9 @@ defmodule CodeMySpecWeb.LinkResolutionTest do
     |> Enum.uniq()
   end
 
+  defp expand(true, dir), do: Path.wildcard(dir <> "/**/*.{ex,heex}")
+  defp expand(false, file), do: [file]
+
   # Segments of the literal. An interpolated segment becomes `:any` — it could
   # hold a slug, an id, or a literal like "knowledge", so it must be allowed to
   # match either a route's dynamic segment or its static one.
@@ -80,10 +81,11 @@ defmodule CodeMySpecWeb.LinkResolutionTest do
     |> String.replace(~r/[?].*$/, "")
     |> String.replace(~r/\#\{[^}]*\}/, "\0")
     |> String.split("/", trim: true)
-    |> Enum.map(fn
-      seg -> if String.contains?(seg, "\0"), do: :any, else: seg
-    end)
+    |> Enum.map(&segment(String.contains?(&1, "\0"), &1))
   end
+
+  defp segment(true, _interpolated), do: :any
+  defp segment(false, literal), do: literal
 
   defp route_segments(router) do
     router.__routes__()
@@ -91,20 +93,19 @@ defmodule CodeMySpecWeb.LinkResolutionTest do
     |> Enum.uniq()
   end
 
-  defp matches?(link, route) do
-    cond do
-      Enum.any?(route, &String.starts_with?(&1, "*")) ->
-        prefix = Enum.take_while(route, &(not String.starts_with?(&1, "*")))
-        length(link) >= length(prefix) and
-          Enum.zip(prefix, Enum.take(link, length(prefix))) |> Enum.all?(&seg_match?/1)
+  defp matches?(link, route),
+    do: matches?(Enum.any?(route, &String.starts_with?(&1, "*")), link, route)
 
-      length(link) != length(route) ->
-        false
+  # A glob route matches any link that agrees on the segments before the glob.
+  defp matches?(true, link, route) do
+    prefix = Enum.take_while(route, &(not String.starts_with?(&1, "*")))
 
-      true ->
-        Enum.zip(route, link) |> Enum.all?(&seg_match?/1)
-    end
+    length(link) >= length(prefix) and
+      prefix |> Enum.zip(Enum.take(link, length(prefix))) |> Enum.all?(&seg_match?/1)
   end
+
+  defp matches?(false, link, route) when length(link) != length(route), do: false
+  defp matches?(false, link, route), do: route |> Enum.zip(link) |> Enum.all?(&seg_match?/1)
 
   defp seg_match?({_route_seg, :any}), do: true
   defp seg_match?({":" <> _, _link_seg}), do: true
@@ -131,7 +132,8 @@ defmodule CodeMySpecWeb.LinkResolutionTest do
   test "portable view links resolve against BOTH routers" do
     sources = portable_sources()
 
-    assert sources != [], "no portable views found — both routers should share at least the stories surface"
+    assert sources != [],
+           "no portable views found — both routers should share at least the stories surface"
 
     dead = unresolvable(sources, [CodeMySpecWeb.Router, CodeMySpecLocalWeb.Router])
 
@@ -164,38 +166,58 @@ defmodule CodeMySpecWeb.LinkResolutionTest do
     src
     |> String.split("\n")
     |> Enum.with_index(1)
-    |> Enum.reduce({nil, MapSet.new(), MapSet.new(), []}, fn {line, n},
-                                                            {fun, declared, pending, acc} ->
-      attr = Regex.run(~r/^\s*attr :([a-z_]+)/, line)
-      defn = Regex.run(~r/^  defp? ([a-z_]+)\(assigns\)/, line)
-
-      cond do
-        # `attr` declarations precede the definition they belong to
-        attr -> {fun, declared, MapSet.put(pending, Enum.at(attr, 1)), acc}
-        defn -> {Enum.at(defn, 1), pending, MapSet.new(), acc}
-        String.starts_with?(String.trim(line), "#") -> {fun, declared, pending, acc}
-        true -> {fun, declared, pending, flag(file, n, line, fun, declared, src) ++ acc}
-      end
-    end)
+    |> Enum.reduce({nil, MapSet.new(), MapSet.new(), []}, &scan_line(&1, &2, file, src))
     |> elem(3)
   end
 
-  defp flag(file, n, line, fun, declared, src) do
-    used =
-      if fun && String.contains?(src, "<." <> fun) do
-        Regex.scan(~r/@([a-z_]+)/, line)
-        |> Enum.map(&Enum.at(&1, 1))
-        |> Enum.filter(&(&1 in @host_assigns))
-        |> Enum.reject(&MapSet.member?(declared, &1))
-        |> Enum.uniq()
-      else
-        []
-      end
+  # Classify the line once, then dispatch on the shape. `attr` declarations
+  # precede the definition they belong to, so they accumulate into `pending`
+  # and become `declared` when the next component definition is reached.
+  defp scan_line({line, n}, state, file, src) do
+    attr = Regex.run(~r/^\s*attr :([a-z_]+)/, line)
+    defn = Regex.run(~r/^  defp? ([a-z_]+)\(assigns\)/, line)
+    comment? = String.starts_with?(String.trim(line), "#")
 
-    if used == [],
-      do: [],
-      else: [{file, n, "uses @" <> Enum.join(used, ", @") <> " — " <> String.trim(line)}]
+    absorb({attr, defn, comment?}, state, line, n, file, src)
   end
+
+  defp absorb({[_, name], _defn, _comment?}, {fun, declared, pending, acc}, _l, _n, _f, _s),
+    do: {fun, declared, MapSet.put(pending, name), acc}
+
+  defp absorb({nil, [_, name], _comment?}, {_fun, _declared, pending, acc}, _l, _n, _f, _s),
+    do: {name, pending, MapSet.new(), acc}
+
+  defp absorb({nil, nil, true}, state, _line, _n, _file, _src), do: state
+
+  defp absorb({nil, nil, false}, {fun, declared, pending, acc}, line, n, file, src),
+    do: {fun, declared, pending, flag(file, n, line, fun, declared, src) ++ acc}
+
+  defp flag(file, n, line, fun, declared, src) do
+    fun
+    |> component?(src)
+    |> host_assigns_in(line, declared)
+    |> report(file, n, line)
+  end
+
+  # Only a function component can reach for an assign it wasn't given; a plain
+  # helper called as `foo(assigns)` receives the whole map.
+  defp component?(nil, _src), do: false
+  defp component?(fun, src), do: String.contains?(src, "<." <> fun)
+
+  defp host_assigns_in(false, _line, _declared), do: []
+
+  defp host_assigns_in(true, line, declared) do
+    ~r/@([a-z_]+)/
+    |> Regex.scan(line)
+    |> Enum.map(&Enum.at(&1, 1))
+    |> Enum.filter(&(&1 in @host_assigns and not MapSet.member?(declared, &1)))
+    |> Enum.uniq()
+  end
+
+  defp report([], _file, _n, _line), do: []
+
+  defp report(used, file, n, line),
+    do: [{file, n, "uses @" <> Enum.join(used, ", @") <> " — " <> String.trim(line)}]
 
   test "every portable view assigns the layout's required assigns" do
     # The router-level layout reads :page_title and :section from the socket.
@@ -257,10 +279,9 @@ defmodule CodeMySpecWeb.LinkResolutionTest do
 
     unlinked =
       served
-      |> Enum.reject(&(&1 in @intentionally_unlinked))
       |> Enum.reject(fn path ->
         segment = path |> String.split("/") |> List.last()
-        sidebar =~ ~s{/#{segment}"}
+        path in @intentionally_unlinked or sidebar =~ ~s{/#{segment}"}
       end)
 
     assert unlinked == [], """
@@ -274,5 +295,4 @@ defmodule CodeMySpecWeb.LinkResolutionTest do
     it in @intentionally_unlinked with the page that links to it.
     """
   end
-
 end

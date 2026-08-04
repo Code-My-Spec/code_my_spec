@@ -636,11 +636,39 @@ defmodule CodeMySpec.Provisioning.Steps do
   end
 
   defp build_image(scope, environment, opts) do
-    with {:ok, _bucket} <- Registry.ensure(scope, opts),
+    # Injectable for the same reason the builder's own create/build/destroy
+    # are: making the registry's bucket is a real call to object storage, and a
+    # criterion about *what gets built* should not have to buy one to say so.
+    # Retention is Registry's own claim and is proven where it lives.
+    ensure_registry = Keyword.get(opts, :ensure_registry, &Registry.ensure/2)
+
+    with {:ok, architecture} <- architecture_for(scope, environment, opts),
+         {:ok, _bucket} <- ensure_registry.(scope, opts),
          {:ok, tag} <- image_tag(scope, opts),
-         {:ok, build} <- Builder.build(scope, tag, builder_opts(environment, opts)),
+         {:ok, build} <- build_on_builder(scope, tag, architecture, opts),
          {:ok, reference} <- Registry.reference(scope, tag, opts) do
-      {:ok, %{reference: reference, built: true, architecture: build.architecture}}
+      {:ok,
+       %{
+         reference: reference,
+         built: true,
+         architecture: build.architecture,
+         retention_days: Registry.retention_days(opts),
+         builder: build.builder,
+         builder_image: build.builder_image,
+         builder_destroyed: build.builder_destroyed
+       }}
+    end
+  end
+
+  # A build that failed still made a box, so the failure carries what became of
+  # it. Returned as partial resources, which is how every other step reports
+  # "this did not finish, and here is what it made" — the same channel that
+  # lets a run that died on the second environment still clean up the first.
+  defp build_on_builder(scope, tag, architecture, opts) do
+    case Builder.build(scope, tag, Keyword.put(opts, :architecture, architecture)) do
+      {:ok, build} -> {:ok, build}
+      {:error, reason, disposition} -> {:error, format(reason), builder_resource(disposition)}
+      {:error, reason} -> {:error, format(reason)}
     end
   end
 
@@ -663,24 +691,90 @@ defmodule CodeMySpec.Provisioning.Steps do
   # The architecture the environment's box runs, not a default. An image built
   # for the other one fails at container start, which is a deploy that looks
   # healthy until the swap.
-  defp builder_opts(environment, opts) do
-    Keyword.put_new(opts, :architecture, architecture_for(environment, opts))
+  #
+  # Asked of Hetzner rather than assumed, because what we requested and what
+  # exists are different questions: the server step answers a sold-out region by
+  # taking the other architecture. This used to return `:arm` regardless, which
+  # made that fallback silently produce an unrunnable image.
+  defp architecture_for(scope, environment, opts) do
+    case Keyword.get(opts, :architecture) do
+      nil -> environment_architecture(scope, environment)
+      architecture -> {:ok, architecture}
+    end
   end
 
-  defp architecture_for(_environment, opts), do: Keyword.get(opts, :architecture, :arm)
+  defp environment_architecture(scope, environment) do
+    case EnvironmentRepository.get(scope, environment) do
+      %{server_name: name} when is_binary(name) -> server_architecture(scope, name)
+      _ -> {:error, "cannot build for #{environment}: it has no server yet"}
+    end
+  end
+
+  defp server_architecture(scope, name) do
+    with {:ok, server} <- Hetzner.find_server(scope, name),
+         {:ok, architecture} <- Hetzner.server_architecture(server) do
+      {:ok, architecture}
+    else
+      {:error, :not_found} ->
+        {:error, "cannot build for #{name}: the provider has no such server"}
+
+      {:error, reason} ->
+        {:error, format(reason)}
+    end
+  end
 
   defp deploy_opts(opts, host, %{reference: reference}),
     do: opts |> Keyword.put(:host, host) |> Keyword.put(:image, reference)
 
   defp deploy_opts(opts, host, :not_built), do: Keyword.put(opts, :host, host)
 
-  defp image_resources(%{reference: reference, built: true}),
-    do: [%{kind: "published_image", location: reference, identifier: "built=true"}]
+  # The architecture rides along because it is the claim worth checking: an
+  # image built for the other one deploys cleanly and dies at container start,
+  # so "which architecture did this get built for" has to be answerable from
+  # the record rather than by rebuilding it.
+  defp image_resources(%{reference: reference, built: true} = image) do
+    [
+      %{
+        kind: "published_image",
+        location: reference,
+        identifier: "built=true architecture=#{image.architecture}"
+      }
+      | retention_resource(image) ++ builder_resource(image)
+    ]
+  end
 
   defp image_resources(%{reference: reference}),
     do: [%{kind: "published_image", location: reference, identifier: "built=false"}]
 
   defp image_resources(:not_built), do: []
+
+  # Old images stop costing money because the registry's bucket expires them,
+  # not because anything here runs on a schedule — the same shape as the
+  # backups' retention, and recorded so it is visible without reading a
+  # bucket policy.
+  defp retention_resource(%{retention_days: days}) when is_integer(days),
+    do: [%{kind: "image_retention", location: "#{days} days", identifier: "enforced_by=bucket_lifecycle"}]
+
+  defp retention_resource(_image), do: []
+
+  # The box the image was built on, and what became of it. Recorded because a
+  # builder that quietly stops being destroyed costs money every deploy and
+  # changes nothing anyone can see — the image still arrives.
+  #
+  # `booted_from` is the pre-warmed image: the toolchain is already on it, so a
+  # deploy does not pay to install Docker every time (8239).
+  defp builder_resource(%{builder: name} = image) when is_binary(name) do
+    [
+      %{
+        kind: "builder",
+        location: name,
+        identifier:
+          "destroyed=#{image.builder_destroyed} booted_from=#{image.builder_image}"
+      }
+    ]
+  end
+
+  defp builder_resource(_image), do: []
 
   ## Helpers
 

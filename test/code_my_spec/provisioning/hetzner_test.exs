@@ -87,6 +87,33 @@ defmodule CodeMySpec.Provisioning.HetznerTest do
     end
   end
 
+  describe "server_architecture/1" do
+    # What we asked for and what exists are different questions, because
+    # create_server answers a sold-out region by taking the other architecture.
+    # Whatever builds the image has to read this rather than assume.
+    test "reports what the provider says the box runs" do
+      assert Hetzner.server_architecture(%{"server_type" => %{"architecture" => "arm"}}) ==
+               {:ok, :arm}
+
+      assert Hetzner.server_architecture(%{"server_type" => %{"architecture" => "x86"}}) ==
+               {:ok, :x86}
+    end
+
+    test "reads through the envelope a create comes back in" do
+      server = %{"server" => %{"server_type" => %{"architecture" => "x86"}}}
+      assert Hetzner.server_architecture(server) == {:ok, :x86}
+    end
+
+    # Guessing here is how an unrunnable image gets published: it passes every
+    # check we have and dies at container start.
+    test "an unrecognised or absent architecture is an error, not a default" do
+      assert {:error, {:unknown_architecture, "riscv"}} =
+               Hetzner.server_architecture(%{"server_type" => %{"architecture" => "riscv"}})
+
+      assert {:error, :no_architecture_reported} = Hetzner.server_architecture(%{"id" => 1})
+    end
+  end
+
   describe "create_server/3" do
     test "sends the arch's defaults" do
       stub(fn conn ->
@@ -119,6 +146,30 @@ defmodule CodeMySpec.Provisioning.HetznerTest do
 
       assert {:error, {:hetzner_error, 400, body}} = Hetzner.create_server(@scope, "box", ssh_key_ids: [1])
       assert body["error"]["message"] =~ "deprecated"
+    end
+
+    # A pinned type is the caller saying which box it wants — the builder does
+    # exactly this. `create_in/4` re-applies the override to the retry, so
+    # falling back would resend the identical request and report the second
+    # refusal as a second shortage.
+    test "a pinned server type is not retried as the other architecture" do
+      {:ok, calls} = Agent.start_link(fn -> [] end)
+
+      stub(fn conn ->
+        {:ok, body, conn} = Plug.Conn.read_body(conn)
+        Agent.update(calls, &[Jason.decode!(body)["server_type"] | &1])
+        json(conn, 412, %{"error" => %{"code" => "resource_unavailable"}})
+      end)
+
+      assert {:error, {:capacity_unavailable, message}} =
+               Hetzner.create_server(@scope, "box", server_type: "cax21", ssh_key_ids: [1])
+
+      assert Agent.get(calls, & &1) == ["cax21"], "the pinned type was retried"
+
+      # The message names what was actually requested. Naming the default sends
+      # the reader looking at a server type nobody asked for.
+      assert message =~ "cax21"
+      refute message =~ Hetzner.defaults_for(:arm).server_type
     end
   end
 
