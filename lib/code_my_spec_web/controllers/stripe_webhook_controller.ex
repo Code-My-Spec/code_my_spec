@@ -25,14 +25,29 @@ defmodule CodeMySpecWeb.StripeWebhookController do
 
     case verify(raw_body(conn), signature, webhook_secret()) do
       :ok ->
-        Billing.apply_event(conn.body_params)
-        send_resp(conn, 200, "")
+        apply_event(conn)
 
       {:error, reason} ->
         # 400, not 500: Stripe retries a 5xx, and there is no point retrying a
         # request that will never verify.
         Logger.warning("[Stripe] webhook rejected: #{inspect(reason)}")
         send_resp(conn, 400, "")
+    end
+  end
+
+  # A signed event we could not apply must NOT answer 200. Stripe stops
+  # retrying on a 2xx, so answering "thanks" to a failure is how a charged card
+  # ends up on a free account with nothing to notice it — which is exactly what
+  # happened. 5xx puts the event back in Stripe's retry schedule, so the same
+  # payment lands by itself once the cause is fixed.
+  defp apply_event(conn) do
+    case Billing.apply_event(conn.body_params) do
+      :ok ->
+        send_resp(conn, 200, "")
+
+      {:error, reason} ->
+        Logger.error("[Stripe] event accepted but not applied: #{inspect(reason)}")
+        send_resp(conn, 500, "")
     end
   end
 
