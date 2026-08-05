@@ -13,6 +13,7 @@ defmodule CodeMySpecWeb.InboxLive do
   use CodeMySpecWeb, :live_view
 
   alias CodeMySpec.Conversations
+  alias CodeMySpec.Conversations.Message
   alias CodeMySpecWeb.Presence
 
   @impl true
@@ -20,7 +21,10 @@ defmodule CodeMySpecWeb.InboxLive do
     scope = socket.assigns.current_scope
 
     if connected?(socket) do
-      Phoenix.PubSub.subscribe(CodeMySpec.PubSub, Conversations.inbox_topic(scope.active_account_id))
+      Phoenix.PubSub.subscribe(
+        CodeMySpec.PubSub,
+        Conversations.inbox_topic(scope.active_account_id)
+      )
     end
 
     {:ok,
@@ -49,21 +53,34 @@ defmodule CodeMySpecWeb.InboxLive do
 
   @impl true
   def handle_event("open_conversation", %{"id" => id}, socket) do
-    {:noreply, push_navigate(socket, to: ~p"/app/projects/#{socket.assigns.project.id}/inbox/#{id}")}
+    {:noreply,
+     push_navigate(socket, to: ~p"/app/projects/#{socket.assigns.project.id}/inbox/#{id}")}
   end
 
-  def handle_event("start_conversation", %{"conversation" => %{"email" => email, "body" => body}}, socket) do
-    {:ok, conversation} = Conversations.start_conversation(socket.assigns.current_scope, email, body)
+  def handle_event(
+        "start_conversation",
+        %{"conversation" => %{"email" => email, "body" => body}},
+        socket
+      ) do
+    {:ok, conversation} =
+      Conversations.start_conversation(socket.assigns.current_scope, email, body)
+
     # A freshly-started thread means the customer isn't here yet — email them.
     maybe_notify_offline(conversation, body, socket.assigns.online)
-    {:noreply, push_navigate(socket, to: ~p"/app/projects/#{socket.assigns.project.id}/inbox/#{conversation.id}")}
+
+    {:noreply,
+     push_navigate(socket,
+       to: ~p"/app/projects/#{socket.assigns.project.id}/inbox/#{conversation.id}"
+     )}
   end
 
   def handle_event("send_message", %{"message" => %{"body" => body}}, socket) do
     body = String.trim(body)
 
     if body != "" do
-      {:ok, _message} = Conversations.reply(socket.assigns.current_scope, socket.assigns.conversation.id, body)
+      {:ok, _message} =
+        Conversations.reply(socket.assigns.current_scope, socket.assigns.conversation.id, body)
+
       maybe_notify_offline(socket.assigns.conversation, body, socket.assigns.online)
     end
 
@@ -72,14 +89,22 @@ defmodule CodeMySpecWeb.InboxLive do
 
   def handle_event("close_conversation", _params, socket) do
     {:ok, conversation} =
-      Conversations.set_status(socket.assigns.current_scope, socket.assigns.conversation.id, :closed)
+      Conversations.set_status(
+        socket.assigns.current_scope,
+        socket.assigns.conversation.id,
+        :closed
+      )
 
     {:noreply, socket |> assign(:conversation, conversation) |> load_list()}
   end
 
   def handle_event("reopen_conversation", _params, socket) do
     {:ok, conversation} =
-      Conversations.set_status(socket.assigns.current_scope, socket.assigns.conversation.id, :open)
+      Conversations.set_status(
+        socket.assigns.current_scope,
+        socket.assigns.conversation.id,
+        :open
+      )
 
     {:noreply, socket |> assign(:conversation, conversation) |> load_list()}
   end
@@ -151,7 +176,10 @@ defmodule CodeMySpecWeb.InboxLive do
 
   defp render_index(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_scope={@current_scope} pending_notifications={@pending_notifications}
+    <Layouts.app
+      flash={@flash}
+      current_scope={@current_scope}
+      pending_notifications={@pending_notifications}
       project={assigns[:project]}
       projects={assigns[:projects] || []}
     >
@@ -159,7 +187,11 @@ defmodule CodeMySpecWeb.InboxLive do
         <header class="flex items-center justify-between gap-3 pb-4">
           <div class="flex items-center gap-2">
             <h1 class="text-2xl font-semibold">Chats</h1>
-            <span :if={@unread_count > 0} data-test="unread-count" class="badge badge-primary badge-sm">
+            <span
+              :if={@unread_count > 0}
+              data-test="unread-count"
+              class="badge badge-primary badge-sm"
+            >
               {@unread_count} unread
             </span>
           </div>
@@ -169,7 +201,11 @@ defmodule CodeMySpecWeb.InboxLive do
               <.icon name="hero-plus" class="size-4" /> New chat
             </summary>
             <div class="absolute right-0 top-full z-50 mt-1 w-80 rounded-box bg-base-200 p-3 shadow">
-              <form phx-submit="start_conversation" data-test="new-conversation-form" class="flex flex-col gap-2">
+              <form
+                phx-submit="start_conversation"
+                data-test="new-conversation-form"
+                class="flex flex-col gap-2"
+              >
                 <input
                   type="email"
                   name="conversation[email]"
@@ -210,7 +246,10 @@ defmodule CodeMySpecWeb.InboxLive do
                 phx-value-id={conversation.id}
                 class={["cursor-pointer hover", conversation.status == :closed && "opacity-50"]}
               >
-                <td data-test="conversation-user" class={["break-all", if(conversation.read, do: "font-medium", else: "font-bold")]}>
+                <td
+                  data-test="conversation-user"
+                  class={["break-all", if(conversation.read, do: "font-medium", else: "font-bold")]}
+                >
                   <span
                     :if={!conversation.read}
                     data-test="unread-dot"
@@ -218,17 +257,25 @@ defmodule CodeMySpecWeb.InboxLive do
                   >
                   </span>
                   {conversation_title(conversation)}
-                  <span :if={conversation.status == :closed} class="badge badge-ghost badge-xs ml-1">Closed</span>
+                  <span :if={conversation.status == :closed} class="badge badge-ghost badge-xs ml-1">
+                    Closed
+                  </span>
                 </td>
                 <td>
                   <span
                     data-test={"presence-#{conversation.end_user_id}"}
-                    class={["badge badge-sm", if(online?(conversation, @online), do: "badge-success", else: "badge-ghost")]}
+                    class={[
+                      "badge badge-sm",
+                      if(online?(conversation, @online), do: "badge-success", else: "badge-ghost")
+                    ]}
                   >
                     {presence_label(conversation, @online)}
                   </span>
                 </td>
-                <td data-test="conversation-preview" class="hidden max-w-xs truncate opacity-70 sm:table-cell">
+                <td
+                  data-test="conversation-preview"
+                  class="hidden max-w-xs truncate opacity-70 sm:table-cell"
+                >
                   {preview(conversation)}
                 </td>
                 <td class="hidden text-sm opacity-60 sm:table-cell">
@@ -245,7 +292,10 @@ defmodule CodeMySpecWeb.InboxLive do
 
   defp render_show(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_scope={@current_scope} pending_notifications={@pending_notifications}
+    <Layouts.app
+      flash={@flash}
+      current_scope={@current_scope}
+      pending_notifications={@pending_notifications}
       project={assigns[:project]}
       projects={assigns[:projects] || []}
     >
@@ -269,7 +319,11 @@ defmodule CodeMySpecWeb.InboxLive do
       >
         <header class="flex shrink-0 items-center justify-between gap-3 border-b border-base-300 pb-3">
           <div class="flex min-w-0 items-center gap-2">
-            <.link navigate={~p"/app/projects/#{@project.id}/inbox"} data-test="back-to-chats" class="btn btn-ghost btn-xs shrink-0">
+            <.link
+              navigate={~p"/app/projects/#{@project.id}/inbox"}
+              data-test="back-to-chats"
+              class="btn btn-ghost btn-xs shrink-0"
+            >
               <.icon name="hero-arrow-left" class="size-4" /> Chats
             </.link>
             <h1 class="truncate text-lg font-semibold">{conversation_title(@conversation)}</h1>
@@ -278,7 +332,10 @@ defmodule CodeMySpecWeb.InboxLive do
           <div class="flex shrink-0 items-center gap-2">
             <span
               data-test={"presence-#{@conversation.end_user_id}"}
-              class={["badge badge-sm", if(online?(@conversation, @online), do: "badge-success", else: "badge-ghost")]}
+              class={[
+                "badge badge-sm",
+                if(online?(@conversation, @online), do: "badge-success", else: "badge-ghost")
+              ]}
             >
               {presence_label(@conversation, @online)}
             </span>
@@ -325,8 +382,10 @@ defmodule CodeMySpecWeb.InboxLive do
             >
               <div class="chat-header text-xs opacity-60">{sender_label(message.role)}</div>
               <div class={["chat-bubble break-words", chat_bubble(message.role)]}>
-                <p :if={message.body not in [nil, ""]} class="whitespace-pre-wrap">{message.body}</p>
-                <div :for={{att, idx} <- Enum.with_index(message.attachments || [])} class="mt-1">
+                <p :if={Message.text(message) != ""} class="whitespace-pre-wrap">
+                  {Message.text(message)}
+                </p>
+                <div :for={{att, idx} <- Enum.with_index(Message.files(message))} class="mt-1">
                   <a
                     :if={image_attachment?(att)}
                     href={~p"/app/inbox/messages/#{message.id}/attachments/#{idx}"}
@@ -377,13 +436,15 @@ defmodule CodeMySpecWeb.InboxLive do
   defp preview(conversation) do
     case List.last(conversation.messages) do
       nil -> ""
-      message -> message.body
+      message -> Message.text(message)
     end
   end
 
   # Agent-session conversations have no end user — label them by their harness
   # session id instead of a (nil) email.
-  defp conversation_title(%{end_user_email: email}) when is_binary(email) and email != "", do: email
+  defp conversation_title(%{end_user_email: email}) when is_binary(email) and email != "",
+    do: email
+
   defp conversation_title(%{session_external_id: ext}) when is_binary(ext), do: "Agent · #{ext}"
   defp conversation_title(_conversation), do: "Conversation"
 

@@ -147,7 +147,7 @@ defmodule CodeMySpec.Conversations do
       conversation_id: conversation.id,
       role: agent_message_role(kind),
       agent_role: agent_role,
-      body: text || "",
+      content: parts_for(text),
       sender_id: "agent:#{agent_role}"
     })
     |> Repo.insert()
@@ -161,6 +161,12 @@ defmodule CodeMySpec.Conversations do
         error
     end
   end
+
+  # An empty body contributes no part — an attachment-only message must not
+  # gain a blank text part it never had.
+  defp parts_for(nil), do: []
+  defp parts_for(""), do: []
+  defp parts_for(text), do: [Message.text_part(text)]
 
   # Harness kind -> Message role. Tool calls render distinctly; everything else
   # (assistant prose, status lines) is assistant-voiced.
@@ -177,9 +183,11 @@ defmodule CodeMySpec.Conversations do
     |> Message.changeset(%{
       conversation_id: conversation.id,
       role: role,
-      body: body || "",
-      sender_id: sender_id,
-      attachments: attachments
+      # Text and files are both parts now. Callers still pass them separately
+      # because that is how the widget and the operator form send them; the
+      # split stops at this boundary.
+      content: parts_for(body) ++ Enum.map(attachments, &%{"type" => "file", "file" => &1}),
+      sender_id: sender_id
     })
     |> Repo.insert()
     |> case do

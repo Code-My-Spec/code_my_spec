@@ -134,7 +134,9 @@ defmodule CodeMySpecWeb.ConversationChannel do
 
   def handle_in("send_message", payload, socket) do
     body = Map.get(payload, "body", "")
-    attachments = valid_chat_attachments(Map.get(payload, "attachments"), socket.assigns.project_id)
+
+    attachments =
+      valid_chat_attachments(Map.get(payload, "attachments"), socket.assigns.project_id)
 
     case Conversations.add_message(
            socket.assigns.conversation,
@@ -153,7 +155,9 @@ defmodule CodeMySpecWeb.ConversationChannel do
   # `chat/` prefix; the client PUTs then sends the `s3_key` with `send_message`.
   def handle_in("request_chat_upload", params, socket) do
     content_type = Map.get(params, "content_type", "application/octet-stream")
-    key = "chat/#{socket.assigns.project_id}/#{Ecto.UUID.generate()}/#{safe_name(params["filename"])}"
+
+    key =
+      "chat/#{socket.assigns.project_id}/#{Ecto.UUID.generate()}/#{safe_name(params["filename"])}"
 
     case Uploads.presigned_upload_url(key, content_type) do
       {:ok, url} -> {:reply, {:ok, %{upload_url: url, s3_key: key}}, socket}
@@ -265,9 +269,9 @@ defmodule CodeMySpecWeb.ConversationChannel do
   defp message_payload(%Message{} = message) do
     %{
       id: message.id,
-      body: message.body,
+      body: Message.text(message),
       role: message.role,
-      attachments: Enum.map(message.attachments || [], &attachment_payload/1),
+      attachments: Enum.map(Message.files(message), &attachment_payload/1),
       inserted_at: DateTime.to_iso8601(message.inserted_at)
     }
   end

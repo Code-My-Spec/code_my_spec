@@ -16,6 +16,7 @@ defmodule CodeMySpecWeb.AgentConversationLive do
   use CodeMySpecWeb, :live_view
 
   alias CodeMySpec.Conversations
+  alias CodeMySpec.Conversations.Message
 
   @impl true
   def mount(_params, _session, socket), do: {:ok, socket}
@@ -146,7 +147,7 @@ defmodule CodeMySpecWeb.AgentConversationLive do
       <div :if={@message.agent_role} class="mb-1 text-xs uppercase opacity-60">
         {@message.agent_role}
       </div>
-      <pre class="whitespace-pre-wrap break-words font-mono text-sm">{@message.body}</pre>
+      <pre class="whitespace-pre-wrap break-words font-mono text-sm">{Message.text(@message)}</pre>
     </div>
     """
   end
@@ -164,7 +165,7 @@ defmodule CodeMySpecWeb.AgentConversationLive do
         {@message.agent_role}
       </div>
       <div class={["chat-bubble whitespace-pre-wrap break-words", chat_bubble(@message.role)]}>
-        {@message.body}
+        {Message.text(@message)}
       </div>
     </div>
     """

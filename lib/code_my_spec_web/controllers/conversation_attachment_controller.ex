@@ -9,6 +9,7 @@ defmodule CodeMySpecWeb.ConversationAttachmentController do
   use CodeMySpecWeb, :controller
 
   alias CodeMySpec.Content.S3Client
+  alias CodeMySpec.Conversations.Message
   alias CodeMySpec.Conversations
 
   def show(conn, %{"message_id" => message_id, "index" => index}) do
@@ -16,7 +17,7 @@ defmodule CodeMySpecWeb.ConversationAttachmentController do
 
     with message when not is_nil(message) <- Conversations.get_message(scope, message_id),
          {idx, _} <- Integer.parse(index),
-         %{"s3_key" => key} = attachment <- Enum.at(message.attachments || [], idx),
+         %{"s3_key" => key} = attachment <- Enum.at(Message.files(message), idx),
          true <- owned_key?(key, message.conversation.project_id),
          {:ok, bytes} <- S3Client.get_object(bucket(), key) do
       conn
@@ -33,7 +34,11 @@ defmodule CodeMySpecWeb.ConversationAttachmentController do
   defp maybe_download(conn, %{"content_type" => "image/" <> _}), do: conn
 
   defp maybe_download(conn, %{"filename" => name}) when is_binary(name) do
-    put_resp_header(conn, "content-disposition", ~s(attachment; filename="#{Path.basename(name)}"))
+    put_resp_header(
+      conn,
+      "content-disposition",
+      ~s(attachment; filename="#{Path.basename(name)}")
+    )
   end
 
   defp maybe_download(conn, _attachment), do: conn

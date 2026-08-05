@@ -26,6 +26,10 @@ defmodule CodeMySpec.Conversations.Conversation do
     field :session_external_id, :string
     field :read, :boolean, default: true
     field :status, Ecto.Enum, values: [:open, :closed], default: :open
+    # Which kind of thread this is. Was inferred from a nil session_external_id,
+    # which meant list_conversations/1 had to remember to exclude agent threads
+    # so watching a sprite never raised the support inbox's unread badge.
+    field :type, Ecto.Enum, values: [:support, :agent], default: :support
 
     has_many :messages, Message, preload_order: [asc: :inserted_at]
 
@@ -36,6 +40,7 @@ defmodule CodeMySpec.Conversations.Conversation do
   def changeset(conversation, attrs) do
     conversation
     |> cast(attrs, [:account_id, :project_id, :end_user_id, :end_user_email, :read, :status])
+    |> put_change(:type, :support)
     |> validate_required([:account_id, :project_id, :end_user_email])
     |> unique_constraint([:account_id, :project_id, :end_user_email])
   end
@@ -47,6 +52,7 @@ defmodule CodeMySpec.Conversations.Conversation do
   def agent_changeset(conversation, attrs) do
     conversation
     |> cast(attrs, [:account_id, :project_id, :session_external_id, :read, :status])
+    |> put_change(:type, :agent)
     |> validate_required([:account_id, :project_id, :session_external_id])
     |> unique_constraint([:account_id, :project_id, :session_external_id],
       name: :conversations_account_project_session_index
