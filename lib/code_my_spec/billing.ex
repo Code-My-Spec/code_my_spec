@@ -127,7 +127,7 @@ defmodule CodeMySpec.Billing do
   # Money moved. This is the only place a paid tier is granted.
   defp handle("invoice.payment_succeeded", event) do
     with {:ok, account} <- account_for(event) do
-      set_plan(account, tier_for(event) || account.plan)
+      set_plan(account, tier_for(event) || account.plan, subscription_id(event))
     end
   end
 
@@ -135,7 +135,7 @@ defmodule CodeMySpec.Billing do
   # renewal it gave up on. Both mean the account is no longer paid for.
   defp handle("customer.subscription.deleted", event) do
     with {:ok, account} <- account_for(event) do
-      set_plan(account, :free)
+      set_plan(account, :free, nil)
     end
   end
 
@@ -154,13 +154,38 @@ defmodule CodeMySpec.Billing do
     :ok
   end
 
-  defp set_plan(%Account{} = account, plan) do
+  defp set_plan(%Account{} = account, plan, subscription_id) do
     account
     |> Ecto.Changeset.change(plan: plan)
+    |> put_subscription_id(subscription_id)
     |> Repo.update()
     |> case do
       {:ok, _account} -> :ok
       {:error, reason} -> {:error, reason}
+    end
+  end
+
+  # Only ever recorded, never cleared: knowing which subscription paid for a
+  # tier is what makes a cancellation or a refund traceable afterwards.
+  defp put_subscription_id(changeset, nil), do: changeset
+
+  defp put_subscription_id(changeset, id),
+    do: Ecto.Changeset.change(changeset, stripe_subscription_id: id)
+
+  # Same shape problem as the metadata: an invoice references its subscription
+  # under `parent.subscription_details`, while a subscription event is the
+  # subscription. Both have to resolve or the id silently stays null.
+  defp subscription_id(event) do
+    object = get_in(event, ["data", "object"]) || %{}
+
+    case object["object"] do
+      "subscription" ->
+        object["id"]
+
+      _ ->
+        get_in(object, ["parent", "subscription_details", "subscription"]) ||
+          get_in(object, ["subscription_details", "subscription"]) ||
+          object["subscription"]
     end
   end
 

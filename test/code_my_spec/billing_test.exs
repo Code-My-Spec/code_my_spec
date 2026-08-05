@@ -142,6 +142,38 @@ defmodule CodeMySpec.BillingTest do
       assert reload(account).plan == :pro
     end
 
+    # The shape below is copied from a real invoice.payment_succeeded Stripe
+    # delivered for a real charge — no top-level metadata, everything nested
+    # under parent.subscription_details, and no top-level `subscription` at
+    # all. A hand-made event agreed with the code and disagreed with Stripe,
+    # which is how a payment once got taken and granted nothing.
+    test "a real invoice grants the tier and records the subscription that paid" do
+      scope = owner_scope()
+      account = scope.active_account
+
+      real_invoice = %{
+        "id" => "evt_1U18kBIn2rXVSrRDObMlVh4m",
+        "type" => "invoice.payment_succeeded",
+        "data" => %{
+          "object" => %{
+            "object" => "invoice",
+            "parent" => %{
+              "subscription_details" => %{
+                "subscription" => "sub_1U18ivIn2rXVSrRDpMNuy0Gg",
+                "metadata" => %{"account_id" => account.id, "tier" => "pro"}
+              }
+            }
+          }
+        }
+      }
+
+      :ok = Billing.apply_event(real_invoice)
+
+      reloaded = reload(account)
+      assert reloaded.plan == :pro
+      assert reloaded.stripe_subscription_id == "sub_1U18ivIn2rXVSrRDpMNuy0Gg"
+    end
+
     test "the same event delivered twice grants once" do
       scope = owner_scope()
       account = scope.active_account
