@@ -1373,6 +1373,53 @@ defmodule CodeMySpecSpex.Case do
   end
 
   @doc """
+  Stage what a box reports is running on it.
+
+  The seam is the SSH read, not the page. Criteria about how containers are
+  *displayed* should not need a real box with a real Docker daemon, but the
+  screen is always driven for real — same split as `stage_servers/3`.
+
+  Pass a list of containers, or `{:error, reason}` for a box that cannot be
+  reached. `{:error, :timeout}` is how a box that accepts connections and
+  never answers arrives here, because the reader owns the deadline.
+  """
+  def stage_containers(context, reported) do
+    previous = Application.get_env(:code_my_spec, CodeMySpec.Servers.Containers, [])
+
+    Application.put_env(
+      :code_my_spec,
+      CodeMySpec.Servers.Containers,
+      Keyword.merge(previous, list: fn _scope, _server -> normalise_reported(reported) end)
+    )
+
+    ExUnit.Callbacks.on_exit(fn ->
+      Application.put_env(:code_my_spec, CodeMySpec.Servers.Containers, previous)
+    end)
+
+    context
+  end
+
+  @doc """
+  A container as a box reports one, with sensible defaults.
+
+  Shaped like `docker ps` output rather than like our record of a deploy —
+  `state` and `status` are what the daemon says, and `exit_code` is only
+  meaningful once something has stopped.
+  """
+  def container(attrs \\ %{}) do
+    Map.merge(
+      %{
+        name: "app-#{System.unique_integer([:positive])}",
+        image: "ghcr.io/example/app:sha-abc123",
+        state: "running",
+        status: "Up 2 hours",
+        exit_code: nil
+      },
+      Map.new(attrs)
+    )
+  end
+
+  @doc """
   Stage the monitoring step's outcome without a real UptimeRobot account.
 
   Criterion 8010 is that each public host has a monitor with somewhere to
