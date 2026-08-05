@@ -25,6 +25,7 @@ defmodule CodeMySpecSpex.Story997.Criterion8288Spex do
   @endpoint CodeMySpecWeb.Endpoint
 
   setup :register_log_in_setup_account
+  setup :setup_active_project
   setup :connect_providers
 
   spex "The certificate and DNS record made for this box are on its page" do
@@ -67,6 +68,17 @@ defmodule CodeMySpecSpex.Story997.Criterion8288Spex do
                ]}
             end
           })
+
+        # The server step's real write-back, which `scripted_run/2` replaces
+        # along with the rest of the step. Without it the box is provisioned
+        # and nothing records which environment it carries, so nothing can
+        # find it again — the same leak the step halts on in production.
+        CodeMySpecSpex.Fixtures.record_environment_server(
+          context.scope,
+          "uat",
+          "uat-box",
+          "203.0.113.10"
+        )
 
         {:ok, view, _html} =
           live(context.conn, "/app/projects/#{context.project.id}/provisioning")

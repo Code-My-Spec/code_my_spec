@@ -47,9 +47,9 @@ defmodule CodeMySpecSpex.Story997.Criterion8286Spex do
       end
 
       when_ "he opens the server", context do
-        {:ok, _view, html} = live(context.conn, ~p"/app/servers/web-1")
+        {:ok, view, _html} = live(context.conn, ~p"/app/servers/web-1")
 
-        {:ok, Map.put(context, :html, html)}
+        {:ok, Map.put(context, :html, render_async(view))}
       end
 
       then_ "the exited container is listed alongside the running one", context do
