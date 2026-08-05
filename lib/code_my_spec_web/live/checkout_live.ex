@@ -134,10 +134,14 @@ defmodule CodeMySpecWeb.CheckoutLive do
   # The browser confirmed the payment. Stripe has it; the webhook has the last
   # word on the tier, so this only tells the user where things stand.
   def handle_event("payment_confirmed", _params, socket) do
+    # Out of the marketing page and into the product. A full redirect rather
+    # than push_navigate: this view is nested in a dead page, so there is no
+    # live session to navigate within.
     {:noreply,
      socket
      |> assign(client_secret: nil, error: nil)
-     |> put_flash(:info, "Payment received. Your plan will be active in a moment.")}
+     |> put_flash(:info, "Payment received. Your plan will be active in a moment.")
+     |> redirect(to: ~p"/app")}
   end
 
   def handle_event("payment_failed", %{"message" => message}, socket) do

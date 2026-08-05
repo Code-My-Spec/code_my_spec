@@ -27,6 +27,10 @@ defmodule CodeMySpecWeb.ServersLive do
 
   alias CodeMySpec.Servers
 
+  # Deliberately not a value anyone would type. It is the select's "not one of
+  # these" branch, and it must never survive as a stored label.
+  @other "__other__"
+
   @impl true
   def mount(_params, _session, socket) do
     {:ok,
@@ -34,9 +38,16 @@ defmodule CodeMySpecWeb.ServersLive do
      |> assign(:page_title, "Servers")
      |> assign(:show_unlinked, false)
      |> assign(:pending, nil)
+     |> assign(:custom, nil)
+     |> assign(:other, @other)
      |> assign(:provision_error, nil)
      |> load_servers()
+     |> load_environments()
      |> load_options()}
+  end
+
+  defp load_environments(socket) do
+    assign(socket, :environments, Servers.known_environments(socket.assigns.current_scope))
   end
 
   @impl true
@@ -49,6 +60,31 @@ defmodule CodeMySpecWeb.ServersLive do
 
   def handle_event("toggle-unlinked", _params, socket) do
     {:noreply, assign(socket, :show_unlinked, !socket.assigns.show_unlinked)}
+  end
+
+  # Choosing "Other…" is not an answer yet — it swaps that one row for a text
+  # box and waits. Saving the sentinel would record the word "other" as the
+  # thing the server is for.
+  def handle_event("set-environment", %{"name" => name, "environment" => @other}, socket) do
+    {:noreply, assign(socket, :custom, name)}
+  end
+
+  # `environment` from the select and form submit, `value` from the text
+  # input's blur — the same answer arriving under the name each binding uses.
+  def handle_event("set-environment", %{"name" => name} = params, socket) do
+    environment = params["environment"] || params["value"]
+
+    case Servers.set_environment(socket.assigns.current_scope, name, environment) do
+      {:ok, _server} ->
+        {:noreply,
+         socket
+         |> assign(:custom, nil)
+         |> load_servers()
+         |> load_environments()}
+
+      {:error, reason} ->
+        {:noreply, socket |> assign(:custom, nil) |> assign(:provider_error, describe(reason))}
+    end
   end
 
   # Re-narrows the size list when the location changes. Availability is per
@@ -160,6 +196,9 @@ defmodule CodeMySpecWeb.ServersLive do
   defp describe(:hetzner_not_configured),
     do: "No Hetzner API token is connected for this account. Add one to see your servers."
 
+  defp describe(:not_linked),
+    do: "That server is not linked to this account, so there is nowhere to record what it is for."
+
   defp describe(:unauthorized), do: "The provider refused the credential (unauthorized)."
   defp describe(:timeout), do: "The provider could not be reached before timing out."
   defp describe(reason) when is_binary(reason), do: reason
@@ -199,7 +238,7 @@ defmodule CodeMySpecWeb.ServersLive do
         </div>
 
         <div :for={server <- linked(@servers)} class="mb-2">
-          <.server_row server={server} />
+          <.server_row server={server} environments={@environments} custom={@custom} other={@other} />
         </div>
 
         <p
@@ -223,7 +262,7 @@ defmodule CodeMySpecWeb.ServersLive do
 
         <div :if={@show_unlinked} data-test="unlinked-servers">
           <div :for={server <- unlinked(@servers)} class="mb-2">
-            <.server_row server={server} />
+            <.server_row server={server} environments={@environments} custom={@custom} other={@other} />
           </div>
         </div>
 
@@ -239,6 +278,9 @@ defmodule CodeMySpecWeb.ServersLive do
   end
 
   attr :server, :map, required: true
+  attr :environments, :list, default: []
+  attr :custom, :string, default: nil
+  attr :other, :string, required: true
 
   defp server_row(assigns) do
     ~H"""
@@ -251,6 +293,7 @@ defmodule CodeMySpecWeb.ServersLive do
       data-linked={to_string(@server.linked)}
       data-missing={to_string(@server.missing)}
       data-unverified={to_string(@server.unverified)}
+      data-environment={@server.environment}
       class={[
         "card bg-base-200",
         @server.missing && "border border-error",
@@ -258,16 +301,36 @@ defmodule CodeMySpecWeb.ServersLive do
       ]}
     >
       <div class="card-body py-3 flex-row items-center justify-between gap-4">
-        <div>
+        <div class="flex items-center gap-2 min-w-0">
+          <%!--
+            The status carries as colour rather than a word. It is the one
+            field that is the same on every row and read at a glance — "running"
+            spelled out on every line is noise you have to read past to find the
+            one that is not. `data-status` still carries the provider's own
+            word for anything reading the page.
+          --%>
+          <span
+            data-test="server-status"
+            title={@server.status || "state unknown"}
+            class={["inline-block size-2.5 rounded-full shrink-0", status_colour(@server)]}
+          >
+          </span>
+
           <span class="font-mono">{@server.name}</span>
-          <span :if={@server.ip} class="text-xs opacity-70 ml-2">{@server.ip}</span>
-          <span :if={@server.size} class="badge badge-ghost badge-sm ml-2">{@server.size}</span>
-          <span :if={@server.status} class="badge badge-sm ml-1">{@server.status}</span>
-          <span :if={@server.missing} class="badge badge-error badge-sm ml-1">
+          <span
+            :if={@server.environment}
+            data-test="server-environment"
+            class="badge badge-primary badge-sm"
+          >
+            {@server.environment}
+          </span>
+          <span :if={@server.ip} class="text-xs opacity-70">{@server.ip}</span>
+          <span :if={@server.size} class="badge badge-ghost badge-sm">{@server.size}</span>
+          <span :if={@server.missing} class="badge badge-error badge-sm">
             missing at provider
           </span>
-          <span :if={@server.unverified} class="badge badge-warning badge-sm ml-1">
-            linked — state unavailable
+          <span :if={@server.unverified} class="badge badge-warning badge-sm">
+            state unavailable
           </span>
         </div>
 
@@ -281,10 +344,76 @@ defmodule CodeMySpecWeb.ServersLive do
         >
           Link
         </button>
+
+        <%!--
+          Only on a linked box: the label is our record of Sam's answer, and a
+          server he has not claimed has nowhere to keep one.
+
+          Saves on change, with no button. There is one field and one value, so
+          a button would only be a second thing to click after already saying
+          what he meant.
+
+          A real select, because prod and uat are what setup builds and should
+          be one click. "Other…" keeps it from being an enum — the field still
+          takes `qa-story-812`, it just does not make him type the common
+          answer to get there.
+        --%>
+        <form
+          :if={@server.linked and @custom != @server.name}
+          data-test="environment-form"
+          phx-change="set-environment"
+        >
+          <input type="hidden" name="name" value={@server.name} />
+          <select
+            name="environment"
+            data-test="environment-select"
+            class="select select-bordered select-sm w-40"
+          >
+            <option value="" selected={is_nil(@server.environment)}>Not set</option>
+            <option
+              :for={known <- @environments}
+              value={known}
+              selected={known == @server.environment}
+            >
+              {known}
+            </option>
+            <option value={@other}>Other…</option>
+          </select>
+        </form>
+
+        <form
+          :if={@server.linked and @custom == @server.name}
+          data-test="environment-form"
+          phx-submit="set-environment"
+          class="contents"
+        >
+          <input type="hidden" name="name" value={@server.name} />
+          <input
+            type="text"
+            name="environment"
+            value={@server.environment}
+            placeholder="what is it for?"
+            data-test="environment-input"
+            phx-blur="set-environment"
+            phx-value-name={@server.name}
+            autofocus
+            class="input input-bordered input-sm w-40"
+          />
+        </form>
       </div>
     </div>
     """
   end
+
+  # Green only when the provider says it is up. Anything mid-flight is amber,
+  # anything stopped is red, and a box we could not ask about is grey rather
+  # than a colour that would imply we know.
+  defp status_colour(%{missing: true}), do: "bg-error"
+  defp status_colour(%{unverified: true}), do: "bg-base-content/30"
+  defp status_colour(%{status: "running"}), do: "bg-success"
+  defp status_colour(%{status: status}) when status in ~w(initializing starting migrating), do: "bg-warning"
+  defp status_colour(%{status: nil}), do: "bg-base-content/30"
+  defp status_colour(_server), do: "bg-error"
 
   attr :options, :list, required: true
   attr :location, :string, default: nil

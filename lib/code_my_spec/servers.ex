@@ -66,13 +66,15 @@ defmodule CodeMySpec.Servers do
 
   defp unverified_linked(scope) do
     scope
-    |> Server.linked_names()
+    |> Server.linked_environments()
     |> Enum.sort()
-    |> Enum.map(fn name ->
+    |> Enum.map(fn {name, environment} ->
       # Not `missing` — that is a claim the provider told us it is gone, and
-      # here the provider told us nothing at all.
+      # here the provider told us nothing at all. The label survives either
+      # way: it is ours, not the provider's, so it is the one thing we can
+      # still say for certain.
       name
-      |> Server.placeholder()
+      |> Server.placeholder(environment)
       |> Map.put(:missing, false)
       |> Map.put(:unverified, true)
     end)
@@ -114,6 +116,46 @@ defmodule CodeMySpec.Servers do
       {:ok, created} -> Server.link(scope, normalise(created))
       {:error, reason} -> {:error, reason}
     end
+  end
+
+  @doc """
+  Record what a linked server is for.
+
+  A free string, not a fixed set. `prod` is a value here, never a branch — see
+  `CodeMySpec.Servers.Server` for why an enum would undo what
+  `provisioning_environments` was built to fix. Blank clears the label, which
+  is a real answer: nobody has said what this box is for yet.
+  """
+  @spec set_environment(Scope.t(), String.t(), String.t() | nil) ::
+          {:ok, Server.t()} | {:error, term()}
+  def set_environment(%Scope{} = scope, name, environment) when is_binary(name) do
+    Server.set_environment(scope, name, environment)
+  end
+
+  # What setup builds today, offered so the common answer is one click rather
+  # than something to spell. Suggestions, not options: they seed the list, they
+  # do not bound it, and nothing downstream branches on either value.
+  @suggested_environments ["prod", "uat"]
+
+  @doc """
+  Labels to offer for a server, seeded with what setup currently supports and
+  extended by whatever this account already uses.
+
+  Suggestions rather than a fixed set — the field accepts anything, so
+  `qa-story-812` is as valid as `prod`. If it were an enum this list would be
+  the whole world, and a per-story environment would be unrepresentable.
+  """
+  @spec known_environments(Scope.t()) :: [String.t()]
+  def known_environments(%Scope{} = scope) do
+    in_use =
+      scope
+      |> Server.linked_environments()
+      |> Map.values()
+      |> Enum.reject(&is_nil/1)
+
+    (@suggested_environments ++ Enum.sort(in_use)) |> Enum.uniq()
+  rescue
+    _ -> @suggested_environments
   end
 
   @doc """
@@ -314,21 +356,22 @@ defmodule CodeMySpec.Servers do
   # dropped. Anything still pointed at it is now pointed at nothing, and this
   # list is the only place that can say so.
   defp merge_with_linked(scope, reported) do
-    linked = Server.linked_names(scope)
+    linked = Server.linked_environments(scope)
     reported_names = MapSet.new(reported, & &1.name)
 
     present =
       Enum.map(reported, fn server ->
         server
-        |> Map.put(:linked, MapSet.member?(linked, server.name))
+        |> Map.put(:linked, Map.has_key?(linked, server.name))
         |> Map.put(:missing, false)
         |> Map.put(:unverified, false)
+        |> Map.put(:environment, Map.get(linked, server.name))
       end)
 
     gone =
       linked
-      |> Enum.reject(&MapSet.member?(reported_names, &1))
-      |> Enum.map(&Server.placeholder/1)
+      |> Enum.reject(fn {name, _env} -> MapSet.member?(reported_names, name) end)
+      |> Enum.map(fn {name, environment} -> Server.placeholder(name, environment) end)
 
     Enum.sort_by(present ++ gone, &{not &1.linked, &1.name})
   end
