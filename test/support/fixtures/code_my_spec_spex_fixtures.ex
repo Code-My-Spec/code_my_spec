@@ -1778,4 +1778,27 @@ defmodule CodeMySpecSpex.Fixtures do
     :ok
   end
 
+  @doc """
+  Record which box an environment runs on, as the server step does.
+
+  The real `run(:server)` provisions a machine and writes `server_name`/`ip`
+  back onto the environment row — that write is what makes a box findable
+  afterwards, and everything asking "what is on this server" reads it.
+
+  A criterion about *displaying* a provisioned box still needs that link, but
+  `scripted_run/2` replaces the step's execute, so the write never happens. So
+  a premise that says "setup has provisioned Sam's UAT box" arranges it here,
+  through the same context call the step uses, rather than reaching into the
+  table or making the scripted step pretend to be the real one.
+  """
+  @spec record_environment_server(Scope.t(), String.t(), String.t(), String.t()) :: :ok
+  def record_environment_server(%Scope{} = scope, environment, server_name, ip) do
+    {:ok, _environment} =
+      CodeMySpec.Provisioning.put_environment(scope, environment, %{
+        server_name: server_name,
+        ip: ip
+      })
+
+    :ok
+  end
 end

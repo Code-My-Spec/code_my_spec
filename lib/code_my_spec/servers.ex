@@ -34,7 +34,7 @@ defmodule CodeMySpec.Servers do
 
   alias CodeMySpec.AccountSecrets
   alias CodeMySpec.Provisioning.Hetzner
-  alias CodeMySpec.Servers.Server
+  alias CodeMySpec.Servers.{Containers, Server}
   alias CodeMySpec.Users.Scope
 
   @access_key_public "server_ssh_public_key"
@@ -116,6 +116,36 @@ defmodule CodeMySpec.Servers do
       {:ok, created} -> Server.link(scope, normalise(created))
       {:error, reason} -> {:error, reason}
     end
+  end
+
+  @doc """
+  One server by name, as the list would show it.
+
+  Built from `list/1` so a single server carries exactly what a row does —
+  including `unverified` when the provider could not be asked, which is how a
+  box still appears on its own page during an outage instead of 404ing.
+  """
+  @spec get(Scope.t(), String.t()) :: {:ok, Server.t()} | {:error, :not_found}
+  def get(%Scope{} = scope, name) when is_binary(name) do
+    case list(scope) do
+      {:ok, servers} -> find(servers, name)
+      {:error, _reason, linked} -> find(linked, name)
+    end
+  end
+
+  defp find(servers, name) do
+    case Enum.find(servers, &(&1.name == name)) do
+      nil -> {:error, :not_found}
+      server -> {:ok, server}
+    end
+  end
+
+  @doc """
+  What is running on a server, read from the server.
+  """
+  @spec containers(Scope.t(), map()) :: {:ok, [map()]} | {:error, term()}
+  def containers(%Scope{} = scope, server) do
+    Containers.list(scope, server)
   end
 
   @doc """

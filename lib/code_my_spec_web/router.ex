@@ -394,6 +394,7 @@ defmodule CodeMySpecWeb.Router do
       # having picked a project first.
       live "/servers", ServerLive.Index, :index
       live "/servers/:name/edit", ServerLive.Index, :edit
+      live "/servers/:name", ServerLive.Show, :show
     end
 
     # Portable UI — these LiveViews are mounted by CodeMySpecLocalWeb.Router

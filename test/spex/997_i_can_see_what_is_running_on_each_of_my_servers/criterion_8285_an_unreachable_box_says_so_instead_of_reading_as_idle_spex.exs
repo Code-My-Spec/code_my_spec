@@ -40,9 +40,9 @@ defmodule CodeMySpecSpex.Story997.Criterion8285Spex do
       when_ "the box has stopped accepting SSH", context do
         context = stage_containers(context, {:error, :unreachable})
 
-        {:ok, _view, html} = live(context.conn, ~p"/app/servers/web-1")
+        {:ok, view, _html} = live(context.conn, ~p"/app/servers/web-1")
 
-        {:ok, Map.put(context, :html, html)}
+        {:ok, Map.put(context, :html, render_async(view))}
       end
 
       then_ "the page says the box could not be reached, and why", context do

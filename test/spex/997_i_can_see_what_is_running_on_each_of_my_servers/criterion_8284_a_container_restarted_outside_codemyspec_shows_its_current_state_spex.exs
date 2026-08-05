@@ -37,7 +37,8 @@ defmodule CodeMySpecSpex.Story997.Criterion8284Spex do
             container(%{name: "fuellytics", state: "running", status: "Up 6 days"})
           ])
 
-        {:ok, view, html} = live(context.conn, ~p"/app/servers/web-1")
+        {:ok, view, _html} = live(context.conn, ~p"/app/servers/web-1")
+        html = render_async(view)
 
         assert html
                |> Floki.parse_document!()
@@ -56,9 +57,9 @@ defmodule CodeMySpecSpex.Story997.Criterion8284Spex do
             container(%{name: "fuellytics", state: "running", status: "Up 30 seconds"})
           ])
 
-        {:ok, _view, html} = live(context.conn, ~p"/app/servers/web-1")
+        {:ok, view, _html} = live(context.conn, ~p"/app/servers/web-1")
 
-        {:ok, Map.put(context, :html, html)}
+        {:ok, Map.put(context, :html, render_async(view))}
       end
 
       then_ "the page shows the uptime since his restart", context do
