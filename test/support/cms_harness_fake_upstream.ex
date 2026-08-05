@@ -56,6 +56,21 @@ defmodule CmsHarnessTest.FakeUpstream do
           %{method: String.t(), path: String.t(), headers: map(), body: binary()} | nil
   def last_request, do: :persistent_term.get({__MODULE__, :request}, nil)
 
+  @doc """
+  The last request to `path`, or nil.
+
+  For flows that make more than one call here — the permission proxy raises the
+  request over HTTP and then opens a websocket, and `last_request/0` would hand
+  back the socket upgrade.
+  """
+  @spec last_request_to(String.t()) :: map() | nil
+  def last_request_to(path) do
+    {__MODULE__, :requests}
+    |> :persistent_term.get([])
+    |> Enum.filter(&(&1.path == path))
+    |> List.last()
+  end
+
   @impl Plug
   def init(opts), do: opts
 
@@ -71,6 +86,11 @@ defmodule CmsHarnessTest.FakeUpstream do
     }
 
     :persistent_term.put({__MODULE__, :request}, request)
+
+    :persistent_term.put(
+      {__MODULE__, :requests},
+      :persistent_term.get({__MODULE__, :requests}, []) ++ [request]
+    )
 
     # The token exchange is its own route with its own answer, so a test can
     # assert what the proxy forwarded without that assertion being about the
@@ -145,6 +165,7 @@ defmodule CmsHarnessTest.FakeUpstream do
   defp reset do
     :persistent_term.put({__MODULE__, :response}, @default)
     :persistent_term.put({__MODULE__, :request}, nil)
+    :persistent_term.put({__MODULE__, :requests}, [])
     :persistent_term.put({__MODULE__, :exchange}, nil)
     :persistent_term.put({__MODULE__, :exchange_answer}, {:ok, []})
   end

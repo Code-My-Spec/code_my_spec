@@ -27,6 +27,15 @@ defmodule CmsHarness.Web.Router do
     post("/ask-user-question", HooksController, :handle)
   end
 
+  # `PermissionRequest` is not one of the hooks above and does not go through
+  # the project channel. It is a question for a person, answered on their phone
+  # minutes later, and it blocks the agent until it is. See `PermissionController`.
+  scope "/api", CmsHarness.Web do
+    pipe_through(:hook)
+
+    post("/permissions/request", PermissionController, :create)
+  end
+
   # The MCP surface, forwarded to the server — see `McpController`. Same URL
   # shape the plugin already uses for the heavy harness
   # (`/mcp?dir=${CLAUDE_PROJECT_DIR}`), so swapping one for the other is a port
