@@ -27,7 +27,9 @@ defmodule CmsHarness.Web.McpControllerTest do
     #
     # CMS_PROJECT_ID for the same reason and a sharper one: `ProjectIdentity`
     # prefers it over the directory's own config.yml, so with it set every test
-    # here passed while proving nothing about resolution. `envs/.env` sets it.
+    # here passed while proving nothing about resolution. It is exported in the
+    # shell on at least one machine here, which is exactly the way a variable
+    # gets into a test run without appearing anywhere in the repo.
     saved =
       Enum.map(
         ~w(CMS_SERVER_URL CMS_TOKEN CMS_DEPLOY_KEY CMS_PROJECT_ID CMS_PROJECT_DIR),
