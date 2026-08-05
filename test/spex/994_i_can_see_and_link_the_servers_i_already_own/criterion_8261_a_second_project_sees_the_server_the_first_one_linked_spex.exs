@@ -12,7 +12,7 @@ defmodule CodeMySpecSpex.Story994.Criterion8261Spex do
   project-scoped environment row, so the same machine linked from two projects
   would be two records that know nothing about each other.
 
-  Surface: `CodeMySpecWeb.ServersLive` at `/app/servers`.
+  Surface: `CodeMySpecWeb.ServerLive.Index` at `/app/servers`.
   """
 
   use CodeMySpecSpex.Case

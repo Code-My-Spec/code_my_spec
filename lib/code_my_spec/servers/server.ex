@@ -106,29 +106,42 @@ defmodule CodeMySpec.Servers.Server do
   def link(_scope, _server), do: {:error, :no_account}
 
   @doc """
-  Record what a linked server is for.
+  Changeset for the one field the form edits.
+
+  Separate from `changeset/2` so a form cannot rename a server or move it to
+  another provider — the name is the provider's, not ours, and editing it here
+  would silently unlink the box rather than rename anything.
+  """
+  @spec environment_changeset(t(), map()) :: Ecto.Changeset.t()
+  def environment_changeset(server, attrs) do
+    server
+    |> cast(attrs, [:environment])
+    |> normalise_environment()
+    |> validate_length(:environment, max: 255)
+  end
+
+  @doc """
+  The linked record for a name, or nil.
 
   Only meaningful once linked: the label is Sam's answer about a box he has
   claimed, and there is nowhere to keep it for one he has not.
   """
-  @spec set_environment(Scope.t(), String.t(), String.t() | nil) ::
-          {:ok, t()} | {:error, term()}
-  def set_environment(%Scope{active_account_id: account_id}, name, environment)
+  @spec get_linked(Scope.t(), String.t()) :: t() | nil
+  def get_linked(%Scope{active_account_id: account_id}, name)
       when is_binary(account_id) and is_binary(name) do
-    __MODULE__
-    |> Repo.get_by(account_id: account_id, provider: "hetzner", name: name)
-    |> case do
-      nil ->
-        {:error, :not_linked}
-
-      server ->
-        server
-        |> changeset(%{environment: environment})
-        |> Repo.update()
-    end
+    Repo.get_by(__MODULE__, account_id: account_id, provider: "hetzner", name: name)
   end
 
-  def set_environment(_scope, _name, _environment), do: {:error, :no_account}
+  def get_linked(_scope, _name), do: nil
+
+  @doc """
+  Save an edited server. Scope-checked by having been fetched through
+  `get_linked/2`, which is the only way a caller gets the struct.
+  """
+  @spec update(t(), map()) :: {:ok, t()} | {:error, Ecto.Changeset.t()}
+  def update(%__MODULE__{} = server, attrs) do
+    server |> environment_changeset(attrs) |> Repo.update()
+  end
 
   @doc """
   What this account has linked, as `name => environment`.

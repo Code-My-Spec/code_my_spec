@@ -119,17 +119,33 @@ defmodule CodeMySpec.Servers do
   end
 
   @doc """
-  Record what a linked server is for.
+  The linked record for a name, or nil — what the edit form is built from.
+  """
+  @spec get_linked(Scope.t(), String.t()) :: Server.t() | nil
+  def get_linked(%Scope{} = scope, name) when is_binary(name) do
+    Server.get_linked(scope, name)
+  end
+
+  @doc """
+  Changeset for editing a linked server.
+  """
+  @spec change_server(Server.t(), map()) :: Ecto.Changeset.t()
+  def change_server(%Server{} = server, attrs \\ %{}) do
+    Server.environment_changeset(server, attrs)
+  end
+
+  @doc """
+  Save what a linked server is for.
 
   A free string, not a fixed set. `prod` is a value here, never a branch — see
   `CodeMySpec.Servers.Server` for why an enum would undo what
   `provisioning_environments` was built to fix. Blank clears the label, which
   is a real answer: nobody has said what this box is for yet.
   """
-  @spec set_environment(Scope.t(), String.t(), String.t() | nil) ::
-          {:ok, Server.t()} | {:error, term()}
-  def set_environment(%Scope{} = scope, name, environment) when is_binary(name) do
-    Server.set_environment(scope, name, environment)
+  @spec update_server(Server.t(), map()) ::
+          {:ok, Server.t()} | {:error, Ecto.Changeset.t()}
+  def update_server(%Server{} = server, attrs) do
+    Server.update(server, attrs)
   end
 
   # What setup builds today, offered so the common answer is one click rather

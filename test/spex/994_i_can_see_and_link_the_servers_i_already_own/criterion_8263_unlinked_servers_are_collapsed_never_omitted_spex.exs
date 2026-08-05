@@ -12,7 +12,7 @@ defmodule CodeMySpecSpex.Story994.Criterion8263Spex do
   anything, and the servers themselves are always reachable from the same
   screen.
 
-  Surface: `CodeMySpecWeb.ServersLive` at `/app/servers`.
+  Surface: `CodeMySpecWeb.ServerLive.Index` at `/app/servers`.
   """
 
   use CodeMySpecSpex.Case

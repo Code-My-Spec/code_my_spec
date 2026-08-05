@@ -11,7 +11,7 @@ defmodule CodeMySpecSpex.Story994.Criterion8258Spex do
   step's state is checked against the provider rather than read back from our
   row. A stale size here would be the first crack in that.
 
-  Surface: `CodeMySpecWeb.ServersLive` at `/app/servers`.
+  Surface: `CodeMySpecWeb.ServerLive.Index` at `/app/servers`.
   """
 
   use CodeMySpecSpex.Case
