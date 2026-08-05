@@ -13,7 +13,7 @@ defmodule CodeMySpecSpex.Story994.Criterion8259Spex do
   environments, a publish that uploaded and told nobody. Here it would be a
   screen that reassures Sam his account is tidy while his credential is dead.
 
-  Surface: `CodeMySpecWeb.ServersLive` at `/app/servers`.
+  Surface: `CodeMySpecWeb.ServerLive.Index` at `/app/servers`.
   """
 
   use CodeMySpecSpex.Case

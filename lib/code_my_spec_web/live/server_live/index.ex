@@ -1,4 +1,4 @@
-defmodule CodeMySpecWeb.ServersLive do
+defmodule CodeMySpecWeb.ServerLive.Index do
   @moduledoc """
   Every box the account owns, linked or not, at `/app/servers`.
 
@@ -26,10 +26,7 @@ defmodule CodeMySpecWeb.ServersLive do
   use CodeMySpecWeb, :live_view
 
   alias CodeMySpec.Servers
-
-  # Deliberately not a value anyone would type. It is the select's "not one of
-  # these" branch, and it must never survive as a stored label.
-  @other "__other__"
+  alias CodeMySpecWeb.ServerLive.FormComponent
 
   @impl true
   def mount(_params, _session, socket) do
@@ -38,12 +35,39 @@ defmodule CodeMySpecWeb.ServersLive do
      |> assign(:page_title, "Servers")
      |> assign(:show_unlinked, false)
      |> assign(:pending, nil)
-     |> assign(:custom, nil)
-     |> assign(:other, @other)
+     |> assign(:server, nil)
      |> assign(:provision_error, nil)
      |> load_servers()
      |> load_environments()
      |> load_options()}
+  end
+
+  @impl true
+  def handle_params(params, _url, socket) do
+    {:noreply, apply_action(socket, socket.assigns.live_action, params)}
+  end
+
+  defp apply_action(socket, :edit, %{"name" => name}) do
+    case Servers.get_linked(socket.assigns.current_scope, name) do
+      # Reachable by URL for a box that was unlinked or destroyed since the
+      # link was made. Saying so beats a form bound to nothing.
+      nil ->
+        socket
+        |> put_flash(:error, "That server is not linked to this account.")
+        |> push_patch(to: ~p"/app/servers")
+
+      server ->
+        socket |> assign(:server, server) |> assign(:page_title, "Edit #{server.name}")
+    end
+  end
+
+  defp apply_action(socket, _action, _params) do
+    socket |> assign(:server, nil) |> assign(:page_title, "Servers")
+  end
+
+  @impl true
+  def handle_info({:server_saved, _server}, socket) do
+    {:noreply, socket |> load_servers() |> load_environments()}
   end
 
   defp load_environments(socket) do
@@ -60,31 +84,6 @@ defmodule CodeMySpecWeb.ServersLive do
 
   def handle_event("toggle-unlinked", _params, socket) do
     {:noreply, assign(socket, :show_unlinked, !socket.assigns.show_unlinked)}
-  end
-
-  # Choosing "Other…" is not an answer yet — it swaps that one row for a text
-  # box and waits. Saving the sentinel would record the word "other" as the
-  # thing the server is for.
-  def handle_event("set-environment", %{"name" => name, "environment" => @other}, socket) do
-    {:noreply, assign(socket, :custom, name)}
-  end
-
-  # `environment` from the select and form submit, `value` from the text
-  # input's blur — the same answer arriving under the name each binding uses.
-  def handle_event("set-environment", %{"name" => name} = params, socket) do
-    environment = params["environment"] || params["value"]
-
-    case Servers.set_environment(socket.assigns.current_scope, name, environment) do
-      {:ok, _server} ->
-        {:noreply,
-         socket
-         |> assign(:custom, nil)
-         |> load_servers()
-         |> load_environments()}
-
-      {:error, reason} ->
-        {:noreply, socket |> assign(:custom, nil) |> assign(:provider_error, describe(reason))}
-    end
   end
 
   # Re-narrows the size list when the location changes. Availability is per
@@ -238,7 +237,7 @@ defmodule CodeMySpecWeb.ServersLive do
         </div>
 
         <div :for={server <- linked(@servers)} class="mb-2">
-          <.server_row server={server} environments={@environments} custom={@custom} other={@other} />
+          <.server_row server={server} />
         </div>
 
         <p
@@ -262,7 +261,7 @@ defmodule CodeMySpecWeb.ServersLive do
 
         <div :if={@show_unlinked} data-test="unlinked-servers">
           <div :for={server <- unlinked(@servers)} class="mb-2">
-            <.server_row server={server} environments={@environments} custom={@custom} other={@other} />
+            <.server_row server={server} />
           </div>
         </div>
 
@@ -272,15 +271,27 @@ defmodule CodeMySpecWeb.ServersLive do
           pending={@pending}
           error={@provision_error}
         />
+
+        <dialog :if={@live_action == :edit and @server} id="server-form-modal" class="modal modal-open">
+          <div class="modal-box max-w-lg">
+            <.live_component
+              module={FormComponent}
+              id={@server.id}
+              server={@server}
+              environments={@environments}
+              return_to={~p"/app/servers"}
+            />
+          </div>
+          <form method="dialog" class="modal-backdrop">
+            <button phx-click={JS.patch(~p"/app/servers")}>close</button>
+          </form>
+        </dialog>
       </div>
     </Layouts.app>
     """
   end
 
   attr :server, :map, required: true
-  attr :environments, :list, default: []
-  attr :custom, :string, default: nil
-  attr :other, :string, required: true
 
   defp server_row(assigns) do
     ~H"""
@@ -348,58 +359,15 @@ defmodule CodeMySpecWeb.ServersLive do
         <%!--
           Only on a linked box: the label is our record of Sam's answer, and a
           server he has not claimed has nowhere to keep one.
-
-          Saves on change, with no button. There is one field and one value, so
-          a button would only be a second thing to click after already saying
-          what he meant.
-
-          A real select, because prod and uat are what setup builds and should
-          be one click. "Other…" keeps it from being an enum — the field still
-          takes `qa-story-812`, it just does not make him type the common
-          answer to get there.
         --%>
-        <form
-          :if={@server.linked and @custom != @server.name}
-          data-test="environment-form"
-          phx-change="set-environment"
+        <.link
+          :if={@server.linked}
+          patch={~p"/app/servers/#{@server.name}/edit"}
+          data-test="edit-server"
+          class="btn btn-sm btn-ghost"
         >
-          <input type="hidden" name="name" value={@server.name} />
-          <select
-            name="environment"
-            data-test="environment-select"
-            class="select select-bordered select-sm w-40"
-          >
-            <option value="" selected={is_nil(@server.environment)}>Not set</option>
-            <option
-              :for={known <- @environments}
-              value={known}
-              selected={known == @server.environment}
-            >
-              {known}
-            </option>
-            <option value={@other}>Other…</option>
-          </select>
-        </form>
-
-        <form
-          :if={@server.linked and @custom == @server.name}
-          data-test="environment-form"
-          phx-submit="set-environment"
-          class="contents"
-        >
-          <input type="hidden" name="name" value={@server.name} />
-          <input
-            type="text"
-            name="environment"
-            value={@server.environment}
-            placeholder="what is it for?"
-            data-test="environment-input"
-            phx-blur="set-environment"
-            phx-value-name={@server.name}
-            autofocus
-            class="input input-bordered input-sm w-40"
-          />
-        </form>
+          Edit
+        </.link>
       </div>
     </div>
     """

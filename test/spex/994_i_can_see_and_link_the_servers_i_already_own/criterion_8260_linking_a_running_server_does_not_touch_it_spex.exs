@@ -11,7 +11,7 @@ defmodule CodeMySpecSpex.Story994.Criterion8260Spex do
   So the assertion is a negative: the provider was asked nothing that changes
   the server.
 
-  Surface: `CodeMySpecWeb.ServersLive` at `/app/servers`.
+  Surface: `CodeMySpecWeb.ServerLive.Index` at `/app/servers`.
   """
 
   use CodeMySpecSpex.Case

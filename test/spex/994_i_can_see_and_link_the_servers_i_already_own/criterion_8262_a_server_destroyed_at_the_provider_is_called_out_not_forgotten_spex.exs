@@ -13,7 +13,7 @@ defmodule CodeMySpecSpex.Story994.Criterion8262Spex do
   moment someone needs to see it. The screen's job is to say the box is gone,
   not to agree that it never mattered.
 
-  Surface: `CodeMySpecWeb.ServersLive` at `/app/servers`.
+  Surface: `CodeMySpecWeb.ServerLive.Index` at `/app/servers`.
   """
 
   use CodeMySpecSpex.Case

@@ -11,7 +11,7 @@ defmodule CodeMySpecSpex.Story994.Criterion8257Spex do
   So the list is the provider's, not ours, and a box's origin does not decide
   whether it is shown or how prominently.
 
-  Surface: `CodeMySpecWeb.ServersLive` at `/app/servers`.
+  Surface: `CodeMySpecWeb.ServerLive.Index` at `/app/servers`.
   """
 
   use CodeMySpecSpex.Case

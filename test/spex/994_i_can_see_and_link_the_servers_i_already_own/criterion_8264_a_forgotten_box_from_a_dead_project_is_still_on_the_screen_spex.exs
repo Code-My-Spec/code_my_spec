@@ -11,7 +11,7 @@ defmodule CodeMySpecSpex.Story994.Criterion8264Spex do
   it to him. It lists what the provider reports, and a machine attached to
   nothing is exactly the machine that most needs saying out loud.
 
-  Surface: `CodeMySpecWeb.ServersLive` at `/app/servers`.
+  Surface: `CodeMySpecWeb.ServerLive.Index` at `/app/servers`.
   """
 
   use CodeMySpecSpex.Case

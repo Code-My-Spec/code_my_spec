@@ -14,7 +14,7 @@ defmodule CodeMySpecSpex.Story994.Criterion8267Spex do
   The cost has to be stated, not implied. A confirmation that does not say
   what it costs is a confirmation of nothing in particular.
 
-  Surface: `CodeMySpecWeb.ServersLive` at `/app/servers`.
+  Surface: `CodeMySpecWeb.ServerLive.Index` at `/app/servers`.
   """
 
   use CodeMySpecSpex.Case

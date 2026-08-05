@@ -14,7 +14,7 @@ defmodule CodeMySpecSpex.Story994.Criterion8265Spex do
   So provisioning stays here. A box made on this screen is his, in his own
   provider account, and arrives already linked because he made it here.
 
-  Surface: `CodeMySpecWeb.ServersLive` at `/app/servers`.
+  Surface: `CodeMySpecWeb.ServerLive.Index` at `/app/servers`.
   """
 
   use CodeMySpecSpex.Case

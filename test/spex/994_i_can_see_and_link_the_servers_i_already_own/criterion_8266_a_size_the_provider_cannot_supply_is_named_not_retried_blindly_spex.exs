@@ -14,7 +14,7 @@ defmodule CodeMySpecSpex.Story994.Criterion8266Spex do
   machine you did not choose — and, if the architecture differs, one your
   images cannot run on.
 
-  Surface: `CodeMySpecWeb.ServersLive` at `/app/servers`.
+  Surface: `CodeMySpecWeb.ServerLive.Index` at `/app/servers`.
   """
 
   use CodeMySpecSpex.Case

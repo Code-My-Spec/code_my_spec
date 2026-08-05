@@ -15,12 +15,13 @@ defmodule CodeMySpecSpex.Story994.Criterion8279Spex do
   this record would put it straight back — while still having nowhere to keep
   `qa-story-812`.
 
-  So the suggestions are seeded with what setup builds today and extended by
-  what the account already uses, and the field accepts anything regardless.
-  Unlabelled stays representable, because "nobody has said what this is for"
-  is the true answer for the box left running since March.
+  So the dropdown is seeded with what setup builds today and extended by what
+  the account already uses, and **Other…** keeps that list from being the whole
+  world. Unlabelled stays representable, because "nobody has said what this is
+  for" is the true answer for the box left running since March.
 
-  Surface: `CodeMySpecWeb.ServersLive` at `/app/servers`.
+  Surface: `CodeMySpecWeb.ServerLive.Index` at `/app/servers`, editing through
+  `CodeMySpecWeb.ServerLive.FormComponent` at `/app/servers/:name/edit`.
   """
 
   use CodeMySpecSpex.Case
@@ -52,13 +53,10 @@ defmodule CodeMySpecSpex.Story994.Criterion8279Spex do
       end
 
       when_ "he says what each one is for", context do
-        # Changing the field is the whole interaction — there is no Save to
-        # press afterwards, so a change that did not persist would show up
-        # here as the label simply not being there.
         set_environment(context.view, "box-a", "prod")
-        html = set_environment(context.view, "box-b", "uat")
+        set_environment(context.view, "box-b", "uat")
 
-        {:ok, Map.put(context, :html, html)}
+        {:ok, Map.put(context, :html, render(context.view))}
       end
 
       then_ "each server carries the label he gave it", context do
@@ -87,6 +85,13 @@ defmodule CodeMySpecSpex.Story994.Criterion8279Spex do
 
         {:ok, context}
       end
+
+      then_ "and the form closed once it was saved", context do
+        refute context.html =~ "data-test=\"server-form\"",
+               "the edit form is still open after saving, so he cannot tell it worked"
+
+        {:ok, context}
+      end
     end
 
     scenario "a label the platform has never heard of is accepted" do
@@ -96,6 +101,7 @@ defmodule CodeMySpecSpex.Story994.Criterion8279Spex do
         {:ok, view, html} = live(context.conn, ~p"/app/servers")
 
         link_server(view, html, "story-box")
+        open_edit(view, "story-box")
 
         {:ok, Map.put(context, :view, view)}
       end
@@ -108,28 +114,17 @@ defmodule CodeMySpecSpex.Story994.Criterion8279Spex do
         # of them from being the whole world.
         html =
           context.view
-          |> form(environment_form("story-box"), %{"environment" => "__other__"})
+          |> form("[data-test='server-form']", server: %{environment: "__other__"})
           |> render_change()
 
-        assert html =~ "data-test=\"environment-input\"",
+        assert html =~ "data-test=\"environment-custom\"",
                "choosing Other did not offer anywhere to type"
 
-        html =
-          context.view
-          |> form(environment_form("story-box"), %{"environment" => "qa-story-812"})
-          |> render_submit()
+        context.view
+        |> form("[data-test='server-form']", server: %{custom: "qa-story-812"})
+        |> render_submit()
 
-        {:ok, Map.put(context, :html, html)}
-      end
-
-      then_ "choosing Other never becomes the answer itself", context do
-        refute context.html
-               |> Floki.parse_document!()
-               |> Floki.find("[data-test='server'][data-name='story-box']")
-               |> Floki.attribute("data-environment") == ["__other__"],
-               "the select's own sentinel was stored as what the server is for"
-
-        {:ok, context}
+        {:ok, Map.put(context, :html, render(context.view))}
       end
 
       then_ "it is kept exactly as he wrote it", context do
@@ -143,9 +138,18 @@ defmodule CodeMySpecSpex.Story994.Criterion8279Spex do
         {:ok, context}
       end
 
+      then_ "and choosing Other never becomes the answer itself", context do
+        refute context.html =~ "__other__",
+               "the select's own sentinel reached the page as if it were a real label"
+
+        {:ok, context}
+      end
+
       then_ "and the dropdown still offers what setup supports today", context do
+        html = open_edit(context.view, "story-box")
+
         offered =
-          context.html
+          html
           |> Floki.parse_document!()
           |> Floki.find("[data-test='environment-select'] option")
           |> Floki.attribute("value")
@@ -194,19 +198,25 @@ defmodule CodeMySpecSpex.Story994.Criterion8279Spex do
     end
   end
 
+  defp open_edit(view, name) do
+    view
+    |> element("[data-test='server'][data-name='#{name}'] [data-test='edit-server']")
+    |> render_click()
+  end
+
+  # Open the form, choose, save. Three steps because it is a form now, and the
+  # save is the point at which he has decided rather than merely looked.
+  defp set_environment(view, name, environment) do
+    open_edit(view, name)
+
+    view
+    |> form("[data-test='server-form']", server: %{environment: environment})
+    |> render_submit()
+  end
+
   # Later scenarios inherit the links earlier ones made, so something is
   # already linked and the unlinked rows sit behind the collapse — which is
   # criterion 8263 working, not something to route around silently.
-  defp environment_form(name),
-    do: "[data-test='server'][data-name='#{name}'] [data-test='environment-form']"
-
-  # Saved by changing the field, with nothing to press afterwards.
-  defp set_environment(view, name, environment) do
-    view
-    |> form(environment_form(name), %{"environment" => environment})
-    |> render_change()
-  end
-
   defp link_server(view, html, name) do
     unless html =~ "phx-value-name=\"#{name}\"" do
       view |> element("[data-test='unlinked-count']") |> render_click()
