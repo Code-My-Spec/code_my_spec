@@ -69,6 +69,14 @@ defmodule CodeMySpecWeb.ServerLive.Show do
     end
   end
 
+  # In the URL rather than in socket state, so a filtered view is a link. On a
+  # box carrying six apps, "the thing I am looking at" is worth being able to
+  # send someone.
+  @impl true
+  def handle_params(params, _uri, socket) do
+    {:noreply, assign(socket, :app, params["app"])}
+  end
+
   @impl true
   def handle_async(:containers, {:ok, {:ok, containers}}, socket) do
     {:noreply, socket |> assign(:containers, containers) |> assign(:containers_error, nil)}
@@ -110,6 +118,48 @@ defmodule CodeMySpecWeb.ServerLive.Show do
   defp describe({:ssh_failed, status, output}), do: "SSH exited #{status}: #{output}"
   defp describe({:crashed, reason}), do: "Reading the box failed: #{inspect(reason)}"
   defp describe(reason), do: "Could not read the box: #{inspect(reason)}"
+
+  # Kamal names a container `<service>-web-<sha>`, and leaves the old one
+  # behind as `..._replaced_<id>` during a swap. Cutting at `-web-` recovers
+  # the service, which is the grain someone actually means by "this app" —
+  # and it works for the things on the box that are not CodeMySpec projects
+  # at all, which on a shared host is most of them.
+  defp app_of(%{name: name}) when is_binary(name) do
+    case String.split(name, "-web-", parts: 2) do
+      [service, _rest] -> service
+      _ -> name
+    end
+  end
+
+  defp apps(containers) when is_list(containers) do
+    containers |> Enum.map(&app_of/1) |> Enum.uniq() |> Enum.sort()
+  end
+
+  defp for_app(containers, nil) when is_list(containers), do: containers
+
+  defp for_app(containers, app) when is_list(containers),
+    do: Enum.filter(containers, &(app_of(&1) == app))
+
+  # The records half narrows too when the filter names a project we know, and
+  # is left alone when it names something we do not — a box can run apps that
+  # were never set up through here, and hiding its records because the filter
+  # said "desert-first" would answer a question nobody asked.
+  defp entries_for_app(entries, nil), do: entries
+
+  defp entries_for_app(entries, app) do
+    case Enum.filter(entries, &(slug(&1.project_name) == app)) do
+      [] -> entries
+      matched -> matched
+    end
+  end
+
+  defp slug(name) do
+    name
+    |> String.replace(~r/([a-z0-9])([A-Z])/, "\\1-\\2")
+    |> String.downcase()
+    |> String.replace(~r/[^a-z0-9]+/, "-")
+    |> String.trim("-")
+  end
 
   defp state_label(:not_started), do: "never run"
   defp state_label(state), do: state |> to_string() |> String.replace("_", " ")
@@ -156,6 +206,26 @@ defmodule CodeMySpecWeb.ServerLive.Show do
             Reading the box…
           </p>
 
+          <div :if={is_list(@containers) and length(apps(@containers)) > 1} class="flex flex-wrap gap-2 mb-4">
+            <.link
+              patch={~p"/app/servers/#{@server.name}"}
+              data-test="app-filter"
+              data-app=""
+              class={["badge badge-sm", is_nil(@app) && "badge-primary"]}
+            >
+              all ({length(@containers)})
+            </.link>
+            <.link
+              :for={app <- apps(@containers)}
+              patch={~p"/app/servers/#{@server.name}?#{[app: app]}"}
+              data-test="app-filter"
+              data-app={app}
+              class={["badge badge-sm", @app == app && "badge-primary"]}
+            >
+              {app} ({length(for_app(@containers, app))})
+            </.link>
+          </div>
+
           <div
             :if={@containers_error}
             data-test="containers-error"
@@ -175,7 +245,7 @@ defmodule CodeMySpecWeb.ServerLive.Show do
 
           <div :if={is_list(@containers)} class="space-y-2">
             <div
-              :for={container <- @containers}
+              :for={container <- for_app(@containers, @app)}
               data-test="container"
               data-name={container.name}
               data-state={container.state}
@@ -211,7 +281,7 @@ defmodule CodeMySpecWeb.ServerLive.Show do
             Nothing points at this server. Nothing deploys to it, and nothing was made for it.
           </p>
 
-          <div :for={entry <- @entries} class="mb-8">
+          <div :for={entry <- entries_for_app(@entries, @app)} class="mb-8">
             <h3 class="font-medium mb-2">
               {entry.project_name}
               <span class="badge badge-ghost badge-sm ml-1">{entry.environment}</span>

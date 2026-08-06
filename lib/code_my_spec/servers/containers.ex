@@ -108,6 +108,14 @@ defmodule CodeMySpec.Servers.Containers do
       "UserKnownHostsFile=/dev/null",
       "-o",
       "BatchMode=yes",
+      # Without this, `-i` is a suggestion: ssh still offers whatever the
+      # agent holds. On a developer's laptop that quietly succeeds using their
+      # personal key and the page looks like it works, while the same code on
+      # the server — no agent, no keys — cannot get in. The read has to
+      # authenticate as the credential it claims to use, or it is not testing
+      # anything the deployment will experience.
+      "-o",
+      "IdentitiesOnly=yes",
       "-o",
       "ConnectTimeout=#{@connect_timeout_seconds}",
       "-i",

@@ -327,7 +327,13 @@ defmodule CodeMySpecWeb.ServerLive.Index do
           >
           </span>
 
-          <span class="font-mono">{@server.name}</span>
+          <.link
+            navigate={~p"/app/servers/#{@server.name}"}
+            data-test="open-server"
+            class="font-mono link link-hover"
+          >
+            {@server.name}
+          </.link>
           <span
             :if={@server.environment}
             data-test="server-environment"
