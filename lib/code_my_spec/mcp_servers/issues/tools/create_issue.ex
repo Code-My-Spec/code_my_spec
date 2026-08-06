@@ -44,14 +44,11 @@ defmodule CodeMySpec.McpServers.Issues.Tools.CreateIssue do
       required: true,
       doc: "Detailed description of the issue including steps to reproduce if applicable"
 
-    field :scope, :string,
-      doc: "Issue scope: app (default), qa, docs, or framework"
+    field :scope, :string, doc: "Issue scope: app (default), qa, docs, or framework"
 
-    field :story_id, :integer,
-      doc: "Related user story ID, if applicable"
+    field :story_id, :integer, doc: "Related user story ID, if applicable"
 
-    field :source_path, :string,
-      doc: "File path where the issue was found, if applicable"
+    field :source_path, :string, doc: "File path where the issue was found, if applicable"
   end
 
   @impl true
@@ -69,14 +66,12 @@ defmodule CodeMySpec.McpServers.Issues.Tools.CreateIssue do
     end
   end
 
-  # Framework-scoped issues live on the CodeMySpec server, never in the
-  # local CLI's DB. Every other scope (app/qa/docs) writes to the local
-  # context. The configured remote client is real HTTP in production and
-  # an in-process stub in tests.
-  defp create(scope, %{scope: :framework} = attrs) do
-    Issues.remote_client().create_issue(scope, attrs)
-  end
-
+  # Every scope writes the same way. Framework issues used to be special —
+  # posted over HTTP to the server because the tools ran on a developer's
+  # machine and the server was elsewhere. The tools run on the server now, so
+  # that path had the server authenticating to itself as a CLI, with a
+  # credential only a CLI has, and it answered `not_authenticated` for every
+  # framework issue an agent tried to file.
   defp create(scope, attrs), do: Issues.create_issue(scope, attrs)
 
   defp build_attrs(params) do

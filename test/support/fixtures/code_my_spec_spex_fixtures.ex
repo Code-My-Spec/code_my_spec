@@ -1223,52 +1223,6 @@ defmodule CodeMySpecSpex.Fixtures do
 
   # -- Framework-issue remote stub --
 
-  @doc """
-  Resets the in-process framework-issue stub. Spex setup should call
-  this so each scenario starts with an empty server-side capture.
-  """
-  def reset_framework_issue_stub do
-    CodeMySpec.Issues.RemoteClientStub.reset()
-  end
-
-  @doc """
-  Returns the framework issues captured by the remote stub during this
-  test. Lets a `then_` step assert "the framework write reached the
-  server surface" through the approved bridge instead of touching the
-  stub module directly.
-  """
-  def captured_framework_issues do
-    CodeMySpec.Issues.RemoteClientStub.stored_issues()
-  end
-
-  @doc """
-  Seeds a server-side incoming issue on the stub. Spex use this to
-  prime the "server" before calling `start_task` for `issues_triaged`
-  (which triggers the triage-start pull) or `accept_issue` /
-  `dismiss_issue` / `resolve_issue` on a server-origin record.
-  """
-  def seed_server_incoming_issue(scope, attrs) do
-    CodeMySpec.Issues.RemoteClientStub.seed_incoming_issue(scope, attrs)
-  end
-
-  @doc """
-  Toggles the simulated server-unreachable flag on the stub. Set
-  `true` before a `when_` step to exercise the fail-loud paths in 599
-  (triage start) and 709 (disposition sync-back).
-  """
-  def simulate_server_unreachable(flag) when is_boolean(flag) do
-    CodeMySpec.Issues.RemoteClientStub.simulate_unreachable(flag)
-  end
-
-  @doc """
-  Returns the recorded `update_issue` calls the stub captured for a
-  given issue id. Lets `then_` steps assert "the local disposition
-  round-tripped to the server" through the approved bridge.
-  """
-  def server_update_calls_for(issue_id) when is_binary(issue_id) do
-    CodeMySpec.Issues.RemoteClientStub.update_calls_for(issue_id)
-  end
-
   # -- Project configuration (Stories 608, etc.) --
 
   @doc """
@@ -1777,5 +1731,4 @@ defmodule CodeMySpecSpex.Fixtures do
 
     :ok
   end
-
 end
