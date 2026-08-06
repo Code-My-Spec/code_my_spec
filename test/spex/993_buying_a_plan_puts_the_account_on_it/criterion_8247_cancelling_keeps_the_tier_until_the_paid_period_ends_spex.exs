@@ -93,9 +93,28 @@ defmodule CodeMySpecSpex.Story993.Criterion8247Spex do
     Jason.encode!(%{
       "id" => "evt_#{System.unique_integer([:positive])}",
       "type" => type,
-      "data" => %{"object" => Map.put(object, "metadata", metadata)}
+      "data" => %{"object" => with_metadata(object, type, metadata)}
     })
   end
+
+  # Checked against Stripe rather than assumed: a real subscription-backed
+  # invoice carries an EMPTY top-level metadata and puts the account under
+  # parent.subscription_details, while customer.subscription.deleted really
+  # does carry it on top — the object there is the subscription itself.
+  defp with_metadata(object, "invoice." <> _, metadata) do
+    object
+    |> Map.put("object", "invoice")
+    |> Map.put("metadata", %{})
+    |> Map.put("parent", %{
+      "type" => "subscription_details",
+      "subscription_details" => %{
+        "subscription" => "sub_spex_#{System.unique_integer([:positive])}",
+        "metadata" => metadata
+      }
+    })
+  end
+
+  defp with_metadata(object, _type, metadata), do: Map.put(object, "metadata", metadata)
 
   defp signed(body) do
     ts = System.system_time(:second)

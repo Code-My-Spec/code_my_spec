@@ -41,9 +41,22 @@ defmodule CodeMySpecSpex.Story993.Criterion8243Spex do
           Jason.encode!(%{
             "id" => "evt_spex_#{System.unique_integer([:positive])}",
             "type" => "invoice.payment_succeeded",
+            # Stripe's real invoice shape, captured from a live event: the
+            # top-level metadata is empty and the account sits two levels
+            # down. This is the criterion that matters most — if the tier
+            # only arrives for an invoice we invented, a paying customer who
+            # closed the tab gets nothing.
             "data" => %{
               "object" => %{
-                "metadata" => %{"account_id" => context.account.id, "tier" => "pro"}
+                "object" => "invoice",
+                "metadata" => %{},
+                "parent" => %{
+                  "type" => "subscription_details",
+                  "subscription_details" => %{
+                    "subscription" => "sub_spex_closed_tab",
+                    "metadata" => %{"account_id" => context.account.id, "tier" => "pro"}
+                  }
+                }
               }
             }
           })

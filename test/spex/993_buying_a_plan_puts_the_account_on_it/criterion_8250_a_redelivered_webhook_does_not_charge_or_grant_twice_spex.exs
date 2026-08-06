@@ -60,11 +60,27 @@ defmodule CodeMySpecSpex.Story993.Criterion8250Spex do
     end
   end
 
+  # The invoice shape is Stripe's, not ours: an empty top-level metadata and
+  # the account two levels down under parent.subscription_details. A dedup
+  # test that grants on a shape Stripe never sends proves nothing about
+  # redelivery of the events we actually receive.
   defp event_body(account_id, tier) do
     Jason.encode!(%{
       "id" => "evt_dup_#{System.unique_integer([:positive])}",
       "type" => "invoice.payment_succeeded",
-      "data" => %{"object" => %{"metadata" => %{"account_id" => account_id, "tier" => tier}}}
+      "data" => %{
+        "object" => %{
+          "object" => "invoice",
+          "metadata" => %{},
+          "parent" => %{
+            "type" => "subscription_details",
+            "subscription_details" => %{
+              "subscription" => "sub_spex_dup",
+              "metadata" => %{"account_id" => account_id, "tier" => tier}
+            }
+          }
+        }
+      }
     })
   end
 
