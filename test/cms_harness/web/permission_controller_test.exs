@@ -23,15 +23,9 @@ defmodule CmsHarness.Web.PermissionControllerTest do
     Application.put_env(:code_my_spec, :harness_server_url, "http://127.0.0.1:#{port}")
     Application.put_env(:code_my_spec, :harness_token, "test-token")
 
-    saved = Enum.map(~w(CMS_SERVER_URL CMS_TOKEN CMS_DEPLOY_KEY), &{&1, System.get_env(&1)})
-    Enum.each(saved, fn {name, _} -> System.delete_env(name) end)
-
+    # The OS environment is cleared by `CmsHarnessTest.ConnCase`; it wins over
+    # application config in `CmsHarness.Config`.
     on_exit(fn ->
-      Enum.each(saved, fn
-        {_name, nil} -> :ok
-        {name, value} -> System.put_env(name, value)
-      end)
-
       Application.put_env(:code_my_spec, :harness_server_url, previous_url)
       Application.put_env(:code_my_spec, :harness_token, previous_token)
     end)

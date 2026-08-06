@@ -21,29 +21,11 @@ defmodule CmsHarness.Web.McpControllerTest do
     Application.put_env(:code_my_spec, :harness_server_url, "http://127.0.0.1:#{port}")
     Application.put_env(:code_my_spec, :harness_token, "test-token")
 
-    # The environment wins over application config in `CmsHarness.Config`, so a
-    # developer with CMS_TOKEN exported would otherwise have the suite forward
-    # to their real server with their real credential.
-    #
-    # CMS_PROJECT_ID for the same reason and a sharper one: `ProjectIdentity`
-    # prefers it over the directory's own config.yml, so with it set every test
-    # here passed while proving nothing about resolution. It is exported in the
-    # shell on at least one machine here, which is exactly the way a variable
-    # gets into a test run without appearing anywhere in the repo.
-    saved =
-      Enum.map(
-        ~w(CMS_SERVER_URL CMS_TOKEN CMS_DEPLOY_KEY CMS_PROJECT_ID CMS_PROJECT_DIR),
-        &{&1, System.get_env(&1)}
-      )
-
-    Enum.each(saved, fn {name, _} -> System.delete_env(name) end)
-
+    # The OS environment is cleared by `CmsHarnessTest.ConnCase` — it wins over
+    # application config in `CmsHarness.Config`, and `ProjectIdentity` prefers
+    # `CMS_PROJECT_ID` over the directory's own config.yml, so a variable
+    # exported in someone's shell would decide these tests.
     on_exit(fn ->
-      Enum.each(saved, fn
-        {_name, nil} -> :ok
-        {name, value} -> System.put_env(name, value)
-      end)
-
       Application.put_env(:code_my_spec, :harness_server_url, previous_url)
       Application.put_env(:code_my_spec, :harness_token, previous_token)
     end)
