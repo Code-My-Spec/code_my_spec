@@ -2074,7 +2074,7 @@ defmodule CodeMySpecSpex.Case do
   Add `setup :devops_on` above any spex whose subject is the DevOps routine.
   """
   def devops_on(%{scope: scope} = context) do
-    {:ok, _configuration} = CodeMySpec.Configurations.update(scope, %{devops: :prod})
+    Fixtures.enable_devops(scope)
 
     context
   end

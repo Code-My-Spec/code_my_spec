@@ -37,6 +37,7 @@ defmodule CodeMySpec.Resources do
   alias CodeMySpec.Provisioning
   alias CodeMySpec.Provisioning.Step
   alias CodeMySpec.Repo
+  alias CodeMySpec.Resources.Acknowledgement
   alias CodeMySpec.Resources.Inventory
   alias CodeMySpec.Users.Scope
 
@@ -79,6 +80,101 @@ defmodule CodeMySpec.Resources do
       errors: errors
     }
   end
+
+  ## Acting on what the report found
+
+  @doc """
+  Mark a resource as deliberate, so it stops counting against the account.
+  """
+  @spec keep(Scope.t(), String.t(), String.t()) :: {:ok, Acknowledgement.t()} | {:error, term()}
+  defdelegate keep(scope, kind, location), to: Acknowledgement
+
+  @doc "Undo `keep/3`, putting the resource back among the dangling."
+  @spec release(Scope.t(), String.t(), String.t()) :: :ok
+  defdelegate release(scope, kind, location), to: Acknowledgement
+
+  @doc """
+  Everything trim would remove: dangling, and only dangling.
+
+  Separate from `trim/1` on purpose. A resource Sam has said to keep must not
+  appear in the set the delete path is handed at all — a guarantee that
+  depends on the delete path checking a flag has already put an irreversible
+  button underneath something he asked to keep.
+  """
+  @spec trim_candidates(Scope.t()) :: [map()]
+  def trim_candidates(%Scope{} = scope) do
+    scope |> report() |> Map.fetch!(:resources) |> Enum.filter(&(&1.status == :dangling))
+  end
+
+  @doc """
+  Delete every dangling resource at its provider.
+
+  Runs through `Teardown.resource/3`, which knows how to remove each kind and
+  already refuses anything setup merely adopted. What reaches it is
+  `trim_candidates/1`, so a kept resource is never a candidate rather than
+  being filtered out late.
+  """
+  @spec trim(Scope.t()) :: %{ok: [map()], error: [{map(), term()}]}
+  def trim(%Scope{} = scope) do
+    scope
+    |> trim_candidates()
+    |> Enum.reduce(%{ok: [], error: []}, fn resource, acc ->
+      case remove(scope, resource) do
+        {:ok, _} -> %{acc | ok: [resource | acc.ok]}
+        {:error, reason} -> %{acc | error: [{resource, reason} | acc.error]}
+      end
+    end)
+  end
+
+  defp remove(scope, resource) do
+    case config(:trim) do
+      nil -> CodeMySpec.Provisioning.Teardown.resource(scope, Map.put(resource, :origin, "created"))
+      fun -> fun.(scope, resource)
+    end
+  end
+
+  @doc """
+  Run one project's setup, converging on whatever is missing.
+
+  The action is the project's sequence rather than an individual step. Steps
+  are ordered and depend on each other, so running one alone fails whenever
+  the gap is not the very next one — and fails in a way that reads like a
+  broken feature rather than an ordering constraint. The sequence is already
+  idempotent, which is what makes it safe to offer: it builds what is absent
+  and leaves what is not.
+  """
+  @spec fix(Scope.t(), Ecto.UUID.t()) :: term()
+  def fix(%Scope{} = scope, project_id) when is_binary(project_id) do
+    case Enum.find(Projects.list_projects(scope), &(&1.id == project_id)) do
+      nil ->
+        {:error, :not_found}
+
+      project ->
+        project_scope = project_scope(scope, project)
+
+        # The same opts `ProvisioningLive` passes. `run_step/3` does not read
+        # this env itself, so a caller that omits it silently runs the real
+        # providers — which is what this did first time round, failing every
+        # step against credentials that were never meant to be used.
+        Provisioning.run(project_scope, Provisioning.setup_options(project), step_opts())
+    end
+  end
+
+  @doc """
+  Run setup for every project meant to be deployed.
+
+  Each runs on its own: a refusal halts that project and nothing else. One
+  provider saying no to one project must not decide what happens to the rest,
+  or the button is unusable on any account with more than one.
+  """
+  @spec fix_all(Scope.t()) :: [{Ecto.UUID.t(), term()}]
+  def fix_all(%Scope{} = scope) do
+    for project <- deployable(scope), do: {project.id, fix(scope, project.id)}
+  end
+
+  defp step_opts, do: Application.get_env(:code_my_spec, :provisioning_step_opts, [])
+
+  defp config(key), do: Application.get_env(:code_my_spec, __MODULE__, [])[key]
 
   # What each project meant to be deployed should have, from the same sequence
   # the run uses. `plan/2` fills the gaps a run never reached, which is the
@@ -134,7 +230,8 @@ defmodule CodeMySpec.Resources do
       # empty, and treating those as the same thing flagged every A record on
       # the account during an outage.
       servers_known?: not Map.has_key?(errors, :hetzner),
-      bucket_names: bucket_names(scope)
+      bucket_names: bucket_names(scope),
+      kept: Acknowledgement.kept(scope)
     }
   end
 
@@ -150,7 +247,7 @@ defmodule CodeMySpec.Resources do
   # marketing site on Fly. "Points at nothing" has to mean "points at
   # something we released", not "points somewhere we do not recognise".
   defp classify(%{kind: "dns_record"} = resource, world) do
-    put(resource, :domain, dns_status(address_of(resource), world))
+    put(resource, :domain, dns_status(address_of(resource), world), world.kept)
   end
 
   # Same rule. A bucket we never created is somebody else's storage; a bucket
@@ -165,7 +262,7 @@ defmodule CodeMySpec.Resources do
         true -> :present
       end
 
-    put(resource, :account, status)
+    put(resource, :account, status, world.kept)
   end
 
   defp classify(%{kind: kind} = resource, _world) when kind in ~w(ssh_key firewall) do
@@ -233,12 +330,28 @@ defmodule CodeMySpec.Resources do
     end
   end
 
-  defp put(resource, owner, status) do
+  defp put(resource, owner, status), do: put(resource, owner, status, MapSet.new())
+
+  # A dangling resource Sam has accounted for is `:kept` — still listed, still
+  # saying what it is, and no longer counted against him. Marking says "keep
+  # this", never "hide this": a resource nobody can see is the failure this
+  # whole epic keeps finding.
+  defp put(resource, owner, :dangling, kept) do
+    if MapSet.member?(kept, {resource.kind, resource.location}) do
+      build(resource, owner, :kept)
+    else
+      build(resource, owner, :dangling)
+    end
+  end
+
+  defp put(resource, owner, status, _kept), do: build(resource, owner, status)
+
+  defp build(resource, owner, status) do
     resource
     |> Map.put(:owner, owner)
     |> Map.put(:status, status)
     # Everything the providers report is something that exists; whether *we*
-    # made it is a separate question, and one story 999 needs answered before
+    # made it is a separate question, and one trimming needs answered before
     # it can offer to delete anything.
     |> Map.put_new(:origin, :unrecorded)
   end

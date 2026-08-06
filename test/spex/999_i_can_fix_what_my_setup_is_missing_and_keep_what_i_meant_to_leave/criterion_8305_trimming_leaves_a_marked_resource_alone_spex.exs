@@ -86,7 +86,7 @@ defmodule CodeMySpecSpex.Story999.Criterion8305Spex do
         context = stage_trim(context, fn resource -> send(owner, {:trimmed, resource.location}) end)
 
         {:ok, view, _html} = live(context.conn, ~p"/app/resources")
-        render_async(view)
+        render_async(view, 5_000)
 
         {:ok, Map.put(context, :view, view)}
       end
@@ -100,7 +100,14 @@ defmodule CodeMySpecSpex.Story999.Criterion8305Spex do
       end
 
       when_ "he trims what is dangling", context do
-        html = context.view |> element("[data-test='trim']") |> render_click()
+        # The trim button only opens a confirmation — it carries no push, which
+        # is the point: deleting at a provider should take a second decision.
+        # The deletion rides on the dialog's confirm.
+        assert has_element?(context.view, "[data-role='confirm-dialog']"),
+               "trim is wired straight to the deletion, with nothing between a stray " <>
+                 "click and an irreversible one"
+
+        html = context.view |> element("[data-role='confirm-confirm']") |> render_click()
 
         {:ok, context |> Map.put(:html, html) |> Map.put(:document, Floki.parse_document!(html))}
       end

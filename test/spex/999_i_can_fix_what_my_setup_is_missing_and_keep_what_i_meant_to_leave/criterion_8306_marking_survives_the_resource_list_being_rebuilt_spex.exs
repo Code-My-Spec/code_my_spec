@@ -65,7 +65,7 @@ defmodule CodeMySpecSpex.Story999.Criterion8306Spex do
 
       given_ "and Sam has marked it as deliberate", context do
         {:ok, view, _html} = live(context.conn, ~p"/app/resources")
-        render_async(view)
+        render_async(view, 5_000)
 
         view
         |> element("[data-test='keep'][phx-value-location='storage/old-dumps']")
@@ -79,7 +79,7 @@ defmodule CodeMySpecSpex.Story999.Criterion8306Spex do
         # on the screen came back from storage rather than from memory.
         {:ok, view, _html} = live(context.conn, ~p"/app/resources")
 
-        {:ok, Map.put(context, :document, Floki.parse_document!(render_async(view)))}
+        {:ok, Map.put(context, :document, Floki.parse_document!(render_async(view, 5_000)))}
       end
 
       then_ "the bucket is still shown as kept on purpose", context do

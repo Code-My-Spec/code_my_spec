@@ -14,6 +14,12 @@ defmodule CodeMySpecSpex.Story999.Criterion8303Spex do
   have. The last part matters most — this whole page exists so that "we are
   fine" is a statement someone can rely on.
 
+  "The rest" is the other project, not the later steps of the same one. Steps
+  are ordered and depend on what came before, so halting the remainder of a
+  project whose `email` step was refused is correct rather than collateral —
+  the sequence is the dependency model. What must not happen is one project's
+  refusal reaching across to another.
+
   Surface: `CodeMySpecWeb.ResourceLive.Index` at `/app/resources`.
   """
 
@@ -34,9 +40,19 @@ defmodule CodeMySpecSpex.Story999.Criterion8303Spex do
 
         context =
           scripted_run(context, %{
-            storage: fn ->
-              send(owner, {:built, :storage})
-              {:ok, [%{kind: "bucket", location: "storage/fixture-uat", identifier: "environment=uat"}]}
+            # Before `email` in the sequence, so it is reachable in every
+            # project regardless of what happens later.
+            server: fn ->
+              send(owner, {:built, :server})
+
+              {:ok,
+               [
+                 %{
+                   kind: "server",
+                   location: "hetzner/uat-box",
+                   identifier: "environment=uat ip=203.0.113.10"
+                 }
+               ]}
             end,
             # A refusal the account cannot do anything about from here, which
             # is the ordinary case: capacity, or somebody else's verification.
@@ -56,6 +72,12 @@ defmodule CodeMySpecSpex.Story999.Criterion8303Spex do
         |> form("[data-test='project-form']", project: %{name: "second-project-999"})
         |> render_submit()
 
+        # Said explicitly for this one too. DevOps is opt in, so a project
+        # created and left alone expects no infrastructure — and this criterion
+        # needs two projects that do. Named rather than addressed by id: the
+        # create form redirects to the index, so the id is never in hand.
+        CodeMySpecSpex.Fixtures.enable_devops(context.scope, "second-project-999")
+
         {:ok, context}
       end
 
@@ -63,16 +85,21 @@ defmodule CodeMySpecSpex.Story999.Criterion8303Spex do
         context = stage_inventory(context, %{hetzner: [], cloudflare: [], resend: [], storage: []})
 
         {:ok, view, _html} = live(context.conn, ~p"/app/resources")
-        render_async(view)
+        render_async(view, 5_000)
 
         view |> element("[data-test='fix-all']") |> render_click()
 
         {:ok, context |> Map.put(:view, view) |> Map.put(:html, await_settled(view))}
       end
 
-      then_ "the steps that could be built were built", context do
-        assert_received {:built, :storage},
-                        "a refusal in one step stopped steps that had nothing to do with it"
+      then_ "both projects were run, so one refusal did not stop the other", context do
+        # Once per project. The second message is the whole claim: the first
+        # project halted at `email`, and the second still got its turn.
+        assert_received {:built, :server}
+
+        assert_received {:built, :server},
+                        "only one project was run, so a refusal in the first stopped the " <>
+                          "second from being attempted at all"
 
         {:ok, context}
       end
@@ -80,7 +107,14 @@ defmodule CodeMySpecSpex.Story999.Criterion8303Spex do
       then_ "and the one that failed says which it was and what the provider said", context do
         document = Floki.parse_document!(context.html)
 
-        failed = Floki.find(document, "[data-test='checklist-item'][data-key='email']")
+        # Scoped to one project. Both have an `email` entry now, and "is email
+        # missing" has to be asked of a project rather than of the account.
+        failed =
+          Floki.find(
+            document,
+            "[data-test='checklist-item'][data-key='email']" <>
+              "[data-project-id='#{context.project.id}']"
+          )
 
         assert Floki.attribute(failed, "data-state") == ["missing"],
                "the step that was refused is not reported as still missing"

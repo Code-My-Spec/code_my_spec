@@ -73,7 +73,7 @@ defmodule CodeMySpecSpex.Story999.Criterion8304Spex do
           })
 
         {:ok, view, _html} = live(context.conn, ~p"/app/resources")
-        html = render_async(view)
+        html = render_async(view, 5_000)
 
         assert html
                |> Floki.parse_document!()

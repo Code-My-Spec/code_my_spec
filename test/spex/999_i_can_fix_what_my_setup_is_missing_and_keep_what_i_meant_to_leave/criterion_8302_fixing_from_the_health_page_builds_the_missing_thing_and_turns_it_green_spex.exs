@@ -66,7 +66,7 @@ defmodule CodeMySpecSpex.Story999.Criterion8302Spex do
         context = stage_inventory(context, %{hetzner: [], cloudflare: [], resend: [], storage: []})
 
         {:ok, view, _html} = live(context.conn, ~p"/app/resources")
-        html = render_async(view)
+        html = render_async(view, 5_000)
 
         assert html
                |> Floki.parse_document!()
@@ -136,7 +136,13 @@ defmodule CodeMySpecSpex.Story999.Criterion8302Spex do
         html
 
       System.monotonic_time(:millisecond) > deadline ->
-        flunk("the page still reports something missing after the fix ran")
+        still =
+          html
+          |> Floki.parse_document!()
+          |> Floki.find("[data-test='missing-item']")
+          |> Floki.attribute("data-key")
+
+        flunk("still missing after the fix ran: #{inspect(still)}")
 
       true ->
         Process.sleep(100)

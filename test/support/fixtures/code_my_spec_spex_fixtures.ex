@@ -1801,4 +1801,33 @@ defmodule CodeMySpecSpex.Fixtures do
 
     :ok
   end
+
+  @doc """
+  Say a project other than the active one is meant to be deployed.
+
+  `setup :devops_on` covers the project on the scope. A criterion needing a
+  *second* deployable project has no scope pointing at it and no id — the
+  create form redirects to the index — so it names the project instead.
+
+  DevOps is opt in, so a project created and left alone expects no
+  infrastructure. A criterion about two deployable projects has to make both
+  of them so.
+  """
+  @spec enable_devops(Scope.t()) :: :ok
+  def enable_devops(%Scope{} = scope) do
+    {:ok, _configuration} = CodeMySpec.Configurations.update(scope, %{devops: :prod})
+
+    :ok
+  end
+
+  @spec enable_devops(Scope.t(), String.t()) :: :ok
+  def enable_devops(%Scope{} = scope, project_name) do
+    project =
+      scope
+      |> CodeMySpec.Projects.list_projects()
+      |> Enum.find(&(&1.name == project_name)) ||
+        raise "no project named #{inspect(project_name)} on this account"
+
+    enable_devops(%Scope{scope | active_project: project, active_project_id: project.id})
+  end
 end
