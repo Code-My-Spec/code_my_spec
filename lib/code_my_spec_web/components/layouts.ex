@@ -211,6 +211,7 @@ defmodule CodeMySpecWeb.Layouts do
                 <li><a href={~p"/app/projects/#{project.id}/components"}>Components</a></li>
 
                 <li class="menu-title">Build</li>
+                <li><a href={~p"/app/projects/#{project.id}/chat"}>Chat</a></li>
                 <li><a href={~p"/app/projects/#{project.id}/next-task"}>Next task</a></li>
                 <li><a href={~p"/app/projects/#{project.id}/files"}>Files &amp; sync</a></li>
                 <li><a href={~p"/app/projects/#{project.id}/problems"}>Problems</a></li>

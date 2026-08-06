@@ -489,6 +489,7 @@ defmodule CodeMySpecWeb.Router do
       ] do
       live "/projects/:project_id/users", ProjectUsersLive.Index, :index
 
+      live "/projects/:project_id/chat", ChatLive, :show
       live "/projects/:project_id/inbox", InboxLive, :index
       live "/projects/:project_id/inbox/:id", InboxLive, :show
 

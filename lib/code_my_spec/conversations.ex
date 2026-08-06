@@ -162,6 +162,72 @@ defmodule CodeMySpec.Conversations do
     end
   end
 
+  @doc """
+  Records a call the model made, before it has returned.
+
+  Written as its own turn so the call is visible while it runs rather than
+  after — a conversation that goes quiet mid-tool reads as broken.
+  """
+  def add_tool_call(%Conversation{} = conversation, call_id, name, arguments) do
+    agent_turn(conversation, %{
+      role: :assistant,
+      agent_role: "product",
+      content: [],
+      tool_calls: [%{"id" => call_id, "name" => name, "arguments" => arguments}],
+      sender_id: "agent:product"
+    })
+  end
+
+  @doc "Records what a call returned, paired to it by `call_id`."
+  def add_tool_result(%Conversation{} = conversation, call_id, name, text) do
+    agent_turn(conversation, %{
+      role: :tool,
+      agent_role: "product",
+      content: [Message.text_part(text)],
+      tool_call_id: call_id,
+      sender_id: "agent:#{name}"
+    })
+  end
+
+  @doc """
+  Ends the conversation early because the model would not stop.
+
+  A silent stop is indistinguishable from a hang, so this is a turn the reader
+  can see, not a flag only the server knows about.
+  """
+  def halt(%Conversation{} = conversation, reason) do
+    system_turn(conversation, "Stopped: #{reason}")
+  end
+
+  @doc "Ends the conversation because something failed. Everything already said stays."
+  def fail(%Conversation{} = conversation, reason) do
+    system_turn(conversation, "Failed: #{reason}")
+  end
+
+  defp system_turn(conversation, text) do
+    agent_turn(conversation, %{
+      role: :assistant,
+      agent_role: "system",
+      content: [Message.text_part(text)],
+      sender_id: "agent:system"
+    })
+  end
+
+  defp agent_turn(conversation, attrs) do
+    %Message{}
+    |> Message.agent_changeset(Map.put(attrs, :conversation_id, conversation.id))
+    |> Repo.insert()
+    |> case do
+      {:ok, message} ->
+        touch(conversation, false)
+        broadcast_new_message(conversation, message)
+        {:ok, message}
+
+      error ->
+        error
+    end
+  end
+
   # An empty body contributes no part — an attachment-only message must not
   # gain a blank text part it never had.
   defp parts_for(nil), do: []

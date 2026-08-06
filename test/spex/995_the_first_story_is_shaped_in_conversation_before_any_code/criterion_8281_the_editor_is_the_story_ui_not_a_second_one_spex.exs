@@ -68,13 +68,13 @@ defmodule CodeMySpecSpex.Story995.Criterion8281Spex do
 
       then_ "a change he makes there is the change the stories page shows", context do
         context.chat
-        |> form("[data-test='story-form']", %{story: %{title: "Calendar of today's bookings"}})
+        |> form("[data-test='story-form']", %{story: %{title: "Calendar of bookings for today"}})
         |> render_submit()
 
         {:ok, _stories_live, html} =
           live(context.conn, ~p"/app/projects/#{context.project.id}/stories")
 
-        assert html =~ "Calendar of today's bookings",
+        assert html =~ "Calendar of bookings for today",
                "expected the edit made in the conversation to be the story the page shows"
 
         {:ok, context}

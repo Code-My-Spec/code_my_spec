@@ -53,9 +53,11 @@ defmodule CodeMySpecSpex.Story995.Criterion8272Spex do
       end
 
       when_ "he changes its wording", context do
+        context.chat |> element("[data-test='story-card']") |> render_click()
+
         context.chat
         |> form("[data-test='story-form']", %{
-          story: %{title: "Today's bookings show up on a calendar"}
+          story: %{title: "Bookings for today show up on a calendar"}
         })
         |> render_submit()
 
@@ -66,8 +68,8 @@ defmodule CodeMySpecSpex.Story995.Criterion8272Spex do
         {:ok, _stories_live, html} =
           live(context.conn, ~p"/app/projects/#{context.project.id}/stories")
 
-        assert html =~ "Today's bookings show up on a calendar",
-               "expected Sam's correction to be the story that was saved"
+        assert html =~ "Bookings for today show up on a calendar",
+               "expected Sam's correction to be the story that was saved, got: #{html}"
 
         {:ok, context}
       end
