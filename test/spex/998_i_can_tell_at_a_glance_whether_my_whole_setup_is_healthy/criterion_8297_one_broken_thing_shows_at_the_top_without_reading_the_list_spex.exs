@@ -36,8 +36,11 @@ defmodule CodeMySpecSpex.Story998.Criterion8297Spex do
                 identifier: "203.0.113.10"
               }),
               inventory_resource(%{kind: "ssh_key", location: "hetzner/codemyspec"}),
-              inventory_resource(%{kind: "firewall", location: "hetzner/web"}),
-              inventory_resource(%{kind: "bucket", location: "project-uat"})
+              inventory_resource(%{kind: "firewall", location: "hetzner/web"})
+              # Deliberately no bucket. A bucket is judged against the
+              # environments that name it, and with no project deployed here
+              # there is nothing to name one — it would dangle correctly and
+              # make this scenario's premise false rather than exercising it.
             ],
             cloudflare: [
               inventory_resource(%{

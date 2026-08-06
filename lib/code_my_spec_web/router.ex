@@ -392,6 +392,7 @@ defmodule CodeMySpecWeb.Router do
       # projects. Putting it behind `:project_scoped` would reintroduce the
       # grain this exists to fix, and would hide Sam's own servers behind
       # having picked a project first.
+      live "/resources", ResourceLive.Index, :index
       live "/servers", ServerLive.Index, :index
       live "/servers/:name/edit", ServerLive.Index, :edit
       live "/servers/:name", ServerLive.Show, :show
