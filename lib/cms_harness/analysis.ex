@@ -40,6 +40,7 @@ defmodule CmsHarness.Analysis do
 
   require Logger
 
+  alias CmsHarness.TestDatabase
   alias CodeMySpec.BddSpecs.Spex
   alias CodeMySpec.Compile
   alias CodeMySpec.Environments.Environment
@@ -114,7 +115,7 @@ defmodule CmsHarness.Analysis do
   end
 
   defp execute("exunit", env, args) do
-    case CodeMySpec.Tests.execute(args, environment: env) do
+    case CodeMySpec.Tests.execute(args, environment: env, extra_env: TestDatabase.env(env)) do
       {:ok, test_run} ->
         {:ok,
          %{

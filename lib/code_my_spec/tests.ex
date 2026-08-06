@@ -51,7 +51,9 @@ defmodule CodeMySpec.Tests do
       [
         {"MIX_ENV", "test"},
         {"EXUNIT_JSON_OUTPUT_FILE", temp_file}
-      ] ++ CodeMySpec.Environments.clean_otp_env()
+      ] ++
+        Keyword.get(opts, :extra_env, []) ++
+        CodeMySpec.Environments.clean_otp_env()
 
     Logger.info("[Tests] Running: #{command}")
 
