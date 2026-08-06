@@ -22,7 +22,7 @@
   "mcpServers": {
     "local": {
       "type": "http",
-      "url": "http://localhost:4003/mcp?dir=${CLAUDE_PROJECT_DIR}"
+      "url": "http://localhost:4004/mcp?dir=${CLAUDE_PROJECT_DIR}"
     },
     "cms_cloud": {
       "type": "http",

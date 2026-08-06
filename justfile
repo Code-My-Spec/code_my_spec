@@ -9,6 +9,40 @@ server:
 cli *args:
     MIX_ENV=dev_cli iex -S mix run --no-halt {{args}}
 
+# Run the light harness on 4004 (no local DB — reports to the dev server)
+harness port="4004" server="http://localhost:4000":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    # Serves hooks AND MCP on 4004 — the port the in-repo plugin points at,
+    # which the packager rewrites to 4003 on release. So this and
+    # `just claude-dev` talk to each other while the installed `cms` on 4003
+    # keeps serving every other session untouched.
+    #
+    # The credential is a project deploy key, traded for a short-lived token at
+    # /api/sprite/token. envs/.env is gitignored and already this repo's place
+    # for secrets; config/runtime.exs sources it into the process environment,
+    # so the harness picks it up without the recipe ever reading it.
+    if [ -z "${CMS_DEPLOY_KEY:-}" ] && [ -z "${CMS_TOKEN:-}" ] \
+       && ! grep -qE '^CMS_(DEPLOY_KEY|TOKEN)=' envs/.env 2>/dev/null; then
+      echo "No credential. Copy the project's deploy key from"                >&2
+      echo "  {{server}}/app/projects/<project-id>/edit"                      >&2
+      echo "and put CMS_DEPLOY_KEY=... in envs/.env (or export it)."          >&2
+      echo                                                                    >&2
+      echo "Generate only fills the field — Save is what stores the hash, so" >&2
+      echo "a key copied without saving matches nothing."                     >&2
+      exit 1
+    fi
+    # `elixir -S mix`, not `mix`: a bare `mix` in a worktree resolves against
+    # the main checkout and would run the wrong tree's code.
+    CMS_HARNESS=1 CMS_HARNESS_PORT={{port}} CMS_SERVER_URL={{server}} \
+      MIX_ENV=dev_cli elixir -S mix run --no-halt
+
+# Start Claude Code against the in-repo plugin — pair with `just harness`
+claude-dev *args:
+    # Session-scoped: --plugin-dir applies to this invocation only, so every
+    # other Claude session keeps the marketplace plugin and the cms on 4003.
+    claude --plugin-dir {{justfile_directory()}}/plugins/claude {{args}}
+
 # Run tests
 test *args:
     mix test {{args}}
