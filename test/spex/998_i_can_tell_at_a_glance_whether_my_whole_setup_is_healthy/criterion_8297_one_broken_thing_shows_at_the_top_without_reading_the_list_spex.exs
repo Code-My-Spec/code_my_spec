@@ -22,11 +22,42 @@ defmodule CodeMySpecSpex.Story998.Criterion8297Spex do
   @endpoint CodeMySpecWeb.Endpoint
 
   setup :register_log_in_setup_account
+  setup :setup_active_project
+  setup :devops_on
+  setup :connect_providers
 
   spex "One broken thing shows at the top without reading the list" do
     scenario "everything in place except one record" do
-      given_ "everything the account should have, except one DNS record pointing at nothing",
-             context do
+      given_ "setup once provisioned a box at .99", context do
+        # A record can only dangle against an address that was ours, so the
+        # premise needs a box on record before one can be released.
+        context =
+          scripted_run(context, %{
+            server: fn ->
+              {:ok,
+               [
+                 %{
+                   kind: "server",
+                   location: "hetzner/old-uat",
+                   identifier: "environment=uat ip=203.0.113.99"
+                 }
+               ]}
+            end
+          })
+
+        {:ok, view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/provisioning")
+
+        view |> element("[data-test='start-setup']") |> render_click()
+        # The last step, not the one this scenario cares about. A scripted run
+        # keeps going, so awaiting an earlier step would let the resources page
+        # read a checklist that is still being written.
+        await_step_state(view, "monitoring", "done")
+
+        {:ok, context}
+      end
+
+      given_ "and everything else is in place, except that one record", context do
         context =
           stage_inventory(context, %{
             hetzner: [

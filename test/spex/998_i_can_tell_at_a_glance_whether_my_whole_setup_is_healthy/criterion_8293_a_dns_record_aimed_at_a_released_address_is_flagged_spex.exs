@@ -23,11 +23,54 @@ defmodule CodeMySpecSpex.Story998.Criterion8293Spex do
   @endpoint CodeMySpecWeb.Endpoint
 
   setup :register_log_in_setup_account
+  setup :setup_active_project
+  setup :devops_on
+  setup :connect_providers
 
   spex "A DNS record aimed at a released address is flagged" do
     scenario "a record and a bucket that point at nothing are called out" do
-      given_ "a DNS record aimed at an address no server holds, and a bucket nothing names",
-             context do
+      given_ "setup once provisioned a box at .99 and a bucket for uat", context do
+        # Released, not merely unrecognised. A record can only dangle against
+        # an address that was *ours* — the first version of this rule flagged
+        # anything pointing outside the Hetzner account, which on a real
+        # account is every host you run anywhere else.
+        context =
+          scripted_run(context, %{
+            server: fn ->
+              {:ok,
+               [
+                 %{
+                   kind: "server",
+                   location: "hetzner/uat-box",
+                   identifier: "environment=uat ip=203.0.113.99"
+                 }
+               ]}
+            end,
+            storage: fn ->
+              {:ok,
+               [
+                 %{
+                   kind: "bucket",
+                   location: "storage/abandoned-project-uat",
+                   identifier: "environment=uat"
+                 }
+               ]}
+            end
+          })
+
+        {:ok, view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/provisioning")
+
+        view |> element("[data-test='start-setup']") |> render_click()
+        # The last step, not the one this scenario cares about. A scripted run
+        # keeps going, so awaiting an earlier step would let the resources page
+        # read a checklist that is still being written.
+        await_step_state(view, "monitoring", "done")
+
+        {:ok, context}
+      end
+
+      given_ "and that box is gone, its address handed to somebody else", context do
         context =
           stage_inventory(context, %{
             hetzner: [
@@ -35,8 +78,10 @@ defmodule CodeMySpecSpex.Story998.Criterion8293Spex do
                 kind: "server",
                 location: "hetzner/live-uat",
                 identifier: "203.0.113.10"
-              }),
-              inventory_resource(%{kind: "bucket", location: "abandoned-project-uat"})
+              })
+            ],
+            storage: [
+              inventory_resource(%{kind: "bucket", location: "storage/abandoned-project-uat"})
             ],
             cloudflare: [
               inventory_resource(%{
@@ -48,6 +93,14 @@ defmodule CodeMySpecSpex.Story998.Criterion8293Spex do
                 kind: "dns_record",
                 location: "old.example.com",
                 identifier: "A 203.0.113.99"
+              }),
+              # Never ours. On a real account this is the common case — a
+              # marketing site on Fly, an ftp host elsewhere — and flagging it
+              # was six of the seven flags the first rule produced.
+              inventory_resource(%{
+                kind: "dns_record",
+                location: "elsewhere.example.com",
+                identifier: "A 198.51.100.7"
               })
             ]
           })
@@ -96,12 +149,30 @@ defmodule CodeMySpecSpex.Story998.Criterion8293Spex do
         bucket =
           Floki.find(
             context.document,
-            "[data-test='resource'][data-location='abandoned-project-uat']"
+            "[data-test='resource'][data-location='storage/abandoned-project-uat']"
           )
 
         assert Floki.attribute(bucket, "data-status") == ["dangling"],
                "a bucket no environment names is listed as though it were in use, and " <>
                  "it bills either way"
+
+        {:ok, context}
+      end
+
+      then_ "and a record that was never ours is left alone", context do
+        # The regression this rule exists to prevent. Flagging every address
+        # outside the provider account is wrong six times out of seven on a
+        # real account, and a mark that wrong stops being read at all.
+        other =
+          Floki.find(
+            context.document,
+            "[data-test='resource'][data-location='elsewhere.example.com']"
+          )
+
+        assert other != [], "the record is not on the page at all"
+
+        refute Floki.attribute(other, "data-status") == ["dangling"],
+               "a record pointing at somebody else's host was reported as broken"
 
         {:ok, context}
       end

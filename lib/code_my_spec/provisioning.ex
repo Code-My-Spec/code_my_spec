@@ -178,6 +178,16 @@ defmodule CodeMySpec.Provisioning do
     do: CodeMySpec.Provisioning.EnvironmentRepository.list(scope)
 
   @doc """
+  A project's environments, seeding none.
+
+  The read for anything that is only looking. See
+  `EnvironmentRepository.list_existing/1`.
+  """
+  @spec existing_environments(Scope.t()) :: [CodeMySpec.Provisioning.Environment.t()]
+  def existing_environments(%Scope{} = scope),
+    do: CodeMySpec.Provisioning.EnvironmentRepository.list_existing(scope)
+
+  @doc """
   Add an environment, or update one that is already there.
 
   The host is derived from the project's domain — prod on the apex, anything

@@ -37,6 +37,20 @@ defmodule CodeMySpec.Provisioning.EnvironmentRepository do
 
   def list(_scope), do: []
 
+  @doc """
+  What a project already has, seeding nothing.
+
+  `list/1` seeds on first read, which is right for the run — provisioning is
+  where environments first mean anything. It is wrong for anything merely
+  looking: `/app/resources` reads every project on the account, and the seeding
+  version created twenty rows across nine projects the first time anyone
+  opened it.
+  """
+  @spec list_existing(Scope.t()) :: [Environment.t()]
+  def list_existing(%Scope{active_project: %{id: project_id}}), do: all(project_id)
+  def list_existing(%Scope{active_project_id: project_id}) when is_binary(project_id), do: all(project_id)
+  def list_existing(_scope), do: []
+
   @doc "Just the names, in a stable order — what most steps actually fan out over."
   @spec names(Scope.t()) :: [String.t()]
   def names(scope), do: scope |> list() |> Enum.map(& &1.name)

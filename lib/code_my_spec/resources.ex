@@ -29,9 +29,14 @@ defmodule CodeMySpec.Resources do
   ours; the actual side is the providers', every time.
   """
 
+  import Ecto.Query
+
   alias CodeMySpec.Configurations
   alias CodeMySpec.Projects
+  alias CodeMySpec.Projects.Project
   alias CodeMySpec.Provisioning
+  alias CodeMySpec.Provisioning.Step
+  alias CodeMySpec.Repo
   alias CodeMySpec.Resources.Inventory
   alias CodeMySpec.Users.Scope
 
@@ -54,8 +59,12 @@ defmodule CodeMySpec.Resources do
     found = for {_p, {:ok, list}} <- answers, resource <- list, do: resource
 
     checklist = checklist(scope)
-    resources = Enum.map(found, &classify(&1, found, scope))
+    world = world(scope, found, errors)
+    resources = Enum.map(found, &classify(&1, world))
 
+    # `:unknown` is not a problem. It is the absence of an answer, and counting
+    # it would turn one provider's outage into a page full of complaints about
+    # resources nothing is wrong with.
     problems =
       Enum.count(resources, &(&1.status == :dangling)) +
         Enum.count(checklist, &(&1.state == :missing))
@@ -111,35 +120,74 @@ defmodule CodeMySpec.Resources do
     %Scope{scope | active_project: project, active_project_id: project.id}
   end
 
+  # Everything the cross-checks need, gathered once. Also the answer to an
+  # N+1: `bucket_names/1` used to run per bucket.
+  defp world(scope, found, errors) do
+    recorded = recorded_resources(scope)
+
+    %{
+      live_addresses: MapSet.new(for %{kind: "server", identifier: ip} <- found, is_binary(ip), do: ip),
+      recorded_addresses: addresses_in(recorded),
+      recorded_buckets: names_in(recorded, "bucket"),
+      # Whether we can say anything about what servers exist right now. When
+      # Hetzner cannot be asked, the comparison set is missing rather than
+      # empty, and treating those as the same thing flagged every A record on
+      # the account during an outage.
+      servers_known?: not Map.has_key?(errors, :hetzner),
+      bucket_names: bucket_names(scope)
+    }
+  end
+
   # Dangling is defined per kind, because "points at nothing" means something
   # different for each. One generic rule would either miss the DNS case or
   # flag things that are fine, and a flag that is wrong often enough stops
   # being read.
-  defp classify(%{kind: "dns_record"} = resource, found, _scope) do
-    addresses = for %{kind: "server", identifier: ip} <- found, is_binary(ip), do: ip
-
-    status =
-      case address_of(resource) do
-        nil -> :present
-        ip -> if ip in addresses, do: :present, else: :dangling
-      end
-
-    put(resource, :domain, status)
+  #
+  # The load-bearing qualifier throughout: a resource can only dangle if it
+  # was **ours**. The first version flagged anything that did not match our
+  # records, which on a real account means every record pointing at a host
+  # somewhere else — six of seven flags on John's account were his own
+  # marketing site on Fly. "Points at nothing" has to mean "points at
+  # something we released", not "points somewhere we do not recognise".
+  defp classify(%{kind: "dns_record"} = resource, world) do
+    put(resource, :domain, dns_status(address_of(resource), world))
   end
 
-  defp classify(%{kind: "bucket"} = resource, _found, scope) do
-    named = bucket_names(scope)
+  # Same rule. A bucket we never created is somebody else's storage; a bucket
+  # we did create and no environment names anymore is one we are paying for.
+  defp classify(%{kind: "bucket"} = resource, world) do
     name = resource.location |> String.split("/") |> List.last()
 
-    put(resource, :account, if(name in named, do: :present, else: :dangling))
+    status =
+      cond do
+        MapSet.member?(world.bucket_names, name) -> :present
+        MapSet.member?(world.recorded_buckets, name) -> :dangling
+        true -> :present
+      end
+
+    put(resource, :account, status)
   end
 
-  defp classify(%{kind: kind} = resource, _found, _scope) when kind in ~w(ssh_key firewall) do
+  defp classify(%{kind: kind} = resource, _world) when kind in ~w(ssh_key firewall) do
     put(resource, :account, :present)
   end
 
-  defp classify(%{kind: "server"} = resource, _found, _scope), do: put(resource, :server, :present)
-  defp classify(resource, _found, _scope), do: put(resource, :project, :present)
+  defp classify(%{kind: "server"} = resource, _world), do: put(resource, :server, :present)
+  defp classify(resource, _world), do: put(resource, :project, :present)
+
+  defp dns_status(nil, _world), do: :present
+
+  defp dns_status(address, world) do
+    cond do
+      # Never one of ours. Somebody else's host, and none of our business
+      # whether it is still up.
+      not MapSet.member?(world.recorded_addresses, address) -> :present
+      # Ours, and we cannot see what is running to know if it still is.
+      not world.servers_known? -> :unknown
+      MapSet.member?(world.live_addresses, address) -> :present
+      true -> :dangling
+    end
+  end
 
   # Only an A record can dangle against a server address. A CNAME or TXT points
   # at a name or a string, and checking those against IPs would flag every one
@@ -147,9 +195,39 @@ defmodule CodeMySpec.Resources do
   defp address_of(%{identifier: "A " <> address}), do: String.trim(address)
   defp address_of(_resource), do: nil
 
+  # What setup wrote down that it made, across every project on the account.
+  # This is the record of what was once ours, which is what makes "released"
+  # distinguishable from "never mine".
+  defp recorded_resources(%Scope{active_account_id: account_id}) when is_binary(account_id) do
+    Step
+    |> join(:inner, [s], p in Project, on: p.id == s.project_id)
+    |> where([_s, p], p.account_id == ^account_id)
+    |> select([s], s.resources)
+    |> Repo.all()
+    |> List.flatten()
+    |> Enum.reject(&is_nil/1)
+  end
+
+  defp recorded_resources(_scope), do: []
+
+  defp addresses_in(recorded) do
+    for %{kind: "server", identifier: identifier} <- recorded,
+        is_binary(identifier),
+        [address] <- [Regex.run(~r/\b\d{1,3}(?:\.\d{1,3}){3}\b/, identifier)],
+        into: MapSet.new(),
+        do: address
+  end
+
+  defp names_in(recorded, kind) do
+    for %{kind: ^kind, location: location} <- recorded,
+        is_binary(location),
+        into: MapSet.new(),
+        do: location |> String.split("/") |> List.last()
+  end
+
   defp bucket_names(scope) do
     for project <- Projects.list_projects(scope),
-        environment <- Provisioning.environments(project_scope(scope, project)),
+        environment <- Provisioning.existing_environments(project_scope(scope, project)),
         into: MapSet.new() do
       "#{Provisioning.Repository.default_name(project)}-#{environment.name}"
     end
