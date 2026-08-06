@@ -20,10 +20,20 @@ harness port="4004" server="http://localhost:4000":
     #
     # The credential is a project deploy key, traded for a short-lived token at
     # /api/sprite/token. envs/.env is gitignored and already this repo's place
-    # for secrets; config/runtime.exs sources it into the process environment,
-    # so the harness picks it up without the recipe ever reading it.
-    if [ -z "${CMS_DEPLOY_KEY:-}" ] && [ -z "${CMS_TOKEN:-}" ] \
-       && ! grep -qE '^CMS_(DEPLOY_KEY|TOKEN)=' envs/.env 2>/dev/null; then
+    # for secrets — but it is NOT enough on its own to reach the harness.
+    # `config/runtime.exs` loads it with Dotenvy, whose default side effect
+    # writes to the *process dictionary* for `env!/2`, not to the OS
+    # environment. `CmsHarness.Config` reads `System.get_env`, so the recipe has
+    # to export the values itself. Assuming otherwise cost a boot that came up
+    # cleanly and refused every hook with "no credential".
+    if [ -f envs/.env ]; then
+      while IFS='=' read -r key value; do
+        # An exported value wins, so a one-off `CMS_DEPLOY_KEY=… just harness`
+        # overrides the file rather than being silently ignored.
+        [ -n "${!key:-}" ] || export "$key=$value"
+      done < <(grep -E '^CMS_(DEPLOY_KEY|TOKEN)=' envs/.env)
+    fi
+    if [ -z "${CMS_DEPLOY_KEY:-}" ] && [ -z "${CMS_TOKEN:-}" ]; then
       echo "No credential. Copy the project's deploy key from"                >&2
       echo "  {{server}}/app/projects/<project-id>/edit"                      >&2
       echo "and put CMS_DEPLOY_KEY=... in envs/.env (or export it)."          >&2
