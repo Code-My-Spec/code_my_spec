@@ -133,16 +133,8 @@ defmodule CodeMySpec.StaticAnalysis.CredoRun do
     end)
   end
 
-  # Compilation chatter precedes the JSON, so the document starts at the first
-  # brace rather than at the first byte.
   defp parse(output) do
-    json =
-      case :binary.match(output, "{") do
-        {start, _} -> binary_part(output, start, byte_size(output) - start)
-        :nomatch -> output
-      end
-
-    case Jason.decode(json) do
+    case extract_json(output) do
       {:ok, %{"issues" => issues}} when is_list(issues) ->
         {:ok, issues}
 
@@ -152,16 +144,63 @@ defmodule CodeMySpec.StaticAnalysis.CredoRun do
       {:ok, _other} ->
         {:error, "unexpected JSON structure from credo"}
 
-      {:error, %Jason.DecodeError{} = error} ->
+      :error ->
         # The server analyzer answers `{:ok, []}` here. Over a wire that is
         # recorded as a clean sweep, so this says it could not read the output
         # instead — the excerpt is carried because the reason is usually in it
         # (`** (Mix) The task "credo" could not be found`, a compile error).
-        Logger.warning("[CredoRun] could not parse credo JSON: #{Exception.message(error)}")
+        Logger.warning(
+          "[CredoRun] no JSON document in credo's output: " <>
+            (output |> String.trim() |> String.slice(0, 200))
+        )
 
         {:error,
          "credo produced output that is not JSON: " <>
            (output |> String.trim() |> String.slice(0, 300))}
+    end
+  end
+
+  @doc """
+  The JSON document credo printed, out of everything else it printed.
+
+  Compilation chatter precedes it, and the obvious reading of that — slice from
+  the first `{` — is wrong, because compiler warnings quote Elixir source and
+  Elixir source is full of braces. On this repo the first `{` lands 330 bytes
+  early, inside `{{:., _, [erl_mod, fun]}, meta, _args} = ast`, and the whole
+  sweep is reported as "output that is not JSON". 598 real issues went
+  unreported that way, and the failure looks like credo being broken.
+
+  Taking the *last* `{` is wrong too: the document is pretty-printed across
+  ~7000 lines, so almost every `{` in the file is one of its own nested objects.
+
+  So: try each `{` in order and keep the first that yields a whole document
+  with an `issues` key. Failures are cheap — a slice that is not JSON fails at
+  its first byte — and the key requirement is what stops a stray `{}` inside a
+  warning from passing for a clean run.
+  """
+  @spec extract_json(String.t()) :: {:ok, map()} | :error
+  def extract_json(output) do
+    output
+    |> brace_offsets()
+    |> Enum.find_value(:error, fn offset ->
+      candidate = binary_part(output, offset, byte_size(output) - offset)
+
+      case Jason.decode(String.trim(candidate)) do
+        {:ok, %{"issues" => _} = decoded} -> {:ok, decoded}
+        _ -> nil
+      end
+    end)
+  end
+
+  # Bounded so that output which is *all* braces and no JSON cannot turn a
+  # failed analyzer run into a long one. Credo's document has never been more
+  # than a few dozen braces into the output.
+  @max_candidates 200
+
+  defp brace_offsets(output) do
+    case :binary.matches(output, "{") do
+      [] -> []
+      matches -> matches |> Enum.take(@max_candidates) |> Enum.map(fn {start, _} -> start end)
     end
   end
 end
