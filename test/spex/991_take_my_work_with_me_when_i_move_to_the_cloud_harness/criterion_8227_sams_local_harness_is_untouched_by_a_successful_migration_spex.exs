@@ -18,6 +18,7 @@ defmodule CodeMySpecSpex.Story991.Criterion8227Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :devops_on
 
   spex "Migrating leaves the local harness alone" do
     scenario "Sam's local harness is untouched by a successful migration" do

@@ -19,6 +19,7 @@ defmodule CodeMySpecSpex.Story971.Criterion8019Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :devops_on
 
   spex "A captured credential is useless after its window" do
     scenario "an expired token is refused with no revocation step" do

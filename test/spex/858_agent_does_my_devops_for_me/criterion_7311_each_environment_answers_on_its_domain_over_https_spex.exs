@@ -17,6 +17,7 @@ defmodule CodeMySpecSpex.Story858.Criterion7311Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :devops_on
 
   spex "Each environment answers on its domain over HTTPS" do
     scenario "the setup prompt demands per-domain TLS and health verification" do

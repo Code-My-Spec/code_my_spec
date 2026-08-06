@@ -18,6 +18,7 @@ defmodule CodeMySpecSpex.Story858.Criterion7312Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :devops_on
 
   spex "Setup leaves backups running and monitors watching" do
     scenario "the setup prompt installs backups and uptime monitors" do

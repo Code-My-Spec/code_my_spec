@@ -22,6 +22,7 @@ defmodule CodeMySpecSpex.Story991.Criterion8228Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :devops_on
 
   spex "A plan is required before anything moves" do
     scenario "A free account is told what it needs before anything moves" do

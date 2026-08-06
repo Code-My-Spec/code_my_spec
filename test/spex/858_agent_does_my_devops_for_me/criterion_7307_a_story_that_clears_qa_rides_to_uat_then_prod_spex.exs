@@ -18,6 +18,7 @@ defmodule CodeMySpecSpex.Story858.Criterion7307Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :devops_on
 
   spex "A story that clears QA rides to UAT then prod" do
     scenario "after QA passes, the loop's next work is the deploy" do

@@ -18,6 +18,7 @@ defmodule CodeMySpecSpex.Story858.Criterion7301Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :devops_on
 
   spex "Sam pastes tokens once and walks away" do
     scenario "the setup prompt collects credentials once and covers the whole pipeline" do

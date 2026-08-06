@@ -32,6 +32,7 @@ defmodule CodeMySpecSpex.Story969.Criterion8025Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :devops_on
   setup :connect_providers
 
   spex "The signing and bounce records resolve publicly" do

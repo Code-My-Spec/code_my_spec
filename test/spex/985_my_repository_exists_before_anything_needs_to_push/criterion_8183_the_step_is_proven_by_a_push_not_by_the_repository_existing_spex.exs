@@ -26,6 +26,7 @@ defmodule CodeMySpecSpex.Story985.Criterion8183Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :devops_on
   setup :connect_providers
 
   spex "The step is proven by a push, not by the repository existing" do

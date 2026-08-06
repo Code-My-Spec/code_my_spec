@@ -22,6 +22,7 @@ defmodule CodeMySpecSpex.Story991.Criterion8224Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :devops_on
 
   spex "A failed migration leaves the local harness whole" do
     scenario "An interrupted migration costs Sam nothing" do

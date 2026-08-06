@@ -31,6 +31,7 @@ defmodule CodeMySpecSpex.Story965.Criterion7996Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :devops_on
   setup :connect_providers
 
   spex "The records let the proxy get its certificate" do

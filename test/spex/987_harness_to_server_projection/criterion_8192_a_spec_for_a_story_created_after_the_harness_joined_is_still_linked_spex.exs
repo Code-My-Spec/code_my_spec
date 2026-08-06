@@ -24,6 +24,7 @@ defmodule CodeMySpecSpex.Story987.Criterion8192Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :devops_on
 
   spex "Ownership follows the server's domain, not a cache from join time" do
     scenario "a spec for a story that did not exist at join time is still linked" do

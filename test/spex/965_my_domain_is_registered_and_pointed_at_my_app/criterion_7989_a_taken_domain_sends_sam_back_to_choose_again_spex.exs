@@ -19,6 +19,7 @@ defmodule CodeMySpecSpex.Story965.Criterion7989Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :devops_on
   setup :connect_providers
 
   spex "A taken domain sends Sam back to choose again" do

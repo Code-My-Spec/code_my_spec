@@ -18,6 +18,7 @@ defmodule CodeMySpecSpex.Story859.Criterion7320Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :devops_on
 
   spex "A declined release stands down" do
     scenario "the release prompt carries the decline contract" do

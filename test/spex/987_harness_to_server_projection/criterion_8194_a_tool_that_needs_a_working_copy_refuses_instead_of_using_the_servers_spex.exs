@@ -24,6 +24,7 @@ defmodule CodeMySpecSpex.Story987.Criterion8194Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :devops_on
 
   spex "A server with no working copy says so rather than using its own" do
     scenario "creating a component hands the stub back instead of writing it somewhere" do

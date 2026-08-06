@@ -24,6 +24,7 @@ defmodule CodeMySpecSpex.Story991.Criterion8229Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :devops_on
 
   spex "The two projects do not stay in step" do
     scenario "Work done locally after migrating does not appear on the cloud" do

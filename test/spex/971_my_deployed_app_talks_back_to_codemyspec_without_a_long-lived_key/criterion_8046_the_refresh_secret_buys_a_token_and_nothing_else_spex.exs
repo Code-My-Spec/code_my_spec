@@ -19,6 +19,7 @@ defmodule CodeMySpecSpex.Story971.Criterion8046Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :devops_on
 
   spex "The refresh secret buys a token and nothing else" do
     scenario "the refresh secret is accepted at the exchange and refused everywhere else" do

@@ -21,6 +21,7 @@ defmodule CodeMySpecSpex.Story965.Criterion7994Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :devops_on
   setup :connect_providers
 
   spex "A missing payment method is named rather than guessed at" do

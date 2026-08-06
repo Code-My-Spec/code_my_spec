@@ -24,6 +24,7 @@ defmodule CodeMySpecSpex.Story967.Criterion8001Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :devops_on
   setup :real_working_directory
   setup :connect_providers
   # The claim here is that rotating a secret re-encrypts and takes effect —

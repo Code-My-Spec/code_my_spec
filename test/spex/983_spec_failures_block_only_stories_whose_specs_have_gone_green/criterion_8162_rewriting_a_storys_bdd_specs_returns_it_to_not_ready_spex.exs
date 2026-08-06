@@ -30,6 +30,7 @@ defmodule CodeMySpecSpex.Story983.Criterion8162Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :devops_on
 
   spex "Rewriting the contract restarts the chain" do
     scenario "Rewriting a story's BDD specs returns it to not ready" do

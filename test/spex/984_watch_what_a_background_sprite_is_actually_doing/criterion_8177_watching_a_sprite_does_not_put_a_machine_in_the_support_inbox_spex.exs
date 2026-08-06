@@ -18,6 +18,7 @@ defmodule CodeMySpecSpex.Story984.Criterion8177Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :devops_on
 
   spex "Sprite conversations stay out of the support inbox" do
     scenario "Watching a sprite does not put a machine in the support inbox" do

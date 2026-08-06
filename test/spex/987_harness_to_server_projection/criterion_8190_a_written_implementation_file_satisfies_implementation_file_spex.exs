@@ -23,6 +23,7 @@ defmodule CodeMySpecSpex.Story987.Criterion8190Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :devops_on
 
   spex "An agent's module satisfies the requirement that asked for it" do
     scenario "writing the module at the component's conventional path satisfies implementation_file" do

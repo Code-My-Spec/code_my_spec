@@ -19,6 +19,7 @@ defmodule CodeMySpecSpex.Story859.Criterion7317Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :devops_on
 
   spex "Release notes name the stories that shipped" do
     scenario "the release prompt manifests the deployed stories by title" do

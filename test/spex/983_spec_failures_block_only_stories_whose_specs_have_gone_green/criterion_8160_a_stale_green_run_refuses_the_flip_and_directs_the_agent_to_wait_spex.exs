@@ -45,6 +45,7 @@ defmodule CodeMySpecSpex.Story983.Criterion8160Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :devops_on
 
   spex "Staleness reads as pending, not as failure" do
     scenario "A stale green run refuses the flip and directs the agent to wait" do

@@ -37,6 +37,7 @@ defmodule CodeMySpecSpex.Story983.Criterion8170Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :devops_on
 
   spex "The engineer can assert readiness by hand" do
     scenario "Setting specs-ready by hand puts a story under enforcement without waiting for a run" do

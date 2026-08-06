@@ -28,6 +28,7 @@ defmodule CodeMySpecSpex.Story966.Criterion8156Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :devops_on
   setup :connect_providers
 
   spex "UAT stands alone, and prod arrives on its own box when Sam is ready" do

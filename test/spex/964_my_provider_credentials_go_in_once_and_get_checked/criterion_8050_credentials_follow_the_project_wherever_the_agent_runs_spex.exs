@@ -22,6 +22,7 @@ defmodule CodeMySpecSpex.Story964.Criterion8050Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :devops_on
 
   spex "Credentials follow the project, wherever the agent runs" do
     scenario "credentials entered once are found again from a fresh connection" do

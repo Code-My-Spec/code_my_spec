@@ -24,6 +24,7 @@ defmodule CodeMySpecSpex.Story991.Criterion8231Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :devops_on
   setup :paid_account
 
   # Story 991 requires an account already on a plan; migrating is not how Sam

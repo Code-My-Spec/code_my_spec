@@ -19,6 +19,7 @@ defmodule CodeMySpecSpex.Story858.Criterion7302Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :devops_on
 
   spex "An under-scoped token names its missing permission" do
     scenario "the setup prompt carries the halt-and-name failure contract" do

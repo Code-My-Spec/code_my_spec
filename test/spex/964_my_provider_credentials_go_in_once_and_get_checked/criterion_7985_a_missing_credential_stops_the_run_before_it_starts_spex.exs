@@ -18,6 +18,7 @@ defmodule CodeMySpecSpex.Story964.Criterion7985Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :devops_on
 
   spex "A missing credential stops the run before it starts" do
     scenario "setup refuses to start and names the credential it lacks" do

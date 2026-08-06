@@ -24,6 +24,7 @@ defmodule CodeMySpecSpex.Story967.Criterion7998Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :devops_on
   setup :real_working_directory
 
   spex "The repo alone is not enough to read the secrets" do

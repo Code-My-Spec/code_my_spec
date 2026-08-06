@@ -18,6 +18,7 @@ defmodule CodeMySpecSpex.Story971.Criterion8023Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :devops_on
 
   spex "A refusal says why, so the app knows to renew" do
     scenario "expiry and a bad credential are distinguishable, and expiry drives a retry" do

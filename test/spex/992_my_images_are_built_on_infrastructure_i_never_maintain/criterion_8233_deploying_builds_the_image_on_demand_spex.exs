@@ -23,6 +23,7 @@ defmodule CodeMySpecSpex.Story992.Criterion8233Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :devops_on
   # Setup refuses to start while a credential is missing (criterion 7985), so
   # without this the run never begins and this criterion reports "nothing was
   # built" — which is true, and nothing to do with what it is asking.

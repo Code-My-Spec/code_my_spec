@@ -91,17 +91,20 @@ defmodule CodeMySpec.Resources do
     Enum.filter(Projects.list_projects(scope), &(devops(scope, &1) != :off))
   end
 
-  # `get_or_create/1` rather than a read, because the default lives on the
-  # schema and a project with no configuration row still has an answer — the
-  # same one it would get the moment anything else asked.
+  # Read, never `get_or_create/1`. Loading a page must not write: the first
+  # version of this used the get-or-create and silently created a
+  # configuration row for every project in the account the moment anyone
+  # opened `/app/resources`.
+  #
+  # No row, or a row predating the column, means nobody has said this project
+  # ships — which is `:off`, the same answer the schema default gives.
   defp devops(scope, project) do
-    case Configurations.get_or_create(project_scope(scope, project)) do
-      {:ok, %{devops: devops}} -> devops
-      %{devops: devops} -> devops
-      _ -> :prod
+    case Configurations.get(project_scope(scope, project)) do
+      %{devops: devops} when not is_nil(devops) -> devops
+      _ -> :off
     end
   rescue
-    _ -> :prod
+    _ -> :off
   end
 
   defp project_scope(%Scope{} = scope, project) do

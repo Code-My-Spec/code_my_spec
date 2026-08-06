@@ -19,6 +19,7 @@ defmodule CodeMySpecSpex.Story859.Criterion7319Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :devops_on
 
   spex "The user approves the release from their phone" do
     scenario "the release prompt gates every deploy on an explicit yes" do

@@ -45,6 +45,7 @@ defmodule CodeMySpecSpex.Story988.Criterion8202Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :devops_on
 
   spex "A finding still blocks while the code it describes is unchanged" do
     scenario "nothing has changed since the analyzer ran" do

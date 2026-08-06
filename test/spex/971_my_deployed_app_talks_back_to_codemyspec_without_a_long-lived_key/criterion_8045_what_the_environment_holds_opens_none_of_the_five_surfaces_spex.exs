@@ -29,6 +29,7 @@ defmodule CodeMySpecSpex.Story971.Criterion8045Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :devops_on
 
   spex "What the environment holds opens none of the five surfaces" do
     scenario "the stored credential is refused by every authenticated surface" do

@@ -38,6 +38,7 @@ defmodule CodeMySpecSpex.Story983.Criterion8158Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :devops_on
 
   spex "The gate flips a story to specs-ready on a fresh green run" do
     scenario "A green run on every spec flips the story to specs-ready" do

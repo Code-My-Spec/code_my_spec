@@ -20,6 +20,7 @@ defmodule CodeMySpecSpex.Story858.Criterion7304Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :devops_on
 
   spex "DevOps setup surfaces after code generation" do
     scenario "with code generation complete, the graph offers devops_setup" do

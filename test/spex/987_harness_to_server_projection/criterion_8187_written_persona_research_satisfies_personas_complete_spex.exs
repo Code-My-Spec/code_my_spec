@@ -19,6 +19,7 @@ defmodule CodeMySpecSpex.Story987.Criterion8187Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :devops_on
 
   spex "An agent's persona research satisfies the requirement that asked for it" do
     scenario "writing summary.md and sources.md satisfies personas_complete" do

@@ -18,6 +18,7 @@ defmodule CodeMySpecSpex.Story858.Criterion7313Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :devops_on
 
   spex "The repo can rebuild the infrastructure from scratch" do
     scenario "the setup prompt captures every step as re-runnable repo artifacts" do

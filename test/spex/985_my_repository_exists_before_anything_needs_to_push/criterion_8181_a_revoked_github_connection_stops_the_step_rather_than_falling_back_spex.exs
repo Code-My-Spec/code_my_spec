@@ -23,6 +23,7 @@ defmodule CodeMySpecSpex.Story985.Criterion8181Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :devops_on
   setup :connect_providers
 
   spex "A revoked GitHub connection stops the step rather than falling back" do

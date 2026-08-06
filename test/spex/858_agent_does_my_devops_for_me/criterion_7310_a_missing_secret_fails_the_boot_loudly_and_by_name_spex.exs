@@ -18,6 +18,7 @@ defmodule CodeMySpecSpex.Story858.Criterion7310Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :devops_on
 
   spex "A missing secret fails the boot loudly and by name" do
     scenario "the setup prompt requires fail-fast boot on missing secrets" do

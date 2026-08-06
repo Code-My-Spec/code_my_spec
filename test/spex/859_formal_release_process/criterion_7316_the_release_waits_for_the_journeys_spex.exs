@@ -21,6 +21,7 @@ defmodule CodeMySpecSpex.Story859.Criterion7316Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :devops_on
 
   spex "The release waits for the journeys" do
     scenario "release is not offered while the journey chain is unsatisfied" do

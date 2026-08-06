@@ -25,6 +25,7 @@ defmodule CodeMySpecSpex.Story990.Criterion8216Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :devops_on
 
   setup do
     Application.put_env(:code_my_spec, CodeMySpec.Workspaces,

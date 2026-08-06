@@ -18,6 +18,7 @@ defmodule CodeMySpecSpex.Story858.Criterion7305Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :devops_on
 
   spex "Default setup ends with UAT and prod live" do
     scenario "the default prompt demands both environments live" do

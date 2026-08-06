@@ -30,6 +30,7 @@ defmodule CodeMySpecSpex.Story983.Criterion8168Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :devops_on
 
   spex "Earning the latch opens the gate" do
     scenario "Reaching specs-ready releases QA on the story" do

@@ -21,6 +21,7 @@ defmodule CodeMySpecSpex.Story859.Criterion7321Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :devops_on
 
   spex "A fresh UAT deploy reopens the release" do
     scenario "a covered project reads done until a new deploy lands" do

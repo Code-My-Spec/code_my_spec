@@ -19,6 +19,7 @@ defmodule CodeMySpecSpex.Story858.Criterion7308Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :devops_on
 
   spex "A failing UAT health check stops the promotion" do
     scenario "the deploy prompt gates prod on UAT health" do

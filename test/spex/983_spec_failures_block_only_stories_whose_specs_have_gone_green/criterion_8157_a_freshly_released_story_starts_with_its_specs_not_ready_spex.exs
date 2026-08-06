@@ -26,6 +26,7 @@ defmodule CodeMySpecSpex.Story983.Criterion8157Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :devops_on
 
   @title "Players have a discrete age"
 

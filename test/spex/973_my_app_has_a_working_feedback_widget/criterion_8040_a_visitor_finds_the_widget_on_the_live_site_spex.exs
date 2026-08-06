@@ -19,6 +19,7 @@ defmodule CodeMySpecSpex.Story973.Criterion8040Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :devops_on
   setup :connect_providers
 
   spex "A visitor finds the widget on the live site" do

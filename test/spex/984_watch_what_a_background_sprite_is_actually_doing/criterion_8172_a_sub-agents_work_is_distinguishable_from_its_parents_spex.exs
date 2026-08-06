@@ -17,6 +17,7 @@ defmodule CodeMySpecSpex.Story984.Criterion8172Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :devops_on
 
   spex "Sub-agent turns are attributed to the sub-agent" do
     scenario "A sub-agent's work is distinguishable from its parent's" do

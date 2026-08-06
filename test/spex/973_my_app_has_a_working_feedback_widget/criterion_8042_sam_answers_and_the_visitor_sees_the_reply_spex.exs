@@ -22,6 +22,7 @@ defmodule CodeMySpecSpex.Story973.Criterion8042Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :devops_on
 
   spex "Sam answers and the visitor sees the reply" do
     scenario "a reply from CodeMySpec is pushed to the open widget" do

@@ -2036,6 +2036,22 @@ defmodule CodeMySpecSpex.Case do
   @doc """
   Setup helper that sets up an active project for the user.
   """
+  @doc """
+  Say this project is meant to be deployed.
+
+  `devops` defaults to `:off` — infrastructure is opt in, because every project
+  is a project and only some are meant to have servers. A criterion whose
+  premise is "a project that does DevOps" has to say so, rather than inheriting
+  it from whatever the default happens to be that week.
+
+  Add `setup :devops_on` above any spex whose subject is the DevOps routine.
+  """
+  def devops_on(%{scope: scope} = context) do
+    {:ok, _configuration} = CodeMySpec.Configurations.update(scope, %{devops: :prod})
+
+    context
+  end
+
   def setup_active_project(%{user: user, account: account, scope: scope} = context) do
     # Create a real stub directory with a mix.exs to satisfy the
     # WorkingDir plug (which hits File.exists?/File.dir? directly). Real

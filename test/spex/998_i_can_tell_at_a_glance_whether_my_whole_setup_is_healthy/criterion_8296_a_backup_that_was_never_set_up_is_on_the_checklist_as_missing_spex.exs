@@ -29,8 +29,22 @@ defmodule CodeMySpecSpex.Story998.Criterion8296Spex do
 
   spex "A backup that was never set up is on the checklist as missing" do
     scenario "the checklist names what should be there and is not" do
-      given_ "a project meant to be deployed, whose server and certificate exist",
-             context do
+      given_ "a project Sam has said is meant to be deployed", context do
+        # Said explicitly, through the page that says it. DevOps is opt-in —
+        # every project is a project and only some are meant to have
+        # infrastructure — so a checklist that appeared without this would be
+        # demanding servers of things nobody intends to deploy.
+        {:ok, view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/configuration")
+
+        view
+        |> form("[data-test='configuration-form']", %{"configuration" => %{"devops" => "prod"}})
+        |> render_submit()
+
+        {:ok, context}
+      end
+
+      given_ "whose server and certificate exist", context do
         context =
           scripted_run(context, %{
             server: fn ->

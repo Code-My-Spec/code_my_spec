@@ -18,6 +18,7 @@ defmodule CodeMySpecSpex.Story858.Criterion7309Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :devops_on
 
   spex "Secrets are seeded once and fetched at boot" do
     scenario "the setup prompt mandates the store-and-boot-fetch secrets pattern" do

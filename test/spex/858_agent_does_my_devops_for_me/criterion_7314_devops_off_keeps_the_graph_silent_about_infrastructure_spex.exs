@@ -21,6 +21,7 @@ defmodule CodeMySpecSpex.Story858.Criterion7314Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :devops_on
 
   spex "DevOps off keeps the graph silent about infrastructure" do
     scenario "a state that would demand a deploy reads done with DevOps off" do

@@ -28,6 +28,7 @@ defmodule CodeMySpecSpex.Story969.Criterion8029Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :devops_on
   setup :connect_providers
 
   spex "Existing inbound mail survives the sending setup" do

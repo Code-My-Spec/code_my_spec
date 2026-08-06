@@ -16,6 +16,20 @@ defmodule CodeMySpec.Configurations do
   alias CodeMySpec.Users.Scope
 
   @doc """
+  The active project's configuration, or nil.
+
+  The read that does not write. `get_or_create/1` is right for a caller about
+  to edit the configuration; it is wrong for anything merely displaying one,
+  and using it there quietly creates a row for every project the page touches.
+  """
+  @spec get(Scope.t()) :: ProjectConfiguration.t() | nil
+  def get(%Scope{active_project_id: project_id}) when not is_nil(project_id) do
+    Repo.get_by(ProjectConfiguration, project_id: project_id)
+  end
+
+  def get(_scope), do: nil
+
+  @doc """
   Get the configuration for the active project, creating with defaults if missing.
   """
   @spec get_or_create(Scope.t()) :: ProjectConfiguration.t()
