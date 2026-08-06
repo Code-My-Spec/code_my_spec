@@ -1429,6 +1429,33 @@ defmodule CodeMySpecSpex.Case do
   end
 
   @doc """
+  Stage what trimming a resource does, instead of deleting it.
+
+  The one seam that is not about speed. A criterion asserting *what gets
+  deleted* must not delete anything to say so — the resources in question are
+  DNS records and buckets, and neither comes back. The function is handed each
+  resource trim would remove, so what was and was not offered up is checkable
+  without a provider ever being called.
+
+      stage_trim(context, fn resource -> send(owner, {:trimmed, resource.location}) end)
+  """
+  def stage_trim(context, fun) do
+    previous = Application.get_env(:code_my_spec, CodeMySpec.Resources, [])
+
+    Application.put_env(
+      :code_my_spec,
+      CodeMySpec.Resources,
+      Keyword.merge(previous, trim: fn _scope, resource -> fun.(resource) && {:ok, resource} end)
+    )
+
+    ExUnit.Callbacks.on_exit(fn ->
+      Application.put_env(:code_my_spec, CodeMySpec.Resources, previous)
+    end)
+
+    context
+  end
+
+  @doc """
   Stage what a box reports is running on it.
 
   The seam is the SSH read, not the page. Criteria about how containers are
