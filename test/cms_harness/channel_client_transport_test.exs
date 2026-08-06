@@ -101,4 +101,51 @@ defmodule CmsHarness.ChannelClientTransportTest do
                    "the cache is fetched once on join; without this tick a sprite " <>
                      "holds an empty domain for the whole session"
   end
+
+  describe "a topic the server does not have" do
+    # Cost an hour of dogfooding. The server-side channel was gone, no
+    # `handle_topic_close/3` ever arrived, and the harness went on believing it
+    # was joined: `/health` said `degraded: false`, and every hook refused with
+    # a message about timeouts. Nothing self-corrected because the correction
+    # was supposed to come from a notification that never came.
+    test "an unmatched-topic reply drops the joined flag and rejoins" do
+      caller = self()
+      ref = make_ref()
+      timer = Process.send_after(self(), :unused, 60_000)
+      pending = %{ref => {{caller, ref}, timer}}
+
+      {:ok, out} =
+        ChannelClient.handle_reply(
+          ref,
+          {:error, %{"reason" => "unmatched topic"}},
+          socket(%{pending: pending, analysis_refs: %{}, attempts: 0})
+        )
+
+      refute out.assigns.joined,
+             "believing a join the server does not have is what made every " <>
+               "later hook fail with the wrong explanation"
+
+      # 1.5s covers the first backoff step (1s) — the rejoin is deliberately not
+      # immediate, so a server that is refusing everything is not hammered.
+      assert_receive :reconnect,
+                     1_500,
+                     "a stale join has to heal itself; nobody restarts a harness that reports healthy"
+    end
+
+    test "an ordinary error reply leaves the join alone" do
+      ref = make_ref()
+      timer = Process.send_after(self(), :unused, 60_000)
+      pending = %{ref => {{self(), ref}, timer}}
+
+      {:ok, out} =
+        ChannelClient.handle_reply(
+          ref,
+          {:error, %{"reason" => "something_else"}},
+          socket(%{pending: pending, analysis_refs: %{}, attempts: 0})
+        )
+
+      assert out.assigns.joined, "one bad answer is not a dead channel"
+      refute_receive :reconnect, 100
+    end
+  end
 end

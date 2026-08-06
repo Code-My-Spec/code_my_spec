@@ -43,7 +43,7 @@ defmodule CodeMySpecLocalWeb.Application do
   defp start_harness do
     ensure_server_path()
     ensure_directories()
-    maybe_install_file_logger()
+    harness_log = install_harness_file_logger()
 
     # The endpoint is configured `server: false` so that every *other* way this
     # application boots compiles the harness modules without opening its port.
@@ -60,7 +60,7 @@ defmodule CodeMySpecLocalWeb.Application do
            name: CodeMySpec.Supervisor
          ) do
       {:ok, pid} ->
-        print_harness_banner()
+        print_harness_banner(harness_log)
         {:ok, pid}
 
       other ->
@@ -68,7 +68,33 @@ defmodule CodeMySpecLocalWeb.Application do
     end
   end
 
-  defp print_harness_banner do
+  # Always, and alongside stderr rather than instead of it.
+  #
+  # The harness runs in a foreground terminal, so it looked like it had a log —
+  # but that terminal belongs to whoever started it, and every question worth
+  # asking about a harness gets asked by somebody else. A stop hook refused for
+  # an hour with the wrong explanation and the one line naming the real cause
+  # existed only in a scrollback nobody could reach.
+  defp install_harness_file_logger do
+    {:ok, path} =
+      CodeMySpec.Logging.install_file_handler!(
+        source: "harness",
+        handler_id: :cms_harness_file,
+        replace_default: false,
+        level: harness_log_level()
+      )
+
+    path
+  end
+
+  defp harness_log_level do
+    case System.get_env("CMS_LOG_LEVEL") do
+      level when level in ~w(debug info warning error) -> String.to_existing_atom(level)
+      _ -> :info
+    end
+  end
+
+  defp print_harness_banner(log_path) do
     unless silent?() do
       version = Application.spec(:code_my_spec, :vsn)
       port = Application.get_env(:code_my_spec, CmsHarness.Web.Endpoint)[:http][:port]
@@ -77,6 +103,8 @@ defmodule CodeMySpecLocalWeb.Application do
         "cms harness v#{version}  ·  pid #{System.pid()}  ·  " <>
           "hooks on http://localhost:#{port}  ·  server #{CmsHarness.Config.server_url()}"
       )
+
+      IO.puts("log #{log_path}  ·  CMS_LOG_LEVEL=debug for more")
     end
   end
 

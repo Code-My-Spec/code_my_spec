@@ -392,9 +392,36 @@ defmodule CmsHarness.Project.ChannelClient do
       {{from, timer}, pending} ->
         Process.cancel_timer(timer)
         GenServer.reply(from, normalize_reply(reply))
-        {:ok, assign(socket, :pending, pending)}
+        {:ok, socket |> assign(:pending, pending) |> maybe_rejoin(reply)}
     end
   end
+
+  # The server says there is no channel on that topic. We thought there was —
+  # `joined` is still true, `connected?/1` still answers yes, and the health
+  # endpoint still reports the project served. Every hook then refuses forever
+  # and nothing ever corrects it, because the correction is supposed to arrive
+  # as `handle_topic_close/3` and in this case never did.
+  #
+  # So this trusts the server over our own flag. A reply naming the topic as
+  # unmatched *is* the notification the close should have been, and the only
+  # ground truth available: the harness cannot tell the difference between a
+  # channel that died and one that was never there, and does not need to.
+  #
+  # Cost of being wrong is one rejoin. Cost of not doing it is a harness that
+  # looks healthy and answers nothing until somebody restarts it.
+  defp maybe_rejoin(socket, {:error, %{"reason" => "unmatched topic"}}) do
+    Logger.warning("""
+    [CmsHarness] the server has no channel on #{socket.assigns.topic}, though this harness \
+    believed it was joined. Rejoining. Hooks refuse until it lands.\
+    """)
+
+    socket
+    |> assign(:joined, false)
+    |> pause_watcher()
+    |> schedule_rejoin()
+  end
+
+  defp maybe_rejoin(socket, _reply), do: socket
 
   # A result the server refused is not a result it recorded. Read rather than
   # dropped, for the same reason the observations reply is read: an unread
