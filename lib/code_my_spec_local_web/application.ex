@@ -9,6 +9,9 @@ defmodule CodeMySpecLocalWeb.Application do
   """
   use Application
 
+  alias CodeMySpec.Migration
+  alias CodeMySpec.Users.Scope
+
   # Burrito.Util.Args is Burrito-release-only — the bare web build doesn't
   # include it. Resolving the module through an atom at runtime keeps both
   # builds clean.
@@ -142,9 +145,9 @@ defmodule CodeMySpecLocalWeb.Application do
     with {:ok, cloud_project_id} <- migrate_target(argv),
          working_dir = File.cwd!(),
          {:ok, project} <- CodeMySpec.Projects.resolve_local_project(working_dir),
-         {:ok, scope} <- CodeMySpec.Users.Scope.for_local_project(project, working_dir) do
+         {:ok, scope} <- Scope.for_local_project(project, working_dir) do
       IO.puts("Migrating #{project.name} to cloud project #{cloud_project_id}…")
-      CodeMySpec.Migration.Client.migrate(scope, cloud_project_id: cloud_project_id)
+      Migration.Client.migrate(scope, cloud_project_id: cloud_project_id)
     end
   end
 

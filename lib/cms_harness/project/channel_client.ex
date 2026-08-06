@@ -47,6 +47,8 @@ defmodule CmsHarness.Project.ChannelClient do
 
   alias CmsHarness.Config
   alias CmsHarness.Project.AnalysisServer
+  alias CmsHarness.Project.Transport
+  alias CmsHarness.Web.Endpoint
   alias CmsHarness.Project.Watcher
   alias CmsHarness.Sync
   alias CodeMySpec.Files.Scanner.ReadModel
@@ -70,9 +72,9 @@ defmodule CmsHarness.Project.ChannelClient do
   # back would hand the server a literal 0 — a curl to localhost:0, failing in a
   # way that says nothing about why.
   defp local_port do
-    case CmsHarness.Web.Endpoint.server_info(:http) do
+    case Endpoint.server_info(:http) do
       {:ok, {_ip, port}} when is_integer(port) and port > 0 -> port
-      _ -> CmsHarness.Web.Endpoint.config(:http)[:port]
+      _ -> Endpoint.config(:http)[:port]
     end
   end
 
@@ -694,7 +696,7 @@ defmodule CmsHarness.Project.ChannelClient do
 
   # The wire, read at call time so a test can swap it per-case. See
   # `CmsHarness.Project.Transport` for why only outbound needed a seam.
-  defp transport, do: CmsHarness.Project.Transport.impl()
+  defp transport, do: Transport.impl()
 
   defp schedule_rejoin(socket) do
     Process.send_after(self(), :reconnect, backoff(socket.assigns.attempts))

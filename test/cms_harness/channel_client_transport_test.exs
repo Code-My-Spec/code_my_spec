@@ -24,15 +24,19 @@ defmodule CmsHarness.ChannelClientTransportTest do
     Application.put_env(:code_my_spec, :harness_transport_owner, self())
 
     on_exit(fn ->
-      if previous,
-        do: Application.put_env(:code_my_spec, :harness_transport, previous),
-        else: Application.delete_env(:code_my_spec, :harness_transport)
-
+      restore_transport(previous)
       Application.delete_env(:code_my_spec, :harness_transport_owner)
     end)
 
     :ok
   end
+
+  # Multi-clause rather than an `if`: nothing was configured before this suite
+  # and something was are two cases, not a condition.
+  defp restore_transport(nil), do: Application.delete_env(:code_my_spec, :harness_transport)
+
+  defp restore_transport(module),
+    do: Application.put_env(:code_my_spec, :harness_transport, module)
 
   defp socket(assigns) do
     %Slipstream.Socket{
