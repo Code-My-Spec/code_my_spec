@@ -83,13 +83,17 @@ defmodule CmsHarness.Web.HooksController do
         # An answer the harness cannot read is not an answer. Treating an
         # unexpected shape as "fine" is the same green light as treating a
         # dropped connection as "nothing to do".
-        Logger.error("[CmsHarness] unreadable #{hook} decision: #{inspect(other)}")
-        refuse(hook, :no_reply, working_dir, params)
+        #
+        # It is not `:no_reply` either. That renders as "no answer back in
+        # time", which sends whoever reads it to look at the network — while
+        # the server is replying promptly and saying what is wrong. The reply
+        # is carried through so the refusal quotes it.
+        refuse(hook, {:refused, other}, working_dir, params)
     end
   end
 
   defp refuse(hook, reason, working_dir, params) do
-    Logger.warning("[CmsHarness] #{hook} refused for #{working_dir}: #{reason}")
+    Logger.warning("[CmsHarness] #{hook} refused for #{working_dir}: #{inspect(reason)}")
     HookDecision.unreachable(hook, reason, working_dir, params)
   end
 

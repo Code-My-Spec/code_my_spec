@@ -30,7 +30,13 @@ defmodule CmsHarness.HookDecision do
 
   @deciding_hooks ~w(stop subagent-stop)
 
-  @type reason :: :not_connected | :no_project | :no_credential | :no_reply | :invalid_config
+  @type reason ::
+          :not_connected
+          | :no_project
+          | :no_credential
+          | :no_reply
+          | :invalid_config
+          | {:refused, term()}
 
   @doc """
   The response for a hook the harness could not get an answer for.
@@ -121,6 +127,26 @@ defmodule CmsHarness.HookDecision do
   defp explain(:no_reply, working_dir) do
     """
     The harness asked the CodeMySpec server and got no answer back in time. The channel is joined, so this is the server or the network rather than the harness's connection state.
+    Working directory: #{working_dir}
+    """
+    |> String.trim()
+  end
+
+  # The server answered — it just did not answer with a decision. Rendering this
+  # as `:no_reply` sent a reader looking at the network for an hour while the
+  # server was replying promptly and saying exactly what was wrong. A refusal
+  # and a silence are different failures with different fixes, and this module
+  # exists to keep failures that read alike from *being* alike.
+  #
+  # The server's own words are quoted rather than summarised, because the shape
+  # that arrives here is by definition one this harness did not anticipate.
+  defp explain({:refused, detail}, working_dir) do
+    """
+    The harness asked the CodeMySpec server and the server answered with an error rather than a decision. This is not a timeout and not a connection problem — the channel is joined and the reply came back. The server said:
+
+        #{inspect(detail)}
+
+    A version skew is the usual cause: a server that does not know an event this harness sends replies with an error rather than a decision.
     Working directory: #{working_dir}
     """
     |> String.trim()

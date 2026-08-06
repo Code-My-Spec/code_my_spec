@@ -126,4 +126,39 @@ defmodule CmsHarness.HookDecisionTest do
       assert map_size(unreachable) > 0
     end
   end
+
+  describe "a server that answered is not a server that was silent" do
+    # An hour went into reading "no answer back in time" while the server was
+    # replying in two milliseconds and naming the problem. A refusal and a
+    # silence need different fixes, so they must not read alike.
+    test "a refusal quotes the server instead of blaming the network" do
+      refused =
+        HookDecision.unreachable("stop", {:refused, %{"reason" => "unknown_event"}}, @dir)
+
+      reason = refused["reason"]
+
+      assert reason =~ "unknown_event", "the server's own words are what identify the fault"
+      refute reason =~ "no answer back in time"
+      refute reason =~ "or the network"
+    end
+
+    test "it still blocks — an unreadable answer is not permission to stop" do
+      assert %{"decision" => "block"} =
+               HookDecision.unreachable("stop", {:refused, :anything}, @dir)
+    end
+
+    test "a timeout and a refusal do not render the same" do
+      timed_out = HookDecision.unreachable("stop", :no_reply, @dir)["reason"]
+      refused = HookDecision.unreachable("stop", {:refused, :boom}, @dir)["reason"]
+
+      refute timed_out == refused
+    end
+
+    test "a non-deciding hook says it too, as an advisory" do
+      assert %{"systemMessage" => message} =
+               HookDecision.unreachable("session-start", {:refused, :boom}, @dir)
+
+      assert message =~ "boom"
+    end
+  end
 end
