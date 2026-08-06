@@ -69,6 +69,19 @@ defmodule CodeMySpecSpex.Story995.Criterion8277Spex do
         {:ok, context}
       end
 
+      then_ "the failure says it failed, rather than reading as a stop", context do
+        {:ok, returned, _html} =
+          live(context.conn, ~p"/app/projects/#{context.project.id}/chat")
+
+        assert has_element?(returned, "[data-test='chat-failed']"),
+               "expected a failure to be marked as one"
+
+        refute has_element?(returned, "[data-test='chat-halted']"),
+               "a provider failure is not a model that would not stop; they read differently"
+
+        {:ok, context}
+      end
+
       then_ "he is not asked them again", context do
         {:ok, returned, _html} =
           live(context.conn, ~p"/app/projects/#{context.project.id}/chat")

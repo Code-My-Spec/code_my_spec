@@ -173,7 +173,7 @@ defmodule CodeMySpecWeb.ChatLive do
       phx-click="open_story"
       class="rounded-box border border-base-300 p-4"
     >
-      <h3 class="font-semibold">{@story.title}</h3>
+      <h3 :if={!@editing?} class="font-semibold">{@story.title}</h3>
 
       <.form
         :if={@editing?}
@@ -199,11 +199,15 @@ defmodule CodeMySpecWeb.ChatLive do
 
   # A halted or failed conversation is a turn you can see, not a flag only the
   # server knows about.
-  defp turn(%{message: %{agent_role: "system"}} = assigns) do
+  # A model that would not stop and a provider that fell over are different
+  # events, and reading the same is how one gets mistaken for the other.
+  defp turn(%{message: %{agent_role: role}} = assigns) when role in ["halted", "failed"] do
+    assigns = assign(assigns, :marker, "chat-#{role}")
+
     ~H"""
     <div
       id={@id}
-      data-test="chat-halted"
+      data-test={@marker}
       class="rounded-box border border-warning/40 bg-warning/10 p-3 text-sm"
     >
       {Message.text(@message)}

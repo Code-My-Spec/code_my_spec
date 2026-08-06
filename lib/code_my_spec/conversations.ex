@@ -196,20 +196,23 @@ defmodule CodeMySpec.Conversations do
   can see, not a flag only the server knows about.
   """
   def halt(%Conversation{} = conversation, reason) do
-    system_turn(conversation, "Stopped: #{reason}")
+    system_turn(conversation, "halted", "Stopped: #{reason}")
   end
 
   @doc "Ends the conversation because something failed. Everything already said stays."
   def fail(%Conversation{} = conversation, reason) do
-    system_turn(conversation, "Failed: #{reason}")
+    system_turn(conversation, "failed", "Failed: #{reason}")
   end
 
-  defp system_turn(conversation, text) do
+  # A model that would not stop and a provider that fell over are different
+  # events. Writing both as one turn made them indistinguishable to a reader
+  # and to a test — which is why nothing caught it.
+  defp system_turn(conversation, kind, text) do
     agent_turn(conversation, %{
       role: :assistant,
-      agent_role: "system",
+      agent_role: kind,
       content: [Message.text_part(text)],
-      sender_id: "agent:system"
+      sender_id: "agent:#{kind}"
     })
   end
 
