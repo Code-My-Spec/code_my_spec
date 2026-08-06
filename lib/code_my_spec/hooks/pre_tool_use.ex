@@ -210,8 +210,39 @@ defmodule CodeMySpec.Hooks.PreToolUse do
         }
       }
     else
-      _ -> %{}
+      _ -> no_rewrite(scope, command)
     end
+  end
+
+  # `%{}` means "no opinion", and it was the answer to two different questions:
+  # this is not a test command, and this *is* one but the scope could not carry
+  # the rewrite. The second is a feature being off, and it looked exactly like
+  # the feature being irrelevant.
+  #
+  # It is off on the light harness right now. That scope is built by
+  # `HarnessProjectChannel.pin_to_project/1`, which sets no `cwd` — correctly,
+  # since a server with no disk has no working directory — and the rewrite
+  # requires one. So every `mix test` an agent runs against a light harness goes
+  # straight to the shell, unrecorded, and the stop hook re-runs the whole suite
+  # afterwards because as far as the server is concerned nothing ran.
+  #
+  # Saying so is not the fix. The fix is an analysis endpoint on the light
+  # harness, and that is a feature — `Analysis.await_run/4` dispatches the run
+  # back to the very channel process that would be waiting on it.
+  defp no_rewrite(scope, command) do
+    case classify_test_command(command) do
+      {:ok, task, _source, _args} ->
+        Logger.warning(
+          "[PreToolUse] not rewriting `mix #{task}`: " <>
+            "project_id=#{inspect(scope && scope.active_project_id)} " <>
+            "cwd=#{inspect(scope && scope.cwd)}. The run will not be recorded."
+        )
+
+      _ ->
+        :ok
+    end
+
+    %{}
   end
 
   # True when the arg tail carries shell that the rewrite would swallow.
