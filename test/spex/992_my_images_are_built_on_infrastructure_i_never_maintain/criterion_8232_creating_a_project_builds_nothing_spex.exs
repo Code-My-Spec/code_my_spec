@@ -26,6 +26,8 @@ defmodule CodeMySpecSpex.Story992.Criterion8232Spex do
   spex "Creating a project builds nothing" do
     scenario "a newly created project has no image and no builder" do
       given_ "Sam has just created a project", context do
+        # given: already true — `setup :setup_active_project` creates it.
+        #
         # No run, scripted or otherwise. Creating the project is the whole of
         # the setup — anything else would be the deploy this criterion says
         # must not have happened yet.
