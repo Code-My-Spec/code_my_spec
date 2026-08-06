@@ -29,8 +29,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.EvaluateTask do
       required: true,
       doc: "Task ID to evaluate"
 
-    field :session_id, :string,
-      doc: "Injected by hook — do not set manually"
+    field :session_id, :string, doc: "Injected by hook — do not set manually"
   end
 
   @impl true
@@ -65,7 +64,8 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.EvaluateTask do
   end
 
   defp resolve_session(_scope, _session_id) do
-    {:error, "No session_id available. The PreToolUse hook should inject it automatically."}
+    {:error,
+     "No session_id available. Call `register_session` with this conversation's id (CLAUDE_SESSION_ID) to create it on this server."}
   end
 
   defp safe_get_session(scope, id) do
@@ -98,13 +98,21 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.EvaluateTask do
         {:ok, :valid} ->
           {:ok, _} = Sessions.complete_task(scope, session, task.id, :completed)
           Sessions.clear_eval_feedback(scope, session)
-          Logger.info("[EvaluateTask] #{type_name(task_module)} passed — task #{task.id} completed")
+
+          Logger.info(
+            "[EvaluateTask] #{type_name(task_module)} passed — task #{task.id} completed"
+          )
+
           {:reply, TasksMapper.evaluate_passed_response(task), frame}
 
         {:ok, :valid, info} ->
           {:ok, _} = Sessions.complete_task(scope, session, task.id, :completed)
           Sessions.clear_eval_feedback(scope, session)
-          Logger.info("[EvaluateTask] #{type_name(task_module)} passed with info — task #{task.id} completed")
+
+          Logger.info(
+            "[EvaluateTask] #{type_name(task_module)} passed with info — task #{task.id} completed"
+          )
+
           {:reply, TasksMapper.evaluate_passed_response(task, info), frame}
 
         {:ok, :invalid, feedback} ->

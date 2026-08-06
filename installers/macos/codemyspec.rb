@@ -24,6 +24,17 @@ class Codemyspec < Formula
     SH
     chmod 0755, bin/"cms"
 
+    # `cms migrate` cannot be a subcommand: the release launcher validates
+    # command names against its own list and rejects unknown ones long before
+    # our code runs. The capability is reached by env var, so this exposes it
+    # under the name the docs use.
+    (bin/"cms-migrate").write <<~SH
+      #!/bin/bash
+      export CMS_MIGRATE=1
+      exec "#{libexec}/bin/code_my_spec_cli" start "$@"
+    SH
+    chmod 0755, bin/"cms-migrate"
+
     # cms-mcp-relay: the standalone Go stdio<->HTTP MCP bridge that Claude Code
     # spawns for the plugin's local MCP server. Self-contained (no RELEASE_ROOT),
     # so a plain symlink into bin/ is enough.

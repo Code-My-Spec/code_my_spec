@@ -17,8 +17,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.TapOut do
   alias CodeMySpec.Sessions
 
   schema do
-    field :session_id, :string,
-      doc: "Injected by hook — do not set manually"
+    field :session_id, :string, doc: "Injected by hook — do not set manually"
   end
 
   @impl true
@@ -46,5 +45,8 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.TapOut do
     end
   end
 
-  defp resolve_session(_scope, _), do: {:error, "No session_id available"}
+  defp resolve_session(_scope, _),
+    do:
+      {:error,
+       "No session_id available. Call `register_session` with this conversation's id (CLAUDE_SESSION_ID) to create it on this server."}
 end

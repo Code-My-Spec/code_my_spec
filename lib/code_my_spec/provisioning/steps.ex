@@ -1092,7 +1092,7 @@ defmodule CodeMySpec.Provisioning.Steps do
   # The disposition rides on the resource because "adopted rather than
   # duplicated" is only checkable if the page can tell the two apart — and
   # `created` twice is exactly the failure the criterion is about.
-  defp repo_resource(repo, disposition \\ nil) do
+  defp repo_resource(repo, disposition) do
     %{
       kind: "repository",
       location: repo["full_name"] || repo["name"],

@@ -88,6 +88,7 @@ defmodule CodeMySpec.McpServers.LocalServer do
   component(CodeMySpec.McpServers.Tasks.Tools.AssignTask)
   component(CodeMySpec.McpServers.Tasks.Tools.EvaluateTask)
   component(CodeMySpec.McpServers.Tasks.Tools.ListTasks)
+  component(CodeMySpec.McpServers.Tasks.Tools.RegisterSession)
   component(CodeMySpec.McpServers.Tasks.Tools.ListSessionSubagents)
   component(CodeMySpec.McpServers.Tasks.Tools.AssignSubagent)
   component(CodeMySpec.McpServers.Tasks.Tools.CancelTask)

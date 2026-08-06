@@ -1,5 +1,6 @@
 {
   "env": {
-    "CMS_PROJECT_ID": "708492f9-454e-482f-a2eb-be64f0356b87"
+    "CMS_PROJECT_ID": "708492f9-454e-482f-a2eb-be64f0356b87",
+    "CMS_CLOUD_PROJECT_ID": "a3158f01-3008-4394-b9d1-669236a358c8"
   }
 }
