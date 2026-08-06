@@ -50,9 +50,17 @@ defmodule CmsHarness.HookDecisionTest do
       end
     end
 
-    test "a dropped channel says the server may well be fine" do
+    # This used to assert the words "the server itself may well be healthy".
+    # That was a guess printed as reassurance, and the day it mattered it was
+    # wrong — the server was returning 500. Where the harness knows, it now says
+    # which end is broken; see "a channel that is down says which end is
+    # broken". Where it does not know, it points at the log and claims nothing.
+    test "a dropped channel blames neither end when it has not asked" do
       %{"reason" => reason} = HookDecision.unreachable("stop", :not_connected, @dir)
-      assert reason =~ "server itself may well be healthy"
+
+      assert reason =~ "channel to the CodeMySpec server is down"
+      assert reason =~ "harness log"
+      refute reason =~ "may well be healthy"
     end
 
     test "a missing project id names the file it should have been in" do
@@ -92,6 +100,46 @@ defmodule CmsHarness.HookDecisionTest do
       decision = HookDecision.unreachable("pre-tool-use", :not_connected, @dir)
 
       refute Map.has_key?(decision, "decision")
+    end
+  end
+
+  describe "a channel that is down says which end is broken" do
+    # The refusal used to say "the server itself may well be healthy". The day
+    # it mattered the server was returning 500, and that hedge sent me to read
+    # the harness's socket code instead of restarting the server.
+    test "a 5xx names the server, not the harness" do
+      reason = HookDecision.unreachable("stop", {:not_connected, {:http, 500}}, @dir)["reason"]
+
+      assert reason =~ "500"
+      assert reason =~ "the server, not the harness"
+      refute reason =~ "may well be healthy"
+    end
+
+    test "a server that answers points at the harness instead" do
+      reason = HookDecision.unreachable("stop", {:not_connected, {:http, 200}}, @dir)["reason"]
+
+      assert reason =~ "the server is up",
+             "if the server answers and the channel is still down, the socket " <>
+               "or the credential is the fault and that is where to look"
+
+      refute reason =~ "the server, not the harness"
+    end
+
+    test "a server that is not there at all says so" do
+      reason =
+        HookDecision.unreachable("stop", {:not_connected, {:error, :econnrefused}}, @dir)[
+          "reason"
+        ]
+
+      assert reason =~ "econnrefused"
+      assert reason =~ "not answering at all"
+    end
+
+    test "all three still block — none of them is permission to stop" do
+      for probe <- [{:http, 500}, {:http, 200}, {:error, :econnrefused}] do
+        assert %{"decision" => "block"} =
+                 HookDecision.unreachable("stop", {:not_connected, probe}, @dir)
+      end
     end
   end
 

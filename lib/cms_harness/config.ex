@@ -93,6 +93,28 @@ defmodule CmsHarness.Config do
   end
 
   @doc """
+  Whether the server is answering at all.
+
+  Asked only when a hook is already being refused, to replace a guess with a
+  fact. The refusal used to say "the server itself may well be healthy" — a
+  hedge, and on the day it mattered it was wrong: the server was returning 500
+  and the message sent the reader to look at the harness's socket.
+
+  Two seconds, because this is on the path of a refusal the agent is waiting
+  for, and a slow answer about why nothing works is its own failure.
+  """
+  @spec probe_server() :: {:http, pos_integer()} | {:error, term()}
+  def probe_server do
+    [url: server_url(), method: :get, retry: false, receive_timeout: 2_000]
+    |> Req.new()
+    |> Req.request()
+    |> case do
+      {:ok, %{status: status}} -> {:http, status}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  @doc """
   How this harness identifies itself when it takes a project's lease.
 
   The server shows this string to whoever gets refused, so it has to say

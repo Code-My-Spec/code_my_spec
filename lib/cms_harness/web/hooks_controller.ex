@@ -17,6 +17,7 @@ defmodule CmsHarness.Web.HooksController do
 
   require Logger
 
+  alias CmsHarness.Config
   alias CmsHarness.HookDecision
   alias CmsHarness.Project.ChannelClient
   alias CmsHarness.Projects
@@ -71,7 +72,10 @@ defmodule CmsHarness.Web.HooksController do
         decision
 
       {:error, :not_connected} ->
-        refuse(hook, :not_connected, working_dir, params)
+        # Ask the server whether it is up, so the refusal names which end is
+        # broken instead of hedging. Two seconds, on a path that is already
+        # failing — see `Config.probe_server/0`.
+        refuse(hook, {:not_connected, Config.probe_server()}, working_dir, params)
 
       {:error, :no_credential} ->
         refuse(hook, :no_credential, working_dir, params)

@@ -97,7 +97,35 @@ defmodule CmsHarness.HookDecision do
 
   defp explain(:not_connected, working_dir) do
     """
-    The harness is running but its channel to the CodeMySpec server is down, so it cannot reach the project's state. Check the harness log for the reconnect attempts; the server itself may well be healthy.
+    The harness is running but its channel to the CodeMySpec server is down, so it cannot reach the project's state. Check the harness log for the reconnect attempts.
+    Working directory: #{working_dir}
+    """
+    |> String.trim()
+  end
+
+  # The channel is down and the server was asked whether it is up, so the
+  # refusal can name which end is broken instead of hedging. It used to say
+  # "the server itself may well be healthy"; the day that mattered, the server
+  # was returning 500 and the hedge sent the reader to the harness.
+  defp explain({:not_connected, {:http, status}}, working_dir) when status >= 500 do
+    """
+    The harness's channel to the CodeMySpec server is down, and the server is answering #{status}. This is the server, not the harness — the channel will rejoin on its own once the server is healthy. A dev server usually needs restarting rather than fixing: Phoenix cannot hot-reload a config or dependency change.
+    Working directory: #{working_dir}
+    """
+    |> String.trim()
+  end
+
+  defp explain({:not_connected, {:http, status}}, working_dir) do
+    """
+    The harness's channel to the CodeMySpec server is down, but the server is answering (#{status}). So the server is up and this harness cannot hold a socket to it — look at the credential and the reconnect attempts in the harness log, not at the server.
+    Working directory: #{working_dir}
+    """
+    |> String.trim()
+  end
+
+  defp explain({:not_connected, {:error, reason}}, working_dir) do
+    """
+    The harness's channel to the CodeMySpec server is down, and the server is not answering at all: #{inspect(reason)}. Start it, or point CMS_SERVER_URL somewhere that is running.
     Working directory: #{working_dir}
     """
     |> String.trim()
