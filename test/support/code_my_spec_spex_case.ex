@@ -1373,6 +1373,62 @@ defmodule CodeMySpecSpex.Case do
   end
 
   @doc """
+  Stage what each provider says the account holds.
+
+  The seam is the enumeration, not the page. A criterion about how a dangling
+  bucket is *displayed* should not need a real bucket at Hetzner; the page is
+  still driven for real.
+
+  Takes a map of provider to either a list of resources or `{:error, reason}`,
+  so one provider can be unreachable while the others answer — which is a state
+  the page has to survive and cannot be arranged any other way.
+
+      stage_inventory(context, %{
+        hetzner: [inventory_resource(%{kind: "bucket", location: "old-bucket"})],
+        cloudflare: {:error, :unauthorized}
+      })
+  """
+  def stage_inventory(context, by_provider) do
+    previous = Application.get_env(:code_my_spec, CodeMySpec.Resources.Inventory, [])
+
+    staged =
+      Map.new(by_provider, fn
+        {provider, {:error, reason}} -> {provider, {:error, reason}}
+        {provider, resources} when is_list(resources) -> {provider, {:ok, resources}}
+      end)
+
+    Application.put_env(
+      :code_my_spec,
+      CodeMySpec.Resources.Inventory,
+      Keyword.merge(previous, list: fn _scope -> staged end)
+    )
+
+    ExUnit.Callbacks.on_exit(fn ->
+      Application.put_env(:code_my_spec, CodeMySpec.Resources.Inventory, previous)
+    end)
+
+    context
+  end
+
+  @doc """
+  A resource as a provider reports one.
+
+  Shaped like an enumeration rather than like our record of having made it:
+  the provider knows what a thing is and where it lives, and nothing about
+  which project asked for it.
+  """
+  def inventory_resource(attrs \\ %{}) do
+    Map.merge(
+      %{
+        kind: "bucket",
+        location: "resource-#{System.unique_integer([:positive])}",
+        identifier: nil
+      },
+      Map.new(attrs)
+    )
+  end
+
+  @doc """
   Stage what a box reports is running on it.
 
   The seam is the SSH read, not the page. Criteria about how containers are
