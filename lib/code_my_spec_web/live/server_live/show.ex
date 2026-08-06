@@ -72,9 +72,22 @@ defmodule CodeMySpecWeb.ServerLive.Show do
   # In the URL rather than in socket state, so a filtered view is a link. On a
   # box carrying six apps, "the thing I am looking at" is worth being able to
   # send someone.
+  # Patch, not navigate: `mount/3` is where the box gets read, and this never
+  # re-runs it. Changing the filter re-renders what is already in the socket —
+  # picking a project must not cost another SSH round trip.
   @impl true
   def handle_params(params, _uri, socket) do
     {:noreply, assign(socket, :app, params["app"])}
+  end
+
+  @impl true
+  def handle_event("filter", %{"app" => ""}, socket) do
+    {:noreply, push_patch(socket, to: ~p"/app/servers/#{socket.assigns.server.name}")}
+  end
+
+  def handle_event("filter", %{"app" => app}, socket) do
+    {:noreply,
+     push_patch(socket, to: ~p"/app/servers/#{socket.assigns.server.name}?#{[app: app]}")}
   end
 
   @impl true
@@ -119,26 +132,30 @@ defmodule CodeMySpecWeb.ServerLive.Show do
   defp describe({:crashed, reason}), do: "Reading the box failed: #{inspect(reason)}"
   defp describe(reason), do: "Could not read the box: #{inspect(reason)}"
 
-  # Kamal names a container `<service>-web-<sha>`, and leaves the old one
-  # behind as `..._replaced_<id>` during a swap. Cutting at `-web-` recovers
-  # the service, which is the grain someone actually means by "this app" —
-  # and it works for the things on the box that are not CodeMySpec projects
-  # at all, which on a shared host is most of them.
-  defp app_of(%{name: name}) when is_binary(name) do
-    case String.split(name, "-web-", parts: 2) do
-      [service, _rest] -> service
-      _ -> name
-    end
+  # One option per thing running here, labelled by project where we know it.
+  # A shared box runs services this account never deployed, so the list cannot
+  # be "your projects" — it is what is on the machine, with a project name
+  # attached to the ones that have earned it.
+  defp options(containers) when is_list(containers) do
+    containers
+    |> Enum.group_by(& &1.service)
+    |> Enum.map(fn {service, group} ->
+      %{
+        value: service,
+        label: label_for(service, List.first(group)),
+        count: length(group)
+      }
+    end)
+    |> Enum.sort_by(& &1.label)
   end
 
-  defp apps(containers) when is_list(containers) do
-    containers |> Enum.map(&app_of/1) |> Enum.uniq() |> Enum.sort()
-  end
+  defp label_for(service, %{project_name: name}) when is_binary(name), do: "#{name} (#{service})"
+  defp label_for(service, _container), do: service
 
   defp for_app(containers, nil) when is_list(containers), do: containers
 
-  defp for_app(containers, app) when is_list(containers),
-    do: Enum.filter(containers, &(app_of(&1) == app))
+  defp for_app(containers, service) when is_list(containers),
+    do: Enum.filter(containers, &(&1.service == service))
 
   # The records half narrows too when the filter names a project we know, and
   # is left alone when it names something we do not — a box can run apps that
@@ -206,25 +223,24 @@ defmodule CodeMySpecWeb.ServerLive.Show do
             Reading the box…
           </p>
 
-          <div :if={is_list(@containers) and length(apps(@containers)) > 1} class="flex flex-wrap gap-2 mb-4">
-            <.link
-              patch={~p"/app/servers/#{@server.name}"}
-              data-test="app-filter"
-              data-app=""
-              class={["badge badge-sm", is_nil(@app) && "badge-primary"]}
-            >
-              all ({length(@containers)})
-            </.link>
-            <.link
-              :for={app <- apps(@containers)}
-              patch={~p"/app/servers/#{@server.name}?#{[app: app]}"}
-              data-test="app-filter"
-              data-app={app}
-              class={["badge badge-sm", @app == app && "badge-primary"]}
-            >
-              {app} ({length(for_app(@containers, app))})
-            </.link>
-          </div>
+          <form
+            :if={is_list(@containers) and length(options(@containers)) > 1}
+            phx-change="filter"
+            class="mb-4"
+          >
+            <select name="app" data-test="app-filter" class="select select-bordered select-sm w-72">
+              <option value="" selected={is_nil(@app)}>
+                Everything on this box ({length(@containers)})
+              </option>
+              <option
+                :for={option <- options(@containers)}
+                value={option.value}
+                selected={@app == option.value}
+              >
+                {option.label} ({option.count})
+              </option>
+            </select>
+          </form>
 
           <div
             :if={@containers_error}
@@ -252,6 +268,8 @@ defmodule CodeMySpecWeb.ServerLive.Show do
               data-status={container.status}
               data-image={container.image}
               data-exit-code={container.exit_code}
+              data-service={container.service}
+              data-project-id={container.project_id}
               class={[
                 "card bg-base-200",
                 container.state != "running" && "border border-error"
@@ -264,6 +282,13 @@ defmodule CodeMySpecWeb.ServerLive.Show do
                 ]}>
                 </span>
                 <span class="font-mono">{container.name}</span>
+                <.link
+                  :if={container.project_id}
+                  navigate={~p"/app/projects/#{container.project_id}/provisioning"}
+                  class="badge badge-ghost badge-sm link link-hover"
+                >
+                  {container.project_name}
+                </.link>
                 <span class="text-xs opacity-70">{container.image}</span>
                 <span class="ml-auto text-xs">{container.status}</span>
               </div>

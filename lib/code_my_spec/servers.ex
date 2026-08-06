@@ -33,7 +33,9 @@ defmodule CodeMySpec.Servers do
   """
 
   alias CodeMySpec.AccountSecrets
-  alias CodeMySpec.Provisioning.Hetzner
+  alias CodeMySpec.Projects
+  alias CodeMySpec.Provisioning
+  alias CodeMySpec.Provisioning.{Hetzner, Repository}
   alias CodeMySpec.Servers.{Containers, Server}
   alias CodeMySpec.Users.Scope
 
@@ -141,12 +143,87 @@ defmodule CodeMySpec.Servers do
   end
 
   @doc """
-  What is running on a server, read from the server.
+  What is running on a server, read from the server, attributed to projects.
+
+  Each container carries `service` — the name kamal deploys it under — and the
+  `project_id` that service belongs to when this account has one.
+
+  The attribution is exact, on `Repository.default_name/1`, which is the name
+  setup gives a project's repository and therefore its kamal service. A
+  container we cannot place keeps `project_id: nil` rather than being guessed
+  at: a shared box legitimately runs things nobody here deployed, and putting
+  someone else's container under a project would be worse than admitting we do
+  not know whose it is.
   """
   @spec containers(Scope.t(), map()) :: {:ok, [map()]} | {:error, term()}
   def containers(%Scope{} = scope, server) do
-    Containers.list(scope, server)
+    with {:ok, containers} <- Containers.list(scope, server) do
+      {:ok, attribute(scope, containers)}
+    end
   end
+
+  defp attribute(scope, containers) do
+    by_service = services(scope)
+    Enum.map(containers, &place(&1, by_service))
+  end
+
+  # `<app>` in production and `<app>-<environment>` everywhere else, which is
+  # how the generated `deploy.yml` names the service. Both are registered, so a
+  # UAT container lands on the same project as its production twin.
+  #
+  # Two spellings of `<app>`, because two things generate it. `default_name/1`
+  # kebabs the project's *name*, which is what the repository step uses.
+  # Anything scaffolded from the module name gets the underscored form instead
+  # — `MarketMySpec` is `marketmyspec` one way and `market-my-spec` the other,
+  # and the box shows the latter. Both are exact derivations, so registering
+  # both places more containers without guessing at any of them.
+  defp services(scope) do
+    for project <- Projects.list_projects(scope),
+        app <- app_names(project),
+        environment <- [nil | environment_names(scope, project)],
+        into: %{} do
+      {if(environment, do: "#{app}-#{environment}", else: app), project}
+    end
+  end
+
+  defp app_names(project) do
+    [Repository.default_name(project) | module_app_name(project)] |> Enum.uniq()
+  end
+
+  defp module_app_name(%{module_name: module_name}) when is_binary(module_name) do
+    [module_name |> Macro.underscore() |> String.replace("_", "-")]
+  end
+
+  defp module_app_name(_project), do: []
+
+  defp environment_names(%Scope{} = scope, project) do
+    %Scope{scope | active_project: project, active_project_id: project.id}
+    |> Provisioning.environment_names()
+  rescue
+    _ -> ["uat", "prod"]
+  end
+
+  defp place(container, by_service) do
+    service = service_of(container)
+    project = Map.get(by_service, service)
+
+    container
+    |> Map.put(:service, service)
+    |> Map.put(:project_id, project && project.id)
+    |> Map.put(:project_name, project && project.name)
+  end
+
+  # Kamal names a container `<service>-web-<sha>`, and leaves the previous one
+  # behind as `..._replaced_<id>` while a deploy swaps over. Cutting at `-web-`
+  # recovers the service from both.
+  defp service_of(%{name: name}) when is_binary(name) do
+    case String.split(name, "-web-", parts: 2) do
+      [service, _rest] -> service
+      _ -> name
+    end
+  end
+
+  defp service_of(_container), do: nil
 
   @doc """
   The linked record for a name, or nil — what the edit form is built from.
