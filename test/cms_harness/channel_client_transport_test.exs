@@ -42,7 +42,12 @@ defmodule CmsHarness.ChannelClientTransportTest do
     %Slipstream.Socket{
       assigns:
         Map.merge(
-          %{joined: true, topic: "harness_project:p1", project: %{id: "p1", root: "/tmp/x"}},
+          %{
+            joined: true,
+            refused: nil,
+            topic: "harness_project:p1",
+            project: %{id: "p1", root: "/tmp/x"}
+          },
           assigns
         )
     }
@@ -150,6 +155,44 @@ defmodule CmsHarness.ChannelClientTransportTest do
 
       assert out.assigns.joined, "one bad answer is not a dead channel"
       refute_receive :reconnect, 100
+    end
+  end
+
+  describe "a project someone else holds" do
+    # The lease is a Postgres advisory lock on the *server's* connection, so the
+    # holder during a server restart is the outgoing node, and it lets go within
+    # seconds. Treating the first refusal as final meant a routine restart left
+    # the harness permanently not-serving while `cms harness` still looked alive
+    # — which is exactly how tonight's outage happened.
+    defp refuse(socket) do
+      ChannelClient.handle_topic_close(
+        "harness_project:p1",
+        {:failed_to_join, %{"reason" => "project_in_use", "held_by" => "other@host"}},
+        socket
+      )
+    end
+
+    test "the first refusal retries rather than giving up" do
+      {:ok, out} = refuse(socket(%{attempts: 0, refusals: 0}))
+
+      refute out.assigns.refused,
+             "a refusal seconds into a server handover is not a second harness"
+
+      assert_receive :reconnect, 1_500
+    end
+
+    test "a refusal that keeps coming back is eventually final" do
+      out =
+        Enum.reduce(1..5, socket(%{attempts: 0, refusals: 0}), fn _, acc ->
+          {:ok, next} = refuse(acc)
+          next
+        end)
+
+      assert out.assigns.refused == :project_in_use,
+             "two harnesses on one project corrupt the graph; retrying forever " <>
+               "would trade one failure mode for a worse one"
+
+      assert out.assigns.refusals == 5, "the retries are bounded, not endless"
     end
   end
 end

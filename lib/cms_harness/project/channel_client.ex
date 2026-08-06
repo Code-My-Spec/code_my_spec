@@ -60,6 +60,21 @@ defmodule CmsHarness.Project.ChannelClient do
 
   @backoff [1_000, 2_000, 5_000, 10_000, 30_000]
 
+  # A refused join is retried this many times before it is treated as final.
+  #
+  # The lease is a Postgres advisory lock held by the *server's* connection, so
+  # it frees the instant that connection closes — including when the server
+  # restarts. But a restart is a handover, not an instant: for the seconds the
+  # old node takes to exit, the new node cannot take a lock the old one still
+  # holds, and a harness that rejoined in that window was refused. Treating that
+  # as final wedged the harness until someone noticed and restarted it by hand,
+  # which is how tonight went.
+  #
+  # Spanning the backoff, this is roughly 48 seconds — long enough to outlast a
+  # handover, short enough that a genuine second harness still gives up quickly
+  # rather than fighting for the project forever.
+  @refusal_retries 4
+
   # The server needs this and cannot know it. `pre-tool-use` rewrites the agent's
   # analysis command into a curl, and that curl points at this harness's own
   # endpoint — a URL that only means anything on the machine running the agent.
@@ -216,6 +231,7 @@ defmodule CmsHarness.Project.ChannelClient do
       |> assign(:pending, %{})
       |> assign(:analysis_refs, %{})
       |> assign(:attempts, 0)
+      |> assign(:refusals, 0)
 
     {:ok, socket, {:continue, :connect}}
   end
@@ -262,6 +278,7 @@ defmodule CmsHarness.Project.ChannelClient do
       socket
       |> assign(:joined, true)
       |> assign(:attempts, 0)
+      |> assign(:refusals, 0)
       |> assign(:refused, nil)
 
     schedule_read_model_refresh()
@@ -309,15 +326,7 @@ defmodule CmsHarness.Project.ChannelClient do
     case reason do
       {kind, %{"reason" => "project_in_use", "held_by" => holder}}
       when kind in [:error, :failed_to_join] ->
-        Logger.error("""
-        [CmsHarness] not serving #{socket.assigns.project.root} — #{holder} already holds this project.
-
-        Two harnesses syncing one project overwrite each other's files and produce a
-        requirement graph matching neither checkout, so this one is stopping rather
-        than waiting. That lease frees the moment the other harness exits.
-        """)
-
-        {:ok, assign(socket, :refused, :project_in_use)}
+        {:ok, refused(socket, holder)}
 
       other ->
         Logger.warning("[CmsHarness] #{topic} closed: #{inspect(other)}")
@@ -697,6 +706,35 @@ defmodule CmsHarness.Project.ChannelClient do
   # The wire, read at call time so a test can swap it per-case. See
   # `CmsHarness.Project.Transport` for why only outbound needed a seam.
   defp transport, do: Transport.impl()
+
+  # A project someone else holds. Retried for a while first, because the most
+  # common holder is not another harness at all — it is the server node this one
+  # is replacing, still on its way out. See `@refusal_retries`.
+  defp refused(socket, holder) do
+    socket = update(socket, :refusals, &(&1 + 1))
+    attempt = socket.assigns.refusals
+
+    if attempt <= @refusal_retries do
+      Logger.warning(
+        "[CmsHarness] #{socket.assigns.project.root} is held by #{holder} — retrying " <>
+          "(#{attempt}/#{@refusal_retries}); a restarting server frees it within seconds"
+      )
+
+      schedule_rejoin(socket)
+    else
+      Logger.error("""
+      [CmsHarness] not serving #{socket.assigns.project.root} — #{holder} already holds this project.
+
+      Still held after #{@refusal_retries} retries, so this is another harness rather
+      than a server changing hands. Two harnesses syncing one project overwrite each
+      other's files and produce a requirement graph matching neither checkout, so this
+      one is stopping rather than waiting. That lease frees the moment the other
+      harness exits.
+      """)
+
+      assign(socket, :refused, :project_in_use)
+    end
+  end
 
   defp schedule_rejoin(socket) do
     Process.send_after(self(), :reconnect, backoff(socket.assigns.attempts))

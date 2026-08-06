@@ -89,8 +89,7 @@ defmodule CmsHarness.SyncPathTest do
       refute Enum.any?(Map.keys(accounts), &(&1 == "content"))
     end
 
-    test "a project another harness holds is refused, and this one stops rather than waiting",
-         %{project: project} do
+    test "a project another harness holds is not served", %{project: project} do
       FakeServer.start(refuse: "the harness at /elsewhere")
 
       {:ok, _} = Projects.ensure_started(project.root)
@@ -100,9 +99,16 @@ defmodule CmsHarness.SyncPathTest do
       refute await_connected(project.id, 10)
       refute Watcher.watching?(project.id)
 
-      # And it does not come back round. Retrying is the same collision once a
-      # second, and it would fill the log with the wrong problem.
-      refute_receive {:join_refused, _}, 3_000
+      # It does come back round, a bounded number of times. This used to assert
+      # the opposite — one refusal and done — on the reasoning that a retry is
+      # just the same collision again. That reasoning missed the commonest
+      # holder of all: the server node this one is replacing, which lets go
+      # within seconds of a restart. Where the retries stop is asserted in
+      # `ChannelClientTransportTest`, which can do it without spending the
+      # backoff in real time.
+      assert_receive {:join_refused, _},
+                     5_000,
+                     "a refusal during a server handover has to heal itself"
     end
   end
 
