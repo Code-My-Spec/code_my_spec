@@ -48,9 +48,9 @@ defmodule CmsHarness.Project.ChannelClient do
   alias CmsHarness.Config
   alias CmsHarness.Project.AnalysisServer
   alias CmsHarness.Project.Transport
-  alias CmsHarness.Web.Endpoint
   alias CmsHarness.Project.Watcher
   alias CmsHarness.Sync
+  alias CmsHarness.Web.Endpoint
   alias CodeMySpec.Files.Scanner.ReadModel
 
   # Long enough for a transatlantic round trip against a busy server, short
@@ -108,13 +108,6 @@ defmodule CmsHarness.Project.ChannelClient do
   end
 
   @doc """
-  Ask the server to decide a hook.
-
-  Returns `{:error, :not_connected}` or `{:error, :no_reply}` rather than
-  anything resembling an answer. The caller turns that into a refusal; this
-  must never invent one.
-  """
-  @doc """
   Send a completed model turn to the server to be recorded.
 
   Fire and forget, and deliberately so. Recording is evidence for whoever is
@@ -133,6 +126,13 @@ defmodule CmsHarness.Project.ChannelClient do
     :ok
   end
 
+  @doc """
+  Ask the server to decide a hook.
+
+  Returns `{:error, :not_connected}`, `{:error, :no_credential}` or
+  `{:error, :no_reply}` rather than anything resembling an answer. The caller
+  turns that into a refusal; this must never invent one.
+  """
   @spec decide_hook(String.t(), String.t(), map()) ::
           {:ok, map()} | {:error, :not_connected | :no_credential | :no_reply}
   def decide_hook(project_id, hook, payload) do
