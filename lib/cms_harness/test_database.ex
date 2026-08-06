@@ -113,9 +113,8 @@ defmodule CmsHarness.TestDatabase do
   end
 
   defp ensure_database(environment, partition) do
-    with :ok <- run_mix(environment, partition, ["ecto.create", "--quiet"]),
-         :ok <- run_mix(environment, partition, ["ecto.migrate", "--quiet"]) do
-      :ok
+    with :ok <- run_mix(environment, partition, ["ecto.create", "--quiet"]) do
+      run_mix(environment, partition, ["ecto.migrate", "--quiet"])
     end
   end
 
