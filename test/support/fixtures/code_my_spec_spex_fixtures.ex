@@ -77,6 +77,31 @@ defmodule CodeMySpecSpex.Fixtures do
   end
 
   @doc """
+  Register a sending domain at Resend and publish nothing.
+
+  The split criterion 8029 needs: the domain has to exist for the page to show
+  a mail section at all, but its records must not be published, because
+  publishing them is the step's job and the criterion is about what that
+  publishing disturbs.
+  """
+  @spec register_sending_domain_only(Scope.t(), String.t()) :: {:ok, map()} | {:error, term()}
+  def register_sending_domain_only(scope, sending_domain) do
+    CodeMySpec.Provisioning.Resend.ensure_domain(scope, sending_domain)
+  end
+
+  @doc "Remove a sending domain from Resend, for the register-only teardown."
+  @spec remove_sending_domain(Scope.t(), String.t()) :: :ok
+  def remove_sending_domain(scope, sending_domain) do
+    alias CodeMySpec.Provisioning.Resend
+
+    with {:ok, %{"id" => id}} <- Resend.find_domain(scope, sending_domain) do
+      Resend.delete_domain(scope, id)
+    end
+
+    :ok
+  end
+
+  @doc """
   Publish every record, then delete the DKIM — the state 8027 is now grounded
   on.
 

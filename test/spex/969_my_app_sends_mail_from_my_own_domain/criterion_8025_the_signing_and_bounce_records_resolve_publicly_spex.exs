@@ -38,12 +38,18 @@ defmodule CodeMySpecSpex.Story969.Criterion8025Spex do
   spex "The signing and bounce records resolve publicly" do
     scenario "each record the provider asked for resolves from a public resolver" do
       given_ "a domain of Sam's that the provider has never seen", context do
+        # `c8025b`, not `c8025`: publishing and deleting a name caches its
+        # *absence* at every recursive resolver for the zone's SOA negative TTL
+        # — half an hour — so a label that has been through a few failed
+        # recordings cannot resolve a freshly published record no matter how
+        # long the step waits. A name nothing has asked for resolves in seconds.
+        #
         # Its own subdomain. Every criterion in this story used one shared name,
         # so whichever ran second found the first's sending domain already
         # registered and *adopted* it — and an adopted resource is never torn
         # down. Recorded alone each one passed; run together they replayed each
         # other's state.
-        _project = own_domain(context.project, "c8025.astralbi.com")
+        _project = own_domain(context.project, "c8025b.astralbi.com")
         tear_down_after(context.scope, [:email])
 
         # Nothing is published here on purpose. Publishing is the step's job

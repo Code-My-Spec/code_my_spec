@@ -1,7 +1,7 @@
 {
   "interactions": [
     {
-      "recorded_at": "2026-08-02T12:21:16.358519Z",
+      "recorded_at": "2026-08-07T04:33:15.071210Z",
       "request": {
         "body": "",
         "body_type": "text",
@@ -57,6 +57,21 @@
             },
             {
               "comment": null,
+              "content": "5.161.239.73",
+              "created_on": "2026-08-03T23:25:25.949725Z",
+              "id": "c8d42d2d36ce5cb016fbff064d379fee",
+              "meta": {},
+              "modified_on": "2026-08-03T23:25:25.949725Z",
+              "name": "uat.astralbi.com",
+              "proxiable": true,
+              "proxied": false,
+              "settings": {},
+              "tags": [],
+              "ttl": 60,
+              "type": "A"
+            },
+            {
+              "comment": null,
               "content": "2a02:4780:b:861:0:14f1:e865:e",
               "created_on": "2026-06-25T15:14:36.624068Z",
               "id": "a7fff60b839a09d9113eb31b09d63d62",
@@ -90,10 +105,10 @@
             {
               "comment": null,
               "content": "feedback-smtp.us-east-1.amazonses.com",
-              "created_on": "2026-08-02T12:18:26.999741Z",
-              "id": "a0f5bb573800c44a07dcc154ac42981d",
+              "created_on": "2026-08-07T04:30:32.573361Z",
+              "id": "d6e69798a5eea6d77b91fd4b3b7beb02",
               "meta": {},
-              "modified_on": "2026-08-02T12:18:26.999741Z",
+              "modified_on": "2026-08-07T04:30:32.573361Z",
               "name": "send.c8056.astralbi.com",
               "priority": 10,
               "proxiable": false,
@@ -106,10 +121,10 @@
             {
               "comment": null,
               "content": "p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDUen3BBznEK9+7agCn6e6uUTpVhZCEG3kJQJ69R3qmQ3XjaZ7TO5Ao9tE3yhiwBpHd+CiNtS5KA/COzSOowVsUoxF9ID3WfaPtstvTfBTJppPGhaF4x+JC1OsLBYfibgYq39FOthMrx6kZaTWhquSKJK4fwX8xdUZs2VnWA5LBmQIDAQAB",
-              "created_on": "2026-08-02T12:18:26.611262Z",
-              "id": "2a8eaf3e0e1f7721ae9001bf8e7a3f5d",
+              "created_on": "2026-08-07T04:30:32.115004Z",
+              "id": "6dd04188d82da43704885305a25fe606",
               "meta": {},
-              "modified_on": "2026-08-02T12:18:26.611262Z",
+              "modified_on": "2026-08-07T04:30:32.115004Z",
               "name": "resend._domainkey.c8056.astralbi.com",
               "proxiable": false,
               "proxied": false,
@@ -121,10 +136,10 @@
             {
               "comment": null,
               "content": "v=spf1 include:amazonses.com ~all",
-              "created_on": "2026-08-02T12:18:27.540714Z",
-              "id": "0cea1b9dc182abad169dcb29b8b6812e",
+              "created_on": "2026-08-07T04:30:33.045436Z",
+              "id": "63fc4f2babc8874fa129880c9635e3fe",
               "meta": {},
-              "modified_on": "2026-08-02T12:18:27.540714Z",
+              "modified_on": "2026-08-07T04:30:33.045436Z",
               "name": "send.c8056.astralbi.com",
               "proxiable": false,
               "proxied": false,
@@ -135,10 +150,10 @@
             }
           ],
           "result_info": {
-            "count": 7,
+            "count": 8,
             "page": 1,
             "per_page": 100,
-            "total_count": 10,
+            "total_count": 11,
             "total_pages": 1
           },
           "success": true
@@ -149,13 +164,13 @@
             "2026-09-26.epoch"
           ],
           "cf-auditlog-id": [
-            "019fc26b-db12-7376-a9b6-fdc69288bca5"
+            "019fda7f-2a8f-7053-96dd-c9055e0a9ad8"
           ],
           "cf-cache-status": [
             "DYNAMIC"
           ],
           "cf-ray": [
-            "a24d0a98186097bf-YUL"
+            "a2738fe40d1ca2ab-YUL"
           ],
           "connection": [
             "keep-alive"
@@ -164,10 +179,10 @@
             "application/json"
           ],
           "date": [
-            "Sun, 02 Aug 2026 12:21:16 GMT"
+            "Fri, 07 Aug 2026 04:33:15 GMT"
           ],
           "ratelimit": [
-            "\"default\";r=1197;t=1"
+            "\"default\";r=1199;t=1"
           ],
           "ratelimit-policy": [
             "\"default\";q=1200;w=300"
@@ -186,7 +201,7 @@
       }
     },
     {
-      "recorded_at": "2026-08-02T12:21:16.553250Z",
+      "recorded_at": "2026-08-07T04:33:15.360688Z",
       "request": {
         "body": "",
         "body_type": "text",
@@ -203,14 +218,14 @@
         },
         "method": "DELETE",
         "query_string": "",
-        "uri": "https://api.cloudflare.com/client/v4/zones/0287fe8206425a2aac660a57a62f65bc/dns_records/a0f5bb573800c44a07dcc154ac42981d"
+        "uri": "https://api.cloudflare.com/client/v4/zones/0287fe8206425a2aac660a57a62f65bc/dns_records/d6e69798a5eea6d77b91fd4b3b7beb02"
       },
       "response": {
         "body_json": {
           "errors": [],
           "messages": [],
           "result": {
-            "id": "a0f5bb573800c44a07dcc154ac42981d"
+            "id": "d6e69798a5eea6d77b91fd4b3b7beb02"
           },
           "success": true
         },
@@ -220,13 +235,13 @@
             "2026-09-26.epoch"
           ],
           "cf-auditlog-id": [
-            "019fc26b-dbe0-70a6-8982-e0a73caa50bd"
+            "019fda7f-2b5d-784e-8f77-595eaffdfacb"
           ],
           "cf-cache-status": [
             "DYNAMIC"
           ],
           "cf-ray": [
-            "a24d0a995bf597bf-YUL"
+            "a2738fe55de1a2ab-YUL"
           ],
           "connection": [
             "keep-alive"
@@ -235,7 +250,7 @@
             "application/json"
           ],
           "date": [
-            "Sun, 02 Aug 2026 12:21:16 GMT"
+            "Fri, 07 Aug 2026 04:33:15 GMT"
           ],
           "ratelimit": [
             "\"default\";r=1198;t=1"
@@ -257,7 +272,7 @@
       }
     },
     {
-      "recorded_at": "2026-08-02T12:21:16.744846Z",
+      "recorded_at": "2026-08-07T04:33:15.548937Z",
       "request": {
         "body": "",
         "body_type": "text",
@@ -274,14 +289,14 @@
         },
         "method": "DELETE",
         "query_string": "",
-        "uri": "https://api.cloudflare.com/client/v4/zones/0287fe8206425a2aac660a57a62f65bc/dns_records/2a8eaf3e0e1f7721ae9001bf8e7a3f5d"
+        "uri": "https://api.cloudflare.com/client/v4/zones/0287fe8206425a2aac660a57a62f65bc/dns_records/6dd04188d82da43704885305a25fe606"
       },
       "response": {
         "body_json": {
           "errors": [],
           "messages": [],
           "result": {
-            "id": "2a8eaf3e0e1f7721ae9001bf8e7a3f5d"
+            "id": "6dd04188d82da43704885305a25fe606"
           },
           "success": true
         },
@@ -291,13 +306,13 @@
             "2026-09-26.epoch"
           ],
           "cf-auditlog-id": [
-            "019fc26b-dca1-78e1-af70-477f2de9a766"
+            "019fda7f-2c7b-7512-9c9b-bb0a1473a38a"
           ],
           "cf-cache-status": [
             "DYNAMIC"
           ],
           "cf-ray": [
-            "a24d0a9a9eb997bf-YUL"
+            "a2738fe71f0fa2ab-YUL"
           ],
           "connection": [
             "keep-alive"
@@ -306,10 +321,10 @@
             "application/json"
           ],
           "date": [
-            "Sun, 02 Aug 2026 12:21:16 GMT"
+            "Fri, 07 Aug 2026 04:33:15 GMT"
           ],
           "ratelimit": [
-            "\"default\";r=1197;t=1"
+            "\"default\";r=1199;t=1"
           ],
           "ratelimit-policy": [
             "\"default\";q=1200;w=300"
@@ -328,7 +343,7 @@
       }
     },
     {
-      "recorded_at": "2026-08-02T12:21:16.946320Z",
+      "recorded_at": "2026-08-07T04:33:15.742902Z",
       "request": {
         "body": "",
         "body_type": "text",
@@ -345,14 +360,14 @@
         },
         "method": "DELETE",
         "query_string": "",
-        "uri": "https://api.cloudflare.com/client/v4/zones/0287fe8206425a2aac660a57a62f65bc/dns_records/0cea1b9dc182abad169dcb29b8b6812e"
+        "uri": "https://api.cloudflare.com/client/v4/zones/0287fe8206425a2aac660a57a62f65bc/dns_records/63fc4f2babc8874fa129880c9635e3fe"
       },
       "response": {
         "body_json": {
           "errors": [],
           "messages": [],
           "result": {
-            "id": "0cea1b9dc182abad169dcb29b8b6812e"
+            "id": "63fc4f2babc8874fa129880c9635e3fe"
           },
           "success": true
         },
@@ -362,13 +377,13 @@
             "2026-09-26.epoch"
           ],
           "cf-auditlog-id": [
-            "019fc26b-dd60-715b-a51c-1ee43559ca3f"
+            "019fda7f-2d39-760a-9e96-00e1c8d7a41c"
           ],
           "cf-cache-status": [
             "DYNAMIC"
           ],
           "cf-ray": [
-            "a24d0a9bc9d997bf-YUL"
+            "a2738fe84feca2ab-YUL"
           ],
           "connection": [
             "keep-alive"
@@ -377,10 +392,10 @@
             "application/json"
           ],
           "date": [
-            "Sun, 02 Aug 2026 12:21:16 GMT"
+            "Fri, 07 Aug 2026 04:33:15 GMT"
           ],
           "ratelimit": [
-            "\"default\";r=1197;t=1"
+            "\"default\";r=1198;t=1"
           ],
           "ratelimit-policy": [
             "\"default\";q=1200;w=300"
@@ -399,7 +414,7 @@
       }
     },
     {
-      "recorded_at": "2026-08-02T12:21:17.188868Z",
+      "recorded_at": "2026-08-07T04:33:15.959275Z",
       "request": {
         "body": "",
         "body_type": "text",
@@ -416,12 +431,12 @@
         },
         "method": "DELETE",
         "query_string": "",
-        "uri": "https://api.resend.com/domains/07d9baa4-21d2-4b22-8678-310533609b16"
+        "uri": "https://api.resend.com/domains/a5ec8fc9-1eb2-4fc5-89bd-6abbde849e85"
       },
       "response": {
         "body_json": {
           "deleted": true,
-          "id": "07d9baa4-21d2-4b22-8678-310533609b16",
+          "id": "a5ec8fc9-1eb2-4fc5-89bd-6abbde849e85",
           "object": "domain"
         },
         "body_type": "json",
@@ -430,7 +445,7 @@
             "DYNAMIC"
           ],
           "cf-ray": [
-            "a24d0a9d0ba8d8d9-YYZ"
+            "a2738fe98de7a234-YYZ"
           ],
           "connection": [
             "keep-alive"
@@ -442,10 +457,10 @@
             "application/json; charset=utf-8"
           ],
           "date": [
-            "Sun, 02 Aug 2026 12:21:17 GMT"
+            "Fri, 07 Aug 2026 04:33:15 GMT"
           ],
           "etag": [
-            "W/\"4e-aKQ/jwY54fOQ68WGkfhaRF8bg3w\""
+            "W/\"4e-PaAT9SkrSb71y5Do7dCZZWPikYk\""
           ],
           "permissions-policy": [
             "camera=(), microphone=(), geolocation=(), payment=()"

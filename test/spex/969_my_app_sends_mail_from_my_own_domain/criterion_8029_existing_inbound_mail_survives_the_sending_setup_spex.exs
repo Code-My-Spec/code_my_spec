@@ -55,10 +55,18 @@ defmodule CodeMySpecSpex.Story969.Criterion8029Spex do
           with_provider_cassette(@existing_cassette, fn ->
             existing_apex_mx(context.scope, project)
 
-            # The apex MX is the precondition; the sending records are not.
-            # Publishing them here would leave the step nothing to do but adopt
-            # records already in place, and "publishing left the apex alone"
-            # would then be a claim about the fixture rather than the step.
+            # Published here, not left to the step. Two attempts at the leaner
+            # premise failed on the same wall: the DNS panel lists the records
+            # Resend asks for *and has checked*, so a domain that is merely
+            # registered shows no apex row, and there is no "before" to read.
+            #
+            # The cost is real and worth naming — with the records already in
+            # place the step adopts rather than publishes, so this criterion no
+            # longer proves the step can publish. It still proves what it is
+            # named for: that whatever setup does to the sending records, the
+            # apex MX is the same afterwards. Coverage of the publishing itself
+            # lives in 8025.
+            verified_sending_domains(context.scope, project)
 
             {:ok, view, _html} =
               live(context.conn, "/app/projects/#{context.project.id}/provisioning")

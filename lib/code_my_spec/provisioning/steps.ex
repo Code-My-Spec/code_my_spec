@@ -947,7 +947,7 @@ defmodule CodeMySpec.Provisioning.Steps do
         # could only ever time out — and it did, on every real project. The
         # spex missed it because a fixture published the records the step was
         # supposed to publish, which made the step look like it worked.
-        case publish_sending_records(scope, sending, Resend.records(d)) do
+        case publish_sending_records(scope, sending, sending_records_for(scope, d)) do
           {:ok, published} ->
             verify_sending_domain(scope, d, sending, created ++ published, opts)
 
@@ -959,6 +959,24 @@ defmodule CodeMySpec.Provisioning.Steps do
         {:error, format(reason)}
     end
   end
+
+  # `ensure_domain/2` does not carry the records. The adopt path comes from
+  # `list_domains`, which never includes them, and the create response is not to
+  # be relied on either — so this re-reads the domain.
+  #
+  # Without it `Resend.records/1` returned `[]`, `publish_sending_records/3`
+  # took the "nothing to publish" branch and reported success, and not one
+  # record reached DNS. It looked exactly like a working step: no error, a
+  # sending domain registered, and every name resolving `false` afterwards for
+  # what appeared to be a propagation delay.
+  defp sending_records_for(scope, %{"id" => id} = domain) do
+    case Resend.get_domain(scope, id) do
+      {:ok, body} -> Resend.records(body["data"] || body)
+      _ -> Resend.records(domain)
+    end
+  end
+
+  defp sending_records_for(_scope, domain), do: Resend.records(domain)
 
   # Write the records Resend asked for, into the zone that covers the sending
   # domain and no other.
@@ -1007,10 +1025,14 @@ defmodule CodeMySpec.Provisioning.Steps do
       # the failure it guards against is writing DNS to somebody's live domain
       # and only finding out from the residue.
       if covered_by?(name, zone["name"]) do
+        # No `ttl`. Resend reports it as the string "Auto" and Cloudflare
+        # answers `9208 Failed to parse. ttl must be a number.`, so passing it
+        # through rejected the very first record — the DKIM — and the step
+        # halted having published nothing. Leaving it off lets Cloudflare apply
+        # its own default, which is what "Auto" meant in the first place.
         case Cloudflare.ensure_dns_record(scope, zone["id"], name, record["value"],
                type: record["type"],
                priority: record["priority"],
-               ttl: record["ttl"],
                records: existing
              ) do
           {:ok, result} ->

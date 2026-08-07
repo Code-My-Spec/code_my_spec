@@ -1058,6 +1058,36 @@ defmodule CodeMySpecSpex.Case do
     end
   end
 
+  @doc """
+  Make each environment's sending domain exist, without publishing anything.
+
+  The page renders no mail section until Resend knows the domain, so a
+  criterion that needs to read the DNS panel *before* the step runs cannot
+  start from nothing. This gives it the domain and stops there — the records
+  stay the step's to publish, which is what 8029 is asserting about.
+  """
+  def registered_sending_domains(scope, project, environments \\ ["prod", "uat"]) do
+    for environment <- environments do
+      sending = Fixtures.sending_domain(project.domain, environment)
+
+      case with_provider_cassette("setup_#{slug(sending)}_registered", fn ->
+             Fixtures.register_sending_domain_only(scope, sending)
+           end) do
+        {:ok, _domain} ->
+          ExUnit.Callbacks.on_exit(fn ->
+            safe_teardown(sending, fn ->
+              with_provider_cassette("teardown_#{slug(sending)}_registered", fn ->
+                Fixtures.remove_sending_domain(scope, sending)
+              end)
+            end)
+          end)
+
+        {:error, reason} ->
+          raise "could not register #{sending}: #{inspect(reason)}"
+      end
+    end
+  end
+
   def verified_sending_domains(scope, project, environments \\ ["prod", "uat"]) do
     for environment <- environments do
       sending = Fixtures.sending_domain(project.domain, environment)
