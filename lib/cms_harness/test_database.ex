@@ -38,6 +38,13 @@ defmodule CmsHarness.TestDatabase do
   work this way — no partition is set and the run proceeds exactly as it did
   before. An analyzer that refused to run because it could not manage a database
   would be a worse failure than the one this fixes.
+
+  ## Staying migrated
+
+  Isolation alone is not enough: a database of one's own that is a schema behind
+  produces the same indistinguishable failures as a shared one. The migrate is
+  therefore keyed on the set of migration files, not on the harness's lifetime,
+  so a tree that gains migrations while the harness is running picks them up.
   """
 
   require Logger
@@ -91,15 +98,28 @@ defmodule CmsHarness.TestDatabase do
     "h#{digest}"
   end
 
-  # Once per partition per harness, because it is not cheap: measured at 37.6s
-  # on this repo, and it was on the path of every exunit sweep. Migrations added
-  # after the harness started are picked up on its next restart, which is the
-  # same moment its code changes anyway.
+  # Once per partition per *migration set*, because it is not cheap: measured at
+  # 37.6s on this repo, and it was on the path of every exunit sweep.
+  #
+  # The key used to be the partition alone, on the reasoning that migrations
+  # arrive when the harness restarts and the harness restarts when its code
+  # changes. That is wrong whenever a running harness is pointed at a tree that
+  # gains migrations — a merge, a rebase, a branch switch. It happened here:
+  # twenty-five commits carrying four migrations landed under a harness that had
+  # been up for hours, and every sweep afterwards ran against the old schema and
+  # reported 259 failures on `column a0.stripe_customer_id does not exist`.
+  #
+  # Which is this module's own failure mode, one layer up. The database was
+  # correctly isolated and still wrong, and nothing in the output said so.
+  #
+  # So the migration filenames are part of the key. Listing a directory is
+  # cheap; a `mix` boot is not, and this still pays for one only when the set
+  # actually changes.
   #
   # Cached on failure too. A project with no Ecto would otherwise pay two failing
   # `mix` boots before every test run, forever, to reach the same answer.
   defp ensure_once(environment, partition) do
-    key = {__MODULE__, partition}
+    key = {__MODULE__, partition, migrations_fingerprint(environment)}
 
     case :persistent_term.get(key, :miss) do
       :miss ->
@@ -109,6 +129,22 @@ defmodule CmsHarness.TestDatabase do
 
       cached ->
         cached
+    end
+  end
+
+  # The sorted migration filenames, hashed. Names carry the version prefix, so
+  # adding, removing or renaming one changes this; editing a file's body does
+  # not, which is correct — an applied migration is not re-run.
+  #
+  # An unreadable directory degrades to a constant, restoring the old
+  # once-per-partition behaviour rather than re-migrating on every sweep.
+  defp migrations_fingerprint(environment) do
+    case Environments.list_directory(environment, "priv/repo/migrations") do
+      {:ok, entries} ->
+        entries |> Enum.sort() |> :erlang.term_to_binary() |> then(&:crypto.hash(:md5, &1))
+
+      _ ->
+        :no_migrations_dir
     end
   end
 
