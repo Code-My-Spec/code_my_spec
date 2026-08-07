@@ -151,6 +151,12 @@ defmodule CodeMySpec.Projects.Project do
       name: :projects_deploy_key_hash_index,
       message: "is already in use by another project"
     )
+    |> unique_constraint(:local_path,
+      name: :projects_one_per_local_path,
+      message:
+        "is already the working directory of another project — a directory resolves to " <>
+          "exactly one project, and every hook depends on that"
+    )
   end
 
   @doc """
