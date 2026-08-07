@@ -17,6 +17,7 @@ alias CodeMySpec.Projects.Project
 alias CodeMySpec.Stories
 alias CodeMySpec.Stories.Story
 alias CodeMySpec.Users
+alias CodeMySpec.Users.User
 alias CodeMySpec.Users.Scope
 
 email = "qa@codemyspec.local"
@@ -94,11 +95,29 @@ user =
     nil ->
       {:ok, user} = Users.register_user(%{email: email})
       {:ok, {user, _expired_tokens}} = Users.update_user_password(user, %{password: password})
-      IO.puts("  user: created #{email}")
+
+      # Confirmed, or this user cannot log in at all. Registering with a
+      # password and never confirming leaves an account whose only remaining
+      # door — the magic link — is refused on purpose, to prevent session
+      # fixation. Every QA pass logged in as this user and hit that wall.
+      {:ok, user} = user |> User.confirm_changeset() |> Repo.update()
+
+      IO.puts("  user: created #{email} (confirmed)")
       user
 
     user ->
-      IO.puts("  user: exists #{email}")
+      # An existing fixture user predating the line above is in the dead-end
+      # state, and re-running the seed is how someone would try to fix it.
+      user =
+        if is_nil(user.confirmed_at) do
+          {:ok, user} = user |> User.confirm_changeset() |> Repo.update()
+          IO.puts("  user: exists #{email} (confirmed now — it was not)")
+          user
+        else
+          IO.puts("  user: exists #{email}")
+          user
+        end
+
       user
   end
 

@@ -14,6 +14,18 @@ defmodule CodeMySpecWeb.UserSessionController do
         |> put_flash(:info, "User confirmed successfully.")
         |> UserAuth.log_in_user(user, %{"remember_me" => "true"})
 
+      # A real state with a real way out, so it gets its own message. Told
+      # "invalid or expired" the user would keep requesting fresh links, and
+      # every one of them would be refused for the same reason.
+      {:error, :unconfirmed_with_password} ->
+        conn
+        |> put_flash(
+          :error,
+          "Confirm your email address before signing in with a link. We sent a confirmation " <>
+            "email when you registered — open that link, or sign in with your password."
+        )
+        |> redirect(to: ~p"/users/log-in")
+
       _ ->
         conn
         |> put_flash(:error, "The link is invalid or it has expired.")
@@ -50,6 +62,18 @@ defmodule CodeMySpecWeb.UserSessionController do
         conn
         |> put_flash(:info, info)
         |> UserAuth.log_in_user(user, params)
+
+      # A real state with a real way out, so it gets its own message. Told
+      # "invalid or expired" the user would keep requesting fresh links, and
+      # every one of them would be refused for the same reason.
+      {:error, :unconfirmed_with_password} ->
+        conn
+        |> put_flash(
+          :error,
+          "Confirm your email address before signing in with a link. We sent a confirmation " <>
+            "email when you registered — open that link, or sign in with your password."
+        )
+        |> redirect(to: ~p"/users/log-in")
 
       _ ->
         conn
