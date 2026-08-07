@@ -53,6 +53,7 @@ defmodule CodeMySpec.Provisioning.Steps do
     Storage,
     Widget
   }
+
   alias CodeMySpec.Users.Scope
 
   # The access key opens every box the account owns, so it lives at the
@@ -196,7 +197,8 @@ defmodule CodeMySpec.Provisioning.Steps do
          {:ok, domain} <- Resend.find_domain(scope, name),
          true <- Resend.receiving?(domain),
          {:ok, webhooks} <- Resend.list_webhooks(scope),
-         %{"status" => "enabled"} <- Enum.find(webhooks, &(&1["endpoint"] == webhook_endpoint(scope, opts))) do
+         %{"status" => "enabled"} <-
+           Enum.find(webhooks, &(&1["endpoint"] == webhook_endpoint(scope, opts))) do
       {:ok, :satisfied,
        [
          %{kind: "receiving_domain", location: "resend/#{name}"},
@@ -274,7 +276,6 @@ defmodule CodeMySpec.Provisioning.Steps do
     end
   end
 
-
   # Three resources, made in order, and the last one is the one that fails.
   # Each is recorded as soon as it exists rather than all together at the end:
   # a firewall and an SSH key are real the moment Hetzner accepts them, and a
@@ -303,7 +304,6 @@ defmodule CodeMySpec.Provisioning.Steps do
     end
   end
 
-
   def run(:domain, %Scope{} = scope, opts) do
     case domain(scope) do
       nil ->
@@ -320,9 +320,15 @@ defmodule CodeMySpec.Provisioning.Steps do
 
           {:ok, _body} ->
             {:ok, [%{kind: "domain", location: "cloudflare/#{name}"}]}
-          {:paused, instructions} -> {:paused, instructions}
-          {:error, :confirmation_required} -> {:paused, confirmation_message(name)}
-          {:error, reason} -> {:error, format(reason)}
+
+          {:paused, instructions} ->
+            {:paused, instructions}
+
+          {:error, :confirmation_required} ->
+            {:paused, confirmation_message(name)}
+
+          {:error, reason} ->
+            {:error, format(reason)}
         end
     end
   end
@@ -376,7 +382,6 @@ defmodule CodeMySpec.Provisioning.Steps do
     end
   end
 
-
   def run(:monitoring, %Scope{} = scope, opts) do
     hosts = Keyword.get(opts, :hosts) || List.wrap(domain(scope))
 
@@ -394,7 +399,8 @@ defmodule CodeMySpec.Provisioning.Steps do
          end)}
 
       {:error, :no_notification_target} ->
-        {:paused, "Add a notification target before installing monitors — a monitor nobody hears is not monitoring."}
+        {:paused,
+         "Add a notification target before installing monitors — a monitor nobody hears is not monitoring."}
 
       {:error, reason} ->
         {:error, format(reason)}
@@ -417,7 +423,10 @@ defmodule CodeMySpec.Provisioning.Steps do
 
     with {:ok, site} <- require_value(Keyword.get(opts, :site_url) || site_url(scope), "a domain"),
          {:ok, key} <-
-           require_value(Keyword.get(opts, :deploy_key) || Map.get(project, :deploy_key), "a deploy key") do
+           require_value(
+             Keyword.get(opts, :deploy_key) || Map.get(project, :deploy_key),
+             "a deploy key"
+           ) do
       opts = opts |> Keyword.put(:site_url, site) |> Keyword.put(:deploy_key, key)
 
       case Widget.run(scope, env(scope), opts) do
@@ -662,10 +671,16 @@ defmodule CodeMySpec.Provisioning.Steps do
         |> Enum.reduce_while({:ok, []}, fn environment, {:ok, acc} ->
           bucket = Storage.bucket_name(project, environment)
 
+          # The key travels with the work, the way the deploy step carries it.
+          # `bin/backup` decrypts the environment file itself and sops reads
+          # its identity from `SOPS_AGE_KEY` — without it every dump failed on
+          # "no identity matched any of the recipients", which reads like a
+          # broken key rather than one that was never handed over.
           environment_opts =
             opts
             |> Keyword.put(:bucket, bucket)
             |> Keyword.put(:credentials, credentials)
+            |> put_age_key(scope, environment)
 
           with :ok <- require_script(scope, "bin/backup"),
                {:ok, resources} <-
@@ -684,7 +699,6 @@ defmodule CodeMySpec.Provisioning.Steps do
         end)
     end
   end
-
 
   # Named rather than silently succeeding — see the moduledoc.
   def run(key, _scope, _opts), do: {:error, {:not_implemented, key}}
@@ -828,7 +842,13 @@ defmodule CodeMySpec.Provisioning.Steps do
   # backups' retention, and recorded so it is visible without reading a
   # bucket policy.
   defp retention_resource(%{retention_days: days}) when is_integer(days),
-    do: [%{kind: "image_retention", location: "#{days} days", identifier: "enforced_by=bucket_lifecycle"}]
+    do: [
+      %{
+        kind: "image_retention",
+        location: "#{days} days",
+        identifier: "enforced_by=bucket_lifecycle"
+      }
+    ]
 
   defp retention_resource(_image), do: []
 
@@ -843,8 +863,7 @@ defmodule CodeMySpec.Provisioning.Steps do
       %{
         kind: "builder",
         location: name,
-        identifier:
-          "destroyed=#{image.builder_destroyed} booted_from=#{image.builder_image}"
+        identifier: "destroyed=#{image.builder_destroyed} booted_from=#{image.builder_image}"
       }
     ]
   end
@@ -869,9 +888,14 @@ defmodule CodeMySpec.Provisioning.Steps do
         {:ok, %{"status" => "verified"} = d} ->
           {:cont, {:ok, acc ++ [%{kind: "sending_domain", location: "resend/#{d["name"]}"}]}}
 
-        {:ok, _unverified} -> {:halt, :absent}
-        {:error, :not_found} -> {:halt, :absent}
-        {:error, reason} -> {:halt, {:error, reason}}
+        {:ok, _unverified} ->
+          {:halt, :absent}
+
+        {:error, :not_found} ->
+          {:halt, :absent}
+
+        {:error, reason} ->
+          {:halt, {:error, reason}}
       end
     end)
     |> case do
@@ -932,14 +956,12 @@ defmodule CodeMySpec.Provisioning.Steps do
       {:error, {:unverified, faulted}} ->
         {:error,
          "the sending domain #{sending} did not verify — these records are not as Resend " <>
-           "expects: " <> Enum.map_join(faulted, ", ", &"#{&1["type"]} #{&1["name"]}"),
-         created}
+           "expects: " <> Enum.map_join(faulted, ", ", &"#{&1["type"]} #{&1["name"]}"), created}
 
       {:error, reason} ->
         {:error, format(reason), created}
     end
   end
-
 
   # Setup writes the repository onto the project. Without this a re-run cannot
   # tell its own work from a repository Sam already had — which is the whole
@@ -983,7 +1005,6 @@ defmodule CodeMySpec.Provisioning.Steps do
         {:error, reason}
     end
   end
-
 
   @doc """
   What the deploy will hand the app, and what it is still missing.
@@ -1048,15 +1069,22 @@ defmodule CodeMySpec.Provisioning.Steps do
   defp deploy_outcome(result, environment, host) do
     phases =
       [
-        result.migrated_at && %{kind: "deploy_phase", location: "migrate", identifier: iso(result.migrated_at)},
-        result.health_ok_at && %{kind: "deploy_phase", location: "swap", identifier: iso(result.health_ok_at)},
+        result.migrated_at &&
+          %{kind: "deploy_phase", location: "migrate", identifier: iso(result.migrated_at)},
+        result.health_ok_at &&
+          %{kind: "deploy_phase", location: "swap", identifier: iso(result.health_ok_at)},
         %{kind: "live_version", location: to_string(result.live_version)}
       ]
       |> Enum.reject(&is_nil/1)
 
     case result do
       %{swapped_at: nil, reason: reason} ->
-        failure = %{kind: "deploy_failure", location: reason, identifier: to_string(result.failed_phase)}
+        failure = %{
+          kind: "deploy_failure",
+          location: reason,
+          identifier: to_string(result.failed_phase)
+        }
+
         {:error, reason, [failure | phases]}
 
       %{swapped_at: _} ->
@@ -1068,7 +1096,13 @@ defmodule CodeMySpec.Provisioning.Steps do
   # is traceable to the commit CI built (8005). Absent when the caller did not
   # supply it — a real deploy derives it from git + the registry config.
   defp version_resources(%{commit: commit, image: image, source: source}) do
-    [%{kind: "deployed_version", location: image, identifier: "commit=#{commit} source=#{source}"}]
+    [
+      %{
+        kind: "deployed_version",
+        location: image,
+        identifier: "commit=#{commit} source=#{source}"
+      }
+    ]
   end
 
   defp version_resources(_), do: []
@@ -1080,9 +1114,23 @@ defmodule CodeMySpec.Provisioning.Steps do
   # tags them. Without it a page showing three dumps cannot say which database
   # any of them holds — and "we have backups" is only worth anything if you can
   # tell which.
+  defp put_age_key(opts, scope, environment) do
+    case fetch_age_key(scope, environment) do
+      {:ok, key} -> Keyword.put(opts, :age_key, key)
+      # No key yet means the secrets step has not run. The dump will fail on
+      # its own terms and say so, which is better than this deciding for it.
+      {:error, :not_found} -> opts
+    end
+  end
+
   defp backups_outcome({:ok, %{proof: proof} = result}, bucket, environment) do
     {:ok,
      [
+       %{
+         kind: "age_key_delivery",
+         location: "#{environment}/SOPS_AGE_KEY",
+         identifier: "via=backup_env manual=false"
+       },
        %{
          kind: "dump",
          location: "#{bucket}/#{result.key}",
@@ -1129,7 +1177,6 @@ defmodule CodeMySpec.Provisioning.Steps do
   defp server_name(scope, opts, environment) do
     "#{server_name(scope, opts)}-#{environment}"
   end
-
 
   # The disposition rides on the resource because "adopted rather than
   # duplicated" is only checkable if the page can tell the two apart — and
@@ -1287,7 +1334,6 @@ defmodule CodeMySpec.Provisioning.Steps do
     }
   end
 
-
   defp firewall_resource(name, firewall),
     do: %{kind: "firewall", location: "hetzner/#{name}", origin: origin(firewall)}
 
@@ -1387,8 +1433,10 @@ defmodule CodeMySpec.Provisioning.Steps do
   # project read stays for installs that generated one before the account
   # grain existed.
   defp access_public_key(scope, name) do
-    with :error <- stored_public_key(fn -> AccountSecrets.fetch_value(scope, @access_key_public) end),
-         :error <- stored_public_key(fn -> ProjectSecrets.fetch_value(scope, @access_key_public) end) do
+    with :error <-
+           stored_public_key(fn -> AccountSecrets.fetch_value(scope, @access_key_public) end),
+         :error <-
+           stored_public_key(fn -> ProjectSecrets.fetch_value(scope, @access_key_public) end) do
       generate_access_key(scope, name)
     end
   end
@@ -1423,7 +1471,8 @@ defmodule CodeMySpec.Provisioning.Steps do
           {:ok, public}
 
         {out, status} ->
-          {:error, "could not generate an access key (ssh-keygen exit #{status}): #{String.trim(out)}"}
+          {:error,
+           "could not generate an access key (ssh-keygen exit #{status}): #{String.trim(out)}"}
       end
     after
       File.rm_rf(dir)
@@ -1548,7 +1597,12 @@ defmodule CodeMySpec.Provisioning.Steps do
 
   defp bucket_resource(bucket, opts) do
     location = Keyword.get(opts, :location, "fsn1")
-    %{kind: "bucket", location: "#{location}.your-objectstorage.com/#{bucket}", identifier: "user"}
+
+    %{
+      kind: "bucket",
+      location: "#{location}.your-objectstorage.com/#{bucket}",
+      identifier: "user"
+    }
   end
 
   defp confirmation_message(name) do
@@ -1634,7 +1688,9 @@ defmodule CodeMySpec.Provisioning.Steps do
   end
 
   @doc "The age recipients each environment's encrypted file names."
-  @spec recipients(Scope.t(), [String.t()]) :: [%{environment: String.t(), fingerprints: [String.t()]}]
+  @spec recipients(Scope.t(), [String.t()]) :: [
+          %{environment: String.t(), fingerprints: [String.t()]}
+        ]
   # A scope with no environment has no repository to read, which is an answer
   # rather than an error — the page renders for a cloud scope too.
   def recipients(%Scope{environment: nil}, _environments), do: []

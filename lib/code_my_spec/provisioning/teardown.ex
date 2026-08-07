@@ -225,9 +225,15 @@ defmodule CodeMySpec.Provisioning.Teardown do
 
   # Nothing provider-side to remove: these live in the project's own repo or
   # in our encrypted store, and both are removed with the project.
+  #
+  # `age_key_delivery` is not a resource at all — it records that a key was
+  # handed to a process, which is a fact about a run rather than a thing that
+  # exists somewhere. Without it here every teardown that followed a deploy
+  # reported a leak it could never resolve, which is the noise that makes a
+  # real "left behind" easy to skip past.
   def resource(_scope, %{kind: kind} = r, _opts)
-      when kind in ~w(age_key callback_credential commit certificate retention restore_proof
-                      content deployment monitor dump repository dns_verification) do
+      when kind in ~w(age_key age_key_delivery callback_credential commit certificate retention
+                      restore_proof content deployment monitor dump repository dns_verification) do
     {:ok, r}
   end
 

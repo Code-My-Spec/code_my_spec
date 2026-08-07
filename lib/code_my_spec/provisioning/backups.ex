@@ -115,11 +115,17 @@ defmodule CodeMySpec.Provisioning.Backups do
     script = resolve_script(env, Keyword.get(opts, :backup_script, "bin/backup"))
 
     case Environments.cmd(env, script, ["dump", environment],
-           stderr_to_stdout: true, env: script_env(opts)) do
+           stderr_to_stdout: true,
+           env: script_env(opts)
+         ) do
       {output, 0} ->
         case capture(output, "key") do
-          nil -> {:error, "the backup script did not report the key it wrote: #{String.trim(to_string(output))}"}
-          key -> {:ok, key}
+          nil ->
+            {:error,
+             "the backup script did not report the key it wrote: #{String.trim(to_string(output))}"}
+
+          key ->
+            {:ok, key}
         end
 
       {output, status} ->
@@ -143,7 +149,9 @@ defmodule CodeMySpec.Provisioning.Backups do
     target = Keyword.get(opts, :scratch_database, "scratch")
 
     case Environments.cmd(env, script, ["restore", key, target],
-           stderr_to_stdout: true, env: script_env(opts)) do
+           stderr_to_stdout: true,
+           env: script_env(opts)
+         ) do
       {output, 0} ->
         case rows(output) do
           n when n > 0 ->
@@ -156,7 +164,8 @@ defmodule CodeMySpec.Provisioning.Backups do
         end
 
       {output, status} ->
-        {:error, "restoring #{key} into #{target} failed (exit #{status}): #{String.trim(to_string(output))}"}
+        {:error,
+         "restoring #{key} into #{target} failed (exit #{status}): #{String.trim(to_string(output))}"}
     end
   end
 
@@ -171,9 +180,15 @@ defmodule CodeMySpec.Provisioning.Backups do
     script = resolve_script(env, Keyword.get(opts, :backup_script, "bin/backup"))
 
     case Environments.cmd(env, script, ["schedule", environment],
-           stderr_to_stdout: true, env: script_env(opts)) do
-      {_output, 0} -> :ok
-      {output, status} -> {:error, "installing the backup schedule failed (exit #{status}): #{String.trim(to_string(output))}"}
+           stderr_to_stdout: true,
+           env: script_env(opts)
+         ) do
+      {_output, 0} ->
+        :ok
+
+      {output, status} ->
+        {:error,
+         "installing the backup schedule failed (exit #{status}): #{String.trim(to_string(output))}"}
     end
   end
 
@@ -243,6 +258,7 @@ defmodule CodeMySpec.Provisioning.Backups do
       _ -> :infinity
     end
   end
+
   # Relative to the *project*, not to whatever directory the caller happens to
   # be in. `System.cmd/3` resolves a relative command against the running
   # process's cwd, not the environment's, so `bin/backup` was looked for beside
@@ -264,7 +280,17 @@ defmodule CodeMySpec.Provisioning.Backups do
       {"AWS_ACCESS_KEY_ID", Keyword.get(credentials, :access_key_id)},
       {"AWS_SECRET_ACCESS_KEY", Keyword.get(credentials, :secret_access_key)},
       {"AWS_REGION", location},
-      {"DATABASE_URL", Keyword.get(opts, :database_url)}
+      {"DATABASE_URL", Keyword.get(opts, :database_url)},
+      # The script decrypts the environment file itself — `source <(sops -d
+      # …)` — and sops takes its identity from this variable and nowhere else.
+      # Without it the dump failed with "no identity matched any of the
+      # recipients", which reads like a key problem rather than a missing
+      # variable.
+      #
+      # Passing the key rather than the decrypted value keeps the script
+      # self-contained, which is what it has to be: it also runs from cron on
+      # the server, with nobody to hand it a connection string.
+      {"SOPS_AGE_KEY", Keyword.get(opts, :age_key)}
     ]
     |> Enum.reject(fn {_k, v} -> is_nil(v) or v == "" end)
   end
