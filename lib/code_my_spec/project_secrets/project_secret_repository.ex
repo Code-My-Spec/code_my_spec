@@ -27,6 +27,18 @@ defmodule CodeMySpec.ProjectSecrets.ProjectSecretRepository do
     end
   end
 
+  # No project means no project secret — which is an answer, not a crash.
+  #
+  # A scope without an active project is ordinary: `Resources.report/1` is
+  # account-grain by design (a bucket outlives the project that made it, and
+  # the SSH key is shared), and it reads storage credentials on the way. With
+  # only the guarded clause above, that raised FunctionClauseError from four
+  # frames down in `Storage.credentials/2`, naming a repository function rather
+  # than the missing project.
+  def fetch(%Scope{}, key, environment) when is_binary(key) and is_binary(environment) do
+    {:error, :not_found}
+  end
+
   @doc """
   Lists the key/environment pairs a project holds — never the values.
 
