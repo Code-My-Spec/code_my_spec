@@ -1730,12 +1730,20 @@ defmodule CodeMySpecWeb.ProvisioningLive do
     |> Enum.reject(&is_nil/1)
   end
 
-  defp list_domains(scope) do
+  # Nothing to look up without a project domain, and asking anyway is a real
+  # cost: `mail_state/3` used to short-circuit on this before it reached
+  # Resend, so hoisting the listing out of it made every page that has no
+  # domain yet call the provider to be told about domains it cannot match.
+  # That is a round-trip per render on the most common early state, and it put
+  # a `GET /domains` into spex whose cassettes had never seen one.
+  defp list_domains(%{active_project: %{domain: d}} = scope) when is_binary(d) and d != "" do
     case Resend.list_domains(scope) do
       {:ok, domains} when is_list(domains) -> domains
       _ -> []
     end
   end
+
+  defp list_domains(_scope), do: []
 
   # Verification waits are a property of DNS, not of the code, so they are
   # configurable rather than baked in. A freshly published record needs longer

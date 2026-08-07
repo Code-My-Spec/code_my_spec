@@ -65,7 +65,14 @@ defmodule CodeMySpecSpex.Case do
   end
 
   def spex_timeout do
-    if System.get_env("SPEX_CASSETTE_MODE") == "record", do: :timer.minutes(20), else: 60_000
+    # Replay is not instant. `await_environment_server/3` alone waits up to 90s
+    # by default, so ExUnit's 60s ceiling meant a spex could time out inside a
+    # helper it was entitled to call — a failure about the clock, reported as
+    # if the criterion were hung. Three minutes clears every helper's own
+    # window and still catches something genuinely stuck.
+    if System.get_env("SPEX_CASSETTE_MODE") == "record",
+      do: :timer.minutes(20),
+      else: :timer.minutes(3)
   end
 
   @doc """
@@ -1056,6 +1063,16 @@ defmodule CodeMySpecSpex.Case do
           raise "could not publish #{sending}: #{inspect(reason)}"
       end
     end
+  end
+
+  @doc """
+  Stage the account's SSH access key so the server step adopts rather than
+  generates one. See `Fixtures.account_access_key/1` for why generation cannot
+  survive replay.
+  """
+  def account_access_key(%{scope: scope} = context) do
+    Fixtures.account_access_key(scope)
+    context
   end
 
   @doc """

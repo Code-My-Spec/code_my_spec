@@ -89,6 +89,39 @@ defmodule CodeMySpecSpex.Fixtures do
     CodeMySpec.Provisioning.Resend.ensure_domain(scope, sending_domain)
   end
 
+  @doc """
+  Give the account an SSH access key, generated for real.
+
+  The server step generates one when the account has none, and generation
+  shells out to `ssh-keygen` — which a shell cassette replays as exit 0 without
+  creating the key files, so the `File.read!` that follows fails with "could
+  not read file". The command is recorded; its side effect on disk is not.
+
+  Staging the key means the step adopts one instead of generating one, which is
+  also the truthful precondition: an account that has provisioned anything
+  before already has this. Generated rather than hardcoded because a recording
+  hands it to a real Hetzner box.
+  """
+  @spec account_access_key(Scope.t()) :: :ok
+  def account_access_key(scope) do
+    dir = Path.join(System.tmp_dir!(), "spex-ssh-#{System.unique_integer([:positive])}")
+    File.mkdir_p!(dir)
+    path = Path.join(dir, "id_ed25519")
+
+    try do
+      {_out, 0} =
+        System.cmd("ssh-keygen", ["-t", "ed25519", "-N", "", "-C", "spex", "-f", path],
+          stderr_to_stdout: true
+        )
+
+      CodeMySpec.AccountSecrets.put_value(scope, "server_ssh_private_key", File.read!(path))
+      CodeMySpec.AccountSecrets.put_value(scope, "server_ssh_public_key", File.read!(path <> ".pub"))
+      :ok
+    after
+      File.rm_rf(dir)
+    end
+  end
+
   @doc "Remove a sending domain from Resend, for the register-only teardown."
   @spec remove_sending_domain(Scope.t(), String.t()) :: :ok
   def remove_sending_domain(scope, sending_domain) do
