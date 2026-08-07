@@ -101,7 +101,8 @@ defmodule CodeMySpecWeb.AgentProgressLive do
   end
 
   def handle_event("toggle_session_tasks", %{"id" => session_id}, socket) do
-    {:noreply, assign(socket, expanded_sessions: toggle(socket.assigns.expanded_sessions, session_id))}
+    {:noreply,
+     assign(socket, expanded_sessions: toggle(socket.assigns.expanded_sessions, session_id))}
   end
 
   @impl true
@@ -141,17 +142,24 @@ defmodule CodeMySpecWeb.AgentProgressLive do
   end
 
   defp compute_requirements(scope, project) do
-    actionable_keys =
-      scope |> RequirementGraph.next_actionable() |> MapSet.new(&requirement_key/1)
+    # One pass, from the snapshot when it is current. This used to call
+    # `next_actionable/1` and `compute_all/1` back to back — two full graph
+    # computations, each with its own preload, to render one rail.
+    {{all_nodes, _edges}, actionable, _computed_at} =
+      RequirementGraph.cached_graph_with_actionable(scope)
 
-    all_nodes = Requirements.compute_all(scope)
+    actionable_keys = MapSet.new(actionable, &requirement_key/1)
 
     # The rail shows only project-level milestones; the per-story/component
     # fan-out is collapsed into a single placeholder after `qa_setup`.
     all_nodes
     |> Enum.filter(&(&1.entity_type == "project"))
     |> Enum.map(fn node ->
-      %{name: node.name, label: requirement_label(node), status: status_for(node, actionable_keys)}
+      %{
+        name: node.name,
+        label: requirement_label(node),
+        status: status_for(node, actionable_keys)
+      }
     end)
     |> insert_story_placeholder(project, story_work_status(all_nodes, actionable_keys))
   end
@@ -273,61 +281,60 @@ defmodule CodeMySpecWeb.AgentProgressLive do
   @impl true
   def render(assigns) do
     ~H"""
+    <div :if={@error} role="alert" class="alert alert-error">
+      <span>{@error}</span>
+    </div>
 
-      <div :if={@error} role="alert" class="alert alert-error">
-        <span>{@error}</span>
-      </div>
-
-      <div :if={!@error}>
-        <div class="grid grid-cols-1 lg:grid-cols-[20rem_1fr_22rem] gap-8">
-          <%!-- Left rail: project milestones, status icons, counter + progress --%>
-          <aside class="lg:sticky lg:top-4 self-start bg-cms-ink-1 border border-cms-hair-w">
-            <div class="p-5 border-b border-cms-hair-w">
-              <div class="cms-spec-eyebrow mb-3">// requirements</div>
-              <div class="flex items-baseline gap-2">
-                <span class="cms-rail-count-num">{req_count(@requirements, "done")}</span>
-                <span class="cms-rail-count-meta">
-                  / {length(@requirements)} done · {req_count(@requirements, "in progress")} active
-                </span>
+    <div :if={!@error}>
+      <div class="grid grid-cols-1 lg:grid-cols-[20rem_1fr_22rem] gap-8">
+        <%!-- Left rail: project milestones, status icons, counter + progress --%>
+        <aside class="lg:sticky lg:top-4 self-start bg-cms-ink-1 border border-cms-hair-w">
+          <div class="p-5 border-b border-cms-hair-w">
+            <div class="cms-spec-eyebrow mb-3">// requirements</div>
+            <div class="flex items-baseline gap-2">
+              <span class="cms-rail-count-num">{req_count(@requirements, "done")}</span>
+              <span class="cms-rail-count-meta">
+                / {length(@requirements)} done · {req_count(@requirements, "in progress")} active
+              </span>
+            </div>
+            <div class="cms-rail-bar mt-3">
+              <div
+                class="cms-rail-bar-done"
+                style={"width:#{pct(req_count(@requirements, "done"), length(@requirements))}%"}
+              >
               </div>
-              <div class="cms-rail-bar mt-3">
-                <div
-                  class="cms-rail-bar-done"
-                  style={"width:#{pct(req_count(@requirements, "done"), length(@requirements))}%"}
-                >
-                </div>
-                <div
-                  class="cms-rail-bar-active"
-                  style={"width:#{pct(req_count(@requirements, "in progress"), length(@requirements))}%"}
-                >
-                </div>
+              <div
+                class="cms-rail-bar-active"
+                style={"width:#{pct(req_count(@requirements, "in progress"), length(@requirements))}%"}
+              >
               </div>
             </div>
+          </div>
 
-            <ul data-test="requirements-list" class="py-2">
-              <li
-                :if={@requirements_loading and @requirements == []}
-                class="cms-rail-item text-cms-text-mute"
-              >
-                <span class="loading loading-dots loading-xs"></span>
-                <span class="cms-rail-item-label">Loading…</span>
-              </li>
-              <li
-                :for={req <- @requirements}
-                data-test="requirement-row"
-                data-status={req.status}
-                class={["cms-rail-item", req.name == @focused_requirement && "is-focus"]}
-              >
-                <span class="cms-status">
-                  <span :if={req.status == "done"} class="cms-status-done">✓</span>
-                  <span :if={req.status == "in progress"} class="cms-status-active"></span>
-                  <span :if={req.status == "not started"} class="cms-status-todo"></span>
-                </span>
-                <span class="cms-rail-item-label truncate">{req.label}</span>
-                <span :if={req.name == @focused_requirement} class="cms-rail-inview">◂ in view</span>
-              </li>
-            </ul>
-          </aside>
+          <ul data-test="requirements-list" class="py-2">
+            <li
+              :if={@requirements_loading and @requirements == []}
+              class="cms-rail-item text-cms-text-mute"
+            >
+              <span class="loading loading-dots loading-xs"></span>
+              <span class="cms-rail-item-label">Loading…</span>
+            </li>
+            <li
+              :for={req <- @requirements}
+              data-test="requirement-row"
+              data-status={req.status}
+              class={["cms-rail-item", req.name == @focused_requirement && "is-focus"]}
+            >
+              <span class="cms-status">
+                <span :if={req.status == "done"} class="cms-status-done">✓</span>
+                <span :if={req.status == "in progress"} class="cms-status-active"></span>
+                <span :if={req.status == "not started"} class="cms-status-todo"></span>
+              </span>
+              <span class="cms-rail-item-label truncate">{req.label}</span>
+              <span :if={req.name == @focused_requirement} class="cms-rail-inview">◂ in view</span>
+            </li>
+          </ul>
+        </aside>
 
         <%!-- Center: one vertical timeline per session, tasks as dots down the line --%>
         <section>
@@ -342,7 +349,8 @@ defmodule CodeMySpecWeb.AgentProgressLive do
             >
               <%!-- a session is an untyped Claude conversation; type lives on its tasks --%>
               <div class="flex items-center gap-3 flex-wrap mb-2">
-                <span class={["cms-session-marker", session.id == @active_session_id && "is-active"]}></span>
+                <span class={["cms-session-marker", session.id == @active_session_id && "is-active"]}>
+                </span>
                 <span class="cms-session-title">Session</span>
                 <span
                   data-test="session-extent"
@@ -360,15 +368,27 @@ defmodule CodeMySpecWeb.AgentProgressLive do
                 <div class="cms-session-tasks-eyebrow">tasks · {done_count(session)} done</div>
 
                 <%= if collapsed?(session, @expanded_sessions) do %>
-                  <.task_row :for={task <- head_tasks(session.tasks)} task={task} focused_task_id={@focused_task_id} />
+                  <.task_row
+                    :for={task <- head_tasks(session.tasks)}
+                    task={task}
+                    focused_task_id={@focused_task_id}
+                  />
                   <.tasks_toggle
                     session_id={session.id}
                     label={"… #{hidden_count(session.tasks)} more steps"}
                     test_id="show-more-tasks"
                   />
-                  <.task_row :for={task <- tail_tasks(session.tasks)} task={task} focused_task_id={@focused_task_id} />
+                  <.task_row
+                    :for={task <- tail_tasks(session.tasks)}
+                    task={task}
+                    focused_task_id={@focused_task_id}
+                  />
                 <% else %>
-                  <.task_row :for={task <- display_tasks(session.tasks)} task={task} focused_task_id={@focused_task_id} />
+                  <.task_row
+                    :for={task <- display_tasks(session.tasks)}
+                    task={task}
+                    focused_task_id={@focused_task_id}
+                  />
                   <.tasks_toggle
                     :if={collapsible?(session.tasks)}
                     session_id={session.id}
@@ -409,8 +429,8 @@ defmodule CodeMySpecWeb.AgentProgressLive do
             Step-by-step help and a short video will appear here as the agent works.
           </p>
         </aside>
-        </div>
       </div>
+    </div>
     """
   end
 
@@ -423,7 +443,12 @@ defmodule CodeMySpecWeb.AgentProgressLive do
       <div data-test="task-help-body" class="cms-help-body prose prose-sm prose-invert max-w-none">
         {CodeMySpecWeb.Markdown.md_html(@help.body)}
       </div>
-      <a :if={@help.video_url} data-test="task-help-video" href={@help.video_url} class="cms-help-video">
+      <a
+        :if={@help.video_url}
+        data-test="task-help-video"
+        href={@help.video_url}
+        class="cms-help-video"
+      >
         <span class="text-2xl leading-none pl-1">▶</span>
         <span class="font-mono text-[10px] uppercase tracking-widest text-cms-text-mute">
           watch
@@ -471,7 +496,9 @@ defmodule CodeMySpecWeb.AgentProgressLive do
           <div class="cms-artifact-head">
             <div class="flex items-center gap-3 min-w-0">
               <span class="cms-artifact-title truncate">{humanize_name(@task.requirement_name)}</span>
-              <span data-test="task-type" class="cms-agent-tag">{agent_label(@task.session_type)}</span>
+              <span data-test="task-type" class="cms-agent-tag">
+                {agent_label(@task.session_type)}
+              </span>
             </div>
             <span class="cms-artifact-active">● active</span>
           </div>
@@ -509,7 +536,9 @@ defmodule CodeMySpecWeb.AgentProgressLive do
       >
         {humanize_name(@task.requirement_name)}
       </button>
-      <span data-test="task-type" class="cms-agent-tag shrink-0">{agent_label(@task.session_type)}</span>
+      <span data-test="task-type" class="cms-agent-tag shrink-0">
+        {agent_label(@task.session_type)}
+      </span>
     </div>
     """
   end
@@ -551,7 +580,11 @@ defmodule CodeMySpecWeb.AgentProgressLive do
   # A single rail row standing in for all per-story / per-component work,
   # inserted where the graph fans out (right after `qa_setup`).
   defp insert_story_placeholder(rows, project, status) do
-    placeholder = %{name: "__story_work__", label: "#{project_name(project)} — story work", status: status}
+    placeholder = %{
+      name: "__story_work__",
+      label: "#{project_name(project)} — story work",
+      status: status
+    }
 
     case Enum.find_index(rows, &(&1.name == "qa_setup")) do
       nil -> rows ++ [placeholder]

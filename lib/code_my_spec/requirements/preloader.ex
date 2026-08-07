@@ -26,7 +26,8 @@ defmodule CodeMySpec.Requirements.Preloader do
           components: [Component.t()],
           components_by_id: %{Ecto.UUID.t() => Component.t()},
           children_by_parent: %{Ecto.UUID.t() => [Component.t()]},
-          stories: [Story.t()]
+          stories: [Story.t()],
+          delegated_inputs: %{atom() => [{term(), NaiveDateTime.t()}]}
         }
 
   @doc """
@@ -95,8 +96,44 @@ defmodule CodeMySpec.Requirements.Preloader do
       components: components,
       components_by_id: Map.new(components, &{&1.id, &1}),
       children_by_parent: Enum.group_by(components, & &1.parent_component_id),
-      stories: stories
+      stories: stories,
+      delegated_inputs: delegated_inputs(project_id)
     }
+  end
+
+  # Everything the graph's `:delegate` requirements read that nothing else here
+  # loads: rules, criteria and questions (three_amigos_complete), personas
+  # (personas_complete), and issues (issues_triaged / issues_resolved).
+  #
+  # Loaded for the fingerprint, not for the graph — no node reads them, and the
+  # checkers still query for themselves. They are here so that
+  # `GraphFingerprint` covers them, which is what a published graph needs
+  # before anyone can safely treat it as current.
+  #
+  # `{id, updated_at}` rather than a content digest. The moduledoc on
+  # `GraphFingerprint` rejects timestamps, and is right to for files:
+  # `upsert_files/2` replaces rows on conflict, so a no-op sync bumps every
+  # `updated_at` and the fingerprint would never settle. None of these five are
+  # bulk-upserted — they are written one at a time through their contexts — so
+  # here a timestamp is both stable across no-ops and strictly more sensitive
+  # than hashing chosen columns, which is the failure mode that would matter.
+  @delegated_tables ~w(bdd_rules criteria questions personas issues)
+
+  defp delegated_inputs(project_id) do
+    Map.new(@delegated_tables, fn table -> {table, stamps(table, project_id)} end)
+  end
+
+  # Schemaless on purpose: this wants the fact that a row changed, not the row.
+  # Going through each context would mean five different shapes and five more
+  # things to keep in step with checkers that may start reading something else.
+  defp stamps(table, project_id) do
+    Repo.all(
+      from(r in table,
+        where: r.project_id == type(^project_id, :binary_id),
+        select: {r.id, r.updated_at},
+        order_by: r.id
+      )
+    )
   end
 
   # Per-source freshness: does the latest completed full analysis run match

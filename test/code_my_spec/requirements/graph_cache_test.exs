@@ -67,7 +67,7 @@ defmodule CodeMySpec.Requirements.GraphCacheTest do
 
       fingerprint = current_fingerprint(scope)
 
-      assert {:ok, {_nodes, _edges}} = GraphCache.fetch(scope, fingerprint)
+      assert {:ok, {_nodes, _edges}, %DateTime{}} = GraphCache.fetch(scope, fingerprint)
     end
 
     test "fetch/2 misses for any other fingerprint" do
@@ -102,6 +102,84 @@ defmodule CodeMySpec.Requirements.GraphCacheTest do
       Preloader.load(scope),
       CodeMySpec.Configurations.get_or_create(scope)
     )
+  end
+
+  # The fingerprint decides whether a published graph may be served instead of
+  # recomputed, so anything it cannot see is something an agent can be told is
+  # still true after it stopped being true.
+  #
+  # Node inputs — files, components, stories — were covered from the start. The
+  # inputs the `:delegate` requirements read were not: `three_amigos_complete`
+  # asks `BddRulesChecker`, which reads rules, criteria and questions;
+  # `personas_complete` asks about personas; `issues_triaged` and
+  # `issues_resolved` read issues. None of those five appear anywhere else in
+  # the preloader, so the fingerprint was blind to all of them.
+  #
+  # One test per input. A hand-written list of dependencies rots silently, and
+  # the way it rots is that the graph stops noticing something.
+  describe "the fingerprint covers what the delegate checkers read" do
+    setup do
+      scope = setup_project()
+      %{scope: scope, before: current_fingerprint(scope)}
+    end
+
+    test "a new rule moves it", %{scope: scope, before: before} do
+      story = story_fixture(scope)
+      persona = persona_fixture(scope)
+      # A rule needs its story to have a voice — `create_rule/3` refuses with
+      # `:persona_linkage_required` otherwise.
+      {:ok, _} = CodeMySpec.Personas.link_persona_to_story(scope, persona.id, story.id)
+
+      {:ok, _} = CodeMySpec.BddRules.create_rule(scope, story.id, %{statement: "a new rule"})
+
+      refute current_fingerprint(scope) == before
+    end
+
+    test "a new persona moves it", %{scope: scope, before: before} do
+      persona_fixture(scope)
+
+      refute current_fingerprint(scope) == before
+    end
+
+    test "a new issue moves it", %{scope: scope, before: before} do
+      {:ok, _} =
+        CodeMySpec.Issues.create_issue(scope, %{
+          title: "something is wrong",
+          description: "details",
+          severity: :high
+        })
+
+      refute current_fingerprint(scope) == before
+    end
+
+    test "nothing changing leaves it alone", %{scope: scope, before: before} do
+      assert current_fingerprint(scope) == before,
+             "an unchanged project must produce a stable fingerprint, or the cache " <>
+               "never hits and the whole projection is dead weight"
+    end
+  end
+
+  defp persona_fixture(scope) do
+    n = System.unique_integer([:positive])
+
+    {:ok, persona} =
+      CodeMySpec.Personas.create_persona(scope, %{
+        name: "Sam #{n}",
+        slug: "sam-#{n}",
+        description: "the operator"
+      })
+
+    persona
+  end
+
+  defp story_fixture(scope) do
+    {:ok, story} =
+      CodeMySpec.Stories.create_story(scope, %{
+        title: "A story #{System.unique_integer([:positive])}",
+        description: "for the rule to hang off"
+      })
+
+    story
   end
 
   defp setup_project do

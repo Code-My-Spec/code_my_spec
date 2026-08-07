@@ -46,19 +46,21 @@ defmodule CodeMySpec.Requirements.GraphCache do
   certainly current". Good enough to label a UI; not good enough to skip
   computing for an agent.
 
-  `{:ok, {nodes, edges}}` on a hit, `:miss` when absent or computed from
-  different inputs.
+  `{:ok, {nodes, edges}, computed_at}` on a hit, `:miss` when absent or
+  computed from different inputs. `computed_at` rides along for the same reason
+  `fetch_any/1` returns it: a reader showing a snapshot should be able to say
+  when it was taken, even when it is current.
   """
-  @spec fetch(Scope.t(), String.t()) :: {:ok, {list(), list()}} | :miss
+  @spec fetch(Scope.t(), String.t()) :: {:ok, {list(), list()}, DateTime.t()} | :miss
   def fetch(%Scope{active_project_id: project_id}, fingerprint)
       when is_binary(project_id) and is_binary(fingerprint) do
     CachedGraph
     |> where([g], g.project_id == ^project_id and g.fingerprint == ^fingerprint)
-    |> select([g], g.payload)
+    |> select([g], {g.payload, g.computed_at})
     |> Repo.one()
     |> case do
       nil -> :miss
-      payload -> {:ok, decode(payload)}
+      {payload, computed_at} -> {:ok, decode(payload), computed_at}
     end
   end
 
@@ -142,7 +144,15 @@ defmodule CodeMySpec.Requirements.GraphCache do
     Repo.insert_all(CachedGraph, [attrs],
       on_conflict:
         {:replace,
-         [:fingerprint, :payload, :node_count, :edge_count, :computed_by, :computed_at, :updated_at]},
+         [
+           :fingerprint,
+           :payload,
+           :node_count,
+           :edge_count,
+           :computed_by,
+           :computed_at,
+           :updated_at
+         ]},
       conflict_target: :project_id
     )
 
