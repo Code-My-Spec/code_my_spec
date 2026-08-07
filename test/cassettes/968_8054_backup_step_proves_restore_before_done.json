@@ -1,7 +1,7 @@
 {
   "interactions": [
     {
-      "recorded_at": "2026-08-02T20:00:07.046418Z",
+      "recorded_at": "2026-08-07T00:39:32.064303Z",
       "request": {
         "body": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<LifecycleConfiguration xmlns=\"http://s3.amazonaws.com/doc/2006-03-01/\">\n  <Rule>\n    <ID>cms-dump-retention</ID>\n    <Filter><Prefix>dumps/</Prefix></Filter>\n    <Status>Enabled</Status>\n    <Expiration><Days>14</Days></Expiration>\n  </Rule>\n</LifecycleConfiguration>\n",
         "body_type": "text",
@@ -25,7 +25,7 @@
             "fa388a8f92c64c84ee1f944a3a5aeb2aae1af517013fabecf9049b76a82a18fc"
           ],
           "x-amz-date": [
-            "20260802T200006Z"
+            "20260807T003931Z"
           ]
         },
         "method": "PUT",
@@ -43,16 +43,74 @@
             "application/xml"
           ],
           "date": [
-            "Sun, 02 Aug 2026 20:00:07 GMT"
+            "Fri, 07 Aug 2026 00:39:32 GMT"
           ],
           "strict-transport-security": [
             "max-age=63072000"
           ],
           "x-amz-request-id": [
-            "tx000004a428b3404792bcc-006a6fa1c6-32b33d97-fsn1-prod1-ceph5"
+            "tx00000532206a0f13ba968-006a752943-33eacaa8-fsn1-prod1-ceph5"
           ],
           "x-debug-bucket": [
             "spex-story968-criterion8054-prod"
+          ]
+        },
+        "status": 200
+      }
+    },
+    {
+      "recorded_at": "2026-08-07T00:39:34.836852Z",
+      "request": {
+        "body": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<LifecycleConfiguration xmlns=\"http://s3.amazonaws.com/doc/2006-03-01/\">\n  <Rule>\n    <ID>cms-dump-retention</ID>\n    <Filter><Prefix>dumps/</Prefix></Filter>\n    <Status>Enabled</Status>\n    <Expiration><Days>14</Days></Expiration>\n  </Rule>\n</LifecycleConfiguration>\n",
+        "body_type": "text",
+        "headers": {
+          "accept-encoding": [
+            "gzip"
+          ],
+          "content-length": [
+            "308"
+          ],
+          "content-md5": [
+            "8OAGTsXPuUfayrZaJ+6q1g=="
+          ],
+          "host": [
+            "fsn1.your-objectstorage.com"
+          ],
+          "user-agent": [
+            "req/0.5.17"
+          ],
+          "x-amz-content-sha256": [
+            "fa388a8f92c64c84ee1f944a3a5aeb2aae1af517013fabecf9049b76a82a18fc"
+          ],
+          "x-amz-date": [
+            "20260807T003934Z"
+          ]
+        },
+        "method": "PUT",
+        "query_string": "lifecycle=1",
+        "uri": "https://fsn1.your-objectstorage.com/spex-story968-criterion8054-uat/"
+      },
+      "response": {
+        "body": "",
+        "body_type": "text",
+        "headers": {
+          "content-length": [
+            "0"
+          ],
+          "content-type": [
+            "application/xml"
+          ],
+          "date": [
+            "Fri, 07 Aug 2026 00:39:34 GMT"
+          ],
+          "strict-transport-security": [
+            "max-age=63072000"
+          ],
+          "x-amz-request-id": [
+            "tx00000a8d07a79faf28f9d-006a752946-33e7fae4-fsn1-prod1-ceph5"
+          ],
+          "x-debug-bucket": [
+            "spex-story968-criterion8054-uat"
           ]
         },
         "status": 200

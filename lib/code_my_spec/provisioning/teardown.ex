@@ -195,8 +195,13 @@ defmodule CodeMySpec.Provisioning.Teardown do
     end
   end
 
+  # `sending_record` belongs here because that is what it is — a Cloudflare
+  # record, written by the email step so Resend has something to verify
+  # against. Without this clause it fell to the catch-all below, which logs and
+  # leaves it: DKIM and SPF records stranded on the user's live domain after
+  # the sending domain they belonged to was removed.
   def resource(%Scope{} = scope, %{kind: kind, location: location} = r, opts)
-      when kind in ["dns_record", "mx_record"] do
+      when kind in ["dns_record", "mx_record", "sending_record"] do
     name = after_slash(location)
     zone_name = Keyword.get(opts, :zone) || registrable(name)
 

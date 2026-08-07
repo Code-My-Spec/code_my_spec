@@ -1,7 +1,7 @@
 {
   "interactions": [
     {
-      "recorded_at": "2026-08-02T16:50:29.687413Z",
+      "recorded_at": "2026-08-07T00:38:32.058961Z",
       "request": {
         "body": "hello",
         "body_type": "text",
@@ -22,7 +22,7 @@
             "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
           ],
           "x-amz-date": [
-            "20260802T165029Z"
+            "20260807T003831Z"
           ]
         },
         "method": "PUT",
@@ -40,7 +40,7 @@
             "0"
           ],
           "date": [
-            "Sun, 02 Aug 2026 16:50:29 GMT"
+            "Fri, 07 Aug 2026 00:38:32 GMT"
           ],
           "etag": [
             "\"5d41402abc4b2a76b9719d911017c592\""
@@ -49,7 +49,7 @@
             "max-age=63072000"
           ],
           "x-amz-request-id": [
-            "tx0000086e772016e400eda-006a6f7555-31570f14-fsn1-prod1-ceph5"
+            "tx00000d3fbdd0a28ed6cd1-006a752907-30eb41e1-fsn1-prod1-ceph5"
           ],
           "x-debug-bucket": [
             "spex-story968-criterion8012-uat"
@@ -59,7 +59,7 @@
       }
     },
     {
-      "recorded_at": "2026-08-02T16:50:29.853026Z",
+      "recorded_at": "2026-08-07T00:38:32.179322Z",
       "request": {
         "body": "",
         "body_type": "text",
@@ -77,7 +77,7 @@
             "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
           ],
           "x-amz-date": [
-            "20260802T165029Z"
+            "20260807T003832Z"
           ]
         },
         "method": "GET",
@@ -95,19 +95,19 @@
             "binary/octet-stream"
           ],
           "date": [
-            "Sun, 02 Aug 2026 16:50:29 GMT"
+            "Fri, 07 Aug 2026 00:38:32 GMT"
           ],
           "etag": [
             "\"5d41402abc4b2a76b9719d911017c592\""
           ],
           "last-modified": [
-            "Sun, 02 Aug 2026 16:50:29 GMT"
+            "Fri, 07 Aug 2026 00:38:32 GMT"
           ],
           "strict-transport-security": [
             "max-age=63072000"
           ],
           "x-amz-request-id": [
-            "tx00000337084d2f27f160d-006a6f7555-2ad3dc80-fsn1-prod1-ceph5"
+            "tx0000014c4843810773723-006a752908-2f240b76-fsn1-prod1-ceph5"
           ],
           "x-debug-bucket": [
             "spex-story968-criterion8012-uat"

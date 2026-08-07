@@ -635,8 +635,22 @@ defmodule CodeMySpec.Provisioning.Steps do
     end
   end
 
+  # Every environment, the way `run(:storage, ...)` immediately above already
+  # does it. This used to read `Keyword.get(opts, :environment, "prod")` — one
+  # environment, defaulted — while the step beside it created a bucket per
+  # environment.
+  #
+  # The visible failure was the lucky one: a project with only `uat` looked for
+  # a `-prod` bucket nothing had made and errored on NoSuchBucket. The
+  # dangerous case is an ordinary prod+uat project, where the default finds a
+  # real bucket and the step reports **done** having dumped production only.
+  # UAT's database is never written anywhere and nothing says so, which is
+  # discovered on the day somebody needs a restore.
+  #
+  # Same shape as the TLS default fixed in 69ca7625: a per-environment fact
+  # served by a project-level default.
   def run(:backups, %Scope{} = scope, opts) do
-    environment = Keyword.get(opts, :environment, "prod")
+    environments = environments(scope, opts)
     project = project(scope)
 
     case Storage.credentials(scope, opts) do
@@ -644,16 +658,30 @@ defmodule CodeMySpec.Provisioning.Steps do
         {:paused, Storage.credentials_instructions()}
 
       {:ok, credentials} ->
-        bucket = Storage.bucket_name(project, environment)
+        environments
+        |> Enum.reduce_while({:ok, []}, fn environment, {:ok, acc} ->
+          bucket = Storage.bucket_name(project, environment)
 
-        opts =
-          opts
-          |> Keyword.put(:bucket, bucket)
-          |> Keyword.put(:credentials, credentials)
+          environment_opts =
+            opts
+            |> Keyword.put(:bucket, bucket)
+            |> Keyword.put(:credentials, credentials)
 
-        with :ok <- require_script(scope, "bin/backup") do
-          backups_outcome(Backups.run(env(scope), environment, opts), bucket)
-        end
+          with :ok <- require_script(scope, "bin/backup"),
+               {:ok, resources} <-
+                 backups_outcome(
+                   Backups.run(env(scope), environment, environment_opts),
+                   bucket,
+                   environment
+                 ) do
+            {:cont, {:ok, acc ++ resources}}
+          else
+            # What was already dumped is named in the failure, so a run that
+            # dies on the second environment still accounts for the first.
+            {:paused, instructions} -> {:halt, {:paused, instructions}}
+            {:error, reason} -> {:halt, {:error, reason, acc}}
+          end
+        end)
     end
   end
 
@@ -1048,20 +1076,34 @@ defmodule CodeMySpec.Provisioning.Steps do
   defp iso(%DateTime{} = at), do: DateTime.to_iso8601(at)
   defp iso(_), do: nil
 
-  defp backups_outcome({:ok, %{proof: proof} = result}, bucket) do
+  # Each resource carries its environment, the way every other fanned-out step
+  # tags them. Without it a page showing three dumps cannot say which database
+  # any of them holds — and "we have backups" is only worth anything if you can
+  # tell which.
+  defp backups_outcome({:ok, %{proof: proof} = result}, bucket, environment) do
     {:ok,
      [
-       %{kind: "dump", location: "#{bucket}/#{result.key}"},
+       %{
+         kind: "dump",
+         location: "#{bucket}/#{result.key}",
+         identifier: "environment=#{environment}"
+       },
        %{
          kind: "restore_proof",
          location: proof.target,
-         identifier: "rows=#{proof.rows} proven_at=#{DateTime.to_iso8601(proof.proven_at)}"
+         identifier:
+           "environment=#{environment} rows=#{proof.rows} " <>
+             "proven_at=#{DateTime.to_iso8601(proof.proven_at)}"
        },
-       %{kind: "retention", location: "#{result.retention_days} days"}
+       %{
+         kind: "retention",
+         location: "#{result.retention_days} days",
+         identifier: "environment=#{environment}"
+       }
      ]}
   end
 
-  defp backups_outcome({:error, reason}, _bucket), do: {:error, format(reason)}
+  defp backups_outcome({:error, reason}, _bucket, _environment), do: {:error, format(reason)}
 
   defp project(%Scope{active_project: project}), do: project
   defp env(%Scope{environment: environment}), do: environment
