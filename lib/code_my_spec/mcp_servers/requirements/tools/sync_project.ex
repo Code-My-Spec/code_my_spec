@@ -43,7 +43,18 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.SyncProject do
   end
 
   defp run_sync(scope, frame) do
-    with {:ok, file_result} <- FileSync.sync(scope, base_dir: scope.cwd),
+    # `embed: false`. This used to carry the embed pre-pass — re-embedding the
+    # framework knowledge corpus and re-projecting hex docs — on the grounds
+    # that it is the manual full-sync surface and every hot-path caller opts
+    # out. The intent was right; the cost was not survivable.
+    #
+    # Measured here: 4794 files, 54 changed, **1,700,691ms**. Twenty-eight
+    # minutes, of which roughly 27 seconds was file work. The same scan without
+    # embedding is 354ms. No MCP client waits twenty-eight minutes — it times
+    # out, and the call meant to refresh the graph wedges the service instead.
+    #
+    # Embedding is now `refresh_embeddings`, asked for by name.
+    with {:ok, file_result} <- FileSync.sync(scope, base_dir: scope.cwd, embed: false),
          {:ok, comp_result} <- FileComponentSync.sync_from_files(scope, base_dir: scope.cwd) do
       text = format_result(file_result, comp_result)
       {:reply, Response.tool() |> Response.text(text), frame}
@@ -65,6 +76,9 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.SyncProject do
     - Components: #{components}
 
     Call `get_next_requirement` to find your next task.
+
+    Embeddings are not refreshed here — call `refresh_embeddings` if \
+    `semantic_search` needs to see today's code.
     """
   end
 end

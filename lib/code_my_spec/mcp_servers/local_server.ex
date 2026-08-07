@@ -79,6 +79,7 @@ defmodule CodeMySpec.McpServers.LocalServer do
   component(CodeMySpec.McpServers.Requirements.Tools.ListRequirements)
   component(CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement)
   component(CodeMySpec.McpServers.Requirements.Tools.SyncProject)
+  component(CodeMySpec.McpServers.Requirements.Tools.RefreshEmbeddings)
   component(CodeMySpec.McpServers.Requirements.Tools.ShowRequirement)
   component(CodeMySpec.McpServers.Requirements.Tools.ShowComponentRequirements)
   component(CodeMySpec.McpServers.Requirements.Tools.ShowStoryRequirements)
