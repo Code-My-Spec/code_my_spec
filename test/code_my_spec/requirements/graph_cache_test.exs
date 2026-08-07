@@ -162,33 +162,27 @@ defmodule CodeMySpec.Requirements.GraphCacheTest do
       refute current_fingerprint(scope) == before
     end
 
-    # The 859 scenario, in one assertion. `AgentTasks.Deploy` reads this file
-    # and `AgentTasks.Release` lists the directory, and neither ever reaches the
-    # Files table: `.code_my_spec` is a sync root, so the walker descends, but
-    # `Scanner.classify/1` claims no deploy record and `stream_files/1` drops
-    # what classify does not claim.
-    #
-    # So this file could appear, `release` could reopen, and every other input
-    # the fingerprint watched would be untouched — which is exactly how a cached
-    # graph tells an agent the project is finished.
-    test "a deploy record appearing moves it", %{scope: scope, before: before} do
-      record = Path.join([scope.cwd, Paths.devops_deploys_dir(), "story_1.md"])
-      File.mkdir_p!(Path.dirname(record))
-      File.write!(record, "# Deploy\n\nHealth check: pending\n")
+    # `QaIntegrationPlan` globs these and nothing syncs them: `.code_my_spec`
+    # is a sync root so the walker descends, but `Scanner.classify/1` does not
+    # claim integration specs and `stream_files/1` drops what classify does not
+    # claim. Without this the fingerprint cannot see a spec written or verified.
+    test "an integration spec appearing moves it", %{scope: scope, before: before} do
+      spec = Path.join([scope.cwd, Paths.integrations_dir(), "stripe.md"])
+      File.mkdir_p!(Path.dirname(spec))
+      File.write!(spec, "# Stripe\n\nstatus: pending\n")
 
       refute current_fingerprint(scope) == before
     end
 
-    test "a deploy record going from pending to verified moves it", %{scope: scope} do
-      record = Path.join([scope.cwd, Paths.devops_deploys_dir(), "story_1.md"])
-      File.mkdir_p!(Path.dirname(record))
-      File.write!(record, "# Deploy\n\nHealth check: pending\n")
+    test "an integration spec changing in place moves it", %{scope: scope} do
+      spec = Path.join([scope.cwd, Paths.integrations_dir(), "stripe.md"])
+      File.mkdir_p!(Path.dirname(spec))
+      File.write!(spec, "# Stripe\n\nstatus: pending\n")
       pending = current_fingerprint(scope)
 
-      # Same path, same directory listing — only the contents move. Hashing
-      # names alone would miss this, and "verified" is the whole of what
-      # `Deploy.evaluate/2` looks for.
-      File.write!(record, "# Deploy\n\nHealth check: verified\n")
+      # Same path, same glob result — only the contents move, and the status is
+      # the whole of what the check reads.
+      File.write!(spec, "# Stripe\n\nstatus: verified\n")
 
       refute current_fingerprint(scope) == pending
     end

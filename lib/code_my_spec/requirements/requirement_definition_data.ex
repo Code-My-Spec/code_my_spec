@@ -758,21 +758,6 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         prerequisites: [3],
         execution_type: :sub_agent,
         subagent_role: :qa
-      }),
-      new!(%{
-        id: 6,
-        name: "deploy",
-        node_scope: :self,
-        check_type: :delegate,
-        config: %{module: AgentTasks.Deploy, function: :evaluate},
-        satisfied_by: AgentTasks.Deploy,
-        artifact_type: :code,
-        description:
-          "Story deployed through the loop — UAT first, health-verified, then prod",
-        prerequisites: [4],
-        # Deploys have external side effects the stop hook can't verify;
-        # the agent records the verified promotion and calls evaluate_task.
-        validation_type: :manual
       })
     ]
   end
@@ -864,25 +849,6 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         validation_type: :manual
       }),
       new!(%{
-        id: 17,
-        name: "devops_setup",
-        node_scope: :self,
-        check_type: :delegate,
-        config: %{module: AgentTasks.DevopsSetup, function: :evaluate},
-        satisfied_by: AgentTasks.DevopsSetup,
-        artifact_type: :code,
-        description:
-          "Infrastructure provisioned into the user's own accounts — environments live, secrets seeded, backups + monitors installed",
-        # Parallel to qa_integration_plan: the app exists after code
-        # generation, so provisioning can start; nothing downstream in the
-        # serial chain depends on it (deploys hang off qa_complete).
-        prerequisites: [3],
-        # Multi-turn: credential collection and live provisioning span
-        # many turns; the agent calls evaluate_task when the setup record
-        # attests verified environments.
-        validation_type: :manual
-      }),
-      new!(%{
         id: 5,
         name: "architecture_designed",
         node_scope: :self,
@@ -939,8 +905,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         config: %{path: ".code_my_spec/qa/plan.md"},
         satisfied_by: AgentTasks.QaSetup,
         artifact_type: :review,
-        description:
-          "QA plan exists with App Overview, Tools Registry, and Seed Strategy",
+        description: "QA plan exists with App Overview, Tools Registry, and Seed Strategy",
         prerequisites: [7]
       }),
       new!(%{
@@ -979,25 +944,6 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         artifact_type: :tests,
         description: "Wallaby journey tests exist",
         prerequisites: [11]
-      }),
-      new!(%{
-        id: 18,
-        name: "release",
-        node_scope: :self,
-        check_type: :delegate,
-        config: %{module: AgentTasks.Release, function: :evaluate},
-        satisfied_by: AgentTasks.Release,
-        artifact_type: :code,
-        description:
-          "Prod release cut — every UAT deploy covered by a release with notes, tag, and verified prod health",
-        # The cycle's terminus: only after the user journeys are complete
-        # and updated. Recurrence is content-based — a UAT deploy not
-        # covered by a release manifest reopens this.
-        prerequisites: [12],
-        # Human approval + external side effects (tag, GitHub Release,
-        # prod deploy) — the agent records the release and calls
-        # evaluate_task.
-        validation_type: :manual
       })
     ]
   end

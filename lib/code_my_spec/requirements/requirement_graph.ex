@@ -1123,8 +1123,9 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   # require_specs: false → removes :specification artifact types
   # require_reviews: false → removes :review artifact types
   # require_unit_tests: false → removes :tests artifact type + tests_passing
-  # devops: :off → removes devops_setup + deploy (the graph stays silent
-  # about infrastructure; the user deploys on their own terms)
+  #
+  # The graph is now silent about infrastructure for every project, not just
+  # `devops: :off` ones — see `maybe_filter_devops/2`.
   defp filter_definitions_by_config(definitions, config) do
     definitions
     |> maybe_filter_specs(config)
@@ -1133,16 +1134,10 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     |> maybe_filter_devops(config)
   end
 
-  defp maybe_filter_devops(definitions, %{devops: :off}) do
-    Enum.reject(definitions, &(&1.name in ["devops_setup", "deploy", "release"]))
-  end
-
-  # UAT-only: stories deploy to staging, but no prod release is ever
-  # demanded — the user promotes on their own terms.
-  defp maybe_filter_devops(definitions, %{devops: :uat}) do
-    Enum.reject(definitions, &(&1.name == "release"))
-  end
-
+  # `devops_setup`, `deploy` and `release` are gone from the graph, so there is
+  # nothing left to filter. Kept as an identity rather than deleted because
+  # `devops` is still a real configuration setting that drives the provisioning
+  # UI and the agent tasks — it just no longer decides requirement nodes.
   defp maybe_filter_devops(definitions, _config), do: definitions
 
   defp maybe_filter_specs(definitions, %{require_specs: false}) do
