@@ -279,13 +279,55 @@ defmodule CodeMySpec.AgentHarness.ConversationRecorder do
     messages
     |> List.last()
     |> case do
-      %{"content" => content} when is_binary(content) -> content
-      %{"content" => content} when is_list(content) -> response_text(%{"content" => content})
+      %{"content" => content} when is_binary(content) -> strip_injected(content)
+      %{"content" => content} when is_list(content) -> injected_free_text(content)
       _ -> nil
     end
   end
 
   def request_text(_request), do: nil
+
+  # Drop the context the client injects, keep what the agent was asked.
+  #
+  # Recorded turns opened with "Available agent types for the Agent tool: …"
+  # — Claude Code's preamble, not the instruction. The last message is the
+  # right choice for a simple turn and the wrong one when the client appends
+  # context to it, so this removes the appended part rather than choosing a
+  # different message: the instruction and the injected block arrive together,
+  # in the same message.
+  #
+  # `<system-reminder>` is the unambiguous case and the only one matched by
+  # structure. Anything else is left alone — a heuristic that guessed at prose
+  # would eventually eat somebody's actual question, which is worse than a
+  # preamble they can scroll past.
+  #
+  # If stripping leaves nothing, the original is kept. A turn that was *only*
+  # injected context still happened, and recording it as blank is the failure
+  # 8173 names for tool-only turns: the operator sees nothing and concludes
+  # nothing ran.
+  defp injected_free_text(content) do
+    kept = Enum.reject(content, &injected_block?/1)
+
+    case response_text(%{"content" => kept}) do
+      nil -> response_text(%{"content" => content})
+      "" -> response_text(%{"content" => content})
+      text -> text
+    end
+  end
+
+  defp injected_block?(%{"type" => "text", "text" => text}) when is_binary(text),
+    do: String.starts_with?(String.trim_leading(text), "<system-reminder>")
+
+  defp injected_block?(_block), do: false
+
+  defp strip_injected(text) when is_binary(text) do
+    stripped =
+      text
+      |> String.replace(~r/<system-reminder>.*?<\/system-reminder>/s, "")
+      |> String.trim()
+
+    if stripped == "", do: text, else: stripped
+  end
 
   defp join([]), do: nil
   defp join(parts), do: Enum.join(parts, "\n")
