@@ -18,9 +18,11 @@ defmodule CmsHarness.ProjectIdentity do
   means syncing one checkout's files over another project's rows.
   """
 
+  alias CmsHarness.HarnessIdentity
+
   @config_path ".code_my_spec/config.yml"
 
-  @type t :: %{id: String.t(), root: String.t()}
+  @type t :: %{id: String.t(), root: String.t(), harness_id: String.t() | nil}
 
   @doc """
   Resolve the project id for a working directory.
@@ -33,9 +35,26 @@ defmodule CmsHarness.ProjectIdentity do
   def resolve(root) when is_binary(root) do
     root = Path.expand(root)
 
+    with {:ok, project} <- resolve_project(root) do
+      {:ok, Map.put(project, :harness_id, harness_id(root))}
+    end
+  end
+
+  defp resolve_project(root) do
     case System.get_env("CMS_PROJECT_ID") do
       id when is_binary(id) and id != "" -> {:ok, %{id: id, root: root}}
       _ -> from_config(root)
+    end
+  end
+
+  # `nil` means "not issued yet", which is ordinary — the first join mints it.
+  # An unreadable id file also reads as `nil` here, but `HarnessIdentity.write/2`
+  # refuses to overwrite one, so the stranding that would cause is contained to
+  # the one session rather than made permanent.
+  defp harness_id(root) do
+    case HarnessIdentity.read(root) do
+      {:ok, id} -> id
+      _ -> nil
     end
   end
 

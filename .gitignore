@@ -87,3 +87,9 @@ installers/windows/shawl.exe
 installers/windows/*.msi
 /priv/chromedriver/
 relay/cms-mcp-relay
+
+# This working copy's harness identity — issued by the server, per checkout.
+# Never committed: a committed id is cloned into every checkout, so a sprite
+# would come up wearing the laptop's identity and both would sync into the
+# same rows.
+.cms_harness_id

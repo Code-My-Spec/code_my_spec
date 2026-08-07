@@ -16,6 +16,9 @@ defmodule CmsHarness.ChannelClientTransportTest do
 
   use ExUnit.Case, async: false
 
+  import ExUnit.CaptureLog
+
+  alias CmsHarness.HarnessIdentity
   alias CmsHarness.Project.ChannelClient
 
   setup do
@@ -163,6 +166,62 @@ defmodule CmsHarness.ChannelClientTransportTest do
 
       assert out.assigns.joined, "one bad answer is not a dead channel"
       refute_receive :reconnect, 100
+    end
+  end
+
+  describe "the identity the server issues" do
+    setup do
+      root = Path.join(System.tmp_dir!(), "cms_join_id_#{System.unique_integer([:positive])}")
+      File.mkdir_p!(root)
+      on_exit(fn -> File.rm_rf(root) end)
+      %{root: root}
+    end
+
+    defp join(root, held, reply) do
+      sock = socket(%{project: %{id: "p1", root: root, harness_id: held}})
+      {:ok, out} = ChannelClient.handle_join("harness_project:p1", reply, sock)
+      out
+    end
+
+    test "a first join writes down the id it is given", %{root: root} do
+      out = join(root, nil, %{"harness_id" => "h_issued"})
+
+      assert {:ok, "h_issued"} = HarnessIdentity.read(root),
+             "without this the next restart is issued a second id and orphans this one's rows"
+
+      assert out.assigns.project.harness_id == "h_issued"
+    end
+
+    test "a server that does not know the field changes nothing", %{root: root} do
+      out = join(root, nil, %{})
+
+      assert :none = HarnessIdentity.read(root)
+      assert out.assigns.project.harness_id == nil
+      assert out.assigns.joined, "the join still succeeds — this half can land first"
+    end
+
+    test "being re-issued the same id is a no-op", %{root: root} do
+      :ok = HarnessIdentity.write(root, "h_held")
+      out = join(root, "h_held", %{"harness_id" => "h_held"})
+
+      assert {:ok, "h_held"} = HarnessIdentity.read(root)
+      assert out.assigns.project.harness_id == "h_held"
+    end
+
+    test "a conflicting id is named, not adopted", %{root: root} do
+      :ok = HarnessIdentity.write(root, "h_held")
+
+      log =
+        capture_log(fn ->
+          out = join(root, "h_held", %{"harness_id" => "h_different"})
+
+          assert out.assigns.project.harness_id == "h_held",
+                 "this copy's rows are filed under h_held; adopting h_different " <>
+                   "would orphan them while everything kept looking healthy"
+        end)
+
+      assert log =~ "already holds"
+      assert {:ok, "h_held"} = HarnessIdentity.read(root)
     end
   end
 

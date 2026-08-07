@@ -46,6 +46,7 @@ defmodule CmsHarness.Project.ChannelClient do
   require Logger
 
   alias CmsHarness.Config
+  alias CmsHarness.HarnessIdentity
   alias CmsHarness.Project.AnalysisServer
   alias CmsHarness.Project.Transport
   alias CmsHarness.Project.Watcher
@@ -269,18 +270,27 @@ defmodule CmsHarness.Project.ChannelClient do
 
   @impl Slipstream
   def handle_connect(socket) do
+    project = socket.assigns.project
+
     {:ok,
      transport().join(socket, socket.assigns.topic, %{
-       "label" => Config.label(socket.assigns.project.root)
+       "label" => Config.label(project.root),
+       # Which working copy this is. `nil` on the first join of a checkout —
+       # the server mints one and hands it back, and `handle_join/3` writes it
+       # down so every later join presents the same one. A server that does not
+       # yet know the field ignores it, which is why this can land ahead of the
+       # half that reads it.
+       "harness_id" => project.harness_id
      })}
   end
 
   @impl Slipstream
-  def handle_join(topic, _reply, socket) do
+  def handle_join(topic, reply, socket) do
     Logger.info("[CmsHarness] holding #{socket.assigns.project.root} — joined #{topic}")
 
     socket =
       socket
+      |> persist_issued_identity(reply)
       |> assign(:joined, true)
       |> assign(:attempts, 0)
       |> assign(:refusals, 0)
@@ -296,6 +306,47 @@ defmodule CmsHarness.Project.ChannelClient do
       {:error, _} -> {:ok, socket}
     end
   end
+
+  # The id the server issued for this working copy, written down so a restart
+  # presents the same one rather than being issued a second.
+  #
+  # Only ever *adds* an identity. A server that answers with a different id than
+  # the one presented is not obeyed: the rows this copy has already written are
+  # filed under the id on disk, and quietly adopting a new one would orphan them
+  # while everything kept looking healthy. Named instead, because the two ids
+  # disagreeing is a fact somebody has to reconcile.
+  defp persist_issued_identity(socket, reply) do
+    root = socket.assigns.project.root
+
+    case {socket.assigns.project.harness_id, issued_id(reply)} do
+      {_same, nil} ->
+        socket
+
+      {nil, issued} ->
+        case HarnessIdentity.write(root, issued) do
+          :ok -> put_in(socket.assigns.project.harness_id, issued)
+          {:error, _} -> socket
+        end
+
+      {held, issued} when held == issued ->
+        socket
+
+      {held, issued} ->
+        Logger.error("""
+        [CmsHarness] the server issued #{issued} for #{root}, but this working copy \
+        already holds #{held}. Keeping #{held}.
+
+        Its files and problems are filed under #{held}; adopting the new id would
+        orphan them silently. One of the two records is wrong and this cannot
+        tell which.
+        """)
+
+        socket
+    end
+  end
+
+  defp issued_id(%{"harness_id" => id}) when is_binary(id) and id != "", do: id
+  defp issued_id(_reply), do: nil
 
   # How often the cached read model is refetched.
   #
