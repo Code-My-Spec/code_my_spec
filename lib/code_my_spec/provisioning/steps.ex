@@ -629,12 +629,25 @@ defmodule CodeMySpec.Provisioning.Steps do
     with name when is_binary(name) <- receiving_domain(scope, opts),
          {:ok, domain} <- Resend.ensure_receiving_domain(scope, name, opts),
          {:ok, webhook} <- Resend.ensure_webhook(scope, endpoint, opts),
-         {:ok, mx} <- publish_mx(scope, name, domain, opts) do
+         {:ok, mx} <- publish_mx(scope, name, domain, opts),
+         # The inbound records, not the domain. Mail addressed to a name Resend
+         # has not checked yet is not accepted, so probing straight after
+         # publishing produced a message that went nowhere — indistinguishable
+         # from a broken inbox.
+         #
+         # Waiting on the domain as a whole was worse than not waiting: a
+         # receiving-only domain reports `pending` forever, because its sending
+         # records belong to story 969 and this step must leave them alone
+         # (criterion 8029). Observed against a real run — apex `MX c8033`
+         # verified while the domain sat pending on three records nobody here
+         # had published.
+         {:ok, _inbound} <- Resend.await_inbound_verified(scope, domain["id"], name, opts),
+         {:ok, proof} <- prove_delivery(scope, name, opts) do
       {:ok,
        [
          %{kind: "receiving_domain", location: "resend/#{name}"},
          %{kind: "webhook", location: endpoint, identifier: webhook["id"]}
-       ] ++ mx}
+       ] ++ mx ++ [proof]}
     else
       nil ->
         {:error, "no domain set on the project — nothing to receive mail at"}
@@ -647,9 +660,105 @@ defmodule CodeMySpec.Provisioning.Steps do
            "Setup will not delete and recreate the domain: that rotates its DKIM key " <>
            "and would break sending until DNS caught up."}
 
+      # Paused, not errored. Nothing is wrong with the inbound setup; there is
+      # simply nothing to send the probe from, and that is somebody's decision
+      # to make rather than a failure to retry.
+      {:error, :no_verified_sender} ->
+        {:paused,
+         "the inbound records are published, but proving delivery means sending a message to " <>
+           "this domain and the account has no verified sending domain to send it from. " <>
+           "Verify one — the email step does this — then resume."}
+
+      {:error, :never_arrived} ->
+        {:error,
+         "the records are published and Resend is configured, but a message sent to this " <>
+           "domain never arrived. Configuration that looks right is exactly how a receiving " <>
+           "setup fails — the MX, Resend's receiving capability and the webhook all have to " <>
+           "be right together, and each can look correct on its own while mail goes nowhere."}
+
       {:error, reason} ->
         {:error, format(reason)}
     end
+  end
+
+  # Send one, and wait for it to come back. Every other step in this epic
+  # proves itself against the world rather than against its own settings —
+  # backups restore into a scratch database and count the rows, tls makes an
+  # HTTPS request a bad certificate would fail, the sending step polls until
+  # Resend itself reports verified. Inbound was the one that accepted its own
+  # configuration as evidence.
+  #
+  # Read back from Resend rather than from the webhook. The webhook posts to
+  # the project's own domain, which may serve something unrelated or nothing at
+  # all, so waiting on it would make this step depend on the customer having
+  # deployed — and would report failure for a site that is merely not up yet.
+  # `GET /emails/receiving` is the same delivery, seen from a place that does
+  # not need anything deployed.
+  defp prove_delivery(scope, name, opts) do
+    probe = Keyword.get(opts, :inbound_probe, &default_inbound_probe/3)
+    probe.(scope, name, opts)
+  end
+
+  defp default_inbound_probe(scope, name, opts) do
+    # A token in the subject, because the account receives real mail too and
+    # "something arrived" is not "the thing we sent arrived".
+    token = "cms-inbound-#{System.unique_integer([:positive])}"
+    to = "setup-probe@#{name}"
+
+    # From a domain the account has already verified, whichever one that is.
+    #
+    # Not from the domain being set up: it is verified for *receiving* at this
+    # point and not for sending, so an inbox's proof would have depended on
+    # outbound configuration and failed with a 403 that says nothing about
+    # receiving. Not from `onboarding@resend.dev` either, which was my first
+    # attempt — Resend answers that with "You can only send testing emails to
+    # your own email address", because it is a testing sender rather than a
+    # usable one.
+    #
+    # Any verified domain works. The claim is that mail addressed to this
+    # domain arrives here; who sent it is not part of it.
+    with {:ok, from} <- probe_sender(scope),
+         {:ok, _sent} <- Resend.send_probe(scope, to, subject: token, from: from),
+         {:ok, message} <- Resend.await_received(scope, &received?(&1, to, token), opts) do
+      {:ok,
+       %{
+         kind: "inbound_proof",
+         location: to,
+         identifier:
+           "state=delivered message_id=#{message["id"]} proven_at=#{message["created_at"]}"
+       }}
+    end
+  end
+
+  # A verified sender on the account, or a clear reason there is none.
+  defp probe_sender(scope) do
+    case Resend.list_domains(scope) do
+      {:ok, domains} ->
+        verified = Enum.filter(domains, &(&1["status"] == "verified"))
+
+        # Any verified domain can carry the probe, so prefer one that is not
+        # the product's own. Sending as `codemyspec.com` works and changes
+        # nothing, but a setup probe should not go out over the production
+        # sending domain when another is available.
+        preferred =
+          Enum.find(verified, &(not String.contains?(&1["name"] || "", "codemyspec.com"))) ||
+            List.first(verified)
+
+        case preferred do
+          %{"name" => name} -> {:ok, "setup-probe@#{name}"}
+          _ -> {:error, :no_verified_sender}
+        end
+
+      other ->
+        other
+    end
+  end
+
+  defp received?(message, to, token) do
+    subject = to_string(message["subject"] || "")
+    recipients = List.wrap(message["to"]) |> Enum.map(&to_string/1)
+
+    String.contains?(subject, token) and Enum.any?(recipients, &(&1 == to))
   end
 
   def run(:storage, %Scope{} = scope, opts) do
@@ -1713,7 +1822,17 @@ defmodule CodeMySpec.Provisioning.Steps do
 
         with {:ok, zone} <- Cloudflare.find_zone(scope, base) do
           Enum.reduce_while(records, {:ok, []}, fn record, {:ok, acc} ->
-            record_name = qualify(record["name"], base)
+            # Against the **zone**, not the receiving domain. Resend names its
+            # records relative to the zone — for a receiving domain of
+            # `c8033.astralbi.com` in zone `astralbi.com` it returns `c8033`,
+            # and qualifying that against the receiving domain produced
+            # `c8033.c8033.astralbi.com`: created successfully, reported done,
+            # and no mail ever routed. Found in the residue of a real run.
+            #
+            # The `qualify/2` doc has warned about this exact shape since it
+            # was written; the sending records were fixed for it and this call
+            # was not.
+            record_name = qualify(record["name"], zone["name"])
 
             case Cloudflare.ensure_dns_record(scope, zone["id"], record_name, record["value"],
                    type: "MX",

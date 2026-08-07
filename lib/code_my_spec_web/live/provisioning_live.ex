@@ -445,6 +445,22 @@ defmodule CodeMySpecWeb.ProvisioningLive do
               credential placed in {cred.location}
             </div>
 
+            <!-- Configuration is not an inbox. The step sends a message to the
+                 domain it just configured and waits for Resend to report it
+                 received; that delivery is the claim, so it is on the page
+                 rather than folded into "done" (8033). -->
+            <span
+              :for={pr <- Enum.filter(step.resources, &(&1.kind == "inbound_proof"))}
+              data-test="inbound-delivery-proof"
+              data-target={pr.location}
+              data-state={proof_field(pr.identifier, "state")}
+              data-message-id={proof_field(pr.identifier, "message_id")}
+              data-completed-at={proof_field(pr.identifier, "proven_at")}
+              class="mt-1 block text-xs font-mono opacity-70"
+            >
+              delivered to {pr.location}: {pr.identifier}
+            </span>
+
             <!-- A dump is a file until something has read it back. The step
                  restores into a scratch database and counts the rows; that
                  count is the whole claim, so it is on the page rather than
@@ -1097,6 +1113,20 @@ defmodule CodeMySpecWeb.ProvisioningLive do
 
   defp remove_environment_warning(_environment),
     do: "Nothing was provisioned for it, so this only removes the row."
+
+  # `key=value key=value` — the shape every proof resource uses for its
+  # identifier, so the page can pull one field without knowing the order.
+  defp proof_field(identifier, key) do
+    identifier
+    |> to_string()
+    |> String.split(" ")
+    |> Enum.find_value(fn part ->
+      case String.split(part, "=", parts: 2) do
+        [^key, value] -> value
+        _ -> nil
+      end
+    end)
+  end
 
   # Blank means "leave it alone", not "clear it". The field renders empty for a
   # secret that is already set — because the value is never sent back to the
