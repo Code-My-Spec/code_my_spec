@@ -1,7 +1,7 @@
 defmodule CodeMySpecSpex.Story965.Criterion7989Spex do
   @moduledoc """
   Story 965 — My domain is registered and pointed at my app
-  Criterion 7989 — A taken domain sends Sam back to choose again.
+  Criterion 7989 — A name setup cannot register says so plainly.
 
   When the domain is already registered by someone else, setup says so
   and asks for another — and attempts no charge. A registration attempt
@@ -22,7 +22,7 @@ defmodule CodeMySpecSpex.Story965.Criterion7989Spex do
   setup :devops_on
   setup :connect_providers
 
-  spex "A taken domain sends Sam back to choose again" do
+  spex "A name setup cannot register says so plainly" do
     scenario "an unavailable domain is reported and no charge is attempted" do
       given_ "Sam is on the setup status page", context do
         {:ok, view, _html} =

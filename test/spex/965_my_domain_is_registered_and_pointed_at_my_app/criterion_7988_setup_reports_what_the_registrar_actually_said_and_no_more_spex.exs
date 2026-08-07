@@ -1,7 +1,7 @@
 defmodule CodeMySpecSpex.Story965.Criterion7988Spex do
   @moduledoc """
   Story 965 — My domain is registered and pointed at my app
-  Criterion 7988 — Sam picks a name and sees what it costs.
+  Criterion 7988 — Setup reports what the registrar actually said, and no more.
 
   Before any money moves, Sam types the domain he wants and gets back
   whether it is available and what it costs. Registrations are
@@ -20,14 +20,14 @@ defmodule CodeMySpecSpex.Story965.Criterion7988Spex do
 
   @endpoint CodeMySpecWeb.Endpoint
 
-  @cassette "cloudflare_domain_check_available_with_price"
+  @cassette "cloudflare_domain_check_unpriced"
 
   setup :register_log_in_setup_account
   setup :setup_active_project
   setup :devops_on
   setup :connect_providers
 
-  spex "Sam picks a name and sees what it costs" do
+  spex "Setup reports what the registrar actually said, and no more" do
     scenario "an available domain comes back with its price before he commits" do
       given_ "Sam is on the setup status page", context do
         {:ok, view, _html} =
