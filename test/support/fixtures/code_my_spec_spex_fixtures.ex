@@ -43,9 +43,9 @@ defmodule CodeMySpecSpex.Fixtures do
     ProjectsFixtures,
     ProjectSync,
     QaFixtures,
-    SessionsFixtures,
     QaIntegrationPlanFixtures,
     Sessions,
+    SessionsFixtures,
     SetupFixtures,
     Stories,
     TechnicalStrategyFixtures,
@@ -54,9 +54,9 @@ defmodule CodeMySpecSpex.Fixtures do
     UsersFixtures
   }
 
-  alias CodeMySpec.Users.Scope
   alias CodeMySpec.Configurations
   alias CodeMySpec.Requirements.RequirementGraph
+  alias CodeMySpec.Users.Scope
 
   @doc """
   Register a sending domain and publish everything except its DKIM record.
