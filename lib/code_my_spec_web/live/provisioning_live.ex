@@ -1164,7 +1164,7 @@ defmodule CodeMySpecWeb.ProvisioningLive do
           # DKIM is reported from the domain the message actually went out
           # from. A message accepted by the provider but unsigned still lands
           # in spam, so "accepted" alone does not answer criterion 8028.
-          state = mail_state(scope, environment)
+          state = mail_state(scope, environment, list_domains(scope))
 
           %{
             from: sent.from,
@@ -1548,8 +1548,17 @@ defmodule CodeMySpecWeb.ProvisioningLive do
     # nondeterministic under a sequential cassette, where a spex that clicked
     # one more time than the recording consumed an interaction that was not
     # there. `refresh_mail/1` re-reads when mail could actually have changed.
-    |> assign_new(:mail, fn -> mail_state(socket.assigns.current_scope, "prod") end)
-    |> assign_new(:mail_domains, fn -> mail_domains(socket.assigns.current_scope) end)
+    |> then(fn socket ->
+      # One listing for both assigns, resolved lazily so a page with neither
+      # already assigned pays for it once and a page with both pays nothing.
+      domains = fn -> list_domains(socket.assigns.current_scope) end
+
+      socket
+      |> assign_new(:mail, fn -> mail_state(socket.assigns.current_scope, "prod", domains.()) end)
+      |> assign_new(:mail_domains, fn ->
+        mail_domains(socket.assigns.current_scope, domains.())
+      end)
+    end)
     |> assign_new(:mail_send_result, fn -> nil end)
     |> assign_new(:storage_objects, fn -> [] end)
     |> assign_new(:storage_readbacks, fn -> [] end)
@@ -1697,10 +1706,11 @@ defmodule CodeMySpecWeb.ProvisioningLive do
   # has just run.
   defp refresh_mail(socket) do
     scope = socket.assigns.current_scope
+    domains = list_domains(scope)
 
     socket
-    |> assign(:mail, mail_state(scope, "prod"))
-    |> assign(:mail_domains, mail_domains(scope))
+    |> assign(:mail, mail_state(scope, "prod", domains))
+    |> assign(:mail_domains, mail_domains(scope, domains))
   end
 
   # Read from Resend every time rather than from the step row. The step
@@ -1711,11 +1721,20 @@ defmodule CodeMySpecWeb.ProvisioningLive do
   # Every environment, because a sending domain per environment is the whole
   # of criterion 8056 — one shared domain means test mail and production mail
   # are indistinguishable to a recipient.
-  defp mail_domains(scope) do
+  defp mail_domains(scope), do: mail_domains(scope, list_domains(scope))
+
+  defp mail_domains(scope, domains) do
     scope
     |> environments()
-    |> Enum.map(&mail_state(scope, &1))
+    |> Enum.map(&mail_state(scope, &1, domains))
     |> Enum.reject(&is_nil/1)
+  end
+
+  defp list_domains(scope) do
+    case Resend.list_domains(scope) do
+      {:ok, domains} when is_list(domains) -> domains
+      _ -> []
+    end
   end
 
   # Verification waits are a property of DNS, not of the code, so they are
@@ -1741,10 +1760,21 @@ defmodule CodeMySpecWeb.ProvisioningLive do
     Application.get_env(:code_my_spec, :provisioning_step_opts, [])
   end
 
-  defp mail_state(scope, environment) do
+  # Takes the domain listing rather than fetching its own. `find_domain/2` is a
+  # full `GET /domains` behind a filter, so reading three environments used to
+  # cost three identical listings — and `refresh_mail/1` asked for prod twice
+  # over, once on its own and once inside `mail_domains/1`.
+  #
+  # The count matters beyond the round-trips. It made the number of provider
+  # calls a function of how many times the page happened to render rather than
+  # of how much there was to read, and a sequential cassette replays exactly
+  # the calls it recorded — so a replay that settled in one more render than
+  # the recording ran out of interactions and failed on a green method and a
+  # green uri. `ensure_dns_record/5` takes `:records` for the same reason.
+  defp mail_state(scope, environment, domains) do
     with %{domain: base} when is_binary(base) and base != "" <- scope.active_project,
          sending <- Resend.sending_domain(base, environment),
-         {:ok, found} <- Resend.find_domain(scope, sending),
+         found when is_map(found) <- Enum.find(domains, &(&1["name"] == sending)),
          {:ok, domain} <- fetch_full_domain(scope, found) do
       # The list endpoint omits `records` entirely — only the single-domain
       # read carries them. Rendering from the list produced a mail section

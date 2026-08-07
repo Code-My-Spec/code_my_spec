@@ -525,7 +525,7 @@ defmodule CodeMySpec.Provisioning.Steps do
   end
 
   defp certificate_error(target, reason) do
-    "#{target.host} did not answer over HTTPS with a valid certificate (#{reason}). " <>
+    "#{target.host} did not answer over HTTPS with a valid certificate (#{format(reason)}). " <>
       "Issuance needs DNS resolving to the server and the proxy reachable on 80."
   end
 
@@ -1847,5 +1847,31 @@ defmodule CodeMySpec.Provisioning.Steps do
   defp random_secret, do: 32 |> :crypto.strong_rand_bytes() |> Base.url_encode64(padding: false)
 
   defp format(reason) when is_binary(reason), do: reason
+
+  # Transport failures in words. `inspect/1` is the right default for a term
+  # nobody anticipated, and the wrong one for the two failures that show up
+  # here constantly: a struct reached the setup page reading
+  # `%Finch.TransportError{reason: :econnrefused, source: %Mint.TransportError{…}}`
+  # — the same reason twice, nested, with the actionable half buried inside and
+  # the layout truncating it mid-word.
+  #
+  # `:econnrefused` and `:nxdomain` are exactly the two states the surrounding
+  # advice is already about, so saying them plainly makes the sentence answer
+  # its own question.
+  defp format(%{reason: reason}) when is_atom(reason), do: format_transport(reason)
+  defp format({:error, reason}), do: format(reason)
+  defp format(reason) when is_atom(reason), do: format_transport(reason)
   defp format(reason), do: inspect(reason)
+
+  defp format_transport(:econnrefused), do: "nothing is listening on that port"
+  defp format_transport(:nxdomain), do: "the name does not resolve yet"
+  defp format_transport(:timeout), do: "the host did not answer in time"
+  defp format_transport(:ehostunreach), do: "the host is unreachable"
+  defp format_transport(:econnreset), do: "the host closed the connection"
+  defp format_transport(:closed), do: "the connection closed before an answer"
+
+  # Still a word rather than a struct. An atom nobody has a sentence for reads
+  # better as `econnaborted` than as `:econnaborted`, and the ones that matter
+  # are named above.
+  defp format_transport(other), do: other |> Atom.to_string() |> String.replace("_", " ")
 end
