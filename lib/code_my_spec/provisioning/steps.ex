@@ -35,7 +35,7 @@ defmodule CodeMySpec.Provisioning.Steps do
   prevent, so it is better to be loudly incomplete.
   """
 
-  alias CodeMySpec.{Environments, ProjectSecrets, Projects}
+  alias CodeMySpec.{AccountSecrets, Environments, ProjectSecrets, Projects}
 
   alias CodeMySpec.Provisioning.{
     Backups,
@@ -54,6 +54,11 @@ defmodule CodeMySpec.Provisioning.Steps do
     Widget
   }
   alias CodeMySpec.Users.Scope
+
+  # The access key opens every box the account owns, so it lives at the
+  # account grain — see `access_public_key/2`.
+  @access_key_public "server_ssh_public_key"
+  @access_key_private "server_ssh_private_key"
 
   @type outcome ::
           {:ok, [map()]}
@@ -438,39 +443,81 @@ defmodule CodeMySpec.Provisioning.Steps do
   end
 
   def run(:tls, %Scope{} = scope, opts) do
-    case host(scope, opts) do
-      nil ->
-        {:error, "no domain set on the project — nothing to issue a certificate for"}
+    # Issuance is kamal-proxy's job during deploy; this step verifies it
+    # actually happened. A certificate nobody checked is a certificate that
+    # fails on a visitor rather than during setup. The probe is injectable so a
+    # spex can verify the recording without a live host.
+    probe = Keyword.get(opts, :probe, &Deploy.probe/2)
 
-      h ->
-        # Issuance is kamal-proxy's job during deploy; this step verifies it
-        # actually happened. A certificate nobody checked is a certificate
-        # that fails on a visitor rather than during setup. The probe is
-        # injectable so a spex can verify the recording without a live host.
-        probe = Keyword.get(opts, :probe, &Deploy.probe/2)
+    case tls_targets(scope, opts) do
+      [] -> {:error, "no domain set on the project — nothing to issue a certificate for"}
+      targets -> verify_certificates(targets, probe, opts)
+    end
+  end
 
-        case probe.(h, opts) do
-          :ok ->
-            # A successful probe is a 200 over HTTPS with `redirect: false` and a
-            # valid chain — so scheme, status and cert validity are all implied
-            # by it succeeding, and recorded so the page can show them (8006).
-            {:ok,
-             [
-               %{kind: "certificate", location: "https://#{h}"},
-               %{
-                 kind: "environment_verification",
-                 location: h,
-                 identifier: "scheme=https status=200 cert_valid=true"
-               }
-             ]}
+  # One target per environment, because a certificate belongs to a host and the
+  # DNS step directly above already fans out this way. Verifying the project's
+  # domain instead meant a `uat`-only project was probed at an apex the run had
+  # never pointed anywhere — and, worse, that the usual prod+uat pair reported
+  # TLS done having checked production only, so UAT's certificate was never
+  # looked at.
+  #
+  # An injected `:host` still stands in for the whole list, which is how a
+  # criterion probes one name without setting up environments.
+  defp tls_targets(scope, opts) do
+    case Keyword.get(opts, :host) do
+      host when is_binary(host) and host != "" ->
+        [%{name: nil, host: host}]
 
-          {:error, reason} ->
-            {:error,
-             "#{h} did not answer over HTTPS with a valid certificate (#{reason}). " <>
-               "Issuance needs DNS resolving to the server and the proxy reachable on 80."}
+      _ ->
+        case domain(scope) do
+          nil ->
+            []
+
+          name ->
+            scope
+            |> EnvironmentRepository.assign_hosts(name)
+            |> Enum.filter(&is_binary(&1.host))
         end
     end
   end
+
+  # Halts on the first environment without a certificate, carrying what was
+  # already verified — the same shape the storage step uses, so a run that
+  # fails on the second environment still records the first.
+  defp verify_certificates(targets, probe, opts) do
+    Enum.reduce_while(targets, {:ok, []}, fn target, {:ok, verified} ->
+      case probe.(target.host, opts) do
+        :ok ->
+          {:cont, {:ok, verified ++ certificate_resources(target)}}
+
+        {:error, reason} ->
+          {:halt, {:error, certificate_error(target, reason), verified}}
+      end
+    end)
+  end
+
+  # A successful probe is a 200 over HTTPS with `redirect: false` and a valid
+  # chain — so scheme, status and cert validity are all implied by it
+  # succeeding, and recorded so the page can show them (8006).
+  defp certificate_resources(target) do
+    [
+      %{kind: "certificate", location: "https://#{target.host}", identifier: tls_tag(target)},
+      %{
+        kind: "environment_verification",
+        location: target.host,
+        identifier: "scheme=https status=200 cert_valid=true" <> tls_tag(target)
+      }
+    ]
+  end
+
+  defp certificate_error(target, reason) do
+    "#{target.host} did not answer over HTTPS with a valid certificate (#{reason}). " <>
+      "Issuance needs DNS resolving to the server and the proxy reachable on 80."
+  end
+
+  defp tls_tag(%{name: name}) when is_binary(name), do: " environment=#{name}"
+  defp tls_tag(_target), do: ""
 
   def run(:callback_credential, %Scope{} = scope, opts) do
     environments = environments(scope, opts)
@@ -1292,14 +1339,25 @@ defmodule CodeMySpec.Provisioning.Steps do
     end
   end
 
+  # Account first, then the project. The key has to open every box the account
+  # owns, including one created from `/app/servers` that belongs to no project
+  # — a per-project key would lock a later deploy out of a box it can see. The
+  # project read stays for installs that generated one before the account
+  # grain existed.
   defp access_public_key(scope, name) do
-    case ProjectSecrets.fetch_value(scope, "server_ssh_public_key") do
-      {:ok, public} when is_binary(public) and public != "" ->
-        {:ok, public}
-
-      _ ->
-        generate_access_key(scope, name)
+    with :error <- stored_public_key(fn -> AccountSecrets.fetch_value(scope, @access_key_public) end),
+         :error <- stored_public_key(fn -> ProjectSecrets.fetch_value(scope, @access_key_public) end) do
+      generate_access_key(scope, name)
     end
+  end
+
+  defp stored_public_key(read) do
+    case read.() do
+      {:ok, public} when is_binary(public) and public != "" -> {:ok, public}
+      _ -> :error
+    end
+  rescue
+    _ -> :error
   end
 
   defp generate_access_key(scope, name) do
@@ -1315,8 +1373,10 @@ defmodule CodeMySpec.Provisioning.Steps do
           private = File.read!(path)
           public = File.read!(path <> ".pub")
 
-          ProjectSecrets.put_value(scope, "server_ssh_private_key", private)
-          ProjectSecrets.put_value(scope, "server_ssh_public_key", public)
+          # Written at the account grain to match where it is read from, so
+          # one key opens every box the account owns.
+          AccountSecrets.put_value(scope, @access_key_private, private)
+          AccountSecrets.put_value(scope, @access_key_public, public)
 
           {:ok, public}
 

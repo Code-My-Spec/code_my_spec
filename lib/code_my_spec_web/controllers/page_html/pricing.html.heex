@@ -131,4 +131,12 @@
       </div>
     </div>
   </section>
+  <%!-- The buying half. Nested rather than replacing this page: it is a dead
+       view with canonical/og tags and no socket, and only buyers need one.
+       Must sit INSIDE Layouts.marketing — outside it, this rendered below the
+       footer, where nobody would ever scroll to buy. --%>
+  <section class="max-w-4xl mx-auto px-6 pb-16">
+    {live_render(@conn, CodeMySpecWeb.CheckoutLive, id: "checkout-live")}
+  </section>
+
 </Layouts.marketing>

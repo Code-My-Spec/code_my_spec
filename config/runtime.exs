@@ -296,6 +296,18 @@ config :code_my_spec, CodeMySpec.Mail.ResendClient, api_key: env!("RESEND_API_KE
 # rather than the key's absence surfacing as a crash mid-flow.
 config :req_llm, anthropic_api_key: env!("ANTHROPIC_API_KEY", :string, nil)
 
+# Stripe. Blank when unset rather than absent, so an unconfigured environment
+# degrades to a normal error the billing page can show instead of crashing
+# inside Req's bearer-auth step.
+config :code_my_spec, CodeMySpec.Billing.StripeClient,
+  secret_key: env!("STRIPE_SECRET_KEY", :string, "")
+
+config :code_my_spec, CodeMySpec.Billing,
+  publishable_key: env!("STRIPE_PUBLISHABLE_KEY", :string, ""),
+  webhook_secret: env!("STRIPE_WEBHOOK_SECRET", :string, ""),
+  light_price_id: env!("STRIPE_LIGHT_PRICE_ID", :string, ""),
+  pro_price_id: env!("STRIPE_PRO_PRICE_ID", :string, "")
+
 # Svix signing secret for the inbound Resend webhook (`whsec_…`). When unset
 # (e.g. tests, dev without inbound) signature verification is skipped.
 config :code_my_spec, :resend_webhook_secret, env!("RESEND_WEBHOOK_SECRET", :string, "")

@@ -17,9 +17,19 @@ defmodule CodeMySpec.ProjectSecrets.ProjectSecret do
 
   ## Scoping
 
-  Project-scoped, not user-scoped. A user with two projects on
-  different Hetzner accounts is representable — which `Integration`,
-  keyed on `user_id`, cannot express.
+  Owned by exactly one of a project or an account, never both — the
+  database enforces it with a check constraint.
+
+  Project-scoped, not user-scoped, was the original choice: a user with
+  two projects on different Hetzner accounts is representable, which
+  `Integration`, keyed on `user_id`, cannot express.
+
+  Account ownership was added because some credentials name something
+  that outlives every project. A Hetzner API token is one Hetzner
+  account, and the servers it can see are shared — keying it on the
+  project made `/app/servers` show different boxes depending on which
+  project happened to be open. Age keys stay project-scoped; they are
+  genuinely per-project-per-environment.
 
   ## Environment
 
@@ -36,7 +46,8 @@ defmodule CodeMySpec.ProjectSecrets.ProjectSecret do
 
   @type t :: %__MODULE__{
           id: integer() | nil,
-          project_id: Ecto.UUID.t(),
+          project_id: Ecto.UUID.t() | nil,
+          account_id: Ecto.UUID.t() | nil,
           key: String.t(),
           value: binary(),
           environment: String.t(),
@@ -50,6 +61,7 @@ defmodule CodeMySpec.ProjectSecrets.ProjectSecret do
     field :environment, :string, default: "global"
 
     belongs_to :project, CodeMySpec.Projects.Project, type: :binary_id
+    belongs_to :account, CodeMySpec.Accounts.Account, type: :binary_id
 
     timestamps(type: :utc_datetime_usec)
   end
@@ -64,12 +76,40 @@ defmodule CodeMySpec.ProjectSecrets.ProjectSecret do
   @spec changeset(t() | Ecto.Schema.t(), map(), Ecto.UUID.t()) :: Ecto.Changeset.t()
   def changeset(secret, attrs, project_id) do
     secret
-    |> cast(attrs, [:key, :value, :environment])
+    |> common(attrs)
     |> put_change(:project_id, project_id)
-    |> validate_required([:key, :value, :environment])
-    |> validate_length(:key, min: 1, max: 255)
+    |> put_change(:account_id, nil)
     |> unique_constraint([:project_id, :key, :environment],
       name: :project_secrets_project_id_key_environment_index
+    )
+  end
+
+  @doc """
+  Builds a changeset for a secret belonging to `account_id`.
+
+  The mirror of `changeset/3` at the account grain. Both clear the other
+  owner explicitly rather than leaving it untouched, so an update can move
+  a secret between grains without tripping the check constraint.
+  """
+  @spec account_changeset(t() | Ecto.Schema.t(), map(), Ecto.UUID.t()) :: Ecto.Changeset.t()
+  def account_changeset(secret, attrs, account_id) do
+    secret
+    |> common(attrs)
+    |> put_change(:account_id, account_id)
+    |> put_change(:project_id, nil)
+    |> unique_constraint([:account_id, :key, :environment],
+      name: :project_secrets_account_id_key_environment_index
+    )
+  end
+
+  defp common(secret, attrs) do
+    secret
+    |> cast(attrs, [:key, :value, :environment])
+    |> validate_required([:key, :value, :environment])
+    |> validate_length(:key, min: 1, max: 255)
+    |> check_constraint(:project_id,
+      name: :project_secrets_exactly_one_owner,
+      message: "a secret belongs to exactly one of a project or an account"
     )
   end
 end

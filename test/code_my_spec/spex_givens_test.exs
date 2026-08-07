@@ -27,6 +27,7 @@ defmodule CodeMySpec.SpexGivensTest do
     Fixtures. live( render_click render_submit render_change element(
     post( put( patch( delete( with_provider_cassette mount_provisioning
     run_steps choose_setup_options all_setup_options own_domain built_deploy_run
+    stage_servers
     existing_apex_mx paste_storage_credentials verified_sending_domains
     stuck_sending_domain unverifiable_domain app_holds_refresh_secret
     connect_providers tear_down_after Environments. File.write File.mkdir

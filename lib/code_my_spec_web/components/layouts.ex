@@ -177,6 +177,12 @@ defmodule CodeMySpecWeb.Layouts do
             <%= if onboarding_complete?(@current_scope) do %>
               <li><a href={~p"/app/projects"}>Projects</a></li>
               <%!--
+                Account-scoped, so it sits with Projects rather than inside the
+                per-project block: a box is shared between projects, and one
+                left over from a project that no longer exists still bills.
+              --%>
+              <li><a href={~p"/app/servers"}>Servers</a></li>
+              <%!--
                 The path is the breadcrumb. Every surface below is addressed
                 per-project, and the project they point at is the one named in
                 the URL — `@project`, put there by PortableHost — never the
@@ -186,8 +192,14 @@ defmodule CodeMySpecWeb.Layouts do
 
                 With no project in the path there is nothing to build links
                 from, so the sidebar offers the choice instead of going blank.
+
+                Persisted, not merely present: `/app/projects/new` assigns a
+                blank `%Project{}` as its form's subject under the same name,
+                and a struct with a nil id satisfied the old check and then
+                raised building the first link — so the page that creates a
+                project was the one page you could not open.
               --%>
-              <%= if project = @project do %>
+              <%= if (project = @project) && project.id do %>
                 <li class="menu-title truncate" title={project.name}>{project.name}</li>
                 <li class="menu-title">Specification</li>
                 <li><a href={~p"/app/projects/#{project.id}/stories"}>Stories</a></li>

@@ -256,6 +256,10 @@ defmodule CodeMySpecWeb.Router do
     pipe_through :api
 
     post "/resend", ResendWebhookController, :inbound
+
+    # Must live under /webhooks/ — CacheBodyReader only keeps the raw bytes for
+    # this prefix, and the HMAC has to be computed over exactly what Stripe sent.
+    post "/stripe", StripeWebhookController, :create
   end
 
   # The one endpoint a deployed app's refresh secret opens. Everything else it
@@ -382,6 +386,15 @@ defmodule CodeMySpecWeb.Router do
       live "/projects/new", ProjectLive.Form, :new
       live "/projects/:id", ProjectLive.Show, :show
       live "/projects/:id/edit", ProjectLive.Form, :edit
+
+      # Account-scoped rather than project-scoped, which is the whole point of
+      # story 994: a box belongs to the account and can serve several
+      # projects. Putting it behind `:project_scoped` would reintroduce the
+      # grain this exists to fix, and would hide Sam's own servers behind
+      # having picked a project first.
+      live "/servers", ServerLive.Index, :index
+      live "/servers/:name/edit", ServerLive.Index, :edit
+      live "/servers/:name", ServerLive.Show, :show
     end
 
     # Portable UI — these LiveViews are mounted by CodeMySpecLocalWeb.Router

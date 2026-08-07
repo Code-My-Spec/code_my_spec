@@ -1252,6 +1252,174 @@ defmodule CodeMySpecSpex.Case do
   end
 
   @doc """
+  The plan the account is on, read off the pricing page.
+
+  Asked of the app rather than the database. `then_` observes through the
+  public interface, and a spex reaching into `CodeMySpec.Accounts` also breaks
+  the `CodeMySpecSpex` boundary — which is how these turned up.
+
+  `/pricing` renders `CheckoutLive`, which badges the tier the account is
+  currently on. Returns the tier as a string, or `nil` when no tier is badged
+  (a free account, since free is not one of the purchasable tiers).
+  """
+  def plan_on_page(conn) do
+    # `dispatch/4` rather than the `get/2` macro: that one expands to whatever
+    # `@endpoint` the calling module set, and this helper lives here rather
+    # than in the spex.
+    conn
+    |> Phoenix.ConnTest.dispatch(CodeMySpecWeb.Endpoint, :get, "/pricing")
+    |> Phoenix.ConnTest.html_response(200)
+    |> Floki.parse_document!()
+    |> Floki.find("[data-test='current-plan']")
+    |> Floki.attribute("data-plan")
+    |> List.first()
+  end
+
+  @doc """
+  What the provider reports when the servers screen asks it.
+
+  The screen is the surface under test and is driven for real; the provider
+  behind it is injected, because a criterion about how servers are displayed
+  should not have to buy a box to say so.
+
+  Pass a list of server maps, or `{:error, reason}` to make the provider
+  unreachable — the difference between "no servers" and "could not ask" is
+  itself a criterion (8259).
+
+      stage_servers(context, [%{name: "fuellytics", ip: "46.225.105.88", ...}])
+      stage_servers(context, {:error, :unauthorized})
+  """
+  def stage_servers(context, reported, opts \\ []) do
+    previous = Application.get_env(:code_my_spec, CodeMySpec.Servers, [])
+
+    staged =
+      [
+        list: fn _scope -> normalise_reported(reported) end,
+        # What the provider says it can supply. Staged too, because the
+        # provisioning form is built from availability — without it the size
+        # select is empty and every provisioning scenario fails on a form it
+        # could not fill rather than on the thing it is testing.
+        options: fn _scope -> {:ok, Keyword.get(opts, :available, default_options())} end
+      ] ++ Keyword.delete(opts, :available)
+
+    Application.put_env(
+      :code_my_spec,
+      CodeMySpec.Servers,
+      Keyword.merge(previous, staged)
+    )
+
+    ExUnit.Callbacks.on_exit(fn ->
+      Application.put_env(:code_my_spec, CodeMySpec.Servers, previous)
+    end)
+
+    context
+  end
+
+  defp normalise_reported({:error, reason}), do: {:error, reason}
+  defp normalise_reported(servers) when is_list(servers), do: {:ok, servers}
+
+  # Shaped like what `Servers.available_options/1` builds from the provider:
+  # a location, and only the types that location can actually supply. Includes
+  # an ARM type deliberately, so a scenario can ask for one and be refused the
+  # way the real provider refused every ARM type during QA.
+  #
+  # Two locations, because the interesting failures are all per-location. QA
+  # found the same size quoted at another location's price (34% under for
+  # Singapore) and offered in a location that cannot supply it. Both are
+  # invisible against a single-location fixture.
+  defp default_options do
+    [
+      %{
+        location: "fsn1",
+        city: "Falkenstein",
+        types: [
+          %{name: "cpx11", architecture: "x86", cores: 2, memory: 2, disk: 40, hourly: 0.0328},
+          %{name: "cax21", architecture: "arm", cores: 4, memory: 8, disk: 80, hourly: 0.0200},
+          # Deliberately absent from sin below: a size one location has and
+          # another does not is what makes an impossible pair expressible.
+          %{name: "cpx31", architecture: "x86", cores: 4, memory: 8, disk: 160, hourly: 0.1178}
+        ]
+      },
+      %{
+        location: "sin",
+        city: "Singapore",
+        # The same cpx11, priced differently. Reading the first price in the
+        # list rather than the chosen location's is exactly the bug.
+        types: [
+          %{name: "cpx11", architecture: "x86", cores: 2, memory: 2, disk: 40, hourly: 0.0184}
+        ]
+      }
+    ]
+  end
+
+  @doc """
+  A server as the provider reports one, with sensible defaults.
+
+  Only the fields a scenario cares about need naming; the rest are filled in
+  so a spec about display is not cluttered by a provider's whole payload.
+  """
+  def provider_server(attrs \\ %{}) do
+    Map.merge(
+      %{
+        id: System.unique_integer([:positive]),
+        name: "box-#{System.unique_integer([:positive])}",
+        ip: "203.0.113.#{:rand.uniform(254)}",
+        size: "cpx11",
+        location: "fsn1",
+        status: "running"
+      },
+      Map.new(attrs)
+    )
+  end
+
+  @doc """
+  Stage what a box reports is running on it.
+
+  The seam is the SSH read, not the page. Criteria about how containers are
+  *displayed* should not need a real box with a real Docker daemon, but the
+  screen is always driven for real — same split as `stage_servers/3`.
+
+  Pass a list of containers, or `{:error, reason}` for a box that cannot be
+  reached. `{:error, :timeout}` is how a box that accepts connections and
+  never answers arrives here, because the reader owns the deadline.
+  """
+  def stage_containers(context, reported) do
+    previous = Application.get_env(:code_my_spec, CodeMySpec.Servers.Containers, [])
+
+    Application.put_env(
+      :code_my_spec,
+      CodeMySpec.Servers.Containers,
+      Keyword.merge(previous, list: fn _scope, _server -> normalise_reported(reported) end)
+    )
+
+    ExUnit.Callbacks.on_exit(fn ->
+      Application.put_env(:code_my_spec, CodeMySpec.Servers.Containers, previous)
+    end)
+
+    context
+  end
+
+  @doc """
+  A container as a box reports one, with sensible defaults.
+
+  Shaped like `docker ps` output rather than like our record of a deploy —
+  `state` and `status` are what the daemon says, and `exit_code` is only
+  meaningful once something has stopped.
+  """
+  def container(attrs \\ %{}) do
+    Map.merge(
+      %{
+        name: "app-#{System.unique_integer([:positive])}",
+        image: "ghcr.io/example/app:sha-abc123",
+        state: "running",
+        status: "Up 2 hours",
+        exit_code: nil
+      },
+      Map.new(attrs)
+    )
+  end
+
+  @doc """
   Stage the monitoring step's outcome without a real UptimeRobot account.
 
   Criterion 8010 is that each public host has a monitor with somewhere to

@@ -208,6 +208,17 @@ defmodule CodeMySpec.Generators.DeployArtifacts do
   # One file per environment, because "each environment has its own deploy
   # configuration" is what keeps a UAT deploy from touching production's host
   # (criterion 7976).
+  #
+  # `servers.web` is the environment's own hostname, the same value the proxy
+  # block below uses. Generation happens before any server exists, so there is
+  # no IP to write — but the DNS step points that name at the environment's box
+  # before the deploy step runs, so kamal reaches the right machine by the time
+  # it looks.
+  #
+  # It previously emitted `<%= #{}_host %>` — an EEx tag in a YAML file nothing
+  # renders, handed to kamal verbatim by bin/deploy. Everything around it
+  # interpolated correctly, so the file read as complete while naming a server
+  # that could not exist.
   defp kamal_config(app, image, host, environment) do
     """
     # Kamal deploys #{environment} for #{app}.
@@ -216,7 +227,7 @@ defmodule CodeMySpec.Generators.DeployArtifacts do
 
     servers:
       web:
-        - <%= #{environment}_host %>
+        - #{host}
 
     proxy:
       ssl: true

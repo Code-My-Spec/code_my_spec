@@ -51,6 +51,7 @@ defmodule CodeMySpec.Provisioning.Hetzner do
 
   require Logger
 
+  alias CodeMySpec.AccountSecrets
   alias CodeMySpec.ProjectSecrets
   alias CodeMySpec.Users.Scope
 
@@ -253,6 +254,40 @@ defmodule CodeMySpec.Provisioning.Hetzner do
   def list_servers(%Scope{} = scope) do
     with {:ok, %{"servers" => servers}} <- request(scope, :get, "/servers", []) do
       {:ok, servers}
+    end
+  end
+
+  @doc """
+  Every datacenter, and which server types each can actually supply today.
+
+  `/datacenters` is the only endpoint that answers "can I create this right
+  now". `/server_types` lists what exists in the catalogue, which is a
+  different question: during QA every ARM type was listed and not deprecated
+  while being sold out in all six datacenters (issue 92e0b786). Offering a
+  size from the catalogue is how you offer something nobody can buy.
+
+  The `server_types.available` list holds type *ids*, so it is only useful
+  joined against `list_server_types/1`.
+  """
+  @spec list_datacenters(Scope.t()) :: {:ok, [body()]} | error()
+  def list_datacenters(%Scope{} = scope) do
+    with {:ok, %{"datacenters" => datacenters}} <- request(scope, :get, "/datacenters", []) do
+      {:ok, datacenters}
+    end
+  end
+
+  @doc """
+  The server type catalogue — cores, memory, disk, architecture and price.
+
+  Says nothing about availability; pair it with `list_datacenters/1`. Asks for
+  a full page because the default page size silently truncates the list, and a
+  missing type reads as "unavailable" rather than "not fetched".
+  """
+  @spec list_server_types(Scope.t()) :: {:ok, [body()]} | error()
+  def list_server_types(%Scope{} = scope) do
+    with {:ok, %{"server_types" => types}} <-
+           request(scope, :get, "/server_types?per_page=50", []) do
+      {:ok, types}
     end
   end
 
@@ -537,15 +572,30 @@ defmodule CodeMySpec.Provisioning.Hetzner do
   # Project secret first — that is where a user's own token lives. Application
   # config is the fallback so the platform's own token can drive cassette
   # recording without a project scope.
+  # Account first, then the project, then application config.
+  #
+  # A Hetzner token names one Hetzner account, and the servers it reaches are
+  # shared across projects — so the account is where it belongs. The project
+  # read stays because installs predating the account grain stored it there,
+  # and a caller should not have to know which era it is in. The data
+  # migration copies existing tokens up, so the fallback is for stragglers.
   defp token(%Scope{} = scope) do
-    case ProjectSecrets.fetch_value(scope, @token_key) do
-      {:ok, token} when is_binary(token) and token != "" -> {:ok, token}
-      _ -> configured_token()
+    with :error <- secret(fn -> AccountSecrets.fetch_value(scope, @token_key) end),
+         :error <- secret(fn -> ProjectSecrets.fetch_value(scope, @token_key) end) do
+      configured_token()
+    end
+  end
+
+  # A scope with no active project or account cannot carry secrets. Falling
+  # through rather than crashing is what lets credential checks run before
+  # either is bound.
+  defp secret(read) do
+    case read.() do
+      {:ok, value} when is_binary(value) and value != "" -> {:ok, value}
+      _ -> :error
     end
   rescue
-    # A scope with no active project cannot carry secrets; fall back rather
-    # than crash, so credential checks can run before a project is bound.
-    _ -> configured_token()
+    _ -> :error
   end
 
   defp configured_token do

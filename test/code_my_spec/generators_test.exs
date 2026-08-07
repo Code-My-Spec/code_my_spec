@@ -164,4 +164,49 @@ defmodule CodeMySpec.GeneratorsTest do
       assert {:plaintext_env_file, ".env"} in Generators.audit_environment(env, @router)
     end
   end
+
+  describe "generated deploy configuration" do
+    alias CodeMySpec.Generators.DeployArtifacts
+
+    setup %{env: env, dir: dir} do
+      {:ok, _written} =
+        DeployArtifacts.generate(env, app: "my-app", host: "example.com", owner: "acme")
+
+      %{dir: dir}
+    end
+
+    # The whole tree, not just the file under suspicion: an unrendered tag is a
+    # class of bug, and it hid in the one line nobody reads because everything
+    # around it interpolated correctly.
+    test "no generated file carries an unrendered template tag", %{dir: dir} do
+      offenders =
+        Path.wildcard(Path.join(dir, "**/*"))
+        |> Enum.filter(&File.regular?/1)
+        |> Enum.filter(fn path -> path |> File.read!() |> String.contains?("<%=") end)
+        |> Enum.map(&Path.relative_to(&1, dir))
+
+      assert offenders == [],
+             """
+             These generated files still contain EEx tags:
+
+             #{Enum.map_join(offenders, "\n", &("  " <> &1))}
+
+             Nothing renders these files — they are written as-is and handed to
+             kamal. A tag that survives generation names a host that cannot exist.
+             """
+    end
+
+    test "each environment's deploy config names its own host as the server", %{dir: dir} do
+      prod = File.read!(Path.join(dir, "config/deploy.yml"))
+      uat = File.read!(Path.join(dir, "config/deploy.uat.yml"))
+
+      assert prod =~ ~r/servers:\s*\n\s*web:\s*\n\s*- example\.com/
+      assert uat =~ ~r/servers:\s*\n\s*web:\s*\n\s*- uat\.example\.com/
+
+      # And the two are genuinely different deploys, not one file twice.
+      assert prod =~ "service: my-app\n"
+      assert uat =~ "service: my-app-uat\n"
+    end
+  end
+
 end
