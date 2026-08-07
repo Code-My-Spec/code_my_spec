@@ -42,9 +42,16 @@ defmodule Mix.Tasks.Cms.ProvisioningLeaks do
   # answer that let a leak sit in a live zone looking like somebody's mail
   # setup.
   #
-  # Anchored to label boundaries so a real domain that merely contains the
-  # letters is never swept in.
-  @spex_marker ~r/(^|\.)(spex-|c80\d{2})(\.|$)/
+  # Anchored to a label boundary on the left so a real domain that merely
+  # contains the letters is never swept in.
+  #
+  # The two markers terminate differently, and conflating them hid a leak.
+  # `c8025` is a whole label, so it needs a boundary on both sides. `spex-` is a
+  # label *prefix* — the real name is `spex-story969-criterion8027` — so
+  # requiring a dot after it matched nothing, and
+  # `send.spex-story969-criterion8027.astralbi.com` was reported as a real
+  # record while sitting in a live zone.
+  @spex_marker ~r/(^|\.)(spex-|c80\d{2}(\.|$))/
 
   @impl Mix.Task
   def run(args) do
