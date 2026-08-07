@@ -1873,7 +1873,14 @@ defmodule CodeMySpecSpex.Case do
     [
       # age private keys. `age-keygen` writes these to stdout, so they land in
       # command cassettes; the secrets step generates one per environment.
-      {~r/AGE-SECRET-KEY-[A-Z0-9]+/, "AGE-SECRET-KEY-<REDACTED>"},
+      # Redacted to something still *shaped* like a key. `<REDACTED>` kept the
+      # secret out of the cassette and broke replay: `Sops.parse_key/1` matches
+      # `AGE-SECRET-KEY-[A-Z0-9]+`, `<` is not in that class, and the secrets
+      # step reported `:unparsable_key` for a recording that was working as
+      # designed. A structurally valid placeholder does both jobs — nothing
+      # here is a real key, and nothing downstream has to special-case it.
+      {~r/AGE-SECRET-KEY-[A-Z0-9]+/,
+       "AGE-SECRET-KEY-1REDACTED0000000000000000000000000000000000000000000000000000"},
       # PEM private keys, for the same reason — anything that prints a key.
       {~r/-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/,
        "-----BEGIN PRIVATE KEY-----<REDACTED>-----END PRIVATE KEY-----"},
