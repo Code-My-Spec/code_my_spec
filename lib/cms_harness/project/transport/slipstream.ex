@@ -14,4 +14,7 @@ defmodule CmsHarness.Project.Transport.Slipstream do
 
   @impl true
   def join(socket, topic, params), do: Slipstream.join(socket, topic, params)
+
+  @impl true
+  def disconnect(socket), do: Slipstream.disconnect(socket)
 end

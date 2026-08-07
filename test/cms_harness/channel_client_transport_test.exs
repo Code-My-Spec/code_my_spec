@@ -117,7 +117,7 @@ defmodule CmsHarness.ChannelClientTransportTest do
     # was joined: `/health` said `degraded: false`, and every hook refused with
     # a message about timeouts. Nothing self-corrected because the correction
     # was supposed to come from a notification that never came.
-    test "an unmatched-topic reply drops the joined flag and rejoins" do
+    test "an unmatched-topic reply drops the joined flag and drops the connection" do
       caller = self()
       ref = make_ref()
       timer = Process.send_after(self(), :unused, 60_000)
@@ -134,11 +134,19 @@ defmodule CmsHarness.ChannelClientTransportTest do
              "believing a join the server does not have is what made every " <>
                "later hook fail with the wrong explanation"
 
-      # 1.5s covers the first backoff step (1s) — the rejoin is deliberately not
-      # immediate, so a server that is refusing everything is not hammered.
-      assert_receive :reconnect,
-                     1_500,
+      # The socket, not the topic. This used to schedule a rejoin, and a rejoin
+      # is the one thing that cannot work here: Slipstream only joins when its
+      # local `join_status` is nil or `:closed`, and the server dropped this
+      # channel without sending a close, so it still reads `:joined`. The join
+      # was a silent no-op and the harness sat dead for three minutes.
+      assert_receive {:transport_disconnect, "harness_project:p1"},
+                     1_000,
                      "a stale join has to heal itself; nobody restarts a harness that reports healthy"
+
+      refute_receive :reconnect,
+                     200,
+                     "the reconnect is `handle_disconnect/2`'s job now — arming a timer here " <>
+                       "too would race it and open a second connection"
     end
 
     test "an ordinary error reply leaves the join alone" do

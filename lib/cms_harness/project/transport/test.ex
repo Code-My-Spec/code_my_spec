@@ -28,6 +28,12 @@ defmodule CmsHarness.Project.Transport.Test do
     socket
   end
 
+  @impl true
+  def disconnect(socket) do
+    send(owner(), {:transport_disconnect, socket.assigns[:topic]})
+    socket
+  end
+
   # The test process, set by the case. Falls back to self() so a stray call in
   # a non-test context is inert rather than a crash.
   defp owner, do: Application.get_env(:code_my_spec, :harness_transport_owner, self())

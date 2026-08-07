@@ -418,18 +418,29 @@ defmodule CmsHarness.Project.ChannelClient do
   # ground truth available: the harness cannot tell the difference between a
   # channel that died and one that was never there, and does not need to.
   #
-  # Cost of being wrong is one rejoin. Cost of not doing it is a harness that
-  # looks healthy and answers nothing until somebody restarts it.
+  # Cost of being wrong is one dropped connection. Cost of not doing it is a
+  # harness that looks healthy and answers nothing until somebody restarts it.
+  #
+  # It drops the *socket*, which is heavier than rejoining the topic and is the
+  # point. `Slipstream.join/3` only acts when its local `join_status` is `nil`
+  # or `:closed`, and in exactly this situation it is neither: the server lost
+  # the channel without ever sending a close, so Slipstream still believes the
+  # topic is joined. Asking it to join again is a silent no-op — which is how
+  # this failed the first time it was needed. One `maybe_rejoin`, then nothing,
+  # for three minutes, until the harness was restarted by hand.
+  #
+  # A dropped socket cannot be disbelieved. `handle_disconnect/2` follows, and
+  # from there the ordinary reconnect path runs — the one that demonstrably
+  # works, since it is what survives every server restart.
   defp maybe_rejoin(socket, {:error, %{"reason" => "unmatched topic"}}) do
     Logger.warning("""
     [CmsHarness] the server has no channel on #{socket.assigns.topic}, though this harness \
-    believed it was joined. Rejoining. Hooks refuse until it lands.\
+    believed it was joined. Reconnecting. Hooks refuse until it lands.\
     """)
 
-    socket
-    |> assign(:joined, false)
-    |> pause_watcher()
-    |> schedule_rejoin()
+    socket = socket |> assign(:joined, false) |> pause_watcher()
+
+    transport().disconnect(socket)
   end
 
   defp maybe_rejoin(socket, _reply), do: socket

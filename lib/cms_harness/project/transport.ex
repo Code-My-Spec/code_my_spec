@@ -29,6 +29,13 @@ defmodule CmsHarness.Project.Transport do
   @callback join(socket(), topic(), params :: map()) :: socket()
 
   @doc """
+  Drop the connection. Returns the socket; `handle_disconnect/2` follows.
+
+  Used to recover a channel the server no longer has — see `ChannelClient`.
+  """
+  @callback disconnect(socket()) :: socket()
+
+  @doc """
   The configured transport.
 
   Defaults to the real one; tests set `:transport` to a recorder. Read at call
