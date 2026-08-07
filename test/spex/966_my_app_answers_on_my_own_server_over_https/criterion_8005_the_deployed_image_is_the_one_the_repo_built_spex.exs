@@ -16,10 +16,6 @@ defmodule CodeMySpecSpex.Story966.Criterion8005Spex do
 
   @endpoint CodeMySpecWeb.Endpoint
 
-  @cassette "github_ci_image_published_then_deployed"
-
-  @given_cassette "966_8005_repo_pushed"
-
   setup :register_log_in_setup_account
   setup :setup_active_project
   setup :real_working_directory

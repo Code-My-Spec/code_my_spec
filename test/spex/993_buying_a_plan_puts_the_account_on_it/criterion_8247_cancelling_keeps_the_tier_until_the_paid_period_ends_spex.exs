@@ -15,8 +15,6 @@ defmodule CodeMySpecSpex.Story993.Criterion8247Spex do
 
   use CodeMySpecSpex.Case
 
-  import CodeMySpecSpex.SharedGivens
-
   @endpoint CodeMySpecWeb.Endpoint
 
   @secret "whsec_spex"

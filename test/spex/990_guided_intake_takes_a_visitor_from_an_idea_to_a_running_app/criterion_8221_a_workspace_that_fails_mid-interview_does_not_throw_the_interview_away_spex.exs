@@ -19,9 +19,6 @@ defmodule CodeMySpecSpex.Story990.Criterion8221Spex do
 
   use CodeMySpecSpex.Case
 
-  import CodeMySpecSpex.SharedGivens
-
-
   @endpoint CodeMySpecWeb.Endpoint
 
   @answer "clients must never see bookings from a different salon"
@@ -41,6 +38,7 @@ defmodule CodeMySpecSpex.Story990.Criterion8221Spex do
       Application.delete_env(:code_my_spec, :fake_workspace_alive)
       Application.delete_env(:code_my_spec, CodeMySpec.Workspaces)
     end)
+
     :ok
   end
 

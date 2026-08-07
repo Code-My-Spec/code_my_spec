@@ -16,10 +16,6 @@ defmodule CodeMySpecSpex.Story966.Criterion8008Spex do
 
   @endpoint CodeMySpecWeb.Endpoint
 
-  @cassette "kamal_deploy_migration_fails"
-
-  @given_cassette "966_8008_version_serving"
-
   setup :register_log_in_setup_account
   setup :setup_active_project
   setup :real_working_directory

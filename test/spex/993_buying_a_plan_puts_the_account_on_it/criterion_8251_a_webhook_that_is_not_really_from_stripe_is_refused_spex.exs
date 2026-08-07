@@ -15,8 +15,6 @@ defmodule CodeMySpecSpex.Story993.Criterion8251Spex do
 
   use CodeMySpecSpex.Case
 
-  import CodeMySpecSpex.SharedGivens
-
   @endpoint CodeMySpecWeb.Endpoint
 
   setup :register_log_in_setup_account

@@ -15,10 +15,6 @@ defmodule CodeMySpecSpex.Story966.Criterion8006Spex do
 
   @endpoint CodeMySpecWeb.Endpoint
 
-  @cassette "environment_https_probe_ok"
-
-  @given_cassette "966_8006_environment_deployed"
-
   setup :register_log_in_setup_account
   setup :setup_active_project
   setup :real_working_directory
