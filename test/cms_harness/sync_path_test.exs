@@ -20,7 +20,7 @@ defmodule CmsHarness.SyncPathTest do
   setup do
     previous = System.get_env("CMS_PROJECT_ID")
     System.delete_env("CMS_PROJECT_ID")
-    on_exit(fn -> if previous, do: System.put_env("CMS_PROJECT_ID", previous) end)
+    on_exit(fn -> restore_project_id(previous) end)
 
     project = project_dir()
     write(project.root, "lib/demo/accounts.ex", "defmodule Demo.Accounts do\nend\n")
@@ -31,26 +31,24 @@ defmodule CmsHarness.SyncPathTest do
     %{project: project}
   end
 
+  # Nothing was configured before this suite and something was are two cases,
+  # not a condition — same shape the transport test uses.
+  defp restore_project_id(nil), do: :ok
+  defp restore_project_id(value), do: System.put_env("CMS_PROJECT_ID", value)
+
   defp await_connected(project_id, attempts \\ 100) do
-    Enum.reduce_while(1..attempts, false, fn _, _ ->
-      if ChannelClient.connected?(project_id) do
-        {:halt, true}
-      else
-        Process.sleep(50)
-        {:cont, false}
-      end
-    end)
+    eventually(fn -> ChannelClient.connected?(project_id) end, attempts)
   end
 
   defp eventually(fun, attempts \\ 100) do
-    Enum.reduce_while(1..attempts, false, fn _, _ ->
-      if fun.() do
-        {:halt, true}
-      else
-        Process.sleep(50)
-        {:cont, false}
-      end
-    end)
+    Enum.reduce_while(1..attempts, false, fn _, _ -> poll(fun.()) end)
+  end
+
+  defp poll(true), do: {:halt, true}
+
+  defp poll(_) do
+    Process.sleep(50)
+    {:cont, false}
   end
 
   describe "joining" do
@@ -180,16 +178,19 @@ defmodule CmsHarness.SyncPathTest do
     defp await_manifest_with(project, path, timeout \\ 10_000) do
       receive do
         {:observations, _, observations} ->
-          if path in Enum.map(observations, & &1["path"]) do
-            observations
-          else
-            await_manifest_with(project, path, timeout)
-          end
+          observations
+          |> Enum.any?(&(&1["path"] == path))
+          |> manifest_or_retry(observations, project, path, timeout)
       after
         timeout ->
           flunk("no manifest mentioning #{path} arrived within #{timeout}ms")
       end
     end
+
+    defp manifest_or_retry(true, observations, _project, _path, _timeout), do: observations
+
+    defp manifest_or_retry(false, _observations, project, path, timeout),
+      do: await_manifest_with(project, path, timeout)
 
     # The property: events it cannot deliver are events it will not remember, so
     # it stops rather than building a backlog whose loss is invisible.
