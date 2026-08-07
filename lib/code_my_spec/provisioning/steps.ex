@@ -158,15 +158,59 @@ defmodule CodeMySpec.Provisioning.Steps do
   def verify(:secrets, %Scope{} = scope, opts) do
     environments = environments(scope, opts)
 
-    # Satisfied only when EVERY environment has a key. A partially-keyed
-    # project is not done — the environment without one cannot be deployed,
-    # and reporting done would hide that until the deploy failed.
-    case Enum.all?(environments, &ProjectSecrets.has_value?(scope, age_key_name(&1))) do
+    # Satisfied only when EVERY environment has a key that still opens its own
+    # file. A partially-keyed project is not done — the environment without one
+    # cannot be deployed, and reporting done would hide that until the deploy
+    # failed.
+    #
+    # Having a key is not enough, and that is the whole point of asking twice.
+    # Half the pair lives in the repository (`.sops.yaml` names the public
+    # recipient) and half in the database. Nothing keeps them in step, and git
+    # moves tracked files around — a checkout, a revert, a bad merge, or a
+    # teammate committing their own `.sops.yaml`. When they drift, sops can
+    # still encrypt, because encrypting only needs the recipient; nothing can
+    # decrypt.
+    #
+    # Checking only for presence made that unrecoverable rather than merely
+    # broken: `run_step/3` verifies before it executes, so re-running the
+    # secrets step — the obvious remedy — found it satisfied and never reached
+    # `generate_keys`, which is what would have rewritten `.sops.yaml` from
+    # fresh keys. The step read done, the button did nothing, and the failure
+    # surfaced two steps away in deploy.
+    case Enum.all?(environments, &key_opens_its_own_file?(scope, &1)) do
       true ->
         {:ok, :satisfied, Enum.map(environments, &%{kind: "age_key", location: "secrets/#{&1}"})}
 
       false ->
         {:ok, :absent}
+    end
+  end
+
+  # Whether the stored private key is the one the environment's file was
+  # encrypted to. Derived rather than trusted: the public half is the only
+  # thing the file records, so the question is whether what we hold produces
+  # it.
+  #
+  # A file that does not exist yet is not drift — there is nothing to be out of
+  # step with — so the key's presence is the answer in that case, which keeps a
+  # first run from reporting absent forever.
+  defp key_opens_its_own_file?(scope, environment) do
+    with {:ok, private} <- ProjectSecrets.fetch_value(scope, age_key_name(environment)),
+         true <- is_binary(private) and private != "" do
+      case Sops.recipients(env(scope), environment) do
+        {:ok, [_ | _] = recipients} ->
+          case Sops.public_key(private) do
+            {:ok, public} -> public in recipients
+            _ -> false
+          end
+
+        # No file, or none we can read a recipient out of. Nothing to disagree
+        # with; the key being there is all this can honestly claim.
+        _ ->
+          true
+      end
+    else
+      _ -> false
     end
   end
 

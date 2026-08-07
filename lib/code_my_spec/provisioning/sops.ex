@@ -81,6 +81,47 @@ defmodule CodeMySpec.Provisioning.Sops do
     end
   end
 
+  @doc """
+  The public half of a private age key.
+
+  Exists so the two halves of the pair can be compared. `.sops.yaml` is a
+  tracked file naming the public recipient; the private key is a row in the
+  database. Nothing kept them in step, and when they drift `sops` can still
+  encrypt — it only needs the recipient — while nothing can decrypt. Deriving
+  the public key from what is actually stored is the only way to ask whether
+  the pair still works without holding a file it can open.
+  """
+  @spec public_key(String.t()) :: {:ok, String.t()} | error()
+  def public_key(private_key) when is_binary(private_key) do
+    with :ok <- ensure_available() do
+      # `-y` derives rather than generates. Via a file, not stdin, because
+      # `System.cmd/3` cannot write to a child's stdin — and not via a shell
+      # either, which would put the private key on a command line. Written
+      # 0600 in a directory of its own and removed immediately.
+      dir = Path.join(System.tmp_dir!(), "cms-age-#{System.unique_integer([:positive])}")
+      File.mkdir_p!(dir)
+      path = Path.join(dir, "key.txt")
+
+      try do
+        File.write!(path, private_key)
+        File.chmod!(path, 0o600)
+
+        case System.cmd("age-keygen", ["-y", path], stderr_to_stdout: true) do
+          {out, 0} ->
+            case Regex.run(~r/age1[a-z0-9]+/, out) do
+              [public] -> {:ok, public}
+              _ -> {:error, :unparsable_key}
+            end
+
+          {out, status} ->
+            {:error, {:sops_failed, status, out}}
+        end
+      after
+        File.rm_rf(dir)
+      end
+    end
+  end
+
   # age-keygen prints the public key as a comment and the private key on its
   # own line. Both are needed: the public one goes in .sops.yaml, the private
   # one goes to the deploy.
