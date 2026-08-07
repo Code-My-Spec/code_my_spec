@@ -394,6 +394,34 @@ defmodule CodeMySpecWeb.ProvisioningLive do
               {step.paused_instructions}
             </p>
 
+            <!-- The apex already points somewhere, and this run would move it.
+                 Not a default: a live site going dark is less reversible than
+                 the domain purchase that already demands a second step — the
+                 money comes back, the downtime does not. Behind a dialog
+                 rather than a bare click, and not `data-confirm`, whose
+                 browser confirm() is invisible to the driver QA runs. -->
+            <div
+              :if={step.key == :dns and step.state == :paused}
+              data-test="apex-repoint"
+              class="mt-3 flex gap-2"
+            >
+              <.button
+                data-test="confirm-apex-repoint"
+                class="btn-warning"
+                phx-click={show_confirm("confirm-apex-repoint")}
+              >
+                Repoint it anyway
+              </.button>
+
+              <.confirm_dialog
+                id="confirm-apex-repoint"
+                title="Repoint the apex?"
+                message={step.paused_instructions}
+                confirm_label="Repoint it"
+                on_confirm={JS.push("confirm_apex_repoint")}
+              />
+            </div>
+
             <!-- A name collision Sam did not cause: the repository exists but
                  is not this project's. Neither choice is taken for him
                  (criterion 8185) — adopting a stranger's repo or inventing a
@@ -1535,6 +1563,21 @@ defmodule CodeMySpecWeb.ProvisioningLive do
 
       {:error, reason} ->
         {:noreply, socket |> assign(:secret_error, reason) |> load(socket.assigns.options)}
+    end
+  end
+
+  def handle_event("confirm_apex_repoint", _params, socket) do
+    scope = socket.assigns.current_scope
+
+    # Re-run the step with the decision Sam just made. The guard refuses only
+    # when it has not been told; being told is the whole difference between a
+    # safeguard and an obstacle.
+    case Provisioning.run_step(scope, :dns, step_opts() ++ [confirm_apex_repoint: true]) do
+      {:ok, _} ->
+        {:noreply, socket |> assign(:current_scope, reload_project(scope)) |> load(socket.assigns.options)}
+
+      {:halt, _, reason} ->
+        {:noreply, socket |> load(socket.assigns.options) |> assign(halt_reason: reason)}
     end
   end
 

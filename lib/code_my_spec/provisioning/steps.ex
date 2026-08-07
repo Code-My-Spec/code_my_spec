@@ -378,14 +378,27 @@ defmodule CodeMySpec.Provisioning.Steps do
   end
 
   def run(:dns, %Scope{} = scope, opts) do
+    # Injectable for the same reason `run_step/3` takes `:verify` and
+    # `:execute`. The claim worth testing here is *whether the step refuses to
+    # move a live apex*, and proving that should not need a real zone.
     with name when is_binary(name) <- domain(scope),
-         {:ok, zone} <- Cloudflare.find_zone(scope, name),
+         {:ok, zone} <- find_dns_zone(scope, name, opts),
          environments <- EnvironmentRepository.assign_hosts(scope, name),
          {:ok, resources} <- dns_records_for(scope, zone, environments, opts) do
       {:ok, resources}
     else
-      nil -> {:error, "no domain set on the project"}
-      {:error, reason} -> {:error, format(reason)}
+      nil ->
+        {:error, "no domain set on the project"}
+
+      # Passed through, not folded into the error branch. A paused step is
+      # waiting on a decision and can be resumed; an errored one is broken.
+      # Reporting this as an error would make "your apex is live" look like a
+      # failure of the run rather than a question for the operator.
+      {:paused, message} ->
+        {:paused, message}
+
+      {:error, reason} ->
+        {:error, format(reason)}
     end
   end
 
@@ -1526,25 +1539,85 @@ defmodule CodeMySpec.Provisioning.Steps do
   # An environment with no server yet is skipped rather than failed — a project
   # part-way through provisioning has real environments that are not live, and
   # pointing DNS at nothing would be worse than pointing at nothing yet.
+  defp find_dns_zone(scope, name, opts) do
+    case Keyword.get(opts, :zone) do
+      nil -> Cloudflare.find_zone(scope, name)
+      zone -> {:ok, zone}
+    end
+  end
+
   defp dns_records_for(scope, zone, environments, opts) do
     # Listed once for the whole zone, not once per environment.
     existing =
-      case Cloudflare.list_dns_records(scope, zone["id"]) do
-        {:ok, records} -> records
-        _ -> []
+      case Keyword.fetch(opts, :dns_records) do
+        {:ok, records} ->
+          records
+
+        :error ->
+          case Cloudflare.list_dns_records(scope, zone["id"]) do
+            {:ok, records} -> records
+            _ -> []
+          end
       end
 
     environments
     |> Enum.filter(& &1.host)
     |> Enum.reduce_while({:ok, []}, fn environment, {:ok, acc} ->
-      case environment_ip(scope, environment, opts) do
-        nil ->
+      case apex_repoint(scope, environment, existing, opts) do
+        :ok -> dns_record_for(scope, zone, environment, existing, acc, opts)
+        {:paused, message} -> {:halt, {:paused, message}}
+      end
+    end)
+  end
+
+  # Refuse to move a live apex without being told to.
+  #
+  # `assign_hosts/2` gives production the apex and every other environment a
+  # subdomain, and every project starts with a `prod` row — so once a domain is
+  # set, a run points the apex at a freshly created, empty box. If that apex is
+  # a live site, it goes dark. Nothing warned at the point of decision, and the
+  # only opt-out was deleting the environment, which you have to already know
+  # about.
+  #
+  # This codebase already has the argument for a second step: a domain purchase
+  # will not proceed without one, because registration is not refundable.
+  # Overwriting a live apex is less reversible in the way that matters — the
+  # money comes back, the downtime does not.
+  #
+  # Only the apex, and only when a record is already there pointing somewhere
+  # else. A subdomain is this run's to move, and a first run has nothing to
+  # overwrite. Decided from the records already listed for the zone, so this
+  # costs no extra call and knows exactly what it would replace.
+  defp apex_repoint(scope, environment, existing, opts) do
+    apex = domain(scope)
+    confirmed? = Keyword.get(opts, :confirm_apex_repoint, false)
+
+    with false <- confirmed?,
+         true <- environment.host == apex,
+         ip when is_binary(ip) <- environment_ip(scope, environment, opts),
+         %{"content" => current} <-
+           Enum.find(existing, &(&1["name"] == apex and &1["type"] == "A")),
+         true <- current != ip do
+      {:paused,
+       "#{apex} already resolves to #{current}, and this would repoint it at #{ip} — a " <>
+         "server this run just created. If #{apex} is serving anything today, that takes it " <>
+         "down. Nothing else about the run is blocked: production is an environment like any " <>
+         "other, so remove the `prod` environment to leave the apex alone, or confirm to " <>
+         "repoint it."}
+    else
+      _ -> :ok
+    end
+  end
+
+  defp dns_record_for(scope, zone, environment, existing, acc, opts) do
+    case environment_ip(scope, environment, opts) do
+      nil ->
           {:cont, {:ok, acc}}
 
         ip ->
-          case Cloudflare.ensure_dns_record(scope, zone["id"], environment.host, ip,
-                 records: existing
-               ) do
+          write = Keyword.get(opts, :write_dns_record, &Cloudflare.ensure_dns_record/5)
+
+          case write.(scope, zone["id"], environment.host, ip, records: existing) do
             {:ok, response} ->
               record = dns_resource(environment.host, ip, response, environment.name)
 
@@ -1568,11 +1641,10 @@ defmodule CodeMySpec.Provisioning.Steps do
 
               {:cont, {:ok, acc ++ [record] ++ verification}}
 
-            {:error, reason} ->
-              {:halt, {:error, reason}}
-          end
-      end
-    end)
+          {:error, reason} ->
+            {:halt, {:error, reason}}
+        end
+    end
   end
 
   # Recording waits on DNS actually propagating; replay waits on nothing.
