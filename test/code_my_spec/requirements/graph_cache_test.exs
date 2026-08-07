@@ -3,12 +3,21 @@ defmodule CodeMySpec.Requirements.GraphCacheTest do
 
   import CodeMySpec.UsersFixtures
 
+  alias CodeMySpec.BddRules
+  alias CodeMySpec.Configurations
   alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.Files.FileSync
+  alias CodeMySpec.Issues
+  alias CodeMySpec.Personas
   alias CodeMySpec.Projects
+  alias CodeMySpec.Repo
+  alias CodeMySpec.Requirements.CachedGraph
   alias CodeMySpec.Requirements.{GraphCache, GraphFingerprint, Preloader, RequirementGraph}
+  alias CodeMySpec.Stories
+  alias Ecto.Adapters.SQL.Sandbox
 
   setup do
-    :ok = Ecto.Adapters.SQL.Sandbox.checkout(CodeMySpec.Repo)
+    :ok = Sandbox.checkout(Repo)
   end
 
   describe "publishing" do
@@ -49,7 +58,7 @@ defmodule CodeMySpec.Requirements.GraphCacheTest do
       RequirementGraph.compute_graph(scope)
       RequirementGraph.compute_graph(scope)
 
-      assert 1 = CodeMySpec.Repo.aggregate(CodeMySpec.Requirements.CachedGraph, :count)
+      assert 1 = Repo.aggregate(CachedGraph, :count)
     end
 
     test "a project with no published graph reports a miss rather than raising" do
@@ -91,7 +100,7 @@ defmodule CodeMySpec.Requirements.GraphCacheTest do
       before = current_fingerprint(scope)
 
       File.write!(Path.join(scope.cwd, "mix.exs"), "defmodule App.MixProject do\nend\n")
-      {:ok, _} = CodeMySpec.Files.FileSync.sync(scope, base_dir: scope.cwd)
+      {:ok, _} = FileSync.sync(scope, base_dir: scope.cwd)
 
       refute current_fingerprint(scope) == before
     end
@@ -100,7 +109,7 @@ defmodule CodeMySpec.Requirements.GraphCacheTest do
   defp current_fingerprint(scope) do
     GraphFingerprint.compute(
       Preloader.load(scope),
-      CodeMySpec.Configurations.get_or_create(scope)
+      Configurations.get_or_create(scope)
     )
   end
 
@@ -128,9 +137,9 @@ defmodule CodeMySpec.Requirements.GraphCacheTest do
       persona = persona_fixture(scope)
       # A rule needs its story to have a voice — `create_rule/3` refuses with
       # `:persona_linkage_required` otherwise.
-      {:ok, _} = CodeMySpec.Personas.link_persona_to_story(scope, persona.id, story.id)
+      {:ok, _} = Personas.link_persona_to_story(scope, persona.id, story.id)
 
-      {:ok, _} = CodeMySpec.BddRules.create_rule(scope, story.id, %{statement: "a new rule"})
+      {:ok, _} = BddRules.create_rule(scope, story.id, %{statement: "a new rule"})
 
       refute current_fingerprint(scope) == before
     end
@@ -143,7 +152,7 @@ defmodule CodeMySpec.Requirements.GraphCacheTest do
 
     test "a new issue moves it", %{scope: scope, before: before} do
       {:ok, _} =
-        CodeMySpec.Issues.create_issue(scope, %{
+        Issues.create_issue(scope, %{
           title: "something is wrong",
           description: "details",
           severity: :high
@@ -163,7 +172,7 @@ defmodule CodeMySpec.Requirements.GraphCacheTest do
     n = System.unique_integer([:positive])
 
     {:ok, persona} =
-      CodeMySpec.Personas.create_persona(scope, %{
+      Personas.create_persona(scope, %{
         name: "Sam #{n}",
         slug: "sam-#{n}",
         description: "the operator"
@@ -174,7 +183,7 @@ defmodule CodeMySpec.Requirements.GraphCacheTest do
 
   defp story_fixture(scope) do
     {:ok, story} =
-      CodeMySpec.Stories.create_story(scope, %{
+      Stories.create_story(scope, %{
         title: "A story #{System.unique_integer([:positive])}",
         description: "for the rule to hang off"
       })
