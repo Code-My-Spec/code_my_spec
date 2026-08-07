@@ -13,6 +13,7 @@ defmodule CodeMySpec.Requirements.Preloader do
   alias CodeMySpec.Files.File
   alias CodeMySpec.Problems.Problem
   alias CodeMySpec.Repo
+  alias CodeMySpec.Requirements.DelegateFiles
   alias CodeMySpec.Stories.Story
   alias CodeMySpec.Users.Scope
 
@@ -27,7 +28,8 @@ defmodule CodeMySpec.Requirements.Preloader do
           components_by_id: %{Ecto.UUID.t() => Component.t()},
           children_by_parent: %{Ecto.UUID.t() => [Component.t()]},
           stories: [Story.t()],
-          delegated_inputs: %{atom() => [{term(), NaiveDateTime.t()}]}
+          delegated_inputs: %{String.t() => [{term(), NaiveDateTime.t()}]},
+          delegated_files: term()
         }
 
   @doc """
@@ -97,7 +99,8 @@ defmodule CodeMySpec.Requirements.Preloader do
       components_by_id: Map.new(components, &{&1.id, &1}),
       children_by_parent: Enum.group_by(components, & &1.parent_component_id),
       stories: stories,
-      delegated_inputs: delegated_inputs(project_id)
+      delegated_inputs: delegated_inputs(project_id),
+      delegated_files: DelegateFiles.digest(scope)
     }
   end
 
@@ -120,7 +123,23 @@ defmodule CodeMySpec.Requirements.Preloader do
   @delegated_tables ~w(bdd_rules criteria questions personas issues)
 
   defp delegated_inputs(project_id) do
-    Map.new(@delegated_tables, fn table -> {table, stamps(table, project_id)} end)
+    @delegated_tables
+    |> Map.new(fn table -> {table, stamps(table, project_id)} end)
+    |> Map.put("qa_attempts", qa_attempt_stamps(project_id))
+  end
+
+  # `qa_attempts` hangs off stories, not the project, so it cannot use `stamps/2`.
+  # Read by `Qa.complete_check`, which backs `qa_complete`.
+  defp qa_attempt_stamps(project_id) do
+    Repo.all(
+      from(a in "qa_attempts",
+        join: s in "stories",
+        on: s.id == a.story_id,
+        where: s.project_id == type(^project_id, :binary_id),
+        select: {a.id, a.updated_at},
+        order_by: a.id
+      )
+    )
   end
 
   # Schemaless on purpose: this wants the fact that a row changed, not the row.

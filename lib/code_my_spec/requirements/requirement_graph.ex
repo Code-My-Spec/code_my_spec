@@ -46,19 +46,19 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   # never consults the cache, so there is no key that can be wrong.
   #
   # 15 of the 70 requirement definitions use `check_type: :delegate`, handing
-  # satisfaction to an arbitrary module. Five of those read tables the
-  # fingerprint now covers — rules, criteria, questions, personas, issues. The
-  # rest do not read tables at all: `deploy`, `release` and `devops_setup` ask
-  # `Environments`, which is the working copy on disk, and `release` walks a
-  # directory. Deployment state also moves outside this application entirely.
+  # satisfaction to an arbitrary module. Every one of their inputs is now in the
+  # fingerprint, which is what makes `cached_graph/1` safe for agents too:
   #
-  # No fingerprint over a preloaded database context can see any of that, so a
-  # graph served from the cache can say work is done that a deploy has just
-  # reopened. That is not hypothetical — it is what story 859's spex caught
-  # when this was wired as a read-through cache.
+  #   * six read tables the preloader did not load — rules, criteria, questions,
+  #     personas, issues, and `qa_attempts` behind `qa_complete`
+  #   * four read working-copy files the scanner never syncs, because
+  #     `classify/1` claims none of them — see `DelegateFiles`
+  #   * the rest read components, files and stories, covered from the start
   #
-  # `cached_graph/1` is the supported way to read the snapshot: it is for
-  # callers that can say "as of", which the UI can and an agent cannot.
+  # The gap was real and this is the second time it has been closed. Story 859's
+  # spex caught it the first time, when the cache was wired read-through with a
+  # fingerprint that watched none of the above; `criterion_7321` is the one that
+  # fails, and it is the test to run before trusting any change here.
   defp compute_and_publish(scope, ctx, config) do
     {nodes, enriched_ctx} = compute_all_from_ctx(scope, ctx, config)
     edges = compute_edges(nodes, enriched_ctx, config)
@@ -79,10 +79,9 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   node and edge computation, which is where the time actually goes — on a
   3200-component project, 34ms of preload against 4.4 seconds of compute.
 
-  Not for agents. A hit certifies every input in the preloaded context, and
-  five of the delegate checkers' tables besides; it certifies nothing about the
-  delegates that read the working copy or a deployment. See
-  `compute_and_publish/3`.
+  A hit certifies every input the graph is computed from, including what the
+  delegate checkers read — six tables and four sets of working-copy files that
+  the file sync does not track. `compute_and_publish/3` lists them.
   """
   @spec cached_graph(Scope.t()) :: {{[Requirement.t()], [edge()]}, DateTime.t() | nil}
   def cached_graph(%Scope{} = scope) do
@@ -129,14 +128,8 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   """
   @spec next_actionable(Scope.t()) :: [Requirement.t()]
   def next_actionable(%Scope{} = scope) do
-    ctx = Preloader.load(scope)
-    config = CodeMySpec.Configurations.get_or_create(scope)
-    {nodes, edges} = compute_and_publish(scope, ctx, config)
-
-    # The un-enriched ctx is correct here: compute_all_from_ctx/3 only adds
-    # :template_edges, which actionable_from/3 does not read — it needs
-    # ctx.components and ctx.stories, both loaded by the preloader.
-    actionable_from(nodes, edges, ctx)
+    {_graph, actionable, _computed_at} = cached_graph_with_actionable(scope)
+    actionable
   end
 
   @doc """

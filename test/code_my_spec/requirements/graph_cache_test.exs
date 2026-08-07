@@ -8,6 +8,7 @@ defmodule CodeMySpec.Requirements.GraphCacheTest do
   alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Files.FileSync
   alias CodeMySpec.Issues
+  alias CodeMySpec.Paths
   alias CodeMySpec.Personas
   alias CodeMySpec.Projects
   alias CodeMySpec.Repo
@@ -159,6 +160,37 @@ defmodule CodeMySpec.Requirements.GraphCacheTest do
         })
 
       refute current_fingerprint(scope) == before
+    end
+
+    # The 859 scenario, in one assertion. `AgentTasks.Deploy` reads this file
+    # and `AgentTasks.Release` lists the directory, and neither ever reaches the
+    # Files table: `.code_my_spec` is a sync root, so the walker descends, but
+    # `Scanner.classify/1` claims no deploy record and `stream_files/1` drops
+    # what classify does not claim.
+    #
+    # So this file could appear, `release` could reopen, and every other input
+    # the fingerprint watched would be untouched — which is exactly how a cached
+    # graph tells an agent the project is finished.
+    test "a deploy record appearing moves it", %{scope: scope, before: before} do
+      record = Path.join([scope.cwd, Paths.devops_deploys_dir(), "story_1.md"])
+      File.mkdir_p!(Path.dirname(record))
+      File.write!(record, "# Deploy\n\nHealth check: pending\n")
+
+      refute current_fingerprint(scope) == before
+    end
+
+    test "a deploy record going from pending to verified moves it", %{scope: scope} do
+      record = Path.join([scope.cwd, Paths.devops_deploys_dir(), "story_1.md"])
+      File.mkdir_p!(Path.dirname(record))
+      File.write!(record, "# Deploy\n\nHealth check: pending\n")
+      pending = current_fingerprint(scope)
+
+      # Same path, same directory listing — only the contents move. Hashing
+      # names alone would miss this, and "verified" is the whole of what
+      # `Deploy.evaluate/2` looks for.
+      File.write!(record, "# Deploy\n\nHealth check: verified\n")
+
+      refute current_fingerprint(scope) == pending
     end
 
     test "nothing changing leaves it alone", %{scope: scope, before: before} do
