@@ -26,7 +26,12 @@ defmodule CmsHarnessTest.FakeServer do
   Returns the port. Tears itself down at the end of the test.
   """
   def start(opts \\ []) do
-    port = Keyword.get(opts, :port, 4103)
+    # 0 means "whatever is free". A fixed port made two concurrent test runs on
+    # one machine fight over it, and the loser reported `failed to start child:
+    # {FakeServer.Endpoint, :http}` against three unrelated tests. That is not a
+    # rare race: the harness runs `mix test` as an analyzer, so it happens every
+    # time someone runs the suite by hand while the harness is watching.
+    port = Keyword.get(opts, :port, 0)
 
     listen(self())
     put_hook_decision(Keyword.get(opts, :hook_decision, %{"systemMessage" => "ok"}))
@@ -39,6 +44,9 @@ defmodule CmsHarnessTest.FakeServer do
 
     Application.put_env(:code_my_spec, FakeServer.Endpoint, endpoint_config(port))
     endpoint = start_endpoint()
+
+    # Asked after starting, because until then a requested 0 is not yet a port.
+    port = bound_port()
 
     previous_url = Application.get_env(:code_my_spec, :harness_server_url)
     previous_token = Application.get_env(:code_my_spec, :harness_token)
@@ -93,6 +101,11 @@ defmodule CmsHarnessTest.FakeServer do
   end
 
   defp current_endpoint, do: :persistent_term.get({__MODULE__, :endpoint}, nil)
+
+  defp bound_port do
+    {:ok, {_ip, port}} = FakeServer.Endpoint.server_info(:http)
+    port
+  end
 
   def endpoint_config(port) do
     [
