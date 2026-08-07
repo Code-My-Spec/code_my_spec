@@ -16,10 +16,10 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
      graph projector uses to lay out late_project nodes at the bottom band)
   """
 
-  alias CodeMySpec.Requirements.Registry, as: RequirementsRegistry
   alias CodeMySpec.Requirements.GraphCache
   alias CodeMySpec.Requirements.GraphFingerprint
   alias CodeMySpec.Requirements.Preloader
+  alias CodeMySpec.Requirements.Registry, as: RequirementsRegistry
   alias CodeMySpec.Requirements.Requirement
   alias CodeMySpec.Requirements.RequirementCalculator
   alias CodeMySpec.Requirements.RequirementDefinitionData
@@ -215,7 +215,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   end
 
   defp story_chain_edges(story, ctx, config) do
-    case Enum.find(ctx.components, &(&1.id == story.component_id)) do
+    case Map.get(ctx.components_by_id, story.component_id) do
       nil ->
         []
 
@@ -352,7 +352,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   end
 
   defp direct_children(parent, ctx) do
-    Enum.filter(ctx.components, &(&1.parent_component_id == parent.id))
+    Map.get(ctx.children_by_parent, parent.id, [])
   end
 
   defp child_terminal_name(parent_type, child_type, config) do
@@ -389,7 +389,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   defp transitive_dep_closure(start_component, ctx) do
     [start_component.id]
     |> bfs_dep_ids(MapSet.new(), ctx)
-    |> Enum.map(fn id -> Enum.find(ctx.components, &(&1.id == id)) end)
+    |> Enum.map(&Map.get(ctx.components_by_id, &1))
     |> Enum.reject(&is_nil/1)
   end
 
@@ -402,7 +402,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
       visited = MapSet.put(visited, id)
 
       new_dep_ids =
-        case Enum.find(ctx.components, &(&1.id == id)) do
+        case Map.get(ctx.components_by_id, id) do
           nil -> []
           comp -> comp |> component_deps() |> Enum.map(& &1.id)
         end
@@ -461,7 +461,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   end
 
   defp cross_context_edge_for_dep(dep, comp, ctx, config) do
-    with %_{} = dep_comp <- Enum.find(ctx.components, &(&1.id == dep.id)),
+    with %_{} = dep_comp <- Map.get(ctx.components_by_id, dep.id),
          dep_terminal when not is_nil(dep_terminal) <- dep_terminal_def(dep_comp, config),
          target when not is_nil(target) <- cross_context_target(comp, dep_comp, config),
          false <- skip_cross_context?(comp, dep_comp) do
@@ -1003,7 +1003,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
       ctx.stories
       |> Enum.filter(& &1.component_id)
       |> Enum.reduce(direct, fn story, acc ->
-        surface = Enum.find(ctx.components, &(&1.id == story.component_id))
+        surface = Map.get(ctx.components_by_id, story.component_id)
         priority = story.priority || 999
 
         deps = case surface && surface.dependencies do

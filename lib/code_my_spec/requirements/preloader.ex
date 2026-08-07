@@ -24,6 +24,8 @@ defmodule CodeMySpec.Requirements.Preloader do
           problems_by_component: %{Ecto.UUID.t() => %{String.t() => integer()}},
           analysis_fresh: %{String.t() => boolean()},
           components: [Component.t()],
+          components_by_id: %{Ecto.UUID.t() => Component.t()},
+          children_by_parent: %{Ecto.UUID.t() => [Component.t()]},
           stories: [Story.t()]
         }
 
@@ -91,6 +93,8 @@ defmodule CodeMySpec.Requirements.Preloader do
       problems_by_component: problems_by_component,
       analysis_fresh: analysis_freshness(scope, all_files),
       components: components,
+      components_by_id: Map.new(components, &{&1.id, &1}),
+      children_by_parent: Enum.group_by(components, & &1.parent_component_id),
       stories: stories
     }
   end
