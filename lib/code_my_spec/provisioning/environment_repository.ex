@@ -81,6 +81,20 @@ defmodule CodeMySpec.Provisioning.EnvironmentRepository do
   end
 
   @doc """
+  Remove an environment row.
+
+  The row only; what it pointed at is `Provisioning.remove_environment/2`'s
+  problem, and it deliberately runs first — see the ordering note there.
+  """
+  @spec delete(Scope.t(), String.t()) :: :ok
+  def delete(%Scope{} = scope, name) do
+    case get(scope, name) do
+      nil -> :ok
+      environment -> Repo.delete(environment) && :ok
+    end
+  end
+
+  @doc """
   Give every environment without a host one derived from the project's domain.
 
   Hosts are stored rather than computed at use time so that no step has to know

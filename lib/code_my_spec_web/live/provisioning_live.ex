@@ -52,7 +52,7 @@ defmodule CodeMySpecWeb.ProvisioningLive do
   alias CodeMySpec.Provisioning.Repository
   alias CodeMySpec.Projects
   alias CodeMySpec.Users.Scope
-  alias CodeMySpec.Provisioning.{Backups, Cloudflare, Credentials, Dns, Resend, Sops, Steps, Storage}
+  alias CodeMySpec.Provisioning.{Backups, Cloudflare, Credentials, Dns, Resend, Sops, Steps, Storage, Teardown}
 
   # The environments setup manages. Named once so the probe form, the resource
   # grouping and the storage step cannot disagree about what exists.
@@ -835,8 +835,29 @@ defmodule CodeMySpecWeb.ProvisioningLive do
         data-server={environment.server_name}
         data-host={environment.host}
         data-ip={environment.ip}
+        class="flex items-center gap-3"
       >
-        {environment.name}: {environment.server_name || "no server yet"}
+        <span>{environment.name}: {environment.server_name || "no server yet"}</span>
+
+        <%!-- Behind a dialog rather than a bare click. This releases a real
+              server and a real DNS record, and the panel's rows are one line
+              apart. `data-confirm` is not an option here — the browser's own
+              confirm() is invisible to the driver QA runs. --%>
+        <.button
+          data-test="remove-environment"
+          class="btn-xs btn-error"
+          phx-click={show_confirm("remove-environment-#{environment.name}")}
+        >
+          Remove
+        </.button>
+
+        <.confirm_dialog
+          id={"remove-environment-#{environment.name}"}
+          title={"Remove #{environment.name}?"}
+          message={remove_environment_warning(environment)}
+          confirm_label="Remove it"
+          on_confirm={JS.push("remove_environment", value: %{name: environment.name})}
+        />
       </div>
     </section>
 
@@ -1056,6 +1077,26 @@ defmodule CodeMySpecWeb.ProvisioningLive do
     |> assign(:credentials, Enum.filter(socket.assigns.credentials, &MapSet.member?(required, &1.key)))
     |> assign(:missing_credentials, Credentials.missing(socket.assigns.current_scope))
   end
+
+  defp removed_summary(name, []), do: "Removed #{name}. It had nothing provisioned."
+
+  defp removed_summary(name, removed),
+    do: "Removed #{name}, and with it: " <> Enum.map_join(removed, ", ", & &1.location) <> "."
+
+  # Says what actually goes, so the dialog is not a generic "are you sure".
+  defp remove_environment_warning(%{host: host, server_name: server})
+       when is_binary(server) and server != "" do
+    "This destroys the server #{server}" <>
+      if(is_binary(host) and host != "", do: " and removes the DNS record for #{host}", else: "") <>
+      ". The record goes first, so the name stops resolving before the address is released."
+  end
+
+  defp remove_environment_warning(%{host: host}) when is_binary(host) and host != "" do
+    "This removes the DNS record for #{host}. No server was ever provisioned for it."
+  end
+
+  defp remove_environment_warning(_environment),
+    do: "Nothing was provisioned for it, so this only removes the row."
 
   # Blank means "leave it alone", not "clear it". The field renders empty for a
   # secret that is already set — because the value is never sent back to the
@@ -1278,6 +1319,33 @@ defmodule CodeMySpecWeb.ProvisioningLive do
         {:ok, _environment} -> {:noreply, load(socket, socket.assigns.options)}
         {:error, reason} -> {:noreply, put_flash(socket, :error, inspect(reason))}
       end
+    end
+  end
+
+  def handle_event("remove_environment", %{"name" => name}, socket) do
+    scope = socket.assigns.current_scope
+
+    case Teardown.environment(scope, name) do
+      {:ok, removed} ->
+        {:noreply,
+         socket
+         |> put_flash(:info, removed_summary(name, removed))
+         |> load(socket.assigns.options)}
+
+      # The row is gone either way, so this is not an error the user can retry
+      # into success — it is a list of things to go and delete by hand. Naming
+      # them is the whole value: a DNS record left pointing at a released
+      # address is the one leftover that becomes somebody else's server.
+      {:error, {:left_behind, left}, removed} ->
+        {:noreply,
+         socket
+         |> put_flash(
+           :error,
+           removed_summary(name, removed) <>
+             " Still there, and worth removing by hand: " <>
+             Enum.map_join(left, ", ", & &1.location)
+         )
+         |> load(socket.assigns.options)}
     end
   end
 
