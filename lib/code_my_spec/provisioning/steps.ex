@@ -348,7 +348,11 @@ defmodule CodeMySpec.Provisioning.Steps do
   def run(:email, %Scope{} = scope, opts) do
     environments = environments(scope, opts)
 
-    case domain(scope) do
+    # `base_domain/2` rather than `domain/1`, so this reads the same value its
+    # neighbours do. Reading the project directly meant a caller that narrowed
+    # every other step to one domain had this one still working from the
+    # project's — two domains in one run, each believing it was the only one.
+    case base_domain(scope, opts) do
       nil -> {:error, "no domain set on the project"}
       base -> register_sending_domains(scope, base, environments, opts)
     end
@@ -938,12 +942,109 @@ defmodule CodeMySpec.Provisioning.Steps do
           }
         ]
 
-        verify_sending_domain(scope, d, sending, created, opts)
+        # Publish before polling. Resend will not verify a domain whose records
+        # are not in DNS, so a run that registered and went straight to polling
+        # could only ever time out — and it did, on every real project. The
+        # spex missed it because a fixture published the records the step was
+        # supposed to publish, which made the step look like it worked.
+        case publish_sending_records(scope, sending, Resend.records(d)) do
+          {:ok, published} ->
+            verify_sending_domain(scope, d, sending, created ++ published, opts)
+
+          {:error, reason} ->
+            {:error, reason, created}
+        end
 
       {:error, reason} ->
         {:error, format(reason)}
     end
   end
+
+  # Write the records Resend asked for, into the zone that covers the sending
+  # domain and no other.
+  #
+  # The zone comes from `sending` rather than from the project's domain or from
+  # opts. That is the whole safety property here: a record can only land in a
+  # zone that already covers its own name, so there is no argument that can
+  # send a write somewhere unrelated. Resolving the zone from a separate value
+  # is what once put `send.<label>.codemyspec.com` in the production zone while
+  # the run was supposed to be confined to a throwaway domain.
+  #
+  # Names are qualified against the **zone**, because that is what Resend's are
+  # relative to — it returns `send.<label>`, not the full name. Handing that
+  # straight to Cloudflare works by accident when the zone happens to be right
+  # and writes to the wrong name when it is not, which is the same defect
+  # wearing a different hat.
+  defp publish_sending_records(scope, sending, records) do
+    case Resend.sending_records(records, sending) do
+      [] ->
+        {:ok, []}
+
+      sending_records ->
+        with {:ok, zone} <- find_sending_zone(scope, sending),
+             {:ok, existing} <- Cloudflare.list_dns_records(scope, zone["id"]) do
+          write_sending_records(scope, zone, sending_records, existing)
+        else
+          {:error, :not_found} ->
+            {:error,
+             "no Cloudflare zone covers #{sending}, so the records Resend needs cannot be " <>
+               "published — add the domain to Cloudflare, or point the project at one that is"}
+
+          {:error, reason} ->
+            {:error, format(reason)}
+        end
+    end
+  end
+
+  defp find_sending_zone(scope, sending), do: Cloudflare.find_zone(scope, sending)
+
+  defp write_sending_records(scope, zone, records, existing) do
+    Enum.reduce_while(records, {:ok, []}, fn record, {:ok, acc} ->
+      name = qualify(record["name"], zone["name"])
+
+      # Belt and braces. `find_zone` already matches on a label boundary, so
+      # this should be unreachable — and it is cheap enough to keep, because
+      # the failure it guards against is writing DNS to somebody's live domain
+      # and only finding out from the residue.
+      if covered_by?(name, zone["name"]) do
+        case Cloudflare.ensure_dns_record(scope, zone["id"], name, record["value"],
+               type: record["type"],
+               priority: record["priority"],
+               ttl: record["ttl"],
+               records: existing
+             ) do
+          {:ok, result} ->
+            {:cont, {:ok, acc ++ [sending_record_resource(name, record, result)]}}
+
+          {:error, reason} ->
+            {:halt, {:error, format(reason)}}
+        end
+      else
+        {:halt,
+         {:error,
+          "refusing to publish #{name}: it is not inside the #{zone["name"]} zone, and a " <>
+            "record written outside its own zone lands on a domain nobody meant to touch"}}
+      end
+    end)
+  end
+
+  defp sending_record_resource(name, record, result) do
+    %{
+      kind: "sending_record",
+      location: "cloudflare/#{name}",
+      identifier: "#{record["type"]} #{record["value"]}",
+      origin: if(adopted?(result), do: "adopted", else: "created")
+    }
+  end
+
+  defp adopted?(%{"result" => %{"__adopted__" => true}}), do: true
+  defp adopted?(_), do: false
+
+  defp covered_by?(name, zone_name) when is_binary(name) and is_binary(zone_name) do
+    name == zone_name or String.ends_with?(name, "." <> zone_name)
+  end
+
+  defp covered_by?(_, _), do: false
 
   defp verify_sending_domain(scope, domain, sending, created, opts) do
     case Resend.poll_until_verified(scope, domain["id"], opts) do
