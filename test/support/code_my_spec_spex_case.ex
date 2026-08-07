@@ -58,6 +58,12 @@ defmodule CodeMySpecSpex.Case do
   is minutes per criterion. Replay waits on nothing and keeps ExUnit's default,
   so a long-running replay reads as hung rather than as patient.
   """
+  def recording_ownership_timeout do
+    if System.get_env("SPEX_CASSETTE_MODE") == "record",
+      do: :timer.minutes(45),
+      else: :timer.minutes(15)
+  end
+
   def spex_timeout do
     if System.get_env("SPEX_CASSETTE_MODE") == "record", do: :timer.minutes(20), else: 60_000
   end
@@ -77,10 +83,19 @@ defmodule CodeMySpecSpex.Case do
     # the default reclaimed the connection mid-poll, so the LiveView came back
     # to a sandbox that no longer had an owner. The error names process
     # ownership and says nothing about the wait that caused it.
+    #
+    # Fifteen minutes was enough while recordings finished in four, which they
+    # only did because the previous run's sending domains were still on the
+    # account and verified instantly. Against a clean account a 969 recording
+    # runs about eighteen, and the connection was being reclaimed during
+    # `on_exit` — so teardown could not read what it was meant to remove and
+    # left real DNS records and sending domains behind. A teardown that cannot
+    # reach the database is the one failure that costs money, so this is
+    # generous on purpose.
     pid =
       Sandbox.start_owner!(CodeMySpec.Repo,
         shared: not tags[:async],
-        ownership_timeout: tags[:ownership_timeout] || :timer.minutes(15)
+        ownership_timeout: tags[:ownership_timeout] || recording_ownership_timeout()
       )
     on_exit(fn -> Sandbox.stop_owner(pid) end)
 
@@ -172,9 +187,16 @@ defmodule CodeMySpecSpex.Case do
   # `connect_providers/1` reads each grant once and spreads it across the three
   # fields, so this is one query per provider per spex, not three.
 
-  # The grant carries its refresh token too, so a recording that outlives its
-  # access token can renew mid-run — Resend's lives about fifteen minutes and a
-  # full recording takes longer than that.
+  # The grant deliberately does NOT carry its refresh token: a credential that
+  # rotates on every use gets exactly one owner, and that is the dev row. So the
+  # copy handed to a spex cannot renew itself, and Resend's access token lives
+  # about fifteen minutes while a full recording takes longer than that.
+  #
+  # `live_provider_grant/1` re-reads from dev when the snapshot nears expiry,
+  # which is what keeps a long recording alive without ever making a second
+  # owner of the refresh token. This comment used to claim the copy carried one;
+  # it never did, and the run died at `:reauthorize_required` looking like a
+  # revoked grant.
   #
   # The connected grant from the dev database, read through a short-lived
   # connection of its own: the spex sandbox owns `CodeMySpec.Repo` and points at

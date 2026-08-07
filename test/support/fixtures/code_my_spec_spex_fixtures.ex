@@ -1611,32 +1611,58 @@ defmodule CodeMySpecSpex.Fixtures do
   """
   def live_provider_grant(provider) do
     case :persistent_term.get({__MODULE__, :grant, provider}, nil) do
-      nil ->
-        # A provider whose grant is dead must not stop a recording that does not
-        # use it — a revoked Resend connection would otherwise block every
-        # Cloudflare and Hetzner spex on the machine. The placeholder produces
-        # 401s, so a spex that genuinely needed this provider still fails, and
-        # says why here rather than as an unexplained refusal later.
-        grant =
-          try do
-            refresh_dev_grant(provider)
-          rescue
-            error ->
-              IO.warn("""
-              #{provider} is not usable for recording: #{Exception.message(error)}
-
-              Spex that actually call #{provider} will fail. Others are unaffected.
-              """)
-
-              placeholder_grant()
-          end
-
-        :persistent_term.put({__MODULE__, :grant, provider}, grant)
-        grant
-
-      cached ->
-        cached
+      grant when is_map(grant) -> if usable?(grant), do: grant, else: fetch_and_cache(provider)
+      _ -> fetch_and_cache(provider)
     end
+  end
+
+  # The cached copy is a snapshot, and it does not carry a refresh token — that
+  # is deliberate, so a rotating credential has exactly one owner. The cost is
+  # that the snapshot cannot renew itself, and Resend's access token lives about
+  # fifteen minutes while a full 969 recording takes longer than that. Caching
+  # for the whole run therefore died partway through with
+  # `:reauthorize_required`, which reads like a revoked grant and is not one —
+  # the dev row was untouched and worked immediately afterwards.
+  #
+  # Re-reading when the snapshot nears expiry keeps the single owner. Going back
+  # to dev means `fetch_access_token/2` refreshes under its row lock and
+  # persists the rotation, so the new token has one owner too.
+  #
+  # This only started biting once the account was genuinely clean: recordings
+  # used to finish inside fifteen minutes because the previous run's sending
+  # domains were still there and verified instantly.
+  @grant_margin_seconds 300
+
+  defp usable?(%{expires_at: %DateTime{} = expires_at}) do
+    DateTime.diff(expires_at, DateTime.utc_now()) > @grant_margin_seconds
+  end
+
+  # A placeholder has no meaningful expiry and must not send us back to dev on
+  # every spex — the warning was already issued once.
+  defp usable?(_), do: true
+
+  defp fetch_and_cache(provider) do
+    # A provider whose grant is dead must not stop a recording that does not
+    # use it — a revoked Resend connection would otherwise block every
+    # Cloudflare and Hetzner spex on the machine. The placeholder produces
+    # 401s, so a spex that genuinely needed this provider still fails, and
+    # says why here rather than as an unexplained refusal later.
+    grant =
+      try do
+        refresh_dev_grant(provider)
+      rescue
+        error ->
+          IO.warn("""
+          #{provider} is not usable for recording: #{Exception.message(error)}
+
+          Spex that actually call #{provider} will fail. Others are unaffected.
+          """)
+
+          placeholder_grant()
+      end
+
+    :persistent_term.put({__MODULE__, :grant, provider}, grant)
+    grant
   end
 
   defp placeholder_grant do
