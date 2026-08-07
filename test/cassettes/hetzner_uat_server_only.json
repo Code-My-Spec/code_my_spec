@@ -1,7 +1,7 @@
 {
   "interactions": [
     {
-      "recorded_at": "2026-08-03T06:35:13.574314Z",
+      "recorded_at": "2026-08-07T13:40:52.559531Z",
       "request": {
         "body": "",
         "body_type": "text",
@@ -44,7 +44,7 @@
             "application/json; charset=utf-8"
           ],
           "date": [
-            "Mon, 03 Aug 2026 06:35:13 GMT"
+            "Fri, 07 Aug 2026 13:40:52 GMT"
           ],
           "referrer-policy": [
             "origin-when-cross-origin, strict-origin-when-cross-origin"
@@ -80,7 +80,7 @@
             "github.v3; format=json"
           ],
           "x-github-request-id": [
-            "D87E:B982E:965E835:210313B8:6A7036A1"
+            "EF0F:211490:6EA81F7:17271922:6A75E064"
           ],
           "x-oauth-client-id": [
             "Ov23liFpnT7j3bK5OC1L"
@@ -92,16 +92,16 @@
             "5000"
           ],
           "x-ratelimit-remaining": [
-            "4999"
+            "4998"
           ],
           "x-ratelimit-reset": [
-            "1785739962"
+            "1786111854"
           ],
           "x-ratelimit-resource": [
             "core"
           ],
           "x-ratelimit-used": [
-            "1"
+            "2"
           ],
           "x-xss-protection": [
             "0"
@@ -111,7 +111,7 @@
       }
     },
     {
-      "recorded_at": "2026-08-03T06:35:15.173498Z",
+      "recorded_at": "2026-08-07T13:40:54.267941Z",
       "request": {
         "body_json": {
           "name": "spex-story966-criterion8156",
@@ -141,72 +141,39 @@
       },
       "response": {
         "body_json": {
-          "delete_branch_on_merge": false,
+          "pushed_at": "2026-08-07T13:40:53Z",
           "mirror_url": null,
-          "pushed_at": "2026-08-03T06:35:14Z",
-          "allow_update_branch": false,
-          "svn_url": "https://github.com/codemy-my-spec-test/spex-story966-criterion8156",
-          "open_issues_count": 0,
-          "forks_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/forks",
-          "watchers_count": 0,
-          "issues_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/issues{/number}",
-          "disabled": false,
-          "collaborators_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/collaborators{/collaborator}",
-          "has_wiki": false,
-          "statuses_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/statuses/{sha}",
-          "merge_commit_title": "MERGE_MESSAGE",
-          "homepage": null,
-          "allow_auto_merge": false,
-          "full_name": "codemy-my-spec-test/spex-story966-criterion8156",
-          "stargazers_count": 0,
-          "subscription_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/subscription",
-          "use_squash_pr_title_as_default": false,
-          "stargazers_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/stargazers",
-          "events_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/events",
-          "has_projects": true,
-          "archive_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/{archive_format}{/ref}",
-          "commits_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/commits{/sha}",
           "merges_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/merges",
-          "downloads_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/downloads",
-          "blobs_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/git/blobs{/sha}",
-          "comments_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/comments{/number}",
-          "contributors_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/contributors",
-          "subscribers_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/subscribers",
-          "custom_properties": {},
-          "squash_merge_commit_message": "COMMIT_MESSAGES",
-          "git_tags_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/git/tags{/sha}",
-          "updated_at": "2026-08-03T06:35:14Z",
-          "issue_events_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/issues/events{/number}",
-          "visibility": "private",
-          "pull_request_creation_policy": "all",
-          "description": null,
-          "name": "spex-story966-criterion8156",
-          "id": 1321330513,
-          "labels_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/labels{/name}",
-          "branches_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/branches{/branch}",
-          "network_count": 0,
-          "private": true,
-          "issue_comment_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/issues/comments{/number}",
-          "merge_commit_message": "PR_TITLE",
-          "releases_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/releases{/id}",
-          "notifications_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/notifications{?since,all,participating}",
-          "hooks_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/hooks",
           "allow_squash_merge": true,
-          "default_branch": "main",
-          "web_commit_signoff_required": false,
-          "teams_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/teams",
-          "topics": [],
-          "compare_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/compare/{base}...{head}",
-          "deployments_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/deployments",
-          "git_url": "git://github.com/codemy-my-spec-test/spex-story966-criterion8156.git",
-          "allow_merge_commit": true,
-          "git_refs_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/git/refs{/sha}",
-          "pulls_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/pulls{/number}",
+          "private": true,
+          "has_pages": false,
           "url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156",
-          "has_issues": true,
-          "contents_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/contents/{+path}",
-          "size": 0,
+          "hooks_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/hooks",
+          "contributors_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/contributors",
+          "fork": false,
+          "squash_merge_commit_title": "COMMIT_OR_PR_TITLE",
+          "stargazers_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/stargazers",
+          "keys_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/keys{/key_id}",
+          "stargazers_count": 0,
+          "downloads_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/downloads",
+          "events_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/events",
+          "compare_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/compare/{base}...{head}",
+          "updated_at": "2026-08-07T13:40:53Z",
+          "web_commit_signoff_required": false,
+          "permissions": {
+            "admin": true,
+            "maintain": true,
+            "pull": true,
+            "push": true,
+            "triage": true
+          },
+          "svn_url": "https://github.com/codemy-my-spec-test/spex-story966-criterion8156",
           "allow_rebase_merge": true,
+          "default_branch": "main",
+          "subscribers_count": 0,
+          "blobs_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/git/blobs{/sha}",
+          "has_wiki": false,
+          "description": null,
           "owner": {
             "avatar_url": "https://avatars.githubusercontent.com/u/312172974?v=4",
             "events_url": "https://api.github.com/users/codemy-my-spec-test/events{/privacy}",
@@ -228,29 +195,18 @@
             "url": "https://api.github.com/users/codemy-my-spec-test",
             "user_view_type": "public"
           },
-          "git_commits_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/git/commits{/sha}",
-          "tags_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/tags",
-          "permissions": {
-            "admin": true,
-            "maintain": true,
-            "pull": true,
-            "push": true,
-            "triage": true
-          },
-          "language": null,
-          "fork": false,
-          "has_discussions": false,
-          "watchers": 0,
-          "html_url": "https://github.com/codemy-my-spec-test/spex-story966-criterion8156",
-          "open_issues": 0,
-          "is_template": false,
-          "node_id": "R_kgDOTsHnUQ",
-          "milestones_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/milestones{/number}",
+          "node_id": "R_kgDOTxQjXg",
+          "size": 0,
           "license": null,
-          "forks_count": 0,
-          "squash_merge_commit_title": "COMMIT_OR_PR_TITLE",
-          "allow_forking": false,
-          "has_pages": false,
+          "pull_request_creation_policy": "all",
+          "created_at": "2026-08-07T13:40:52Z",
+          "allow_merge_commit": true,
+          "network_count": 0,
+          "watchers": 0,
+          "git_commits_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/git/commits{/sha}",
+          "commits_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/commits{/sha}",
+          "git_refs_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/git/refs{/sha}",
+          "name": "spex-story966-criterion8156",
           "organization": {
             "avatar_url": "https://avatars.githubusercontent.com/u/312172974?v=4",
             "events_url": "https://api.github.com/users/codemy-my-spec-test/events{/privacy}",
@@ -272,18 +228,62 @@
             "url": "https://api.github.com/users/codemy-my-spec-test",
             "user_view_type": "public"
           },
+          "archived": false,
+          "languages_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/languages",
+          "delete_branch_on_merge": false,
+          "full_name": "codemy-my-spec-test/spex-story966-criterion8156",
+          "allow_auto_merge": false,
+          "milestones_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/milestones{/number}",
+          "squash_merge_commit_message": "COMMIT_MESSAGES",
+          "merge_commit_message": "PR_TITLE",
+          "has_downloads": false,
+          "issue_comment_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/issues/comments{/number}",
+          "clone_url": "https://github.com/codemy-my-spec-test/spex-story966-criterion8156.git",
+          "teams_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/teams",
+          "statuses_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/statuses/{sha}",
+          "custom_properties": {},
           "trees_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/git/trees{/sha}",
+          "comments_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/comments{/number}",
+          "allow_forking": false,
+          "labels_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/labels{/name}",
+          "subscribers_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/subscribers",
           "ssh_url": "git@github.com:codemy-my-spec-test/spex-story966-criterion8156.git",
           "has_pull_requests": true,
-          "assignees_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/assignees{/user}",
-          "clone_url": "https://github.com/codemy-my-spec-test/spex-story966-criterion8156.git",
+          "language": null,
+          "issues_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/issues{/number}",
+          "html_url": "https://github.com/codemy-my-spec-test/spex-story966-criterion8156",
+          "contents_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/contents/{+path}",
+          "has_discussions": false,
+          "forks_count": 0,
+          "merge_commit_title": "MERGE_MESSAGE",
+          "subscription_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/subscription",
+          "forks_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/forks",
+          "is_template": false,
+          "branches_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/branches{/branch}",
+          "deployments_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/deployments",
+          "open_issues_count": 0,
+          "git_tags_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/git/tags{/sha}",
           "forks": 0,
-          "archived": false,
-          "subscribers_count": 0,
-          "keys_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/keys{/key_id}",
-          "has_downloads": false,
-          "created_at": "2026-08-03T06:35:13Z",
-          "languages_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/languages"
+          "has_projects": true,
+          "issue_events_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/issues/events{/number}",
+          "topics": [],
+          "homepage": null,
+          "notifications_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/notifications{?since,all,participating}",
+          "allow_update_branch": false,
+          "id": 1326719838,
+          "assignees_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/assignees{/user}",
+          "collaborators_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/collaborators{/collaborator}",
+          "open_issues": 0,
+          "releases_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/releases{/id}",
+          "use_squash_pr_title_as_default": false,
+          "disabled": false,
+          "pulls_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/pulls{/number}",
+          "tags_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/tags",
+          "watchers_count": 0,
+          "git_url": "git://github.com/codemy-my-spec-test/spex-story966-criterion8156.git",
+          "has_issues": true,
+          "visibility": "private",
+          "archive_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/{archive_format}{/ref}"
         },
         "body_type": "json",
         "headers": {
@@ -303,13 +303,13 @@
             "application/json; charset=utf-8"
           ],
           "date": [
-            "Mon, 03 Aug 2026 06:35:15 GMT"
+            "Fri, 07 Aug 2026 13:40:54 GMT"
           ],
           "deprecation": [
             "Tue, 10 Mar 2026 00:00:00 GMT"
           ],
           "etag": [
-            "\"ecfdadc83206971fc6848a9c33d90aca2385b00027bf4c6a93a9f2c49a461b72\""
+            "\"49e79fcecd5d5660d74e694d3284bfadf6650a92de8bdf7c3903e92d4e03c4ef\""
           ],
           "link": [
             "<https://docs.github.com/en/rest/about-the-rest-api/api-versions>; rel=\"deprecation\"; type=\"text/html\""
@@ -351,7 +351,7 @@
             "github.v3; format=json"
           ],
           "x-github-request-id": [
-            "D87E:B982E:965E921:21031754:6A7036A1"
+            "EF0F:211490:6EA8337:17271D92:6A75E064"
           ],
           "x-oauth-client-id": [
             "Ov23liFpnT7j3bK5OC1L"
@@ -363,16 +363,16 @@
             "5000"
           ],
           "x-ratelimit-remaining": [
-            "4951"
+            "4988"
           ],
           "x-ratelimit-reset": [
-            "1785740613"
+            "1786112723"
           ],
           "x-ratelimit-resource": [
             "core"
           ],
           "x-ratelimit-used": [
-            "49"
+            "12"
           ],
           "x-xss-protection": [
             "0"
@@ -382,7 +382,7 @@
       }
     },
     {
-      "recorded_at": "2026-08-03T06:35:16.396655Z",
+      "recorded_at": "2026-08-07T13:40:56.449446Z",
       "request": {
         "body": "",
         "body_type": "text",
@@ -441,7 +441,7 @@
                 "type": "system"
               },
               "included_traffic": 21990232555520,
-              "ingoing_traffic": 61020000,
+              "ingoing_traffic": 250625000,
               "iso": null,
               "labels": {},
               "load_balancers": [],
@@ -457,7 +457,7 @@
               },
               "locked": false,
               "name": "fuellytics",
-              "outgoing_traffic": 178565000,
+              "outgoing_traffic": 443735000,
               "placement_group": null,
               "primary_disk_size": 40,
               "private_net": [],
@@ -599,7 +599,7 @@
                 "type": "system"
               },
               "included_traffic": 2199023255552,
-              "ingoing_traffic": 111585000,
+              "ingoing_traffic": 421675000,
               "iso": null,
               "labels": {},
               "load_balancers": [],
@@ -615,7 +615,7 @@
               },
               "locked": false,
               "name": "fuellytics-prod",
-              "outgoing_traffic": 382645000,
+              "outgoing_traffic": 1111720000,
               "placement_group": null,
               "primary_disk_size": 80,
               "private_net": [],
@@ -834,7 +834,7 @@
             "application/json"
           ],
           "date": [
-            "Mon, 03 Aug 2026 06:35:16 GMT"
+            "Fri, 07 Aug 2026 13:40:56 GMT"
           ],
           "link": [
             "<https://api.hetzner.cloud/v1/servers?page=1>; rel=\"last\""
@@ -846,7 +846,7 @@
             "3599"
           ],
           "ratelimit-reset": [
-            "1785738917"
+            "1786110057"
           ],
           "strict-transport-security": [
             "max-age=31536000; includeSubDomains"
@@ -858,14 +858,14 @@
             "Accept-Encoding"
           ],
           "x-correlation-id": [
-            "6a392f0adbd4d08f545d49b8dea04fcc"
+            "32a46fc2e463db3992807abdfa1551d1"
           ]
         },
         "status": 200
       }
     },
     {
-      "recorded_at": "2026-08-03T06:35:16.542988Z",
+      "recorded_at": "2026-08-07T13:40:56.594696Z",
       "request": {
         "body": "",
         "body_type": "text",
@@ -928,6 +928,48 @@
                   ]
                 }
               ]
+            },
+            {
+              "applied_to": [],
+              "created": "2026-08-03T23:25:24Z",
+              "id": 11413727,
+              "labels": {},
+              "name": "qa-fixture-project",
+              "rules": [
+                {
+                  "description": null,
+                  "destination_ips": [],
+                  "direction": "in",
+                  "port": "22",
+                  "protocol": "tcp",
+                  "source_ips": [
+                    "0.0.0.0/0",
+                    "::/0"
+                  ]
+                },
+                {
+                  "description": null,
+                  "destination_ips": [],
+                  "direction": "in",
+                  "port": "80",
+                  "protocol": "tcp",
+                  "source_ips": [
+                    "0.0.0.0/0",
+                    "::/0"
+                  ]
+                },
+                {
+                  "description": null,
+                  "destination_ips": [],
+                  "direction": "in",
+                  "port": "443",
+                  "protocol": "tcp",
+                  "source_ips": [
+                    "0.0.0.0/0",
+                    "::/0"
+                  ]
+                }
+              ]
             }
           ],
           "meta": {
@@ -937,7 +979,7 @@
               "page": 1,
               "per_page": 25,
               "previous_page": null,
-              "total_entries": 1
+              "total_entries": 2
             }
           }
         },
@@ -962,7 +1004,7 @@
             "application/json"
           ],
           "date": [
-            "Mon, 03 Aug 2026 06:35:16 GMT"
+            "Fri, 07 Aug 2026 13:40:56 GMT"
           ],
           "link": [
             "<https://api.hetzner.cloud/v1/firewalls?page=1&per_page=25>; rel=\"last\""
@@ -974,32 +1016,32 @@
             "3598"
           ],
           "ratelimit-reset": [
-            "1785738918"
+            "1786110058"
           ],
           "strict-transport-security": [
             "max-age=31536000; includeSubDomains"
           ],
           "traceparent": [
-            "00-564c8f9628b4888051f8ac149a4dcbe1-fda94ce792e32918-01"
+            "00-73ee0ad0ead10c8954ca2e8bd11cab01-44ddc34282eb622f-01"
           ],
           "transfer-encoding": [
             "chunked"
           ],
           "uber-trace-id": [
-            "564c8f9628b4888051f8ac149a4dcbe1:fda94ce792e32918:0:1"
+            "73ee0ad0ead10c8954ca2e8bd11cab01:44ddc34282eb622f:0:1"
           ],
           "vary": [
             "Accept-Encoding"
           ],
           "x-correlation-id": [
-            "564c8f9628b4888051f8ac149a4dcbe1"
+            "73ee0ad0ead10c8954ca2e8bd11cab01"
           ]
         },
         "status": 200
       }
     },
     {
-      "recorded_at": "2026-08-03T06:35:16.698303Z",
+      "recorded_at": "2026-08-07T13:40:56.728846Z",
       "request": {
         "body": "",
         "body_type": "text",
@@ -1015,7 +1057,7 @@
           ]
         },
         "method": "GET",
-        "query_string": "fingerprint=21:ae:75:4d:a1:d4:51:40:b9:e8:26:2c:5b:1c:d4:1f",
+        "query_string": "fingerprint=87:2f:72:6b:01:62:43:23:29:97:27:68:d9:04:60:e9",
         "uri": "https://api.hetzner.cloud/v1/ssh_keys"
       },
       "response": {
@@ -1053,10 +1095,10 @@
             "application/json"
           ],
           "date": [
-            "Mon, 03 Aug 2026 06:35:16 GMT"
+            "Fri, 07 Aug 2026 13:40:56 GMT"
           ],
           "link": [
-            "<https://api.hetzner.cloud/v1/ssh_keys?fingerprint=21%3Aae%3A75%3A4d%3Aa1%3Ad4%3A51%3A40%3Ab9%3Ae8%3A26%3A2c%3A5b%3A1c%3Ad4%3A1f&page=1>; rel=\"last\""
+            "<https://api.hetzner.cloud/v1/ssh_keys?fingerprint=87%3A2f%3A72%3A6b%3A01%3A62%3A43%3A23%3A29%3A97%3A27%3A68%3Ad9%3A04%3A60%3Ae9&page=1>; rel=\"last\""
           ],
           "ratelimit-limit": [
             "3600"
@@ -1065,109 +1107,30 @@
             "3597"
           ],
           "ratelimit-reset": [
-            "1785738919"
+            "1786110059"
           ],
           "strict-transport-security": [
             "max-age=31536000; includeSubDomains"
+          ],
+          "transfer-encoding": [
+            "chunked"
           ],
           "vary": [
             "Accept-Encoding"
           ],
           "x-correlation-id": [
-            "be6baba1924ef7e63a2044f0256e081c"
+            "38844d3f604a19a2b4e23786b555793b"
           ]
         },
         "status": 200
       }
     },
     {
-      "recorded_at": "2026-08-03T06:35:16.836484Z",
+      "recorded_at": "2026-08-07T13:40:56.872236Z",
       "request": {
         "body_json": {
           "name": "spex-story966-criterion8156",
-          "public_key": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBl2GdDHk18DkahKfIQoGaTHwBoBEEXV33vHnksBFxl7 spex-story966-criterion8156"
-        },
-        "body_type": "json",
-        "headers": {
-          "accept": [
-            "application/json"
-          ],
-          "accept-encoding": [
-            "gzip"
-          ],
-          "content-type": [
-            "application/json"
-          ],
-          "user-agent": [
-            "req/0.5.17"
-          ]
-        },
-        "method": "POST",
-        "query_string": "",
-        "uri": "https://api.hetzner.cloud/v1/ssh_keys"
-      },
-      "response": {
-        "body_json": {
-          "error": {
-            "code": "uniqueness_error",
-            "details": {
-              "fields": [
-                {
-                  "name": "name"
-                }
-              ]
-            },
-            "message": "SSH key not unique"
-          }
-        },
-        "body_type": "json",
-        "headers": {
-          "access-control-allow-headers": [
-            "X-Requested-With,Authorization,Content-Type"
-          ],
-          "access-control-allow-methods": [
-            "OPTIONS,GET,POST,PUT,PATCH,DELETE"
-          ],
-          "access-control-allow-origin": [
-            "*"
-          ],
-          "access-control-expose-headers": [
-            "Link,X-Correlation-ID"
-          ],
-          "access-control-max-age": [
-            "86400"
-          ],
-          "content-type": [
-            "application/json"
-          ],
-          "date": [
-            "Mon, 03 Aug 2026 06:35:16 GMT"
-          ],
-          "ratelimit-limit": [
-            "3600"
-          ],
-          "ratelimit-remaining": [
-            "3596"
-          ],
-          "ratelimit-reset": [
-            "1785738920"
-          ],
-          "strict-transport-security": [
-            "max-age=31536000; includeSubDomains"
-          ],
-          "x-correlation-id": [
-            "5e22983cbce9be4d0c4125f4d6703f4d"
-          ]
-        },
-        "status": 409
-      }
-    },
-    {
-      "recorded_at": "2026-08-03T06:35:16.981008Z",
-      "request": {
-        "body_json": {
-          "name": "spex-story966-criterion8156-21ae754d",
-          "public_key": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBl2GdDHk18DkahKfIQoGaTHwBoBEEXV33vHnksBFxl7 spex-story966-criterion8156"
+          "public_key": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOGh1xKsyEdqJ9IhsX+ysEtdbDjnCxjTIj1sxjHjT5lH spex"
         },
         "body_type": "json",
         "headers": {
@@ -1191,12 +1154,12 @@
       "response": {
         "body_json": {
           "ssh_key": {
-            "created": "2026-08-03T06:35:16Z",
-            "fingerprint": "21:ae:75:4d:a1:d4:51:40:b9:e8:26:2c:5b:1c:d4:1f",
-            "id": 116326458,
+            "created": "2026-08-07T13:40:56Z",
+            "fingerprint": "87:2f:72:6b:01:62:43:23:29:97:27:68:d9:04:60:e9",
+            "id": 116648236,
             "labels": {},
-            "name": "spex-story966-criterion8156-21ae754d",
-            "public_key": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBl2GdDHk18DkahKfIQoGaTHwBoBEEXV33vHnksBFxl7 spex-story966-criterion8156"
+            "name": "spex-story966-criterion8156",
+            "public_key": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOGh1xKsyEdqJ9IhsX+ysEtdbDjnCxjTIj1sxjHjT5lH spex"
           }
         },
         "body_type": "json",
@@ -1220,29 +1183,35 @@
             "application/json"
           ],
           "date": [
-            "Mon, 03 Aug 2026 06:35:16 GMT"
+            "Fri, 07 Aug 2026 13:40:56 GMT"
           ],
           "ratelimit-limit": [
             "3600"
           ],
           "ratelimit-remaining": [
-            "3595"
+            "3596"
           ],
           "ratelimit-reset": [
-            "1785738921"
+            "1786110060"
           ],
           "strict-transport-security": [
             "max-age=31536000; includeSubDomains"
           ],
+          "transfer-encoding": [
+            "chunked"
+          ],
+          "vary": [
+            "Accept-Encoding"
+          ],
           "x-correlation-id": [
-            "6ed7c1705ed67fea323f99f423d1e848"
+            "c57e892899e839ef002054ccace44e8d"
           ]
         },
         "status": 201
       }
     },
     {
-      "recorded_at": "2026-08-03T06:35:17.130453Z",
+      "recorded_at": "2026-08-07T13:40:57.014605Z",
       "request": {
         "body": "",
         "body_type": "text",
@@ -1301,7 +1270,7 @@
                 "type": "system"
               },
               "included_traffic": 21990232555520,
-              "ingoing_traffic": 61020000,
+              "ingoing_traffic": 250625000,
               "iso": null,
               "labels": {},
               "load_balancers": [],
@@ -1317,7 +1286,7 @@
               },
               "locked": false,
               "name": "fuellytics",
-              "outgoing_traffic": 178565000,
+              "outgoing_traffic": 443735000,
               "placement_group": null,
               "primary_disk_size": 40,
               "private_net": [],
@@ -1459,7 +1428,7 @@
                 "type": "system"
               },
               "included_traffic": 2199023255552,
-              "ingoing_traffic": 111585000,
+              "ingoing_traffic": 421675000,
               "iso": null,
               "labels": {},
               "load_balancers": [],
@@ -1475,7 +1444,7 @@
               },
               "locked": false,
               "name": "fuellytics-prod",
-              "outgoing_traffic": 382645000,
+              "outgoing_traffic": 1111720000,
               "placement_group": null,
               "primary_disk_size": 80,
               "private_net": [],
@@ -1694,7 +1663,7 @@
             "application/json"
           ],
           "date": [
-            "Mon, 03 Aug 2026 06:35:17 GMT"
+            "Fri, 07 Aug 2026 13:40:56 GMT"
           ],
           "link": [
             "<https://api.hetzner.cloud/v1/servers?page=1>; rel=\"last\""
@@ -1703,10 +1672,10 @@
             "3600"
           ],
           "ratelimit-remaining": [
-            "3594"
+            "3595"
           ],
           "ratelimit-reset": [
-            "1785738923"
+            "1786110061"
           ],
           "strict-transport-security": [
             "max-age=31536000; includeSubDomains"
@@ -1718,14 +1687,14 @@
             "Accept-Encoding"
           ],
           "x-correlation-id": [
-            "b8eb27ba5852112f2fa0c706b14014e4"
+            "b5a8510e30695fb2a1b6ccc4e5cf0739"
           ]
         },
         "status": 200
       }
     },
     {
-      "recorded_at": "2026-08-03T06:35:17.312487Z",
+      "recorded_at": "2026-08-07T13:40:57.200610Z",
       "request": {
         "body_json": {
           "firewalls": [
@@ -1738,7 +1707,7 @@
           "name": "spex-story966-criterion8156-uat",
           "server_type": "cax11",
           "ssh_keys": [
-            116326458
+            116648236
           ],
           "start_after_create": true
         },
@@ -1790,29 +1759,35 @@
             "application/json"
           ],
           "date": [
-            "Mon, 03 Aug 2026 06:35:17 GMT"
+            "Fri, 07 Aug 2026 13:40:57 GMT"
           ],
           "ratelimit-limit": [
             "3600"
           ],
           "ratelimit-remaining": [
-            "3593"
+            "3594"
           ],
           "ratelimit-reset": [
-            "1785738924"
+            "1786110063"
           ],
           "strict-transport-security": [
             "max-age=31536000; includeSubDomains"
           ],
+          "transfer-encoding": [
+            "chunked"
+          ],
+          "vary": [
+            "Accept-Encoding"
+          ],
           "x-correlation-id": [
-            "7419bc993c747f6dee2d7236ed50a9e2"
+            "8b5f406de3247614e21c8fce48122862"
           ]
         },
         "status": 412
       }
     },
     {
-      "recorded_at": "2026-08-03T06:35:17.615224Z",
+      "recorded_at": "2026-08-07T13:40:57.443452Z",
       "request": {
         "body_json": {
           "firewalls": [
@@ -1825,7 +1800,7 @@
           "name": "spex-story966-criterion8156-uat",
           "server_type": "cpx11",
           "ssh_keys": [
-            116326458
+            116648236
           ],
           "start_after_create": true
         },
@@ -1854,11 +1829,11 @@
             "command": "create_server",
             "error": null,
             "finished": null,
-            "id": 646564383035141,
+            "id": 647449147286946,
             "progress": 0,
             "resources": [
               {
-                "id": 158484337,
+                "id": 160016056,
                 "type": "server"
               },
               {
@@ -1866,7 +1841,7 @@
                 "type": "image"
               }
             ],
-            "started": "2026-08-03T06:35:17Z",
+            "started": "2026-08-07T13:40:57Z",
             "status": "running"
           },
           "next_actions": [
@@ -1874,7 +1849,7 @@
               "command": "apply_firewall",
               "error": null,
               "finished": null,
-              "id": 646564381577698,
+              "id": 647449144362115,
               "progress": 10,
               "resources": [
                 {
@@ -1882,34 +1857,34 @@
                   "type": "firewall"
                 },
                 {
-                  "id": 158484337,
+                  "id": 160016056,
                   "type": "server"
                 }
               ],
-              "started": "2026-08-03T06:35:17Z",
+              "started": "2026-08-07T13:40:57Z",
               "status": "running"
             },
             {
               "command": "start_server",
               "error": null,
               "finished": null,
-              "id": 646564383035143,
+              "id": 647449147286947,
               "progress": 0,
               "resources": [
                 {
-                  "id": 158484337,
+                  "id": 160016056,
                   "type": "server"
                 }
               ],
-              "started": "2026-08-03T06:35:17Z",
+              "started": "2026-08-07T13:40:57Z",
               "status": "running"
             }
           ],
           "root_password": null,
           "server": {
             "backup_window": null,
-            "created": "2026-08-03T06:35:17Z",
-            "id": 158484337,
+            "created": "2026-08-07T13:40:57Z",
+            "id": 160016056,
             "image": {
               "architecture": "x86",
               "bound_to": null,
@@ -1967,14 +1942,14 @@
               "floating_ips": [],
               "ipv4": {
                 "blocked": false,
-                "dns_ptr": "static.73.239.161.5.clients.your-server.de",
-                "id": 143219948,
-                "ip": "5.161.239.73"
+                "dns_ptr": "static.165.216.156.178.clients.your-server.de",
+                "id": 143886742,
+                "ip": "178.156.216.165"
               },
               "ipv6": {
                 "blocked": false,
                 "dns_ptr": [],
-                "id": 143219949,
+                "id": 143886743,
                 "ip": "2a01:4ff:f0:549b::/64"
               }
             },
@@ -2172,16 +2147,16 @@
             "application/json"
           ],
           "date": [
-            "Mon, 03 Aug 2026 06:35:17 GMT"
+            "Fri, 07 Aug 2026 13:40:57 GMT"
           ],
           "ratelimit-limit": [
             "3600"
           ],
           "ratelimit-remaining": [
-            "3592"
+            "3593"
           ],
           "ratelimit-reset": [
-            "1785738925"
+            "1786110064"
           ],
           "strict-transport-security": [
             "max-age=31536000; includeSubDomains"
@@ -2189,8 +2164,11 @@
           "transfer-encoding": [
             "chunked"
           ],
+          "vary": [
+            "Accept-Encoding"
+          ],
           "x-correlation-id": [
-            "1122a44fbddad3ef46c4db591816fcef"
+            "8973910c17ef571a1b39a7a1209053da"
           ]
         },
         "status": 201

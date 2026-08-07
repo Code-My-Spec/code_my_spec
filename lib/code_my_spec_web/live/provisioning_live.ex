@@ -1025,11 +1025,36 @@ defmodule CodeMySpecWeb.ProvisioningLive do
         {:noreply,
          socket
          |> assign(:current_scope, scope)
-         |> load(Provisioning.setup_options(scope))}
+         |> load(Provisioning.setup_options(scope))
+         |> reselect_credentials(options)}
 
       {:error, _changeset} ->
         {:noreply, put_flash(socket, :error, "Could not save that option — nothing changed.")}
     end
+  end
+
+  # Which credentials a run needs is a function of the options; whether each is
+  # on file is the part that costs something to find out. `load/2` holds both
+  # with `assign_new` because re-proving on every event and every PubSub
+  # announce was making provider calls from the wrong process — but that also
+  # froze the *set*, so turning an option off left its credentials on screen
+  # until a reload.
+  #
+  # Stale would be forgivable if it were only a list. It is a blocker: the page
+  # says "Setup cannot start yet — still needed: Hetzner S3 access key ID" for
+  # a run that will never use it, and those keys cannot be minted through an
+  # API — the page's own directions send you to the Hetzner console, where they
+  # are shown once. Believing it costs a trip for a credential nobody needs.
+  #
+  # Recomputed from the new options, reusing the checks already made rather
+  # than asking any provider again. `required/1` is pure and `missing/1` only
+  # reads storage.
+  defp reselect_credentials(socket, options) do
+    required = options |> Credentials.required() |> MapSet.new(& &1.key)
+
+    socket
+    |> assign(:credentials, Enum.filter(socket.assigns.credentials, &MapSet.member?(required, &1.key)))
+    |> assign(:missing_credentials, Credentials.missing(socket.assigns.current_scope))
   end
 
   # Blank means "leave it alone", not "clear it". The field renders empty for a
