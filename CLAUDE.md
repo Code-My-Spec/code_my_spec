@@ -33,22 +33,56 @@ so you always know what to work on next and in what order.
 
 ## Logs
 
-The `cms` server and `cms` CLI both write structured logs to disk. They use a
-shared logfmt formatter (`CodeMySpec.Logging.LogfmtFormatter`) so a single
-parser handles both sources.
+Everything lands in `~/.codemyspec/`. **There are three application logs, not
+two** — the split is by *source process*, and grepping the wrong one reads
+exactly like "that never happened."
 
 ### Files
 
-- `~/.codemyspec/server.log` — application logs from the `cms server` binary.
-  Rotated at 10 MB × 3 by `:logger_std_h`.
-- The service supervisor captures raw stdout/stderr (BEAM startup messages,
-  `IO.puts` before the logger handler installs): `/opt/homebrew/var/log/codemyspec.log`
-  on macOS (`brew services`), `C:\ProgramData\CodeMySpec\shawl\` on Windows.
-- `~/.codemyspec/cli.log` — application logs from the `cms` CLI binary.
-  Rotated at 10 MB × 3.
+| Path | Written by | Format | Contains |
+|---|---|---|---|
+| `~/.codemyspec/server.log` | `cms server` | logfmt, `src=server` | `[StopHook]`, `[Analysis]`, `[Files.ComponentSync]`, `[Validation]`, channel handlers |
+| `~/.codemyspec/harness.log` | `cms harness` | logfmt, `src=harness` | **every `[CmsHarness]` line** — scans, manifests, hook refusals, reconnects, analyzer runs |
+| `~/.codemyspec/cli.log` | `cms` CLI | plain Logger (`HH:MM:SS.mmm mfa=… [level] msg`) | CLI invocations, `LocalServer`, MCP transport |
+| `~/.codemyspec/mix_phx_4004.log` | `mix phx.server` on :4004 | raw stdout | Ecto `QUERY OK` debug, LiveView, compile output |
+| `~/.codemyspec/server.boot.log` | BEAM startup | raw stdout | pre-logger boot junk |
+| `/opt/homebrew/var/log/codemyspec.log` | `brew services` supervisor | raw stdout/stderr | service-level stdout on macOS (Windows: `C:\ProgramData\CodeMySpec\shawl\`) |
 
-Read `server.log` directly (`tail -f ~/.codemyspec/server.log`); lifecycle and
-the service log are managed by `brew services` / the Windows Shawl service.
+Handler paths are in `CodeMySpec.Logging.default_path/1`; the harness handler is
+installed in `code_my_spec_local_web/application.ex`. Rotation is 10 MB × 3 by
+`:logger_std_h`, so check `server.log.0/.1/.2` for anything older.
+
+**Harness symptoms are in `harness.log`, not `server.log`.** A hook that refused
+(`:no_reply`, `:not_connected`), a manifest that was sent but never accepted, a
+reconnect backoff, a dropped analyzer result — all harness-side, none of them in
+`server.log`. The matching server-side view (`[StopHook]`, reconcile results) is
+in `server.log`. Diagnosing a hook failure usually needs both, interleaved.
+
+### Two harnesses append to one harness.log
+
+If two harnesses are started on the same working copy, both write to the same
+file, so a linear read shows **timestamps going backwards** at the splice. Sort
+before reasoning about ordering, and treat a non-monotonic timeline as evidence
+of a second harness rather than a parsing bug. The lease refusal names it
+outright: `not serving <root> — the harness at <root> on <host> already holds
+this project`.
+
+### Reading recipes
+
+Timeline for one window, message text only:
+
+    sed -E 's/^ts=[0-9-]+T([0-9:.]+)Z.*msg="([^"]*)".*/\1  \2/' ~/.codemyspec/harness.log \
+      | grep -E '^18:2' | sort
+
+Both sides of one incident, merged:
+
+    cat ~/.codemyspec/{server,harness}.log \
+      | sed -E 's/^ts=([0-9T:.-]+)Z.*src=([a-z]+).*msg="([^"]*)".*/\1 \2 \3/' \
+      | grep -E '^2026-08-07T18:2' | sort
+
+Errors only, any source:
+
+    grep -hE 'level=(warning|error)' ~/.codemyspec/{server,harness}.log | tail -40
 
 ### Format
 
@@ -56,8 +90,9 @@ One logfmt event per line:
 
     ts=2026-05-09T14:23:01.123Z level=info src=server req=abc123 mfa=Foo.Bar.baz/2 msg="..."
 
-Keys are stable: `ts`, `level`, `src` (`server`|`cli`), `mfa`, `msg`, plus any
+Keys are stable: `ts`, `level`, `src` (`server`|`harness`), `mfa`, `msg`, plus any
 metadata the call site attached (`request_id` shows up as `request_id=`).
+`cli.log` is **not** logfmt and carries no `src=` — parse it separately.
 Values containing spaces, `=`, `"`, or newlines are double-quoted with
 backslash escaping. Each metadata value is truncated at 500 bytes so a single
 giant payload cannot blow the reader's context window.

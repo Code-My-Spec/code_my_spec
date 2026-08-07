@@ -32,6 +32,28 @@ defmodule CodeMySpec.Logging.LogfmtFormatterTest do
     assert line =~ "src=cli"
   end
 
+  test "stamps inst= when an instance is configured" do
+    line = format(:info, "x", %{}, %{source: "harness", instance: "41560"})
+    assert line =~ ~r/^ts=\S+ level=info src=harness inst=41560 /
+  end
+
+  test "omits inst= entirely when no instance is configured" do
+    refute format(:info, "x") =~ "inst="
+  end
+
+  test "omits inst= for a blank instance rather than emitting an empty key" do
+    refute format(:info, "x", %{}, %{source: "harness", instance: ""}) =~ "inst="
+  end
+
+  test "two instances writing one file stay distinguishable" do
+    a = format(:info, "sent 2028 observations", %{}, %{source: "harness", instance: "41560"})
+    b = format(:info, "sent 2028 observations", %{}, %{source: "harness", instance: "41561"})
+
+    assert a =~ "inst=41560"
+    assert b =~ "inst=41561"
+    refute a == b
+  end
+
   test "quotes values containing spaces, equals, quotes, newlines" do
     line = format(:info, ~s|some "weird" value=here\nline2|)
     assert line =~ ~s|msg="some \\"weird\\" value=here\\nline2"|

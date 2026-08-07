@@ -17,8 +17,11 @@ defmodule CodeMySpec.Logging.LogfmtFormatter do
 
   ## Config
 
-    * `:source` — `"server"` or `"cli"`. Stamped on every line as `src=`.
-      Defaults to `"server"`.
+    * `:source` — `"server"`, `"harness"` or `"cli"`. Stamped on every line as
+      `src=`, and the thing that says which log a line belongs in. Defaults to
+      `"server"`.
+    * `:instance` — optional string identifying the writing process, stamped as
+      `inst=`. Omitted from the line when unset.
     * `:max_value_length` — bytes. Per-value truncation threshold.
       Defaults to `500`.
   """
@@ -37,11 +40,12 @@ defmodule CodeMySpec.Logging.LogfmtFormatter do
     source = Map.get(config, :source, "server")
     max_len = Map.get(config, :max_value_length, @default_max_value_length)
 
-    head = [
-      {"ts", format_time(meta[:time])},
-      {"level", Atom.to_string(level)},
-      {"src", source}
-    ]
+    head =
+      [
+        {"ts", format_time(meta[:time])},
+        {"level", Atom.to_string(level)},
+        {"src", source}
+      ] ++ instance_pair(config)
 
     mfa_pair =
       case meta[:mfa] do
@@ -70,6 +74,15 @@ defmodule CodeMySpec.Logging.LogfmtFormatter do
         "\"\n"
       ]
   end
+
+  # Which process wrote the line. Two harnesses on one working copy append to
+  # one file, and without this they are told apart only by timestamps running
+  # backwards at the splice — which is how six minutes of one harness's dead
+  # pushes read as the other harness's healthy ones.
+  defp instance_pair(%{instance: inst}) when is_binary(inst) and inst != "",
+    do: [{"inst", inst}]
+
+  defp instance_pair(_), do: []
 
   defp normalize_config(config) when is_map(config), do: config
   defp normalize_config(config) when is_list(config), do: Map.new(config)

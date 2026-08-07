@@ -82,6 +82,10 @@ defmodule CodeMySpecLocalWeb.Application do
     {:ok, path} =
       CodeMySpec.Logging.install_file_handler!(
         source: "harness",
+        # The OS pid, so a line ties back to the startup banner and to `ps`.
+        # Two harnesses on one working copy share this file, and until this
+        # existed the only sign of the second one was time running backwards.
+        instance: System.pid(),
         handler_id: :cms_harness_file,
         replace_default: false,
         level: harness_log_level()

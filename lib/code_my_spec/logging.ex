@@ -24,6 +24,10 @@ defmodule CodeMySpec.Logging do
 
     * `:source` (required) — `"server"`, `"cli"` or `"harness"`. Stamped on every
       line as `src=`.
+    * `:instance` — identifies the writing process, stamped as `inst=`. Worth
+      setting wherever two processes can share one file: `cms harness` does,
+      when two are started on one working copy, and the resulting log is
+      unreadable without it.
     * `:path` — file path. Tilde-expanded. Defaults to a source-specific path.
     * `:level` — `:debug | :info | :warning | :error`. Defaults to `:info`.
     * `:max_no_bytes` — rotation byte threshold. Defaults to 10 MB.
@@ -57,7 +61,7 @@ defmodule CodeMySpec.Logging do
         max_no_bytes: max_no_bytes,
         max_no_files: max_no_files
       },
-      formatter: {LogfmtFormatter, %{source: source}},
+      formatter: {LogfmtFormatter, formatter_config(source, Keyword.get(opts, :instance))},
       # Default Erlang logger filters drop Elixir-domain events (anything
       # from `Logger.info/2` etc) because they only allow `:undefined` or
       # `[:otp, :sasl]` domains. Switch to log-by-default and keep only the
@@ -76,6 +80,9 @@ defmodule CodeMySpec.Logging do
 
     {:ok, path}
   end
+
+  defp formatter_config(source, nil), do: %{source: source}
+  defp formatter_config(source, instance), do: %{source: source, instance: to_string(instance)}
 
   defp default_path("cli"), do: "~/.codemyspec/cli.log"
   defp default_path("harness"), do: "~/.codemyspec/harness.log"
