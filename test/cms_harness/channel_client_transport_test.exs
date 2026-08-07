@@ -166,6 +166,82 @@ defmodule CmsHarness.ChannelClientTransportTest do
     end
   end
 
+  describe "a channel that answers nothing" do
+    # The silence twin of the unmatched-topic case above, and the one that cost
+    # six minutes on 2026-08-07: four manifests pushed with no reply and roughly
+    # fifteen hooks refused `:no_reply`, while a second harness on the same
+    # working copy was served normally by the same live server. Nothing said the
+    # channel was dead because nothing was said at all — no close, no error
+    # reply — so `joined` stayed true and the timeout handler failed each caller
+    # and drew no conclusion.
+    defp time_out(socket, ref) do
+      timer = Process.send_after(self(), :unused, 60_000)
+      socket = put_in(socket.assigns.pending, %{ref => {{self(), ref}, timer}})
+      ChannelClient.handle_info({:reply_timeout, ref}, socket)
+    end
+
+    defp answer(socket, ref) do
+      timer = Process.send_after(self(), :unused, 60_000)
+      socket = put_in(socket.assigns.pending, %{ref => {{self(), ref}, timer}})
+      {:ok, out} = ChannelClient.handle_reply(ref, {:ok, %{}}, socket)
+      out
+    end
+
+    test "one unanswered decision fails its caller and leaves the join alone" do
+      ref = make_ref()
+
+      {:noreply, out} =
+        time_out(socket(%{pending: %{}, analysis_refs: %{}, silences: 0, attempts: 0}), ref)
+
+      assert_receive {^ref, {:error, :no_reply}},
+                     1_000,
+                     "the caller still has to be told; it is the hook's answer"
+
+      assert out.assigns.joined, "one slow answer is not a dead channel"
+      assert out.assigns.silences == 1
+
+      refute_receive {:transport_disconnect, _},
+                     200,
+                     "dropping on the first timeout would reconnect every time the server is busy"
+    end
+
+    test "two in a row drop the socket so the reconnect path can run" do
+      base = socket(%{pending: %{}, analysis_refs: %{}, silences: 0, attempts: 0})
+
+      {:noreply, once} = time_out(base, make_ref())
+      {:noreply, twice} = time_out(once, make_ref())
+
+      refute twice.assigns.joined,
+             "believing a join that carries no traffic is what made every later " <>
+               "hook refuse with the wrong explanation"
+
+      assert_receive {:transport_disconnect, "harness_project:p1"},
+                     1_000,
+                     "the socket, not the topic — Slipstream.join/3 is a silent no-op while " <>
+                       "join_status still reads joined"
+
+      assert twice.assigns.silences == 0,
+             "reset before dropping, or the reconnected channel starts one timeout from death"
+    end
+
+    test "a decision that gets answered resets the count" do
+      base = socket(%{pending: %{}, analysis_refs: %{}, silences: 0, attempts: 0})
+
+      {:noreply, once} = time_out(base, make_ref())
+      recovered = answer(once, make_ref())
+
+      assert recovered.assigns.silences == 0,
+             "an answered decision is the only proof the channel carries traffic"
+
+      {:noreply, after_recovery} = time_out(recovered, make_ref())
+
+      assert after_recovery.assigns.joined,
+             "two timeouts either side of a healthy answer are not a dead channel"
+
+      refute_receive {:transport_disconnect, _}, 200
+    end
+  end
+
   describe "a project someone else holds" do
     # The lease is a Postgres advisory lock on the *server's* connection, so the
     # holder during a server restart is the outgoing node, and it lets go within

@@ -38,10 +38,13 @@ defmodule CmsHarness.Project.AnalysisServer do
 
   def start_link(opts) do
     project = Keyword.fetch!(opts, :project)
-    GenServer.start_link(__MODULE__, project, name: via(project.id))
+    GenServer.start_link(__MODULE__, project, name: via(project.root))
   end
 
-  def via(project_id), do: {:via, Registry, {CmsHarness.Registry, {:analysis, project_id}}}
+  # Keyed on the working copy, not the project: two checkouts of one project
+  # resolve the same id, and keying on that gave the second one the first's
+  # queue. Issue 8b83ba20.
+  def via(root), do: {:via, Registry, {CmsHarness.Registry, {:analysis, root}}}
 
   @doc """
   Queue the runs the server asked for.
@@ -52,14 +55,14 @@ defmodule CmsHarness.Project.AnalysisServer do
   crash a channel over.
   """
   @spec enqueue(String.t(), [map()]) :: :ok
-  def enqueue(project_id, runs) when is_list(runs) do
-    case Registry.lookup(CmsHarness.Registry, {:analysis, project_id}) do
+  def enqueue(root, runs) when is_list(runs) do
+    case Registry.lookup(CmsHarness.Registry, {:analysis, root}) do
       [{pid, _}] ->
         GenServer.cast(pid, {:enqueue, runs})
 
       [] ->
         Logger.error(
-          "[CmsHarness] the server asked project #{project_id} to run " <>
+          "[CmsHarness] the server asked project #{root} to run " <>
             "#{length(runs)} analyzer(s), but this harness has no analysis queue for it. " <>
             "Those runs will sit unfinished on the server."
         )
@@ -72,8 +75,8 @@ defmodule CmsHarness.Project.AnalysisServer do
   # Test seam: block until the queue is empty. Not used in production — the
   # server learns a run finished by being told, not by anyone waiting.
   @spec idle?(String.t()) :: boolean()
-  def idle?(project_id) do
-    case Registry.lookup(CmsHarness.Registry, {:analysis, project_id}) do
+  def idle?(root) do
+    case Registry.lookup(CmsHarness.Registry, {:analysis, root}) do
       [{pid, _}] -> GenServer.call(pid, :idle?, 5_000)
       [] -> true
     end
@@ -119,7 +122,7 @@ defmodule CmsHarness.Project.AnalysisServer do
       "[CmsHarness] #{running.source} for #{state.project.root} exceeded #{timeout()}ms — killing it"
     )
 
-    Task.Supervisor.terminate_child(Sync.task_supervisor(state.project.id), running.task.pid)
+    Task.Supervisor.terminate_child(Sync.task_supervisor(state.project.root), running.task.pid)
     Process.demonitor(running.task.ref, [:flush])
     deliver(state, running, {:error, "analyzer timed out after #{timeout()}ms"})
     {:noreply, state |> clear_running() |> maybe_start_next()}
@@ -134,19 +137,20 @@ defmodule CmsHarness.Project.AnalysisServer do
   # corruption this server exists to prevent. The refusal is delivered, so the
   # server can fail that run row instead of waiting on it.
   defp accept(request, state) do
-    with {:ok, run_id, source, args} <- parse(request) do
-      if busy_with?(state, source) do
-        Logger.warning(
-          "[CmsHarness] #{source} is already running for #{state.project.root} — " <>
-            "refusing run #{run_id}"
-        )
+    case parse(request) do
+      {:ok, run_id, source, args} ->
+        if busy_with?(state, source) do
+          Logger.warning(
+            "[CmsHarness] #{source} is already running for #{state.project.root} — " <>
+              "refusing run #{run_id}"
+          )
 
-        push_result(state.project.id, run_id, source, {:error, "already running"})
-        state
-      else
-        %{state | queue: state.queue ++ [%{run_id: run_id, source: source, args: args}]}
-      end
-    else
+          push_result(state.project.root, run_id, source, {:error, "already running"})
+          state
+        else
+          %{state | queue: state.queue ++ [%{run_id: run_id, source: source, args: args}]}
+        end
+
       {:error, request} ->
         Logger.error("[CmsHarness] unreadable run_analysis entry: #{inspect(request)}")
         state
@@ -171,7 +175,7 @@ defmodule CmsHarness.Project.AnalysisServer do
     project = state.project
 
     task =
-      Task.Supervisor.async_nolink(Sync.task_supervisor(project.id), fn ->
+      Task.Supervisor.async_nolink(Sync.task_supervisor(project.root), fn ->
         Analysis.run(project, entry.source, entry.args)
       end)
 
@@ -188,11 +192,11 @@ defmodule CmsHarness.Project.AnalysisServer do
   end
 
   defp deliver(state, running, result) do
-    push_result(state.project.id, running.run_id, running.source, result)
+    push_result(state.project.root, running.run_id, running.source, result)
   end
 
-  defp push_result(project_id, run_id, source, {:ok, result}) do
-    ChannelClient.deliver_analysis_result(project_id, %{
+  defp push_result(root, run_id, source, {:ok, result}) do
+    ChannelClient.deliver_analysis_result(root, %{
       "run_id" => run_id,
       "source" => source,
       "status" => "ok",
@@ -200,10 +204,10 @@ defmodule CmsHarness.Project.AnalysisServer do
     })
   end
 
-  defp push_result(project_id, run_id, source, {:error, reason}) do
+  defp push_result(root, run_id, source, {:error, reason}) do
     Logger.error("[CmsHarness] #{source} run #{run_id} did not produce a result: #{reason}")
 
-    ChannelClient.deliver_analysis_result(project_id, %{
+    ChannelClient.deliver_analysis_result(root, %{
       "run_id" => run_id,
       "source" => source,
       "status" => "error",
@@ -211,9 +215,9 @@ defmodule CmsHarness.Project.AnalysisServer do
     })
   end
 
-  defp push_result(project_id, run_id, source, other) do
+  defp push_result(root, run_id, source, other) do
     push_result(
-      project_id,
+      root,
       run_id,
       source,
       {:error, "unreadable analyzer result: #{inspect(other)}"}

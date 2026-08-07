@@ -30,7 +30,7 @@ defmodule CmsHarness.AnalysisPathTest do
     on_exit(fn -> if previous, do: System.put_env("CMS_PROJECT_ID", previous) end)
 
     project = project_dir()
-    on_exit(fn -> stop_project(project.id) end)
+    on_exit(fn -> stop_project(project.root) end)
 
     %{project: project, client_utils?: File.exists?(Path.join(@client_utils, "mix.exs"))}
   end
@@ -68,9 +68,9 @@ defmodule CmsHarness.AnalysisPathTest do
     :ok
   end
 
-  defp await_connected(project_id, attempts \\ 200) do
+  defp await_connected(root, attempts \\ 200) do
     Enum.reduce_while(1..attempts, false, fn _, _ ->
-      if ChannelClient.connected?(project_id) do
+      if ChannelClient.connected?(root) do
         {:halt, true}
       else
         Process.sleep(50)
@@ -96,7 +96,7 @@ defmodule CmsHarness.AnalysisPathTest do
 
       FakeServer.start()
       {:ok, _} = Projects.ensure_started(ctx.project.root)
-      assert await_connected(ctx.project.id)
+      assert await_connected(ctx.project.root)
 
       FakeServer.request_analysis([%{"run_id" => 7, "source" => "compiler", "args" => []}])
 
@@ -118,7 +118,7 @@ defmodule CmsHarness.AnalysisPathTest do
   test "a run for an analyzer that cannot run is answered, not dropped", ctx do
     FakeServer.start()
     {:ok, _} = Projects.ensure_started(ctx.project.root)
-    assert await_connected(ctx.project.id)
+    assert await_connected(ctx.project.root)
 
     # There is no mix project in this directory at all, so credo cannot run.
     FakeServer.request_analysis([%{"run_id" => 11, "source" => "sobelow", "args" => []}])
@@ -137,7 +137,7 @@ defmodule CmsHarness.AnalysisPathTest do
     FakeServer.start()
     FakeServer.reject_analysis("unknown_run")
     {:ok, _} = Projects.ensure_started(ctx.project.root)
-    assert await_connected(ctx.project.id)
+    assert await_connected(ctx.project.root)
 
     log =
       capture_log(fn ->
@@ -154,7 +154,7 @@ defmodule CmsHarness.AnalysisPathTest do
   test "a second run of a source already in flight is refused, and the refusal is sent", ctx do
     FakeServer.start()
     {:ok, _} = Projects.ensure_started(ctx.project.root)
-    assert await_connected(ctx.project.id)
+    assert await_connected(ctx.project.root)
 
     # Both in one push, so the second is queued behind the first rather than
     # racing it. Two `mix test` processes in one `_build` corrupt it, which is
@@ -167,6 +167,6 @@ defmodule CmsHarness.AnalysisPathTest do
     assert %{"status" => "error", "error" => "already running"} = await_result(22)
     assert %{"status" => "error"} = await_result(21)
 
-    assert AnalysisServer.idle?(ctx.project.id)
+    assert AnalysisServer.idle?(ctx.project.root)
   end
 end

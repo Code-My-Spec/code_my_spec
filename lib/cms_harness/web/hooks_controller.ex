@@ -67,7 +67,7 @@ defmodule CmsHarness.Web.HooksController do
   end
 
   defp ask(hook, project, working_dir, params) do
-    case ChannelClient.decide_hook(project.id, hook, relativize_paths(project, params)) do
+    case ChannelClient.decide_hook(project.root, hook, relativize_paths(project, params)) do
       {:ok, decision} when is_map(decision) ->
         decision
 

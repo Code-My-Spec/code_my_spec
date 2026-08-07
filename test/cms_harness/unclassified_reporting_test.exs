@@ -48,7 +48,7 @@ defmodule CmsHarness.UnclassifiedReportingTest do
   test "an unclassified file is named at a level the release actually logs", %{root: root} do
     File.write!(Path.join(root, "test/support/random_helper.ex"), "not a role we know\n")
 
-    log = capture_log([level: :info], fn -> Sync.report_skipped("p1", root) end)
+    log = capture_log([level: :info], fn -> Sync.report_skipped(root) end)
 
     assert log =~ "match no role",
            "at :debug this never appears in a release, and an absent line reads " <>
@@ -61,20 +61,20 @@ defmodule CmsHarness.UnclassifiedReportingTest do
   test "it does not repeat itself on every scan", %{root: root} do
     File.write!(Path.join(root, "test/support/random_helper.ex"), "x\n")
 
-    assert capture_log([level: :info], fn -> Sync.report_skipped("p1", root) end) =~
+    assert capture_log([level: :info], fn -> Sync.report_skipped(root) end) =~
              "match no role"
 
-    assert capture_log([level: :info], fn -> Sync.report_skipped("p1", root) end) == "",
+    assert capture_log([level: :info], fn -> Sync.report_skipped(root) end) == "",
            "a sync every ninety seconds must not restate an unchanged list"
   end
 
   test "a newly unclassified file breaks the silence", %{root: root} do
-    assert capture_log([level: :info], fn -> Sync.report_skipped("p1", root) end) =~
+    assert capture_log([level: :info], fn -> Sync.report_skipped(root) end) =~
              "now has a role"
 
     File.write!(Path.join(root, "test/support/another_helper.ex"), "x\n")
 
-    assert capture_log([level: :info], fn -> Sync.report_skipped("p1", root) end) =~
+    assert capture_log([level: :info], fn -> Sync.report_skipped(root) end) =~
              "another_helper.ex",
            "the moment a file stops being tracked is exactly when this must speak"
   end

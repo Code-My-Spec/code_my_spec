@@ -100,10 +100,14 @@ defmodule CmsHarness.Project.ChannelClient do
 
   def start_link(opts) do
     project = Keyword.fetch!(opts, :project)
-    Slipstream.start_link(__MODULE__, project, name: via(project.id))
+    Slipstream.start_link(__MODULE__, project, name: via(project.root))
   end
 
-  def via(project_id), do: {:via, Registry, {CmsHarness.Registry, {:channel, project_id}}}
+  # Keyed on the working copy. The project id still names the *topic* — that is
+  # the server's identity for this project and is shared by every checkout of
+  # it — but two checkouts are two channels, and keying the registry on the id
+  # gave the second one the first's. Issue 8b83ba20.
+  def via(root), do: {:via, Registry, {CmsHarness.Registry, {:channel, root}}}
 
   @doc """
   Whether this project's channel is joined right now.
@@ -113,8 +117,8 @@ defmodule CmsHarness.Project.ChannelClient do
   server anything about this project.
   """
   @spec connected?(String.t()) :: boolean()
-  def connected?(project_id) do
-    case Registry.lookup(CmsHarness.Registry, {:channel, project_id}) do
+  def connected?(root) do
+    case Registry.lookup(CmsHarness.Registry, {:channel, root}) do
       [{pid, _}] -> GenServer.call(pid, :connected?, 5_000)
       [] -> false
     end
@@ -132,8 +136,8 @@ defmodule CmsHarness.Project.ChannelClient do
   shown; a turn lost to the recorder would be work destroyed.
   """
   @spec record_turn(String.t(), map()) :: :ok
-  def record_turn(project_id, payload) do
-    case Registry.lookup(CmsHarness.Registry, {:channel, project_id}) do
+  def record_turn(root, payload) do
+    case Registry.lookup(CmsHarness.Registry, {:channel, root}) do
       [{pid, _}] -> GenServer.cast(pid, {:record_turn, payload})
       [] -> :ok
     end
@@ -150,8 +154,8 @@ defmodule CmsHarness.Project.ChannelClient do
   """
   @spec decide_hook(String.t(), String.t(), map()) ::
           {:ok, map()} | {:error, :not_connected | :no_credential | :no_reply}
-  def decide_hook(project_id, hook, payload) do
-    case Registry.lookup(CmsHarness.Registry, {:channel, project_id}) do
+  def decide_hook(root, hook, payload) do
+    case Registry.lookup(CmsHarness.Registry, {:channel, root}) do
       [{pid, _}] -> GenServer.call(pid, {:decide_hook, hook, payload}, decision_timeout() + 2_000)
       [] -> {:error, :not_connected}
     end
@@ -161,8 +165,8 @@ defmodule CmsHarness.Project.ChannelClient do
 
   @doc "The read model this project last received. `nil` before the first join."
   @spec read_model(String.t()) :: ReadModel.t() | nil
-  def read_model(project_id) do
-    case Registry.lookup(CmsHarness.Registry, {:channel, project_id}) do
+  def read_model(root) do
+    case Registry.lookup(CmsHarness.Registry, {:channel, root}) do
       [{pid, _}] -> GenServer.call(pid, :read_model, 5_000)
       [] -> nil
     end
@@ -177,8 +181,8 @@ defmodule CmsHarness.Project.ChannelClient do
   in this process would stall the socket that holds the lease.
   """
   @spec request_sync(String.t()) :: :ok
-  def request_sync(project_id) do
-    case Registry.lookup(CmsHarness.Registry, {:channel, project_id}) do
+  def request_sync(root) do
+    case Registry.lookup(CmsHarness.Registry, {:channel, root}) do
       [{pid, _}] -> GenServer.cast(pid, :sync)
       [] -> :ok
     end
@@ -187,8 +191,8 @@ defmodule CmsHarness.Project.ChannelClient do
   @doc false
   # Called from the scanning task with the finished manifest.
   @spec deliver_observations(String.t(), [map()]) :: :ok
-  def deliver_observations(project_id, observations) do
-    case Registry.lookup(CmsHarness.Registry, {:channel, project_id}) do
+  def deliver_observations(root, observations) do
+    case Registry.lookup(CmsHarness.Registry, {:channel, root}) do
       [{pid, _}] -> GenServer.cast(pid, {:observations, observations})
       [] -> :ok
     end
@@ -197,8 +201,8 @@ defmodule CmsHarness.Project.ChannelClient do
   @doc false
   # Called from the analysis queue with a finished (or failed) run.
   @spec deliver_analysis_result(String.t(), map()) :: :ok
-  def deliver_analysis_result(project_id, payload) do
-    case Registry.lookup(CmsHarness.Registry, {:channel, project_id}) do
+  def deliver_analysis_result(root, payload) do
+    case Registry.lookup(CmsHarness.Registry, {:channel, root}) do
       [{pid, _}] ->
         GenServer.cast(pid, {:analysis_result, payload})
 
@@ -209,7 +213,7 @@ defmodule CmsHarness.Project.ChannelClient do
         # the visible symptom otherwise is an analyzer that appears never to
         # have run.
         Logger.error(
-          "[CmsHarness] #{payload["source"]} finished for project #{project_id} but the " <>
+          "[CmsHarness] #{payload["source"]} finished for project #{root} but the " <>
             "channel is gone — the result was discarded. It will be re-run on rejoin."
         )
 
@@ -232,6 +236,7 @@ defmodule CmsHarness.Project.ChannelClient do
       |> assign(:analysis_refs, %{})
       |> assign(:attempts, 0)
       |> assign(:refusals, 0)
+      |> assign(:silences, 0)
 
     {:ok, socket, {:continue, :connect}}
   end
@@ -280,6 +285,7 @@ defmodule CmsHarness.Project.ChannelClient do
       |> assign(:attempts, 0)
       |> assign(:refusals, 0)
       |> assign(:refused, nil)
+      |> assign(:silences, 0)
 
     schedule_read_model_refresh()
 
@@ -403,7 +409,13 @@ defmodule CmsHarness.Project.ChannelClient do
       {{from, timer}, pending} ->
         Process.cancel_timer(timer)
         GenServer.reply(from, normalize_reply(reply))
-        {:ok, socket |> assign(:pending, pending) |> maybe_rejoin(reply)}
+
+        # An answered decision is the only proof the channel carries traffic.
+        {:ok,
+         socket
+         |> assign(:pending, pending)
+         |> assign(:silences, 0)
+         |> maybe_rejoin(reply)}
     end
   end
 
@@ -474,7 +486,7 @@ defmodule CmsHarness.Project.ChannelClient do
         "on #{socket.assigns.project.root}"
     )
 
-    AnalysisServer.enqueue(socket.assigns.project.id, runs)
+    AnalysisServer.enqueue(socket.assigns.project.root, runs)
     {:ok, socket}
   end
 
@@ -547,11 +559,49 @@ defmodule CmsHarness.Project.ChannelClient do
 
       {{from, _timer}, pending} ->
         GenServer.reply(from, {:error, :no_reply})
-        {:noreply, assign(socket, :pending, pending)}
+
+        socket
+        |> assign(:pending, pending)
+        |> update(:silences, &(&1 + 1))
+        |> drop_socket_if_silent()
     end
   end
 
   def handle_info(_message, socket), do: {:noreply, socket}
+
+  # Consecutive hook decisions the server never answered.
+  #
+  # One is a slow server. Two, with nothing answered in between, is a channel
+  # that is not carrying traffic — and nothing else will ever say so. No close
+  # arrives, no error reply arrives, so `joined` stays true, `connected?/1` keeps
+  # answering yes, and every hook refuses `:no_reply` until somebody restarts the
+  # harness by hand. On 2026-08-07 that ran six minutes: four manifests pushed
+  # with no reply and roughly fifteen hooks refused, while a second harness on
+  # the same working copy was being served normally by the same live server.
+  #
+  # This is the silence twin of `maybe_rejoin/2`, which handles the case where
+  # the server *says* the topic is unmatched. Silence needs its own detector
+  # precisely because nothing is said.
+  @silence_limit 2
+
+  # Drops the socket rather than rejoining the topic, for the reason
+  # `maybe_rejoin/2` sets out: with `join_status` still joined locally,
+  # `Slipstream.join/3` is a silent no-op. Cost of being wrong is one reconnect.
+  defp drop_socket_if_silent(socket) do
+    if socket.assigns.silences >= @silence_limit do
+      Logger.warning("""
+      [CmsHarness] #{socket.assigns.silences} hook decisions in a row went unanswered on \
+      #{socket.assigns.topic}, though this harness believed it was joined. The channel is \
+      not carrying traffic. Reconnecting; hooks refuse until it lands.\
+      """)
+
+      socket = socket |> assign(:joined, false) |> assign(:silences, 0) |> pause_watcher()
+
+      {:noreply, transport().disconnect(socket)}
+    else
+      {:noreply, socket}
+    end
+  end
 
   @impl Slipstream
   def handle_call(:connected?, _from, socket) do
@@ -705,12 +755,12 @@ defmodule CmsHarness.Project.ChannelClient do
   # --- Private ---
 
   defp resume_watcher(socket) do
-    Watcher.resume(socket.assigns.project.id)
+    Watcher.resume(socket.assigns.project.root)
     socket
   end
 
   defp pause_watcher(socket) do
-    Watcher.pause(socket.assigns.project.id)
+    Watcher.pause(socket.assigns.project.root)
     socket
   end
 

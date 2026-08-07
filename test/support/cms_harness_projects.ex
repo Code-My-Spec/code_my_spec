@@ -48,8 +48,8 @@ defmodule CmsHarnessTest.Projects do
   end
 
   @doc "Stop whatever subtree a test started, so the next one starts clean."
-  def stop_project(project_id) do
-    case Registry.lookup(CmsHarness.Registry, {:project, project_id}) do
+  def stop_project(root) do
+    case Registry.lookup(CmsHarness.Registry, {:project, root}) do
       [{pid, _}] -> DynamicSupervisor.terminate_child(CmsHarness.ProjectSupervisor, pid)
       [] -> :ok
     end

@@ -23,7 +23,7 @@ defmodule CmsHarness.Sync do
   """
   @spec start(map(), ReadModel.t()) :: :ok
   def start(project, %ReadModel{} = read_model) do
-    case Task.Supervisor.start_child(task_supervisor(project.id), fn ->
+    case Task.Supervisor.start_child(task_supervisor(project.root), fn ->
            run(project, read_model)
          end) do
       {:ok, _pid} ->
@@ -57,9 +57,9 @@ defmodule CmsHarness.Sync do
         "in #{System.monotonic_time(:millisecond) - started}ms"
     )
 
-    log_unclassified(env, project.id, project.root)
+    log_unclassified(env, project.root)
 
-    ChannelClient.deliver_observations(project.id, observations)
+    ChannelClient.deliver_observations(project.root, observations)
   end
 
   # What the scan walked past.
@@ -81,13 +81,15 @@ defmodule CmsHarness.Sync do
   @doc false
   # Exposed so a test can drive it without a whole sync; the log line is the
   # behaviour under test.
-  def report_skipped(project_id, root) do
-    log_unclassified(Environment.new(:local, root), project_id, root)
+  def report_skipped(root) do
+    log_unclassified(Environment.new(:local, root), root)
   end
 
-  defp log_unclassified(env, project_id, root) do
+  # Keyed on the root: two checkouts of one project skip different files, and a
+  # dedup key shared between them silences the second one's report.
+  defp log_unclassified(env, root) do
     paths = Scanner.unclassified(env)
-    key = {__MODULE__, :unclassified, project_id}
+    key = {__MODULE__, :unclassified, root}
 
     if paths != :persistent_term.get(key, :never_scanned) do
       :persistent_term.put(key, paths)
@@ -109,6 +111,6 @@ defmodule CmsHarness.Sync do
   end
 
   @doc false
-  def task_supervisor(project_id),
-    do: {:via, Registry, {CmsHarness.Registry, {:tasks, project_id}}}
+  def task_supervisor(root),
+    do: {:via, Registry, {CmsHarness.Registry, {:tasks, root}}}
 end

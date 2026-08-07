@@ -42,7 +42,7 @@ defmodule CmsHarness.Supervisor do
       # A hook arrives as an HTTP request carrying a working directory, and
       # something has to turn that into that project's channel client. Without
       # a registry the endpoint cannot reach into the subtree at all. Keyed by
-      # `{kind, project_id}` so one registry serves every process in a project,
+      # `{kind, root}` so one registry serves every process in a project,
       # and a dead process deregisters itself.
       {Registry, keys: :unique, name: CmsHarness.Registry},
 

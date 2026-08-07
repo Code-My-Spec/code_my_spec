@@ -30,16 +30,16 @@ defmodule CmsHarness.Project.Supervisor do
 
   def start_link(opts) do
     project = Keyword.fetch!(opts, :project)
-    Supervisor.start_link(__MODULE__, project, name: via(project.id))
+    Supervisor.start_link(__MODULE__, project, name: via(project.root))
   end
 
-  def via(project_id), do: {:via, Registry, {CmsHarness.Registry, {:project, project_id}}}
+  def via(root), do: {:via, Registry, {CmsHarness.Registry, {:project, root}}}
 
   @impl true
   def init(project) do
     children = [
       {ChannelClient, project: project},
-      {Task.Supervisor, name: Sync.task_supervisor(project.id)},
+      {Task.Supervisor, name: Sync.task_supervisor(project.root)},
       {AnalysisServer, project: project},
       {Watcher, project: project}
     ]

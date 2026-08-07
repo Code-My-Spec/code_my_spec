@@ -64,12 +64,12 @@ defmodule CmsHarness.Web.MessagesController do
   # ChannelClient.record_turn/2. A turn that reached the agent has succeeded
   # whatever the server later does with the record of it.
   defp record(conn, request, response) do
-    case project_id() do
+    case served_root() do
       nil ->
         Logger.warning("[CmsHarness] no project configured — turn not recorded")
 
-      project_id ->
-        ChannelClient.record_turn(project_id, %{
+      root ->
+        ChannelClient.record_turn(root, %{
           "session_id" => header(conn, "x-cms-session-id", "sprite"),
           "agent_role" => header(conn, "x-agent-role", "main"),
           "request" => request,
@@ -82,9 +82,9 @@ defmodule CmsHarness.Web.MessagesController do
 
   # A sprite serves exactly one project and is told which at boot, so the
   # record needs no header to say where it belongs.
-  defp project_id do
+  defp served_root do
     case Projects.list() do
-      [id] -> id
+      [root] -> root
       _ -> nil
     end
   end

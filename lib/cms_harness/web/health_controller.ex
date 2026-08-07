@@ -15,12 +15,14 @@ defmodule CmsHarness.Web.HealthController do
   alias CmsHarness.Projects
 
   def index(conn, _params) do
+    # Keyed and reported by working copy. Two checkouts of one project are two
+    # entries here; reporting them by project id showed one and hid the other.
     projects =
-      Enum.map(Projects.list(), fn project_id ->
+      Enum.map(Projects.list(), fn root ->
         %{
-          id: project_id,
-          connected: Projects.connected?(project_id),
-          watching: Watcher.watching?(project_id)
+          root: root,
+          connected: Projects.connected?(root),
+          watching: Watcher.watching?(root)
         }
       end)
 

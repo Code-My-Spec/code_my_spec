@@ -3,10 +3,15 @@ defmodule CmsHarness.Projects do
   The projects this harness is serving.
 
   One harness, one endpoint, one lifecycle — and a supervision subtree per
-  project underneath. Not a process per project: the hooks are POSTed to a
-  fixed URL in the plugin's configuration, so a process per project means a
-  port per project and a discovery step on the critical path of every agent
-  turn, whose failure mode is a hook that silently posts nowhere.
+  **working copy** underneath, keyed on its root. Two checkouts of one project
+  are two subtrees: they hold different files, so a manifest from one is not a
+  statement about the other.
+
+  Not an OS process per working copy: the hooks are POSTed to a fixed URL in
+  the plugin's configuration, so a process apiece means a port apiece and a
+  discovery step on the critical path of every agent turn, whose failure mode
+  is a hook that silently posts nowhere. The working directory on the request
+  is enough to route without any of that.
 
   A sprite is simply N=1 here. Same code, same lifecycle, one child in the
   tree — which is the point, because a drill on a sprite is then a drill on the
@@ -38,6 +43,13 @@ defmodule CmsHarness.Projects do
           Logger.info("[CmsHarness] serving project #{project.id} at #{project.root}")
           {:ok, project}
 
+        # Now that the subtree is keyed on the root, this means *this working
+        # copy* is already served, and returning the caller's project is
+        # truthful. Keyed on `project.id` it did not: a second checkout of one
+        # project resolved the same id, landed here, and got back its own root
+        # while the running subtree watched the first one — hooks answered, the
+        # health endpoint said served, and every file event belonged to a tree
+        # nobody asked about. Issue 8b83ba20.
         {:error, {:already_started, _pid}} ->
           {:ok, project}
 
@@ -48,7 +60,7 @@ defmodule CmsHarness.Projects do
     end
   end
 
-  @doc "Every project id this harness currently has a subtree for."
+  @doc "Every working-copy root this harness currently has a subtree for."
   @spec list() :: [String.t()]
   def list do
     CmsHarness.Registry
@@ -62,7 +74,7 @@ defmodule CmsHarness.Projects do
   and "I could not ask" cannot be confused at the point where it matters.
   """
   @spec connected?(String.t()) :: boolean()
-  def connected?(project_id), do: ChannelClient.connected?(project_id)
+  def connected?(root), do: ChannelClient.connected?(root)
 
   @doc """
   Start the project named by the environment, if there is one.

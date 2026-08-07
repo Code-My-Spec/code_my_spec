@@ -17,7 +17,7 @@ defmodule CmsHarness.Web.HooksControllerTest do
     end)
 
     project = project_dir()
-    on_exit(fn -> stop_project(project.id) end)
+    on_exit(fn -> stop_project(project.root) end)
 
     %{project: project}
   end
@@ -115,7 +115,7 @@ defmodule CmsHarness.Web.HooksControllerTest do
 
     test "means nothing to say, not something unreadable", %{conn: conn, project: project} do
       {:ok, _} = CmsHarness.Projects.ensure_started(project.root)
-      assert await_connected(project.id)
+      assert await_connected(project.root)
 
       body = conn |> post_hook("stop", project.root) |> json_response(200)
 
@@ -128,7 +128,7 @@ defmodule CmsHarness.Web.HooksControllerTest do
 
     test "post-tool-use is not refused on every tool call", %{conn: conn, project: project} do
       {:ok, _} = CmsHarness.Projects.ensure_started(project.root)
-      assert await_connected(project.id)
+      assert await_connected(project.root)
 
       body = conn |> post_hook("post-tool-use", project.root) |> json_response(200)
 
@@ -137,9 +137,9 @@ defmodule CmsHarness.Web.HooksControllerTest do
     end
   end
 
-  defp await_connected(project_id, attempts \\ 100) do
+  defp await_connected(root, attempts \\ 100) do
     Enum.reduce_while(1..attempts, false, fn _, _ ->
-      if CmsHarness.Project.ChannelClient.connected?(project_id) do
+      if CmsHarness.Project.ChannelClient.connected?(root) do
         {:halt, true}
       else
         Process.sleep(50)
@@ -150,11 +150,11 @@ defmodule CmsHarness.Web.HooksControllerTest do
 
   describe "serving a project" do
     test "a hook for an unknown directory starts serving it", %{conn: conn, project: project} do
-      refute project.id in CmsHarness.Projects.list()
+      refute project.root in CmsHarness.Projects.list()
 
       conn |> post_hook("stop", project.root) |> json_response(200)
 
-      assert project.id in CmsHarness.Projects.list(),
+      assert project.root in CmsHarness.Projects.list(),
              "a laptop picks its projects up from the hooks that arrive, not from a list " <>
                "somebody has to maintain"
     end

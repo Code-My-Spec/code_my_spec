@@ -29,6 +29,7 @@ defmodule CmsHarness.Project.Watcher do
   require Logger
 
   alias CmsHarness.Project.ChannelClient
+  alias CodeMySpec.Files.Scanner
   alias CodeMySpec.Paths
 
   # The scanner's sync roots that are directories. `mix.exs`, `CLAUDE.md` and
@@ -69,10 +70,10 @@ defmodule CmsHarness.Project.Watcher do
 
   def start_link(opts) do
     project = Keyword.fetch!(opts, :project)
-    GenServer.start_link(__MODULE__, project, name: via(project.id))
+    GenServer.start_link(__MODULE__, project, name: via(project.root))
   end
 
-  def via(project_id), do: {:via, Registry, {CmsHarness.Registry, {:watcher, project_id}}}
+  def via(root), do: {:via, Registry, {CmsHarness.Registry, {:watcher, root}}}
 
   @doc "Start watching. Called by the channel client when it joins."
   @spec resume(String.t()) :: :ok
@@ -84,16 +85,16 @@ defmodule CmsHarness.Project.Watcher do
   #
   # A cast made the ordering a race. `start_watching/1` does not call back into
   # the channel client, so waiting here cannot deadlock.
-  def resume(project_id), do: call(project_id, :resume)
+  def resume(root), do: call(root, :resume)
 
   @doc "Stop watching. Called by the channel client when the connection goes."
   @spec pause(String.t()) :: :ok
-  def pause(project_id), do: cast(project_id, :pause)
+  def pause(root), do: cast(root, :pause)
 
   @doc "Whether this project is being watched right now."
   @spec watching?(String.t()) :: boolean()
-  def watching?(project_id) do
-    case Registry.lookup(CmsHarness.Registry, {:watcher, project_id}) do
+  def watching?(root) do
+    case Registry.lookup(CmsHarness.Registry, {:watcher, root}) do
       [{pid, _}] -> GenServer.call(pid, :watching?, 5_000)
       [] -> false
     end
@@ -101,8 +102,8 @@ defmodule CmsHarness.Project.Watcher do
     :exit, _ -> false
   end
 
-  defp cast(project_id, message) do
-    case Registry.lookup(CmsHarness.Registry, {:watcher, project_id}) do
+  defp cast(root, message) do
+    case Registry.lookup(CmsHarness.Registry, {:watcher, root}) do
       [{pid, _}] -> GenServer.cast(pid, message)
       [] -> :ok
     end
@@ -110,8 +111,8 @@ defmodule CmsHarness.Project.Watcher do
 
   # A project with no watcher is not an error — nothing is being watched, which
   # is the state the caller wanted.
-  defp call(project_id, message) do
-    case Registry.lookup(CmsHarness.Registry, {:watcher, project_id}) do
+  defp call(root, message) do
+    case Registry.lookup(CmsHarness.Registry, {:watcher, root}) do
       [{pid, _}] -> GenServer.call(pid, message)
       [] -> :ok
     end
@@ -131,7 +132,7 @@ defmodule CmsHarness.Project.Watcher do
 
   @impl true
   def handle_continue(:check_connection, state) do
-    if ChannelClient.connected?(state.project.id) do
+    if ChannelClient.connected?(state.project.root) do
       {:noreply, start_watching(state)}
     else
       {:noreply, state}
@@ -175,7 +176,7 @@ defmodule CmsHarness.Project.Watcher do
   end
 
   def handle_info(:sync, state) do
-    ChannelClient.request_sync(state.project.id)
+    ChannelClient.request_sync(state.project.root)
     {:noreply, %{state | timer: nil}}
   end
 
@@ -185,7 +186,7 @@ defmodule CmsHarness.Project.Watcher do
     schedule_resync()
 
     if state.watching? do
-      ChannelClient.request_sync(state.project.id)
+      ChannelClient.request_sync(state.project.root)
     end
 
     {:noreply, state}
@@ -262,6 +263,6 @@ defmodule CmsHarness.Project.Watcher do
   defp ignored?(root, abs_path) do
     abs_path
     |> Path.relative_to(root)
-    |> CodeMySpec.Files.Scanner.ignored_path?()
+    |> Scanner.ignored_path?()
   end
 end
