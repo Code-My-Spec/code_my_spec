@@ -30,10 +30,21 @@ defmodule Mix.Tasks.Cms.ProvisioningLeaks do
   use Mix.Task
   use Boundary, classify_to: CodeMySpec
 
-  alias CodeMySpec.Provisioning.{Hetzner, Storage, Teardown}
+  alias CodeMySpec.Provisioning.{Cloudflare, Hetzner, Resend, Storage, Teardown}
   alias CodeMySpec.Users.Scope
 
   @spex_prefix "spex-"
+
+  # A DNS record is not named like a server. Hetzner resources are *prefixed*
+  # `spex-`; a record made for one is `send.spex-story969-criterion8027.
+  # astralbi.com` or `c8025.astralbi.com`, where the marker is a label in the
+  # middle. Matching on the prefix alone reported those as real, which is the
+  # answer that let a leak sit in a live zone looking like somebody's mail
+  # setup.
+  #
+  # Anchored to label boundaries so a real domain that merely contains the
+  # letters is never swept in.
+  @spex_marker ~r/(^|\.)(spex-|c80\d{2})(\.|$)/
 
   @impl Mix.Task
   def run(args) do
@@ -59,7 +70,133 @@ defmodule Mix.Tasks.Cms.ProvisioningLeaks do
     report("Hetzner servers", server_names(%Scope{}), false)
     report("Hetzner SSH keys", ssh_key_names(%Scope{}), false)
     report("Hetzner buckets", bucket_names(credentials), delete?, &delete_bucket(&1, credentials))
+
+    # Cloudflare and Resend were missing here, and they are the two that
+    # matter most: a leaked bucket costs money, a leaked DNS record changes
+    # where somebody's mail goes. A failed recording once left DKIM and SPF
+    # records on the production zone and this task reported a clean account,
+    # because it only ever looked at Hetzner.
+    #
+    # They need OAuth rather than an env var, which is why they were skipped.
+    # The task already runs against the dev database, so the grant is right
+    # there — the same row the app refreshes under a lock, with no second copy
+    # to go stale.
+    case oauth_scope() do
+      {:ok, scope} ->
+        report("Cloudflare DNS records", dns_record_names(scope), delete?, &delete_dns(scope, &1))
+        report("Resend domains", resend_domain_names(scope), delete?, &delete_domain(scope, &1))
+
+      :error ->
+        Mix.shell().info("\nCloudflare / Resend")
+        Mix.shell().error("  no connected account found — these were NOT audited")
+    end
   end
+
+  # The account owner's scope, built from the dev database this task already
+  # reads. Nothing is created; if there is no connected owner the caller is
+  # told rather than shown an empty list, because "nothing leaked" and "nothing
+  # was checked" must never look the same.
+  # A second, named repo pointed at dev, exactly as the spex do it when they
+  # borrow a live grant. The whole application starts first — the tokens are
+  # encrypted at rest, and Cloak's vault is a supervised process, so without it
+  # every row comes back as an undecryptable binary rather than as "no
+  # integrations found". Under `MIX_ENV=test` the endpoint is configured not to
+  # serve, so nothing binds a port and the running dev server is untouched.
+  defp start_dev_repo do
+    {:ok, _} = Application.ensure_all_started(:code_my_spec)
+
+    config =
+      :code_my_spec
+      |> Application.get_env(CodeMySpec.Repo, [])
+      |> Keyword.merge(
+        name: :leak_audit_dev_repo,
+        database: "code_my_spec_dev",
+        pool: DBConnection.ConnectionPool,
+        pool_size: 1,
+        log: false
+      )
+
+    case CodeMySpec.Repo.start_link(config) do
+      {:ok, _} -> CodeMySpec.Repo.put_dynamic_repo(:leak_audit_dev_repo) && :ok
+      {:error, {:already_started, _}} -> CodeMySpec.Repo.put_dynamic_repo(:leak_audit_dev_repo) && :ok
+      other -> other
+    end
+  end
+
+  defp oauth_scope do
+    import Ecto.Query
+
+    with :ok <- start_dev_repo(),
+         %{id: user_id} = user <-
+           CodeMySpec.Repo.one(
+             from u in CodeMySpec.Users.User,
+               join: i in "integrations",
+               on: i.user_id == u.id,
+               where: i.provider == "cloudflare",
+               limit: 1
+           ),
+         account_id when not is_nil(account_id) <-
+           CodeMySpec.Repo.one(
+             from p in "user_preferences",
+               where: p.user_id == ^user_id,
+               select: type(p.active_account_id, :binary_id)
+           ) do
+      {:ok, %Scope{user: user, user_id: user_id, active_account_id: account_id}}
+    else
+      _ -> :error
+    end
+  end
+
+  # Every record in every zone whose name carries a spex marker. Listing by
+  # name rather than by zone on purpose: the failure being audited for is a
+  # record landing in a zone nobody expected, so a per-zone view would file it
+  # under the zone it should not have been in and read as normal.
+  defp dns_record_names(scope) do
+    case Cloudflare.list_zones(scope) do
+      {:ok, zones} ->
+        Enum.flat_map(zones, fn zone ->
+          case Cloudflare.list_dns_records(scope, zone["id"]) do
+            {:ok, records} -> Enum.map(records, & &1["name"])
+            _ -> []
+          end
+        end)
+
+      other ->
+        Mix.shell().error("could not list zones: #{inspect(other)}")
+        []
+    end
+  end
+
+  defp resend_domain_names(scope) do
+    case Resend.list_domains(scope) do
+      {:ok, domains} -> Enum.map(domains, & &1["name"])
+      _ -> []
+    end
+  end
+
+  defp delete_dns(scope, name) do
+    with {:ok, zone} <- Cloudflare.find_zone(scope, registrable(name)),
+         {:ok, records} <- Cloudflare.list_dns_records(scope, zone["id"]) do
+      records
+      |> Enum.filter(&(&1["name"] == name))
+      |> Enum.each(&Cloudflare.delete_dns_record(scope, zone["id"], &1["id"]))
+
+      :ok
+    else
+      _ -> {:error, name}
+    end
+  end
+
+  defp delete_domain(scope, name) do
+    with {:ok, %{"id" => id}} <- Resend.find_domain(scope, name),
+         {:ok, _} <- Resend.delete_domain(scope, id) do
+      :ok
+    else
+      _ -> {:error, name}
+    end
+  end
+
+  defp registrable(name), do: name |> String.split(".") |> Enum.take(-2) |> Enum.join(".")
 
   # Through the app's own teardown, not a raw delete: emptying first is the
   # part people forget, and a bucket with one object in it refuses to go.
@@ -109,6 +246,11 @@ defmodule Mix.Tasks.Cms.ProvisioningLeaks do
     end
   end
 
+  defp leaked?(name) do
+    name = to_string(name)
+    String.starts_with?(name, @spex_prefix) or name =~ @spex_marker
+  end
+
   # Providers are inconsistent about this: servers come back as maps with
   # string keys, buckets sometimes as bare names.
   defp name_of(%{name: name}), do: name
@@ -120,7 +262,7 @@ defmodule Mix.Tasks.Cms.ProvisioningLeaks do
   # and the whole value of this task is that the distinction is obvious at a
   # glance rather than inferred from a name.
   defp report(label, names, delete?, deleter \\ nil) do
-    {leaked, real} = Enum.split_with(names, &String.starts_with?(to_string(&1), @spex_prefix))
+    {leaked, real} = Enum.split_with(names, &leaked?/1)
 
     Mix.shell().info("\n#{label}")
     Mix.shell().info("  real (#{length(real)}): #{inspect(real)}")
