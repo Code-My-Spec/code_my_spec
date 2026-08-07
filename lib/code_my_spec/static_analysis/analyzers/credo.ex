@@ -11,9 +11,9 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.Credo do
   @behaviour CodeMySpec.StaticAnalysis.AnalyzerBehaviour
 
   alias CodeMySpec.Environments
+  alias CodeMySpec.Problems
   alias CodeMySpec.StaticAnalysis
   alias CodeMySpec.StaticAnalysis.CredoRun
-  alias CodeMySpec.Problems
   alias CodeMySpec.Users.Scope
 
   require Logger
@@ -204,10 +204,25 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.Credo do
       {:ok, _other} ->
         {:error, "Unexpected JSON structure from Credo output"}
 
+      # Not `{:ok, []}`. An empty issue list is a clean sweep, and a `:full`
+      # reconcile against one deletes every credo Problem the project has — so
+      # output this could not read was recorded as a codebase with nothing wrong
+      # with it, and a broken analyzer became indistinguishable from a clean run.
+      # `CredoRun.parse/1` already refuses this on the harness path and its
+      # comment names this line; both answer the same way now.
+      #
+      # The excerpt travels with the error because the reason is almost always
+      # in it — `** (Mix) The task "credo" could not be found`, a compile error,
+      # a stray log line on stdout.
       :error ->
-        Logger.warning("No JSON document in Credo's output")
-        Logger.debug("Raw output: #{String.slice(output, 0, 500)}")
-        {:ok, []}
+        Logger.warning(
+          "[Credo] no JSON document in credo's output: " <>
+            (output |> String.trim() |> String.slice(0, 200))
+        )
+
+        {:error,
+         "credo produced output that is not JSON: " <>
+           (output |> String.trim() |> String.slice(0, 300))}
     end
   end
 

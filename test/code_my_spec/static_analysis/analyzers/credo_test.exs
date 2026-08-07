@@ -338,6 +338,48 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.CredoTest do
     })
   end
 
+  # ============================================================================
+  # unreadable output
+  # ============================================================================
+
+  describe "output that is not JSON" do
+    # This used to answer `{:ok, []}`. An empty issue list is a clean sweep, and
+    # a `:full` reconcile against one deletes every credo Problem the project
+    # has — so output the analyzer could not read was recorded as a codebase
+    # with nothing wrong with it. On 2026-08-07 that ran four times in server.log
+    # in ninety minutes, each `Failed to parse Credo JSON` followed within
+    # milliseconds by `credo reconciled: 0 problem(s) (full)`.
+    defp write_output(contents) do
+      path = Path.join(System.tmp_dir!(), "credo_not_json_#{System.unique_integer([:positive])}")
+      File.write!(path, contents)
+      on_exit(fn -> File.rm(path) end)
+      path
+    end
+
+    test "a mix error is an error, not a clean sweep", %{scope: scope} do
+      path = write_output(~s(** \(Mix\) The task "credo" could not be found))
+
+      capture_log(fn ->
+        assert {:error, reason} = Credo.run(scope, output_file: path)
+        assert reason =~ "not JSON"
+
+        refute match?({:ok, []}, Credo.run(scope, output_file: path)),
+               "an unreadable run must never be recorded as zero problems"
+      end)
+    end
+
+    test "the excerpt travels with the error, because the reason is in it", %{scope: scope} do
+      path = write_output("** (Mix) The task \"credo\" could not be found")
+
+      capture_log(fn ->
+        assert {:error, reason} = Credo.run(scope, output_file: path)
+
+        assert reason =~ "could not be found",
+               "without the excerpt the operator sees a parse failure and no cause"
+      end)
+    end
+  end
+
   defp list_temp_files(temp_dir, prefix) do
     temp_dir |> File.ls() |> filter_by_prefix(prefix)
   end

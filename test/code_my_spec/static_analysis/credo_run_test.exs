@@ -59,6 +59,18 @@ defmodule CodeMySpec.StaticAnalysis.CredoRunTest do
              "a stray object inside a warning would otherwise pass for credo's answer"
     end
 
+    test "a log line written to stdout in front of the document is not a document" do
+      # The observed corruption on 2026-08-07: `Failed to parse Credo JSON:
+      # unexpected byte at position 1: 0x32`. 0x32 is the leading `2` of a
+      # `21:36:49.068 [info] ...` Logger line — something logged to stdout
+      # during the run and landed in front of credo's answer.
+      assert :error = CredoRun.extract_json("21:36:49.068 [info] something happened\n")
+
+      assert {:ok, %{"issues" => []}} =
+               CredoRun.extract_json("21:36:49.068 [info] chatter\n" <> ~s({"issues": []})),
+             "a log line before a real document must not lose the document"
+    end
+
     test "plain output with no preamble still works" do
       assert {:ok, %{"issues" => [_, _]}} = CredoRun.extract_json(@document)
     end
