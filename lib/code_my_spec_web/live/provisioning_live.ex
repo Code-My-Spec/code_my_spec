@@ -176,9 +176,19 @@ defmodule CodeMySpecWeb.ProvisioningLive do
 
     <section data-test="domain" class="my-6">
       <h2 class="text-lg font-semibold">Domain</h2>
+      <%!-- Describes what actually happens. It used to say "check a name, see
+            what it costs, then say yes" — and steps two and three were
+            unreachable for every input. Cloudflare's Registrar API returns a
+            price and an availability answer only for domains already on the
+            account; for anything else it returns the name and whether the TLD
+            is supported, and nothing more. So a name you do not own can never
+            be priced here, and a name you do own has no price to show.
+            Advertising the flow the API cannot support read as a broken
+            feature rather than a provider limitation. --%>
       <p class="opacity-70 text-sm">
-        Check a name, see what it costs, then say yes. Registration is not refundable,
-        so nothing is bought without that second step.
+        Bring a domain you already own and check it here to adopt it. To register a new
+        one, buy it in the Cloudflare dashboard and come back — the Registrar API will
+        not price or sell a name this app does not already hold.
       </p>
 
       <form data-test="domain-form" phx-submit="check_domain" class="mt-3 flex gap-2 items-end">
