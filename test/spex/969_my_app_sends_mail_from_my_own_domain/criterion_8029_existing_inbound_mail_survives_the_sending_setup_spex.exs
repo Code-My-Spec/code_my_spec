@@ -54,7 +54,11 @@ defmodule CodeMySpecSpex.Story969.Criterion8029Spex do
         before =
           with_provider_cassette(@existing_cassette, fn ->
             existing_apex_mx(context.scope, project)
-            verified_sending_domains(context.scope, project)
+
+            # The apex MX is the precondition; the sending records are not.
+            # Publishing them here would leave the step nothing to do but adopt
+            # records already in place, and "publishing left the apex alone"
+            # would then be a claim about the fixture rather than the step.
 
             {:ok, view, _html} =
               live(context.conn, "/app/projects/#{context.project.id}/provisioning")

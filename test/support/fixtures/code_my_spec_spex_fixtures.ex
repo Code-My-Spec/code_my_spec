@@ -76,6 +76,34 @@ defmodule CodeMySpecSpex.Fixtures do
     publish_records(scope, sending_domain, :except_dkim)
   end
 
+  @doc """
+  Publish every record, then delete the DKIM — the state 8027 is now grounded
+  on.
+
+  The deletion is what makes this stick. The step publishes whatever is
+  missing, so a record that was merely never written comes straight back and
+  the domain verifies; a record that was *deleted* leaves its absence in a
+  recursive resolver's cache for the zone's SOA negative TTL, which outlasts
+  the verification window. That is also the real story — somebody tidying DNS
+  who does not recognise `resend._domainkey`.
+
+  Returns the same shape as `publish_all_records_except_dkim/2`, with the DKIM
+  still listed: it existed, so teardown should still look for it.
+  """
+  @spec publish_then_delete_dkim(Scope.t(), String.t()) :: {:ok, map()} | {:error, term()}
+  def publish_then_delete_dkim(scope, sending_domain) do
+    alias CodeMySpec.Provisioning.Cloudflare
+
+    with {:ok, created} <- publish_records(scope, sending_domain, :all),
+         {:ok, records} <- Cloudflare.list_dns_records(scope, created.zone_id) do
+      records
+      |> Enum.filter(&String.contains?(&1["name"], "_domainkey"))
+      |> Enum.each(&Cloudflare.delete_dns_record(scope, created.zone_id, &1["id"]))
+
+      {:ok, created}
+    end
+  end
+
   defp publish_records(scope, sending_domain, which) do
     alias CodeMySpec.Provisioning.{Cloudflare, Resend}
 

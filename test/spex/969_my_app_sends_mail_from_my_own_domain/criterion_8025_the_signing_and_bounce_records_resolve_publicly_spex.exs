@@ -37,19 +37,27 @@ defmodule CodeMySpecSpex.Story969.Criterion8025Spex do
 
   spex "The signing and bounce records resolve publicly" do
     scenario "each record the provider asked for resolves from a public resolver" do
-      given_ "the mail provider has told setup which records it needs", context do
+      given_ "a domain of Sam's that the provider has never seen", context do
         # Its own subdomain. Every criterion in this story used one shared name,
         # so whichever ran second found the first's sending domain already
         # registered and *adopted* it — and an adopted resource is never torn
         # down. Recorded alone each one passed; run together they replayed each
         # other's state.
-        project = own_domain(context.project, "c8025.astralbi.com")
+        _project = own_domain(context.project, "c8025.astralbi.com")
         tear_down_after(context.scope, [:email])
 
+        # Nothing is published here on purpose. Publishing is the step's job
+        # (rule 32d294dc), and a fixture that did it first left the step with
+        # nothing to do but adopt records already in place — which is how the
+        # step shipped unable to publish at all while this criterion stayed
+        # green.
+        #
+        # Nothing probes these names beforehand either. A resolver asked for a
+        # name that does not exist yet caches the absence for the zone's SOA
+        # negative TTL, and the record would then be invisible for half an hour
+        # after it was written.
         view =
           with_provider_cassette(@given_cassette, fn ->
-            verified_sending_domains(context.scope, project)
-
             {:ok, view, _html} =
               live(context.conn, "/app/projects/#{context.project.id}/provisioning")
 
@@ -59,7 +67,7 @@ defmodule CodeMySpecSpex.Story969.Criterion8025Spex do
         {:ok, Map.put(context, :view, view)}
       end
 
-      when_ "the email step publishes them", context do
+      when_ "the email step registers the domain and publishes what it asks for", context do
         html =
           with_provider_cassette(@cassette, fn ->
             context.view

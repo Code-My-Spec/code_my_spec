@@ -22,6 +22,20 @@ defmodule CodeMySpecSpex.Case do
     quote do
       @endpoint CodeMySpecLocalWeb.Endpoint
 
+      # `ownership_timeout` was already raised for recording; ExUnit's own test
+      # timeout never was, and it is the shorter of the two. Registering a
+      # sending domain and waiting for a provider to see its DNS takes minutes
+      # against the 60s default.
+      #
+      # This stayed hidden because every recording found the previous
+      # recording's domains still on the account and verified instantly — the
+      # residue was doing the waiting. A genuinely clean account timed out all
+      # seven criteria, which is the honest cost of the work.
+      #
+      # Replay keeps the default: nothing is waiting on anything, so a spex
+      # that runs long there is hung rather than patient.
+      @moduletag timeout: CodeMySpecSpex.Case.spex_timeout()
+
       use CodeMySpecLocalWeb, :verified_routes
       use SexySpex
 
@@ -35,6 +49,17 @@ defmodule CodeMySpecSpex.Case do
       import Phoenix.LiveViewTest
       import CodeMySpecSpex.Case
     end
+  end
+
+  @doc """
+  How long one criterion may take, given what it is actually waiting on.
+
+  Recording waits on real DNS propagating and a provider re-checking it, which
+  is minutes per criterion. Replay waits on nothing and keeps ExUnit's default,
+  so a long-running replay reads as hung rather than as patient.
+  """
+  def spex_timeout do
+    if System.get_env("SPEX_CASSETTE_MODE") == "record", do: :timer.minutes(20), else: 60_000
   end
 
   @doc """
@@ -1047,9 +1072,16 @@ defmodule CodeMySpecSpex.Case do
   @doc """
   A sending domain that is stuck for a *specific* reason.
 
-  Everything Resend asks for is published except DKIM, so the domain refuses
-  to verify and the record at fault is identifiable — which is the difference
-  between "verification timed out" and something Sam can act on.
+  Everything Resend asks for is published, and then the DKIM is deleted — the
+  way it happens for real is somebody tidying DNS who does not recognise
+  `resend._domainkey`. The domain refuses to verify and the record at fault is
+  identifiable, which is the difference between "verification timed out" and
+  something Sam can act on.
+
+  Deleting rather than withholding is what keeps this premise reachable. The
+  step publishes whatever is missing, so a record that was never written comes
+  straight back; a record that was deleted leaves its absence in a resolver's
+  cache for the zone's SOA negative TTL, which outlasts the wait.
 
   Registers teardown of both the DNS records and the Resend domain. These are
   real records in a real zone; leaving them behind would change how mail for
@@ -1059,7 +1091,7 @@ defmodule CodeMySpecSpex.Case do
     project = unverifiable_domain(project, context)
 
     case with_provider_cassette("setup_#{slug(project.domain)}_partial_records", fn ->
-           Fixtures.publish_all_records_except_dkim(scope, project.domain)
+           Fixtures.publish_then_delete_dkim(scope, project.domain)
          end) do
       {:ok, created} ->
         ExUnit.Callbacks.on_exit(fn ->
