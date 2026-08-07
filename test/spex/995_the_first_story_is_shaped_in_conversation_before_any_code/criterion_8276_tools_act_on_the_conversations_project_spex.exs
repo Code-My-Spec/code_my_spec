@@ -44,7 +44,7 @@ defmodule CodeMySpecSpex.Story995.Criterion8276Spex do
   spex "The conversation's project is the one the tools act on" do
     scenario "Tools act on the conversation's project" do
       given_ "a conversation belonging to Sam's project", context do
-        other = CodeMySpec.ProjectsFixtures.project_fixture(context.scope)
+        other = CodeMySpecSpex.Fixtures.project_fixture(context.scope)
 
         {:ok, chat, _html} = live(context.conn, ~p"/app/projects/#{context.project.id}/chat")
 
