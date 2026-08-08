@@ -130,6 +130,32 @@ defmodule CodeMySpec.Harnesses do
   @spec most_recent(Scope.t()) :: Harness.t() | nil
   def most_recent(%Scope{} = scope), do: scope |> list_harnesses() |> List.first()
 
+  @doc """
+  The scope a page showing files or problems should read with.
+
+  Those are per working copy, so a page holding a project-wide scope shows every
+  checkout's rows merged — the same path listed once per checkout, with nothing
+  saying which is which, and one checkout's failures sitting against another's
+  code. Defaulting to the most recently active harness makes the page describe
+  one checkout again.
+
+  Most recent rather than a stored preference because it needs no configuration
+  and stays right for a checkout nobody thought to classify — criterion 739.
+  A project with no harness keeps a project-wide scope, which is the honest
+  answer when nothing has ever synced.
+  """
+  @spec viewing(Scope.t() | nil) :: Scope.t() | nil
+  def viewing(nil), do: nil
+
+  def viewing(%Scope{active_project_id: nil} = scope), do: scope
+
+  def viewing(%Scope{} = scope) do
+    case most_recent(scope) do
+      nil -> scope
+      harness -> %{scope | active_harness_id: harness.id}
+    end
+  end
+
   # Scoped by project as well as id: an id from one project must not resolve
   # against another's, or a misconfigured checkout would silently adopt a
   # harness belonging to a project it has nothing to do with.

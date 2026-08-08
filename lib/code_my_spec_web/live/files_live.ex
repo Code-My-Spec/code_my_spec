@@ -13,6 +13,7 @@ defmodule CodeMySpecWeb.FilesLive do
   alias CodeMySpec.Files
   alias CodeMySpec.Files.ComponentSync, as: FileComponentSync
   alias CodeMySpec.Files.FileSync
+  alias CodeMySpec.Harnesses
   alias CodeMySpec.ProjectSync.Sync, as: ProjectSync
   alias CodeMySpec.Requirements
 
@@ -22,6 +23,12 @@ defmodule CodeMySpecWeb.FilesLive do
 
   @impl true
   def mount(_params, _session, socket) do
+    # Files and problems belong to a working copy. Without this the page shows
+    # every checkout's rows merged — the same path once per checkout, one
+    # checkout's failures against another's code — so it reads as the most
+    # recently active one until there is a picker to say otherwise.
+    socket = assign(socket, :scope, Harnesses.viewing(socket.assigns[:scope]))
+
     {:ok,
      assign(socket,
        section: :files,
@@ -146,8 +153,7 @@ defmodule CodeMySpecWeb.FilesLive do
       {:error, reason} ->
         Logger.error("[FilesLive] Sync failed: #{inspect(reason)}")
 
-        {:noreply,
-         assign(socket, sync_status: :error, sync_result: %{error: inspect(reason)})}
+        {:noreply, assign(socket, sync_status: :error, sync_result: %{error: inspect(reason)})}
     end
   end
 
@@ -170,224 +176,227 @@ defmodule CodeMySpecWeb.FilesLive do
   @impl true
   def render(assigns) do
     ~H"""
-      <div :if={@error} role="alert" class="alert alert-error">
-        <span>{@error}</span>
+    <div :if={@error} role="alert" class="alert alert-error">
+      <span>{@error}</span>
+    </div>
+
+    <div :if={!@error && @project && @result}>
+      <div
+        data-test="watcher-activity"
+        data-event-count={@watcher_event_count}
+        data-last-path={@watcher_last_event && @watcher_last_event.path}
+        data-last-at={@watcher_last_event && DateTime.to_iso8601(@watcher_last_event.at)}
+        class="hidden"
+      >
+      </div>
+      <div class="mb-6 flex justify-between items-start">
+        <div>
+          <h1 class="text-3xl font-bold">Files</h1>
+          <p class="text-base-content/60 mt-1">
+            Every tracked file in this project, projected from disk into the DB.
+            Use this view to spot drift between the filesystem and the projection.
+          </p>
+          <div
+            :if={@watcher_last_event}
+            data-test="watcher-last-event"
+            class="text-xs text-base-content/50 mt-1 font-mono"
+          >
+            Watcher: last event {@watcher_last_event.path} ({@watcher_event_count} total)
+          </div>
+        </div>
+        <div class="flex flex-row gap-2 shrink-0">
+          <button
+            type="button"
+            phx-click="sync"
+            data-test="sync-button"
+            disabled={@sync_status == :running}
+            class="btn btn-primary"
+            title="Walk filesystem and project files into the DB (no embeddings)"
+          >
+            <span :if={@sync_status == :running} class="loading loading-spinner loading-sm"></span>
+            {if @sync_status == :running, do: "Syncing…", else: "Sync"}
+          </button>
+          <button
+            type="button"
+            phx-click="embed"
+            data-test="embed-button"
+            disabled={@sync_status == :running}
+            class="btn btn-secondary"
+            title="Run embedding hooks against currently-tracked files (slow)"
+          >
+            <span :if={@sync_status == :running} class="loading loading-spinner loading-sm"></span>
+            Embed
+          </button>
+          <button
+            type="button"
+            phx-click={show_confirm("confirm-purge-files")}
+            data-test="purge-button"
+            disabled={@sync_status == :running}
+            class="btn btn-error btn-outline"
+          >
+            Purge All
+          </button>
+          <.confirm_dialog
+            id="confirm-purge-files"
+            title="Purge all components and requirements?"
+            message="This will delete ALL components and requirements for this project."
+            confirm_label="Purge"
+            on_confirm={JS.push("purge")}
+          />
+        </div>
       </div>
 
-      <div :if={!@error && @project && @result}>
-        <div
-          data-test="watcher-activity"
-          data-event-count={@watcher_event_count}
-          data-last-path={@watcher_last_event && @watcher_last_event.path}
-          data-last-at={@watcher_last_event && DateTime.to_iso8601(@watcher_last_event.at)}
-          class="hidden"
-        ></div>
-        <div class="mb-6 flex justify-between items-start">
-          <div>
-            <h1 class="text-3xl font-bold">Files</h1>
-            <p class="text-base-content/60 mt-1">
-              Every tracked file in this project, projected from disk into the DB.
-              Use this view to spot drift between the filesystem and the projection.
-            </p>
-            <div
-              :if={@watcher_last_event}
-              data-test="watcher-last-event"
-              class="text-xs text-base-content/50 mt-1 font-mono"
-            >
-              Watcher: last event {@watcher_last_event.path} ({@watcher_event_count} total)
-            </div>
-          </div>
-          <div class="flex flex-row gap-2 shrink-0">
-            <button
-              type="button"
-              phx-click="sync"
-              data-test="sync-button"
-              disabled={@sync_status == :running}
-              class="btn btn-primary"
-              title="Walk filesystem and project files into the DB (no embeddings)"
-            >
-              <span :if={@sync_status == :running} class="loading loading-spinner loading-sm"></span>
-              {if @sync_status == :running, do: "Syncing…", else: "Sync"}
-            </button>
-            <button
-              type="button"
-              phx-click="embed"
-              data-test="embed-button"
-              disabled={@sync_status == :running}
-              class="btn btn-secondary"
-              title="Run embedding hooks against currently-tracked files (slow)"
-            >
-              <span :if={@sync_status == :running} class="loading loading-spinner loading-sm"></span>
-              Embed
-            </button>
-            <button
-              type="button"
-              phx-click={show_confirm("confirm-purge-files")}
-              data-test="purge-button"
-              disabled={@sync_status == :running}
-              class="btn btn-error btn-outline"
-            >
-              Purge All
-            </button>
-            <.confirm_dialog
-              id="confirm-purge-files"
-              title="Purge all components and requirements?"
-              message="This will delete ALL components and requirements for this project."
-              confirm_label="Purge"
-              on_confirm={JS.push("purge")}
-            />
-          </div>
-        </div>
-
-        <div
-          :if={@sync_status == :done && is_list(@sync_result)}
-          role="alert"
-          class="alert alert-success alert-soft mb-6"
+      <div
+        :if={@sync_status == :done && is_list(@sync_result)}
+        role="alert"
+        class="alert alert-success alert-soft mb-6"
+      >
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          fill="none"
+          viewBox="0 0 24 24"
+          class="h-6 w-6 shrink-0 stroke-current"
         >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            fill="none"
-            viewBox="0 0 24 24"
-            class="h-6 w-6 shrink-0 stroke-current"
-          >
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-            />
-          </svg>
-          <div>
-            <h3 class="font-bold">Sync Complete</h3>
-            <ul class="mt-1 text-sm space-y-0.5">
-              <li :for={{label, value} <- @sync_result}>
-                <span class="opacity-70">{label}:</span>
-                <span class="font-mono">{value}</span>
-              </li>
-            </ul>
-          </div>
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+          />
+        </svg>
+        <div>
+          <h3 class="font-bold">Sync Complete</h3>
+          <ul class="mt-1 text-sm space-y-0.5">
+            <li :for={{label, value} <- @sync_result}>
+              <span class="opacity-70">{label}:</span>
+              <span class="font-mono">{value}</span>
+            </li>
+          </ul>
         </div>
+      </div>
 
-        <div
-          :if={@sync_status == :error && is_map(@sync_result)}
-          role="alert"
-          class="alert alert-error alert-soft mb-6"
+      <div
+        :if={@sync_status == :error && is_map(@sync_result)}
+        role="alert"
+        class="alert alert-error alert-soft mb-6"
+      >
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          fill="none"
+          viewBox="0 0 24 24"
+          class="h-6 w-6 shrink-0 stroke-current"
         >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            fill="none"
-            viewBox="0 0 24 24"
-            class="h-6 w-6 shrink-0 stroke-current"
-          >
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-            />
-          </svg>
-          <div>
-            <h3 class="font-bold">Sync Failed</h3>
-            <pre class="text-xs mt-2 whitespace-pre-wrap">{@sync_result.error}</pre>
-          </div>
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M12 9v2m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+          />
+        </svg>
+        <div>
+          <h3 class="font-bold">Sync Failed</h3>
+          <pre class="text-xs mt-2 whitespace-pre-wrap">{@sync_result.error}</pre>
         </div>
+      </div>
 
-        <div class="flex gap-2 mb-4">
-          <.link
-            patch={files_path(@slug, page: 1, filter: :all)}
-            data-test="filter-all"
-            class={"btn btn-sm " <> if(@filter == :all, do: "btn-primary", else: "btn-ghost")}
-          >
-            All ({@result.unfiltered_count})
-          </.link>
-          <.link
-            patch={files_path(@slug, page: 1, filter: :invalid)}
-            data-test="filter-invalid"
-            class={"btn btn-sm " <> if(@filter == :invalid, do: "btn-error", else: "btn-ghost")}
-          >
-            Invalid only ({@result.invalid_count})
-          </.link>
-        </div>
+      <div class="flex gap-2 mb-4">
+        <.link
+          patch={files_path(@slug, page: 1, filter: :all)}
+          data-test="filter-all"
+          class={"btn btn-sm " <> if(@filter == :all, do: "btn-primary", else: "btn-ghost")}
+        >
+          All ({@result.unfiltered_count})
+        </.link>
+        <.link
+          patch={files_path(@slug, page: 1, filter: :invalid)}
+          data-test="filter-invalid"
+          class={"btn btn-sm " <> if(@filter == :invalid, do: "btn-error", else: "btn-ghost")}
+        >
+          Invalid only ({@result.invalid_count})
+        </.link>
+      </div>
 
-        <div class="overflow-x-auto">
-          <table class="table table-zebra table-sm" data-test="files-table">
-            <thead>
-              <tr>
-                <th>Path</th>
-                <th>Role</th>
-                <th>Validity</th>
-                <th>Component</th>
-                <th>Size</th>
-                <th>mtime</th>
-                <th>Fingerprint</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr
-                :for={file <- @result.files}
-                data-test="file-row"
-                data-file-path={file.path}
+      <div class="overflow-x-auto">
+        <table class="table table-zebra table-sm" data-test="files-table">
+          <thead>
+            <tr>
+              <th>Path</th>
+              <th>Role</th>
+              <th>Validity</th>
+              <th>Component</th>
+              <th>Size</th>
+              <th>mtime</th>
+              <th>Fingerprint</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr
+              :for={file <- @result.files}
+              data-test="file-row"
+              data-file-path={file.path}
+            >
+              <td class="font-mono text-xs" data-test="file-path">{file.path}</td>
+              <td data-test="file-role">{format_role(file.role)}</td>
+              <td data-test="file-validity" data-validity={validity_label(file)}>
+                <.validity_badge file={file} />
+              </td>
+              <td>
+                <.component_cell file={file} slug={@slug} socket={@socket} />
+              </td>
+              <td class="font-mono text-xs">{file.size}</td>
+              <td
+                class="font-mono text-xs"
+                data-test="file-mtime"
+                data-mtime={raw_mtime(file.mtime)}
               >
-                <td class="font-mono text-xs" data-test="file-path">{file.path}</td>
-                <td data-test="file-role">{format_role(file.role)}</td>
-                <td data-test="file-validity" data-validity={validity_label(file)}>
-                  <.validity_badge file={file} />
-                </td>
-                <td>
-                  <.component_cell file={file} slug={@slug} socket={@socket} />
-                </td>
-                <td class="font-mono text-xs">{file.size}</td>
-                <td
-                  class="font-mono text-xs"
-                  data-test="file-mtime"
-                  data-mtime={raw_mtime(file.mtime)}
-                >{format_mtime(file.mtime)}</td>
-                <td
-                  class="font-mono text-xs"
-                  data-test="file-fingerprint"
-                  data-fingerprint={file.fingerprint}
-                  title={file.fingerprint}
-                >
-                  {format_fingerprint(file.fingerprint)}
-                </td>
-              </tr>
-              <tr :if={@result.files == []}>
-                <td colspan="7" class="text-center opacity-60 py-8">
-                  No files match the current filter.
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-
-        <nav
-          :if={@result.total_pages > 1}
-          data-test="pagination"
-          class="flex justify-between items-center mt-4"
-        >
-          <span class="text-sm opacity-60">
-            Page {@result.page} of {@result.total_pages} ({@result.total_count} files)
-          </span>
-          <div class="join">
-            <.link
-              :if={@result.page > 1}
-              patch={files_path(@slug, page: @result.page - 1, filter: @filter)}
-              data-test="prev-page"
-              class="join-item btn btn-sm"
-            >
-              ← Prev
-            </.link>
-            <.link
-              :if={@result.page < @result.total_pages}
-              patch={files_path(@slug, page: @result.page + 1, filter: @filter)}
-              data-test="next-page"
-              class="join-item btn btn-sm"
-            >
-              Next →
-            </.link>
-          </div>
-        </nav>
+                {format_mtime(file.mtime)}
+              </td>
+              <td
+                class="font-mono text-xs"
+                data-test="file-fingerprint"
+                data-fingerprint={file.fingerprint}
+                title={file.fingerprint}
+              >
+                {format_fingerprint(file.fingerprint)}
+              </td>
+            </tr>
+            <tr :if={@result.files == []}>
+              <td colspan="7" class="text-center opacity-60 py-8">
+                No files match the current filter.
+              </td>
+            </tr>
+          </tbody>
+        </table>
       </div>
+
+      <nav
+        :if={@result.total_pages > 1}
+        data-test="pagination"
+        class="flex justify-between items-center mt-4"
+      >
+        <span class="text-sm opacity-60">
+          Page {@result.page} of {@result.total_pages} ({@result.total_count} files)
+        </span>
+        <div class="join">
+          <.link
+            :if={@result.page > 1}
+            patch={files_path(@slug, page: @result.page - 1, filter: @filter)}
+            data-test="prev-page"
+            class="join-item btn btn-sm"
+          >
+            ← Prev
+          </.link>
+          <.link
+            :if={@result.page < @result.total_pages}
+            patch={files_path(@slug, page: @result.page + 1, filter: @filter)}
+            data-test="next-page"
+            class="join-item btn btn-sm"
+          >
+            Next →
+          </.link>
+        </div>
+      </nav>
+    </div>
     """
   end
 
@@ -479,5 +488,4 @@ defmodule CodeMySpecWeb.FilesLive do
       _ -> base <> "?" <> URI.encode_query(params)
     end
   end
-
 end

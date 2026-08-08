@@ -282,6 +282,31 @@ defmodule CodeMySpec.HarnessesTest do
              "the operator can still switch to the other one"
     end
 
+    test "a page reads as the most recently active checkout", %{scope: scope} do
+      a = harness_scope(scope, "the harness at /a")
+      b = harness_scope(scope, "the harness at /b")
+
+      sync(a, ["lib/only_in_a.ex"])
+      sync(b, ["lib/only_in_b.ex"])
+
+      viewing = Harnesses.viewing(scope)
+
+      assert viewing.active_harness_id == b.active_harness_id
+
+      assert Enum.map(Files.list_files(viewing), & &1.path) == ["lib/only_in_b.ex"],
+             "a project-wide scope would list both checkouts' files with nothing " <>
+               "saying which is which"
+    end
+
+    test "a project with nothing synced stays project-wide" do
+      bare = full_scope_fixture()
+      # The fixture mints one, so drop it to get the genuinely-never-synced case.
+      bare = %{bare | active_harness_id: nil}
+
+      assert Harnesses.viewing(%{bare | active_project_id: Ecto.UUID.generate()}).active_harness_id ==
+               nil
+    end
+
     test "a project with no harness has no default" do
       # Deliberately not `full_scope_fixture/0` — that mints one, because a
       # scope that writes files needs one. This is the genuinely empty case.
