@@ -853,6 +853,26 @@ defmodule CodeMySpecWeb.ProvisioningLive do
         sent from {@mail_send_result.from}: {if @mail_send_result.accepted, do: "accepted", else: "refused"}
       </div>
 
+      <%!-- Sending is only half of it. A domain you can send from but not
+            receive at swallows every reply, so this sends *to* the domain and
+            waits for Resend to say it arrived (974/8030). Separate from the
+            send probe above because they fail independently and for different
+            reasons. --%>
+      <.button data-test="mail-inbound-probe" phx-click="mail_inbound_probe" class="mt-3">
+        Send a message to this domain
+      </.button>
+
+      <div
+        :if={@mail_inbound_result}
+        data-test="inbound-delivery"
+        data-state={@mail_inbound_result.state}
+        data-destination={@mail_inbound_result.destination}
+        data-message-id={@mail_inbound_result.message_id}
+        data-completed-at={@mail_inbound_result.completed_at}
+      >
+        {@mail_inbound_result.summary}
+      </div>
+
       <.button data-test="dns-refresh" phx-click="refresh_mail_dns" class="mt-2">
         Re-check DNS
       </.button>
@@ -1324,6 +1344,61 @@ defmodule CodeMySpecWeb.ProvisioningLive do
     {:noreply, assign(socket, :mail_send_result, result)}
   end
 
+  # Sends to the domain and waits for Resend to report it received. The
+  # destination is the claim: "arrives where Sam reads his mail" is about where
+  # it lands, not that the provider accepted it (974/8030).
+  #
+  # The address is Sam's own local part at this domain rather than an invented
+  # one. Resend delivers only to addresses configured for a domain and offers
+  # no API to ask which those are, so a made-up local part is dropped in
+  # silence — which cost a day of diagnosis when the setup step guessed
+  # `setup-probe@`. Sam's own name is the one address he can be expected to
+  # have configured, and he can override it.
+  def handle_event("mail_inbound_probe", params, socket) do
+    scope = socket.assigns.current_scope
+    domain = socket.assigns.project.domain
+
+    to =
+      params
+      |> Map.get("probe", %{})
+      |> Map.get("to")
+      |> case do
+        address when is_binary(address) and address != "" -> address
+        _ -> default_inbound_address(scope, domain)
+      end
+
+    {:noreply, assign(socket, :mail_inbound_result, inbound_probe_result(scope, to))}
+  end
+
+  defp default_inbound_address(scope, domain) do
+    local = scope.user.email |> to_string() |> String.split("@") |> List.first()
+    "#{local}@#{domain}"
+  end
+
+  defp inbound_probe_result(scope, to) do
+    now = DateTime.to_iso8601(DateTime.utc_now())
+
+    case Provisioning.probe_inbound(scope, to) do
+      {:ok, message} ->
+        %{
+          state: "delivered",
+          destination: to,
+          message_id: message["id"],
+          completed_at: message["created_at"] || now,
+          summary: "delivered to #{to}"
+        }
+
+      {:error, reason} ->
+        %{
+          state: "undelivered",
+          destination: to,
+          message_id: nil,
+          completed_at: now,
+          summary: "not delivered to #{to}: #{String.slice(to_string(reason), 0, 200)}"
+        }
+    end
+  end
+
   # Criterion: a record deleted after verification is noticed. Re-reading from
   # the provider is the only way to see that — the stored state says verified
   # and will go on saying so.
@@ -1736,6 +1811,7 @@ defmodule CodeMySpecWeb.ProvisioningLive do
       end)
     end)
     |> assign_new(:mail_send_result, fn -> nil end)
+    |> assign_new(:mail_inbound_result, fn -> nil end)
     |> assign_new(:storage_objects, fn -> [] end)
     |> assign_new(:storage_readbacks, fn -> [] end)
     |> assign_new(:halted_at, fn -> nil end)
