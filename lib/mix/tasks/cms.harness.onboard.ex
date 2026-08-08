@@ -98,13 +98,14 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   defp address_hooks(dest, id) do
     file = Path.join([dest, "hooks", "hooks.json"])
 
-    with {:ok, contents} <- File.read(file) do
-      addressed = String.replace(contents, "/api/hooks/", "/api/harnesses/#{id}/hooks/")
-      File.write!(file, addressed)
+    case File.read(file) do
+      {:ok, contents} ->
+        File.write!(file, String.replace(contents, "/api/hooks/", "/api/harnesses/#{id}/hooks/"))
 
-      {:ok, contents |> String.split("/api/hooks/") |> length() |> Kernel.-(1)}
-    else
-      {:error, reason} -> {:error, "Could not read #{file}: #{inspect(reason)}"}
+        {:ok, contents |> String.split("/api/hooks/") |> length() |> Kernel.-(1)}
+
+      {:error, reason} ->
+        {:error, "Could not read #{file}: #{inspect(reason)}"}
     end
   end
 
