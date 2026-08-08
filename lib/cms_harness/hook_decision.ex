@@ -131,10 +131,6 @@ defmodule CmsHarness.HookDecision do
     |> String.trim()
   end
 
-  # The hook named a harness this machine does not serve. Distinct from
-  # `:no_project`, which is about a directory that cannot say which project it
-  # is — here the directory is not the question and telling somebody to edit a
-  # config file in it is nonsense, because there is no "it".
   # A hook that named no working copy at all. There is deliberately nothing to
   # fall back on: resolving it from the directory it fired in is what this
   # replaced, and that guessed wrong in every way a guess can.
@@ -149,15 +145,17 @@ defmodule CmsHarness.HookDecision do
     |> String.trim()
   end
 
+  # The server does not recognise the id, or has no location recorded for it.
+  # Distinct from `:no_project`, which is about a directory that cannot say
+  # which project it is — here there is no directory in the question at all,
+  # so telling somebody to edit a config file in one would be nonsense.
   defp explain({:unknown_harness, harness_id}, _working_dir) do
     """
     This harness is not serving the working copy #{harness_id}.
 
-    The hooks are addressed to a harness id that this harness does not serve. \
-    Either it is serving a different set of working copies — check \
-    CMS_PROJECT_DIRS — or this checkout's plugin was generated against a \
-    harness id that has since been reissued. Re-run `mix cms.harness.onboard` \
-    in the checkout and restart the agent.
+    The hooks are addressed to a harness id the server does not recognise, or \
+    one it has no location for. Re-run `mix cms.harness.onboard` in the \
+    checkout and restart the agent.
     """
     |> String.trim()
   end

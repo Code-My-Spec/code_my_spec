@@ -23,17 +23,28 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   So this writes somewhere gitignored, per working copy, and leaves the shipped
   plugin alone.
 
-  ## The id has to exist first
+  ## What gets minted
 
-  It is issued by the server on the harness's first join for this checkout, and
-  written to `.cms_harness_id`. If it is not there yet, the harness has not
-  served this copy — start it (`just harness`, with this directory in
-  `CMS_PROJECT_DIRS`) and run this again.
+  A harness config at the working copy's root — `CmsHarness.HarnessConfig` —
+  holding the id the server issued, the project it serves, and where it is. The
+  server records the same root on the harness object.
+
+  That file is why nothing has to be discovered afterwards. A working copy
+  knows where it is; writing that down when its identity is minted removes
+  every mechanism that previously guessed — the walk up to the nearest
+  `mix.exs`, the list of directories in the environment, the lookup against the
+  server.
+
+  Asking the server for the id rather than waiting for a channel join is what
+  lets a brand-new worktree be onboarded before anything has ever run in it.
   """
 
   use Mix.Task
 
-  alias CmsHarness.HarnessIdentity
+  alias CmsHarness.Config
+  alias CmsHarness.HarnessConfig
+  alias CmsHarness.ProjectIdentity
+  alias CmsHarness.Token
 
   @plugin_source "plugins/claude"
   @plugin_dest ".claude/plugin-dev"
@@ -61,23 +72,56 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   defp target_root(_), do: File.cwd!()
 
   defp identity(root) do
-    case HarnessIdentity.read(root) do
-      {:ok, id} ->
+    case HarnessConfig.read(root) do
+      {:ok, %{harness_id: id}} ->
         {:ok, id}
 
       :none ->
-        {:error,
-         """
-         No harness id for #{root}.
-
-         The server issues it on the harness's first join for this checkout. Add
-         this directory to CMS_PROJECT_DIRS, start the harness, wait for it to
-         connect, then run this again.
-         """}
+        mint(root)
 
       {:error, reason} ->
-        {:error, "Could not read #{HarnessIdentity.path(root)}: #{inspect(reason)}"}
+        {:error, "Could not read #{HarnessConfig.path(root)}: #{inspect(reason)}"}
     end
+  end
+
+  # A checkout with no id asks the server for one. Waiting for a channel join
+  # to mint it cannot work for a copy nobody serves yet: the harness learns
+  # which copies to serve by looking ids up, so a copy with no id would never
+  # be served and would never acquire one.
+  defp mint(root) do
+    with {:ok, project} <- ProjectIdentity.resolve(root),
+         {:ok, token} <- Token.access_token(),
+         {:ok, %{status: 200, body: %{"harness_id" => id}}} <- post(project, root, token),
+         :ok <- HarnessConfig.write(root, %{harness_id: id, project_id: project.id, root: root}) do
+      Mix.shell().info("Issued a new harness id for #{root}")
+      {:ok, id}
+    else
+      {:error, :no_project_id} ->
+        {:error,
+         """
+         #{root} does not say which project it is.
+
+         Put a `project_id` in .code_my_spec/config.yml. In a fresh worktree the
+         submodule is usually just not checked out: `git submodule update --init
+         .code_my_spec`.
+         """}
+
+      other ->
+        {:error, "Could not get a harness id for #{root} from the server: #{inspect(other)}"}
+    end
+  end
+
+  defp post(project, root, token) do
+    Req.post(
+      url:
+        Config.server_url()
+        |> String.trim_trailing("/")
+        |> Kernel.<>("/api/harnesses"),
+      json: %{project_id: project.id, root: root, label: Config.label(root)},
+      headers: [{"authorization", "Bearer " <> token}],
+      retry: false,
+      receive_timeout: to_timeout(second: 15)
+    )
   end
 
   defp copy_plugin(root, dest) do

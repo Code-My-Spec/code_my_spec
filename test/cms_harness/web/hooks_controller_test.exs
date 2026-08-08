@@ -17,6 +17,7 @@ defmodule CmsHarness.Web.HooksControllerTest do
     end)
 
     project = project_dir()
+    serve(project.root)
     on_exit(fn -> stop_project(project.root) end)
 
     %{project: project}
@@ -112,7 +113,11 @@ defmodule CmsHarness.Web.HooksControllerTest do
   # Testable here only because FakeServer is a real channel over a real socket;
   # the collapse does not happen anywhere a reply is passed as a term.
   describe "an empty decision" do
-    setup do
+    setup %{project: project} do
+      # The outer setup already served this copy, so its channel is retrying
+      # against a server that did not exist yet. Stop it before the fake comes
+      # up; the tests below start it again and it finds one.
+      stop_project(project.root)
       FakeServer.start(hook_decision: %{})
       :ok
     end
@@ -153,14 +158,18 @@ defmodule CmsHarness.Web.HooksControllerTest do
   end
 
   describe "serving a project" do
-    test "a hook for an unknown directory starts serving it", %{conn: conn, project: project} do
-      refute project.root in CmsHarness.Projects.list()
+    test "a hook addressed to a served copy is answered for that copy", %{
+      conn: conn,
+      project: project
+    } do
+      assert project.root in CmsHarness.Projects.list()
 
-      conn |> post_hook("stop", project.root) |> json_response(200)
+      body = conn |> post_hook("stop", project.root) |> json_response(200)
 
-      assert project.root in CmsHarness.Projects.list(),
-             "a laptop picks its projects up from the hooks that arrive, not from a list " <>
-               "somebody has to maintain"
+      assert is_map(body),
+             "the id named a copy this harness serves, so it got a real answer — " <>
+               "what this replaced picked the copy up from whatever directory the " <>
+               "hook announced, which is how a nested checkout resolved to the outer one"
     end
   end
 end

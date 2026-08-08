@@ -36,6 +36,7 @@ defmodule CmsHarness.Web.McpControllerTest do
   describe "forwarding" do
     test "a message goes upstream with the credential and the project", %{conn: conn} do
       %{root: dir} = project_dir(project_id: "p-42")
+      serve(dir)
 
       conn = post_rpc(conn, dir, %{"jsonrpc" => "2.0", "id" => 1, "method" => "tools/list"})
 
@@ -51,6 +52,7 @@ defmodule CmsHarness.Web.McpControllerTest do
 
     test "the session id round-trips in both directions", %{conn: conn} do
       %{root: dir} = project_dir()
+      serve(dir)
       FakeUpstream.respond_with(headers: [{"mcp-session-id", "session-from-server"}])
 
       conn =
@@ -66,6 +68,7 @@ defmodule CmsHarness.Web.McpControllerTest do
     # wrapper would send the server an object it cannot parse as a batch.
     test "a batch is forwarded as an array, not as the parser's wrapper", %{conn: conn} do
       %{root: dir} = project_dir()
+      serve(dir)
 
       batch = [
         %{"jsonrpc" => "2.0", "id" => 1, "method" => "ping"},
@@ -81,6 +84,7 @@ defmodule CmsHarness.Web.McpControllerTest do
 
     test "an upstream refusal arrives as itself, not as a harness error", %{conn: conn} do
       %{root: dir} = project_dir()
+      serve(dir)
       FakeUpstream.respond_with(status: 401, body: ~s({"error":"invalid_token"}))
 
       conn = post_rpc(conn, dir, %{"jsonrpc" => "2.0", "id" => 1, "method" => "ping"})
@@ -91,6 +95,7 @@ defmodule CmsHarness.Web.McpControllerTest do
 
     test "DELETE ends the session upstream", %{conn: conn} do
       %{root: dir} = project_dir()
+      serve(dir)
 
       conn
       |> Plug.Conn.put_req_header("mcp-session-id", "doomed")
@@ -104,6 +109,7 @@ defmodule CmsHarness.Web.McpControllerTest do
   describe "the server→client stream" do
     test "chunks are relayed as they arrive", %{conn: conn} do
       %{root: dir} = project_dir()
+      serve(dir)
       FakeUpstream.stream(["event: message\ndata: one\n\n", "event: message\ndata: two\n\n"])
 
       conn =
@@ -122,6 +128,7 @@ defmodule CmsHarness.Web.McpControllerTest do
     # token is bad.
     test "a refusal is a refusal, not an empty stream", %{conn: conn} do
       %{root: dir} = project_dir()
+      serve(dir)
       FakeUpstream.respond_with(status: 401, body: ~s({"error":"invalid_token"}))
 
       conn =
@@ -151,6 +158,7 @@ defmodule CmsHarness.Web.McpControllerTest do
 
     test "trades it for a token and forwards with that", %{conn: conn} do
       %{root: dir} = project_dir(project_id: "p-9")
+      serve(dir)
 
       conn = post_rpc(conn, dir, %{"jsonrpc" => "2.0", "id" => 1, "method" => "ping"})
 
@@ -169,6 +177,7 @@ defmodule CmsHarness.Web.McpControllerTest do
 
     test "the token is reused rather than re-bought on every call", %{conn: conn} do
       %{root: dir} = project_dir()
+      serve(dir)
 
       post_rpc(conn, dir, %{"jsonrpc" => "2.0", "id" => 1, "method" => "ping"})
       first = FakeUpstream.last_exchange()
@@ -185,6 +194,7 @@ defmodule CmsHarness.Web.McpControllerTest do
     # cannot explain.
     test "a token inside the refresh margin is re-bought", %{conn: conn} do
       %{root: dir} = project_dir()
+      serve(dir)
       FakeUpstream.exchange_answers(:ok, expires_in: 60)
 
       post_rpc(conn, dir, %{"jsonrpc" => "2.0", "id" => 1, "method" => "ping"})
@@ -197,6 +207,7 @@ defmodule CmsHarness.Web.McpControllerTest do
 
     test "a refused key says so rather than forwarding without one", %{conn: conn} do
       %{root: dir} = project_dir()
+      serve(dir)
       FakeUpstream.exchange_answers(401)
 
       conn = post_rpc(conn, dir, %{"jsonrpc" => "2.0", "id" => 1, "method" => "ping"})
@@ -212,6 +223,7 @@ defmodule CmsHarness.Web.McpControllerTest do
     test "with no credential it says so instead of forwarding", %{conn: conn} do
       Application.delete_env(:code_my_spec, :harness_token)
       %{root: dir} = project_dir()
+      serve(dir)
 
       conn = post_rpc(conn, dir, %{"jsonrpc" => "2.0", "id" => 7, "method" => "ping"})
 
@@ -249,6 +261,7 @@ defmodule CmsHarness.Web.McpControllerTest do
     test "an unreachable server says which one", %{conn: conn} do
       Application.put_env(:code_my_spec, :harness_server_url, "http://127.0.0.1:1")
       %{root: dir} = project_dir()
+      serve(dir)
 
       conn = post_rpc(conn, dir, %{"jsonrpc" => "2.0", "id" => 1, "method" => "ping"})
 

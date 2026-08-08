@@ -233,6 +233,12 @@ defmodule CodeMySpecWeb.Router do
     post "/questions/ask", QuestionController, :ask
     post "/questions/:id/answer", QuestionController, :answer
     get "/questions/:id/status", QuestionController, :status
+
+    # Where a harness is. The harness has an id and needs a directory; this is
+    # the side that knows, and keeping it here is what lets the harness hold no
+    # local record of working copies at all.
+    get "/harnesses/:id", HarnessLookupController, :show
+    post "/harnesses", HarnessLookupController, :create
   end
 
   # VAPID public key (no auth needed — it's a public key)
@@ -459,7 +465,11 @@ defmodule CodeMySpecWeb.Router do
       live "/projects/:project_id/knowledge", MarkdownBrowserLive, :knowledge
       live "/projects/:project_id/knowledge/*path", MarkdownBrowserLive, :knowledge
       live "/projects/:project_id/project-knowledge", MarkdownBrowserLive, :project_knowledge
-      live "/projects/:project_id/project-knowledge/*path", MarkdownBrowserLive, :project_knowledge
+
+      live "/projects/:project_id/project-knowledge/*path",
+           MarkdownBrowserLive,
+           :project_knowledge
+
       live "/projects/:project_id/requirements", RequirementsLive, :index
       live "/projects/:project_id/requirements/graph", RequirementsLive, :graph
       live "/projects/:project_id/requirements/stories", RequirementsLive, :stories
@@ -468,10 +478,22 @@ defmodule CodeMySpecWeb.Router do
       live "/projects/:project_id/components", RequirementsLive, :components
       live "/projects/:project_id/components/graph", RequirementsLive, :components_graph
       live "/projects/:project_id/components/:component_id", RequirementsLive, :component_show
-      live "/projects/:project_id/components/:component_id/graph", RequirementsLive, :component_graph
-      live "/projects/:project_id/components/:component_id/requirements/:name", RequirementsLive, :component_req_show
-      live "/projects/:project_id/components/:component_id/requirements/:name/prompt", RequirementsLive, :component_req_prompt
-      live "/projects/:project_id/stories/:story_id/requirements/:name", RequirementsLive, :story_req_show
+
+      live "/projects/:project_id/components/:component_id/graph",
+           RequirementsLive,
+           :component_graph
+
+      live "/projects/:project_id/components/:component_id/requirements/:name",
+           RequirementsLive,
+           :component_req_show
+
+      live "/projects/:project_id/components/:component_id/requirements/:name/prompt",
+           RequirementsLive,
+           :component_req_prompt
+
+      live "/projects/:project_id/stories/:story_id/requirements/:name",
+           RequirementsLive,
+           :story_req_show
     end
 
     # Project-scoped surfaces. The project is named in the route and put on the

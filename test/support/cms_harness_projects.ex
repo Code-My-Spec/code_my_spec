@@ -33,28 +33,21 @@ defmodule CmsHarnessTest.Projects do
     harness_id = Keyword.get(opts, :harness_id, Ecto.UUID.generate())
     if harness_id, do: File.write!(Path.join(root, ".cms_harness_id"), harness_id <> "\n")
 
-    # The copies a harness serves are its configuration. Without this the id
-    # resolves to nothing, which is exactly what an unonboarded checkout does.
-    serve(root)
-
     ExUnit.Callbacks.on_exit(fn -> File.rm_rf(root) end)
 
     %{root: root, id: id && to_string(id), harness_id: harness_id}
   end
 
   @doc """
-  Add a root to the copies this harness serves, for the duration of the test.
+  Start serving a working copy, the way a hook addressed to its id does.
 
-  Mirrors `CMS_PROJECT_DIRS` without touching the environment, which is global
-  to the VM and would leak between tests.
+  Nothing is configured with directories any more — the harness asks the server
+  where a harness is. A test that wants a copy served starts its subtree
+  directly, which is what that lookup ends in.
   """
   def serve(root) do
-    previous = Application.get_env(:code_my_spec, :harness_project_dirs, [])
-    Application.put_env(:code_my_spec, :harness_project_dirs, [root | List.wrap(previous)])
-
-    ExUnit.Callbacks.on_exit(fn ->
-      Application.put_env(:code_my_spec, :harness_project_dirs, previous)
-    end)
+    CmsHarness.Projects.ensure_started(root)
+    :ok
   end
 
   @doc "A directory with no project identity at all."

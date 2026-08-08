@@ -97,3 +97,4 @@ relay/cms-mcp-relay
 # Generated per working copy by `mix cms.harness.onboard` — carries this
 # checkout's harness id, so it is never shared or committed.
 .claude/plugin-dev/
+.cms_harness.json

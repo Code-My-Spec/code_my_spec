@@ -60,14 +60,13 @@ defmodule CmsHarness.Supervisor do
       CmsHarness.Token,
 
       # Claude Code POSTs its hooks to a fixed URL. This is that URL.
-      CmsHarness.Web.Endpoint,
+      CmsHarness.Web.Endpoint
 
       # Last, because it needs both the registry and the dynamic supervisor.
       # `:temporary`, which is what `{Task, fun}` means, so a failure here does
       # not take the harness down: a hook can still name its own working
       # directory, and a harness that is up and serving nothing is far easier to
       # diagnose than one that would not boot.
-      {Task, &CmsHarness.Projects.start_configured/0}
     ]
 
     Supervisor.init(children, strategy: :one_for_one)
