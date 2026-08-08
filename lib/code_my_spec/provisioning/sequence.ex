@@ -10,9 +10,19 @@ defmodule CodeMySpec.Provisioning.Sequence do
 
   Each step's position encodes what must exist before it. `repository` is
   first because CI publishes the image the deploy pulls, so a deploy with no
-  remote has nothing to build from (story 985, criterion 8182). `dns` precedes
-  `tls` because certificate issuance resolves the name. `deploy` precedes
-  `content` and `widget` because both are proven against the running site.
+  remote has nothing to build from (story 985, criterion 8182). `deploy`
+  precedes `content` and `widget` because both are proven against the running
+  site.
+
+  `tls` follows *both* `dns` and `deploy`, because issuance has two
+  preconditions and naming only one of them deadlocked cold setup. The name
+  must resolve to the server, which is `dns`; and kamal-proxy must be
+  answering on 80 to satisfy the HTTP-01 challenge, which is `deploy`. With
+  `tls` sequenced between them it verified a certificate only `deploy` could
+  cause to exist, errored on every new project, and halted the run before the
+  step that would have fixed it. Every step passed its own criterion — the
+  ordering they composed into could not run, because nothing exercised the
+  full sequence against a cold server.
 
   Reordering this list changes what setup depends on, which is why it is one
   list read top to bottom rather than per-step `after:` declarations that
@@ -54,13 +64,13 @@ defmodule CodeMySpec.Provisioning.Sequence do
       why: "the name everything else is reached by"
     },
     %{key: :dns, label: "DNS records", option: :domain, why: "points the name at the server"},
+    %{key: :deploy, label: "Deploy", option: nil, why: "the app running on the server"},
     %{
       key: :tls,
       label: "Certificate",
       option: :domain,
-      why: "issuance resolves the name, so it follows DNS"
+      why: "the proxy issues it on first boot, so it follows the deploy"
     },
-    %{key: :deploy, label: "Deploy", option: nil, why: "the app running on the server"},
     %{
       key: :email,
       label: "Outbound email",

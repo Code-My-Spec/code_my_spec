@@ -322,6 +322,16 @@ defmodule CodeMySpec.Provisioning do
         row = mark(scope, key, :paused, %{paused_instructions: instructions})
         {:halt, row, instructions}
 
+      # Pausing carries resources for the same reason failing does. A step can
+      # create something real and then stop to wait — the email step registers
+      # a sending domain at Resend and pauses while it verifies — and a pause
+      # that dropped the resources would leak exactly like an error that did.
+      {:paused, instructions, partial} when is_list(partial) ->
+        row =
+          mark(scope, key, :paused, %{paused_instructions: instructions, resources: partial})
+
+        {:halt, row, instructions}
+
       # A step that got partway records what it made before it failed.
       # Without this the resources are real and unrecorded, which is the
       # worst combination: nothing can find them to clean up, and nothing

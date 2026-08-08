@@ -37,6 +37,18 @@ defmodule CodeMySpec.ProvisioningTest do
       assert Enum.find_index(keys, &(&1 == :dns)) < Enum.find_index(keys, &(&1 == :tls))
     end
 
+    # The other half of the same dependency, and the half whose absence made
+    # cold setup impossible: the tls step verifies a certificate rather than
+    # issuing one, and only the deploy brings up the proxy that answers the
+    # HTTP-01 challenge on 80. Sequenced the other way it errored on every new
+    # project and halted the run before the step that would have fixed it.
+    test "the deploy comes before tls" do
+      keys = Sequence.keys()
+
+      assert Enum.find_index(keys, &(&1 == :deploy)) < Enum.find_index(keys, &(&1 == :tls)),
+             "tls verifies a certificate the deploy causes to exist"
+    end
+
     # Content and widget are both proven against the running site.
     test "the deploy comes before what is proven against it" do
       keys = Sequence.keys()

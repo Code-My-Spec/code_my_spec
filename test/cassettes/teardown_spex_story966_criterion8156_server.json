@@ -1,7 +1,7 @@
 {
   "interactions": [
     {
-      "recorded_at": "2026-08-07T13:41:00.572728Z",
+      "recorded_at": "2026-08-08T04:32:00.389626Z",
       "request": {
         "body": "",
         "body_type": "text",
@@ -60,7 +60,7 @@
                 "type": "system"
               },
               "included_traffic": 21990232555520,
-              "ingoing_traffic": 250625000,
+              "ingoing_traffic": 269660000,
               "iso": null,
               "labels": {},
               "load_balancers": [],
@@ -76,7 +76,7 @@
               },
               "locked": false,
               "name": "fuellytics",
-              "outgoing_traffic": 443735000,
+              "outgoing_traffic": 473035000,
               "placement_group": null,
               "primary_disk_size": 40,
               "private_net": [],
@@ -218,7 +218,7 @@
                 "type": "system"
               },
               "included_traffic": 2199023255552,
-              "ingoing_traffic": 421675000,
+              "ingoing_traffic": 456460000,
               "iso": null,
               "labels": {},
               "load_balancers": [],
@@ -234,7 +234,7 @@
               },
               "locked": false,
               "name": "fuellytics-prod",
-              "outgoing_traffic": 1111720000,
+              "outgoing_traffic": 1198255000,
               "placement_group": null,
               "primary_disk_size": 80,
               "private_net": [],
@@ -432,8 +432,8 @@
             },
             {
               "backup_window": null,
-              "created": "2026-08-07T13:40:57Z",
-              "id": 160016056,
+              "created": "2026-08-08T04:31:57Z",
+              "id": 160246873,
               "image": {
                 "architecture": "x86",
                 "bound_to": null,
@@ -492,13 +492,13 @@
                 "ipv4": {
                   "blocked": false,
                   "dns_ptr": "static.165.216.156.178.clients.your-server.de",
-                  "id": 143886742,
+                  "id": 143964246,
                   "ip": "178.156.216.165"
                 },
                 "ipv6": {
                   "blocked": false,
                   "dns_ptr": [],
-                  "id": 143886743,
+                  "id": 143964247,
                   "ip": "2a01:4ff:f0:549b::/64"
                 }
               },
@@ -676,8 +676,8 @@
             },
             {
               "backup_window": null,
-              "created": "2026-08-07T13:40:59Z",
-              "id": 160016064,
+              "created": "2026-08-08T04:31:59Z",
+              "id": 160246893,
               "image": {
                 "architecture": "x86",
                 "bound_to": null,
@@ -736,13 +736,13 @@
                 "ipv4": {
                   "blocked": false,
                   "dns_ptr": "static.94.200.156.178.clients.your-server.de",
-                  "id": 143886746,
+                  "id": 143964252,
                   "ip": "178.156.200.94"
                 },
                 "ipv6": {
                   "blocked": false,
                   "dns_ptr": [],
-                  "id": 143886747,
+                  "id": 143964253,
                   "ip": "2a01:4ff:f0:af2d::/64"
                 }
               },
@@ -941,7 +941,7 @@
             "application/json"
           ],
           "date": [
-            "Fri, 07 Aug 2026 13:41:00 GMT"
+            "Sat, 08 Aug 2026 04:32:00 GMT"
           ],
           "link": [
             "<https://api.hetzner.cloud/v1/servers?page=1>; rel=\"last\""
@@ -953,7 +953,7 @@
             "3585"
           ],
           "ratelimit-reset": [
-            "1786110075"
+            "1786163535"
           ],
           "strict-transport-security": [
             "max-age=31536000; includeSubDomains"
@@ -965,14 +965,14 @@
             "Accept-Encoding"
           ],
           "x-correlation-id": [
-            "086427b83e50a300b8fd88accd7fdc46"
+            "24186d495ae1681a930282d80300cb8a"
           ]
         },
         "status": 200
       }
     },
     {
-      "recorded_at": "2026-08-07T13:41:00.739771Z",
+      "recorded_at": "2026-08-08T04:32:00.551721Z",
       "request": {
         "body": "",
         "body_type": "text",
@@ -989,7 +989,7 @@
         },
         "method": "DELETE",
         "query_string": "",
-        "uri": "https://api.hetzner.cloud/v1/servers/160016064"
+        "uri": "https://api.hetzner.cloud/v1/servers/160246893"
       },
       "response": {
         "body_json": {
@@ -997,15 +997,15 @@
             "command": "delete_server",
             "error": null,
             "finished": null,
-            "id": 647449147286959,
+            "id": 647577995770487,
             "progress": 0,
             "resources": [
               {
-                "id": 160016064,
+                "id": 160246893,
                 "type": "server"
               }
             ],
-            "started": "2026-08-07T13:41:00Z",
+            "started": "2026-08-08T04:32:00Z",
             "status": "running"
           }
         },
@@ -1030,7 +1030,7 @@
             "application/json"
           ],
           "date": [
-            "Fri, 07 Aug 2026 13:41:00 GMT"
+            "Sat, 08 Aug 2026 04:32:00 GMT"
           ],
           "ratelimit-limit": [
             "3600"
@@ -1039,7 +1039,7 @@
             "3584"
           ],
           "ratelimit-reset": [
-            "1786110076"
+            "1786163536"
           ],
           "strict-transport-security": [
             "max-age=31536000; includeSubDomains"
@@ -1051,14 +1051,14 @@
             "Accept-Encoding"
           ],
           "x-correlation-id": [
-            "dfa206907a6383c7f1fbd4a53acc590e"
+            "82220d58003c53789dd9074db07bc5ca"
           ]
         },
         "status": 200
       }
     },
     {
-      "recorded_at": "2026-08-07T13:41:00.880309Z",
+      "recorded_at": "2026-08-08T04:32:00.696214Z",
       "request": {
         "body": "",
         "body_type": "text",
@@ -1117,7 +1117,7 @@
                 "type": "system"
               },
               "included_traffic": 21990232555520,
-              "ingoing_traffic": 250625000,
+              "ingoing_traffic": 269660000,
               "iso": null,
               "labels": {},
               "load_balancers": [],
@@ -1133,7 +1133,7 @@
               },
               "locked": false,
               "name": "fuellytics",
-              "outgoing_traffic": 443735000,
+              "outgoing_traffic": 473035000,
               "placement_group": null,
               "primary_disk_size": 40,
               "private_net": [],
@@ -1275,7 +1275,7 @@
                 "type": "system"
               },
               "included_traffic": 2199023255552,
-              "ingoing_traffic": 421675000,
+              "ingoing_traffic": 456460000,
               "iso": null,
               "labels": {},
               "load_balancers": [],
@@ -1291,7 +1291,7 @@
               },
               "locked": false,
               "name": "fuellytics-prod",
-              "outgoing_traffic": 1111720000,
+              "outgoing_traffic": 1198255000,
               "placement_group": null,
               "primary_disk_size": 80,
               "private_net": [],
@@ -1489,8 +1489,8 @@
             },
             {
               "backup_window": null,
-              "created": "2026-08-07T13:40:57Z",
-              "id": 160016056,
+              "created": "2026-08-08T04:31:57Z",
+              "id": 160246873,
               "image": {
                 "architecture": "x86",
                 "bound_to": null,
@@ -1549,13 +1549,13 @@
                 "ipv4": {
                   "blocked": false,
                   "dns_ptr": "static.165.216.156.178.clients.your-server.de",
-                  "id": 143886742,
+                  "id": 143964246,
                   "ip": "178.156.216.165"
                 },
                 "ipv6": {
                   "blocked": false,
                   "dns_ptr": [],
-                  "id": 143886743,
+                  "id": 143964247,
                   "ip": "2a01:4ff:f0:549b::/64"
                 }
               },
@@ -1754,7 +1754,7 @@
             "application/json"
           ],
           "date": [
-            "Fri, 07 Aug 2026 13:41:00 GMT"
+            "Sat, 08 Aug 2026 04:32:00 GMT"
           ],
           "link": [
             "<https://api.hetzner.cloud/v1/servers?page=1>; rel=\"last\""
@@ -1766,7 +1766,7 @@
             "3583"
           ],
           "ratelimit-reset": [
-            "1786110077"
+            "1786163537"
           ],
           "strict-transport-security": [
             "max-age=31536000; includeSubDomains"
@@ -1778,7 +1778,7 @@
             "Accept-Encoding"
           ],
           "x-correlation-id": [
-            "247230b9bf13bc4eb0e0146d2b8b6262"
+            "b3ad4bc8296bdc327724e248ce081a91"
           ]
         },
         "status": 200

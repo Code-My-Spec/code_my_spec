@@ -520,18 +520,44 @@ defmodule CodeMySpec.Provisioning.Resend do
   @spec delete_webhook(Scope.t(), String.t()) :: {:ok, body()} | error()
   def delete_webhook(%Scope{} = scope, id), do: request(scope, :delete, "/webhooks/#{id}")
 
+  # Resend has actually looked at these and rejected them. Anything else it
+  # has simply not finished checking.
+  @rejected ~w(failed failure temporary_failure)
+  @settled ~w(verified success) ++ @rejected
+
   @doc """
-  Records the provider is not satisfied with.
+  Records the provider has looked at and rejected.
 
   This is what a give-up reports instead of "verification timed out" — the
   usual cause is a typoed DKIM TXT, and naming the record turns a diffing
   exercise into a fix (criterion 8027).
+
+  Rejected, not merely unverified. Treating every not-yet-verified record as
+  faulted inverted the criterion it was written for: a drill published three
+  correct records, Resend had not finished checking them inside the 60s poll,
+  and setup reported "these records are not as Resend expects" naming all
+  three. They verified on their own minutes later. Sending Sam to diff a
+  record set that is already right is worse than saying nothing — it is the
+  hand-diffing exercise 8027 exists to prevent, aimed at the wrong end.
   """
   @spec faulted_records(body()) :: [body()]
   def faulted_records(domain) do
     domain
     |> records()
-    |> Enum.reject(&(&1["status"] in ["verified", "success"]))
+    |> Enum.filter(&(&1["status"] in @rejected))
+  end
+
+  @doc """
+  Records the provider has not finished checking.
+
+  Distinct from `faulted_records/1` because the two need opposite responses:
+  a rejected record needs fixing, a pending one needs waiting.
+  """
+  @spec pending_records(body()) :: [body()]
+  def pending_records(domain) do
+    domain
+    |> records()
+    |> Enum.reject(&(&1["status"] in @settled))
   end
 
   ## Verification
@@ -568,8 +594,14 @@ defmodule CodeMySpec.Provisioning.Resend do
       {:ok, %{"status" => "verified"} = domain} ->
         {:ok, %{domain: domain, attempts: attempt, verified_at: DateTime.utc_now()}}
 
+      # Which of the two the caller gets decides whether Sam is sent to fix
+      # something or to wait. A domain whose records are all still pending has
+      # nothing wrong with it yet.
       {:ok, domain} when attempt >= max ->
-        {:error, {:unverified, faulted_records(domain)}}
+        case faulted_records(domain) do
+          [] -> {:error, {:still_verifying, pending_records(domain)}}
+          faulted -> {:error, {:unverified, faulted}}
+        end
 
       {:ok, _domain} ->
         sleep.(interval)

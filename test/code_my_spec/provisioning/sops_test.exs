@@ -140,6 +140,23 @@ defmodule CodeMySpec.Provisioning.SopsTest do
 
       assert {:ok, []} = Sops.missing_secrets(ctx.env, "prod", ctx.prod.priv, ["DATABASE_URL"])
     end
+
+    # The state every new project is in between `secrets` and its first
+    # `put_secret`: a key exists, the file does not. Both tests above call
+    # `put_secret` first, so this path was the uncovered one — and asking sops
+    # to decrypt a file that is not there exits 100, which reached the setup
+    # page as a raw `{:sops_failed, 100, ...}` tuple on the first deploy of
+    # every project.
+    test "counts everything as missing when the file does not exist yet", ctx do
+      refute Environments.file_exists?(ctx.env, "envs/prod.enc.env"),
+             "this test is meaningless if something already created the file"
+
+      assert {:ok, ["DATABASE_URL", "SECRET_KEY_BASE"]} =
+               Sops.missing_secrets(ctx.env, "prod", ctx.prod.priv, [
+                 "DATABASE_URL",
+                 "SECRET_KEY_BASE"
+               ])
+    end
   end
 
   describe "write_config/2" do

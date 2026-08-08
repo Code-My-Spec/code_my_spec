@@ -427,6 +427,7 @@ defmodule CodeMySpec.Provisioning.Steps do
     version = Keyword.get(opts, :deployed_version)
 
     with {:ok, delivery} <- check_secrets(scope, environment),
+         :ok <- config_targets_this_project(scope, environment),
          {:ok, image} <- image_for(scope, environment, opts),
          :ok <- require_script(scope, "bin/deploy"),
          result <- Deploy.run(env(scope), environment, deploy_opts(opts, host, image)) do
@@ -440,6 +441,68 @@ defmodule CodeMySpec.Provisioning.Steps do
         other ->
           other
       end
+    end
+  end
+
+  # Where a deploy lands is decided by the config in the checkout, not by
+  # anything setup passes kamal — the `:host` above is only the health probe's
+  # target. So a config naming another machine deploys this project's image
+  # onto that machine, and then reports a health failure against a hostname it
+  # never touched: the wrong server changed, and the error points elsewhere.
+  #
+  # A drill seeded from another app caught this with `proxy.host:
+  # uat.astralbi.com` still in place while the project's own uat was
+  # `uat.drill.astralbi.com`. The stale file was the drill's doing; acting on
+  # it would not have been, and `image: ghcr.io/your-org/...` is the shipped
+  # placeholder, so a wrong host here is an ordinary state for a real repo.
+  #
+  # Only `proxy.host` is compared. `servers.web` legitimately carries IPs,
+  # which no hostname comparison can judge, and guessing there would refuse
+  # correct configs — the opposite failure and a worse one.
+  #
+  # A config that cannot be read or parsed is left to kamal and to
+  # `Generators.DeployBoilerplate`, which already owns missing and malformed
+  # deploy files. This guard answers one question: does this file name a host
+  # that is not ours.
+  defp config_targets_this_project(scope, environment) do
+    with {:ok, body} <- read_deploy_config(scope, environment),
+         {:ok, %{"proxy" => %{"host" => named}}} when is_binary(named) <-
+           YamlElixir.read_from_string(body),
+         [_ | _] = expected <- expected_hosts(scope, environment) do
+      if named in expected do
+        :ok
+      else
+        {:error,
+         "#{deploy_config_path(environment)} deploys to #{named}, but this project's " <>
+           "#{environment} is #{Enum.join(expected, ", ")}. Setup will not deploy to a host " <>
+           "the project does not own — point the config at the right hostname, or fix the " <>
+           "project's domain."}
+      end
+    else
+      _ -> :ok
+    end
+  end
+
+  defp read_deploy_config(scope, environment) do
+    Environments.read_file(env(scope), deploy_config_path(environment))
+  end
+
+  # Mirrors `bin/deploy`, which reaches for `config/deploy.uat.yml` when the
+  # environment is uat and `config/deploy.yml` otherwise. Checking a different
+  # file from the one kamal reads would verify nothing.
+  defp deploy_config_path("uat"), do: "config/deploy.uat.yml"
+  defp deploy_config_path(_), do: "config/deploy.yml"
+
+  defp expected_hosts(scope, environment) do
+    case domain(scope) do
+      nil ->
+        []
+
+      name ->
+        scope
+        |> EnvironmentRepository.assign_hosts(name)
+        |> Enum.filter(&(&1.name == environment and is_binary(&1.host)))
+        |> Enum.map(& &1.host)
     end
   end
 
@@ -640,6 +703,15 @@ defmodule CodeMySpec.Provisioning.Steps do
     endpoint = webhook_endpoint(scope, opts)
 
     with name when is_binary(name) <- receiving_domain(scope, opts),
+         # Before any provider call. An address on another domain can never
+         # prove this one's inbox, so the run cannot succeed — and the rule the
+         # deploy step states applies here too: something that cannot succeed
+         # does not first go and change the provider.
+         #
+         # A missing address is deliberately *not* checked here. The records
+         # are needed either way and MX propagation is the slow part, so that
+         # case publishes first and pauses afterwards.
+         :ok <- probe_address_on_domain(name, opts),
          {:ok, domain} <- Resend.ensure_receiving_domain(scope, name, opts),
          {:ok, webhook} <- Resend.ensure_webhook(scope, endpoint, opts),
          {:ok, mx} <- publish_mx(scope, name, domain, opts),
@@ -682,12 +754,30 @@ defmodule CodeMySpec.Provisioning.Steps do
            "this domain and the account has no verified sending domain to send it from. " <>
            "Verify one — the email step does this — then resume."}
 
+      # Paused rather than errored: nothing is broken, setup just does not know
+      # where to send. Resend accepts mail only at addresses configured for the
+      # domain and offers no API to list them, so this is Sam's to answer.
+      {:error, :no_probe_address} ->
+        {:paused,
+         "the inbound records are published. To prove mail actually arrives, setup needs an " <>
+           "address on this domain that you already receive at — Resend only accepts mail to " <>
+           "addresses configured for the domain, and offers no way to ask which those are, so " <>
+           "setup will not guess one. Give it an address and resume."}
+
+      {:error, {:probe_address_elsewhere, to, name}} ->
+        {:paused,
+         "#{to} is not on #{name}, so delivering to it would prove nothing about this " <>
+           "domain's inbox — mail to another domain arrives whether or not this one is " <>
+           "configured. Give an address at #{name} and resume."}
+
       {:error, :never_arrived} ->
         {:error,
-         "the records are published and Resend is configured, but a message sent to this " <>
-           "domain never arrived. Configuration that looks right is exactly how a receiving " <>
-           "setup fails — the MX, Resend's receiving capability and the webhook all have to " <>
-           "be right together, and each can look correct on its own while mail goes nowhere."}
+         "the records are published and Resend is configured, but the message sent to this " <>
+           "domain never arrived. Check first that the address it was sent to is configured " <>
+           "to receive in Resend — an address the domain does not accept is dropped in " <>
+           "silence and looks exactly like this. Otherwise: configuration that looks right " <>
+           "is how a receiving setup fails, because the MX, Resend's receiving capability " <>
+           "and the webhook all have to be right together and each can look correct alone."}
 
       {:error, reason} ->
         {:error, format(reason)}
@@ -712,12 +802,50 @@ defmodule CodeMySpec.Provisioning.Steps do
     probe.(scope, name, opts)
   end
 
-  defp default_inbound_probe(scope, name, opts) do
+  defp default_inbound_probe(scope, _name, opts) do
     # A token in the subject, because the account receives real mail too and
     # "something arrived" is not "the thing we sent arrived".
     token = "cms-inbound-#{System.unique_integer([:positive])}"
-    to = "setup-probe@#{name}"
 
+    # The address is given, never invented. Resend delivers only to addresses
+    # configured for the domain, and exposes no API to ask which those are, so
+    # a made-up local part is dropped in silence.
+    #
+    # `setup-probe@` was hardcoded here and cost most of a day: mail to
+    # `john@astralbi.com` arrived, mail to `setup-probe@astralbi.com` never
+    # did, and the step reported the inbox broken. A novel local part *did*
+    # arrive on another domain, which sent me chasing Resend outages and our
+    # own webhook — that domain simply had a catch-all. One sample generalised
+    # into the wrong theory while the right one sat discarded.
+    #
+    # Pausing for an address Sam already receives at is the honest move: setup
+    # cannot discover it, and guessing produces a failure that blames the
+    # inbox for the guess.
+    case Keyword.get(opts, :inbound_probe_to) do
+      to when is_binary(to) and to != "" -> send_and_await(scope, to, token, opts)
+      _ -> {:error, :no_probe_address}
+    end
+  end
+
+  # On *this* domain, or the proof is about somebody else's inbox: a message to
+  # an address elsewhere arrives just as happily and says nothing about whether
+  # mail to this domain lands.
+  #
+  # Anchored on `@` rather than a bare suffix, or `john@evil-<domain>` would
+  # pass — a different domain that merely ends with ours.
+  defp probe_address_on_domain(name, opts) do
+    case Keyword.get(opts, :inbound_probe_to) do
+      to when is_binary(to) and to != "" ->
+        if String.ends_with?(to, "@" <> name),
+          do: :ok,
+          else: {:error, {:probe_address_elsewhere, to, name}}
+
+      _ ->
+        :ok
+    end
+  end
+
+  defp send_and_await(scope, to, token, opts) do
     # From a domain the account has already verified, whichever one that is.
     #
     # Not from the domain being set up: it is verified for *receiving* at this
@@ -1079,6 +1207,10 @@ defmodule CodeMySpec.Provisioning.Steps do
     Enum.reduce_while(environments, {:ok, []}, fn environment, {:ok, acc} ->
       case register_sending_domain(scope, base, environment, opts) do
         {:ok, resources} -> {:cont, {:ok, acc ++ resources}}
+        # Carries what earlier environments already made, exactly as the error
+        # path does — a pause on the second environment must not lose the
+        # first's sending domain.
+        {:paused, instructions, partial} -> {:halt, {:paused, instructions, acc ++ partial}}
         {:error, reason, partial} -> {:halt, {:error, reason, acc ++ partial}}
         {:error, reason} -> {:halt, {:error, reason, acc}}
       end
@@ -1246,6 +1378,16 @@ defmodule CodeMySpec.Provisioning.Steps do
         {:error,
          "the sending domain #{sending} did not verify — these records are not as Resend " <>
            "expects: " <> Enum.map_join(faulted, ", ", &"#{&1["type"]} #{&1["name"]}"), created}
+
+      # Nothing is wrong yet, so this is a wait rather than a failure. Resend
+      # verifies on its own schedule and a re-run picks it up; reporting these
+      # as faulted named three correct records as broken on a real drill and
+      # they verified minutes later untouched.
+      {:error, {:still_verifying, pending}} ->
+        {:paused,
+         "#{sending} is registered and its records are published — Resend has not finished " <>
+           "checking them yet (#{Enum.map_join(pending, ", ", &"#{&1["type"]} #{&1["name"]}")}). " <>
+           "Nothing is wrong with them; run this step again in a few minutes.", created}
 
       {:error, reason} ->
         {:error, format(reason), created}
@@ -1973,13 +2115,9 @@ defmodule CodeMySpec.Provisioning.Steps do
   defp generate_keys(scope, env, environments) do
     keys =
       Enum.reduce_while(environments, {:ok, %{}}, fn environment, {:ok, acc} ->
-        case Sops.generate_key() do
-          {:ok, {public, private}} ->
-            ProjectSecrets.put_value(scope, age_key_name(environment), private)
-            {:cont, {:ok, Map.put(acc, environment, public)}}
-
-          {:error, reason} ->
-            {:halt, {:error, reason}}
+        case key_for(scope, environment) do
+          {:ok, public} -> {:cont, {:ok, Map.put(acc, environment, public)}}
+          {:error, reason} -> {:halt, {:error, reason}}
         end
       end)
 
@@ -1991,6 +2129,43 @@ defmodule CodeMySpec.Provisioning.Steps do
        end)}
     else
       {:error, reason} -> {:error, format(reason)}
+    end
+  end
+
+  # An environment's key is only replaced when the one on record cannot read
+  # what it encrypted. Minting unconditionally made the secrets step destroy
+  # data every time it ran: `.sops.yaml` was rewritten to fresh recipients
+  # while the `.enc.env` files stayed encrypted to the old ones, whose private
+  # halves had just been overwritten in `ProjectSecrets`. Nothing could open
+  # them again, by anyone, ever.
+  #
+  # Re-running is not an edge case here — it is the whole shape of setup, and
+  # the step re-runs whenever *any* environment needs attention. So adding a
+  # second environment to a working project destroyed the first's secrets, and
+  # a drill hit it on the ordinary path: cycle 1 encrypted to one key, cycle 2
+  # rewrote the config to two new ones, and the deploy failed with "no
+  # identity matched any of the recipients".
+  #
+  # `ensure_age_key/3` already had this right for `put_secret/4`; the step was
+  # the one place that reached for `generate_key/0` directly.
+  #
+  # Genuine drift still mints — a key that no longer opens its file cannot
+  # recover the contents, so replacing it is the only way forward and is what
+  # makes the repair path in `verify(:secrets, ...)` work.
+  defp key_for(scope, environment) do
+    with true <- key_opens_its_own_file?(scope, environment),
+         {:ok, private} <- ProjectSecrets.fetch_value(scope, age_key_name(environment)),
+         {:ok, public} <- Sops.public_key(private) do
+      {:ok, public}
+    else
+      _ -> mint_key(scope, environment)
+    end
+  end
+
+  defp mint_key(scope, environment) do
+    with {:ok, {public, private}} <- Sops.generate_key(),
+         {:ok, _} <- ProjectSecrets.put_value(scope, age_key_name(environment), private) do
+      {:ok, public}
     end
   end
 
