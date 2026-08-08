@@ -335,15 +335,29 @@ defmodule CodeMySpec.Provisioning.Teardown do
     end
   end
 
-  defp retry_firewall(scope, name, r, attempts \\ 5) do
+  # Has to outlast the servers it is attached to. Hetzner will not delete a
+  # firewall while a server still references it, and server deletion is
+  # asynchronous — `absent?/2` waits up to 20s for one to disappear. Retrying
+  # for 10s meant the firewall gave up first on every real run, and the criterion
+  # 8156 recording left one behind each time: six lookups, five refused deletes,
+  # then honestly reported as left behind.
+  #
+  # 15 attempts at 2s is 30s, comfortably past the servers' own window.
+  defp retry_firewall(scope, name, r, attempts \\ 15) do
     case Hetzner.find_firewall(scope, name) do
       {:error, :not_found} ->
         {:ok, r}
 
       {:ok, %{"id" => id}} when attempts > 1 ->
         case Hetzner.delete_firewall(scope, id) do
-          {:ok, _} -> {:ok, r}
-          _ -> Wait.sleep(2_000) && retry_firewall(scope, name, r, attempts - 1)
+          # Accepted is not gone, the same distinction the server clause draws.
+          # Returning ok on the API's say-so reported a teardown that had not
+          # happened, which is the one thing this module exists to prevent.
+          {:ok, _} ->
+            confirm(r, absent?(fn -> Hetzner.find_firewall(scope, name) end))
+
+          _ ->
+            Wait.sleep(2_000) && retry_firewall(scope, name, r, attempts - 1)
         end
 
       _ ->
