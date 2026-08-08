@@ -471,6 +471,24 @@ defmodule CodeMySpec.Provisioning.Resend do
   end
 
   @doc """
+  One received message, with its contents.
+
+  `GET /emails/receiving/:id`. The list endpoint carries metadata only — `text`
+  and `html` come back nil there — so "the app can act on this message" cannot
+  be answered from it. The same shape as `/domains`, which omits `records`
+  until you read a single domain, and the same trap: a caller reading the list
+  concludes the body is empty when it simply was not sent.
+  """
+  @spec get_received(Scope.t(), String.t()) :: {:ok, body()} | error()
+  def get_received(%Scope{} = scope, id) when is_binary(id) do
+    case request(scope, :get, "/emails/receiving/#{id}") do
+      {:ok, %{"data" => data}} when is_map(data) -> {:ok, data}
+      {:ok, data} when is_map(data) -> {:ok, data}
+      other -> other
+    end
+  end
+
+  @doc """
   Wait for a message matching `match?` to appear among the received mail.
 
   Delivery is not instant and it is not synchronous with the send — SMTP,
@@ -636,8 +654,20 @@ defmodule CodeMySpec.Provisioning.Resend do
 
   defp request(scope, method, path, opts \\ []) do
     case access_token(scope) do
-      {:ok, token} -> send_request(token, method, path, opts, @rate_limit_attempts)
-      :error -> {:error, :resend_not_connected}
+      {:ok, token} ->
+        send_request(token, method, path, opts, @rate_limit_attempts)
+
+      :error ->
+        {:error, :resend_not_connected}
+
+      # `access_token/1` deliberately surfaces an unusable grant rather than
+      # falling through to the environment's key — its comment says so. It had
+      # nowhere to surface *to*: this case matched only `{:ok, _}` and
+      # `:error`, so a grant that needed reauthorizing raised CaseClauseError
+      # from inside a poll, and the spex reported a case clause instead of
+      # "reconnect Resend".
+      {:error, _reason} = unusable ->
+        unusable
     end
   end
 

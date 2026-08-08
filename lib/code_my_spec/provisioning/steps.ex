@@ -884,7 +884,17 @@ defmodule CodeMySpec.Provisioning.Steps do
   def probe_inbound(%Scope{} = scope, to, opts \\ []) do
     token = "cms-inbound-#{System.unique_integer([:positive])}"
 
-    send_and_await(scope, to, token, opts)
+    with {:ok, message} <- send_and_await(scope, to, token, opts) do
+      # Read the message itself, not the listing. `/emails/receiving` carries
+      # metadata only, so a caller asking "can the app act on this" off the
+      # list sees an empty body and concludes no — when the body was simply
+      # never sent. Falls back to the listing if the single read fails, since
+      # arrival is still the primary claim.
+      case Resend.get_received(scope, message["id"]) do
+        {:ok, full} when is_map(full) -> {:ok, Map.merge(message, full)}
+        _ -> {:ok, message}
+      end
+    end
   end
 
   defp send_and_await(scope, to, token, opts) do
@@ -2302,6 +2312,14 @@ defmodule CodeMySpec.Provisioning.Steps do
   end
 
   defp random_secret, do: 32 |> :crypto.strong_rand_bytes() |> Base.url_encode64(padding: false)
+
+  # Connected once, not usable now — expired past renewal, or the provider
+  # refused the refresh. Names the account action that fixes it rather than
+  # leaving a tuple on the page.
+  defp format({:resend_token_unusable, reason}),
+    do:
+      "Resend is connected but its authorization is no longer usable " <>
+        "(#{inspect(reason)}). Reconnect Resend for this account, then run this step again."
 
   defp format(reason) when is_binary(reason), do: reason
 

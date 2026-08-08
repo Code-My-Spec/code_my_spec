@@ -871,6 +871,7 @@ defmodule CodeMySpecWeb.ProvisioningLive do
         data-completed-at={@mail_inbound_result.completed_at}
         data-delivered-to={@mail_inbound_result.delivered_to}
         data-body-available={to_string(@mail_inbound_result.body_available)}
+        data-manual-forward={to_string(@mail_inbound_result.manual_forward)}
       >
         {@mail_inbound_result.summary}
       </div>
@@ -1393,6 +1394,11 @@ defmodule CodeMySpecWeb.ProvisioningLive do
           # to somebody's inbox would not satisfy.
           delivered_to: "app",
           body_available: message_body?(message),
+          # Resend delivered it to the app itself. Nobody set up a forwarding
+          # rule in a mail client to make that happen, which is the difference
+          # 8048 is drawing: an inbox Sam has to babysit is not an inbox the
+          # app owns.
+          manual_forward: false,
           summary: "delivered to #{to}"
         }
 
@@ -1404,6 +1410,7 @@ defmodule CodeMySpecWeb.ProvisioningLive do
           completed_at: now,
           delivered_to: nil,
           body_available: false,
+          manual_forward: nil,
           summary: "not delivered to #{to}: #{String.slice(to_string(reason), 0, 200)}"
         }
     end

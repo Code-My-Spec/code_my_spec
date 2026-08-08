@@ -188,6 +188,12 @@ defmodule CodeMySpecSpex.Fixtures do
     end
   end
 
+  # Resend labels the inbound MX `Receiving`; everything else on a sending
+  # domain is DKIM/SPF and the bounce MX under `send`.
+  defp inbound_record?(record) do
+    record["record"] == "Receiving" or record["name"] in ["", nil]
+  end
+
   defp publish_records(scope, sending_domain, which, opts \\ []) do
     alias CodeMySpec.Provisioning.{Cloudflare, Resend}
 
@@ -337,8 +343,28 @@ defmodule CodeMySpecSpex.Fixtures do
       # Resend does not re-check on its own either; `poll_until_verified`
       # triggers the check and waits for it.
       case Resend.poll_until_verified(scope, created.domain_id, opts) do
-        {:ok, _} -> {:ok, created}
-        {:error, reason} -> {:error, {:never_verified, sending_domain, reason}}
+        {:ok, _} ->
+          {:ok, created}
+
+        # Enabling receiving adds a `Receiving` MX to the domain's records, and
+        # it verifies on its own schedule — slower than the sending set, and
+        # sometimes past any window worth waiting in a recording. Blocking on
+        # it here is also the wrong shape: what this fixture owes its callers
+        # is a domain that can *send* so the mail section renders, and proving
+        # the inbox is the inbound step's job (`await_inbound_verified/4`),
+        # which is the criterion under test.
+        #
+        # So an inbound record still verifying is not a failed premise. A
+        # sending record still verifying is.
+        {:error, {:still_verifying, pending}} ->
+          if Enum.all?(pending, &inbound_record?/1) do
+            {:ok, created}
+          else
+            {:error, {:never_verified, sending_domain, {:still_verifying, pending}}}
+          end
+
+        {:error, reason} ->
+          {:error, {:never_verified, sending_domain, reason}}
       end
     end
   end
