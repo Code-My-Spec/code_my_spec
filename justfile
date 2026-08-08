@@ -47,11 +47,26 @@ harness port="4004" server="http://localhost:4000":
     CMS_HARNESS=1 CMS_HARNESS_PORT={{port}} CMS_SERVER_URL={{server}} \
       MIX_ENV=dev_cli elixir -S mix run --no-halt
 
-# Start Claude Code against the in-repo plugin — pair with `just harness`
+# Start Claude Code against this checkout's own plugin — pair with `just harness`
 claude-dev *args:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    # Against `.claude/plugin-dev`, not `plugins/claude`. The tracked plugin is
+    # what the packager ships, so it carries no harness id — pointed at a
+    # harness it gets refused with "this hook did not say which working copy it
+    # is about", which is correct and reads like a bug. The generated one has
+    # this checkout's id in every hook URL and in the MCP URL.
+    #
+    # Onboarding is idempotent and mints an id from the server if this checkout
+    # has none, so a fresh worktree works on the first run.
+    PLUGIN="{{justfile_directory()}}/.claude/plugin-dev"
+    if [ ! -d "$PLUGIN" ]; then
+      echo "No generated plugin yet — onboarding this checkout."
+      mix cms.harness.onboard
+    fi
     # Session-scoped: --plugin-dir applies to this invocation only, so every
     # other Claude session keeps the marketplace plugin and the cms on 4003.
-    claude --plugin-dir {{justfile_directory()}}/plugins/claude {{args}}
+    claude --plugin-dir "$PLUGIN" {{args}}
 
 # Run tests
 test *args:
