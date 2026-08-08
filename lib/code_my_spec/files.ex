@@ -47,9 +47,10 @@ defmodule CodeMySpec.Files do
 
   @doc "List all files for the project."
   @spec list_files(Scope.t()) :: [File.t()]
-  def list_files(%Scope{active_project_id: project_id}) do
+  def list_files(%Scope{active_project_id: project_id} = scope) do
     File
     |> where([f], f.project_id == ^project_id)
+    |> scope_to_harness(scope)
     |> Repo.all()
   end
 
@@ -72,12 +73,14 @@ defmodule CodeMySpec.Files do
           total_pages: pos_integer(),
           filter: :all | :invalid
         }
-  def list_files_paginated(%Scope{active_project_id: project_id}, opts \\ []) do
+  def list_files_paginated(%Scope{active_project_id: project_id} = scope, opts \\ []) do
     page = max(Keyword.get(opts, :page, 1), 1)
     per_page = max(Keyword.get(opts, :per_page, 25), 1)
     filter = Keyword.get(opts, :filter, :all)
 
-    project_scope = where(File, [f], f.project_id == ^project_id)
+    project_scope =
+      File |> where([f], f.project_id == ^project_id) |> scope_to_harness(scope)
+
     unfiltered_count = Repo.aggregate(project_scope, :count, :id)
 
     invalid_count =
@@ -114,33 +117,42 @@ defmodule CodeMySpec.Files do
 
   @doc "List files for a specific component."
   @spec list_component_files(Scope.t(), Ecto.UUID.t()) :: [File.t()]
-  def list_component_files(%Scope{active_project_id: project_id}, component_id) do
+  def list_component_files(%Scope{active_project_id: project_id} = scope, component_id) do
     File
     |> where([f], f.project_id == ^project_id and f.component_id == ^component_id)
+    |> scope_to_harness(scope)
     |> Repo.all()
   end
 
   @doc "List files for a specific story."
   @spec list_story_files(Scope.t(), integer()) :: [File.t()]
-  def list_story_files(%Scope{active_project_id: project_id}, story_id) do
+  def list_story_files(%Scope{active_project_id: project_id} = scope, story_id) do
     File
     |> where([f], f.project_id == ^project_id and f.story_id == ^story_id)
+    |> scope_to_harness(scope)
     |> Repo.all()
   end
 
   @doc "Get a file by path within the project."
   @spec get_by_path(Scope.t(), String.t()) :: File.t() | nil
-  def get_by_path(%Scope{active_project_id: project_id}, path) do
+  # `limit(1)` because a path is unique per *working copy*, not per project: two
+  # checkouts each holding `lib/foo.ex` is ordinary now, and `Repo.one/1` raises
+  # on two rows. A scope naming a harness gets that copy's file; one that does
+  # not is asking about the project, where any copy's answer will do.
+  def get_by_path(%Scope{active_project_id: project_id} = scope, path) do
     File
     |> where([f], f.project_id == ^project_id and f.path == ^path)
+    |> scope_to_harness(scope)
+    |> limit(1)
     |> Repo.one()
   end
 
   @doc "Get multiple files by paths."
   @spec get_by_paths(Scope.t(), [String.t()]) :: [File.t()]
-  def get_by_paths(%Scope{active_project_id: project_id}, paths) when is_list(paths) do
+  def get_by_paths(%Scope{active_project_id: project_id} = scope, paths) when is_list(paths) do
     File
     |> where([f], f.project_id == ^project_id and f.path in ^paths)
+    |> scope_to_harness(scope)
     |> Repo.all()
   end
 
@@ -337,12 +349,13 @@ defmodule CodeMySpec.Files do
   subsequent stop turn.
   """
   @spec changed_since(Scope.t(), DateTime.t(), keyword()) :: [File.t()]
-  def changed_since(%Scope{active_project_id: project_id}, since, opts \\ []) do
+  def changed_since(%Scope{active_project_id: project_id} = scope, since, opts \\ []) do
     component_id = Keyword.get(opts, :component_id)
     story_id = Keyword.get(opts, :story_id)
 
     File
     |> where([f], f.project_id == ^project_id and f.mtime >= ^since)
+    |> scope_to_harness(scope)
     |> then(fn q ->
       if component_id, do: where(q, [f], f.component_id == ^component_id), else: q
     end)

@@ -44,10 +44,17 @@ defmodule CodeMySpecWeb.HarnessProjectChannelTest do
 
   @label "the harness at /workspace/app"
 
+  # Joins as the working copy this scope represents, rather than minting a
+  # stranger: files and problems are keyed on the harness now, so a test that
+  # writes through the channel and reads through `scope` has to be the same
+  # checkout on both sides. Tests about *minting* pass an explicit id instead.
   defp join_as(scope, topic, opts \\ []) do
     scope
     |> harness_socket(opts)
-    |> subscribe_and_join(HarnessProjectChannel, topic, %{"label" => @label})
+    |> subscribe_and_join(HarnessProjectChannel, topic, %{
+      "label" => @label,
+      "harness_id" => scope.active_harness_id
+    })
   end
 
   describe "the identity a working copy is issued" do

@@ -175,6 +175,34 @@ defmodule CodeMySpec.HarnessesTest do
                "appeared to have no such file"
     end
 
+    test "each reads only its own files", %{scope: scope} do
+      a = harness_scope(scope, "the harness at /a")
+      b = harness_scope(scope, "the harness at /b")
+
+      sync(a, ["lib/shared.ex", "lib/only_in_a.ex"])
+      sync(b, ["lib/shared.ex"])
+
+      assert Enum.map(Files.list_files(a), & &1.path) |> Enum.sort() ==
+               ["lib/only_in_a.ex", "lib/shared.ex"]
+
+      assert Enum.map(Files.list_files(b), & &1.path) == ["lib/shared.ex"],
+             "scoping the writes without the reads would show b every file in the " <>
+               "project, including two rows for the path both checkouts hold"
+    end
+
+    test "a shared path resolves to one file per checkout", %{scope: scope} do
+      a = harness_scope(scope, "the harness at /a")
+      b = harness_scope(scope, "the harness at /b")
+
+      sync(a, ["lib/shared.ex"])
+      sync(b, ["lib/shared.ex"])
+
+      # `Repo.one/1` raises on two rows, so an unscoped read here was not merely
+      # noisy — it crashed the moment a second checkout held the same path.
+      assert Files.get_by_path(a, "lib/shared.ex").harness_id == a.active_harness_id
+      assert Files.get_by_path(b, "lib/shared.ex").harness_id == b.active_harness_id
+    end
+
     test "a scope holding no harness still reconciles the whole project", %{scope: scope} do
       a = harness_scope(scope, "the harness at /a")
       sync(a, ["lib/a.ex"])
