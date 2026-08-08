@@ -43,7 +43,7 @@ defmodule CodeMySpec.Provisioning.Environment do
 
     belongs_to :project, CodeMySpec.Projects.Project
 
-    timestamps(type: :utc_datetime)
+    timestamps(type: :utc_datetime_usec)
   end
 
   @doc false
