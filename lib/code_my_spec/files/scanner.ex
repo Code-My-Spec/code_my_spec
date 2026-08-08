@@ -23,8 +23,8 @@ defmodule CodeMySpec.Files.Scanner do
 
   alias CodeMySpec.Components.Registry, as: ComponentRegistry
   alias CodeMySpec.Documents
-  alias CodeMySpec.Files.ComponentExtract
   alias CodeMySpec.Environments
+  alias CodeMySpec.Files.ComponentExtract
   alias CodeMySpec.Paths
   alias CodeMySpec.StaticAnalysis.Analyzers.SpecAlignment
 
@@ -45,16 +45,30 @@ defmodule CodeMySpec.Files.Scanner do
     needs to find the matching spec; `story_ids` is an existence check for
     ids parsed out of qa and spex paths; `strict?` is the project's
     require-specs setting.
+
+    `story_by_spec_path` is the one that does not guess. A criterion records
+    which file is its spex, so a spex file's story is a lookup rather than a
+    number parsed out of a directory name. That parse survives only as the
+    fallback for files nothing has claimed yet.
+
+    The parse is wrong exactly when a project has been migrated: story ids are
+    per-deployment, so every directory then names a story that has a different
+    id here. On this project it left 76 stories unable to satisfy
+    `bdd_specs_exist` while their spex sat on disk, and bound 8 more to
+    whichever story happened to share a number with an old directory —
+    "OAuth registration logs the user in" holding subagent-dispatch spex.
     """
     defstruct component_by_module: %{},
               component_by_id: %{},
               story_ids: MapSet.new(),
+              story_by_spec_path: %{},
               strict?: true
 
     @type t :: %__MODULE__{
             component_by_module: %{String.t() => Ecto.UUID.t()},
             component_by_id: %{Ecto.UUID.t() => struct()},
             story_ids: MapSet.t(integer()),
+            story_by_spec_path: %{String.t() => integer()},
             strict?: boolean()
           }
   end
@@ -355,15 +369,13 @@ defmodule CodeMySpec.Files.Scanner do
 
   defp validate_persona_summary(content) do
     error =
-      cond do
-        String.trim(content) == "" ->
-          "`summary.md` is empty"
-
-        true ->
-          case Documents.create_dynamic_document(content, "persona_summary") do
-            {:ok, _document} -> nil
-            {:error, reason} -> "`summary.md` invalid — #{reason}"
-          end
+      if String.trim(content) == "" do
+        "`summary.md` is empty"
+      else
+        case Documents.create_dynamic_document(content, "persona_summary") do
+          {:ok, _document} -> nil
+          {:error, reason} -> "`summary.md` invalid — #{reason}"
+        end
       end
 
     %{errors: %{summary: error}, data: %{}}
@@ -880,7 +892,10 @@ defmodule CodeMySpec.Files.Scanner do
 
     Enum.map(entries, fn entry ->
       {component_id, story_id} =
-        owner_for(entry, component_by_module, story_by_id)
+        case recorded_story(entry, read_model.story_by_spec_path) do
+          nil -> owner_for(entry, component_by_module, story_by_id)
+          story_id -> {nil, story_id}
+        end
 
       # `:declared_module` is scratch for this decision and not a File field —
       # carrying it further reaches `insert_all` and fails there.
@@ -979,6 +994,23 @@ defmodule CodeMySpec.Files.Scanner do
       _ -> nil
     end
   end
+
+  # The story a criterion says this file belongs to.
+  #
+  # Only for spex: a criterion records its own file, so this is a join rather
+  # than a heuristic. Everything else keeps resolving by module name and path,
+  # which is correct for them — an implementation file's owner really is
+  # derivable from where it sits.
+  #
+  # `nil` when nothing has claimed the path, which sends the entry to the parse
+  # below. That is right for a spex file written moments ago and not yet
+  # recorded, and it is why the parse survives at all.
+  defp recorded_story(%{role: :bdd_spec, path: path}, story_by_spec_path)
+       when is_binary(path) do
+    Map.get(story_by_spec_path, path)
+  end
+
+  defp recorded_story(_entry, _story_by_spec_path), do: nil
 
   defp extract_story_ids(entries) do
     entries

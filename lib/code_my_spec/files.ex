@@ -31,8 +31,27 @@ defmodule CodeMySpec.Files do
       component_by_module: Map.new(components, &{&1.module_name, &1.id}),
       component_by_id: Map.new(components, &{&1.id, &1}),
       story_ids: project_story_ids(scope),
+      story_by_spec_path: story_by_spec_path(scope),
       strict?: Configurations.require_specs?(scope)
     }
+  end
+
+  # Which story owns each spex file, according to the criteria themselves.
+  #
+  # A criterion records the file that is its spex, so this makes a spex file's
+  # owner a lookup instead of a number parsed out of a directory name. Those
+  # numbers are per-deployment: after a migration every directory names a story
+  # with a different id here, so the parse silently stops finding anything and
+  # `bdd_specs_exist` reads as work not done.
+  defp story_by_spec_path(%Scope{active_project_id: nil}), do: %{}
+
+  defp story_by_spec_path(%Scope{} = scope) do
+    CodeMySpec.AcceptanceCriteria.Criterion
+    |> where([c], c.project_id == ^scope.active_project_id)
+    |> where([c], not is_nil(c.spec_path) and c.spec_path != "")
+    |> select([c], {c.spec_path, c.story_id})
+    |> Repo.all()
+    |> Map.new()
   end
 
   defp project_story_ids(%Scope{active_project_id: nil}), do: MapSet.new()
