@@ -102,7 +102,21 @@ defmodule CodeMySpecWeb.Layouts do
             </label>
           </div>
           <div class="flex-1 min-w-0">
-            <div class="breadcrumbs text-sm px-2 lg:px-8 overflow-hidden">
+            <%!--
+              `:if={@current_scope}` is a nil guard, not a return of the
+              onboarding gate that used to sit here. Both breadcrumbs declare
+              `attr :scope, :map, required: true` and dereference
+              `scope.active_account_id`, so a page reached without a scope
+              crashes the layout rather than rendering without them.
+
+              The gate that was removed happened to cover this, because
+              `onboarding_complete?/1` answered false for a nil scope. Taking it
+              out was right — the guided intake onboards without the ladder — but
+              it took the nil safety with it, and /invitations/accept is reached
+              by someone who has no account yet, which is the whole point of an
+              invitation.
+            --%>
+            <div :if={@current_scope} class="breadcrumbs text-sm px-2 lg:px-8 overflow-hidden">
               <ul>
                 <li><.account_breadcrumb scope={@current_scope} current_path={@current_path} /></li>
                 <li><.project_breadcrumb scope={@current_scope} current_path={@current_path} /></li>
