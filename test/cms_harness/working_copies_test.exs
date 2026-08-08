@@ -1,105 +1,84 @@
 defmodule CmsHarness.WorkingCopiesTest do
   @moduledoc """
-  Resolving a harness id to a directory from a file this project owns.
+  Resolving a harness id to a directory without asking anyone.
 
-  The property is that a hook can be answered without the agent telling us
-  where it is. What replaced the agent's answer has to survive the states a
-  file has that an environment variable does not — absent, corrupt, rewritten
-  — so those are what is covered here.
+  The property is that a hook can be answered from the harness's own
+  configuration and the disk it is already watching — no database, no server
+  round trip, nothing the agent supplied. That is what lets a sprite serve its
+  first hook before it has finished connecting.
   """
 
-  # Not async: the override is an environment variable, which is global to the
-  # VM, so a concurrent test would read another's registry.
+  # Not async: the configured roots come from an environment variable and
+  # application config, both global to the VM.
   use ExUnit.Case, async: false
 
   alias CmsHarness.WorkingCopies
 
   setup do
-    {:ok, dir} = Briefly.create(directory: true)
-    file = Path.join(dir, "harnesses.json")
-
-    original = System.get_env("CMS_HARNESS_REGISTRY")
-    System.put_env("CMS_HARNESS_REGISTRY", file)
-
+    original = System.get_env("CMS_PROJECT_DIR")
     on_exit(fn -> restore(original) end)
 
-    %{registry_file: file}
+    :ok
   end
 
-  defp restore(nil), do: System.delete_env("CMS_HARNESS_REGISTRY")
-  defp restore(value), do: System.put_env("CMS_HARNESS_REGISTRY", value)
+  defp restore(nil), do: System.delete_env("CMS_PROJECT_DIR")
+  defp restore(value), do: System.put_env("CMS_PROJECT_DIR", value)
 
-  describe "a machine that has onboarded nothing" do
-    test "knows nothing, rather than failing" do
-      assert WorkingCopies.all() == %{}
-      assert WorkingCopies.root(Ecto.UUID.generate()) == :unknown
-    end
+  defp checkout(id) do
+    {:ok, root} = Briefly.create(directory: true)
+    File.write!(Path.join(root, ".cms_harness_id"), id <> "\n")
+    root
   end
 
-  describe "after onboarding" do
-    test "an id resolves to its directory", %{registry_file: file} do
+  describe "a copy this harness was told to serve" do
+    test "resolves by the id written in it" do
       id = Ecto.UUID.generate()
+      root = checkout(id)
+      System.put_env("CMS_PROJECT_DIR", root)
 
-      assert :ok = WorkingCopies.put(id, "/repo/main")
-      assert File.exists?(file)
-      assert WorkingCopies.root(id) == {:ok, "/repo/main"}
+      assert WorkingCopies.root(id) == {:ok, root}
     end
 
-    test "two checkouts of one project are two entries" do
-      a = Ecto.UUID.generate()
-      b = Ecto.UUID.generate()
-
-      :ok = WorkingCopies.put(a, "/repo/main")
-      :ok = WorkingCopies.put(b, "/repo/feature-x")
-
-      assert WorkingCopies.root(a) == {:ok, "/repo/main"}
-      assert WorkingCopies.root(b) == {:ok, "/repo/feature-x"}
-    end
-
-    test "a checkout that moves keeps its identity" do
-      id = Ecto.UUID.generate()
-
-      :ok = WorkingCopies.put(id, "/repo/old")
-      :ok = WorkingCopies.put(id, "/repo/new")
-
-      assert WorkingCopies.root(id) == {:ok, "/repo/new"},
-             "the id being independent of the path is what buys this — the rows " <>
-               "written under it stay attached across the move"
-    end
-
-    test "an unknown id stays unknown rather than resolving to a neighbour" do
-      :ok = WorkingCopies.put(Ecto.UUID.generate(), "/repo/main")
+    test "an id nobody wrote is unknown, not the nearest checkout" do
+      root = checkout(Ecto.UUID.generate())
+      System.put_env("CMS_PROJECT_DIR", root)
 
       assert WorkingCopies.root(Ecto.UUID.generate()) == :unknown,
              "the behaviour this replaces walked up from the request's directory " <>
-               "until it found a mix.exs, so an unonboarded checkout silently " <>
-               "adopted whichever project was above it"
+               "until it found a mix.exs, so an unonboarded copy adopted whichever " <>
+               "project sat above it"
     end
 
-    test "an entry can be withdrawn" do
+    test "appears in the set this harness knows about" do
       id = Ecto.UUID.generate()
-      :ok = WorkingCopies.put(id, "/repo/main")
+      root = checkout(id)
+      System.put_env("CMS_PROJECT_DIR", root)
 
-      assert :ok = WorkingCopies.delete(id)
-      assert WorkingCopies.root(id) == :unknown
+      assert Map.get(WorkingCopies.all(), id) == root
     end
   end
 
-  describe "a file that cannot be trusted" do
-    test "corrupt contents read as empty and are left on disk", %{registry_file: file} do
-      File.write!(file, "{not json at all")
+  describe "a copy with no identity yet" do
+    test "is not resolvable and does not crash the lookup" do
+      {:ok, root} = Briefly.create(directory: true)
+      System.put_env("CMS_PROJECT_DIR", root)
 
-      assert WorkingCopies.all() == %{}
+      assert WorkingCopies.root(Ecto.UUID.generate()) == :unknown
+      refute Enum.any?(WorkingCopies.all(), fn {_id, r} -> r == root end)
+    end
+  end
 
-      assert File.read!(file) == "{not json at all",
-             "whatever was in there is somebody's onboarding record; refusing to " <>
-               "resolve is recoverable, rewriting it is not"
+  describe "a harness serving nothing" do
+    test "knows nothing rather than failing" do
+      System.delete_env("CMS_PROJECT_DIR")
+
+      assert WorkingCopies.root(Ecto.UUID.generate()) == :unknown
     end
 
-    test "a JSON value that is not an object reads as empty", %{registry_file: file} do
-      File.write!(file, ~s(["not", "an", "object"]))
-
-      assert WorkingCopies.all() == %{}
+    test "an empty or malformed id never resolves" do
+      for id <- ["", "   ", nil, 42] do
+        assert WorkingCopies.root(id) == :unknown
+      end
     end
   end
 end

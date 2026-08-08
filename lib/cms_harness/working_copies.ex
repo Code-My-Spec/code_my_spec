@@ -1,146 +1,112 @@
 defmodule CmsHarness.WorkingCopies do
   @moduledoc """
-  The working copies this machine knows about, by id.
+  Which working copy a harness id names, on this harness.
 
-  A hook names a harness id and nothing else. Resolving that to a directory
-  needs a map, and this is it — a file this project writes and reads, in a
-  format this project decides.
+  A hook arrives addressed to an id and nothing else. Turning that into a
+  directory is this module's whole job.
 
-  ## Why not ask the agent
+  ## Derived, never stored
 
-  The previous answer was the directory the agent announced, which coupled
-  identity to the agent twice over: to the path it happened to be in, and to
-  the agent's own configuration format for saying so. Claude Code interpolates
-  `${CLAUDE_PROJECT_DIR}` into a hook argument; Codex and Antigravity do
-  neither, and we ship plugins for all three. Any identity that travels through
-  the agent is three mechanisms pretending to be one, and it makes somebody
-  else's config format part of our contract.
+  There is no local record of harnesses here, and there is not meant to be.
+  Harness records belong to the server; a copy of them on the harness would be
+  a second source of truth that has to be reconciled, and reconciling it is
+  exactly the work the harness exists to avoid.
 
-  So the id is written into the hook URL when a working copy is onboarded, and
-  the mapping from that id to a directory lives here. Nothing is resolved at
-  request time from anything the agent controls.
+  Nor is there a database to put them in. The harness has to run standalone —
+  that is the sprite, which is the case that matters most — so anything it
+  needs before it can answer a hook has to come from its own configuration and
+  the disk it is already watching. Both are present before the network is.
 
-  ## Why a file rather than the database
+  So the mapping is computed: the roots this harness serves are its
+  configuration, and the id of each is the file in it. A sprite serves one copy
+  and the question is nearly vacuous. A laptop serving several answers it by
+  looking at the few directories it was told about.
 
-  This has to answer before the first hook of a cold start, when nothing is
-  connected and there may be no server to ask. It is also the thing that tells
-  the harness which directories to serve at all, so making it a query would
-  mean the harness could not start without the network.
+  ## An unknown id is refused
 
-  Entries are added deliberately, by onboarding. A directory that is not in
-  here is not served, and a hook naming an unknown id is refused by name rather
-  than guessed at — which is the whole difference from what this replaces.
+  Not resolved to the nearest plausible checkout. What this replaces walked up
+  from whatever directory the hook fired in until it found a `mix.exs`, so a
+  copy nobody had onboarded silently adopted whichever project sat above it,
+  and two copies of one project could not be told apart at all.
   """
 
-  require Logger
-
-  @filename "harnesses.json"
-
-  @type t :: %{String.t() => String.t()}
-
-  @doc "Where the map lives. `CMS_HARNESS_REGISTRY` overrides it, for tests."
-  @spec path() :: String.t()
-  def path do
-    System.get_env("CMS_HARNESS_REGISTRY") ||
-      Path.join(base_dir(), @filename)
-  end
+  alias CmsHarness.HarnessIdentity
+  alias CmsHarness.Projects
 
   @doc """
-  Every known working copy, as `id => root`.
+  The directory this id names, or `:unknown`.
 
-  A missing file is an empty map: a machine that has never onboarded anything
-  is an ordinary state, not a failure. A *corrupt* file is not — it means
-  entries exist and cannot be read, so it says so and returns empty rather than
-  letting a hook fall through to being told its id is unknown.
+  Running subtrees are consulted first because they are the copies this harness
+  is actually serving; configuration is the fallback for one that has not been
+  started yet, which is the first hook after a cold boot.
   """
-  @spec all() :: t()
-  def all do
-    file = path()
-
-    case File.read(file) do
-      {:error, :enoent} ->
-        %{}
-
-      {:ok, contents} ->
-        decode(contents, file)
-
-      {:error, reason} ->
-        Logger.error("[CmsHarness] could not read #{file}: #{inspect(reason)}")
-        %{}
-    end
-  end
-
-  @doc "The directory this id names, if this machine knows it."
   @spec root(String.t()) :: {:ok, String.t()} | :unknown
-  def root(harness_id) when is_binary(harness_id) do
-    case Map.fetch(all(), harness_id) do
+  def root(harness_id) when is_binary(harness_id) and harness_id != "" do
+    case find(Projects.list(), harness_id) do
       {:ok, root} -> {:ok, root}
-      :error -> :unknown
+      :unknown -> find(configured_roots(), harness_id)
     end
   end
 
   def root(_), do: :unknown
 
   @doc """
-  Record that `harness_id` is the working copy at `root`.
+  Every working copy this harness could serve, as `id => root`.
 
-  Last write wins for a given id, because a checkout that moves keeps its
-  identity — that is what the id being independent of the path buys. Two ids
-  pointing at one root is allowed for the same reason it is allowed on the
-  server: a directory reused by a rebuilt container is a new working copy, and
-  refusing that here would only push the collision somewhere less visible.
+  For the health endpoint and for saying, when an id is refused, what this
+  harness does know about — a refusal that lists nothing is indistinguishable
+  from a harness that is not running.
   """
-  @spec put(String.t(), String.t()) :: :ok | {:error, term()}
-  def put(harness_id, root) when is_binary(harness_id) and is_binary(root) do
-    entries = Map.put(all(), harness_id, Path.expand(root))
-
-    write(entries)
+  @spec all() :: %{String.t() => String.t()}
+  def all do
+    (Projects.list() ++ configured_roots())
+    |> Enum.uniq()
+    |> Enum.flat_map(&entry/1)
+    |> Map.new()
   end
 
-  @doc "Forget a working copy. Onboarding is deliberate, so removal is too."
-  @spec delete(String.t()) :: :ok | {:error, term()}
-  def delete(harness_id) when is_binary(harness_id) do
-    all() |> Map.delete(harness_id) |> write()
-  end
-
-  defp write(entries) do
-    file = path()
-
-    with :ok <- File.mkdir_p(Path.dirname(file)),
-         {:ok, json} <- Jason.encode(entries, pretty: true),
-         :ok <- File.write(file, json <> "\n") do
-      :ok
-    else
-      {:error, reason} ->
-        Logger.error("""
-        [CmsHarness] could not write #{file}: #{inspect(reason)}.
-
-        Working copies onboarded in this session will not be served after a
-        restart, and their hooks will be refused as unknown ids.
-        """)
-
-        {:error, reason}
+  defp find(roots, harness_id) do
+    roots
+    |> Enum.find(fn root -> identity(root) == harness_id end)
+    |> case do
+      nil -> :unknown
+      root -> {:ok, root}
     end
   end
 
-  defp decode(contents, file) do
-    case Jason.decode(contents) do
-      {:ok, %{} = entries} ->
-        entries
-
-      _ ->
-        Logger.error("""
-        [CmsHarness] #{file} is not a JSON object of id => root.
-
-        Every hook will be refused as an unknown id until this is fixed. The
-        file is not rewritten, so whatever is in there can be recovered.
-        """)
-
-        %{}
+  defp entry(root) do
+    case identity(root) do
+      nil -> []
+      id -> [{id, root}]
     end
   end
 
-  defp base_dir do
-    Path.join(System.user_home!(), ".codemyspec")
+  # `CMS_HARNESS_ID` is honoured by `HarnessIdentity`, and on a sprite it is
+  # how the container is told who it is without a writable checkout.
+  defp identity(root) do
+    case HarnessIdentity.read(root) do
+      {:ok, id} -> id
+      _ -> nil
+    end
+  end
+
+  # The copies this harness was told to serve. One on a sprite; a short list on
+  # a laptop running several checkouts.
+  defp configured_roots do
+    from_env() ++ from_config()
+  end
+
+  defp from_env do
+    case System.get_env("CMS_PROJECT_DIR") do
+      dir when is_binary(dir) and dir != "" -> [Path.expand(dir)]
+      _ -> []
+    end
+  end
+
+  defp from_config do
+    :code_my_spec
+    |> Application.get_env(:harness_project_dirs, [])
+    |> List.wrap()
+    |> Enum.map(&Path.expand/1)
   end
 end
