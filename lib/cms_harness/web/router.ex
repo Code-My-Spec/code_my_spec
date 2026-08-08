@@ -14,6 +14,28 @@ defmodule CmsHarness.Web.Router do
     plug(:accepts, ["json"])
   end
 
+  # The id-addressed surface. Onboarding writes the harness id into the URL in
+  # the plugin's hook config, so a request identifies itself by where it is
+  # sent rather than by anything the agent interpolates into it — which is what
+  # lets one hook config shape serve Claude Code, Codex and Antigravity alike.
+  #
+  # `hook_name/1` still reads the last path segment, so these are the same
+  # actions with the same names one segment deeper.
+  scope "/api/harnesses/:harness_id/hooks", CmsHarness.Web do
+    pipe_through(:hook)
+
+    post("/session-start", HooksController, :handle)
+    post("/pre-tool-use", HooksController, :handle)
+    post("/post-tool-use", HooksController, :handle)
+    post("/stop", HooksController, :handle)
+    post("/subagent-start", HooksController, :handle)
+    post("/subagent-stop", HooksController, :handle)
+    post("/notification", HooksController, :handle)
+    post("/ask-user-question", HooksController, :handle)
+  end
+
+  # The unaddressed surface, kept while shipped plugins still post here. These
+  # fall back to the working directory, which cannot tell two checkouts apart.
   scope "/api/hooks", CmsHarness.Web do
     pipe_through(:hook)
 

@@ -21,14 +21,53 @@ defmodule CmsHarness.Web.HooksController do
   alias CmsHarness.HookDecision
   alias CmsHarness.Project.ChannelClient
   alias CmsHarness.Projects
+  alias CmsHarness.WorkingCopies
 
   def handle(conn, params) do
     hook = hook_name(conn)
-    working_dir = working_dir(conn)
 
-    conn
-    |> put_status(200)
-    |> json(decide(hook, working_dir, params))
+    case locate(conn, params) do
+      {:ok, working_dir} ->
+        conn
+        |> put_status(200)
+        |> json(decide(hook, working_dir, params))
+
+      {:unknown_harness, id} ->
+        conn
+        |> put_status(200)
+        |> json(unknown_harness(hook, id, params))
+    end
+  end
+
+  # The id in the URL is the routing key, and it got there because *we* wrote
+  # it when the working copy was onboarded — not from anything the agent
+  # interpolates. That matters beyond tidiness: Claude Code expands
+  # `${CLAUDE_PROJECT_DIR}` into a hook argument, Codex and Antigravity do not,
+  # and we ship plugins for all three. Identity that travels through the agent
+  # is three mechanisms wearing one name.
+  #
+  # The header path below stays until every shipped plugin posts to the id URL.
+  defp locate(conn, params) do
+    case params["harness_id"] do
+      id when is_binary(id) and id != "" -> from_id(id)
+      _ -> {:ok, working_dir(conn)}
+    end
+  end
+
+  defp from_id(id) do
+    case WorkingCopies.root(id) do
+      {:ok, root} -> {:ok, root}
+      :unknown -> {:unknown_harness, id}
+    end
+  end
+
+  # Named rather than guessed at. The old behaviour walked up from whatever
+  # directory the hook fired in until it found a mix.exs, so an unonboarded
+  # checkout silently adopted whichever project happened to be above it.
+  defp unknown_harness(hook, id, params) do
+    Logger.warning("[CmsHarness] #{hook} names harness #{id}, which this machine does not serve")
+
+    HookDecision.unreachable(hook, :no_project, "harness #{id} (not onboarded here)", params)
   end
 
   # No working directory in the request. A sprite serves exactly one project
