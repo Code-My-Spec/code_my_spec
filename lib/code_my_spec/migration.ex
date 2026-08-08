@@ -626,12 +626,26 @@ defmodule CodeMySpec.Migration do
   defp upsert_attempt(scope, story, attempt, issues) do
     scope
     |> QaAttempts.list(story.id)
-    |> Enum.find(&(to_string(&1.submitted_at) == to_string(attempt["submitted_at"])))
+    |> Enum.find(&same_instant?(&1.submitted_at, attempt["submitted_at"]))
     |> case do
       %{} = already -> {:ok, already}
       nil -> insert_attempt(story, attempt, issues)
     end
   end
+
+  # Compared as instants, not as strings. `to_string/1` on a DateTime renders
+  # "2026-05-17 22:17:32.734931Z" while the payload carries the ISO8601
+  # "2026-05-17T22:17:32.734931Z" — a space against a T. They never matched, so
+  # every run inserted a fresh copy of every attempt and one project reached
+  # 954 rows for 159 real ones before the audit caught it.
+  defp same_instant?(%DateTime{} = recorded, iso) when is_binary(iso) do
+    case DateTime.from_iso8601(iso) do
+      {:ok, parsed, _offset} -> DateTime.compare(recorded, parsed) == :eq
+      _ -> false
+    end
+  end
+
+  defp same_instant?(_recorded, _iso), do: false
 
   defp insert_attempt(story, attempt, issues) do
     %QaAttempt{}
