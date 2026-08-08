@@ -207,11 +207,11 @@ defmodule CodeMySpec.Migration do
   end
 
   defp put_stories(scope, stories, epics) do
-    existing = scope |> project_stories() |> Map.new(&{&1.title, &1})
+    known = scope |> project_stories() |> index_stories()
     components = component_ids_by_module(scope)
 
     collect(stories, fn story ->
-      case existing[story["title"]] do
+      case find_existing(known, story) do
         %{} = already ->
           {:ok, already}
 
@@ -220,9 +220,50 @@ defmodule CodeMySpec.Migration do
           |> attrs(Stories.Story)
           |> put_ref(:epic_id, epics[story["epic_local_id"]])
           |> put_component(components, story["component_module_name"])
+          |> Map.put(:migrated_from_id, story["local_id"])
           |> then(&Stories.create_story(scope, &1))
       end
     end)
+  end
+
+  # Two indexes because a second run has two ways to recognise its own work, and
+  # they are not equally good. `migrated_from_id` is the source's own id, which
+  # nothing here edits; title is a string a human rewrites. Before the id was
+  # recorded, retitling a story upstream made it a second story here on the next
+  # run, and two stories sharing a title collapsed into one.
+  #
+  # Title is still consulted, for rows written before the id existed. It is the
+  # fallback rather than the key.
+  defp index_stories(stories) do
+    %{
+      by_source:
+        Map.new(Enum.reject(stories, &is_nil(&1.migrated_from_id)), &{&1.migrated_from_id, &1}),
+      by_title: Map.new(stories, &{&1.title, &1})
+    }
+  end
+
+  defp find_existing(%{by_source: by_source, by_title: by_title}, story) do
+    case Map.get(by_source, story["local_id"]) do
+      %{} = matched -> matched
+      nil -> match_by_title(Map.get(by_title, story["title"]), story)
+    end
+  end
+
+  # Title only decides for a row that cannot say where it came from. A row that
+  # already names a *different* source story is a different story that happens
+  # to share a title, and treating it as this one merges two of Sam's stories
+  # into whichever arrived first — silently, since the importer then reports it
+  # as migrated.
+  #
+  # Returning nil sends it to the insert, where the destination's unique title
+  # index refuses it and the whole import rolls back. Loud and recoverable beats
+  # quiet and lossy.
+  defp match_by_title(nil, _story), do: nil
+
+  defp match_by_title(%{migrated_from_id: nil} = candidate, _story), do: candidate
+
+  defp match_by_title(%{migrated_from_id: source_id} = candidate, story) do
+    if source_id == story["local_id"], do: candidate, else: nil
   end
 
   # A component this deployment does not have yet is left unlinked rather than

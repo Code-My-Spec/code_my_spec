@@ -73,6 +73,11 @@ defmodule CodeMySpec.Stories.Story do
     # leaves it alone. That is the whole reason the node could come back
     # after bab2f792 removed it for clamping downstream work.
     field :specs_ready, :boolean, default: false
+
+    # The id this story had on the harness it was migrated from. Story ids are
+    # per-deployment sequences and the ranges overlap, so without this the same
+    # number names different stories on either side and nothing errors.
+    field :migrated_from_id, :integer
     field :acceptance_criteria, {:array, :string}
     # `:active` is a legacy status that predates the narrowed enum
     # (`:in_progress | :completed | :dirty`). Accepted on read to
@@ -117,7 +122,8 @@ defmodule CodeMySpec.Stories.Story do
       :locked_by,
       :project_id,
       :component_id,
-      :epic_id
+      :epic_id,
+      :migrated_from_id
     ])
     |> sync_story_and_description()
     |> clear_specs_ready_on_readiness_change()

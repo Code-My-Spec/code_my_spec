@@ -98,3 +98,6 @@ relay/cms-mcp-relay
 # checkout's harness id, so it is never shared or committed.
 .claude/plugin-dev/
 .cms_harness.json
+
+# Harness stdout when started detached for local development.
+.harness-*.log
