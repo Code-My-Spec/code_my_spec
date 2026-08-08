@@ -1898,6 +1898,16 @@ defmodule CodeMySpecSpex.Case do
   # secret. The recorded public key picks the pair, so the mapping is stable
   # across every interaction in a cassette and across re-scrubs of the same
   # recording.
+  # Leaves a pool secret as it found it; anything else is a real key and is
+  # replaced. Idempotent by construction, which is what the block rule needs to
+  # survive the filters being applied twice.
+  @doc false
+  def redact_bare_secret(match) do
+    if Enum.any?(@replay_keypairs, fn {_pub, secret} -> secret == match end),
+      do: match,
+      else: elem(hd(@replay_keypairs), 1)
+  end
+
   @doc false
   def replay_keypair(match) do
     recorded_public =
@@ -1906,6 +1916,20 @@ defmodule CodeMySpecSpex.Case do
         _ -> match
       end
 
+    # Already rewritten, so leave it exactly as it is. Without this the pair
+    # stays internally consistent but *drifts* on every pass — pool[2] becomes
+    # pool[3] becomes pool[1] — and these filters run on write and again on
+    # read-back for matching. A stored value that the matcher recomputes
+    # differently is precisely a "No matching interaction" miss, which is the
+    # failure this whole keypair change set out to stop.
+    if Enum.any?(@replay_keypairs, fn {public, _} -> public == recorded_public end) do
+      match
+    else
+      rewrite_around(recorded_public)
+    end
+  end
+
+  defp rewrite_around(recorded_public) do
     index = :erlang.phash2(recorded_public, length(@replay_keypairs))
     {public, secret} = Enum.at(@replay_keypairs, index)
 
@@ -1942,10 +1966,16 @@ defmodule CodeMySpecSpex.Case do
       # in an error message, which is not inside an `age-keygen` block and
       # which the block rule would miss. The block rule then runs over the
       # result: it selects on the *public* key, still real at that point, so it
-      # rewrites both halves to a matching pair. Reversing these would leave
-      # the bare rule stamping its own key over the pair the block rule had
-      # just made consistent.
-      {~r/AGE-SECRET-KEY-[A-Z0-9]+/, elem(hd(@replay_keypairs), 1)},
+      # rewrites both halves to a matching pair.
+      #
+      # A key already in the pool is left alone, and that is load-bearing
+      # rather than an optimisation. These filters get applied more than once
+      # — on write and again on read-back — and a bare rule that always wrote
+      # the same secret reset it on every pass while the public half kept what
+      # the block rule had written. A fresh recording came out with four of
+      # five pairs mismatched: pool[3]'s public against pool[0]'s secret.
+      # Passing pool keys through makes re-application harmless.
+      {~r/AGE-SECRET-KEY-[A-Z0-9]+/, &redact_bare_secret/1},
       {~r/(?:Public key: age1[a-z0-9]+\n)?# created: [^\n]*\n# public key: age1[a-z0-9]+\nAGE-SECRET-KEY-[A-Z0-9]+/,
        &replay_keypair/1},
       # PEM private keys, for the same reason — anything that prints a key.

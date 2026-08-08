@@ -109,6 +109,49 @@ defmodule CodeMySpec.CassetteFilteringTest do
     end
   end
 
+  describe "age keypairs in a recording" do
+    @raw_keygen_output "Public key: age1realaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n" <>
+                         "# created: 2026-08-08T10:44:00-04:00\n" <>
+                         "# public key: age1realaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n" <>
+                         "AGE-SECRET-KEY-1REALSECRETAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\n"
+
+    defp scrub(text) do
+      Enum.reduce(SpexCase.sensitive_patterns(), text, fn {pattern, replacement}, acc ->
+        String.replace(acc, pattern, replacement)
+      end)
+    end
+
+    defp keypair(text) do
+      [_, public] = Regex.run(~r/# public key: (age1[a-z0-9]+)/, text)
+      [_, secret] = Regex.run(~r/(AGE-SECRET-KEY-[A-Z0-9]+)/, text)
+      {public, secret}
+    end
+
+    test "the real secret does not survive" do
+      refute scrub(@raw_keygen_output) =~ "REALSECRET"
+    end
+
+    # The halves have to match, or replay stores a key that cannot open what it
+    # encrypted. Scrubbing only the secret left the recorded public in place and
+    # produced exactly that.
+    test "the halves it writes belong to each other" do
+      {public, secret} = keypair(scrub(@raw_keygen_output))
+
+      assert {public, secret} in SpexCase.replay_keypairs(),
+             "the public and secret written must be two halves of one pair"
+    end
+
+    # These filters run on write and again on read-back for matching, so a
+    # result that changes between passes is a "No matching interaction" miss
+    # waiting to happen. A first attempt was consistent but drifted —
+    # pool[2] on one pass, pool[3] on the next.
+    test "applying the filters twice changes nothing" do
+      once = scrub(@raw_keygen_output)
+
+      assert keypair(scrub(once)) == keypair(once)
+    end
+  end
+
   describe "the cassettes already in the repository" do
     # The audit, standing rather than one-off. A credential committed once is
     # committed forever as far as rotation is concerned, so this needs to fail
