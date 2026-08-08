@@ -69,6 +69,20 @@ defmodule CodeMySpec.Migration do
       "story" => story.story,
       "description" => story.description,
       "status" => story.status && to_string(story.status),
+      # Authored state, all of it. Carrying only title/story/description/status
+      # left every migrated story parked: `ready_for_dev` is what releases a
+      # story into the requirement graph, so a project arrived with 91 stories
+      # marked ready at the source and 0 here, and the graph saw almost nothing
+      # to work on. `notes`, `priority` and `specs_ready` were dropped the same
+      # way — 26, 52 and 8 stories' worth.
+      "ready_for_dev" => story.ready_for_dev,
+      "specs_ready" => story.specs_ready,
+      "notes" => story.notes,
+      "priority" => story.priority,
+      # The importer has always read this to rewire the epic; nothing ever
+      # wrote it, so all 16 epic memberships were silently dropped while the
+      # epics themselves migrated.
+      "epic_local_id" => story.epic_id,
       # By module name, not id. Components are projections of files — each
       # deployment derives its own from the same source, so the ids differ and
       # the module name is what both sides agree on. It is the natural key
@@ -213,7 +227,7 @@ defmodule CodeMySpec.Migration do
     collect(stories, fn story ->
       case find_existing(known, story) do
         %{} = already ->
-          relink(scope, already, components, story["component_module_name"])
+          relink(scope, already, components, story)
 
         nil ->
           story
@@ -226,24 +240,49 @@ defmodule CodeMySpec.Migration do
     end)
   end
 
-  # A story that is already here still takes its component from the payload.
+  # A story that is already here still takes its authored state from the
+  # payload: the component it is mapped to, and the flags that decide what the
+  # graph does with it.
   #
   # Recognising a row and returning it untouched made "idempotent" mean
-  # "inert": correcting a story's component upstream and migrating again
-  # carried nothing, so every correction needed a hand-written backfill against
-  # the destination. Which is how nine stories came to point at components that
-  # no longer existed — the links were fixed at the source and the re-run
-  # ignored them.
+  # "inert": a correction upstream carried nothing, so every one needed a
+  # hand-written backfill against the destination. That is how nine stories
+  # came to point at components that no longer existed, and how 91 stories
+  # stayed parked after `ready_for_dev` started being exported — the first run
+  # created them without it, and no later run could put it right.
   #
-  # Only the component. Title, narrative and description are left alone: the
-  # destination is where they get edited once a project has moved, and the
-  # source stops being authoritative about them the moment somebody does.
-  defp relink(scope, story, components, module_name) do
-    case Map.get(components, module_name || :none) do
-      nil -> {:ok, story}
-      same when same == story.component_id -> {:ok, story}
-      id -> Stories.update_story(scope, story, %{component_id: id})
+  # Title, narrative and description are deliberately not re-applied. Those are
+  # edited at the destination once a project has moved, and the source stops
+  # being authoritative about them the moment somebody does. Readiness and
+  # priority are the migration's business until the move is finished.
+  defp relink(scope, story, components, payload) do
+    story
+    |> resync_attrs(components, payload)
+    |> case do
+      changes when map_size(changes) == 0 -> {:ok, story}
+      changes -> Stories.update_story(scope, story, changes)
     end
+  end
+
+  defp resync_attrs(story, components, payload) do
+    %{}
+    |> put_changed(
+      story,
+      :component_id,
+      Map.get(components, payload["component_module_name"] || :none)
+    )
+    |> put_changed(story, :ready_for_dev, payload["ready_for_dev"])
+    |> put_changed(story, :specs_ready, payload["specs_ready"])
+    |> put_changed(story, :priority, payload["priority"])
+    |> put_changed(story, :notes, payload["notes"])
+  end
+
+  # Only what actually differs, so a re-run with nothing to say writes nothing
+  # and `updated_at` stays honest about when a story last changed.
+  defp put_changed(changes, _story, _key, nil), do: changes
+
+  defp put_changed(changes, story, key, value) do
+    if Map.get(story, key) == value, do: changes, else: Map.put(changes, key, value)
   end
 
   # Two indexes because a second run has two ways to recognise its own work, and

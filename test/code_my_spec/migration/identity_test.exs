@@ -98,6 +98,39 @@ defmodule CodeMySpec.Migration.IdentityTest do
              "hand-written backfill against the destination"
   end
 
+  test "authored state travels, so a migrated story is not parked", %{scope: scope} do
+    ready =
+      story(844, "Mark stories ready")
+      |> Map.merge(%{"ready_for_dev" => true, "priority" => 3, "notes" => "from the source"})
+
+    {:ok, _} = Migration.import_project(scope, payload([ready]))
+
+    {:ok, [migrated]} = Stories.list_project_stories(scope)
+
+    assert migrated.ready_for_dev,
+           "ready_for_dev is what releases a story into the requirement graph — " <>
+             "carrying only title and description migrated 91 ready stories as 0, " <>
+             "and the graph saw almost nothing to work on"
+
+    assert migrated.priority == 3
+    assert migrated.notes == "from the source"
+  end
+
+  test "readiness corrected upstream reaches a story already here", %{scope: scope} do
+    {:ok, _} = Migration.import_project(scope, payload([story(844, "Mark stories ready")]))
+    {:ok, [before]} = Stories.list_project_stories(scope)
+    refute before.ready_for_dev
+
+    released = Map.put(story(844, "Mark stories ready"), "ready_for_dev", true)
+    {:ok, _} = Migration.import_project(scope, payload([released]))
+
+    {:ok, [after_run]} = Stories.list_project_stories(scope)
+
+    assert after_run.ready_for_dev,
+           "a first run that predates the field must be fixable by a second one, " <>
+             "or the only remedy is a hand-written backfill"
+  end
+
   test "a duplicate title is refused by the destination, not silently merged", %{scope: scope} do
     {:ok, _} = Migration.import_project(scope, payload([story(101, "Same words")]))
 
