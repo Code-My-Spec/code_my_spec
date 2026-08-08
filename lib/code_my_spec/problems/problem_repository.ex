@@ -6,6 +6,7 @@ defmodule CodeMySpec.Problems.ProblemRepository do
 
   import Ecto.Query, warn: false
 
+  alias CodeMySpec.Harnesses
   alias CodeMySpec.Problems.Problem
   alias CodeMySpec.Repo
   alias CodeMySpec.Users.Scope
@@ -147,9 +148,9 @@ defmodule CodeMySpec.Problems.ProblemRepository do
           {:ok, [Problem.t()]} | {:error, term()}
   def create_problems(_scope, []), do: {:ok, []}
 
-  def create_problems(%Scope{active_project_id: project_id}, problems) when is_list(problems) do
+  def create_problems(%Scope{} = scope, problems) when is_list(problems) do
     Repo.transaction(fn ->
-      case insert_all_problems(problems, project_id) do
+      case insert_all_problems(problems, scope) do
         {:error, changeset} -> Repo.rollback(changeset)
         {:ok, inserted_problems} -> inserted_problems
       end
@@ -179,12 +180,12 @@ defmodule CodeMySpec.Problems.ProblemRepository do
   """
   @spec replace_project_problems(Scope.t(), [Problem.t() | map()]) ::
           {:ok, [Problem.t()]} | {:error, term()}
-  def replace_project_problems(%Scope{active_project_id: project_id}, problems)
+  def replace_project_problems(%Scope{} = scope, problems)
       when is_list(problems) do
     Repo.transaction(fn ->
-      delete_all_project_problems(project_id)
+      delete_all_project_problems(scope)
 
-      case insert_all_problems(problems, project_id) do
+      case insert_all_problems(problems, scope) do
         {:error, changeset} -> Repo.rollback(changeset)
         {:ok, inserted_problems} -> inserted_problems
       end
@@ -210,7 +211,7 @@ defmodule CodeMySpec.Problems.ProblemRepository do
           Problem.t() | map()
         ]) :: {:ok, [Problem.t()]} | {:error, term()}
   def reconcile_problems_for_source(
-        %Scope{active_project_id: project_id} = scope,
+        %Scope{} = scope,
         source,
         file_scope,
         problems
@@ -219,7 +220,7 @@ defmodule CodeMySpec.Problems.ProblemRepository do
     Repo.transaction(fn ->
       clear_problems_for_source(scope, [source: source], file_scope)
 
-      case insert_all_problems(problems, project_id) do
+      case insert_all_problems(problems, scope) do
         {:error, changeset} -> Repo.rollback(changeset)
         {:ok, inserted_problems} -> inserted_problems
       end
@@ -254,14 +255,19 @@ defmodule CodeMySpec.Problems.ProblemRepository do
           {:ok, [Problem.t()]} | {:error, term()}
   def replace_problems_for_files(_scope, [], _problems), do: {:ok, []}
 
-  def replace_problems_for_files(%Scope{active_project_id: project_id}, file_paths, problems)
+  def replace_problems_for_files(
+        %Scope{active_project_id: project_id} = scope,
+        file_paths,
+        problems
+      )
       when is_list(file_paths) and is_list(problems) do
     Repo.transaction(fn ->
       Problem
       |> where([p], p.project_id == ^project_id and p.file_path in ^file_paths)
+      |> scope_to_harness(scope)
       |> Repo.delete_all()
 
-      case insert_all_problems(problems, project_id) do
+      case insert_all_problems(problems, scope) do
         {:error, changeset} -> Repo.rollback(changeset)
         {:ok, inserted_problems} -> inserted_problems
       end
@@ -282,8 +288,8 @@ defmodule CodeMySpec.Problems.ProblemRepository do
 
   """
   @spec clear_project_problems(Scope.t()) :: {:ok, integer()} | {:error, term()}
-  def clear_project_problems(%Scope{active_project_id: project_id}) do
-    count = delete_all_project_problems(project_id)
+  def clear_project_problems(%Scope{} = scope) do
+    count = delete_all_project_problems(scope)
     {:ok, count}
   end
 
@@ -311,10 +317,15 @@ defmodule CodeMySpec.Problems.ProblemRepository do
   """
   @spec clear_problems_for_source(Scope.t(), keyword(), [String.t()] | :all) ::
           {:ok, integer()}
-  def clear_problems_for_source(%Scope{active_project_id: project_id}, source_filter, file_paths) do
+  def clear_problems_for_source(
+        %Scope{active_project_id: project_id} = scope,
+        source_filter,
+        file_paths
+      ) do
     query =
       Problem
       |> where([p], p.project_id == ^project_id)
+      |> scope_to_harness(scope)
       |> apply_source_filter(source_filter)
       |> apply_file_scope(file_paths)
 
@@ -333,11 +344,15 @@ defmodule CodeMySpec.Problems.ProblemRepository do
   should stay blocked. They clear on the next full compiler reconcile.
   """
   @spec clear_problems_for_missing_files(Scope.t(), [String.t()]) :: {:ok, integer()}
-  def clear_problems_for_missing_files(%Scope{active_project_id: project_id}, current_paths)
+  def clear_problems_for_missing_files(
+        %Scope{active_project_id: project_id} = scope,
+        current_paths
+      )
       when is_list(current_paths) do
     {count, _} =
       Problem
       |> where([p], p.project_id == ^project_id)
+      |> scope_to_harness(scope)
       |> where([p], not is_nil(p.file_path) and p.file_path != "unknown")
       |> where([p], p.file_path not in ^current_paths)
       |> Repo.delete_all()
@@ -356,7 +371,7 @@ defmodule CodeMySpec.Problems.ProblemRepository do
   def replace_problems_for_components(_scope, [], _source, _problems), do: {:ok, []}
 
   def replace_problems_for_components(
-        %Scope{active_project_id: project_id},
+        %Scope{active_project_id: project_id} = scope,
         component_ids,
         source,
         problems
@@ -367,9 +382,10 @@ defmodule CodeMySpec.Problems.ProblemRepository do
       |> where([p], p.project_id == ^project_id)
       |> where([p], p.component_id in ^component_ids)
       |> where([p], p.source == ^source)
+      |> scope_to_harness(scope)
       |> Repo.delete_all()
 
-      case insert_all_problems(problems, project_id) do
+      case insert_all_problems(problems, scope) do
         {:error, changeset} -> Repo.rollback(changeset)
         {:ok, inserted_problems} -> inserted_problems
       end
@@ -474,21 +490,37 @@ defmodule CodeMySpec.Problems.ProblemRepository do
 
   defp to_attrs_map(attrs) when is_map(attrs), do: attrs
 
-  defp delete_all_project_problems(project_id) do
+  defp delete_all_project_problems(%Scope{active_project_id: project_id} = scope) do
     {count, _} =
       Problem
       |> where([p], p.project_id == ^project_id)
+      |> scope_to_harness(scope)
       |> Repo.delete_all()
 
     count
   end
 
-  defp insert_all_problems([], _project_id), do: {:ok, []}
+  # A reconcile is a wipe-and-replace for one source. Unscoped, one checkout's
+  # analyzer run cleared the other's findings — the same shape as the file
+  # corruption, one layer over. A scope with no harness clears across the
+  # project, which is what a caller holding the project rather than a copy of it
+  # means.
+  defp scope_to_harness(query, %Scope{active_harness_id: nil}), do: query
 
-  defp insert_all_problems(problems, project_id) do
+  defp scope_to_harness(query, %Scope{active_harness_id: harness_id}),
+    do: where(query, [p], p.harness_id == ^harness_id)
+
+  defp insert_all_problems([], _scope), do: {:ok, []}
+
+  defp insert_all_problems(problems, %Scope{active_project_id: project_id} = scope) do
+    # Resolved once rather than per problem: a reconcile inserts hundreds, and
+    # `ensure_default/1` is a write. A writer that named its working copy gets
+    # that one; one that did not shares the project's nil object, same as files.
+    harness_id = scope.active_harness_id || Harnesses.ensure_default(scope)
+
     problems
     |> Enum.reduce_while([], fn problem_data, acc ->
-      case insert_single_problem(problem_data, project_id) do
+      case insert_single_problem(problem_data, project_id, harness_id) do
         {:ok, problem} -> {:cont, [problem | acc]}
         {:error, changeset} -> {:halt, {:error, changeset}}
       end
@@ -499,11 +531,12 @@ defmodule CodeMySpec.Problems.ProblemRepository do
     end
   end
 
-  defp insert_single_problem(problem_data, project_id) do
+  defp insert_single_problem(problem_data, project_id, harness_id) do
     attrs =
       problem_data
       |> to_attrs_map()
       |> Map.put(:project_id, project_id)
+      |> Map.put(:harness_id, harness_id)
 
     %Problem{}
     |> Problem.changeset(attrs)

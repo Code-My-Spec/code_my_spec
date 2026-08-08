@@ -23,6 +23,7 @@ defmodule CodeMySpec.HarnessesTest do
 
   alias CodeMySpec.Files
   alias CodeMySpec.Harnesses
+  alias CodeMySpec.Problems
 
   setup do
     %{scope: full_scope_fixture()}
@@ -184,6 +185,59 @@ defmodule CodeMySpec.HarnessesTest do
       {deleted, _} = Files.delete_removed(%{scope | active_harness_id: nil}, [])
 
       assert deleted == 1
+    end
+  end
+
+  describe "two working copies' problems" do
+    # Criterion 732: "that failure appears only in that agent's problems, and the
+    # other agent's stop hook reports nothing about it." A reconcile is a
+    # wipe-and-replace for one source, so unscoped it had the same shape as the
+    # file corruption — one checkout's analyzer run cleared the other's findings.
+    defp problems_of(scope, source) do
+      scope
+      |> Problems.list_project_problems(source: source)
+      |> Enum.filter(&(&1.harness_id == scope.active_harness_id))
+      |> Enum.map(& &1.message)
+      |> Enum.sort()
+    end
+
+    defp record(scope, source, message) do
+      {:ok, _} =
+        Problems.reconcile_problems_for_source(scope, source, :all, [
+          %{
+            severity: :error,
+            source_type: :test,
+            source: source,
+            file_path: "test/a_test.exs",
+            message: message,
+            category: "failure"
+          }
+        ])
+    end
+
+    test "a failure found in one checkout is not reported in the other", %{scope: scope} do
+      a = harness_scope(scope, "the harness at /a")
+      b = harness_scope(scope, "the harness at /b")
+
+      record(a, "exunit", "a's test is broken")
+
+      assert problems_of(a, "exunit") == ["a's test is broken"]
+
+      assert problems_of(b, "exunit") == [],
+             "b never ran that analyzer — its stop hook must report nothing about it"
+    end
+
+    test "a clean run in one checkout does not clear the other's findings", %{scope: scope} do
+      a = harness_scope(scope, "the harness at /a")
+      b = harness_scope(scope, "the harness at /b")
+
+      record(a, "exunit", "a's test is broken")
+
+      # b's suite passes: a full reconcile for exunit with nothing to report.
+      {:ok, []} = Problems.reconcile_problems_for_source(b, "exunit", :all, [])
+
+      assert problems_of(a, "exunit") == ["a's test is broken"],
+             "a is still broken; b passing says nothing about a's checkout"
     end
   end
 

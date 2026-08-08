@@ -69,7 +69,8 @@ defmodule CodeMySpec.Problems.Problem do
       :rule,
       :metadata,
       :component_id,
-      :project_id
+      :project_id,
+      :harness_id
     ])
     |> put_default_source_type()
     |> validate_required([

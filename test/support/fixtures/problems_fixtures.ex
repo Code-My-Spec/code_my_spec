@@ -33,6 +33,10 @@ defmodule CodeMySpec.ProblemsFixtures do
       attrs
       |> valid_problem_attrs()
       |> Map.put(:project_id, scope.active_project_id)
+      # Problems belong to the working copy whose analyzer found them, the same
+      # as the files they cite. Without this a fixture's problems are owned by
+      # nobody and survive the reconcile that should have replaced them.
+      |> Map.put(:harness_id, scope.active_harness_id)
 
     {:ok, problem} =
       %Problem{}
