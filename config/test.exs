@@ -126,6 +126,18 @@ config :code_my_spec,
   harness_decision_timeout: 1_000,
   harness_watch_debounce_ms: 200
 
+# Provisioning's pollers back off between reads — waiting for a server to boot,
+# a bucket to appear, a firewall to release. Against stubs and cassettes there
+# is nothing to wait for, so the sleeps are pure wall-clock: `apex_repoint_test`
+# alone spent 28 of its 29 seconds asleep.
+#
+# The spex case already set this per-run (`:real` while recording, `:none` on
+# replay); plain ExUnit tests never got it. Leaving them to sleep also made the
+# suite sensitive to retry budgets — lengthening the firewall retry from 10s to
+# 30s pushed an async test into a fixture collision it had merely been lucky to
+# avoid.
+config :code_my_spec, :provisioning_waits, :none
+
 # In test we don't send emails
 config :code_my_spec, CodeMySpec.Mailer, adapter: Swoosh.Adapters.Test
 
