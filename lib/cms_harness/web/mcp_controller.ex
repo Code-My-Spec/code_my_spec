@@ -48,6 +48,7 @@ defmodule CmsHarness.Web.McpController do
   alias CmsHarness.Config
   alias CmsHarness.ProjectIdentity
   alias CmsHarness.Token
+  alias CmsHarness.WorkingCopies
 
   # Everything the MCP transport puts on a request that means something to the
   # far end. `authorization` is deliberately absent — Claude Code sends none,
@@ -198,6 +199,23 @@ defmodule CmsHarness.Web.McpController do
   # somebody will reasonably expect it to work here. `CMS_PROJECT_DIR` is the
   # sprite, which serves one project and is told which at boot.
   defp project(conn) do
+    case conn.query_params["harness"] do
+      id when is_binary(id) and id != "" -> by_harness(id)
+      _ -> by_directory(conn)
+    end
+  end
+
+  # `?harness=<id>` is the addressed form, matching the hook surface. The id
+  # says which working copy without the directory being consulted, which is
+  # what lets two checkouts of one project hold separate MCP sessions.
+  defp by_harness(id) do
+    case WorkingCopies.root(id) do
+      {:ok, root} -> ProjectIdentity.resolve(root)
+      :unknown -> {:error, {:unknown_harness, id}}
+    end
+  end
+
+  defp by_directory(conn) do
     dir =
       conn.query_params["dir"] ||
         List.first(get_req_header(conn, "x-working-dir")) ||
@@ -239,6 +257,12 @@ defmodule CmsHarness.Web.McpController do
 
   defp message({:unreachable, reason}),
     do: "The harness could not reach #{Config.server_url()} to get a token: #{inspect(reason)}"
+
+  defp message({:unknown_harness, id}),
+    do:
+      "This harness is not serving the working copy #{id}. Either it serves a " <>
+        "different set of copies, or this checkout's plugin was generated against " <>
+        "an id that has since been reissued — re-run `mix cms.harness.onboard`."
 
   defp message(:no_working_dir),
     do:

@@ -45,7 +45,8 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
 
     with {:ok, id} <- identity(root),
          :ok <- copy_plugin(root, dest),
-         {:ok, count} <- address_hooks(dest, id) do
+         {:ok, count} <- address_hooks(dest, id),
+         :ok <- address_mcp(dest, id) do
       report(id, dest, count, args)
     else
       {:error, message} -> Mix.raise(message)
@@ -103,6 +104,26 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
         File.write!(file, String.replace(contents, "/api/hooks/", "/api/harnesses/#{id}/hooks/"))
 
         {:ok, contents |> String.split("/api/hooks/") |> length() |> Kernel.-(1)}
+
+      {:error, reason} ->
+        {:error, "Could not read #{file}: #{inspect(reason)}"}
+    end
+  end
+
+  # The MCP surface has the same question to answer as the hooks — which
+  # working copy is this? — so it gets the same answer. Left on `?dir=` it
+  # would be the one place a directory still decided something, and two
+  # checkouts of one project would share an MCP session.
+  defp address_mcp(dest, id) do
+    file = Path.join([dest, ".claude-plugin", "plugin.json"])
+
+    case File.read(file) do
+      {:ok, contents} ->
+        addressed =
+          String.replace(contents, "/mcp?dir=${CLAUDE_PROJECT_DIR}", "/mcp?harness=#{id}")
+
+        File.write!(file, addressed)
+        :ok
 
       {:error, reason} ->
         {:error, "Could not read #{file}: #{inspect(reason)}"}
