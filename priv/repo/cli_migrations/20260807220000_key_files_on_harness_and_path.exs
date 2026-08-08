@@ -2,61 +2,47 @@ defmodule CodeMySpec.Repo.Migrations.KeyFilesOnHarnessAndPath do
   use Ecto.Migration
 
   @moduledoc """
-  A path is unique per *working copy*, not per project.
+  The SQLite counterpart of the Postgres `key_files_on_harness_and_path`.
 
-  `UNIQUE (project_id, path)` was the last thing keeping two checkouts from
-  coexisting. Scoping the queries stopped one sync deleting files only the other
-  had, but the second checkout's upsert still conflicted onto the first's row
-  and updated it — `harness_id` is not in the `on_conflict` replace list, so the
-  row stayed the first's and the second appeared to have no such file at all.
+  Same purpose: a path is unique per *working copy*, not per project, so two
+  checkouts stop conflicting onto one row. The unique index moves from
+  `(project_id, path)` to `(project_id, harness_id, path)`, which is what
+  `conflict_target` names.
 
-  ## `harness_id` becomes NOT NULL, and that is the point
+  ## What is not mirrored, and why
 
-  `conflict_target` has to name a unique index, so it now includes `harness_id`
-  — and `ON CONFLICT` never matches a NULL. Left nullable, every upsert from a
-  harness-less writer would insert a duplicate instead of updating one, which is
-  a worse failure than the one being fixed: silent unbounded row growth rather
-  than a visible collision.
+  The Postgres version also makes `harness_id` NOT NULL and flips the foreign
+  key to `:delete_all`. Both are `modify`, which compiles to `ALTER COLUMN` —
+  a statement SQLite does not have. The mirrored copy therefore raised
+  `ALTER COLUMN not supported by SQLite3`, and because the migrator is a
+  supervised child that is not a failed migration but a CLI that will not boot.
 
-  So every writer names its working copy. That is true of all of them: the
-  channel has its harness, and the local app serves exactly one checkout and
-  simply never had to say which. Rows that predate the column are deleted rather
-  than assigned — they are projections, the next scan rebuilds them, and there
-  is no honest answer to which copy produced them.
+  Reproducing it on SQLite means rebuilding the table: create, copy, drop,
+  rename. That is a real cost on a `files` table, and it buys a guarantee this
+  deployment does not need in the same way. The NOT NULL exists because
+  `ON CONFLICT` never matches a NULL, so a nullable column would turn every
+  upsert from a harness-less writer into an insert — unbounded silent row
+  growth. Deleting the orphans below removes the rows that could do that, and
+  every writer now names its working copy, so nothing reintroduces them.
 
-  ## `on_delete` flips to `:delete_all`
-
-  The previous migration used `:nilify_all`, reasoning that a row whose harness
-  had gone should be visibly unowned rather than silently absent. NOT NULL takes
-  that option away — nilifying would violate the constraint the moment an
-  operator deleted a harness. `:delete_all` is right anyway once the column is
-  mandatory: these rows are a projection of one checkout, and a checkout nobody
-  is serving has no observations to keep.
+  The consequence is honest and worth stating: on SQLite the constraint is the
+  application's rather than the database's. If a writer ever omits `harness_id`
+  here, it inserts instead of failing. On Postgres it fails loudly, which is
+  where that regression would be caught.
   """
 
   def up do
-    # Projections with no owner. The next manifest rebuilds them.
+    # Projections with no owner. The next manifest rebuilds them, and there is
+    # no honest answer to which copy produced them.
     execute("DELETE FROM files WHERE harness_id IS NULL")
 
-    drop unique_index(:files, [:project_id, :path])
-
-    alter table(:files) do
-      modify :harness_id, references(:harnesses, type: :binary_id, on_delete: :delete_all),
-        null: false,
-        from: references(:harnesses, type: :binary_id, on_delete: :nilify_all)
-    end
+    drop_if_exists unique_index(:files, [:project_id, :path])
 
     create unique_index(:files, [:project_id, :harness_id, :path])
   end
 
   def down do
-    drop unique_index(:files, [:project_id, :harness_id, :path])
-
-    alter table(:files) do
-      modify :harness_id, references(:harnesses, type: :binary_id, on_delete: :nilify_all),
-        null: true,
-        from: references(:harnesses, type: :binary_id, on_delete: :delete_all)
-    end
+    drop_if_exists unique_index(:files, [:project_id, :harness_id, :path])
 
     create unique_index(:files, [:project_id, :path])
   end
