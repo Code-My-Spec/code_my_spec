@@ -30,14 +30,15 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
 
   require Logger
 
-  alias CodeMySpec.AgentHarness.ConversationRecorder
   alias CodeMySpec.Accounts
+  alias CodeMySpec.AgentHarness.ConversationRecorder
   alias CodeMySpec.Analysis
   alias CodeMySpec.Files
-  alias CodeMySpec.Files.File, as: FileRecord
   alias CodeMySpec.Files.ComponentSync
+  alias CodeMySpec.Files.File, as: FileRecord
   alias CodeMySpec.Files.FileSync
   alias CodeMySpec.Files.Scanner
+  alias CodeMySpec.Harnesses
   alias CodeMySpec.Hooks.AskUserQuestion
   alias CodeMySpec.Hooks.NotificationHook
   alias CodeMySpec.Hooks.PostToolUse
@@ -56,6 +57,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
     label = harness_label(payload)
 
     with {:ok, scope} <- authorize(socket, project_id),
+         {:ok, harness} <- Harnesses.issue(scope, payload["harness_id"], label: label),
          {:ok, holder} <- start_lease_holder(),
          :ok <- Leases.acquire(scope, label, holder),
          :ok <- Analysis.register_executor(project_id) do
@@ -66,7 +68,15 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
       # never arrives. This is the one moment it is provably safe to close them.
       Analysis.fail_in_flight(scope, :harness_reconnected)
 
-      {:ok, socket |> assign(:scope, scope) |> assign(:lease_holder, holder)}
+      # The id goes back in the join reply whether it was just minted or
+      # recognised. A harness that already holds one gets the same value and
+      # writes nothing; one joining a checkout for the first time writes it
+      # down, so its next restart is the same harness rather than a second.
+      {:ok, %{harness_id: harness.id},
+       socket
+       |> assign(:scope, scope)
+       |> assign(:harness, harness)
+       |> assign(:lease_holder, holder)}
     else
       {:error, {:held_by, holder}} ->
         Logger.warning("[HarnessProject] refused #{project_id} — already held by #{holder}")

@@ -51,6 +51,42 @@ defmodule CodeMySpecWeb.HarnessProjectChannelTest do
     |> subscribe_and_join(HarnessProjectChannel, topic, %{"label" => @label})
   end
 
+  describe "the identity a working copy is issued" do
+    # Story 727. Files and problems are projections of a working copy but have
+    # only ever been keyed by project, so two checkouts write the same rows and
+    # each sync deletes what the other just wrote. The id issued here is the
+    # grain that fixes it, and it is issued *here* rather than derived on the
+    # client because every client-derived alternative collides on a real case —
+    # two containers at /workspace/app, a generated hostname, a churning
+    # session id.
+    defp join_with(scope, topic, harness_id) do
+      payload = %{"label" => @label, "harness_id" => harness_id}
+
+      scope
+      |> harness_socket([])
+      |> subscribe_and_join(HarnessProjectChannel, topic, payload)
+    end
+
+    # Only the wire contract lives here — that the id makes the round trip. The
+    # minting rules are `CodeMySpec.Harnesses`' and are tested there, where a
+    # second working copy does not have to get past a lease held by the first.
+    test "a checkout joining for the first time is issued one", %{scope: scope, topic: topic} do
+      assert {:ok, %{harness_id: id}, _socket} = join_with(scope, topic, nil)
+
+      assert {:ok, _} = Ecto.UUID.cast(id),
+             "the harness writes this down; without it every restart is a new harness"
+    end
+
+    test "presenting an id gets that same id back", %{scope: scope, topic: topic} do
+      {:ok, harness} = CodeMySpec.Harnesses.issue(scope, nil, label: @label)
+
+      assert {:ok, %{harness_id: returned}, _socket} = join_with(scope, topic, harness.id)
+
+      assert returned == harness.id,
+             "a restart issued a second id orphans everything filed under the first"
+    end
+  end
+
   describe "joining" do
     test "a harness takes the project when it is free", %{scope: scope, topic: topic} do
       assert {:ok, _reply, _socket} =
