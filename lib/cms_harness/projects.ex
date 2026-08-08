@@ -77,33 +77,67 @@ defmodule CmsHarness.Projects do
   def connected?(root), do: ChannelClient.connected?(root)
 
   @doc """
-  Start the project named by the environment, if there is one.
+  Start the working copies this harness was told to serve.
 
-  This is the sprite's path: one checkout, named by `CMS_PROJECT_DIR`, started
-  at boot rather than waiting for the first hook. A laptop generally has none
-  of this set and picks its projects up from hook requests instead.
+  A sprite names one, in `CMS_PROJECT_DIR`, and that is the case this exists
+  for: the copy is served from boot rather than from the first hook, so the
+  harness is ready before anything asks.
+
+  A laptop running several checkouts names them in `CMS_PROJECT_DIRS`,
+  comma-separated. Serving them from configuration rather than from whatever
+  directory a hook announces is what lets a hook be addressed by id — an id can
+  only be resolved against copies this harness already knows about.
   """
   @spec start_configured() :: :ok
   def start_configured do
-    case System.get_env("CMS_PROJECT_DIR") ||
-           Application.get_env(:code_my_spec, :harness_project_dir) do
-      dir when is_binary(dir) and dir != "" ->
-        case ensure_started(dir) do
-          {:ok, _project} ->
-            :ok
+    case configured_dirs() do
+      [] -> :ok
+      dirs -> Enum.each(dirs, &start_one/1)
+    end
+  end
 
-          {:error, reason} ->
-            Logger.error("""
-            [CmsHarness] CMS_PROJECT_DIR is #{dir} but the harness could not serve it: #{inspect(reason)}.
+  defp start_one(dir) do
+    case ensure_started(dir) do
+      {:ok, _project} ->
+        :ok
 
-            Nothing is being watched and every hook for that directory will refuse.
-            """)
+      {:error, reason} ->
+        Logger.error("""
+        [CmsHarness] configured to serve #{dir} but could not: #{inspect(reason)}.
 
-            :ok
-        end
+        Nothing is being watched there, and a hook addressed to that copy's
+        harness id will be refused as unknown.
+        """)
 
-      _ ->
         :ok
     end
+  end
+
+  defp configured_dirs do
+    (from_env("CMS_PROJECT_DIRS") ++
+       from_env("CMS_PROJECT_DIR") ++
+       configured())
+    |> Enum.map(&Path.expand/1)
+    |> Enum.uniq()
+  end
+
+  defp from_env(name) do
+    case System.get_env(name) do
+      value when is_binary(value) and value != "" -> split(value)
+      _ -> []
+    end
+  end
+
+  defp configured do
+    :code_my_spec
+    |> Application.get_env(:harness_project_dirs, [])
+    |> List.wrap()
+  end
+
+  defp split(value) do
+    value
+    |> String.split(",")
+    |> Enum.map(&String.trim/1)
+    |> Enum.reject(&(&1 == ""))
   end
 end
