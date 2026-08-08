@@ -40,6 +40,12 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   """
 
   use Mix.Task
+  # Every other task in here classifies itself the same way. Unclassified, it
+  # is a compiler warning — and the analyzer counts any compiler problem as a
+  # reason to skip exunit, credo and spex entirely, so this one line was
+  # holding back every other check and serving their previous results as
+  # current.
+  use Boundary, classify_to: CodeMySpec
 
   alias CmsHarness.Config
   alias CmsHarness.HarnessConfig
