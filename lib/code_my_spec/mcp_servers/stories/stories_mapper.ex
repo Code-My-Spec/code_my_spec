@@ -361,6 +361,17 @@ defmodule CodeMySpec.McpServers.Stories.StoriesMapper do
     |> Response.error(Formatters.format_changeset_errors(changeset))
   end
 
+  # A changeset reaching `error/1` used to match no clause, so the tool crashed
+  # with `function_clause` and the caller got `-32603 Tool execution crashed` —
+  # nothing about which field was invalid, or that validation was even involved.
+  # `set_story_component` hit it on a story whose `story` narrative was blank:
+  # the update touched only `component_id`, but the changeset requires the
+  # narrative, so every attempt died with an internal error.
+  #
+  # Delegating rather than duplicating: `validation_error/1` already renders
+  # changesets, and the only thing missing was a route to it.
+  def error(%Ecto.Changeset{} = changeset), do: validation_error(changeset)
+
   def error(error) when is_atom(error), do: error |> to_string() |> error()
 
   def error(error) when is_binary(error) do
