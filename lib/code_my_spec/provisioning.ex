@@ -588,12 +588,25 @@ defmodule CodeMySpec.Provisioning do
   # `verify/3`'s satisfied path deliberately still replaces: that list is read
   # back from the provider, so it is the one answer entitled to overrule what
   # was recorded before.
+  # Not everything a step records is a thing it made. These describe what the
+  # latest run *did* — which phases it reached, which version ended up live,
+  # how it failed — and a later run's answer supersedes an earlier one rather
+  # than joining it.
+  #
+  # Keeping them broke criterion 8008: a deploy whose migration fails must
+  # never swap traffic, and the page showed a swap timestamp belonging to the
+  # successful deploy before it. Nothing had swapped; the record had simply
+  # stopped being about this run. Merging is right for a server, which outlives
+  # the run that made it, and wrong for a phase, which does not.
+  @run_scoped ~w(deploy_phase live_version deploy_failure)
+
   defp keeping_earlier(scope, key, partial) do
     earlier =
       case StepRepository.get(scope, key) do
         %{resources: resources} when is_list(resources) -> resources
         _ -> []
       end
+      |> Enum.reject(&(&1.kind in @run_scoped))
 
     seen = MapSet.new(earlier, &{&1.kind, &1.location})
 

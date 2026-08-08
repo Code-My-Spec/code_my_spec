@@ -124,6 +124,49 @@ defmodule CodeMySpec.Provisioning.PartialRecordTest do
     end
   end
 
+  describe "records that describe the run rather than a resource" do
+    # Merging is right for a server, which outlives the run that made it, and
+    # wrong for a deploy phase, which does not. Keeping phases broke criterion
+    # 8008: a deploy whose migration fails must never swap traffic, and the
+    # page showed a swap timestamp belonging to the successful deploy before
+    # it. Nothing had swapped — the record had stopped being about this run.
+    test "a later run's phases replace an earlier run's", ctx do
+      {:ok, _} =
+        Provisioning.run_step(
+          ctx.scope,
+          :deploy,
+          succeed_with([
+            %{kind: "server", location: "hetzner/box", origin: "created"},
+            %{kind: "deploy_phase", location: "migrate", identifier: "t1"},
+            %{kind: "deploy_phase", location: "swap", identifier: "t1"},
+            %{kind: "live_version", location: "new"}
+          ])
+        )
+
+      # The next deploy fails before it can swap.
+      Provisioning.run_step(ctx.scope, :deploy,
+        verify: fn _, _ -> {:ok, :absent} end,
+        execute: fn _, _, _ ->
+          {:error, "migration failed",
+           [
+             %{kind: "deploy_phase", location: "migrate", identifier: "t2"},
+             %{kind: "live_version", location: "previous"}
+           ]}
+        end
+      )
+
+      kinds = StepRepository.get(ctx.scope, :deploy).resources
+
+      refute Enum.any?(kinds, &(&1.kind == "deploy_phase" and &1.location == "swap")),
+             "the earlier run's swap must not survive into a run that never swapped"
+
+      assert Enum.any?(kinds, &(&1.kind == "server")),
+             "the box the earlier run made still has to be findable for teardown"
+
+      assert [%{location: "previous"}] = Enum.filter(kinds, &(&1.kind == "live_version"))
+    end
+  end
+
   describe "a retry that pauses partway" do
     # The pause path records resources for the same reason the error path does:
     # the email step registers a real sending domain at Resend and then waits
