@@ -24,7 +24,19 @@ defmodule CodeMySpec.Migration do
 
   import Ecto.Query, warn: false
 
-  alias CodeMySpec.{AcceptanceCriteria, BddRules, Epics, Personas, Repo, Stories}
+  alias CodeMySpec.{
+    AcceptanceCriteria,
+    BddRules,
+    Epics,
+    Issues,
+    Personas,
+    Questions,
+    Repo,
+    Stories
+  }
+
+  alias CodeMySpec.Qa.QaAttempt
+  alias CodeMySpec.Qa.QaAttempts
   alias CodeMySpec.Users.Scope
 
   @derived ~w(files problems sessions components requirements analysis_runs file_edits)
@@ -58,8 +70,86 @@ defmodule CodeMySpec.Migration do
       "personas" => Enum.map(personas, &export_persona/1),
       "persona_stories" => export_persona_links(scope, stories),
       "rules" => Enum.flat_map(stories, &export_rules(scope, &1)),
-      "criteria" => Enum.flat_map(stories, &export_criteria(scope, &1))
+      "criteria" => Enum.flat_map(stories, &export_criteria(scope, &1)),
+      # The moduledoc has always said these travel. They did not — export_project
+      # built six collections and stopped, so a migrated project arrived with no
+      # issue history, no open questions and no QA record at all.
+      "issues" => export_issues(scope),
+      "questions" => Enum.flat_map(stories, &export_questions(scope, &1)),
+      "qa_attempts" => Enum.flat_map(stories, &export_qa_attempts(scope, &1))
     }
+  end
+
+  defp export_scenarios(nil), do: []
+
+  defp export_scenarios(scenarios) do
+    Enum.map(scenarios, fn scenario ->
+      %{
+        "name" => scenario.name,
+        "status" => scenario.status && to_string(scenario.status),
+        "observation" => scenario.observation
+      }
+    end)
+  end
+
+  defp export_issues(scope) do
+    scope
+    |> Issues.list_issues()
+    |> Enum.map(
+      &%{
+        "local_id" => &1.id,
+        # Integer story ids, remapped like every other reference.
+        "story_local_id" => &1.story_id,
+        "title" => &1.title,
+        "description" => &1.description,
+        "severity" => &1.severity && to_string(&1.severity),
+        "scope" => &1.scope && to_string(&1.scope),
+        "status" => &1.status && to_string(&1.status),
+        "category" => &1.category && to_string(&1.category),
+        "resolution" => &1.resolution,
+        "source" => &1.source,
+        "source_path" => &1.source_path,
+        "attachments" => &1.attachments
+      }
+    )
+  end
+
+  defp export_questions(scope, story) do
+    scope
+    |> Questions.list_questions_for_story(story.id)
+    |> Enum.map(
+      &%{
+        "local_id" => &1.id,
+        "story_local_id" => story.id,
+        "text" => &1.text,
+        "status" => &1.status && to_string(&1.status)
+      }
+    )
+  end
+
+  # Ordered oldest first so a parent attempt is always written before the
+  # attempt that supersedes it — `parent_attempt_id` is a self-reference and
+  # cannot be rewritten against a row that does not exist yet.
+  defp export_qa_attempts(scope, story) do
+    scope
+    |> QaAttempts.list(story.id)
+    |> Enum.sort_by(& &1.submitted_at, DateTime)
+    |> Enum.map(
+      &%{
+        "local_id" => &1.id,
+        "story_local_id" => story.id,
+        "status" => &1.status && to_string(&1.status),
+        # Embedded structs, flattened to plain maps: an embed is not
+        # JSON-encodable, and the payload has to survive a round trip through
+        # the wire before the destination casts it back.
+        "scenarios" => export_scenarios(&1.scenarios),
+        "issue_local_ids" => &1.issue_ids || [],
+        "parent_local_id" => &1.parent_attempt_id,
+        "agent_id" => &1.agent_id,
+        "task_id" => &1.task_id,
+        "submitted_at" => &1.submitted_at
+      }
+    )
   end
 
   defp export_story(story),
@@ -202,30 +292,51 @@ defmodule CodeMySpec.Migration do
 
   defp do_import(scope, payload) do
     Repo.transaction(fn ->
-      # Personas and their links come before criteria, not after. A criterion
-      # cannot be created for a story with no linked persona — the harness
-      # refuses with :persona_linkage_required, because a scenario without a
-      # persona has no voice. Ordering here is a real dependency, not a
-      # preference: rules need stories, criteria need rules AND a persona-linked
-      # story, and stories need their epic.
-      with {:ok, epics} <- put_epics(scope, payload["epics"] || []),
-           {:ok, stories} <- put_stories(scope, payload["stories"] || [], epics),
-           {:ok, personas} <- put_personas(scope, payload["personas"] || []),
-           :ok <- link_personas(scope, payload["persona_stories"] || [], stories, personas),
-           {:ok, rules} <- put_rules(scope, payload["rules"] || [], stories),
-           {:ok, criteria} <- put_criteria(scope, payload["criteria"] || [], stories, rules) do
-        %{
-          epics: map_size(epics),
-          stories: map_size(stories),
-          rules: map_size(rules),
-          criteria: map_size(criteria),
-          personas: map_size(personas),
-          skipped: @derived
-        }
+      with {:ok, graph} <- put_graph(scope, payload),
+           {:ok, records} <- put_records(scope, payload, graph) do
+        summarise(graph, records)
       else
         {:error, reason} -> Repo.rollback(reason)
       end
     end)
+  end
+
+  # What Sam authored, in the order the references demand.
+  #
+  # Personas and their links come before criteria, not after. A criterion
+  # cannot be created for a story with no linked persona — the harness refuses
+  # with :persona_linkage_required, because a scenario without a persona has no
+  # voice. Rules need stories, criteria need rules AND a persona-linked story,
+  # and stories need their epic.
+  defp put_graph(scope, payload) do
+    with {:ok, epics} <- put_epics(scope, payload["epics"] || []),
+         {:ok, stories} <- put_stories(scope, payload["stories"] || [], epics),
+         {:ok, personas} <- put_personas(scope, payload["personas"] || []),
+         :ok <- link_personas(scope, payload["persona_stories"] || [], stories, personas),
+         {:ok, rules} <- put_rules(scope, payload["rules"] || [], stories),
+         {:ok, criteria} <- put_criteria(scope, payload["criteria"] || [], stories, rules) do
+      {:ok,
+       %{epics: epics, stories: stories, personas: personas, rules: rules, criteria: criteria}}
+    end
+  end
+
+  # What happened to it since: issues raised, questions asked, QA run.
+  #
+  # All of it hangs off a story, so it follows the graph. Issues come before
+  # attempts because an attempt names the issues it raised.
+  defp put_records(scope, payload, %{stories: stories}) do
+    with {:ok, issues} <- put_issues(scope, payload["issues"] || [], stories),
+         {:ok, questions} <- put_questions(scope, payload["questions"] || [], stories),
+         {:ok, attempts} <- put_attempts(scope, payload["qa_attempts"] || [], stories, issues) do
+      {:ok, %{issues: issues, questions: questions, qa_attempts: attempts}}
+    end
+  end
+
+  defp summarise(graph, records) do
+    graph
+    |> Map.merge(records)
+    |> Map.new(fn {kind, created} -> {kind, map_size(created)} end)
+    |> Map.put(:skipped, @derived)
   end
 
   # Each of these returns a map of local_id => the record the cloud created, and
@@ -404,6 +515,97 @@ defmodule CodeMySpec.Migration do
       stories when is_list(stories) -> stories
       _ -> []
     end
+  end
+
+  # Matched on title within a story. Issues carry no id the destination could
+  # recognise, and a second run must not file every issue again.
+  defp put_issues(scope, issues, stories) do
+    existing = scope |> Issues.list_issues() |> Map.new(&{{&1.story_id, &1.title}, &1})
+
+    collect(issues, fn issue ->
+      story = stories[issue["story_local_id"]]
+
+      case Map.get(existing, {story && story.id, issue["title"]}) do
+        %{} = already ->
+          {:ok, already}
+
+        nil ->
+          issue
+          |> attrs(Issues.Issue)
+          |> Map.put(:story_id, story && story.id)
+          |> then(&Issues.create_issue(scope, &1))
+      end
+    end)
+  end
+
+  # Matched on text within a story, for the same reason.
+  defp put_questions(scope, questions, stories) do
+    collect(questions, fn question ->
+      case stories[question["story_local_id"]] do
+        nil -> {:error, {:unknown_story, question["story_local_id"]}}
+        story -> upsert_question(scope, story, question)
+      end
+    end)
+  end
+
+  defp upsert_question(scope, story, question) do
+    scope
+    |> Questions.list_questions_for_story(story.id)
+    |> Enum.find(&(&1.text == question["text"]))
+    |> case do
+      %{} = already -> {:ok, already}
+      nil -> Questions.create_question(scope, story.id, attrs(question, Questions.Question))
+    end
+  end
+
+  # Matched on `submitted_at` within a story: microsecond precision, and an
+  # attempt is a point-in-time event rather than something edited.
+  #
+  # `issue_ids` are rewritten against what this run created — an attempt naming
+  # an issue by the harness's id would point at nothing here, or worse, at some
+  # other project's row.
+  defp put_attempts(scope, attempts, stories, issues) do
+    collect(attempts, fn attempt ->
+      case stories[attempt["story_local_id"]] do
+        nil -> {:error, {:unknown_story, attempt["story_local_id"]}}
+        story -> upsert_attempt(scope, story, attempt, issues)
+      end
+    end)
+  end
+
+  defp upsert_attempt(scope, story, attempt, issues) do
+    scope
+    |> QaAttempts.list(story.id)
+    |> Enum.find(&(to_string(&1.submitted_at) == to_string(attempt["submitted_at"])))
+    |> case do
+      %{} = already -> {:ok, already}
+      nil -> insert_attempt(story, attempt, issues)
+    end
+  end
+
+  defp insert_attempt(story, attempt, issues) do
+    %QaAttempt{}
+    |> QaAttempt.changeset(%{
+      story_id: story.id,
+      status: attempt["status"],
+      scenarios: attempt["scenarios"],
+      issue_ids: remap_issue_ids(attempt["issue_local_ids"], issues),
+      agent_id: attempt["agent_id"],
+      task_id: attempt["task_id"],
+      submitted_at: attempt["submitted_at"]
+    })
+    |> Repo.insert()
+  end
+
+  # An issue this run did not create is dropped rather than carried as a
+  # dangling id. The attempt still records that it failed and what it said; it
+  # simply cannot point at a row that is not here.
+  defp remap_issue_ids(nil, _issues), do: []
+
+  defp remap_issue_ids(local_ids, issues) do
+    local_ids
+    |> Enum.map(&(issues[&1] && issues[&1].id))
+    |> Enum.reject(&is_nil/1)
   end
 
   defp put_rules(scope, rules, stories) do
