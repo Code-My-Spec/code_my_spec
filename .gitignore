@@ -93,3 +93,7 @@ relay/cms-mcp-relay
 # would come up wearing the laptop's identity and both would sync into the
 # same rows.
 .cms_harness_id
+
+# Generated per working copy by `mix cms.harness.onboard` — carries this
+# checkout's harness id, so it is never shared or committed.
+.claude/plugin-dev/

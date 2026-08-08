@@ -131,6 +131,23 @@ defmodule CmsHarness.HookDecision do
     |> String.trim()
   end
 
+  # The hook named a harness this machine does not serve. Distinct from
+  # `:no_project`, which is about a directory that cannot say which project it
+  # is — here the directory is not the question and telling somebody to edit a
+  # config file in it is nonsense, because there is no "it".
+  defp explain({:unknown_harness, harness_id}, _working_dir) do
+    """
+    This harness is not serving the working copy #{harness_id}.
+
+    The hooks are addressed to a harness id that this harness does not serve. \
+    Either it is serving a different set of working copies — check \
+    CMS_PROJECT_DIRS — or this checkout's plugin was generated against a \
+    harness id that has since been reissued. Re-run `mix cms.harness.onboard` \
+    in the checkout and restart the agent.
+    """
+    |> String.trim()
+  end
+
   defp explain(:no_project, working_dir) do
     """
     The harness is not serving this directory. It has no project id for it — set `project_id` in `#{Path.join(working_dir, ".code_my_spec/config.yml")}`, or set CMS_PROJECT_ID, and restart the harness.

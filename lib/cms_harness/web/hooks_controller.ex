@@ -67,7 +67,7 @@ defmodule CmsHarness.Web.HooksController do
   defp unknown_harness(hook, id, params) do
     Logger.warning("[CmsHarness] #{hook} names harness #{id}, which this machine does not serve")
 
-    HookDecision.unreachable(hook, :no_project, "harness #{id} (not onboarded here)", params)
+    HookDecision.unreachable(hook, {:unknown_harness, id}, "(addressed by id)", params)
   end
 
   # No working directory in the request. A sprite serves exactly one project
