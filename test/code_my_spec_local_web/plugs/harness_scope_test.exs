@@ -35,13 +35,16 @@ defmodule CodeMySpecLocalWeb.Plugs.HarnessScopeTest do
     %{scope: scope, project: project, root: tmp}
   end
 
-  defp harness(scope, root, opts \\ []) do
-    {:ok, harness} = Harnesses.issue(scope, nil, label: Keyword.get(opts, :label))
+  defp harness(scope, root, opts \\ [])
 
-    case root do
-      nil -> harness
-      root -> harness |> Harnesses.report_root(root) |> then(fn {:ok, h} -> h end)
-    end
+  defp harness(scope, nil, opts) do
+    {:ok, harness} = Harnesses.issue(scope, nil, label: opts[:label])
+    harness
+  end
+
+  defp harness(scope, root, opts) do
+    {:ok, harness} = scope |> harness(nil, opts) |> Harnesses.report_root(root)
+    harness
   end
 
   defp call(headers) do
