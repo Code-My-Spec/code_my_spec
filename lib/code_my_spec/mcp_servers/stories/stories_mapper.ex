@@ -4,8 +4,8 @@ defmodule CodeMySpec.McpServers.Stories.StoriesMapper do
   human-readable summary + JSON data for programmatic access.
   """
 
-  alias CodeMySpec.McpServers.Formatters
   alias Anubis.Server.Response
+  alias CodeMySpec.McpServers.Formatters
 
   # ---------------------------------------------------------------------------
   # Tool Responses (hybrid format: summary + JSON)
@@ -29,30 +29,10 @@ defmodule CodeMySpec.McpServers.Stories.StoriesMapper do
     data = story_data(story)
     criteria_count = length(story.criteria || [])
     verified_count = Enum.count(story.criteria || [], & &1.verified)
-    tags = if Ecto.assoc_loaded?(story.tags), do: story.tags, else: []
-    tag_names = Enum.map(tags, & &1.name)
-
-    tags_line =
-      if tag_names != [] do
-        "\n**Tags:** #{Enum.join(tag_names, ", ")}"
-      else
-        ""
-      end
-
+    tags_line = tags_line(story)
     criteria_lines = format_criteria_text(story.criteria)
-
-    notes_line =
-      case story.notes do
-        nil -> ""
-        "" -> ""
-        notes -> "\n\n**Notes:** #{notes}"
-      end
-
-    component_line =
-      case story.component do
-        %{module_name: module_name} -> "\n\n**Component:** #{module_name}"
-        _ -> ""
-      end
+    notes_line = notes_line(story.notes)
+    component_line = component_line(story.component)
 
     summary = """
     ## #{story.title} (ID: #{story.id})
@@ -68,6 +48,30 @@ defmodule CodeMySpec.McpServers.Stories.StoriesMapper do
 
     hybrid_response(String.trim(summary), data)
   end
+
+  # Extracted from `story_get_response/1`, which was building four optional
+  # fragments inline and came to a cyclomatic complexity of 12. Each of these is
+  # one question with one answer.
+  defp tags_line(story) do
+    story
+    |> story_tags()
+    |> Enum.map_join(", ", & &1.name)
+    |> case do
+      "" -> ""
+      names -> "\n**Tags:** #{names}"
+    end
+  end
+
+  defp story_tags(%{tags: tags} = story) do
+    if Ecto.assoc_loaded?(story.tags), do: tags, else: []
+  end
+
+  defp notes_line(nil), do: ""
+  defp notes_line(""), do: ""
+  defp notes_line(notes), do: "\n\n**Notes:** #{notes}"
+
+  defp component_line(%{module_name: module_name}), do: "\n\n**Component:** #{module_name}"
+  defp component_line(_), do: ""
 
   def story_deleted_response(story) do
     Response.tool()
