@@ -12,6 +12,7 @@ defmodule CodeMySpec.Files.File do
   import Ecto.Changeset
 
   alias CodeMySpec.Components.Component
+  alias CodeMySpec.Harnesses.Harness
   alias CodeMySpec.Projects.Project
   alias CodeMySpec.Stories.Story
 
@@ -101,6 +102,10 @@ defmodule CodeMySpec.Files.File do
     belongs_to :component, Component, type: :binary_id
     belongs_to :story, Story
     belongs_to :project, Project, type: :binary_id
+
+    # The working copy these were observed from. `nil` means "recorded before
+    # harnesses existed"; the first harness to join adopts them.
+    belongs_to :harness, Harness, type: :binary_id
 
     timestamps()
   end

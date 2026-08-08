@@ -18,9 +18,12 @@ defmodule CodeMySpec.HarnessesTest do
 
   use CodeMySpecTest.DataCase, async: true
 
+  import CodeMySpec.ProblemsFixtures
   import CodeMySpec.UsersFixtures
 
+  alias CodeMySpec.Files
   alias CodeMySpec.Harnesses
+  alias CodeMySpec.Problems
 
   setup do
     %{scope: full_scope_fixture()}
@@ -110,6 +113,81 @@ defmodule CodeMySpec.HarnessesTest do
       assert same.label == "the harness at /a",
              "losing the only human-readable name for a checkout would leave a " <>
                "refusal unable to say which one to go and stop"
+    end
+  end
+
+  describe "adopting rows recorded before harnesses existed" do
+    # The upgrade path. Files and problems written before they were grained by
+    # working copy carry no harness, and a project whose rows belong to nobody
+    # reads as empty — every requirement unsatisfied, the graph describing a
+    # checkout that has all its files. The first harness to join adopts them,
+    # because in the single-checkout case every install is in today, it *is* the
+    # working copy they were scanned from.
+    defp orphan_file(scope, path) do
+      Files.upsert_files(scope, [
+        %{path: path, role: :implementation, fingerprint: "f-#{path}"}
+      ])
+
+      Files.get_by_path(scope, path)
+    end
+
+    test "a pre-harness file is claimed by the first harness to join", %{scope: scope} do
+      file = orphan_file(scope, "lib/legacy.ex")
+      assert is_nil(file.harness_id), "rows written before the grain change own nothing"
+
+      {:ok, harness} = Harnesses.issue(scope, nil, label: "the harness at /a")
+      assert {1, _} = Files.adopt_orphans(scope, harness.id)
+
+      assert Files.get_by_path(scope, "lib/legacy.ex").harness_id == harness.id
+    end
+
+    test "problems are adopted with the files they cite", %{scope: scope} do
+      orphan_file(scope, "lib/legacy.ex")
+      problem_fixture(scope, %{file_path: "lib/legacy.ex"})
+
+      {:ok, harness} = Harnesses.issue(scope, nil, label: "the harness at /a")
+
+      assert {1, _} = Files.adopt_orphans(scope, harness.id)
+
+      assert {:ok, 1} = Problems.adopt_orphans(scope, harness.id),
+             "a problem cites a file — adopting one without the other leaves a stop " <>
+               "hook blocking on findings that belong to nothing"
+    end
+
+    test "adopting twice claims nothing the second time", %{scope: scope} do
+      orphan_file(scope, "lib/legacy.ex")
+      {:ok, harness} = Harnesses.issue(scope, nil, label: "the harness at /a")
+
+      assert {1, _} = Files.adopt_orphans(scope, harness.id)
+
+      assert {0, _} = Files.adopt_orphans(scope, harness.id),
+             "every join runs this; it has to be a no-op after the first"
+    end
+
+    test "a second harness cannot take the first's files", %{scope: scope} do
+      orphan_file(scope, "lib/legacy.ex")
+
+      {:ok, first} = Harnesses.issue(scope, nil, label: "the harness at /a")
+      {1, _} = Files.adopt_orphans(scope, first.id)
+
+      {:ok, second} = Harnesses.issue(scope, nil, label: "the harness at /b")
+
+      assert {0, _} = Files.adopt_orphans(scope, second.id),
+             "adoption only ever claims unowned rows — a checkout taking another's " <>
+               "files is the exact corruption this grain exists to prevent"
+
+      assert Files.get_by_path(scope, "lib/legacy.ex").harness_id == first.id
+    end
+
+    test "another project's orphans are left alone", %{scope: scope} do
+      other = full_scope_fixture()
+      orphan_file(other, "lib/theirs.ex")
+      orphan_file(scope, "lib/mine.ex")
+
+      {:ok, harness} = Harnesses.issue(scope, nil, label: "the harness at /mine")
+
+      assert {1, _} = Files.adopt_orphans(scope, harness.id)
+      assert is_nil(Files.get_by_path(other, "lib/theirs.ex").harness_id)
     end
   end
 

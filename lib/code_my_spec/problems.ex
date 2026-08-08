@@ -12,9 +12,11 @@ defmodule CodeMySpec.Problems do
   defdelegate list_project_problems(scope, opts \\ []), to: ProblemRepository
   defdelegate list_problems_paginated(scope, opts \\ []), to: ProblemRepository
   defdelegate create_problems(scope, problems), to: ProblemRepository
+  defdelegate adopt_orphans(scope, harness_id), to: ProblemRepository
   defdelegate replace_project_problems(scope, problems), to: ProblemRepository
   defdelegate replace_problems_for_files(scope, file_paths, problems), to: ProblemRepository
   defdelegate clear_project_problems(scope), to: ProblemRepository
+
   defdelegate replace_problems_for_components(scope, component_ids, source, problems),
     to: ProblemRepository
 
@@ -23,6 +25,7 @@ defmodule CodeMySpec.Problems do
 
   defdelegate reconcile_problems_for_source(scope, source, file_scope, problems),
     to: ProblemRepository
+
   defdelegate clear_problems_for_missing_files(scope, current_paths), to: ProblemRepository
   defdelegate component_ids_with_problems(scope), to: ProblemRepository
 

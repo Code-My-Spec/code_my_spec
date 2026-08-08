@@ -258,6 +258,30 @@ defmodule CodeMySpec.Files do
   end
 
   @doc """
+  Claim this project's pre-harness files for `harness_id`.
+
+  Rows written before files were grained by working copy carry no harness. The
+  first harness to join adopts them, because in the single-checkout case every
+  install is in today, it *is* the working copy they were scanned from — and
+  the alternative is a project that reads as empty until its next full sync.
+
+  Only touches rows with no harness, so it is idempotent and cannot take
+  another checkout's files. Two checkouts racing the first join after an
+  upgrade means whichever wins adopts them; the loser resyncs and writes its
+  own, which is exactly what it would have done anyway.
+
+  Returns the number adopted so the caller can say so rather than doing this
+  invisibly.
+  """
+  @spec adopt_orphans(Scope.t(), Ecto.UUID.t()) :: {integer(), nil}
+  def adopt_orphans(%Scope{active_project_id: project_id}, harness_id)
+      when is_binary(harness_id) do
+    File
+    |> where([f], f.project_id == ^project_id and is_nil(f.harness_id))
+    |> Repo.update_all(set: [harness_id: harness_id])
+  end
+
+  @doc """
   Delete specific files by their paths.
 
   Used for targeted removal when the file watcher detects file deletions.
