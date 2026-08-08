@@ -102,18 +102,7 @@ defmodule CodeMySpecWeb.Layouts do
             </label>
           </div>
           <div class="flex-1 min-w-0">
-            <%!--
-              Audit P0 #3: during onboarding (no project linked, or CLI never
-              connected) the picker breadcrumbs invite the user to derail
-              into /app/accounts/picker or /app/projects/picker — both of
-              which break the four-rung ladder's focus. Hide the breadcrumbs
-              until onboarding is complete; the ladder is the only thing
-              they should see.
-            --%>
-            <div
-              :if={onboarding_complete?(@current_scope)}
-              class="breadcrumbs text-sm px-2 lg:px-8 overflow-hidden"
-            >
+            <div class="breadcrumbs text-sm px-2 lg:px-8 overflow-hidden">
               <ul>
                 <li><.account_breadcrumb scope={@current_scope} current_path={@current_path} /></li>
                 <li><.project_breadcrumb scope={@current_scope} current_path={@current_path} /></li>
@@ -167,23 +156,15 @@ defmodule CodeMySpecWeb.Layouts do
           </div>
           <ul class="menu p-4 w-64 min-h-full text-base-content">
             <li><a href={~p"/app"}>Overview</a></li>
+            <li><a href={~p"/app/projects"}>Projects</a></li>
             <%!--
-              Audit S2: during the onboarding ladder (no project linked OR CLI
-              has never connected), every deep nav link is a derailment surface
-              — Projects/Issues/Content/Accounts/Settings either show empty
-              states or unrelated screens that pull the user out of setup.
-              Hide them until the user has actually activated.
-            --%>
-            <%= if onboarding_complete?(@current_scope) do %>
-              <li><a href={~p"/app/projects"}>Projects</a></li>
-              <%!--
                 Account-scoped, so it sits with Projects rather than inside the
                 per-project block: a box is shared between projects, and one
                 left over from a project that no longer exists still bills.
               --%>
-              <li><a href={~p"/app/servers"}>Servers</a></li>
-              <li><a href={~p"/app/resources"}>Resources</a></li>
-              <%!--
+            <li><a href={~p"/app/servers"}>Servers</a></li>
+            <li><a href={~p"/app/resources"}>Resources</a></li>
+            <%!--
                 The path is the breadcrumb. Every surface below is addressed
                 per-project, and the project they point at is the one named in
                 the URL — `@project`, put there by PortableHost — never the
@@ -200,58 +181,53 @@ defmodule CodeMySpecWeb.Layouts do
                 raised building the first link — so the page that creates a
                 project was the one page you could not open.
               --%>
-              <%= if (project = @project) && project.id do %>
-                <li class="menu-title truncate" title={project.name}>{project.name}</li>
-                <li class="menu-title">Specification</li>
-                <li><a href={~p"/app/projects/#{project.id}/stories"}>Stories</a></li>
-                <li><a href={~p"/app/projects/#{project.id}/epics"}>Epics</a></li>
-                <li><a href={~p"/app/projects/#{project.id}/personas"}>Personas</a></li>
-                <li><a href={~p"/app/projects/#{project.id}/requirements"}>Requirements</a></li>
-                <li><a href={~p"/app/projects/#{project.id}/architecture"}>Architecture</a></li>
-                <li><a href={~p"/app/projects/#{project.id}/components"}>Components</a></li>
+            <%= if (project = @project) && project.id do %>
+              <li class="menu-title truncate" title={project.name}>{project.name}</li>
+              <li class="menu-title">Specification</li>
+              <li><a href={~p"/app/projects/#{project.id}/stories"}>Stories</a></li>
+              <li><a href={~p"/app/projects/#{project.id}/epics"}>Epics</a></li>
+              <li><a href={~p"/app/projects/#{project.id}/personas"}>Personas</a></li>
+              <li><a href={~p"/app/projects/#{project.id}/requirements"}>Requirements</a></li>
+              <li><a href={~p"/app/projects/#{project.id}/architecture"}>Architecture</a></li>
+              <li><a href={~p"/app/projects/#{project.id}/components"}>Components</a></li>
 
-                <li class="menu-title">Build</li>
-                <li><a href={~p"/app/projects/#{project.id}/chat"}>Chat</a></li>
-                <li><a href={~p"/app/projects/#{project.id}/next-task"}>Next task</a></li>
-                <li><a href={~p"/app/projects/#{project.id}/files"}>Files &amp; sync</a></li>
-                <li><a href={~p"/app/projects/#{project.id}/problems"}>Problems</a></li>
-                <li><a href={~p"/app/projects/#{project.id}/qa"}>QA</a></li>
-                <li><a href={~p"/app/projects/#{project.id}/sessions"}>Sessions</a></li>
-                <li><a href={~p"/app/projects/#{project.id}/issues"}>Issues</a></li>
+              <li class="menu-title">Build</li>
+              <li><a href={~p"/app/projects/#{project.id}/chat"}>Chat</a></li>
+              <li><a href={~p"/app/projects/#{project.id}/next-task"}>Next task</a></li>
+              <li><a href={~p"/app/projects/#{project.id}/files"}>Files &amp; sync</a></li>
+              <li><a href={~p"/app/projects/#{project.id}/problems"}>Problems</a></li>
+              <li><a href={~p"/app/projects/#{project.id}/qa"}>QA</a></li>
+              <li><a href={~p"/app/projects/#{project.id}/sessions"}>Sessions</a></li>
+              <li><a href={~p"/app/projects/#{project.id}/issues"}>Issues</a></li>
 
-                <li class="menu-title">Project</li>
-                <li><a href={~p"/app/projects/#{project.id}/content"}>Content</a></li>
-                <li><a href={~p"/app/projects/#{project.id}/knowledge"}>Knowledge base</a></li>
-                <li>
-                  <a href={~p"/app/projects/#{project.id}/project-knowledge"}>Project knowledge</a>
-                </li>
-                <li><a href={~p"/app/projects/#{project.id}/configuration"}>Configuration</a></li>
-                <li><a href={~p"/app/projects/#{project.id}/users"}>Users</a></li>
-                <li><a href={~p"/app/projects/#{project.id}/inbox"}>Chats</a></li>
-                <li><a href={~p"/app/projects/#{project.id}/mail"}>Mail</a></li>
-                <li :if={can_manage_mailboxes?(@current_scope)}>
-                  <a href={~p"/app/projects/#{project.id}/mailboxes"}>Mailboxes</a>
-                </li>
-              <% else %>
-                <li class="menu-title">Open a project</li>
-                <li :for={p <- @projects}>
-                  <a href={~p"/app/projects/#{p.id}/stories"} class="truncate" title={p.name}>
-                    {p.name}
-                  </a>
-                </li>
-                <li :if={@projects == []} class="px-4 py-2 text-sm opacity-60">
-                  No projects yet.
-                </li>
-              <% end %>
-              <li class="mt-auto"><a href={~p"/app/accounts"}>Accounts</a></li>
-              <li><a href={~p"/app/users/settings"}>Settings</a></li>
+              <li class="menu-title">Project</li>
+              <li><a href={~p"/app/projects/#{project.id}/content"}>Content</a></li>
+              <li><a href={~p"/app/projects/#{project.id}/knowledge"}>Knowledge base</a></li>
+              <li>
+                <a href={~p"/app/projects/#{project.id}/project-knowledge"}>Project knowledge</a>
+              </li>
+              <li><a href={~p"/app/projects/#{project.id}/configuration"}>Configuration</a></li>
+              <li><a href={~p"/app/projects/#{project.id}/users"}>Users</a></li>
+              <li><a href={~p"/app/projects/#{project.id}/inbox"}>Chats</a></li>
+              <li><a href={~p"/app/projects/#{project.id}/mail"}>Mail</a></li>
+              <li :if={can_manage_mailboxes?(@current_scope)}>
+                <a href={~p"/app/projects/#{project.id}/mailboxes"}>Mailboxes</a>
+              </li>
+            <% else %>
+              <li class="menu-title">Open a project</li>
+              <li :for={p <- @projects}>
+                <a href={~p"/app/projects/#{p.id}/stories"} class="truncate" title={p.name}>
+                  {p.name}
+                </a>
+              </li>
+              <li :if={@projects == []} class="px-4 py-2 text-sm opacity-60">
+                No projects yet.
+              </li>
             <% end %>
+            <li class="mt-auto"><a href={~p"/app/accounts"}>Accounts</a></li>
+            <li><a href={~p"/app/users/settings"}>Settings</a></li>
             <%= if @current_scope do %>
-              <li class={
-                if onboarding_complete?(@current_scope),
-                  do: "border-t border-base-300 mt-2 pt-2",
-                  else: "mt-auto border-t border-base-300 pt-2"
-              }>
+              <li class="border-t border-base-300 mt-2 pt-2">
                 <div class="text-xs opacity-60 px-2 truncate" title={@current_scope.user.email}>
                   {@current_scope.user.email}
                 </div>
@@ -269,21 +245,6 @@ defmodule CodeMySpecWeb.Layouts do
     </div>
     """
   end
-
-  # True once the user has a project linked — enough for the full sidebar to
-  # be useful. We intentionally do NOT gate on a local CLI connection
-  # (`cli_first_connected_at`): a user can connect the plugin from a separate
-  # machine, so requiring a local connect here hid the menu from people who
-  # were actually set up (audit S2 originally gated on both).
-  # `onboarding_complete?` still reads the stored project, and should: it asks
-  # whether this user has ever got set up, which a bookmark answers honestly.
-  # What it must not do is decide *which* project the nav points at — that is
-  # the path's job, and the two used to be the same helper.
-  defp onboarding_complete?(nil), do: false
-
-  defp onboarding_complete?(%{active_project: %{__struct__: _}}), do: true
-
-  defp onboarding_complete?(_), do: false
 
   # Only owners/admins administer mailboxes, so the Mailboxes nav item is
   # theirs alone. Guarded on an active account so it never raises for a
@@ -410,8 +371,7 @@ defmodule CodeMySpecWeb.Layouts do
               <ul class="menu menu-horizontal menu-md px-1">
                 <li class="dropdown dropdown-hover dropdown-bottom">
                   <.link href={~p"/product"} class="gap-1.5">
-                    Product
-                    <span class="hero-chevron-down-micro size-3 opacity-60"></span>
+                    Product <span class="hero-chevron-down-micro size-3 opacity-60"></span>
                   </.link>
                   <%!-- w-max sizes the panel to its longest item so nothing wraps;
                        whitespace-nowrap keeps it that way as items are added. --%>
@@ -660,7 +620,6 @@ defmodule CodeMySpecWeb.Layouts do
     </div>
     """
   end
-
 
   @doc """
   End-of-post install signature.
