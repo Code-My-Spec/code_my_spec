@@ -188,11 +188,12 @@ defmodule CodeMySpecSpex.Fixtures do
     end
   end
 
-  # Resend labels the inbound MX `Receiving`; everything else on a sending
-  # domain is DKIM/SPF and the bounce MX under `send`.
-  defp inbound_record?(record) do
-    record["record"] == "Receiving" or record["name"] in ["", nil]
-  end
+  # Resend labels the inbound MX `Receiving`, and only that. An earlier version
+  # also treated a record with an empty or missing name as inbound, which
+  # excused a *sending* record whose name Resend had not sent — so a domain
+  # that had not verified was reported ready and criterion 8032 failed on the
+  # premise that sending works.
+  defp inbound_record?(record), do: record["record"] == "Receiving"
 
   defp publish_records(scope, sending_domain, which, opts \\ []) do
     alias CodeMySpec.Provisioning.{Cloudflare, Resend}
