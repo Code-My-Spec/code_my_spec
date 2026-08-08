@@ -1,0 +1,2239 @@
+{
+  "interactions": [
+    {
+      "recorded_at": "2026-08-08T18:48:05.289028Z",
+      "request": {
+        "body": "",
+        "body_type": "text",
+        "headers": {
+          "accept-encoding": [
+            "gzip"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "user-agent": [
+            "req/0.5.17"
+          ]
+        },
+        "method": "GET",
+        "query_string": "",
+        "uri": "https://api.resend.com/domains"
+      },
+      "response": {
+        "body_json": {
+          "data": [
+            {
+              "capabilities": {
+                "receiving": "enabled",
+                "sending": "enabled"
+              },
+              "created_at": "2026-08-08 18:46:46.612959+00",
+              "id": "edde39ae-3ca5-4c8f-bbe6-8b537ebcf37b",
+              "name": "c8048.astralbi.com",
+              "region": "us-east-1",
+              "status": "verified"
+            },
+            {
+              "capabilities": {
+                "receiving": "disabled",
+                "sending": "enabled"
+              },
+              "created_at": "2026-08-08 18:39:06.460619+00",
+              "id": "80c587bd-bf45-4f68-ab59-4fcd5a33006b",
+              "name": "uat.c8032.astralbi.com",
+              "region": "us-east-1",
+              "status": "verified"
+            },
+            {
+              "capabilities": {
+                "receiving": "disabled",
+                "sending": "enabled"
+              },
+              "created_at": "2026-08-08 18:38:03.552252+00",
+              "id": "c7674f82-d80d-4e1f-a1ad-768c14b8556b",
+              "name": "c8032.astralbi.com",
+              "region": "us-east-1",
+              "status": "verified"
+            },
+            {
+              "capabilities": {
+                "receiving": "enabled",
+                "sending": "enabled"
+              },
+              "created_at": "2026-08-07 21:28:04.900351+00",
+              "id": "f3ec6cf5-84ff-4d51-b4bb-60aa955afb91",
+              "name": "astralbi.com",
+              "region": "us-east-1",
+              "status": "verified"
+            },
+            {
+              "capabilities": {
+                "receiving": "enabled",
+                "sending": "enabled"
+              },
+              "created_at": "2026-07-31 18:58:09.186223+00",
+              "id": "c0fc3f32-45a7-4076-97d9-0d6e4592b386",
+              "name": "codemyspec.com",
+              "region": "us-east-1",
+              "status": "verified"
+            },
+            {
+              "capabilities": {
+                "receiving": "disabled",
+                "sending": "enabled"
+              },
+              "created_at": "2026-07-31 18:58:05.277633+00",
+              "id": "aa04515b-68c2-41b4-8d46-76ee26ba50b8",
+              "name": "uat.codemyspec.com",
+              "region": "us-east-1",
+              "status": "verified"
+            },
+            {
+              "capabilities": {
+                "receiving": "enabled",
+                "sending": "enabled"
+              },
+              "created_at": "2026-07-14 02:23:28.793185+00",
+              "id": "3f765d03-6a26-4c0d-b4f1-13359c91e6e8",
+              "name": "broken-oaths.com",
+              "region": "us-east-1",
+              "status": "verified"
+            },
+            {
+              "capabilities": {
+                "receiving": "disabled",
+                "sending": "enabled"
+              },
+              "created_at": "2026-07-09 16:22:54.116785+00",
+              "id": "0034cc09-bf14-4ab6-b7f7-47ce033bdf02",
+              "name": "desertfirstcleaning.com",
+              "region": "us-east-1",
+              "status": "verified"
+            },
+            {
+              "capabilities": {
+                "receiving": "enabled",
+                "sending": "enabled"
+              },
+              "created_at": "2026-06-05 19:05:16.920732+00",
+              "id": "0a5c459f-cc87-4469-8ea7-fb68ef0e2e61",
+              "name": "get-ai-traffic.com",
+              "region": "us-east-1",
+              "status": "verified"
+            },
+            {
+              "capabilities": {
+                "receiving": "disabled",
+                "sending": "enabled"
+              },
+              "created_at": "2026-05-08 15:09:54.491925+00",
+              "id": "5fb1031b-afe6-4208-8c62-a4a989904ec6",
+              "name": "marketmyspec.com",
+              "region": "us-east-1",
+              "status": "verified"
+            },
+            {
+              "capabilities": {
+                "receiving": "disabled",
+                "sending": "enabled"
+              },
+              "created_at": "2026-03-06 21:54:42.183283+00",
+              "id": "89f98d14-6b89-48df-b090-4c5a4cf1c51b",
+              "name": "fuellytics.app",
+              "region": "us-east-1",
+              "status": "verified"
+            },
+            {
+              "capabilities": {
+                "receiving": "disabled",
+                "sending": "enabled"
+              },
+              "created_at": "2026-03-06 04:22:39.595452+00",
+              "id": "c97951b6-570f-4726-a780-cb338f59b1c9",
+              "name": "metric-flow.app",
+              "region": "us-east-1",
+              "status": "verified"
+            }
+          ],
+          "has_more": false,
+          "object": "list"
+        },
+        "body_type": "json",
+        "headers": {
+          "cf-cache-status": [
+            "DYNAMIC"
+          ],
+          "cf-ray": [
+            "a280b178bcacdc46-YYZ"
+          ],
+          "connection": [
+            "keep-alive"
+          ],
+          "content-security-policy": [
+            "default-src 'none'; frame-ancestors 'none'"
+          ],
+          "content-type": [
+            "application/json; charset=utf-8"
+          ],
+          "date": [
+            "Sat, 08 Aug 2026 18:48:05 GMT"
+          ],
+          "etag": [
+            "W/\"a6a-lSpBnGqlHJaafbv7clo8Xe6B5nI\""
+          ],
+          "permissions-policy": [
+            "camera=(), microphone=(), geolocation=(), payment=()"
+          ],
+          "ratelimit-limit": [
+            "10"
+          ],
+          "ratelimit-policy": [
+            "10;w=1"
+          ],
+          "ratelimit-remaining": [
+            "9"
+          ],
+          "ratelimit-reset": [
+            "1"
+          ],
+          "referrer-policy": [
+            "strict-origin-when-cross-origin"
+          ],
+          "server": [
+            "cloudflare"
+          ],
+          "strict-transport-security": [
+            "max-age=63072000; includeSubDomains"
+          ],
+          "transfer-encoding": [
+            "chunked"
+          ],
+          "x-content-type-options": [
+            "nosniff"
+          ],
+          "x-frame-options": [
+            "DENY"
+          ]
+        },
+        "status": 200
+      }
+    },
+    {
+      "recorded_at": "2026-08-08T18:48:05.418833Z",
+      "request": {
+        "body_json": {
+          "from": "setup-probe@c8048.astralbi.com",
+          "subject": "cms-inbound-18563",
+          "text": "Setup sent this to prove the domain can send.",
+          "to": [
+            "user-576460752303403359@c8048.astralbi.com"
+          ]
+        },
+        "body_type": "json",
+        "headers": {
+          "accept": [
+            "application/json"
+          ],
+          "accept-encoding": [
+            "gzip"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "user-agent": [
+            "req/0.5.17"
+          ]
+        },
+        "method": "POST",
+        "query_string": "",
+        "uri": "https://api.resend.com/emails"
+      },
+      "response": {
+        "body_json": {
+          "id": "cc7aa947-7a78-4018-a991-cfcee782f3d0"
+        },
+        "body_type": "json",
+        "headers": {
+          "cf-cache-status": [
+            "DYNAMIC"
+          ],
+          "cf-ray": [
+            "a280b1793debdc46-YYZ"
+          ],
+          "connection": [
+            "keep-alive"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "date": [
+            "Sat, 08 Aug 2026 18:48:05 GMT"
+          ],
+          "ratelimit-limit": [
+            "10"
+          ],
+          "ratelimit-policy": [
+            "10;w=1"
+          ],
+          "ratelimit-remaining": [
+            "8"
+          ],
+          "ratelimit-reset": [
+            "1"
+          ],
+          "server": [
+            "cloudflare"
+          ],
+          "x-resend-monthly-quota": [
+            "27"
+          ]
+        },
+        "status": 200
+      }
+    },
+    {
+      "recorded_at": "2026-08-08T18:48:05.587527Z",
+      "request": {
+        "body": "",
+        "body_type": "text",
+        "headers": {
+          "accept-encoding": [
+            "gzip"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "user-agent": [
+            "req/0.5.17"
+          ]
+        },
+        "method": "GET",
+        "query_string": "limit=100",
+        "uri": "https://api.resend.com/emails/receiving"
+      },
+      "response": {
+        "body_json": {
+          "data": [
+            {
+              "attachments": [],
+              "bcc": [],
+              "cc": [],
+              "created_at": "2026-08-08T18:46:21.721Z",
+              "from": "setup-probe@c8030.astralbi.com",
+              "id": "24618e72-4c1e-4e4b-b06f-13d5179d8466",
+              "message_id": "<0100019fe2b28e09-1f941ab7-5a29-4d66-9adb-b0cc5c2d715f-000000@email.amazonses.com>",
+              "reply_to": [],
+              "subject": "cms-inbound-18211",
+              "to": [
+                "user-576460752303406782@c8030.astralbi.com"
+              ]
+            },
+            {
+              "attachments": [],
+              "bcc": [],
+              "cc": [],
+              "created_at": "2026-08-08T18:37:56.416Z",
+              "from": "setup-probe@c8030.astralbi.com",
+              "id": "10277a96-00cc-44b5-9931-75d412818afa",
+              "message_id": "<0100019fe2aad8d9-4f1b36d0-db32-427d-9139-61cb1b6f5281-000000@email.amazonses.com>",
+              "reply_to": [],
+              "subject": "cms-inbound-20898",
+              "to": [
+                "user-576460752303403550@c8030.astralbi.com"
+              ]
+            },
+            {
+              "attachments": [],
+              "bcc": [],
+              "cc": [],
+              "created_at": "2026-08-08T18:21:44.848Z",
+              "from": "setup-probe@c8030.astralbi.com",
+              "id": "9f4b4801-a832-4271-b596-1f1de9704ff8",
+              "message_id": "<0100019fe29c050b-71ca4009-9bd3-42b3-b588-32cb9e9df002-000000@email.amazonses.com>",
+              "reply_to": [],
+              "subject": "cms-inbound-30946",
+              "to": [
+                "user-576460752303394303@c8030.astralbi.com"
+              ]
+            },
+            {
+              "attachments": [],
+              "bcc": [],
+              "cc": [],
+              "created_at": "2026-08-08T04:48:15.463Z",
+              "from": "setup-probe@marketmyspec.com",
+              "id": "35b8a8a8-b505-42eb-9311-034882ae3e18",
+              "message_id": "<0100019fdfb33f09-a98f1ef2-3f8f-47c5-bdd6-49a583cc35a6-000000@email.amazonses.com>",
+              "reply_to": [],
+              "subject": "cms-catchall-1786164493",
+              "to": [
+                "cms-probe-1786164493@get-ai-traffic.com"
+              ]
+            },
+            {
+              "attachments": [],
+              "bcc": [],
+              "cc": [],
+              "created_at": "2026-08-08T04:48:00.749Z",
+              "from": "setup-probe@get-ai-traffic.com",
+              "id": "860fabcb-48e8-4c10-9644-0f13319423b1",
+              "message_id": "<0100019fdfb30627-d9402045-c2a6-446a-8d8c-3d9fac25e294-000000@email.amazonses.com>",
+              "reply_to": [],
+              "subject": "cms-john-1786164478",
+              "to": [
+                "john@astralbi.com"
+              ]
+            },
+            {
+              "attachments": [],
+              "bcc": [],
+              "cc": [],
+              "created_at": "2026-08-08T04:47:30.831Z",
+              "from": "setup-probe@get-ai-traffic.com",
+              "id": "017a31ca-9b19-4bbe-be02-db1cffbef591",
+              "message_id": "<0100019fdfb29162-6756e1e0-93c4-4954-9120-7f5ad9acbcce-000000@email.amazonses.com>",
+              "reply_to": [],
+              "subject": "cms-john-1786164449",
+              "to": [
+                "john@astralbi.com"
+              ]
+            },
+            {
+              "attachments": [],
+              "bcc": [],
+              "cc": [],
+              "created_at": "2026-08-08T02:55:59.098Z",
+              "from": "setup-probe@marketmyspec.com",
+              "id": "17d8272a-689e-4525-8d53-fa4475269f41",
+              "message_id": "<0100019fdf4c752b-46fb3a28-bae0-405a-b526-1ca5df6bcc84-000000@email.amazonses.com>",
+              "reply_to": [],
+              "subject": "cms-catchall-1786157757",
+              "to": [
+                "cms-probe-1786157757@get-ai-traffic.com"
+              ]
+            },
+            {
+              "attachments": [],
+              "bcc": [],
+              "cc": [],
+              "created_at": "2026-08-06T10:48:59.508Z",
+              "from": "productmarketing@smartlead-team.com",
+              "id": "03ab61ac-d998-43e4-86fa-7555178f13f5",
+              "message_id": "<20260806104858.8a6e653e3296bf76@cio104036.smartlead-team.com>",
+              "reply_to": [
+                "marketing@smartlead.ai"
+              ],
+              "subject": "Event Outbound Playbook - Turn Conference Attendees Into Pipeline",
+              "to": [
+                "john@codemyspec.com"
+              ]
+            },
+            {
+              "attachments": [
+                {
+                  "content_disposition": "attachment",
+                  "content_id": null,
+                  "content_type": "application/zip",
+                  "filename": "google.com!get-ai-traffic.com!1785801600!1785887999.zip",
+                  "id": "1a9ba96f-a581-4fa1-8d10-bd33dcab6e05",
+                  "size": 794
+                }
+              ],
+              "bcc": [],
+              "cc": [],
+              "created_at": "2026-08-05T10:18:05.192Z",
+              "from": "noreply-dmarc-support@google.com",
+              "id": "0889de52-5dba-46bb-b8d0-6ce4af019d9e",
+              "message_id": "<2012666900863003759@google.com>",
+              "reply_to": [],
+              "subject": "Report domain: get-ai-traffic.com Submitter: google.com Report-ID: 2012666900863003759",
+              "to": [
+                "john@get-ai-traffic.com"
+              ]
+            },
+            {
+              "attachments": [],
+              "bcc": [],
+              "cc": [],
+              "created_at": "2026-08-02T03:55:33.302Z",
+              "from": "vaibhav@smartlead-team.com",
+              "id": "e717cfec-1c47-4988-bc02-c1f36d995a85",
+              "message_id": "<20260802035532.57f2dd057f4e9ed6@cio104036.smartlead-team.com>",
+              "reply_to": [
+                "support@smartlead.ai"
+              ],
+              "subject": "Closing your reactivation offer soon",
+              "to": [
+                "john@codemyspec.com"
+              ]
+            },
+            {
+              "attachments": [
+                {
+                  "content_disposition": null,
+                  "content_id": null,
+                  "content_type": "text/x-amp-html",
+                  "filename": null,
+                  "id": "28bbfe9d-fceb-407f-a123-12170018169e",
+                  "size": 56257
+                }
+              ],
+              "bcc": [],
+              "cc": [],
+              "created_at": "2026-07-31T21:08:40.824Z",
+              "from": "aquib@s.mailmodo.live",
+              "id": "d8ea684e-9198-4976-a666-a437c1eeb3f7",
+              "message_id": "<07.34.40554.ACE0D6A6@i-0595ff8149b586cb3.mta1vrest.sd.prd.sparkpost>",
+              "reply_to": [
+                "support@mailmodo.com"
+              ],
+              "subject": "Send campaigns in your recipient's time zone",
+              "to": [
+                "john@get-ai-traffic.com"
+              ]
+            },
+            {
+              "attachments": [
+                {
+                  "content_disposition": null,
+                  "content_id": null,
+                  "content_type": "text/x-amp-html",
+                  "filename": null,
+                  "id": "6a8446d2-78e0-4490-89aa-e135f5242b8c",
+                  "size": 56240
+                }
+              ],
+              "bcc": [],
+              "cc": [],
+              "created_at": "2026-07-29T21:08:33.552Z",
+              "from": "aquib@s.mailmodo.live",
+              "id": "0ae32d33-1146-4cf8-8dbd-deeb66197772",
+              "message_id": "<C1.2E.37936.CCB6A6A6@i-0f727fa2db97afcb1.mta1vrest.sd.prd.sparkpost>",
+              "reply_to": [
+                "support@mailmodo.com"
+              ],
+              "subject": "A/B test your emails to improve performance",
+              "to": [
+                "john@get-ai-traffic.com"
+              ]
+            },
+            {
+              "attachments": [
+                {
+                  "content_disposition": "attachment",
+                  "content_id": null,
+                  "content_type": "application/zip",
+                  "filename": "google.com!get-ai-traffic.com!1785196800!1785283199.zip",
+                  "id": "abd382cd-2ead-4501-a029-3d7a2a8dd328",
+                  "size": 771
+                }
+              ],
+              "bcc": [],
+              "cc": [],
+              "created_at": "2026-07-29T10:16:15.751Z",
+              "from": "noreply-dmarc-support@google.com",
+              "id": "3a899622-1da1-4a19-871e-324403306fef",
+              "message_id": "<8008781709657493328@google.com>",
+              "reply_to": [],
+              "subject": "Report domain: get-ai-traffic.com Submitter: google.com Report-ID: 8008781709657493328",
+              "to": [
+                "john@get-ai-traffic.com"
+              ]
+            },
+            {
+              "attachments": [
+                {
+                  "content_disposition": "attachment",
+                  "content_id": null,
+                  "content_type": "application/zip",
+                  "filename": "google.com!codemyspec.com!1785196800!1785283199.zip",
+                  "id": "e31c33b3-5e05-4a8f-80cb-2e684012d983",
+                  "size": 758
+                }
+              ],
+              "bcc": [],
+              "cc": [],
+              "created_at": "2026-07-29T10:08:49.526Z",
+              "from": "noreply-dmarc-support@google.com",
+              "id": "bfd65f00-3c13-4590-85e6-1a3abb1384f1",
+              "message_id": "<6554635995614879726@google.com>",
+              "reply_to": [],
+              "subject": "Report domain: codemyspec.com Submitter: google.com Report-ID: 6554635995614879726",
+              "to": [
+                "dmarc@codemyspec.com"
+              ]
+            },
+            {
+              "attachments": [],
+              "bcc": [],
+              "cc": [],
+              "created_at": "2026-07-28T03:55:29.078Z",
+              "from": "vaibhav@smartlead-team.com",
+              "id": "531a736d-8599-4c7b-9421-520733a97ea5",
+              "message_id": "<20260728035528.b51f8cc53e69e85b@cio104036.smartlead-team.com>",
+              "reply_to": [
+                "support@smartlead.ai"
+              ],
+              "subject": "4 outbound wins you can steal today",
+              "to": [
+                "john@codemyspec.com"
+              ]
+            },
+            {
+              "attachments": [
+                {
+                  "content_disposition": null,
+                  "content_id": null,
+                  "content_type": "text/x-amp-html",
+                  "filename": null,
+                  "id": "fba80dfb-b8e1-4253-bd7d-4c9e8aecd818",
+                  "size": 76680
+                }
+              ],
+              "bcc": [],
+              "cc": [],
+              "created_at": "2026-07-27T21:08:32.382Z",
+              "from": "aquib@s.mailmodo.live",
+              "id": "57628129-b0e5-44d6-9eb9-868a0aa27845",
+              "message_id": "<E4.F2.54047.CC8C76A6@i-0e64970d7181a315a.mta1vrest.sd.prd.sparkpost>",
+              "reply_to": [
+                "support@mailmodo.com"
+              ],
+              "subject": "Start mastering email marketing with our expert resources",
+              "to": [
+                "john@get-ai-traffic.com"
+              ]
+            },
+            {
+              "attachments": [
+                {
+                  "content_disposition": null,
+                  "content_id": null,
+                  "content_type": "text/x-amp-html",
+                  "filename": null,
+                  "id": "a10af12c-dc58-464e-8134-3a0161855097",
+                  "size": 116672
+                }
+              ],
+              "bcc": [],
+              "cc": [],
+              "created_at": "2026-07-25T21:08:34.763Z",
+              "from": "aquib@s.mailmodo.live",
+              "id": "0cca0761-cfa3-41c7-9fb3-bb239d36e884",
+              "message_id": "<03.A2.56878.DC5256A6@i-0cc0c9a3fa3ce8bbd.mta1vrest.sd.prd.sparkpost>",
+              "reply_to": [
+                "support@mailmodo.com"
+              ],
+              "subject": "Bring your emails to life with interactivity",
+              "to": [
+                "john@get-ai-traffic.com"
+              ]
+            },
+            {
+              "attachments": [],
+              "bcc": [],
+              "cc": [],
+              "created_at": "2026-07-25T18:42:46.034Z",
+              "from": "boardy@boardy.ai",
+              "id": "9106c2da-3958-403f-823a-e12ad336ec5d",
+              "message_id": "<boardy-df8f322a-b533-4cf8-9390-c59a1c1e062c@boardy.ai>",
+              "reply_to": [
+                "boardy@boardy.ai"
+              ],
+              "subject": "Great speaking just now",
+              "to": [
+                "john@codemyspec.com"
+              ]
+            },
+            {
+              "attachments": [
+                {
+                  "content_disposition": null,
+                  "content_id": null,
+                  "content_type": "text/x-amp-html",
+                  "filename": null,
+                  "id": "38b29bb9-f3f9-4946-97d6-3c5454f48f80",
+                  "size": 51037
+                }
+              ],
+              "bcc": [],
+              "cc": [],
+              "created_at": "2026-07-24T21:08:18.158Z",
+              "from": "aquib@s.mailmodo.live",
+              "id": "b5cdf419-ad58-4721-a13d-27d5b31abb54",
+              "message_id": "<70.25.48140.F34D36A6@i-0587469304b60e34a.mta1vrest.sd.prd.sparkpost>",
+              "reply_to": [
+                "support@mailmodo.com"
+              ],
+              "subject": "Your Mailmodo Pro trial is over",
+              "to": [
+                "john@get-ai-traffic.com"
+              ]
+            },
+            {
+              "attachments": [],
+              "bcc": [],
+              "cc": [],
+              "created_at": "2026-07-23T15:18:31.997Z",
+              "from": "productmarketing@smartlead-team.com",
+              "id": "271ad549-747a-41c2-8638-2809768a5506",
+              "message_id": "<20260723151824.936e9d808a8be354@cio104036.smartlead-team.com>",
+              "reply_to": [
+                "marketing@smartlead.ai"
+              ],
+              "subject": "A Special Invitation to Smartlead's 4th Birthday Event",
+              "to": [
+                "john@codemyspec.com"
+              ]
+            },
+            {
+              "attachments": [],
+              "bcc": [],
+              "cc": [],
+              "created_at": "2026-07-23T03:55:26.188Z",
+              "from": "vaibhav@smartlead-team.com",
+              "id": "9c992719-f630-4a69-88da-6dac263a1aa2",
+              "message_id": "<20260723035524.b59c082de6cfb530@cio104036.smartlead-team.com>",
+              "reply_to": [
+                "support@smartlead.ai"
+              ],
+              "subject": "How teams are getting 2× ROI with Smartlead",
+              "to": [
+                "john@codemyspec.com"
+              ]
+            },
+            {
+              "attachments": [
+                {
+                  "content_disposition": null,
+                  "content_id": null,
+                  "content_type": "text/x-amp-html",
+                  "filename": null,
+                  "id": "55a32387-b311-4958-bd1f-53421ddc2669",
+                  "size": 52016
+                }
+              ],
+              "bcc": [],
+              "cc": [],
+              "created_at": "2026-07-22T21:08:23.588Z",
+              "from": "aquib@s.mailmodo.live",
+              "id": "6ab34c19-8310-43b6-b053-272444fae3fb",
+              "message_id": "<CF.51.33249.141316A6@i-0bcc15373a4ae2ef8.mta1vrest.sd.prd.sparkpost>",
+              "reply_to": [
+                "support@mailmodo.com"
+              ],
+              "subject": "[Reminder] 2 days left in your Mailmodo free trial",
+              "to": [
+                "john@get-ai-traffic.com"
+              ]
+            },
+            {
+              "attachments": [
+                {
+                  "content_disposition": "attachment",
+                  "content_id": null,
+                  "content_type": "application/pdf",
+                  "filename": "igris-radar-aeo-2026-07-22.pdf",
+                  "id": "dfe946f7-1015-40e3-a309-e6bc082126df",
+                  "size": 27576
+                },
+                {
+                  "content_disposition": "attachment",
+                  "content_id": null,
+                  "content_type": "application/pdf",
+                  "filename": "igris-radar-geo-2026-07-22.pdf",
+                  "id": "4c063727-8483-483a-9ed7-7065a7634ba7",
+                  "size": 32915
+                },
+                {
+                  "content_disposition": "attachment",
+                  "content_id": null,
+                  "content_type": "application/pdf",
+                  "filename": "igris-radar-seo-2026-07-22.pdf",
+                  "id": "7ba09c95-47c3-4f65-9bd9-f8c710fe8c4f",
+                  "size": 27807
+                }
+              ],
+              "bcc": [],
+              "cc": [],
+              "created_at": "2026-07-22T17:10:20.694Z",
+              "from": "support@igrisecurity.com",
+              "id": "041b24ed-d906-4114-a26c-199066fa94fb",
+              "message_id": "<1784740206324076298.1784740206@igrisecurity.com>",
+              "reply_to": [],
+              "subject": "Report on SEO/AEO/GEO",
+              "to": [
+                "john@get-ai-traffic.com"
+              ]
+            },
+            {
+              "attachments": [],
+              "bcc": [],
+              "cc": [],
+              "created_at": "2026-07-22T10:38:04.602Z",
+              "from": "productmarketing@smartlead-team.com",
+              "id": "6fc9dad7-ff9d-4dc6-a136-1e7bfbc18f9d",
+              "message_id": "<20260722103803.23f9359f308112ba@cio104036.smartlead-team.com>",
+              "reply_to": [
+                "marketing@smartlead.ai"
+              ],
+              "subject": "Smartlead Turns 4: 6 Operators on the Wins, Mistakes & Systems That Actually Scaled Revenue",
+              "to": [
+                "john@codemyspec.com"
+              ]
+            },
+            {
+              "attachments": [
+                {
+                  "content_disposition": "attachment",
+                  "content_id": null,
+                  "content_type": "application/zip",
+                  "filename": "google.com!codemyspec.com!1784592000!1784678399.zip",
+                  "id": "ddc43539-3775-4b74-b512-a0ee9570ebd5",
+                  "size": 761
+                }
+              ],
+              "bcc": [],
+              "cc": [],
+              "created_at": "2026-07-22T10:11:18.659Z",
+              "from": "noreply-dmarc-support@google.com",
+              "id": "03eba63f-1e2b-47c2-9929-622184eefd2b",
+              "message_id": "<1548231394480776383@google.com>",
+              "reply_to": [],
+              "subject": "Report domain: codemyspec.com Submitter: google.com Report-ID: 1548231394480776383",
+              "to": [
+                "dmarc@codemyspec.com"
+              ]
+            },
+            {
+              "attachments": [],
+              "bcc": [],
+              "cc": [],
+              "created_at": "2026-07-21T21:00:10.200Z",
+              "from": "productmarketing@smartlead-team.com",
+              "id": "2345bab9-15b6-4bd5-9dc9-29f78ade608c",
+              "message_id": "<20260721210006.02d2c43b39c22514@cio104036.smartlead-team.com>",
+              "reply_to": [
+                "marketing@smartlead.ai"
+              ],
+              "subject": "Your Outbound Benchmark is Here!",
+              "to": [
+                "john@codemyspec.com"
+              ]
+            },
+            {
+              "attachments": [
+                {
+                  "content_disposition": null,
+                  "content_id": null,
+                  "content_type": "text/x-amp-html",
+                  "filename": null,
+                  "id": "4967de14-8a7d-4bea-a9ee-72c2ef50801c",
+                  "size": 84336
+                }
+              ],
+              "bcc": [],
+              "cc": [],
+              "created_at": "2026-07-19T21:08:33.889Z",
+              "from": "aquib@s.mailmodo.live",
+              "id": "a1fc0b7c-fbd9-470b-bfa5-fa36ce87cf41",
+              "message_id": "<45.C3.46812.9CC3D5A6@i-02dde23a729d907ed.mta1vrest.sd.prd.sparkpost>",
+              "reply_to": [
+                "support@mailmodo.com"
+              ],
+              "subject": "Land in your subscriber's inbox",
+              "to": [
+                "john@get-ai-traffic.com"
+              ]
+            },
+            {
+              "attachments": [
+                {
+                  "content_disposition": "attachment",
+                  "content_id": null,
+                  "content_type": "application/zip",
+                  "filename": "google.com!get-ai-traffic.com!1784332800!1784419199.zip",
+                  "id": "8bf6fb8c-885d-4292-b9fa-07b71a3b476e",
+                  "size": 754
+                }
+              ],
+              "bcc": [],
+              "cc": [],
+              "created_at": "2026-07-19T09:57:58.851Z",
+              "from": "noreply-dmarc-support@google.com",
+              "id": "3bb891f3-8be4-41a3-bea9-3f0366621094",
+              "message_id": "<17434703947772457286@google.com>",
+              "reply_to": [],
+              "subject": "Report domain: get-ai-traffic.com Submitter: google.com Report-ID: 17434703947772457286",
+              "to": [
+                "john@get-ai-traffic.com"
+              ]
+            },
+            {
+              "attachments": [],
+              "bcc": [],
+              "cc": [],
+              "created_at": "2026-07-19T03:55:27.174Z",
+              "from": "vaibhav@smartlead-team.com",
+              "id": "24bede1b-1af6-4102-bd50-2ececf0feddb",
+              "message_id": "<20260719035525.e4747a57312bced7@cio104036.smartlead-team.com>",
+              "reply_to": [
+                "support@smartlead.ai"
+              ],
+              "subject": "Get 3X Verified Lead + more - right inside Smartlead",
+              "to": [
+                "john@codemyspec.com"
+              ]
+            },
+            {
+              "attachments": [
+                {
+                  "content_disposition": "attachment",
+                  "content_id": null,
+                  "content_type": "application/zip",
+                  "filename": "google.com!get-ai-traffic.com!1784246400!1784332799.zip",
+                  "id": "c1915c66-9afb-4834-866f-28463729cd32",
+                  "size": 771
+                }
+              ],
+              "bcc": [],
+              "cc": [],
+              "created_at": "2026-07-18T10:24:37.205Z",
+              "from": "noreply-dmarc-support@google.com",
+              "id": "3bc4ba73-c266-41d3-9bbf-2d96e4071bbe",
+              "message_id": "<4230945093267988372@google.com>",
+              "reply_to": [],
+              "subject": "Report domain: get-ai-traffic.com Submitter: google.com Report-ID: 4230945093267988372",
+              "to": [
+                "john@get-ai-traffic.com"
+              ]
+            },
+            {
+              "attachments": [
+                {
+                  "content_disposition": null,
+                  "content_id": null,
+                  "content_type": "text/x-amp-html",
+                  "filename": null,
+                  "id": "bb047f5c-c85b-4a9e-a98e-1c03f783e606",
+                  "size": 57267
+                }
+              ],
+              "bcc": [],
+              "cc": [],
+              "created_at": "2026-07-17T21:08:29.333Z",
+              "from": "aquib@s.mailmodo.live",
+              "id": "5b8809a0-1209-4b61-a53f-f47287ba7c66",
+              "message_id": "<C9.39.19422.9C99A5A6@i-0d874f8783e7a2995.mta1vrest.sd.prd.sparkpost>",
+              "reply_to": [
+                "support@mailmodo.com"
+              ],
+              "subject": "Send emails to the right people using AI",
+              "to": [
+                "john@get-ai-traffic.com"
+              ]
+            },
+            {
+              "attachments": [
+                {
+                  "content_disposition": "attachment",
+                  "content_id": null,
+                  "content_type": "application/zip",
+                  "filename": "google.com!get-ai-traffic.com!1784160000!1784246399.zip",
+                  "id": "5831e411-4972-4d0c-a8ac-87f3189fbb18",
+                  "size": 810
+                }
+              ],
+              "bcc": [],
+              "cc": [],
+              "created_at": "2026-07-17T10:28:51.203Z",
+              "from": "noreply-dmarc-support@google.com",
+              "id": "3ee1561a-bde4-4a98-8952-255831db54df",
+              "message_id": "<3199068348458872598@google.com>",
+              "reply_to": [],
+              "subject": "Report domain: get-ai-traffic.com Submitter: google.com Report-ID: 3199068348458872598",
+              "to": [
+                "john@get-ai-traffic.com"
+              ]
+            },
+            {
+              "attachments": [],
+              "bcc": [],
+              "cc": [],
+              "created_at": "2026-07-17T03:55:31.668Z",
+              "from": "vaibhav@smartlead-team.com",
+              "id": "cf2d4265-0eb1-4bee-99bc-335c280f2d94",
+              "message_id": "<20260717035524.5e8c312d2fe77b5b@cio104036.smartlead-team.com>",
+              "reply_to": [
+                "support@smartlead.ai"
+              ],
+              "subject": "Experience the New Enhanced Smartlead",
+              "to": [
+                "john@codemyspec.com"
+              ]
+            },
+            {
+              "attachments": [],
+              "bcc": [],
+              "cc": [],
+              "created_at": "2026-07-16T14:17:53.700Z",
+              "from": "productmarketing@smartlead-team.com",
+              "id": "1f1ad315-26ec-4633-af11-9b3c3c65bea1",
+              "message_id": "<20260716141748.a2716a6fc00e7774@cio104036.smartlead-team.com>",
+              "reply_to": [
+                "marketing@smartlead.ai"
+              ],
+              "subject": "How Non-Technical Founders Build Outbound Engines Without Writing Code",
+              "to": [
+                "john@codemyspec.com"
+              ]
+            },
+            {
+              "attachments": [
+                {
+                  "content_disposition": "attachment",
+                  "content_id": "<4f05bc82-b74c-482d-a2b6-1aae7ed3b790>",
+                  "content_type": "application/gzip",
+                  "filename": "enterprise.protection.outlook.com!get-ai-traffic.com!1783987200!1784073600.xml.gz",
+                  "id": "d555317f-1110-450a-8589-ddccc5ac7e93",
+                  "size": 623
+                }
+              ],
+              "bcc": [],
+              "cc": [],
+              "created_at": "2026-07-16T01:36:49.248Z",
+              "from": "dmarcreport@microsoft.com",
+              "id": "b1565421-a7bf-4b32-b3b4-e55c810a8866",
+              "message_id": "<2b3c0d720fa74f9a9eac159deaa92daa@microsoft.com>",
+              "reply_to": [],
+              "subject": "[Preview] Report Domain: get-ai-traffic.com Submitter: enterprise.protection.outlook.com Report-ID: 2b3c0d720fa74f9a9eac159deaa92daa",
+              "to": [
+                "john@get-ai-traffic.com"
+              ]
+            },
+            {
+              "attachments": [
+                {
+                  "content_disposition": null,
+                  "content_id": null,
+                  "content_type": "text/x-amp-html",
+                  "filename": null,
+                  "id": "259f64aa-3214-446d-abdc-746b341ef9e8",
+                  "size": 56958
+                }
+              ],
+              "bcc": [],
+              "cc": [],
+              "created_at": "2026-07-15T21:08:28.975Z",
+              "from": "aquib@s.mailmodo.live",
+              "id": "bb37e714-b6c5-43d6-9b2c-7c73d2167455",
+              "message_id": "<BA.D7.11227.AC6F75A6@i-07da90582d879aaf0.mta1vrest.sd.prd.sparkpost>",
+              "reply_to": [
+                "support@mailmodo.com"
+              ],
+              "subject": "Analyze your email performance using AI",
+              "to": [
+                "john@get-ai-traffic.com"
+              ]
+            },
+            {
+              "attachments": [
+                {
+                  "content_disposition": "attachment",
+                  "content_id": null,
+                  "content_type": "application/zip",
+                  "filename": "google.com!get-ai-traffic.com!1783987200!1784073599.zip",
+                  "id": "240ed7b3-735d-4d19-9b8a-e3dbdf890c07",
+                  "size": 858
+                }
+              ],
+              "bcc": [],
+              "cc": [],
+              "created_at": "2026-07-15T10:24:14.930Z",
+              "from": "noreply-dmarc-support@google.com",
+              "id": "ec37a4eb-b6bc-4e8c-b64b-3ff04af0381a",
+              "message_id": "<2243936269881798482@google.com>",
+              "reply_to": [],
+              "subject": "Report domain: get-ai-traffic.com Submitter: google.com Report-ID: 2243936269881798482",
+              "to": [
+                "john@get-ai-traffic.com"
+              ]
+            },
+            {
+              "attachments": [],
+              "bcc": [],
+              "cc": [],
+              "created_at": "2026-07-15T03:17:20.060Z",
+              "from": "clean@desertfirstcleaning.com",
+              "id": "4e4f2d12-3155-419f-9078-47fecf1780e2",
+              "message_id": "<216267358884520960.0.v2@titan.email>",
+              "reply_to": [],
+              "subject": "asdf",
+              "to": [
+                "john@get-ai-traffic.com"
+              ]
+            },
+            {
+              "attachments": [],
+              "bcc": [],
+              "cc": [],
+              "created_at": "2026-07-15T03:16:18.155Z",
+              "from": "johns10@gmail.com",
+              "id": "30c598b1-0f45-4c0c-bdb3-12902a8eda9b",
+              "message_id": "<CAHTqpXrD-UeJ_h1Toi736HuGbFRYBGTV_OF_tBAu82FKS7PGVg@mail.gmail.com>",
+              "reply_to": [],
+              "subject": "test2",
+              "to": [
+                "john@get-ai-traffic.com"
+              ]
+            },
+            {
+              "attachments": [],
+              "bcc": [],
+              "cc": [],
+              "created_at": "2026-07-15T03:11:56.217Z",
+              "from": "noreply@codemyspec.com",
+              "id": "cfb13274-c351-46fe-93cc-f95c640b9592",
+              "message_id": "<0100019f63c27068-bc5c1071-482d-4e96-a869-25f0c8e7a1be-000000@email.amazonses.com>",
+              "reply_to": [],
+              "subject": "Inbound cutover smoke test",
+              "to": [
+                "john@get-ai-traffic.com"
+              ]
+            },
+            {
+              "attachments": [],
+              "bcc": [],
+              "cc": [],
+              "created_at": "2026-07-14T22:51:43.496Z",
+              "from": "vaibhav@smartlead-team.com",
+              "id": "240ece44-7bb4-4dd5-a11a-6d2e891f72c1",
+              "message_id": "<20260714225142.d9403dad385db8a4@cio104036.smartlead-team.com>",
+              "reply_to": [
+                "support@smartlead.ai"
+              ],
+              "subject": "Last chance - your trial expires tomorrow",
+              "to": [
+                "john@codemyspec.com"
+              ]
+            },
+            {
+              "attachments": [],
+              "bcc": [],
+              "cc": [],
+              "created_at": "2026-07-12T22:51:40.175Z",
+              "from": "vaibhav@smartlead-team.com",
+              "id": "1e47954f-a481-4e20-b992-c45dc67c6145",
+              "message_id": "<20260712225139.dc1df336f799a36c@cio104036.smartlead-team.com>",
+              "reply_to": [
+                "support@smartlead.ai"
+              ],
+              "subject": "Your trial ends soon - here's what you'd be walking away from",
+              "to": [
+                "john@codemyspec.com"
+              ]
+            },
+            {
+              "attachments": [],
+              "bcc": [],
+              "cc": [],
+              "created_at": "2026-07-12T13:24:45.006Z",
+              "from": "maryem.shahid01@gmail.com",
+              "id": "96986ef2-a7ec-4fd3-9632-af8167db0a1d",
+              "message_id": "<CAJpayiZ+qdy=pNYKf7Ogwfrr7SDPaGtkCx4iDrWLCqgghBB02A@mail.gmail.com>",
+              "reply_to": [],
+              "subject": "SEO Support Without the Babysitting",
+              "to": [
+                "hello@codemyspec.com"
+              ]
+            },
+            {
+              "attachments": [],
+              "bcc": [],
+              "cc": [],
+              "created_at": "2026-07-12T13:24:14.252Z",
+              "from": "maryem.shahid01@gmail.com",
+              "id": "0ff6fc0c-8dab-43eb-905f-885b3ab25617",
+              "message_id": "<CAJpayiYO3SkyW0zuCC5fnr0uVgrNNFs2rF-Gka82omg3X_=C6A@mail.gmail.com>",
+              "reply_to": [],
+              "subject": "SEO Support Without the Babysitting",
+              "to": [
+                "contact@codemyspec.com"
+              ]
+            },
+            {
+              "attachments": [],
+              "bcc": [],
+              "cc": [],
+              "created_at": "2026-07-12T13:23:23.521Z",
+              "from": "maryem.shahid01@gmail.com",
+              "id": "28a0355c-75cf-4057-a786-0edb605fa74b",
+              "message_id": "<CAJpayibzuv1_P+PKTLRfJ6xzR3CSUQvxQ10=Rh_G0nSA82Xn5g@mail.gmail.com>",
+              "reply_to": [],
+              "subject": "SEO Support Without the Babysitting",
+              "to": [
+                "john@codemyspec.com"
+              ]
+            },
+            {
+              "attachments": [],
+              "bcc": [],
+              "cc": [],
+              "created_at": "2026-07-10T22:51:37.943Z",
+              "from": "vaibhav@smartlead-team.com",
+              "id": "98e3d0fe-bb9f-4b6a-8ce3-a99eabe196a6",
+              "message_id": "<20260710225136.a7969f25028bc602@cio104036.smartlead-team.com>",
+              "reply_to": [
+                "support@smartlead.ai"
+              ],
+              "subject": "You signed up for cold email. Here's what else you get.",
+              "to": [
+                "john@codemyspec.com"
+              ]
+            }
+          ],
+          "has_more": false,
+          "object": "list"
+        },
+        "body_type": "json",
+        "headers": {
+          "cf-cache-status": [
+            "DYNAMIC"
+          ],
+          "cf-ray": [
+            "a280b17a1fb5dc46-YYZ"
+          ],
+          "connection": [
+            "keep-alive"
+          ],
+          "content-security-policy": [
+            "default-src 'none'; frame-ancestors 'none'"
+          ],
+          "content-type": [
+            "application/json; charset=utf-8"
+          ],
+          "date": [
+            "Sat, 08 Aug 2026 18:48:05 GMT"
+          ],
+          "etag": [
+            "W/\"4eba-avBCoHQ3gq8654Nbog16XQH9ffc\""
+          ],
+          "permissions-policy": [
+            "camera=(), microphone=(), geolocation=(), payment=()"
+          ],
+          "ratelimit-limit": [
+            "100"
+          ],
+          "ratelimit-policy": [
+            "100;w=1"
+          ],
+          "ratelimit-remaining": [
+            "99"
+          ],
+          "ratelimit-reset": [
+            "1"
+          ],
+          "referrer-policy": [
+            "strict-origin-when-cross-origin"
+          ],
+          "server": [
+            "cloudflare"
+          ],
+          "strict-transport-security": [
+            "max-age=63072000; includeSubDomains"
+          ],
+          "transfer-encoding": [
+            "chunked"
+          ],
+          "x-content-type-options": [
+            "nosniff"
+          ],
+          "x-frame-options": [
+            "DENY"
+          ]
+        },
+        "status": 200
+      }
+    },
+    {
+      "recorded_at": "2026-08-08T18:48:10.714197Z",
+      "request": {
+        "body": "",
+        "body_type": "text",
+        "headers": {
+          "accept-encoding": [
+            "gzip"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "user-agent": [
+            "req/0.5.17"
+          ]
+        },
+        "method": "GET",
+        "query_string": "limit=100",
+        "uri": "https://api.resend.com/emails/receiving"
+      },
+      "response": {
+        "body_json": {
+          "data": [
+            {
+              "attachments": [],
+              "bcc": [],
+              "cc": [],
+              "created_at": "2026-08-08T18:48:06.918Z",
+              "from": "setup-probe@c8048.astralbi.com",
+              "id": "75afbaa8-f92d-4a5d-9fcb-ec0fde9f09ec",
+              "message_id": "<0100019fe2b42934-300266d6-ee02-4515-9e66-0b90dd382222-000000@email.amazonses.com>",
+              "reply_to": [],
+              "subject": "cms-inbound-18563",
+              "to": [
+                "user-576460752303403359@c8048.astralbi.com"
+              ]
+            },
+            {
+              "attachments": [],
+              "bcc": [],
+              "cc": [],
+              "created_at": "2026-08-08T18:46:21.721Z",
+              "from": "setup-probe@c8030.astralbi.com",
+              "id": "24618e72-4c1e-4e4b-b06f-13d5179d8466",
+              "message_id": "<0100019fe2b28e09-1f941ab7-5a29-4d66-9adb-b0cc5c2d715f-000000@email.amazonses.com>",
+              "reply_to": [],
+              "subject": "cms-inbound-18211",
+              "to": [
+                "user-576460752303406782@c8030.astralbi.com"
+              ]
+            },
+            {
+              "attachments": [],
+              "bcc": [],
+              "cc": [],
+              "created_at": "2026-08-08T18:37:56.416Z",
+              "from": "setup-probe@c8030.astralbi.com",
+              "id": "10277a96-00cc-44b5-9931-75d412818afa",
+              "message_id": "<0100019fe2aad8d9-4f1b36d0-db32-427d-9139-61cb1b6f5281-000000@email.amazonses.com>",
+              "reply_to": [],
+              "subject": "cms-inbound-20898",
+              "to": [
+                "user-576460752303403550@c8030.astralbi.com"
+              ]
+            },
+            {
+              "attachments": [],
+              "bcc": [],
+              "cc": [],
+              "created_at": "2026-08-08T18:21:44.848Z",
+              "from": "setup-probe@c8030.astralbi.com",
+              "id": "9f4b4801-a832-4271-b596-1f1de9704ff8",
+              "message_id": "<0100019fe29c050b-71ca4009-9bd3-42b3-b588-32cb9e9df002-000000@email.amazonses.com>",
+              "reply_to": [],
+              "subject": "cms-inbound-30946",
+              "to": [
+                "user-576460752303394303@c8030.astralbi.com"
+              ]
+            },
+            {
+              "attachments": [],
+              "bcc": [],
+              "cc": [],
+              "created_at": "2026-08-08T04:48:15.463Z",
+              "from": "setup-probe@marketmyspec.com",
+              "id": "35b8a8a8-b505-42eb-9311-034882ae3e18",
+              "message_id": "<0100019fdfb33f09-a98f1ef2-3f8f-47c5-bdd6-49a583cc35a6-000000@email.amazonses.com>",
+              "reply_to": [],
+              "subject": "cms-catchall-1786164493",
+              "to": [
+                "cms-probe-1786164493@get-ai-traffic.com"
+              ]
+            },
+            {
+              "attachments": [],
+              "bcc": [],
+              "cc": [],
+              "created_at": "2026-08-08T04:48:00.749Z",
+              "from": "setup-probe@get-ai-traffic.com",
+              "id": "860fabcb-48e8-4c10-9644-0f13319423b1",
+              "message_id": "<0100019fdfb30627-d9402045-c2a6-446a-8d8c-3d9fac25e294-000000@email.amazonses.com>",
+              "reply_to": [],
+              "subject": "cms-john-1786164478",
+              "to": [
+                "john@astralbi.com"
+              ]
+            },
+            {
+              "attachments": [],
+              "bcc": [],
+              "cc": [],
+              "created_at": "2026-08-08T04:47:30.831Z",
+              "from": "setup-probe@get-ai-traffic.com",
+              "id": "017a31ca-9b19-4bbe-be02-db1cffbef591",
+              "message_id": "<0100019fdfb29162-6756e1e0-93c4-4954-9120-7f5ad9acbcce-000000@email.amazonses.com>",
+              "reply_to": [],
+              "subject": "cms-john-1786164449",
+              "to": [
+                "john@astralbi.com"
+              ]
+            },
+            {
+              "attachments": [],
+              "bcc": [],
+              "cc": [],
+              "created_at": "2026-08-08T02:55:59.098Z",
+              "from": "setup-probe@marketmyspec.com",
+              "id": "17d8272a-689e-4525-8d53-fa4475269f41",
+              "message_id": "<0100019fdf4c752b-46fb3a28-bae0-405a-b526-1ca5df6bcc84-000000@email.amazonses.com>",
+              "reply_to": [],
+              "subject": "cms-catchall-1786157757",
+              "to": [
+                "cms-probe-1786157757@get-ai-traffic.com"
+              ]
+            },
+            {
+              "attachments": [],
+              "bcc": [],
+              "cc": [],
+              "created_at": "2026-08-06T10:48:59.508Z",
+              "from": "productmarketing@smartlead-team.com",
+              "id": "03ab61ac-d998-43e4-86fa-7555178f13f5",
+              "message_id": "<20260806104858.8a6e653e3296bf76@cio104036.smartlead-team.com>",
+              "reply_to": [
+                "marketing@smartlead.ai"
+              ],
+              "subject": "Event Outbound Playbook - Turn Conference Attendees Into Pipeline",
+              "to": [
+                "john@codemyspec.com"
+              ]
+            },
+            {
+              "attachments": [
+                {
+                  "content_disposition": "attachment",
+                  "content_id": null,
+                  "content_type": "application/zip",
+                  "filename": "google.com!get-ai-traffic.com!1785801600!1785887999.zip",
+                  "id": "1a9ba96f-a581-4fa1-8d10-bd33dcab6e05",
+                  "size": 794
+                }
+              ],
+              "bcc": [],
+              "cc": [],
+              "created_at": "2026-08-05T10:18:05.192Z",
+              "from": "noreply-dmarc-support@google.com",
+              "id": "0889de52-5dba-46bb-b8d0-6ce4af019d9e",
+              "message_id": "<2012666900863003759@google.com>",
+              "reply_to": [],
+              "subject": "Report domain: get-ai-traffic.com Submitter: google.com Report-ID: 2012666900863003759",
+              "to": [
+                "john@get-ai-traffic.com"
+              ]
+            },
+            {
+              "attachments": [],
+              "bcc": [],
+              "cc": [],
+              "created_at": "2026-08-02T03:55:33.302Z",
+              "from": "vaibhav@smartlead-team.com",
+              "id": "e717cfec-1c47-4988-bc02-c1f36d995a85",
+              "message_id": "<20260802035532.57f2dd057f4e9ed6@cio104036.smartlead-team.com>",
+              "reply_to": [
+                "support@smartlead.ai"
+              ],
+              "subject": "Closing your reactivation offer soon",
+              "to": [
+                "john@codemyspec.com"
+              ]
+            },
+            {
+              "attachments": [
+                {
+                  "content_disposition": null,
+                  "content_id": null,
+                  "content_type": "text/x-amp-html",
+                  "filename": null,
+                  "id": "28bbfe9d-fceb-407f-a123-12170018169e",
+                  "size": 56257
+                }
+              ],
+              "bcc": [],
+              "cc": [],
+              "created_at": "2026-07-31T21:08:40.824Z",
+              "from": "aquib@s.mailmodo.live",
+              "id": "d8ea684e-9198-4976-a666-a437c1eeb3f7",
+              "message_id": "<07.34.40554.ACE0D6A6@i-0595ff8149b586cb3.mta1vrest.sd.prd.sparkpost>",
+              "reply_to": [
+                "support@mailmodo.com"
+              ],
+              "subject": "Send campaigns in your recipient's time zone",
+              "to": [
+                "john@get-ai-traffic.com"
+              ]
+            },
+            {
+              "attachments": [
+                {
+                  "content_disposition": null,
+                  "content_id": null,
+                  "content_type": "text/x-amp-html",
+                  "filename": null,
+                  "id": "6a8446d2-78e0-4490-89aa-e135f5242b8c",
+                  "size": 56240
+                }
+              ],
+              "bcc": [],
+              "cc": [],
+              "created_at": "2026-07-29T21:08:33.552Z",
+              "from": "aquib@s.mailmodo.live",
+              "id": "0ae32d33-1146-4cf8-8dbd-deeb66197772",
+              "message_id": "<C1.2E.37936.CCB6A6A6@i-0f727fa2db97afcb1.mta1vrest.sd.prd.sparkpost>",
+              "reply_to": [
+                "support@mailmodo.com"
+              ],
+              "subject": "A/B test your emails to improve performance",
+              "to": [
+                "john@get-ai-traffic.com"
+              ]
+            },
+            {
+              "attachments": [
+                {
+                  "content_disposition": "attachment",
+                  "content_id": null,
+                  "content_type": "application/zip",
+                  "filename": "google.com!get-ai-traffic.com!1785196800!1785283199.zip",
+                  "id": "abd382cd-2ead-4501-a029-3d7a2a8dd328",
+                  "size": 771
+                }
+              ],
+              "bcc": [],
+              "cc": [],
+              "created_at": "2026-07-29T10:16:15.751Z",
+              "from": "noreply-dmarc-support@google.com",
+              "id": "3a899622-1da1-4a19-871e-324403306fef",
+              "message_id": "<8008781709657493328@google.com>",
+              "reply_to": [],
+              "subject": "Report domain: get-ai-traffic.com Submitter: google.com Report-ID: 8008781709657493328",
+              "to": [
+                "john@get-ai-traffic.com"
+              ]
+            },
+            {
+              "attachments": [
+                {
+                  "content_disposition": "attachment",
+                  "content_id": null,
+                  "content_type": "application/zip",
+                  "filename": "google.com!codemyspec.com!1785196800!1785283199.zip",
+                  "id": "e31c33b3-5e05-4a8f-80cb-2e684012d983",
+                  "size": 758
+                }
+              ],
+              "bcc": [],
+              "cc": [],
+              "created_at": "2026-07-29T10:08:49.526Z",
+              "from": "noreply-dmarc-support@google.com",
+              "id": "bfd65f00-3c13-4590-85e6-1a3abb1384f1",
+              "message_id": "<6554635995614879726@google.com>",
+              "reply_to": [],
+              "subject": "Report domain: codemyspec.com Submitter: google.com Report-ID: 6554635995614879726",
+              "to": [
+                "dmarc@codemyspec.com"
+              ]
+            },
+            {
+              "attachments": [],
+              "bcc": [],
+              "cc": [],
+              "created_at": "2026-07-28T03:55:29.078Z",
+              "from": "vaibhav@smartlead-team.com",
+              "id": "531a736d-8599-4c7b-9421-520733a97ea5",
+              "message_id": "<20260728035528.b51f8cc53e69e85b@cio104036.smartlead-team.com>",
+              "reply_to": [
+                "support@smartlead.ai"
+              ],
+              "subject": "4 outbound wins you can steal today",
+              "to": [
+                "john@codemyspec.com"
+              ]
+            },
+            {
+              "attachments": [
+                {
+                  "content_disposition": null,
+                  "content_id": null,
+                  "content_type": "text/x-amp-html",
+                  "filename": null,
+                  "id": "fba80dfb-b8e1-4253-bd7d-4c9e8aecd818",
+                  "size": 76680
+                }
+              ],
+              "bcc": [],
+              "cc": [],
+              "created_at": "2026-07-27T21:08:32.382Z",
+              "from": "aquib@s.mailmodo.live",
+              "id": "57628129-b0e5-44d6-9eb9-868a0aa27845",
+              "message_id": "<E4.F2.54047.CC8C76A6@i-0e64970d7181a315a.mta1vrest.sd.prd.sparkpost>",
+              "reply_to": [
+                "support@mailmodo.com"
+              ],
+              "subject": "Start mastering email marketing with our expert resources",
+              "to": [
+                "john@get-ai-traffic.com"
+              ]
+            },
+            {
+              "attachments": [
+                {
+                  "content_disposition": null,
+                  "content_id": null,
+                  "content_type": "text/x-amp-html",
+                  "filename": null,
+                  "id": "a10af12c-dc58-464e-8134-3a0161855097",
+                  "size": 116672
+                }
+              ],
+              "bcc": [],
+              "cc": [],
+              "created_at": "2026-07-25T21:08:34.763Z",
+              "from": "aquib@s.mailmodo.live",
+              "id": "0cca0761-cfa3-41c7-9fb3-bb239d36e884",
+              "message_id": "<03.A2.56878.DC5256A6@i-0cc0c9a3fa3ce8bbd.mta1vrest.sd.prd.sparkpost>",
+              "reply_to": [
+                "support@mailmodo.com"
+              ],
+              "subject": "Bring your emails to life with interactivity",
+              "to": [
+                "john@get-ai-traffic.com"
+              ]
+            },
+            {
+              "attachments": [],
+              "bcc": [],
+              "cc": [],
+              "created_at": "2026-07-25T18:42:46.034Z",
+              "from": "boardy@boardy.ai",
+              "id": "9106c2da-3958-403f-823a-e12ad336ec5d",
+              "message_id": "<boardy-df8f322a-b533-4cf8-9390-c59a1c1e062c@boardy.ai>",
+              "reply_to": [
+                "boardy@boardy.ai"
+              ],
+              "subject": "Great speaking just now",
+              "to": [
+                "john@codemyspec.com"
+              ]
+            },
+            {
+              "attachments": [
+                {
+                  "content_disposition": null,
+                  "content_id": null,
+                  "content_type": "text/x-amp-html",
+                  "filename": null,
+                  "id": "38b29bb9-f3f9-4946-97d6-3c5454f48f80",
+                  "size": 51037
+                }
+              ],
+              "bcc": [],
+              "cc": [],
+              "created_at": "2026-07-24T21:08:18.158Z",
+              "from": "aquib@s.mailmodo.live",
+              "id": "b5cdf419-ad58-4721-a13d-27d5b31abb54",
+              "message_id": "<70.25.48140.F34D36A6@i-0587469304b60e34a.mta1vrest.sd.prd.sparkpost>",
+              "reply_to": [
+                "support@mailmodo.com"
+              ],
+              "subject": "Your Mailmodo Pro trial is over",
+              "to": [
+                "john@get-ai-traffic.com"
+              ]
+            },
+            {
+              "attachments": [],
+              "bcc": [],
+              "cc": [],
+              "created_at": "2026-07-23T15:18:31.997Z",
+              "from": "productmarketing@smartlead-team.com",
+              "id": "271ad549-747a-41c2-8638-2809768a5506",
+              "message_id": "<20260723151824.936e9d808a8be354@cio104036.smartlead-team.com>",
+              "reply_to": [
+                "marketing@smartlead.ai"
+              ],
+              "subject": "A Special Invitation to Smartlead's 4th Birthday Event",
+              "to": [
+                "john@codemyspec.com"
+              ]
+            },
+            {
+              "attachments": [],
+              "bcc": [],
+              "cc": [],
+              "created_at": "2026-07-23T03:55:26.188Z",
+              "from": "vaibhav@smartlead-team.com",
+              "id": "9c992719-f630-4a69-88da-6dac263a1aa2",
+              "message_id": "<20260723035524.b59c082de6cfb530@cio104036.smartlead-team.com>",
+              "reply_to": [
+                "support@smartlead.ai"
+              ],
+              "subject": "How teams are getting 2× ROI with Smartlead",
+              "to": [
+                "john@codemyspec.com"
+              ]
+            },
+            {
+              "attachments": [
+                {
+                  "content_disposition": null,
+                  "content_id": null,
+                  "content_type": "text/x-amp-html",
+                  "filename": null,
+                  "id": "55a32387-b311-4958-bd1f-53421ddc2669",
+                  "size": 52016
+                }
+              ],
+              "bcc": [],
+              "cc": [],
+              "created_at": "2026-07-22T21:08:23.588Z",
+              "from": "aquib@s.mailmodo.live",
+              "id": "6ab34c19-8310-43b6-b053-272444fae3fb",
+              "message_id": "<CF.51.33249.141316A6@i-0bcc15373a4ae2ef8.mta1vrest.sd.prd.sparkpost>",
+              "reply_to": [
+                "support@mailmodo.com"
+              ],
+              "subject": "[Reminder] 2 days left in your Mailmodo free trial",
+              "to": [
+                "john@get-ai-traffic.com"
+              ]
+            },
+            {
+              "attachments": [
+                {
+                  "content_disposition": "attachment",
+                  "content_id": null,
+                  "content_type": "application/pdf",
+                  "filename": "igris-radar-aeo-2026-07-22.pdf",
+                  "id": "dfe946f7-1015-40e3-a309-e6bc082126df",
+                  "size": 27576
+                },
+                {
+                  "content_disposition": "attachment",
+                  "content_id": null,
+                  "content_type": "application/pdf",
+                  "filename": "igris-radar-geo-2026-07-22.pdf",
+                  "id": "4c063727-8483-483a-9ed7-7065a7634ba7",
+                  "size": 32915
+                },
+                {
+                  "content_disposition": "attachment",
+                  "content_id": null,
+                  "content_type": "application/pdf",
+                  "filename": "igris-radar-seo-2026-07-22.pdf",
+                  "id": "7ba09c95-47c3-4f65-9bd9-f8c710fe8c4f",
+                  "size": 27807
+                }
+              ],
+              "bcc": [],
+              "cc": [],
+              "created_at": "2026-07-22T17:10:20.694Z",
+              "from": "support@igrisecurity.com",
+              "id": "041b24ed-d906-4114-a26c-199066fa94fb",
+              "message_id": "<1784740206324076298.1784740206@igrisecurity.com>",
+              "reply_to": [],
+              "subject": "Report on SEO/AEO/GEO",
+              "to": [
+                "john@get-ai-traffic.com"
+              ]
+            },
+            {
+              "attachments": [],
+              "bcc": [],
+              "cc": [],
+              "created_at": "2026-07-22T10:38:04.602Z",
+              "from": "productmarketing@smartlead-team.com",
+              "id": "6fc9dad7-ff9d-4dc6-a136-1e7bfbc18f9d",
+              "message_id": "<20260722103803.23f9359f308112ba@cio104036.smartlead-team.com>",
+              "reply_to": [
+                "marketing@smartlead.ai"
+              ],
+              "subject": "Smartlead Turns 4: 6 Operators on the Wins, Mistakes & Systems That Actually Scaled Revenue",
+              "to": [
+                "john@codemyspec.com"
+              ]
+            },
+            {
+              "attachments": [
+                {
+                  "content_disposition": "attachment",
+                  "content_id": null,
+                  "content_type": "application/zip",
+                  "filename": "google.com!codemyspec.com!1784592000!1784678399.zip",
+                  "id": "ddc43539-3775-4b74-b512-a0ee9570ebd5",
+                  "size": 761
+                }
+              ],
+              "bcc": [],
+              "cc": [],
+              "created_at": "2026-07-22T10:11:18.659Z",
+              "from": "noreply-dmarc-support@google.com",
+              "id": "03eba63f-1e2b-47c2-9929-622184eefd2b",
+              "message_id": "<1548231394480776383@google.com>",
+              "reply_to": [],
+              "subject": "Report domain: codemyspec.com Submitter: google.com Report-ID: 1548231394480776383",
+              "to": [
+                "dmarc@codemyspec.com"
+              ]
+            },
+            {
+              "attachments": [],
+              "bcc": [],
+              "cc": [],
+              "created_at": "2026-07-21T21:00:10.200Z",
+              "from": "productmarketing@smartlead-team.com",
+              "id": "2345bab9-15b6-4bd5-9dc9-29f78ade608c",
+              "message_id": "<20260721210006.02d2c43b39c22514@cio104036.smartlead-team.com>",
+              "reply_to": [
+                "marketing@smartlead.ai"
+              ],
+              "subject": "Your Outbound Benchmark is Here!",
+              "to": [
+                "john@codemyspec.com"
+              ]
+            },
+            {
+              "attachments": [
+                {
+                  "content_disposition": null,
+                  "content_id": null,
+                  "content_type": "text/x-amp-html",
+                  "filename": null,
+                  "id": "4967de14-8a7d-4bea-a9ee-72c2ef50801c",
+                  "size": 84336
+                }
+              ],
+              "bcc": [],
+              "cc": [],
+              "created_at": "2026-07-19T21:08:33.889Z",
+              "from": "aquib@s.mailmodo.live",
+              "id": "a1fc0b7c-fbd9-470b-bfa5-fa36ce87cf41",
+              "message_id": "<45.C3.46812.9CC3D5A6@i-02dde23a729d907ed.mta1vrest.sd.prd.sparkpost>",
+              "reply_to": [
+                "support@mailmodo.com"
+              ],
+              "subject": "Land in your subscriber's inbox",
+              "to": [
+                "john@get-ai-traffic.com"
+              ]
+            },
+            {
+              "attachments": [
+                {
+                  "content_disposition": "attachment",
+                  "content_id": null,
+                  "content_type": "application/zip",
+                  "filename": "google.com!get-ai-traffic.com!1784332800!1784419199.zip",
+                  "id": "8bf6fb8c-885d-4292-b9fa-07b71a3b476e",
+                  "size": 754
+                }
+              ],
+              "bcc": [],
+              "cc": [],
+              "created_at": "2026-07-19T09:57:58.851Z",
+              "from": "noreply-dmarc-support@google.com",
+              "id": "3bb891f3-8be4-41a3-bea9-3f0366621094",
+              "message_id": "<17434703947772457286@google.com>",
+              "reply_to": [],
+              "subject": "Report domain: get-ai-traffic.com Submitter: google.com Report-ID: 17434703947772457286",
+              "to": [
+                "john@get-ai-traffic.com"
+              ]
+            },
+            {
+              "attachments": [],
+              "bcc": [],
+              "cc": [],
+              "created_at": "2026-07-19T03:55:27.174Z",
+              "from": "vaibhav@smartlead-team.com",
+              "id": "24bede1b-1af6-4102-bd50-2ececf0feddb",
+              "message_id": "<20260719035525.e4747a57312bced7@cio104036.smartlead-team.com>",
+              "reply_to": [
+                "support@smartlead.ai"
+              ],
+              "subject": "Get 3X Verified Lead + more - right inside Smartlead",
+              "to": [
+                "john@codemyspec.com"
+              ]
+            },
+            {
+              "attachments": [
+                {
+                  "content_disposition": "attachment",
+                  "content_id": null,
+                  "content_type": "application/zip",
+                  "filename": "google.com!get-ai-traffic.com!1784246400!1784332799.zip",
+                  "id": "c1915c66-9afb-4834-866f-28463729cd32",
+                  "size": 771
+                }
+              ],
+              "bcc": [],
+              "cc": [],
+              "created_at": "2026-07-18T10:24:37.205Z",
+              "from": "noreply-dmarc-support@google.com",
+              "id": "3bc4ba73-c266-41d3-9bbf-2d96e4071bbe",
+              "message_id": "<4230945093267988372@google.com>",
+              "reply_to": [],
+              "subject": "Report domain: get-ai-traffic.com Submitter: google.com Report-ID: 4230945093267988372",
+              "to": [
+                "john@get-ai-traffic.com"
+              ]
+            },
+            {
+              "attachments": [
+                {
+                  "content_disposition": null,
+                  "content_id": null,
+                  "content_type": "text/x-amp-html",
+                  "filename": null,
+                  "id": "bb047f5c-c85b-4a9e-a98e-1c03f783e606",
+                  "size": 57267
+                }
+              ],
+              "bcc": [],
+              "cc": [],
+              "created_at": "2026-07-17T21:08:29.333Z",
+              "from": "aquib@s.mailmodo.live",
+              "id": "5b8809a0-1209-4b61-a53f-f47287ba7c66",
+              "message_id": "<C9.39.19422.9C99A5A6@i-0d874f8783e7a2995.mta1vrest.sd.prd.sparkpost>",
+              "reply_to": [
+                "support@mailmodo.com"
+              ],
+              "subject": "Send emails to the right people using AI",
+              "to": [
+                "john@get-ai-traffic.com"
+              ]
+            },
+            {
+              "attachments": [
+                {
+                  "content_disposition": "attachment",
+                  "content_id": null,
+                  "content_type": "application/zip",
+                  "filename": "google.com!get-ai-traffic.com!1784160000!1784246399.zip",
+                  "id": "5831e411-4972-4d0c-a8ac-87f3189fbb18",
+                  "size": 810
+                }
+              ],
+              "bcc": [],
+              "cc": [],
+              "created_at": "2026-07-17T10:28:51.203Z",
+              "from": "noreply-dmarc-support@google.com",
+              "id": "3ee1561a-bde4-4a98-8952-255831db54df",
+              "message_id": "<3199068348458872598@google.com>",
+              "reply_to": [],
+              "subject": "Report domain: get-ai-traffic.com Submitter: google.com Report-ID: 3199068348458872598",
+              "to": [
+                "john@get-ai-traffic.com"
+              ]
+            },
+            {
+              "attachments": [],
+              "bcc": [],
+              "cc": [],
+              "created_at": "2026-07-17T03:55:31.668Z",
+              "from": "vaibhav@smartlead-team.com",
+              "id": "cf2d4265-0eb1-4bee-99bc-335c280f2d94",
+              "message_id": "<20260717035524.5e8c312d2fe77b5b@cio104036.smartlead-team.com>",
+              "reply_to": [
+                "support@smartlead.ai"
+              ],
+              "subject": "Experience the New Enhanced Smartlead",
+              "to": [
+                "john@codemyspec.com"
+              ]
+            },
+            {
+              "attachments": [],
+              "bcc": [],
+              "cc": [],
+              "created_at": "2026-07-16T14:17:53.700Z",
+              "from": "productmarketing@smartlead-team.com",
+              "id": "1f1ad315-26ec-4633-af11-9b3c3c65bea1",
+              "message_id": "<20260716141748.a2716a6fc00e7774@cio104036.smartlead-team.com>",
+              "reply_to": [
+                "marketing@smartlead.ai"
+              ],
+              "subject": "How Non-Technical Founders Build Outbound Engines Without Writing Code",
+              "to": [
+                "john@codemyspec.com"
+              ]
+            },
+            {
+              "attachments": [
+                {
+                  "content_disposition": "attachment",
+                  "content_id": "<4f05bc82-b74c-482d-a2b6-1aae7ed3b790>",
+                  "content_type": "application/gzip",
+                  "filename": "enterprise.protection.outlook.com!get-ai-traffic.com!1783987200!1784073600.xml.gz",
+                  "id": "d555317f-1110-450a-8589-ddccc5ac7e93",
+                  "size": 623
+                }
+              ],
+              "bcc": [],
+              "cc": [],
+              "created_at": "2026-07-16T01:36:49.248Z",
+              "from": "dmarcreport@microsoft.com",
+              "id": "b1565421-a7bf-4b32-b3b4-e55c810a8866",
+              "message_id": "<2b3c0d720fa74f9a9eac159deaa92daa@microsoft.com>",
+              "reply_to": [],
+              "subject": "[Preview] Report Domain: get-ai-traffic.com Submitter: enterprise.protection.outlook.com Report-ID: 2b3c0d720fa74f9a9eac159deaa92daa",
+              "to": [
+                "john@get-ai-traffic.com"
+              ]
+            },
+            {
+              "attachments": [
+                {
+                  "content_disposition": null,
+                  "content_id": null,
+                  "content_type": "text/x-amp-html",
+                  "filename": null,
+                  "id": "259f64aa-3214-446d-abdc-746b341ef9e8",
+                  "size": 56958
+                }
+              ],
+              "bcc": [],
+              "cc": [],
+              "created_at": "2026-07-15T21:08:28.975Z",
+              "from": "aquib@s.mailmodo.live",
+              "id": "bb37e714-b6c5-43d6-9b2c-7c73d2167455",
+              "message_id": "<BA.D7.11227.AC6F75A6@i-07da90582d879aaf0.mta1vrest.sd.prd.sparkpost>",
+              "reply_to": [
+                "support@mailmodo.com"
+              ],
+              "subject": "Analyze your email performance using AI",
+              "to": [
+                "john@get-ai-traffic.com"
+              ]
+            },
+            {
+              "attachments": [
+                {
+                  "content_disposition": "attachment",
+                  "content_id": null,
+                  "content_type": "application/zip",
+                  "filename": "google.com!get-ai-traffic.com!1783987200!1784073599.zip",
+                  "id": "240ed7b3-735d-4d19-9b8a-e3dbdf890c07",
+                  "size": 858
+                }
+              ],
+              "bcc": [],
+              "cc": [],
+              "created_at": "2026-07-15T10:24:14.930Z",
+              "from": "noreply-dmarc-support@google.com",
+              "id": "ec37a4eb-b6bc-4e8c-b64b-3ff04af0381a",
+              "message_id": "<2243936269881798482@google.com>",
+              "reply_to": [],
+              "subject": "Report domain: get-ai-traffic.com Submitter: google.com Report-ID: 2243936269881798482",
+              "to": [
+                "john@get-ai-traffic.com"
+              ]
+            },
+            {
+              "attachments": [],
+              "bcc": [],
+              "cc": [],
+              "created_at": "2026-07-15T03:17:20.060Z",
+              "from": "clean@desertfirstcleaning.com",
+              "id": "4e4f2d12-3155-419f-9078-47fecf1780e2",
+              "message_id": "<216267358884520960.0.v2@titan.email>",
+              "reply_to": [],
+              "subject": "asdf",
+              "to": [
+                "john@get-ai-traffic.com"
+              ]
+            },
+            {
+              "attachments": [],
+              "bcc": [],
+              "cc": [],
+              "created_at": "2026-07-15T03:16:18.155Z",
+              "from": "johns10@gmail.com",
+              "id": "30c598b1-0f45-4c0c-bdb3-12902a8eda9b",
+              "message_id": "<CAHTqpXrD-UeJ_h1Toi736HuGbFRYBGTV_OF_tBAu82FKS7PGVg@mail.gmail.com>",
+              "reply_to": [],
+              "subject": "test2",
+              "to": [
+                "john@get-ai-traffic.com"
+              ]
+            },
+            {
+              "attachments": [],
+              "bcc": [],
+              "cc": [],
+              "created_at": "2026-07-15T03:11:56.217Z",
+              "from": "noreply@codemyspec.com",
+              "id": "cfb13274-c351-46fe-93cc-f95c640b9592",
+              "message_id": "<0100019f63c27068-bc5c1071-482d-4e96-a869-25f0c8e7a1be-000000@email.amazonses.com>",
+              "reply_to": [],
+              "subject": "Inbound cutover smoke test",
+              "to": [
+                "john@get-ai-traffic.com"
+              ]
+            },
+            {
+              "attachments": [],
+              "bcc": [],
+              "cc": [],
+              "created_at": "2026-07-14T22:51:43.496Z",
+              "from": "vaibhav@smartlead-team.com",
+              "id": "240ece44-7bb4-4dd5-a11a-6d2e891f72c1",
+              "message_id": "<20260714225142.d9403dad385db8a4@cio104036.smartlead-team.com>",
+              "reply_to": [
+                "support@smartlead.ai"
+              ],
+              "subject": "Last chance - your trial expires tomorrow",
+              "to": [
+                "john@codemyspec.com"
+              ]
+            },
+            {
+              "attachments": [],
+              "bcc": [],
+              "cc": [],
+              "created_at": "2026-07-12T22:51:40.175Z",
+              "from": "vaibhav@smartlead-team.com",
+              "id": "1e47954f-a481-4e20-b992-c45dc67c6145",
+              "message_id": "<20260712225139.dc1df336f799a36c@cio104036.smartlead-team.com>",
+              "reply_to": [
+                "support@smartlead.ai"
+              ],
+              "subject": "Your trial ends soon - here's what you'd be walking away from",
+              "to": [
+                "john@codemyspec.com"
+              ]
+            },
+            {
+              "attachments": [],
+              "bcc": [],
+              "cc": [],
+              "created_at": "2026-07-12T13:24:45.006Z",
+              "from": "maryem.shahid01@gmail.com",
+              "id": "96986ef2-a7ec-4fd3-9632-af8167db0a1d",
+              "message_id": "<CAJpayiZ+qdy=pNYKf7Ogwfrr7SDPaGtkCx4iDrWLCqgghBB02A@mail.gmail.com>",
+              "reply_to": [],
+              "subject": "SEO Support Without the Babysitting",
+              "to": [
+                "hello@codemyspec.com"
+              ]
+            },
+            {
+              "attachments": [],
+              "bcc": [],
+              "cc": [],
+              "created_at": "2026-07-12T13:24:14.252Z",
+              "from": "maryem.shahid01@gmail.com",
+              "id": "0ff6fc0c-8dab-43eb-905f-885b3ab25617",
+              "message_id": "<CAJpayiYO3SkyW0zuCC5fnr0uVgrNNFs2rF-Gka82omg3X_=C6A@mail.gmail.com>",
+              "reply_to": [],
+              "subject": "SEO Support Without the Babysitting",
+              "to": [
+                "contact@codemyspec.com"
+              ]
+            },
+            {
+              "attachments": [],
+              "bcc": [],
+              "cc": [],
+              "created_at": "2026-07-12T13:23:23.521Z",
+              "from": "maryem.shahid01@gmail.com",
+              "id": "28a0355c-75cf-4057-a786-0edb605fa74b",
+              "message_id": "<CAJpayibzuv1_P+PKTLRfJ6xzR3CSUQvxQ10=Rh_G0nSA82Xn5g@mail.gmail.com>",
+              "reply_to": [],
+              "subject": "SEO Support Without the Babysitting",
+              "to": [
+                "john@codemyspec.com"
+              ]
+            },
+            {
+              "attachments": [],
+              "bcc": [],
+              "cc": [],
+              "created_at": "2026-07-10T22:51:37.943Z",
+              "from": "vaibhav@smartlead-team.com",
+              "id": "98e3d0fe-bb9f-4b6a-8ce3-a99eabe196a6",
+              "message_id": "<20260710225136.a7969f25028bc602@cio104036.smartlead-team.com>",
+              "reply_to": [
+                "support@smartlead.ai"
+              ],
+              "subject": "You signed up for cold email. Here's what else you get.",
+              "to": [
+                "john@codemyspec.com"
+              ]
+            }
+          ],
+          "has_more": false,
+          "object": "list"
+        },
+        "body_type": "json",
+        "headers": {
+          "cf-cache-status": [
+            "DYNAMIC"
+          ],
+          "cf-ray": [
+            "a280b19a6a54dc46-YYZ"
+          ],
+          "connection": [
+            "keep-alive"
+          ],
+          "content-security-policy": [
+            "default-src 'none'; frame-ancestors 'none'"
+          ],
+          "content-type": [
+            "application/json; charset=utf-8"
+          ],
+          "date": [
+            "Sat, 08 Aug 2026 18:48:10 GMT"
+          ],
+          "etag": [
+            "W/\"501c-K4vtu4p9YClO0HPK+kYnsm0HHPA\""
+          ],
+          "permissions-policy": [
+            "camera=(), microphone=(), geolocation=(), payment=()"
+          ],
+          "ratelimit-limit": [
+            "100"
+          ],
+          "ratelimit-policy": [
+            "100;w=1"
+          ],
+          "ratelimit-remaining": [
+            "99"
+          ],
+          "ratelimit-reset": [
+            "1"
+          ],
+          "referrer-policy": [
+            "strict-origin-when-cross-origin"
+          ],
+          "server": [
+            "cloudflare"
+          ],
+          "strict-transport-security": [
+            "max-age=63072000; includeSubDomains"
+          ],
+          "transfer-encoding": [
+            "chunked"
+          ],
+          "x-content-type-options": [
+            "nosniff"
+          ],
+          "x-frame-options": [
+            "DENY"
+          ]
+        },
+        "status": 200
+      }
+    }
+  ],
+  "version": "2.0"
+}

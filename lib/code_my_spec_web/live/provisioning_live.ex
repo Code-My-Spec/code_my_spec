@@ -869,6 +869,8 @@ defmodule CodeMySpecWeb.ProvisioningLive do
         data-destination={@mail_inbound_result.destination}
         data-message-id={@mail_inbound_result.message_id}
         data-completed-at={@mail_inbound_result.completed_at}
+        data-delivered-to={@mail_inbound_result.delivered_to}
+        data-body-available={to_string(@mail_inbound_result.body_available)}
       >
         {@mail_inbound_result.summary}
       </div>
@@ -1385,6 +1387,12 @@ defmodule CodeMySpecWeb.ProvisioningLive do
           destination: to,
           message_id: message["id"],
           completed_at: message["created_at"] || now,
+          # Forwarded to a mailbox is not the same as reaching the app. This
+          # message came back through Resend's receiving API, so the app is
+          # holding it — which is what 8048 asks and what a plain MX forward
+          # to somebody's inbox would not satisfy.
+          delivered_to: "app",
+          body_available: message_body?(message),
           summary: "delivered to #{to}"
         }
 
@@ -1394,9 +1402,22 @@ defmodule CodeMySpecWeb.ProvisioningLive do
           destination: to,
           message_id: nil,
           completed_at: now,
+          delivered_to: nil,
+          body_available: false,
           summary: "not delivered to #{to}: #{String.slice(to_string(reason), 0, 200)}"
         }
     end
+  end
+
+  # Acting on a message means reading it. A receipt with no body is a
+  # notification that something arrived, which is not the same claim.
+  defp message_body?(message) do
+    Enum.any?(["text", "html"], fn key ->
+      case message[key] do
+        value when is_binary(value) and value != "" -> true
+        _ -> false
+      end
+    end)
   end
 
   # Criterion: a record deleted after verification is noticed. Re-reading from

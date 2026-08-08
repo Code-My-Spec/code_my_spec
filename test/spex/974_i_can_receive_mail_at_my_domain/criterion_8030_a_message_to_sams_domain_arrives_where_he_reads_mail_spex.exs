@@ -36,10 +36,22 @@ defmodule CodeMySpecSpex.Story974.Criterion8030Spex do
         # criterion runs second finds the first's domain already registered and
         # *adopts* it — and an adopted resource is never torn down, so each one
         # replays the others' state.
-        own_domain(context.project, "c8030.astralbi.com")
+        project = own_domain(context.project, "c8030.astralbi.com")
 
         view =
           with_provider_cassette(@mount_cassette, fn ->
+            # The mail section renders off a *sending domain* Resend knows
+            # about — `mail_state/3` looks the project's domain up in the
+            # account's list and returns nil when it is absent. Setting the
+            # project's domain is not enough; without this the section is not
+            # on the page and the probe control cannot be either.
+            # `receiving: true`, because this criterion is about an inbox.
+            # Resend grants receiving at creation and never afterwards, so a
+            # domain registered sending-only here is unrecoverable for this
+            # story: the probe is accepted and then dropped in silence, which
+            # is exactly how it failed.
+            verified_sending_domains(context.scope, project, ["prod"], receiving: true)
+
             {:ok, view, _html} =
               live(context.conn, "/app/projects/#{context.project.id}/provisioning")
 

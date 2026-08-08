@@ -19,6 +19,10 @@ defmodule CodeMySpecSpex.Story974.Criterion8048Spex do
 
   @cassette "resend_inbound_message_reaches_app"
 
+  # Mounting reads the sending domains off Resend; outside a cassette the mail
+  # section is simply not there. Same wall 8029 and 8030 hit.
+  @mount_cassette "974_8048_mail_section_mounted"
+
   setup :register_log_in_setup_account
   setup :setup_active_project
   setup :devops_on
@@ -31,10 +35,26 @@ defmodule CodeMySpecSpex.Story974.Criterion8048Spex do
         # criterion runs second finds the first's domain already registered and
         # *adopts* it — and an adopted resource is never torn down, so each one
         # replays the others' state.
-        own_domain(context.project, "c8048.astralbi.com")
+        project = own_domain(context.project, "c8048.astralbi.com")
 
-        {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/provisioning")
+        view =
+          with_provider_cassette(@mount_cassette, fn ->
+            # The mail section — which the probe control lives in — renders off
+            # a sending domain Resend knows about, so the project's domain
+            # alone leaves it off the page. `receiving: true` because this
+            # criterion is about an inbox, and Resend grants receiving at
+            # creation or never.
+            verified_sending_domains(context.scope, project, ["prod"], receiving: true)
+
+            {:ok, view, _html} =
+              live(context.conn, "/app/projects/#{context.project.id}/provisioning")
+
+            _ = Phoenix.LiveViewTest.render(view)
+            view
+          end)
+
+        assert Phoenix.LiveViewTest.render(view) =~ ~s(data-test="mail"),
+               "expected the mail section to render — the probe control lives inside it"
 
         {:ok, Map.put(context, :view, view)}
       end
