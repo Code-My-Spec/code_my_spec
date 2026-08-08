@@ -35,9 +35,10 @@ defmodule CodeMySpec.Problems.ProblemRepository do
 
   """
   @spec list_project_problems(Scope.t(), keyword()) :: [Problem.t()]
-  def list_project_problems(%Scope{active_project_id: project_id}, opts) do
+  def list_project_problems(%Scope{active_project_id: project_id} = scope, opts) do
     Problem
     |> where([p], p.project_id == ^project_id)
+    |> scope_to_harness(scope)
     |> apply_filters(opts)
     |> order_by([p], [
       fragment(
@@ -71,12 +72,14 @@ defmodule CodeMySpec.Problems.ProblemRepository do
           total_pages: pos_integer(),
           filter: :all | String.t()
         }
-  def list_problems_paginated(%Scope{active_project_id: project_id}, opts \\ []) do
+  def list_problems_paginated(%Scope{active_project_id: project_id} = scope, opts \\ []) do
     page = max(Keyword.get(opts, :page, 1), 1)
     per_page = max(Keyword.get(opts, :per_page, 25), 1)
     filter = Keyword.get(opts, :filter, :all)
 
-    project_scope = where(Problem, [p], p.project_id == ^project_id)
+    project_scope =
+      Problem |> where([p], p.project_id == ^project_id) |> scope_to_harness(scope)
+
     unfiltered_count = Repo.aggregate(project_scope, :count, :id)
 
     counts_by_source =
