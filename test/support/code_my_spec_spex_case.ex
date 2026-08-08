@@ -1868,19 +1868,86 @@ defmodule CodeMySpecSpex.Case do
   #
   # Presigned S3 URLs are the other one: SigV4 puts the access key id and the
   # signature in the query string, where a header filter never looks.
+  # Four is enough for the epic: a project has at most `prod` and `uat`, and a
+  # criterion that provisions both twice is the widest case there is. A fifth
+  # distinct key would collide with the first, which degrades to the old
+  # single-key behaviour rather than to anything unsafe.
+  @replay_keypairs [
+    {"age1lq9vzddcuspetghwdddfs28wxyzu5hrz9rj0wwqtnl2zq8w3pc6qy8e9yt",
+     "AGE-SECRET-KEY-1H4P3933A0Y5GE7SFJYXTANPNPWVKZMJGWRZZVTD60QGKNH26AY6QN6MJM4"},
+    {"age1dejwx5cnp9q689dhq93cdjwawvwqy9v8axs8x6gt8z62xsztz3eq0u7l6s",
+     "AGE-SECRET-KEY-1EJWM9AEXKZKZKHH5R5L0VSV5VUHAPFQSJUTZ4RHJ0R2X92UUTYLS2T3C36"},
+    {"age1jdsx0katyxc0vu56jm387ann7mfdme3u47lax7x8w4e6kyzjgfjsg2sj0c",
+     "AGE-SECRET-KEY-1MHKPEY7QLYX3JZ9SNRVJ003XF3ZAV9ELRXJPKUREJAXGDVQ8RNNQ6MEGJC"},
+    {"age12gswm4kz6pswkhtyzrqaaw5ac9a9sxn5n960d2mjxhkchgp5kezq2q29yr",
+     "AGE-SECRET-KEY-1GLU5CYDL9MHXCFYCZZTNS7YA5RT56N0M4PT40A2DVNJ0DCN4TU7SGPFTRH"}
+  ]
+
+  @doc """
+  The fixed keypairs recordings replay with.
+
+  Exposed so the credential audit can tell these from a leak. They are the one
+  case where a real age secret key belongs in the repository, and the audit
+  cannot know that by looking — a rule that guessed from shape would have to
+  choose between missing real keys and flagging these forever.
+  """
+  def replay_keypairs, do: @replay_keypairs
+
+  # Rebuilds `age-keygen`'s output around one of the fixed pairs, keeping the
+  # shape `Sops.parse_key/1` reads: the stderr line, the comments, then the
+  # secret. The recorded public key picks the pair, so the mapping is stable
+  # across every interaction in a cassette and across re-scrubs of the same
+  # recording.
+  @doc false
+  def replay_keypair(match) do
+    recorded_public =
+      case Regex.run(~r/# public key: (age1[a-z0-9]+)/, match) do
+        [_, key] -> key
+        _ -> match
+      end
+
+    index = :erlang.phash2(recorded_public, length(@replay_keypairs))
+    {public, secret} = Enum.at(@replay_keypairs, index)
+
+    "Public key: #{public}\n# created: 2026-01-01T00:00:00-00:00\n" <>
+      "# public key: #{public}\n#{secret}"
+  end
+
   @doc false
   def sensitive_patterns do
     [
-      # age private keys. `age-keygen` writes these to stdout, so they land in
-      # command cassettes; the secrets step generates one per environment.
-      # Redacted to something still *shaped* like a key. `<REDACTED>` kept the
-      # secret out of the cassette and broke replay: `Sops.parse_key/1` matches
-      # `AGE-SECRET-KEY-[A-Z0-9]+`, `<` is not in that class, and the secrets
-      # step reported `:unparsable_key` for a recording that was working as
-      # designed. A structurally valid placeholder does both jobs — nothing
-      # here is a real key, and nothing downstream has to special-case it.
-      {~r/AGE-SECRET-KEY-[A-Z0-9]+/,
-       "AGE-SECRET-KEY-1REDACTED0000000000000000000000000000000000000000000000000000"},
+      # age keypairs. `age-keygen` writes both halves to stdout, so they land
+      # in command cassettes; the secrets step generates one per environment.
+      #
+      # The whole block is rewritten at once, both halves together, because
+      # the two previous attempts each broke replay by treating them
+      # separately:
+      #
+      #   `<REDACTED>` — `Sops.parse_key/1` matches `AGE-SECRET-KEY-[A-Z0-9]+`
+      #   and `<` is not in that class, so the step reported `:unparsable_key`.
+      #
+      #   `AGE-SECRET-KEY-1REDACTED000…` — shaped like a key and accepted by
+      #   our regex, but age rejects the bech32 checksum, so `public_key/1`
+      #   could never derive from it. Worse, only the *secret* was scrubbed:
+      #   the real public keys stayed in the cassette, so replay produced a
+      #   mismatched pair and nothing could open what it had encrypted.
+      #
+      # These are real keypairs, generated once, deliberately public, and they
+      # protect nothing — a recording replays them into a temp directory.
+      # Chosen by hashing the recorded public key, so two environments that
+      # recorded different keys still replay as different keys, and the same
+      # recorded key always maps to the same replacement.
+      # Order matters, and it is the opposite of the obvious one. The bare rule
+      # runs *first* so no real secret survives anywhere — including one echoed
+      # in an error message, which is not inside an `age-keygen` block and
+      # which the block rule would miss. The block rule then runs over the
+      # result: it selects on the *public* key, still real at that point, so it
+      # rewrites both halves to a matching pair. Reversing these would leave
+      # the bare rule stamping its own key over the pair the block rule had
+      # just made consistent.
+      {~r/AGE-SECRET-KEY-[A-Z0-9]+/, elem(hd(@replay_keypairs), 1)},
+      {~r/(?:Public key: age1[a-z0-9]+\n)?# created: [^\n]*\n# public key: age1[a-z0-9]+\nAGE-SECRET-KEY-[A-Z0-9]+/,
+       &replay_keypair/1},
       # PEM private keys, for the same reason — anything that prints a key.
       {~r/-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/,
        "-----BEGIN PRIVATE KEY-----<REDACTED>-----END PRIVATE KEY-----"},

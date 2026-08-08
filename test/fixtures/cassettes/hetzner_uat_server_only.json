@@ -413,7 +413,7 @@
       "opts": {
         "stderr_to_stdout": true
       },
-      "output": "Public key: age1qjdrk22uvjs6lv4s5l4zfc30t294yjjugggwgyhmu8g5nd3qqqdqsdwtuy\n# created: 2026-08-08T00:31:57-04:00\n# public key: age1qjdrk22uvjs6lv4s5l4zfc30t294yjjugggwgyhmu8g5nd3qqqdqsdwtuy\nAGE-SECRET-KEY-1REDACTED0000000000000000000000000000000000000000000000000000\n",
+      "output": "Public key: age1dejwx5cnp9q689dhq93cdjwawvwqy9v8axs8x6gt8z62xsztz3eq0u7l6s\n# created: 2026-01-01T00:00:00-00:00\n# public key: age1dejwx5cnp9q689dhq93cdjwawvwqy9v8axs8x6gt8z62xsztz3eq0u7l6s\nAGE-SECRET-KEY-1EJWM9AEXKZKZKHH5R5L0VSV5VUHAPFQSJUTZ4RHJ0R2X92UUTYLS2T3C36\n",
       "recorded_at": "2026-08-08T04:31:57.315578Z"
     }
   ],

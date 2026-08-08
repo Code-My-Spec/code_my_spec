@@ -364,7 +364,7 @@
       "opts": {
         "stderr_to_stdout": true
       },
-      "output": "Public key: age1g2yp7c908e79xapzu3nuftv6spg59ewlr8y3v3x7jkxnr0pdn3qs4j8qpk\n# created: 2026-08-08T00:31:59-04:00\n# public key: age1g2yp7c908e79xapzu3nuftv6spg59ewlr8y3v3x7jkxnr0pdn3qs4j8qpk\nAGE-SECRET-KEY-1REDACTED0000000000000000000000000000000000000000000000000000\n",
+      "output": "Public key: age1lq9vzddcuspetghwdddfs28wxyzu5hrz9rj0wwqtnl2zq8w3pc6qy8e9yt\n# created: 2026-01-01T00:00:00-00:00\n# public key: age1lq9vzddcuspetghwdddfs28wxyzu5hrz9rj0wwqtnl2zq8w3pc6qy8e9yt\nAGE-SECRET-KEY-1H4P3933A0Y5GE7SFJYXTANPNPWVKZMJGWRZZVTD60QGKNH26AY6QN6MJM4\n",
       "recorded_at": "2026-08-08T04:31:59.809077Z"
     },
     {
@@ -374,7 +374,7 @@
       "opts": {
         "stderr_to_stdout": true
       },
-      "output": "Public key: age19sjd8zkt8rsxgfvj5w2lzyayztd487kkr2yj32v06hqwxelzjeds4f72d0\n# created: 2026-08-08T00:31:59-04:00\n# public key: age19sjd8zkt8rsxgfvj5w2lzyayztd487kkr2yj32v06hqwxelzjeds4f72d0\nAGE-SECRET-KEY-1REDACTED0000000000000000000000000000000000000000000000000000\n",
+      "output": "Public key: age12gswm4kz6pswkhtyzrqaaw5ac9a9sxn5n960d2mjxhkchgp5kezq2q29yr\n# created: 2026-01-01T00:00:00-00:00\n# public key: age12gswm4kz6pswkhtyzrqaaw5ac9a9sxn5n960d2mjxhkchgp5kezq2q29yr\nAGE-SECRET-KEY-1GLU5CYDL9MHXCFYCZZTNS7YA5RT56N0M4PT40A2DVNJ0DCN4TU7SGPFTRH\n",
       "recorded_at": "2026-08-08T04:31:59.814690Z"
     }
   ],
