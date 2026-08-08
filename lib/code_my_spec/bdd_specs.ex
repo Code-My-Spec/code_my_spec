@@ -189,6 +189,15 @@ defmodule CodeMySpec.BddSpecs do
           Story.t() | %{id: term(), title: String.t()},
           Criterion.t() | %{id: term(), description: String.t()}
         ) :: String.t()
+  # A recorded path wins. Deriving one pins a file on disk to the criterion's id
+  # and a slug of its description, and both move: the id on migration, which
+  # renumbers every story, and the slug the moment somebody edits the words. The
+  # file stayed where it was and the derived path stopped naming it.
+  #
+  # Deriving remains the fallback for criteria authored before the path was
+  # recorded, which is where a file's name still comes from when it is created.
+  def spec_file_path(_story, %{spec_path: path}) when is_binary(path) and path != "", do: path
+
   def spec_file_path(%{id: _, title: _} = story, %{id: _, description: _} = criterion) do
     story_slug = slugify(story.title)
     story_dir = "#{story.id}_#{story_slug}"

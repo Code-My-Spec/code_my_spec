@@ -37,6 +37,11 @@ defmodule CodeMySpec.AcceptanceCriteria.Criterion do
     field :project_id, :binary_id
     field :rule_id, :binary_id
 
+    # Where this criterion's spex file is, recorded rather than derived. The
+    # derived path was pinned to the id and a slug of the description, and both
+    # move — the id on migration, the slug whenever somebody edits the words.
+    field :spec_path, :string
+
     belongs_to :story, CodeMySpec.Stories.Story
 
     timestamps(type: :utc_datetime)
@@ -57,7 +62,8 @@ defmodule CodeMySpec.AcceptanceCriteria.Criterion do
       :verified_at,
       :story_id,
       :project_id,
-      :rule_id
+      :rule_id,
+      :spec_path
     ])
     |> validate_required([
       :description,

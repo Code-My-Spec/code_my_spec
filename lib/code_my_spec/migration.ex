@@ -80,6 +80,43 @@ defmodule CodeMySpec.Migration do
     }
   end
 
+  # One walk per export, keyed by the criterion id embedded in each filename.
+  # Memoised in the process dictionary: 921 criteria each globbing the tree is
+  # 921 walks of the same directory.
+  #
+  # Only the harness has a disk. On a server this finds nothing and every
+  # criterion falls back to whatever it already recorded, which is correct —
+  # the server does not hold spex files, it holds what the harness said about
+  # them.
+  defp spex_files(scope) do
+    case Process.get(:cms_migration_spex_files) do
+      nil ->
+        found = scan_spex_files(scope)
+        Process.put(:cms_migration_spex_files, found)
+        found
+
+      found ->
+        found
+    end
+  end
+
+  defp scan_spex_files(%Scope{active_project: %{local_path: root}}) when is_binary(root) do
+    [root, "test", "spex", "**", "criterion_*_spex.exs"]
+    |> Path.join()
+    |> Path.wildcard()
+    |> Map.new(fn path -> {criterion_id_from(path), Path.relative_to(path, root)} end)
+  end
+
+  defp scan_spex_files(_scope), do: %{}
+
+  # "criterion_8209_an_anonymous_visitor_..._spex.exs" -> "8209"
+  defp criterion_id_from(path) do
+    path
+    |> Path.basename()
+    |> String.split("_")
+    |> Enum.at(1)
+  end
+
   defp export_scenarios(nil), do: []
 
   defp export_scenarios(scenarios) do
@@ -226,6 +263,8 @@ defmodule CodeMySpec.Migration do
   end
 
   defp export_criteria(scope, story) do
+    spex = spex_files(scope)
+
     scope
     |> AcceptanceCriteria.list_story_criteria(story.id)
     |> Enum.map(
@@ -235,6 +274,14 @@ defmodule CodeMySpec.Migration do
         "rule_local_id" => &1.rule_id,
         "description" => &1.description,
         "body" => &1.body,
+        # Read off disk rather than derived. The derived path was pinned to the
+        # criterion's id and a slug of its description, and both move: the id on
+        # migration — which renumbers every story, so all 86 directories name
+        # something else — and the slug whenever somebody edits the words.
+        #
+        # Taking the real filename means the destination records where the file
+        # actually is, and a re-run brings it across unchanged.
+        "spec_path" => &1.spec_path || Map.get(spex, to_string(&1.id)),
         # 912 of 921 criteria in this project carry a kind, and none of them
         # arrived with one. It separates the happy path from the failure path,
         # which is the whole shape of a scenario set — a migrated project looked
@@ -679,7 +726,7 @@ defmodule CodeMySpec.Migration do
     resync(
       already,
       criterion,
-      [:kind, :verified, :verified_at],
+      [:kind, :verified, :verified_at, :spec_path],
       &AcceptanceCriteria.update_criterion(scope, &1, &2)
     )
   end
