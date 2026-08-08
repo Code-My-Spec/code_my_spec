@@ -20,6 +20,8 @@ defmodule CodeMySpecLocalWeb.Plugs.WorkingDirScope do
   def init(opts), do: opts
 
   @impl true
+  def call(%{assigns: %{current_scope: %Scope{}}} = conn, _opts), do: conn
+
   def call(conn, _opts) do
     working_dir = conn.assigns[:working_dir]
 

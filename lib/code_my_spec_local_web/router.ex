@@ -30,16 +30,8 @@ defmodule CodeMySpecLocalWeb.Router do
       # Requirements view of stories (graph projection — distinct from admin).
       # Must come before the `:name` catch-all below.
 
-
-
-
-
-
       # Requirements view of a story (graph projection — distinct from admin Show)
-
-
     end
-
   end
 
   # ── Portable UI ──────────────────────────────────────────────────
@@ -106,7 +98,11 @@ defmodule CodeMySpecLocalWeb.Router do
       live "/app/projects/:project_id/knowledge", MarkdownBrowserLive, :knowledge
       live "/app/projects/:project_id/knowledge/*path", MarkdownBrowserLive, :knowledge
       live "/app/projects/:project_id/project-knowledge", MarkdownBrowserLive, :project_knowledge
-      live "/app/projects/:project_id/project-knowledge/*path", MarkdownBrowserLive, :project_knowledge
+
+      live "/app/projects/:project_id/project-knowledge/*path",
+           MarkdownBrowserLive,
+           :project_knowledge
+
       live "/app/projects/:project_id/requirements", RequirementsLive, :index
       live "/app/projects/:project_id/requirements/graph", RequirementsLive, :graph
       live "/app/projects/:project_id/requirements/stories", RequirementsLive, :stories
@@ -115,10 +111,22 @@ defmodule CodeMySpecLocalWeb.Router do
       live "/app/projects/:project_id/components", RequirementsLive, :components
       live "/app/projects/:project_id/components/graph", RequirementsLive, :components_graph
       live "/app/projects/:project_id/components/:component_id", RequirementsLive, :component_show
-      live "/app/projects/:project_id/components/:component_id/graph", RequirementsLive, :component_graph
-      live "/app/projects/:project_id/components/:component_id/requirements/:name", RequirementsLive, :component_req_show
-      live "/app/projects/:project_id/components/:component_id/requirements/:name/prompt", RequirementsLive, :component_req_prompt
-      live "/app/projects/:project_id/stories/:story_id/requirements/:name", RequirementsLive, :story_req_show
+
+      live "/app/projects/:project_id/components/:component_id/graph",
+           RequirementsLive,
+           :component_graph
+
+      live "/app/projects/:project_id/components/:component_id/requirements/:name",
+           RequirementsLive,
+           :component_req_show
+
+      live "/app/projects/:project_id/components/:component_id/requirements/:name/prompt",
+           RequirementsLive,
+           :component_req_prompt
+
+      live "/app/projects/:project_id/stories/:story_id/requirements/:name",
+           RequirementsLive,
+           :story_req_show
     end
   end
 
@@ -144,9 +152,13 @@ defmodule CodeMySpecLocalWeb.Router do
     plug CodeMySpecLocalWeb.Plugs.WorkingDir
   end
 
-  # Hook endpoints — resolve scope from X-Working-Dir header
+  # Hook endpoints — resolve scope from the X-Harness-Id header, falling back
+  # to X-Working-Dir until the released plugin sends the id. HarnessScope runs
+  # first and assigns both working_dir and current_scope when it answers, which
+  # is what makes the two plugs after it no-op.
   pipeline :hook do
     plug CodeMySpecLocalWeb.Plugs.LocalOnly
+    plug CodeMySpecLocalWeb.Plugs.HarnessScope
     plug CodeMySpecLocalWeb.Plugs.WorkingDir
     plug CodeMySpecLocalWeb.Plugs.WorkingDirScope
   end
@@ -155,9 +167,16 @@ defmodule CodeMySpecLocalWeb.Router do
   # arrives as `workspacePaths` in the JSON body instead of a header
   pipeline :antigravity_hook do
     plug CodeMySpecLocalWeb.Plugs.LocalOnly
+    plug CodeMySpecLocalWeb.Plugs.HarnessScope
     plug CodeMySpecLocalWeb.Plugs.AntigravityWorkspace
     plug CodeMySpecLocalWeb.Plugs.WorkingDir
     plug CodeMySpecLocalWeb.Plugs.WorkingDirScope
+  end
+
+  # Nothing but the localhost check — for routes that name what they mean
+  # instead of having it resolved for them.
+  pipeline :local_only do
+    plug CodeMySpecLocalWeb.Plugs.LocalOnly
   end
 
   # Bootstrap endpoints — cwd-only scope, runnable before a project is linked
@@ -165,6 +184,14 @@ defmodule CodeMySpecLocalWeb.Router do
     plug CodeMySpecLocalWeb.Plugs.LocalOnly
     plug CodeMySpecLocalWeb.Plugs.WorkingDir
     plug CodeMySpecLocalWeb.Plugs.WorkingDirCwdScope
+  end
+
+  # Onboarding. Names its project and root explicitly, so it is the one route
+  # that cannot go through :hook — nothing has an id to route on yet.
+  scope "/api", CodeMySpecLocalWeb do
+    pipe_through :local_only
+
+    post "/harnesses/register", HarnessController, :register
   end
 
   scope "/api/hooks", CodeMySpecLocalWeb.Hooks do

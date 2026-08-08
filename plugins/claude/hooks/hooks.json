@@ -7,11 +7,20 @@
             "type": "command",
             "command": "curl",
             "args": [
-              "-sS", "--max-time", "30", "-X", "POST",
+              "-sS",
+              "--max-time",
+              "30",
+              "-X",
+              "POST",
               "http://localhost:4004/api/hooks/session-start",
-              "-H", "Content-Type: application/json",
-              "-H", "X-Working-Dir: ${CLAUDE_PROJECT_DIR}",
-              "--data-binary", "@-"
+              "-H",
+              "Content-Type: application/json",
+              "-H",
+              "X-Harness-Id: ${CMS_HARNESS_ID}",
+              "-H",
+              "X-Working-Dir: ${CLAUDE_PROJECT_DIR}",
+              "--data-binary",
+              "@-"
             ]
           }
         ]
@@ -24,11 +33,20 @@
             "type": "command",
             "command": "curl",
             "args": [
-              "-sS", "--max-time", "30", "-X", "POST",
+              "-sS",
+              "--max-time",
+              "30",
+              "-X",
+              "POST",
               "http://localhost:4004/api/hooks/pre-tool-use",
-              "-H", "Content-Type: application/json",
-              "-H", "X-Working-Dir: ${CLAUDE_PROJECT_DIR}",
-              "--data-binary", "@-"
+              "-H",
+              "Content-Type: application/json",
+              "-H",
+              "X-Harness-Id: ${CMS_HARNESS_ID}",
+              "-H",
+              "X-Working-Dir: ${CLAUDE_PROJECT_DIR}",
+              "--data-binary",
+              "@-"
             ]
           }
         ]
@@ -40,11 +58,18 @@
             "type": "command",
             "command": "curl",
             "args": [
-              "-sS", "-X", "POST",
+              "-sS",
+              "-X",
+              "POST",
               "http://localhost:4004/api/hooks/ask-user-question",
-              "-H", "Content-Type: application/json",
-              "-H", "X-Working-Dir: ${CLAUDE_PROJECT_DIR}",
-              "--data-binary", "@-"
+              "-H",
+              "Content-Type: application/json",
+              "-H",
+              "X-Harness-Id: ${CMS_HARNESS_ID}",
+              "-H",
+              "X-Working-Dir: ${CLAUDE_PROJECT_DIR}",
+              "--data-binary",
+              "@-"
             ]
           }
         ]
@@ -57,11 +82,20 @@
             "type": "command",
             "command": "curl",
             "args": [
-              "-sS", "--max-time", "30", "-X", "POST",
+              "-sS",
+              "--max-time",
+              "30",
+              "-X",
+              "POST",
               "http://localhost:4004/api/hooks/post-tool-use",
-              "-H", "Content-Type: application/json",
-              "-H", "X-Working-Dir: ${CLAUDE_PROJECT_DIR}",
-              "--data-binary", "@-"
+              "-H",
+              "Content-Type: application/json",
+              "-H",
+              "X-Harness-Id: ${CMS_HARNESS_ID}",
+              "-H",
+              "X-Working-Dir: ${CLAUDE_PROJECT_DIR}",
+              "--data-binary",
+              "@-"
             ]
           }
         ]
@@ -74,11 +108,20 @@
             "type": "command",
             "command": "curl",
             "args": [
-              "-sS", "--max-time", "30", "-X", "POST",
+              "-sS",
+              "--max-time",
+              "30",
+              "-X",
+              "POST",
               "http://localhost:4004/api/hooks/stop",
-              "-H", "Content-Type: application/json",
-              "-H", "X-Working-Dir: ${CLAUDE_PROJECT_DIR}",
-              "--data-binary", "@-"
+              "-H",
+              "Content-Type: application/json",
+              "-H",
+              "X-Harness-Id: ${CMS_HARNESS_ID}",
+              "-H",
+              "X-Working-Dir: ${CLAUDE_PROJECT_DIR}",
+              "--data-binary",
+              "@-"
             ]
           }
         ]
@@ -91,11 +134,20 @@
             "type": "command",
             "command": "curl",
             "args": [
-              "-sS", "--max-time", "30", "-X", "POST",
+              "-sS",
+              "--max-time",
+              "30",
+              "-X",
+              "POST",
               "http://localhost:4004/api/hooks/subagent-start",
-              "-H", "Content-Type: application/json",
-              "-H", "X-Working-Dir: ${CLAUDE_PROJECT_DIR}",
-              "--data-binary", "@-"
+              "-H",
+              "Content-Type: application/json",
+              "-H",
+              "X-Harness-Id: ${CMS_HARNESS_ID}",
+              "-H",
+              "X-Working-Dir: ${CLAUDE_PROJECT_DIR}",
+              "--data-binary",
+              "@-"
             ]
           }
         ]
@@ -108,11 +160,20 @@
             "type": "command",
             "command": "curl",
             "args": [
-              "-sS", "--max-time", "30", "-X", "POST",
+              "-sS",
+              "--max-time",
+              "30",
+              "-X",
+              "POST",
               "http://localhost:4004/api/hooks/subagent-stop",
-              "-H", "Content-Type: application/json",
-              "-H", "X-Working-Dir: ${CLAUDE_PROJECT_DIR}",
-              "--data-binary", "@-"
+              "-H",
+              "Content-Type: application/json",
+              "-H",
+              "X-Harness-Id: ${CMS_HARNESS_ID}",
+              "-H",
+              "X-Working-Dir: ${CLAUDE_PROJECT_DIR}",
+              "--data-binary",
+              "@-"
             ]
           }
         ]
@@ -125,11 +186,18 @@
             "type": "command",
             "command": "curl",
             "args": [
-              "-sS", "-X", "POST",
+              "-sS",
+              "-X",
+              "POST",
               "http://localhost:4004/api/permissions/request",
-              "-H", "Content-Type: application/json",
-              "-H", "X-Working-Dir: ${CLAUDE_PROJECT_DIR}",
-              "--data-binary", "@-"
+              "-H",
+              "Content-Type: application/json",
+              "-H",
+              "X-Harness-Id: ${CMS_HARNESS_ID}",
+              "-H",
+              "X-Working-Dir: ${CLAUDE_PROJECT_DIR}",
+              "--data-binary",
+              "@-"
             ]
           }
         ]

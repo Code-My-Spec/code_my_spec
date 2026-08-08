@@ -15,6 +15,8 @@ defmodule CodeMySpecLocalWeb.Plugs.WorkingDir do
   def init(opts), do: opts
 
   @impl true
+  def call(%{assigns: %{working_dir: dir}} = conn, _opts) when is_binary(dir), do: conn
+
   def call(conn, _opts) do
     case get_req_header(conn, "x-working-dir") do
       [working_dir | _] ->

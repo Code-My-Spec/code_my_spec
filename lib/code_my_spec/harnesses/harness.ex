@@ -12,6 +12,13 @@ defmodule CodeMySpec.Harnesses.Harness do
   hosts with generated names produce identical strings — and still be two
   harnesses. That collision is exactly why identity is issued here instead of
   derived from anything the client can see.
+
+  `root` is the same kind of thing: reported, not identifying. It is where the
+  harness says its working copy is, recorded so a hook that names an id can be
+  answered with a directory. Nothing resolves a harness *by* it — that was the
+  old routing, and a path that had to be guessed at by walking up to the
+  nearest `mix.exs` resolved one session to different roots depending on which
+  subdirectory it fired from.
   """
 
   use Ecto.Schema
@@ -26,6 +33,7 @@ defmodule CodeMySpec.Harnesses.Harness do
   @type t :: %__MODULE__{
           id: Ecto.UUID.t() | nil,
           label: String.t() | nil,
+          root: String.t() | nil,
           last_seen_at: DateTime.t() | nil,
           project_id: Ecto.UUID.t() | nil,
           project: Project.t() | Ecto.Association.NotLoaded.t(),
@@ -35,6 +43,7 @@ defmodule CodeMySpec.Harnesses.Harness do
 
   schema "harnesses" do
     field :label, :string
+    field :root, :string
     field :last_seen_at, :utc_datetime_usec
 
     belongs_to :project, Project
@@ -45,7 +54,7 @@ defmodule CodeMySpec.Harnesses.Harness do
   @doc false
   def changeset(harness, attrs) do
     harness
-    |> cast(attrs, [:label, :last_seen_at, :project_id])
+    |> cast(attrs, [:label, :last_seen_at, :project_id, :root])
     |> validate_required([:project_id])
     |> foreign_key_constraint(:project_id)
   end

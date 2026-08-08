@@ -101,6 +101,53 @@ defmodule CodeMySpec.Harnesses do
     id
   end
 
+  @doc """
+  The harness with this id, with its project loaded.
+
+  Takes no scope, and that is the point: the id *is* the identity, so resolving
+  it must not depend on already knowing which project or directory is involved.
+  Every other lookup here is scoped by project because it starts from a
+  question about a project; this one starts from a harness announcing itself.
+
+  Used to answer a hook. A hook that names an id gets that harness's project
+  and root, rather than the old routing, which took the path the hook announced
+  and walked up to the nearest `mix.exs` — so one session resolved to different
+  roots depending on the subdirectory it fired from, and a checkout nested
+  under another resolved to the outer one.
+
+  `:error` for a malformed id rather than a raise: the value arrives from a
+  header and a caller must be able to tell "you sent nonsense" from "the
+  database is down".
+  """
+  @spec fetch(String.t()) :: {:ok, Harness.t()} | {:error, :not_found | :invalid_id}
+  def fetch(harness_id) when is_binary(harness_id) do
+    case Ecto.UUID.cast(harness_id) do
+      :error ->
+        {:error, :invalid_id}
+
+      {:ok, id} ->
+        case Harness |> Repo.get(id) |> Repo.preload(:project) do
+          nil -> {:error, :not_found}
+          harness -> {:ok, harness}
+        end
+    end
+  end
+
+  def fetch(_), do: {:error, :invalid_id}
+
+  @doc """
+  Record where a harness says its working copy is.
+
+  Separate from `issue/3` because it is a different claim: `issue/3` answers
+  "who are you", this answers "where are you", and only the first is identity.
+  Called when a harness announces itself, so the root follows a checkout that
+  moves without the id changing underneath its files.
+  """
+  @spec report_root(Harness.t(), String.t()) :: {:ok, Harness.t()} | {:error, term()}
+  def report_root(%Harness{} = harness, root) when is_binary(root) do
+    save(harness, %{root: Path.expand(root)})
+  end
+
   @doc "The id `ensure_default/1` resolves to, without touching the database."
   @spec default_id(Ecto.UUID.t()) :: Ecto.UUID.t()
   def default_id(project_id) when is_binary(project_id) do

@@ -38,11 +38,25 @@ defmodule CmsHarness.HarnessIdentity do
   A working copy with no id file has not been issued one yet. That is an
   ordinary state — the first join is what mints it — so it is `:none` rather
   than an error.
+
+  ## `CMS_HARNESS_ID` wins
+
+  The environment is checked before the file, for the case the file cannot
+  serve: a container with a read-only or ephemeral checkout has nowhere durable
+  to write, and its identity has to be injected by whatever started it. The
+  same variable is what a hook sends, so the id in the environment and the id
+  on the wire are the same string by construction rather than by agreement.
+
+  When both are present the environment wins and nothing is written. An
+  operator who exports a variable is making a deliberate statement about which
+  harness this is; silently persisting it would leave the override behind after
+  it was withdrawn.
   """
 
   require Logger
 
   @filename ".cms_harness_id"
+  @env_var "CMS_HARNESS_ID"
 
   @type t :: String.t()
 
@@ -63,6 +77,28 @@ defmodule CmsHarness.HarnessIdentity do
   """
   @spec read(String.t()) :: {:ok, t()} | :none | {:error, term()}
   def read(root) do
+    case from_env() do
+      {:ok, id} -> {:ok, id}
+      :none -> from_file(root)
+    end
+  end
+
+  @doc """
+  The id the environment names, if it names one.
+
+  Separate from `read/1` so a caller deciding whether to persist can tell an
+  injected id from a stored one — writing an override to disk outlives the
+  override.
+  """
+  @spec from_env() :: {:ok, t()} | :none
+  def from_env do
+    case System.get_env(@env_var) do
+      nil -> :none
+      value -> value |> String.trim() |> present_or_none()
+    end
+  end
+
+  defp from_file(root) do
     file = path(root)
 
     case File.read(file) do
@@ -71,6 +107,9 @@ defmodule CmsHarness.HarnessIdentity do
       {:error, reason} -> unreadable(file, reason)
     end
   end
+
+  defp present_or_none(""), do: :none
+  defp present_or_none(id), do: {:ok, id}
 
   @doc """
   Write down the id the server issued.
@@ -106,8 +145,11 @@ defmodule CmsHarness.HarnessIdentity do
   # `ProjectIdentity`, which means a mint can arrive for a copy that already has
   # one. Writing it would destroy the only record of the id its existing rows
   # are filed under. Refused, so the damage is one session rather than permanent.
+  # Checks the file rather than `read/1`: an id injected by `CMS_HARNESS_ID`
+  # says nothing about what is on disk, and letting it answer here would report
+  # "nothing stored" for a copy whose file is merely unreadable.
   defp refuse_to_clobber(root, file) do
-    case read(root) do
+    case from_file(root) do
       {:error, reason} ->
         Logger.error("""
         [CmsHarness] refusing to overwrite #{file}, which exists but could not be \
@@ -125,12 +167,7 @@ defmodule CmsHarness.HarnessIdentity do
     end
   end
 
-  defp from_contents(contents) do
-    case String.trim(contents) do
-      "" -> :none
-      id -> {:ok, id}
-    end
-  end
+  defp from_contents(contents), do: contents |> String.trim() |> present_or_none()
 
   defp unreadable(file, reason) do
     Logger.error("""
