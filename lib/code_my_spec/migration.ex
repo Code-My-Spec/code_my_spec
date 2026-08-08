@@ -95,10 +95,29 @@ defmodule CodeMySpec.Migration do
       "component_module_name" => story.component && story.component.module_name
     }
 
-  defp export_epic(epic), do: %{"local_id" => epic.id, "name" => epic.name}
+  defp export_epic(epic),
+    do: %{
+      "local_id" => epic.id,
+      "name" => epic.name,
+      # Carried because they are authored. Only the name travelled before, so
+      # an epic arrived with its description gone and a slug the destination
+      # re-derived from the name — which is a different string whenever Sam
+      # edited one without the other.
+      "slug" => epic.slug,
+      "description" => epic.description
+    }
 
   defp export_persona(persona),
-    do: %{"local_id" => persona.id, "name" => persona.name, "slug" => persona.slug}
+    do: %{
+      "local_id" => persona.id,
+      "name" => persona.name,
+      "slug" => persona.slug,
+      # The headline is the persona in one line, and it was dropped. So was the
+      # type, which decides whether a persona is a proto sketch or researched —
+      # a distinction the product surfaces treat differently.
+      "headline" => persona.headline,
+      "persona_type" => persona.persona_type && to_string(persona.persona_type)
+    }
 
   defp export_persona_links(scope, stories) do
     Enum.flat_map(stories, fn story ->
@@ -125,7 +144,16 @@ defmodule CodeMySpec.Migration do
         "story_local_id" => story.id,
         "rule_local_id" => &1.rule_id,
         "description" => &1.description,
-        "body" => &1.body
+        "body" => &1.body,
+        # 912 of 921 criteria in this project carry a kind, and none of them
+        # arrived with one. It separates the happy path from the failure path,
+        # which is the whole shape of a scenario set — a migrated project looked
+        # like it had 921 undifferentiated criteria.
+        "kind" => &1.kind && to_string(&1.kind),
+        # QA state. Nothing is verified in this project today, so this has cost
+        # nothing yet; it would have, silently, the first time it mattered.
+        "verified" => &1.verified,
+        "verified_at" => &1.verified_at
       }
     )
   end
@@ -214,8 +242,11 @@ defmodule CodeMySpec.Migration do
 
     collect(epics, fn epic ->
       case Enum.find(existing, &(&1.name == epic["name"])) do
-        %{} = already -> {:ok, already}
-        nil -> Epics.create_epic(scope, attrs(epic, Epics.Epic))
+        %{} = already ->
+          resync(already, epic, [:slug, :description], &Epics.update_epic(scope, &1, &2))
+
+        nil ->
+          Epics.create_epic(scope, attrs(epic, Epics.Epic))
       end
     end)
   end
@@ -261,6 +292,22 @@ defmodule CodeMySpec.Migration do
     |> case do
       changes when map_size(changes) == 0 -> {:ok, story}
       changes -> Stories.update_story(scope, story, changes)
+    end
+  end
+
+  # The same rule the story reuse path follows, for the entities whose reuse is
+  # a plain find: a row that is already here still takes the payload's authored
+  # values. Without it, a field added to the export after a project has moved
+  # can never reach the rows migrated before it — 912 criteria sat without a
+  # kind for exactly that reason.
+  defp resync(record, payload, keys, update) do
+    keys
+    |> Enum.reduce(%{}, fn key, acc ->
+      put_changed(acc, record, key, payload[to_string(key)])
+    end)
+    |> case do
+      changes when map_size(changes) == 0 -> {:ok, record}
+      changes -> update.(record, changes)
     end
   end
 
@@ -451,8 +498,11 @@ defmodule CodeMySpec.Migration do
       # not a near miss: the unique index catches it instead, and a constraint
       # violation inside the transaction takes the whole migration down.
       case Enum.find(existing, &(&1.slug == persona["slug"] or &1.name == persona["name"])) do
-        %{} = already -> {:ok, already}
-        nil -> Personas.create_persona(scope, attrs(persona, Personas.Persona))
+        %{} = already ->
+          resync(already, persona, [:headline], &Personas.update_persona(scope, &1, &2))
+
+        nil ->
+          Personas.create_persona(scope, attrs(persona, Personas.Persona))
       end
     end)
   end
