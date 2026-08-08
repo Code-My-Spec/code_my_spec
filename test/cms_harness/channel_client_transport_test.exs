@@ -350,22 +350,28 @@ defmodule CmsHarness.ChannelClientTransportTest do
     end
 
     test "a refusal does not stop the reconnect on the next disconnect" do
+      # `refused` is set directly rather than by driving `refuse/1` eight times.
+      # That drove the real path but armed a rejoin timer per refusal, the first
+      # at 1000ms, and `receive_all_reconnects/0` drains for 50ms — so those
+      # timers were still pending, not drained, and the assertion below was
+      # satisfied by a refusal's own timer about a second later. The test passed
+      # for two months with the bug present.
+      #
+      # Nothing here arms a timer but `handle_disconnect/2`, so nothing else can
+      # satisfy it.
       refused_socket =
-        Enum.reduce(1..8, socket(%{attempts: 0, refusals: 0, pending: %{}}), fn _, acc ->
-          {:ok, next} = refuse(acc)
-          next
-        end)
+        socket(%{attempts: 0, refusals: 8, pending: %{}, refused: :working_copy_in_use})
 
-      # Drain the rejoins the refusals armed, so the assertion below can only be
-      # satisfied by `handle_disconnect/2` arming its own.
-      receive_all_reconnects()
+      refute_receive :reconnect, 50, "the fixture must arm nothing of its own"
 
       {:ok, _out} = ChannelClient.handle_disconnect(:closed, refused_socket)
 
       assert_receive :reconnect,
                      2_000,
                      "this is the bug: `refused` gated the reconnect, so a harness that " <>
-                       "had been refused could not come back when the server did"
+                       "had been refused could not come back when the server did — two " <>
+                       "subtrees in one harness met the same server restart and only the " <>
+                       "one that had never been refused returned"
     end
 
     defp receive_all_reconnects do

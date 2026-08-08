@@ -578,12 +578,20 @@ defmodule CmsHarness.Project.ChannelClient do
       |> pause_watcher()
       |> fail_pending(:not_connected)
 
-    if socket.assigns.refused do
-      {:ok, socket}
-    else
-      Process.send_after(self(), :reconnect, delay)
-      {:ok, update(socket, :attempts, &(&1 + 1))}
-    end
+    # Always reschedule, `refused` or not. This used to return here when the
+    # flag was set, which made a refusal followed by a disconnect permanent: the
+    # refusal path reschedules, but a socket that then drops landed here and
+    # scheduled nothing, so the subtree sat refusing every hook with "the server
+    # is answering but this harness cannot hold a socket to it" until somebody
+    # restarted the process. Two subtrees in one harness went through the same
+    # server restart and only the one that had never been refused came back.
+    #
+    # Nothing about a refusal makes reconnecting wrong — it means another
+    # process holds `_build`, which it releases when it exits, so waiting and
+    # retrying is the whole correct response. `:refused` is for the health
+    # endpoint to say *why* nothing is being served.
+    Process.send_after(self(), :reconnect, delay)
+    {:ok, update(socket, :attempts, &(&1 + 1))}
   end
 
   @impl Slipstream
