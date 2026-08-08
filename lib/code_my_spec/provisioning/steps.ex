@@ -50,6 +50,7 @@ defmodule CodeMySpec.Provisioning.Steps do
     Repository,
     Resend,
     Sops,
+    StepRepository,
     Storage,
     Widget
   }
@@ -243,16 +244,48 @@ defmodule CodeMySpec.Provisioning.Steps do
          {:ok, webhooks} <- Resend.list_webhooks(scope),
          %{"status" => "enabled"} <-
            Enum.find(webhooks, &(&1["endpoint"] == webhook_endpoint(scope, opts))) do
-      {:ok, :satisfied,
-       [
-         %{kind: "receiving_domain", location: "resend/#{name}"},
-         %{kind: "webhook", location: webhook_endpoint(scope, opts)}
-       ]}
+      # Configured is not proven. `run_step/3` marks a step done straight from
+      # a satisfied verification without running it, so reporting satisfied on
+      # a domain and a webhook meant the step body — the part that sends a
+      # message and waits for it to arrive — never ran, and the page showed an
+      # inbox called done on settings alone.
+      #
+      # That is criterion 8033 exactly: "the inbox is proven by a message, not
+      # by configuration". The step was written to prove it and the verifier
+      # was excusing it from doing so.
+      #
+      # So a proof a previous run recorded is what satisfies this. Absent one,
+      # the step runs and proves it.
+      case delivery_proof(scope) do
+        nil ->
+          {:ok, :absent}
+
+        proof ->
+          {:ok, :satisfied,
+           [
+             %{kind: "receiving_domain", location: "resend/#{name}"},
+             %{kind: "webhook", location: webhook_endpoint(scope, opts)},
+             proof
+           ]}
+      end
     else
       # Anything short of "receiving domain plus an ENABLED webhook" is absent.
       # A disabled webhook is the case worth being strict about: it looks
       # configured from every angle except the one that counts.
       _ -> {:ok, :absent}
+    end
+  end
+
+  # The delivery this step last proved, if it proved one. Read from what the
+  # step recorded rather than re-sent — a verifier that mails somebody every
+  # time the page loads would be its own bug.
+  defp delivery_proof(scope) do
+    case StepRepository.get(scope, :inbound) do
+      %{resources: resources} when is_list(resources) ->
+        Enum.find(resources, &(&1.kind == "inbound_proof"))
+
+      _ ->
+        nil
     end
   end
 
@@ -1324,6 +1357,17 @@ defmodule CodeMySpec.Provisioning.Steps do
   # record reached DNS. It looked exactly like a working step: no error, a
   # sending domain registered, and every name resolving `false` afterwards for
   # what appeared to be a propagation delay.
+  # The domain as Resend describes it when asked for by id, which is the only
+  # form that carries `records`.
+  defp inbound_records_for(scope, %{"id" => id} = domain) do
+    case Resend.get_domain(scope, id) do
+      {:ok, body} -> body["data"] || body
+      _ -> domain
+    end
+  end
+
+  defp inbound_records_for(_scope, domain), do: domain
+
   defp sending_records_for(scope, %{"id" => id} = domain) do
     case Resend.get_domain(scope, id) do
       {:ok, body} -> Resend.records(body["data"] || body)
@@ -2082,7 +2126,14 @@ defmodule CodeMySpec.Provisioning.Steps do
   # only receives when its MX is the lowest priority for the name, so the
   # value is copied from the provider rather than chosen here.
   defp publish_mx(scope, name, domain, opts) do
-    case Resend.mx_records(domain) do
+    # Re-read the domain, for the same reason `sending_records_for/2` does:
+    # `/domains` omits `records` entirely, and `ensure_receiving_domain/3`
+    # returns whatever `find_domain/2` found — which came from the list. So an
+    # *adopted* domain carried no records, `mx_records/1` saw none, and the step
+    # reported that Resend had not asked for an MX on a domain whose MX it will
+    # name happily when asked by id. A freshly created domain does carry them,
+    # which is why this only failed on the second run over the same domain.
+    case Resend.mx_records(inbound_records_for(scope, domain)) do
       [] ->
         {:error,
          "Resend returned no MX record for #{name}, so there is nothing to publish — " <>
