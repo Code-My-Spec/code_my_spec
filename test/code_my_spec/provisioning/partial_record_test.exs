@@ -94,6 +94,36 @@ defmodule CodeMySpec.Provisioning.PartialRecordTest do
     end
   end
 
+  describe "a second run that adds an environment" do
+    # The shape criterion 8156 provisions: UAT stands alone, then production
+    # arrives on its own box. The second run succeeds and returns production's
+    # server, so replacing on success dropped UAT's.
+    #
+    # This is not hypothetical either. After the error path was fixed, a
+    # re-recording still leaked: teardown deleted server 160399007 (prod) and
+    # left 160398981 (`spex-story966-criterion8156-uat`) running, because UAT
+    # was no longer in the list it reads. Succeeding is not the same as knowing
+    # everything.
+    test "keeps the first environment's server, so teardown removes both", ctx do
+      {:ok, _} =
+        Provisioning.run_step(
+          ctx.scope,
+          :server,
+          succeed_with([%{kind: "server", location: "hetzner/app-uat", origin: "created"}])
+        )
+
+      {:ok, _} =
+        Provisioning.run_step(
+          ctx.scope,
+          :server,
+          succeed_with([%{kind: "server", location: "hetzner/app-prod", origin: "created"}])
+        )
+
+      assert locations(ctx.scope, :server) == ["hetzner/app-prod", "hetzner/app-uat"],
+             "a run that adds prod must not erase uat — teardown reads this list"
+    end
+  end
+
   describe "a retry that pauses partway" do
     # The pause path records resources for the same reason the error path does:
     # the email step registers a real sending domain at Resend and then waits

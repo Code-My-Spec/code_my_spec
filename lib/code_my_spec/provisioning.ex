@@ -315,8 +315,14 @@ defmodule CodeMySpec.Provisioning do
 
   defp execute_and_record(scope, key, execute, opts) do
     case execute.(scope, key, opts) do
+      # Succeeding does not make this run's list the whole truth either. A
+      # second run that adds production returns production's server, and
+      # replacing on success dropped UAT's — teardown then deleted the box it
+      # could still see and left the other one running. That is the leak this
+      # merge was written for, observed twice: once through the error path, and
+      # again here after the error path was fixed.
       {:ok, resources} ->
-        {:ok, mark(scope, key, :done, %{resources: resources})}
+        {:ok, mark(scope, key, :done, %{resources: keeping_earlier(scope, key, resources)})}
 
       {:paused, instructions} ->
         row = mark(scope, key, :paused, %{paused_instructions: instructions})
@@ -562,9 +568,9 @@ defmodule CodeMySpec.Provisioning do
   # site means a transition cannot be added without being published — and a
   # step that moves without telling anyone is exactly the "watch it run"
   # failure, invisible until someone reloads.
-  # A partial record must add to what the step already knew, never stand in for
-  # it. `resources` is an `embeds_many` with `on_replace: :delete`, so handing
-  # it this run's partial list deletes every resource an earlier run recorded —
+  # What a run records must add to what the step already knew, never stand in
+  # for it. `resources` is an `embeds_many` with `on_replace: :delete`, so
+  # handing it one run's list deletes every resource an earlier run recorded —
   # and teardown works from that list, so what it forgets is exactly what leaks.
   #
   # Measured, not theorised: a step that recorded `hetzner/uat-box` and then
@@ -578,6 +584,10 @@ defmodule CodeMySpec.Provisioning do
   # turn an `adopted` resource into a `created` one and license teardown to
   # delete something Sam had before setup ran. Forgetting and over-claiming are
   # both worse than a duplicate.
+  #
+  # `verify/3`'s satisfied path deliberately still replaces: that list is read
+  # back from the provider, so it is the one answer entitled to overrule what
+  # was recorded before.
   defp keeping_earlier(scope, key, partial) do
     earlier =
       case StepRepository.get(scope, key) do
