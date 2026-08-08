@@ -34,15 +34,29 @@ defmodule CodeMySpec.McpServers.Bootstrap.BootstrapMapper do
 
   @doc """
   Friendly error for `:not_authenticated` / `:needs_authentication` from
-  `OAuthClient.get_token/0`. Tells the user exactly where to sign in.
+  `OAuthClient.get_token/0`.
+
+  Two different situations reach here and they need different answers, which is
+  why this does not simply say "signed out":
+
+    * no credential at all — sign in, and the link has to work
+    * a project deploy key, which *is* a credential and authenticates fine, but
+      is scoped to one project. Account-level calls like listing projects
+      cannot succeed with it no matter how many times somebody signs in.
+
+  Telling the second case to go and authenticate sends them round a loop that
+  cannot terminate. The path matters too: `/auth` 404s — the page is
+  `/app/auth`.
   """
   def not_authenticated_error do
-    auth_url = "#{CodeMySpec.PublicUrl.local_base()}/auth"
+    auth_url = "#{CodeMySpec.PublicUrl.local_base()}/app/auth"
 
     error("""
-    Not authenticated. Visit #{auth_url} in your browser and sign in before calling CodeMySpec MCP tools.
+    This call needs an account-level credential and the harness does not have one.
 
-    The agent cannot complete the OAuth flow itself — you need to sign in once manually.
+    If it is running on a project deploy key (CMS_DEPLOY_KEY), that key is scoped to a single project — it authenticates, but it cannot see your other projects, so signing in again will not help. Name the project directly instead.
+
+    If there is no credential at all, sign in at #{auth_url}. The agent cannot complete the OAuth flow itself — you need to do it once manually. An already-open session then needs /mcp to reconnect before it picks the new credential up.
     """)
   end
 end

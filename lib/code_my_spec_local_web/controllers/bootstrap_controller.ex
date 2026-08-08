@@ -92,11 +92,15 @@ defmodule CodeMySpecLocalWeb.BootstrapController do
             conn |> put_status(502) |> json(%{error: "Server returned #{status}", details: body})
 
           {:error, reason} ->
-            conn |> put_status(502) |> json(%{error: "Failed to reach server: #{inspect(reason)}"})
+            conn
+            |> put_status(502)
+            |> json(%{error: "Failed to reach server: #{inspect(reason)}"})
         end
 
       {:error, _} ->
-        conn |> put_status(401) |> json(%{error: "Not authenticated. Call POST /api/bootstrap/auth/start first."})
+        conn
+        |> put_status(401)
+        |> json(%{error: "Not authenticated. Call POST /api/bootstrap/auth/start first."})
     end
   end
 
@@ -107,17 +111,30 @@ defmodule CodeMySpecLocalWeb.BootstrapController do
       nil ->
         send_error_html(conn, "Unknown or expired auth state")
 
-      %{code_verifier: code_verifier, client_id: client_id, client_secret: client_secret, redirect_uri: redirect_uri} ->
+      %{
+        code_verifier: code_verifier,
+        client_id: client_id,
+        client_secret: client_secret,
+        redirect_uri: redirect_uri
+      } ->
         AuthState.delete(state)
         server_url = OAuthClient.get_server_url()
 
         with {:ok, token_data} <-
-               OAuthClient.exchange_code_for_token(code, code_verifier, client_id, client_secret, redirect_uri),
+               OAuthClient.exchange_code_for_token(
+                 code,
+                 code_verifier,
+                 client_id,
+                 client_secret,
+                 redirect_uri
+               ),
              {:ok, %{id: user_id, email: email}} <-
                OAuthClient.fetch_user_info(server_url, token_data["access_token"]),
              {:ok, _client_user} <-
                OAuthClient.save_client_user(user_id, email, token_data) do
-          redirect(conn, to: "/auth")
+          # `/app/auth`, not `/auth` — the local router only has the former, so
+          # this landed a *successful* sign-in on a 404 and read as a failure.
+          redirect(conn, to: "/app/auth")
         else
           {:error, reason} ->
             Logger.error("[Bootstrap] Auth callback failed: #{inspect(reason)}")
@@ -127,7 +144,8 @@ defmodule CodeMySpecLocalWeb.BootstrapController do
   end
 
   defp send_error_html(conn, error) do
-    safe_error = error |> to_string() |> Phoenix.HTML.html_escape() |> Phoenix.HTML.safe_to_string()
+    safe_error =
+      error |> to_string() |> Phoenix.HTML.html_escape() |> Phoenix.HTML.safe_to_string()
 
     html = """
     <!DOCTYPE html>
