@@ -16,8 +16,6 @@ defmodule CodeMySpecSpex.Story966.Criterion8010Spex do
 
   @endpoint CodeMySpecWeb.Endpoint
 
-  @cassette "uptime_monitor_created_per_host"
-
   setup :register_log_in_setup_account
   setup :setup_active_project
   setup :devops_on
@@ -36,8 +34,8 @@ defmodule CodeMySpecSpex.Story966.Criterion8010Spex do
       when_ "setup finishes an environment", context do
         html =
           context.view
-            |> element("[data-test='setup-step'][data-step='monitoring'] [data-test='run-step']")
-            |> render_click()
+          |> element("[data-test='setup-step'][data-step='monitoring'] [data-test='run-step']")
+          |> render_click()
 
         {:ok, Map.put(context, :html, html)}
       end

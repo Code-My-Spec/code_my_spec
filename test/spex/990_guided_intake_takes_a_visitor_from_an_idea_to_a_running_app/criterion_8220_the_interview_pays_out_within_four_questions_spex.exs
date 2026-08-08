@@ -16,8 +16,6 @@ defmodule CodeMySpecSpex.Story990.Criterion8220Spex do
 
   use CodeMySpecSpex.Case
 
-  import CodeMySpecSpex.SharedGivens
-
   alias CodeMySpecTest.FakeWorkspaceRunner
 
   @endpoint CodeMySpecWeb.Endpoint

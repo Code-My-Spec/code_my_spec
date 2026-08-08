@@ -43,9 +43,9 @@ defmodule CodeMySpecSpex.Fixtures do
     ProjectsFixtures,
     ProjectSync,
     QaFixtures,
-    SessionsFixtures,
     QaIntegrationPlanFixtures,
     Sessions,
+    SessionsFixtures,
     SetupFixtures,
     Stories,
     TechnicalStrategyFixtures,
@@ -54,9 +54,35 @@ defmodule CodeMySpecSpex.Fixtures do
     UsersFixtures
   }
 
-  alias CodeMySpec.Users.Scope
+  alias CodeMySpec.AgentHarness.ConversationRecorder
+  alias CodeMySpec.AgentTasks.QaStory
+  alias CodeMySpec.Analytics.GoogleAnalytics
+  alias CodeMySpec.Architecture.SpecStub
+  alias CodeMySpec.Auth.OAuthClient
   alias CodeMySpec.Configurations
+  alias CodeMySpec.Files.FileSync
+  alias CodeMySpec.Files.Scanner
+  alias CodeMySpec.Integrations.Integration
+  alias CodeMySpec.Integrations.IntegrationRepository
+  alias CodeMySpec.Mail.Email
+  alias CodeMySpec.Mail.Mailbox
+  alias CodeMySpec.Permissions.TapOut
+  alias CodeMySpec.Projects.Project
+  alias CodeMySpec.Provisioning.Cloudflare
+  alias CodeMySpec.Provisioning.Dns
+  alias CodeMySpec.Provisioning.Hetzner
+  alias CodeMySpec.Provisioning.Repository
+  alias CodeMySpec.Provisioning.Resend
+  alias CodeMySpec.Provisioning.Steps
+  alias CodeMySpec.Provisioning.Storage
+  alias CodeMySpec.Provisioning.Teardown
+  alias CodeMySpec.Provisioning.Wait
   alias CodeMySpec.Requirements.RequirementGraph
+  alias CodeMySpec.Sessions.Session
+  alias CodeMySpec.SetupFixtures.ErroringStep
+  alias CodeMySpec.Stories.Story
+  alias CodeMySpec.Users.Scope
+  alias CodeMySpec.Users.User
 
   @doc """
   Register a sending domain and publish everything except its DKIM record.
@@ -233,32 +259,38 @@ defmodule CodeMySpecSpex.Fixtures do
   # having been published.
   defp await_partial_verification(scope, domain_id, attempts \\ 20) do
     Enum.reduce_while(1..attempts, :ok, fn attempt, _acc ->
-      case CodeMySpec.Provisioning.Resend.get_domain(scope, domain_id) do
+      case Resend.get_domain(scope, domain_id) do
         {:ok, body} ->
-          records = CodeMySpec.Provisioning.Resend.records(body["data"] || body)
-
-          if Enum.any?(records, &(&1["status"] == "verified")) do
-            {:halt, :ok}
-          else
-            if rem(attempt, 5) == 0,
-              do: CodeMySpec.Provisioning.Resend.verify_domain(scope, domain_id)
-
-            # Through `Wait`, like every other pause in the provisioning path.
-            # A direct sleep here waited three seconds per attempt on replay
-            # too, where the answer is already recorded and there is nothing to
-            # wait for — twenty-one seconds per domain, which was the whole of
-            # story 969's runtime and hid behind provider calls that turned out
-            # to cost under half a second.
-            CodeMySpec.Provisioning.Wait.sleep(3_000)
-            {:cont, :ok}
-          end
+          body["data"]
+          |> Kernel.||(body)
+          |> Resend.records()
+          |> Enum.any?(&(&1["status"] == "verified"))
+          |> verified_or_wait(scope, domain_id, attempt)
 
         _ ->
-          CodeMySpec.Provisioning.Wait.sleep(3_000)
+          wait_a_beat()
           {:cont, :ok}
       end
     end)
   end
+
+  defp verified_or_wait(true, _scope, _domain_id, _attempt), do: {:halt, :ok}
+
+  defp verified_or_wait(false, scope, domain_id, attempt) do
+    nudge_every_fifth(rem(attempt, 5), scope, domain_id)
+    wait_a_beat()
+    {:cont, :ok}
+  end
+
+  defp nudge_every_fifth(0, scope, domain_id), do: Resend.verify_domain(scope, domain_id)
+  defp nudge_every_fifth(_remainder, _scope, _domain_id), do: :ok
+
+  # Through `Wait`, like every other pause in the provisioning path. A direct
+  # sleep here waited three seconds per attempt on replay too, where the answer
+  # is already recorded and there is nothing to wait for — twenty-one seconds
+  # per domain, which was the whole of story 969's runtime and hid behind
+  # provider calls that turned out to cost under half a second.
+  defp wait_a_beat, do: Wait.sleep(3_000)
 
   defp dkim?(record) do
     String.contains?(String.upcase(to_string(record["record"] || "")), "DKIM") or
@@ -271,7 +303,7 @@ defmodule CodeMySpecSpex.Fixtures do
   @doc "The sending domain an environment uses, so spex need not know the rule."
   @spec sending_domain(String.t(), String.t()) :: String.t()
   def sending_domain(base, environment),
-    do: CodeMySpec.Provisioning.Resend.sending_domain(base, environment)
+    do: Resend.sending_domain(base, environment)
 
   @doc """
   Register a sending domain and publish every record it asks for.
@@ -292,7 +324,7 @@ defmodule CodeMySpecSpex.Fixtures do
       #
       # Resend does not re-check on its own either; `poll_until_verified`
       # triggers the check and waits for it.
-      case CodeMySpec.Provisioning.Resend.poll_until_verified(scope, created.domain_id, opts) do
+      case Resend.poll_until_verified(scope, created.domain_id, opts) do
         {:ok, _} -> {:ok, created}
         {:error, reason} -> {:error, {:never_verified, sending_domain, reason}}
       end
@@ -375,7 +407,7 @@ defmodule CodeMySpecSpex.Fixtures do
   @spec dns_resolver(:record | :replay) :: (String.t(), atom() -> boolean())
   def dns_resolver(:record) do
     fn name, type ->
-      resolved = CodeMySpec.Provisioning.Dns.lookup_authoritative(name, type) != []
+      resolved = Dns.lookup_authoritative(name, type) != []
       remember_resolution(name, type, resolved)
       resolved
     end
@@ -445,7 +477,7 @@ defmodule CodeMySpecSpex.Fixtures do
   @spec tear_down_steps(Scope.t(), [atom()], keyword()) :: [{atom(), term()}]
   def tear_down_steps(scope, keys, opts \\ []) do
     Enum.map(keys, fn key ->
-      {key, CodeMySpec.Provisioning.Teardown.step(scope, key, opts)}
+      {key, Teardown.step(scope, key, opts)}
     end)
   end
 
@@ -466,7 +498,7 @@ defmodule CodeMySpecSpex.Fixtures do
   """
   @spec connect_provider(Scope.t(), atom(), keyword()) :: {:ok, term()}
   def connect_provider(scope, provider, opts \\ []) do
-    CodeMySpec.Integrations.IntegrationRepository.upsert_integration(scope, provider, %{
+    IntegrationRepository.upsert_integration(scope, provider, %{
       access_token: Keyword.get(opts, :access_token, "spex-placeholder-token"),
       refresh_token: Keyword.get(opts, :refresh_token, "spex-placeholder-refresh"),
       expires_at: Keyword.get(opts, :expires_at, DateTime.add(DateTime.utc_now(), 3600, :second)),
@@ -563,11 +595,11 @@ defmodule CodeMySpecSpex.Fixtures do
   Passing a populated one would hide exactly the bug this story is about.
   """
   def deliver_manifest(%Scope{} = scope, opts \\ []) do
-    read_model = Keyword.get(opts, :read_model, %CodeMySpec.Files.Scanner.ReadModel{})
+    read_model = Keyword.get(opts, :read_model, %Scanner.ReadModel{})
 
     observations =
       scope.environment
-      |> CodeMySpec.Files.Scanner.observe(read_model)
+      |> Scanner.observe(read_model)
       |> Enum.map(&serialize_observation/1)
 
     socket = %Phoenix.Socket{assigns: %{scope: scope}}
@@ -615,7 +647,7 @@ defmodule CodeMySpecSpex.Fixtures do
   under test is the store's, and the channel has no opinion about it.
   """
   def record_turn_with_broken_store(%Scope{} = scope, request, response) do
-    CodeMySpec.AgentHarness.ConversationRecorder.record_turn(
+    ConversationRecorder.record_turn(
       scope.active_account_id,
       scope.active_project_id,
       "sprite",
@@ -774,7 +806,7 @@ defmodule CodeMySpecSpex.Fixtures do
 
   @doc "Attempt to write a component's stub spec through the scope's environment."
   defdelegate write_component_stub(scope, attrs),
-    to: CodeMySpec.Architecture.SpecStub,
+    to: SpecStub,
     as: :write_for_scope
 
   @doc """
@@ -850,7 +882,7 @@ defmodule CodeMySpecSpex.Fixtures do
 
   @doc "Files the harness scanned but could classify into no role."
   def unclassified_files(%Scope{} = scope),
-    do: CodeMySpec.Files.Scanner.unclassified(scope.environment)
+    do: Scanner.unclassified(scope.environment)
 
   # -- Project Setup (Story 124) --
   defdelegate satisfy_setup_steps(env, steps), to: SetupFixtures, as: :satisfy
@@ -860,7 +892,7 @@ defmodule CodeMySpecSpex.Fixtures do
   defdelegate find_setup_step(id), to: AgentTasks.ProjectSetup, as: :find_step
 
   @doc "Returns the stub setup-step module that always errors. Used by Story 124's error-path spex."
-  def erroring_setup_step, do: CodeMySpec.SetupFixtures.ErroringStep
+  def erroring_setup_step, do: ErroringStep
 
   # -- Technical Strategy (Story 80) --
   defdelegate with_mix_exs(env), to: TechnicalStrategyFixtures
@@ -946,14 +978,14 @@ defmodule CodeMySpecSpex.Fixtures do
   Simulate the human responding to a pending tap-out request.
 
   Spex use this to drive the approval/rejection side without a real
-  production-server round-trip. Wraps `CodeMySpec.Permissions.TapOut.respond/4`.
+  production-server round-trip. Wraps `TapOut.respond/4`.
   """
   @spec respond_to_tap_out(map(), String.t(), String.t(), :approve | :reject) ::
-          {:ok, CodeMySpec.Sessions.Session.t()} | {:error, term()}
+          {:ok, Session.t()} | {:error, term()}
   def respond_to_tap_out(scope, session_external_id, request_id, decision)
       when decision in [:approve, :reject] do
     session = CodeMySpec.Sessions.get_by_external_id(scope, session_external_id)
-    CodeMySpec.Permissions.TapOut.respond(scope, session, request_id, decision)
+    TapOut.respond(scope, session, request_id, decision)
   end
 
   @doc """
@@ -971,7 +1003,7 @@ defmodule CodeMySpecSpex.Fixtures do
   agent passes as `session_id` in hook calls). Returns the DB row so
   spex can extract the UUID needed for LiveView route params.
   """
-  @spec get_session_by_external_id(Scope.t(), String.t()) :: CodeMySpec.Sessions.Session.t() | nil
+  @spec get_session_by_external_id(Scope.t(), String.t()) :: Session.t() | nil
   def get_session_by_external_id(%Scope{} = scope, session_external_id)
       when is_binary(session_external_id) do
     Sessions.get_by_external_id(scope, session_external_id)
@@ -989,7 +1021,7 @@ defmodule CodeMySpecSpex.Fixtures do
   Returns `{:ok, session}` with the registration applied.
   """
   @spec register_subagent_with_heartbeat(map(), String.t(), map()) ::
-          {:ok, CodeMySpec.Sessions.Session.t()} | {:error, Ecto.Changeset.t()}
+          {:ok, Session.t()} | {:error, Ecto.Changeset.t()}
   def register_subagent_with_heartbeat(scope, session_external_id, attrs)
       when is_binary(session_external_id) and is_map(attrs) do
     session = CodeMySpec.Sessions.get_by_external_id(scope, session_external_id)
@@ -1026,7 +1058,7 @@ defmodule CodeMySpecSpex.Fixtures do
   test exit.
   """
   @spec project_fixture_unlinked(Scope.t(), map() | keyword()) ::
-          CodeMySpec.Projects.Project.t()
+          Project.t()
   def project_fixture_unlinked(%Scope{} = scope, attrs \\ %{}) do
     unlinked_dir =
       Path.join(System.tmp_dir!(), "spex-unlinked-#{System.unique_integer([:positive])}")
@@ -1145,7 +1177,7 @@ defmodule CodeMySpecSpex.Fixtures do
   Creates a story directly through the Stories context for use in QA
   spex setup. Returns the created story struct.
   """
-  @spec story_fixture(Scope.t(), map()) :: CodeMySpec.Stories.Story.t()
+  @spec story_fixture(Scope.t(), map()) :: Story.t()
   def story_fixture(scope, attrs \\ %{}) do
     attrs =
       Enum.into(attrs, %{
@@ -1178,7 +1210,7 @@ defmodule CodeMySpecSpex.Fixtures do
   Returns `{story, task_id, session}`.
   """
   @spec qa_story_task_fixture(Scope.t(), keyword()) ::
-          {CodeMySpec.Stories.Story.t(), String.t(), CodeMySpec.Sessions.Session.t()}
+          {Story.t(), String.t(), Session.t()}
   def qa_story_task_fixture(scope, opts \\ []) do
     story =
       case Keyword.fetch(opts, :story) do
@@ -1200,7 +1232,7 @@ defmodule CodeMySpecSpex.Fixtures do
       Sessions.create_session(scope, %{
         external_conversation_id: session_external_id,
         status: :active,
-        type: CodeMySpec.AgentTasks.QaStory,
+        type: QaStory,
         tasks: [
           %{
             id: task_id,
@@ -1253,11 +1285,11 @@ defmodule CodeMySpecSpex.Fixtures do
     as: :detach_test_subscriber
 
   defdelegate attach_ga_test_subscriber(pid),
-    to: CodeMySpec.Analytics.GoogleAnalytics,
+    to: GoogleAnalytics,
     as: :attach_test_subscriber
 
   defdelegate detach_ga_test_subscriber(pid),
-    to: CodeMySpec.Analytics.GoogleAnalytics,
+    to: GoogleAnalytics,
     as: :detach_test_subscriber
 
   # -- Local app onboarding (Story 701) --
@@ -1279,7 +1311,7 @@ defmodule CodeMySpecSpex.Fixtures do
     }
 
     {:ok, client_user} =
-      CodeMySpec.Auth.OAuthClient.save_client_user(user.id, user.email, token_data)
+      OAuthClient.save_client_user(user.id, user.email, token_data)
 
     client_user
   end
@@ -1308,52 +1340,6 @@ defmodule CodeMySpecSpex.Fixtures do
   end
 
   # -- Framework-issue remote stub --
-
-  @doc """
-  Resets the in-process framework-issue stub. Spex setup should call
-  this so each scenario starts with an empty server-side capture.
-  """
-  def reset_framework_issue_stub do
-    CodeMySpec.Issues.RemoteClientStub.reset()
-  end
-
-  @doc """
-  Returns the framework issues captured by the remote stub during this
-  test. Lets a `then_` step assert "the framework write reached the
-  server surface" through the approved bridge instead of touching the
-  stub module directly.
-  """
-  def captured_framework_issues do
-    CodeMySpec.Issues.RemoteClientStub.stored_issues()
-  end
-
-  @doc """
-  Seeds a server-side incoming issue on the stub. Spex use this to
-  prime the "server" before calling `start_task` for `issues_triaged`
-  (which triggers the triage-start pull) or `accept_issue` /
-  `dismiss_issue` / `resolve_issue` on a server-origin record.
-  """
-  def seed_server_incoming_issue(scope, attrs) do
-    CodeMySpec.Issues.RemoteClientStub.seed_incoming_issue(scope, attrs)
-  end
-
-  @doc """
-  Toggles the simulated server-unreachable flag on the stub. Set
-  `true` before a `when_` step to exercise the fail-loud paths in 599
-  (triage start) and 709 (disposition sync-back).
-  """
-  def simulate_server_unreachable(flag) when is_boolean(flag) do
-    CodeMySpec.Issues.RemoteClientStub.simulate_unreachable(flag)
-  end
-
-  @doc """
-  Returns the recorded `update_issue` calls the stub captured for a
-  given issue id. Lets `then_` steps assert "the local disposition
-  round-tripped to the server" through the approved bridge.
-  """
-  def server_update_calls_for(issue_id) when is_binary(issue_id) do
-    CodeMySpec.Issues.RemoteClientStub.update_calls_for(issue_id)
-  end
 
   # -- Project configuration (Stories 608, etc.) --
 
@@ -1410,7 +1396,7 @@ defmodule CodeMySpecSpex.Fixtures do
 
   @doc "Write one secret into an environment's encrypted env (via the step)."
   def put_encrypted_secret(scope, environment, key, value) do
-    CodeMySpec.Provisioning.Steps.put_secret(scope, environment, key, value)
+    Steps.put_secret(scope, environment, key, value)
   end
 
   @doc """
@@ -1429,7 +1415,7 @@ defmodule CodeMySpecSpex.Fixtures do
     :code_my_spec
     |> Application.get_env(:provisioning_step_opts, [])
     |> Keyword.merge(opts)
-    |> then(&CodeMySpec.Provisioning.Steps.run(key, scope, &1))
+    |> then(&Steps.run(key, scope, &1))
   end
 
   @doc "Write a file into an environment (bridge to Environments)."
@@ -1472,7 +1458,7 @@ defmodule CodeMySpecSpex.Fixtures do
   end
 
   @doc "The repository name setup would use for this project."
-  def repository_name(project), do: CodeMySpec.Provisioning.Repository.default_name(project)
+  def repository_name(project), do: Repository.default_name(project)
 
   @doc """
   Create a repository in the spex organisation, as a precondition.
@@ -1545,26 +1531,31 @@ defmodule CodeMySpecSpex.Fixtures do
         # Guarded twice: only names this harness generates, and only through a
         # token whose scope the operator chose. A teardown that could delete an
         # arbitrary repository is worse than a repository left behind.
-        if String.starts_with?(name, "spex-") do
-          owner = System.get_env("GITHUB_SPEX_OWNER", "johns10")
-
-          Req.delete("https://api.github.com/repos/#{owner}/#{name}",
-            headers: [
-              {"authorization", "Bearer #{token}"},
-              {"accept", "application/vnd.github+json"}
-            ]
-          )
-          |> case do
-            {:ok, %{status: status}} when status in [204, 404] -> :ok
-            {:ok, %{status: status, body: body}} -> {:error, {status, body}}
-            other -> other
-          end
-        else
-          {:error, {:refused, name}}
-        end
+        name
+        |> String.starts_with?("spex-")
+        |> delete_generated_repository(name, token)
 
       _ ->
         :ok
+    end
+  end
+
+  defp delete_generated_repository(false, name, _token), do: {:error, {:refused, name}}
+
+  defp delete_generated_repository(true, name, token) do
+    owner = System.get_env("GITHUB_SPEX_OWNER", "johns10")
+
+    "https://api.github.com/repos/#{owner}/#{name}"
+    |> Req.delete(
+      headers: [
+        {"authorization", "Bearer #{token}"},
+        {"accept", "application/vnd.github+json"}
+      ]
+    )
+    |> case do
+      {:ok, %{status: status}} when status in [204, 404] -> :ok
+      {:ok, %{status: status, body: body}} -> {:error, {status, body}}
+      other -> other
     end
   end
 
@@ -1578,7 +1569,7 @@ defmodule CodeMySpecSpex.Fixtures do
   stranger's repository and pauses. This states the fact that is true.
   """
   def own_repository(project) do
-    name = CodeMySpec.Provisioning.Repository.default_name(project)
+    name = Repository.default_name(project)
     owner = System.get_env("GITHUB_SPEX_OWNER", "johns10")
     set_code_repo(project, "https://github.com/#{owner}/#{name}")
   end
@@ -1600,7 +1591,7 @@ defmodule CodeMySpecSpex.Fixtures do
 
     {:ok, mailbox} =
       %CodeMySpec.Mail.Mailbox{}
-      |> CodeMySpec.Mail.Mailbox.changeset(attrs)
+      |> Mailbox.changeset(attrs)
       |> CodeMySpec.Repo.insert()
 
     mailbox
@@ -1624,7 +1615,7 @@ defmodule CodeMySpecSpex.Fixtures do
 
     {:ok, email} =
       %CodeMySpec.Mail.Email{}
-      |> CodeMySpec.Mail.Email.changeset(email_attrs)
+      |> Email.changeset(email_attrs)
       |> CodeMySpec.Repo.insert()
 
     email
@@ -1645,7 +1636,7 @@ defmodule CodeMySpecSpex.Fixtures do
   against the synthetic project.
   """
   def fresh_analysis_runs(%Scope{} = scope, sources \\ ["compiler", "credo", "exunit", "spex"]) do
-    {:ok, _} = CodeMySpec.Files.FileSync.sync_changed(scope, base_dir: scope.cwd)
+    {:ok, _} = FileSync.sync_changed(scope, base_dir: scope.cwd)
     CodeMySpec.AnalysisFixtures.fresh_analysis_runs_fixture(scope, sources)
   end
 
@@ -1756,7 +1747,7 @@ defmodule CodeMySpecSpex.Fixtures do
       # Most recently updated wins: a provider reconnected in the app leaves the
       # older row behind, and the newer one is the live grant.
       integration =
-        CodeMySpec.Integrations.Integration
+        Integration
         |> CodeMySpec.Repo.all()
         |> Enum.filter(&(&1.provider == provider))
         |> Enum.max_by(& &1.updated_at, DateTime, fn -> nil end)
@@ -1772,13 +1763,13 @@ defmodule CodeMySpecSpex.Fixtures do
         """
       end
 
-      scope = %Scope{user: CodeMySpec.Repo.get!(CodeMySpec.Users.User, integration.user_id)}
+      scope = %Scope{user: CodeMySpec.Repo.get!(User, integration.user_id)}
 
       case CodeMySpec.Integrations.fetch_access_token(scope, provider) do
         {:ok, access_token} ->
           # Re-read: fetch_access_token may have refreshed, moving expires_at.
           fresh =
-            CodeMySpec.Repo.get!(CodeMySpec.Integrations.Integration, integration.id)
+            CodeMySpec.Repo.get!(Integration, integration.id)
 
           %{access_token: access_token, refresh_token: nil, expires_at: fresh.expires_at}
 
@@ -1840,13 +1831,13 @@ defmodule CodeMySpecSpex.Fixtures do
       )
 
       servers =
-        case CodeMySpec.Provisioning.Hetzner.list_servers(%CodeMySpec.Users.Scope{}) do
+        case Hetzner.list_servers(%CodeMySpec.Users.Scope{}) do
           {:ok, list} -> Enum.map(list, &(&1["name"] || &1[:name]))
           _ -> []
         end
 
       buckets =
-        case CodeMySpec.Provisioning.Storage.list_buckets(credentials, []) do
+        case Storage.list_buckets(credentials, []) do
           {:ok, list} -> Enum.map(list, &name_of/1)
           _ -> []
         end

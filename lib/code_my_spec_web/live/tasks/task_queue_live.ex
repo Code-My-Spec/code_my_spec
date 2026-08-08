@@ -16,10 +16,9 @@ defmodule CodeMySpecWeb.Tasks.TaskQueueLive do
   """
   use CodeMySpecWeb, :live_view
 
-  alias CodeMySpec.Users.Scope
-
-
+  alias CodeMySpec.ProjectSync.Sync, as: ProjectSync
   alias CodeMySpec.Requirements.RequirementGraph
+  alias CodeMySpec.Users.Scope
 
   # Per story 811 question resolution: top 25 in the upcoming list.
   @upcoming_cap 25
@@ -38,15 +37,15 @@ defmodule CodeMySpecWeb.Tasks.TaskQueueLive do
 
   @impl true
   def handle_params(_params, _uri, %{assigns: %{scope: %{} = scope, project: project}} = socket) do
-      if connected?(socket), do: subscribe_to_state_changes(scope)
+    if connected?(socket), do: subscribe_to_state_changes(scope)
 
-      {:noreply,
-       socket
-       |> assign(
-         page_title: "#{project.name} — Task Queue",
-         error: nil
-       )
-       |> recompute()}
+    {:noreply,
+     socket
+     |> assign(
+       page_title: "#{project.name} — Task Queue",
+       error: nil
+     )
+     |> recompute()}
   end
 
   def handle_params(_params, _uri, socket), do: {:noreply, socket}
@@ -74,7 +73,7 @@ defmodule CodeMySpecWeb.Tasks.TaskQueueLive do
     # syncs a file change, which is the broadest signal for "the
     # requirement graph might have shifted." Subscribing here keeps the
     # queue live for file-only events too.
-    CodeMySpec.ProjectSync.Sync.subscribe(scope)
+    ProjectSync.subscribe(scope)
   end
 
   defp subscribe_to_state_changes(_scope), do: :ok
@@ -82,7 +81,12 @@ defmodule CodeMySpecWeb.Tasks.TaskQueueLive do
   defp recompute(%{assigns: %{scope: nil}} = socket), do: socket
 
   defp recompute(%{assigns: %{scope: scope}} = socket) do
-    actionable = RequirementGraph.next_actionable(scope)
+    # From the published snapshot when it still matches current inputs. This
+    # re-renders on every state change, and recomputing the graph each time is
+    # node and edge computation the project already paid for — 4.4 seconds of
+    # it on a 3200-component project. A queue is a display; it can be a moment
+    # behind on the delegate checks the fingerprint cannot see.
+    {_graph, actionable, _computed_at} = RequirementGraph.cached_graph_with_actionable(scope)
 
     {active, upcoming} =
       case actionable do
@@ -96,83 +100,85 @@ defmodule CodeMySpecWeb.Tasks.TaskQueueLive do
   @impl true
   def render(assigns) do
     ~H"""
-      <div :if={@error} role="alert" class="alert alert-error">
-        <span>{@error}</span>
+    <div :if={@error} role="alert" class="alert alert-error">
+      <span>{@error}</span>
+    </div>
+
+    <div :if={!@error}>
+      <div class="mb-6">
+        <h1 class="text-3xl font-bold">Task Queue</h1>
+        <p class="text-base-content/60 mt-1">
+          What the agent's working on now and what's next.
+          Updates live as the agent advances.
+        </p>
       </div>
 
-      <div :if={!@error}>
-        <div class="mb-6">
-          <h1 class="text-3xl font-bold">Task Queue</h1>
-          <p class="text-base-content/60 mt-1">
-            What the agent's working on now and what's next.
-            Updates live as the agent advances.
+      <%= if @active do %>
+        <section
+          data-test="active-task"
+          data-requirement={requirement_name(@active)}
+          data-entity-id={requirement_entity_id(@active)}
+          class="mb-8 bg-base-200 border border-primary rounded-box p-6"
+        >
+          <div class="text-xs uppercase tracking-wider text-primary mb-2">
+            Active task
+          </div>
+          <div class="text-xl font-semibold">{requirement_label(@active)}</div>
+          <div :if={@active.description} class="text-base-content/70 mt-2">
+            {@active.description}
+          </div>
+          <div class="text-xs text-base-content/50 mt-3 font-mono">
+            {requirement_name(@active)} · {requirement_entity_kind(@active)} · {requirement_entity_id(
+              @active
+            )}
+          </div>
+        </section>
+
+        <section
+          data-test="upcoming-tasks"
+          class="bg-base-100 border border-base-300 rounded-box p-4"
+        >
+          <div class="text-xs uppercase tracking-wider text-base-content/60 mb-3">
+            Upcoming ({length(@upcoming)})
+          </div>
+
+          <%= if @upcoming == [] do %>
+            <div class="text-base-content/50 italic">
+              Nothing else queued.
+            </div>
+          <% else %>
+            <ul class="space-y-2">
+              <li
+                :for={req <- @upcoming}
+                data-test="upcoming-task-item"
+                data-requirement={requirement_name(req)}
+                data-entity-id={requirement_entity_id(req)}
+                class="flex items-baseline gap-3 border-l-2 border-base-300 pl-3 py-1"
+              >
+                <span class="text-xs text-base-content/40 font-mono shrink-0">
+                  {requirement_entity_kind(req)}
+                </span>
+                <span class="flex-1">{requirement_label(req)}</span>
+                <span class="text-xs font-mono text-base-content/50">
+                  {requirement_name(req)}
+                </span>
+              </li>
+            </ul>
+          <% end %>
+        </section>
+      <% else %>
+        <section
+          data-test="empty-queue"
+          class="bg-base-200 border border-base-300 rounded-box p-12 text-center"
+        >
+          <div class="text-2xl font-semibold mb-2">Nothing to do</div>
+          <p class="text-base-content/60">
+            Every actionable requirement is satisfied.
+            The agent has no queued work.
           </p>
-        </div>
-
-        <%= if @active do %>
-          <section
-            data-test="active-task"
-            data-requirement={requirement_name(@active)}
-            data-entity-id={requirement_entity_id(@active)}
-            class="mb-8 bg-base-200 border border-primary rounded-box p-6"
-          >
-            <div class="text-xs uppercase tracking-wider text-primary mb-2">
-              Active task
-            </div>
-            <div class="text-xl font-semibold">{requirement_label(@active)}</div>
-            <div :if={@active.description} class="text-base-content/70 mt-2">
-              {@active.description}
-            </div>
-            <div class="text-xs text-base-content/50 mt-3 font-mono">
-              {requirement_name(@active)} · {requirement_entity_kind(@active)} · {requirement_entity_id(@active)}
-            </div>
-          </section>
-
-          <section
-            data-test="upcoming-tasks"
-            class="bg-base-100 border border-base-300 rounded-box p-4"
-          >
-            <div class="text-xs uppercase tracking-wider text-base-content/60 mb-3">
-              Upcoming ({length(@upcoming)})
-            </div>
-
-            <%= if @upcoming == [] do %>
-              <div class="text-base-content/50 italic">
-                Nothing else queued.
-              </div>
-            <% else %>
-              <ul class="space-y-2">
-                <li
-                  :for={req <- @upcoming}
-                  data-test="upcoming-task-item"
-                  data-requirement={requirement_name(req)}
-                  data-entity-id={requirement_entity_id(req)}
-                  class="flex items-baseline gap-3 border-l-2 border-base-300 pl-3 py-1"
-                >
-                  <span class="text-xs text-base-content/40 font-mono shrink-0">
-                    {requirement_entity_kind(req)}
-                  </span>
-                  <span class="flex-1">{requirement_label(req)}</span>
-                  <span class="text-xs font-mono text-base-content/50">
-                    {requirement_name(req)}
-                  </span>
-                </li>
-              </ul>
-            <% end %>
-          </section>
-        <% else %>
-          <section
-            data-test="empty-queue"
-            class="bg-base-200 border border-base-300 rounded-box p-12 text-center"
-          >
-            <div class="text-2xl font-semibold mb-2">Nothing to do</div>
-            <p class="text-base-content/60">
-              Every actionable requirement is satisfied.
-              The agent has no queued work.
-            </p>
-          </section>
-        <% end %>
-      </div>
+        </section>
+      <% end %>
+    </div>
     """
   end
 

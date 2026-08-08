@@ -3,12 +3,22 @@ defmodule CodeMySpec.Requirements.GraphCacheTest do
 
   import CodeMySpec.UsersFixtures
 
+  alias CodeMySpec.BddRules
+  alias CodeMySpec.Configurations
   alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.Files.FileSync
+  alias CodeMySpec.Issues
+  alias CodeMySpec.Paths
+  alias CodeMySpec.Personas
   alias CodeMySpec.Projects
+  alias CodeMySpec.Repo
+  alias CodeMySpec.Requirements.CachedGraph
   alias CodeMySpec.Requirements.{GraphCache, GraphFingerprint, Preloader, RequirementGraph}
+  alias CodeMySpec.Stories
+  alias Ecto.Adapters.SQL.Sandbox
 
   setup do
-    :ok = Ecto.Adapters.SQL.Sandbox.checkout(CodeMySpec.Repo)
+    :ok = Sandbox.checkout(Repo)
   end
 
   describe "publishing" do
@@ -49,7 +59,7 @@ defmodule CodeMySpec.Requirements.GraphCacheTest do
       RequirementGraph.compute_graph(scope)
       RequirementGraph.compute_graph(scope)
 
-      assert 1 = CodeMySpec.Repo.aggregate(CodeMySpec.Requirements.CachedGraph, :count)
+      assert 1 = Repo.aggregate(CachedGraph, :count)
     end
 
     test "a project with no published graph reports a miss rather than raising" do
@@ -67,7 +77,7 @@ defmodule CodeMySpec.Requirements.GraphCacheTest do
 
       fingerprint = current_fingerprint(scope)
 
-      assert {:ok, {_nodes, _edges}} = GraphCache.fetch(scope, fingerprint)
+      assert {:ok, {_nodes, _edges}, %DateTime{}} = GraphCache.fetch(scope, fingerprint)
     end
 
     test "fetch/2 misses for any other fingerprint" do
@@ -91,7 +101,7 @@ defmodule CodeMySpec.Requirements.GraphCacheTest do
       before = current_fingerprint(scope)
 
       File.write!(Path.join(scope.cwd, "mix.exs"), "defmodule App.MixProject do\nend\n")
-      {:ok, _} = CodeMySpec.Files.FileSync.sync(scope, base_dir: scope.cwd)
+      {:ok, _} = FileSync.sync(scope, base_dir: scope.cwd)
 
       refute current_fingerprint(scope) == before
     end
@@ -100,8 +110,111 @@ defmodule CodeMySpec.Requirements.GraphCacheTest do
   defp current_fingerprint(scope) do
     GraphFingerprint.compute(
       Preloader.load(scope),
-      CodeMySpec.Configurations.get_or_create(scope)
+      Configurations.get_or_create(scope)
     )
+  end
+
+  # The fingerprint decides whether a published graph may be served instead of
+  # recomputed, so anything it cannot see is something an agent can be told is
+  # still true after it stopped being true.
+  #
+  # Node inputs — files, components, stories — were covered from the start. The
+  # inputs the `:delegate` requirements read were not: `three_amigos_complete`
+  # asks `BddRulesChecker`, which reads rules, criteria and questions;
+  # `personas_complete` asks about personas; `issues_triaged` and
+  # `issues_resolved` read issues. None of those five appear anywhere else in
+  # the preloader, so the fingerprint was blind to all of them.
+  #
+  # One test per input. A hand-written list of dependencies rots silently, and
+  # the way it rots is that the graph stops noticing something.
+  describe "the fingerprint covers what the delegate checkers read" do
+    setup do
+      scope = setup_project()
+      %{scope: scope, before: current_fingerprint(scope)}
+    end
+
+    test "a new rule moves it", %{scope: scope, before: before} do
+      story = story_fixture(scope)
+      persona = persona_fixture(scope)
+      # A rule needs its story to have a voice — `create_rule/3` refuses with
+      # `:persona_linkage_required` otherwise.
+      {:ok, _} = Personas.link_persona_to_story(scope, persona.id, story.id)
+
+      {:ok, _} = BddRules.create_rule(scope, story.id, %{statement: "a new rule"})
+
+      refute current_fingerprint(scope) == before
+    end
+
+    test "a new persona moves it", %{scope: scope, before: before} do
+      persona_fixture(scope)
+
+      refute current_fingerprint(scope) == before
+    end
+
+    test "a new issue moves it", %{scope: scope, before: before} do
+      {:ok, _} =
+        Issues.create_issue(scope, %{
+          title: "something is wrong",
+          description: "details",
+          severity: :high
+        })
+
+      refute current_fingerprint(scope) == before
+    end
+
+    # `QaIntegrationPlan` globs these and nothing syncs them: `.code_my_spec`
+    # is a sync root so the walker descends, but `Scanner.classify/1` does not
+    # claim integration specs and `stream_files/1` drops what classify does not
+    # claim. Without this the fingerprint cannot see a spec written or verified.
+    test "an integration spec appearing moves it", %{scope: scope, before: before} do
+      spec = Path.join([scope.cwd, Paths.integrations_dir(), "stripe.md"])
+      File.mkdir_p!(Path.dirname(spec))
+      File.write!(spec, "# Stripe\n\nstatus: pending\n")
+
+      refute current_fingerprint(scope) == before
+    end
+
+    test "an integration spec changing in place moves it", %{scope: scope} do
+      spec = Path.join([scope.cwd, Paths.integrations_dir(), "stripe.md"])
+      File.mkdir_p!(Path.dirname(spec))
+      File.write!(spec, "# Stripe\n\nstatus: pending\n")
+      pending = current_fingerprint(scope)
+
+      # Same path, same glob result — only the contents move, and the status is
+      # the whole of what the check reads.
+      File.write!(spec, "# Stripe\n\nstatus: verified\n")
+
+      refute current_fingerprint(scope) == pending
+    end
+
+    test "nothing changing leaves it alone", %{scope: scope, before: before} do
+      assert current_fingerprint(scope) == before,
+             "an unchanged project must produce a stable fingerprint, or the cache " <>
+               "never hits and the whole projection is dead weight"
+    end
+  end
+
+  defp persona_fixture(scope) do
+    n = System.unique_integer([:positive])
+
+    {:ok, persona} =
+      Personas.create_persona(scope, %{
+        name: "Sam #{n}",
+        slug: "sam-#{n}",
+        description: "the operator"
+      })
+
+    persona
+  end
+
+  defp story_fixture(scope) do
+    {:ok, story} =
+      Stories.create_story(scope, %{
+        title: "A story #{System.unique_integer([:positive])}",
+        description: "for the rule to hang off"
+      })
+
+    story
   end
 
   defp setup_project do

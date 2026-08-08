@@ -8,8 +8,8 @@ defmodule CodeMySpec.Requirements do
   """
 
   alias CodeMySpec.Components.Component
-  alias CodeMySpec.Requirements.Registry, as: RequirementsRegistry
   alias CodeMySpec.Files
+  alias CodeMySpec.Requirements.Registry, as: RequirementsRegistry
   alias CodeMySpec.Requirements.Requirement
   alias CodeMySpec.Requirements.RequirementCalculator
   alias CodeMySpec.Requirements.RequirementGraph
@@ -72,6 +72,18 @@ defmodule CodeMySpec.Requirements do
   @spec compute_all(Scope.t()) :: [Requirement.t()]
   def compute_all(%Scope{} = scope) do
     RequirementGraph.compute_all(scope)
+  end
+
+  @doc """
+  Every requirement node, from the published snapshot when it is still current.
+
+  For display. See `RequirementGraph.cached_graph/1` for what a hit does and
+  does not certify — in short, it is not for deciding what an agent works on.
+  """
+  @spec cached_all(Scope.t()) :: {[map()], DateTime.t() | nil}
+  def cached_all(%Scope{} = scope) do
+    {{nodes, _edges}, computed_at} = RequirementGraph.cached_graph(scope)
+    {nodes, computed_at}
   end
 
   # --- Legacy shims (TODO: move evaluation criteria onto agent tasks) ---

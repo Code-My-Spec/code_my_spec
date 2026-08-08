@@ -34,13 +34,26 @@ defmodule CodeMySpec.SpexGivensTest do
   @establishes ~w(
     Fixtures. live( render_click render_submit render_change element(
     post( put( patch( delete( with_provider_cassette mount_provisioning
-    run_steps choose_setup_options all_setup_options own_domain
+    run_steps choose_setup_options all_setup_options own_domain built_deploy_run
+    stage_servers
     existing_apex_mx paste_storage_credentials verified_sending_domains
     stuck_sending_domain unverifiable_domain app_holds_refresh_secret
     connect_providers tear_down_after Environments. File.write File.mkdir
     System.cmd assign put_session
     stage_ scripted_run built_deploy_run devops_on
   )
+
+  # The failure message has always offered a second remedy — "if the
+  # precondition is genuinely already true, say so" — and there was no way to
+  # say it. `scan/0` reads the body and never the title, so retitling changed
+  # nothing and the only ways out were to fake an establishing call or to add
+  # the file to a baseline that forbids additions.
+  #
+  # This is that remedy, made real. It is deliberately wordy and has to sit in
+  # the body where a reader of the given sees it, because the claim it makes is
+  # the one thing this check cannot verify: that something *else* already did
+  # the work. Naming what did it is the price.
+  @already_established "given: already true —"
 
   # `given_ "title", context do ... end` — closed by an `end` at the block's
   # own indentation, which is what makes the body extractable without parsing.
@@ -105,7 +118,7 @@ defmodule CodeMySpec.SpexGivensTest do
     "test/spex/815_sam_sends_and_receives_messages_with_his_users/criterion_6577_cross-user_access_is_denied_spex.exs",
     "test/spex/817_manage_google_ads_through_the_agent/criterion_6602_an_unconnected_account_prompts_the_user_to_connect_google_spex.exs",
     "test/spex/983_spec_failures_block_only_stories_whose_specs_have_gone_green/criterion_8161_a_later_edit_stales_the_spex_run_without_un-readying_the_story_spex.exs",
-    "test/spex/983_spec_failures_block_only_stories_whose_specs_have_gone_green/criterion_8168_reaching_specs-ready_releases_qa_on_the_story_spex.exs",
+    "test/spex/983_spec_failures_block_only_stories_whose_specs_have_gone_green/criterion_8168_reaching_specs-ready_releases_qa_on_the_story_spex.exs"
   ]
 
   test "no new given_ block states a precondition without establishing it" do
@@ -119,9 +132,12 @@ defmodule CodeMySpec.SpexGivensTest do
            #{format(new_offenders)}
 
            A given_ should drive the app — mount the view, click, submit, call a
-           Case helper, or go through the Fixtures bridge. If the precondition is
-           genuinely already true, say so in the title rather than asserting a
-           fact the block does not establish.
+           Case helper, or go through the Fixtures bridge.
+
+           If the precondition is genuinely already true, say so in the body and
+           name what made it true:
+
+               # given: already true — `setup :setup_active_project` creates it.
            """
   end
 
@@ -144,7 +160,8 @@ defmodule CodeMySpec.SpexGivensTest do
     for path <- Path.wildcard("test/spex/**/*_spex.exs"),
         source = File.read!(path),
         [whole, indent, title, body] <- Regex.scan(@given_block, source),
-        not String.contains?(body, @establishes) do
+        not String.contains?(body, @establishes),
+        not String.contains?(body, @already_established) do
       _ = whole
       offset = source |> String.split(indent <> "given_ " <> title) |> hd()
       {path, length(String.split(offset, "\n")), String.trim(title, ~s("))}

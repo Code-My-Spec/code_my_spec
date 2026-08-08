@@ -361,6 +361,60 @@ defmodule CodeMySpec.Requirements.TopologyTest do
     test "empty edge list reduces to empty" do
       assert Topology.transitive_reduction([]) == []
     end
+
+    # The old implementation walked cycles safely but said their edge selection
+    # was undefined, so nothing pinned it. The replacement condenses
+    # strongly-connected components, which makes the answer definite — and
+    # these say what it is, so a future rewrite has to agree rather than guess.
+    #
+    # Cycles are not hypothetical: `finalize_unresolved/1` exists precisely
+    # because nodes fail to resolve a depth, which only happens in one.
+    test "a cycle keeps every edge that carries it" do
+      a = req(entity_type: "p", entity_id: 1, name: "a")
+      b = req(entity_type: "p", entity_id: 1, name: "b")
+      c = req(entity_type: "p", entity_id: 1, name: "c")
+
+      # a → b → c → a. Dropping any of these would break the cycle, and none
+      # is redundant: the only path to each is the edge itself.
+      edges = [edge(k(a), k(b)), edge(k(b), k(c)), edge(k(c), k(a))]
+
+      assert MapSet.new(Topology.transitive_reduction(edges)) == MapSet.new(edges)
+    end
+
+    test "an edge into a cycle survives when nothing else reaches it" do
+      seed = req(entity_type: "p", entity_id: 1, name: "seed")
+      a = req(entity_type: "p", entity_id: 1, name: "a")
+      b = req(entity_type: "p", entity_id: 1, name: "b")
+
+      edges = [edge(k(seed), k(a)), edge(k(a), k(b)), edge(k(b), k(a))]
+
+      assert MapSet.new(Topology.transitive_reduction(edges)) == MapSet.new(edges)
+    end
+
+    test "a self-loop does not make a node's own incoming edge redundant" do
+      a = req(entity_type: "p", entity_id: 1, name: "a")
+      b = req(entity_type: "p", entity_id: 1, name: "b")
+
+      # b reaches b. Reading that as "something already reaches b" would drop
+      # a→b and orphan it — the case the reachable-set union cannot decide on
+      # its own, so `redundant?/6` falls back to asking each successor.
+      edges = [edge(k(a), k(b)), edge(k(b), k(b))]
+      reduced = Topology.transitive_reduction(edges)
+
+      assert edge(k(a), k(b)) in reduced
+    end
+
+    test "duplicate edges do not change the outcome" do
+      a = req(entity_type: "p", entity_id: 1, name: "a")
+      b = req(entity_type: "p", entity_id: 1, name: "b")
+      c = req(entity_type: "p", entity_id: 1, name: "c")
+
+      edges = [edge(k(a), k(b)), edge(k(a), k(b)), edge(k(b), k(c)), edge(k(a), k(c))]
+      reduced = Topology.transitive_reduction(edges)
+
+      refute edge(k(a), k(c)) in reduced
+      assert edge(k(b), k(c)) in reduced
+    end
   end
 
   describe "fans_out_to_children?/3" do

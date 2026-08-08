@@ -16,10 +16,10 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
      graph projector uses to lay out late_project nodes at the bottom band)
   """
 
-  alias CodeMySpec.Requirements.Registry, as: RequirementsRegistry
   alias CodeMySpec.Requirements.GraphCache
   alias CodeMySpec.Requirements.GraphFingerprint
   alias CodeMySpec.Requirements.Preloader
+  alias CodeMySpec.Requirements.Registry, as: RequirementsRegistry
   alias CodeMySpec.Requirements.Requirement
   alias CodeMySpec.Requirements.RequirementCalculator
   alias CodeMySpec.Requirements.RequirementDefinitionData
@@ -42,24 +42,76 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   end
 
   # Publish the computed graph so readers that cannot compute one still have
-  # something to show. Deliberately not a memoization: computation never
-  # consults the cache, so there is no key that can be wrong.
+  # something to show. Deliberately not a memoization for agents: computation
+  # never consults the cache, so there is no key that can be wrong.
   #
-  # It cannot be a memoization today. 13 of the 70 requirement definitions use
-  # `check_type: :delegate`, which hands satisfaction to an arbitrary module —
-  # release reads deploys, qa_complete reads QA results, issues_resolved reads
-  # issues. None of that is in the preloaded context, so a fingerprint over the
-  # context would miss it and serve a graph that says work is done when a fresh
-  # deploy just reopened it. That is not hypothetical: it is what story 859's
-  # spex caught when this was wired as a read-through cache.
+  # 15 of the 70 requirement definitions use `check_type: :delegate`, handing
+  # satisfaction to an arbitrary module. Every one of their inputs is now in the
+  # fingerprint, which is what makes `cached_graph/1` safe for agents too:
   #
-  # Making it a real memoization means every delegate module exposing a
-  # fingerprint of its own inputs. Worth doing, and a bigger change than this.
+  #   * six read tables the preloader did not load — rules, criteria, questions,
+  #     personas, issues, and `qa_attempts` behind `qa_complete`
+  #   * four read working-copy files the scanner never syncs, because
+  #     `classify/1` claims none of them — see `DelegateFiles`
+  #   * the rest read components, files and stories, covered from the start
+  #
+  # The gap was real and this is the second time it has been closed. Story 859's
+  # spex caught it the first time, when the cache was wired read-through with a
+  # fingerprint that watched none of the above; `criterion_7321` is the one that
+  # fails, and it is the test to run before trusting any change here.
   defp compute_and_publish(scope, ctx, config) do
     {nodes, enriched_ctx} = compute_all_from_ctx(scope, ctx, config)
     edges = compute_edges(nodes, enriched_ctx, config)
     GraphCache.publish(scope, GraphFingerprint.compute(ctx, config), {nodes, edges})
     {nodes, edges}
+  end
+
+  @doc """
+  The published graph when it still matches current inputs, computing and
+  publishing a fresh one when it does not.
+
+  Returns `{{nodes, edges}, computed_at}`, where `computed_at` is `nil` for a
+  graph computed just now and a `DateTime` for one served from the snapshot.
+  Callers are expected to show that distinction rather than hide it.
+
+  The saving is real but bounded: the preloader still runs, because deciding
+  whether the snapshot is current means hashing the inputs. What a hit skips is
+  node and edge computation, which is where the time actually goes — on a
+  3200-component project, 34ms of preload against 4.4 seconds of compute.
+
+  A hit certifies every input the graph is computed from, including what the
+  delegate checkers read — six tables and four sets of working-copy files that
+  the file sync does not track. `compute_and_publish/3` lists them.
+  """
+  @spec cached_graph(Scope.t()) :: {{[Requirement.t()], [edge()]}, DateTime.t() | nil}
+  def cached_graph(%Scope{} = scope) do
+    {graph, _actionable, computed_at} = cached_graph_with_actionable(scope)
+    {graph, computed_at}
+  end
+
+  @doc """
+  `cached_graph/1` plus the actionable set, for readers that want both without
+  paying for the preload twice.
+
+  Returns `{{nodes, edges}, actionable, computed_at}`.
+  """
+  @spec cached_graph_with_actionable(Scope.t()) ::
+          {{[Requirement.t()], [edge()]}, [Requirement.t()], DateTime.t() | nil}
+  def cached_graph_with_actionable(%Scope{} = scope) do
+    ctx = Preloader.load(scope)
+    config = CodeMySpec.Configurations.get_or_create(scope)
+
+    {graph, computed_at} =
+      case GraphCache.fetch(scope, GraphFingerprint.compute(ctx, config)) do
+        {:ok, cached, at} -> {cached, at}
+        :miss -> {compute_and_publish(scope, ctx, config), nil}
+      end
+
+    {nodes, edges} = graph
+
+    # The un-enriched ctx, as in `next_actionable/1`: `actionable_from/3` reads
+    # `ctx.components` and `ctx.stories`, both of which the preloader supplies.
+    {graph, actionable_from(nodes, edges, ctx), computed_at}
   end
 
   @doc """
@@ -76,14 +128,8 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   """
   @spec next_actionable(Scope.t()) :: [Requirement.t()]
   def next_actionable(%Scope{} = scope) do
-    ctx = Preloader.load(scope)
-    config = CodeMySpec.Configurations.get_or_create(scope)
-    {nodes, edges} = compute_and_publish(scope, ctx, config)
-
-    # The un-enriched ctx is correct here: compute_all_from_ctx/3 only adds
-    # :template_edges, which actionable_from/3 does not read — it needs
-    # ctx.components and ctx.stories, both loaded by the preloader.
-    actionable_from(nodes, edges, ctx)
+    {_graph, actionable, _computed_at} = cached_graph_with_actionable(scope)
+    actionable
   end
 
   @doc """
@@ -215,7 +261,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   end
 
   defp story_chain_edges(story, ctx, config) do
-    case Enum.find(ctx.components, &(&1.id == story.component_id)) do
+    case Map.get(ctx.components_by_id, story.component_id) do
       nil ->
         []
 
@@ -352,7 +398,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   end
 
   defp direct_children(parent, ctx) do
-    Enum.filter(ctx.components, &(&1.parent_component_id == parent.id))
+    Map.get(ctx.children_by_parent, parent.id, [])
   end
 
   defp child_terminal_name(parent_type, child_type, config) do
@@ -389,7 +435,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   defp transitive_dep_closure(start_component, ctx) do
     [start_component.id]
     |> bfs_dep_ids(MapSet.new(), ctx)
-    |> Enum.map(fn id -> Enum.find(ctx.components, &(&1.id == id)) end)
+    |> Enum.map(&Map.get(ctx.components_by_id, &1))
     |> Enum.reject(&is_nil/1)
   end
 
@@ -402,7 +448,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
       visited = MapSet.put(visited, id)
 
       new_dep_ids =
-        case Enum.find(ctx.components, &(&1.id == id)) do
+        case Map.get(ctx.components_by_id, id) do
           nil -> []
           comp -> comp |> component_deps() |> Enum.map(& &1.id)
         end
@@ -461,7 +507,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   end
 
   defp cross_context_edge_for_dep(dep, comp, ctx, config) do
-    with %_{} = dep_comp <- Enum.find(ctx.components, &(&1.id == dep.id)),
+    with %_{} = dep_comp <- Map.get(ctx.components_by_id, dep.id),
          dep_terminal when not is_nil(dep_terminal) <- dep_terminal_def(dep_comp, config),
          target when not is_nil(target) <- cross_context_target(comp, dep_comp, config),
          false <- skip_cross_context?(comp, dep_comp) do
@@ -618,7 +664,14 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
 
       {us, {nodes, edges}} =
         :timer.tc(fn ->
-          instantiate_template(scope, ctx, filtered_template, original_template, component, children)
+          instantiate_template(
+            scope,
+            ctx,
+            filtered_template,
+            original_template,
+            component,
+            children
+          )
         end)
 
       log_slow_component(component, children, nodes, us)
@@ -629,7 +682,8 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
 
   @slow_component_threshold_us 50_000
 
-  defp log_slow_component(component, children, nodes, us) when us >= @slow_component_threshold_us do
+  defp log_slow_component(component, children, nodes, us)
+       when us >= @slow_component_threshold_us do
     require Logger
 
     Logger.info(
@@ -848,29 +902,30 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
         files = Map.get(ctx.files_by_story, story.id, [])
         id_map = Map.new(template, fn d -> {d.id, [{"story", story.id, d.name}]} end)
 
-        nodes = Enum.map(template, fn definition ->
-          result = RequirementCalculator.compute_one(scope, story, definition, files, ctx)
+        nodes =
+          Enum.map(template, fn definition ->
+            result = RequirementCalculator.compute_one(scope, story, definition, files, ctx)
 
-          %Requirement{
-            entity_type: "story",
-            entity_id: story.id,
-            entity_name: story.title,
-            name: definition.name,
-            description: definition.description,
-            satisfied: result.satisfied,
-            satisfied_by: definition.satisfied_by,
-            scope: definition.scope || :local,
-            execution_type: definition.execution_type || :main_agent,
-            validation_type: definition.validation_type || :automatic,
-            orchestrated_by: definition.orchestrated_by,
-            render_command_always?: definition.render_command_always? || false,
-            subagent_role: definition.subagent_role,
-            parent_entity_id: project && project.id,
-            parent_entity_name: project && project.name,
-            prerequisites: [],
-            details: result.details
-          }
-        end)
+            %Requirement{
+              entity_type: "story",
+              entity_id: story.id,
+              entity_name: story.title,
+              name: definition.name,
+              description: definition.description,
+              satisfied: result.satisfied,
+              satisfied_by: definition.satisfied_by,
+              scope: definition.scope || :local,
+              execution_type: definition.execution_type || :main_agent,
+              validation_type: definition.validation_type || :automatic,
+              orchestrated_by: definition.orchestrated_by,
+              render_command_always?: definition.render_command_always? || false,
+              subagent_role: definition.subagent_role,
+              parent_entity_id: project && project.id,
+              parent_entity_name: project && project.name,
+              prerequisites: [],
+              details: result.details
+            }
+          end)
 
         edges = build_template_edges(template, id_map)
         {nodes, all_edges ++ edges}
@@ -891,27 +946,28 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
 
     id_map = Map.new(template, fn d -> {d.id, [{"project", project.id, d.name}]} end)
 
-    nodes = Enum.map(template, fn definition ->
-      result = RequirementCalculator.compute_one(scope, project, definition, files, ctx)
+    nodes =
+      Enum.map(template, fn definition ->
+        result = RequirementCalculator.compute_one(scope, project, definition, files, ctx)
 
-      %Requirement{
-        entity_type: "project",
-        entity_id: project.id,
-        entity_name: project.name,
-        name: definition.name,
-        description: definition.description,
-        satisfied: result.satisfied,
-        satisfied_by: definition.satisfied_by,
-        scope: definition.scope || :local,
-        execution_type: definition.execution_type || :main_agent,
-        validation_type: definition.validation_type || :automatic,
-        orchestrated_by: definition.orchestrated_by,
-        render_command_always?: definition.render_command_always? || false,
-        subagent_role: definition.subagent_role,
-        prerequisites: [],
-        details: result.details
-      }
-    end)
+        %Requirement{
+          entity_type: "project",
+          entity_id: project.id,
+          entity_name: project.name,
+          name: definition.name,
+          description: definition.description,
+          satisfied: result.satisfied,
+          satisfied_by: definition.satisfied_by,
+          scope: definition.scope || :local,
+          execution_type: definition.execution_type || :main_agent,
+          validation_type: definition.validation_type || :automatic,
+          orchestrated_by: definition.orchestrated_by,
+          render_command_always?: definition.render_command_always? || false,
+          subagent_role: definition.subagent_role,
+          prerequisites: [],
+          details: result.details
+        }
+      end)
 
     edges = build_template_edges(template, id_map)
     {nodes, edges}
@@ -969,7 +1025,12 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     {1, (story && story.priority) || 999, 0}
   end
 
-  defp priority_sort_key(%{entity_type: "component", entity_id: id}, _story, comp_priority, _order) do
+  defp priority_sort_key(
+         %{entity_type: "component", entity_id: id},
+         _story,
+         comp_priority,
+         _order
+       ) do
     case Map.fetch(comp_priority, id) do
       {:ok, priority} -> {1, priority, 0}
       :error -> {1, 999, 1}
@@ -1003,14 +1064,15 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
       ctx.stories
       |> Enum.filter(& &1.component_id)
       |> Enum.reduce(direct, fn story, acc ->
-        surface = Enum.find(ctx.components, &(&1.id == story.component_id))
+        surface = Map.get(ctx.components_by_id, story.component_id)
         priority = story.priority || 999
 
-        deps = case surface && surface.dependencies do
-          %Ecto.Association.NotLoaded{} -> []
-          deps when is_list(deps) -> deps
-          _ -> []
-        end
+        deps =
+          case surface && surface.dependencies do
+            %Ecto.Association.NotLoaded{} -> []
+            deps when is_list(deps) -> deps
+            _ -> []
+          end
 
         Enum.reduce(deps, acc, fn dep, inner_acc ->
           Map.update(inner_acc, dep.id, priority, &min(&1, priority))
@@ -1061,8 +1123,9 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   # require_specs: false → removes :specification artifact types
   # require_reviews: false → removes :review artifact types
   # require_unit_tests: false → removes :tests artifact type + tests_passing
-  # devops: :off → removes devops_setup + deploy (the graph stays silent
-  # about infrastructure; the user deploys on their own terms)
+  #
+  # The graph is now silent about infrastructure for every project, not just
+  # `devops: :off` ones — see `maybe_filter_devops/2`.
   defp filter_definitions_by_config(definitions, config) do
     definitions
     |> maybe_filter_specs(config)
@@ -1071,16 +1134,10 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     |> maybe_filter_devops(config)
   end
 
-  defp maybe_filter_devops(definitions, %{devops: :off}) do
-    Enum.reject(definitions, &(&1.name in ["devops_setup", "deploy", "release"]))
-  end
-
-  # UAT-only: stories deploy to staging, but no prod release is ever
-  # demanded — the user promotes on their own terms.
-  defp maybe_filter_devops(definitions, %{devops: :uat}) do
-    Enum.reject(definitions, &(&1.name == "release"))
-  end
-
+  # `devops_setup`, `deploy` and `release` are gone from the graph, so there is
+  # nothing left to filter. Kept as an identity rather than deleted because
+  # `devops` is still a real configuration setting that drives the provisioning
+  # UI and the agent tasks — it just no longer decides requirement nodes.
   defp maybe_filter_devops(definitions, _config), do: definitions
 
   defp maybe_filter_specs(definitions, %{require_specs: false}) do

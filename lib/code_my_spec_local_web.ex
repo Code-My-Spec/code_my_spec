@@ -16,6 +16,9 @@ defmodule CodeMySpecLocalWeb do
     deps: [
       CodeMySpec,
       CodeMySpec.AgentHarness,
+      # `cms harness` boots the light harness from this same application — see
+      # `Application.start_harness/0`. One binary that can be either.
+      CmsHarness,
       CodeMySpec.Environments,
       CodeMySpec.Hooks,
       CodeMySpec.McpServers,

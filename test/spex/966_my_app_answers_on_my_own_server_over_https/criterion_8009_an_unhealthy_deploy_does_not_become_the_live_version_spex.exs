@@ -21,10 +21,6 @@ defmodule CodeMySpecSpex.Story966.Criterion8009Spex do
 
   @endpoint CodeMySpecWeb.Endpoint
 
-  @cassette "kamal_deploy_healthcheck_fails"
-
-  @given_cassette "966_8009_version_serving"
-
   setup :register_log_in_setup_account
   setup :setup_active_project
   setup :devops_on

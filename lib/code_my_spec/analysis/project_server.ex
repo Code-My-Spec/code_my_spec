@@ -165,7 +165,7 @@ defmodule CodeMySpec.Analysis.ProjectServer do
         state =
           state
           |> supersede_queued(job)
-          |> Map.update!(:queue, &(&1 ++ [entry]))
+          |> Map.update!(:queue, &order(&1 ++ [entry]))
           |> maybe_start_next()
 
         {:ok, run.id, state}
@@ -173,6 +173,30 @@ defmodule CodeMySpec.Analysis.ProjectServer do
       {:error, reason} ->
         {:error, reason}
     end
+  end
+
+  # Cheapest source first. Runs here are serialized, and these four differ by
+  # three orders of magnitude — credo answers in milliseconds, spex in minutes.
+  # Strict FIFO meant a stop hook waiting only on credo sat behind a spex run
+  # that had nothing to do with it, and the agent was told "analysis pending"
+  # for three and a half minutes with the answer already computable. Five
+  # consecutive stops went that way before the queue was the suspect, because
+  # from the outside a slow queue and a broken analyzer look identical.
+  #
+  # `Enum.sort_by` is stable, so equal ranks keep the order they arrived in —
+  # this reorders across sources without disturbing FIFO within one.
+  #
+  # Starvation is bounded rather than prevented: there are four sources and
+  # same-fingerprint jobs dedup, so a finite burst drains. A source that
+  # re-enqueued faster than it ran could hold off spex, and if that ever shows
+  # up the fix is aging, not a bigger table.
+  @source_cost %{"credo" => 0, "compiler" => 1, "exunit" => 2, "spex" => 3}
+
+  @doc false
+  # Public only so the ordering policy can be asserted without a database and
+  # four live analyzer subprocesses behind it.
+  def order(queue) do
+    Enum.sort_by(queue, &Map.get(@source_cost, &1.job.source, 9))
   end
 
   # A newer full run for a source obsoletes queued (not running, unwatched)

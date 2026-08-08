@@ -22,11 +22,20 @@ defmodule CodeMySpec.Logging do
 
   ## Options
 
-    * `:source` (required) — `"server"` or `"cli"`. Stamped on every line as `src=`.
+    * `:source` (required) — `"server"`, `"cli"` or `"harness"`. Stamped on every
+      line as `src=`.
     * `:path` — file path. Tilde-expanded. Defaults to a source-specific path.
     * `:level` — `:debug | :info | :warning | :error`. Defaults to `:info`.
     * `:max_no_bytes` — rotation byte threshold. Defaults to 10 MB.
     * `:max_no_files` — rotated files retained. Defaults to 3.
+    * `:handler_id` — the `:logger` handler to install as. Defaults to `:default`.
+    * `:replace_default` — remove the stderr handler first. Defaults to `true`.
+
+      A daemon has no terminal, so replacing is right for `cms server`. A
+      foreground process does, and taking its output away to gain a log file is
+      a bad trade — pass `false` with a `:handler_id` of its own and both
+      exist. `cms harness` does exactly that: a harness whose only record is a
+      terminal somebody else is looking at cannot be diagnosed.
   """
   @spec install_file_handler!(keyword()) :: {:ok, Path.t()}
   def install_file_handler!(opts) do
@@ -35,6 +44,8 @@ defmodule CodeMySpec.Logging do
     level = Keyword.get(opts, :level, :info)
     max_no_bytes = Keyword.get(opts, :max_no_bytes, @default_max_bytes)
     max_no_files = Keyword.get(opts, :max_no_files, @default_max_files)
+    handler_id = Keyword.get(opts, :handler_id, :default)
+    replace_default? = Keyword.get(opts, :replace_default, true)
 
     File.mkdir_p!(Path.dirname(path))
 
@@ -57,12 +68,16 @@ defmodule CodeMySpec.Logging do
       ]
     }
 
-    _ = :logger.remove_handler(:default)
-    :ok = :logger.add_handler(:default, :logger_std_h, handler_config)
+    if replace_default?, do: :logger.remove_handler(:default)
+
+    # Idempotent: re-installing after a restart must not fail on the id.
+    _ = :logger.remove_handler(handler_id)
+    :ok = :logger.add_handler(handler_id, :logger_std_h, handler_config)
 
     {:ok, path}
   end
 
   defp default_path("cli"), do: "~/.codemyspec/cli.log"
+  defp default_path("harness"), do: "~/.codemyspec/harness.log"
   defp default_path(_), do: "~/.codemyspec/server.log"
 end

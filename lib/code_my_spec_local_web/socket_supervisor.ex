@@ -11,7 +11,6 @@ defmodule CodeMySpecLocalWeb.SocketSupervisor do
   require Logger
 
   alias CodeMySpec.AgentHarness.HarnessProxySocket
-  alias CodeMySpec.Issues.IssuesSocket
   alias CodeMySpec.Projects
   alias CodeMySpec.Projects.ProjectsSocket
   alias CodeMySpec.Repo
@@ -83,10 +82,16 @@ defmodule CodeMySpecLocalWeb.SocketSupervisor do
 
     case Scope.for_local_project(project) do
       {:ok, scope} ->
-        # ProjectsSocket and IssuesSocket exist to replicate the server's rows
-        # into a local database. A sprite reads and writes the server's rows
-        # directly, so there is nothing to replicate — starting them buys a
-        # reconnect loop and nothing else.
+        # ProjectsSocket replicates the server's project rows into the local
+        # database. A sprite reads and writes the server's rows directly, so
+        # there is nothing to replicate — starting it buys a reconnect loop and
+        # nothing else.
+        #
+        # There is no IssuesSocket any more. This application owns its issues
+        # outright: it creates them locally and never ingests anybody else's.
+        # Agents file against the server through the MCP tools, which the server
+        # itself serves, so the row is written where it is read and there is
+        # nothing left to mirror.
         #
         # HarnessProxySocket stays: it carries agent messages up to the operator
         # inbox and human replies back down, which is not replication and has no
@@ -96,8 +101,9 @@ defmodule CodeMySpecLocalWeb.SocketSupervisor do
             []
           else
             [
-              Supervisor.child_spec({ProjectsSocket, scope: scope}, id: {ProjectsSocket, account_id}),
-              Supervisor.child_spec({IssuesSocket, scope: scope}, id: {IssuesSocket, account_id})
+              Supervisor.child_spec({ProjectsSocket, scope: scope},
+                id: {ProjectsSocket, account_id}
+              )
             ]
           end
 
@@ -113,5 +119,6 @@ defmodule CodeMySpecLocalWeb.SocketSupervisor do
         []
     end
   end
+
   defp sprite?, do: not is_nil(Application.get_env(:code_my_spec, :project_id))
 end

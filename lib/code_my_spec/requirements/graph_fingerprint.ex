@@ -41,10 +41,29 @@ defmodule CodeMySpec.Requirements.GraphFingerprint do
       {:stories, structs_digest(ctx.stories, & &1.id)},
       {:problems, problems_digest(ctx.problems_by_component)},
       {:analysis, Enum.sort(Map.to_list(ctx.analysis_fresh))},
-      {:config, struct_digest(config)}
+      {:config, struct_digest(config)},
+      {:delegated, delegated_digest(ctx)},
+      {:delegated_files, Map.get(ctx, :delegated_files, :not_loaded)}
     ]
     |> hash()
   end
+
+  # Rules, criteria, questions, personas and issues.
+  #
+  # These are what the `:delegate` requirements read — `three_amigos_complete`,
+  # `personas_complete`, `issues_triaged`, `issues_resolved` — and until they
+  # were here the fingerprint could not see them move. That is the gap that
+  # made a published graph unsafe to serve to an agent: every input the *nodes*
+  # read was covered, and the handful the *checkers* read was not, so a
+  # three-amigos session could complete without the fingerprint noticing.
+  #
+  # Absent rather than empty when a context predates this field, so an older
+  # cached graph reads as a miss instead of silently matching.
+  defp delegated_digest(%{delegated_inputs: inputs}) when is_map(inputs) do
+    inputs |> Map.to_list() |> Enum.sort()
+  end
+
+  defp delegated_digest(_ctx), do: :not_loaded
 
   # Files carry their own content hash already, so this is a hash of hashes.
   # `valid` and the owner ids ride along because the graph reads them directly

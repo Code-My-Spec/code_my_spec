@@ -12,6 +12,7 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.Credo do
 
   alias CodeMySpec.Environments
   alias CodeMySpec.StaticAnalysis
+  alias CodeMySpec.StaticAnalysis.CredoRun
   alias CodeMySpec.Problems
   alias CodeMySpec.Users.Scope
 
@@ -190,33 +191,23 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.Credo do
     end)
   end
 
+  # Extraction lives in `CredoRun` — one implementation, because this had a copy
+  # of it carrying the same defect: it sliced from the first `{`, and compiler
+  # warnings quote Elixir source, which is full of braces. Capturing stdout to a
+  # temp file reads like it isolates credo's output and does not; the warnings
+  # land in the same file.
   defp parse_json_output(output) do
-    # Extract JSON from output - skip any compilation messages that precede it
-    json_output = extract_json_from_output(output)
-
-    case Jason.decode(json_output) do
+    case CredoRun.extract_json(output) do
       {:ok, %{"issues" => issues}} when is_list(issues) ->
         {:ok, issues}
-
-      {:ok, %{}} ->
-        # No issues key, return empty list
-        {:ok, []}
 
       {:ok, _other} ->
         {:error, "Unexpected JSON structure from Credo output"}
 
-      {:error, %Jason.DecodeError{} = error} ->
-        Logger.warning("Failed to parse Credo JSON: #{Exception.message(error)}")
+      :error ->
+        Logger.warning("No JSON document in Credo's output")
         Logger.debug("Raw output: #{String.slice(output, 0, 500)}")
         {:ok, []}
-    end
-  end
-
-  # Extract JSON object from output that may have compilation messages prefixed
-  defp extract_json_from_output(output) do
-    case :binary.match(output, "{") do
-      {start, _} -> binary_part(output, start, byte_size(output) - start)
-      :nomatch -> output
     end
   end
 

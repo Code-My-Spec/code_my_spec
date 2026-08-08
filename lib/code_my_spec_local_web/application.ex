@@ -9,6 +9,9 @@ defmodule CodeMySpecLocalWeb.Application do
   """
   use Application
 
+  alias CodeMySpec.Migration
+  alias CodeMySpec.Users.Scope
+
   # Burrito.Util.Args is Burrito-release-only — the bare web build doesn't
   # include it. Resolving the module through an atom at runtime keeps both
   # builds clean.
@@ -21,7 +24,90 @@ defmodule CodeMySpecLocalWeb.Application do
     cond do
       mcp_relay_command?(argv) -> start_mcp_relay()
       migrate_command?(argv) -> start_migrate(argv)
+      harness_command?(argv) -> start_harness()
       true -> start_full(argv)
+    end
+  end
+
+  # `cms harness` (or CMS_HARNESS=1) boots the light harness instead of the
+  # heavy one: no Repo, no MCP server, no local web UI. It watches a working
+  # copy, runs analyzers against it and reports up a channel; the model lives on
+  # the server.
+  #
+  # One binary that can boot either, deliberately, so switching a machine over
+  # is a launchd argument rather than an install. Env-var fallback for the same
+  # reason `cms mcp` and `cms migrate` have one: the release launcher validates
+  # subcommands against a fixed list and never threads an unknown one through.
+  defp harness_command?(argv) do
+    "harness" in Enum.reject(argv, &(&1 in ["--", ""])) or
+      System.get_env("CMS_HARNESS") in ["1", "true"]
+  end
+
+  defp start_harness do
+    ensure_server_path()
+    ensure_directories()
+    harness_log = install_harness_file_logger()
+
+    # The endpoint is configured `server: false` so that every *other* way this
+    # application boots compiles the harness modules without opening its port.
+    # This is the one caller that wants it listening.
+    Application.put_env(
+      :code_my_spec,
+      CmsHarness.Web.Endpoint,
+      Application.get_env(:code_my_spec, CmsHarness.Web.Endpoint, [])
+      |> Keyword.put(:server, true)
+    )
+
+    case Supervisor.start_link([CmsHarness.Supervisor],
+           strategy: :one_for_one,
+           name: CodeMySpec.Supervisor
+         ) do
+      {:ok, pid} ->
+        print_harness_banner(harness_log)
+        {:ok, pid}
+
+      other ->
+        other
+    end
+  end
+
+  # Always, and alongside stderr rather than instead of it.
+  #
+  # The harness runs in a foreground terminal, so it looked like it had a log —
+  # but that terminal belongs to whoever started it, and every question worth
+  # asking about a harness gets asked by somebody else. A stop hook refused for
+  # an hour with the wrong explanation and the one line naming the real cause
+  # existed only in a scrollback nobody could reach.
+  defp install_harness_file_logger do
+    {:ok, path} =
+      CodeMySpec.Logging.install_file_handler!(
+        source: "harness",
+        handler_id: :cms_harness_file,
+        replace_default: false,
+        level: harness_log_level()
+      )
+
+    path
+  end
+
+  defp harness_log_level do
+    case System.get_env("CMS_LOG_LEVEL") do
+      level when level in ~w(debug info warning error) -> String.to_existing_atom(level)
+      _ -> :info
+    end
+  end
+
+  defp print_harness_banner(log_path) do
+    unless silent?() do
+      version = Application.spec(:code_my_spec, :vsn)
+      port = Application.get_env(:code_my_spec, CmsHarness.Web.Endpoint)[:http][:port]
+
+      IO.puts(
+        "cms harness v#{version}  ·  pid #{System.pid()}  ·  " <>
+          "hooks on http://localhost:#{port}  ·  server #{CmsHarness.Config.server_url()}"
+      )
+
+      IO.puts("log #{log_path}  ·  CMS_LOG_LEVEL=debug for more")
     end
   end
 
@@ -59,9 +145,9 @@ defmodule CodeMySpecLocalWeb.Application do
     with {:ok, cloud_project_id} <- migrate_target(argv),
          working_dir = File.cwd!(),
          {:ok, project} <- CodeMySpec.Projects.resolve_local_project(working_dir),
-         {:ok, scope} <- CodeMySpec.Users.Scope.for_local_project(project, working_dir) do
+         {:ok, scope} <- Scope.for_local_project(project, working_dir) do
       IO.puts("Migrating #{project.name} to cloud project #{cloud_project_id}…")
-      CodeMySpec.Migration.Client.migrate(scope, cloud_project_id: cloud_project_id)
+      Migration.Client.migrate(scope, cloud_project_id: cloud_project_id)
     end
   end
 
@@ -257,13 +343,15 @@ defmodule CodeMySpecLocalWeb.Application do
   # back-compat alias so a service definition still pointing at `cms start`
   # (e.g. an in-flight upgrade with a stale launchd plist) keeps working.
   defp find_subcommand(args) do
-    Enum.find(["start", "server", "migrate"], &(&1 in args))
+    Enum.find(["start", "server", "migrate", "harness"], &(&1 in args))
   end
 
   defp run_subcommand("start", _args), do: :ok
   defp run_subcommand("server", _args), do: :ok
   # Handled before the full boot, in `start_migrate/1`.
   defp run_subcommand("migrate", _args), do: :ok
+  # Handled before the full boot, in `start_harness/0`.
+  defp run_subcommand("harness", _args), do: :ok
 
   defp print_and_halt(text, code) do
     IO.puts(text)
@@ -291,6 +379,9 @@ defmodule CodeMySpecLocalWeb.Application do
 
     Usage:
       cms start        Run the server in the foreground (ctrl-C to stop).
+      cms harness      Run the light harness in the foreground: watch this
+                       checkout, run analyzers, report to codemyspec.com. Holds
+                       no local database — the model lives on the server.
       cms migrate --project <cloud-project-id>
                        Copy this checkout's stories, rules, criteria, personas
                        and epics to that project on codemyspec.com. Run it from

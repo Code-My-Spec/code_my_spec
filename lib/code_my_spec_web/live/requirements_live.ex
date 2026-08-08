@@ -17,8 +17,8 @@ defmodule CodeMySpecWeb.RequirementsLive do
 
   alias CodeMySpec.AgentTasks
   alias CodeMySpec.AgentTasks.ProjectSetup
-  alias CodeMySpec.ProjectSync.Sync, as: ProjectSync
   alias CodeMySpec.Components
+  alias CodeMySpec.ProjectSync.Sync, as: ProjectSync
   alias CodeMySpec.Requirements
   alias CodeMySpec.Requirements.GraphProjector
   alias CodeMySpec.Requirements.RequirementDefinitionData
@@ -42,7 +42,11 @@ defmodule CodeMySpecWeb.RequirementsLive do
   # --- Handle params ---
 
   @impl true
-  def handle_params(%{"name" => req_name, "child_id" => child_id}, _uri, %{assigns: %{live_action: :child}} = socket) do
+  def handle_params(
+        %{"name" => req_name, "child_id" => child_id},
+        _uri,
+        %{assigns: %{live_action: :child}} = socket
+      ) do
     with_project(socket, fn project, scope ->
       slug = socket.assigns.slug
       mod = ProjectSetup.find_step(child_id)
@@ -52,7 +56,10 @@ defmodule CodeMySpecWeb.RequirementsLive do
           kind: :command,
           title: ProjectSetup.step_name(mod),
           command: generate_command(mod, scope),
-          back: %{label: "← Back to #{req_name}", to: "/app/projects/#{slug}/requirements/#{req_name}"}
+          back: %{
+            label: "← Back to #{req_name}",
+            to: "/app/projects/#{slug}/requirements/#{req_name}"
+          }
         }
 
         assign_page(socket, project, scope, page)
@@ -68,7 +75,11 @@ defmodule CodeMySpecWeb.RequirementsLive do
     end)
   end
 
-  def handle_params(%{"story_id" => story_id, "name" => req_name}, _uri, %{assigns: %{live_action: :story_req_show}} = socket) do
+  def handle_params(
+        %{"story_id" => story_id, "name" => req_name},
+        _uri,
+        %{assigns: %{live_action: :story_req_show}} = socket
+      ) do
     with_project(socket, fn project, scope ->
       story = Stories.get_story!(scope, story_id)
       slug = socket.assigns.slug
@@ -78,7 +89,10 @@ defmodule CodeMySpecWeb.RequirementsLive do
         page = %{
           kind: :requirement,
           node: node,
-          back: %{label: "← Back to #{story.title}", to: "/app/projects/#{slug}/stories/#{story_id}"},
+          back: %{
+            label: "← Back to #{story.title}",
+            to: "/app/projects/#{slug}/stories/#{story_id}"
+          },
           prereqs: [],
           dependents: [],
           command: nil,
@@ -92,7 +106,11 @@ defmodule CodeMySpecWeb.RequirementsLive do
     end)
   end
 
-  def handle_params(%{"component_id" => component_id, "name" => req_name}, _uri, %{assigns: %{live_action: :component_req_prompt}} = socket) do
+  def handle_params(
+        %{"component_id" => component_id, "name" => req_name},
+        _uri,
+        %{assigns: %{live_action: :component_req_prompt}} = socket
+      ) do
     with_project(socket, fn project, scope ->
       component = Components.get_component!(scope, component_id)
       slug = socket.assigns.slug
@@ -118,7 +136,11 @@ defmodule CodeMySpecWeb.RequirementsLive do
     end)
   end
 
-  def handle_params(%{"component_id" => component_id, "name" => req_name}, _uri, %{assigns: %{live_action: :component_req_show}} = socket) do
+  def handle_params(
+        %{"component_id" => component_id, "name" => req_name},
+        _uri,
+        %{assigns: %{live_action: :component_req_show}} = socket
+      ) do
     with_project(socket, fn project, scope ->
       component = Components.get_component!(scope, component_id)
       slug = socket.assigns.slug
@@ -137,7 +159,7 @@ defmodule CodeMySpecWeb.RequirementsLive do
   def handle_params(%{}, _uri, %{assigns: %{live_action: :components}} = socket) do
     with_project(socket, fn project, scope ->
       components = Components.list_components(scope)
-      nodes = Requirements.compute_all(scope)
+      {nodes, _computed_at} = Requirements.cached_all(scope)
       slug = socket.assigns.slug
 
       items =
@@ -163,16 +185,24 @@ defmodule CodeMySpecWeb.RequirementsLive do
     end)
   end
 
-  def handle_params(%{"component_id" => component_id}, _uri, %{assigns: %{live_action: :component_graph}} = socket) do
+  def handle_params(
+        %{"component_id" => component_id},
+        _uri,
+        %{assigns: %{live_action: :component_graph}} = socket
+      ) do
     with_project(socket, fn project, scope ->
       assign_graph(socket, project, scope, GraphProjector.component_graph(scope, component_id))
     end)
   end
 
-  def handle_params(%{"component_id" => component_id}, _uri, %{assigns: %{live_action: :component_show}} = socket) do
+  def handle_params(
+        %{"component_id" => component_id},
+        _uri,
+        %{assigns: %{live_action: :component_show}} = socket
+      ) do
     with_project(socket, fn project, scope ->
       component = Components.get_component!(scope, component_id)
-      nodes = Requirements.compute_all(scope)
+      {nodes, _computed_at} = Requirements.cached_all(scope)
       slug = socket.assigns.slug
       {satisfied, total} = entity_counts(nodes, "component", component.id)
 
@@ -201,10 +231,14 @@ defmodule CodeMySpecWeb.RequirementsLive do
     end)
   end
 
-  def handle_params(%{"story_id" => story_id}, _uri, %{assigns: %{live_action: :story_show}} = socket) do
+  def handle_params(
+        %{"story_id" => story_id},
+        _uri,
+        %{assigns: %{live_action: :story_show}} = socket
+      ) do
     with_project(socket, fn project, scope ->
       story = Stories.get_story!(scope, story_id)
-      nodes = Requirements.compute_all(scope)
+      {nodes, _computed_at} = Requirements.cached_all(scope)
       slug = socket.assigns.slug
       {satisfied, total} = entity_counts(nodes, "story", story.id)
 
@@ -231,7 +265,7 @@ defmodule CodeMySpecWeb.RequirementsLive do
   def handle_params(%{}, _uri, %{assigns: %{live_action: :stories}} = socket) do
     with_project(socket, fn project, scope ->
       {:ok, stories} = Stories.list_project_stories(scope)
-      nodes = Requirements.compute_all(scope)
+      {nodes, _computed_at} = Requirements.cached_all(scope)
       slug = socket.assigns.slug
 
       items =
@@ -275,7 +309,7 @@ defmodule CodeMySpecWeb.RequirementsLive do
 
   def handle_params(%{}, _uri, socket) do
     with_project(socket, fn project, scope ->
-      nodes = Requirements.compute_all(scope)
+      {nodes, _computed_at} = Requirements.cached_all(scope)
       actionable = Requirements.next_actionable_project(scope)
       actionable_names = MapSet.new(actionable, & &1.name)
 
@@ -393,38 +427,48 @@ defmodule CodeMySpecWeb.RequirementsLive do
   @impl true
   def render(assigns) do
     ~H"""
-      <div :if={@error} role="alert" class="alert alert-error">
-        <span>{@error}</span>
-      </div>
+    <div :if={@error} role="alert" class="alert alert-error">
+      <span>{@error}</span>
+    </div>
 
-      <div :if={@setup_error} data-role="setup-error" role="alert" class="alert alert-error my-4">
-        <span>Setup error: {@setup_error}</span>
-      </div>
+    <div :if={@setup_error} data-role="setup-error" role="alert" class="alert alert-error my-4">
+      <span>Setup error: {@setup_error}</span>
+    </div>
 
-      <.graph_view :if={@graph_data} project={@project} graph_data={@graph_data} slug={@slug} socket={@socket} />
+    <.graph_view
+      :if={@graph_data}
+      project={@project}
+      graph_data={@graph_data}
+      slug={@slug}
+      socket={@socket}
+    />
 
-      <div :if={@live_action in [:index, :stories] && @project} role="tablist" class="tabs tabs-bordered mb-4">
-        <.link
-          patch={path(@socket, ~p"/app/projects/#{@slug}/requirements")}
-          role="tab"
-          class={["tab", @live_action == :index && "tab-active"]}
-        >
-          Project
-        </.link>
-        <.link
-          patch={path(@socket, ~p"/app/projects/#{@slug}/requirements/stories")}
-          role="tab"
-          class={["tab", @live_action == :stories && "tab-active"]}
-        >
-          Stories
-        </.link>
-      </div>
+    <div
+      :if={@live_action in [:index, :stories] && @project}
+      role="tablist"
+      class="tabs tabs-bordered mb-4"
+    >
+      <.link
+        patch={path(@socket, ~p"/app/projects/#{@slug}/requirements")}
+        role="tab"
+        class={["tab", @live_action == :index && "tab-active"]}
+      >
+        Project
+      </.link>
+      <.link
+        patch={path(@socket, ~p"/app/projects/#{@slug}/requirements/stories")}
+        role="tab"
+        class={["tab", @live_action == :stories && "tab-active"]}
+      >
+        Stories
+      </.link>
+    </div>
 
-      <.index_view :if={@page && @page.kind == :index} page={@page} project={@project} />
-      <.list_view :if={@page && @page.kind == :list} page={@page} />
-      <.entity_view :if={@page && @page.kind == :entity} page={@page} />
-      <.requirement_view :if={@page && @page.kind == :requirement} page={@page} />
-      <.command_view :if={@page && @page.kind == :command} page={@page} />
+    <.index_view :if={@page && @page.kind == :index} page={@page} project={@project} />
+    <.list_view :if={@page && @page.kind == :list} page={@page} />
+    <.entity_view :if={@page && @page.kind == :entity} page={@page} />
+    <.requirement_view :if={@page && @page.kind == :requirement} page={@page} />
+    <.command_view :if={@page && @page.kind == :command} page={@page} />
     """
   end
 
@@ -449,9 +493,15 @@ defmodule CodeMySpecWeb.RequirementsLive do
       </div>
       <h1 class="text-2xl font-bold mb-4">Requirements Graph</h1>
       <div class="flex flex-wrap gap-4 text-sm mb-4">
-        <span class="flex items-center gap-2"><span class="w-3 h-3 rounded-full bg-primary inline-block"></span> Satisfied</span>
-        <span class="flex items-center gap-2"><span class="w-3 h-3 rounded-full bg-success inline-block"></span> Actionable</span>
-        <span class="flex items-center gap-2"><span class="w-3 h-3 rounded-full bg-warning inline-block"></span> Blocked</span>
+        <span class="flex items-center gap-2">
+          <span class="w-3 h-3 rounded-full bg-primary inline-block"></span> Satisfied
+        </span>
+        <span class="flex items-center gap-2">
+          <span class="w-3 h-3 rounded-full bg-success inline-block"></span> Actionable
+        </span>
+        <span class="flex items-center gap-2">
+          <span class="w-3 h-3 rounded-full bg-warning inline-block"></span> Blocked
+        </span>
       </div>
       <div
         id="sigma-graph"
@@ -484,10 +534,15 @@ defmodule CodeMySpecWeb.RequirementsLive do
         >
           <.status_icon satisfied={item.satisfied} />
           <div class="min-w-0 flex-1">
-            <.link navigate={item.to} class="link link-hover font-semibold font-mono text-sm break-all">
+            <.link
+              navigate={item.to}
+              class="link link-hover font-semibold font-mono text-sm break-all"
+            >
               {item.name}
             </.link>
-            <span :if={item.actionable} class="badge badge-success badge-sm ml-2 align-middle">actionable</span>
+            <span :if={item.actionable} class="badge badge-success badge-sm ml-2 align-middle">
+              actionable
+            </span>
             <p class="text-sm text-base-content/70 mt-1">{item.description}</p>
           </div>
         </li>
@@ -550,10 +605,15 @@ defmodule CodeMySpecWeb.RequirementsLive do
         >
           <.status_icon satisfied={item.satisfied} />
           <div class="min-w-0 flex-1">
-            <.link navigate={item.to} class="link link-hover font-semibold font-mono text-sm break-all">
+            <.link
+              navigate={item.to}
+              class="link link-hover font-semibold font-mono text-sm break-all"
+            >
               {item.name}
             </.link>
-            <span :if={item.actionable} class="badge badge-success badge-sm ml-2 align-middle">actionable</span>
+            <span :if={item.actionable} class="badge badge-success badge-sm ml-2 align-middle">
+              actionable
+            </span>
             <p class="text-sm text-base-content/70 mt-1">{item.description}</p>
           </div>
         </li>
@@ -575,7 +635,7 @@ defmodule CodeMySpecWeb.RequirementsLive do
         <p class="text-base-content/70 mt-1">{@node.description}</p>
         <div class="mt-2 flex items-center gap-2">
           <.status_icon satisfied={@node.satisfied} />
-          <span class={["badge", @node.satisfied && "badge-success" || "badge-ghost"]}>
+          <span class={["badge", (@node.satisfied && "badge-success") || "badge-ghost"]}>
             {if @node.satisfied, do: "satisfied", else: "not satisfied"}
           </span>
         </div>
@@ -635,7 +695,10 @@ defmodule CodeMySpecWeb.RequirementsLive do
   defp status_icon(assigns) do
     ~H"""
     <span
-      class={["mt-0.5 flex-none text-base leading-none", @satisfied && "text-success" || "text-base-content/30"]}
+      class={[
+        "mt-0.5 flex-none text-base leading-none",
+        (@satisfied && "text-success") || "text-base-content/30"
+      ]}
       aria-label={if @satisfied, do: "satisfied", else: "not satisfied"}
     >
       {if @satisfied, do: "✓", else: "○"}
@@ -711,7 +774,7 @@ defmodule CodeMySpecWeb.RequirementsLive do
   # --- Helpers ---
 
   defp handle_show_for_project(project, scope, req_name, socket) do
-    nodes = Requirements.compute_all(scope)
+    {nodes, _computed_at} = Requirements.cached_all(scope)
     node = Enum.find(nodes, &(&1.entity_type == "project" and &1.name == req_name))
 
     if node do
@@ -850,7 +913,10 @@ defmodule CodeMySpecWeb.RequirementsLive do
     page = %{
       kind: :requirement,
       node: node,
-      back: %{label: "← Back to #{component.module_name}", to: "/app/projects/#{slug}/components/#{component.id}"},
+      back: %{
+        label: "← Back to #{component.module_name}",
+        to: "/app/projects/#{slug}/components/#{component.id}"
+      },
       prereqs: [],
       dependents: [],
       command: nil,
@@ -871,5 +937,4 @@ defmodule CodeMySpecWeb.RequirementsLive do
        setup_error: nil
      )}
   end
-
 end

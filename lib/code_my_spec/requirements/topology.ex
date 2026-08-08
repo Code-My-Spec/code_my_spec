@@ -25,6 +25,8 @@ defmodule CodeMySpec.Requirements.Topology do
   the same tuple as the canonical key.
   """
 
+  import Bitwise
+
   alias CodeMySpec.Requirements.Requirement
 
   @type node_key :: {String.t(), any(), String.t()}
@@ -49,7 +51,7 @@ defmodule CodeMySpec.Requirements.Topology do
   """
   @spec partition_by_entity_type([Requirement.t()], [edge()]) :: partition()
   def partition_by_entity_type(nodes, edges) do
-    partition(nodes, edges, &(&1.entity_type))
+    partition(nodes, edges, & &1.entity_type)
   end
 
   @doc """
@@ -195,44 +197,123 @@ defmodule CodeMySpec.Requirements.Topology do
   reaches `B`. The longer path enforces the same gating, so
   reachability is preserved.
 
-  Expects a DAG; cycles produce undefined edge selection but the
-  algorithm terminates via the visited set.
+  Cycles are handled rather than merely survived: strongly-connected
+  components are condensed first, so every member of a cycle reaches
+  every other and no edge carrying the cycle is dropped. This used to
+  say cycle behaviour was undefined; it is now defined and pinned by
+  tests, which matters because `finalize_unresolved/1` exists only
+  because cycles occur here in practice.
   """
   @spec transitive_reduction([edge()]) :: [edge()]
   def transitive_reduction(edges) do
     outgoing = group_edges(edges, & &1.from, & &1.to)
-    reachable_from = build_reachable_cache(edges, outgoing)
+    {bit, reach} = reachability(edges, outgoing)
+
+    # Once per source, not once per edge. A source with twenty-four successors
+    # otherwise rebuilt the same union twenty-four times.
+    via_successors =
+      Map.new(outgoing, fn {a, successors} ->
+        {a, Enum.reduce(successors, 0, fn s, acc -> acc ||| Map.get(reach, s, 0) end)}
+      end)
 
     Enum.reject(edges, fn %{from: a, to: b} ->
-      outgoing
-      |> Map.get(a, [])
-      |> Enum.any?(fn s ->
-        s != b and MapSet.member?(Map.get(reachable_from, s, MapSet.new()), b)
+      redundant?(a, b, outgoing, bit, reach, via_successors)
+    end)
+  end
+
+  # Reachability as one integer per node, each bit a node.
+  #
+  # The previous implementation ran a fresh DFS per distinct successor, with no
+  # sharing between them, so cost scaled with (distinct successors × edges).
+  # Measured on a 1045-node graph: 26ms when edges landed on 144 distinct
+  # targets, 471ms when they landed on 1035 — the same edge count, eighteen
+  # times the work, purely from how spread out the targets were. Real
+  # requirement graphs are the spread-out kind.
+  #
+  # Bignum `bor` on a 1045-bit integer is one BEAM operation, so a node's whole
+  # reachable set merges in constant-ish time and each edge is visited once.
+  #
+  # Cycles are real here — `finalize_unresolved/1` exists precisely because
+  # nodes fail to resolve a depth — so this condenses strongly-connected
+  # components first. Within an SCC everything reaches everything, and the
+  # condensation is a DAG by construction, which is what makes a single
+  # reverse-topological pass correct.
+  defp reachability(edges, outgoing) do
+    nodes = edges |> Enum.flat_map(&[&1.from, &1.to]) |> Enum.uniq()
+    bit = nodes |> Enum.with_index() |> Map.new(fn {n, i} -> {n, 1 <<< i} end)
+
+    graph = :digraph.new()
+
+    try do
+      Enum.each(nodes, &:digraph.add_vertex(graph, &1))
+      Enum.each(edges, fn %{from: f, to: t} -> :digraph.add_edge(graph, f, t) end)
+
+      condensed = :digraph_utils.condensation(graph)
+
+      try do
+        {bit, scc_reachability(condensed, outgoing, bit)}
+      after
+        :digraph.delete(condensed)
+      end
+    after
+      :digraph.delete(graph)
+    end
+  end
+
+  defp scc_reachability(condensed, outgoing, bit) do
+    order = condensed |> :digraph_utils.topsort() |> Enum.reverse()
+
+    masks =
+      Map.new(order, fn scc -> {scc, Enum.reduce(scc, 0, &(&2 ||| Map.get(bit, &1, 0)))} end)
+
+    scc_reach =
+      Enum.reduce(order, %{}, fn scc, acc ->
+        reachable =
+          condensed
+          |> :digraph.out_neighbours(scc)
+          |> Enum.reduce(0, fn nxt, sum ->
+            sum ||| Map.get(masks, nxt, 0) ||| Map.get(acc, nxt, 0)
+          end)
+
+        Map.put(acc, scc, reachable)
       end)
-    end)
+
+    # Back to individual nodes. A node in a multi-member SCC reaches every
+    # member including itself; a lone node reaches itself only via a self-loop.
+    for scc <- order, node <- scc, into: %{} do
+      own =
+        cond do
+          length(scc) > 1 -> Map.fetch!(masks, scc)
+          node in Map.get(outgoing, node, []) -> Map.get(bit, node, 0)
+          true -> 0
+        end
+
+      {node, Map.fetch!(scc_reach, scc) ||| own}
+    end
   end
 
-  # For each node that appears as a direct successor of some edge source,
-  # compute the set of nodes reachable from it once (via DFS) and cache.
-  # Replaces the per-edge fresh-DFS in the original implementation, which
-  # was O(V²·E) on dense graphs.
-  defp build_reachable_cache(edges, outgoing) do
-    edges
-    |> Enum.flat_map(fn %{from: f} -> Map.get(outgoing, f, []) end)
-    |> Enum.uniq()
-    |> Enum.reduce(%{}, fn s, acc ->
-      Map.put(acc, s, dfs([s], MapSet.new(), outgoing))
-    end)
-  end
+  # `A → B` is redundant when another successor of `A` reaches `B`. "Another"
+  # matters only when `B` reaches itself — otherwise `B`'s own reach set cannot
+  # contain `B` and the cheap union is already exact.
+  defp redundant?(a, b, outgoing, bit, reach, via_successors) do
+    b_bit = Map.get(bit, b, 0)
 
-  defp dfs([], visited, _outgoing), do: visited
+    cond do
+      # Nothing A's successors reach is B: the edge is the only way there.
+      (Map.get(via_successors, a, 0) &&& b_bit) == 0 ->
+        false
 
-  defp dfs([u | rest], visited, outgoing) do
-    if MapSet.member?(visited, u) do
-      dfs(rest, visited, outgoing)
-    else
-      successors = Map.get(outgoing, u, [])
-      dfs(successors ++ rest, MapSet.put(visited, u), outgoing)
+      # B cannot reach itself, so the union above cannot be B's own doing.
+      (Map.get(reach, b, 0) &&& b_bit) == 0 ->
+        true
+
+      # B is on a cycle. Now it matters which successor supplied the bit, so
+      # ask each one — the only case that costs more than two bit tests, and
+      # it needs a cycle through B to happen at all.
+      true ->
+        Enum.any?(Map.get(outgoing, a, []), fn s ->
+          s != b and (Map.get(reach, s, 0) &&& b_bit) != 0
+        end)
     end
   end
 
@@ -310,7 +391,9 @@ defmodule CodeMySpec.Requirements.Topology do
   end
 
   defp resolve_depths(depths, incoming) do
-    {updated, changed?} = Enum.map_reduce(depths, false, &maybe_assign_depth(&1, &2, depths, incoming))
+    {updated, changed?} =
+      Enum.map_reduce(depths, false, &maybe_assign_depth(&1, &2, depths, incoming))
+
     updated_map = Map.new(updated)
 
     cond do

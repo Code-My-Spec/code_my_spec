@@ -115,6 +115,10 @@ defmodule CodeMySpec.MixProject do
       # this app calls :meck directly. Tracks ex_cli_vcr's requirement.
       {:meck, "~> 1.2", only: [:test]},
       {:req_cassette, "~> 0.6.0", only: :test},
+      # `mix bench.graph`. Test-only on purpose: the dev server runs from a
+      # working copy, and a new application in :dev is not hot-reloadable — it
+      # takes the running server down until someone restarts it.
+      {:benchee, "~> 1.4", only: :test},
       {:paper_trail, "~> 1.1"},
       {:anubis_mcp, github: "zoedsoupe/anubis-mcp", branch: "main"},
       {:oban, "~> 2.19.4"},

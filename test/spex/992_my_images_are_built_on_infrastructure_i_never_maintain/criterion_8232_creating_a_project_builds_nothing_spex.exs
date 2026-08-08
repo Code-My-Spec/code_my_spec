@@ -21,19 +21,17 @@ defmodule CodeMySpecSpex.Story992.Criterion8232Spex do
   @endpoint CodeMySpecWeb.Endpoint
 
   setup :register_log_in_setup_account
+  setup :setup_active_project
 
   spex "Creating a project builds nothing" do
     scenario "a newly created project has no image and no builder" do
       given_ "Sam has just created a project", context do
-        # Created here rather than in a `setup` callback, because creating it
-        # *is* the precondition and a block that states one without doing
-        # anything cannot be told apart from a block that forgot to.
+        # given: already true — `setup :setup_active_project` creates it.
         #
-        # And nothing else. No run, scripted or otherwise — anything more
-        # would be the deploy this criterion says must not have happened yet.
-        context = setup_active_project(context)
-
-        {:ok, devops_on(context)}
+        # No run, scripted or otherwise. Creating the project is the whole of
+        # the setup — anything else would be the deploy this criterion says
+        # must not have happened yet.
+        {:ok, context}
       end
 
       when_ "he opens setup without deploying", context do
