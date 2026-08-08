@@ -703,6 +703,15 @@ defmodule CodeMySpec.Provisioning.Steps do
     endpoint = webhook_endpoint(scope, opts)
 
     with name when is_binary(name) <- receiving_domain(scope, opts),
+         # Before any provider call. An address on another domain can never
+         # prove this one's inbox, so the run cannot succeed — and the rule the
+         # deploy step states applies here too: something that cannot succeed
+         # does not first go and change the provider.
+         #
+         # A missing address is deliberately *not* checked here. The records
+         # are needed either way and MX propagation is the slow part, so that
+         # case publishes first and pauses afterwards.
+         :ok <- probe_address_on_domain(name, opts),
          {:ok, domain} <- Resend.ensure_receiving_domain(scope, name, opts),
          {:ok, webhook} <- Resend.ensure_webhook(scope, endpoint, opts),
          {:ok, mx} <- publish_mx(scope, name, domain, opts),
@@ -745,12 +754,30 @@ defmodule CodeMySpec.Provisioning.Steps do
            "this domain and the account has no verified sending domain to send it from. " <>
            "Verify one — the email step does this — then resume."}
 
+      # Paused rather than errored: nothing is broken, setup just does not know
+      # where to send. Resend accepts mail only at addresses configured for the
+      # domain and offers no API to list them, so this is Sam's to answer.
+      {:error, :no_probe_address} ->
+        {:paused,
+         "the inbound records are published. To prove mail actually arrives, setup needs an " <>
+           "address on this domain that you already receive at — Resend only accepts mail to " <>
+           "addresses configured for the domain, and offers no way to ask which those are, so " <>
+           "setup will not guess one. Give it an address and resume."}
+
+      {:error, {:probe_address_elsewhere, to, name}} ->
+        {:paused,
+         "#{to} is not on #{name}, so delivering to it would prove nothing about this " <>
+           "domain's inbox — mail to another domain arrives whether or not this one is " <>
+           "configured. Give an address at #{name} and resume."}
+
       {:error, :never_arrived} ->
         {:error,
-         "the records are published and Resend is configured, but a message sent to this " <>
-           "domain never arrived. Configuration that looks right is exactly how a receiving " <>
-           "setup fails — the MX, Resend's receiving capability and the webhook all have to " <>
-           "be right together, and each can look correct on its own while mail goes nowhere."}
+         "the records are published and Resend is configured, but the message sent to this " <>
+           "domain never arrived. Check first that the address it was sent to is configured " <>
+           "to receive in Resend — an address the domain does not accept is dropped in " <>
+           "silence and looks exactly like this. Otherwise: configuration that looks right " <>
+           "is how a receiving setup fails, because the MX, Resend's receiving capability " <>
+           "and the webhook all have to be right together and each can look correct alone."}
 
       {:error, reason} ->
         {:error, format(reason)}
@@ -775,12 +802,50 @@ defmodule CodeMySpec.Provisioning.Steps do
     probe.(scope, name, opts)
   end
 
-  defp default_inbound_probe(scope, name, opts) do
+  defp default_inbound_probe(scope, _name, opts) do
     # A token in the subject, because the account receives real mail too and
     # "something arrived" is not "the thing we sent arrived".
     token = "cms-inbound-#{System.unique_integer([:positive])}"
-    to = "setup-probe@#{name}"
 
+    # The address is given, never invented. Resend delivers only to addresses
+    # configured for the domain, and exposes no API to ask which those are, so
+    # a made-up local part is dropped in silence.
+    #
+    # `setup-probe@` was hardcoded here and cost most of a day: mail to
+    # `john@astralbi.com` arrived, mail to `setup-probe@astralbi.com` never
+    # did, and the step reported the inbox broken. A novel local part *did*
+    # arrive on another domain, which sent me chasing Resend outages and our
+    # own webhook — that domain simply had a catch-all. One sample generalised
+    # into the wrong theory while the right one sat discarded.
+    #
+    # Pausing for an address Sam already receives at is the honest move: setup
+    # cannot discover it, and guessing produces a failure that blames the
+    # inbox for the guess.
+    case Keyword.get(opts, :inbound_probe_to) do
+      to when is_binary(to) and to != "" -> send_and_await(scope, to, token, opts)
+      _ -> {:error, :no_probe_address}
+    end
+  end
+
+  # On *this* domain, or the proof is about somebody else's inbox: a message to
+  # an address elsewhere arrives just as happily and says nothing about whether
+  # mail to this domain lands.
+  #
+  # Anchored on `@` rather than a bare suffix, or `john@evil-<domain>` would
+  # pass — a different domain that merely ends with ours.
+  defp probe_address_on_domain(name, opts) do
+    case Keyword.get(opts, :inbound_probe_to) do
+      to when is_binary(to) and to != "" ->
+        if String.ends_with?(to, "@" <> name),
+          do: :ok,
+          else: {:error, {:probe_address_elsewhere, to, name}}
+
+      _ ->
+        :ok
+    end
+  end
+
+  defp send_and_await(scope, to, token, opts) do
     # From a domain the account has already verified, whichever one that is.
     #
     # Not from the domain being set up: it is verified for *receiving* at this
