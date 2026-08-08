@@ -18,6 +18,7 @@ defmodule CodeMySpecSpex.Story966.Criterion8005Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :devops_on
   setup :real_working_directory
   setup :connect_providers
 

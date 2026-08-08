@@ -1,7 +1,7 @@
 {
   "interactions": [
     {
-      "recorded_at": "2026-08-02T12:04:08.875759Z",
+      "recorded_at": "2026-08-07T04:13:30.669072Z",
       "request": {
         "body": "",
         "body_type": "text",
@@ -28,8 +28,8 @@
                 "receiving": "disabled",
                 "sending": "enabled"
               },
-              "created_at": "2026-08-02 12:03:49.494191+00",
-              "id": "42c901eb-9646-430f-9c7a-235eeedff473",
+              "created_at": "2026-08-07 04:13:12.860858+00",
+              "id": "a987ac3f-02d4-4b0f-b1aa-cab65e4e815b",
               "name": "spex-story969-criterion8027.astralbi.com",
               "region": "us-east-1",
               "status": "pending"
@@ -132,7 +132,7 @@
             "DYNAMIC"
           ],
           "cf-ray": [
-            "a24cf1830f07a229-YYZ"
+            "a27372fa5a59711d-YYZ"
           ],
           "connection": [
             "keep-alive"
@@ -144,10 +144,10 @@
             "application/json; charset=utf-8"
           ],
           "date": [
-            "Sun, 02 Aug 2026 12:04:08 GMT"
+            "Fri, 07 Aug 2026 04:13:30 GMT"
           ],
           "etag": [
-            "W/\"7ef-/ArvOqc7wt8VbTenvjJUK4ZX+Kg\""
+            "W/\"7ef-kNbm8s9TC4FgtMBcK0ateOPUAYY\""
           ],
           "permissions-policy": [
             "camera=(), microphone=(), geolocation=(), payment=()"
@@ -187,7 +187,7 @@
       }
     },
     {
-      "recorded_at": "2026-08-02T12:04:09.111421Z",
+      "recorded_at": "2026-08-07T04:13:30.935342Z",
       "request": {
         "body": "",
         "body_type": "text",
@@ -204,11 +204,11 @@
         },
         "method": "POST",
         "query_string": "",
-        "uri": "https://api.resend.com/domains/42c901eb-9646-430f-9c7a-235eeedff473/verify"
+        "uri": "https://api.resend.com/domains/a987ac3f-02d4-4b0f-b1aa-cab65e4e815b/verify"
       },
       "response": {
         "body_json": {
-          "id": "42c901eb-9646-430f-9c7a-235eeedff473",
+          "id": "a987ac3f-02d4-4b0f-b1aa-cab65e4e815b",
           "object": "domain"
         },
         "body_type": "json",
@@ -217,7 +217,7 @@
             "DYNAMIC"
           ],
           "cf-ray": [
-            "a24cf183af3aa229-YYZ"
+            "a27372fada8a711d-YYZ"
           ],
           "connection": [
             "keep-alive"
@@ -229,10 +229,10 @@
             "application/json; charset=utf-8"
           ],
           "date": [
-            "Sun, 02 Aug 2026 12:04:09 GMT"
+            "Fri, 07 Aug 2026 04:13:30 GMT"
           ],
           "etag": [
-            "W/\"3f-ymf+hkyMYvUb7WxcNk3r5sJxdao\""
+            "W/\"3f-aw5vf+z4AO3G94uqkLTNvapltjs\""
           ],
           "permissions-policy": [
             "camera=(), microphone=(), geolocation=(), payment=()"
@@ -272,7 +272,7 @@
       }
     },
     {
-      "recorded_at": "2026-08-02T12:04:09.303422Z",
+      "recorded_at": "2026-08-07T04:13:31.018166Z",
       "request": {
         "body": "",
         "body_type": "text",
@@ -289,7 +289,7 @@
         },
         "method": "GET",
         "query_string": "",
-        "uri": "https://api.resend.com/domains/42c901eb-9646-430f-9c7a-235eeedff473"
+        "uri": "https://api.resend.com/domains/a987ac3f-02d4-4b0f-b1aa-cab65e4e815b"
       },
       "response": {
         "body_json": {
@@ -298,8 +298,8 @@
             "sending": "enabled"
           },
           "click_tracking": false,
-          "created_at": "2026-08-02 12:03:49.494191+00",
-          "id": "42c901eb-9646-430f-9c7a-235eeedff473",
+          "created_at": "2026-08-07 04:13:12.860858+00",
+          "id": "a987ac3f-02d4-4b0f-b1aa-cab65e4e815b",
           "name": "spex-story969-criterion8027.astralbi.com",
           "object": "domain",
           "open_tracking": false,
@@ -339,7 +339,7 @@
             "DYNAMIC"
           ],
           "cf-ray": [
-            "a24cf1851fd9a229-YYZ"
+            "a27372fc7b28711d-YYZ"
           ],
           "connection": [
             "keep-alive"
@@ -351,10 +351,10 @@
             "application/json; charset=utf-8"
           ],
           "date": [
-            "Sun, 02 Aug 2026 12:04:09 GMT"
+            "Fri, 07 Aug 2026 04:13:31 GMT"
           ],
           "etag": [
-            "W/\"3cf-tX2tIk1+N3oQcmK9+DQb7fXk0Fs\""
+            "W/\"3cf-FlI9BhOd9dAKVLX145c68yHNSZA\""
           ],
           "permissions-policy": [
             "camera=(), microphone=(), geolocation=(), payment=()"

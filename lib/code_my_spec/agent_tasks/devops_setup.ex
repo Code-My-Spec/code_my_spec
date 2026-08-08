@@ -25,8 +25,7 @@ defmodule CodeMySpec.AgentTasks.DevopsSetup do
   """
 
   alias CodeMySpec.Configurations
-  alias CodeMySpec.Environments
-  alias CodeMySpec.Paths
+  alias CodeMySpec.Resources
   alias CodeMySpec.Users.Scope
 
   @doc """
@@ -46,7 +45,10 @@ defmodule CodeMySpec.AgentTasks.DevopsSetup do
   """
   @spec command(Scope.t(), map()) :: {:ok, String.t()}
   def command(%Scope{} = scope, _task) do
-    config = Configurations.get_or_create(scope)
+    # `get/1`, not `get_or_create/1`. Building a prompt is a read, and seeding
+    # a configuration row as a side effect of describing the work is how six of
+    # them appeared from display paths alone.
+    config = Configurations.get(scope)
     prod? = prod_enabled?(config)
 
     prompt =
@@ -76,41 +78,58 @@ defmodule CodeMySpec.AgentTasks.DevopsSetup do
   when the record is in place.
   """
   @spec evaluate(Scope.t(), map()) :: {:ok, :valid} | {:ok, :invalid, String.t()}
-  def evaluate(%Scope{environment: env} = scope, _task) do
-    record = Paths.devops_setup_record()
-
-    case Environments.read_file(env, record) do
-      {:ok, content} ->
-        evaluate_record(scope, content)
-
-      {:error, _} ->
-        {:ok, :invalid,
-         "No DevOps setup record at `#{record}` — setup is complete only when the " <>
-           "provisioned environments are verified and recorded there."}
-    end
+  def evaluate(%Scope{} = scope, _task) do
+    scope |> Resources.report() |> evaluate_report()
   end
 
-  defp evaluate_record(scope, content) do
-    config = Configurations.get_or_create(scope)
+  # Asks the providers what exists, rather than asking a file what it claims.
+  #
+  # This used to read `.code_my_spec/devops/setup.md` and grep it for the
+  # strings "## Environments", "verified" and — with production on — "prod".
+  # An agent that wrote a file containing the word "verified" satisfied the
+  # requirement. Nothing checked that a server was running, a record resolved
+  # or a bucket existed, so "devops setup is complete" was a claim about
+  # prose.
+  #
+  # `Resources.report/1` already reconciles expected against actual across all
+  # four providers, and already knows the difference between a step that never
+  # ran and a resource pointing at nothing. Reusing it means the graph and the
+  # page cannot disagree about whether setup is done, which they could when one
+  # read providers and the other read a markdown file.
+  defp evaluate_report(%{errors: errors}) when errors != %{} do
+    # Not "incomplete" — unknown. A provider being unreachable says nothing
+    # about whether setup happened, and reporting it as unsatisfied would make
+    # a network blip look like undone work and invite someone to redo it.
+    {:ok, :invalid,
+     "Could not check " <>
+       Enum.map_join(errors, ", ", fn {provider, reason} -> "#{provider} (#{inspect(reason)})" end) <>
+       ". This is not a verdict on the setup — it is that the answer is not " <>
+       "available right now. Re-run the check when the provider is reachable."}
+  end
 
-    required = ["## Environments", "verified"]
-    required = if prod_enabled?(config), do: required ++ ["prod"], else: required
-
-    case Enum.reject(required, &(content =~ &1)) do
+  defp evaluate_report(%{checklist: checklist}) do
+    case Enum.filter(checklist, &(&1.state == :missing)) do
       [] ->
         {:ok, :valid}
 
       missing ->
         {:ok, :invalid,
-         "DevOps setup record is missing: #{Enum.join(missing, ", ")}. The record " <>
-           "must list every environment with its live health-check verification."}
+         "Setup is not complete. Still missing: " <>
+           Enum.map_join(missing, ", ", &"#{&1.project_name}/#{&1.key}") <>
+           ". Each is a step whose resources are not there — run it from the " <>
+           "provisioning page, or `Resources.fix_all/1` to build everything missing."}
     end
   end
 
   # :off never reaches this task (the graph filter drops the requirement);
   # anything unset or unknown gets the recommended full-promotion default.
+  # No row means nothing has been configured, and the default is `:off` — so
+  # production is not enabled. Reading a missing row as `:prod` was safe only
+  # while `get_or_create/1` guaranteed a row existed.
+  defp prod_enabled?(nil), do: false
+
   defp prod_enabled?(config) do
-    (Map.get(config, :devops) || :prod) != :uat
+    (Map.get(config, :devops) || :off) == :prod
   end
 
   # ── Prompt sections ─────────────────────────────────────────────────

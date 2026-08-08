@@ -37,6 +37,7 @@ defmodule CodeMySpecSpex.Story983.Criterion8161Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :devops_on
 
   spex "Freshness gates the flip, never the state" do
     scenario "A later edit stales the spex run without un-readying the story" do

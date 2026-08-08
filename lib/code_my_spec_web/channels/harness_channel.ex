@@ -39,7 +39,13 @@ defmodule CodeMySpecWeb.HarnessChannel do
   @impl true
   def handle_in(
         "agent_message",
-        %{"external_id" => ext, "project_id" => project_id, "role" => role, "kind" => kind, "text" => text},
+        %{
+          "external_id" => ext,
+          "project_id" => project_id,
+          "role" => role,
+          "kind" => kind,
+          "text" => text
+        },
         socket
       ) do
     {:ok, conversation} =
@@ -58,8 +64,11 @@ defmodule CodeMySpecWeb.HarnessChannel do
   @impl true
   def handle_info({:new_message, %Message{role: :operator} = message}, socket) do
     case Map.get(socket.assigns.externals, message.conversation_id) do
-      nil -> :ok
-      ext -> push(socket, "user_message", %{"external_id" => ext, "text" => message.body})
+      nil ->
+        :ok
+
+      ext ->
+        push(socket, "user_message", %{"external_id" => ext, "text" => Message.text(message)})
     end
 
     {:noreply, socket}
@@ -75,7 +84,12 @@ defmodule CodeMySpecWeb.HarnessChannel do
       socket
     else
       Phoenix.PubSub.subscribe(CodeMySpec.PubSub, Conversations.conversation_topic(id))
-      assign(socket, :externals, Map.put(socket.assigns.externals, id, conversation.session_external_id))
+
+      assign(
+        socket,
+        :externals,
+        Map.put(socket.assigns.externals, id, conversation.session_external_id)
+      )
     end
   end
 end

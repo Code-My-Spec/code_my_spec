@@ -23,6 +23,14 @@ defmodule CodeMySpec.SpexGivensTest do
 
   use ExUnit.Case, async: true
 
+  # `stage_` covers the family that seams a provider — stage_servers,
+  # stage_containers, stage_inventory, stage_build, stage_deploy. Those are
+  # `CodeMySpecSpex.Case` helpers, which the moduledoc above already counts as
+  # establishing; the list simply predates them. A block saying "Sam runs two
+  # servers he built himself" and calling `stage_servers/3` has made its
+  # precondition true in the only way available — the provider is the thing
+  # that decides, and the seam is how a criterion about *display* avoids
+  # buying a machine to say so.
   @establishes ~w(
     Fixtures. live( render_click render_submit render_change element(
     post( put( patch( delete( with_provider_cassette mount_provisioning
@@ -32,6 +40,7 @@ defmodule CodeMySpec.SpexGivensTest do
     stuck_sending_domain unverifiable_domain app_holds_refresh_secret
     connect_providers tear_down_after Environments. File.write File.mkdir
     System.cmd assign put_session
+    stage_ scripted_run built_deploy_run devops_on
   )
 
   # The failure message has always offered a second remedy — "if the

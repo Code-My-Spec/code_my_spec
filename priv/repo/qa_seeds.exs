@@ -17,6 +17,7 @@ alias CodeMySpec.Projects.Project
 alias CodeMySpec.Stories
 alias CodeMySpec.Stories.Story
 alias CodeMySpec.Users
+alias CodeMySpec.Users.User
 alias CodeMySpec.Users.Scope
 
 email = "qa@codemyspec.local"
@@ -27,7 +28,36 @@ target_account_slug = "code-my-spec"
 project_id = "11111111-1111-4111-8111-111111111111"
 project_name = "QA Fixture Project"
 project_module = "QaFixtureProject"
-local_path = System.get_env("QA_LOCAL_PATH") || File.cwd!()
+# A sandbox beside the checkout, never the checkout itself.
+#
+# This used to default to `File.cwd!()`, which is the checkout you run `mix`
+# from. The guard below only refuses when *another* project already claims the
+# path, and the real project's `local_path` was NULL — so the fixture took the
+# working checkout unopposed, and provisioning QA then pushed this entire
+# codebase to a freshly created repository. It also meant the working directory
+# resolved to the fixture rather than to the real project, silently, for weeks.
+#
+# `.code_my_spec/qa/plan.md` has always said the fixture lives in a sandbox
+# with "only the minimal Phoenix shape"; the seed contradicted the plan.
+default_sandbox = Path.expand("../code_my_spec_test_repos/qa_sandbox", File.cwd!())
+local_path = System.get_env("QA_LOCAL_PATH") || default_sandbox
+
+if local_path == File.cwd!() do
+  IO.puts(:stderr, """
+
+  Refusing to run: local_path #{inspect(local_path)} is the checkout you are
+  running from. The QA fixture is a disposable sandbox — pointing it at a real
+  working copy makes provisioning QA push that copy to a new repository, and
+  makes every hook resolve the working directory to the fixture.
+
+  Re-run without QA_LOCAL_PATH to use #{inspect(default_sandbox)}, or set it to
+  a throwaway path.
+  """)
+
+  System.halt(1)
+end
+
+File.mkdir_p!(local_path)
 
 IO.puts("\n=== QA Seeds — server ===")
 
@@ -65,11 +95,29 @@ user =
     nil ->
       {:ok, user} = Users.register_user(%{email: email})
       {:ok, {user, _expired_tokens}} = Users.update_user_password(user, %{password: password})
-      IO.puts("  user: created #{email}")
+
+      # Confirmed, or this user cannot log in at all. Registering with a
+      # password and never confirming leaves an account whose only remaining
+      # door — the magic link — is refused on purpose, to prevent session
+      # fixation. Every QA pass logged in as this user and hit that wall.
+      {:ok, user} = user |> User.confirm_changeset() |> Repo.update()
+
+      IO.puts("  user: created #{email} (confirmed)")
       user
 
     user ->
-      IO.puts("  user: exists #{email}")
+      # An existing fixture user predating the line above is in the dead-end
+      # state, and re-running the seed is how someone would try to fix it.
+      user =
+        if is_nil(user.confirmed_at) do
+          {:ok, user} = user |> User.confirm_changeset() |> Repo.update()
+          IO.puts("  user: exists #{email} (confirmed now — it was not)")
+          user
+        else
+          IO.puts("  user: exists #{email}")
+          user
+        end
+
       user
   end
 

@@ -22,6 +22,7 @@ defmodule CodeMySpecSpex.Story987.Criterion8193Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :devops_on
 
   spex "A spec naming a story the project does not have owns nothing" do
     scenario "the file is stored, and satisfies no requirement" do

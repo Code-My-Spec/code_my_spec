@@ -21,6 +21,7 @@ defmodule CodeMySpecSpex.Story968.Criterion8012Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :devops_on
   setup :connect_providers
 
   spex "Test data never lands in the production bucket" do

@@ -37,6 +37,7 @@ defmodule CodeMySpecSpex.Story983.Criterion8166Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :devops_on
 
   spex "The gate is scoped to one story's own specs" do
     scenario "A story reaches ready while another story's specs are red" do

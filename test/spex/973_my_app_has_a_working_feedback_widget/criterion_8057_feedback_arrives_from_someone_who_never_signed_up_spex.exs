@@ -27,6 +27,7 @@ defmodule CodeMySpecSpex.Story973.Criterion8057Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :devops_on
 
   spex "Feedback arrives from someone who never signed up" do
     scenario "an anonymous visitor's message reaches CodeMySpec" do

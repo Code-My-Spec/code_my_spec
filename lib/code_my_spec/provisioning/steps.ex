@@ -53,6 +53,7 @@ defmodule CodeMySpec.Provisioning.Steps do
     Storage,
     Widget
   }
+
   alias CodeMySpec.Users.Scope
 
   # The access key opens every box the account owns, so it lives at the
@@ -157,15 +158,59 @@ defmodule CodeMySpec.Provisioning.Steps do
   def verify(:secrets, %Scope{} = scope, opts) do
     environments = environments(scope, opts)
 
-    # Satisfied only when EVERY environment has a key. A partially-keyed
-    # project is not done — the environment without one cannot be deployed,
-    # and reporting done would hide that until the deploy failed.
-    case Enum.all?(environments, &ProjectSecrets.has_value?(scope, age_key_name(&1))) do
+    # Satisfied only when EVERY environment has a key that still opens its own
+    # file. A partially-keyed project is not done — the environment without one
+    # cannot be deployed, and reporting done would hide that until the deploy
+    # failed.
+    #
+    # Having a key is not enough, and that is the whole point of asking twice.
+    # Half the pair lives in the repository (`.sops.yaml` names the public
+    # recipient) and half in the database. Nothing keeps them in step, and git
+    # moves tracked files around — a checkout, a revert, a bad merge, or a
+    # teammate committing their own `.sops.yaml`. When they drift, sops can
+    # still encrypt, because encrypting only needs the recipient; nothing can
+    # decrypt.
+    #
+    # Checking only for presence made that unrecoverable rather than merely
+    # broken: `run_step/3` verifies before it executes, so re-running the
+    # secrets step — the obvious remedy — found it satisfied and never reached
+    # `generate_keys`, which is what would have rewritten `.sops.yaml` from
+    # fresh keys. The step read done, the button did nothing, and the failure
+    # surfaced two steps away in deploy.
+    case Enum.all?(environments, &key_opens_its_own_file?(scope, &1)) do
       true ->
         {:ok, :satisfied, Enum.map(environments, &%{kind: "age_key", location: "secrets/#{&1}"})}
 
       false ->
         {:ok, :absent}
+    end
+  end
+
+  # Whether the stored private key is the one the environment's file was
+  # encrypted to. Derived rather than trusted: the public half is the only
+  # thing the file records, so the question is whether what we hold produces
+  # it.
+  #
+  # A file that does not exist yet is not drift — there is nothing to be out of
+  # step with — so the key's presence is the answer in that case, which keeps a
+  # first run from reporting absent forever.
+  defp key_opens_its_own_file?(scope, environment) do
+    with {:ok, private} <- ProjectSecrets.fetch_value(scope, age_key_name(environment)),
+         true <- is_binary(private) and private != "" do
+      case Sops.recipients(env(scope), environment) do
+        {:ok, [_ | _] = recipients} ->
+          case Sops.public_key(private) do
+            {:ok, public} -> public in recipients
+            _ -> false
+          end
+
+        # No file, or none we can read a recipient out of. Nothing to disagree
+        # with; the key being there is all this can honestly claim.
+        _ ->
+          true
+      end
+    else
+      _ -> false
     end
   end
 
@@ -196,7 +241,8 @@ defmodule CodeMySpec.Provisioning.Steps do
          {:ok, domain} <- Resend.find_domain(scope, name),
          true <- Resend.receiving?(domain),
          {:ok, webhooks} <- Resend.list_webhooks(scope),
-         %{"status" => "enabled"} <- Enum.find(webhooks, &(&1["endpoint"] == webhook_endpoint(scope, opts))) do
+         %{"status" => "enabled"} <-
+           Enum.find(webhooks, &(&1["endpoint"] == webhook_endpoint(scope, opts))) do
       {:ok, :satisfied,
        [
          %{kind: "receiving_domain", location: "resend/#{name}"},
@@ -274,7 +320,6 @@ defmodule CodeMySpec.Provisioning.Steps do
     end
   end
 
-
   # Three resources, made in order, and the last one is the one that fails.
   # Each is recorded as soon as it exists rather than all together at the end:
   # a firewall and an SSH key are real the moment Hetzner accepts them, and a
@@ -303,7 +348,6 @@ defmodule CodeMySpec.Provisioning.Steps do
     end
   end
 
-
   def run(:domain, %Scope{} = scope, opts) do
     case domain(scope) do
       nil ->
@@ -320,29 +364,52 @@ defmodule CodeMySpec.Provisioning.Steps do
 
           {:ok, _body} ->
             {:ok, [%{kind: "domain", location: "cloudflare/#{name}"}]}
-          {:paused, instructions} -> {:paused, instructions}
-          {:error, :confirmation_required} -> {:paused, confirmation_message(name)}
-          {:error, reason} -> {:error, format(reason)}
+
+          {:paused, instructions} ->
+            {:paused, instructions}
+
+          {:error, :confirmation_required} ->
+            {:paused, confirmation_message(name)}
+
+          {:error, reason} ->
+            {:error, format(reason)}
         end
     end
   end
 
   def run(:dns, %Scope{} = scope, opts) do
+    # Injectable for the same reason `run_step/3` takes `:verify` and
+    # `:execute`. The claim worth testing here is *whether the step refuses to
+    # move a live apex*, and proving that should not need a real zone.
     with name when is_binary(name) <- domain(scope),
-         {:ok, zone} <- Cloudflare.find_zone(scope, name),
+         {:ok, zone} <- find_dns_zone(scope, name, opts),
          environments <- EnvironmentRepository.assign_hosts(scope, name),
          {:ok, resources} <- dns_records_for(scope, zone, environments, opts) do
       {:ok, resources}
     else
-      nil -> {:error, "no domain set on the project"}
-      {:error, reason} -> {:error, format(reason)}
+      nil ->
+        {:error, "no domain set on the project"}
+
+      # Passed through, not folded into the error branch. A paused step is
+      # waiting on a decision and can be resumed; an errored one is broken.
+      # Reporting this as an error would make "your apex is live" look like a
+      # failure of the run rather than a question for the operator.
+      {:paused, message} ->
+        {:paused, message}
+
+      {:error, reason} ->
+        {:error, format(reason)}
     end
   end
 
   def run(:email, %Scope{} = scope, opts) do
     environments = environments(scope, opts)
 
-    case domain(scope) do
+    # `base_domain/2` rather than `domain/1`, so this reads the same value its
+    # neighbours do. Reading the project directly meant a caller that narrowed
+    # every other step to one domain had this one still working from the
+    # project's — two domains in one run, each believing it was the only one.
+    case base_domain(scope, opts) do
       nil -> {:error, "no domain set on the project"}
       base -> register_sending_domains(scope, base, environments, opts)
     end
@@ -376,7 +443,6 @@ defmodule CodeMySpec.Provisioning.Steps do
     end
   end
 
-
   def run(:monitoring, %Scope{} = scope, opts) do
     hosts = Keyword.get(opts, :hosts) || List.wrap(domain(scope))
 
@@ -394,7 +460,8 @@ defmodule CodeMySpec.Provisioning.Steps do
          end)}
 
       {:error, :no_notification_target} ->
-        {:paused, "Add a notification target before installing monitors — a monitor nobody hears is not monitoring."}
+        {:paused,
+         "Add a notification target before installing monitors — a monitor nobody hears is not monitoring."}
 
       {:error, reason} ->
         {:error, format(reason)}
@@ -417,7 +484,10 @@ defmodule CodeMySpec.Provisioning.Steps do
 
     with {:ok, site} <- require_value(Keyword.get(opts, :site_url) || site_url(scope), "a domain"),
          {:ok, key} <-
-           require_value(Keyword.get(opts, :deploy_key) || Map.get(project, :deploy_key), "a deploy key") do
+           require_value(
+             Keyword.get(opts, :deploy_key) || Map.get(project, :deploy_key),
+             "a deploy key"
+           ) do
       opts = opts |> Keyword.put(:site_url, site) |> Keyword.put(:deploy_key, key)
 
       case Widget.run(scope, env(scope), opts) do
@@ -512,7 +582,7 @@ defmodule CodeMySpec.Provisioning.Steps do
   end
 
   defp certificate_error(target, reason) do
-    "#{target.host} did not answer over HTTPS with a valid certificate (#{reason}). " <>
+    "#{target.host} did not answer over HTTPS with a valid certificate (#{format(reason)}). " <>
       "Issuance needs DNS resolving to the server and the proxy reachable on 80."
   end
 
@@ -572,12 +642,25 @@ defmodule CodeMySpec.Provisioning.Steps do
     with name when is_binary(name) <- receiving_domain(scope, opts),
          {:ok, domain} <- Resend.ensure_receiving_domain(scope, name, opts),
          {:ok, webhook} <- Resend.ensure_webhook(scope, endpoint, opts),
-         {:ok, mx} <- publish_mx(scope, name, domain, opts) do
+         {:ok, mx} <- publish_mx(scope, name, domain, opts),
+         # The inbound records, not the domain. Mail addressed to a name Resend
+         # has not checked yet is not accepted, so probing straight after
+         # publishing produced a message that went nowhere — indistinguishable
+         # from a broken inbox.
+         #
+         # Waiting on the domain as a whole was worse than not waiting: a
+         # receiving-only domain reports `pending` forever, because its sending
+         # records belong to story 969 and this step must leave them alone
+         # (criterion 8029). Observed against a real run — apex `MX c8033`
+         # verified while the domain sat pending on three records nobody here
+         # had published.
+         {:ok, _inbound} <- Resend.await_inbound_verified(scope, domain["id"], name, opts),
+         {:ok, proof} <- prove_delivery(scope, name, opts) do
       {:ok,
        [
          %{kind: "receiving_domain", location: "resend/#{name}"},
          %{kind: "webhook", location: endpoint, identifier: webhook["id"]}
-       ] ++ mx}
+       ] ++ mx ++ [proof]}
     else
       nil ->
         {:error, "no domain set on the project — nothing to receive mail at"}
@@ -590,9 +673,105 @@ defmodule CodeMySpec.Provisioning.Steps do
            "Setup will not delete and recreate the domain: that rotates its DKIM key " <>
            "and would break sending until DNS caught up."}
 
+      # Paused, not errored. Nothing is wrong with the inbound setup; there is
+      # simply nothing to send the probe from, and that is somebody's decision
+      # to make rather than a failure to retry.
+      {:error, :no_verified_sender} ->
+        {:paused,
+         "the inbound records are published, but proving delivery means sending a message to " <>
+           "this domain and the account has no verified sending domain to send it from. " <>
+           "Verify one — the email step does this — then resume."}
+
+      {:error, :never_arrived} ->
+        {:error,
+         "the records are published and Resend is configured, but a message sent to this " <>
+           "domain never arrived. Configuration that looks right is exactly how a receiving " <>
+           "setup fails — the MX, Resend's receiving capability and the webhook all have to " <>
+           "be right together, and each can look correct on its own while mail goes nowhere."}
+
       {:error, reason} ->
         {:error, format(reason)}
     end
+  end
+
+  # Send one, and wait for it to come back. Every other step in this epic
+  # proves itself against the world rather than against its own settings —
+  # backups restore into a scratch database and count the rows, tls makes an
+  # HTTPS request a bad certificate would fail, the sending step polls until
+  # Resend itself reports verified. Inbound was the one that accepted its own
+  # configuration as evidence.
+  #
+  # Read back from Resend rather than from the webhook. The webhook posts to
+  # the project's own domain, which may serve something unrelated or nothing at
+  # all, so waiting on it would make this step depend on the customer having
+  # deployed — and would report failure for a site that is merely not up yet.
+  # `GET /emails/receiving` is the same delivery, seen from a place that does
+  # not need anything deployed.
+  defp prove_delivery(scope, name, opts) do
+    probe = Keyword.get(opts, :inbound_probe, &default_inbound_probe/3)
+    probe.(scope, name, opts)
+  end
+
+  defp default_inbound_probe(scope, name, opts) do
+    # A token in the subject, because the account receives real mail too and
+    # "something arrived" is not "the thing we sent arrived".
+    token = "cms-inbound-#{System.unique_integer([:positive])}"
+    to = "setup-probe@#{name}"
+
+    # From a domain the account has already verified, whichever one that is.
+    #
+    # Not from the domain being set up: it is verified for *receiving* at this
+    # point and not for sending, so an inbox's proof would have depended on
+    # outbound configuration and failed with a 403 that says nothing about
+    # receiving. Not from `onboarding@resend.dev` either, which was my first
+    # attempt — Resend answers that with "You can only send testing emails to
+    # your own email address", because it is a testing sender rather than a
+    # usable one.
+    #
+    # Any verified domain works. The claim is that mail addressed to this
+    # domain arrives here; who sent it is not part of it.
+    with {:ok, from} <- probe_sender(scope),
+         {:ok, _sent} <- Resend.send_probe(scope, to, subject: token, from: from),
+         {:ok, message} <- Resend.await_received(scope, &received?(&1, to, token), opts) do
+      {:ok,
+       %{
+         kind: "inbound_proof",
+         location: to,
+         identifier:
+           "state=delivered message_id=#{message["id"]} proven_at=#{message["created_at"]}"
+       }}
+    end
+  end
+
+  # A verified sender on the account, or a clear reason there is none.
+  defp probe_sender(scope) do
+    case Resend.list_domains(scope) do
+      {:ok, domains} ->
+        verified = Enum.filter(domains, &(&1["status"] == "verified"))
+
+        # Any verified domain can carry the probe, so prefer one that is not
+        # the product's own. Sending as `codemyspec.com` works and changes
+        # nothing, but a setup probe should not go out over the production
+        # sending domain when another is available.
+        preferred =
+          Enum.find(verified, &(not String.contains?(&1["name"] || "", "codemyspec.com"))) ||
+            List.first(verified)
+
+        case preferred do
+          %{"name" => name} -> {:ok, "setup-probe@#{name}"}
+          _ -> {:error, :no_verified_sender}
+        end
+
+      other ->
+        other
+    end
+  end
+
+  defp received?(message, to, token) do
+    subject = to_string(message["subject"] || "")
+    recipients = List.wrap(message["to"]) |> Enum.map(&to_string/1)
+
+    String.contains?(subject, token) and Enum.any?(recipients, &(&1 == to))
   end
 
   def run(:storage, %Scope{} = scope, opts) do
@@ -635,8 +814,22 @@ defmodule CodeMySpec.Provisioning.Steps do
     end
   end
 
+  # Every environment, the way `run(:storage, ...)` immediately above already
+  # does it. This used to read `Keyword.get(opts, :environment, "prod")` — one
+  # environment, defaulted — while the step beside it created a bucket per
+  # environment.
+  #
+  # The visible failure was the lucky one: a project with only `uat` looked for
+  # a `-prod` bucket nothing had made and errored on NoSuchBucket. The
+  # dangerous case is an ordinary prod+uat project, where the default finds a
+  # real bucket and the step reports **done** having dumped production only.
+  # UAT's database is never written anywhere and nothing says so, which is
+  # discovered on the day somebody needs a restore.
+  #
+  # Same shape as the TLS default fixed in 69ca7625: a per-environment fact
+  # served by a project-level default.
   def run(:backups, %Scope{} = scope, opts) do
-    environment = Keyword.get(opts, :environment, "prod")
+    environments = environments(scope, opts)
     project = project(scope)
 
     case Storage.credentials(scope, opts) do
@@ -644,19 +837,38 @@ defmodule CodeMySpec.Provisioning.Steps do
         {:paused, Storage.credentials_instructions()}
 
       {:ok, credentials} ->
-        bucket = Storage.bucket_name(project, environment)
+        environments
+        |> Enum.reduce_while({:ok, []}, fn environment, {:ok, acc} ->
+          bucket = Storage.bucket_name(project, environment)
 
-        opts =
-          opts
-          |> Keyword.put(:bucket, bucket)
-          |> Keyword.put(:credentials, credentials)
+          # The key travels with the work, the way the deploy step carries it.
+          # `bin/backup` decrypts the environment file itself and sops reads
+          # its identity from `SOPS_AGE_KEY` — without it every dump failed on
+          # "no identity matched any of the recipients", which reads like a
+          # broken key rather than one that was never handed over.
+          environment_opts =
+            opts
+            |> Keyword.put(:bucket, bucket)
+            |> Keyword.put(:credentials, credentials)
+            |> put_age_key(scope, environment)
 
-        with :ok <- require_script(scope, "bin/backup") do
-          backups_outcome(Backups.run(env(scope), environment, opts), bucket)
-        end
+          with :ok <- require_script(scope, "bin/backup"),
+               {:ok, resources} <-
+                 backups_outcome(
+                   Backups.run(env(scope), environment, environment_opts),
+                   bucket,
+                   environment
+                 ) do
+            {:cont, {:ok, acc ++ resources}}
+          else
+            # What was already dumped is named in the failure, so a run that
+            # dies on the second environment still accounts for the first.
+            {:paused, instructions} -> {:halt, {:paused, instructions}}
+            {:error, reason} -> {:halt, {:error, reason, acc}}
+          end
+        end)
     end
   end
-
 
   # Named rather than silently succeeding — see the moduledoc.
   def run(key, _scope, _opts), do: {:error, {:not_implemented, key}}
@@ -800,7 +1012,13 @@ defmodule CodeMySpec.Provisioning.Steps do
   # backups' retention, and recorded so it is visible without reading a
   # bucket policy.
   defp retention_resource(%{retention_days: days}) when is_integer(days),
-    do: [%{kind: "image_retention", location: "#{days} days", identifier: "enforced_by=bucket_lifecycle"}]
+    do: [
+      %{
+        kind: "image_retention",
+        location: "#{days} days",
+        identifier: "enforced_by=bucket_lifecycle"
+      }
+    ]
 
   defp retention_resource(_image), do: []
 
@@ -815,8 +1033,7 @@ defmodule CodeMySpec.Provisioning.Steps do
       %{
         kind: "builder",
         location: name,
-        identifier:
-          "destroyed=#{image.builder_destroyed} booted_from=#{image.builder_image}"
+        identifier: "destroyed=#{image.builder_destroyed} booted_from=#{image.builder_image}"
       }
     ]
   end
@@ -841,9 +1058,14 @@ defmodule CodeMySpec.Provisioning.Steps do
         {:ok, %{"status" => "verified"} = d} ->
           {:cont, {:ok, acc ++ [%{kind: "sending_domain", location: "resend/#{d["name"]}"}]}}
 
-        {:ok, _unverified} -> {:halt, :absent}
-        {:error, :not_found} -> {:halt, :absent}
-        {:error, reason} -> {:halt, {:error, reason}}
+        {:ok, _unverified} ->
+          {:halt, :absent}
+
+        {:error, :not_found} ->
+          {:halt, :absent}
+
+        {:error, reason} ->
+          {:halt, {:error, reason}}
       end
     end)
     |> case do
@@ -886,12 +1108,131 @@ defmodule CodeMySpec.Provisioning.Steps do
           }
         ]
 
-        verify_sending_domain(scope, d, sending, created, opts)
+        # Publish before polling. Resend will not verify a domain whose records
+        # are not in DNS, so a run that registered and went straight to polling
+        # could only ever time out — and it did, on every real project. The
+        # spex missed it because a fixture published the records the step was
+        # supposed to publish, which made the step look like it worked.
+        case publish_sending_records(scope, sending, sending_records_for(scope, d)) do
+          {:ok, published} ->
+            verify_sending_domain(scope, d, sending, created ++ published, opts)
+
+          {:error, reason} ->
+            {:error, reason, created}
+        end
 
       {:error, reason} ->
         {:error, format(reason)}
     end
   end
+
+  # `ensure_domain/2` does not carry the records. The adopt path comes from
+  # `list_domains`, which never includes them, and the create response is not to
+  # be relied on either — so this re-reads the domain.
+  #
+  # Without it `Resend.records/1` returned `[]`, `publish_sending_records/3`
+  # took the "nothing to publish" branch and reported success, and not one
+  # record reached DNS. It looked exactly like a working step: no error, a
+  # sending domain registered, and every name resolving `false` afterwards for
+  # what appeared to be a propagation delay.
+  defp sending_records_for(scope, %{"id" => id} = domain) do
+    case Resend.get_domain(scope, id) do
+      {:ok, body} -> Resend.records(body["data"] || body)
+      _ -> Resend.records(domain)
+    end
+  end
+
+  defp sending_records_for(_scope, domain), do: Resend.records(domain)
+
+  # Write the records Resend asked for, into the zone that covers the sending
+  # domain and no other.
+  #
+  # The zone comes from `sending` rather than from the project's domain or from
+  # opts. That is the whole safety property here: a record can only land in a
+  # zone that already covers its own name, so there is no argument that can
+  # send a write somewhere unrelated. Resolving the zone from a separate value
+  # is what once put `send.<label>.codemyspec.com` in the production zone while
+  # the run was supposed to be confined to a throwaway domain.
+  #
+  # Names are qualified against the **zone**, because that is what Resend's are
+  # relative to — it returns `send.<label>`, not the full name. Handing that
+  # straight to Cloudflare works by accident when the zone happens to be right
+  # and writes to the wrong name when it is not, which is the same defect
+  # wearing a different hat.
+  defp publish_sending_records(scope, sending, records) do
+    case Resend.sending_records(records, sending) do
+      [] ->
+        {:ok, []}
+
+      sending_records ->
+        with {:ok, zone} <- find_sending_zone(scope, sending),
+             {:ok, existing} <- Cloudflare.list_dns_records(scope, zone["id"]) do
+          write_sending_records(scope, zone, sending_records, existing)
+        else
+          {:error, :not_found} ->
+            {:error,
+             "no Cloudflare zone covers #{sending}, so the records Resend needs cannot be " <>
+               "published — add the domain to Cloudflare, or point the project at one that is"}
+
+          {:error, reason} ->
+            {:error, format(reason)}
+        end
+    end
+  end
+
+  defp find_sending_zone(scope, sending), do: Cloudflare.find_zone(scope, sending)
+
+  defp write_sending_records(scope, zone, records, existing) do
+    Enum.reduce_while(records, {:ok, []}, fn record, {:ok, acc} ->
+      name = qualify(record["name"], zone["name"])
+
+      # Belt and braces. `find_zone` already matches on a label boundary, so
+      # this should be unreachable — and it is cheap enough to keep, because
+      # the failure it guards against is writing DNS to somebody's live domain
+      # and only finding out from the residue.
+      if covered_by?(name, zone["name"]) do
+        # No `ttl`. Resend reports it as the string "Auto" and Cloudflare
+        # answers `9208 Failed to parse. ttl must be a number.`, so passing it
+        # through rejected the very first record — the DKIM — and the step
+        # halted having published nothing. Leaving it off lets Cloudflare apply
+        # its own default, which is what "Auto" meant in the first place.
+        case Cloudflare.ensure_dns_record(scope, zone["id"], name, record["value"],
+               type: record["type"],
+               priority: record["priority"],
+               records: existing
+             ) do
+          {:ok, result} ->
+            {:cont, {:ok, acc ++ [sending_record_resource(name, record, result)]}}
+
+          {:error, reason} ->
+            {:halt, {:error, format(reason)}}
+        end
+      else
+        {:halt,
+         {:error,
+          "refusing to publish #{name}: it is not inside the #{zone["name"]} zone, and a " <>
+            "record written outside its own zone lands on a domain nobody meant to touch"}}
+      end
+    end)
+  end
+
+  defp sending_record_resource(name, record, result) do
+    %{
+      kind: "sending_record",
+      location: "cloudflare/#{name}",
+      identifier: "#{record["type"]} #{record["value"]}",
+      origin: if(adopted?(result), do: "adopted", else: "created")
+    }
+  end
+
+  defp adopted?(%{"result" => %{"__adopted__" => true}}), do: true
+  defp adopted?(_), do: false
+
+  defp covered_by?(name, zone_name) when is_binary(name) and is_binary(zone_name) do
+    name == zone_name or String.ends_with?(name, "." <> zone_name)
+  end
+
+  defp covered_by?(_, _), do: false
 
   defp verify_sending_domain(scope, domain, sending, created, opts) do
     case Resend.poll_until_verified(scope, domain["id"], opts) do
@@ -904,14 +1245,12 @@ defmodule CodeMySpec.Provisioning.Steps do
       {:error, {:unverified, faulted}} ->
         {:error,
          "the sending domain #{sending} did not verify — these records are not as Resend " <>
-           "expects: " <> Enum.map_join(faulted, ", ", &"#{&1["type"]} #{&1["name"]}"),
-         created}
+           "expects: " <> Enum.map_join(faulted, ", ", &"#{&1["type"]} #{&1["name"]}"), created}
 
       {:error, reason} ->
         {:error, format(reason), created}
     end
   end
-
 
   # Setup writes the repository onto the project. Without this a re-run cannot
   # tell its own work from a repository Sam already had — which is the whole
@@ -955,7 +1294,6 @@ defmodule CodeMySpec.Provisioning.Steps do
         {:error, reason}
     end
   end
-
 
   @doc """
   What the deploy will hand the app, and what it is still missing.
@@ -1020,15 +1358,22 @@ defmodule CodeMySpec.Provisioning.Steps do
   defp deploy_outcome(result, environment, host) do
     phases =
       [
-        result.migrated_at && %{kind: "deploy_phase", location: "migrate", identifier: iso(result.migrated_at)},
-        result.health_ok_at && %{kind: "deploy_phase", location: "swap", identifier: iso(result.health_ok_at)},
+        result.migrated_at &&
+          %{kind: "deploy_phase", location: "migrate", identifier: iso(result.migrated_at)},
+        result.health_ok_at &&
+          %{kind: "deploy_phase", location: "swap", identifier: iso(result.health_ok_at)},
         %{kind: "live_version", location: to_string(result.live_version)}
       ]
       |> Enum.reject(&is_nil/1)
 
     case result do
       %{swapped_at: nil, reason: reason} ->
-        failure = %{kind: "deploy_failure", location: reason, identifier: to_string(result.failed_phase)}
+        failure = %{
+          kind: "deploy_failure",
+          location: reason,
+          identifier: to_string(result.failed_phase)
+        }
+
         {:error, reason, [failure | phases]}
 
       %{swapped_at: _} ->
@@ -1040,7 +1385,13 @@ defmodule CodeMySpec.Provisioning.Steps do
   # is traceable to the commit CI built (8005). Absent when the caller did not
   # supply it — a real deploy derives it from git + the registry config.
   defp version_resources(%{commit: commit, image: image, source: source}) do
-    [%{kind: "deployed_version", location: image, identifier: "commit=#{commit} source=#{source}"}]
+    [
+      %{
+        kind: "deployed_version",
+        location: image,
+        identifier: "commit=#{commit} source=#{source}"
+      }
+    ]
   end
 
   defp version_resources(_), do: []
@@ -1048,20 +1399,48 @@ defmodule CodeMySpec.Provisioning.Steps do
   defp iso(%DateTime{} = at), do: DateTime.to_iso8601(at)
   defp iso(_), do: nil
 
-  defp backups_outcome({:ok, %{proof: proof} = result}, bucket) do
+  # Each resource carries its environment, the way every other fanned-out step
+  # tags them. Without it a page showing three dumps cannot say which database
+  # any of them holds — and "we have backups" is only worth anything if you can
+  # tell which.
+  defp put_age_key(opts, scope, environment) do
+    case fetch_age_key(scope, environment) do
+      {:ok, key} -> Keyword.put(opts, :age_key, key)
+      # No key yet means the secrets step has not run. The dump will fail on
+      # its own terms and say so, which is better than this deciding for it.
+      {:error, :not_found} -> opts
+    end
+  end
+
+  defp backups_outcome({:ok, %{proof: proof} = result}, bucket, environment) do
     {:ok,
      [
-       %{kind: "dump", location: "#{bucket}/#{result.key}"},
+       %{
+         kind: "age_key_delivery",
+         location: "#{environment}/SOPS_AGE_KEY",
+         identifier: "via=backup_env manual=false"
+       },
+       %{
+         kind: "dump",
+         location: "#{bucket}/#{result.key}",
+         identifier: "environment=#{environment}"
+       },
        %{
          kind: "restore_proof",
          location: proof.target,
-         identifier: "rows=#{proof.rows} proven_at=#{DateTime.to_iso8601(proof.proven_at)}"
+         identifier:
+           "environment=#{environment} rows=#{proof.rows} " <>
+             "proven_at=#{DateTime.to_iso8601(proof.proven_at)}"
        },
-       %{kind: "retention", location: "#{result.retention_days} days"}
+       %{
+         kind: "retention",
+         location: "#{result.retention_days} days",
+         identifier: "environment=#{environment}"
+       }
      ]}
   end
 
-  defp backups_outcome({:error, reason}, _bucket), do: {:error, format(reason)}
+  defp backups_outcome({:error, reason}, _bucket, _environment), do: {:error, format(reason)}
 
   defp project(%Scope{active_project: project}), do: project
   defp env(%Scope{environment: environment}), do: environment
@@ -1087,7 +1466,6 @@ defmodule CodeMySpec.Provisioning.Steps do
   defp server_name(scope, opts, environment) do
     "#{server_name(scope, opts)}-#{environment}"
   end
-
 
   # The disposition rides on the resource because "adopted rather than
   # duplicated" is only checkable if the page can tell the two apart — and
@@ -1161,25 +1539,85 @@ defmodule CodeMySpec.Provisioning.Steps do
   # An environment with no server yet is skipped rather than failed — a project
   # part-way through provisioning has real environments that are not live, and
   # pointing DNS at nothing would be worse than pointing at nothing yet.
+  defp find_dns_zone(scope, name, opts) do
+    case Keyword.get(opts, :zone) do
+      nil -> Cloudflare.find_zone(scope, name)
+      zone -> {:ok, zone}
+    end
+  end
+
   defp dns_records_for(scope, zone, environments, opts) do
     # Listed once for the whole zone, not once per environment.
     existing =
-      case Cloudflare.list_dns_records(scope, zone["id"]) do
-        {:ok, records} -> records
-        _ -> []
+      case Keyword.fetch(opts, :dns_records) do
+        {:ok, records} ->
+          records
+
+        :error ->
+          case Cloudflare.list_dns_records(scope, zone["id"]) do
+            {:ok, records} -> records
+            _ -> []
+          end
       end
 
     environments
     |> Enum.filter(& &1.host)
     |> Enum.reduce_while({:ok, []}, fn environment, {:ok, acc} ->
-      case environment_ip(scope, environment, opts) do
-        nil ->
+      case apex_repoint(scope, environment, existing, opts) do
+        :ok -> dns_record_for(scope, zone, environment, existing, acc, opts)
+        {:paused, message} -> {:halt, {:paused, message}}
+      end
+    end)
+  end
+
+  # Refuse to move a live apex without being told to.
+  #
+  # `assign_hosts/2` gives production the apex and every other environment a
+  # subdomain, and every project starts with a `prod` row — so once a domain is
+  # set, a run points the apex at a freshly created, empty box. If that apex is
+  # a live site, it goes dark. Nothing warned at the point of decision, and the
+  # only opt-out was deleting the environment, which you have to already know
+  # about.
+  #
+  # This codebase already has the argument for a second step: a domain purchase
+  # will not proceed without one, because registration is not refundable.
+  # Overwriting a live apex is less reversible in the way that matters — the
+  # money comes back, the downtime does not.
+  #
+  # Only the apex, and only when a record is already there pointing somewhere
+  # else. A subdomain is this run's to move, and a first run has nothing to
+  # overwrite. Decided from the records already listed for the zone, so this
+  # costs no extra call and knows exactly what it would replace.
+  defp apex_repoint(scope, environment, existing, opts) do
+    apex = domain(scope)
+    confirmed? = Keyword.get(opts, :confirm_apex_repoint, false)
+
+    with false <- confirmed?,
+         true <- environment.host == apex,
+         ip when is_binary(ip) <- environment_ip(scope, environment, opts),
+         %{"content" => current} <-
+           Enum.find(existing, &(&1["name"] == apex and &1["type"] == "A")),
+         true <- current != ip do
+      {:paused,
+       "#{apex} already resolves to #{current}, and this would repoint it at #{ip} — a " <>
+         "server this run just created. If #{apex} is serving anything today, that takes it " <>
+         "down. Nothing else about the run is blocked: production is an environment like any " <>
+         "other, so remove the `prod` environment to leave the apex alone, or confirm to " <>
+         "repoint it."}
+    else
+      _ -> :ok
+    end
+  end
+
+  defp dns_record_for(scope, zone, environment, existing, acc, opts) do
+    case environment_ip(scope, environment, opts) do
+      nil ->
           {:cont, {:ok, acc}}
 
         ip ->
-          case Cloudflare.ensure_dns_record(scope, zone["id"], environment.host, ip,
-                 records: existing
-               ) do
+          write = Keyword.get(opts, :write_dns_record, &Cloudflare.ensure_dns_record/5)
+
+          case write.(scope, zone["id"], environment.host, ip, records: existing) do
             {:ok, response} ->
               record = dns_resource(environment.host, ip, response, environment.name)
 
@@ -1203,11 +1641,10 @@ defmodule CodeMySpec.Provisioning.Steps do
 
               {:cont, {:ok, acc ++ [record] ++ verification}}
 
-            {:error, reason} ->
-              {:halt, {:error, reason}}
-          end
-      end
-    end)
+          {:error, reason} ->
+            {:halt, {:error, reason}}
+        end
+    end
   end
 
   # Recording waits on DNS actually propagating; replay waits on nothing.
@@ -1244,7 +1681,6 @@ defmodule CodeMySpec.Provisioning.Steps do
       origin: origin(response["result"] || %{})
     }
   end
-
 
   defp firewall_resource(name, firewall),
     do: %{kind: "firewall", location: "hetzner/#{name}", origin: origin(firewall)}
@@ -1345,8 +1781,10 @@ defmodule CodeMySpec.Provisioning.Steps do
   # project read stays for installs that generated one before the account
   # grain existed.
   defp access_public_key(scope, name) do
-    with :error <- stored_public_key(fn -> AccountSecrets.fetch_value(scope, @access_key_public) end),
-         :error <- stored_public_key(fn -> ProjectSecrets.fetch_value(scope, @access_key_public) end) do
+    with :error <-
+           stored_public_key(fn -> AccountSecrets.fetch_value(scope, @access_key_public) end),
+         :error <-
+           stored_public_key(fn -> ProjectSecrets.fetch_value(scope, @access_key_public) end) do
       generate_access_key(scope, name)
     end
   end
@@ -1381,7 +1819,8 @@ defmodule CodeMySpec.Provisioning.Steps do
           {:ok, public}
 
         {out, status} ->
-          {:error, "could not generate an access key (ssh-keygen exit #{status}): #{String.trim(out)}"}
+          {:error,
+           "could not generate an access key (ssh-keygen exit #{status}): #{String.trim(out)}"}
       end
     after
       File.rm_rf(dir)
@@ -1455,7 +1894,17 @@ defmodule CodeMySpec.Provisioning.Steps do
 
         with {:ok, zone} <- Cloudflare.find_zone(scope, base) do
           Enum.reduce_while(records, {:ok, []}, fn record, {:ok, acc} ->
-            record_name = qualify(record["name"], base)
+            # Against the **zone**, not the receiving domain. Resend names its
+            # records relative to the zone — for a receiving domain of
+            # `c8033.astralbi.com` in zone `astralbi.com` it returns `c8033`,
+            # and qualifying that against the receiving domain produced
+            # `c8033.c8033.astralbi.com`: created successfully, reported done,
+            # and no mail ever routed. Found in the residue of a real run.
+            #
+            # The `qualify/2` doc has warned about this exact shape since it
+            # was written; the sending records were fixed for it and this call
+            # was not.
+            record_name = qualify(record["name"], zone["name"])
 
             case Cloudflare.ensure_dns_record(scope, zone["id"], record_name, record["value"],
                    type: "MX",
@@ -1506,7 +1955,12 @@ defmodule CodeMySpec.Provisioning.Steps do
 
   defp bucket_resource(bucket, opts) do
     location = Keyword.get(opts, :location, "fsn1")
-    %{kind: "bucket", location: "#{location}.your-objectstorage.com/#{bucket}", identifier: "user"}
+
+    %{
+      kind: "bucket",
+      location: "#{location}.your-objectstorage.com/#{bucket}",
+      identifier: "user"
+    }
   end
 
   defp confirmation_message(name) do
@@ -1592,7 +2046,9 @@ defmodule CodeMySpec.Provisioning.Steps do
   end
 
   @doc "The age recipients each environment's encrypted file names."
-  @spec recipients(Scope.t(), [String.t()]) :: [%{environment: String.t(), fingerprints: [String.t()]}]
+  @spec recipients(Scope.t(), [String.t()]) :: [
+          %{environment: String.t(), fingerprints: [String.t()]}
+        ]
   # A scope with no environment has no repository to read, which is an answer
   # rather than an error — the page renders for a cloud scope too.
   def recipients(%Scope{environment: nil}, _environments), do: []
@@ -1626,5 +2082,31 @@ defmodule CodeMySpec.Provisioning.Steps do
   defp random_secret, do: 32 |> :crypto.strong_rand_bytes() |> Base.url_encode64(padding: false)
 
   defp format(reason) when is_binary(reason), do: reason
+
+  # Transport failures in words. `inspect/1` is the right default for a term
+  # nobody anticipated, and the wrong one for the two failures that show up
+  # here constantly: a struct reached the setup page reading
+  # `%Finch.TransportError{reason: :econnrefused, source: %Mint.TransportError{…}}`
+  # — the same reason twice, nested, with the actionable half buried inside and
+  # the layout truncating it mid-word.
+  #
+  # `:econnrefused` and `:nxdomain` are exactly the two states the surrounding
+  # advice is already about, so saying them plainly makes the sentence answer
+  # its own question.
+  defp format(%{reason: reason}) when is_atom(reason), do: format_transport(reason)
+  defp format({:error, reason}), do: format(reason)
+  defp format(reason) when is_atom(reason), do: format_transport(reason)
   defp format(reason), do: inspect(reason)
+
+  defp format_transport(:econnrefused), do: "nothing is listening on that port"
+  defp format_transport(:nxdomain), do: "the name does not resolve yet"
+  defp format_transport(:timeout), do: "the host did not answer in time"
+  defp format_transport(:ehostunreach), do: "the host is unreachable"
+  defp format_transport(:econnreset), do: "the host closed the connection"
+  defp format_transport(:closed), do: "the connection closed before an answer"
+
+  # Still a word rather than a struct. An atom nobody has a sentence for reads
+  # better as `econnaborted` than as `:econnaborted`, and the ones that matter
+  # are named above.
+  defp format_transport(other), do: other |> Atom.to_string() |> String.replace("_", " ")
 end

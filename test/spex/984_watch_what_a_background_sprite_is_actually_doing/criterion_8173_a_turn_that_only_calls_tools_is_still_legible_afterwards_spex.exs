@@ -20,6 +20,7 @@ defmodule CodeMySpecSpex.Story984.Criterion8173Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :devops_on
 
   spex "Tool-only turns are recorded in full" do
     scenario "A turn that only calls tools is still legible afterwards" do

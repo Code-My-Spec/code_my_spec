@@ -36,6 +36,7 @@ defmodule CodeMySpecSpex.Story983.Criterion8159Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :devops_on
 
   spex "A partially green run does not earn the latch" do
     scenario "One failing spec leaves the story short of ready" do

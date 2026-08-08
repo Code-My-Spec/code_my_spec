@@ -120,9 +120,7 @@ defmodule CodeMySpecWeb.CliChannel do
       })
 
     Logger.info(
-      "[CliChannel] presence tracked user_id=#{user_id} key=#{presence_key} count=#{
-        map_size(Presence.list("cli:user:#{user_id}"))
-      }"
+      "[CliChannel] presence tracked user_id=#{user_id} key=#{presence_key} count=#{map_size(Presence.list("cli:user:#{user_id}"))}"
     )
 
     Phoenix.PubSub.broadcast(

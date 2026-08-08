@@ -36,6 +36,7 @@ defmodule CodeMySpecSpex.Story983.Criterion8164Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :devops_on
 
   spex "Enforcement leaves mid-build stories alone" do
     scenario "A failing spec on a mid-build story is advisory, not blocking" do

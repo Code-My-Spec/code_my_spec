@@ -36,10 +36,17 @@ defmodule CodeMySpecWeb.HarnessChannelTest do
     assert {:error, %{reason: "unauthorized"}} =
              CodeMySpecWeb.UserSocket
              |> socket("user_socket:#{scope.user.id}", %{scope: scope})
-             |> subscribe_and_join(CodeMySpecWeb.HarnessChannel, "harness:#{Ecto.UUID.generate()}", %{})
+             |> subscribe_and_join(
+               CodeMySpecWeb.HarnessChannel,
+               "harness:#{Ecto.UUID.generate()}",
+               %{}
+             )
   end
 
-  test "agent_message is persisted onto the session's conversation", %{scope: scope, channel: channel} do
+  test "agent_message is persisted onto the session's conversation", %{
+    scope: scope,
+    channel: channel
+  } do
     push(channel, "agent_message", %{
       "external_id" => @external_id,
       "project_id" => scope.active_project_id,
@@ -64,10 +71,13 @@ defmodule CodeMySpecWeb.HarnessChannelTest do
     [message] = Conversations.list_messages(conversation)
     assert message.role == :assistant
     assert message.agent_role == "coding"
-    assert message.body == "implemented the context"
+    assert CodeMySpec.Conversations.Message.text(message) == "implemented the context"
   end
 
-  test "an operator reply is pushed down to the harness as user_message", %{scope: scope, channel: channel} do
+  test "an operator reply is pushed down to the harness as user_message", %{
+    scope: scope,
+    channel: channel
+  } do
     # First agent_message subscribes the channel to the conversation topic.
     push(channel, "agent_message", %{
       "external_id" => @external_id,
@@ -87,8 +97,12 @@ defmodule CodeMySpecWeb.HarnessChannelTest do
       )
 
     # Operator replies in the inbox — broadcasts on the conversation topic.
-    {:ok, _} = Conversations.add_message(conversation, :operator, "try the other approach", "op-1")
+    {:ok, _} =
+      Conversations.add_message(conversation, :operator, "try the other approach", "op-1")
 
-    assert_push "user_message", %{"external_id" => @external_id, "text" => "try the other approach"}
+    assert_push "user_message", %{
+      "external_id" => @external_id,
+      "text" => "try the other approach"
+    }
   end
 end

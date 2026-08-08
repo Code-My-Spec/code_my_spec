@@ -23,6 +23,7 @@ defmodule CodeMySpecSpex.Story984.Criterion8175Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :devops_on
 
   spex "A broken recorder does not break the run" do
     scenario "The run survives the recorder failing" do

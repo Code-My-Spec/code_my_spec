@@ -102,6 +102,92 @@ defmodule CodeMySpecSpex.Fixtures do
     publish_records(scope, sending_domain, :except_dkim)
   end
 
+  @doc """
+  Register a sending domain at Resend and publish nothing.
+
+  The split criterion 8029 needs: the domain has to exist for the page to show
+  a mail section at all, but its records must not be published, because
+  publishing them is the step's job and the criterion is about what that
+  publishing disturbs.
+  """
+  @spec register_sending_domain_only(Scope.t(), String.t()) :: {:ok, map()} | {:error, term()}
+  def register_sending_domain_only(scope, sending_domain) do
+    CodeMySpec.Provisioning.Resend.ensure_domain(scope, sending_domain)
+  end
+
+  @doc """
+  Give the account an SSH access key, generated for real.
+
+  The server step generates one when the account has none, and generation
+  shells out to `ssh-keygen` — which a shell cassette replays as exit 0 without
+  creating the key files, so the `File.read!` that follows fails with "could
+  not read file". The command is recorded; its side effect on disk is not.
+
+  Staging the key means the step adopts one instead of generating one, which is
+  also the truthful precondition: an account that has provisioned anything
+  before already has this. Generated rather than hardcoded because a recording
+  hands it to a real Hetzner box.
+  """
+  @spec account_access_key(Scope.t()) :: :ok
+  def account_access_key(scope) do
+    dir = Path.join(System.tmp_dir!(), "spex-ssh-#{System.unique_integer([:positive])}")
+    File.mkdir_p!(dir)
+    path = Path.join(dir, "id_ed25519")
+
+    try do
+      {_out, 0} =
+        System.cmd("ssh-keygen", ["-t", "ed25519", "-N", "", "-C", "spex", "-f", path],
+          stderr_to_stdout: true
+        )
+
+      CodeMySpec.AccountSecrets.put_value(scope, "server_ssh_private_key", File.read!(path))
+      CodeMySpec.AccountSecrets.put_value(scope, "server_ssh_public_key", File.read!(path <> ".pub"))
+      :ok
+    after
+      File.rm_rf(dir)
+    end
+  end
+
+  @doc "Remove a sending domain from Resend, for the register-only teardown."
+  @spec remove_sending_domain(Scope.t(), String.t()) :: :ok
+  def remove_sending_domain(scope, sending_domain) do
+    alias CodeMySpec.Provisioning.Resend
+
+    with {:ok, %{"id" => id}} <- Resend.find_domain(scope, sending_domain) do
+      Resend.delete_domain(scope, id)
+    end
+
+    :ok
+  end
+
+  @doc """
+  Publish every record, then delete the DKIM — the state 8027 is now grounded
+  on.
+
+  The deletion is what makes this stick. The step publishes whatever is
+  missing, so a record that was merely never written comes straight back and
+  the domain verifies; a record that was *deleted* leaves its absence in a
+  recursive resolver's cache for the zone's SOA negative TTL, which outlasts
+  the verification window. That is also the real story — somebody tidying DNS
+  who does not recognise `resend._domainkey`.
+
+  Returns the same shape as `publish_all_records_except_dkim/2`, with the DKIM
+  still listed: it existed, so teardown should still look for it.
+  """
+  @spec publish_then_delete_dkim(Scope.t(), String.t()) :: {:ok, map()} | {:error, term()}
+  def publish_then_delete_dkim(scope, sending_domain) do
+    alias CodeMySpec.Provisioning.Cloudflare
+
+    with {:ok, created} <- publish_records(scope, sending_domain, :all),
+         {:ok, records} <- Cloudflare.list_dns_records(scope, created.zone_id) do
+      records
+      |> Enum.filter(&String.contains?(&1["name"], "_domainkey"))
+      |> Enum.each(&Cloudflare.delete_dns_record(scope, created.zone_id, &1["id"]))
+
+      {:ok, created}
+    end
+  end
+
   defp publish_records(scope, sending_domain, which) do
     alias CodeMySpec.Provisioning.{Cloudflare, Resend}
 
@@ -1574,32 +1660,58 @@ defmodule CodeMySpecSpex.Fixtures do
   """
   def live_provider_grant(provider) do
     case :persistent_term.get({__MODULE__, :grant, provider}, nil) do
-      nil ->
-        # A provider whose grant is dead must not stop a recording that does not
-        # use it — a revoked Resend connection would otherwise block every
-        # Cloudflare and Hetzner spex on the machine. The placeholder produces
-        # 401s, so a spex that genuinely needed this provider still fails, and
-        # says why here rather than as an unexplained refusal later.
-        grant =
-          try do
-            refresh_dev_grant(provider)
-          rescue
-            error ->
-              IO.warn("""
-              #{provider} is not usable for recording: #{Exception.message(error)}
-
-              Spex that actually call #{provider} will fail. Others are unaffected.
-              """)
-
-              placeholder_grant()
-          end
-
-        :persistent_term.put({__MODULE__, :grant, provider}, grant)
-        grant
-
-      cached ->
-        cached
+      grant when is_map(grant) -> if usable?(grant), do: grant, else: fetch_and_cache(provider)
+      _ -> fetch_and_cache(provider)
     end
+  end
+
+  # The cached copy is a snapshot, and it does not carry a refresh token — that
+  # is deliberate, so a rotating credential has exactly one owner. The cost is
+  # that the snapshot cannot renew itself, and Resend's access token lives about
+  # fifteen minutes while a full 969 recording takes longer than that. Caching
+  # for the whole run therefore died partway through with
+  # `:reauthorize_required`, which reads like a revoked grant and is not one —
+  # the dev row was untouched and worked immediately afterwards.
+  #
+  # Re-reading when the snapshot nears expiry keeps the single owner. Going back
+  # to dev means `fetch_access_token/2` refreshes under its row lock and
+  # persists the rotation, so the new token has one owner too.
+  #
+  # This only started biting once the account was genuinely clean: recordings
+  # used to finish inside fifteen minutes because the previous run's sending
+  # domains were still there and verified instantly.
+  @grant_margin_seconds 300
+
+  defp usable?(%{expires_at: %DateTime{} = expires_at}) do
+    DateTime.diff(expires_at, DateTime.utc_now()) > @grant_margin_seconds
+  end
+
+  # A placeholder has no meaningful expiry and must not send us back to dev on
+  # every spex — the warning was already issued once.
+  defp usable?(_), do: true
+
+  defp fetch_and_cache(provider) do
+    # A provider whose grant is dead must not stop a recording that does not
+    # use it — a revoked Resend connection would otherwise block every
+    # Cloudflare and Hetzner spex on the machine. The placeholder produces
+    # 401s, so a spex that genuinely needed this provider still fails, and
+    # says why here rather than as an unexplained refusal later.
+    grant =
+      try do
+        refresh_dev_grant(provider)
+      rescue
+        error ->
+          IO.warn("""
+          #{provider} is not usable for recording: #{Exception.message(error)}
+
+          Spex that actually call #{provider} will fail. Others are unaffected.
+          """)
+
+          placeholder_grant()
+      end
+
+    :persistent_term.put({__MODULE__, :grant, provider}, grant)
+    grant
   end
 
   defp placeholder_grant do
@@ -1791,5 +1903,34 @@ defmodule CodeMySpecSpex.Fixtures do
       })
 
     :ok
+  end
+
+  @doc """
+  Say a project other than the active one is meant to be deployed.
+
+  `setup :devops_on` covers the project on the scope. A criterion needing a
+  *second* deployable project has no scope pointing at it and no id — the
+  create form redirects to the index — so it names the project instead.
+
+  DevOps is opt in, so a project created and left alone expects no
+  infrastructure. A criterion about two deployable projects has to make both
+  of them so.
+  """
+  @spec enable_devops(Scope.t()) :: :ok
+  def enable_devops(%Scope{} = scope) do
+    {:ok, _configuration} = CodeMySpec.Configurations.update(scope, %{devops: :prod})
+
+    :ok
+  end
+
+  @spec enable_devops(Scope.t(), String.t()) :: :ok
+  def enable_devops(%Scope{} = scope, project_name) do
+    project =
+      scope
+      |> CodeMySpec.Projects.list_projects()
+      |> Enum.find(&(&1.name == project_name)) ||
+        raise "no project named #{inspect(project_name)} on this account"
+
+    enable_devops(%Scope{scope | active_project: project, active_project_id: project.id})
   end
 end

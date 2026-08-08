@@ -25,6 +25,7 @@ defmodule CodeMySpecSpex.Story964.Criterion7987Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :devops_on
 
   spex "The repo stays clean of credential values" do
     scenario "no credential value appears anywhere in the working tree" do

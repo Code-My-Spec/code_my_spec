@@ -22,6 +22,20 @@ defmodule CodeMySpecSpex.Case do
     quote do
       @endpoint CodeMySpecLocalWeb.Endpoint
 
+      # `ownership_timeout` was already raised for recording; ExUnit's own test
+      # timeout never was, and it is the shorter of the two. Registering a
+      # sending domain and waiting for a provider to see its DNS takes minutes
+      # against the 60s default.
+      #
+      # This stayed hidden because every recording found the previous
+      # recording's domains still on the account and verified instantly — the
+      # residue was doing the waiting. A genuinely clean account timed out all
+      # seven criteria, which is the honest cost of the work.
+      #
+      # Replay keeps the default: nothing is waiting on anything, so a spex
+      # that runs long there is hung rather than patient.
+      @moduletag timeout: CodeMySpecSpex.Case.spex_timeout()
+
       use CodeMySpecLocalWeb, :verified_routes
       use SexySpex
 
@@ -35,6 +49,30 @@ defmodule CodeMySpecSpex.Case do
       import Phoenix.LiveViewTest
       import CodeMySpecSpex.Case
     end
+  end
+
+  @doc """
+  How long one criterion may take, given what it is actually waiting on.
+
+  Recording waits on real DNS propagating and a provider re-checking it, which
+  is minutes per criterion. Replay waits on nothing and keeps ExUnit's default,
+  so a long-running replay reads as hung rather than as patient.
+  """
+  def recording_ownership_timeout do
+    if System.get_env("SPEX_CASSETTE_MODE") == "record",
+      do: :timer.minutes(45),
+      else: :timer.minutes(15)
+  end
+
+  def spex_timeout do
+    # Replay is not instant. `await_environment_server/3` alone waits up to 90s
+    # by default, so ExUnit's 60s ceiling meant a spex could time out inside a
+    # helper it was entitled to call — a failure about the clock, reported as
+    # if the criterion were hung. Three minutes clears every helper's own
+    # window and still catches something genuinely stuck.
+    if System.get_env("SPEX_CASSETTE_MODE") == "record",
+      do: :timer.minutes(20),
+      else: :timer.minutes(3)
   end
 
   @doc """
@@ -52,10 +90,19 @@ defmodule CodeMySpecSpex.Case do
     # the default reclaimed the connection mid-poll, so the LiveView came back
     # to a sandbox that no longer had an owner. The error names process
     # ownership and says nothing about the wait that caused it.
+    #
+    # Fifteen minutes was enough while recordings finished in four, which they
+    # only did because the previous run's sending domains were still on the
+    # account and verified instantly. Against a clean account a 969 recording
+    # runs about eighteen, and the connection was being reclaimed during
+    # `on_exit` — so teardown could not read what it was meant to remove and
+    # left real DNS records and sending domains behind. A teardown that cannot
+    # reach the database is the one failure that costs money, so this is
+    # generous on purpose.
     pid =
       Sandbox.start_owner!(CodeMySpec.Repo,
         shared: not tags[:async],
-        ownership_timeout: tags[:ownership_timeout] || :timer.minutes(15)
+        ownership_timeout: tags[:ownership_timeout] || recording_ownership_timeout()
       )
     on_exit(fn -> Sandbox.stop_owner(pid) end)
 
@@ -147,9 +194,16 @@ defmodule CodeMySpecSpex.Case do
   # `connect_providers/1` reads each grant once and spreads it across the three
   # fields, so this is one query per provider per spex, not three.
 
-  # The grant carries its refresh token too, so a recording that outlives its
-  # access token can renew mid-run — Resend's lives about fifteen minutes and a
-  # full recording takes longer than that.
+  # The grant deliberately does NOT carry its refresh token: a credential that
+  # rotates on every use gets exactly one owner, and that is the dev row. So the
+  # copy handed to a spex cannot renew itself, and Resend's access token lives
+  # about fifteen minutes while a full recording takes longer than that.
+  #
+  # `live_provider_grant/1` re-reads from dev when the snapshot nears expiry,
+  # which is what keeps a long recording alive without ever making a second
+  # owner of the refresh token. This comment used to claim the copy carried one;
+  # it never did, and the run died at `:reauthorize_required` looking like a
+  # revoked grant.
   #
   # The connected grant from the dev database, read through a short-lived
   # connection of its own: the spex sandbox owns `CodeMySpec.Repo` and points at
@@ -1011,6 +1065,46 @@ defmodule CodeMySpecSpex.Case do
     end
   end
 
+  @doc """
+  Stage the account's SSH access key so the server step adopts rather than
+  generates one. See `Fixtures.account_access_key/1` for why generation cannot
+  survive replay.
+  """
+  def account_access_key(%{scope: scope} = context) do
+    Fixtures.account_access_key(scope)
+    context
+  end
+
+  @doc """
+  Make each environment's sending domain exist, without publishing anything.
+
+  The page renders no mail section until Resend knows the domain, so a
+  criterion that needs to read the DNS panel *before* the step runs cannot
+  start from nothing. This gives it the domain and stops there — the records
+  stay the step's to publish, which is what 8029 is asserting about.
+  """
+  def registered_sending_domains(scope, project, environments \\ ["prod", "uat"]) do
+    for environment <- environments do
+      sending = Fixtures.sending_domain(project.domain, environment)
+
+      case with_provider_cassette("setup_#{slug(sending)}_registered", fn ->
+             Fixtures.register_sending_domain_only(scope, sending)
+           end) do
+        {:ok, _domain} ->
+          ExUnit.Callbacks.on_exit(fn ->
+            safe_teardown(sending, fn ->
+              with_provider_cassette("teardown_#{slug(sending)}_registered", fn ->
+                Fixtures.remove_sending_domain(scope, sending)
+              end)
+            end)
+          end)
+
+        {:error, reason} ->
+          raise "could not register #{sending}: #{inspect(reason)}"
+      end
+    end
+  end
+
   def verified_sending_domains(scope, project, environments \\ ["prod", "uat"]) do
     for environment <- environments do
       sending = Fixtures.sending_domain(project.domain, environment)
@@ -1047,9 +1141,16 @@ defmodule CodeMySpecSpex.Case do
   @doc """
   A sending domain that is stuck for a *specific* reason.
 
-  Everything Resend asks for is published except DKIM, so the domain refuses
-  to verify and the record at fault is identifiable — which is the difference
-  between "verification timed out" and something Sam can act on.
+  Everything Resend asks for is published, and then the DKIM is deleted — the
+  way it happens for real is somebody tidying DNS who does not recognise
+  `resend._domainkey`. The domain refuses to verify and the record at fault is
+  identifiable, which is the difference between "verification timed out" and
+  something Sam can act on.
+
+  Deleting rather than withholding is what keeps this premise reachable. The
+  step publishes whatever is missing, so a record that was never written comes
+  straight back; a record that was deleted leaves its absence in a resolver's
+  cache for the zone's SOA negative TTL, which outlasts the wait.
 
   Registers teardown of both the DNS records and the Resend domain. These are
   real records in a real zone; leaving them behind would change how mail for
@@ -1059,7 +1160,7 @@ defmodule CodeMySpecSpex.Case do
     project = unverifiable_domain(project, context)
 
     case with_provider_cassette("setup_#{slug(project.domain)}_partial_records", fn ->
-           Fixtures.publish_all_records_except_dkim(scope, project.domain)
+           Fixtures.publish_then_delete_dkim(scope, project.domain)
          end) do
       {:ok, created} ->
         ExUnit.Callbacks.on_exit(fn ->
@@ -1370,6 +1471,89 @@ defmodule CodeMySpecSpex.Case do
       },
       Map.new(attrs)
     )
+  end
+
+  @doc """
+  Stage what each provider says the account holds.
+
+  The seam is the enumeration, not the page. A criterion about how a dangling
+  bucket is *displayed* should not need a real bucket at Hetzner; the page is
+  still driven for real.
+
+  Takes a map of provider to either a list of resources or `{:error, reason}`,
+  so one provider can be unreachable while the others answer — which is a state
+  the page has to survive and cannot be arranged any other way.
+
+      stage_inventory(context, %{
+        hetzner: [inventory_resource(%{kind: "bucket", location: "old-bucket"})],
+        cloudflare: {:error, :unauthorized}
+      })
+  """
+  def stage_inventory(context, by_provider) do
+    previous = Application.get_env(:code_my_spec, CodeMySpec.Resources.Inventory, [])
+
+    staged =
+      Map.new(by_provider, fn
+        {provider, {:error, reason}} -> {provider, {:error, reason}}
+        {provider, resources} when is_list(resources) -> {provider, {:ok, resources}}
+      end)
+
+    Application.put_env(
+      :code_my_spec,
+      CodeMySpec.Resources.Inventory,
+      Keyword.merge(previous, list: fn _scope -> staged end)
+    )
+
+    ExUnit.Callbacks.on_exit(fn ->
+      Application.put_env(:code_my_spec, CodeMySpec.Resources.Inventory, previous)
+    end)
+
+    context
+  end
+
+  @doc """
+  A resource as a provider reports one.
+
+  Shaped like an enumeration rather than like our record of having made it:
+  the provider knows what a thing is and where it lives, and nothing about
+  which project asked for it.
+  """
+  def inventory_resource(attrs \\ %{}) do
+    Map.merge(
+      %{
+        kind: "bucket",
+        location: "resource-#{System.unique_integer([:positive])}",
+        identifier: nil
+      },
+      Map.new(attrs)
+    )
+  end
+
+  @doc """
+  Stage what trimming a resource does, instead of deleting it.
+
+  The one seam that is not about speed. A criterion asserting *what gets
+  deleted* must not delete anything to say so — the resources in question are
+  DNS records and buckets, and neither comes back. The function is handed each
+  resource trim would remove, so what was and was not offered up is checkable
+  without a provider ever being called.
+
+      stage_trim(context, fn resource -> send(owner, {:trimmed, resource.location}) end)
+  """
+  def stage_trim(context, fun) do
+    previous = Application.get_env(:code_my_spec, CodeMySpec.Resources, [])
+
+    Application.put_env(
+      :code_my_spec,
+      CodeMySpec.Resources,
+      Keyword.merge(previous, trim: fn _scope, resource -> fun.(resource) && {:ok, resource} end)
+    )
+
+    ExUnit.Callbacks.on_exit(fn ->
+      Application.put_env(:code_my_spec, CodeMySpec.Resources, previous)
+    end)
+
+    context
   end
 
   @doc """
@@ -1689,7 +1873,14 @@ defmodule CodeMySpecSpex.Case do
     [
       # age private keys. `age-keygen` writes these to stdout, so they land in
       # command cassettes; the secrets step generates one per environment.
-      {~r/AGE-SECRET-KEY-[A-Z0-9]+/, "AGE-SECRET-KEY-<REDACTED>"},
+      # Redacted to something still *shaped* like a key. `<REDACTED>` kept the
+      # secret out of the cassette and broke replay: `Sops.parse_key/1` matches
+      # `AGE-SECRET-KEY-[A-Z0-9]+`, `<` is not in that class, and the secrets
+      # step reported `:unparsable_key` for a recording that was working as
+      # designed. A structurally valid placeholder does both jobs — nothing
+      # here is a real key, and nothing downstream has to special-case it.
+      {~r/AGE-SECRET-KEY-[A-Z0-9]+/,
+       "AGE-SECRET-KEY-1REDACTED0000000000000000000000000000000000000000000000000000"},
       # PEM private keys, for the same reason — anything that prints a key.
       {~r/-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/,
        "-----BEGIN PRIVATE KEY-----<REDACTED>-----END PRIVATE KEY-----"},
@@ -1980,6 +2171,22 @@ defmodule CodeMySpecSpex.Case do
   @doc """
   Setup helper that sets up an active project for the user.
   """
+  @doc """
+  Say this project is meant to be deployed.
+
+  `devops` defaults to `:off` — infrastructure is opt in, because every project
+  is a project and only some are meant to have servers. A criterion whose
+  premise is "a project that does DevOps" has to say so, rather than inheriting
+  it from whatever the default happens to be that week.
+
+  Add `setup :devops_on` above any spex whose subject is the DevOps routine.
+  """
+  def devops_on(%{scope: scope} = context) do
+    Fixtures.enable_devops(scope)
+
+    context
+  end
+
   def setup_active_project(%{user: user, account: account, scope: scope} = context) do
     # Create a real stub directory with a mix.exs to satisfy the
     # WorkingDir plug (which hits File.exists?/File.dir? directly). Real

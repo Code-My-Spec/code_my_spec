@@ -18,6 +18,7 @@ defmodule CodeMySpecSpex.Story984.Criterion8176Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :devops_on
 
   spex "A running sprite can be watched live" do
     scenario "The operator watches a running sprite without waiting for it to finish" do

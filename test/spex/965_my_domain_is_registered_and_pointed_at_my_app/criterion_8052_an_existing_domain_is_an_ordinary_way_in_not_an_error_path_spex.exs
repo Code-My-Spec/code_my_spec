@@ -21,6 +21,7 @@ defmodule CodeMySpecSpex.Story965.Criterion8052Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :devops_on
   setup :connect_providers
 
   spex "An existing domain is an ordinary way in, not an error path" do

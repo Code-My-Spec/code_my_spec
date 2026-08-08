@@ -37,6 +37,7 @@ defmodule CodeMySpecSpex.Story983.Criterion8169Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :devops_on
 
   spex "The engineer can park a story by hand" do
     scenario "Clearing specs-ready parks a shipped story mid-refactor" do

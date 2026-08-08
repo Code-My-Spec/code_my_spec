@@ -32,6 +32,7 @@ defmodule CodeMySpecSpex.Story985.Criterion8182Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :devops_on
   setup :connect_providers
 
   spex "The remote is in place before the first build needs it" do

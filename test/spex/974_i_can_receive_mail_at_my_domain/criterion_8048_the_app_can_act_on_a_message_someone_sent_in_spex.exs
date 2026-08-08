@@ -21,6 +21,7 @@ defmodule CodeMySpecSpex.Story974.Criterion8048Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :devops_on
   setup :connect_providers
 
   spex "The app can act on a message someone sent in" do

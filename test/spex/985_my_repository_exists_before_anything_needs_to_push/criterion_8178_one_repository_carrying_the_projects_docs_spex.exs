@@ -22,6 +22,7 @@ defmodule CodeMySpecSpex.Story985.Criterion8178Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :devops_on
   setup :connect_providers
 
   spex "One repository, carrying the project's docs" do

@@ -1,9 +1,21 @@
 defmodule CodeMySpec.Conversations.Message do
   @moduledoc """
-  A single message in a conversation. Plain-text `body` with an author
-  identified by `(role, sender_id)`: role is `:user` (the end-user) or
-  `:operator` (a CMS user in the account), with `:assistant` reserved for
-  future LLM authors. Ordered by `inserted_at`.
+  A single message in a conversation, human or agent.
+
+  `content` is a list of typed parts rather than a string, mirroring
+  `ReqLLM.Message` — which is what the provider hands us, so an agent turn is
+  stored as it arrived instead of being flattened on the way in. A human
+  message is one `%{"type" => "text"}` part; a file shared through the widget
+  is a `%{"type" => "file"}` part, which is what `attachments` already was
+  before it had a name.
+
+  `tool_calls` rides on an assistant turn, `tool_call_id` pairs a `:tool` turn
+  back to the call it answers. Both are nil for human messages, which is the
+  whole point of one model: the human case is the degenerate one, not a
+  different table.
+
+  Authorship stays `(role, sender_id)`, with `agent_role` naming the speaking
+  lane on agent transcripts. Ordered by `inserted_at`.
   """
 
   use Ecto.Schema
@@ -16,56 +28,115 @@ defmodule CodeMySpec.Conversations.Message do
 
   @type t :: %__MODULE__{}
 
+  @part_types ~w(text image file thinking)
+
   schema "conversation_messages" do
-    field :body, :string
+    # Typed parts, in order. See @part_types for what a part may be.
+    field :content, {:array, :map}, default: []
     field :role, Ecto.Enum, values: [:user, :operator, :assistant, :tool]
     field :sender_id, :string
-    # The speaking lane for agent-session transcripts: manager / product /
-    # spec_writer / coding / qa. nil for human (user/operator) messages.
+    # The speaking lane for agent transcripts: manager / product / spec_writer
+    # / coding / qa. nil for human (user/operator) messages.
     field :agent_role, :string
-    # Files shared in the message, copied into our S3 bucket, e.g.
-    # %{"s3_key" => ..., "filename" => ..., "content_type" => ..., "size" => ...}.
-    field :attachments, {:array, :map}, default: []
+    # Calls this assistant turn made. nil on every other kind of turn.
+    field :tool_calls, {:array, :map}
+    # The call a :tool turn is answering.
+    field :tool_call_id, :string
 
     belongs_to :conversation, Conversation
 
     timestamps(type: :utc_datetime_usec)
   end
 
+  @doc """
+  Text of every text part, joined. The preview the inbox and search want.
+
+  Derived on read rather than stored: a denormalized copy of this drifts, and
+  the copy that drifts is the one a human reads.
+  """
+  @spec text(t()) :: String.t()
+  def text(%__MODULE__{content: parts}) do
+    parts
+    |> Enum.filter(&(part_type(&1) == "text"))
+    |> Enum.map_join("\n", &(get(&1, "text") || ""))
+  end
+
+  @doc "The file parts, in order — what `attachments` used to hold."
+  @spec files(t()) :: [map()]
+  def files(%__MODULE__{content: parts}) do
+    parts
+    |> Enum.filter(&(part_type(&1) == "file"))
+    |> Enum.map(&get(&1, "file"))
+  end
+
+  @doc "Builds a single text part — the shape of an ordinary human message."
+  @spec text_part(String.t()) :: map()
+  def text_part(text), do: %{"type" => "text", "text" => text}
+
   @doc false
   def changeset(message, attrs) do
     message
-    # Keep "" as-is (an attachment-only message has an empty body) rather than
-    # letting Ecto nilify it into the NOT NULL `body` column.
-    |> cast(attrs, [:body, :role, :sender_id, :conversation_id, :attachments], empty_values: [])
+    |> cast(attrs, [:content, :role, :sender_id, :conversation_id])
     |> validate_required([:role, :conversation_id])
-    |> validate_body_or_attachments()
+    |> validate_parts()
+    |> validate_carries_something()
   end
 
   @doc """
-  Changeset for a background-agent transcript line: carries the speaking lane in
-  `agent_role`. Body may be empty (e.g. a bare tool call), so the
-  body-or-attachments rule doesn't apply.
+  Changeset for an agent turn: carries the speaking lane, and may hold tool
+  calls or answer one.
+
+  A turn with only tool calls and no content is legitimate — the
+  carries-something rule does not apply, because the calls *are* the evidence.
   """
   def agent_changeset(message, attrs) do
     message
-    |> cast(attrs, [:body, :role, :agent_role, :sender_id, :conversation_id], empty_values: [])
+    |> cast(attrs, [
+      :content,
+      :role,
+      :agent_role,
+      :sender_id,
+      :conversation_id,
+      :tool_calls,
+      :tool_call_id
+    ])
     |> validate_required([:role, :conversation_id])
+    |> validate_parts()
   end
 
-  # A message must carry either text or at least one attachment.
-  defp validate_body_or_attachments(changeset) do
-    body = get_field(changeset, :body)
-    attachments = get_field(changeset, :attachments) || []
+  # Every part declares a type we know how to render. An unknown type would
+  # reach a `case` in the view with no clause for it, at render time.
+  defp validate_parts(changeset) do
+    parts = get_field(changeset, :content) || []
 
-    if blank?(body) and attachments == [] do
-      add_error(changeset, :body, "can't be blank without an attachment")
-    else
-      changeset
+    case Enum.reject(parts, &(part_type(&1) in @part_types)) do
+      [] ->
+        changeset
+
+      bad ->
+        add_error(
+          changeset,
+          :content,
+          "unknown part type: #{inspect(Enum.map(bad, &part_type/1))}"
+        )
     end
   end
 
-  defp blank?(nil), do: true
-  defp blank?(str) when is_binary(str), do: String.trim(str) == ""
-  defp blank?(_), do: false
+  # A human message must say or carry something. Replaces the old
+  # body-or-attachments rule, which was the same rule over the same two things.
+  defp validate_carries_something(changeset) do
+    case get_field(changeset, :content) || [] do
+      [] -> add_error(changeset, :content, "can't be empty")
+      _ -> changeset
+    end
+  end
+
+  defp part_type(part), do: get(part, "type")
+
+  # Parts arrive as string-keyed maps from the database and may arrive
+  # atom-keyed from a caller building one inline.
+  defp get(part, key) when is_map(part),
+    do: Map.get(part, key) || Map.get(part, String.to_atom(key))
+
+  defp get(_part, _key), do: nil
 end

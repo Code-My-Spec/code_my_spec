@@ -36,7 +36,7 @@ defmodule CodeMySpec.Provisioning.Teardown do
 
   require Logger
 
-  alias CodeMySpec.Provisioning.{Cloudflare, Hetzner, Resend, Storage, StepRepository}
+  alias CodeMySpec.Provisioning.{Cloudflare, EnvironmentRepository, Hetzner, Resend, Storage, StepRepository}
   alias CodeMySpec.Users.Scope
 
   @type outcome :: {:ok, [map()]} | {:error, term()}
@@ -62,6 +62,78 @@ defmodule CodeMySpec.Provisioning.Teardown do
           failures -> {:error, {:left_behind, Enum.map(failures, fn {:error, r} -> r end)}}
         end
     end
+  end
+
+  @doc """
+  Remove an environment and everything provisioning made for it.
+
+  ## The order is the safety property
+
+  The DNS record goes first, before the server is released. Hetzner recycles
+  public IPv4 addresses between customers, so a record left pointing at a
+  released address resolves to whoever is given it next — a subdomain of the
+  customer's own domain, under their proxy and TLS config, answering from a
+  machine they do not own. Releasing the address first opens that window;
+  removing the record first closes it. This is the standard subdomain-takeover
+  shape and it arrives by doing nothing rather than by doing something wrong.
+
+  ## It reports what it could not remove
+
+  Returns `{:ok, removed}` when everything named is gone, or
+  `{:error, {:left_behind, remaining}, removed}`. The row is deleted either
+  way: an environment nobody can see is worse than one whose leftovers are
+  named, because the row is the only thing that still knows the host and the
+  server to go looking for. What survived is in the error so the caller can
+  say so.
+  """
+  @spec environment(Scope.t(), String.t(), keyword()) ::
+          {:ok, [map()]} | {:error, {:left_behind, [map()]}, [map()]}
+  def environment(%Scope{} = scope, name, opts \\ []) do
+    # Injectable for the same reason `run_step/3` takes `:verify` and
+    # `:execute`: the ordering is the claim worth testing, and proving it
+    # should not cost a real server and a real DNS record.
+    teardown = Keyword.get(opts, :teardown, &__MODULE__.resource/2)
+
+    case EnvironmentRepository.get(scope, name) do
+      nil ->
+        {:ok, []}
+
+      environment ->
+        outcomes = Enum.map(environment_resources(environment), &teardown.(scope, &1))
+        EnvironmentRepository.delete(scope, name)
+
+        removed = for {:ok, r} <- outcomes, do: r
+        left = for {:error, r} <- outcomes, do: r
+
+        case left do
+          [] -> {:ok, removed}
+          _ -> {:error, {:left_behind, left}, removed}
+        end
+    end
+  end
+
+  # Ordered, not merely listed. `Teardown.resource/3` is called down this list
+  # in sequence, so the DNS record has to come before the server.
+  defp environment_resources(environment) do
+    dns =
+      case environment.host do
+        host when is_binary(host) and host != "" ->
+          [%{kind: "dns_record", location: "cloudflare/#{host}", origin: "created"}]
+
+        _ ->
+          []
+      end
+
+    server =
+      case environment.server_name do
+        name when is_binary(name) and name != "" ->
+          [%{kind: "server", location: "hetzner/#{name}", origin: "created"}]
+
+        _ ->
+          []
+      end
+
+    dns ++ server
   end
 
   @doc """
@@ -195,8 +267,13 @@ defmodule CodeMySpec.Provisioning.Teardown do
     end
   end
 
+  # `sending_record` belongs here because that is what it is — a Cloudflare
+  # record, written by the email step so Resend has something to verify
+  # against. Without this clause it fell to the catch-all below, which logs and
+  # leaves it: DKIM and SPF records stranded on the user's live domain after
+  # the sending domain they belonged to was removed.
   def resource(%Scope{} = scope, %{kind: kind, location: location} = r, opts)
-      when kind in ["dns_record", "mx_record"] do
+      when kind in ["dns_record", "mx_record", "sending_record"] do
     name = after_slash(location)
     zone_name = Keyword.get(opts, :zone) || registrable(name)
 
@@ -220,9 +297,15 @@ defmodule CodeMySpec.Provisioning.Teardown do
 
   # Nothing provider-side to remove: these live in the project's own repo or
   # in our encrypted store, and both are removed with the project.
+  #
+  # `age_key_delivery` is not a resource at all — it records that a key was
+  # handed to a process, which is a fact about a run rather than a thing that
+  # exists somewhere. Without it here every teardown that followed a deploy
+  # reported a leak it could never resolve, which is the noise that makes a
+  # real "left behind" easy to skip past.
   def resource(_scope, %{kind: kind} = r, _opts)
-      when kind in ~w(age_key callback_credential commit certificate retention restore_proof
-                      content deployment monitor dump repository dns_verification) do
+      when kind in ~w(age_key age_key_delivery callback_credential commit certificate retention
+                      restore_proof content deployment monitor dump repository dns_verification) do
     {:ok, r}
   end
 

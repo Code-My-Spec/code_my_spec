@@ -52,7 +52,7 @@ defmodule CodeMySpecWeb.ProvisioningLive do
   alias CodeMySpec.Provisioning.Repository
   alias CodeMySpec.Projects
   alias CodeMySpec.Users.Scope
-  alias CodeMySpec.Provisioning.{Backups, Cloudflare, Credentials, Dns, Resend, Sops, Steps, Storage}
+  alias CodeMySpec.Provisioning.{Backups, Cloudflare, Credentials, Dns, Resend, Sops, Steps, Storage, Teardown}
 
   # The environments setup manages. Named once so the probe form, the resource
   # grouping and the storage step cannot disagree about what exists.
@@ -176,9 +176,19 @@ defmodule CodeMySpecWeb.ProvisioningLive do
 
     <section data-test="domain" class="my-6">
       <h2 class="text-lg font-semibold">Domain</h2>
+      <%!-- Describes what actually happens. It used to say "check a name, see
+            what it costs, then say yes" — and steps two and three were
+            unreachable for every input. Cloudflare's Registrar API returns a
+            price and an availability answer only for domains already on the
+            account; for anything else it returns the name and whether the TLD
+            is supported, and nothing more. So a name you do not own can never
+            be priced here, and a name you do own has no price to show.
+            Advertising the flow the API cannot support read as a broken
+            feature rather than a provider limitation. --%>
       <p class="opacity-70 text-sm">
-        Check a name, see what it costs, then say yes. Registration is not refundable,
-        so nothing is bought without that second step.
+        Bring a domain you already own and check it here to adopt it. To register a new
+        one, buy it in the Cloudflare dashboard and come back — the Registrar API will
+        not price or sell a name this app does not already hold.
       </p>
 
       <form data-test="domain-form" phx-submit="check_domain" class="mt-3 flex gap-2 items-end">
@@ -384,6 +394,34 @@ defmodule CodeMySpecWeb.ProvisioningLive do
               {step.paused_instructions}
             </p>
 
+            <!-- The apex already points somewhere, and this run would move it.
+                 Not a default: a live site going dark is less reversible than
+                 the domain purchase that already demands a second step — the
+                 money comes back, the downtime does not. Behind a dialog
+                 rather than a bare click, and not `data-confirm`, whose
+                 browser confirm() is invisible to the driver QA runs. -->
+            <div
+              :if={step.key == :dns and step.state == :paused}
+              data-test="apex-repoint"
+              class="mt-3 flex gap-2"
+            >
+              <.button
+                data-test="confirm-apex-repoint"
+                class="btn-warning"
+                phx-click={show_confirm("confirm-apex-repoint")}
+              >
+                Repoint it anyway
+              </.button>
+
+              <.confirm_dialog
+                id="confirm-apex-repoint"
+                title="Repoint the apex?"
+                message={step.paused_instructions}
+                confirm_label="Repoint it"
+                on_confirm={JS.push("confirm_apex_repoint")}
+              />
+            </div>
+
             <!-- A name collision Sam did not cause: the repository exists but
                  is not this project's. Neither choice is taken for him
                  (criterion 8185) — adopting a stranger's repo or inventing a
@@ -444,6 +482,22 @@ defmodule CodeMySpecWeb.ProvisioningLive do
             >
               credential placed in {cred.location}
             </div>
+
+            <!-- Configuration is not an inbox. The step sends a message to the
+                 domain it just configured and waits for Resend to report it
+                 received; that delivery is the claim, so it is on the page
+                 rather than folded into "done" (8033). -->
+            <span
+              :for={pr <- Enum.filter(step.resources, &(&1.kind == "inbound_proof"))}
+              data-test="inbound-delivery-proof"
+              data-target={pr.location}
+              data-state={proof_field(pr.identifier, "state")}
+              data-message-id={proof_field(pr.identifier, "message_id")}
+              data-completed-at={proof_field(pr.identifier, "proven_at")}
+              class="mt-1 block text-xs font-mono opacity-70"
+            >
+              delivered to {pr.location}: {pr.identifier}
+            </span>
 
             <!-- A dump is a file until something has read it back. The step
                  restores into a scratch database and counts the rows; that
@@ -835,8 +889,29 @@ defmodule CodeMySpecWeb.ProvisioningLive do
         data-server={environment.server_name}
         data-host={environment.host}
         data-ip={environment.ip}
+        class="flex items-center gap-3"
       >
-        {environment.name}: {environment.server_name || "no server yet"}
+        <span>{environment.name}: {environment.server_name || "no server yet"}</span>
+
+        <%!-- Behind a dialog rather than a bare click. This releases a real
+              server and a real DNS record, and the panel's rows are one line
+              apart. `data-confirm` is not an option here — the browser's own
+              confirm() is invisible to the driver QA runs. --%>
+        <.button
+          data-test="remove-environment"
+          class="btn-xs btn-error"
+          phx-click={show_confirm("remove-environment-#{environment.name}")}
+        >
+          Remove
+        </.button>
+
+        <.confirm_dialog
+          id={"remove-environment-#{environment.name}"}
+          title={"Remove #{environment.name}?"}
+          message={remove_environment_warning(environment)}
+          confirm_label="Remove it"
+          on_confirm={JS.push("remove_environment", value: %{name: environment.name})}
+        />
       </div>
     </section>
 
@@ -1025,11 +1100,70 @@ defmodule CodeMySpecWeb.ProvisioningLive do
         {:noreply,
          socket
          |> assign(:current_scope, scope)
-         |> load(Provisioning.setup_options(scope))}
+         |> load(Provisioning.setup_options(scope))
+         |> reselect_credentials(options)}
 
       {:error, _changeset} ->
         {:noreply, put_flash(socket, :error, "Could not save that option — nothing changed.")}
     end
+  end
+
+  # Which credentials a run needs is a function of the options; whether each is
+  # on file is the part that costs something to find out. `load/2` holds both
+  # with `assign_new` because re-proving on every event and every PubSub
+  # announce was making provider calls from the wrong process — but that also
+  # froze the *set*, so turning an option off left its credentials on screen
+  # until a reload.
+  #
+  # Stale would be forgivable if it were only a list. It is a blocker: the page
+  # says "Setup cannot start yet — still needed: Hetzner S3 access key ID" for
+  # a run that will never use it, and those keys cannot be minted through an
+  # API — the page's own directions send you to the Hetzner console, where they
+  # are shown once. Believing it costs a trip for a credential nobody needs.
+  #
+  # Recomputed from the new options, reusing the checks already made rather
+  # than asking any provider again. `required/1` is pure and `missing/1` only
+  # reads storage.
+  defp reselect_credentials(socket, options) do
+    required = options |> Credentials.required() |> MapSet.new(& &1.key)
+
+    socket
+    |> assign(:credentials, Enum.filter(socket.assigns.credentials, &MapSet.member?(required, &1.key)))
+    |> assign(:missing_credentials, Credentials.missing(socket.assigns.current_scope))
+  end
+
+  defp removed_summary(name, []), do: "Removed #{name}. It had nothing provisioned."
+
+  defp removed_summary(name, removed),
+    do: "Removed #{name}, and with it: " <> Enum.map_join(removed, ", ", & &1.location) <> "."
+
+  # Says what actually goes, so the dialog is not a generic "are you sure".
+  defp remove_environment_warning(%{host: host, server_name: server})
+       when is_binary(server) and server != "" do
+    "This destroys the server #{server}" <>
+      if(is_binary(host) and host != "", do: " and removes the DNS record for #{host}", else: "") <>
+      ". The record goes first, so the name stops resolving before the address is released."
+  end
+
+  defp remove_environment_warning(%{host: host}) when is_binary(host) and host != "" do
+    "This removes the DNS record for #{host}. No server was ever provisioned for it."
+  end
+
+  defp remove_environment_warning(_environment),
+    do: "Nothing was provisioned for it, so this only removes the row."
+
+  # `key=value key=value` — the shape every proof resource uses for its
+  # identifier, so the page can pull one field without knowing the order.
+  defp proof_field(identifier, key) do
+    identifier
+    |> to_string()
+    |> String.split(" ")
+    |> Enum.find_value(fn part ->
+      case String.split(part, "=", parts: 2) do
+        [^key, value] -> value
+        _ -> nil
+      end
+    end)
   end
 
   # Blank means "leave it alone", not "clear it". The field renders empty for a
@@ -1164,7 +1298,7 @@ defmodule CodeMySpecWeb.ProvisioningLive do
           # DKIM is reported from the domain the message actually went out
           # from. A message accepted by the provider but unsigned still lands
           # in spam, so "accepted" alone does not answer criterion 8028.
-          state = mail_state(scope, environment)
+          state = mail_state(scope, environment, list_domains(scope))
 
           %{
             from: sent.from,
@@ -1253,6 +1387,33 @@ defmodule CodeMySpecWeb.ProvisioningLive do
         {:ok, _environment} -> {:noreply, load(socket, socket.assigns.options)}
         {:error, reason} -> {:noreply, put_flash(socket, :error, inspect(reason))}
       end
+    end
+  end
+
+  def handle_event("remove_environment", %{"name" => name}, socket) do
+    scope = socket.assigns.current_scope
+
+    case Teardown.environment(scope, name) do
+      {:ok, removed} ->
+        {:noreply,
+         socket
+         |> put_flash(:info, removed_summary(name, removed))
+         |> load(socket.assigns.options)}
+
+      # The row is gone either way, so this is not an error the user can retry
+      # into success — it is a list of things to go and delete by hand. Naming
+      # them is the whole value: a DNS record left pointing at a released
+      # address is the one leftover that becomes somebody else's server.
+      {:error, {:left_behind, left}, removed} ->
+        {:noreply,
+         socket
+         |> put_flash(
+           :error,
+           removed_summary(name, removed) <>
+             " Still there, and worth removing by hand: " <>
+             Enum.map_join(left, ", ", & &1.location)
+         )
+         |> load(socket.assigns.options)}
     end
   end
 
@@ -1405,6 +1566,21 @@ defmodule CodeMySpecWeb.ProvisioningLive do
     end
   end
 
+  def handle_event("confirm_apex_repoint", _params, socket) do
+    scope = socket.assigns.current_scope
+
+    # Re-run the step with the decision Sam just made. The guard refuses only
+    # when it has not been told; being told is the whole difference between a
+    # safeguard and an obstacle.
+    case Provisioning.run_step(scope, :dns, step_opts() ++ [confirm_apex_repoint: true]) do
+      {:ok, _} ->
+        {:noreply, socket |> assign(:current_scope, reload_project(scope)) |> load(socket.assigns.options)}
+
+      {:halt, _, reason} ->
+        {:noreply, socket |> load(socket.assigns.options) |> assign(halt_reason: reason)}
+    end
+  end
+
   def handle_event("adopt_repository", _params, socket) do
     scope = socket.assigns.current_scope
 
@@ -1548,8 +1724,17 @@ defmodule CodeMySpecWeb.ProvisioningLive do
     # nondeterministic under a sequential cassette, where a spex that clicked
     # one more time than the recording consumed an interaction that was not
     # there. `refresh_mail/1` re-reads when mail could actually have changed.
-    |> assign_new(:mail, fn -> mail_state(socket.assigns.current_scope, "prod") end)
-    |> assign_new(:mail_domains, fn -> mail_domains(socket.assigns.current_scope) end)
+    |> then(fn socket ->
+      # One listing for both assigns, resolved lazily so a page with neither
+      # already assigned pays for it once and a page with both pays nothing.
+      domains = fn -> list_domains(socket.assigns.current_scope) end
+
+      socket
+      |> assign_new(:mail, fn -> mail_state(socket.assigns.current_scope, "prod", domains.()) end)
+      |> assign_new(:mail_domains, fn ->
+        mail_domains(socket.assigns.current_scope, domains.())
+      end)
+    end)
     |> assign_new(:mail_send_result, fn -> nil end)
     |> assign_new(:storage_objects, fn -> [] end)
     |> assign_new(:storage_readbacks, fn -> [] end)
@@ -1697,10 +1882,11 @@ defmodule CodeMySpecWeb.ProvisioningLive do
   # has just run.
   defp refresh_mail(socket) do
     scope = socket.assigns.current_scope
+    domains = list_domains(scope)
 
     socket
-    |> assign(:mail, mail_state(scope, "prod"))
-    |> assign(:mail_domains, mail_domains(scope))
+    |> assign(:mail, mail_state(scope, "prod", domains))
+    |> assign(:mail_domains, mail_domains(scope, domains))
   end
 
   # Read from Resend every time rather than from the step row. The step
@@ -1711,12 +1897,29 @@ defmodule CodeMySpecWeb.ProvisioningLive do
   # Every environment, because a sending domain per environment is the whole
   # of criterion 8056 — one shared domain means test mail and production mail
   # are indistinguishable to a recipient.
-  defp mail_domains(scope) do
+  defp mail_domains(scope), do: mail_domains(scope, list_domains(scope))
+
+  defp mail_domains(scope, domains) do
     scope
     |> environments()
-    |> Enum.map(&mail_state(scope, &1))
+    |> Enum.map(&mail_state(scope, &1, domains))
     |> Enum.reject(&is_nil/1)
   end
+
+  # Nothing to look up without a project domain, and asking anyway is a real
+  # cost: `mail_state/3` used to short-circuit on this before it reached
+  # Resend, so hoisting the listing out of it made every page that has no
+  # domain yet call the provider to be told about domains it cannot match.
+  # That is a round-trip per render on the most common early state, and it put
+  # a `GET /domains` into spex whose cassettes had never seen one.
+  defp list_domains(%{active_project: %{domain: d}} = scope) when is_binary(d) and d != "" do
+    case Resend.list_domains(scope) do
+      {:ok, domains} when is_list(domains) -> domains
+      _ -> []
+    end
+  end
+
+  defp list_domains(_scope), do: []
 
   # Verification waits are a property of DNS, not of the code, so they are
   # configurable rather than baked in. A freshly published record needs longer
@@ -1741,10 +1944,21 @@ defmodule CodeMySpecWeb.ProvisioningLive do
     Application.get_env(:code_my_spec, :provisioning_step_opts, [])
   end
 
-  defp mail_state(scope, environment) do
+  # Takes the domain listing rather than fetching its own. `find_domain/2` is a
+  # full `GET /domains` behind a filter, so reading three environments used to
+  # cost three identical listings — and `refresh_mail/1` asked for prod twice
+  # over, once on its own and once inside `mail_domains/1`.
+  #
+  # The count matters beyond the round-trips. It made the number of provider
+  # calls a function of how many times the page happened to render rather than
+  # of how much there was to read, and a sequential cassette replays exactly
+  # the calls it recorded — so a replay that settled in one more render than
+  # the recording ran out of interactions and failed on a green method and a
+  # green uri. `ensure_dns_record/5` takes `:records` for the same reason.
+  defp mail_state(scope, environment, domains) do
     with %{domain: base} when is_binary(base) and base != "" <- scope.active_project,
          sending <- Resend.sending_domain(base, environment),
-         {:ok, found} <- Resend.find_domain(scope, sending),
+         found when is_map(found) <- Enum.find(domains, &(&1["name"] == sending)),
          {:ok, domain} <- fetch_full_domain(scope, found) do
       # The list endpoint omits `records` entirely — only the single-domain
       # read carries them. Rendering from the list produced a mail section

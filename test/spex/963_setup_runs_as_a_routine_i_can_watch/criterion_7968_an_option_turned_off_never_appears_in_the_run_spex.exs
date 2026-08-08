@@ -17,6 +17,7 @@ defmodule CodeMySpecSpex.Story963.Criterion7968Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :devops_on
 
   spex "An option turned off never appears in the run" do
     scenario "turning the email option off removes its step from the plan" do

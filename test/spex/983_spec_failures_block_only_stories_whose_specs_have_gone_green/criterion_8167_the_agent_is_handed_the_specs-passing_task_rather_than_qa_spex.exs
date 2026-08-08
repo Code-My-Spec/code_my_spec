@@ -30,6 +30,7 @@ defmodule CodeMySpecSpex.Story983.Criterion8167Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :devops_on
 
   spex "The specs-passing gate sits in front of QA" do
     scenario "The agent is handed the specs-passing task rather than QA" do

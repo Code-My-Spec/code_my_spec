@@ -23,6 +23,7 @@ defmodule CodeMySpecSpex.Story984.Criterion8171Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :devops_on
 
   spex "A sprite's agent turn is recorded" do
     scenario "A completed turn leaves a request and a response on the conversation" do

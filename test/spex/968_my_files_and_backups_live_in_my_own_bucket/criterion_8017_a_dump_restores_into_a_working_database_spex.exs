@@ -20,6 +20,7 @@ defmodule CodeMySpecSpex.Story968.Criterion8017Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :devops_on
   # The generated deploy files land on disk, and the backups step reads them.
   setup :real_working_directory
   setup :connect_providers

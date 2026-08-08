@@ -19,6 +19,7 @@ defmodule CodeMySpecSpex.Story974.Criterion8030Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :devops_on
   setup :connect_providers
 
   spex "A message to Sam's domain arrives where he reads mail" do

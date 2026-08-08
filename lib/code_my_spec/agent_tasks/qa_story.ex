@@ -162,7 +162,7 @@ defmodule CodeMySpec.AgentTasks.QaStory do
   defp subagent_owns?(_), do: false
 
   defp do_evaluate(scope, env, story_id) do
-    with :ok <- check_plan(env),
+    with :ok <- check_plan(scope, env),
          :ok <- check_brief(env, story_id),
          :ok <- maybe_check_result(scope, env, story_id) do
       # File-based artifacts validate, but `qa_complete?` was false so no DB
@@ -249,15 +249,42 @@ defmodule CodeMySpec.AgentTasks.QaStory do
   # Phase Checks
   # ============================================================================
 
-  defp check_plan(env) do
+  defp check_plan(scope, env) do
     case Environments.read_file(env, Paths.qa_plan()) do
       {:ok, content} when is_binary(content) and byte_size(content) > 0 ->
         validate_plan_sections(content)
 
       _ ->
-        {:ok, :invalid,
-         "QA plan not found at `#{Paths.qa_plan()}`. " <>
-           "Run the `qa_setup` task first — that task owns the project-wide plan."}
+        {:ok, :invalid, plan_missing_feedback(scope, env)}
+    end
+  end
+
+  # Says which project and which directory it looked in.
+  #
+  # "QA plan not found at `.code_my_spec/qa/plan.md`" sent a reader to a file
+  # that was present and 308 lines long. The plan is looked up through the
+  # project the working directory resolves to, and the working directory had
+  # resolved to a *different* project — so the message named the wrong thing
+  # one level below the actual cause. Naming the project and the path makes
+  # "resolved to QA Fixture Project" visible at a glance.
+  defp plan_missing_feedback(scope, env) do
+    where =
+      case env do
+        %{cwd: cwd} when is_binary(cwd) and cwd != "" -> cwd
+        _ -> "an unknown directory"
+      end
+
+    case scope do
+      %{active_project: %{name: name}} ->
+        "QA plan not found at `#{Paths.qa_plan()}`, looking in #{where} for project " <>
+          "\"#{name}\". If that is not the project you expected, the working directory " <>
+          "resolved to the wrong one — check which project claims #{where}. " <>
+          "Otherwise run the `qa_setup` task, which owns the project-wide plan."
+
+      _ ->
+        "No project claims #{where}, so there is nothing to look for a QA plan in. " <>
+          "A project's `local_path` is what makes a working directory resolve; set it " <>
+          "on the project this checkout belongs to."
     end
   end
 

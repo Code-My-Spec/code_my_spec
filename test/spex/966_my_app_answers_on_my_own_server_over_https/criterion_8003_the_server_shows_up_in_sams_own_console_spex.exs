@@ -19,6 +19,7 @@ defmodule CodeMySpecSpex.Story966.Criterion8003Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :devops_on
   setup :connect_providers
 
   spex "The server shows up in Sam's own console" do

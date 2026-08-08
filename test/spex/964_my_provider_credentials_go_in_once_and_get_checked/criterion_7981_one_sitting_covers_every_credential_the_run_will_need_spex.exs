@@ -17,6 +17,7 @@ defmodule CodeMySpecSpex.Story964.Criterion7981Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :devops_on
 
   spex "One sitting covers every credential the run will need" do
     scenario "every credential the chosen options need is asked for at once" do

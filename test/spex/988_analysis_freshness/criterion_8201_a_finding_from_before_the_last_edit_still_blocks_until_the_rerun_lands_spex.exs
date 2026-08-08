@@ -31,6 +31,7 @@ defmodule CodeMySpecSpex.Story988.Criterion8201Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :devops_on
 
   spex "A finding survives the edit that has not been analyzed yet" do
     scenario "correcting the file does not release the stop" do

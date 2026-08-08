@@ -21,6 +21,7 @@ defmodule CodeMySpecSpex.Story969.Criterion8026Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :devops_on
   setup :connect_providers
 
   spex "Setup waits for verification rather than assuming it" do

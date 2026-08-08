@@ -20,11 +20,13 @@ defmodule CodeMySpec.Provisioning.ContentPublishing do
   `client_api_url` or `deploy_key` is missing, so the silent case cannot be
   reached from the provisioning path (criterion 8058).
 
-  Worth knowing: the underlying pipeline's own `trigger_client/2` has a
+  The pipeline agrees now. `ContentPublishing.trigger_client/2` used to have a
   fallback clause returning `{:ok, %{sync_id: nil}}` for exactly that
-  unconfigured project, which reports success for a publish nothing was told
-  about. Guarding here closes it for provisioning; the fallback itself is
-  noted in the commit as a defect in 712's pipeline.
+  unconfigured project — reporting success for a publish nothing was told
+  about — and this note used to warn about it. That clause now returns an
+  error naming the missing fields, and `ContentLive` surfaces it as a flash
+  rather than a silent success, so the guard here is defence in depth rather
+  than the only thing standing between an operator and a lie.
 
   ## Done means rendered, not uploaded
 

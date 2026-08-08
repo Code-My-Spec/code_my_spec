@@ -26,6 +26,7 @@ defmodule CodeMySpecSpex.Story974.Criterion8032Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :devops_on
   setup :connect_providers
 
   spex "Receiving mail does not break sending it" do

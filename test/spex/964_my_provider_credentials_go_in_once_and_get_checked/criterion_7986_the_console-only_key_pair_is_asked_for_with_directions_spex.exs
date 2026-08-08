@@ -18,6 +18,7 @@ defmodule CodeMySpecSpex.Story964.Criterion7986Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :devops_on
 
   spex "The console-only key pair is asked for with directions" do
     scenario "the S3 key pair field carries where-to-get-it and a one-look warning" do

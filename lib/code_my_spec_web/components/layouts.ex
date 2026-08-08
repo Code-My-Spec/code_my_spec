@@ -182,6 +182,7 @@ defmodule CodeMySpecWeb.Layouts do
                 left over from a project that no longer exists still bills.
               --%>
               <li><a href={~p"/app/servers"}>Servers</a></li>
+              <li><a href={~p"/app/resources"}>Resources</a></li>
               <%!--
                 The path is the breadcrumb. Every surface below is addressed
                 per-project, and the project they point at is the one named in
@@ -210,6 +211,7 @@ defmodule CodeMySpecWeb.Layouts do
                 <li><a href={~p"/app/projects/#{project.id}/components"}>Components</a></li>
 
                 <li class="menu-title">Build</li>
+                <li><a href={~p"/app/projects/#{project.id}/chat"}>Chat</a></li>
                 <li><a href={~p"/app/projects/#{project.id}/next-task"}>Next task</a></li>
                 <li><a href={~p"/app/projects/#{project.id}/files"}>Files &amp; sync</a></li>
                 <li><a href={~p"/app/projects/#{project.id}/problems"}>Problems</a></li>

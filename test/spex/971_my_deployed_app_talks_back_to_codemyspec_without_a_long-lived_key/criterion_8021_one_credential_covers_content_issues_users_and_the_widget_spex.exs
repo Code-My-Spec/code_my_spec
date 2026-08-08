@@ -26,6 +26,7 @@ defmodule CodeMySpecSpex.Story971.Criterion8021Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :devops_on
 
   spex "One credential covers content, issues, users and the widget" do
     scenario "a single token is accepted by all five surfaces" do

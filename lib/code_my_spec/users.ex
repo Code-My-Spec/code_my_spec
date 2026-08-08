@@ -322,14 +322,18 @@ defmodule CodeMySpec.Users do
 
     case Repo.one(query) do
       # Prevent session fixation attacks by disallowing magic links for unconfirmed users with password
+      #
+      # Refused, not raised. The refusal is right — allowing it is the
+      # vulnerability this names — but raising made the *only remaining door*
+      # for this user a 500 stack trace. The password form is gone from
+      # `/users/log-in`, so an account with a password and no confirmation had
+      # no way in at all: one door removed, the other throwing.
+      #
+      # It is reachable without any special setup — register with a password,
+      # request a magic link before confirming — and it is what every QA pass
+      # hit, because the seed user is created exactly this way.
       {%User{confirmed_at: nil, hashed_password: hash}, _token} when not is_nil(hash) ->
-        raise """
-        magic link log in is not allowed for unconfirmed users with a password set!
-
-        This cannot happen with the default implementation, which indicates that you
-        might have adapted the code to a different use case. Please make sure to read the
-        "Mixing magic link and password registration" section of `mix help phx.gen.auth`.
-        """
+        {:error, :unconfirmed_with_password}
 
       {%User{confirmed_at: nil} = user, _token} ->
         user

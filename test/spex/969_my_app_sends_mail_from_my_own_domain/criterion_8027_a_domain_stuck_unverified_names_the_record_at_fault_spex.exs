@@ -3,10 +3,20 @@ defmodule CodeMySpecSpex.Story969.Criterion8027Spex do
   Story 969 — My app sends mail from my own domain
   Criterion 8027 — A domain stuck unverified names the record at fault.
 
-  When the domain has not verified after a reasonable wait, setup gives up
-  waiting and reports *which* record is not as the provider expects — and
-  does not mark email done. The usual cause is a typoed DKIM TXT, and
-  "verification timed out" leaves Sam diffing three records by eye.
+  Setup published the sending records on an earlier run and the DKIM TXT has
+  since been deleted from the zone — the ordinary way this happens is somebody
+  tidying DNS who does not recognise `resend._domainkey`. Setup re-publishes
+  it, but a name whose absence a resolver has already cached does not come
+  back inside the verification window, so the domain sits unverified.
+
+  Setup gives up waiting and reports *which* record is not as the provider
+  expects, and does not mark email done. "Verification timed out" leaves Sam
+  diffing three records by eye.
+
+  Re-grounded 2026-08. The premise used to be a fixture that withheld the
+  DKIM, which stopped being reachable once the step itself took over
+  publishing — it simply fills in whatever is missing. Deletion is the real
+  version of the same fault, and the one that stays stuck.
 
   Surface: `CodeMySpecWeb.ProvisioningLive` on the cloud app, driving
   `CodeMySpec.Provisioning.Resend`.
@@ -20,11 +30,12 @@ defmodule CodeMySpecSpex.Story969.Criterion8027Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :devops_on
   setup :connect_providers
 
   spex "A domain stuck unverified names the record at fault" do
     scenario "the timeout reports the mismatching record and leaves email unfinished" do
-      given_ "the domain has not verified after a reasonable wait", context do
+      given_ "a published DKIM record has since been deleted from the zone", context do
         stuck_sending_domain(context.scope, context.project, context)
         tear_down_after(context.scope, [:email])
 

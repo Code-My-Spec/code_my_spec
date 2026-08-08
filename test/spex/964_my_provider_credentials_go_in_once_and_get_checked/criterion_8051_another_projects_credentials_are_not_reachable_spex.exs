@@ -17,6 +17,7 @@ defmodule CodeMySpecSpex.Story964.Criterion8051Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :devops_on
 
   spex "Another project's credentials are not reachable" do
     scenario "a second project's intake is empty while the first is populated" do

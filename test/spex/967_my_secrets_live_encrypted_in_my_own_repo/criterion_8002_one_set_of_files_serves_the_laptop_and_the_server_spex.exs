@@ -20,6 +20,7 @@ defmodule CodeMySpecSpex.Story967.Criterion8002Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :devops_on
   setup :real_working_directory
 
   spex "One set of files serves the laptop and the server" do

@@ -22,6 +22,7 @@ defmodule CodeMySpecSpex.Story970.Criterion7976Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :devops_on
   # A real directory on disk, shared with the page. The generator writes
   # through the project's registered environment; a spex holding its own
   # in-memory one reads an empty tree and concludes nothing was generated.

@@ -18,6 +18,7 @@ defmodule CodeMySpecSpex.Story963.Criterion7959Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :devops_on
 
   spex "Sam sees the whole plan before anything runs" do
     scenario "the status page lists every step in order, none of them started" do

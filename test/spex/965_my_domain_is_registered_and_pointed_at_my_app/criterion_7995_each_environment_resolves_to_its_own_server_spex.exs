@@ -23,6 +23,7 @@ defmodule CodeMySpecSpex.Story965.Criterion7995Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :devops_on
   setup :connect_providers
 
   spex "Each environment resolves to its own server" do

@@ -213,7 +213,25 @@ defmodule CodeMySpec.Provisioning.Resend do
     |> Enum.all?(&(not apex_name?(&1["name"] || "", domain)))
   end
 
-  defp apex_name?(name, domain), do: name in ["@", "", domain]
+  # "At the domain itself", in either spelling Resend uses.
+  #
+  # Names come back relative to the **zone**, not to the domain they belong to.
+  # For a receiving domain of `c8033.astralbi.com` in zone `astralbi.com` the
+  # apex MX arrives as `c8033`, so comparing against the full domain found
+  # nothing: `inbound_records/2` returned an empty list, and anything waiting
+  # on the inbound records waited forever on a record that was already
+  # verified. Observed against a real run.
+  #
+  # A domain that *is* its zone gets `""` or `@` instead, which is why those
+  # were the only cases here before — every domain tested was an apex.
+  #
+  # `send.c8033` and `resend._domainkey.c8033` stay non-apex: the domain does
+  # not begin with either followed by a dot.
+  defp apex_name?(name, domain) do
+    name in ["@", "", domain] or
+      (is_binary(name) and name != "" and is_binary(domain) and
+         String.starts_with?(domain, name <> "."))
+  end
 
   @doc """
   Ensure a domain exists with receiving enabled.
@@ -373,7 +391,12 @@ defmodule CodeMySpec.Provisioning.Resend do
   def send_probe(%Scope{} = scope, to, opts \\ []) do
     environment = Keyword.get(opts, :environment, "prod")
 
-    case probe_from(scope, environment) do
+    # An explicit `:from` overrides the project's own sending address. The
+    # inbound proof needs it: sending from the domain being configured requires
+    # that domain to be verified *for sending*, which is the outbound story's
+    # job — so proving an inbox would have depended on outbound already
+    # working, and failed with a 403 that says nothing about receiving.
+    case Keyword.get(opts, :from) || probe_from(scope, environment) do
       nil ->
         {:error, :no_domain}
 
@@ -389,6 +412,104 @@ defmodule CodeMySpec.Provisioning.Resend do
           {:ok, %{id: id, from: from, to: to}}
         end
     end
+  end
+
+  @doc """
+  Wait until the domain's **inbound** records report verified.
+
+  Not `poll_until_verified/3`, which waits on the domain as a whole. A domain
+  set up for receiving only sits at `status: "pending"` forever, because its
+  sending records — DKIM, and the SPF/MX pair on `send.` — are the outbound
+  story's to publish and this step must not touch them (criterion 8029). The
+  apex MX can be verified while the domain is pending, and for receiving that
+  is the only record that decides anything.
+
+  Waiting on the whole domain meant an inbound setup could never finish: the
+  records it owns were right, and it polled for five minutes on records it had
+  deliberately left alone.
+  """
+  @spec await_inbound_verified(Scope.t(), String.t(), String.t(), keyword()) ::
+          {:ok, [body()]} | {:error, :never_verified} | error()
+  def await_inbound_verified(%Scope{} = scope, domain_id, domain_name, opts \\ []) do
+    attempts = Keyword.get(opts, :attempts, 60)
+    interval = Keyword.get(opts, :interval_ms, 5_000)
+
+    Enum.reduce_while(1..attempts, {:error, :never_verified}, fn attempt, acc ->
+      with {:ok, body} <- get_domain(scope, domain_id),
+           inbound <- inbound_records(records(body["data"] || body), domain_name),
+           true <- inbound != [] and Enum.all?(inbound, &(&1["status"] == "verified")) do
+        {:halt, {:ok, inbound}}
+      else
+        _ ->
+          # Asking is what makes Resend look; without it the records sit
+          # unchecked and the poll waits on something nobody triggered.
+          verify_domain(scope, domain_id)
+          if attempt < attempts, do: Wait.sleep(interval)
+          {:cont, acc}
+      end
+    end)
+  end
+
+  @doc """
+  Messages the account has received, newest first.
+
+  `GET /emails/receiving`. This is what makes an inbound setup provable without
+  the customer's own site being deployed: the webhook posts to their domain,
+  which may serve something else entirely or nothing at all, but the message
+  Resend accepted is readable here either way.
+  """
+  @spec list_received(Scope.t(), keyword()) :: {:ok, [body()]} | error()
+  def list_received(%Scope{} = scope, opts \\ []) do
+    limit = Keyword.get(opts, :limit, 100)
+
+    case request(scope, :get, "/emails/receiving?limit=#{limit}") do
+      {:ok, %{"data" => data}} when is_list(data) -> {:ok, data}
+      {:ok, data} when is_list(data) -> {:ok, data}
+      {:ok, _other} -> {:ok, []}
+      other -> other
+    end
+  end
+
+  @doc """
+  Wait for a message matching `match?` to appear among the received mail.
+
+  Delivery is not instant and it is not synchronous with the send — SMTP,
+  Resend's own ingestion and the receiving domain's MX all sit in between — so
+  this polls rather than reading once and concluding.
+
+  Returns `{:ok, message}` or `{:error, :never_arrived}`. Never arriving is the
+  answer the inbound step needs, not an exception: it means the configuration
+  looks right and mail still goes nowhere, which is the whole failure mode.
+  """
+  @spec await_received(Scope.t(), (body() -> boolean()), keyword()) ::
+          {:ok, body()} | {:error, :never_arrived} | error()
+  def await_received(%Scope{} = scope, match?, opts \\ []) do
+    # Five minutes by default, matching what the sending step allows for
+    # verification. A receiving domain's MX has just been published, and mail
+    # does not route until it propagates — a minute is long enough to conclude
+    # "never arrived" about a setup that is merely young.
+    attempts = Keyword.get(opts, :attempts, 60)
+    interval = Keyword.get(opts, :interval_ms, 5_000)
+
+    Enum.reduce_while(1..attempts, {:error, :never_arrived}, fn attempt, acc ->
+      case list_received(scope, limit: 100) do
+        {:ok, messages} ->
+          case Enum.find(messages, match?) do
+            nil ->
+              if attempt < attempts, do: Wait.sleep(interval)
+              {:cont, acc}
+
+            message ->
+              {:halt, {:ok, message}}
+          end
+
+        # A read that fails is not a delivery that failed. Keep waiting; the
+        # caller learns from the final answer rather than from one bad request.
+        _ ->
+          if attempt < attempts, do: Wait.sleep(interval)
+          {:cont, acc}
+      end
+    end)
   end
 
   @doc "Delete a domain. Teardown only — setup never destroys."

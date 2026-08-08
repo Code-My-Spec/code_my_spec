@@ -71,6 +71,34 @@ defmodule CodeMySpecWeb.ProvisioningLiveTest do
       assert html =~ ~s(data-step="repository")
       assert html =~ ~s(data-step="deploy")
     end
+
+    # The steps updated on toggle and the credential panel did not, so the page
+    # went on demanding credentials the run no longer needed until a reload.
+    # Stale would be forgivable if it were only a list; it is the blocker
+    # message, and the Hetzner S3 keys it names cannot be minted through an API
+    # — believing it costs a trip to a provider console for nothing.
+    #
+    # Asserted without reloading on purpose. Criterion 7982 checks the same
+    # thing on a freshly mounted page, which is why this survived: the
+    # behaviour was always right on mount and always wrong live.
+    test "unchecking an option stops it asking for that option's credentials",
+         %{conn: conn, project: project} do
+      {:ok, view, html} = live(conn, path(project))
+
+      assert html =~ "hetzner_s3_access_key_id",
+             "expected object storage keys to be asked for while storage is on"
+
+      html = render_change(view, "toggle_options", %{"options" => %{"domain" => "true"}})
+
+      refute html =~ "hetzner_s3_access_key_id",
+             "expected the storage keys to stop being asked for the moment storage is off"
+
+      refute html =~ "hetzner_s3_secret_access_key"
+
+      # The credentials the run still needs are untouched — this narrows the
+      # set, it does not clear it.
+      assert html =~ "hetzner_api_token"
+    end
   end
 
   describe "a step's state is rendered from what actually happened" do

@@ -24,6 +24,7 @@ defmodule CodeMySpecSpex.Story971.Criterion8055Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :devops_on
 
   spex "A visitor mid-conversation notices no expiry" do
     scenario "the socket re-authenticates in place and the conversation continues" do

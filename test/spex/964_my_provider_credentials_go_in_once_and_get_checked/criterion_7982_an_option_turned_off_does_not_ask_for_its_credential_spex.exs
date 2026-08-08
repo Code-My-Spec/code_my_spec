@@ -16,6 +16,7 @@ defmodule CodeMySpecSpex.Story964.Criterion7982Spex do
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :devops_on
 
   spex "An option turned off does not ask for its credential" do
     scenario "with email off, no Resend credential is requested" do

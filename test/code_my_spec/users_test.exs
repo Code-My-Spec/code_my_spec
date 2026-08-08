@@ -363,7 +363,12 @@ defmodule CodeMySpec.UsersTest do
       assert {:error, :not_found} = Users.login_user_by_magic_link(encoded_token)
     end
 
-    test "raises when unconfirmed user has password set" do
+    # The refusal is the claim, not the mechanism. It used to raise, which made
+    # this the only remaining door for such a user a 500 — the password form is
+    # gone from `/users/log-in`, so the account had no way in at all. Refusing
+    # with an error the controller can turn into "confirm your email first"
+    # keeps the security property and loses the dead end.
+    test "refuses when an unconfirmed user has a password set" do
       user = unconfirmed_user_fixture()
 
       # This user, not every user. The unqualified update assumed the fixture
@@ -377,9 +382,13 @@ defmodule CodeMySpec.UsersTest do
         )
       {encoded_token, _hashed_token} = generate_user_magic_link_token(user)
 
-      assert_raise RuntimeError, ~r/magic link log in is not allowed/, fn ->
-        Users.login_user_by_magic_link(encoded_token)
-      end
+      assert {:error, :unconfirmed_with_password} =
+               Users.login_user_by_magic_link(encoded_token)
+
+      # Still refused, which is the point — allowing it is the session-fixation
+      # vulnerability the guard exists for.
+      refute Repo.get(User, user.id).confirmed_at,
+             "expected the refusal to leave the user unconfirmed rather than logging them in"
     end
   end
 
