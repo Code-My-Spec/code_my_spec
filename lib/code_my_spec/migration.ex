@@ -369,7 +369,7 @@ defmodule CodeMySpec.Migration do
     collect(stories, fn story ->
       case find_existing(known, story) do
         %{} = already ->
-          relink(scope, already, components, story)
+          relink(scope, already, components, epics, story)
 
         nil ->
           story
@@ -397,9 +397,9 @@ defmodule CodeMySpec.Migration do
   # edited at the destination once a project has moved, and the source stops
   # being authoritative about them the moment somebody does. Readiness and
   # priority are the migration's business until the move is finished.
-  defp relink(scope, story, components, payload) do
+  defp relink(scope, story, components, epics, payload) do
     story
-    |> resync_attrs(components, payload)
+    |> resync_attrs(components, epics, payload)
     |> case do
       changes when map_size(changes) == 0 -> {:ok, story}
       changes -> Stories.update_story(scope, story, changes)
@@ -422,13 +422,16 @@ defmodule CodeMySpec.Migration do
     end
   end
 
-  defp resync_attrs(story, components, payload) do
+  defp resync_attrs(story, components, epics, payload) do
+    epic = epics[payload["epic_local_id"]]
+
     %{}
     |> put_changed(
       story,
       :component_id,
       Map.get(components, payload["component_module_name"] || :none)
     )
+    |> put_changed(story, :epic_id, epic && epic.id)
     |> put_changed(story, :ready_for_dev, payload["ready_for_dev"])
     |> put_changed(story, :specs_ready, payload["specs_ready"])
     |> put_changed(story, :priority, payload["priority"])
@@ -669,8 +672,17 @@ defmodule CodeMySpec.Migration do
 
   defp step({:error, reason}, _acc, _snaps, _local_id), do: {:halt, {:error, reason}}
 
-  defp reuse_or_create_criterion(%{} = already, _scope, _story, _criterion, _rules),
-    do: {:ok, already}
+  # A criterion already here still takes its kind. Matching one and returning it
+  # untouched left 912 of them without the field the moment it started being
+  # exported — the same way stories stayed parked and nine links stayed stale.
+  defp reuse_or_create_criterion(%{} = already, scope, _story, criterion, _rules) do
+    resync(
+      already,
+      criterion,
+      [:kind, :verified, :verified_at],
+      &AcceptanceCriteria.update_criterion(scope, &1, &2)
+    )
+  end
 
   defp reuse_or_create_criterion(nil, scope, story, criterion, rules) do
     criterion
