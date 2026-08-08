@@ -255,7 +255,10 @@ defmodule CmsHarness.Web.McpControllerTest do
         |> post("/mcp?harness=#{gone}", %{"jsonrpc" => "2.0", "id" => 1, "method" => "ping"})
 
       assert Jason.decode!(conn.resp_body)["error"]["message"] =~ gone
-      assert FakeUpstream.last_request() == nil
+
+      assert FakeUpstream.last_request_to("/mcp/harness") == nil,
+             "the harness asked the server where that copy is and was told nothing, " <>
+               "so it forwarded no session — asking is not forwarding"
     end
 
     test "an unreachable server says which one", %{conn: conn} do

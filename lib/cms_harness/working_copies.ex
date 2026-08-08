@@ -6,23 +6,32 @@ defmodule CmsHarness.WorkingCopies do
   own config — `CmsHarness.HarnessConfig`, minted at onboarding — which says
   both which harness it is and where it is.
 
-  ## Nothing is discovered
+  ## Two sources, both authoritative, neither a guess
 
-  This used to walk up from the directory a hook fired in, then it read a list
-  of directories out of the environment, then it asked the server. Each was
-  wrong in its own way: the walk resolved one session differently depending on
-  the subdirectory and resolved a nested checkout to the outer one; the list
-  put the operator back in the business of registering paths; the lookup made
-  the harness unable to answer a hook until the network came up, to fetch a
-  fact the checkout already had written down.
+  The copies this harness already knows about answer first: the one it was
+  started in, and any it is serving. Their configs are on disk, so this needs
+  no network and answers before anything is connected — which is the sprite,
+  and every hook after a copy's first.
 
-  So there is no discovery here at all. The harness serves the working copy it
-  was started in, that copy's config says who it is, and a hook naming any
-  other id is refused — not resolved to something nearby.
+  Anything else is the server's to answer, from the harness object, which
+  records the same root the copy reported. That is what lets one harness serve
+  several copies without being configured with a list of them.
+
+  What is *not* here is discovery. This used to walk up from the directory a
+  hook fired in, and later read a list of directories out of the environment.
+  The walk resolved one session differently depending on which subdirectory it
+  fired from and resolved a nested checkout to the outer one; the list put the
+  operator back in the business of registering paths, and made the laptop a
+  different shape from the sprite. A hook naming an id nothing can account for
+  is refused, not resolved to something nearby.
   """
 
+  require Logger
+
+  alias CmsHarness.Config
   alias CmsHarness.HarnessConfig
   alias CmsHarness.Projects
+  alias CmsHarness.Token
 
   @doc """
   The directory this id names, or `:unknown`.
@@ -35,11 +44,45 @@ defmodule CmsHarness.WorkingCopies do
   def root(harness_id) when is_binary(harness_id) and harness_id != "" do
     case Enum.find(known(), fn {id, _root} -> id == harness_id end) do
       {_id, root} -> {:ok, root}
-      nil -> :unknown
+      nil -> ask_server(harness_id)
     end
   end
 
   def root(_), do: :unknown
+
+  # The harness object holds the root each copy reported when it joined. Asking
+  # for it is how one harness serves a copy it was not started in, without
+  # anybody maintaining a list of directories.
+  defp ask_server(harness_id) do
+    with {:ok, token} <- Token.access_token(),
+         {:ok, %{status: 200, body: %{"root" => root}}} when is_binary(root) and root != "" <-
+           get(harness_id, token) do
+      {:ok, root}
+    else
+      {:ok, %{status: 404}} ->
+        Logger.warning("[CmsHarness] the server does not know harness #{harness_id}")
+        :unknown
+
+      other ->
+        Logger.warning(
+          "[CmsHarness] could not ask where harness #{harness_id} is: #{inspect(other)}"
+        )
+
+        :unknown
+    end
+  end
+
+  defp get(harness_id, token) do
+    Req.get(
+      url:
+        Config.server_url()
+        |> String.trim_trailing("/")
+        |> Kernel.<>("/api/harnesses/#{harness_id}"),
+      headers: [{"authorization", "Bearer " <> token}],
+      retry: false,
+      receive_timeout: to_timeout(second: 10)
+    )
+  end
 
   @doc """
   Every working copy this harness can answer for, as `id => root`.
