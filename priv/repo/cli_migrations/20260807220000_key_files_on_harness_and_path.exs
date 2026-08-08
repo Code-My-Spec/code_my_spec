@@ -36,14 +36,18 @@ defmodule CodeMySpec.Repo.Migrations.KeyFilesOnHarnessAndPath do
     # no honest answer to which copy produced them.
     execute("DELETE FROM files WHERE harness_id IS NULL")
 
-    drop_if_exists unique_index(:files, [:project_id, :path])
-
+    # The old index stays. An installed `cms` predating the grain change upserts
+    # with ON CONFLICT (project_id, path), and SQLite rejects a conflict target
+    # with no matching unique index — so dropping it here stopped every file
+    # upsert on any binary that had not been upgraded yet. Silently: the CLI
+    # booted and simply never wrote a file row again.
+    #
+    # Both can coexist. New code conflicts on the harness-scoped one, old code
+    # on the other, and neither notices the other.
     create unique_index(:files, [:project_id, :harness_id, :path])
   end
 
   def down do
     drop_if_exists unique_index(:files, [:project_id, :harness_id, :path])
-
-    create unique_index(:files, [:project_id, :path])
   end
 end
