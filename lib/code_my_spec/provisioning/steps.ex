@@ -961,9 +961,26 @@ defmodule CodeMySpec.Provisioning.Steps do
 
     with {:ok, from} <- probe_sender(scope),
          {:ok, _sent} <- Resend.send_probe(scope, to, subject: token, from: from) do
-      Resend.await_received(scope, &received?(&1, to, seen), opts)
+      Resend.await_received(scope, &received?(&1, to, seen), probe_wait(opts))
     end
   end
+
+  # One read, after a settle. Inbound mail takes tens of seconds to route on a
+  # freshly published MX, and polling for it issued a number of requests that
+  # depended on how long it took — which a sequentially matched cassette cannot
+  # replay. Waiting first and reading once is the same total patience with a
+  # fixed request count.
+  #
+  # Overridable, because a caller that already knows the mail has landed should
+  # not wait a minute to be told so.
+  @probe_settle_ms 60_000
+
+  # Settle, then poll normally. Capping at a single read made recording fail
+  # whenever a minute was not enough, and it was not needed: with the arriving
+  # message identified by id rather than by a per-run token, the poll stops on
+  # the same response when recording and when replaying, so the request counts
+  # already agree. The settle just means there are usually fewer of them.
+  defp probe_wait(opts), do: Keyword.put_new(opts, :settle_ms, @probe_settle_ms)
 
   defp already_received(scope, opts) do
     case Resend.list_received(scope, opts) do

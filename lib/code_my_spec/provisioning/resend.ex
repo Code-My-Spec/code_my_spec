@@ -509,6 +509,23 @@ defmodule CodeMySpec.Provisioning.Resend do
     attempts = Keyword.get(opts, :attempts, 60)
     interval = Keyword.get(opts, :interval_ms, 5_000)
 
+    # Waited out before the first read rather than between reads, so the number
+    # of requests does not depend on how long the mail took.
+    #
+    # That count is the whole difficulty with recording this. A cassette is
+    # matched sequentially — one interaction consumed per request — so a poll
+    # that runs eight times while recording and three times on replay puts
+    # every later request on the wrong interaction, and story 974 recorded 4/4
+    # and replayed 0/4 with thirteen misses. Settling first and reading once
+    # makes both sides issue the same requests in the same order.
+    #
+    # Under a cassette the sleep is a no-op (`:provisioning_waits` is `:none`
+    # on replay), so this costs nothing there and buys the recording its time.
+    case Keyword.get(opts, :settle_ms) do
+      nil -> :ok
+      ms -> Wait.sleep(ms)
+    end
+
     Enum.reduce_while(1..attempts, {:error, :never_arrived}, fn attempt, acc ->
       case list_received(scope, limit: 100) do
         {:ok, messages} ->
