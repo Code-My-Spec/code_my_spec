@@ -40,12 +40,14 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   """
 
   use Mix.Task
-  # Every other task in here classifies itself the same way. Unclassified, it
-  # is a compiler warning — and the analyzer counts any compiler problem as a
-  # reason to skip exunit, credo and spex entirely, so this one line was
-  # holding back every other check and serving their previous results as
-  # current.
-  use Boundary, classify_to: CodeMySpec
+  # Classified to CmsHarness rather than CodeMySpec, unlike every other task in
+  # here. This one is a harness task — it reads the harness config and the
+  # harness's own server settings — and `CodeMySpec` may not reference
+  # `CmsHarness`; the dependency runs the other way. Classified to CodeMySpec it
+  # compiled with a forbidden-reference warning, and the analyzer treats any
+  # compiler problem as a reason to skip exunit, credo and spex entirely, so one
+  # misclassified line holds back every other check.
+  use Boundary, classify_to: CmsHarness
 
   alias CmsHarness.Config
   alias CmsHarness.HarnessConfig

@@ -68,7 +68,17 @@ defmodule CodeMySpec.Migration do
       "title" => story.title,
       "story" => story.story,
       "description" => story.description,
-      "status" => story.status && to_string(story.status)
+      "status" => story.status && to_string(story.status),
+      # By module name, not id. Components are projections of files — each
+      # deployment derives its own from the same source, so the ids differ and
+      # the module name is what both sides agree on. It is the natural key
+      # `components_module_name_project_id_index` already enforces.
+      #
+      # Without this the link is simply dropped, and requirements are computed
+      # per story and component: a migrated project reports 0/0 satisfied for
+      # everything, which reads as "nothing is done" rather than "nothing is
+      # linked".
+      "component_module_name" => story.component && story.component.module_name
     }
 
   defp export_epic(epic), do: %{"local_id" => epic.id, "name" => epic.name}
@@ -108,8 +118,8 @@ defmodule CodeMySpec.Migration do
 
   defp list_stories(scope) do
     case Stories.list_project_stories(scope) do
-      {:ok, stories} -> stories
-      stories when is_list(stories) -> stories
+      {:ok, stories} -> Repo.preload(stories, :component)
+      stories when is_list(stories) -> Repo.preload(stories, :component)
       _ -> []
     end
   end
@@ -198,6 +208,7 @@ defmodule CodeMySpec.Migration do
 
   defp put_stories(scope, stories, epics) do
     existing = scope |> project_stories() |> Map.new(&{&1.title, &1})
+    components = component_ids_by_module(scope)
 
     collect(stories, fn story ->
       case existing[story["title"]] do
@@ -208,9 +219,31 @@ defmodule CodeMySpec.Migration do
           story
           |> attrs(Stories.Story)
           |> put_ref(:epic_id, epics[story["epic_local_id"]])
+          |> put_component(components, story["component_module_name"])
           |> then(&Stories.create_story(scope, &1))
       end
     end)
+  end
+
+  # A component this deployment does not have yet is left unlinked rather than
+  # invented. Components are synced from files, so the missing one either
+  # arrives with the next scan — and the story can be linked then — or it never
+  # existed here, and a component conjured from a name would be a fiction the
+  # requirement graph would then compute against.
+  defp put_component(attrs, _components, nil), do: attrs
+
+  defp put_component(attrs, components, module_name),
+    do: put_component_id(attrs, Map.get(components, module_name))
+
+  defp put_component_id(attrs, nil), do: attrs
+  defp put_component_id(attrs, id), do: Map.put(attrs, :component_id, id)
+
+  defp component_ids_by_module(%Scope{active_project_id: project_id}) do
+    CodeMySpec.Components.Component
+    |> where([c], c.project_id == ^project_id)
+    |> select([c], {c.module_name, c.id})
+    |> Repo.all()
+    |> Map.new()
   end
 
   # Idempotence by natural key rather than by remembering local ids. Migrating
@@ -227,22 +260,22 @@ defmodule CodeMySpec.Migration do
   end
 
   defp put_rules(scope, rules, stories) do
-    collect(rules, fn rule ->
-      case stories[rule["story_local_id"]] do
-        nil ->
-          {:error, {:unknown_story, rule["story_local_id"]}}
-
-        story ->
-          case Enum.find(
-                 BddRules.list_rules_for_story(scope, story.id),
-                 &(&1.statement == rule["statement"])
-               ) do
-            %{} = already -> {:ok, already}
-            nil -> BddRules.create_rule(scope, story.id, attrs(rule, BddRules.Rule))
-          end
-      end
-    end)
+    collect(rules, fn rule -> put_rule(scope, stories[rule["story_local_id"]], rule) end)
   end
+
+  defp put_rule(_scope, nil, rule), do: {:error, {:unknown_story, rule["story_local_id"]}}
+
+  defp put_rule(scope, story, rule) do
+    scope
+    |> BddRules.list_rules_for_story(story.id)
+    |> Enum.find(&(&1.statement == rule["statement"]))
+    |> reuse_or_create_rule(scope, story, rule)
+  end
+
+  defp reuse_or_create_rule(%{} = already, _scope, _story, _rule), do: {:ok, already}
+
+  defp reuse_or_create_rule(nil, scope, story, rule),
+    do: BddRules.create_rule(scope, story.id, attrs(rule, BddRules.Rule))
 
   # Idempotent across runs without collapsing duplicates within one.
   #
@@ -263,35 +296,38 @@ defmodule CodeMySpec.Migration do
 
     criteria
     |> Enum.reduce_while({:ok, %{}, snapshots}, fn criterion, {:ok, acc, snaps} ->
-      case stories[criterion["story_local_id"]] do
-        nil ->
-          {:halt, {:error, {:unknown_story, criterion["story_local_id"]}}}
-
-        story ->
-          {match, snaps} = take_match(snaps, story.id, criterion["description"])
-
-          result =
-            case match do
-              %{} = already ->
-                {:ok, already}
-
-              nil ->
-                criterion
-                |> attrs(AcceptanceCriteria.Criterion)
-                |> put_ref(:rule_id, rules[criterion["rule_local_id"]])
-                |> then(&AcceptanceCriteria.create_criterion(scope, story, &1))
-            end
-
-          case result do
-            {:ok, record} -> {:cont, {:ok, Map.put(acc, criterion["local_id"], record), snaps}}
-            {:error, reason} -> {:halt, {:error, reason}}
-          end
-      end
+      put_criterion(scope, stories[criterion["story_local_id"]], criterion, rules, acc, snaps)
     end)
     |> case do
       {:ok, acc, _snaps} -> {:ok, acc}
       {:error, reason} -> {:error, reason}
     end
+  end
+
+  defp put_criterion(_scope, nil, criterion, _rules, _acc, _snaps),
+    do: {:halt, {:error, {:unknown_story, criterion["story_local_id"]}}}
+
+  defp put_criterion(scope, story, criterion, rules, acc, snaps) do
+    {match, snaps} = take_match(snaps, story.id, criterion["description"])
+
+    match
+    |> reuse_or_create_criterion(scope, story, criterion, rules)
+    |> step(acc, snaps, criterion["local_id"])
+  end
+
+  defp step({:ok, record}, acc, snaps, local_id),
+    do: {:cont, {:ok, Map.put(acc, local_id, record), snaps}}
+
+  defp step({:error, reason}, _acc, _snaps, _local_id), do: {:halt, {:error, reason}}
+
+  defp reuse_or_create_criterion(%{} = already, _scope, _story, _criterion, _rules),
+    do: {:ok, already}
+
+  defp reuse_or_create_criterion(nil, scope, story, criterion, rules) do
+    criterion
+    |> attrs(AcceptanceCriteria.Criterion)
+    |> put_ref(:rule_id, rules[criterion["rule_local_id"]])
+    |> then(&AcceptanceCriteria.create_criterion(scope, story, &1))
   end
 
   defp take_match(snapshots, story_id, description) do
