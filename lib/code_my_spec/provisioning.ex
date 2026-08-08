@@ -364,6 +364,22 @@ defmodule CodeMySpec.Provisioning do
   end
 
   @doc """
+  Send a message to an address on the project's domain and wait for it to
+  arrive.
+
+  The inbound step proves itself the same way; this is the button that does it
+  on demand, because a domain that stops receiving looks exactly like one that
+  never did until somebody sends to it (974/8030).
+
+  Returns the received message, so the caller can say *where* it landed rather
+  than only that the provider accepted it.
+  """
+  @spec probe_inbound(Scope.t(), String.t(), keyword()) :: {:ok, map()} | {:error, term()}
+  def probe_inbound(%Scope{} = scope, to, opts \\ []) do
+    Steps.probe_inbound(scope, to, opts)
+  end
+
+  @doc """
   Whether a step's resource actually exists right now, according to its
   provider.
 

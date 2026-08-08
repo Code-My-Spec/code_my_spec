@@ -822,8 +822,13 @@ defmodule CodeMySpec.Provisioning.Steps do
     # cannot discover it, and guessing produces a failure that blames the
     # inbox for the guess.
     case Keyword.get(opts, :inbound_probe_to) do
-      to when is_binary(to) and to != "" -> send_and_await(scope, to, token, opts)
-      _ -> {:error, :no_probe_address}
+      to when is_binary(to) and to != "" ->
+        with {:ok, message} <- send_and_await(scope, to, token, opts) do
+          {:ok, inbound_proof(to, message)}
+        end
+
+      _ ->
+        {:error, :no_probe_address}
     end
   end
 
@@ -845,6 +850,24 @@ defmodule CodeMySpec.Provisioning.Steps do
     end
   end
 
+  @doc """
+  Send one message to `to` and wait for it to come back.
+
+  The same proof the inbound step performs, exposed so the page can run it on
+  demand. Public because "does this inbox still work" is a question worth
+  asking after setup has said done — a domain that stops receiving looks
+  exactly like one that never did until somebody sends to it.
+
+  Returns the received message rather than a boolean, so the caller can report
+  where it landed.
+  """
+  @spec probe_inbound(Scope.t(), String.t(), keyword()) :: {:ok, map()} | {:error, term()}
+  def probe_inbound(%Scope{} = scope, to, opts \\ []) do
+    token = "cms-inbound-#{System.unique_integer([:positive])}"
+
+    send_and_await(scope, to, token, opts)
+  end
+
   defp send_and_await(scope, to, token, opts) do
     # From a domain the account has already verified, whichever one that is.
     #
@@ -859,16 +882,21 @@ defmodule CodeMySpec.Provisioning.Steps do
     # Any verified domain works. The claim is that mail addressed to this
     # domain arrives here; who sent it is not part of it.
     with {:ok, from} <- probe_sender(scope),
-         {:ok, _sent} <- Resend.send_probe(scope, to, subject: token, from: from),
-         {:ok, message} <- Resend.await_received(scope, &received?(&1, to, token), opts) do
-      {:ok,
-       %{
-         kind: "inbound_proof",
-         location: to,
-         identifier:
-           "state=delivered message_id=#{message["id"]} proven_at=#{message["created_at"]}"
-       }}
+         {:ok, _sent} <- Resend.send_probe(scope, to, subject: token, from: from) do
+      Resend.await_received(scope, &received?(&1, to, token), opts)
     end
+  end
+
+  # The message, turned into what the step records. Kept apart from the send so
+  # `probe_inbound/3` can hand the caller the message itself — the page needs
+  # where it landed, not a formatted string it would have to parse back.
+  defp inbound_proof(to, message) do
+    %{
+      kind: "inbound_proof",
+      location: to,
+      identifier:
+        "state=delivered message_id=#{message["id"]} proven_at=#{message["created_at"]}"
+    }
   end
 
   # A verified sender on the account, or a clear reason there is none.

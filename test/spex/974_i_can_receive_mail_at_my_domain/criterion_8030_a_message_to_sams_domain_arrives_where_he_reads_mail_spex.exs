@@ -17,6 +17,13 @@ defmodule CodeMySpecSpex.Story974.Criterion8030Spex do
 
   @cassette "resend_inbound_probe_delivered"
 
+  # Mounting reads the sending domains off Resend, so the page comes up knowing
+  # about this domain only if that call is recorded. Outside a cassette it
+  # reaches the live API while recording and the network while replaying, and
+  # the mail section — which is `:if={@mail}` — simply is not there. 8029 hit
+  # the same wall and names it.
+  @mount_cassette "974_8030_mail_section_mounted"
+
   setup :register_log_in_setup_account
   setup :setup_active_project
   setup :devops_on
@@ -31,8 +38,22 @@ defmodule CodeMySpecSpex.Story974.Criterion8030Spex do
         # replays the others' state.
         own_domain(context.project, "c8030.astralbi.com")
 
-        {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/provisioning")
+        view =
+          with_provider_cassette(@mount_cassette, fn ->
+            {:ok, view, _html} =
+              live(context.conn, "/app/projects/#{context.project.id}/provisioning")
+
+            # Rendered inside the cassette too: the mail section is loaded on
+            # mount, and reading it afterwards would ask the live API.
+            _ = Phoenix.LiveViewTest.render(view)
+            view
+          end)
+
+        # Anchor: the section the probe control lives in is actually on the
+        # page, so a missing button means a missing button rather than a mail
+        # section that never rendered.
+        assert Phoenix.LiveViewTest.render(view) =~ ~s(data-test="mail"),
+               "expected the mail section to render — the probe control lives inside it"
 
         {:ok, Map.put(context, :view, view)}
       end

@@ -44,6 +44,14 @@ defmodule CodeMySpec.NoFabricatedWorkingDirectoryTest do
     "lib/code_my_spec_local_web/application.ex" =>
       "cms migrate: a CLI entrypoint, not request-reachable — cwd is the project being migrated",
 
+    # Enumerating its own copies, not resolving a caller's. `all/0` is "every
+    # working copy this harness can answer for", and the one it was started in
+    # is one of them — the harness is a CLI process the user runs inside a
+    # checkout, so cwd there is a working copy by definition. Each entry is
+    # then keyed by the harness id its config carries, so nothing downstream
+    # depends on which of them cwd happened to be.
+    "lib/cms_harness/working_copies.ex" => "harness lists the copy it was started in",
+
     # The local desktop app: one machine, one project, cwd is it.
     "lib/code_my_spec_local_web/live/projects/form.ex" => "local desktop UI",
     "lib/code_my_spec/project_sync/file_watcher_server.ex" => "watches a local checkout",
