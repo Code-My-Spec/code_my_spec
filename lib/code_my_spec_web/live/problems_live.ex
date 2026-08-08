@@ -13,6 +13,7 @@ defmodule CodeMySpecWeb.ProblemsLive do
   use CodeMySpecWeb, :live_view
 
   alias CodeMySpec.Harnesses
+  import CodeMySpecWeb.HarnessPicker
   alias CodeMySpec.Problems
 
   @per_page 25
@@ -24,11 +25,13 @@ defmodule CodeMySpecWeb.ProblemsLive do
     # every checkout's rows merged — the same path once per checkout, one
     # checkout's failures against another's code — so it reads as the most
     # recently active one until there is a picker to say otherwise.
-    socket = assign(socket, :scope, Harnesses.viewing(socket.assigns[:scope]))
+    # The working copy is resolved per-request in `handle_params/3`, because it
+    # travels in the URL.
 
     {:ok,
      assign(socket,
        section: :problems,
+       harnesses: [],
        page: 1,
        filter: :all,
        result: nil,
@@ -40,6 +43,7 @@ defmodule CodeMySpecWeb.ProblemsLive do
   def handle_params(params, _uri, %{assigns: %{scope: %{} = scope, project: project}} = socket) do
     page = parse_page(params["page"])
     filter = parse_filter(params["filter"])
+    scope = scope_for(scope, params["harness"])
 
     result =
       Problems.list_problems_paginated(scope,
@@ -50,6 +54,8 @@ defmodule CodeMySpecWeb.ProblemsLive do
 
     {:noreply,
      assign(socket,
+       scope: scope,
+       harnesses: Harnesses.list_harnesses(scope),
        page: page,
        filter: filter,
        result: result,
@@ -96,6 +102,12 @@ defmodule CodeMySpecWeb.ProblemsLive do
           Filter by source to see what each analyzer flagged.
         </p>
       </div>
+
+      <.harness_picker
+        harnesses={@harnesses}
+        active_id={@scope.active_harness_id}
+        path_fun={&problems_path(@slug, page: 1, filter: @filter, harness: &1)}
+      />
 
       <div class="flex flex-wrap items-center gap-2 mb-4" data-test="problems-filters">
         <.link
@@ -236,12 +248,14 @@ defmodule CodeMySpecWeb.ProblemsLive do
   defp problems_path(slug, opts) do
     page = Keyword.get(opts, :page, 1)
     filter = Keyword.get(opts, :filter, :all)
+    harness = Keyword.get(opts, :harness)
 
     base = "/app/projects/#{slug}/problems"
 
     params = []
     params = if page > 1, do: [{"page", page} | params], else: params
     params = if filter != :all, do: [{"filter", filter} | params], else: params
+    params = if harness, do: [{"harness", harness} | params], else: params
 
     case params do
       [] -> base

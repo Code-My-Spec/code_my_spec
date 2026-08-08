@@ -14,6 +14,7 @@ defmodule CodeMySpecWeb.FilesLive do
   alias CodeMySpec.Files.ComponentSync, as: FileComponentSync
   alias CodeMySpec.Files.FileSync
   alias CodeMySpec.Harnesses
+  import CodeMySpecWeb.HarnessPicker
   alias CodeMySpec.ProjectSync.Sync, as: ProjectSync
   alias CodeMySpec.Requirements
 
@@ -27,12 +28,14 @@ defmodule CodeMySpecWeb.FilesLive do
     # every checkout's rows merged — the same path once per checkout, one
     # checkout's failures against another's code — so it reads as the most
     # recently active one until there is a picker to say otherwise.
-    socket = assign(socket, :scope, Harnesses.viewing(socket.assigns[:scope]))
+    # The working copy is resolved per-request in `handle_params/3`, because it
+    # travels in the URL.
 
     {:ok,
      assign(socket,
        section: :files,
        page_title: "Files",
+       harnesses: [],
        page: 1,
        filter: :all,
        result: nil,
@@ -48,6 +51,7 @@ defmodule CodeMySpecWeb.FilesLive do
   def handle_params(params, _uri, %{assigns: %{scope: %{} = scope, project: project}} = socket) do
     page = parse_page(params["page"])
     filter = parse_filter(params["filter"])
+    scope = scope_for(scope, params["harness"])
     result = Files.list_files_paginated(scope, page: page, per_page: @per_page, filter: filter)
 
     # The host re-resolves scope on every handle_params, so subscribe once.
@@ -57,6 +61,8 @@ defmodule CodeMySpecWeb.FilesLive do
 
     {:noreply,
      assign(socket,
+       scope: scope,
+       harnesses: Harnesses.list_harnesses(scope),
        watching?: connected?(socket),
        page: page,
        filter: filter,
@@ -203,6 +209,11 @@ defmodule CodeMySpecWeb.FilesLive do
           >
             Watcher: last event {@watcher_last_event.path} ({@watcher_event_count} total)
           </div>
+          <.harness_picker
+            harnesses={@harnesses}
+            active_id={@scope.active_harness_id}
+            path_fun={&files_path(@slug, page: 1, filter: @filter, harness: &1)}
+          />
         </div>
         <div class="flex flex-row gap-2 shrink-0">
           <button
@@ -476,12 +487,14 @@ defmodule CodeMySpecWeb.FilesLive do
   defp files_path(slug, opts) do
     page = Keyword.get(opts, :page, 1)
     filter = Keyword.get(opts, :filter, :all)
+    harness = Keyword.get(opts, :harness)
 
     base = "/app/projects/#{slug}/files"
 
     params = []
     params = if page > 1, do: [{"page", page} | params], else: params
     params = if filter == :invalid, do: [{"filter", "invalid"} | params], else: params
+    params = if harness, do: [{"harness", harness} | params], else: params
 
     case params do
       [] -> base
