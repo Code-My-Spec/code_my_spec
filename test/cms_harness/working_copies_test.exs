@@ -21,15 +21,13 @@ defmodule CmsHarness.WorkingCopiesTest do
     original = System.get_env("CMS_HARNESS_REGISTRY")
     System.put_env("CMS_HARNESS_REGISTRY", file)
 
-    on_exit(fn ->
-      case original do
-        nil -> System.delete_env("CMS_HARNESS_REGISTRY")
-        value -> System.put_env("CMS_HARNESS_REGISTRY", value)
-      end
-    end)
+    on_exit(fn -> restore(original) end)
 
     %{registry_file: file}
   end
+
+  defp restore(nil), do: System.delete_env("CMS_HARNESS_REGISTRY")
+  defp restore(value), do: System.put_env("CMS_HARNESS_REGISTRY", value)
 
   describe "a machine that has onboarded nothing" do
     test "knows nothing, rather than failing" do
