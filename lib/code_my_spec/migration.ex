@@ -213,7 +213,7 @@ defmodule CodeMySpec.Migration do
     collect(stories, fn story ->
       case find_existing(known, story) do
         %{} = already ->
-          {:ok, already}
+          relink(scope, already, components, story["component_module_name"])
 
         nil ->
           story
@@ -224,6 +224,26 @@ defmodule CodeMySpec.Migration do
           |> then(&Stories.create_story(scope, &1))
       end
     end)
+  end
+
+  # A story that is already here still takes its component from the payload.
+  #
+  # Recognising a row and returning it untouched made "idempotent" mean
+  # "inert": correcting a story's component upstream and migrating again
+  # carried nothing, so every correction needed a hand-written backfill against
+  # the destination. Which is how nine stories came to point at components that
+  # no longer existed — the links were fixed at the source and the re-run
+  # ignored them.
+  #
+  # Only the component. Title, narrative and description are left alone: the
+  # destination is where they get edited once a project has moved, and the
+  # source stops being authoritative about them the moment somebody does.
+  defp relink(scope, story, components, module_name) do
+    case Map.get(components, module_name || :none) do
+      nil -> {:ok, story}
+      same when same == story.component_id -> {:ok, story}
+      id -> Stories.update_story(scope, story, %{component_id: id})
+    end
   end
 
   # Two indexes because a second run has two ways to recognise its own work, and

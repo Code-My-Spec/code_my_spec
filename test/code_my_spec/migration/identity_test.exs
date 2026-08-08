@@ -72,6 +72,32 @@ defmodule CodeMySpec.Migration.IdentityTest do
              "grew a duplicate every time somebody reworded a title upstream"
   end
 
+  test "a corrected component link crosses on the next run", %{scope: scope} do
+    {:ok, component} =
+      CodeMySpec.Components.create_component(scope, %{
+        name: "Overview",
+        module_name: "MyApp.Overview",
+        type: "genserver"
+      })
+
+    {:ok, _} = Migration.import_project(scope, payload([story(990, "Guided intake")]))
+
+    {:ok, [before]} = Stories.list_project_stories(scope)
+    assert is_nil(before.component_id), "nothing named a component on the first run"
+
+    corrected =
+      payload([Map.put(story(990, "Guided intake"), "component_module_name", "MyApp.Overview")])
+
+    {:ok, _} = Migration.import_project(scope, corrected)
+
+    {:ok, [after_run]} = Stories.list_project_stories(scope)
+
+    assert after_run.component_id == component.id,
+           "recognising a story and returning it untouched made idempotent mean inert — " <>
+             "a link fixed upstream never crossed, so every correction needed a " <>
+             "hand-written backfill against the destination"
+  end
+
   test "a duplicate title is refused by the destination, not silently merged", %{scope: scope} do
     {:ok, _} = Migration.import_project(scope, payload([story(101, "Same words")]))
 
