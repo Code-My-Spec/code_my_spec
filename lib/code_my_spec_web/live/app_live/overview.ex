@@ -3,7 +3,6 @@ defmodule CodeMySpecWeb.AppLive.Overview do
 
   alias CodeMySpec.Accounts
   alias CodeMySpec.Accounts.Account
-  alias CodeMySpec.Events
   alias CodeMySpec.Projects
   alias CodeMySpec.Projects.Project
   alias CodeMySpec.UserPreferences
@@ -68,7 +67,6 @@ defmodule CodeMySpecWeb.AppLive.Overview do
     account_done? = !is_nil(scope.active_account)
     projects = if account_done?, do: Projects.list_projects(scope), else: []
     project_done? = projects != []
-    application_done? = Events.exists?("local_signed_in", user_id: scope.user.id)
     active_project = scope.active_project || List.first(projects)
 
     %{
@@ -79,36 +77,29 @@ defmodule CodeMySpecWeb.AppLive.Overview do
       project_count: length(projects),
       project_name: active_project && active_project.name,
       active_project_id: active_project && active_project.id,
-      application_done?: application_done?,
-      active_step: active_step(account_done?, project_done?, application_done?)
+      active_step: active_step(account_done?, project_done?)
     }
   end
 
-  # The active step is always the first incomplete one in the fixed
-  # order. Once everything is done (including the user signing in to
-  # the local app), there is no active step — every rung renders
-  # "done" and the ladder is fully resolved.
+  # The active step is always the first incomplete one in the fixed order.
+  # Once both are done there is no active step and the ladder is resolved.
   #
-  # There is no plugin rung. Whether a CLI had ever connected used to sit
-  # between the project and the application, so a user who was set up on
-  # another machine — or who came through the guided intake, which installs
-  # nothing here — stalled on a rung they could not clear from this page.
-  defp active_step(false, _, _), do: :account
-  defp active_step(true, false, _), do: :project
-  defp active_step(true, true, false), do: :application
-  defp active_step(true, true, true), do: nil
+  # The ladder ends at a project. Everything past that — installing a plugin,
+  # signing in to the local app — happened somewhere this page cannot see, so
+  # a rung for it could only ever sit unfinished and make a working setup look
+  # broken.
+  defp active_step(false, _), do: :account
+  defp active_step(true, false), do: :project
+  defp active_step(true, true), do: nil
 
   # A rung is "done" if its prerequisite has been fulfilled, "active"
   # if it's the current first-incomplete step, otherwise "pending".
-  # The application rung flips to "done" once the local app has
-  # recorded a `local_signed_in` activation event for this user.
   # Multi-clause dispatch keeps cyclomatic complexity flat — each
   # rung's done-condition matches a single arg position.
-  defp rung_state(step, step, _, _, _), do: "active"
-  defp rung_state(:account, _, true, _, _), do: "done"
-  defp rung_state(:project, _, _, true, _), do: "done"
-  defp rung_state(:application, _, _, _, true), do: "done"
-  defp rung_state(_, _, _, _, _), do: "pending"
+  defp rung_state(step, step, _, _), do: "active"
+  defp rung_state(:account, _, true, _), do: "done"
+  defp rung_state(:project, _, _, true), do: "done"
+  defp rung_state(_, _, _, _), do: "pending"
 
   defp assign_account_form(socket) do
     if socket.assigns.account_done? do
@@ -172,13 +163,6 @@ defmodule CodeMySpecWeb.AppLive.Overview do
       {:error, changeset} ->
         {:noreply, assign(socket, project_form: to_form(changeset, as: "project"))}
     end
-  end
-
-  # An activation milestone landed for this user — re-derive ladder
-  # state so the rung that just unlocked flips in-place.
-  def handle_info({:activation_event, _name, _payload}, socket) do
-    state = build_step_state(socket.assigns.current_scope)
-    {:noreply, assign(socket, state)}
   end
 
   def handle_info(_msg, socket), do: {:noreply, socket}
@@ -248,42 +232,21 @@ defmodule CodeMySpecWeb.AppLive.Overview do
         <div class="mx-auto max-w-2xl flex flex-col gap-4">
           <.welcome_banner :if={!@account_done?} />
 
-          <.ladder_progress
-            account_done?={@account_done?}
-            project_done?={@project_done?}
-            application_done?={@application_done?}
-          />
+          <.ladder_progress account_done?={@account_done?} project_done?={@project_done?} />
 
           <.account_rung
-            state={
-              rung_state(:account, @active_step, @account_done?, @project_done?, @application_done?)
-            }
+            state={rung_state(:account, @active_step, @account_done?, @project_done?)}
             count={@account_count}
             name={@account_name}
             account_form={@account_form}
           />
 
           <.project_rung
-            state={
-              rung_state(:project, @active_step, @account_done?, @project_done?, @application_done?)
-            }
+            state={rung_state(:project, @active_step, @account_done?, @project_done?)}
             count={@project_count}
             name={@project_name}
             project_form={@project_form}
             project_module_preview={@project_module_preview}
-          />
-
-          <.application_rung
-            state={
-              rung_state(
-                :application,
-                @active_step,
-                @account_done?,
-                @project_done?,
-                @application_done?
-              )
-            }
-            project_id={@active_project_id}
           />
         </div>
       </div>
@@ -331,8 +294,7 @@ defmodule CodeMySpecWeb.AppLive.Overview do
     done =
       [
         assigns.account_done?,
-        assigns.project_done?,
-        assigns.application_done?
+        assigns.project_done?
       ]
       |> Enum.count(& &1)
 
@@ -343,16 +305,15 @@ defmodule CodeMySpecWeb.AppLive.Overview do
       <ul class="steps steps-horizontal w-full text-sm">
         <li class={["step", @account_done? && "step-primary"]}>Account</li>
         <li class={["step", @project_done? && "step-primary"]}>Project</li>
-        <li class={["step", @application_done? && "step-primary"]}>App</li>
       </ul>
       <div class="text-center text-xs text-base-content/60">
         <span data-test="ladder-progress-count">
           <span class={
-            if @done == 3, do: "text-primary font-bold", else: "text-base-content font-semibold"
+            if @done == 2, do: "text-primary font-bold", else: "text-base-content font-semibold"
           }>
             {@done}
           </span>
-          / 3 complete
+          / 2 complete
         </span>
       </div>
     </div>
@@ -508,54 +469,6 @@ defmodule CodeMySpecWeb.AppLive.Overview do
     />
     """
   end
-
-  defp application_rung(%{state: "active"} = assigns) do
-    assigns = assign_new(assigns, :project_id, fn -> nil end)
-
-    ~H"""
-    <a
-      href={application_href(@project_id)}
-      target="_blank"
-      rel="noopener noreferrer"
-      data-test="application-rung"
-      data-state="active"
-      class="card bg-primary text-primary-content shadow-sm hover:shadow-md transition-shadow block"
-    >
-      <div class="card-body flex-row items-center gap-4 py-4 px-6">
-        <span class="badge badge-outline">Step 4 · Application</span>
-        <span class="flex-1"></span>
-        <span class="font-semibold inline-flex items-center gap-2">
-          <.icon name="hero-arrow-top-right-on-square" class="size-4" />
-          Open the local workspace · localhost:4003
-        </span>
-      </div>
-    </a>
-    """
-  end
-
-  defp application_rung(assigns) do
-    ~H"""
-    <div
-      data-test="application-rung"
-      data-state="pending"
-      class="card bg-base-100 border border-base-300 opacity-60"
-      aria-disabled="true"
-    >
-      <div class="card-body flex-row items-center gap-4 py-4 px-6">
-        <span class="badge badge-ghost">Pending</span>
-        <div class="flex-1">
-          <div class="text-xs text-base-content/50 font-medium">Step 4 · Application</div>
-          <div class="text-sm text-base-content/60 mt-0.5">
-            Open the local workspace and write your first story.
-          </div>
-        </div>
-      </div>
-    </div>
-    """
-  end
-
-  defp application_href(nil), do: "http://localhost:4003"
-  defp application_href(project_id), do: "http://localhost:4003?project=#{project_id}"
 
   defp metric_tile(assigns) do
     assigns =
