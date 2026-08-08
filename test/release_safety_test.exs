@@ -19,12 +19,7 @@ defmodule CodeMySpec.ReleaseSafetyTest do
   # guarantees the property is the compiled-artifact test below, which asks the
   # beam rather than the source and so cannot be fooled by where the call sits.
   @allowed_paths [
-    "code_my_spec/agent_tasks/setup/compilers.ex",
-    # `@default_server_url (case Mix.env() do …)` — a module attribute, so the
-    # call runs during compilation and only the resulting string reaches the
-    # beam. Verified, not assumed: the compiled module carries no reference to
-    # Mix at all, and `default_server_url/0` is a literal binary.
-    "cms_harness/config.ex"
+    "code_my_spec/agent_tasks/setup/compilers.ex"
   ]
 
   # Modules whose reference to Mix survives compilation and is still safe.
