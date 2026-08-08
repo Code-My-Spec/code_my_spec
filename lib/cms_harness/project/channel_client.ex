@@ -1,14 +1,13 @@
 defmodule CmsHarness.Project.ChannelClient do
   @moduledoc """
-  One project's channel to the server. While it is joined, this harness owns
-  that project.
+  One working copy's channel to the server. While it is joined, this harness is
+  the one serving that checkout.
 
-  **The channel is the lease.** The server takes the project's advisory lock
-  when this joins and drops it when the socket closes, on a connection the
-  server-side channel process owns. So a harness that panics, is `docker rm
-  -f`'d, or loses its network frees the project as its socket closes — no TTL,
-  no heartbeat, no clock to agree on. That is why this is a channel rather than
-  a series of requests: not throughput, liveness.
+  **A channel rather than a series of requests, for liveness.** The server holds
+  an executor slot for this working copy while the socket is open and releases
+  it when the socket closes, so a harness that panics, is `docker rm -f`'d, or
+  loses its network frees the copy as its socket goes — no TTL, no heartbeat, no
+  clock to agree on. The in-flight analysis ledger keys off the same signal.
 
   Everything the harness initiates goes through here:
 
@@ -33,12 +32,20 @@ defmodule CmsHarness.Project.ChannelClient do
   rather than queueing events it will not remember. Both of them read it from
   here.
 
-  ## A refused join does not retry
+  ## A refused join keeps trying
 
-  If another harness already holds the project, the server refuses and names
-  the holder. Two harnesses syncing one project overwrite each other's files
-  and produce a requirement graph matching neither, so the second one stops.
-  Reconnecting on a loop would just be that same collision, once a second.
+  Two harnesses on one *project* is ordinary now — files and problems are keyed
+  on the working copy, so each writes its own rows. What the server still
+  refuses is a second harness on the same *working copy*, because `mix test` and
+  `mix spex` share one `_build` and two at once corrupt it.
+
+  That refusal is temporary by nature: it clears the moment the holder exits. So
+  this retries at the capped backoff rather than giving up. It used to give up
+  permanently, from when the refusal meant file corruption — and because nothing
+  cleared the flag, a harness that was refused once stayed dead for the life of
+  the process. On 2026-08-08 that survived a server restart: the harness could
+  see the server answering 200 and would not reconnect, which reads exactly like
+  a broken server.
   """
 
   use Slipstream
@@ -61,19 +68,15 @@ defmodule CmsHarness.Project.ChannelClient do
 
   @backoff [1_000, 2_000, 5_000, 10_000, 30_000]
 
-  # A refused join is retried this many times before it is treated as final.
+  # How many refusals are reported quietly before one loud explanation. Not a
+  # give-up count — nothing gives up any more.
   #
-  # The lease is a Postgres advisory lock held by the *server's* connection, so
-  # it frees the instant that connection closes — including when the server
-  # restarts. But a restart is a handover, not an instant: for the seconds the
-  # old node takes to exit, the new node cannot take a lock the old one still
-  # holds, and a harness that rejoined in that window was refused. Treating that
-  # as final wedged the harness until someone noticed and restarted it by hand,
-  # which is how tonight went.
-  #
-  # Spanning the backoff, this is roughly 48 seconds — long enough to outlast a
-  # handover, short enough that a genuine second harness still gives up quickly
-  # rather than fighting for the project forever.
+  # The executor slot is held by the *server-side channel process*, so it frees
+  # the instant that socket closes, including on a restart. But a restart is a
+  # handover rather than an instant: for the seconds the old process takes to
+  # go, the new one cannot take a slot the old one still holds. Spanning the
+  # backoff, this is roughly 48 seconds — long enough that an ordinary handover
+  # never produces the loud message.
   @refusal_retries 4
 
   # The server needs this and cannot know it. `pre-tool-use` rewrites the agent's
@@ -381,8 +384,11 @@ defmodule CmsHarness.Project.ChannelClient do
     # closed after joining as `:error`; the refusal we know how to explain can
     # arrive either way.
     case reason do
-      {kind, %{"reason" => "project_in_use", "held_by" => holder}}
-      when kind in [:error, :failed_to_join] ->
+      # `project_in_use` is what a server older than the grain change sends. Both
+      # are accepted so a harness can serve either.
+      {kind, %{"reason" => reason, "held_by" => holder}}
+      when kind in [:error, :failed_to_join] and
+             reason in ["working_copy_in_use", "project_in_use"] ->
         {:ok, refused(socket, holder)}
 
       other ->
@@ -819,34 +825,45 @@ defmodule CmsHarness.Project.ChannelClient do
   # `CmsHarness.Project.Transport` for why only outbound needed a seam.
   defp transport, do: Transport.impl()
 
-  # A project someone else holds. Retried for a while first, because the most
-  # common holder is not another harness at all — it is the server node this one
-  # is replacing, still on its way out. See `@refusal_retries`.
+  # This working copy is already being served. Usually by the process this one is
+  # replacing, still on its way out — so the first few attempts say so quietly
+  # and the backoff handles it.
+  #
+  # It never stops trying. The refusal is about `_build`, which one process holds
+  # and releases when it exits, so waiting is exactly the right response and the
+  # capped backoff makes it cheap. `:refused` is kept for the health endpoint to
+  # report *why* nothing is being served; it no longer gates the reconnect.
   defp refused(socket, holder) do
-    socket = update(socket, :refusals, &(&1 + 1))
+    socket = socket |> update(:refusals, &(&1 + 1)) |> assign(:refused, :working_copy_in_use)
     attempt = socket.assigns.refusals
 
-    if attempt <= @refusal_retries do
-      Logger.warning(
-        "[CmsHarness] #{socket.assigns.project.root} is held by #{holder} — retrying " <>
-          "(#{attempt}/#{@refusal_retries}); a restarting server frees it within seconds"
-      )
-
-      schedule_rejoin(socket)
-    else
-      Logger.error("""
-      [CmsHarness] not serving #{socket.assigns.project.root} — #{holder} already holds this project.
-
-      Still held after #{@refusal_retries} retries, so this is another harness rather
-      than a server changing hands. Two harnesses syncing one project overwrite each
-      other's files and produce a requirement graph matching neither checkout, so this
-      one is stopping rather than waiting. That lease frees the moment the other
-      harness exits.
-      """)
-
-      assign(socket, :refused, :project_in_use)
-    end
+    log_refusal(socket, holder, attempt)
+    schedule_rejoin(socket)
   end
+
+  defp log_refusal(socket, holder, attempt) when attempt <= @refusal_retries do
+    Logger.warning(
+      "[CmsHarness] #{socket.assigns.project.root} is already served by #{holder} — retrying " <>
+        "(#{attempt}/#{@refusal_retries}); a restarting harness frees it within seconds"
+    )
+  end
+
+  defp log_refusal(socket, holder, attempt) when attempt == @refusal_retries + 1 do
+    Logger.error("""
+    [CmsHarness] not serving #{socket.assigns.project.root} — #{holder} is already on it.
+
+    Still held after #{@refusal_retries} retries, so this is a second harness on one
+    working copy rather than a process changing hands. They cannot share `_build`:
+    two `mix test` runs in one build tree corrupt it into reporting failures that
+    are not in the code.
+
+    This one keeps retrying quietly and takes over the moment the other exits.
+    Nothing is being watched or synced from here until then.
+    """)
+  end
+
+  # Quiet from here. It is retrying at the capped backoff and has already said so.
+  defp log_refusal(_socket, _holder, _attempt), do: :ok
 
   defp schedule_rejoin(socket) do
     Process.send_after(self(), :reconnect, backoff(socket.assigns.attempts))

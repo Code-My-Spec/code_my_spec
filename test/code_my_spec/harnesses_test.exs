@@ -269,6 +269,47 @@ defmodule CodeMySpec.HarnessesTest do
     end
   end
 
+  describe "authored work is shared, observed work is not" do
+    # Criterion 734, and the line the whole grain is drawn along. Stories,
+    # criteria, rules, personas, epics and components are *authored* — one team
+    # writing one design — so every checkout sees the same set. Files and
+    # problems are *observed*, so they belong to the checkout that saw them.
+    #
+    # It holds because authored tables have no harness_id at all rather than
+    # because anything remembers to skip the filter, which is the version that
+    # cannot rot.
+    test "a story authored through one checkout is visible from the other", %{scope: scope} do
+      a = harness_scope(scope, "the harness at /a")
+      b = harness_scope(scope, "the harness at /b")
+
+      {:ok, story} =
+        CodeMySpec.Stories.create_story(a, %{
+          title: "Authored from a",
+          description: "Belongs to the project, not the checkout"
+        })
+
+      titles = b |> CodeMySpec.Stories.list_stories() |> Enum.map(& &1.title)
+
+      assert story.title in titles,
+             "authored work is the project's; a checkout that cannot see it would " <>
+               "be working from a different design"
+    end
+
+    test "components are shared while the files projecting them are not", %{scope: scope} do
+      a = harness_scope(scope, "the harness at /a")
+      b = harness_scope(scope, "the harness at /b")
+
+      component = CodeMySpec.ComponentsFixtures.component_fixture(a)
+
+      assert component.id in Enum.map(CodeMySpec.Components.list_components(b), & &1.id),
+             "components carry no harness — they are design, and story 727's " <>
+               "earlier 'components follow files' decision was dropped for this reason"
+
+      sync(a, ["lib/a_only.ex"])
+      assert Files.list_files(b) == []
+    end
+  end
+
   describe "the operator's view" do
     test "the most recently active harness is the default", %{scope: scope} do
       {:ok, first} = Harnesses.issue(scope, nil, label: "the harness at /a")

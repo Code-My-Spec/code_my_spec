@@ -301,41 +301,79 @@ defmodule CmsHarness.ChannelClientTransportTest do
     end
   end
 
-  describe "a project someone else holds" do
-    # The lease is a Postgres advisory lock on the *server's* connection, so the
-    # holder during a server restart is the outgoing node, and it lets go within
-    # seconds. Treating the first refusal as final meant a routine restart left
-    # the harness permanently not-serving while `cms harness` still looked alive
-    # — which is exactly how tonight's outage happened.
-    defp refuse(socket) do
+  describe "a working copy someone else is serving" do
+    # Two harnesses on one *project* is ordinary now. What is refused is a second
+    # harness on the same working copy — they cannot share `_build`, and two
+    # `mix test` runs in one build tree corrupt it.
+    #
+    # That refusal clears the moment the holder exits, so this retries forever at
+    # the capped backoff. It used to give up permanently, from when the refusal
+    # meant file corruption, and nothing ever cleared the flag — so a harness
+    # refused once stayed dead for the life of the process and survived a server
+    # restart still reporting the server as the problem.
+    defp refuse(socket, reason \\ "working_copy_in_use") do
       ChannelClient.handle_topic_close(
         "harness_project:p1",
-        {:failed_to_join, %{"reason" => "project_in_use", "held_by" => "other@host"}},
+        {:failed_to_join,
+         %{"reason" => reason, "held_by" => "another harness on this working copy"}},
         socket
       )
     end
 
-    test "the first refusal retries rather than giving up" do
-      {:ok, out} = refuse(socket(%{attempts: 0, refusals: 0}))
-
-      refute out.assigns.refused,
-             "a refusal seconds into a server handover is not a second harness"
+    test "the first refusal retries" do
+      {:ok, _out} = refuse(socket(%{attempts: 0, refusals: 0}))
 
       assert_receive :reconnect, 1_500
     end
 
-    test "a refusal that keeps coming back is eventually final" do
+    test "a refusal that keeps coming back still retries" do
       out =
-        Enum.reduce(1..5, socket(%{attempts: 0, refusals: 0}), fn _, acc ->
+        Enum.reduce(1..8, socket(%{attempts: 0, refusals: 0}), fn _, acc ->
           {:ok, next} = refuse(acc)
           next
         end)
 
-      assert out.assigns.refused == :project_in_use,
-             "two harnesses on one project corrupt the graph; retrying forever " <>
-               "would trade one failure mode for a worse one"
+      assert out.assigns.refusals == 8
 
-      assert out.assigns.refusals == 5, "the retries are bounded, not endless"
+      assert_receive :reconnect,
+                     1_500,
+                     "the holder exits eventually; giving up means a harness that never " <>
+                       "notices and reports the server as broken instead"
+    end
+
+    test "a server older than the grain change is still understood" do
+      {:ok, out} = refuse(socket(%{attempts: 0, refusals: 0}), "project_in_use")
+
+      assert out.assigns.refused == :working_copy_in_use,
+             "the reason string changed with the grain; both are accepted so a " <>
+               "harness can serve either server"
+    end
+
+    test "a refusal does not stop the reconnect on the next disconnect" do
+      refused_socket =
+        Enum.reduce(1..8, socket(%{attempts: 0, refusals: 0, pending: %{}}), fn _, acc ->
+          {:ok, next} = refuse(acc)
+          next
+        end)
+
+      # Drain the rejoins the refusals armed, so the assertion below can only be
+      # satisfied by `handle_disconnect/2` arming its own.
+      receive_all_reconnects()
+
+      {:ok, _out} = ChannelClient.handle_disconnect(:closed, refused_socket)
+
+      assert_receive :reconnect,
+                     2_000,
+                     "this is the bug: `refused` gated the reconnect, so a harness that " <>
+                       "had been refused could not come back when the server did"
+    end
+
+    defp receive_all_reconnects do
+      receive do
+        :reconnect -> receive_all_reconnects()
+      after
+        50 -> :ok
+      end
     end
   end
 end
