@@ -135,6 +135,20 @@ defmodule CmsHarness.HookDecision do
   # `:no_project`, which is about a directory that cannot say which project it
   # is — here the directory is not the question and telling somebody to edit a
   # config file in it is nonsense, because there is no "it".
+  # A hook that named no working copy at all. There is deliberately nothing to
+  # fall back on: resolving it from the directory it fired in is what this
+  # replaced, and that guessed wrong in every way a guess can.
+  defp explain(:no_harness, _working_dir) do
+    """
+    This hook did not say which working copy it is about.
+
+    Hooks are addressed to a harness id. Run `mix cms.harness.onboard` in the \
+    checkout to generate a plugin whose hooks carry one, and start the agent \
+    with `--plugin-dir <checkout>/.claude/plugin-dev`.
+    """
+    |> String.trim()
+  end
+
   defp explain({:unknown_harness, harness_id}, _working_dir) do
     """
     This harness is not serving the working copy #{harness_id}.

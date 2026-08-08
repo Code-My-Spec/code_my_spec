@@ -17,8 +17,6 @@
               "Content-Type: application/json",
               "-H",
               "X-Harness-Id: ${CMS_HARNESS_ID}",
-              "-H",
-              "X-Working-Dir: ${CLAUDE_PROJECT_DIR}",
               "--data-binary",
               "@-"
             ]
@@ -43,8 +41,6 @@
               "Content-Type: application/json",
               "-H",
               "X-Harness-Id: ${CMS_HARNESS_ID}",
-              "-H",
-              "X-Working-Dir: ${CLAUDE_PROJECT_DIR}",
               "--data-binary",
               "@-"
             ]
@@ -66,8 +62,6 @@
               "Content-Type: application/json",
               "-H",
               "X-Harness-Id: ${CMS_HARNESS_ID}",
-              "-H",
-              "X-Working-Dir: ${CLAUDE_PROJECT_DIR}",
               "--data-binary",
               "@-"
             ]
@@ -92,8 +86,6 @@
               "Content-Type: application/json",
               "-H",
               "X-Harness-Id: ${CMS_HARNESS_ID}",
-              "-H",
-              "X-Working-Dir: ${CLAUDE_PROJECT_DIR}",
               "--data-binary",
               "@-"
             ]
@@ -118,8 +110,6 @@
               "Content-Type: application/json",
               "-H",
               "X-Harness-Id: ${CMS_HARNESS_ID}",
-              "-H",
-              "X-Working-Dir: ${CLAUDE_PROJECT_DIR}",
               "--data-binary",
               "@-"
             ]
@@ -144,8 +134,6 @@
               "Content-Type: application/json",
               "-H",
               "X-Harness-Id: ${CMS_HARNESS_ID}",
-              "-H",
-              "X-Working-Dir: ${CLAUDE_PROJECT_DIR}",
               "--data-binary",
               "@-"
             ]
@@ -170,8 +158,6 @@
               "Content-Type: application/json",
               "-H",
               "X-Harness-Id: ${CMS_HARNESS_ID}",
-              "-H",
-              "X-Working-Dir: ${CLAUDE_PROJECT_DIR}",
               "--data-binary",
               "@-"
             ]
@@ -194,8 +180,6 @@
               "Content-Type: application/json",
               "-H",
               "X-Harness-Id: ${CMS_HARNESS_ID}",
-              "-H",
-              "X-Working-Dir: ${CLAUDE_PROJECT_DIR}",
               "--data-binary",
               "@-"
             ]

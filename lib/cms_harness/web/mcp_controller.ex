@@ -19,17 +19,18 @@ defmodule CmsHarness.Web.McpController do
     * `Authorization: Bearer <token>` — `CmsHarness.Config.credential/0`, the
       same credential the project channel authenticates with. One credential,
       two transports; the server derives the user from it either way.
-    * `X-Project-ID` — resolved from `?dir=`, exactly as the plugin already
-      sends it to the heavy harness. `ProjectIdentity.resolve/1` reads it out of
-      `.code_my_spec/config.yml` with no database, which is the whole trick: a
-      server with no disk cannot answer which project a path is, and does not
-      have to.
+    * `X-Project-ID` — resolved from the harness id in `?harness=`.
+      `ProjectIdentity.resolve/1` reads it out of `.code_my_spec/config.yml`
+      with no database, which is the whole trick: a server with no disk cannot
+      answer which project a path is, and does not have to.
 
-  Because the URL shape is the one the plugin already uses for `local`, this is
-  a drop-in: the same `http://localhost:PORT/mcp?dir=${CLAUDE_PROJECT_DIR}`,
-  answered by a different process. Tool names stay
-  `mcp__plugin_codemyspec_local__*`, so every prompt reference, every agent's
-  `mcpServers: local` and the PreToolUse prefix keep working.
+  The session is addressed by harness id, not by directory. Two checkouts of
+  one project are two working copies with two ids, and were they addressed by
+  path they would share an MCP session while their hooks stayed apart — which
+  is worse than either alternative, because the mismatch is invisible.
+
+  Tool names stay `mcp__plugin_codemyspec_local__*`, so every prompt reference,
+  every agent's `mcpServers: local` and the PreToolUse prefix keep working.
 
   ## The credential comes from `CmsHarness.Token`, not `Config.credential/0`
 
@@ -193,15 +194,13 @@ defmodule CmsHarness.Web.McpController do
     end
   end
 
-  # The plugin sends `?dir=${CLAUDE_PROJECT_DIR}` — the same URL shape the heavy
-  # harness is configured with, so switching between them is a port and nothing
-  # else. `X-Working-Dir` is accepted too because the hook surface uses it and
-  # somebody will reasonably expect it to work here. `CMS_PROJECT_DIR` is the
-  # sprite, which serves one project and is told which at boot.
+  # `?harness=<id>`, written by onboarding. The header is accepted too, for a
+  # host that cannot template a URL. Nothing else — a directory is not an
+  # answer to "which working copy is this", which is why it is not consulted.
   defp project(conn) do
-    case conn.query_params["harness"] do
+    case conn.query_params["harness"] || List.first(get_req_header(conn, "x-harness-id")) do
       id when is_binary(id) and id != "" -> by_harness(id)
-      _ -> by_directory(conn)
+      _ -> {:error, :no_harness}
     end
   end
 
@@ -212,19 +211,6 @@ defmodule CmsHarness.Web.McpController do
     case WorkingCopies.root(id) do
       {:ok, root} -> ProjectIdentity.resolve(root)
       :unknown -> {:error, {:unknown_harness, id}}
-    end
-  end
-
-  defp by_directory(conn) do
-    dir =
-      conn.query_params["dir"] ||
-        List.first(get_req_header(conn, "x-working-dir")) ||
-        System.get_env("CMS_PROJECT_DIR") ||
-        Application.get_env(:code_my_spec, :harness_project_dir)
-
-    case dir do
-      dir when is_binary(dir) and dir != "" -> ProjectIdentity.resolve(dir)
-      _ -> {:error, :no_working_dir}
     end
   end
 
@@ -264,10 +250,11 @@ defmodule CmsHarness.Web.McpController do
         "different set of copies, or this checkout's plugin was generated against " <>
         "an id that has since been reissued — re-run `mix cms.harness.onboard`."
 
-  defp message(:no_working_dir),
+  defp message(:no_harness),
     do:
-      "No working directory on this request, so the harness cannot say which " <>
-        "project it is about. The plugin sends it as ?dir=${CLAUDE_PROJECT_DIR}."
+      "This request does not say which working copy it is about. The MCP " <>
+        "server is addressed as /mcp?harness=<id>; run `mix cms.harness.onboard` " <>
+        "in the checkout to generate a plugin that sends one."
 
   defp message(:no_project_id),
     do:

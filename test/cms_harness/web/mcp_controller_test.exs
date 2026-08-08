@@ -94,7 +94,7 @@ defmodule CmsHarness.Web.McpControllerTest do
 
       conn
       |> Plug.Conn.put_req_header("mcp-session-id", "doomed")
-      |> delete("/mcp?dir=#{URI.encode_www_form(dir)}")
+      |> delete("/mcp?harness=#{harness_id_at(dir)}")
 
       assert FakeUpstream.last_request().method == "DELETE"
       assert FakeUpstream.last_request().headers["mcp-session-id"] == "doomed"
@@ -109,7 +109,7 @@ defmodule CmsHarness.Web.McpControllerTest do
       conn =
         conn
         |> Plug.Conn.put_req_header("accept", "text/event-stream")
-        |> get("/mcp?dir=#{URI.encode_www_form(dir)}")
+        |> get("/mcp?harness=#{harness_id_at(dir)}")
 
       assert conn.status == 200
       assert conn.resp_body =~ "data: one"
@@ -127,7 +127,7 @@ defmodule CmsHarness.Web.McpControllerTest do
       conn =
         conn
         |> Plug.Conn.put_req_header("accept", "text/event-stream")
-        |> get("/mcp?dir=#{URI.encode_www_form(dir)}")
+        |> get("/mcp?harness=#{harness_id_at(dir)}")
 
       assert conn.status == 401
       assert conn.resp_body =~ "invalid_token"
@@ -224,26 +224,25 @@ defmodule CmsHarness.Web.McpControllerTest do
       assert FakeUpstream.last_request() == nil
     end
 
-    test "with no working directory it names the parameter the plugin sends", %{conn: conn} do
+    test "naming no working copy is refused, not guessed at", %{conn: conn} do
       conn =
         conn
         |> Plug.Conn.put_req_header("content-type", "application/json")
         |> post("/mcp", %{"jsonrpc" => "2.0", "id" => 1, "method" => "ping"})
 
-      assert Jason.decode!(conn.resp_body)["error"]["message"] =~ "?dir="
+      assert Jason.decode!(conn.resp_body)["error"]["message"] =~ "?harness="
       assert FakeUpstream.last_request() == nil
     end
 
-    test "a directory that cannot say which project it is names the file", %{conn: conn} do
-      dir =
-        Path.join(System.tmp_dir!(), "cms_harness_no_id_#{System.unique_integer([:positive])}")
+    test "an id this harness does not serve names the id", %{conn: conn} do
+      gone = Ecto.UUID.generate()
 
-      File.mkdir_p!(dir)
-      on_exit(fn -> File.rm_rf(dir) end)
+      conn =
+        conn
+        |> Plug.Conn.put_req_header("content-type", "application/json")
+        |> post("/mcp?harness=#{gone}", %{"jsonrpc" => "2.0", "id" => 1, "method" => "ping"})
 
-      conn = post_rpc(conn, dir, %{"jsonrpc" => "2.0", "id" => 1, "method" => "ping"})
-
-      assert Jason.decode!(conn.resp_body)["error"]["message"] =~ ".code_my_spec/config.yml"
+      assert Jason.decode!(conn.resp_body)["error"]["message"] =~ gone
       assert FakeUpstream.last_request() == nil
     end
 
@@ -260,6 +259,6 @@ defmodule CmsHarness.Web.McpControllerTest do
   defp post_rpc(conn, dir, payload) do
     conn
     |> Plug.Conn.put_req_header("content-type", "application/json")
-    |> post("/mcp?dir=#{URI.encode_www_form(dir)}", payload)
+    |> post("/mcp?harness=#{harness_id_at(dir)}", payload)
   end
 end

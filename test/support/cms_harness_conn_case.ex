@@ -1,7 +1,11 @@
 defmodule CmsHarnessTest.ConnCase do
   @moduledoc """
   For tests that drive the hook surface the way Claude Code does: an HTTP POST
-  with a working directory and a JSON body.
+  addressed to a harness id, with a JSON body.
+
+  The id is the whole address. Nothing here sends a working directory, because
+  nothing in the harness reads one — a hook says which working copy it is about
+  or it is refused.
   """
 
   use ExUnit.CaseTemplate
@@ -16,11 +20,24 @@ defmodule CmsHarnessTest.ConnCase do
 
       # Defined here rather than imported: `post/3` is a macro that needs
       # `@endpoint` in the calling module's scope.
+      #
+      # Takes the root for the call sites' convenience and reads the id out of
+      # it, the way onboarding does when it generates a plugin.
       defp post_hook(conn, hook, working_dir, payload \\ %{}) do
+        post_hook_as(conn, hook, harness_id_at(working_dir), payload)
+      end
+
+      defp post_hook_as(conn, hook, harness_id, payload \\ %{}) do
         conn
-        |> Plug.Conn.put_req_header("x-working-dir", working_dir)
         |> Plug.Conn.put_req_header("content-type", "application/json")
-        |> post("/api/hooks/#{hook}", payload)
+        |> post("/api/harnesses/#{harness_id}/hooks/#{hook}", payload)
+      end
+
+      defp harness_id_at(root) do
+        case CmsHarness.HarnessIdentity.read(root) do
+          {:ok, id} -> id
+          _ -> "no-harness-id-at-#{root}"
+        end
       end
     end
   end

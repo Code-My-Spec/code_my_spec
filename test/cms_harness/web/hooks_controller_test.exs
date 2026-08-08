@@ -67,11 +67,15 @@ defmodule CmsHarness.Web.HooksControllerTest do
   end
 
   describe "with no project to serve" do
-    test "a directory with no id is refused, and told where to put one", %{conn: conn} do
-      body = conn |> post_hook("stop", anonymous_dir()) |> json_response(200)
+    test "a copy this harness does not serve is refused by id", %{conn: conn} do
+      body = conn |> post_hook_as("stop", Ecto.UUID.generate()) |> json_response(200)
 
       assert body["decision"] == "block"
-      assert body["reason"] =~ ".code_my_spec/config.yml"
+
+      assert body["reason"] =~ "not serving the working copy",
+             "an id nobody onboarded resolves to nothing — the alternative was " <>
+               "walking up from the request's directory until a mix.exs turned up, " <>
+               "which adopted whichever project sat above an unonboarded checkout"
     end
 
     test "a hook with no working directory at all is refused", %{conn: conn} do

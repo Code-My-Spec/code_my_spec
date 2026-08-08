@@ -1,11 +1,19 @@
 defmodule CmsHarness.Web.Router do
   @moduledoc """
-  The hook surface, at the same paths the plugin already posts to.
+  The hook surface, addressed by harness id.
 
-  The plugin's `hooks.json` hardcodes `http://localhost:PORT/api/hooks/<name>`
-  with an `X-Working-Dir` header. Keeping those paths means the harness is a
-  drop-in for the local application's endpoint rather than a plugin change
-  landing at the same time as an architecture change.
+  Every request names the working copy it is about, in the path:
+  `/api/harnesses/<harness_id>/hooks/<name>`. Onboarding writes that id into
+  the plugin's `hooks.json`, so the address is fixed before the agent starts
+  and nothing is resolved at request time.
+
+  There is no directory anywhere in here, and that is the point rather than an
+  omission. Resolving a hook from the directory it fired in answered
+  differently depending on which subdirectory it came from, resolved a nested
+  checkout to the outer one, and could not distinguish two copies at the same
+  path on different machines — which is exactly the case a worktree, a sprite
+  and another laptop are all instances of. The id abstracts that away; a
+  directory cannot.
   """
 
   use Phoenix.Router
@@ -34,19 +42,13 @@ defmodule CmsHarness.Web.Router do
     post("/ask-user-question", HooksController, :handle)
   end
 
-  # The unaddressed surface, kept while shipped plugins still post here. These
-  # fall back to the working directory, which cannot tell two checkouts apart.
+  # There is no unaddressed hook surface. A request that does not name a
+  # working copy has no answer here — the directory it fired in is not one, and
+  # accepting it as one is what this replaced.
   scope "/api/hooks", CmsHarness.Web do
     pipe_through(:hook)
 
-    post("/session-start", HooksController, :handle)
-    post("/pre-tool-use", HooksController, :handle)
-    post("/post-tool-use", HooksController, :handle)
-    post("/stop", HooksController, :handle)
-    post("/subagent-start", HooksController, :handle)
-    post("/subagent-stop", HooksController, :handle)
-    post("/notification", HooksController, :handle)
-    post("/ask-user-question", HooksController, :handle)
+    post("/*any", HooksController, :handle)
   end
 
   # `PermissionRequest` is not one of the hooks above and does not go through
@@ -58,10 +60,10 @@ defmodule CmsHarness.Web.Router do
     post("/permissions/request", PermissionController, :create)
   end
 
-  # The MCP surface, forwarded to the server — see `McpController`. Same URL
-  # shape the plugin already uses for the heavy harness
-  # (`/mcp?dir=${CLAUDE_PROJECT_DIR}`), so swapping one for the other is a port
-  # number and nothing else.
+  # The MCP surface, forwarded to the server — see `McpController`. Addressed
+  # the same way the hooks are, as `/mcp?harness=<id>`: two checkouts of one
+  # project are two working copies, and sharing an MCP session between them
+  # while their hooks stayed apart would be a mismatch nobody could see.
   #
   # `match :*` because streamable HTTP is three methods on one path: POST sends
   # a message, GET opens the server→client stream, DELETE ends the session.

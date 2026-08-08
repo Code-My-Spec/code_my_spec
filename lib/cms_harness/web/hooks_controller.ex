@@ -36,23 +36,43 @@ defmodule CmsHarness.Web.HooksController do
         conn
         |> put_status(200)
         |> json(unknown_harness(hook, id, params))
+
+      :no_harness ->
+        conn
+        |> put_status(200)
+        |> json(no_harness(hook, params))
     end
   end
 
-  # The id in the URL is the routing key, and it got there because *we* wrote
-  # it when the working copy was onboarded — not from anything the agent
-  # interpolates. That matters beyond tidiness: Claude Code expands
-  # `${CLAUDE_PROJECT_DIR}` into a hook argument, Codex and Antigravity do not,
-  # and we ship plugins for all three. Identity that travels through the agent
-  # is three mechanisms wearing one name.
+  # A request says which working copy it is about, or it is refused. There is
+  # no directory anywhere in this path and there is not going to be one: the
+  # walk it replaced resolved a hook fired from a subdirectory differently from
+  # one fired at the root, resolved a nested checkout to the outer one, and
+  # could not tell two copies at the same path on different machines apart at
+  # all.
   #
-  # The header path below stays until every shipped plugin posts to the id URL.
+  # The id comes from the URL, which onboarding wrote. The header is accepted
+  # too because it costs nothing and a host that cannot template a URL can
+  # still send one.
   defp locate(conn, params) do
-    case params["harness_id"] do
+    case params["harness_id"] || header_id(conn) do
       id when is_binary(id) and id != "" -> from_id(id)
-      _ -> {:ok, working_dir(conn)}
+      _ -> :no_harness
     end
   end
+
+  defp header_id(conn) do
+    case conn |> get_req_header("x-harness-id") |> List.first() do
+      value when is_binary(value) -> unexpanded(String.trim(value))
+      _ -> nil
+    end
+  end
+
+  # An unset variable arrives as the literal `${CMS_HARNESS_ID}`. That is a
+  # plugin that was never onboarded, not an id.
+  defp unexpanded("$" <> _), do: nil
+  defp unexpanded(""), do: nil
+  defp unexpanded(id), do: id
 
   defp from_id(id) do
     case WorkingCopies.root(id) do
@@ -70,22 +90,12 @@ defmodule CmsHarness.Web.HooksController do
     HookDecision.unreachable(hook, {:unknown_harness, id}, "(addressed by id)", params)
   end
 
-  # No working directory in the request. A sprite serves exactly one project
-  # and already knows which — identity comes from CMS_PROJECT_ID/CMS_PROJECT_DIR
-  # at boot, not from a header on every hook. Refusing here made a sprite whose
-  # agent sent no header look like a sprite with no project.
-  defp decide(hook, nil, params) do
-    case configured_dir() do
-      nil ->
-        Logger.error(
-          "[CmsHarness] #{hook} arrived with no working directory and none is configured"
-        )
+  # A hook that names nothing. Not resolvable by any means this harness is
+  # willing to use, so it says how to fix it rather than guessing.
+  defp no_harness(hook, params) do
+    Logger.warning("[CmsHarness] #{hook} arrived naming no harness")
 
-        HookDecision.unreachable(hook, :no_project, "(none given)", params)
-
-      dir ->
-        decide(hook, dir, params)
-    end
+    HookDecision.unreachable(hook, :no_harness, "(none given)", params)
   end
 
   defp decide(hook, working_dir, params) do
@@ -94,14 +104,6 @@ defmodule CmsHarness.Web.HooksController do
       {:error, {:invalid_config, _}} -> refuse(hook, :invalid_config, working_dir, params)
       {:error, :unreadable_config} -> refuse(hook, :invalid_config, working_dir, params)
       {:error, _reason} -> refuse(hook, :no_project, working_dir, params)
-    end
-  end
-
-  defp configured_dir do
-    case System.get_env("CMS_PROJECT_DIR") ||
-           Application.get_env(:code_my_spec, :harness_project_dir) do
-      dir when is_binary(dir) and dir != "" -> dir
-      _ -> nil
     end
   end
 
@@ -185,11 +187,4 @@ defmodule CmsHarness.Web.HooksController do
 
   # "/api/hooks/stop" -> "stop"
   defp hook_name(conn), do: List.last(conn.path_info)
-
-  defp working_dir(conn) do
-    case get_req_header(conn, "x-working-dir") do
-      [dir | _] when is_binary(dir) and dir != "" -> dir
-      _ -> nil
-    end
-  end
 end
