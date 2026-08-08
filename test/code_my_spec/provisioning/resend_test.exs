@@ -102,7 +102,7 @@ defmodule CodeMySpec.Provisioning.ResendTest do
     test "names only the records the provider is unhappy with" do
       domain = %{
         "records" => [
-          %{"name" => "resend._domainkey", "status" => "not_started"},
+          %{"name" => "resend._domainkey", "status" => "failed"},
           %{"name" => "send", "status" => "verified"}
         ]
       }
@@ -112,6 +112,27 @@ defmodule CodeMySpec.Provisioning.ResendTest do
 
     test "is empty for a fully verified domain" do
       assert Resend.faulted_records(%{"records" => @live_records}) == []
+    end
+
+    # The distinction the whole split exists for. This test previously used
+    # `not_started` to mean "faulted", which read as reasonable and was
+    # backwards: Resend has not looked at the record yet, so it is not
+    # evidence of anything. A drill published three correct records, setup
+    # named all three as wrong inside its 60s window, and they verified
+    # untouched minutes later.
+    test "a record the provider has not checked yet is not a fault" do
+      domain = %{
+        "records" => [
+          %{"name" => "resend._domainkey", "status" => "not_started"},
+          %{"name" => "send", "status" => "pending"}
+        ]
+      }
+
+      assert Resend.faulted_records(domain) == [],
+             "pending is not rejected — reporting it as faulted sends Sam to fix nothing"
+
+      assert [%{"name" => "resend._domainkey"}, %{"name" => "send"}] =
+               Resend.pending_records(domain)
     end
   end
 
@@ -195,7 +216,7 @@ defmodule CodeMySpec.Provisioning.ResendTest do
           "id" => "d1",
           "status" => "pending",
           "records" => [
-            %{"name" => "resend._domainkey", "type" => "TXT", "status" => "not_started"},
+            %{"name" => "resend._domainkey", "type" => "TXT", "status" => "failed"},
             %{"name" => "send", "type" => "MX", "status" => "verified"}
           ]
         })
@@ -205,6 +226,29 @@ defmodule CodeMySpec.Provisioning.ResendTest do
                Resend.poll_until_verified(@scope, "d1", attempts: 2, sleep: fn _ -> :ok end)
 
       assert faulted["name"] =~ "_domainkey"
+    end
+
+    # Running out of patience is not the same answer as finding something
+    # wrong, and the caller turns them into opposite instructions: fix this
+    # record, versus wait and re-run. Every record here is correct and simply
+    # unchecked, which is the ordinary state of a domain registered less than
+    # a minute ago.
+    test "still-pending records report as waiting, not as faults" do
+      stub(fn conn ->
+        json(conn, 200, %{
+          "id" => "d1",
+          "status" => "pending",
+          "records" => [
+            %{"name" => "resend._domainkey", "type" => "TXT", "status" => "pending"},
+            %{"name" => "send", "type" => "MX", "status" => "not_started"}
+          ]
+        })
+      end)
+
+      assert {:error, {:still_verifying, pending}} =
+               Resend.poll_until_verified(@scope, "d1", attempts: 2, sleep: fn _ -> :ok end)
+
+      assert length(pending) == 2
     end
 
     test "an already-verified domain settles on the first attempt" do

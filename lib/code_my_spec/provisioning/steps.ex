@@ -427,6 +427,7 @@ defmodule CodeMySpec.Provisioning.Steps do
     version = Keyword.get(opts, :deployed_version)
 
     with {:ok, delivery} <- check_secrets(scope, environment),
+         :ok <- config_targets_this_project(scope, environment),
          {:ok, image} <- image_for(scope, environment, opts),
          :ok <- require_script(scope, "bin/deploy"),
          result <- Deploy.run(env(scope), environment, deploy_opts(opts, host, image)) do
@@ -440,6 +441,68 @@ defmodule CodeMySpec.Provisioning.Steps do
         other ->
           other
       end
+    end
+  end
+
+  # Where a deploy lands is decided by the config in the checkout, not by
+  # anything setup passes kamal — the `:host` above is only the health probe's
+  # target. So a config naming another machine deploys this project's image
+  # onto that machine, and then reports a health failure against a hostname it
+  # never touched: the wrong server changed, and the error points elsewhere.
+  #
+  # A drill seeded from another app caught this with `proxy.host:
+  # uat.astralbi.com` still in place while the project's own uat was
+  # `uat.drill.astralbi.com`. The stale file was the drill's doing; acting on
+  # it would not have been, and `image: ghcr.io/your-org/...` is the shipped
+  # placeholder, so a wrong host here is an ordinary state for a real repo.
+  #
+  # Only `proxy.host` is compared. `servers.web` legitimately carries IPs,
+  # which no hostname comparison can judge, and guessing there would refuse
+  # correct configs — the opposite failure and a worse one.
+  #
+  # A config that cannot be read or parsed is left to kamal and to
+  # `Generators.DeployBoilerplate`, which already owns missing and malformed
+  # deploy files. This guard answers one question: does this file name a host
+  # that is not ours.
+  defp config_targets_this_project(scope, environment) do
+    with {:ok, body} <- read_deploy_config(scope, environment),
+         {:ok, %{"proxy" => %{"host" => named}}} when is_binary(named) <-
+           YamlElixir.read_from_string(body),
+         [_ | _] = expected <- expected_hosts(scope, environment) do
+      if named in expected do
+        :ok
+      else
+        {:error,
+         "#{deploy_config_path(environment)} deploys to #{named}, but this project's " <>
+           "#{environment} is #{Enum.join(expected, ", ")}. Setup will not deploy to a host " <>
+           "the project does not own — point the config at the right hostname, or fix the " <>
+           "project's domain."}
+      end
+    else
+      _ -> :ok
+    end
+  end
+
+  defp read_deploy_config(scope, environment) do
+    Environments.read_file(env(scope), deploy_config_path(environment))
+  end
+
+  # Mirrors `bin/deploy`, which reaches for `config/deploy.uat.yml` when the
+  # environment is uat and `config/deploy.yml` otherwise. Checking a different
+  # file from the one kamal reads would verify nothing.
+  defp deploy_config_path("uat"), do: "config/deploy.uat.yml"
+  defp deploy_config_path(_), do: "config/deploy.yml"
+
+  defp expected_hosts(scope, environment) do
+    case domain(scope) do
+      nil ->
+        []
+
+      name ->
+        scope
+        |> EnvironmentRepository.assign_hosts(name)
+        |> Enum.filter(&(&1.name == environment and is_binary(&1.host)))
+        |> Enum.map(& &1.host)
     end
   end
 
@@ -1079,6 +1142,10 @@ defmodule CodeMySpec.Provisioning.Steps do
     Enum.reduce_while(environments, {:ok, []}, fn environment, {:ok, acc} ->
       case register_sending_domain(scope, base, environment, opts) do
         {:ok, resources} -> {:cont, {:ok, acc ++ resources}}
+        # Carries what earlier environments already made, exactly as the error
+        # path does — a pause on the second environment must not lose the
+        # first's sending domain.
+        {:paused, instructions, partial} -> {:halt, {:paused, instructions, acc ++ partial}}
         {:error, reason, partial} -> {:halt, {:error, reason, acc ++ partial}}
         {:error, reason} -> {:halt, {:error, reason, acc}}
       end
@@ -1246,6 +1313,16 @@ defmodule CodeMySpec.Provisioning.Steps do
         {:error,
          "the sending domain #{sending} did not verify — these records are not as Resend " <>
            "expects: " <> Enum.map_join(faulted, ", ", &"#{&1["type"]} #{&1["name"]}"), created}
+
+      # Nothing is wrong yet, so this is a wait rather than a failure. Resend
+      # verifies on its own schedule and a re-run picks it up; reporting these
+      # as faulted named three correct records as broken on a real drill and
+      # they verified minutes later untouched.
+      {:error, {:still_verifying, pending}} ->
+        {:paused,
+         "#{sending} is registered and its records are published — Resend has not finished " <>
+           "checking them yet (#{Enum.map_join(pending, ", ", &"#{&1["type"]} #{&1["name"]}")}). " <>
+           "Nothing is wrong with them; run this step again in a few minutes.", created}
 
       {:error, reason} ->
         {:error, format(reason), created}
@@ -1973,13 +2050,9 @@ defmodule CodeMySpec.Provisioning.Steps do
   defp generate_keys(scope, env, environments) do
     keys =
       Enum.reduce_while(environments, {:ok, %{}}, fn environment, {:ok, acc} ->
-        case Sops.generate_key() do
-          {:ok, {public, private}} ->
-            ProjectSecrets.put_value(scope, age_key_name(environment), private)
-            {:cont, {:ok, Map.put(acc, environment, public)}}
-
-          {:error, reason} ->
-            {:halt, {:error, reason}}
+        case key_for(scope, environment) do
+          {:ok, public} -> {:cont, {:ok, Map.put(acc, environment, public)}}
+          {:error, reason} -> {:halt, {:error, reason}}
         end
       end)
 
@@ -1991,6 +2064,43 @@ defmodule CodeMySpec.Provisioning.Steps do
        end)}
     else
       {:error, reason} -> {:error, format(reason)}
+    end
+  end
+
+  # An environment's key is only replaced when the one on record cannot read
+  # what it encrypted. Minting unconditionally made the secrets step destroy
+  # data every time it ran: `.sops.yaml` was rewritten to fresh recipients
+  # while the `.enc.env` files stayed encrypted to the old ones, whose private
+  # halves had just been overwritten in `ProjectSecrets`. Nothing could open
+  # them again, by anyone, ever.
+  #
+  # Re-running is not an edge case here — it is the whole shape of setup, and
+  # the step re-runs whenever *any* environment needs attention. So adding a
+  # second environment to a working project destroyed the first's secrets, and
+  # a drill hit it on the ordinary path: cycle 1 encrypted to one key, cycle 2
+  # rewrote the config to two new ones, and the deploy failed with "no
+  # identity matched any of the recipients".
+  #
+  # `ensure_age_key/3` already had this right for `put_secret/4`; the step was
+  # the one place that reached for `generate_key/0` directly.
+  #
+  # Genuine drift still mints — a key that no longer opens its file cannot
+  # recover the contents, so replacing it is the only way forward and is what
+  # makes the repair path in `verify(:secrets, ...)` work.
+  defp key_for(scope, environment) do
+    with true <- key_opens_its_own_file?(scope, environment),
+         {:ok, private} <- ProjectSecrets.fetch_value(scope, age_key_name(environment)),
+         {:ok, public} <- Sops.public_key(private) do
+      {:ok, public}
+    else
+      _ -> mint_key(scope, environment)
+    end
+  end
+
+  defp mint_key(scope, environment) do
+    with {:ok, {public, private}} <- Sops.generate_key(),
+         {:ok, _} <- ProjectSecrets.put_value(scope, age_key_name(environment), private) do
+      {:ok, public}
     end
   end
 

@@ -243,12 +243,26 @@ defmodule CodeMySpec.Provisioning.Sops do
 
   Returns the names, so a refusing boot can say which secret is missing
   instead of failing later on whatever code path needed it (criterion 8000).
+
+  A file that does not exist yet carries nothing, so everything required is
+  missing. Asking sops to decrypt it instead exits 100 with "cannot operate on
+  non-existent file", and that tuple reached the setup page verbatim on the
+  first deploy of every new project — the one moment the answer is most
+  obviously "you have not set any secrets yet". The state is ordinary rather
+  than exceptional: `secrets` mints the key and writes `.sops.yaml`, and the
+  file itself only appears when a first secret is set.
   """
   @spec missing_secrets(Environments.Environment.t(), env_name(), String.t(), [String.t()]) ::
           {:ok, [String.t()]} | error()
   def missing_secrets(env, environment, private_key, required) do
-    with {:ok, present} <- decrypt(env, environment, private_key) do
-      {:ok, Enum.reject(required, &Map.has_key?(present, &1))}
+    case Environments.file_exists?(env, env_file(environment)) do
+      false ->
+        {:ok, required}
+
+      true ->
+        with {:ok, present} <- decrypt(env, environment, private_key) do
+          {:ok, Enum.reject(required, &Map.has_key?(present, &1))}
+        end
     end
   end
 
