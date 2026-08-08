@@ -163,7 +163,7 @@ defmodule CodeMySpec.Files do
   @scanner_scratch [:declared_module, :raw_role]
 
   @spec upsert_files(Scope.t(), [map()]) :: {integer(), [File.t()] | nil}
-  def upsert_files(%Scope{active_project_id: project_id}, file_attrs_list)
+  def upsert_files(%Scope{active_project_id: project_id} = scope, file_attrs_list)
       when is_list(file_attrs_list) do
     now = NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
 
@@ -172,6 +172,7 @@ defmodule CodeMySpec.Files do
         attrs
         |> Map.drop(@scanner_scratch)
         |> Map.put(:project_id, project_id)
+        |> Map.put(:harness_id, scope.active_harness_id)
         |> Map.put(:inserted_at, now)
         |> Map.put(:updated_at, now)
       end)
@@ -249,13 +250,31 @@ defmodule CodeMySpec.Files do
 
   Used during sync to clean up files that were removed from the filesystem.
   """
+  # Scoped to the harness that produced the manifest, and this is the line the
+  # whole grain change exists for. A full reconcile deletes whatever the scan
+  # did not see — unscoped, that meant every sync deleted the *other* checkout's
+  # files, so two working copies of one project each erased the other on every
+  # scan and the requirement graph described neither.
+  #
+  # A scope with no harness deletes across the project, which is what a caller
+  # holding the whole project rather than one copy of it means. Only the channel
+  # sets a harness, and only it sends manifests.
   @spec delete_removed(Scope.t(), [String.t()]) :: {integer(), nil}
-  def delete_removed(%Scope{active_project_id: project_id}, current_paths)
+  def delete_removed(%Scope{active_project_id: project_id} = scope, current_paths)
       when is_list(current_paths) do
     File
     |> where([f], f.project_id == ^project_id and f.path not in ^current_paths)
+    |> scope_to_harness(scope)
     |> Repo.delete_all()
   end
+
+  # `is_nil(f.harness_id)` is deliberately *not* matched when a harness is set:
+  # a row owned by nobody is not this checkout's to delete, and leaving it makes
+  # the state visible rather than quietly disappearing it.
+  defp scope_to_harness(query, %Scope{active_harness_id: nil}), do: query
+
+  defp scope_to_harness(query, %Scope{active_harness_id: harness_id}),
+    do: where(query, [f], f.harness_id == ^harness_id)
 
   @doc """
   Delete specific files by their paths.

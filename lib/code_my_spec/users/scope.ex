@@ -29,6 +29,7 @@ defmodule CodeMySpec.Users.Scope do
             active_account_id: nil,
             active_project: nil,
             active_project_id: nil,
+            active_harness_id: nil,
             cwd: nil,
             environment: nil
 
@@ -39,6 +40,12 @@ defmodule CodeMySpec.Users.Scope do
           active_account_id: Ecto.UUID.t() | nil,
           active_project: Project.t() | nil,
           active_project_id: Ecto.UUID.t() | nil,
+          # Which working copy of the project this scope speaks for. Files and
+          # problems are projections of one checkout, so a read or write of them
+          # without this is a statement about the project that no checkout made.
+          # `nil` outside a harness's channel — the web UI, mix tasks, anything
+          # asking about the project rather than a copy of it.
+          active_harness_id: Ecto.UUID.t() | nil,
           cwd: String.t() | nil,
           environment: Environment.t() | nil
         }

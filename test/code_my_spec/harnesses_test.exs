@@ -20,6 +20,7 @@ defmodule CodeMySpec.HarnessesTest do
 
   import CodeMySpec.UsersFixtures
 
+  alias CodeMySpec.Files
   alias CodeMySpec.Harnesses
 
   setup do
@@ -110,6 +111,103 @@ defmodule CodeMySpec.HarnessesTest do
       assert same.label == "the harness at /a",
              "losing the only human-readable name for a checkout would leave a " <>
                "refusal unable to say which one to go and stop"
+    end
+  end
+
+  describe "two working copies of one project" do
+    # The thing the grain exists for. `FileSync.reconcile/2` is a *full*
+    # reconcile: it deletes whatever the scan did not see. Keyed only by
+    # project, that meant each checkout's sync erased the other's files, so the
+    # requirement graph — computed from those rows — described neither.
+    defp harness_scope(scope, label) do
+      {:ok, harness} = Harnesses.issue(scope, nil, label: label)
+      %{scope | active_harness_id: harness.id}
+    end
+
+    defp sync(scope, paths) do
+      Files.upsert_files(
+        scope,
+        Enum.map(paths, &%{path: &1, role: :implementation, fingerprint: "f-#{&1}"})
+      )
+
+      Files.delete_removed(scope, paths)
+    end
+
+    defp paths_of(scope) do
+      scope
+      |> Files.list_files()
+      |> Enum.filter(&(&1.harness_id == scope.active_harness_id))
+      |> Enum.map(& &1.path)
+      |> Enum.sort()
+    end
+
+    test "a file only one of them has survives the other's sync", %{scope: scope} do
+      a = harness_scope(scope, "the harness at /a")
+      b = harness_scope(scope, "the harness at /b")
+
+      sync(a, ["lib/only_in_a.ex"])
+      sync(b, ["lib/only_in_b.ex"])
+
+      assert paths_of(a) == ["lib/only_in_a.ex"],
+             "b's full reconcile must not delete a file a still has on disk"
+
+      assert paths_of(b) == ["lib/only_in_b.ex"]
+    end
+
+    # The half that is not done, stated as a test so it is not a surprise later.
+    #
+    # `files` carries UNIQUE (project_id, path). Two checkouts therefore cannot
+    # both hold a row for one path: b's upsert conflicts onto a's row and updates
+    # it, and `harness_id` is not in the `on_conflict` replace list, so the row
+    # stays a's. Scoping the queries was necessary and is not sufficient — the
+    # *storage* is still project-grained.
+    #
+    # Fixing it means the unique index includes `harness_id`, which means
+    # `conflict_target` does too, which means `harness_id` cannot be null (ON
+    # CONFLICT never matches a null, so every upsert would insert a duplicate).
+    # That in turn means every sync path needs a harness, including the local
+    # CLI one that has no channel and no notion of one today. That is a decision,
+    # not a refactor.
+    test "a path shared by both checkouts still resolves to one row", %{scope: scope} do
+      a = harness_scope(scope, "the harness at /a")
+      b = harness_scope(scope, "the harness at /b")
+
+      sync(a, ["lib/shared.ex"])
+      sync(b, ["lib/shared.ex"])
+
+      assert paths_of(a) == ["lib/shared.ex"]
+
+      assert paths_of(b) == [],
+             "b's copy of lib/shared.ex conflicted onto a's row. When UNIQUE " <>
+               "(project_id, path) grows harness_id this becomes [\"lib/shared.ex\"] " <>
+               "and this assertion should flip"
+    end
+
+    test "resyncing one does not disturb the other", %{scope: scope} do
+      a = harness_scope(scope, "the harness at /a")
+      b = harness_scope(scope, "the harness at /b")
+
+      sync(a, ["lib/a_one.ex", "lib/a_two.ex"])
+      sync(b, ["lib/b_one.ex"])
+
+      # a deletes a file and rescans — the classic case that used to take b's
+      # files with it.
+      sync(a, ["lib/a_one.ex"])
+
+      assert paths_of(a) == ["lib/a_one.ex"]
+      assert paths_of(b) == ["lib/b_one.ex"], "b never scanned; nothing of b's should have moved"
+    end
+
+    test "a scope holding no harness still reconciles the whole project", %{scope: scope} do
+      a = harness_scope(scope, "the harness at /a")
+      sync(a, ["lib/a.ex"])
+
+      # A caller holding the project rather than one copy of it — a mix task, the
+      # web UI. Unscoped is the honest behaviour there, and it is why the harness
+      # has to be on the scope rather than passed per call.
+      {deleted, _} = Files.delete_removed(scope, [])
+
+      assert deleted == 1
     end
   end
 

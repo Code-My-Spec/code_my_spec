@@ -72,9 +72,13 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
       # recognised. A harness that already holds one gets the same value and
       # writes nothing; one joining a checkout for the first time writes it
       # down, so its next restart is the same harness rather than a second.
+      # Every read and write this channel makes is about *this* working copy.
+      # Carrying the harness on the scope is what makes that true by default,
+      # rather than something each call site has to remember — and forgetting it
+      # returns another checkout's files with no error to notice.
       {:ok, %{harness_id: harness.id},
        socket
-       |> assign(:scope, scope)
+       |> assign(:scope, %{scope | active_harness_id: harness.id})
        |> assign(:harness, harness)
        |> assign(:lease_holder, holder)}
     else
