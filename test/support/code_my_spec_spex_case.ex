@@ -1895,7 +1895,13 @@ defmodule CodeMySpecSpex.Case do
       {~r/X-Amz-Signature=[^&"\s]+/, "X-Amz-Signature=<REDACTED>"},
       # Recognisable credential shapes, wherever they turn up. Cheap, and they
       # catch the case nobody predicted — a token echoed in an error message.
-      {~r/AGE-SECRET-KEY-[A-Z0-9]+/, "<REDACTED-AGE-KEY>"},
+      #
+      # No age rule here: the one above already covers the pattern and replaces
+      # it with something `Sops.parse_key/1` can still parse. A second rule for
+      # the same pattern ran after it and overwrote the valid placeholder with
+      # `<REDACTED-AGE-KEY>`, which is exactly the unparseable shape the first
+      # rule exists to avoid — the two arrived from different branches and both
+      # survived the merge.
       {~r/\bgh[pous]_[A-Za-z0-9]{20,}/, "<REDACTED-GITHUB-TOKEN>"},
       {~r/\bcfat_[A-Za-z0-9]{20,}/, "<REDACTED-CLOUDFLARE-TOKEN>"},
       {~r/\bre_[A-Za-z0-9_-]{20,}/, "<REDACTED-RESEND-KEY>"}
