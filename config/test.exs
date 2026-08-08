@@ -24,6 +24,37 @@ config :bcrypt_elixir, :log_rounds, 1
 # the ordinary suite.
 e2e? = System.get_env("CMS_E2E") in ~w(1 true)
 
+# One database per checkout, so two agents cannot re-schema each other.
+#
+# Worktrees share this machine's Postgres. An agent running `mix test` in one
+# migrates the database every other checkout is using — and from whatever
+# branch it is on, pushed or not. That happened: three migrations from an
+# unpushed branch added `files.harness_id NOT NULL`, and a checkout without
+# that migration failed 138 tests on a column its code had never heard of.
+#
+# It is expensive to diagnose because it never says so. The first symptom was
+# `CodeMySpecWeb.Application.start/2 is undefined`, which reads as a broken
+# build; then NOT NULL violations; then `ON CONFLICT` errors as the schema
+# shifted under successive runs. The same commit passed 3541/3541 against a
+# private database.
+#
+# `MIX_TEST_PARTITION` already existed for exactly this shape and was simply
+# never set per worktree. An explicit value still wins — CI sets it per
+# partition — and the main checkout keeps the bare name so nothing has to be
+# recreated for it.
+partition =
+  case System.get_env("MIX_TEST_PARTITION") do
+    value when is_binary(value) and value != "" ->
+      value
+
+    _ ->
+      case Path.split(File.cwd!()) do
+        # `.../.claude/worktrees/<name>` — one database per worktree, named
+        # after it so `psql -l` says who owns what.
+        path -> if "worktrees" in path, do: "_" <> List.last(path), else: ""
+      end
+  end
+
 config :code_my_spec, CodeMySpec.Repo,
   username: "postgres",
   password: "postgres",
@@ -31,7 +62,7 @@ config :code_my_spec, CodeMySpec.Repo,
   database:
     if(e2e?,
       do: "code_my_spec_e2e",
-      else: "code_my_spec_test#{System.get_env("MIX_TEST_PARTITION")}"
+      else: "code_my_spec_test#{partition}"
     ),
   # The sandbox owns connections per test process and hands nothing to an
   # external client, so an out-of-process harness cannot see anything a
