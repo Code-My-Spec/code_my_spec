@@ -130,6 +130,17 @@ defmodule CodeMySpec.CassetteFilteringTest do
       # Anything self-evidently not a credential. Recorded fixtures say so.
       placeholder = ~r/test|fake|stub|example|redact|dummy|placeholder|spex/i
 
+      # The replay keypairs are the one real age secret that belongs in the
+      # repository: fixed, published in `CodeMySpecSpex.Case`, and holding
+      # nothing but a temp directory during replay. They exist because the
+      # previous placeholders were *shaped* like keys but invalid, so replay
+      # produced a key that could not open what it had encrypted.
+      #
+      # Listed exactly rather than matched by shape. A pattern loose enough to
+      # excuse these would excuse a real key too, and this audit failing loudly
+      # is worth more than its convenience.
+      known = SpexCase.replay_keypairs() |> Enum.map(&elem(&1, 1)) |> MapSet.new()
+
       offenders =
         for dir <- ["test/cassettes", "test/fixtures/cassettes"],
             File.dir?(dir),
@@ -138,6 +149,7 @@ defmodule CodeMySpec.CassetteFilteringTest do
             pattern <- shapes,
             match = Regex.run(pattern, contents),
             match && not Regex.match?(placeholder, hd(match)),
+            not MapSet.member?(known, hd(match)),
             do: path
 
       assert offenders == [],
