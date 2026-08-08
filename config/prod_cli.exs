@@ -11,6 +11,10 @@ config :code_my_spec,
   oauth_base_url: "https://codemyspec.com",
   base_url: "https://codemyspec.com"
 
+# The server a harness in this build reports to when CMS_SERVER_URL and
+# :harness_server_url say nothing. Same server as the rest of the build.
+config :code_my_spec, harness_default_server_url: "https://codemyspec.com"
+
 # Framework-scoped issues (friction with CodeMySpec itself) route to the
 # CodeMySpec project on the server, not the user's active project. Sent via the
 # `x-project-id` header by Issues.RemoteClient.create_issue/3 over the CLI's
@@ -53,8 +57,7 @@ config :code_my_spec, CodeMySpec.Repo,
   log: false
 
 # Disable the main web endpoint
-config :code_my_spec, CodeMySpecWeb.Endpoint,
-  server: false
+config :code_my_spec, CodeMySpecWeb.Endpoint, server: false
 
 # Local web endpoint (port 4003)
 config :code_my_spec, CodeMySpecLocalWeb.Endpoint,

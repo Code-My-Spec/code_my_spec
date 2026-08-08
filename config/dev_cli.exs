@@ -9,6 +9,10 @@ config :code_my_spec,
   oauth_base_url: "https://dev.codemyspec.com",
   base_url: "https://dev.codemyspec.com"
 
+# The server a harness in this build reports to when CMS_SERVER_URL and
+# :harness_server_url say nothing. Same server as the rest of the build.
+config :code_my_spec, harness_default_server_url: "https://dev.codemyspec.com"
+
 # Framework-scoped issues route to the CodeMySpec project on the dev server,
 # not the user's active project. Sent via the `x-project-id` header by
 # Issues.RemoteClient.create_issue/3 over the CLI's OAuth session.
@@ -49,8 +53,7 @@ config :code_my_spec, CodeMySpec.Repo,
   show_sensitive_data_on_connection_error: true
 
 # Disable the main web endpoint
-config :code_my_spec, CodeMySpecWeb.Endpoint,
-  server: false
+config :code_my_spec, CodeMySpecWeb.Endpoint, server: false
 
 # Local web endpoint — runs on 4004 in dev_cli so an in-repo CLI build
 # can coexist with the published `cms` binary on 4003.
@@ -87,4 +90,5 @@ config :swoosh, :api_client, false
 config :code_my_spec, :cloudflare_tunnel,
   mode: :quick,
   origin_url: "http://127.0.0.1:4004"
+
 config :code_my_spec, :mcp_relay_base_url, "http://localhost:4004"

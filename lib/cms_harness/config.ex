@@ -9,20 +9,21 @@ defmodule CmsHarness.Config do
 
   # The server this build points at when nothing else says.
   #
-  # Baked from the build environment rather than read at runtime, because that
-  # is what it describes: a `cms` release built for prod belongs to
-  # codemyspec.com, and there is no runtime question about which one it is.
+  # `compile_env` rather than reading the build environment through Mix: Mix is
+  # not bundled in a release, and a build-environment check in `lib/` once
+  # shipped to prod and crashed every new OAuth user for days.
+  # `test/release_safety_test.exs` guards the whole of `lib/` against that, and
+  # scans comments too — so this says it in words rather than in the call it is
+  # avoiding. Same intent, expressed in a way that survives being packaged.
   #
-  # Total on purpose. It used to be a flat `"http://localhost:4000"`, which is
-  # right for a laptop and silently wrong everywhere else — `dev`, `test` and
-  # `prod` set no `:base_url`, so a harness built in `MIX_ENV=prod` pointed at a
-  # server that was not running, on a machine that had none. That failure looks
-  # like a harness with a network problem rather than one aimed at nothing.
-  @default_server_url (case Mix.env() do
-                         env when env in [:prod, :prod_cli] -> "https://codemyspec.com"
-                         env when env in [:dev_cli, :dev_sprite] -> "https://dev.codemyspec.com"
-                         _ -> "http://localhost:4000"
-                       end)
+  # It defaults to localhost because that is what an unconfigured build is: a
+  # checkout on somebody's machine. Every environment with a real server names
+  # it, next to the `:base_url` it already sets.
+  @default_server_url Application.compile_env(
+                        :code_my_spec,
+                        :harness_default_server_url,
+                        "http://localhost:4000"
+                      )
 
   @doc "The server this build points at when nothing overrides it."
   @spec default_server_url() :: String.t()

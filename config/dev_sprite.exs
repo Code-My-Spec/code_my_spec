@@ -31,6 +31,10 @@ config :code_my_spec,
   oauth_base_url: "https://dev.codemyspec.com",
   base_url: "https://dev.codemyspec.com"
 
+# The server a harness in this build reports to when CMS_SERVER_URL and
+# :harness_server_url say nothing. Same server as the rest of the build.
+config :code_my_spec, harness_default_server_url: "https://dev.codemyspec.com"
+
 config :code_my_spec, code_my_spec_project_id: "708492f9-454e-482f-a2eb-be64f0356b87"
 
 config :code_my_spec, stories_implementation: CodeMySpec.Stories.StoriesRepository
