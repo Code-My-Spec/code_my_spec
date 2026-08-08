@@ -76,6 +76,15 @@
       fetchpriority="high"
     />
     <link phx-track-static rel="stylesheet" href={~p"/assets/css/app.css"} />
+    <%!--
+      Same loading the local app uses. sigma.min.js is not a module — it only
+      becomes a global under a script tag — and the hook reads both off window,
+      so these must load before app.js connects.
+    --%>
+    <script src={~p"/vendor/graphology.umd.min.js"}>
+    </script>
+    <script src={~p"/vendor/sigma.min.js"}>
+    </script>
     <script defer phx-track-static type="text/javascript" src={~p"/assets/js/app.js"}>
     </script>
 

@@ -9,7 +9,8 @@
 </head>
 <body class="bg-base-100 text-base-content min-h-screen antialiased">
   <%= @inner_content %>
-  <%!-- graphology and sigma are bundled into local_app.js now, not loaded separately. --%>
+  <script src="/local/assets/js/graphology.umd.min.js"></script>
+  <script src="/local/assets/js/sigma.min.js"></script>
   <script src="/local/assets/js/local_app.js"></script>
 </body>
 </html>
