@@ -24,6 +24,7 @@ import { Socket } from "phoenix"
 import { LiveSocket } from "phoenix_live_view"
 import { hooks as colocatedHooks } from "phoenix-colocated/code_my_spec"
 import { StripePaymentElement } from "./stripe_payment"
+import { SigmaGraph } from "./sigma_graph"
 import topbar from "../vendor/topbar"
 import Sortable from "../vendor/Sortable.min.js"
 
@@ -32,6 +33,7 @@ window.Sortable = Sortable
 
 let Hooks = {
   StripePaymentElement,
+  SigmaGraph,
   Copy: {
     mounted() {
       let { to } = this.el.dataset;
