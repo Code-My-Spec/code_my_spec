@@ -18,6 +18,10 @@ defmodule CodeMySpecSpex.Story974.Criterion8033Spex do
 
   @cassette "resend_inbound_step_proves_delivery_before_done"
 
+  # Mounting reads the sending domains off Resend, and the premise is published
+  # here rather than left to the step — see the given_ for why.
+  @mount_cassette "974_8033_inbound_records_published"
+
   setup :register_log_in_setup_account
   setup :setup_active_project
   setup :devops_on
@@ -30,10 +34,28 @@ defmodule CodeMySpecSpex.Story974.Criterion8033Spex do
         # criterion runs second finds the first's domain already registered and
         # *adopts* it — and an adopted resource is never torn down, so each one
         # replays the others' state.
-        own_domain(context.project, "c8033.astralbi.com")
+        project = own_domain(context.project, "c8033.astralbi.com")
 
-        {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/provisioning")
+        # The premise is "the inbound records are published", so publish them
+        # here. The step still does the proving — it sends a message and waits
+        # for Resend to report it received, which is the whole criterion — but
+        # it is not also racing a brand-new domain through DNS propagation and
+        # inbound verification inside the run. Recorded that way it sent once
+        # and polled sixty times without a receipt.
+        #
+        # `receiving: true` because Resend grants receiving at creation and
+        # never afterwards; a sending-only domain here cannot be upgraded and
+        # the probe would be dropped in silence.
+        view =
+          with_provider_cassette(@mount_cassette, fn ->
+            verified_sending_domains(context.scope, project, ["prod"], receiving: true)
+
+            {:ok, view, _html} =
+              live(context.conn, "/app/projects/#{context.project.id}/provisioning")
+
+            _ = Phoenix.LiveViewTest.render(view)
+            view
+          end)
 
         {:ok, Map.put(context, :view, view)}
       end

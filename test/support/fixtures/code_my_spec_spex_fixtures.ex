@@ -188,12 +188,24 @@ defmodule CodeMySpecSpex.Fixtures do
     end
   end
 
-  defp publish_records(scope, sending_domain, which) do
+  defp publish_records(scope, sending_domain, which, opts \\ []) do
     alias CodeMySpec.Provisioning.{Cloudflare, Resend}
 
     zone_name = sending_domain |> String.split(".") |> Enum.take(-2) |> Enum.join(".")
 
-    with {:ok, domain} <- Resend.ensure_domain(scope, sending_domain),
+    # Receiving is granted at creation or not at all — `POST /domains` takes
+    # `capabilities`, and `PATCH /domains/:id` has no field to turn it on
+    # afterwards. So a criterion that needs an inbox has to say so *here*,
+    # before the domain exists. Registering it sending-only first and asking
+    # later is unrecoverable: story 974's probes were accepted and then
+    # silently dropped, because the domain they were addressed to had
+    # `receiving: "disabled"` from the moment it was made.
+    ensure =
+      if Keyword.get(opts, :receiving, false),
+        do: &Resend.ensure_receiving_domain/2,
+        else: &Resend.ensure_domain/2
+
+    with {:ok, domain} <- ensure.(scope, sending_domain),
          {:ok, full} <- Resend.get_domain(scope, domain["id"]),
          {:ok, zone} <- Cloudflare.find_zone(scope, zone_name) do
       records = Resend.records(full["data"] || full)
@@ -316,7 +328,7 @@ defmodule CodeMySpecSpex.Fixtures do
   """
   @spec publish_all_records(Scope.t(), String.t(), keyword()) :: {:ok, map()} | {:error, term()}
   def publish_all_records(scope, sending_domain, opts \\ []) do
-    with {:ok, created} <- publish_records(scope, sending_domain, :all) do
+    with {:ok, created} <- publish_records(scope, sending_domain, :all, opts) do
       # Publishing is not verifying. A `given_` that says "the domain is
       # verified" and only publishes records leaves it pending, and Resend
       # answers 403 to a send from a pending domain — so the spex fails on an

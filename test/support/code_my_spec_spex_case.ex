@@ -1105,7 +1105,7 @@ defmodule CodeMySpecSpex.Case do
     end
   end
 
-  def verified_sending_domains(scope, project, environments \\ ["prod", "uat"]) do
+  def verified_sending_domains(scope, project, environments \\ ["prod", "uat"], opts \\ []) do
     for environment <- environments do
       sending = Fixtures.sending_domain(project.domain, environment)
 
@@ -1119,7 +1119,7 @@ defmodule CodeMySpecSpex.Case do
       # setting up for fails in `given_` for a reason that looks like the
       # story under test.
       case with_provider_cassette("setup_#{slug(sending)}_records", fn ->
-             Fixtures.publish_all_records(scope, sending, verification_opts())
+             Fixtures.publish_all_records(scope, sending, verification_opts() ++ opts)
            end) do
         {:ok, created} ->
           ExUnit.Callbacks.on_exit(fn ->
