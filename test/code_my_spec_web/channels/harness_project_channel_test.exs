@@ -18,11 +18,13 @@ defmodule CodeMySpecWeb.HarnessProjectChannelTest do
 
   @endpoint CodeMySpecWeb.Endpoint
 
+  alias CodeMySpec.Harnesses
   alias CodeMySpecWeb.HarnessProjectChannel
   alias CodeMySpecWeb.UserSocket
+  alias Ecto.Adapters.SQL.Sandbox
 
   setup do
-    Ecto.Adapters.SQL.Sandbox.mode(CodeMySpec.Repo, {:shared, self()})
+    Sandbox.mode(CodeMySpec.Repo, {:shared, self()})
 
     scope = full_scope_fixture()
     %{scope: scope, topic: "harness_project:#{scope.active_project_id}"}
@@ -34,14 +36,11 @@ defmodule CodeMySpecWeb.HarnessProjectChannelTest do
   # sets — which is precisely why the "name the checkout" property passed here
   # while every real refusal said "an unknown host".
   defp harness_socket(scope, opts) do
-    assigns =
-      case Keyword.get(opts, :deploy_key_project_id) do
-        nil -> %{scope: scope}
-        pid -> %{scope: scope, deploy_key_project_id: pid}
-      end
-
-    socket(UserSocket, "harness_test", assigns)
+    socket(UserSocket, "harness_test", socket_assigns(scope, opts[:deploy_key_project_id]))
   end
+
+  defp socket_assigns(scope, nil), do: %{scope: scope}
+  defp socket_assigns(scope, project_id), do: %{scope: scope, deploy_key_project_id: project_id}
 
   @label "the harness at /workspace/app"
 
@@ -78,7 +77,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannelTest do
     end
 
     test "presenting an id gets that same id back", %{scope: scope, topic: topic} do
-      {:ok, harness} = CodeMySpec.Harnesses.issue(scope, nil, label: @label)
+      {:ok, harness} = Harnesses.issue(scope, nil, label: @label)
 
       assert {:ok, %{harness_id: returned}, _socket} = join_with(scope, topic, harness.id)
 
@@ -741,13 +740,13 @@ defmodule CodeMySpecWeb.HarnessProjectChannelTest do
   # Postgres releases the lock as it reaps the closed connection — prompt, but
   # not synchronous with the channel process dying.
   defp eventually(fun, attempts \\ 40) do
-    Enum.reduce_while(1..attempts, false, fn _, _ ->
-      if fun.() do
-        {:halt, true}
-      else
-        Process.sleep(50)
-        {:cont, false}
-      end
-    end)
+    Enum.reduce_while(1..attempts, false, fn _, _ -> poll(fun.()) end)
+  end
+
+  defp poll(true), do: {:halt, true}
+
+  defp poll(_false) do
+    Process.sleep(50)
+    {:cont, false}
   end
 end
