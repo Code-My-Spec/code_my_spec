@@ -48,7 +48,6 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   alias CodeMySpec.Hooks.SubagentStart
   alias CodeMySpec.Hooks.SubagentStop
   alias CodeMySpec.Leases
-  alias CodeMySpec.Problems
   alias CodeMySpec.Projects
   alias CodeMySpec.Projects.Project
   alias CodeMySpec.Users.Scope
@@ -68,7 +67,6 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
       # the stop while saying results will apply next time, on a next time that
       # never arrives. This is the one moment it is provably safe to close them.
       Analysis.fail_in_flight(scope, :harness_reconnected)
-      adopt_pre_harness_rows(scope, harness)
 
       # The id goes back in the join reply whether it was just minted or
       # recognised. A harness that already holds one gets the same value and
@@ -98,29 +96,6 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   end
 
   def join(_topic, _payload, _socket), do: {:error, %{reason: "invalid topic"}}
-
-  # Files and problems recorded before they were grained by working copy carry
-  # no harness. The first harness to join adopts them — in the single-checkout
-  # case every install is in today, it *is* the copy they were scanned from, and
-  # the alternative is a project that reads as empty until its next full sync.
-  #
-  # Idempotent: only untouched rows move, so later joins adopt nothing and this
-  # costs one indexed update that matches no rows. Said out loud when it does
-  # something, because a silent bulk re-attribution is exactly the kind of thing
-  # somebody needs to be able to find afterwards.
-  defp adopt_pre_harness_rows(scope, harness) do
-    {files, _} = Files.adopt_orphans(scope, harness.id)
-    {:ok, problems} = Problems.adopt_orphans(scope, harness.id)
-
-    if files > 0 or problems > 0 do
-      Logger.info(
-        "[HarnessProject] adopted #{files} file(s) and #{problems} problem(s) recorded " <>
-          "before harnesses onto #{harness.id} (#{harness.label})"
-      )
-    end
-
-    :ok
-  end
 
   @doc """
   Hand the harness the small slice of the domain that scanning needs.

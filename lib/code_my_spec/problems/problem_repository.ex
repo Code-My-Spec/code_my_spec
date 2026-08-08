@@ -346,27 +346,6 @@ defmodule CodeMySpec.Problems.ProblemRepository do
   end
 
   @doc """
-  Claim this project's pre-harness problems for `harness_id`.
-
-  The counterpart to `Files.adopt_orphans/2`, and it has to happen with it: a
-  problem cites a file, so files adopted by one working copy and problems left
-  unowned would leave a stop hook blocking on findings belonging to nothing.
-
-  Only touches rows with no harness, so it is idempotent and cannot take
-  another checkout's problems.
-  """
-  @spec adopt_orphans(Scope.t(), Ecto.UUID.t()) :: {:ok, integer()}
-  def adopt_orphans(%Scope{active_project_id: project_id}, harness_id)
-      when is_binary(harness_id) do
-    {count, _} =
-      Problem
-      |> where([p], p.project_id == ^project_id and is_nil(p.harness_id))
-      |> Repo.update_all(set: [harness_id: harness_id])
-
-    {:ok, count}
-  end
-
-  @doc """
   Atomically replaces problems for specific components and source.
 
   Deletes existing problems matching `component_id IN component_ids AND source = source`,
