@@ -255,6 +255,20 @@ defmodule CodeMySpecWeb.LinkResolutionTest do
     "/app/projects/:project_id/progress",
     # ProvisioningLive. Arrived on main with no nav entry and no inbound link.
     "/app/projects/:project_id/provisioning",
+    # Reached from their own list page's actions, not from the sidebar — a nav
+    # entry that opens a blank form is a worse offer than the button on the
+    # page you are already looking at.
+    "/app/projects/:project_id/stories/new",
+    "/app/projects/:project_id/stories/import",
+    "/app/projects/:project_id/epics/new",
+    "/app/projects/:project_id/personas/new",
+    # Tabs and alternate views within a surface that IS in the nav. Listing
+    # each one separately would make the sidebar a sitemap.
+    "/app/projects/:project_id/stories/scheduler",
+    "/app/projects/:project_id/requirements/stories",
+    "/app/projects/:project_id/architecture/overview",
+    "/app/projects/:project_id/architecture/namespaces",
+    "/app/projects/:project_id/components/graph",
     # AgentConversationLive — a read-only view of one sprite's turns. It only
     # became visible to this guard when its route moved from :project_name to
     # :project_id and started matching the portable shape. Nothing links it.
@@ -274,7 +288,13 @@ defmodule CodeMySpecWeb.LinkResolutionTest do
       CodeMySpecWeb.Router.__routes__()
       |> Enum.filter(&(&1.plug == Phoenix.LiveView.Plug))
       |> Enum.map(& &1.path)
-      |> Enum.filter(&(&1 =~ ~r{^/app/projects/:project_id/[a-z-]+$}))
+      # Every portable route whose tail is entirely static — not just the
+      # single-segment ones. `/requirements/graph` sat unlinked in the cloud
+      # sidebar for exactly as long as this only matched one segment, and the
+      # guard reported green the whole time. Routes with a dynamic tail
+      # (`:slug`, `:id`, `*path`) are detail pages reached from a list, not
+      # destinations a sidebar offers.
+      |> Enum.filter(&(&1 =~ ~r{^/app/projects/:project_id/[a-z0-9/-]+$}))
       |> Enum.uniq()
 
     unlinked =
