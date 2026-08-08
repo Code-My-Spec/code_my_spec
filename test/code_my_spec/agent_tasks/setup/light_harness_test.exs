@@ -29,6 +29,7 @@ defmodule CodeMySpec.AgentTasks.Setup.LightHarnessTest do
   defp sync_file(scope, path, role) do
     Repo.insert!(%FileRecord{
       project_id: scope.active_project_id,
+      harness_id: scope.active_harness_id,
       path: path,
       role: role,
       valid: true,
@@ -39,6 +40,7 @@ defmodule CodeMySpec.AgentTasks.Setup.LightHarnessTest do
   defp sync_mix_exs(scope, app_name) do
     Repo.insert!(%FileRecord{
       project_id: scope.active_project_id,
+      harness_id: scope.active_harness_id,
       path: "mix.exs",
       role: :mix_exs,
       valid: true,

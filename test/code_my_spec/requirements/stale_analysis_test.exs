@@ -30,6 +30,7 @@ defmodule CodeMySpec.Requirements.StaleAnalysisTest do
 
     Repo.insert!(%FileRecord{
       project_id: scope.active_project_id,
+      harness_id: scope.active_harness_id,
       path: "lib/my_app/accounts.ex",
       role: :implementation,
       valid: true,

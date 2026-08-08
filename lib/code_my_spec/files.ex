@@ -9,6 +9,7 @@ defmodule CodeMySpec.Files do
   alias CodeMySpec.Configurations
   alias CodeMySpec.Files.File
   alias CodeMySpec.Files.Scanner.ReadModel
+  alias CodeMySpec.Harnesses
   alias CodeMySpec.Repo
   alias CodeMySpec.Users.Scope
 
@@ -167,12 +168,18 @@ defmodule CodeMySpec.Files do
       when is_list(file_attrs_list) do
     now = NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
 
+    # A writer that named its working copy gets that one; one that did not gets
+    # the project's nil-object harness. `harness_id` is NOT NULL because
+    # `conflict_target` has to name a unique index and ON CONFLICT never matches
+    # a null — so "no working copy" needs a row to point at rather than a hole.
+    harness_id = scope.active_harness_id || Harnesses.ensure_default(scope)
+
     entries =
       Enum.map(file_attrs_list, fn attrs ->
         attrs
         |> Map.drop(@scanner_scratch)
         |> Map.put(:project_id, project_id)
-        |> Map.put(:harness_id, scope.active_harness_id)
+        |> Map.put(:harness_id, harness_id)
         |> Map.put(:inserted_at, now)
         |> Map.put(:updated_at, now)
       end)
@@ -196,7 +203,7 @@ defmodule CodeMySpec.Files do
                  :validation_errors,
                  :updated_at
                ]},
-            conflict_target: [:project_id, :path],
+            conflict_target: [:project_id, :harness_id, :path],
             returning: true
           )
 
@@ -214,13 +221,14 @@ defmodule CodeMySpec.Files do
   up the file as changed during the stop hook validation pass.
   """
   @spec upsert_file_metadata(Scope.t(), map()) :: {:ok, File.t()} | {:error, term()}
-  def upsert_file_metadata(%Scope{active_project_id: project_id}, attrs) do
+  def upsert_file_metadata(%Scope{active_project_id: project_id} = scope, attrs) do
     now = NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
 
     entry =
       attrs
       |> Map.drop(@scanner_scratch)
       |> Map.put(:project_id, project_id)
+      |> Map.put(:harness_id, scope.active_harness_id || Harnesses.ensure_default(scope))
       |> Map.put(:inserted_at, now)
       |> Map.put(:updated_at, now)
 
@@ -238,7 +246,7 @@ defmodule CodeMySpec.Files do
              :validation_errors,
              :updated_at
            ]},
-        conflict_target: [:project_id, :path],
+        conflict_target: [:project_id, :harness_id, :path],
         returning: true
       )
 

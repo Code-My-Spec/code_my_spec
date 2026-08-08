@@ -120,14 +120,15 @@ defmodule CodeMySpec.Files.File do
     :validation_errors,
     :component_id,
     :story_id,
-    :project_id
+    :project_id,
+    :harness_id
   ]
 
   def changeset(file, attrs) do
     file
     |> cast(attrs, @cast_fields)
     |> validate_required([:path, :role, :project_id])
-    |> unique_constraint([:project_id, :path])
+    |> unique_constraint([:project_id, :harness_id, :path])
   end
 
   @doc "All valid file roles."

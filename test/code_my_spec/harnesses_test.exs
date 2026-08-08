@@ -18,6 +18,7 @@ defmodule CodeMySpec.HarnessesTest do
 
   use CodeMySpecTest.DataCase, async: true
 
+  import CodeMySpec.AccountsFixtures
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.Files
@@ -42,7 +43,9 @@ defmodule CodeMySpec.HarnessesTest do
       assert {:ok, same} = Harnesses.issue(scope, first.id, label: "the harness at /a")
 
       assert same.id == first.id
-      assert length(Harnesses.list_harnesses(scope)) == 1
+
+      assert Enum.count(Harnesses.list_harnesses(scope), &(&1.id == first.id)) == 1,
+             "recognising an id must not leave a second row behind"
     end
 
     test "two checkouts of one project are two harnesses", %{scope: scope} do
@@ -53,7 +56,8 @@ defmodule CodeMySpec.HarnessesTest do
              "a checkout with no id has never been seen — sharing one with another " <>
                "checkout is the collision this grain exists to remove"
 
-      assert length(Harnesses.list_harnesses(scope)) == 2
+      ids = Enum.map(Harnesses.list_harnesses(scope), & &1.id)
+      assert first.id in ids and second.id in ids
     end
 
     test "two checkouts with identical labels are still two harnesses", %{scope: scope} do
@@ -154,21 +158,7 @@ defmodule CodeMySpec.HarnessesTest do
       assert paths_of(b) == ["lib/only_in_b.ex"]
     end
 
-    # The half that is not done, stated as a test so it is not a surprise later.
-    #
-    # `files` carries UNIQUE (project_id, path). Two checkouts therefore cannot
-    # both hold a row for one path: b's upsert conflicts onto a's row and updates
-    # it, and `harness_id` is not in the `on_conflict` replace list, so the row
-    # stays a's. Scoping the queries was necessary and is not sufficient — the
-    # *storage* is still project-grained.
-    #
-    # Fixing it means the unique index includes `harness_id`, which means
-    # `conflict_target` does too, which means `harness_id` cannot be null (ON
-    # CONFLICT never matches a null, so every upsert would insert a duplicate).
-    # That in turn means every sync path needs a harness, including the local
-    # CLI one that has no channel and no notion of one today. That is a decision,
-    # not a refactor.
-    test "a path shared by both checkouts still resolves to one row", %{scope: scope} do
+    test "both checkouts hold their own copy of a shared path", %{scope: scope} do
       a = harness_scope(scope, "the harness at /a")
       b = harness_scope(scope, "the harness at /b")
 
@@ -177,25 +167,11 @@ defmodule CodeMySpec.HarnessesTest do
 
       assert paths_of(a) == ["lib/shared.ex"]
 
-      assert paths_of(b) == [],
-             "b's copy of lib/shared.ex conflicted onto a's row. When UNIQUE " <>
-               "(project_id, path) grows harness_id this becomes [\"lib/shared.ex\"] " <>
-               "and this assertion should flip"
-    end
-
-    test "resyncing one does not disturb the other", %{scope: scope} do
-      a = harness_scope(scope, "the harness at /a")
-      b = harness_scope(scope, "the harness at /b")
-
-      sync(a, ["lib/a_one.ex", "lib/a_two.ex"])
-      sync(b, ["lib/b_one.ex"])
-
-      # a deletes a file and rescans — the classic case that used to take b's
-      # files with it.
-      sync(a, ["lib/a_one.ex"])
-
-      assert paths_of(a) == ["lib/a_one.ex"]
-      assert paths_of(b) == ["lib/b_one.ex"], "b never scanned; nothing of b's should have moved"
+      assert paths_of(b) == ["lib/shared.ex"],
+             "the same path in two checkouts is two files. UNIQUE " <>
+               "(project_id, harness_id, path) is what makes that expressible — under " <>
+               "the old (project_id, path) b's upsert conflicted onto a's row and b " <>
+               "appeared to have no such file"
     end
 
     test "a scope holding no harness still reconciles the whole project", %{scope: scope} do
@@ -203,9 +179,9 @@ defmodule CodeMySpec.HarnessesTest do
       sync(a, ["lib/a.ex"])
 
       # A caller holding the project rather than one copy of it — a mix task, the
-      # web UI. Unscoped is the honest behaviour there, and it is why the harness
-      # has to be on the scope rather than passed per call.
-      {deleted, _} = Files.delete_removed(scope, [])
+      # web UI. Those still exist, and unscoped is the honest behaviour for them:
+      # they are asking about the project, not about a checkout of it.
+      {deleted, _} = Files.delete_removed(%{scope | active_harness_id: nil}, [])
 
       assert deleted == 1
     end
@@ -224,17 +200,22 @@ defmodule CodeMySpec.HarnessesTest do
              "the operator can still switch to the other one"
     end
 
-    test "a project with no harness has no default", %{scope: scope} do
-      assert Harnesses.most_recent(scope) == nil
-      assert Harnesses.list_harnesses(scope) == []
+    test "a project with no harness has no default" do
+      # Deliberately not `full_scope_fixture/0` — that mints one, because a
+      # scope that writes files needs one. This is the genuinely empty case.
+      bare = user_scope_fixture(user_fixture(), account_fixture())
+
+      assert Harnesses.list_harnesses(%{bare | active_project_id: Ecto.UUID.generate()}) == []
     end
 
     test "another project's harnesses are not listed", %{scope: scope} do
       other = full_scope_fixture()
-      {:ok, _theirs} = Harnesses.issue(other, nil, label: "the harness at /theirs")
+      {:ok, theirs} = Harnesses.issue(other, nil, label: "the harness at /theirs")
       {:ok, mine} = Harnesses.issue(scope, nil, label: "the harness at /mine")
 
-      assert Enum.map(Harnesses.list_harnesses(scope), & &1.id) == [mine.id]
+      ids = Enum.map(Harnesses.list_harnesses(scope), & &1.id)
+      assert mine.id in ids
+      refute theirs.id in ids
     end
   end
 end

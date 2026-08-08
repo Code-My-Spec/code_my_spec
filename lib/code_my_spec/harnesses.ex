@@ -52,6 +52,64 @@ defmodule CodeMySpec.Harnesses do
     end
   end
 
+  # Namespaces the derived id so it cannot collide with a minted one and so the
+  # same project always resolves to the same row.
+  @default_namespace "cms.harness.unnamed-working-copy."
+
+  @doc """
+  The project's harness for writers that do not name a working copy.
+
+  A nil object, and an honest one: plenty of writers legitimately have no
+  checkout to point at — a mix task, the web UI, a fixture — and before the
+  grain change *every* writer was one of them. They all mean the same thing,
+  "the project's working copy, whichever that is", so they share one row rather
+  than each inventing a checkout that does not exist.
+
+  The id is derived from the project id, so this is idempotent without a lookup
+  and the same project always lands on the same harness. `last_seen_at` stays
+  nil because nothing ever joins as this one — that is what distinguishes it
+  from a real checkout in the operator's list.
+
+  Not a replacement for a real harness. Two *named* checkouts stay isolated;
+  this only stops unnamed writers from having to invent an identity in order to
+  write a row.
+  """
+  @spec ensure_default(Scope.t()) :: Ecto.UUID.t()
+  def ensure_default(%Scope{active_project_id: project_id}) when is_binary(project_id) do
+    id = default_id(project_id)
+
+    now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+    # Through the schema, so Ecto casts the ids — `insert_all` only wants
+    # pre-dumped binaries when it is given a raw table name.
+    Repo.insert_all(
+      Harness,
+      [
+        %{
+          id: id,
+          project_id: project_id,
+          label: "the project's working copy",
+          last_seen_at: nil,
+          inserted_at: now,
+          updated_at: now
+        }
+      ],
+      on_conflict: :nothing,
+      conflict_target: [:id]
+    )
+
+    id
+  end
+
+  @doc "The id `ensure_default/1` resolves to, without touching the database."
+  @spec default_id(Ecto.UUID.t()) :: Ecto.UUID.t()
+  def default_id(project_id) when is_binary(project_id) do
+    <<bytes::binary-16, _rest::binary>> =
+      :crypto.hash(:sha256, @default_namespace <> project_id)
+
+    Ecto.UUID.load!(bytes)
+  end
+
   @doc """
   Every working copy serving this project, most recently active first.
 

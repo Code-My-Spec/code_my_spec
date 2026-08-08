@@ -41,6 +41,7 @@ defmodule CodeMySpec.Files.ComponentSyncWithoutADiskTest do
   defp sync_spec(scope, path, content) do
     Repo.insert!(%FileRecord{
       project_id: scope.active_project_id,
+      harness_id: scope.active_harness_id,
       path: path,
       role: :spec,
       valid: true,

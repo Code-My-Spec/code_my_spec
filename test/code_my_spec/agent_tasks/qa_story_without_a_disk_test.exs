@@ -40,6 +40,7 @@ defmodule CodeMySpec.AgentTasks.QaStoryWithoutADiskTest do
 
     Repo.insert!(%FileRecord{
       project_id: scope.active_project_id,
+      harness_id: scope.active_harness_id,
       path: path,
       role: :bdd_spec,
       story_id: story.id,

@@ -30,6 +30,7 @@ defmodule CodeMySpec.Requirements.CheckersWithoutADiskTest do
   defp sync(scope, path, role, errors \\ %{}) do
     Repo.insert!(%FileRecord{
       project_id: scope.active_project_id,
+      harness_id: scope.active_harness_id,
       path: path,
       role: role,
       valid: errors == %{},

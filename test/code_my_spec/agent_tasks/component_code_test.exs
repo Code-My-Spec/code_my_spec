@@ -233,6 +233,7 @@ defmodule CodeMySpec.AgentTasks.ComponentCodeTest do
 
   defp satisfy_code_requirements(scope, component) do
     project = scope.active_project
+
     %{code_file: code_path, test_file: test_path} =
       CodeMySpec.Utils.component_files(component, project)
 
@@ -241,6 +242,7 @@ defmodule CodeMySpec.AgentTasks.ComponentCodeTest do
       path: code_path,
       role: :implementation,
       project_id: project.id,
+      harness_id: scope.active_harness_id,
       component_id: component.id,
       valid: true
     })
@@ -251,6 +253,7 @@ defmodule CodeMySpec.AgentTasks.ComponentCodeTest do
       path: test_path,
       role: :test,
       project_id: project.id,
+      harness_id: scope.active_harness_id,
       component_id: component.id,
       valid: true
     })
