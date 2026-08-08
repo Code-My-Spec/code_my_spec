@@ -5,18 +5,13 @@
 // never registered it, so every graph on the cloud app raised
 // "unknown hook found for SigmaGraph" and rendered nothing.
 //
-// graphology and sigma come through esbuild rather than script tags, the same
-// way Sortable does. The local app loaded them from priv/static/local, which is
-// checked in — but the cloud app's priv/static/assets is gitignored build
-// output, so a copy placed there would never reach production. Bundling them
-// means one path that works for both apps and survives a deploy.
+// graphology and sigma are UMD globals loaded by script tags in each app's
+// root layout; this module reads them off window rather than importing.
 //
-// The hook reads them off window, so they are assigned there explicitly.
-import graphology from "../vendor/graphology.umd.min.js"
-import Sigma from "../vendor/sigma.min.js"
-
-window.graphology = window.graphology || graphology
-window.Sigma = window.Sigma || Sigma
+// Do not bundle them through esbuild instead. sigma.min.js is not a module —
+// it is `var Sigma;(()=>{...})()`, which only reaches window under a script
+// tag. Imported, that var stays module-scoped and `new SigmaClass(...)` throws
+// "SigmaClass is not a constructor".
 
 function themeVar(name) {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim()
