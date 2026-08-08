@@ -64,6 +64,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
 
     with {:ok, scope} <- authorize(socket, project_id),
          {:ok, harness} <- Harnesses.issue(scope, payload["harness_id"], label: label),
+         {:ok, harness} <- report_root(harness, payload["root"]),
          # Everything below is per working copy, so the scope carries the
          # harness before any of it runs.
          scope = %{scope | active_harness_id: harness.id},
@@ -497,6 +498,15 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   # The channel test passed only because it injected the assign by hand.
   defp harness_label(%{"label" => label}) when is_binary(label) and label != "", do: label
   defp harness_label(_payload), do: "a harness that did not say where it is"
+
+  # A join that does not name a root is not an error — a harness built before
+  # the field existed does not send one, and its identity is unaffected either
+  # way, because the root is recorded about the harness rather than used to
+  # find it.
+  defp report_root(harness, root) when is_binary(root) and root != "",
+    do: Harnesses.report_root(harness, root)
+
+  defp report_root(harness, _), do: {:ok, harness}
 
   # Linked, deliberately. This process dying is what releases the lock, so the
   # holder must not outlive the channel — and a holder that cannot start must

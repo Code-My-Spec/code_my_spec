@@ -283,7 +283,11 @@ defmodule CmsHarness.Project.ChannelClient do
        # down so every later join presents the same one. A server that does not
        # yet know the field ignores it, which is why this can land ahead of the
        # half that reads it.
-       "harness_id" => project.harness_id
+       "harness_id" => project.harness_id,
+       # Where this copy is, as reported data rather than identity. The server
+       # records it so an operator looking at two harnesses of one project can
+       # tell which checkout each is; nothing resolves a harness by it.
+       "root" => project.root
      })}
   end
 
