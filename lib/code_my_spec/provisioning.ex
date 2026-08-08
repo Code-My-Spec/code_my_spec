@@ -328,7 +328,10 @@ defmodule CodeMySpec.Provisioning do
       # that dropped the resources would leak exactly like an error that did.
       {:paused, instructions, partial} when is_list(partial) ->
         row =
-          mark(scope, key, :paused, %{paused_instructions: instructions, resources: partial})
+          mark(scope, key, :paused, %{
+            paused_instructions: instructions,
+            resources: keeping_earlier(scope, key, partial)
+          })
 
         {:halt, row, instructions}
 
@@ -339,7 +342,12 @@ defmodule CodeMySpec.Provisioning do
       # recorded, so a failure that records nothing leaks by construction.
       {:error, reason, partial} when is_list(partial) ->
         row =
-          mark(scope, key, :errored, Map.put(error_attrs(key, reason), :resources, partial))
+          mark(
+            scope,
+            key,
+            :errored,
+            Map.put(error_attrs(key, reason), :resources, keeping_earlier(scope, key, partial))
+          )
 
         {:halt, row, describe(reason)}
 
@@ -554,6 +562,36 @@ defmodule CodeMySpec.Provisioning do
   # site means a transition cannot be added without being published — and a
   # step that moves without telling anyone is exactly the "watch it run"
   # failure, invisible until someone reloads.
+  # A partial record must add to what the step already knew, never stand in for
+  # it. `resources` is an `embeds_many` with `on_replace: :delete`, so handing
+  # it this run's partial list deletes every resource an earlier run recorded —
+  # and teardown works from that list, so what it forgets is exactly what leaks.
+  #
+  # Measured, not theorised: a step that recorded `hetzner/uat-box` and then
+  # failed on a retry that had only made an ssh key came back holding
+  # `["hetzner/key"]`. That is how a real recording left
+  # `spex-story966-criterion8156-uat` running — run one created and recorded the
+  # box, run two errored on a cassette miss, and the box became invisible.
+  #
+  # Earlier entries win on collision. A stale one costs nothing, because
+  # teardown reads `{:error, :not_found}` as success; overwriting one could
+  # turn an `adopted` resource into a `created` one and license teardown to
+  # delete something Sam had before setup ran. Forgetting and over-claiming are
+  # both worse than a duplicate.
+  defp keeping_earlier(scope, key, partial) do
+    earlier =
+      case StepRepository.get(scope, key) do
+        %{resources: resources} when is_list(resources) -> resources
+        _ -> []
+      end
+
+    seen = MapSet.new(earlier, &{&1.kind, &1.location})
+
+    earlier
+    |> Enum.map(&Map.from_struct/1)
+    |> Enum.concat(Enum.reject(partial, &MapSet.member?(seen, {&1[:kind], &1[:location]})))
+  end
+
   defp mark(scope, key, state, attrs) do
     row =
       StepRepository.upsert(
