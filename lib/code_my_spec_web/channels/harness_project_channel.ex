@@ -1,29 +1,36 @@
 defmodule CodeMySpecWeb.HarnessProjectChannel do
   @moduledoc """
-  The **data plane** for one project: the channel a light harness holds while
-  it owns that project's files.
+  The **data plane** for one working copy: the channel a light harness holds
+  while it serves that checkout.
 
   Distinct from `HarnessChannel`, which is account-scoped and relays an agent's
-  conversation to the operator inbox. This one is project-scoped and carries
-  the work — sync results, analysis results, and the lease itself.
+  conversation to the operator inbox. This one is scoped to a working copy and
+  carries the work — sync results, analysis results, hook decisions.
 
-  ## The channel is the lease
+  ## Two checkouts of one project both serve
 
-  Joining takes the project's advisory lock, on a connection this channel
-  process owns. Postgres drops that lock when the connection closes, and the
-  connection is linked to the channel — so a harness that panics, is killed, or
-  simply loses its network frees the project as its socket closes. There is no
-  deadline to wait out and no heartbeat to miss.
+  They used to not. Files and problems were keyed by project, so each harness's
+  full reconcile deleted the other's rows and the requirement graph described
+  neither checkout — which is why joining used to take a project-wide advisory
+  lock and refuse the second harness outright.
 
-  That is the reason a channel carries this rather than REST. Not throughput —
-  liveness. REST has no "this client is still here" signal, so a lease over
-  REST needs an expiry and a heartbeat, which is a timer compensating for a
-  deadline.
+  Both are keyed on the harness now, so there is nothing left for that lock to
+  protect and it is gone: no `project_leases`, no advisory lock, no expiry.
+  Two working copies of one project are two harnesses, and both serve.
 
-  A second harness on the same project is refused at join, told who holds it.
-  It does not queue: two harnesses syncing one project overwrite each other's
-  files and produce a requirement graph matching neither checkout, so the
-  second one should stop, not wait.
+  What is still refused is a second harness on the *same* working copy. Not for
+  the files — two processes reading one disk produce manifests that agree — but
+  for the toolchain: `mix test` and `mix spex` share a single `_build`, and two
+  at once corrupt it into reporting failures that are not in the code. That is
+  a registry entry held for the life of the channel, which is all it needs to
+  be.
+
+  ## Why a channel rather than REST
+
+  Liveness. The registry entry, the analysis executor slot and the in-flight
+  run ledger all key off "is this harness still here", and REST has no such
+  signal — it would need an expiry and a heartbeat, which is a timer
+  compensating for a deadline. A socket closing says it exactly.
   """
 
   use CodeMySpecWeb, :channel
@@ -47,7 +54,6 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   alias CodeMySpec.Hooks.Stop
   alias CodeMySpec.Hooks.SubagentStart
   alias CodeMySpec.Hooks.SubagentStop
-  alias CodeMySpec.Leases
   alias CodeMySpec.Projects
   alias CodeMySpec.Projects.Project
   alias CodeMySpec.Users.Scope
@@ -58,9 +64,10 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
 
     with {:ok, scope} <- authorize(socket, project_id),
          {:ok, harness} <- Harnesses.issue(scope, payload["harness_id"], label: label),
-         {:ok, holder} <- start_lease_holder(),
-         :ok <- Leases.acquire(scope, label, holder),
-         :ok <- Analysis.register_executor(project_id) do
+         # Everything below is per working copy, so the scope carries the
+         # harness before any of it runs.
+         scope = %{scope | active_harness_id: harness.id},
+         :ok <- Analysis.register_executor(harness.id) do
       # Anything still `:running` belongs to a previous connection. Its queue
       # was on a harness that has gone, so nothing will ever finish it — and an
       # open run makes every later stop report analysis pending, which allows
@@ -78,21 +85,25 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
       # returns another checkout's files with no error to notice.
       {:ok, %{harness_id: harness.id},
        socket
-       |> assign(:scope, %{scope | active_harness_id: harness.id})
-       |> assign(:harness, harness)
-       |> assign(:lease_holder, holder)}
+       |> assign(:scope, scope)
+       |> assign(:harness, harness)}
     else
-      {:error, {:held_by, holder}} ->
-        Logger.warning("[HarnessProject] refused #{project_id} — already held by #{holder}")
-        {:error, %{reason: "project_in_use", held_by: holder}}
-
+      # Two harness processes on one working copy. Their manifests agree — they
+      # read the same disk — so files and problems are safe either way now that
+      # both are keyed on the harness. What is not safe is the toolchain: `mix
+      # test` and `mix spex` share one `_build`, and two at once corrupt it into
+      # reporting failures that are not in the code.
+      #
+      # That is the whole of what still needs single ownership, and it is a
+      # registry entry rather than a lease: no table, no expiry, no advisory
+      # lock, and it goes when the channel does.
       {:error, {:already_registered, _pid}} ->
-        # The lease was acquired but the executor slot was not, which means two
-        # channels for one project got past the lease. Refused rather than
-        # served: the second harness would run analyzers whose results the
-        # server would attribute to runs it dispatched to the first.
-        Logger.error("[HarnessProject] #{project_id} already has an analysis executor registered")
-        {:error, %{reason: "project_in_use", held_by: "another harness on this server"}}
+        Logger.warning(
+          "[HarnessProject] refused a second harness on this working copy of #{project_id}"
+        )
+
+        {:error,
+         %{reason: "working_copy_in_use", held_by: "another harness on this working copy"}}
 
       {:error, reason} ->
         {:error, %{reason: to_string(reason)}}
@@ -490,7 +501,4 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   # Linked, deliberately. This process dying is what releases the lock, so the
   # holder must not outlive the channel — and a holder that cannot start must
   # fail the join rather than silently leave the project unguarded.
-  defp start_lease_holder do
-    Leases.Session.start_link(name: nil)
-  end
 end

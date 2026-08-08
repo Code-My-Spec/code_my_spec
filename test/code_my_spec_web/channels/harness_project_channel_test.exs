@@ -92,15 +92,25 @@ defmodule CodeMySpecWeb.HarnessProjectChannelTest do
                join_as(scope, topic)
     end
 
-    test "a second harness is refused and told who holds it", %{scope: scope, topic: topic} do
-      {:ok, _reply, _first} =
-        join_as(scope, topic)
+    # The refusal is per working copy now, not per project. Two processes on one
+    # checkout read the same id out of the same gitignored file, so they contend;
+    # two checkouts hold different ids and both serve, which is the whole point
+    # of the grain change.
+    test "a second harness on the same working copy is refused", %{scope: scope, topic: topic} do
+      {:ok, %{harness_id: id}, _first} = join_with(scope, topic, nil)
 
-      assert {:error, %{reason: "project_in_use", held_by: held_by}} =
-               join_as(scope, topic)
+      assert {:error, %{reason: "working_copy_in_use"}} = join_with(scope, topic, id),
+             "not for the files — two processes read one disk and agree — but for the " <>
+               "toolchain: two mix runs in one _build corrupt it"
+    end
 
-      assert held_by == @label,
-             "a refusal has to name the checkout to go and stop"
+    test "two working copies of one project both serve", %{scope: scope, topic: topic} do
+      assert {:ok, %{harness_id: first}, _} = join_with(scope, topic, nil)
+
+      assert {:ok, %{harness_id: second}, _} = join_with(scope, topic, nil),
+             "this is what the lease used to prevent, and what story 727 is for"
+
+      refute first == second
     end
 
     test "a harness cannot join a project its scope does not cover", %{scope: scope} do
@@ -152,15 +162,20 @@ defmodule CodeMySpecWeb.HarnessProjectChannelTest do
              "a deploy key is issued per project and must not reach a sibling"
     end
 
-    test "a refusal that nobody labelled says so, rather than inventing a host",
+    # The label used to exist for refusals — "go and stop the harness at X". Two
+    # checkouts both serve now, so nothing is refused for being elsewhere, and
+    # the label's job is the operator's list instead. A harness that does not say
+    # where it is still says so there, rather than having a host invented for it.
+    test "a harness that does not say where it is is recorded that way",
          %{scope: scope, topic: topic} do
-      {:ok, _reply, _first} =
+      {:ok, %{harness_id: id}, _first} =
         scope
         |> harness_socket([])
         |> subscribe_and_join(HarnessProjectChannel, topic, %{})
 
-      assert {:error, %{reason: "project_in_use", held_by: held_by}} = join_as(scope, topic)
-      assert held_by =~ "did not say where it is"
+      harness = Enum.find(Harnesses.list_harnesses(scope), &(&1.id == id))
+
+      assert harness.label =~ "did not say where it is"
     end
   end
 
@@ -611,21 +626,28 @@ defmodule CodeMySpecWeb.HarnessProjectChannelTest do
     end
 
     test "are closed when the next harness joins", %{scope: scope, topic: topic} do
-      {:ok, _reply, channel} = join_as(scope, topic)
+      {:ok, %{harness_id: id}, channel} = join_with(scope, topic, nil)
+
+      # "In flight" is a question about a working copy now — the runs belong to
+      # the harness whose queue was going to answer them, and a scope naming a
+      # different one is asking about a different machine.
+      served = %{scope | active_harness_id: id}
 
       ref = push(channel, "hook_decision", %{"hook" => "stop", "payload" => %{}})
       assert_reply ref, :ok, _decision, 5_000
       assert_push "run_analysis", %{"runs" => _}, 5_000
 
-      assert Analysis.runs_in_flight?(scope)
+      assert Analysis.runs_in_flight?(served)
 
       down = Process.monitor(channel.channel_pid)
       Process.exit(channel.channel_pid, :kill)
       assert_receive {:DOWN, ^down, :process, _, _}, 2_000
 
-      assert eventually(fn -> match?({:ok, _, _}, join_as(scope, topic)) end)
+      # The same working copy coming back, which is what a restarted harness is:
+      # it presents the id it wrote down.
+      assert eventually(fn -> match?({:ok, _, _}, join_with(scope, topic, id)) end)
 
-      refute Analysis.runs_in_flight?(scope),
+      refute Analysis.runs_in_flight?(served),
              "an open run whose executor is gone makes every later stop report analysis " <>
                "pending — an allow, forever"
     end

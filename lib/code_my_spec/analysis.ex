@@ -118,7 +118,8 @@ defmodule CodeMySpec.Analysis do
     stale_sources = Enum.map(stale, &elem(&1, 0))
     memoized_sources = Enum.map(memoized, &elem(&1, 0))
 
-    if stale_sources != [], do: Logger.info("[Analysis] enqueued: #{Enum.join(stale_sources, ", ")}")
+    if stale_sources != [],
+      do: Logger.info("[Analysis] enqueued: #{Enum.join(stale_sources, ", ")}")
 
     if memoized_sources != [],
       do: Logger.info("[Analysis] skipped (current): #{Enum.join(memoized_sources, ", ")}")
@@ -127,7 +128,9 @@ defmodule CodeMySpec.Analysis do
   end
 
   defp normalize_request({source, args}) when is_list(args), do: {source, args}
-  defp normalize_request(source) when is_binary(source), do: {source, Map.fetch!(@full_args, source)}
+
+  defp normalize_request(source) when is_binary(source),
+    do: {source, Map.fetch!(@full_args, source)}
 
   # A stop with changed files re-runs everything. The old fingerprint memo
   # skipped sources whose inputs hadn't moved, which saved little (the work is
@@ -309,10 +312,17 @@ defmodule CodeMySpec.Analysis do
   fact is what stops a run being enqueued for a harness that has gone.
   """
   @spec remote_executor(Scope.t()) :: {:ok, pid()} | :none
-  def remote_executor(%Scope{active_project_id: nil}), do: :none
+  # Keyed on the working copy, because that is what runs the analyzers: two
+  # checkouts of one project each have their own toolchain and their own
+  # `_build`, and a result from one says nothing about the other.
+  #
+  # A scope with no harness has no working copy to dispatch to, so `:none` — the
+  # same answer it gave for a project nothing was serving. Callers already treat
+  # that as "nothing remote here".
+  def remote_executor(%Scope{active_harness_id: nil}), do: :none
 
-  def remote_executor(%Scope{active_project_id: project_id}) do
-    case Registry.lookup(HarnessRegistry, to_string(project_id)) do
+  def remote_executor(%Scope{active_harness_id: harness_id}) do
+    case Registry.lookup(HarnessRegistry, to_string(harness_id)) do
       [{pid, _}] -> {:ok, pid}
       [] -> :none
     end
@@ -330,8 +340,8 @@ defmodule CodeMySpec.Analysis do
   a stored one.
   """
   @spec register_executor(String.t()) :: :ok | {:error, {:already_registered, pid()}}
-  def register_executor(project_id) do
-    case Registry.register(HarnessRegistry, to_string(project_id), :analysis) do
+  def register_executor(harness_id) do
+    case Registry.register(HarnessRegistry, to_string(harness_id), :analysis) do
       {:ok, _} -> :ok
       {:error, {:already_registered, pid}} -> {:error, {:already_registered, pid}}
     end
@@ -484,27 +494,28 @@ defmodule CodeMySpec.Analysis do
              args: %{"args" => job.args},
              input_fingerprint: job.fingerprint
            }) do
-        {:ok, run} ->
-          # The same skip the local `Execution.execute/3` applies, decided one
-          # step earlier because the machine that would apply it is not this
-          # one. Analyzers and test suites against code that does not compile
-          # emit garbage, and the skip is what makes a quiet stop re-run the
-          # compiler afterwards — `needs_run?/5` looks for this exact reason.
-          if Execution.skip_for_compile_errors?(scope, run) do
-            Reconciler.fail(run, :skipped_compile_errors)
-            {:ok, :skipped, run.id}
-          else
-            send(
-              channel,
-              {:run_analysis, [%{"run_id" => run.id, "source" => job.source, "args" => job.args}]}
-            )
-
-            {:ok, :started, run.id}
-          end
-
-        {:error, reason} ->
-          {:error, reason}
+        {:ok, run} -> send_or_skip(scope, job, channel, run)
+        {:error, reason} -> {:error, reason}
       end
+    end
+  end
+
+  # The same skip the local `Execution.execute/3` applies, decided one step
+  # earlier because the machine that would apply it is not this one. Analyzers
+  # and test suites against code that does not compile emit garbage, and the
+  # skip is what makes a quiet stop re-run the compiler afterwards —
+  # `needs_run?/5` looks for this exact reason.
+  defp send_or_skip(scope, job, channel, run) do
+    if Execution.skip_for_compile_errors?(scope, run) do
+      Reconciler.fail(run, :skipped_compile_errors)
+      {:ok, :skipped, run.id}
+    else
+      send(
+        channel,
+        {:run_analysis, [%{"run_id" => run.id, "source" => job.source, "args" => job.args}]}
+      )
+
+      {:ok, :started, run.id}
     end
   end
 

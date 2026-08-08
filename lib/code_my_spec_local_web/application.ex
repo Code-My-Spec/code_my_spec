@@ -272,7 +272,6 @@ defmodule CodeMySpecLocalWeb.Application do
         # starts watching and that claim is a call into this process. Its being
         # alive is what holds this harness's leases, so it outliving the watcher
         # is also what keeps them held.
-        CodeMySpec.Leases.Session,
         CodeMySpec.ProjectSync.FileWatcherServer,
         CodeMySpecLocalWeb.SocketSupervisor,
         CodeMySpecCli.PresenceClient
