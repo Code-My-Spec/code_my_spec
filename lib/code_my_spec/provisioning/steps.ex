@@ -943,9 +943,32 @@ defmodule CodeMySpec.Provisioning.Steps do
     #
     # Any verified domain works. The claim is that mail addressed to this
     # domain arrives here; who sent it is not part of it.
+    # What was already in the mailbox before this probe. The arriving message
+    # is then identified by *not being one of them*, rather than by carrying a
+    # token — and that is what makes the proof replayable.
+    #
+    # The token is generated per run (`System.unique_integer/1`), so on replay
+    # it never matched the subject recorded against it: the poll ran to its
+    # limit, exhausted sixty recorded interactions, and every criterion in
+    # story 974 recorded green and replayed red. Matching the subject prefix
+    # instead would replay, but would also let a *previous* probe to the same
+    # address satisfy a later one — proof by residue, which is the failure this
+    # step exists to prevent.
+    #
+    # Ids are stable across record and replay because they come from the
+    # cassette, so this is exact in both.
+    seen = already_received(scope, opts)
+
     with {:ok, from} <- probe_sender(scope),
          {:ok, _sent} <- Resend.send_probe(scope, to, subject: token, from: from) do
-      Resend.await_received(scope, &received?(&1, to, token), opts)
+      Resend.await_received(scope, &received?(&1, to, seen), opts)
+    end
+  end
+
+  defp already_received(scope, opts) do
+    case Resend.list_received(scope, opts) do
+      {:ok, messages} -> MapSet.new(messages, & &1["id"])
+      _ -> MapSet.new()
     end
   end
 
@@ -985,11 +1008,13 @@ defmodule CodeMySpec.Provisioning.Steps do
     end
   end
 
-  defp received?(message, to, token) do
-    subject = to_string(message["subject"] || "")
+  # Addressed to us, and not one of the messages that were already here. The
+  # second half is what makes this exact without depending on a value that
+  # changes between recording and replay.
+  defp received?(message, to, %MapSet{} = seen) do
     recipients = List.wrap(message["to"]) |> Enum.map(&to_string/1)
 
-    String.contains?(subject, token) and Enum.any?(recipients, &(&1 == to))
+    Enum.any?(recipients, &(&1 == to)) and not MapSet.member?(seen, message["id"])
   end
 
   def run(:storage, %Scope{} = scope, opts) do
