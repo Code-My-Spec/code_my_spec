@@ -287,8 +287,22 @@ defmodule CmsHarness.Project.ChannelClient do
        # Where this copy is, as reported data rather than identity. The server
        # records it so an operator looking at two harnesses of one project can
        # tell which checkout each is; nothing resolves a harness by it.
-       "root" => project.root
+       "root" => project.root,
+       # Which OS process holds this socket. The server needs it to tell a
+       # rejoin apart from a rival: both present the same harness_id, because
+       # that id is the working copy and is read from a file in it. Same
+       # instance means this process reconnecting, and the registration it is
+       # colliding with is its own — so it may take it. A different instance is
+       # a second harness on one `_build`, which still gets refused.
+       "instance" => instance()
      })}
+  end
+
+  # Host as well as pid: pids are only unique per machine, and a sprite and a
+  # laptop can hold checkouts that were cloned with the same id file.
+  defp instance do
+    {:ok, host} = :inet.gethostname()
+    "#{host}:#{System.pid()}"
   end
 
   @impl Slipstream

@@ -338,12 +338,72 @@ defmodule CodeMySpec.Analysis do
   Called from the harness channel at join. The registration dies with the
   channel, which is what makes `remote_executor/1` a liveness answer rather than
   a stored one.
+
+  `instance` names the OS process holding the harness's socket. A harness that
+  reconnects presents the same `harness_id` as the registration it is colliding
+  with — that id *is* the working copy, read from a file inside it — so the id
+  alone cannot say whether this is a rival or the same process returning. The
+  instance can, and a process is allowed to take its own registration back.
+
+  It has to be, because the entry only dies with the channel, and a channel is
+  only killed by its socket closing. A harness whose client-side channel went
+  while the socket stayed open leaves an entry nothing will ever release, and
+  the harness then queues behind its own ghost at the capped backoff forever —
+  hooks refusing with `:not_connected` against a server answering 200. That was
+  not a slow recovery, it was a permanent one, and only killing the harness
+  process cleared it.
+
+  A *different* instance is still refused: that is two harnesses on one
+  `_build`, where two `mix test` runs corrupt it into reporting failures that
+  are not in the code. Registered entries are always live — Registry drops them
+  when the channel dies — so a live entry from another instance means a real
+  rival, not a leftover.
   """
-  @spec register_executor(String.t()) :: :ok | {:error, {:already_registered, pid()}}
-  def register_executor(harness_id) do
-    case Registry.register(HarnessRegistry, to_string(harness_id), :analysis) do
+  @spec register_executor(String.t(), String.t() | nil) ::
+          :ok | {:error, {:already_registered, pid()}}
+  def register_executor(harness_id, instance \\ nil) do
+    key = to_string(harness_id)
+
+    case Registry.register(HarnessRegistry, key, instance) do
       {:ok, _} -> :ok
-      {:error, {:already_registered, pid}} -> {:error, {:already_registered, pid}}
+      {:error, {:already_registered, pid}} -> take_over(key, pid, instance)
+    end
+  end
+
+  # Only from the same instance, and only when we know both — an unknown
+  # instance on either side is not evidence of sameness, and guessing wrong
+  # here is the `_build` corruption the lock exists to prevent.
+  defp take_over(_key, pid, nil), do: {:error, {:already_registered, pid}}
+
+  defp take_over(key, pid, instance) do
+    case Registry.lookup(HarnessRegistry, key) do
+      [{^pid, ^instance}] -> evict(key, pid, instance)
+      # It went between the register and the lookup. The slot is free now.
+      [] -> register_executor(key, instance)
+      _ -> {:error, {:already_registered, pid}}
+    end
+  end
+
+  # Kill it and wait for the entry to actually clear. Registry unregisters on
+  # the process's :DOWN, so registering before that lands would race and lose.
+  defp evict(key, pid, instance) do
+    Logger.info(
+      "[Analysis] harness #{key} reconnected from #{instance}; taking back the " <>
+        "registration held by its previous channel #{inspect(pid)}"
+    )
+
+    ref = Process.monitor(pid)
+    Process.exit(pid, :kill)
+
+    receive do
+      {:DOWN, ^ref, :process, ^pid, _reason} -> :ok
+    after
+      5_000 -> Process.demonitor(ref, [:flush])
+    end
+
+    case Registry.register(HarnessRegistry, key, instance) do
+      {:ok, _} -> :ok
+      {:error, {:already_registered, other}} -> {:error, {:already_registered, other}}
     end
   end
 

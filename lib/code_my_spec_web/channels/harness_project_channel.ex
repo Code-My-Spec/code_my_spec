@@ -68,7 +68,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
          # Everything below is per working copy, so the scope carries the
          # harness before any of it runs.
          scope = %{scope | active_harness_id: harness.id},
-         :ok <- Analysis.register_executor(harness.id) do
+         :ok <- Analysis.register_executor(harness.id, payload["instance"]) do
       # Anything still `:running` belongs to a previous connection. Its queue
       # was on a harness that has gone, so nothing will ever finish it — and an
       # open run makes every later stop report analysis pending, which allows
@@ -98,9 +98,13 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
       # That is the whole of what still needs single ownership, and it is a
       # registry entry rather than a lease: no table, no expiry, no advisory
       # lock, and it goes when the channel does.
+      # Only a *different* OS process gets here now. The same harness coming
+      # back takes its own registration, because otherwise it waits behind its
+      # own orphaned channel forever — see `Analysis.register_executor/2`.
       {:error, {:already_registered, _pid}} ->
         Logger.warning(
-          "[HarnessProject] refused a second harness on this working copy of #{project_id}"
+          "[HarnessProject] refused a second harness on this working copy of #{project_id} " <>
+            "(joining instance #{inspect(payload["instance"])})"
         )
 
         {:error,
