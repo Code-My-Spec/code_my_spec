@@ -119,9 +119,9 @@ defmodule CodeMySpec.Provisioning.Builder.RemoteTest do
                  opts(run, registry_credentials: %{username: "cms", password: "hunter2"})
                )
 
-      assert_receive {:ran, login}, 0, "expected a docker login before the push"
-      # Drain to the login command.
-      login = drain_until(login, "docker login")
+      [_reachable, _fetch, _build, login, push, _inspect] = ran_commands(6)
+
+      assert push =~ "docker push", "the login must come before the push, not after it"
 
       assert login =~ "docker login 'registry.example.com'"
       assert login =~ "--username 'cms'"
@@ -144,8 +144,7 @@ defmodule CodeMySpec.Provisioning.Builder.RemoteTest do
                  opts(run, registry_credentials: %{username: "cms", password: "pw"})
                )
 
-      assert_receive {:ran, first}, 0
-      login = drain_until(first, "docker login")
+      [_reachable, _fetch, _build, login, _push, _inspect] = ran_commands(6)
 
       assert login =~ "docker login 'registry.example.com'"
       refute login =~ "some/deep/path"
@@ -179,14 +178,15 @@ defmodule CodeMySpec.Provisioning.Builder.RemoteTest do
     end
   end
 
-  # The recorder reports every command, and the login sits between the build
-  # and the push; this walks forward to it rather than assuming a position.
-  defp drain_until(command, needle) do
-    if String.contains?(command, needle) do
+  # The sequence `build/4` runs is fixed — reachability, fetch, build, login,
+  # push, inspect — so the count is known rather than searched for. Taking a
+  # known number and matching positionally says where the login belongs, which
+  # "scan forward until something matches" cannot: it would pass just as well
+  # if the login came after the push.
+  defp ran_commands(count) do
+    for _ <- 1..count do
+      assert_receive {:ran, command}, 0
       command
-    else
-      assert_receive {:ran, next}, 0, "never ran a command containing #{inspect(needle)}"
-      drain_until(next, needle)
     end
   end
 end

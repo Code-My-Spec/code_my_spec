@@ -35,7 +35,7 @@ defmodule CodeMySpec.Provisioning.Steps do
   prevent, so it is better to be loudly incomplete.
   """
 
-  alias CodeMySpec.{AccountSecrets, Deploys, Environments, ProjectSecrets, Projects}
+  alias CodeMySpec.{AccountSecrets, Deploys, Environments, Projects, ProjectSecrets}
 
   alias CodeMySpec.Provisioning.{
     Backups,
@@ -108,22 +108,20 @@ defmodule CodeMySpec.Provisioning.Steps do
           {:ok, server} <- [Hetzner.find_server(scope, server_name(scope, opts, environment))],
           do: server_resource(server, environment)
 
-    cond do
-      # Satisfied only when EVERY environment has its box. One environment
-      # missing is not "done" — it is a project that cannot deploy that
-      # environment, and reporting done hides it until the deploy fails.
-      length(found) == length(environments) and found != [] ->
-        # The step also makes a firewall and an ssh_key, shared across
-        # environments. A second run takes this satisfied path instead of
-        # `run/3`; returning only the servers would drop those two from the
-        # step's resources (7965: "running twice leaves one of everything").
-        {:ok, :satisfied,
-         found ++
-           found_resource(Hetzner.find_firewall(scope, name), &firewall_resource(name, &1)) ++
-           found_resource(Hetzner.find_ssh_key(scope, name), &ssh_key_resource(name, &1))}
-
-      true ->
-        {:ok, :absent}
+    # Satisfied only when EVERY environment has its box. One environment
+    # missing is not "done" — it is a project that cannot deploy that
+    # environment, and reporting done hides it until the deploy fails.
+    if length(found) == length(environments) and found != [] do
+      # The step also makes a firewall and an ssh_key, shared across
+      # environments. A second run takes this satisfied path instead of
+      # `run/3`; returning only the servers would drop those two from the
+      # step's resources (7965: "running twice leaves one of everything").
+      {:ok, :satisfied,
+       found ++
+         found_resource(Hetzner.find_firewall(scope, name), &firewall_resource(name, &1)) ++
+         found_resource(Hetzner.find_ssh_key(scope, name), &ssh_key_resource(name, &1))}
+    else
+      {:ok, :absent}
     end
   end
 
@@ -257,22 +255,9 @@ defmodule CodeMySpec.Provisioning.Steps do
         {:ok, :absent}
 
       {:ok, credentials} ->
-        wanted = Enum.map(environments, &Storage.bucket_name(project, &1))
-
-        case Storage.list_buckets(credentials, opts) do
-          {:ok, existing} ->
-            # Every environment or none: a project with a production bucket and
-            # no UAT bucket is not done, and saying it is hides that until an
-            # upload fails.
-            if Enum.all?(wanted, &(&1 in existing)) do
-              {:ok, :satisfied, Enum.map(wanted, &bucket_resource(&1, opts))}
-            else
-              {:ok, :absent}
-            end
-
-          {:error, reason} ->
-            {:error, format(reason)}
-        end
+        environments
+        |> Enum.map(&Storage.bucket_name(project, &1))
+        |> every_bucket_present(credentials, opts)
     end
   end
 
@@ -689,31 +674,11 @@ defmodule CodeMySpec.Provisioning.Steps do
         {:paused, Storage.credentials_instructions()}
 
       {:ok, credentials} ->
-        environments
-        |> Enum.reduce_while({:ok, []}, fn environment, {:ok, acc} ->
-          bucket = Storage.bucket_name(project, environment)
-
-          case Storage.ensure_bucket(bucket, credentials, opts) do
-            {:ok, created} ->
-              {:cont,
-               {:ok,
-                acc ++
-                  [
-                    %{
-                      kind: "bucket",
-                      location: created.location,
-                      identifier: created.owner,
-                      origin: created.origin
-                    }
-                  ]}}
-
-            # The buckets already made are named in the failure, so a run
-            # that dies on the second environment can still clean up the
-            # first.
-            {:error, reason} ->
-              {:halt, {:error, format(reason), acc}}
-          end
-        end)
+        Enum.reduce_while(
+          environments,
+          {:ok, []},
+          &ensure_bucket_for(&1, &2, project, credentials, opts)
+        )
     end
   end
 
@@ -1162,6 +1127,48 @@ defmodule CodeMySpec.Provisioning.Steps do
   # rather than beside the one each serves: interleaving them splits the
   # clauses, and Elixir warns about that — a warning the analyzer treats as
   # reason to skip exunit, credo and spex outright.
+
+  # One environment's bucket. Named rather than inline because the step already
+  # branches on credentials and reduces over environments, and a third level
+  # inside that is where a reader stops being able to see which branch they are
+  # in.
+  #
+  # The buckets already made are carried in the failure, so a run that dies on
+  # the second environment can still clean up the first.
+  defp ensure_bucket_for(environment, {:ok, acc}, project, credentials, opts) do
+    bucket = Storage.bucket_name(project, environment)
+
+    case Storage.ensure_bucket(bucket, credentials, opts) do
+      {:ok, created} -> {:cont, {:ok, acc ++ [bucket_created_resource(created)]}}
+      {:error, reason} -> {:halt, {:error, format(reason), acc}}
+    end
+  end
+
+  # Every environment or none: a project with a production bucket and no UAT
+  # bucket is not done, and saying it is hides that until an upload fails.
+  defp every_bucket_present(wanted, credentials, opts) do
+    case Storage.list_buckets(credentials, opts) do
+      {:ok, existing} -> buckets_verdict(wanted, existing, opts)
+      {:error, reason} -> {:error, format(reason)}
+    end
+  end
+
+  defp buckets_verdict(wanted, existing, opts) do
+    if Enum.all?(wanted, &(&1 in existing)) do
+      {:ok, :satisfied, Enum.map(wanted, &bucket_resource(&1, opts))}
+    else
+      {:ok, :absent}
+    end
+  end
+
+  defp bucket_created_resource(created) do
+    %{
+      kind: "bucket",
+      location: created.location,
+      identifier: created.owner,
+      origin: created.origin
+    }
+  end
   # Where a deploy lands is decided by the config in the checkout, not by
   # anything setup passes kamal — the `:host` above is only the health probe's
   # target. So a config naming another machine deploys this project's image
@@ -1298,7 +1305,6 @@ defmodule CodeMySpec.Provisioning.Steps do
           "origin=#{proof[:origin] || proof["origin"]} proven_at=#{iso(proven_at)}"
     }
   end
-
 
   defp build_image(scope, environment, opts) do
     # Injectable for the same reason the builder's own create/build/destroy
@@ -1612,37 +1618,40 @@ defmodule CodeMySpec.Provisioning.Steps do
   defp find_sending_zone(scope, sending), do: Cloudflare.find_zone(scope, sending)
 
   defp write_sending_records(scope, zone, records, existing) do
-    Enum.reduce_while(records, {:ok, []}, fn record, {:ok, acc} ->
-      name = qualify(record["name"], zone["name"])
+    Enum.reduce_while(records, {:ok, []}, &write_sending_record(&1, &2, scope, zone, existing))
+  end
 
-      # Belt and braces. `find_zone` already matches on a label boundary, so
-      # this should be unreachable — and it is cheap enough to keep, because
-      # the failure it guards against is writing DNS to somebody's live domain
-      # and only finding out from the residue.
-      if covered_by?(name, zone["name"]) do
-        # No `ttl`. Resend reports it as the string "Auto" and Cloudflare
-        # answers `9208 Failed to parse. ttl must be a number.`, so passing it
-        # through rejected the very first record — the DKIM — and the step
-        # halted having published nothing. Leaving it off lets Cloudflare apply
-        # its own default, which is what "Auto" meant in the first place.
-        case Cloudflare.ensure_dns_record(scope, zone["id"], name, record["value"],
-               type: record["type"],
-               priority: record["priority"],
-               records: existing
-             ) do
-          {:ok, result} ->
-            {:cont, {:ok, acc ++ [sending_record_resource(name, record, result)]}}
+  defp write_sending_record(record, {:ok, acc}, scope, zone, existing) do
+    name = qualify(record["name"], zone["name"])
 
-          {:error, reason} ->
-            {:halt, {:error, format(reason)}}
-        end
-      else
-        {:halt,
-         {:error,
-          "refusing to publish #{name}: it is not inside the #{zone["name"]} zone, and a " <>
-            "record written outside its own zone lands on a domain nobody meant to touch"}}
-      end
-    end)
+    # Belt and braces. `find_zone` already matches on a label boundary, so this
+    # should be unreachable — and it is cheap enough to keep, because the
+    # failure it guards against is writing DNS to somebody's live domain and
+    # only finding out from the residue.
+    if covered_by?(name, zone["name"]) do
+      publish_sending_record(scope, zone, name, record, existing, acc)
+    else
+      {:halt,
+       {:error,
+        "refusing to publish #{name}: it is not inside the #{zone["name"]} zone, and a " <>
+          "record written outside its own zone lands on a domain nobody meant to touch"}}
+    end
+  end
+
+  # No `ttl`. Resend reports it as the string "Auto" and Cloudflare answers
+  # `9208 Failed to parse. ttl must be a number.`, so passing it through
+  # rejected the very first record — the DKIM — and the step halted having
+  # published nothing. Leaving it off lets Cloudflare apply its own default,
+  # which is what "Auto" meant in the first place.
+  defp publish_sending_record(scope, zone, name, record, existing, acc) do
+    case Cloudflare.ensure_dns_record(scope, zone["id"], name, record["value"],
+           type: record["type"],
+           priority: record["priority"],
+           records: existing
+         ) do
+      {:ok, result} -> {:cont, {:ok, acc ++ [sending_record_resource(name, record, result)]}}
+      {:error, reason} -> {:halt, {:error, format(reason)}}
+    end
   end
 
   defp sending_record_resource(name, record, result) do
@@ -1940,34 +1949,35 @@ defmodule CodeMySpec.Provisioning.Steps do
   defp ensure_environment_servers(scope, opts, made) do
     scope
     |> EnvironmentRepository.list()
-    |> Enum.reduce_while({:ok, made}, fn environment, {:ok, acc} ->
-      name = server_name(scope, opts, environment.name)
+    |> Enum.reduce_while({:ok, made}, &ensure_environment_server(&1, &2, scope, opts))
+  end
 
-      case Hetzner.ensure_server(scope, name, opts) do
-        {:ok, server} ->
-          ip = get_in(server, ["public_net", "ipv4", "ip"])
+  defp ensure_environment_server(environment, {:ok, acc}, scope, opts) do
+    name = server_name(scope, opts, environment.name)
 
-          # Halting on a failed write-back rather than discarding it. The box
-          # exists at this point; if the row does not record it, nothing can
-          # find it again — the page cannot show it and teardown cannot remove
-          # it, so it leaks and the step still says done. A silent write is the
-          # worst of the three outcomes.
+    case Hetzner.ensure_server(scope, name, opts) do
+      {:ok, server} -> record_environment_server(scope, environment, name, server, acc)
+      {:error, reason} -> {:halt, {:error, format(reason), acc}}
+    end
+  end
 
-          case EnvironmentRepository.put(scope, environment.name, %{server_name: name, ip: ip}) do
-            {:ok, _environment} ->
-              {:cont, {:ok, [server_resource(server, environment.name) | acc]}}
+  # Halting on a failed write-back rather than discarding it. The box exists at
+  # this point; if the row does not record it, nothing can find it again — the
+  # page cannot show it and teardown cannot remove it, so it leaks and the step
+  # still says done. A silent write is the worst of the three outcomes.
+  defp record_environment_server(scope, environment, name, server, acc) do
+    ip = get_in(server, ["public_net", "ipv4", "ip"])
 
-            {:error, reason} ->
-              {:halt,
-               {:error,
-                "provisioned #{name} but could not record it against the #{environment.name} " <>
-                  "environment: #{format(reason)}", acc}}
-          end
+    case EnvironmentRepository.put(scope, environment.name, %{server_name: name, ip: ip}) do
+      {:ok, _environment} ->
+        {:cont, {:ok, [server_resource(server, environment.name) | acc]}}
 
-        {:error, reason} ->
-          {:halt, {:error, format(reason), acc}}
-      end
-    end)
+      {:error, reason} ->
+        {:halt,
+         {:error,
+          "provisioned #{name} but could not record it against the #{environment.name} " <>
+            "environment: #{format(reason)}", acc}}
+    end
   end
 
   # One record per environment, each pointing at that environment's own server.
@@ -2050,40 +2060,68 @@ defmodule CodeMySpec.Provisioning.Steps do
 
   defp dns_record_for(scope, zone, environment, existing, acc, opts) do
     case environment_ip(scope, environment, opts) do
-      nil ->
-          {:cont, {:ok, acc}}
-
-        ip ->
-          write = Keyword.get(opts, :write_dns_record, &Cloudflare.ensure_dns_record/5)
-
-          case write.(scope, zone["id"], environment.host, ip, records: existing) do
-            {:ok, response} ->
-              record = dns_resource(environment.host, ip, response, environment.name)
-
-              # Confirmed against a public resolver, not against our own write.
-              # A record that exists in the dashboard and does not resolve is
-              # the classic DNS failure, and it looks identical to success from
-              # the API's answer alone.
-              verification =
-                if Dns.resolves_publicly?(environment.host, :a, resolver_opts(opts)) do
-                  [
-                    %{
-                      kind: "dns_verification",
-                      location: environment.host,
-                      identifier: "source=resolver environment=#{environment.name}",
-                      origin: "created"
-                    }
-                  ]
-                else
-                  []
-                end
-
-              {:cont, {:ok, acc ++ [record] ++ verification}}
-
-          {:error, reason} ->
-            {:halt, {:error, reason}}
-        end
+      nil -> {:cont, {:ok, acc}}
+      ip -> write_dns_record_for(scope, zone, environment, ip, existing, acc, opts)
     end
+  end
+
+  defp write_dns_record_for(scope, zone, environment, ip, existing, acc, opts) do
+    write = Keyword.get(opts, :write_dns_record, &Cloudflare.ensure_dns_record/5)
+
+    case write.(scope, zone["id"], environment.host, ip, records: existing) do
+      {:ok, response} ->
+        record = dns_resource(environment.host, ip, response, environment.name)
+        {:cont, {:ok, acc ++ [record] ++ dns_verification(environment, opts)}}
+
+      {:error, reason} ->
+        {:halt, {:error, reason}}
+    end
+  end
+
+  # Confirmed against a public resolver, not against our own write. A record
+  # that exists in the dashboard and does not resolve is the classic DNS
+  # failure, and it looks identical to success from the API's answer alone.
+  defp dns_verification(environment, opts) do
+    if Dns.resolves_publicly?(environment.host, :a, resolver_opts(opts)) do
+      [
+        %{
+          kind: "dns_verification",
+          location: environment.host,
+          identifier: "source=resolver environment=#{environment.name}",
+          origin: "created"
+        }
+      ]
+    else
+      []
+    end
+  end
+
+  # Against the **zone**, not the receiving domain. Resend names its records
+  # relative to the zone — for a receiving domain of `c8033.astralbi.com` in
+  # zone `astralbi.com` it returns `c8033`, and qualifying that against the
+  # receiving domain produced `c8033.c8033.astralbi.com`: created successfully,
+  # reported done, and no mail ever routed. Found in the residue of a real run.
+  #
+  # The `qualify/2` doc has warned about this exact shape since it was written;
+  # the sending records were fixed for it and this call was not.
+  defp publish_mx_record(record, {:ok, acc}, scope, zone) do
+    record_name = qualify(record["name"], zone["name"])
+
+    case Cloudflare.ensure_dns_record(scope, zone["id"], record_name, record["value"],
+           type: "MX",
+           priority: record["priority"]
+         ) do
+      {:ok, _} -> {:cont, {:ok, acc ++ [mx_record_resource(record_name, record)]}}
+      {:error, reason} -> {:halt, {:error, format(reason)}}
+    end
+  end
+
+  defp mx_record_resource(record_name, record) do
+    %{
+      kind: "mx_record",
+      location: "cloudflare/#{record_name}",
+      identifier: "#{record["value"]} priority #{record["priority"]}"
+    }
   end
 
   # Recording waits on DNS actually propagating; replay waits on nothing.
@@ -2339,39 +2377,7 @@ defmodule CodeMySpec.Provisioning.Steps do
         base = base_domain(scope, opts)
 
         with {:ok, zone} <- Cloudflare.find_zone(scope, base) do
-          Enum.reduce_while(records, {:ok, []}, fn record, {:ok, acc} ->
-            # Against the **zone**, not the receiving domain. Resend names its
-            # records relative to the zone — for a receiving domain of
-            # `c8033.astralbi.com` in zone `astralbi.com` it returns `c8033`,
-            # and qualifying that against the receiving domain produced
-            # `c8033.c8033.astralbi.com`: created successfully, reported done,
-            # and no mail ever routed. Found in the residue of a real run.
-            #
-            # The `qualify/2` doc has warned about this exact shape since it
-            # was written; the sending records were fixed for it and this call
-            # was not.
-            record_name = qualify(record["name"], zone["name"])
-
-            case Cloudflare.ensure_dns_record(scope, zone["id"], record_name, record["value"],
-                   type: "MX",
-                   priority: record["priority"]
-                 ) do
-              {:ok, _} ->
-                {:cont,
-                 {:ok,
-                  acc ++
-                    [
-                      %{
-                        kind: "mx_record",
-                        location: "cloudflare/#{record_name}",
-                        identifier: "#{record["value"]} priority #{record["priority"]}"
-                      }
-                    ]}}
-
-              {:error, reason} ->
-                {:halt, {:error, format(reason)}}
-            end
-          end)
+          Enum.reduce_while(records, {:ok, []}, &publish_mx_record(&1, &2, scope, zone))
         end
     end
   end
