@@ -87,7 +87,10 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
       {:ok, %{harness_id: harness.id},
        socket
        |> assign(:scope, scope)
-       |> assign(:harness, harness)}
+       |> assign(:harness, harness)
+       # One reconcile in flight, at most one waiting. See `accept_manifest/2`.
+       |> assign(:reconciling, nil)
+       |> assign(:pending_manifest, nil)}
     else
       # Two harness processes on one working copy. Their manifests agree — they
       # read the same disk — so files and problems are safe either way now that
@@ -185,41 +188,17 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
       when is_list(observations) do
     case deserialize_observations(observations) do
       {:ok, entries} ->
-        scope = socket.assigns.scope
-        summary = FileSync.reconcile(scope, entries)
-
-        # Reconciling files is only half of a sync. The other half turns those
-        # files into components and — the part that matters here — writes
-        # `component_id` back onto each File row.
-        #
-        # Without it every `implementation_file` requirement stays unsatisfied
-        # forever: the check is scoped to a component's own files, and a file
-        # nothing owns is invisible to it. Drill 11 finished the entire project
-        # chain, wrote every module, passed 157 tests, and still showed 15
-        # implementation requirements open with all 66 implementation files
-        # synced and not one of them linked.
-        #
-        # The local path has always run both (see `Tools.SyncProject`). This one
-        # ran only the first, and could not have run the second until
-        # `ComponentSync` stopped needing to read the files itself — the
-        # component identity now travels in the File record, which is what makes
-        # this line possible at all.
-        {:ok, components} = ComponentSync.sync_from_files(scope)
-
-        {:reply,
-         {:ok,
-          %{
-            "upserted" => summary.upserted,
-            "removed" => summary.removed,
-            "changed" => length(summary.changed_entries),
-            "components" => length(components.all_components)
-          }}, socket}
+        {:reply, {:ok, %{"status" => "accepted", "observations" => length(entries)}},
+         accept_manifest(socket, entries)}
 
       {:error, problems} ->
         # Usually version skew: a harness classifying files into roles this
         # server has never heard of. Writing those as nil would land wrong rows
         # and surface later as a requirement graph nobody can explain, so the
         # manifest is rejected whole and the reasons are named.
+        #
+        # Still synchronous, deliberately: this is the one answer the harness
+        # can act on, and it is cheap to compute.
         Logger.warning("[HarnessProject] rejected manifest: #{inspect(problems)}")
 
         {:reply, {:error, %{"reason" => "invalid_manifest", "problems" => problems}}, socket}
@@ -318,7 +297,110 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
     {:noreply, socket}
   end
 
+  # The counts the harness used to receive in its reply. Logged here instead,
+  # because the reply now leaves before they exist.
+  def handle_info({ref, counts}, %{assigns: %{reconciling: %Task{ref: ref}}} = socket) do
+    Process.demonitor(ref, [:flush])
+
+    Logger.info(
+      "[HarnessProject] reconciled: #{counts.upserted} upserted, #{counts.removed} removed, " <>
+        "#{counts.changed} changed, #{counts.components} components"
+    )
+
+    {:noreply, next_manifest(socket)}
+  end
+
+  # A reconcile that died takes its manifest with it. The next scan sends the
+  # whole set again — which is what makes a manifest safe to lose — so this says
+  # so and moves on rather than retrying a snapshot that has since aged.
+  def handle_info(
+        {:DOWN, ref, :process, _pid, reason},
+        %{assigns: %{reconciling: %Task{ref: ref}}} = socket
+      ) do
+    Logger.error("[HarnessProject] reconcile failed: #{inspect(reason)}")
+    {:noreply, next_manifest(socket)}
+  end
+
   def handle_info(_message, socket), do: {:noreply, socket}
+
+  # Reconciling a 2071-row manifest takes long enough that a stop decision
+  # queued behind it blows the harness's 10s timeout, and the agent is told
+  # "the harness never got to ask" — which reads as a server fault when the
+  # server is fine and the decision simply never got a turn.
+  #
+  # So the channel tracks the work instead of doing it. It cannot merely spawn
+  # and forget: `reconcile/2` takes the *whole* observation set and removes rows
+  # absent from it, so two running at once would delete each other's files.
+  # Ordering has to survive, and today it survives only because this process is
+  # busy.
+  #
+  # One in flight, one pending, newest wins. A superseded manifest describes a
+  # tree that no longer exists — the same reasoning that makes a second queued
+  # analyzer run pointless.
+  #
+  # Inline under `analysis_mode: :inline` — the test env. A task started from
+  # here runs in a process the SQL sandbox has never heard of, so it would find
+  # no connection at all. The *reply* is identical either way, on purpose: the
+  # thing worth asserting is what production sends, and only the timing differs.
+  # Same trade the analysis executor already makes.
+  defp accept_manifest(socket, entries) do
+    cond do
+      Application.get_env(:code_my_spec, :analysis_mode) == :inline ->
+        reconcile(socket.assigns.scope, entries)
+        socket
+
+      socket.assigns.reconciling == nil ->
+        assign(socket, :reconciling, start_reconcile(socket.assigns.scope, entries))
+
+      true ->
+        assign(socket, :pending_manifest, entries)
+    end
+  end
+
+  defp start_reconcile(scope, entries) do
+    Task.Supervisor.async_nolink(CodeMySpec.TaskSupervisor, fn ->
+      reconcile(scope, entries)
+    end)
+  end
+
+  defp reconcile(scope, entries) do
+    summary = FileSync.reconcile(scope, entries)
+
+    # Reconciling files is only half of a sync. The other half turns those
+    # files into components and — the part that matters here — writes
+    # `component_id` back onto each File row.
+    #
+    # Without it every `implementation_file` requirement stays unsatisfied
+    # forever: the check is scoped to a component's own files, and a file
+    # nothing owns is invisible to it. Drill 11 finished the entire project
+    # chain, wrote every module, passed 157 tests, and still showed 15
+    # implementation requirements open with all 66 implementation files
+    # synced and not one of them linked.
+    #
+    # The local path has always run both (see `Tools.SyncProject`). This one
+    # ran only the first, and could not have run the second until
+    # `ComponentSync` stopped needing to read the files itself — the
+    # component identity now travels in the File record, which is what makes
+    # this line possible at all.
+    {:ok, components} = ComponentSync.sync_from_files(scope)
+
+    %{
+      upserted: summary.upserted,
+      removed: summary.removed,
+      changed: length(summary.changed_entries),
+      components: length(components.all_components)
+    }
+  end
+
+  defp next_manifest(%{assigns: %{pending_manifest: nil}} = socket) do
+    assign(socket, :reconciling, nil)
+  end
+
+  defp next_manifest(%{assigns: %{pending_manifest: entries}} = socket) do
+    socket
+    |> assign(:reconciling, start_reconcile(socket.assigns.scope, entries))
+    |> assign(:pending_manifest, nil)
+  end
 
   # Everything this harness had running dies with it: the queue was on the other
   # machine. Leaving those rows `:running` would make every later stop for this

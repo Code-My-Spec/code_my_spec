@@ -466,6 +466,21 @@ defmodule CmsHarness.Project.ChannelClient do
     socket = assign(socket, :observations_ref, nil)
 
     case reply do
+      # The server takes the manifest and reconciles it after replying, so the
+      # counts are no longer in the reply — a big manifest used to hold the
+      # channel long enough that a stop decision behind it timed out. They are
+      # logged server-side instead.
+      {:ok, %{"status" => "accepted", "observations" => count}} ->
+        Logger.info(
+          "[CmsHarness] server accepted the manifest for #{socket.assigns.project.root}: " <>
+            "#{count} observations queued to reconcile"
+        )
+
+        {:ok, socket}
+
+      # A server that predates that change. Anything that still replies with
+      # counts accepted the manifest, and calling it a rejection would be a lie
+      # in the direction that costs the most.
       {:ok, %{"upserted" => upserted, "removed" => removed}} ->
         Logger.info(
           "[CmsHarness] server accepted the manifest for #{socket.assigns.project.root}: " <>

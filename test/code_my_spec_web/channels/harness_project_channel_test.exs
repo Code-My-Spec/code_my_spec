@@ -254,7 +254,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannelTest do
           ]
         })
 
-      assert_reply ref, :ok, %{"upserted" => 1}, 2_000
+      assert_reply ref, :ok, %{"status" => "accepted", "observations" => 1}, 2_000
 
       assert [%{path: "lib/todo/accounts.ex", role: :implementation}] =
                CodeMySpec.Files.list_files(scope)
@@ -301,7 +301,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannelTest do
           ]
         })
 
-      assert_reply ref, :ok, %{"upserted" => 2}, 2_000
+      assert_reply ref, :ok, %{"status" => "accepted", "observations" => 2}, 2_000
 
       impl =
         scope
@@ -342,7 +342,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannelTest do
           ]
         })
 
-      assert_reply ref, :ok, %{"upserted" => 1}, 2_000
+      assert_reply ref, :ok, %{"status" => "accepted", "observations" => 1}, 2_000
 
       [file] = CodeMySpec.Files.list_files(scope)
 
@@ -371,10 +371,10 @@ defmodule CodeMySpecWeb.HarnessProjectChannelTest do
           "observations" => [observation.("a.ex"), observation.("b.ex")]
         })
 
-      assert_reply ref, :ok, %{"upserted" => 2}, 2_000
+      assert_reply ref, :ok, %{"status" => "accepted", "observations" => 2}, 2_000
 
       ref = push(channel, "observations", %{"observations" => [observation.("a.ex")]})
-      assert_reply ref, :ok, %{"removed" => 1}, 2_000
+      assert_reply ref, :ok, %{"status" => "accepted", "observations" => 1}, 2_000
 
       assert ["a.ex"] = scope |> CodeMySpec.Files.list_files() |> Enum.map(& &1.path)
     end

@@ -245,11 +245,12 @@ defmodule CmsHarnessTest.FakeServer.ProjectChannel do
 
   def handle_in(_event, _payload, socket), do: {:noreply, socket}
 
+  # What the real channel replies: the manifest is taken, and reconciled after
+  # the reply so a big one cannot hold the channel while a stop decision waits
+  # behind it. A fake that still answered with counts would let the harness's
+  # old branch keep passing after the real server had stopped sending them.
   defp reply_accepted(observations, socket) do
-    {:reply,
-     {:ok,
-      %{"upserted" => length(observations), "removed" => 0, "changed" => length(observations)}},
-     socket}
+    {:reply, {:ok, %{"status" => "accepted", "observations" => length(observations)}}, socket}
   end
 
   @impl true
