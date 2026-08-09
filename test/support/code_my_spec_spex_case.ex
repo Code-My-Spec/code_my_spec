@@ -836,6 +836,12 @@ defmodule CodeMySpecSpex.Case do
   # assertions all passed. Retry, then warn loudly rather than fail: the test
   # result should reflect the claim, and a cleanup that could not run is worth
   # saying out loud because it means a real resource was left behind.
+  defp redact_sensitive_patterns(body) do
+    Enum.reduce(sensitive_patterns(), body, fn {pattern, replacement}, acc ->
+      String.replace(acc, pattern, replacement)
+    end)
+  end
+
   @doc """
   Register a teardown that runs against its cassette.
 
@@ -845,15 +851,6 @@ defmodule CodeMySpecSpex.Case do
   layers are needed: the removal has to be deferred, it has to survive a
   provider that will not answer, and it has to replay rather than reach for the
   network. Naming it once says that in one place.
-  """
-  defp redact_sensitive_patterns(body) do
-    Enum.reduce(sensitive_patterns(), body, fn {pattern, replacement}, acc ->
-      String.replace(acc, pattern, replacement)
-    end)
-  end
-
-  @doc """
-  Register a teardown that runs against its cassette.
   """
   def teardown_later(label, cassette, fun) do
     ExUnit.Callbacks.on_exit(fn ->
