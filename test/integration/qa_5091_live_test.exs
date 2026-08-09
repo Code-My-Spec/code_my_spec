@@ -22,9 +22,10 @@ defmodule CodeMySpec.Integration.Qa5091LiveTest do
   alias CodeMySpec.Files.FileSync
   alias CodeMySpec.Projects
   alias CodeMySpec.Validation
+  alias Ecto.Adapters.SQL.Sandbox
 
   setup do
-    :ok = Ecto.Adapters.SQL.Sandbox.checkout(CodeMySpec.Repo)
+    :ok = Sandbox.checkout(CodeMySpec.Repo)
   end
 
   test "byte-identical impl rewrite + new failing test surfaces both blocking compiler and advisory exunit" do

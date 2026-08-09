@@ -181,20 +181,22 @@ defmodule CodeMySpec.Hooks.Stop do
         maybe_terminate_stuck(scope, session_id, reason, req_id, key)
 
       {:ok, _result} ->
-        if pending_analysis?(scope) do
-          pending_response(scope, session, req_id)
-        else
-          case maybe_evaluate(scope, session_id, session) do
-            {:ok, :valid} ->
-              maybe_continue_with_next_task(scope, session, req_id)
+        if pending_analysis?(scope),
+          do: pending_response(scope, session, req_id),
+          else: evaluate_and_decide(scope, session_id, session, req_id)
+    end
+  end
 
-            # Already recorded by `TaskEvaluator`, so nothing to record here —
-            # doing it twice would advance the streak two per stop and trip the
-            # escape at half the intended threshold.
-            {:error, reason} ->
-              maybe_terminate_stuck(scope, session_id, reason, req_id, nil)
-          end
-        end
+  defp evaluate_and_decide(scope, session_id, session, req_id) do
+    case maybe_evaluate(scope, session_id, session) do
+      {:ok, :valid} ->
+        maybe_continue_with_next_task(scope, session, req_id)
+
+      # Already recorded by `TaskEvaluator`, so nothing to record here — doing
+      # it twice would advance the streak two per stop and trip the escape at
+      # half the intended threshold.
+      {:error, reason} ->
+        maybe_terminate_stuck(scope, session_id, reason, req_id, nil)
     end
   end
 
