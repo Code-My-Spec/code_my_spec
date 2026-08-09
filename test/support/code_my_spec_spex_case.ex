@@ -1114,6 +1114,19 @@ defmodule CodeMySpecSpex.Case do
   """
   def app_access_token(project), do: Fixtures.app_access_token(project)
 
+  @doc """
+  A project whose blog can actually be published.
+
+  `ensure_publishable/1` refuses to start without a content bucket, a client
+  API url and a deploy key — sync is trigger-only, so publishing into a project
+  with no reachable client would put files in a bucket nothing is ever told
+  about. A criterion whose premise is "Sam has a post ready" is asserting that
+  those exist; without them the publish reports `trigger_failed` and the
+  criterion fails on its own setup.
+  """
+  def publishable_project(scope, project, attrs \\ %{}),
+    do: Fixtures.publishable_project(scope, project, attrs)
+
   def verified_sending_domains(scope, project, environments \\ ["prod", "uat"], opts \\ []) do
     for environment <- environments do
       sending = Fixtures.sending_domain(project.domain, environment)

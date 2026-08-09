@@ -943,6 +943,20 @@ defmodule CodeMySpecWeb.ProvisioningLive do
         Send a message to this domain
       </.button>
 
+      <.button data-test="dns-refresh" phx-click="refresh_mail_dns" class="mt-2">
+        Re-check DNS
+      </.button>
+
+      <div :if={@mail.missing_records != []} data-test="dns-record-deleted" data-name={List.first(@mail.missing_records)}>
+        a record this domain needs is no longer published: {Enum.join(@mail.missing_records, ", ")}
+      </div>
+    </section>
+
+    <%!-- Content and widget live in their own section rather than inside the
+         mail one. Putting them there made them `:if={@mail}` — present only
+         when a sending domain happened to be registered, which has nothing to
+         do with publishing a blog or embedding a widget. --%>
+    <section data-test="content-and-widget" class="my-6">
       <%!-- One command, not a checklist. The whole of 972/8034 is that this
             button finishes the job — snapshot, upload, trigger, and a fetch
             back from the live site — with nothing left for Sam to do
@@ -997,13 +1011,6 @@ defmodule CodeMySpecWeb.ProvisioningLive do
         {@mail_inbound_result.summary}
       </div>
 
-      <.button data-test="dns-refresh" phx-click="refresh_mail_dns" class="mt-2">
-        Re-check DNS
-      </.button>
-
-      <div :if={@mail.missing_records != []} data-test="dns-record-deleted" data-name={List.first(@mail.missing_records)}>
-        a record this domain needs is no longer published: {Enum.join(@mail.missing_records, ", ")}
-      </div>
     </section>
 
     <%!-- Environments never share a server (966/8156). That is invisible from

@@ -116,6 +116,35 @@ defmodule CodeMySpecSpex.Fixtures do
   end
 
   @doc """
+  A project whose blog can actually be published.
+
+  `ensure_publishable/1` refuses to start without a content bucket, a client
+  API url and a deploy key — sync is trigger-only, so publishing into a project
+  with no reachable client would put files in a bucket nothing is ever told
+  about. A criterion whose premise is "Sam has a post ready" is asserting those
+  exist; without them the publish reports `trigger_failed` and the criterion
+  fails on its own setup rather than on what it is testing.
+  """
+  @spec publishable_project(map(), map(), map()) :: map()
+  def publishable_project(scope, project, attrs \\ %{}) do
+    {:ok, project} =
+      CodeMySpec.Projects.update_project(
+        scope,
+        project,
+        Map.merge(
+          %{
+            content_bucket: "spex-content-#{System.unique_integer([:positive])}",
+            client_api_url: "https://#{project.domain || "example.com"}/api",
+            deploy_key: "dk_spex_#{System.unique_integer([:positive])}"
+          },
+          attrs
+        )
+      )
+
+    project
+  end
+
+  @doc """
   An app access token for the project, minted the way the deployed app gets one.
 
   Provisioning hands the app a refresh secret (the `callback_credential`

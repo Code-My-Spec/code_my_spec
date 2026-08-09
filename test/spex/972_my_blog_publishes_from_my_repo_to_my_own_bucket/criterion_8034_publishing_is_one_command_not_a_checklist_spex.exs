@@ -35,6 +35,11 @@ defmodule CodeMySpecSpex.Story972.Criterion8034Spex do
             "---\ntitle: Hello\n---\n\nFirst post.\n"
           )
 
+        # "A post ready to publish" includes somewhere to publish it to. Sync
+        # is trigger-only, so without a bucket and a reachable client the
+        # publish refuses to start and the criterion fails on its premise.
+        publishable_project(context.scope, context.project)
+
         {:ok, view, _html} =
           live(context.conn, "/app/projects/#{context.project.id}/provisioning")
 
