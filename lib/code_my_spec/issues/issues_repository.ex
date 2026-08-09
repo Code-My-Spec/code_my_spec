@@ -55,16 +55,22 @@ defmodule CodeMySpec.Issues.IssuesRepository do
   def create_issue(%Scope{} = scope, attrs) do
     project_id = resolve_project_id(scope)
     account_id = resolve_account_id(scope)
+
     %Issue{}
     |> Issue.changeset(attrs)
     |> Ecto.Changeset.put_change(:project_id, project_id)
     |> Ecto.Changeset.put_change(:account_id, account_id)
+    # From the scope, never from the caller — an issue is raised *by* a working
+    # copy, and letting a report name someone else's would make the field worse
+    # than absent. Nil where there is no checkout, which is the web UI.
+    |> Ecto.Changeset.put_change(:harness_id, scope.active_harness_id)
     |> Repo.insert()
   end
 
   def upsert_issue(%Scope{} = scope, attrs) do
     project_id = resolve_project_id(scope)
     account_id = resolve_account_id(scope)
+
     changeset =
       %Issue{}
       |> Issue.changeset(attrs)
