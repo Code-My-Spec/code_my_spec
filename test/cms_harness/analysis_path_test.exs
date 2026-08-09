@@ -151,20 +151,21 @@ defmodule CmsHarness.AnalysisPathTest do
              "one that never ran"
   end
 
-  test "a second run of a source already in flight is refused, and the refusal is sent", ctx do
+  test "a second run of a source already queued is refused, and the refusal is sent", ctx do
     FakeServer.start()
     {:ok, _} = Projects.ensure_started(ctx.project.root)
     assert await_connected(ctx.project.root)
 
-    # Both in one push, so the second is queued behind the first rather than
-    # racing it. Two `mix test` processes in one `_build` corrupt it, which is
-    # the reason the queue exists at all.
+    # Both in one push, so the second lands while the first is still queued.
+    # Two `mix test` processes in one `_build` corrupt it, which is the reason
+    # the queue exists at all, and a second *pending* run for one source can
+    # only ever deliver the same answer twice.
     FakeServer.request_analysis([
       %{"run_id" => 21, "source" => "sobelow", "args" => []},
       %{"run_id" => 22, "source" => "sobelow", "args" => []}
     ])
 
-    assert %{"status" => "error", "error" => "already running"} = await_result(22)
+    assert %{"status" => "error", "error" => "already queued"} = await_result(22)
     assert %{"status" => "error"} = await_result(21)
 
     assert AnalysisServer.idle?(ctx.project.root)

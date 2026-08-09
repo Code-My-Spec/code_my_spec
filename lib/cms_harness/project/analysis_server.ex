@@ -132,20 +132,32 @@ defmodule CmsHarness.Project.AnalysisServer do
 
   # --- Internals ---
 
-  # A duplicate request for a source already queued or running is refused
-  # rather than run twice: two `mix test` processes in one `_build` is the
-  # corruption this server exists to prevent. The refusal is delivered, so the
-  # server can fail that run row instead of waiting on it.
+  # Two `mix test` processes in one `_build` is the corruption this server
+  # exists to prevent, and the queue is what prevents it: `maybe_start_next/1`
+  # only starts when nothing is running. So a request for a source that is
+  # merely *running* can be queued rather than refused.
+  #
+  # It used to be refused, and the refusal was delivered as an error, which
+  # failed the run row and left the previous result standing as the newest the
+  # validator had. With a 30-minute analyzer timeout and an agent stopping
+  # every minute or two, one run wedged on the `_build` lock poisoned every
+  # stop in that window: the hook blocked on stale findings describing code
+  # that was already fixed, and no rerun could replace them. Five stops in a
+  # row, escapable only by clearing the stored problems by hand.
+  #
+  # A queued run answers "still running" instead, which the stop hook allows —
+  # results apply next stop. Still refused is a *second* pending run for one
+  # source, which would only deliver the same answer twice.
   defp accept(request, state) do
     case parse(request) do
       {:ok, run_id, source, args} ->
-        if busy_with?(state, source) do
+        if queued?(state, source) do
           Logger.warning(
-            "[CmsHarness] #{source} is already running for #{state.project.root} — " <>
+            "[CmsHarness] #{source} is already queued for #{state.project.root} — " <>
               "refusing run #{run_id}"
           )
 
-          push_result(state.project.root, run_id, source, {:error, "already running"})
+          push_result(state.project.root, run_id, source, {:error, "already queued"})
           state
         else
           %{state | queue: state.queue ++ [%{run_id: run_id, source: source, args: args}]}
@@ -164,9 +176,7 @@ defmodule CmsHarness.Project.AnalysisServer do
 
   defp parse(request), do: {:error, request}
 
-  defp busy_with?(state, source) do
-    running?(state.running, source) or Enum.any?(state.queue, &(&1.source == source))
-  end
+  defp queued?(state, source), do: Enum.any?(state.queue, &(&1.source == source))
 
   defp running?(nil, _source), do: false
   defp running?(running, source), do: running.source == source
