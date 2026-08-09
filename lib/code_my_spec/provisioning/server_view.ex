@@ -77,12 +77,12 @@ defmodule CodeMySpec.Provisioning.ServerView do
     |> Repo.all()
   end
 
-  defp entry_for(scope, %{project: project, environment: environment}) do
+  defp entry_for(%Scope{} = scope, %{project: project, environment: environment}) do
     # Re-scoped to the project that owns the environment, not the one the
     # viewer happens to have open. A box is account-grain and can carry
     # projects the reader is not currently working in — which is the case
     # story 986 builds deliberately.
-    project_scope = %Scope{scope | active_project: project, active_project_id: project.id}
+    project_scope = %{scope | active_project: project, active_project_id: project.id}
 
     steps = Provisioning.plan(project_scope, Provisioning.setup_options(project))
 

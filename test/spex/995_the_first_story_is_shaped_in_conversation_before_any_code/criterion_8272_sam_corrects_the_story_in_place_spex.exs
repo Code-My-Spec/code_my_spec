@@ -14,7 +14,6 @@ defmodule CodeMySpecSpex.Story995.Criterion8272Spex do
 
   use CodeMySpecSpex.Case
 
-  import CodeMySpecSpex.SharedGivens
 
   @endpoint CodeMySpecWeb.Endpoint
 
