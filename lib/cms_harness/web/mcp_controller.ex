@@ -125,7 +125,24 @@ defmodule CmsHarness.Web.McpController do
         end
       end)
 
-    [{"authorization", "Bearer " <> token}, {"x-project-id", project.id} | forwarded]
+    # The harness id travels too, not just the project. Two checkouts of one
+    # project are one `x-project-id`, so without this the far end cannot tell
+    # them apart and answers about all of them: `await_analysis` reported 1132
+    # credo problems to a working copy that had 563, the remainder belonging to
+    # a checkout it cannot see. The id is already resolved here — `project/1`
+    # looks the project up *through* it — it was simply not passed on.
+    [
+      {"authorization", "Bearer " <> token},
+      {"x-project-id", project.id}
+      | harness_header(conn) ++ forwarded
+    ]
+  end
+
+  defp harness_header(conn) do
+    case conn.query_params["harness"] || List.first(get_req_header(conn, "x-harness-id")) do
+      id when is_binary(id) and id != "" -> [{"x-harness-id", id}]
+      _ -> []
+    end
   end
 
   # `conn.body_params`, re-encoded. Plug.Parsers has already consumed the body

@@ -49,7 +49,26 @@ defmodule CodeMySpecWeb.Plugs.DeployKeyHarnessScopeTest do
     |> DeployKeyOrOAuth.call([])
   end
 
-  test "adopts the harness the caller names", %{scope: scope, token: token} do
+  defp call_with_header(token, harness_id) do
+    Phoenix.ConnTest.build_conn(:get, "/mcp/harness")
+    |> Plug.Conn.put_req_header("authorization", "Bearer " <> token)
+    |> Plug.Conn.put_req_header("x-harness-id", harness_id)
+    |> DeployKeyOrOAuth.call([])
+  end
+
+  test "adopts the harness from the x-harness-id header", %{scope: scope, token: token} do
+    {:ok, harness} = Harnesses.issue(scope, nil, label: "a checkout")
+
+    conn = call_with_header(token, harness.id)
+
+    assert conn.assigns.current_scope.active_harness_id == harness.id,
+           "this is how it actually arrives: the proxy resolves /mcp?harness=<id> " <>
+             "on its own port and forwards to /mcp/harness, so only the header " <>
+             "survives. The first version of this read the query param, passed its " <>
+             "test, and did nothing in production"
+  end
+
+  test "adopts the harness the caller names in the query", %{scope: scope, token: token} do
     {:ok, harness} = Harnesses.issue(scope, nil, label: "a checkout")
 
     conn = call(token, "harness=#{harness.id}")

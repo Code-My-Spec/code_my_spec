@@ -85,7 +85,7 @@ defmodule CodeMySpecWeb.Plugs.DeployKeyOrOAuth do
   defp with_harness(scope, conn, project) do
     conn = Plug.Conn.fetch_query_params(conn)
 
-    case Harnesses.fetch(conn.query_params["harness"] || "") do
+    case Harnesses.fetch(harness_id(conn)) do
       {:ok, harness} when harness.project_id == project.id ->
         %{scope | active_harness_id: harness.id}
 
@@ -96,6 +96,15 @@ defmodule CodeMySpecWeb.Plugs.DeployKeyOrOAuth do
       _ ->
         scope
     end
+  end
+
+  # The header is how it actually arrives. The harness proxy resolves
+  # `/mcp?harness=<id>` on its own port and forwards to `/mcp/harness`, so the
+  # query param never reaches here — reading only that made the first version
+  # of this inert, and its test passed because the test supplied the param that
+  # production does not.
+  defp harness_id(conn) do
+    List.first(get_req_header(conn, "x-harness-id")) || conn.query_params["harness"] || ""
   end
 
   defp scope_for(user, project) do
