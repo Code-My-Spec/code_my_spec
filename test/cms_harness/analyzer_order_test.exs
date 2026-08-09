@@ -26,7 +26,7 @@ defmodule CmsHarness.AnalyzerOrderTest do
     sources
     |> Enum.with_index()
     |> Enum.reduce([], fn {source, i}, queue ->
-      AnalysisServer.enqueue(queue, %{run_id: i, source: source, args: []})
+      AnalysisServer.insert_by_cost(queue, %{run_id: i, source: source, args: []})
     end)
     |> Enum.map(& &1.source)
   end
@@ -46,7 +46,7 @@ defmodule CmsHarness.AnalyzerOrderTest do
   test "two runs of one source keep their arrival order" do
     queue =
       [%{run_id: 1, source: "spex", args: []}, %{run_id: 2, source: "spex", args: []}]
-      |> Enum.reduce([], &AnalysisServer.enqueue(&2, &1))
+      |> Enum.reduce([], &AnalysisServer.insert_by_cost(&2, &1))
 
     assert Enum.map(queue, & &1.run_id) == [1, 2]
   end

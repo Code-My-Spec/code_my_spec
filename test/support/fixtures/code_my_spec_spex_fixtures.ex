@@ -188,7 +188,13 @@ defmodule CodeMySpecSpex.Fixtures do
         )
 
       CodeMySpec.AccountSecrets.put_value(scope, "server_ssh_private_key", File.read!(path))
-      CodeMySpec.AccountSecrets.put_value(scope, "server_ssh_public_key", File.read!(path <> ".pub"))
+
+      CodeMySpec.AccountSecrets.put_value(
+        scope,
+        "server_ssh_public_key",
+        File.read!(path <> ".pub")
+      )
+
       :ok
     after
       File.rm_rf(dir)
@@ -1463,13 +1469,6 @@ defmodule CodeMySpecSpex.Fixtures do
     |> CodeMySpec.Repo.update!()
   end
 
-  @doc """
-  Record a repository on the project, so setup adopts it rather than prompting.
-
-  The difference between adopting (8179/8184) and stopping to ask (8185) is
-  whether the project already points at the repository — this is how a spex
-  establishes the "already ours" side of that fork.
-  """
   @doc """
   Mint a widget socket token for the scope's project.
 

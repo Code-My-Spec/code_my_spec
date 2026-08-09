@@ -161,7 +161,7 @@ defmodule CmsHarness.Project.AnalysisServer do
           state
         else
           entry = %{run_id: run_id, source: source, args: args}
-          %{state | queue: enqueue(state.queue, entry)}
+          %{state | queue: insert_by_cost(state.queue, entry)}
         end
 
       {:error, request} ->
@@ -199,8 +199,10 @@ defmodule CmsHarness.Project.AnalysisServer do
 
   @doc false
   # Public only so the ordering can be tested without standing up a server and
-  # timing four real analyzers.
-  def enqueue(queue, entry) do
+  # timing four real analyzers. Named apart from the client-API `enqueue/2`
+  # above: same name and arity, entirely different meaning, and they resolved
+  # to the right clause only because one guards on `is_list`.
+  def insert_by_cost(queue, entry) do
     # `sort_by/2` is stable, so two runs of one source keep their arrival order
     # and only the cheap-vs-expensive ordering changes.
     Enum.sort_by(queue ++ [entry], &Map.get(@cost, &1.source, 9))
