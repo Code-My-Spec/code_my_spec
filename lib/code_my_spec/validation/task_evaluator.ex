@@ -67,97 +67,111 @@ defmodule CodeMySpec.Validation.TaskEvaluator do
   @spec evaluate_task(Scope.t(), Session.t(), map(), keyword()) ::
           {:ok, :valid} | {:error, String.t()}
   def evaluate_task(scope, session, task, opts \\ []) do
-    module = task.session_type
+    case task.session_type do
+      nil ->
+        Logger.warning("[TaskEvaluator] Task #{task.id} has no session_type, skipping")
+        {:ok, :valid}
 
-    if is_nil(module) do
-      Logger.warning("[TaskEvaluator] Task #{task.id} has no session_type, skipping")
-      {:ok, :valid}
-    else
-      type_name = module |> Atom.to_string() |> String.split(".") |> List.last()
-      Logger.info("[TaskEvaluator] Evaluating task #{task.id} (#{type_name})")
+      module ->
+        type_name = module |> Atom.to_string() |> String.split(".") |> List.last()
+        Logger.info("[TaskEvaluator] Evaluating task #{task.id} (#{type_name})")
 
-      result = dispatch_evaluate(module, scope, task, opts)
-
-      case result do
-        {:ok, :valid} ->
-          Sessions.complete_task(scope, session, task.id, :completed)
-          Sessions.clear_eval_feedback(scope, session)
-          {:ok, :valid}
-
-        {:ok, :valid, advisory} ->
-          # Satisfied with a non-blocking advisory (e.g. ArchitectureDesign's
-          # "component preserved in DB" warnings). Complete the task exactly
-          # like {:ok, :valid} — the advisory already surfaced during the run
-          # (execute_proposal output). The MCP `evaluate_task` tool returns it
-          # to the agent; the stop hook just logs it and passes.
-          Logger.info("[TaskEvaluator] Task #{task.id} valid with advisory: #{advisory}")
-          Sessions.complete_task(scope, session, task.id, :completed)
-          Sessions.clear_eval_feedback(scope, session)
-          {:ok, :valid}
-
-        {:ok, :invalid, feedback} ->
-          # R8: hash the feedback and bump (or reset) the session-level
-          # repeat counter so stop_controller can detect a stuck loop
-          # (same hash 5 times in a row → terminate).
-          if Keyword.get(opts, :record_feedback, true) do
-            Sessions.record_eval_feedback(scope, session, feedback)
-          end
-
-          {:error, feedback}
-
-        {:error, :entity_missing} ->
-          # Component or story this task points at no longer exists (likely
-          # removed by ComponentSync or a manual purge). The task can't be
-          # evaluated, so cancel it and let the session pull a fresh one.
-          Logger.info("[TaskEvaluator] Cancelling orphaned task #{task.id} — entity missing")
-
-          Sessions.complete_task(scope, session, task.id, :cancelled)
-          {:ok, :valid}
-
-        {:error, {:evaluator_crashed, detail}} ->
-          # Distinguish crashes from requirement failures. The marker text at
-          # the front lets agents (and humans) tell the difference from a
-          # legitimate "not met" result.
-          {:error,
-           """
-           ⚠️ Evaluator crashed (not a requirement failure) — this is a bug in the task's evaluate/2 or a checker it delegates to.
-
-           #{detail}
-
-           Agents: do not retry the task until the underlying bug is fixed. Report to the user.
-           """}
-
-        # The checker could not look, which is not the same as the work not
-        # being done — and `Environments`' own moduledoc says so: "'no disk' and
-        # 'not there' are now the same reply … which is fine for rendering a
-        # prompt and is *not* fine for deciding a requirement is unmet."
-        #
-        # It still blocks. An allowed stop carries no text — `Stop.allow/2`
-        # returns `%{}` — so not blocking would mean waving through a
-        # requirement nobody verified, without saying so. Between a stop the
-        # agent cannot clear and a stop that quietly claims work is checked when
-        # it was not, the first is recoverable.
-        #
-        # What was missing is everything the agent needed to route around it.
-        # `Error: :no_environment` names no task, no requirement, no working
-        # copy, and no action.
-        {:error, reason} when reason in @unobservable ->
-          Logger.error(
-            "[TaskEvaluator] task #{task.id} (#{type_name}) could not be evaluated: " <>
-              "#{inspect(reason)} — this server holds no working copy"
-          )
-
-          {:error, unobservable_feedback(task, type_name, scope, reason)}
-
-        {:error, reason} ->
-          # Named, rather than an atom on its own. Which task, which type, and
-          # which working copy is the difference between a bug report and a
-          # dead end.
-          {:error,
-           "Error evaluating #{type_name} (task #{task.id}, working copy " <>
-             "#{harness_label(scope)}): #{inspect(reason)}"}
-      end
+        module
+        |> dispatch_evaluate(scope, task, opts)
+        |> handle_result(scope, session, task, type_name, opts)
     end
+  end
+
+  # One clause per outcome rather than one `case` inside an `if`. The branches
+  # were only going to keep accruing — this is where `:no_environment` had to be
+  # told apart from a requirement failure — and each new one deepened the same
+  # body instead of standing on its own.
+  defp handle_result({:ok, :valid}, scope, session, task, _type_name, _opts) do
+    Sessions.complete_task(scope, session, task.id, :completed)
+    Sessions.clear_eval_feedback(scope, session)
+    {:ok, :valid}
+  end
+
+  # Satisfied with a non-blocking advisory (e.g. ArchitectureDesign's "component
+  # preserved in DB" warnings). Completes exactly like {:ok, :valid} — the
+  # advisory already surfaced during the run (execute_proposal output). The MCP
+  # `evaluate_task` tool returns it to the agent; the stop hook just logs it.
+  defp handle_result({:ok, :valid, advisory}, scope, session, task, _type_name, _opts) do
+    Logger.info("[TaskEvaluator] Task #{task.id} valid with advisory: #{advisory}")
+    Sessions.complete_task(scope, session, task.id, :completed)
+    Sessions.clear_eval_feedback(scope, session)
+    {:ok, :valid}
+  end
+
+  # R8: hash the feedback and bump (or reset) the session-level repeat counter
+  # so stop_controller can detect a stuck loop (same hash 5 times → terminate).
+  defp handle_result({:ok, :invalid, feedback}, scope, session, _task, _type_name, opts) do
+    if Keyword.get(opts, :record_feedback, true) do
+      Sessions.record_eval_feedback(scope, session, feedback)
+    end
+
+    {:error, feedback}
+  end
+
+  # Component or story this task points at no longer exists (likely removed by
+  # ComponentSync or a manual purge). The task can't be evaluated, so cancel it
+  # and let the session pull a fresh one.
+  defp handle_result({:error, :entity_missing}, scope, session, task, _type_name, _opts) do
+    Logger.info("[TaskEvaluator] Cancelling orphaned task #{task.id} — entity missing")
+    Sessions.complete_task(scope, session, task.id, :cancelled)
+    {:ok, :valid}
+  end
+
+  # Distinguish crashes from requirement failures. The marker text at the front
+  # lets agents (and humans) tell the difference from a legitimate "not met".
+  defp handle_result(
+         {:error, {:evaluator_crashed, detail}},
+         _scope,
+         _session,
+         _task,
+         _type_name,
+         _opts
+       ) do
+    {:error,
+     """
+     ⚠️ Evaluator crashed (not a requirement failure) — this is a bug in the task's evaluate/2 or a checker it delegates to.
+
+     #{detail}
+
+     Agents: do not retry the task until the underlying bug is fixed. Report to the user.
+     """}
+  end
+
+  # The checker could not look, which is not the same as the work not being
+  # done — and `Environments`' own moduledoc says so: "'no disk' and 'not there'
+  # are now the same reply … which is fine for rendering a prompt and is *not*
+  # fine for deciding a requirement is unmet."
+  #
+  # It still blocks. An allowed stop carries no text — `Stop.allow/2` returns
+  # `%{}` — so not blocking would mean waving through a requirement nobody
+  # verified, without saying so. Between a stop the agent cannot clear and a
+  # stop that quietly claims work is checked when it was not, the first is
+  # recoverable.
+  #
+  # What was missing is everything the agent needed to route around it.
+  # `Error: :no_environment` names no task, no requirement, no working copy, and
+  # no action.
+  defp handle_result({:error, reason}, scope, _session, task, type_name, _opts)
+       when reason in @unobservable do
+    Logger.error(
+      "[TaskEvaluator] task #{task.id} (#{type_name}) could not be evaluated: " <>
+        "#{inspect(reason)} — this server holds no working copy"
+    )
+
+    {:error, unobservable_feedback(task, type_name, scope, reason)}
+  end
+
+  # Named, rather than an atom on its own. Which task, which type, and which
+  # working copy is the difference between a bug report and a dead end.
+  defp handle_result({:error, reason}, scope, _session, task, type_name, _opts) do
+    {:error,
+     "Error evaluating #{type_name} (task #{task.id}, working copy " <>
+       "#{harness_label(scope)}): #{inspect(reason)}"}
   end
 
   @doc false
