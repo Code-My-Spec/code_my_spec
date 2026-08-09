@@ -241,6 +241,62 @@ defmodule CodeMySpecWeb.ProvisioningLiveTest do
     end
   end
 
+  describe "an errored step reports its failure once" do
+    # The deploy step carries its provider error twice: `escalation`, which
+    # every errored step has, and `boot-failure`, which criterion 8000 selects
+    # on to prove the missing secret is named. Both are legitimate; printing
+    # the same sentence in each made the step read as two problems.
+    test "deploy does not print its provider error twice", %{
+      conn: conn,
+      project: project,
+      scope: scope
+    } do
+      reason = "uat is missing SECRET_KEY_BASE, DATABASE_URL — the app refuses to boot"
+
+      StepRepository.upsert(scope, :deploy, %{
+        state: :errored,
+        position: Sequence.position(:deploy),
+        attempted: "run the deploy step",
+        provider_error: reason
+      })
+
+      stub_verifier(fn _scope, _key -> {:ok, :absent} end)
+
+      {:ok, view, html} = live(conn, path(project))
+
+      # Still said once, and still in the element criterion 8000 selects on.
+      assert has_element?(view, "[data-test='boot-failure']")
+      assert html =~ "SECRET_KEY_BASE"
+
+      occurrences = length(String.split(html, reason)) - 1
+
+      assert occurrences == 1,
+             "expected the deploy failure to be stated once, saw it #{occurrences} times"
+    end
+
+    # The other five errored steps have no second element, so the escalation is
+    # the only place their provider error appears and must keep printing it.
+    test "a non-deploy step still shows its provider error in the escalation", %{
+      conn: conn,
+      project: project,
+      scope: scope
+    } do
+      StepRepository.upsert(scope, :storage, %{
+        state: :errored,
+        position: Sequence.position(:storage),
+        attempted: "run the storage step",
+        provider_error: "the bucket name is already taken"
+      })
+
+      stub_verifier(fn _scope, _key -> {:ok, :absent} end)
+
+      {:ok, _view, html} = live(conn, path(project))
+
+      assert html =~ "the bucket name is already taken",
+             "suppressing the escalation's error would leave this step with nothing to show"
+    end
+  end
+
   describe "provisioned resources" do
     # Criterion 7969: Sam reads back what he now owns, and where to find it.
     test "each resource names what it is and where it lives", %{

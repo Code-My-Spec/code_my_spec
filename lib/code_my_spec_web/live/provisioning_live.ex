@@ -450,7 +450,9 @@ defmodule CodeMySpecWeb.ProvisioningLive do
               class="alert alert-error mt-3 flex-col items-start"
             >
               <p>{step.attempted}</p>
-              <p class="font-mono text-xs">{step.provider_error}</p>
+              <p :if={not shown_again_below?(step)} class="font-mono text-xs">
+                {step.provider_error}
+              </p>
             </div>
 
             <!-- How the decryption key reaches the app. A property of the
@@ -2316,6 +2318,14 @@ defmodule CodeMySpecWeb.ProvisioningLive do
   defp step_opts do
     Application.get_env(:code_my_spec, :provisioning_step_opts, [])
   end
+
+  # The deploy step renders its provider error a second time as `boot-failure`,
+  # which criterion 8000 selects on to prove the missing secret is named. One
+  # fact, two elements — and the escalation printing it as well made the step
+  # look like it was reporting two separate problems. The escalation keeps
+  # `attempted`, which is the part nothing else says.
+  defp shown_again_below?(%{key: :deploy}), do: true
+  defp shown_again_below?(_step), do: false
 
   # Each resource with whether its step still verifies. "What you now own" is a
   # claim about the present, and a recorded resource is only evidence of that
