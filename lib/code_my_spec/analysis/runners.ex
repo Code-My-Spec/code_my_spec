@@ -212,26 +212,31 @@ defmodule CodeMySpec.Analysis.Runners do
     {:error, {:test_suite_did_not_run, raw["exit_status"], error_excerpt(raw["output"])}}
   end
 
+  # A run whose failures include "module ... is not available" lost its build
+  # partway through. The analyzer shares `_build` with the agent, so an agent's
+  # own `mix compile --force` wipes and rebuilds it while the suite is running
+  # and modules disappear mid-run.
+  #
+  # What makes the signature strong rather than ambiguous: a genuinely missing
+  # module fails compilation, so the suite would never have got as far as
+  # producing test failures. Seeing this *among* test results therefore says
+  # something about the build, not about the code.
+  #
+  # It has to be caught because it is indistinguishable from a real defect —
+  # `module is not available` reads as a missing dependency, and the natural
+  # response is to add code that is already there. Observed: 14 of 46 reported
+  # failures were this, and nothing in the output said "your own build did it".
+  #
+  # Failed rather than reported, on the same reasoning as the two clauses
+  # above. A failed run is re-enqueued on the next stop and costs one cycle;
+  # phantom failures presented as real cost a turn and invite edits to code
+  # that was never broken. Genuine failures in the same run are re-reported by
+  # the rerun.
   def from_raw("exunit", %{"execution_status" => status} = raw) when is_binary(status) do
-    problems =
-      raw
-      |> diagnostics()
-      |> Enum.map(fn failure ->
-        ProblemConverter.from_test_failure(%CodeMySpec.Tests.TestError{
-          file: failure["file"],
-          line: failure["line"],
-          message: failure["message"]
-        })
-      end)
-      |> Enum.map(&%{&1 | source: "exunit"})
-
-    {:ok,
-     %{
-       problems: problems,
-       output: cap(raw["output"] || ""),
-       exit_status: raw["exit_status"],
-       stats: raw["stats"] || %{}
-     }}
+    case lost_build_failures(raw) do
+      [] -> exunit_result(raw)
+      lost -> {:error, {:build_changed_mid_run, length(lost), hd(lost)}}
+    end
   end
 
   # The same trap as exunit above. `Spex.parse_jsonl/1` answers `{:ok, []}` for
@@ -272,6 +277,35 @@ defmodule CodeMySpec.Analysis.Runners do
     raise ArgumentError,
           "analysis result carries no diagnostics list; refusing to read it as a clean run: " <>
             inspect(Map.keys(raw))
+  end
+
+  defp exunit_result(raw) do
+    problems =
+      raw
+      |> diagnostics()
+      |> Enum.map(fn failure ->
+        ProblemConverter.from_test_failure(%CodeMySpec.Tests.TestError{
+          file: failure["file"],
+          line: failure["line"],
+          message: failure["message"]
+        })
+      end)
+      |> Enum.map(&%{&1 | source: "exunit"})
+
+    {:ok,
+     %{
+       problems: problems,
+       output: cap(raw["output"] || ""),
+       exit_status: raw["exit_status"],
+       stats: raw["stats"] || %{}
+     }}
+  end
+
+  defp lost_build_failures(raw) do
+    raw
+    |> diagnostics()
+    |> Enum.map(& &1["message"])
+    |> Enum.filter(&(is_binary(&1) and &1 =~ ~r/module .+ is not available/))
   end
 
   defp summarize(problems, exit_status, stats) do
