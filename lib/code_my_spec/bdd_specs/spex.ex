@@ -93,14 +93,25 @@ defmodule CodeMySpec.BddSpecs.Spex do
     end
   end
 
-  defp shell_out(args, _opts, environment, project_root, quiet, temp_file, caller_provided_file) do
+  defp shell_out(args, opts, environment, project_root, quiet, temp_file, caller_provided_file) do
     args = expand_directory_args(args, project_root, environment)
     spex_args = build_args(args, temp_file, quiet)
     command = "mix " <> Enum.join(spex_args, " ")
 
     # clean_otp_env keeps the child `mix`/`erl` off our Burrito ERTS (see
     # CodeMySpec.Environments.clean_otp_env/0).
-    cmd_env = [{"MIX_ENV", "test"}] ++ CodeMySpec.Environments.clean_otp_env()
+    # `extra_env` is how the harness hands over `MIX_TEST_PARTITION`, and it
+    # carries the guarantee that the database exists — `TestDatabase.env/1`
+    # creates and migrates before returning the name. Without it a spex run
+    # falls back to whatever `config/test.exs` derives, which is the right name
+    # for a database nothing has created, and Postgrex answers
+    # `invalid_catalog_name` six frames below a sandbox error that names the
+    # spec file. "2 tests, 2 failures" with no mention of a database is how an
+    # agent ends up editing specs that were never wrong.
+    cmd_env =
+      [{"MIX_ENV", "test"}] ++
+        Keyword.get(opts, :extra_env, []) ++
+        CodeMySpec.Environments.clean_otp_env()
 
     Logger.info("[Spex] Running: #{command}")
 
@@ -179,14 +190,7 @@ defmodule CodeMySpec.BddSpecs.Spex do
           env
           |> Environments.glob(Path.join(Path.expand(arg, project_root), "**/*_spex.exs"))
           |> Enum.map(&Path.relative_to(&1, project_root))
-          |> case do
-            [] ->
-              Logger.warning("[Spex] Directory arg #{arg} contains no *_spex.exs files")
-              [arg]
-
-            files ->
-              files
-          end
+          |> spex_files_or_arg(arg)
 
         true ->
           [arg]
@@ -195,6 +199,15 @@ defmodule CodeMySpec.BddSpecs.Spex do
   end
 
   # `Environments` exposes no dir? predicate; a successful listing is the check.
+  # A directory with no spex in it is passed through untouched rather than
+  # expanded to nothing — `mix spex <dir>` can then say so itself.
+  defp spex_files_or_arg([], arg) do
+    Logger.warning("[Spex] Directory arg #{arg} contains no *_spex.exs files")
+    [arg]
+  end
+
+  defp spex_files_or_arg(files, _arg), do: files
+
   defp directory?(env, path), do: match?({:ok, _}, Environments.list_directory(env, path))
 
   defp build_args(args, temp_file, quiet) do

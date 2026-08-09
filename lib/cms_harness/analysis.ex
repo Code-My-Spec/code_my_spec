@@ -141,7 +141,7 @@ defmodule CmsHarness.Analysis do
   end
 
   defp execute("spex", env, args) do
-    case Spex.execute(args, environment: env) do
+    case Spex.execute(args, environment: env, extra_env: TestDatabase.env(env)) do
       {:ok, failures, exit_code} ->
         {:ok,
          %{
