@@ -1252,7 +1252,7 @@ defmodule CodeMySpecWeb.ProvisioningLive do
          socket
          |> assign(:current_scope, scope)
          |> load(Provisioning.setup_options(scope))
-         |> reselect_credentials(options)}
+         |> reselect_credentials()}
 
       {:error, _changeset} ->
         {:noreply, put_flash(socket, :error, "Could not save that option — nothing changed.")}
@@ -1273,15 +1273,39 @@ defmodule CodeMySpecWeb.ProvisioningLive do
   # are shown once. Believing it costs a trip for a credential nobody needs.
   #
   # Recomputed from the new options, reusing the checks already made rather
-  # than asking any provider again. `required/1` is pure and `missing/1` only
-  # reads storage.
-  defp reselect_credentials(socket, options) do
-    required = options |> Credentials.required() |> MapSet.new(& &1.key)
+  # than asking any provider again. `list/1` without `check?` only reads
+  # storage, and `missing/1` the same.
+  #
+  # Rebuilt rather than filtered. Filtering the list already on the socket can
+  # only ever remove, so turning an option back on could not bring its
+  # credential back — the row stayed gone until a remount.
+  #
+  # It also took its option list straight from the form params, which are
+  # strings, and handed them to `required/1`, which compares against the
+  # catalogue's atoms. `MapSet.member?(["storage"], :storage)` is false, so
+  # every option-scoped credential failed the test and only the two
+  # `options: :always` entries survived — the panel collapsed to GitHub and the
+  # Hetzner API token on *any* toggle, whatever was actually enabled. The scope
+  # is the atom-typed source of truth, so it is what we read.
+  defp reselect_credentials(socket) do
+    scope = socket.assigns.current_scope
+    known = Map.new(socket.assigns.credentials, &{&1.key, &1})
+
+    credentials = Enum.map(Credentials.list(scope), &carry_known_state(&1, Map.get(known, &1.key)))
 
     socket
-    |> assign(:credentials, Enum.filter(socket.assigns.credentials, &MapSet.member?(required, &1.key)))
-    |> assign(:missing_credentials, Credentials.missing(socket.assigns.current_scope))
+    |> assign(:credentials, credentials)
+    |> assign(:missing_credentials, Credentials.missing(scope))
   end
+
+  # A toggle changes which credentials matter, not whether they passed. Only a
+  # stored-but-unchecked row inherits, so a credential that has since gone
+  # missing cannot carry an old "verified" forward.
+  defp carry_known_state(%{state: "unchecked"} = credential, %{state: prior} = known)
+       when prior in ["verified", "rejected"],
+       do: %{credential | state: prior, missing_permission: known.missing_permission}
+
+  defp carry_known_state(credential, _known), do: credential
 
   defp removed_summary(name, []), do: "Removed #{name}. It had nothing provisioned."
 

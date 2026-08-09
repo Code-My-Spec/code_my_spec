@@ -85,19 +85,54 @@ defmodule CodeMySpecWeb.ProvisioningLiveTest do
          %{conn: conn, project: project} do
       {:ok, view, html} = live(conn, path(project))
 
-      assert html =~ "hetzner_s3_access_key_id",
+      # Matched on `data-credential`, which only a `credential-field` row
+      # carries. A bare substring match finds the key in the blocker's
+      # `data-missing` attribute too, so it passes whether or not there is a
+      # field to type into — which is the whole thing being asserted.
+      assert html =~ ~s(data-credential="hetzner_s3_access_key_id"),
              "expected object storage keys to be asked for while storage is on"
 
       html = render_change(view, "toggle_options", %{"options" => %{"domain" => "true"}})
 
-      refute html =~ "hetzner_s3_access_key_id",
+      refute html =~ ~s(data-credential="hetzner_s3_access_key_id"),
              "expected the storage keys to stop being asked for the moment storage is off"
 
-      refute html =~ "hetzner_s3_secret_access_key"
+      refute html =~ ~s(data-credential="hetzner_s3_secret_access_key")
 
       # The credentials the run still needs are untouched — this narrows the
       # set, it does not clear it.
-      assert html =~ "hetzner_api_token"
+      assert html =~ ~s(data-credential="hetzner_api_token")
+
+      # `hetzner_api_token` is `options: :always`, so it survives even an
+      # implementation that drops every option-scoped credential — which is
+      # exactly what this test used to permit. Cloudflare is scoped to
+      # `domain`, the one option still on, so it is the assertion that tells a
+      # correct narrowing from a collapse.
+      assert html =~ ~s(data-credential="cloudflare_token"),
+             "domain is still on, so its credential must still be asked for"
+    end
+
+    # The other direction, which filtering could never satisfy: the old
+    # implementation intersected the list already on the socket, so a
+    # credential removed by one toggle could not come back on the next. It
+    # stayed gone until a remount, and the Hetzner S3 pair is console-only —
+    # the page's own directions are the only instructions there are.
+    test "turning an option back on asks for its credentials again",
+         %{conn: conn, project: project} do
+      {:ok, view, _html} = live(conn, path(project))
+
+      html = render_change(view, "toggle_options", %{"options" => %{"domain" => "true"}})
+      refute html =~ ~s(data-credential="hetzner_s3_access_key_id")
+
+      html =
+        render_change(view, "toggle_options", %{
+          "options" => %{"domain" => "true", "storage" => "true"}
+        })
+
+      assert html =~ ~s(data-credential="hetzner_s3_access_key_id"),
+             "storage is back on, so its console-only keys must be asked for again"
+
+      assert html =~ ~s(data-credential="hetzner_s3_secret_access_key")
     end
   end
 
