@@ -50,7 +50,9 @@ defmodule CodeMySpec.Compile do
         [
           {"MIX_ENV", "test"},
           {"DIAGNOSTICS_OUTPUT", output_file}
-        ] ++ CodeMySpec.Environments.clean_otp_env()
+        ] ++
+          Keyword.get(opts, :extra_env, []) ++
+          CodeMySpec.Environments.clean_otp_env()
     ]
 
     Logger.debug("[Compile] output_file=#{output_file}")

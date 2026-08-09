@@ -73,7 +73,10 @@ defmodule CodeMySpec.StaticAnalysis.CredoRun do
 
     # clean_otp_env keeps the child `mix`/`erl` off a Burrito release's
     # extracted ERTS (see CodeMySpec.Environments.clean_otp_env/0).
-    cmd_opts = [stderr_to_stdout: true, env: Environments.clean_otp_env()]
+    cmd_opts = [
+      stderr_to_stdout: true,
+      env: Keyword.get(opts, :extra_env, []) ++ Environments.clean_otp_env()
+    ]
 
     Logger.info("[CredoRun] Running: mix #{Enum.join(args, " ")}")
 

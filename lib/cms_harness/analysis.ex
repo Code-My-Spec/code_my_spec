@@ -40,7 +40,7 @@ defmodule CmsHarness.Analysis do
 
   require Logger
 
-  alias CmsHarness.TestDatabase
+  alias CmsHarness.AnalyzerEnv
   alias CodeMySpec.BddSpecs.Spex
   alias CodeMySpec.Compile
   alias CodeMySpec.Environments.Environment
@@ -76,7 +76,7 @@ defmodule CmsHarness.Analysis do
   end
 
   defp execute("compiler", env, _args) do
-    result = Compile.execute(environment: env)
+    result = Compile.execute(environment: env, extra_env: AnalyzerEnv.extra_env(env))
 
     {:ok,
      %{
@@ -95,7 +95,7 @@ defmodule CmsHarness.Analysis do
   defp execute("credo", env, args) do
     files = if args == [], do: nil, else: args
 
-    case CredoRun.run(env, files: files) do
+    case CredoRun.run(env, files: files, extra_env: AnalyzerEnv.extra_env(env)) do
       {:ok, issues} ->
         {:ok,
          %{
@@ -115,7 +115,7 @@ defmodule CmsHarness.Analysis do
   end
 
   defp execute("exunit", env, args) do
-    case CodeMySpec.Tests.execute(args, environment: env, extra_env: TestDatabase.env(env)) do
+    case CodeMySpec.Tests.execute(args, environment: env, extra_env: AnalyzerEnv.extra_env(env)) do
       {:ok, test_run} ->
         {:ok,
          %{
@@ -141,7 +141,7 @@ defmodule CmsHarness.Analysis do
   end
 
   defp execute("spex", env, args) do
-    case Spex.execute(args, environment: env, extra_env: TestDatabase.env(env)) do
+    case Spex.execute(args, environment: env, extra_env: AnalyzerEnv.extra_env(env)) do
       {:ok, failures, exit_code} ->
         {:ok,
          %{
