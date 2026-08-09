@@ -124,9 +124,15 @@ config :code_my_spec, CmsHarness.Web.Endpoint,
 # The real values are 10s and 2s; the behaviours under test are the same at a
 # tenth of that, and the suite would otherwise spend most of its time waiting
 # for timers it already knows the shape of.
+#
+# `remote_await_timeout` is 31 minutes in production — a whole suite on a cold
+# `_build`. At that length a test that dispatches a run and ends leaves the
+# waiting task alive for half an hour, and the harness-never-answered path
+# cannot be asserted at all.
 config :code_my_spec,
   harness_decision_timeout: 1_000,
-  harness_watch_debounce_ms: 200
+  harness_watch_debounce_ms: 200,
+  remote_await_timeout: 500
 
 # Provisioning's pollers back off between reads — waiting for a server to boot,
 # a bucket to appear, a firewall to release. Against stubs and cassettes there

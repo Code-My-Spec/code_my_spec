@@ -266,6 +266,33 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
     end
   end
 
+  # The agent's own `mix test`, routed through here so it counts.
+  #
+  # It did not count before. The PreToolUse rewrite requires `scope.cwd`, which a
+  # light harness has no business setting — a server with no disk has no working
+  # directory, and the modules that read `cwd` would read the wrong tree. So the
+  # rewrite silently did not fire, the agent's suite ran unrecorded, and the stop
+  # hook then ran the same suite again because as far as this server was
+  # concerned nothing had. Observed: 118 seconds of exunit immediately after the
+  # agent had finished exactly that run.
+  #
+  # Deferred reply, not a blocking call. `await_run/4` takes as long as the suite
+  # does, and holding the channel for it starves the stop decision behind it —
+  # the same defect the manifest reconcile had. `socket_ref/1` is what lets the
+  # answer outlive the call that asked for it.
+  def handle_in("analysis_run", %{"source" => source} = payload, socket)
+      when is_binary(source) do
+    args = List.wrap(payload["args"] || [])
+    ref = socket_ref(socket)
+    scope = socket.assigns.scope
+
+    Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
+      Phoenix.Channel.reply(ref, run_for_agent(scope, source, args))
+    end)
+
+    {:noreply, socket}
+  end
+
   # An unknown event is answered, not dropped.
   #
   # This clause used to be `{:noreply, socket}`, and that silence was a real
@@ -343,6 +370,28 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   # no connection at all. The *reply* is identical either way, on purpose: the
   # thing worth asserting is what production sends, and only the timing differs.
   # Same trade the analysis executor already makes.
+  # The agent reads this as test output, so the tool's own text is the body and
+  # everything else is a footer. An error still answers in that shape — the
+  # alternative is a curl that prints nothing and exits 0, which reads as a
+  # suite that passed.
+  defp run_for_agent(scope, source, args) do
+    case Analysis.await_run(scope, source, args) do
+      {:ok, %{} = run} ->
+        {:ok,
+         %{
+           "run_id" => run.id,
+           "status" => to_string(run.status),
+           "output" => run.output || "",
+           "exit_status" => run.exit_status,
+           "stats" => run.stats || %{}
+         }}
+
+      {:error, reason} ->
+        Logger.warning("[HarnessProject] #{source} run for the agent failed: #{inspect(reason)}")
+        {:error, %{"reason" => inspect(reason)}}
+    end
+  end
+
   defp accept_manifest(socket, entries) do
     cond do
       Application.get_env(:code_my_spec, :analysis_mode) == :inline ->

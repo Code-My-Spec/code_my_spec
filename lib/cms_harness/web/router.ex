@@ -42,6 +42,16 @@ defmodule CmsHarness.Web.Router do
     post("/ask-user-question", HooksController, :handle)
   end
 
+  # The agent's own `mix test`, rewritten into a curl by the PreToolUse hook.
+  # Addressed like the hooks are, so the run is attributed to the working copy
+  # the agent is editing rather than to whatever directory curl happened to run
+  # in. See `AnalysisController`.
+  scope "/api/harnesses/:harness_id", CmsHarness.Web do
+    pipe_through(:hook)
+
+    post("/analysis/run", AnalysisController, :run)
+  end
+
   # There is no unaddressed hook surface. A request that does not name a
   # working copy has no answer here — the directory it fired in is not one, and
   # accepting it as one is what this replaced.

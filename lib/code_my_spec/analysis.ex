@@ -195,6 +195,18 @@ defmodule CodeMySpec.Analysis do
     fingerprint = Fingerprint.current(scope, source)
     job = build_job(source, args, fingerprint, Keyword.put(opts, :notify, false))
 
+    # `dispatch/2` has always chosen between here and the harness; this did not,
+    # and ran everything locally. On a light harness that means the analyzer runs
+    # against the *server's* disk rather than the working copy the agent is
+    # editing — and on a developer machine where both are the same box, it does
+    # so convincingly.
+    case remote_executor(scope) do
+      {:ok, channel} -> await_remote(scope, job, channel)
+      :none -> await_local(scope, job)
+    end
+  end
+
+  defp await_local(scope, job) do
     case mode() do
       :inline ->
         run_inline(scope, job)
@@ -206,6 +218,66 @@ defmodule CodeMySpec.Analysis do
           {:ok, CodeMySpec.Repo.get(Run, run.id) || run}
         end
     end
+  end
+
+  # The run is opened here, executed on the machine with the disk, and closed
+  # when its result comes back through `record_remote_result/2` — three
+  # processes and two network hops between the request and the answer. So the
+  # caller waits on the completion broadcast rather than on a return value.
+  #
+  # Subscribed *before* dispatching, deliberately: a fast analyzer can finish
+  # before a subscribe placed afterwards takes effect, and the symptom of that
+  # race is a run that completed normally reported to the agent as a timeout.
+  defp await_remote(scope, job, channel) do
+    topic = "analysis:#{scope.active_project_id}"
+    Phoenix.PubSub.subscribe(CodeMySpec.PubSub, topic)
+
+    try do
+      case dispatch_remote(scope, job, channel) do
+        {:ok, :started, run_id} ->
+          wait_for_remote(scope, run_id, job.source, deadline())
+
+        # Joined an identical run already in flight on the harness. There is no
+        # id of our own to wait for, so the wait is on the source instead.
+        {:ok, :joined, nil} ->
+          wait_for_remote(scope, nil, job.source, deadline())
+
+        # Never dispatched — the code does not compile, so the row is already
+        # closed and nothing will ever broadcast for it.
+        {:ok, :skipped, run_id} ->
+          {:ok, RunsRepository.get_run_in_project(scope, run_id)}
+
+        {:error, reason} ->
+          {:error, reason}
+      end
+    after
+      Phoenix.PubSub.unsubscribe(CodeMySpec.PubSub, topic)
+    end
+  end
+
+  defp wait_for_remote(scope, run_id, source, deadline) do
+    remaining = deadline - System.monotonic_time(:millisecond)
+
+    receive do
+      {:analysis, %{run_id: id, source: ^source}} when is_nil(run_id) or id == run_id ->
+        {:ok, RunsRepository.get_run_in_project(scope, id)}
+
+      # Another source finishing, or another checkout's run on this project.
+      # Not ours; keep the original deadline rather than restarting it.
+      {:analysis, _other} ->
+        wait_for_remote(scope, run_id, source, deadline)
+    after
+      max(remaining, 0) -> {:error, :harness_never_answered}
+    end
+  end
+
+  defp deadline, do: System.monotonic_time(:millisecond) + remote_await_timeout()
+
+  # Longer than the harness's own analyzer timeout, so a run it kills is
+  # reported as the failure it is rather than as this giving up first — two
+  # different faults that would otherwise be told to the agent identically.
+  defp remote_await_timeout do
+    Application.get_env(:code_my_spec, :remote_await_timeout, :timer.minutes(31))
   end
 
   @doc """
@@ -228,11 +300,31 @@ defmodule CodeMySpec.Analysis do
         {:error, :unknown_run}
 
       %Run{} = run ->
-        apply_remote_result(scope, run, payload)
+        result = apply_remote_result(scope, run, payload)
+        announce(scope, run, result)
+        result
     end
   end
 
   def record_remote_result(_scope, _payload), do: {:error, :invalid_result}
+
+  # The local queue broadcasts every run it finishes; this path never did,
+  # because until `await_run/4` could dispatch remotely nothing was listening.
+  # Same topic and shape as `ProjectServer`'s, so a subscriber cannot tell —
+  # and should not be able to tell — which machine ran the tool.
+  defp announce(scope, run, result) do
+    status =
+      case result do
+        {:ok, %Run{status: status}} -> status
+        _ -> :failed
+      end
+
+    Phoenix.PubSub.broadcast(
+      CodeMySpec.PubSub,
+      "analysis:#{scope.active_project_id}",
+      {:analysis, %{source: run.source, status: status, run_id: run.id}}
+    )
+  end
 
   @doc """
   Why a run id could not be answered, in words, for the log line.

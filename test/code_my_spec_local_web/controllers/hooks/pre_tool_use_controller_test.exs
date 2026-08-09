@@ -101,6 +101,57 @@ defmodule CodeMySpecLocalWeb.Hooks.PreToolUseControllerTest do
       assert body["hookSpecificOutput"]["updatedInput"]["timeout"] == 600_000
     end
 
+    # A heavy harness carries *both* a harness id and a cwd — `HarnessScope`
+    # sets the first and `WorkingDirScope` the second, in that order, on every
+    # hook request. So "has a harness id" does not mean "is the light harness",
+    # and routing on it would send this to the id-addressed endpoint only the
+    # light harness serves: a 404 on every `mix test` an agent runs here.
+    #
+    # The question the rewrite is actually asking is whether whoever answers can
+    # reach the disk, and `cwd` is what answers it.
+    test "a harness id does not divert a run that has a working dir", %{scope: scope} do
+      scope = %{scope | active_harness_id: Ecto.UUID.generate()}
+
+      conn =
+        build_post(scope, %{
+          "tool_name" => "Bash",
+          "tool_input" => %{"command" => "mix test"}
+        })
+
+      conn = PreToolUseController.handle(conn, conn.body_params)
+
+      command =
+        conn.resp_body
+        |> Jason.decode!()
+        |> get_in(["hookSpecificOutput", "updatedInput", "command"])
+
+      assert command =~ "X-Working-Dir: /tmp/proj"
+      refute command =~ "/api/harnesses/"
+    end
+
+    # The light harness: a project, no disk. This used to produce no rewrite at
+    # all, so the agent's suite ran unrecorded and the stop hook ran it again.
+    test "with no working dir the run is addressed to the harness", %{scope: scope} do
+      harness_id = Ecto.UUID.generate()
+      scope = %{scope | cwd: nil, active_harness_id: harness_id}
+
+      conn =
+        build_post(scope, %{
+          "tool_name" => "Bash",
+          "tool_input" => %{"command" => "mix test"}
+        })
+
+      conn = PreToolUseController.handle(conn, conn.body_params)
+
+      command =
+        conn.resp_body
+        |> Jason.decode!()
+        |> get_in(["hookSpecificOutput", "updatedInput", "command"])
+
+      assert command =~ "/api/harnesses/#{harness_id}/analysis/run"
+      refute command =~ "X-Working-Dir"
+    end
+
     test "rewrites mix spex with env prefix to the spex source", %{scope: scope} do
       conn =
         build_post(scope, %{
@@ -204,9 +255,14 @@ defmodule CodeMySpecLocalWeb.Hooks.PreToolUseControllerTest do
       assert command =~ ~s("args":["test/my_test.exs:42","--max-failures","1","--seed","0"])
     end
 
-    test "does not rewrite without a working dir on the scope", %{scope: scope} do
+    # A scope that can name the working copy no way at all. No `cwd`, so nothing
+    # here can reach the disk, and no harness id, so nothing elsewhere can be
+    # asked to. Running it unrewritten is the honest outcome — the run goes
+    # unrecorded, and `no_rewrite/2` says so rather than returning the same `%{}`
+    # that means "not a test command".
+    test "does not rewrite when the scope can name no working copy", %{scope: scope} do
       conn =
-        build_post(%{scope | cwd: nil}, %{
+        build_post(%{scope | cwd: nil, active_harness_id: nil}, %{
           "tool_name" => "Bash",
           "tool_input" => %{"command" => "mix test"}
         })

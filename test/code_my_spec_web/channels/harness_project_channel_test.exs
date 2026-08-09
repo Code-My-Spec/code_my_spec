@@ -508,6 +508,48 @@ defmodule CodeMySpecWeb.HarnessProjectChannelTest do
       }
     end
 
+    # The agent's own `mix test`, rewritten into this by the PreToolUse hook.
+    #
+    # The reply is deferred: `await_run/4` takes as long as the suite does, and
+    # answering inline would hold the channel for it — starving the stop
+    # decision behind it, which is the defect the manifest reconcile already
+    # had. So the request must come back as a dispatch, not as a reply.
+    test "an agent's run is dispatched and left unanswered until it finishes",
+         %{channel: channel} do
+      ref =
+        push(channel, "analysis_run", %{"source" => "exunit", "args" => ["test/foo_test.exs"]})
+
+      assert_push "run_analysis", %{"runs" => runs}, 5_000
+      assert [%{"source" => "exunit", "args" => ["test/foo_test.exs"]}] = runs
+
+      refute_reply ref, :ok, _payload, 200
+    end
+
+    # The run row is opened before dispatch, and that is what makes the request
+    # recoverable: if the harness never answers, the row is failed when its
+    # channel closes. A fire-and-forget push would leave nothing behind.
+    test "an agent's run opens a row the harness can be held to", %{channel: channel} do
+      ref = push(channel, "analysis_run", %{"source" => "credo", "args" => []})
+
+      assert_push "run_analysis", %{"runs" => [run]}, 5_000
+      assert is_integer(run["run_id"])
+
+      refute_reply ref, :ok, _payload, 200
+    end
+
+    # A harness that takes the run and never comes back. The agent has to be
+    # told, and told as a failure: `curl` exits 0 on an empty body, so silence
+    # here would reach the agent as a suite that ran and passed.
+    test "a run the harness never answers fails rather than going quiet",
+         %{channel: channel} do
+      ref = push(channel, "analysis_run", %{"source" => "credo", "args" => []})
+
+      assert_push "run_analysis", %{"runs" => [_run]}, 5_000
+
+      assert_reply ref, :error, %{"reason" => reason}, 5_000
+      assert reason =~ "harness_never_answered"
+    end
+
     test "a stop asks the harness to run the compiler", %{channel: channel} do
       ref = push(channel, "hook_decision", %{"hook" => "stop", "payload" => %{}})
       assert_reply ref, :ok, _decision, 5_000

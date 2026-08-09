@@ -100,6 +100,13 @@ defmodule CmsHarness.Project.ChannelClient do
   defp decision_timeout,
     do: Application.get_env(:code_my_spec, :harness_decision_timeout, @default_decision_timeout)
 
+  # A whole suite, not a decision. Longer than the server's own wait, so a run
+  # the server gives up on comes back as its answer rather than as this timing
+  # out first — one of those is a failed analyzer and the other is a broken
+  # channel, and the agent cannot act on them the same way.
+  defp analysis_timeout,
+    do: Application.get_env(:code_my_spec, :harness_analysis_await_timeout, :timer.minutes(32))
+
   # --- Client API ---
 
   def start_link(opts) do
@@ -162,6 +169,32 @@ defmodule CmsHarness.Project.ChannelClient do
     case Registry.lookup(CmsHarness.Registry, {:channel, root}) do
       [{pid, _}] -> GenServer.call(pid, {:decide_hook, hook, payload}, decision_timeout() + 2_000)
       [] -> {:error, :not_connected}
+    end
+  catch
+    :exit, _ -> {:error, :no_reply}
+  end
+
+  @doc """
+  Run one analyzer for the agent and wait for the server's answer.
+
+  The agent's own `mix test`, rewritten by the PreToolUse hook. It goes to the
+  server rather than straight to `mix` so the run gets a ledger row, joins an
+  identical run already in flight instead of a second one contending for
+  `_build`, and reconciles its Problems centrally — none of which a bare shell
+  command can do, which is why the same suite used to be run twice.
+
+  Blocks for as long as the suite takes. The server replies out of band, so no
+  channel process is held while it does.
+  """
+  @spec await_analysis(String.t(), String.t(), [String.t()]) ::
+          {:ok, map()} | {:error, term()}
+  def await_analysis(root, source, args) do
+    case Registry.lookup(CmsHarness.Registry, {:channel, root}) do
+      [{pid, _}] ->
+        GenServer.call(pid, {:await_analysis, source, args}, analysis_timeout() + 5_000)
+
+      [] ->
+        {:error, :not_connected}
     end
   catch
     :exit, _ -> {:error, :no_reply}
@@ -753,6 +786,31 @@ defmodule CmsHarness.Project.ChannelClient do
          ) do
       {:ok, ref} ->
         timer = Process.send_after(self(), {:reply_timeout, ref}, decision_timeout())
+        {:noreply, put_in(socket.assigns.pending[ref], {from, timer})}
+
+      {:error, _reason} ->
+        {:reply, {:error, :not_connected}, socket}
+    end
+  end
+
+  def handle_call({:await_analysis, _source, _args}, _from, %{assigns: %{joined: false}} = socket) do
+    reason = if socket.assigns[:no_credential?], do: :no_credential, else: :not_connected
+    {:reply, {:error, reason}, socket}
+  end
+
+  # Same `pending` machinery as a hook decision, on a timeout two orders of
+  # magnitude longer. The reply outlives this call by design: `handle_reply/3`
+  # finds `from` and answers then.
+  def handle_call({:await_analysis, source, args}, from, socket) do
+    case push(
+           socket,
+           socket.assigns.topic,
+           "analysis_run",
+           %{"source" => source, "args" => args},
+           analysis_timeout()
+         ) do
+      {:ok, ref} ->
+        timer = Process.send_after(self(), {:reply_timeout, ref}, analysis_timeout())
         {:noreply, put_in(socket.assigns.pending[ref], {from, timer})}
 
       {:error, _reason} ->

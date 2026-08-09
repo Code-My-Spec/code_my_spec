@@ -188,10 +188,10 @@ defmodule CodeMySpec.Hooks.PreToolUse do
   defp maybe_rewrite_test_command(scope, params, port) do
     command = get_in(params, ["tool_input", "command"]) || ""
 
-    with %{active_project_id: project_id, cwd: cwd} when not is_nil(project_id) and is_binary(cwd) <-
-           scope,
+    with %{active_project_id: project_id} when not is_nil(project_id) <- scope,
+         {:ok, endpoint} <- analysis_endpoint(scope),
          {:ok, task, source, args} <- classify_test_command(command) do
-      replacement = build_curl(port, cwd, source, args)
+      replacement = build_curl(port, endpoint, source, args)
 
       Logger.info(
         "[PreToolUse] Rewriting mix #{task} → analysis API (#{source}, args: #{inspect(args)})"
@@ -219,22 +219,23 @@ defmodule CodeMySpec.Hooks.PreToolUse do
   # the rewrite. The second is a feature being off, and it looked exactly like
   # the feature being irrelevant.
   #
-  # It is off on the light harness right now. That scope is built by
-  # `HarnessProjectChannel.pin_to_project/1`, which sets no `cwd` — correctly,
-  # since a server with no disk has no working directory — and the rewrite
-  # requires one. So every `mix test` an agent runs against a light harness goes
-  # straight to the shell, unrecorded, and the stop hook re-runs the whole suite
-  # afterwards because as far as the server is concerned nothing ran.
+  # It used to be off on the light harness, and this is where that was found.
+  # The rewrite required `cwd`, which that scope has no business setting, so
+  # every `mix test` an agent ran went straight to the shell unrecorded and the
+  # stop hook re-ran the whole suite afterwards. It now addresses the harness by
+  # id instead — see `analysis_endpoint/1`.
   #
-  # Saying so is not the fix. The fix is an analysis endpoint on the light
-  # harness, and that is a feature — `Analysis.await_run/4` dispatches the run
-  # back to the very channel process that would be waiting on it.
+  # What remains here is a scope carrying neither: no project, or a project with
+  # no way to say which working copy. That is still a feature being off, and it
+  # still says so by name rather than by returning the same `%{}` that means
+  # "not a test command".
   defp no_rewrite(scope, command) do
     case classify_test_command(command) do
       {:ok, task, _source, _args} ->
         Logger.warning(
           "[PreToolUse] not rewriting `mix #{task}`: " <>
             "project_id=#{inspect(scope && scope.active_project_id)} " <>
+            "harness=#{inspect(scope && scope.active_harness_id)} " <>
             "cwd=#{inspect(scope && scope.cwd)}. The run will not be recorded."
         )
 
@@ -268,14 +269,42 @@ defmodule CodeMySpec.Hooks.PreToolUse do
     _ -> :error
   end
 
-  defp build_curl(port, cwd, source, args) do
+  # Which working copy the run is about, and how that is said.
+  #
+  # **`cwd` is checked first and the order is the whole correctness argument.**
+  # A heavy harness carries *both*: its `:hook` pipeline runs `HarnessScope`,
+  # which sets `active_harness_id`, and then `WorkingDirScope`, which sets `cwd`.
+  # Matching the id first would have pointed it at the light harness's
+  # id-addressed route, which its own router does not serve — a 404 on every
+  # `mix test` an agent runs against the heavy harness.
+  #
+  # The real question is "can whoever answers this reach the disk", and `cwd` is
+  # what answers it. A light harness has none and must not be given one: `cwd`
+  # means a directory *this* process can read, and `Knowledge`, `ProjectSync` and
+  # the hex-doc projector all take it at its word. On a diskless server that is a
+  # path to another machine; on a developer box where both are the same machine
+  # it would read a real tree, the wrong one, convincingly.
+  defp analysis_endpoint(%{cwd: cwd}) when is_binary(cwd), do: {:ok, {:cwd, cwd}}
+
+  defp analysis_endpoint(%{active_harness_id: id}) when is_binary(id),
+    do: {:ok, {:harness, id}}
+
+  defp analysis_endpoint(_scope), do: :error
+
+  defp build_curl(port, endpoint, source, args) do
     payload = Jason.encode!(%{source: source, args: args})
 
-    "curl -sS -X POST http://localhost:#{port}/api/analysis/run " <>
+    "curl -sS -X POST http://localhost:#{port}#{path(endpoint)} " <>
       "-H 'Content-Type: application/json' " <>
-      "-H 'X-Working-Dir: #{cwd}' " <>
+      header(endpoint) <>
       "--data #{shell_quote(payload)}"
   end
+
+  defp path({:harness, id}), do: "/api/harnesses/#{id}/analysis/run"
+  defp path({:cwd, _cwd}), do: "/api/analysis/run"
+
+  defp header({:harness, _id}), do: ""
+  defp header({:cwd, cwd}), do: "-H 'X-Working-Dir: #{cwd}' "
 
   # Single-quote for sh, escaping embedded single quotes ('\'' dance).
   defp shell_quote(string), do: "'" <> String.replace(string, "'", "'\\''") <> "'"
