@@ -1133,15 +1133,25 @@ defmodule CodeMySpecWeb.ProvisioningLive do
       <p :if={@resources == []} class="opacity-70">Nothing provisioned yet.</p>
       <ul class="mt-2 flex flex-col gap-1">
         <li
-          :for={resource <- @resources}
+          :for={%{resource: resource} = owned <- @resources}
           data-test="provisioned-resource"
           data-kind={resource.kind}
           data-location={resource.location}
           data-environment={resource_environment(resource)}
           data-name={resource_name(resource)}
           data-owner={resource_owner(resource)}
+          data-verified={to_string(owned.verified?)}
+          class={not owned.verified? && "opacity-70"}
         >
           {resource.kind} — {resource.location}
+          <span
+            :if={not owned.verified?}
+            data-test="unverified-resource"
+            data-step={owned.step}
+            class="badge badge-sm badge-warning ml-2"
+          >
+            {unverified_note(owned)}
+          </span>
         </li>
       </ul>
     </section>
@@ -2039,7 +2049,7 @@ defmodule CodeMySpecWeb.ProvisioningLive do
     |> assign(:options, options)
     |> assign(:available_options, available_options())
     |> assign(:plan, plan)
-    |> assign(:resources, Enum.flat_map(plan, & &1.resources))
+    |> assign(:resources, owned_resources(plan))
     # Held, not re-proved. `Credentials.list/1` and `missing/1` prove each
     # credential with a real provider call, and `load/2` runs on every event
     # *and* on every PubSub announce a step makes — so a run that marked four
@@ -2294,6 +2304,34 @@ defmodule CodeMySpecWeb.ProvisioningLive do
   defp step_opts do
     Application.get_env(:code_my_spec, :provisioning_step_opts, [])
   end
+
+  # Each resource with whether its step still verifies. "What you now own" is a
+  # claim about the present, and a recorded resource is only evidence of that
+  # while the step that made it holds.
+  #
+  # `reverify/3` keeps the list when a step goes absent, deliberately —
+  # teardown removes only what a step recorded, so clearing it would leak
+  # whatever is still there (`provisioning.ex:498`). That is right, and it means
+  # the record outlives the resource. The panel used to flatten the lists
+  # regardless, so a server deleted at the provider was still listed under a
+  # heading that says Sam owns it, on the same page load that discovered it was
+  # gone.
+  defp owned_resources(plan) do
+    for step <- plan, resource <- step.resources do
+      %{
+        resource: resource,
+        step: step.key,
+        verified?: step.state == :done,
+        verified_at: step.verified_at
+      }
+    end
+  end
+
+  defp unverified_note(%{verified_at: %DateTime{} = at}),
+    do: "not found #{Calendar.strftime(at, "%b %-d %H:%M")}"
+
+  # No check on record either — a resource from a step that never finished.
+  defp unverified_note(_owned), do: "unverified"
 
   # Takes the domain listing rather than fetching its own. `find_domain/2` is a
   # full `GET /domains` behind a filter, so reading three environments used to

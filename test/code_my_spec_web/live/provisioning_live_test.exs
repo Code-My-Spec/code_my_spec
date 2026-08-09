@@ -261,6 +261,57 @@ defmodule CodeMySpecWeb.ProvisioningLiveTest do
       assert html =~ "hetzner/ash/cms-prod"
     end
 
+    # The panel is headed "What you now own", which is a claim about the
+    # present. `reverify/3` keeps a step's recorded resources when the provider
+    # says the thing is gone — deliberately, because teardown removes only what
+    # a step recorded and clearing the list would leak whatever is still there.
+    # So the record outlives the resource, and the panel listed a deleted server
+    # under "you own this" on the same page load that discovered it was gone.
+    test "a resource whose step no longer verifies is marked, not claimed", %{
+      conn: conn,
+      project: project,
+      scope: scope
+    } do
+      StepRepository.upsert(scope, :server, %{
+        state: :done,
+        position: Sequence.position(:server),
+        resources: [%{kind: "server", location: "hetzner/ash/cms-prod"}]
+      })
+
+      stub_verifier(fn _scope, _key -> {:ok, :absent} end)
+
+      {:ok, view, html} = live(conn, path(project))
+
+      # Still listed — teardown works from this list, so dropping it would
+      # strand the resource rather than fix anything.
+      assert html =~ "hetzner/ash/cms-prod"
+
+      assert has_element?(view, "[data-test='unverified-resource'][data-step='server']"),
+             "a resource whose step just failed to verify must say so"
+
+      refute html =~ ~s(data-kind="server" data-location="hetzner/ash/cms-prod" data-verified="true"),
+             "an unverified resource must not be marked verified"
+    end
+
+    test "a resource whose step verifies is not marked unverified", %{
+      conn: conn,
+      project: project,
+      scope: scope
+    } do
+      StepRepository.upsert(scope, :server, %{
+        state: :done,
+        position: Sequence.position(:server),
+        resources: [%{kind: "server", location: "hetzner/ash/cms-prod"}]
+      })
+
+      stub_verifier(fn _scope, _key -> {:ok, :satisfied, []} end)
+
+      {:ok, view, _html} = live(conn, path(project))
+
+      refute has_element?(view, "[data-test='unverified-resource'][data-step='server']"),
+             "a step that verifies must not have its resources hedged"
+    end
+
     # Criterion 8003 / 8035: nothing is held on the platform's side.
     test "no resource is owned by the platform", %{conn: conn, project: project, scope: scope} do
       StepRepository.upsert(scope, :server, %{
