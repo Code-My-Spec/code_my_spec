@@ -70,6 +70,17 @@ defmodule CodeMySpec.Logging.LogfmtFormatterTest do
     assert line =~ "mfa=Foo.Bar.baz/2"
   end
 
+  test "emits mfa exactly once" do
+    line = format(:info, "x", %{mfa: {Foo.Bar, :baz, 2}})
+
+    assert length(String.split(line, "mfa=")) - 1 == 1,
+           "the formatted pair and the raw metadata map both claimed the key, so " <>
+             "every line in every log carried mfa= twice: #{line}"
+
+    refute line =~ ~s(mfa="{),
+           "the second one was the untouched tuple, inspected"
+  end
+
   test "drops noise keys (gl, pid, file, line, domain, application)" do
     line =
       format(:info, "x", %{

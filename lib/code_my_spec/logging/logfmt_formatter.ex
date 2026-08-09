@@ -30,7 +30,11 @@ defmodule CodeMySpec.Logging.LogfmtFormatter do
   @truncation_marker "...<truncated>"
 
   # Keys handled explicitly or that add no signal at LLM-read time.
-  @drop_keys ~w(gl ansi_color erl_level report_cb pid time level msg
+  # `mfa` belongs here because it is emitted separately, already formatted.
+  # Without it every line carried the key twice — once as Mod.fun/N and once as
+  # the raw tuple — which is a duplicate key in a format whose whole promise is
+  # that keys are stable.
+  @drop_keys ~w(gl ansi_color erl_level report_cb pid time level msg mfa
                 registered_name initial_call file line domain
                 application)a
 
