@@ -39,21 +39,24 @@ defmodule CmsHarness.Project.Watcher do
   # sync any other change triggers.
   @watched_subdirs ["lib", "test", Paths.base_dir()]
 
-  # A full sync on a timer, regardless of what the watcher has to say.
+  # There is deliberately no sync on a timer. Events are the only trigger.
   #
-  # Drill 8 spent its last forty-five minutes writing files nobody saw. The
-  # watcher process was alive, `watching?` was true, `inotifywait` was running
-  # and watching the right directories — and no event arrived, so no sync ran,
-  # so the graph froze while the agent kept working against it. A single
-  # `touch` hours later reconciled all 165 files at once: nothing had been
-  # lost, nothing had been looked at.
+  # There used to be a 90s floor, added after drill 8 spent its last forty-five
+  # minutes writing files nobody saw: the process was alive, `watching?` was
+  # true, `inotifywait` was running against the right directories, and no event
+  # arrived, so no sync ran and the graph froze under the agent.
   #
-  # The root cause of the missed events is still unproven. This does not depend
-  # on knowing it. An event stream with nothing checking it is a liveness claim
-  # backed by nothing, and the cost of being wrong is an agent working blind for
-  # as long as the run lasts. A floor turns "frozen until someone notices" into
-  # "stale by at most this long".
-  @resync_interval_ms 90_000
+  # It was removed once the cost was measured rather than assumed. The floor
+  # scanned and re-uploaded the whole working copy whether or not anything had
+  # changed — with a 60s read-model refresh doing the same, a full sync every
+  # ~30s per copy, ~120 an hour each, and three attached copies had the server
+  # upserting over a million file rows an hour to learn nothing.
+  #
+  # What guards the drill-8 failure now is `handle_info({:file_event, ...})`
+  # logging an event it cannot account for instead of dropping it, so a broken
+  # stream is visible rather than silent. If freezing shows up again, the fix
+  # to reach for is a floor that scans but sends nothing when the manifest
+  # digest is unchanged — the safety without the writes — not this one back.
 
   # A single edit rarely arrives as a single event, and the only thing the
   # harness can send is a whole manifest, so events are coalesced into one
@@ -125,8 +128,6 @@ defmodule CmsHarness.Project.Watcher do
     # Paused. The channel client resumes it on join — and if the channel is
     # already joined (this process restarted on its own) it asks, rather than
     # assuming either way.
-    schedule_resync()
-
     {:ok, %__MODULE__{project: project}, {:continue, :check_connection}}
   end
 
@@ -180,15 +181,9 @@ defmodule CmsHarness.Project.Watcher do
     {:noreply, %{state | timer: nil}}
   end
 
-  # Always reschedules, even while paused: a paused watcher that is later
-  # resumed should not also have lost its floor.
+  # A timer that no longer exists, from a harness mid-upgrade. Ignored rather
+  # than crashed on, because the message can outlive the code that sent it.
   def handle_info(:resync, state) do
-    schedule_resync()
-
-    if state.watching? do
-      ChannelClient.request_sync(state.project.root)
-    end
-
     {:noreply, state}
   end
 
@@ -243,11 +238,6 @@ defmodule CmsHarness.Project.Watcher do
     GenServer.stop(state.fs_pid, :normal)
     %{state | fs_pid: nil, timer: nil, watching?: false}
   end
-
-  @doc "The sync floor, exposed so a test can hold it to a bound."
-  def resync_interval_ms, do: @resync_interval_ms
-
-  defp schedule_resync, do: Process.send_after(self(), :resync, @resync_interval_ms)
 
   defp schedule_sync(state) do
     if state.timer, do: Process.cancel_timer(state.timer)

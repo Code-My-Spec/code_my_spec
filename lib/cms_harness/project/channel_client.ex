@@ -323,8 +323,11 @@ defmodule CmsHarness.Project.ChannelClient do
     # The read model first: a scan without one resolves no owners and validates
     # no specs, so it would produce a manifest that is wrong rather than late.
     case transport().push(socket, topic, "read_model", %{}, decision_timeout()) do
-      {:ok, ref} -> {:ok, assign(socket, :read_model_ref, ref)}
-      {:error, _} -> {:ok, socket}
+      {:ok, ref} ->
+        {:ok, socket |> assign(:read_model_ref, ref) |> assign(:read_model_reason, :join)}
+
+      {:error, _} ->
+        {:ok, socket}
     end
   end
 
@@ -415,15 +418,36 @@ defmodule CmsHarness.Project.ChannelClient do
     end
   end
 
+  # A scan on the join reply is the point: the read model is what resolves
+  # owners and validates specs, so the first manifest has to wait for it.
+  #
+  # The 60s refresh reuses this same reply path, and scanning there re-hashed
+  # and re-uploaded every file in the working copy once a minute whether or not
+  # anything had changed — on top of the watcher's own 90s floor. Interleaved,
+  # the two produced a full sync every 30 seconds per copy, ~120 an hour each,
+  # and with three copies attached the server upserted well over a million file
+  # rows an hour to learn nothing.
+  #
+  # A refresh that *does* change the read model still earns its scan: new
+  # criteria or spec paths mean the last manifest resolved owners against a
+  # model that no longer holds. An identical one says nothing about the disk,
+  # and the watcher already covers the disk.
+  defp maybe_sync(socket, previous, read_model) do
+    if socket.assigns[:read_model_reason] != :refresh or previous != read_model do
+      Sync.start(socket.assigns.project, read_model)
+    end
+  end
+
   @impl Slipstream
   def handle_reply(ref, reply, %{assigns: %{read_model_ref: ref}} = socket) do
     case reply do
       {:ok, payload} ->
-        socket =
-          socket |> assign(:read_model, deserialize_read_model(payload)) |> resume_watcher()
+        previous = Map.get(socket.assigns, :read_model)
+        read_model = deserialize_read_model(payload)
 
-        # Only now is a scan meaningful.
-        Sync.start(socket.assigns.project, socket.assigns.read_model)
+        socket = socket |> assign(:read_model, read_model) |> resume_watcher()
+
+        maybe_sync(socket, previous, read_model)
         {:ok, socket}
 
       other ->
@@ -613,8 +637,11 @@ defmodule CmsHarness.Project.ChannelClient do
     schedule_read_model_refresh()
 
     case transport().push(socket, topic, "read_model", %{}, decision_timeout()) do
-      {:ok, ref} -> {:noreply, assign(socket, :read_model_ref, ref)}
-      {:error, _} -> {:noreply, socket}
+      {:ok, ref} ->
+        {:noreply, socket |> assign(:read_model_ref, ref) |> assign(:read_model_reason, :refresh)}
+
+      {:error, _} ->
+        {:noreply, socket}
     end
   end
 
