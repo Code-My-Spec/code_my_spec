@@ -22,7 +22,7 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.GetNextRequirementTest do
       content = response_text(response)
 
       # Should return the first actionable project-level requirement
-      assert content =~ "### ProjectSetup"
+      assert content =~ "### PersonaResearch"
       assert content =~ "start_task"
     end
 

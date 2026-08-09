@@ -45,7 +45,11 @@ defmodule CodeMySpecLocalWeb.Layouts do
   attr :projects, :list, default: [], doc: "list of all local projects for the picker"
   attr :section, :atom, default: nil, doc: "which sidebar section is active"
   attr :page_title, :string, default: "CodeMySpec Local"
-  attr :full_width, :boolean, default: false, doc: "drop the centered max-width cap (app-style surfaces)"
+
+  attr :full_width, :boolean,
+    default: false,
+    doc: "drop the centered max-width cap (app-style surfaces)"
+
   slot :inner_block, required: true
 
   def app(assigns) do
@@ -57,9 +61,23 @@ defmodule CodeMySpecLocalWeb.Layouts do
         <header class="local-header">
           <div class="flex items-center justify-between px-6 py-3.5 gap-3">
             <div class="flex items-center gap-3.5 min-w-0">
-              <label for="drawer-toggle" class="btn btn-square btn-ghost btn-sm lg:hidden" aria-label="Open navigation">
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" class="w-5 h-5 stroke-current">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
+              <label
+                for="drawer-toggle"
+                class="btn btn-square btn-ghost btn-sm lg:hidden"
+                aria-label="Open navigation"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  class="w-5 h-5 stroke-current"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="2"
+                    d="M4 6h16M4 12h16M4 18h16"
+                  />
                 </svg>
               </label>
               <.link navigate={~p"/app/projects"} class="local-logo">CodeMySpec</.link>
@@ -138,12 +156,19 @@ defmodule CodeMySpecLocalWeb.Layouts do
       <div class="local-sidebar-project-label">// project</div>
       <%= if @project do %>
         <details class="dropdown w-full">
-          <summary class="local-sidebar-project-name list-none cursor-pointer truncate" role="button" aria-label="Switch project">
+          <summary
+            class="local-sidebar-project-name list-none cursor-pointer truncate"
+            role="button"
+            aria-label="Switch project"
+          >
             {@project.name}
           </summary>
           <ul class="menu dropdown-content bg-base-300 z-10 mt-2 w-full p-1 max-h-72 overflow-y-auto border border-base-content/10">
             <li :for={p <- @projects}>
-              <.link navigate={~p"/app/projects/#{p.id}"} class={if @project.id == p.id, do: "menu-active"}>
+              <.link
+                navigate={~p"/app/projects/#{p.id}"}
+                class={if @project.id == p.id, do: "menu-active"}
+              >
                 <span class="truncate">{p.name}</span>
               </.link>
             </li>
@@ -171,31 +196,86 @@ defmodule CodeMySpecLocalWeb.Layouts do
     ~H"""
     <div class="local-sidebar-section">
       <div class="local-sidebar-eyebrow">// workflow</div>
-      <.sidebar_item to={~p"/app/projects/#{@project.id}/next-task"} active={@section == :next_task}>Next task</.sidebar_item>
-      <.sidebar_item to={~p"/app/projects/#{@project.id}/files"} active={@section == :files}>Files &amp; sync</.sidebar_item>
-      <.sidebar_item to={~p"/app/projects/#{@project.id}/content"} active={@section == :content}>Content</.sidebar_item>
-      <.sidebar_item to={~p"/app/projects/#{@project.id}/problems"} active={@section == :problems}>Problems</.sidebar_item>
-      <.sidebar_item to={~p"/app/projects/#{@project.id}/configuration"} active={@section == :configuration}>Configuration</.sidebar_item>
+      <.sidebar_item to={~p"/app/projects/#{@project.id}/next-task"} active={@section == :next_task}>
+        Next task
+      </.sidebar_item>
+      <.sidebar_item to={~p"/app/projects/#{@project.id}/files"} active={@section == :files}>
+        Files &amp; sync
+      </.sidebar_item>
+      <.sidebar_item to={~p"/app/projects/#{@project.id}/content"} active={@section == :content}>
+        Content
+      </.sidebar_item>
+      <.sidebar_item to={~p"/app/projects/#{@project.id}/problems"} active={@section == :problems}>
+        Problems
+      </.sidebar_item>
+      <.sidebar_item
+        to={~p"/app/projects/#{@project.id}/configuration"}
+        active={@section == :configuration}
+      >
+        Configuration
+      </.sidebar_item>
+      <.sidebar_item to={~p"/app/projects/#{@project.id}/setup"} active={@section == :setup}>
+        Setup
+      </.sidebar_item>
     </div>
 
     <div class="local-sidebar-section">
       <div class="local-sidebar-eyebrow">// data</div>
-      <.sidebar_item to={~p"/app/projects/#{@project.id}"} active={@section == :overview}>Overview</.sidebar_item>
-      <.sidebar_item to={~p"/app/projects/#{@project.id}/stories"} active={@section in [:stories, :scheduler]}>Stories</.sidebar_item>
-      <.sidebar_item to={~p"/app/projects/#{@project.id}/epics"} active={@section == :epics}>Epics</.sidebar_item>
-      <.sidebar_item to={~p"/app/projects/#{@project.id}/requirements"} active={@section in [:requirements, :requirements_stories]}>Requirements</.sidebar_item>
-      <.sidebar_item to={~p"/app/projects/#{@project.id}/requirements/graph"} active={@section == :requirements_graph}>Graph</.sidebar_item>
-      <.sidebar_item to={~p"/app/projects/#{@project.id}/architecture"} active={@section == :architecture}>Architecture</.sidebar_item>
-      <.sidebar_item to={~p"/app/projects/#{@project.id}/personas"} active={@section == :personas}>Personas</.sidebar_item>
-      <.sidebar_item to={~p"/app/projects/#{@project.id}/issues"} active={@section == :issues}>Issues</.sidebar_item>
-      <.sidebar_item to={~p"/app/projects/#{@project.id}/qa"} active={@section == :qa}>QA</.sidebar_item>
-      <.sidebar_item to={~p"/app/projects/#{@project.id}/sessions"} active={@section == :sessions}>Sessions</.sidebar_item>
+      <.sidebar_item to={~p"/app/projects/#{@project.id}"} active={@section == :overview}>
+        Overview
+      </.sidebar_item>
+      <.sidebar_item
+        to={~p"/app/projects/#{@project.id}/stories"}
+        active={@section in [:stories, :scheduler]}
+      >
+        Stories
+      </.sidebar_item>
+      <.sidebar_item to={~p"/app/projects/#{@project.id}/epics"} active={@section == :epics}>
+        Epics
+      </.sidebar_item>
+      <.sidebar_item
+        to={~p"/app/projects/#{@project.id}/requirements"}
+        active={@section in [:requirements, :requirements_stories]}
+      >
+        Requirements
+      </.sidebar_item>
+      <.sidebar_item
+        to={~p"/app/projects/#{@project.id}/requirements/graph"}
+        active={@section == :requirements_graph}
+      >
+        Graph
+      </.sidebar_item>
+      <.sidebar_item
+        to={~p"/app/projects/#{@project.id}/architecture"}
+        active={@section == :architecture}
+      >
+        Architecture
+      </.sidebar_item>
+      <.sidebar_item to={~p"/app/projects/#{@project.id}/personas"} active={@section == :personas}>
+        Personas
+      </.sidebar_item>
+      <.sidebar_item to={~p"/app/projects/#{@project.id}/issues"} active={@section == :issues}>
+        Issues
+      </.sidebar_item>
+      <.sidebar_item to={~p"/app/projects/#{@project.id}/qa"} active={@section == :qa}>
+        QA
+      </.sidebar_item>
+      <.sidebar_item to={~p"/app/projects/#{@project.id}/sessions"} active={@section == :sessions}>
+        Sessions
+      </.sidebar_item>
     </div>
 
     <div class="local-sidebar-section">
       <div class="local-sidebar-eyebrow">// reference</div>
-      <.sidebar_item to={~p"/app/projects/#{@project.id}/knowledge"} active={@section == :knowledge}>Knowledge base</.sidebar_item>
-      <.sidebar_item to={~p"/app/projects/#{@project.id}/project-knowledge"} active={@section == :project_knowledge}>Project knowledge</.sidebar_item>
+      <.sidebar_item to={~p"/app/projects/#{@project.id}/knowledge"} active={@section == :knowledge}>
+        Knowledge base
+      </.sidebar_item>
+      <.sidebar_item
+        to={~p"/app/projects/#{@project.id}/project-knowledge"}
+        active={@section == :project_knowledge}
+      >
+        Project knowledge
+      </.sidebar_item>
     </div>
     """
   end
@@ -206,7 +286,9 @@ defmodule CodeMySpecLocalWeb.Layouts do
     ~H"""
     <div class="local-sidebar-section">
       <div class="local-sidebar-eyebrow">// workspace</div>
-      <.sidebar_item to={~p"/app/projects"} active={@section == :projects}>All projects</.sidebar_item>
+      <.sidebar_item to={~p"/app/projects"} active={@section == :projects}>
+        All projects
+      </.sidebar_item>
     </div>
     """
   end
@@ -245,7 +327,13 @@ defmodule CodeMySpecLocalWeb.Layouts do
     assigns = assign(assigns, :msg, msg)
 
     ~H"""
-    <div :if={@msg} id={@id} role="alert" class={"alert #{flash_class(@kind)} shadow-lg"} phx-click={Phoenix.LiveView.JS.hide(to: "##{@id}")}>
+    <div
+      :if={@msg}
+      id={@id}
+      role="alert"
+      class={"alert #{flash_class(@kind)} shadow-lg"}
+      phx-click={Phoenix.LiveView.JS.hide(to: "##{@id}")}
+    >
       <span>{@msg}</span>
     </div>
     """
@@ -283,13 +371,13 @@ defmodule CodeMySpecLocalWeb.Layouts do
     do: other |> Atom.to_string() |> String.capitalize()
 
   defp section_path(nil), do: "/overview"
+
   defp section_path(section) do
     section
     |> Atom.to_string()
     |> String.replace("_", "-")
     |> then(&("/" <> &1))
   end
-
 
   # The prompt strip is styled like a shell prompt, so users will read it
   # as their working directory. Show the real `local_path` (abbreviated to
