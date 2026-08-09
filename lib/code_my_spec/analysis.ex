@@ -491,8 +491,12 @@ defmodule CodeMySpec.Analysis do
   @doc "Is `source`'s last completed run current for today's inputs?"
   @spec fresh?(Scope.t(), String.t()) :: boolean()
   def fresh?(%Scope{} = scope, source) do
-    case RunsRepository.latest_full_run(scope, source) do
-      %Run{status: :completed, input_fingerprint: fp} when is_binary(fp) ->
+    # The latest run that *answered*, not the latest run. A failure — including
+    # a duplicate enqueue refused as "already queued" — cannot make a good
+    # result stale, and used to, because this took the newest row of any status
+    # and then required `:completed`.
+    case RunsRepository.latest_completed_run(scope, source) do
+      %Run{input_fingerprint: fp} when is_binary(fp) ->
         fp == Fingerprint.current(scope, source)
 
       _ ->

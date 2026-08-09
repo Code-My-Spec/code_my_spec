@@ -51,10 +51,11 @@ defmodule CodeMySpec.Analysis.RunsRepository do
   memoization check and the UI gauge.
   """
   @spec latest_full_runs(Scope.t()) :: %{String.t() => Run.t()}
-  def latest_full_runs(%Scope{active_project_id: project_id}) do
+  def latest_full_runs(%Scope{active_project_id: project_id} = scope) do
     Run
     |> where([r], r.project_id == ^project_id and r.kind == :full)
     |> where([r], r.status in [:completed, :failed])
+    |> scope_to_harness(scope)
     |> order_by([r], asc: r.started_at)
     |> Repo.all()
     |> Map.new(&{&1.source, &1})
@@ -62,14 +63,51 @@ defmodule CodeMySpec.Analysis.RunsRepository do
 
   @doc "Latest finished `:full` run for one source, or nil."
   @spec latest_full_run(Scope.t(), String.t()) :: Run.t() | nil
-  def latest_full_run(%Scope{active_project_id: project_id}, source) do
+  def latest_full_run(%Scope{active_project_id: project_id} = scope, source) do
     Run
     |> where([r], r.project_id == ^project_id and r.source == ^source and r.kind == :full)
     |> where([r], r.status in [:completed, :failed])
+    |> scope_to_harness(scope)
     |> order_by(desc: :started_at)
     |> limit(1)
     |> Repo.one()
   end
+
+  @doc """
+  Latest run of one source that actually produced an answer, for this working
+  copy.
+
+  `latest_full_run/2` includes failures, which is right for reporting *state* —
+  an analyzer that keeps dying should say so. It is wrong for deciding
+  freshness, because `fresh?/2` and `stale?/3` both require `:completed` and
+  read anything else as stale. So a run that never ran makes a source stale
+  even when a good result sits behind it, and a duplicate enqueue refused as
+  "already queued" is exactly that: 14 such rows in half an hour on this
+  machine, each one marking its source stale.
+
+  A refusal is a scheduling fact. It should not be able to invalidate an
+  answer.
+  """
+  @spec latest_completed_run(Scope.t(), String.t()) :: Run.t() | nil
+  def latest_completed_run(%Scope{active_project_id: project_id} = scope, source) do
+    Run
+    |> where([r], r.project_id == ^project_id and r.source == ^source and r.kind == :full)
+    |> where([r], r.status == :completed)
+    |> scope_to_harness(scope)
+    |> order_by(desc: :started_at)
+    |> limit(1)
+    |> Repo.one()
+  end
+
+  # Freshness is a question about one working copy's tree. Unscoped, the latest
+  # run of *any* checkout answered it, and its fingerprint is computed over
+  # different files — so a source could never be fresh while another agent
+  # worked. `acde83fd` scoped the lookup on submit and the sweep on join and
+  # missed these two.
+  defp scope_to_harness(query, %Scope{active_harness_id: nil}), do: query
+
+  defp scope_to_harness(query, %Scope{active_harness_id: harness_id}),
+    do: where(query, [r], r.harness_id == ^harness_id)
 
   @doc "Sources with a `:running` run for the project."
   @spec running_sources(Scope.t()) :: [String.t()]
