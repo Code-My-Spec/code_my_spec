@@ -16,6 +16,8 @@ defmodule CodeMySpecSpex.Story990.Criterion8215Spex do
 
   use CodeMySpecSpex.Case
 
+  import CodeMySpecSpex.IntakeSteps
+
   @endpoint CodeMySpecWeb.Endpoint
 
   spex "A plan belongs to the browser that made it" do
@@ -29,10 +31,7 @@ defmodule CodeMySpecSpex.Story990.Criterion8215Spex do
         |> render_submit()
 
         view
-        |> form("form[phx-submit=answer]", %{
-          plan: %{needs_sign_in: "true", separate_copies: "true", who_uses: "salon owners"}
-        })
-        |> render_submit()
+        |> answer_shaping_questions(["yes", "yes", "salon owners"])
 
         {:ok, context}
       end

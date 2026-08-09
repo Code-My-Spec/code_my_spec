@@ -1,6 +1,8 @@
 defmodule CodeMySpecWeb.IntakeLive.WorkspaceTest do
   use CodeMySpecTest.ConnCase, async: false
 
+  import CodeMySpecSpex.IntakeSteps
+
   import Phoenix.LiveViewTest
   import CodeMySpec.UsersFixtures
 
@@ -58,10 +60,7 @@ defmodule CodeMySpecWeb.IntakeLive.WorkspaceTest do
     |> render_submit()
 
     view
-    |> form("form[phx-submit=answer]", %{
-      plan: %{needs_sign_in: "true", separate_copies: "true", who_uses: "salon owners"}
-    })
-    |> render_submit()
+    |> answer_shaping_questions(["yes", "yes", "salon owners"])
 
     view
     |> form("form[phx-submit=confirm_names]", %{

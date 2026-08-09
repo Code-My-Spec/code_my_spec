@@ -11,7 +11,7 @@ defmodule CodeMySpecWeb.IntakeLive.Plan do
   use CodeMySpecWeb, :live_view
 
   alias CodeMySpec.Intake
-  alias CodeMySpec.Intake.{Funnel, Plan}
+  alias CodeMySpec.Intake.{Funnel, Plan, Questions}
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.Users.User
   alias CodeMySpecWeb.Plugs.IntakeSession
@@ -24,7 +24,13 @@ defmodule CodeMySpecWeb.IntakeLive.Plan do
       </div>
 
       <.step_describe :if={@plan.status == :describing} plan={@plan} />
-      <.step_answer :if={@plan.status == :answering} plan={@plan} form={@answers_form} />
+      <.step_answer
+        :if={@plan.status == :answering and @question != nil}
+        question={@question}
+        answered={@answered}
+        question_count={@question_count}
+        unclear={@unclear}
+      />
       <.step_plan :if={@plan.status in [:planned, :converted]} plan={@plan} form={@names_form} />
     </div>
     """
@@ -51,35 +57,57 @@ defmodule CodeMySpecWeb.IntakeLive.Plan do
     """
   end
 
+  # One question on screen at a time. The visitor answers what was asked and
+  # is then asked the next thing — which is the point: a page of fields asks
+  # everyone the same three questions and cannot take account of an answer.
   defp step_answer(assigns) do
     ~H"""
-    <h1 class="text-3xl font-bold mb-2">Two quick questions.</h1>
-    <p class="text-base-content/70 mb-6">These shape what gets built. Neither costs you anything.</p>
+    <p class="text-sm text-base-content/60 mb-2">
+      Question {@answered + 1} of {@question_count}
+    </p>
 
-    <.form for={@form} phx-submit="answer" class="space-y-6">
-      <.input
-        field={@form[:needs_sign_in]}
-        type="select"
-        label="Will people need to sign in to use this?"
-        options={[{"Yes — people have their own login", "true"}, {"No — anyone can just use it", "false"}]}
-        prompt="Choose one"
-      />
+    <h1 class="text-3xl font-bold mb-2">{@question.text}</h1>
+    <p class="text-base-content/70 mb-6">{@question.hint}</p>
 
-      <.input
-        field={@form[:separate_copies]}
-        type="select"
-        label="Is this for one business, or will lots of separate businesses each use their own copy?"
-        options={[
-          {"Lots of businesses, each with their own copy", "true"},
-          {"Just one business — mine", "false"}
-        ]}
-        prompt="Choose one"
-      />
-
-      <.input field={@form[:who_uses]} type="text" label="Roughly who uses this?" />
-
-      <.button class="btn-primary">Show me the plan</.button>
+    <.form for={%{}} as={:answer} phx-submit="answer" class="space-y-4">
+      <.yes_no :if={@question.type == :boolean} />
+      <.free_text :if={@question.type == :text} />
+      <p :if={@unclear} class="text-error text-sm">
+        I didn't follow that — a yes or a no is enough.
+      </p>
     </.form>
+    """
+  end
+
+  # Radios rather than two submit buttons: a button carries its value only when
+  # it is the one that submitted, which reads fine in a browser and gives a
+  # test no input to fill. Same two clicks either way.
+  defp yes_no(assigns) do
+    ~H"""
+    <div class="flex gap-3">
+      <label class="btn btn-outline has-[:checked]:btn-primary">
+        <input type="radio" name="answer" value="yes" class="hidden" /> Yes
+      </label>
+      <label class="btn btn-outline has-[:checked]:btn-primary">
+        <input type="radio" name="answer" value="no" class="hidden" /> No
+      </label>
+      <.button class="btn-primary">Next</.button>
+    </div>
+    """
+  end
+
+  defp free_text(assigns) do
+    ~H"""
+    <div class="flex gap-3">
+      <input
+        type="text"
+        name="answer"
+        autofocus
+        class="input input-bordered w-full"
+        placeholder="Salon owners and their clients"
+      />
+      <.button class="btn-primary">Next</.button>
+    </div>
     """
   end
 
@@ -95,12 +123,31 @@ defmodule CodeMySpecWeb.IntakeLive.Plan do
     </div>
 
     <p class="text-base-content/70 mb-4">
-      I've guessed at these names. Change anything that's wrong — what you confirm here is what gets created.
+      These are my guesses. Change anything that's wrong — what you confirm here is what gets built.
     </p>
 
     <.form for={@form} phx-submit="confirm_names" phx-change="validate_names" class="space-y-4">
       <.input field={@form[:account_name]} type="text" label="Account name" />
       <.input field={@form[:project_name]} type="text" label="Project name" />
+
+      <%!--
+        The two conclusions that pick the generators. They used to be prose in
+        the card above, which made the most consequential guesses in the plan
+        the only ones the visitor could not correct.
+      --%>
+      <.input
+        field={@form[:needs_sign_in]}
+        type="select"
+        label="People sign in to use it"
+        options={[{"Yes", "true"}, {"No", "false"}]}
+      />
+
+      <.input
+        field={@form[:separate_copies]}
+        type="select"
+        label="Each business gets its own separate copy"
+        options={[{"Yes", "true"}, {"No", "false"}]}
+      />
 
       <.button class="btn-primary">Looks right — build it</.button>
     </.form>
@@ -123,21 +170,22 @@ defmodule CodeMySpecWeb.IntakeLive.Plan do
     {:noreply, assign_plan(socket, plan)}
   end
 
-  def handle_event("answer", %{"plan" => attrs}, socket) do
-    with {:ok, plan} <- Intake.answer(socket.assigns.plan, attrs),
-         {:ok, plan} <- Intake.generate_plan(plan) do
-      Funnel.plan_reached(:plan_shown, %{plan_id: plan.id})
-      {:noreply, assign_plan(socket, plan)}
-    else
-      {:error, %Ecto.Changeset{} = changeset} ->
-        {:noreply, assign(socket, :answers_form, to_form(changeset))}
+  # One answer to whichever question is on screen. The plan is only generated
+  # once nothing is outstanding, so the visitor is asked, then asked again,
+  # and sees a plan when there is nothing left to ask.
+  def handle_event("answer", %{"answer" => written}, socket) do
+    case Intake.answer_question(socket.assigns.plan, written) do
+      {:ok, plan} ->
+        {:noreply, socket |> assign(:unclear, false) |> advance(plan)}
 
-      # Writing the plan is a call to a model, so it can fail for reasons the
-      # visitor had nothing to do with. Keep them on the answers they already
-      # gave rather than dropping them back to a blank page.
-      {:error, _reason} ->
-        {:noreply,
-         put_flash(socket, :error, "That didn't come back. Try showing the plan again.")}
+      {:error, :unclear} ->
+        {:noreply, assign(socket, :unclear, true)}
+
+      {:error, :no_question} ->
+        {:noreply, advance(socket, socket.assigns.plan)}
+
+      {:error, %Ecto.Changeset{}} ->
+        {:noreply, assign(socket, :unclear, true)}
     end
   end
 
@@ -168,9 +216,37 @@ defmodule CodeMySpecWeb.IntakeLive.Plan do
   defp gate_for(%Scope{user: %User{}}), do: ~p"/build/workspace"
   defp gate_for(_scope), do: ~p"/users/register"
 
+  # Ask the next thing, or — when nothing is outstanding — write the plan.
+  defp advance(socket, plan) do
+    if Intake.next_question(plan) do
+      assign_plan(socket, plan)
+    else
+      generate(socket, plan)
+    end
+  end
+
+  defp generate(socket, plan) do
+    case Intake.generate_plan(plan) do
+      {:ok, plan} ->
+        Funnel.plan_reached(:plan_shown, %{plan_id: plan.id})
+        assign_plan(socket, plan)
+
+      # Writing the plan is a call to a model, so it can fail for reasons the
+      # visitor had nothing to do with. Keep them on what they already gave.
+      {:error, _reason} ->
+        socket
+        |> assign_plan(plan)
+        |> put_flash(:error, "That didn't come back. Try again in a moment.")
+    end
+  end
+
   defp assign_plan(socket, %Plan{} = plan) do
     socket
     |> assign(:plan, plan)
+    |> assign(:question, Intake.next_question(plan))
+    |> assign(:answered, Questions.answered_count(plan))
+    |> assign(:question_count, Questions.count())
+    |> assign(:unclear, Map.get(socket.assigns, :unclear, false))
     |> assign(:answers_form, to_form(Plan.answers_changeset(plan, %{})))
     |> assign(:names_form, to_form(Intake.change_names(plan)))
   end

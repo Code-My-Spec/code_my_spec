@@ -1,6 +1,8 @@
 defmodule CodeMySpecWeb.IntakeLive.PlanTest do
   use CodeMySpecTest.ConnCase, async: true
 
+  import CodeMySpecSpex.IntakeSteps
+
   import Phoenix.LiveViewTest
 
   alias CodeMySpec.Intake
@@ -16,15 +18,14 @@ defmodule CodeMySpecWeb.IntakeLive.PlanTest do
         |> form("form[phx-submit=describe]", %{description: "a booking tool for hair salons"})
         |> render_submit()
 
+      # One question, not both: the shaping questions are a conversation now,
+      # and this assertion used to pass only because they arrived as a form.
       assert html =~ "Will people need to sign in to use this?"
-      assert html =~ "separate businesses each use their own copy"
+      refute html =~ "separate businesses each use their own copy"
 
       html =
         view
-        |> form("form[phx-submit=answer]", %{
-          plan: %{needs_sign_in: "true", separate_copies: "true", who_uses: "salon owners"}
-        })
-        |> render_submit()
+        |> answer_shaping_questions(["yes", "yes", "salon owners"])
 
       assert html =~ "Here&#39;s what I think you&#39;re building."
       assert html =~ "salon owners"
@@ -39,10 +40,7 @@ defmodule CodeMySpecWeb.IntakeLive.PlanTest do
 
       html =
         view
-        |> form("form[phx-submit=answer]", %{
-          plan: %{needs_sign_in: "true", separate_copies: "false", who_uses: "salon owners"}
-        })
-        |> render_submit()
+        |> answer_shaping_questions(["yes", "no", "salon owners"])
 
       assert html =~ "People sign in to use it."
       assert html =~ "Everyone shares the one set of data."
@@ -75,10 +73,7 @@ defmodule CodeMySpecWeb.IntakeLive.PlanTest do
       |> render_submit()
 
       view
-      |> form("form[phx-submit=answer]", %{
-        plan: %{needs_sign_in: "true", separate_copies: "true", who_uses: "salon owners"}
-      })
-      |> render_submit()
+      |> answer_shaping_questions(["yes", "yes", "salon owners"])
 
       # A fresh mount on the same session — as if they closed the tab and came back.
       {:ok, _view, html} = live(conn, ~p"/build")
@@ -110,10 +105,7 @@ defmodule CodeMySpecWeb.IntakeLive.PlanTest do
       |> render_submit()
 
       view
-      |> form("form[phx-submit=answer]", %{
-        plan: %{needs_sign_in: "true", separate_copies: "true", who_uses: "salon owners"}
-      })
-      |> render_submit()
+      |> answer_shaping_questions(["yes", "yes", "salon owners"])
 
       token = get_session(conn, "intake_token")
 

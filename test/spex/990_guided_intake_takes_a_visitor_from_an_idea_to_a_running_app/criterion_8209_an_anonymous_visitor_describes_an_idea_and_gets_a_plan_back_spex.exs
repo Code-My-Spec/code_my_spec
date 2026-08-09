@@ -16,6 +16,8 @@ defmodule CodeMySpecSpex.Story990.Criterion8209Spex do
 
   use CodeMySpecSpex.Case
 
+  import CodeMySpecSpex.IntakeSteps
+
   @endpoint CodeMySpecWeb.Endpoint
 
   @description "a booking tool for hair salons, so owners can see their week"
@@ -42,10 +44,7 @@ defmodule CodeMySpecSpex.Story990.Criterion8209Spex do
 
         html =
           context.view
-          |> form("form[phx-submit=answer]", %{
-            plan: %{needs_sign_in: "true", separate_copies: "true", who_uses: "salon owners"}
-          })
-          |> render_submit()
+          |> answer_shaping_questions(["yes", "yes", "salon owners"])
 
         {:ok, Map.put(context, :html, html)}
       end

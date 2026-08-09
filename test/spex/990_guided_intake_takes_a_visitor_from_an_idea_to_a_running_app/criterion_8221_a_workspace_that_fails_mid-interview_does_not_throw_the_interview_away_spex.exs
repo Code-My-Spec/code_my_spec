@@ -19,6 +19,8 @@ defmodule CodeMySpecSpex.Story990.Criterion8221Spex do
 
   use CodeMySpecSpex.Case
 
+  import CodeMySpecSpex.IntakeSteps
+
   @endpoint CodeMySpecWeb.Endpoint
 
   @answer "clients must never see bookings from a different salon"
@@ -53,10 +55,7 @@ defmodule CodeMySpecSpex.Story990.Criterion8221Spex do
         |> render_submit()
 
         view
-        |> form("form[phx-submit=answer]", %{
-          plan: %{needs_sign_in: "true", separate_copies: "true", who_uses: "salon owners"}
-        })
-        |> render_submit()
+        |> answer_shaping_questions(["yes", "yes", "salon owners"])
 
         view
         |> form("form[phx-submit=confirm_names]", %{

@@ -14,7 +14,7 @@ defmodule CodeMySpec.Intake do
 
   alias CodeMySpec.Accounts
   alias CodeMySpec.Accounts.Account
-  alias CodeMySpec.Intake.{Plan, Planner, PlansRepository}
+  alias CodeMySpec.Intake.{Plan, Planner, PlansRepository, Questions}
   alias CodeMySpec.Projects
   alias CodeMySpec.Users.Scope
 
@@ -59,6 +59,39 @@ defmodule CodeMySpec.Intake do
     plan
     |> Plan.answers_changeset(attrs)
     |> PlansRepository.update()
+  end
+
+  @doc "The shaping question this plan still owes an answer to, or nil."
+  @spec next_question(Plan.t()) :: map() | nil
+  def next_question(%Plan{} = plan), do: Questions.next(plan)
+
+  @doc """
+  Records the answer to whichever question was being asked.
+
+  Takes what the visitor wrote rather than a field name: the question they are
+  answering is the one the plan is still missing, so the caller cannot address
+  the wrong field and the browser cannot claim to answer a question that was
+  never put.
+
+  `:no_question` means every question is already answered — a resubmit, or two
+  tabs racing the same plan.
+  """
+  @spec answer_question(Plan.t(), String.t()) ::
+          {:ok, Plan.t()} | {:error, :no_question | :unclear | Ecto.Changeset.t()}
+  def answer_question(%Plan{} = plan, written) do
+    with %{} = question <- Questions.next(plan) || {:error, :no_question},
+         {:ok, value} <- cast_or_unclear(question, written) do
+      plan
+      |> Plan.answer_changeset(question.field, value)
+      |> PlansRepository.update()
+    end
+  end
+
+  defp cast_or_unclear(question, written) do
+    case Questions.cast_answer(question, written) do
+      {:ok, value} -> {:ok, value}
+      :error -> {:error, :unclear}
+    end
   end
 
   @doc """

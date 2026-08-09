@@ -21,6 +21,9 @@ defmodule CodeMySpecSpex.Story990.Criterion8211Spex do
 
   spex "The plan states every inference rather than applying it silently" do
     scenario "The plan names its own guesses back to the visitor" do
+      # Answered one at a time, because that is how they are asked. Submitting
+      # the three at once was this spec agreeing with a form that should never
+      # have existed.
       given_ "a visitor who has answered the shaping questions", context do
         {:ok, view, _html} = live(build_conn(), "/build")
 
@@ -28,12 +31,7 @@ defmodule CodeMySpecSpex.Story990.Criterion8211Spex do
         |> form("form[phx-submit=describe]", %{description: "a booking tool for hair salons"})
         |> render_submit()
 
-        html =
-          view
-          |> form("form[phx-submit=answer]", %{
-            plan: %{needs_sign_in: "true", separate_copies: "false", who_uses: "salon owners"}
-          })
-          |> render_submit()
+        html = answer_until_planned(view, ["yes", "no", "salon owners"])
 
         {:ok, Map.merge(context, %{view: view, html: html})}
       end
@@ -64,6 +62,32 @@ defmodule CodeMySpecSpex.Story990.Criterion8211Spex do
 
         {:ok, context}
       end
+
+      # The half that was missing. The names were always editable; what the
+      # plan concluded about sign-in and separate copies was prose the visitor
+      # could only read — and those two decide which generators run, so they
+      # are the inferences most worth being wrong about.
+      then_ "the conclusions that pick the generators can be corrected too", context do
+        assert has_element?(context.view, "[name='plan[needs_sign_in]']"),
+               "expected the sign-in conclusion to be correctable, not stated as prose"
+
+        assert has_element?(context.view, "[name='plan[separate_copies]']"),
+               "expected the separate-copies conclusion to be correctable, not stated as prose"
+
+        {:ok, context}
+      end
     end
+  end
+
+  # Answers the current question until the plan appears, one turn at a time.
+  # Stops at the cap so a spec never spins on an interview that will not end.
+  defp answer_until_planned(view, answers) do
+    Enum.reduce_while(answers, render(view), fn answer, _html ->
+      if has_element?(view, "form[phx-submit=answer]") do
+        {:cont, view |> form("form[phx-submit=answer]", %{answer: answer}) |> render_submit()}
+      else
+        {:halt, render(view)}
+      end
+    end)
   end
 end

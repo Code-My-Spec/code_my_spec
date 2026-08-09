@@ -17,6 +17,8 @@ defmodule CodeMySpecSpex.Story990.Criterion8216Spex do
 
   use CodeMySpecSpex.Case
 
+  import CodeMySpecSpex.IntakeSteps
+
   alias CodeMySpecTest.FakeWorkspaceRunner
 
   @endpoint CodeMySpecWeb.Endpoint
@@ -57,10 +59,7 @@ defmodule CodeMySpecSpex.Story990.Criterion8216Spex do
         |> render_submit()
 
         view
-        |> form("form[phx-submit=answer]", %{
-          plan: %{needs_sign_in: "true", separate_copies: "true", who_uses: "salon owners"}
-        })
-        |> render_submit()
+        |> answer_shaping_questions(["yes", "yes", "salon owners"])
 
         # Follow where the app actually sends them, rather than navigating to
         # the destination ourselves. Asserting the destination works says
