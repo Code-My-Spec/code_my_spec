@@ -94,7 +94,7 @@ defmodule CodeMySpecSpex.Story998.Criterion8297Spex do
       end
 
       when_ "someone who does not know what a DNS record is opens the page", context do
-        {:ok, view, _html} = live(context.conn, ~p"/app/resources")
+        {:ok, view, _html} = live(context.conn, "/app/resources")
 
         {:ok, context |> Map.put(:document, Floki.parse_document!(render_async(view)))}
       end

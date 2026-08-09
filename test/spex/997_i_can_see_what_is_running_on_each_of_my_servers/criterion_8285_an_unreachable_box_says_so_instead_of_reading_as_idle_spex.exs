@@ -28,7 +28,7 @@ defmodule CodeMySpecSpex.Story997.Criterion8285Spex do
         # running on this box, we simply cannot see them.
         context = stage_servers(context, [provider_server(%{name: "web-1"})])
 
-        {:ok, view, _html} = live(context.conn, ~p"/app/servers")
+        {:ok, view, _html} = live(context.conn, "/app/servers")
 
         view
         |> element("[data-test='link-server'][phx-value-name='web-1']")
@@ -40,7 +40,7 @@ defmodule CodeMySpecSpex.Story997.Criterion8285Spex do
       when_ "the box has stopped accepting SSH", context do
         context = stage_containers(context, {:error, :unreachable})
 
-        {:ok, view, _html} = live(context.conn, ~p"/app/servers/web-1")
+        {:ok, view, _html} = live(context.conn, "/app/servers/web-1")
 
         {:ok, Map.put(context, :html, render_async(view))}
       end

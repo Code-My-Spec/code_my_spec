@@ -26,7 +26,7 @@ defmodule CodeMySpecSpex.Story994.Criterion8261Spex do
       given_ "Sam linked a server while working on one project", context do
         context = stage_servers(context, [provider_server(%{name: "shared-box"})])
 
-        {:ok, view, _html} = live(context.conn, ~p"/app/servers")
+        {:ok, view, _html} = live(context.conn, "/app/servers")
 
         view
         |> element("[data-test='link-server'][phx-value-name='shared-box']")
@@ -36,7 +36,7 @@ defmodule CodeMySpecSpex.Story994.Criterion8261Spex do
       end
 
       given_ "and he also owns a second project in the same account", context do
-        {:ok, form, _html} = live(context.conn, ~p"/app/projects/new")
+        {:ok, form, _html} = live(context.conn, "/app/projects/new")
 
         form
         |> form("[data-test='project-form']", project: %{name: "second-project-994"})
@@ -46,7 +46,7 @@ defmodule CodeMySpecSpex.Story994.Criterion8261Spex do
       end
 
       when_ "he opens the servers screen from that other project", context do
-        {:ok, _view, html} = live(context.conn, ~p"/app/servers")
+        {:ok, _view, html} = live(context.conn, "/app/servers")
 
         {:ok, Map.put(context, :html, html)}
       end

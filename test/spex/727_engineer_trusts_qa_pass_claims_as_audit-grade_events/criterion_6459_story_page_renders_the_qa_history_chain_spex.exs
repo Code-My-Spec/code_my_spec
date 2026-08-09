@@ -61,7 +61,7 @@ defmodule CodeMySpecSpex.Story727.Criterion6459Spex do
 
       when_ "the engineer navigates to the local story page", context do
         {:ok, view, html} =
-          live(context.conn, ~p"/app/projects/#{context.project.id}/stories/#{context.story.id}")
+          live(context.conn, "/app/projects/#{context.project.id}/stories/#{context.story.id}")
 
         {:ok, context |> Map.put(:view, view) |> Map.put(:html, html)}
       end

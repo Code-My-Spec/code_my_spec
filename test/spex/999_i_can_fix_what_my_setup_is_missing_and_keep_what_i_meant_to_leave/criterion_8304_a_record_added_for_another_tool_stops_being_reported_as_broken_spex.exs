@@ -72,7 +72,7 @@ defmodule CodeMySpecSpex.Story999.Criterion8304Spex do
             storage: []
           })
 
-        {:ok, view, _html} = live(context.conn, ~p"/app/resources")
+        {:ok, view, _html} = live(context.conn, "/app/resources")
         html = render_async(view, 5_000)
 
         assert html

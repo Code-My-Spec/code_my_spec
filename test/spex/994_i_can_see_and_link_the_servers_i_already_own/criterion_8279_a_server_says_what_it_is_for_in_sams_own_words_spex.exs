@@ -41,7 +41,7 @@ defmodule CodeMySpecSpex.Story994.Criterion8279Spex do
             provider_server(%{name: "box-b", size: "cpx11", status: "running"})
           ])
 
-        {:ok, view, _html} = live(context.conn, ~p"/app/servers")
+        {:ok, view, _html} = live(context.conn, "/app/servers")
 
         for name <- ["box-a", "box-b"] do
           view
@@ -98,7 +98,7 @@ defmodule CodeMySpecSpex.Story994.Criterion8279Spex do
       given_ "a linked server and a purpose that is not prod or uat", context do
         context = stage_servers(context, [provider_server(%{name: "story-box"})])
 
-        {:ok, view, html} = live(context.conn, ~p"/app/servers")
+        {:ok, view, html} = live(context.conn, "/app/servers")
 
         link_server(view, html, "story-box")
         open_edit(view, "story-box")
@@ -168,7 +168,7 @@ defmodule CodeMySpecSpex.Story994.Criterion8279Spex do
       given_ "a linked server Sam has never labelled", context do
         context = stage_servers(context, [provider_server(%{name: "unclaimed"})])
 
-        {:ok, view, html} = live(context.conn, ~p"/app/servers")
+        {:ok, view, html} = live(context.conn, "/app/servers")
 
         link_server(view, html, "unclaimed")
 
@@ -176,7 +176,7 @@ defmodule CodeMySpecSpex.Story994.Criterion8279Spex do
       end
 
       when_ "he looks at the screen", context do
-        {:ok, _view, html} = live(context.conn, ~p"/app/servers")
+        {:ok, _view, html} = live(context.conn, "/app/servers")
 
         {:ok, Map.put(context, :html, html)}
       end

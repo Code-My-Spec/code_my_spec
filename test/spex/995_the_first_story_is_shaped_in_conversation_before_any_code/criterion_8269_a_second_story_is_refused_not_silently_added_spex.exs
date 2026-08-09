@@ -53,7 +53,7 @@ defmodule CodeMySpecSpex.Story995.Criterion8269Spex do
   spex "The conversation refuses to create more than one story" do
     scenario "A second story is refused, not silently added" do
       given_ "the conversation has already created Sam's story", context do
-        {:ok, chat, _html} = live(context.conn, ~p"/app/projects/#{context.project.id}/chat")
+        {:ok, chat, _html} = live(context.conn, "/app/projects/#{context.project.id}/chat")
 
         {:ok, Map.put(context, :chat, chat)}
       end
@@ -79,7 +79,7 @@ defmodule CodeMySpecSpex.Story995.Criterion8269Spex do
 
       then_ "Sam still has exactly one story", context do
         {:ok, _stories_live, html} =
-          live(context.conn, ~p"/app/projects/#{context.project.id}/stories")
+          live(context.conn, "/app/projects/#{context.project.id}/stories")
 
         # Counted through the page, not the database: a then_ observes the
         # public surface. Story cards are the stream children of #stories —

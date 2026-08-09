@@ -67,7 +67,7 @@ defmodule CodeMySpecSpex.Story983.Criterion8162Spex do
         :ok = Environments.write_file(context.environment, @spex_path, rewritten_spex())
 
         {:ok, sync_live, _html} =
-          live(context.conn, ~p"/app/projects/#{context.project.id}/files")
+          live(context.conn, "/app/projects/#{context.project.id}/files")
 
         sync_live |> element("button[phx-click='sync']") |> render_click()
 

@@ -32,7 +32,7 @@ defmodule CodeMySpecSpex.Story711.Criterion6254Spex do
 
       when_ "the engineer opens the CliConfig per-step page", context do
         {:ok, _view, html} =
-          live(context.conn, ~p"/app/projects/#{context.project.id}/init/cli_config")
+          live(context.conn, "/app/projects/#{context.project.id}/init/cli_config")
 
         {:ok, Map.put(context, :html, html)}
       end

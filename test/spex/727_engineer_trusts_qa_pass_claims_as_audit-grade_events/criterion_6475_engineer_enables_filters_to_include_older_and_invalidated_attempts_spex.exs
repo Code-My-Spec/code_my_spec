@@ -71,7 +71,7 @@ defmodule CodeMySpecSpex.Story727.Criterion6475Spex do
         refute newer_resp.isError
 
         {:ok, view, html} =
-          live(context.conn, ~p"/app/projects/#{context.project.id}/qa")
+          live(context.conn, "/app/projects/#{context.project.id}/qa")
 
         # Sanity-check the default view: only the newer attempt is visible.
         assert html =~ "newer-attempt", "default view should anchor on the newer pass"

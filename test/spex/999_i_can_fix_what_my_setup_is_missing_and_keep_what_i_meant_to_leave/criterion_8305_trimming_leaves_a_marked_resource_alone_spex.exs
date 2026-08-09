@@ -85,7 +85,7 @@ defmodule CodeMySpecSpex.Story999.Criterion8305Spex do
         # delete anything real to say so, and the message is the evidence.
         context = stage_trim(context, fn resource -> send(owner, {:trimmed, resource.location}) end)
 
-        {:ok, view, _html} = live(context.conn, ~p"/app/resources")
+        {:ok, view, _html} = live(context.conn, "/app/resources")
         render_async(view, 5_000)
 
         {:ok, Map.put(context, :view, view)}

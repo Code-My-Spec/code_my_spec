@@ -30,7 +30,7 @@ defmodule CodeMySpecSpex.Story994.Criterion8263Spex do
             Enum.map(1..5, &provider_server(%{name: "box-#{&1}"}))
           )
 
-        {:ok, view, _html} = live(context.conn, ~p"/app/servers")
+        {:ok, view, _html} = live(context.conn, "/app/servers")
 
         for name <- ["box-1", "box-2"] do
           view
@@ -42,7 +42,7 @@ defmodule CodeMySpecSpex.Story994.Criterion8263Spex do
       end
 
       when_ "he opens the servers screen", context do
-        {:ok, view, html} = live(context.conn, ~p"/app/servers")
+        {:ok, view, html} = live(context.conn, "/app/servers")
 
         {:ok, context |> Map.put(:view, view) |> Map.put(:html, html)}
       end

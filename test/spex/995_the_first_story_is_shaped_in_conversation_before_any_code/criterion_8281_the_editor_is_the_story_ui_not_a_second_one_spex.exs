@@ -43,7 +43,7 @@ defmodule CodeMySpecSpex.Story995.Criterion8281Spex do
   spex "The conversation renders the real story editor" do
     scenario "The editor is the story UI, not a second one" do
       given_ "the conversation has created Sam's story and rendered it for him", context do
-        {:ok, chat, _html} = live(context.conn, ~p"/app/projects/#{context.project.id}/chat")
+        {:ok, chat, _html} = live(context.conn, "/app/projects/#{context.project.id}/chat")
 
         chat
         |> form("[data-test='chat-compose']", %{message: "A booking tool for hair salons."})
@@ -71,7 +71,7 @@ defmodule CodeMySpecSpex.Story995.Criterion8281Spex do
         |> render_submit()
 
         {:ok, _stories_live, html} =
-          live(context.conn, ~p"/app/projects/#{context.project.id}/stories")
+          live(context.conn, "/app/projects/#{context.project.id}/stories")
 
         assert html =~ "Calendar of bookings for today",
                "expected the edit made in the conversation to be the story the page shows"

@@ -31,7 +31,7 @@ defmodule CodeMySpecSpex.Story994.Criterion8259Spex do
       end
 
       when_ "the provider cannot be reached or the credential is refused", context do
-        {:ok, _view, html} = live(context.conn, ~p"/app/servers")
+        {:ok, _view, html} = live(context.conn, "/app/servers")
 
         {:ok, Map.put(context, :html, html)}
       end
@@ -64,7 +64,7 @@ defmodule CodeMySpecSpex.Story994.Criterion8259Spex do
       given_ "Sam has linked one of his servers", context do
         context = stage_servers(context, [provider_server(%{name: "linked-box"})])
 
-        {:ok, view, _html} = live(context.conn, ~p"/app/servers")
+        {:ok, view, _html} = live(context.conn, "/app/servers")
 
         view
         |> element("[data-test='link-server'][phx-value-name='linked-box']")
@@ -80,7 +80,7 @@ defmodule CodeMySpecSpex.Story994.Criterion8259Spex do
         # ever consulted.
         context = stage_servers(context, {:error, :unauthorized})
 
-        {:ok, _view, html} = live(context.conn, ~p"/app/servers")
+        {:ok, _view, html} = live(context.conn, "/app/servers")
 
         {:ok, Map.put(context, :html, html)}
       end

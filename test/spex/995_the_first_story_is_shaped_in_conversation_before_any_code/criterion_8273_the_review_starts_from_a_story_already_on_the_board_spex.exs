@@ -42,7 +42,7 @@ defmodule CodeMySpecSpex.Story995.Criterion8273Spex do
   spex "The review follows the story rather than replacing it" do
     scenario "The review starts from a story already on the board" do
       given_ "the conversation has created Sam's story", context do
-        {:ok, chat, _html} = live(context.conn, ~p"/app/projects/#{context.project.id}/chat")
+        {:ok, chat, _html} = live(context.conn, "/app/projects/#{context.project.id}/chat")
 
         chat
         |> form("[data-test='chat-compose']", %{message: "A booking tool for hair salons."})

@@ -25,7 +25,7 @@ defmodule CodeMySpecSpex.Story994.Criterion8258Spex do
       given_ "a linked server CodeMySpec recorded at one size", context do
         context = stage_servers(context, [provider_server(%{name: "worker", size: "cpx11"})])
 
-        {:ok, _view, html} = live(context.conn, ~p"/app/servers")
+        {:ok, _view, html} = live(context.conn, "/app/servers")
 
         assert html
                |> Floki.parse_document!()
@@ -41,7 +41,7 @@ defmodule CodeMySpecSpex.Story994.Criterion8258Spex do
         # CodeMySpec; that is the point.
         context = stage_servers(context, [provider_server(%{name: "worker", size: "cpx31"})])
 
-        {:ok, _view, html} = live(context.conn, ~p"/app/servers")
+        {:ok, _view, html} = live(context.conn, "/app/servers")
 
         {:ok, Map.put(context, :html, html)}
       end

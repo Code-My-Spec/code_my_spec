@@ -48,7 +48,7 @@ defmodule CodeMySpecSpex.Story995.Criterion8275Spex do
   spex "A runaway conversation is stopped and says so" do
     scenario "A model that will not stop is stopped" do
       given_ "the model keeps calling tools without concluding", context do
-        {:ok, chat, _html} = live(context.conn, ~p"/app/projects/#{context.project.id}/chat")
+        {:ok, chat, _html} = live(context.conn, "/app/projects/#{context.project.id}/chat")
 
         {:ok, Map.put(context, :chat, chat)}
       end

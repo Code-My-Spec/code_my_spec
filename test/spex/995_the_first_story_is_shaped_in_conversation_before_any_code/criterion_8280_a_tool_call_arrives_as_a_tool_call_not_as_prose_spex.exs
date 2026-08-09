@@ -45,7 +45,7 @@ defmodule CodeMySpecSpex.Story995.Criterion8280Spex do
   spex "A tool call survives the trip with its shape intact" do
     scenario "A tool call arrives as a tool call, not as prose" do
       given_ "the model calls a story tool during the conversation", context do
-        {:ok, chat, _html} = live(context.conn, ~p"/app/projects/#{context.project.id}/chat")
+        {:ok, chat, _html} = live(context.conn, "/app/projects/#{context.project.id}/chat")
 
         {:ok, Map.put(context, :chat, chat)}
       end

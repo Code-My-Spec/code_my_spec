@@ -36,7 +36,7 @@ defmodule CodeMySpecSpex.Story994.Criterion8265Spex do
             end
           )
 
-        {:ok, view, _html} = live(context.conn, ~p"/app/servers")
+        {:ok, view, _html} = live(context.conn, "/app/servers")
 
         {:ok, Map.put(context, :view, view)}
       end

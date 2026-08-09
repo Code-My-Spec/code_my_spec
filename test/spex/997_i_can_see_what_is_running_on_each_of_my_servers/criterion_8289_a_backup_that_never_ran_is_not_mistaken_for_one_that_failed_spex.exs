@@ -82,7 +82,7 @@ defmodule CodeMySpecSpex.Story997.Criterion8289Spex do
       given_ "and the box is linked to his account", context do
         context = stage_servers(context, [provider_server(%{name: "uat-box"})])
 
-        {:ok, view, _html} = live(context.conn, ~p"/app/servers")
+        {:ok, view, _html} = live(context.conn, "/app/servers")
 
         view
         |> element("[data-test='link-server'][phx-value-name='uat-box']")
@@ -94,7 +94,7 @@ defmodule CodeMySpecSpex.Story997.Criterion8289Spex do
       when_ "he opens that server", context do
         context = stage_containers(context, [])
 
-        {:ok, _view, html} = live(context.conn, ~p"/app/servers/uat-box")
+        {:ok, _view, html} = live(context.conn, "/app/servers/uat-box")
 
         {:ok, context |> Map.put(:html, html) |> Map.put(:document, Floki.parse_document!(html))}
       end

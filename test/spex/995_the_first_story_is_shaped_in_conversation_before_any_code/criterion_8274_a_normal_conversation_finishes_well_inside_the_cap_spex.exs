@@ -43,7 +43,7 @@ defmodule CodeMySpecSpex.Story995.Criterion8274Spex do
   spex "An ordinary conversation is nowhere near the limit" do
     scenario "A normal conversation finishes well inside the cap" do
       given_ "the conversation is running", context do
-        {:ok, chat, _html} = live(context.conn, ~p"/app/projects/#{context.project.id}/chat")
+        {:ok, chat, _html} = live(context.conn, "/app/projects/#{context.project.id}/chat")
 
         {:ok, Map.put(context, :chat, chat)}
       end

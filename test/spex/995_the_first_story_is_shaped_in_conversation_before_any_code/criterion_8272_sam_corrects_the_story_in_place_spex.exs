@@ -42,7 +42,7 @@ defmodule CodeMySpecSpex.Story995.Criterion8272Spex do
   spex "Sam can correct what the model wrote" do
     scenario "Sam corrects the story in place" do
       given_ "the conversation has created Sam's story and shown it to him", context do
-        {:ok, chat, _html} = live(context.conn, ~p"/app/projects/#{context.project.id}/chat")
+        {:ok, chat, _html} = live(context.conn, "/app/projects/#{context.project.id}/chat")
 
         chat
         |> form("[data-test='chat-compose']", %{message: "A booking tool for hair salons."})
@@ -65,7 +65,7 @@ defmodule CodeMySpecSpex.Story995.Criterion8272Spex do
 
       then_ "the change is saved to that story", context do
         {:ok, _stories_live, html} =
-          live(context.conn, ~p"/app/projects/#{context.project.id}/stories")
+          live(context.conn, "/app/projects/#{context.project.id}/stories")
 
         assert html =~ "Bookings for today show up on a calendar",
                "expected Sam's correction to be the story that was saved, got: #{html}"

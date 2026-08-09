@@ -59,7 +59,7 @@ defmodule CodeMySpecSpex.Story958.Criterion7942Spex do
 
       when_ "the user marks it ready for development", context do
         {:ok, index_live, _html} =
-          live(context.conn, ~p"/app/projects/#{context.project.id}/stories")
+          live(context.conn, "/app/projects/#{context.project.id}/stories")
 
         html =
           index_live

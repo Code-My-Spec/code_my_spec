@@ -59,7 +59,7 @@ defmodule CodeMySpecSpex.Story983.Criterion8170Spex do
         :ok = Environments.write_file(context.environment, @spex_path, failing_spex())
 
         {:ok, index_live, html} =
-          live(context.conn, ~p"/app/projects/#{context.project.id}/stories")
+          live(context.conn, "/app/projects/#{context.project.id}/stories")
 
         assert html =~ "data-test=\"story-specs-not-ready\"",
                "expected the story to start without the specs-ready latch, got: #{html}"

@@ -27,7 +27,7 @@ defmodule CodeMySpecSpex.Story994.Criterion8262Spex do
       given_ "Sam linked a server", context do
         context = stage_servers(context, [provider_server(%{name: "doomed-box"})])
 
-        {:ok, view, _html} = live(context.conn, ~p"/app/servers")
+        {:ok, view, _html} = live(context.conn, "/app/servers")
 
         view
         |> element("[data-test='link-server'][phx-value-name='doomed-box']")
@@ -40,7 +40,7 @@ defmodule CodeMySpecSpex.Story994.Criterion8262Spex do
         # The provider no longer reports it at all.
         context = stage_servers(context, [])
 
-        {:ok, _view, html} = live(context.conn, ~p"/app/servers")
+        {:ok, _view, html} = live(context.conn, "/app/servers")
 
         {:ok, Map.put(context, :html, html)}
       end

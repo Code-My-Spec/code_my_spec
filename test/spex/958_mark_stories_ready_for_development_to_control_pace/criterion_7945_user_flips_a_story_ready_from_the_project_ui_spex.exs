@@ -34,7 +34,7 @@ defmodule CodeMySpecSpex.Story958.Criterion7945Spex do
         refute response.isError, "expected create_story to succeed"
 
         {:ok, index_live, html} =
-          live(context.conn, ~p"/app/projects/#{context.project.id}/stories")
+          live(context.conn, "/app/projects/#{context.project.id}/stories")
 
         assert html =~ "data-test=\"story-not-ready\"",
                "expected the story to start parked, got: #{html}"
@@ -53,7 +53,7 @@ defmodule CodeMySpecSpex.Story958.Criterion7945Spex do
 
       then_ "the story is ready for development", context do
         {:ok, _index_live, html} =
-          live(context.conn, ~p"/app/projects/#{context.project.id}/stories")
+          live(context.conn, "/app/projects/#{context.project.id}/stories")
 
         # Anchor: the story is still on the page, so the marker assertions
         # below are about the flag rather than a missing row.

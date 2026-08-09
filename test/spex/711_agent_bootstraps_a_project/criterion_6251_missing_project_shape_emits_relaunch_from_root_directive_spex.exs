@@ -35,7 +35,7 @@ defmodule CodeMySpecSpex.Story711.Criterion6251Spex do
         {:ok, view, html} =
           live(
             context.conn,
-            ~p"/app/projects/#{context.project.id}/init/phoenix_project"
+            "/app/projects/#{context.project.id}/init/phoenix_project"
           )
 
         {:ok, Map.merge(context, %{view: view, html: html})}

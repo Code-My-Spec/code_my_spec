@@ -29,7 +29,7 @@ defmodule CodeMySpecSpex.Story701.Criterion6062Spex do
   spex "Per-project ladder renders on /projects/:p when there are no stories" do
     scenario "Project with no stories shows the per-project ladder on its home page" do
       given_ "the user has a project with a local_path and zero stories", context do
-        {:ok, view, _html} = live(context.conn, ~p"/app/projects/#{context.project.id}")
+        {:ok, view, _html} = live(context.conn, "/app/projects/#{context.project.id}")
         {:ok, Map.put(context, :view, view)}
       end
 

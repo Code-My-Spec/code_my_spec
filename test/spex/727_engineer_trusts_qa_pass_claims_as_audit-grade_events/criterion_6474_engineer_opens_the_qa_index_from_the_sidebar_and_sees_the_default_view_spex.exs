@@ -112,7 +112,7 @@ defmodule CodeMySpecSpex.Story727.Criterion6474Spex do
 
       when_ "the engineer navigates to the project-wide QA index", context do
         {:ok, view, html} =
-          live(context.conn, ~p"/app/projects/#{context.project.id}/qa")
+          live(context.conn, "/app/projects/#{context.project.id}/qa")
 
         {:ok, context |> Map.put(:view, view) |> Map.put(:html, html)}
       end
@@ -149,7 +149,7 @@ defmodule CodeMySpecSpex.Story727.Criterion6474Spex do
         assert context.html =~ ~r/pass/i, "expected status pass rendered"
         assert context.html =~ ~r/\d{4}-\d{2}-\d{2}/, "expected an ISO timestamp"
 
-        story_b_path = ~p"/app/projects/#{context.project.id}/stories/#{context.story_b.id}"
+        story_b_path = "/app/projects/#{context.project.id}/stories/#{context.story_b.id}"
 
         assert context.html =~ story_b_path,
                "expected the row to link to the story's page"

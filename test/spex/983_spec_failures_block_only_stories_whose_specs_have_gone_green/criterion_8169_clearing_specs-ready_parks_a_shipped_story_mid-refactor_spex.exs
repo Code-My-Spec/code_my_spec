@@ -103,7 +103,7 @@ defmodule CodeMySpecSpex.Story983.Criterion8169Spex do
 
       when_ "the user clears specs-ready from the project UI", context do
         {:ok, index_live, html} =
-          live(context.conn, ~p"/app/projects/#{context.project.id}/stories")
+          live(context.conn, "/app/projects/#{context.project.id}/stories")
 
         assert html =~ "data-test=\"story-specs-ready\"",
                "expected the shipped story to show the specs-ready marker, got: #{html}"

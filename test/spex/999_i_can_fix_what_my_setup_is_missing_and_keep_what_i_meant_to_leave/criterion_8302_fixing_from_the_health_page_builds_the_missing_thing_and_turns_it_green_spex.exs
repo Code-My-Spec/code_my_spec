@@ -65,7 +65,7 @@ defmodule CodeMySpecSpex.Story999.Criterion8302Spex do
       given_ "and the health page reports the account unhealthy because of it", context do
         context = stage_inventory(context, %{hetzner: [], cloudflare: [], resend: [], storage: []})
 
-        {:ok, view, _html} = live(context.conn, ~p"/app/resources")
+        {:ok, view, _html} = live(context.conn, "/app/resources")
         html = render_async(view, 5_000)
 
         assert html

@@ -39,7 +39,7 @@ defmodule CodeMySpecSpex.Story998.Criterion8291Spex do
       end
 
       when_ "he opens the resources page", context do
-        {:ok, view, _html} = live(context.conn, ~p"/app/resources")
+        {:ok, view, _html} = live(context.conn, "/app/resources")
 
         {:ok, context |> Map.put(:view, view) |> Map.put(:html, render_async(view))}
       end

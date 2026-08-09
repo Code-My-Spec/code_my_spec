@@ -49,7 +49,7 @@ defmodule CodeMySpecSpex.Story958.Criterion7943Spex do
         refute response.isError, "expected create_story to succeed"
 
         {:ok, index_live, _html} =
-          live(context.conn, ~p"/app/projects/#{context.project.id}/stories")
+          live(context.conn, "/app/projects/#{context.project.id}/stories")
 
         index_live
         |> element("[data-test='toggle-story-ready']")
@@ -75,7 +75,7 @@ defmodule CodeMySpecSpex.Story958.Criterion7943Spex do
 
       when_ "the user marks it not ready for development", context do
         {:ok, index_live, _html} =
-          live(context.conn, ~p"/app/projects/#{context.project.id}/stories")
+          live(context.conn, "/app/projects/#{context.project.id}/stories")
 
         html =
           index_live

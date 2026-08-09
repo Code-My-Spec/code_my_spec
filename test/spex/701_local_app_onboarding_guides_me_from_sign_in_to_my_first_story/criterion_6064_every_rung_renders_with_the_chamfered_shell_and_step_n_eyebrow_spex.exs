@@ -26,7 +26,7 @@ defmodule CodeMySpecSpex.Story701.Criterion6064Spex do
   spex "Every rung renders with the shared shell and a step-N eyebrow" do
     scenario "Every rung renders with the chamfered shell and step-N eyebrow" do
       given_ "the user is on /projects/:p with the per-project ladder active", context do
-        {:ok, view, _html} = live(context.conn, ~p"/app/projects/#{context.project.id}")
+        {:ok, view, _html} = live(context.conn, "/app/projects/#{context.project.id}")
         {:ok, Map.put(context, :view, view)}
       end
 

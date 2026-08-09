@@ -45,7 +45,7 @@ defmodule CodeMySpecSpex.Story995.Criterion8271Spex do
   spex "The work is visible while it happens" do
     scenario "Tool calls appear as the model makes them" do
       given_ "the conversation is running", context do
-        {:ok, chat, _html} = live(context.conn, ~p"/app/projects/#{context.project.id}/chat")
+        {:ok, chat, _html} = live(context.conn, "/app/projects/#{context.project.id}/chat")
 
         {:ok, Map.put(context, :chat, chat)}
       end

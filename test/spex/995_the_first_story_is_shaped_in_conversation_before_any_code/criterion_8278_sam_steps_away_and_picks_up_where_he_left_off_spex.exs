@@ -42,7 +42,7 @@ defmodule CodeMySpecSpex.Story995.Criterion8278Spex do
   spex "The conversation is durable, not a page's memory" do
     scenario "Sam steps away and picks up where he left off" do
       given_ "Sam has answered some of the questions", context do
-        {:ok, chat, _html} = live(context.conn, ~p"/app/projects/#{context.project.id}/chat")
+        {:ok, chat, _html} = live(context.conn, "/app/projects/#{context.project.id}/chat")
 
         chat
         |> form("[data-test='chat-compose']", %{message: "A booking tool for hair salons."})
@@ -53,7 +53,7 @@ defmodule CodeMySpecSpex.Story995.Criterion8278Spex do
 
       when_ "he closes the tab and comes back", context do
         {:ok, returned, html} =
-          live(context.conn, ~p"/app/projects/#{context.project.id}/chat")
+          live(context.conn, "/app/projects/#{context.project.id}/chat")
 
         {:ok, Map.merge(context, %{returned: returned, html: html})}
       end

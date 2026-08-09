@@ -36,7 +36,7 @@ defmodule CodeMySpecSpex.Story701.Criterion6065Spex do
   spex "Active rung is the first incomplete in order" do
     scenario "Active rung is the first incomplete in order (per-project ladder)" do
       given_ "init has been run but project setup has not", context do
-        {:ok, view, _html} = live(context.conn, ~p"/app/projects/#{context.project.id}")
+        {:ok, view, _html} = live(context.conn, "/app/projects/#{context.project.id}")
         {:ok, Map.put(context, :view, view)}
       end
 

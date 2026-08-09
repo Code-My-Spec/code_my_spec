@@ -49,7 +49,7 @@ defmodule CodeMySpecSpex.Story995.Criterion8268Spex do
   spex "The conversation turns answers into a story" do
     scenario "Four answers become one story" do
       given_ "Sam has just signed up and his project exists", context do
-        {:ok, chat, _html} = live(context.conn, ~p"/app/projects/#{context.project.id}/chat")
+        {:ok, chat, _html} = live(context.conn, "/app/projects/#{context.project.id}/chat")
 
         {:ok, Map.put(context, :chat, chat)}
       end

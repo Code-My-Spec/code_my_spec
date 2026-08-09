@@ -43,7 +43,7 @@ defmodule CodeMySpecSpex.Story995.Criterion8277Spex do
   spex "A failed conversation does not cost Sam his answers" do
     scenario "A failure mid-conversation keeps what Sam already said" do
       given_ "Sam has answered some of the questions", context do
-        {:ok, chat, _html} = live(context.conn, ~p"/app/projects/#{context.project.id}/chat")
+        {:ok, chat, _html} = live(context.conn, "/app/projects/#{context.project.id}/chat")
 
         chat
         |> form("[data-test='chat-compose']", %{message: "A booking tool for hair salons."})
@@ -60,7 +60,7 @@ defmodule CodeMySpecSpex.Story995.Criterion8277Spex do
 
       then_ "his answers are still there when he returns", context do
         {:ok, _returned, html} =
-          live(context.conn, ~p"/app/projects/#{context.project.id}/chat")
+          live(context.conn, "/app/projects/#{context.project.id}/chat")
 
         assert html =~ "A booking tool for hair salons.",
                "expected Sam's answer to survive the failure, got: #{html}"
@@ -70,7 +70,7 @@ defmodule CodeMySpecSpex.Story995.Criterion8277Spex do
 
       then_ "the failure says it failed, rather than reading as a stop", context do
         {:ok, returned, _html} =
-          live(context.conn, ~p"/app/projects/#{context.project.id}/chat")
+          live(context.conn, "/app/projects/#{context.project.id}/chat")
 
         assert has_element?(returned, "[data-test='chat-failed']"),
                "expected a failure to be marked as one"
@@ -83,7 +83,7 @@ defmodule CodeMySpecSpex.Story995.Criterion8277Spex do
 
       then_ "he is not asked them again", context do
         {:ok, returned, _html} =
-          live(context.conn, ~p"/app/projects/#{context.project.id}/chat")
+          live(context.conn, "/app/projects/#{context.project.id}/chat")
 
         assert has_element?(returned, "[data-test='message'][data-role='user']"),
                "expected his earlier answer to still be part of the conversation"

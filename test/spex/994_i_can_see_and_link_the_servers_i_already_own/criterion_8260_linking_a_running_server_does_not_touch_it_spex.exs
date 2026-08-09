@@ -38,7 +38,7 @@ defmodule CodeMySpecSpex.Story994.Criterion8260Spex do
       end
 
       when_ "Sam links it", context do
-        {:ok, view, _html} = live(context.conn, ~p"/app/servers")
+        {:ok, view, _html} = live(context.conn, "/app/servers")
 
         html =
           view

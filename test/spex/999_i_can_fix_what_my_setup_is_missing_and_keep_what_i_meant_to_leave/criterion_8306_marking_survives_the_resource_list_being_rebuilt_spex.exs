@@ -64,7 +64,7 @@ defmodule CodeMySpecSpex.Story999.Criterion8306Spex do
       end
 
       given_ "and Sam has marked it as deliberate", context do
-        {:ok, view, _html} = live(context.conn, ~p"/app/resources")
+        {:ok, view, _html} = live(context.conn, "/app/resources")
         render_async(view, 5_000)
 
         view
@@ -77,7 +77,7 @@ defmodule CodeMySpecSpex.Story999.Criterion8306Spex do
       when_ "the page re-reads every provider from scratch", context do
         # A fresh mount. Nothing carries over in the socket, so anything still
         # on the screen came back from storage rather than from memory.
-        {:ok, view, _html} = live(context.conn, ~p"/app/resources")
+        {:ok, view, _html} = live(context.conn, "/app/resources")
 
         {:ok, Map.put(context, :document, Floki.parse_document!(render_async(view, 5_000)))}
       end

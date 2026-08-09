@@ -66,7 +66,7 @@ defmodule CodeMySpecSpex.Story999.Criterion8303Spex do
       end
 
       given_ "and a second project in the same account, also meant to be deployed", context do
-        {:ok, form, _html} = live(context.conn, ~p"/app/projects/new")
+        {:ok, form, _html} = live(context.conn, "/app/projects/new")
 
         form
         |> form("[data-test='project-form']", project: %{name: "second-project-999"})
@@ -84,7 +84,7 @@ defmodule CodeMySpecSpex.Story999.Criterion8303Spex do
       when_ "he fixes everything from the health page", context do
         context = stage_inventory(context, %{hetzner: [], cloudflare: [], resend: [], storage: []})
 
-        {:ok, view, _html} = live(context.conn, ~p"/app/resources")
+        {:ok, view, _html} = live(context.conn, "/app/resources")
         render_async(view, 5_000)
 
         view |> element("[data-test='fix-all']") |> render_click()

@@ -36,7 +36,7 @@ defmodule CodeMySpecSpex.Story994.Criterion8267Spex do
             end
           )
 
-        {:ok, view, _html} = live(context.conn, ~p"/app/servers")
+        {:ok, view, _html} = live(context.conn, "/app/servers")
 
         html =
           view
@@ -99,7 +99,7 @@ defmodule CodeMySpecSpex.Story994.Criterion8267Spex do
       end
 
       when_ "he chooses it in the cheaper location", context do
-        {:ok, view, _html} = live(context.conn, ~p"/app/servers")
+        {:ok, view, _html} = live(context.conn, "/app/servers")
 
         html =
           view

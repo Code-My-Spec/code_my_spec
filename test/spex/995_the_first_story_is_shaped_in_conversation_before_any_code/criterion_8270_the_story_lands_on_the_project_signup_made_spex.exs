@@ -49,7 +49,7 @@ defmodule CodeMySpecSpex.Story995.Criterion8270Spex do
   spex "The story is created on the project signup already made" do
     scenario "The story lands on the project signup made" do
       given_ "Sam signed up through the intake form", context do
-        {:ok, chat, _html} = live(context.conn, ~p"/app/projects/#{context.project.id}/chat")
+        {:ok, chat, _html} = live(context.conn, "/app/projects/#{context.project.id}/chat")
 
         {:ok, Map.put(context, :chat, chat)}
       end
@@ -64,7 +64,7 @@ defmodule CodeMySpecSpex.Story995.Criterion8270Spex do
 
       then_ "the story belongs to the project that signup created", context do
         {:ok, _stories_live, html} =
-          live(context.conn, ~p"/app/projects/#{context.project.id}/stories")
+          live(context.conn, "/app/projects/#{context.project.id}/stories")
 
         assert html =~ "Bookings show up on a calendar",
                "expected the story to appear on the signup project's stories page"

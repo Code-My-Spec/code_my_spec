@@ -82,7 +82,7 @@ defmodule CodeMySpecSpex.Story704.Criterion6092Spex do
         {:ok, view, html} =
           live(
             context.conn,
-            ~p"/app/projects/#{context.project.id}/sessions/#{context.session_db_id}"
+            "/app/projects/#{context.project.id}/sessions/#{context.session_db_id}"
           )
 
         {:ok, Map.merge(context, %{view: view, html: html})}

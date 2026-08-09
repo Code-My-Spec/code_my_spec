@@ -45,7 +45,7 @@ defmodule CodeMySpecSpex.Story995.Criterion8276Spex do
       given_ "a conversation belonging to Sam's project", context do
         other = CodeMySpecSpex.Fixtures.project_fixture(context.scope)
 
-        {:ok, chat, _html} = live(context.conn, ~p"/app/projects/#{context.project.id}/chat")
+        {:ok, chat, _html} = live(context.conn, "/app/projects/#{context.project.id}/chat")
 
         {:ok, Map.merge(context, %{chat: chat, other_project: other})}
       end
@@ -60,7 +60,7 @@ defmodule CodeMySpecSpex.Story995.Criterion8276Spex do
 
       then_ "the tool acts on that project", context do
         {:ok, _stories_live, html} =
-          live(context.conn, ~p"/app/projects/#{context.project.id}/stories")
+          live(context.conn, "/app/projects/#{context.project.id}/stories")
 
         assert html =~ "Bookings show up on a calendar",
                "expected the story on the conversation's own project"
@@ -70,7 +70,7 @@ defmodule CodeMySpecSpex.Story995.Criterion8276Spex do
 
       then_ "no working directory is consulted to decide which", context do
         {:ok, _other_live, other_html} =
-          live(context.conn, ~p"/app/projects/#{context.other_project.id}/stories")
+          live(context.conn, "/app/projects/#{context.other_project.id}/stories")
 
         refute other_html =~ "Bookings show up on a calendar",
                "the story must not land on a project the conversation does not belong to"

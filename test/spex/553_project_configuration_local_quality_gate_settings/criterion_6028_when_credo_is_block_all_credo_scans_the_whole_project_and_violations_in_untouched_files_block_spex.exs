@@ -121,7 +121,7 @@ defmodule CodeMySpecSpex.Story553.Criterion6028Spex do
 
       then_ "the Problems page surfaces the persisted credo violation", context do
         {:ok, _problems_live, html} =
-          live(context.conn, ~p"/app/projects/#{context.project.id}/problems?filter=credo")
+          live(context.conn, "/app/projects/#{context.project.id}/problems?filter=credo")
 
         assert html =~ "Problems",
                "Problems page must render"

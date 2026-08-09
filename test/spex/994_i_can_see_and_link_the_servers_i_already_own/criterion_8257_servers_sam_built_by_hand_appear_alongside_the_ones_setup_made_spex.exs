@@ -31,7 +31,7 @@ defmodule CodeMySpecSpex.Story994.Criterion8257Spex do
       end
 
       when_ "he opens the servers screen", context do
-        {:ok, _view, html} = live(context.conn, ~p"/app/servers")
+        {:ok, _view, html} = live(context.conn, "/app/servers")
 
         {:ok, Map.put(context, :html, html)}
       end

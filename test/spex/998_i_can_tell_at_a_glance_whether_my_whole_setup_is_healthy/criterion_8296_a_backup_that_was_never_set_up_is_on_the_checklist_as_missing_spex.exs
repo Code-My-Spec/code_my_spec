@@ -85,7 +85,7 @@ defmodule CodeMySpecSpex.Story998.Criterion8296Spex do
       when_ "he opens the resources page", context do
         context = stage_inventory(context, %{hetzner: [], cloudflare: [], resend: []})
 
-        {:ok, view, _html} = live(context.conn, ~p"/app/resources")
+        {:ok, view, _html} = live(context.conn, "/app/resources")
 
         {:ok, context |> Map.put(:document, Floki.parse_document!(render_async(view)))}
       end
