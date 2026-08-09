@@ -64,10 +64,43 @@ defmodule CodeMySpec.McpServers.Issues.IssuesMapper do
     data = %{
       issues: Enum.map(issues, &issue_data/1),
       count: count,
-      filters: filters
+      filters: filters,
+      store: store()
     }
 
-    hybrid_response(summary, data)
+    hybrid_response(summary <> store_note(), data)
+  end
+
+  # Which store answered.
+  #
+  # Two exist: the hosted server's, and a packaged CLI's own database on the
+  # machine. They are indistinguishable from an agent's side — `register_session`
+  # reports the same project id for both — so swapping harness mid-session
+  # silently changes which one every issue tool talks to. Issues resolved earlier
+  # come back as `accepted` under different ids, filings from the other store are
+  # simply absent, and the list looks entirely plausible, so nothing prompts
+  # anyone to check. Two of the issues that reappeared as open were already fixed
+  # and pushed.
+  #
+  # Naming it is not the cure — that is one store, and `list_issues` should not
+  # have two answers. It is what makes the wrong one visible in the meantime.
+  defp store do
+    case CodeMySpec.Repo.__adapter__() do
+      Ecto.Adapters.Postgres -> :server
+      _ -> :local
+    end
+  end
+
+  defp store_note do
+    case store() do
+      :server ->
+        "\n\nStore: the CodeMySpec server."
+
+      :local ->
+        "\n\nStore: this machine's local database, not the server. " <>
+          "Issues filed or resolved against the server are not listed here, " <>
+          "and a harness swap changes which store answers."
+    end
   end
 
   def not_found_error do
