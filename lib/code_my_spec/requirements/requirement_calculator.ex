@@ -164,14 +164,14 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
     end
   end
 
-  defp check(%{check_type: :delegate, config: config}, scope, entity, _files, _ctx) do
+  defp check(%{check_type: :delegate, config: config}, scope, entity, _files, ctx) do
     module = config[:module] || config["module"]
     function = config[:function] || config["function"] || :check
 
     if is_nil(module) do
       {false, %{reason: "delegate check missing :module in config"}}
     else
-      run_delegate(module, function, scope, entity)
+      run_delegate(module, function, scope, entity, ctx)
     end
   end
 
@@ -184,12 +184,26 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
     {false, %{reason: "Unknown check_type: #{check_type}"}}
   end
 
-  defp run_delegate(module, function, scope, entity) do
+  # Checkers that export an arity-3 clause are handed the preloaded context;
+  # the rest keep the two-argument contract and query for themselves.
+  #
+  # Opt-in per checker rather than a flag day: `compute_story_nodes/3` calls
+  # this once per story per definition, so a checker that queries four tables
+  # does it 4×N times in one graph computation. Converting them one at a time
+  # needs both shapes to work, and a checker that has not been converted is
+  # exactly as correct as before.
+  defp run_delegate(module, function, scope, entity, ctx) do
     module
-    |> apply(function, [scope, entity])
+    |> apply(function, delegate_args(module, function, scope, entity, ctx))
     |> normalize_delegate_result()
   rescue
     e -> {false, %{reason: "delegate check failed: #{Exception.message(e)}"}}
+  end
+
+  defp delegate_args(module, function, scope, entity, ctx) do
+    if is_map(ctx) and Code.ensure_loaded?(module) and function_exported?(module, function, 3),
+      do: [scope, entity, ctx],
+      else: [scope, entity]
   end
 
   defp normalize_delegate_result({true, details}), do: {true, details}

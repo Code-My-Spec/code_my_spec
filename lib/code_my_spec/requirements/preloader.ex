@@ -8,10 +8,14 @@ defmodule CodeMySpec.Requirements.Preloader do
 
   import Ecto.Query
 
+  alias CodeMySpec.AcceptanceCriteria.Criterion
   alias CodeMySpec.Analysis.{Fingerprint, Run, RunsRepository}
+  alias CodeMySpec.BddRules.Rule
   alias CodeMySpec.Components.Component
   alias CodeMySpec.Files.File
+  alias CodeMySpec.Personas.{Persona, PersonaStory}
   alias CodeMySpec.Problems.Problem
+  alias CodeMySpec.Questions.Question
   alias CodeMySpec.Repo
   alias CodeMySpec.Stories.Story
   alias CodeMySpec.Users.Scope
@@ -27,6 +31,10 @@ defmodule CodeMySpec.Requirements.Preloader do
           components_by_id: %{Ecto.UUID.t() => Component.t()},
           children_by_parent: %{Ecto.UUID.t() => [Component.t()]},
           stories: [Story.t()],
+          rules_by_story: %{integer() => [Rule.t()]},
+          questions_by_story: %{integer() => [Question.t()]},
+          criteria_by_story: %{integer() => [Criterion.t()]},
+          personas_by_story: %{integer() => [Persona.t()]},
           delegated_inputs: %{String.t() => [{term(), NaiveDateTime.t()}]}
         }
 
@@ -86,6 +94,8 @@ defmodule CodeMySpec.Requirements.Preloader do
       |> where([s], s.project_id == ^project_id and s.ready_for_dev == true)
       |> Repo.all()
 
+    story_ids = Enum.map(stories, & &1.id)
+
     %{
       files_by_component: files_by_component,
       files_by_story: files_by_story,
@@ -97,6 +107,10 @@ defmodule CodeMySpec.Requirements.Preloader do
       components_by_id: Map.new(components, &{&1.id, &1}),
       children_by_parent: Enum.group_by(components, & &1.parent_component_id),
       stories: stories,
+      rules_by_story: rules_by_story(project_id),
+      questions_by_story: questions_by_story(project_id),
+      criteria_by_story: criteria_by_story(story_ids),
+      personas_by_story: personas_by_story(story_ids),
       delegated_inputs: delegated_inputs(project_id)
     }
   end
@@ -118,6 +132,51 @@ defmodule CodeMySpec.Requirements.Preloader do
   # here a timestamp is both stable across no-ops and strictly more sensitive
   # than hashing chosen columns, which is the failure mode that would matter.
   @delegated_tables ~w(bdd_rules criteria questions personas issues)
+
+  # The four collections `BddRulesChecker` reads, batched.
+  #
+  # `compute_story_nodes/3` loops every ready story and `run_delegate/5` hands
+  # the checker a scope and a story and nothing else, so the checker queried per
+  # story: personas, rules, criteria and questions, four round trips each. On a
+  # project with 76 ready stories that is 304 queries inside one graph
+  # computation, and the graph is recomputed on every stop hook.
+  #
+  # Four queries here instead. They are four rather than one repeated because
+  # the linkage genuinely differs: rules and questions carry `project_id`,
+  # criteria carry only `story_id`, and personas hang off a join table.
+  defp rules_by_story(project_id) do
+    Rule
+    |> where([r], r.project_id == ^project_id and not is_nil(r.story_id))
+    |> Repo.all()
+    |> Enum.group_by(& &1.story_id)
+  end
+
+  defp questions_by_story(project_id) do
+    Question
+    |> where([q], q.project_id == ^project_id and not is_nil(q.story_id))
+    |> Repo.all()
+    |> Enum.group_by(& &1.story_id)
+  end
+
+  # No `project_id` on a criterion — it is reachable only through its story, so
+  # the story ids are the scope.
+  defp criteria_by_story(story_ids) do
+    Criterion
+    |> where([c], c.story_id in ^story_ids)
+    |> Repo.all()
+    |> Enum.group_by(& &1.story_id)
+  end
+
+  defp personas_by_story(story_ids) do
+    from(ps in PersonaStory,
+      join: p in Persona,
+      on: p.id == ps.persona_id,
+      where: ps.story_id in ^story_ids,
+      select: {ps.story_id, p}
+    )
+    |> Repo.all()
+    |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
+  end
 
   defp delegated_inputs(project_id) do
     @delegated_tables
