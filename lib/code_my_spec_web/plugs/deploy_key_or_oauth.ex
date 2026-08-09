@@ -26,6 +26,7 @@ defmodule CodeMySpecWeb.Plugs.DeployKeyOrOAuth do
   import Plug.Conn
 
   alias CodeMySpec.Accounts
+  alias CodeMySpec.Harnesses
   alias CodeMySpec.Projects
   alias CodeMySpec.Users.Scope
   alias CodeMySpecWeb.UserAuth
@@ -43,7 +44,7 @@ defmodule CodeMySpecWeb.Plugs.DeployKeyOrOAuth do
          {:ok, project} <- project_for_deploy_key(token),
          {:ok, user} <- account_owner(project.account_id) do
       conn
-      |> assign(:current_scope, scope_for(user, project))
+      |> assign(:current_scope, scope_for(user, project) |> with_harness(conn, project))
       |> assign(:deploy_key_project_id, project.id)
     else
       # Not a deploy key — could still be a perfectly good OAuth token, which
@@ -69,6 +70,31 @@ defmodule CodeMySpecWeb.Plugs.DeployKeyOrOAuth do
 
       user ->
         {:ok, user}
+    end
+  end
+
+  # Which working copy is calling. The harness proxy already addresses itself as
+  # `/mcp?harness=<id>` for exactly this reason; the scope just never picked it
+  # up, so every read ran unscoped.
+  #
+  # That matters because `scope_to_harness/2` treats a nil harness as "no
+  # filter" rather than "no results" — reasonable for the project-wide views it
+  # was written for, and wrong here. `await_analysis` reported 1138 credo
+  # problems to an agent whose own checkout had 552; the rest belonged to a
+  # different worktree it cannot see and could not fix.
+  defp with_harness(scope, conn, project) do
+    conn = Plug.Conn.fetch_query_params(conn)
+
+    case Harnesses.fetch(conn.query_params["harness"] || "") do
+      {:ok, harness} when harness.project_id == project.id ->
+        %{scope | active_harness_id: harness.id}
+
+      # No harness named, or one belonging to another project. Left unscoped
+      # rather than guessed: adopting the wrong checkout's identity is worse
+      # than reading widely, and `Harnesses.issue/3` on the channel is where an
+      # id is minted, not here.
+      _ ->
+        scope
     end
   end
 
