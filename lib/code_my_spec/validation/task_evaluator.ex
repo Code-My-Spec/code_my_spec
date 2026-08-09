@@ -13,6 +13,13 @@ defmodule CodeMySpec.Validation.TaskEvaluator do
   alias CodeMySpec.Sessions.Session
   alias CodeMySpec.Users.Scope
 
+  # Replies that mean "this server could not observe the working copy", as
+  # opposed to "the requirement is unmet". `Environments` returns these from
+  # every file operation when `scope.environment` is nil, which under a light
+  # harness is the steady state rather than an edge case: the server has no
+  # disk by construction, and the harness is what watches the files.
+  @unobservable [:no_environment]
+
   @doc """
   Look up session by external conversation ID, evaluate the active task.
   """
@@ -102,9 +109,7 @@ defmodule CodeMySpec.Validation.TaskEvaluator do
           # Component or story this task points at no longer exists (likely
           # removed by ComponentSync or a manual purge). The task can't be
           # evaluated, so cancel it and let the session pull a fresh one.
-          Logger.info(
-            "[TaskEvaluator] Cancelling orphaned task #{task.id} — entity missing"
-          )
+          Logger.info("[TaskEvaluator] Cancelling orphaned task #{task.id} — entity missing")
 
           Sessions.complete_task(scope, session, task.id, :cancelled)
           {:ok, :valid}
@@ -122,11 +127,68 @@ defmodule CodeMySpec.Validation.TaskEvaluator do
            Agents: do not retry the task until the underlying bug is fixed. Report to the user.
            """}
 
+        # The checker could not look, which is not the same as the work not
+        # being done — and `Environments`' own moduledoc says so: "'no disk' and
+        # 'not there' are now the same reply … which is fine for rendering a
+        # prompt and is *not* fine for deciding a requirement is unmet."
+        #
+        # It still blocks. An allowed stop carries no text — `Stop.allow/2`
+        # returns `%{}` — so not blocking would mean waving through a
+        # requirement nobody verified, without saying so. Between a stop the
+        # agent cannot clear and a stop that quietly claims work is checked when
+        # it was not, the first is recoverable.
+        #
+        # What was missing is everything the agent needed to route around it.
+        # `Error: :no_environment` names no task, no requirement, no working
+        # copy, and no action.
+        {:error, reason} when reason in @unobservable ->
+          Logger.error(
+            "[TaskEvaluator] task #{task.id} (#{type_name}) could not be evaluated: " <>
+              "#{inspect(reason)} — this server holds no working copy"
+          )
+
+          {:error, unobservable_feedback(task, type_name, scope, reason)}
+
         {:error, reason} ->
-          {:error, "Error: #{inspect(reason)}"}
+          # Named, rather than an atom on its own. Which task, which type, and
+          # which working copy is the difference between a bug report and a
+          # dead end.
+          {:error,
+           "Error evaluating #{type_name} (task #{task.id}, working copy " <>
+             "#{harness_label(scope)}): #{inspect(reason)}"}
       end
     end
   end
+
+  @doc false
+  # Public only so the message can be asserted without standing up a session, a
+  # task and a checker that leaks the raw atom. The message *is* the fix here —
+  # the branch existed before and said `Error: :no_environment`.
+  def unobservable_feedback(task, type_name, scope, reason) do
+    """
+    ⚠️ This requirement could not be checked (not a requirement failure).
+
+    The `#{type_name}` checker for task #{task.id} tried to read the working \
+    copy, and this server holds none — every file operation answers \
+    `#{inspect(reason)}`. Under a light harness that is normal: the harness \
+    watches the files and reports them, and a checker that reads a disk \
+    directly has nothing to read here.
+
+    Working copy: #{harness_label(scope)}
+
+    This is a framework bug, not something to fix in the project. The checker \
+    needs to read the harness's file report (`Files`) rather than the \
+    filesystem — see `AgentTasks.WriteBddSpecs.spec_checker/1` for the shape.
+
+    Agents: do not rewrite the work; it is very likely already done. Call \
+    `create_issue` with `scope: framework`, naming `#{type_name}`, then ask \
+    the user how to proceed.
+    """
+  end
+
+  defp harness_label(%Scope{active_harness_id: nil}), do: "unnamed (no harness on the scope)"
+  defp harness_label(%Scope{active_harness_id: id}), do: id
+  defp harness_label(_scope), do: "unknown"
 
   # Custom evaluate/2 modules don't take opts; only the unified evaluator
   # honors `sync: false`.
@@ -139,7 +201,10 @@ defmodule CodeMySpec.Validation.TaskEvaluator do
   rescue
     e ->
       stack = __STACKTRACE__
-      Logger.error("[TaskEvaluator] Evaluator crashed for #{inspect(module)}: #{Exception.format(:error, e, stack)}")
+
+      Logger.error(
+        "[TaskEvaluator] Evaluator crashed for #{inspect(module)}: #{Exception.format(:error, e, stack)}"
+      )
 
       detail =
         "#{inspect(e.__struct__)}: #{Exception.message(e)}\n\n" <>
