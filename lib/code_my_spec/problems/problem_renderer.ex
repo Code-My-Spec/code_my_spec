@@ -177,6 +177,7 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
   def render_stop_response(blocking, advisory, opts) do
     stale = opts |> Keyword.get(:stale_sources, []) |> MapSet.new()
     last_ran = Keyword.get(opts, :last_ran, %{})
+    in_flight = Keyword.get(opts, :in_flight, [])
 
     header = "Fix these problems before stopping:\n\n"
     advisory_section = render_advisory_section(advisory)
@@ -184,7 +185,9 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
     blocking_section = render_blocking_section(blocking, stale, last_ran)
 
     raw =
-      header <> blocking_section <> advisory_section <> stale_footer(blocking, stale, last_ran)
+      header <>
+        blocking_section <>
+        advisory_section <> stale_footer(blocking, stale, last_ran, in_flight)
 
     enforce_total_cap(raw, blocking, advisory)
   end
@@ -235,7 +238,7 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
     end
   end
 
-  defp stale_footer(blocking, stale, last_ran) do
+  defp stale_footer(blocking, stale, last_ran, in_flight) do
     blocking
     |> Enum.map(& &1.source)
     |> Enum.uniq()
@@ -246,30 +249,46 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
 
       sources ->
         "\n\nSources marked stale (#{Enum.join(Enum.sort(sources), ", ")}) last ran " <>
-          "before your most recent edit. Analysis is running now. Do not re-fix " <>
-          "anything you have already corrected — stop again and let the rerun " <>
-          "replace these." <> escalation(sources, last_ran)
+          "before your most recent edit. Do not re-fix anything you have already " <>
+          "corrected." <> escalation(sources, last_ran, in_flight)
     end
   end
 
-  # The age decides the advice. "Stop again and wait" is right for a source
-  # mid-cycle and wrong for one that has not completed in half an hour — and
-  # the old wording gave the same instruction either way, which is how five
-  # consecutive stops went by on a finding that had already been fixed.
-  defp escalation(sources, last_ran) do
-    sources
-    |> Enum.map(&Map.get(last_ran, &1))
-    |> Enum.map(&staleness_seconds/1)
-    |> Enum.max(fn -> 0 end)
-    |> case do
-      s when s > 900 ->
-        " One of these has not completed in over #{div(s, 60)} minutes, which is " <>
-          "longer than a rerun takes: treat the analyzer as failing and report it " <>
-          "rather than editing around it."
+  # Two different facts, and they had been collapsed into one sentence.
+  #
+  # `last_ran` is the `finished_at` of the newest *completed* run, so its age
+  # says how old the result is — not how long anything has been running. The old
+  # wording said "has not completed in over N minutes", which reads as a run in
+  # flight, and the line above it asserted "Analysis is running now" whether or
+  # not anything was. An agent chasing a wedged analyzer found a run that had
+  # completed in under three minutes, thirty-eight minutes earlier.
+  #
+  # So say the age, and say separately whether a rerun is actually in flight —
+  # because that is what decides the advice. Waiting works when something is
+  # running and never works when nothing is.
+  defp escalation(sources, last_ran, in_flight) do
+    age =
+      sources
+      |> Enum.map(&Map.get(last_ran, &1))
+      |> Enum.map(&staleness_seconds/1)
+      |> Enum.max(fn -> 0 end)
 
-      _ ->
-        " If they persist across several stops with no change, the analyzer " <>
-          "itself is failing; report that rather than editing around it."
+    rerunning = Enum.filter(sources, &(&1 in in_flight))
+
+    case {age, rerunning} do
+      {_age, [_ | _] = running} ->
+        " A rerun is in flight now (#{Enum.join(Enum.sort(running), ", ")}) — stop " <>
+          "again and let it replace these."
+
+      {age, []} when age > 900 ->
+        " The newest of these results is #{div(age, 60)} minutes old and no rerun " <>
+          "is running, so nothing is going to replace it on its own: treat the " <>
+          "analyzer as failing and report it rather than editing around it."
+
+      {_age, []} ->
+        " No rerun is in flight. Stopping again enqueues one; if these persist " <>
+          "across several stops with no change, the analyzer itself is failing — " <>
+          "report that rather than editing around it."
     end
   end
 

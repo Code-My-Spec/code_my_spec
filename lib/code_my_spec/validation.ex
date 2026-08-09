@@ -348,7 +348,14 @@ defmodule CodeMySpec.Validation do
       |> Enum.reject(&Analysis.fresh?(scope, &1))
 
     {blocking, advisory} = partition_problems(problems_by_source, config, scope_context)
-    decide(blocking, advisory, stale_sources, last_ran(scope, stale_sources))
+
+    decide(blocking, advisory, stale_sources,
+      last_ran: last_ran(scope, stale_sources),
+      # Whether a rerun is actually running, as opposed to how old the newest
+      # result is. The message used to assert the first from the second and got
+      # it wrong in both directions.
+      in_flight: Analysis.in_flight(scope)
+    )
   end
 
   # When each stale source last finished. "Stale" alone cannot tell "a rerun is
@@ -455,22 +462,23 @@ defmodule CodeMySpec.Validation do
     &(&1.component_id in ids)
   end
 
-  defp decide([], [], _stale, _last_ran), do: :ok
+  defp decide([], [], _stale, _opts), do: :ok
 
-  defp decide([], advisory, _stale, _last_ran) do
+  defp decide([], advisory, _stale, _opts) do
     Logger.warning("[Validation] #{length(advisory)} advisory problem(s) not blocking")
     :ok
   end
 
-  defp decide(blocking, advisory, stale_sources, last_ran) do
+  defp decide(blocking, advisory, stale_sources, opts) do
     if stale_sources != [] do
       Logger.info("[Validation] blocking on stale sources: #{Enum.join(stale_sources, ", ")}")
     end
 
     reason =
-      Problems.render_stop_response(blocking, advisory,
-        stale_sources: stale_sources,
-        last_ran: last_ran
+      Problems.render_stop_response(
+        blocking,
+        advisory,
+        Keyword.put(opts, :stale_sources, stale_sources)
       )
 
     {:error, reason, blocking_key(blocking)}
