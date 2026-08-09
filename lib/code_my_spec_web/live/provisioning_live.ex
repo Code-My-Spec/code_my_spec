@@ -52,7 +52,7 @@ defmodule CodeMySpecWeb.ProvisioningLive do
   alias CodeMySpec.Provisioning.Repository
   alias CodeMySpec.Projects
   alias CodeMySpec.Users.Scope
-  alias CodeMySpec.Provisioning.{Backups, Cloudflare, Credentials, Dns, Resend, Sops, Steps, Storage, Teardown, Widget}
+  alias CodeMySpec.Provisioning.{Backups, Cloudflare, ContentPublishing, Credentials, Dns, Resend, Sops, Steps, Storage, Teardown, Widget}
 
   # The environments setup manages. Named once so the probe form, the resource
   # grouping and the storage step cannot disagree about what exists.
@@ -943,6 +943,27 @@ defmodule CodeMySpecWeb.ProvisioningLive do
         Send a message to this domain
       </.button>
 
+      <%!-- One command, not a checklist. The whole of 972/8034 is that this
+            button finishes the job — snapshot, upload, trigger, and a fetch
+            back from the live site — with nothing left for Sam to do
+            afterwards, which is what `manual-steps-remaining` reports. --%>
+      <.button data-test="content-publish" phx-click="content_publish" class="mt-3">
+        Publish the blog
+      </.button>
+
+      <div
+        :if={@content_publish}
+        data-test="content-publish-result"
+        data-state={@content_publish.state}
+        data-manual-steps-remaining={@content_publish.manual_steps_remaining}
+        data-objects-uploaded={to_string(@content_publish.objects_uploaded)}
+      >
+        {@content_publish.summary}
+        <span :if={@content_publish.error} data-test="content-publish-error">
+          {@content_publish.error}
+        </span>
+      </div>
+
       <%!-- The widget failing must not take the page with it. `probe_degraded/2`
             has computed this since it was written and had no caller — nothing
             asked the deployed site how it looks when the backend is gone
@@ -1465,6 +1486,50 @@ defmodule CodeMySpecWeb.ProvisioningLive do
   # the widget marked itself unavailable — that being the whole of what an HTTP
   # body can honestly say about console output. A real count needs a headless
   # browser, and claiming one from a body check would be inventing evidence.
+  # Publishes and then proves it rendered. `ContentPublishing.run/2` is the
+  # same call the content step makes — the button is not a second
+  # implementation of publishing, it is the step on demand.
+  #
+  # `manual_steps_remaining` is "0" only when the post came back from the live
+  # site. Anything short of that leaves Sam something to do, and saying zero
+  # would be the checklist 8034 says this replaces, hidden behind a button.
+  def handle_event("content_publish", _params, socket) do
+    scope = socket.assigns.current_scope
+
+    result =
+      case ContentPublishing.run(scope, publish_opts(socket)) do
+        %{state: :rendered} = ran ->
+          %{
+            state: "published",
+            manual_steps_remaining: "0",
+            objects_uploaded: true,
+            error: nil,
+            summary: "published and rendered at #{ran.render[:path]}"
+          }
+
+        %{state: state, published: published, reason: reason} ->
+          %{
+            state: to_string(state),
+            manual_steps_remaining: "1",
+            objects_uploaded: is_map(published) and published[:objects] not in [nil, []],
+            error: reason,
+            summary: "publish did not finish"
+          }
+      end
+
+    {:noreply, assign(socket, :content_publish, result)}
+  end
+
+  # The path and expectation the render check fetches back. Both are required
+  # by `verify_render/2`; a publish with nothing to look for could only ever
+  # report success.
+  defp publish_opts(socket) do
+    [
+      path: socket.assigns[:content_publish_path] || "/",
+      expect: socket.assigns[:content_publish_expect] || "<html"
+    ]
+  end
+
   def handle_event("widget_degradation_probe", _params, socket) do
     site =
       case socket.assigns.project.domain do
@@ -1989,6 +2054,7 @@ defmodule CodeMySpecWeb.ProvisioningLive do
     |> assign_new(:mail_send_result, fn -> nil end)
     |> assign_new(:mail_inbound_result, fn -> nil end)
     |> assign_new(:widget_degradation, fn -> nil end)
+    |> assign_new(:content_publish, fn -> nil end)
     |> assign_new(:storage_objects, fn -> [] end)
     |> assign_new(:storage_readbacks, fn -> [] end)
     |> assign_new(:halted_at, fn -> nil end)
