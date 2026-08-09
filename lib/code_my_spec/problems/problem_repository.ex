@@ -536,6 +536,29 @@ defmodule CodeMySpec.Problems.ProblemRepository do
     |> where([p], is_nil(p.file_fingerprint) or not exists(files))
   end
 
+  # A scope that names no working copy means *the project's default one* — the
+  # same thing it already meant on the way in, where `insert_all_problems/2`
+  # sends such writes to `Harnesses.ensure_default/1`.
+  #
+  # It used to mean "every working copy" here, and that asymmetry was
+  # destructive rather than merely wrong. `clear_problems_for_source/3` uses
+  # this predicate, so one checkout reconciling credo under a scope with no
+  # harness deleted every *other* checkout's credo problems and inserted its own
+  # under the default. Demonstrated: two harnesses each holding one problem, a
+  # third reconcile of a single problem, and both of the others were gone.
+  #
+  # The aftermath is what gets reported, because it does not look like a
+  # deletion. A harness-scoped read returns nothing while an unscoped one still
+  # shows a live project-wide count, so the stop hook's blocking set and its
+  # advisory count describe different populations in one response — and the
+  # findings it blocks on name files whose rows no longer exist.
+  #
+  # `default_id/1` is a pure function of the project id, so this costs a read
+  # path nothing and creates no row.
+  defp scope_to_harness(query, %Scope{active_harness_id: nil, active_project_id: project_id})
+       when is_binary(project_id),
+       do: where(query, [p], p.harness_id == ^Harnesses.default_id(project_id))
+
   defp scope_to_harness(query, %Scope{active_harness_id: nil}), do: query
 
   defp scope_to_harness(query, %Scope{active_harness_id: harness_id}),
