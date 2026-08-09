@@ -25,6 +25,12 @@ defmodule CodeMySpecSpex.Story973.Criterion8040Spex do
   spex "A visitor finds the widget on the live site" do
     scenario "the widget renders and can be opened on the deployed site" do
       given_ "Sam is on the setup status page", context do
+        # The widget step needs somewhere to install it and a credential to
+        # wire — `require_value/2` refuses without either, so the step never
+        # reaches the live site and the criterion fails on its premise.
+        own_domain(context.project, "c8040.astralbi.com")
+        publishable_project(context.scope, context.project)
+
         {:ok, view, _html} =
           live(context.conn, "/app/projects/#{context.project.id}/provisioning")
 
@@ -49,7 +55,9 @@ defmodule CodeMySpecSpex.Story973.Criterion8040Spex do
           |> Floki.find("[data-test='widget-render-check']")
 
         # Anchor: the site was actually loaded and checked.
-        assert check != [], "expected the widget step to verify the widget on the live site"
+        assert check != [],
+               "expected the widget step to verify the widget on the live site. " <>
+                 diagnose(context.html)
 
         status = check |> Floki.attribute("data-status") |> List.first()
         present = check |> Floki.attribute("data-widget-present") |> List.first()
@@ -72,5 +80,19 @@ defmodule CodeMySpecSpex.Story973.Criterion8040Spex do
         {:ok, context}
       end
     end
+  end
+
+  # What the widget step reported, for when the render check is missing and the
+  # interesting question is why it never got that far.
+  defp diagnose(html) do
+    step =
+      html
+      |> Floki.parse_document!()
+      |> Floki.find("[data-test='setup-step'][data-step='widget']")
+
+    state = step |> Floki.attribute("data-state") |> List.first()
+    detail = step |> Floki.text() |> String.replace(~r/\s+/, " ") |> String.slice(0, 300)
+
+    "widget step state=#{inspect(state)} detail=#{inspect(detail)}"
   end
 end
