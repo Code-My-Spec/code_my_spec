@@ -1123,6 +1123,28 @@ defmodule CodeMySpec.Provisioning.Steps do
 
   defp image_commit(_image), do: nil
 
+  # Building makes a box, and `create_server/3` refuses to make one with no key
+  # attached — rightly, since nobody could then log in to run the build. The
+  # server step resolves the same key and passes it; deploy did not, so a build
+  # triggered from the setup page died on `ssh_key_required` while the identical
+  # call from the server step succeeded.
+  #
+  # The key is the account's, already minted by then, so this is a lookup rather
+  # than a second source of keys. An explicitly-passed `:ssh_key_ids` wins — a
+  # spex injecting a builder should not be made to buy a real key.
+  defp with_access_key(scope, opts) do
+    case Keyword.get(opts, :ssh_key_ids) do
+      ids when is_list(ids) and ids != [] ->
+        {:ok, opts}
+
+      _ ->
+        case ensure_access_key(scope, server_name(scope, opts)) do
+          {:ok, ssh_key} -> {:ok, Keyword.put(opts, :ssh_key_ids, [ssh_key["id"]])}
+          {:error, reason} -> {:error, format(reason)}
+        end
+    end
+  end
+
   defp image_for(scope, environment, opts) do
     case {Keyword.get(opts, :image), Keyword.get(opts, :build)} do
       {reference, _} when is_binary(reference) ->
@@ -1286,10 +1308,18 @@ defmodule CodeMySpec.Provisioning.Steps do
     ensure_registry = Keyword.get(opts, :ensure_registry, &Registry.ensure/2)
 
     with {:ok, architecture} <- architecture_for(scope, environment, opts),
+         {:ok, opts} <- with_access_key(scope, opts),
          {:ok, _bucket} <- ensure_registry.(scope, opts),
          {:ok, tag} <- image_tag(scope, opts),
-         {:ok, build} <- build_on_builder(scope, tag, architecture, opts),
-         {:ok, reference} <- Registry.reference(scope, tag, opts) do
+         # Computed before the build, not after: it is where the image is
+         # pushed *to*, so the builder needs it in hand. `Builder.docker_build`
+         # reads it from `opts[:reference]` and refuses with `no_image_reference`
+         # without it — which is what the first drill that got this far hit,
+         # because this line used to sit below the build and derive a reference
+         # for something already finished. Deriving it needs only the tag.
+         {:ok, reference} <- Registry.reference(scope, tag, opts),
+         opts = Keyword.put(opts, :reference, reference),
+         {:ok, build} <- build_on_builder(scope, tag, architecture, opts) do
       {:ok,
        %{
          reference: reference,

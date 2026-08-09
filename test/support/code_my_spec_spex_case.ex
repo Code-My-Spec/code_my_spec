@@ -517,22 +517,6 @@ defmodule CodeMySpecSpex.Case do
   end
 
   @doc """
-  Swap the project's environment for a real one on disk.
-
-      setup :setup_active_project
-      setup :real_working_directory
-
-  For spex whose subject is a real subprocess. `sops` and `age` are binaries —
-  they read and write actual files, and the memory environment the default
-  fixture installs is invisible to them. The encrypt reported success and the
-  file it was meant to write was never anywhere, which surfaces as "the
-  encrypted file does not carry the key" three assertions later.
-
-  The directory is the project's own `local_path`, so nothing else has to
-  change: the plug, the project row and the environment all still agree about
-  where the project is.
-  """
-  @doc """
   Print each step's state and reason, when `SPEX_DRILL_TRACE` is set.
 
   A halted provisioning sequence says nothing about itself. A step that refuses
@@ -564,14 +548,22 @@ defmodule CodeMySpecSpex.Case do
       step = Floki.find(doc, "[data-test='setup-step'][data-step='#{key}']")
       state = step |> Floki.attribute("data-state") |> List.first()
 
-      why =
+      named =
         step
         |> Floki.find(
           "[data-test='escalation'], [data-test='boot-failure'], [data-test='paused-instructions']"
         )
         |> Floki.text()
 
-      IO.puts("STEP #{String.pad_trailing(to_string(key), 11)} #{state}  #{String.slice(why, 0, 200)}")
+      # Fall back to the step's whole text when none of those carry anything.
+      # A step that reads `errored` and explains itself nowhere is the drill's
+      # most common failure — six of the first eight — and a trace that only
+      # reads the selectors it expects reproduces the same blindness.
+      why = if String.trim(named) == "", do: Floki.text(step), else: named
+
+      why = why |> String.replace(~r/\s+/, " ") |> String.trim()
+
+      IO.puts("STEP #{String.pad_trailing(to_string(key), 11)} #{state}  #{String.slice(why, 0, 300)}")
     end
 
     :ok
@@ -607,6 +599,8 @@ defmodule CodeMySpecSpex.Case do
       or generate it with `mix cms.new`.
       """
 
+    reset_drill_checkout(path)
+
     {:ok, project} = Fixtures.set_project_local_path(project, path)
 
     context
@@ -615,6 +609,43 @@ defmodule CodeMySpecSpex.Case do
     |> real_working_directory()
   end
 
+  # One checkout, a new project row every run. Whatever the last run encrypted
+  # is still on disk, keyed to an age key held by a project that no longer
+  # exists — so `key_opens_its_own_file?/2` finds no key for *this* project,
+  # mints a fresh one, rewrites `.sops.yaml`, and the deploy dies on "no
+  # identity matched any of the recipients". Not a product defect: a real
+  # project keeps its key in `ProjectSecrets` and re-runs fine. It is the
+  # drill's own residue, and it made two consecutive runs fail differently for
+  # the same reason.
+  #
+  # The remote is reset for the same reason — `git remote add origin` answers
+  # "already exists" and the repository step then pushes to whatever the last
+  # run pointed at.
+  defp reset_drill_checkout(path) do
+    for f <- Path.wildcard(Path.join(path, "envs/*.enc.env")), do: File.rm(f)
+    File.rm(Path.join(path, ".sops.yaml"))
+
+    System.cmd("git", ["remote", "remove", "origin"], cd: path, stderr_to_stdout: true)
+
+    :ok
+  end
+
+  @doc """
+  Swap the project's environment for a real one on disk.
+
+      setup :setup_active_project
+      setup :real_working_directory
+
+  For spex whose subject is a real subprocess. `sops` and `age` are binaries —
+  they read and write actual files, and the memory environment the default
+  fixture installs is invisible to them. The encrypt reported success and the
+  file it was meant to write was never anywhere, which surfaces as "the
+  encrypted file does not carry the key" three assertions later.
+
+  The directory is the project's own `local_path`, so nothing else has to
+  change: the plug, the project row and the environment all still agree about
+  where the project is.
+  """
   def real_working_directory(%{scope: scope, project: project} = context) do
     env = Fixtures.local_environment_fixture(working_dir: project.local_path)
 

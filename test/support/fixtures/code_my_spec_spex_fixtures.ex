@@ -1469,7 +1469,6 @@ defmodule CodeMySpecSpex.Fixtures do
 
   # --- Mail (story 816) ---
 
-  @doc "Set and verify a project's sending domain."
   @doc """
   Point the project at a real checkout on disk.
 

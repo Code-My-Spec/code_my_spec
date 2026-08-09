@@ -84,7 +84,7 @@ defmodule CodeMySpec.Provisioning.Builder do
   @doc """
   Build `ref` for `architecture`, and take the builder with it either way.
 
-  `:build` is injectable because a container build is a bad thing to record —
+  `:build_fun` is injectable because a container build is a bad thing to record —
   enormous output, non-deterministic layer digests, minutes per run, and
   invalidated by any Dockerfile edit. What is worth proving is ours: the
   architecture asked for, that the builder is destroyed even when the build
@@ -166,7 +166,12 @@ defmodule CodeMySpec.Provisioning.Builder do
   end
 
   defp run(scope, server, ref, architecture, opts) do
-    build_fun = Keyword.get(opts, :build, fn scope, server, ref, architecture ->
+    # `:build_fun`, not `:build`. The deploy step's opts are threaded straight
+    # through to here, and there `:build` is the boolean asking for an image to
+    # be built at all — so `build: true` arrived as the build function and this
+    # died with "expected a function, got: true" the first time a real drill
+    # asked for a real build. Two meanings for one key in one opts bag.
+    build_fun = Keyword.get(opts, :build_fun, fn scope, server, ref, architecture ->
         docker_build(scope, server, ref, architecture, opts)
       end)
     now = Keyword.get(opts, :now, &DateTime.utc_now/0)

@@ -111,13 +111,18 @@ defmodule CodeMySpec.Integration.StopHookSyncTest do
         frame: frame,
         session_id: session_id,
         external_session_id: external_session_id,
-        req1: req1,
+        req2: req2,
         tmp_dir: tmp_dir
       } = setup_workflow_scenario()
 
-      # Start task for project_setup
+      # `technical_strategy`, not the graph's root. The root is
+      # `personas_complete`, whose validation_type is :manual — the stop hook
+      # deliberately does not evaluate those (the test below is exactly that
+      # claim), so it could never complete and this test would be asserting
+      # against its own sibling. This one is `path_exists`, which the hook does
+      # evaluate, and its artifact is a file the test can write.
       {:reply, resp, ^frame} =
-        StartTask.execute(Map.put(req1, :session_id, session_id), frame)
+        StartTask.execute(Map.put(req2, :session_id, session_id), frame)
 
       refute resp.isError
 
@@ -127,8 +132,10 @@ defmodule CodeMySpec.Integration.StopHookSyncTest do
       assert task
       task_id = task.id
 
-      # Seed all setup steps so ProjectSetup.evaluate passes
-      seed_all_setup_steps(tmp_dir)
+      # The artifact `technical_strategy` checks for.
+      decisions = Path.join(tmp_dir, ".code_my_spec/architecture/decisions.md")
+      File.mkdir_p!(Path.dirname(decisions))
+      File.write!(decisions, "# Decisions\n")
 
       # Call stop hook — evaluates task, marks completed, allows stop (not continuous mode)
       stop_response = call_stop_hook!(scope, external_session_id)

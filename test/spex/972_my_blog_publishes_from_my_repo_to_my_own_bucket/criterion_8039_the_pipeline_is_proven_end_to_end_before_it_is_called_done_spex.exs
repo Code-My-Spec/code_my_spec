@@ -59,6 +59,13 @@ defmodule CodeMySpecSpex.Story972.Criterion8039Spex do
         # them, so they had to be removed by hand.
         tear_down_after(context.scope, [:server, :storage, :dns])
 
+        # The repository too, which product teardown deliberately never
+        # touches — deleting a customer's repo is not setup's business. But
+        # this spex makes a real one in the test org every run, and the one it
+        # left behind is why the second drill paused on a name collision
+        # instead of provisioning.
+        tear_down_repository(context.project)
+
         # Ask for an image to be built. Without `:image` or `:build`,
         # `image_for/3` answers `:not_built` and the deploy step does nothing
         # at all — no shell command, no error on the page, just an absence
@@ -79,7 +86,23 @@ defmodule CodeMySpecSpex.Story972.Criterion8039Spex do
         # `server` and the steps after it never ran. The recording that
         # produced was four interactions long and stopped at the repository.
         paste_provider_credentials(view)
-        run_steps(view, [:repository, :server, :secrets, :domain, :dns, :deploy, :storage], @given_cassette)
+        run_steps(view, [:repository, :server, :secrets], @given_cassette)
+
+        # The app refuses to boot without these, and `check_secrets/2` is the
+        # first thing in the deploy step's `with` — so without them the deploy
+        # never reaches its script and the site never exists. Set after the
+        # `secrets` step, which is what mints the age key they are encrypted
+        # to.
+        for {key, value} <- [
+              {"SECRET_KEY_BASE", String.duplicate("s", 64)},
+              {"DATABASE_URL", "ecto://postgres:postgres@127.0.0.1/drill_uat"}
+            ] do
+          view
+          |> form("[data-test='secret-form']", secret: %{environment: "uat", key: key, value: value})
+          |> render_submit()
+        end
+
+        run_steps(view, [:domain, :dns, :deploy, :storage], @given_cassette)
 
         trace_steps(view, [:repository, :server, :secrets, :domain, :dns, :deploy, :storage])
 

@@ -31,7 +31,10 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.ListRequirementsTest do
 
       assert content =~ "Project Requirements"
       assert content =~ "spec_file"
-      assert content =~ "project_setup"
+      # `personas_complete`, not `project_setup` — setup left the graph in
+      # 545fb741 because `cms new` completes it, so a generated project has
+      # nothing to do there and personas is the root.
+      assert content =~ "personas_complete"
     end
 
     test "returns project-level requirements even with no components" do
@@ -42,7 +45,7 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.ListRequirementsTest do
 
       refute response.isError
       content = response_text(response)
-      assert content =~ "project_setup"
+      assert content =~ "personas_complete"
     end
 
     test "returns error without valid scope" do

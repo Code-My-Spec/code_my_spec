@@ -48,7 +48,7 @@ defmodule CodeMySpec.Provisioning.BuilderTest do
       end
 
       assert {:ok, result} =
-               Builder.build(scope(), "abc123", opts(build: build))
+               Builder.build(scope(), "abc123", opts(build_fun: build))
 
       assert result.image == "registry.example/app:abc123"
       assert result.architecture == :arm
@@ -59,7 +59,7 @@ defmodule CodeMySpec.Provisioning.BuilderTest do
         {:ok, %{reference: "img", architecture: arch}}
       end
 
-      assert {:ok, _} = Builder.build(scope(), "abc123", opts(build: build))
+      assert {:ok, _} = Builder.build(scope(), "abc123", opts(build_fun: build))
 
       assert_received {:destroyed, 42}
     end
@@ -68,7 +68,7 @@ defmodule CodeMySpec.Provisioning.BuilderTest do
       build = fn _scope, _server, _ref, _arch -> {:error, :compilation_failed} end
 
       assert {:error, :compilation_failed, disposition} =
-               Builder.build(scope(), "abc123", opts(build: build))
+               Builder.build(scope(), "abc123", opts(build_fun: build))
 
       # The whole point: a failed build must not leave a box running. Sam is
       # billed for it either way.
@@ -85,7 +85,7 @@ defmodule CodeMySpec.Provisioning.BuilderTest do
       build = fn _scope, _server, _ref, _arch -> raise "docker exploded" end
 
       assert_raise RuntimeError, fn ->
-        Builder.build(scope(), "abc123", opts(build: build))
+        Builder.build(scope(), "abc123", opts(build_fun: build))
       end
 
       assert_received {:destroyed, 42}
@@ -97,7 +97,7 @@ defmodule CodeMySpec.Provisioning.BuilderTest do
       end
 
       assert {:error, {:architecture_mismatch, [built: :x86, wanted: :arm]}, disposition} =
-               Builder.build(scope(), "abc123", opts(build: build))
+               Builder.build(scope(), "abc123", opts(build_fun: build))
 
       # And the builder still goes, because a mismatch is a failed build.
       assert_received {:destroyed, 42}
@@ -120,7 +120,7 @@ defmodule CodeMySpec.Provisioning.BuilderTest do
                Builder.build(
                  scope(),
                  "abc123",
-                 opts(build: build, create: create, architecture: :x86)
+                 opts(build_fun: build, create: create, architecture: :x86)
                )
 
       assert_received {:created, "cpx32", "fsn1"}

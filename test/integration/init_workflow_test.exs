@@ -4,7 +4,7 @@ defmodule CodeMySpec.Integration.InitWorkflowTest do
 
   Verifies that get_next_requirement guides the agent through:
   1. Init checklist (no project)
-  2. Link project → computed graph returns project_setup directly
+  2. Link project → computed graph returns the first requirement directly
   """
   use ExUnit.Case, async: true
 
@@ -21,7 +21,7 @@ defmodule CodeMySpec.Integration.InitWorkflowTest do
     :ok = Ecto.Adapters.SQL.Sandbox.checkout(CodeMySpec.Repo)
   end
 
-  test "full init flow: init checklist → link project → computed graph returns project_setup" do
+  test "full init flow: init checklist → link project → computed graph returns the first requirement" do
     {:ok, tmp_dir} = Briefly.create(directory: true)
     frame = %Frame{assigns: %{working_dir: tmp_dir}}
 
@@ -56,12 +56,14 @@ defmodule CodeMySpec.Integration.InitWorkflowTest do
     {:ok, project} = Projects.update_project(scope, scope.active_project, %{local_path: tmp_dir})
     _scope = %{scope | active_project: project, environment: Environment.new(:local, tmp_dir)}
 
-    # Step 5: get_next_requirement computes the graph directly — returns project_setup
+    # Step 5: get_next_requirement computes the graph directly. The head is
+    # `personas_complete`, not `project_setup` — setup left the graph in
+    # 545fb741 because `cms new` finishes it before the workflow starts.
     {:reply, graph_resp, ^frame} = GetNextRequirement.execute(%{}, frame)
     refute graph_resp.isError
     graph_text = response_text(graph_resp)
-    assert graph_text =~ "### ProjectSetup"
-    assert graph_text =~ "requirement `project_setup`"
+    assert graph_text =~ "### PersonaResearch"
+    assert graph_text =~ "requirement_name=`personas_complete`"
   end
 
 end

@@ -249,6 +249,12 @@ defmodule CodeMySpecWeb.LinkResolutionTest do
     # Onboarding entry point — reached from Home and from the setup flow, not
     # from the nav of a project that is by definition not yet set up.
     "/app/projects/:project_id/init",
+    # ProjectSetupLive. Brownfield onboarding, entered deliberately from Home
+    # and from init — a generated project exits `cms new` with setup already
+    # complete, so a permanent nav entry would offer every project a checklist
+    # that only some of them need. Setup stopped being a graph requirement in
+    # 545fb741 for the same reason.
+    "/app/projects/:project_id/setup",
     # TaskQueueLive. Nothing links it in either app.
     "/app/projects/:project_id/tasks",
     # AgentProgressLive — story 813, parked before it was wired into nav.

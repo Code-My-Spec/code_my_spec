@@ -21,8 +21,9 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.GetNextRequirementTest do
       refute response.isError
       content = response_text(response)
 
-      # Should return the first actionable project-level requirement
-      assert content =~ "### ProjectSetup"
+      # Should return the first actionable project-level requirement, which is
+      # persona research since setup left the graph in 545fb741.
+      assert content =~ "### PersonaResearch"
       assert content =~ "start_task"
     end
 

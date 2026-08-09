@@ -41,6 +41,9 @@ defmodule CodeMySpec.Integration.WorkflowHelpers do
     {:ok, session} = Sessions.find_or_create_session(scope, external_id)
     frame = %Frame{assigns: %{current_scope: scope}}
 
+    # Still a valid `start_task` target — `start_agent_task.ex` maps it — even
+    # though 545fb741 took it out of the requirement graph, so `get_next` no
+    # longer offers it.
     req1 = project_requirement_ref(scope, "project_setup")
     req2 = project_requirement_ref(scope, "technical_strategy")
 

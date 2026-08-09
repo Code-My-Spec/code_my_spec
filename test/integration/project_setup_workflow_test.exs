@@ -1,118 +1,104 @@
 defmodule CodeMySpec.Integration.ProjectSetupWorkflowTest do
   @moduledoc """
-  Integration test for the core MCP tool workflow:
-  get_next_requirement → start_task → stop hook evaluates → get_next_requirement
+  The twelve-step setup checklist, and the graph that no longer contains it.
 
-  Exercises the full chain using real DB state, tmp dir filesystem,
-  and the actual stop hook HTTP endpoint.
+  This used to drive setup through MCP: `get_next_requirement` offered
+  `project_setup`, `start_task` opened it, and the stop hook completed it.
+  545fb741 took setup out of the requirement graph — `cms new` finishes it, so
+  a generated project owes nothing there — and `start_task` refuses a
+  requirement the graph does not hold. The MCP path is gone on purpose.
+
+  What survived is the checklist itself, at `/app/projects/:id/setup`, for
+  brownfield projects that were not generated. It reads the same
+  `AgentTasks.ProjectSetup.command/2` and counts the same twelve steps, so the
+  coverage moved to that surface rather than being deleted with the old route.
+
+  Both halves are asserted here: the checklist still counts what is on disk,
+  and the graph now starts somewhere else.
   """
-  use ExUnit.Case, async: true
+  use CodeMySpecTest.ConnCase
 
   import CodeMySpec.Integration.WorkflowHelpers
+  import Phoenix.LiveViewTest
 
+  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.AgentTasks.ProjectSetup
   alias CodeMySpec.Files.FileSync
   alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
-  alias CodeMySpec.McpServers.Tasks.Tools.StartTask
-  alias CodeMySpec.Sessions
-  alias CodeMySpecLocalWeb.Hooks.StopController
-  alias Ecto.Adapters.SQL.Sandbox
+  alias CodeMySpec.Projects
+  alias Anubis.Server.Frame
 
-  setup do
-    :ok = Sandbox.checkout(CodeMySpec.Repo)
-    setup_workflow_scenario()
+  setup [:register_log_in_setup_account, :setup_active_account, :setup_active_project]
+
+  # The checklist reads the working copy, so the project has to point at a real
+  # directory rather than the fixture's stub.
+  setup %{scope: scope, project: project} do
+    {:ok, tmp_dir} = Briefly.create(directory: true)
+    {:ok, project} = Projects.update_project(scope, project, %{local_path: tmp_dir})
+
+    scope = %{
+      scope
+      | active_project: project,
+        environment: Environment.new(:local, tmp_dir),
+        cwd: tmp_dir
+    }
+
+    %{scope: scope, project: project, tmp_dir: tmp_dir}
   end
 
-  test "full cycle: get_next → start → complete steps → stop hook evaluates → get_next",
-       %{
-         scope: scope,
-         frame: frame,
-         session_id: session_id,
-         external_session_id: external_session_id,
-         req1: req1,
-         tmp_dir: tmp_dir
-       } do
-    # Step 1: get_next_requirement → returns project_setup (technical_strategy is blocked)
-    next_text = call_get_next_text!(frame)
-    assert next_text =~ "### ProjectSetup"
-    assert next_text =~ "requirement `project_setup`"
+  # Asserted against `ProjectSetup.command/2` rather than through the page.
+  # The page is a renderer — it calls exactly this and pipes the result through
+  # markdown — while the scope it builds comes from the session, so driving it
+  # through `live/2` would test scope plumbing and not the counting. The
+  # counting is what the removed MCP path used to cover.
+  test "the setup checklist counts what is actually on disk", %{
+    scope: scope,
+    tmp_dir: tmp_dir
+  } do
+    assert {:ok, text} = ProjectSetup.command(scope, %{})
+    assert text =~ "Project Setup (0/12)"
+    assert text =~ "- [ ] **Claude md**"
 
-    # Step 2: start_task → all 12 steps unchecked (empty tmp dir)
-    prompt = call_start_task_text!(frame, req1, session_id)
-    assert prompt =~ "Project Setup (0/12)"
-    assert prompt =~ "- [ ] **Claude md**"
-    assert prompt =~ "Task ID:"
+    # One step, done for real. Since 403b3cc the checks read File records
+    # rather than the filesystem, so the write has to be synced to count.
+    File.write!(
+      Path.join(tmp_dir, "CLAUDE.md"),
+      "# Project\n<!-- code_my_spec:start -->\nmanaged\n<!-- code_my_spec:end -->"
+    )
 
-    # Get task_id from DB
-    session = Sessions.get_session(scope, session_id)
-    task = Enum.find(session.tasks, &(&1.status == :active))
-    assert task
-    task_id = task.id
-
-    # Step 3: simulate agent completing one step — write CLAUDE.md with managed section.
-    # Since 403b3cc, setup checks read from File records (sync-time), not the
-    # filesystem directly — sync changed files after writing.
-    claude_md_path = Path.join(tmp_dir, "CLAUDE.md")
-    File.write!(claude_md_path, "# Project\n<!-- code_my_spec:start -->\nmanaged\n<!-- code_my_spec:end -->")
     {:ok, _} = FileSync.sync_changed(scope, base_dir: tmp_dir)
 
-    # Step 4: start_task again → Claude md now shows [x], count is 1/12
-    prompt2 = call_start_task_text!(frame, req1, session_id)
-    assert prompt2 =~ "Project Setup (1/12)"
-    assert prompt2 =~ "- [x] **Claude md**"
+    assert {:ok, text} = ProjectSetup.command(scope, %{})
+    assert text =~ "Project Setup (1/12)"
+    assert text =~ "- [x] **Claude md**"
 
-    # Step 5: seed all remaining steps in the tmp dir
     seed_all_setup_steps(tmp_dir)
     {:ok, _} = FileSync.sync_changed(scope, base_dir: tmp_dir)
 
-    # Step 6: start_task again → all 12 steps now satisfied
-    prompt3 = call_start_task_text!(frame, req1, session_id)
-    assert prompt3 =~ "Project Setup (12/12)"
-    refute prompt3 =~ "- [ ] "
-
-    # Step 7: stop hook → evaluates task → passes → allows stop (not in continuous mode)
-    stop_response = call_stop_hook!(scope, external_session_id)
-    assert stop_response == %{}
-
-    # Verify task is completed in DB
-    session2 = Sessions.get_session(scope, session_id)
-    completed_task = Enum.find(session2.tasks, &(&1.id == task_id))
-    assert completed_task.status == :completed
-
-    # Step 8: get_next_requirement → project_setup satisfied from filesystem.
-    # The next gate is `personas_complete`; stories_exist now waits on it,
-    # and technical_strategy waits on stories_exist.
-    next_text2 = call_get_next_text!(frame)
-    assert next_text2 =~ "### PersonaResearch"
-    assert next_text2 =~ "requirement_name=`personas_complete`"
+    assert {:ok, text} = ProjectSetup.command(scope, %{})
+    assert text =~ "Project Setup (12/12)"
+    refute text =~ "- [ ] "
   end
 
-  # ---------------------------------------------------------------------------
-  # Tool call wrappers
-  # ---------------------------------------------------------------------------
+  test "the page the checklist now lives on mounts", %{conn: conn, project: project} do
+    {:ok, _view, html} = live(conn, ~p"/app/projects/#{project.id}/setup")
 
-  defp call_get_next_text!(frame) do
+    assert html =~ "Project Setup"
+  end
+
+  test "the requirement graph no longer offers setup", %{scope: scope} do
+    frame = %Frame{assigns: %{current_scope: scope}}
+
     assert {:reply, resp, ^frame} = GetNextRequirement.execute(%{}, frame)
-    refute resp.isError, "get_next_requirement failed: #{response_text(resp)}"
-    response_text(resp)
-  end
+    refute resp.isError
 
-  defp call_start_task_text!(frame, req, session_id) do
-    params = Map.put(req, :session_id, session_id)
+    text = response_text(resp)
 
-    assert {:reply, resp, ^frame} = StartTask.execute(params, frame)
+    assert text =~ "### PersonaResearch"
+    assert text =~ "requirement_name=`personas_complete`"
 
-    refute resp.isError, "start_task failed: #{response_text(resp)}"
-    response_text(resp)
-  end
-
-  defp call_stop_hook!(scope, session_id) do
-    conn =
-      Phoenix.ConnTest.build_conn(:post, "/api/hooks/stop", %{"session_id" => session_id})
-      |> Plug.Conn.assign(:current_scope, scope)
-      |> Plug.Conn.put_private(:phoenix_format, "json")
-      |> Map.put(:body_params, %{"session_id" => session_id})
-
-    conn = StopController.handle(conn, conn.body_params)
-    Jason.decode!(conn.resp_body)
+    refute text =~ "project_setup",
+           "setup left the graph in 545fb741 — offering it again would send a " <>
+             "generated project back through work `cms new` already did"
   end
 end
