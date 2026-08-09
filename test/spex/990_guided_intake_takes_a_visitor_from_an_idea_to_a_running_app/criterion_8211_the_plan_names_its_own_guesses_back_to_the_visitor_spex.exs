@@ -17,6 +17,8 @@ defmodule CodeMySpecSpex.Story990.Criterion8211Spex do
 
   use CodeMySpecSpex.Case
 
+  import CodeMySpecSpex.IntakeSteps
+
   @endpoint CodeMySpecWeb.Endpoint
 
   spex "The plan states every inference rather than applying it silently" do
@@ -31,7 +33,7 @@ defmodule CodeMySpecSpex.Story990.Criterion8211Spex do
         |> form("form[phx-submit=describe]", %{description: "a booking tool for hair salons"})
         |> render_submit()
 
-        html = answer_until_planned(view, ["yes", "no", "salon owners"])
+        html = answer_shaping_questions(view, ["yes", "no", "salon owners"])
 
         {:ok, Map.merge(context, %{view: view, html: html})}
       end
@@ -77,17 +79,5 @@ defmodule CodeMySpecSpex.Story990.Criterion8211Spex do
         {:ok, context}
       end
     end
-  end
-
-  # Answers the current question until the plan appears, one turn at a time.
-  # Stops at the cap so a spec never spins on an interview that will not end.
-  defp answer_until_planned(view, answers) do
-    Enum.reduce_while(answers, render(view), fn answer, _html ->
-      if has_element?(view, "form[phx-submit=answer]") do
-        {:cont, view |> form("form[phx-submit=answer]", %{answer: answer}) |> render_submit()}
-      else
-        {:halt, render(view)}
-      end
-    end)
   end
 end
