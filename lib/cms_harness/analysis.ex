@@ -41,6 +41,7 @@ defmodule CmsHarness.Analysis do
   require Logger
 
   alias CmsHarness.AnalyzerEnv
+  alias CodeMySpec.Analysis.Runners
   alias CodeMySpec.BddSpecs.Spex
   alias CodeMySpec.Compile
   alias CodeMySpec.Environments.Environment
@@ -176,12 +177,24 @@ defmodule CmsHarness.Analysis do
     %{"file" => error.file, "line" => error.line, "message" => error.message}
   end
 
+  # Through the shared rule rather than a second copy of it.
+  #
+  # There were two: this one, and `CodeMySpec.Analysis.Runners.run/4` for a
+  # server that has the disk itself. Fixing the location bug in that one changed
+  # nothing here, because a light harness never executes it — the same finding
+  # came back filed against `lib/req_cassette/plug.ex` on the next run, from a
+  # harness that had been restarted specifically to pick the fix up.
+  #
+  # `Runners.spex_location/1` is the one place that decides it now. CmsHarness
+  # may depend on CodeMySpec, so this needs no third home.
   defp spex_failure(failure) do
+    {file, line} = Runners.spex_location(failure.error)
+
     %{
       "spex" => failure.spex,
       "scenario" => failure.scenario,
-      "file" => failure.error && failure.error.file,
-      "line" => failure.error && failure.error.line,
+      "file" => file,
+      "line" => line,
       "message" => failure.error && failure.error.message
     }
   end

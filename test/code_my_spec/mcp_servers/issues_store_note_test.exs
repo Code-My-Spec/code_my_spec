@@ -18,13 +18,11 @@ defmodule CodeMySpec.McpServers.IssuesStoreNoteTest do
   alias CodeMySpec.McpServers.Issues.IssuesMapper
 
   defp text(response) do
-    response.content
-    |> Enum.map(fn
+    Enum.map_join(response.content, "\n", fn
       %{text: t} -> t
       %{"text" => t} -> t
       _ -> ""
     end)
-    |> Enum.join("\n")
   end
 
   defp listing(issues \\ []), do: text(IssuesMapper.issues_list_response(issues, %{}))
