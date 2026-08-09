@@ -103,4 +103,90 @@ defmodule CodeMySpec.Provisioning.Builder.RemoteTest do
                Remote.build(%{"ip" => "1.2.3.4"}, "abc123", "reg/app:abc123", opts(run))
     end
   end
+
+  # A registry reachable on a public hostname must refuse anonymous writes, so
+  # a push with no credential is a push that cannot succeed against a registry
+  # worth having. This pushed with none at all.
+  describe "authenticating to the registry" do
+    test "logs in to the reference's host before pushing" do
+      run = recorder(self(), %{"inspect" => arm()})
+
+      assert {:ok, _} =
+               Remote.build(
+                 %{"ip" => "1.2.3.4"},
+                 "abc123",
+                 "registry.example.com/app:abc123",
+                 opts(run, registry_credentials: %{username: "cms", password: "hunter2"})
+               )
+
+      assert_receive {:ran, login}, 0, "expected a docker login before the push"
+      # Drain to the login command.
+      login = drain_until(login, "docker login")
+
+      assert login =~ "docker login 'registry.example.com'"
+      assert login =~ "--username 'cms'"
+
+      assert login =~ "--password-stdin",
+             "the password must not be an argument — it lands in shell history " <>
+               "and in the process list of a box we share"
+
+      refute login =~ "-p hunter2"
+    end
+
+    test "the login targets the registry, not the image path" do
+      run = recorder(self(), %{"inspect" => arm()})
+
+      assert {:ok, _} =
+               Remote.build(
+                 %{"ip" => "1.2.3.4"},
+                 "abc123",
+                 "registry.example.com/some/deep/path:abc123",
+                 opts(run, registry_credentials: %{username: "cms", password: "pw"})
+               )
+
+      assert_receive {:ran, first}, 0
+      login = drain_until(first, "docker login")
+
+      assert login =~ "docker login 'registry.example.com'"
+      refute login =~ "some/deep/path"
+    end
+
+    test "a failed login does not push" do
+      run =
+        recorder(self(), %{
+          "docker login" => {"unauthorized", 1},
+          "inspect" => arm()
+        })
+
+      assert {:error, {:login_failed, 1, "unauthorized"}} =
+               Remote.build(
+                 %{"ip" => "1.2.3.4"},
+                 "abc123",
+                 "registry.example.com/app:abc123",
+                 opts(run, registry_credentials: %{username: "cms", password: "pw"})
+               )
+
+      refute_received {:ran, "docker push" <> _}
+    end
+
+    test "no credentials configured stays a no-op" do
+      run = recorder(self(), %{"inspect" => arm()})
+
+      assert {:ok, _} =
+               Remote.build(%{"ip" => "1.2.3.4"}, "abc123", "reg/app:abc123", opts(run))
+
+      refute_received {:ran, "printf" <> _}
+    end
+  end
+
+  # The recorder reports every command, and the login sits between the build
+  # and the push; this walks forward to it rather than assuming a position.
+  defp drain_until(command, needle) do
+    if String.contains?(command, needle) do
+      command
+    else
+      assert_receive {:ran, next}, 0, "never ran a command containing #{inspect(needle)}"
+      drain_until(next, needle)
+    end
+  end
 end

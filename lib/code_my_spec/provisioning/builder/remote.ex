@@ -87,8 +87,61 @@ defmodule CodeMySpec.Provisioning.Builder.Remote do
   defp maybe_push(run, reference, opts) do
     case Keyword.get(opts, :push, true) do
       false -> :ok
-      _ -> docker_push(run, reference)
+      _ -> with :ok <- login(run, reference, opts), do: docker_push(run, reference)
     end
+  end
+
+  # A registry on a public hostname must not accept anonymous writes, and this
+  # pushed with no credential at all — so the push could only ever have
+  # succeeded against a registry that let anyone write to it. Nothing had
+  # noticed because nothing had reached a real push yet.
+  #
+  # The credential is the registry's, not the project's: one shared registry
+  # (see `Provisioning.Registry`), so it comes from our config rather than from
+  # `ProjectSecrets`. Absent credentials stay a no-op, which keeps every
+  # existing test and any local unauthenticated registry working.
+  #
+  # `--password-stdin` rather than `-p`: the password would otherwise be in the
+  # builder's shell history and in the process list of a box we do not own for
+  # long, but do not own alone either.
+  defp login(run, reference, opts) do
+    case Keyword.get(opts, :registry_credentials) || configured_credentials() do
+      %{username: username, password: password}
+      when is_binary(username) and is_binary(password) ->
+        host = reference |> String.split("/") |> hd()
+
+        command =
+          "printf %s #{shell_escape(password)} | " <>
+            "docker login #{shell_escape(host)} " <>
+            "--username #{shell_escape(username)} --password-stdin"
+
+        case run.([command]) do
+          {_, 0} -> :ok
+          {output, status} -> {:error, {:login_failed, status, trim(output)}}
+        end
+
+      _ ->
+        :ok
+    end
+  end
+
+  defp configured_credentials do
+    config = Application.get_env(:code_my_spec, CodeMySpec.Provisioning.Registry, [])
+
+    case {config[:username], config[:password]} do
+      {username, password} when is_binary(username) and is_binary(password) ->
+        %{username: username, password: password}
+
+      _ ->
+        nil
+    end
+  end
+
+  # Single quotes, with any embedded quote closed and reopened. The password is
+  # generated rather than typed, but a shell-quoting bug here fails as a login
+  # error that names nothing, which is the hardest kind to read.
+  defp shell_escape(value) do
+    "'" <> String.replace(value, "'", "'\\''") <> "'"
   end
 
   defp docker_push(run, reference) do
