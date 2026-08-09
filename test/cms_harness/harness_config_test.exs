@@ -24,19 +24,20 @@ defmodule CmsHarness.HarnessConfigTest do
     prior = System.get_env("CMS_HARNESS_ID")
     System.delete_env("CMS_HARNESS_ID")
 
-    # Both directions. Restoring only when there *was* a prior value leaves the
-    # override set for every test that follows, and `read/1` checks the
-    # environment before the file — so every working copy in the suite resolves
-    # to this id. That is what broke four identity tests that pass alone.
-    on_exit(fn ->
-      case prior do
-        nil -> System.delete_env("CMS_HARNESS_ID")
-        value -> System.put_env("CMS_HARNESS_ID", value)
-      end
-    end)
+    on_exit(fn -> restore(prior) end)
 
     %{root: root}
   end
+
+  # Both directions. Restoring only when there *was* a prior value leaves the
+  # override set for every test that follows, and `read/1` checks the
+  # environment before the file — so every working copy in the suite resolves to
+  # this id. That is what broke four identity tests that pass alone.
+  #
+  # Two clauses rather than a `case`, matching `CmsHarnessConnCase.restore/1`,
+  # which has handled the same hazard correctly since it was written.
+  defp restore(nil), do: System.delete_env("CMS_HARNESS_ID")
+  defp restore(value), do: System.put_env("CMS_HARNESS_ID", value)
 
   describe "read/1" do
     test "returns what was written, root included", %{root: root} do
