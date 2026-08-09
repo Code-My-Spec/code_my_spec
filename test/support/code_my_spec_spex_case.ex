@@ -104,6 +104,7 @@ defmodule CodeMySpecSpex.Case do
         shared: not tags[:async],
         ownership_timeout: tags[:ownership_timeout] || recording_ownership_timeout()
       )
+
     on_exit(fn -> Sandbox.stop_owner(pid) end)
 
     # DNS resolution cannot live in a cassette — the authoritative lookup is a
@@ -226,33 +227,29 @@ defmodule CodeMySpecSpex.Case do
 
   defp fetch_live_grant(provider), do: Fixtures.live_provider_grant(provider)
 
-  @doc """
-  Answer the TLS step's HTTPS probe without a deployed application.
-
-      stage_certificate(context)
-
-  The TLS step proves a certificate the only honest way — an HTTPS request that
-  a bad certificate would fail. That needs something serving HTTPS on the host,
-  which means a deployed app; a freshly provisioned box serves nothing, so the
-  step errors for a reason that has nothing to do with the certificate.
-
-  Whether a real deploy gets a real certificate is story 966's claim and is
-  proved there. What is left here — and is genuinely proved, against real
-  Cloudflare data — is that the records setup writes are **unproxied**, so the
-  HTTP-01 challenge reaches the origin rather than terminating at Cloudflare.
-  That is the part the records decide, and the part this criterion is about.
-  """
-  @doc """
-  Point the backup script at a database that really exists.
-
-      setup :real_backup_database
-
-  A backup criterion cannot be proved against a stub: the claim is that a dump
-  restores with rows in it, and only a real `pg_dump`/`psql` round-trip can say
-  so. On a provisioned box `bin/backup` reads `DATABASE_URL` out of the app's
-  encrypted env file; here there is no such box, so the test database — which is
-  a real Postgres with real tables — stands in for it.
-  """
+  # Answer the TLS step's HTTPS probe without a deployed application.
+  #
+  # stage_certificate(context)
+  #
+  # The TLS step proves a certificate the only honest way — an HTTPS request that
+  # a bad certificate would fail. That needs something serving HTTPS on the host,
+  # which means a deployed app; a freshly provisioned box serves nothing, so the
+  # step errors for a reason that has nothing to do with the certificate.
+  #
+  # Whether a real deploy gets a real certificate is story 966's claim and is
+  # proved there. What is left here — and is genuinely proved, against real
+  # Cloudflare data — is that the records setup writes are **unproxied**, so the
+  # HTTP-01 challenge reaches the origin rather than terminating at Cloudflare.
+  # That is the part the records decide, and the part this criterion is about.
+  # Point the backup script at a database that really exists.
+  #
+  # setup :real_backup_database
+  #
+  # A backup criterion cannot be proved against a stub: the claim is that a dump
+  # restores with rows in it, and only a real `pg_dump`/`psql` round-trip can say
+  # so. On a provisioned box `bin/backup` reads `DATABASE_URL` out of the app's
+  # encrypted env file; here there is no such box, so the test database — which is
+  # a real Postgres with real tables — stands in for it.
   # A criterion whose premise is "this resource exists" has to be the thing that
   # creates it. When a previous run crashed before `on_exit`, the resource is
   # still there and the criterion passes without ever having created it —
@@ -524,22 +521,20 @@ defmodule CodeMySpecSpex.Case do
     options
   end
 
-  @doc """
-  Wait for a background setup run to settle, and return the page.
-
-  `start-setup` returns as soon as the run begins, so a `then_` that asserts a
-  final state has to wait for one. Without this the test ends while the run is
-  still going, the sandbox connection closes underneath it, and Postgrex logs
-  a disconnect at `:error` — which fails the spex for a reason that has
-  nothing to do with the story.
-
-  Polls the rendered page rather than waiting on a message: the run publishes
-  to the *LiveView*, not to the test, and having the test subscribe as well
-  would mean two things listening for the same event and a spex that passes
-  because it read its own subscription rather than the page.
-
-  Criteria that assert on a step being mid-run assert first and settle after.
-  """
+  # Wait for a background setup run to settle, and return the page.
+  #
+  # `start-setup` returns as soon as the run begins, so a `then_` that asserts a
+  # final state has to wait for one. Without this the test ends while the run is
+  # still going, the sandbox connection closes underneath it, and Postgrex logs
+  # a disconnect at `:error` — which fails the spex for a reason that has
+  # nothing to do with the story.
+  #
+  # Polls the rendered page rather than waiting on a message: the run publishes
+  # to the *LiveView*, not to the test, and having the test subscribe as well
+  # would mean two things listening for the same event and a spex that passes
+  # because it read its own subscription rather than the page.
+  #
+  # Criteria that assert on a step being mid-run assert first and settle after.
   @doc """
   Give the project exactly these environments.
 
@@ -844,6 +839,10 @@ defmodule CodeMySpecSpex.Case do
   # saying out loud because it means a real resource was left behind.
   def safe_teardown(label, fun, attempts \\ 3) do
     fun.()
+  rescue
+    error ->
+      IO.warn("spex teardown for #{label} failed: #{Exception.message(error)}")
+      :error
   catch
     :exit, _reason when attempts > 1 ->
       Process.sleep(100)
@@ -852,22 +851,10 @@ defmodule CodeMySpecSpex.Case do
     :exit, reason ->
       IO.warn("spex teardown for #{label} could not run: #{inspect(reason, limit: 3)}")
       :error
-  rescue
-    error ->
-      IO.warn("spex teardown for #{label} failed: #{Exception.message(error)}")
-      :error
   end
 
   defp tear_down_steps_with_retry(scope, keys, opts, attempts \\ 3) do
     Fixtures.tear_down_steps(scope, keys, opts)
-  catch
-    :exit, _reason when attempts > 1 ->
-      Process.sleep(100)
-      tear_down_steps_with_retry(scope, keys, opts, attempts - 1)
-
-    :exit, reason ->
-      IO.warn("spex teardown could not reach the database: #{inspect(reason, limit: 3)}")
-      []
   rescue
     # `DBConnection.OwnershipError` is *raised*, not exited — the sandbox is
     # back in manual mode by the time on_exit runs. Catching only exits left it
@@ -881,10 +868,22 @@ defmodule CodeMySpecSpex.Case do
         IO.warn("spex teardown could not reach the database: #{Exception.message(error)}")
         []
       end
+  catch
+    :exit, _reason when attempts > 1 ->
+      Process.sleep(100)
+      tear_down_steps_with_retry(scope, keys, opts, attempts - 1)
+
+    :exit, reason ->
+      IO.warn("spex teardown could not reach the database: #{inspect(reason, limit: 3)}")
+      []
   end
 
   defp slug(value) do
-    value |> to_string() |> String.downcase() |> String.replace(~r/[^a-z0-9]+/, "_") |> String.trim("_")
+    value
+    |> to_string()
+    |> String.downcase()
+    |> String.replace(~r/[^a-z0-9]+/, "_")
+    |> String.trim("_")
   end
 
   # `CodeMySpecSpex.Story968.Criterion8011Spex` -> "spex story968 criterion8011",
@@ -1020,22 +1019,20 @@ defmodule CodeMySpecSpex.Case do
     Fixtures.set_project_domain(project, "#{label}.#{base}")
   end
 
-  @doc """
-  Make every environment's sending domain real and resolvable.
-
-  Setup registers one sending domain per environment and is not satisfied
-  until all of them verify, so recording the successful path means UAT has to
-  be real too — production alone was what let the step look green while
-  quietly covering one environment.
-
-  Every environment, production included. Production's sending domain used to
-  be the account's own apex — already verified, nothing to publish — and that
-  is exactly what put a live domain in teardown's path. Spex now run under a
-  subdomain of their own, so production's sending domain is one of theirs and
-  has to be made real like the rest.
-
-  Records are removed on exit; they are real DNS in a real zone.
-  """
+  # Make every environment's sending domain real and resolvable.
+  #
+  # Setup registers one sending domain per environment and is not satisfied
+  # until all of them verify, so recording the successful path means UAT has to
+  # be real too — production alone was what let the step look green while
+  # quietly covering one environment.
+  #
+  # Every environment, production included. Production's sending domain used to
+  # be the account's own apex — already verified, nothing to publish — and that
+  # is exactly what put a live domain in teardown's path. Spex now run under a
+  # subdomain of their own, so production's sending domain is one of theirs and
+  # has to be made real like the rest.
+  #
+  # Records are removed on exit; they are real DNS in a real zone.
   @doc """
   Publish every sending record, leaving the domain unverified.
 
@@ -1235,7 +1232,10 @@ defmodule CodeMySpecSpex.Case do
   """
   def stage_deploy(%{scope: scope, environment: env} = context, scenario \\ :ok) do
     # Secrets the deploy pre-flight requires.
-    for {k, v} <- [{"SECRET_KEY_BASE", "staged-secret-key-base"}, {"DATABASE_URL", "ecto://staged"}] do
+    for {k, v} <- [
+          {"SECRET_KEY_BASE", "staged-secret-key-base"},
+          {"DATABASE_URL", "ecto://staged"}
+        ] do
       {:ok, _} = CodeMySpecSpex.Fixtures.put_encrypted_secret(scope, "uat", k, v)
     end
 
@@ -1277,13 +1277,19 @@ defmodule CodeMySpecSpex.Case do
     # from the registry, not a local build.
     commit = "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2"
 
-    Application.put_env(:code_my_spec, :provisioning_step_opts,
+    Application.put_env(
+      :code_my_spec,
+      :provisioning_step_opts,
       Keyword.merge(previous,
         environment: "uat",
         host: "staged.example.com",
         probe: probe,
         deploy_script: deploy_script,
-        deployed_version: %{commit: commit, image: "registry.example.com/app:#{commit}", source: "registry"}
+        deployed_version: %{
+          commit: commit,
+          image: "registry.example.com/app:#{commit}",
+          source: "registry"
+        }
       )
     )
 
@@ -1325,7 +1331,9 @@ defmodule CodeMySpecSpex.Case do
     build =
       case builds do
         :error ->
-          fn _scope, _server, _ref, _architecture -> {:error, {:build_failed, 1, "no space left on device"}} end
+          fn _scope, _server, _ref, _architecture ->
+            {:error, {:build_failed, 1, "no space left on device"}}
+          end
 
         produced ->
           fn _scope, _server, ref, _architecture ->
@@ -1635,8 +1643,17 @@ defmodule CodeMySpecSpex.Case do
   def stage_monitor(context, hosts, notify \\ "sam@example.com") do
     monitors = Enum.map(List.wrap(hosts), &%{host: &1, notify: notify})
     previous = Application.get_env(:code_my_spec, :provisioning_step_opts, [])
-    Application.put_env(:code_my_spec, :provisioning_step_opts, Keyword.put(previous, :monitors, monitors))
-    ExUnit.Callbacks.on_exit(fn -> Application.put_env(:code_my_spec, :provisioning_step_opts, previous) end)
+
+    Application.put_env(
+      :code_my_spec,
+      :provisioning_step_opts,
+      Keyword.put(previous, :monitors, monitors)
+    )
+
+    ExUnit.Callbacks.on_exit(fn ->
+      Application.put_env(:code_my_spec, :provisioning_step_opts, previous)
+    end)
+
     context
   end
 
@@ -2047,8 +2064,11 @@ defmodule CodeMySpecSpex.Case do
   @doc false
   def redact(%{} = map) do
     Map.new(map, fn
-      {k, v} when is_binary(v) -> if k in @secret_keys, do: {k, "<REDACTED>"}, else: {k, redact(v)}
-      {k, v} -> {k, redact(v)}
+      {k, v} when is_binary(v) ->
+        if k in @secret_keys, do: {k, "<REDACTED>"}, else: {k, redact(v)}
+
+      {k, v} ->
+        {k, redact(v)}
     end)
   end
 
@@ -2247,20 +2267,20 @@ defmodule CodeMySpecSpex.Case do
 
     ExUnit.Callbacks.on_exit(fn ->
       safe_teardown(name, fn ->
-      with_provider_cassette(name, fn ->
-        for {key, result} <- tear_down_steps_with_retry(scope, keys, opts) do
-          case result do
-            {:ok, _removed} ->
-              :ok
+        with_provider_cassette(name, fn ->
+          for {key, result} <- tear_down_steps_with_retry(scope, keys, opts) do
+            case result do
+              {:ok, _removed} ->
+                :ok
 
-            {:error, {:left_behind, remaining}} ->
-              IO.warn(
-                "spex teardown left #{key} resources behind: " <>
-                  inspect(Enum.map(remaining, & &1.location))
-              )
+              {:error, {:left_behind, remaining}} ->
+                IO.warn(
+                  "spex teardown left #{key} resources behind: " <>
+                    inspect(Enum.map(remaining, & &1.location))
+                )
+            end
           end
-        end
-      end)
+        end)
       end)
     end)
   end
@@ -2293,9 +2313,7 @@ defmodule CodeMySpecSpex.Case do
     Map.merge(context, %{account: account, scope: updated_scope})
   end
 
-  @doc """
-  Setup helper that sets up an active project for the user.
-  """
+  # Setup helper that sets up an active project for the user.
   @doc """
   Say this project is meant to be deployed.
 
