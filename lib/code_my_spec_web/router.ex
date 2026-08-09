@@ -480,12 +480,12 @@ defmodule CodeMySpecWeb.Router do
       # exits with it complete — so it is a door into the workflow rather than a
       # step in it. See `ProjectSetupLive`.
       live "/projects/:project_id/setup", ProjectSetupLive, :show
+      live "/projects/:project_id/setup/:step_id", ProjectSetupLive, :step
 
       live "/projects/:project_id/requirements", RequirementsLive, :index
       live "/projects/:project_id/requirements/graph", RequirementsLive, :graph
       live "/projects/:project_id/requirements/stories", RequirementsLive, :stories
       live "/projects/:project_id/requirements/:name", RequirementsLive, :show
-      live "/projects/:project_id/requirements/:name/:child_id", RequirementsLive, :child
       live "/projects/:project_id/components", RequirementsLive, :components
       live "/projects/:project_id/components/graph", RequirementsLive, :components_graph
       live "/projects/:project_id/components/:component_id", RequirementsLive, :component_show

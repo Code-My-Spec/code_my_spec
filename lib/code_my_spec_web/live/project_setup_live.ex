@@ -52,7 +52,13 @@ defmodule CodeMySpecWeb.ProjectSetupLive do
 
       project ->
         scope = %{scope | active_project: project, active_project_id: project.id}
-        {:ok, assign_checklist(socket, scope, project)}
+
+        {:ok,
+         socket
+         |> assign(:scope, scope)
+         |> assign(:step, nil)
+         |> assign(:step_error, nil)
+         |> assign_checklist(scope, project)}
     end
   end
 
@@ -79,7 +85,67 @@ defmodule CodeMySpecWeb.ProjectSetupLive do
     |> assign(:setup_error, error)
   end
 
+  # A single step's prompt, addressed on its own.
+  #
+  # The twelve steps are a subgraph, not a boolean, and each was already
+  # reachable — as `/requirements/project_setup/<step_id>` in `RequirementsLive`.
+  # That handler only ever resolved setup steps (`ProjectSetup.find_step/1`), so
+  # it comes here with the rest of setup rather than being left behind
+  # back-linking to a page that no longer resolves.
   @impl true
+  def handle_params(%{"step_id" => step_id}, _uri, %{assigns: %{live_action: :step}} = socket) do
+    case ProjectSetup.find_step(step_id) do
+      nil ->
+        {:noreply, assign(socket, step: nil, step_error: "No such setup step: #{step_id}")}
+
+      mod ->
+        scope = socket.assigns.scope
+
+        {:noreply,
+         socket
+         |> assign(:page_title, ProjectSetup.step_name(mod))
+         |> assign(:step, %{name: ProjectSetup.step_name(mod), prompt: step_prompt(mod, scope)})
+         |> assign(:step_error, nil)}
+    end
+  end
+
+  def handle_params(_params, _uri, socket), do: {:noreply, socket}
+
+  defp step_prompt(mod, scope) do
+    case mod.command(scope, %{}) do
+      {:ok, text} -> text
+      {:error, reason} -> "Error: #{inspect(reason)}"
+    end
+  rescue
+    error -> "Error: #{inspect(error)}"
+  end
+
+  @impl true
+  def render(%{live_action: :step} = assigns) do
+    ~H"""
+    <div class="max-w-4xl mx-auto p-4">
+      <.link
+        navigate={~p"/app/projects/#{@project.id}/setup"}
+        class="text-sm text-base-content/60 hover:underline"
+      >
+        ← Project Setup
+      </.link>
+
+      <div :if={@step_error} data-role="setup-error" class="alert alert-error mt-4" role="alert">
+        <span>{@step_error}</span>
+      </div>
+
+      <div :if={@step}>
+        <h1 class="text-2xl font-bold mt-2 mb-4 break-all">{@step.name}</h1>
+
+        <div class="prose prose-sm md:prose-base max-w-none bg-base-200 border border-base-300 rounded-box p-6 overflow-x-auto">
+          {md_html(@step.prompt)}
+        </div>
+      </div>
+    </div>
+    """
+  end
+
   def render(assigns) do
     ~H"""
     <div class="max-w-4xl mx-auto p-4">

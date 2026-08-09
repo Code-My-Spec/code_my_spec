@@ -16,7 +16,6 @@ defmodule CodeMySpecWeb.RequirementsLive do
   @graph_debounce_ms 750
 
   alias CodeMySpec.AgentTasks
-  alias CodeMySpec.AgentTasks.ProjectSetup
   alias CodeMySpec.Components
   alias CodeMySpec.ProjectSync.Sync, as: ProjectSync
   alias CodeMySpec.Requirements
@@ -42,33 +41,6 @@ defmodule CodeMySpecWeb.RequirementsLive do
   # --- Handle params ---
 
   @impl true
-  def handle_params(
-        %{"name" => req_name, "child_id" => child_id},
-        _uri,
-        %{assigns: %{live_action: :child}} = socket
-      ) do
-    with_project(socket, fn project, scope ->
-      slug = socket.assigns.slug
-      mod = ProjectSetup.find_step(child_id)
-
-      if mod do
-        page = %{
-          kind: :command,
-          title: ProjectSetup.step_name(mod),
-          command: generate_command(mod, scope),
-          back: %{
-            label: "← Back to #{req_name}",
-            to: "/app/projects/#{slug}/requirements/#{req_name}"
-          }
-        }
-
-        assign_page(socket, project, scope, page)
-      else
-        {:noreply, assign(socket, error: "Step not found: #{child_id}")}
-      end
-    end)
-  end
-
   def handle_params(%{"name" => req_name}, _uri, %{assigns: %{live_action: :show}} = socket) do
     with_project(socket, fn project, scope ->
       handle_show_for_project(project, scope, req_name, socket)
