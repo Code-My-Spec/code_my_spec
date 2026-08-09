@@ -21,7 +21,6 @@ alias CodeMySpec.Users.User
 alias CodeMySpec.Users.Scope
 
 email = "qa@codemyspec.local"
-password = "qa-password-123!"
 # Project lives under the existing Code My Spec team account so it shows up
 # in the local project list when authenticated as the dev user.
 target_account_slug = "code-my-spec"
@@ -94,12 +93,14 @@ user =
   case Users.get_user_by_email(email) do
     nil ->
       {:ok, user} = Users.register_user(%{email: email})
-      {:ok, {user, _expired_tokens}} = Users.update_user_password(user, %{password: password})
 
-      # Confirmed, or this user cannot log in at all. Registering with a
-      # password and never confirming leaves an account whose only remaining
-      # door — the magic link — is refused on purpose, to prevent session
-      # fixation. Every QA pass logged in as this user and hit that wall.
+      # No password. There is no password form — `/users/log-in` offers GitHub,
+      # Google, and a magic link, and the page says so ("Passwordless from day
+      # one"). Setting one gave the seed's own output a credential that could
+      # not be used, and every per-story brief copied it out of the QA plan.
+      #
+      # Confirmed, or this user cannot log in at all: an unconfirmed account's
+      # magic link is refused on purpose, to prevent session fixation.
       {:ok, user} = user |> User.confirm_changeset() |> Repo.update()
 
       IO.puts("  user: created #{email} (confirmed)")
@@ -303,7 +304,6 @@ IO.puts("""
 === QA Fixture (server) ===
 Hosted UI:    http://127.0.0.1:4000
 Email:        #{email}
-Password:     #{password}
 Account slug: #{target_account_slug}
 Account id:   #{account.id}
 Project id:   #{project.id}
@@ -312,7 +312,14 @@ Local path:   #{local_path}
 QA stories:
 #{stories_block}
 
-Login at /users/log-in (password form), then visit /app.
+Log in — passwordless, so this is the whole procedure:
+  1. /users/log-in, enter the email above, "Email me a login link"
+  2. /dev/mailbox — the local adapter catches it
+  3. the link is minted with the configured host
+     (https://dev.codemyspec.com/users/log-in/<token>); rewrite the origin to
+     http://127.0.0.1:4000 before following it, or you leave the local app
+  4. it lands on /app. Single-use — a re-run needs a fresh link.
+
 For local web (port 4003), the same project resolves via X-Working-Dir or
 Plugs.WorkingDirScope as long as `local_path` matches PWD on each request.
 """)
