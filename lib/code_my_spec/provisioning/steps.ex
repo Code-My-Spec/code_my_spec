@@ -565,10 +565,69 @@ defmodule CodeMySpec.Provisioning.Steps do
   end
 
   def run(:content, %Scope{} = scope, opts) do
+    # `ContentPublishing.run/2` already computes everything story 972 asks
+    # about — which objects landed in whose bucket, what the live site returned
+    # for the post's path, when it was proven. Collapsing all of it to
+    # `%{kind: "content", location: "published and rendered"}` meant the page
+    # had nothing to show and the criteria had nothing to read, which is why
+    # every one of them selected on markup that could not exist.
+    #
+    # Shaped like `inbound_proof` and `restore_proof`: the claim in `kind`, the
+    # thing it is about in `location`, and the evidence in `identifier`.
     case ContentPublishing.run(scope, opts) do
-      %{state: :rendered} -> {:ok, [%{kind: "content", location: "published and rendered"}]}
-      %{reason: reason} -> {:error, reason}
+      %{state: :rendered} = result ->
+        {:ok, [content_proof(result) | content_objects(result)]}
+
+      %{state: state, published: published, reason: reason} ->
+        # A publish that uploaded and then failed to render is not the same as
+        # one that never uploaded, and 8058 turns on the difference. The
+        # objects are kept so the page can say the files are there while the
+        # post is not being served.
+        {:error, reason,
+         [content_failure(state, reason, published) | content_objects(%{published: published})]}
     end
+  end
+
+  defp content_proof(%{render: render, proven_at: proven_at}) do
+    %{
+      kind: "content_proof",
+      location: render[:path] || render["path"] || "",
+      identifier:
+        "state=rendered status=#{render[:status] || render["status"]} " <>
+          "title_present=#{title_present?(render)} proven_at=#{iso(proven_at)}"
+    }
+  end
+
+  defp content_failure(state, reason, published) do
+    %{
+      kind: "content_failure",
+      location: to_string(reason),
+      identifier: "state=#{state} objects_uploaded=#{uploaded?(published)}"
+    }
+  end
+
+  # One resource per object, because 8035 asks whose bucket each landed in and
+  # a single summary line cannot answer that.
+  defp content_objects(%{published: %{objects: objects}}) when is_list(objects) do
+    Enum.map(objects, fn object ->
+      %{
+        kind: "content_object",
+        location: object[:key] || object["key"] || "",
+        identifier:
+          "owner=#{object[:owner] || object["owner"] || "user"} " <>
+            "bucket=#{object[:bucket] || object["bucket"]}"
+      }
+    end)
+  end
+
+  defp content_objects(_), do: []
+
+  defp uploaded?(%{objects: objects}) when is_list(objects), do: objects != []
+  defp uploaded?(_), do: false
+
+  defp title_present?(render) do
+    contains = render[:body_contains] || render["body_contains"]
+    contains not in [nil, false, []]
   end
 
   def run(:widget, %Scope{} = scope, opts) do
@@ -586,12 +645,50 @@ defmodule CodeMySpec.Provisioning.Steps do
            ) do
       opts = opts |> Keyword.put(:site_url, site) |> Keyword.put(:deploy_key, key)
 
+      # Same as the content step: `Widget.run/3` computes the render check and
+      # the message proof — status, present, openable, origin, when — and all
+      # of it was being discarded into one opaque resource, so story 973's
+      # criteria selected on markup that had no source.
       case Widget.run(scope, env(scope), opts) do
-        %{state: :proven} -> {:ok, [%{kind: "widget", location: "installed and proven"}]}
-        %{reason: reason} -> {:error, reason}
+        %{state: :proven} = result ->
+          {:ok, Enum.reject([widget_render(result), widget_proof(result)], &is_nil/1)}
+
+        %{reason: reason} = result ->
+          {:error, reason, Enum.reject([widget_render(result)], &is_nil/1)}
       end
     end
   end
+
+  # What the live site said when it was checked: the status, and whether the
+  # widget was both present and openable. Present-but-not-openable is the shape
+  # a broken bundle takes, so 8040 asks for them separately.
+  defp widget_render(%{presence: %{} = presence}) do
+    %{
+      kind: "widget_render",
+      location: to_string(presence[:status] || presence["status"]),
+      identifier:
+        "status=#{presence[:status] || presence["status"]} " <>
+          "present=#{presence[:present] || presence["present"]} " <>
+          "openable=#{presence[:openable] || presence["openable"]}"
+    }
+  end
+
+  defp widget_render(_), do: nil
+
+  # A message that actually travelled from the deployed site. `origin` is the
+  # part that distinguishes it from one posted by hand, which is what 8044
+  # means by "not by a script tag".
+  defp widget_proof(%{proof: %{} = proof, proven_at: proven_at}) do
+    %{
+      kind: "widget_proof",
+      location: to_string(proof[:origin] || proof["origin"] || "deployed_site"),
+      identifier:
+        "state=#{proof[:state] || proof["state"]} " <>
+          "origin=#{proof[:origin] || proof["origin"]} proven_at=#{iso(proven_at)}"
+    }
+  end
+
+  defp widget_proof(_), do: nil
 
   def run(:secrets, %Scope{} = scope, opts) do
     environments = environments(scope, opts)

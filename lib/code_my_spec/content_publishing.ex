@@ -112,7 +112,16 @@ defmodule CodeMySpec.ContentPublishing do
              credentials: creds
            ),
          {:ok, result} <- trigger_client(project, manifest_url) do
-      {:ok, Map.merge(result, %{counts: counts, total: length(success_rows)})}
+      # What was written and where. Criterion 8035 is that the published files
+      # are in *Sam's* storage, and that was unanswerable from here: the return
+      # carried the trigger result and counts, so the objects and the bucket —
+      # the only things that answer whose storage they landed in — were known
+      # at this line and dropped.
+      objects =
+        Enum.map(["content.json", "manifest.json"], &%{key: &1, bucket: bucket, owner: "user"})
+
+      {:ok,
+       Map.merge(result, %{counts: counts, total: length(success_rows), objects: objects})}
     else
       {:error, %{message: _} = err} -> {:error, err}
       {:error, reason} -> {:error, %{message: "S3 write failed: #{inspect(reason)}"}}

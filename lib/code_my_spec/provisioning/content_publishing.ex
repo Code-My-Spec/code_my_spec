@@ -92,10 +92,31 @@ defmodule CodeMySpec.Provisioning.ContentPublishing do
     now = Keyword.get(opts, :now, &DateTime.utc_now/0)
     publish = Keyword.get(opts, :publish, &CodeMySpec.ContentPublishing.publish/1)
 
+    # `verify_render/2` is handled in a `case` rather than as another `with`
+    # clause so `published` is still in scope when it fails. As an `else`
+    # branch it was not, and the not-rendered result reported `published: nil`
+    # — throwing away the fact that the objects had landed. That is exactly the
+    # distinction criterion 8058 turns on: files uploaded but the post not
+    # served is a different failure from a publish that never happened, and it
+    # was unanswerable one layer above.
     with :ok <- ensure_publishable(scope),
-         {:ok, published} <- publish.(scope),
-         {:ok, render} <- verify_render(published, opts) do
-      %{state: :rendered, published: published, render: render, proven_at: now.(), reason: nil}
+         {:ok, published} <- publish.(scope) do
+      case verify_render(published, opts) do
+        {:ok, render} ->
+          %{state: :rendered, published: published, render: render, proven_at: now.(), reason: nil}
+
+        {:error, {:not_rendered, render}} ->
+          %{
+            state: :not_rendered,
+            published: published,
+            render: render,
+            proven_at: nil,
+            reason: render_failure_reason(render, opts)
+          }
+
+        {:error, reason} ->
+          failure(:publish_failed, inspect(reason))
+      end
     else
       {:error, {:not_publishable, missing}} ->
         failure(:trigger_failed, "Publishing is not configured — #{Enum.join(missing, ", ")} " <>
@@ -104,15 +125,6 @@ defmodule CodeMySpec.Provisioning.ContentPublishing do
 
       {:error, %{message: message}} ->
         failure(publish_failure_state(message), message)
-
-      {:error, {:not_rendered, render}} ->
-        %{
-          state: :not_rendered,
-          published: nil,
-          render: render,
-          proven_at: nil,
-          reason: render_failure_reason(render, opts)
-        }
 
       {:error, reason} ->
         failure(:publish_failed, inspect(reason))
