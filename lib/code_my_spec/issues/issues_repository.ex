@@ -53,29 +53,36 @@ defmodule CodeMySpec.Issues.IssuesRepository do
   end
 
   def create_issue(%Scope{} = scope, attrs) do
-    project_id = resolve_project_id(scope)
-    account_id = resolve_account_id(scope)
+    scope
+    |> scoped_changeset(attrs)
+    |> Repo.insert()
+  end
 
+  # Both writers build the same changeset, and they diverged: `upsert_issue/2`
+  # set the project and the account and never the harness, so anything arriving
+  # through it was stored with no working copy no matter what the scope knew.
+  #
+  # Invisible in the way that costs most — the filing agent usually writes the
+  # working copy into the description, so the issue *reads* as attributed while
+  # the column is null, and two checkouts of one project file findings that look
+  # identical and are about different trees.
+  #
+  # One builder, so the next column added cannot land on one path only.
+  defp scoped_changeset(%Scope{} = scope, attrs) do
     %Issue{}
     |> Issue.changeset(attrs)
-    |> Ecto.Changeset.put_change(:project_id, project_id)
-    |> Ecto.Changeset.put_change(:account_id, account_id)
+    |> Ecto.Changeset.put_change(:project_id, resolve_project_id(scope))
+    |> Ecto.Changeset.put_change(:account_id, resolve_account_id(scope))
     # From the scope, never from the caller — an issue is raised *by* a working
     # copy, and letting a report name someone else's would make the field worse
     # than absent. Nil where there is no checkout, which is the web UI.
     |> Ecto.Changeset.put_change(:harness_id, scope.active_harness_id)
-    |> Repo.insert()
   end
 
   def upsert_issue(%Scope{} = scope, attrs) do
     project_id = resolve_project_id(scope)
-    account_id = resolve_account_id(scope)
 
-    changeset =
-      %Issue{}
-      |> Issue.changeset(attrs)
-      |> Ecto.Changeset.put_change(:project_id, project_id)
-      |> Ecto.Changeset.put_change(:account_id, account_id)
+    changeset = scoped_changeset(scope, attrs)
 
     title =
       Ecto.Changeset.get_change(changeset, :title) || Ecto.Changeset.get_field(changeset, :title)
