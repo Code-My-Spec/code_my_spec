@@ -16,6 +16,7 @@ defmodule CodeMySpecTest.FakeWorkspaceRunner do
     state = %{
       start_result: Keyword.get(opts, :start_result, :ok),
       healthy?: Keyword.get(opts, :healthy?, true),
+      serving: Keyword.get(opts, :serving, :serving),
       alive?: Keyword.get(opts, :alive?, true),
       logs: Keyword.get(opts, :logs, ""),
       calls: []
@@ -26,6 +27,14 @@ defmodule CodeMySpecTest.FakeWorkspaceRunner do
 
   @doc "Replaces what the container has announced so far."
   def put_logs(logs), do: Agent.update(__MODULE__, &%{&1 | logs: logs})
+
+  @doc "Sets what the app is doing: :serving, :erroring or :down."
+  def put_serving(serving) when serving in [:serving, :erroring, :down, :ok] do
+    Agent.update(__MODULE__, &%{&1 | serving: normalize(serving)})
+  end
+
+  defp normalize(:ok), do: :serving
+  defp normalize(other), do: other
 
   @doc """
   Decides, from the test, whether the instance is answering yet.
@@ -52,6 +61,9 @@ defmodule CodeMySpecTest.FakeWorkspaceRunner do
 
   @impl true
   def healthy?(_port), do: Agent.get(__MODULE__, & &1.healthy?)
+
+  @impl true
+  def serving(_port), do: Agent.get(__MODULE__, & &1.serving)
 
   @impl true
   def url(_container_name, port), do: "http://localhost:#{port}"

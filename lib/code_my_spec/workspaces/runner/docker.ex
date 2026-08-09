@@ -47,15 +47,26 @@ defmodule CodeMySpec.Workspaces.Runner.Docker do
   # a link to a dead page. Any HTTP response means something is actually
   # serving; the status does not matter.
   @impl true
-  def healthy?(port) when is_integer(port) do
-    case Req.get("http://127.0.0.1:#{port}/",
-           retry: false,
-           receive_timeout: 2_000,
-           connect_options: [timeout: 1_000]
-         ) do
-      {:ok, %Req.Response{}} -> true
-      _ -> false
+  def healthy?(port) when is_integer(port), do: serving(port) != :down
+
+  # The status matters here, where it deliberately does not for healthy?/1.
+  # Waiting for a boot, any answer means the app is up; once it is up, an
+  # answer of 500 means it is broken, and the pane has to say which.
+  @impl true
+  def serving(port) when is_integer(port) do
+    case get(port) do
+      {:ok, %Req.Response{status: status}} when status >= 500 -> :erroring
+      {:ok, %Req.Response{}} -> :serving
+      _ -> :down
     end
+  end
+
+  defp get(port) do
+    Req.get("http://127.0.0.1:#{port}/",
+      retry: false,
+      receive_timeout: 2_000,
+      connect_options: [timeout: 1_000]
+    )
   end
 
   # Loopback, because that is where a published port is. The hosted runner
