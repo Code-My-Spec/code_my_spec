@@ -68,6 +68,49 @@ defmodule CodeMySpec.Deploys do
     end
   end
 
+  @doc """
+  Record the stories a successful deploy carried.
+
+  A deploy ships the application, not one story — so what went out is every
+  story that had cleared QA and was not already on that environment. Called
+  when the deploy step succeeds, with the health check's own answer: the step
+  only reports success after its probe passed, which is what makes
+  `health_verified_at` mean something rather than restating that a command
+  exited zero.
+
+  Stories still in QA are deliberately not recorded. Their code may well be in
+  the image, but "this story is on UAT" is a claim about work that was finished
+  and checked, and criterion 1963 puts the deploy *after* `qa_complete` for
+  that reason.
+  """
+  @spec record_environment_deploy(Scope.t(), String.t(), keyword()) :: {:ok, [Deploy.t()]}
+  def record_environment_deploy(%Scope{} = scope, environment, opts \\ []) do
+    at = Keyword.get(opts, :health_verified_at, DateTime.utc_now())
+
+    recorded =
+      scope
+      |> stories_clearing_qa()
+      |> Enum.flat_map(fn story ->
+        attrs = Keyword.merge(opts, health_verified_at: at)
+
+        case record(scope, story.id, environment, attrs) do
+          {:ok, deploy} -> [deploy]
+          {:error, _changeset} -> []
+        end
+      end)
+
+    {:ok, recorded}
+  end
+
+  defp stories_clearing_qa(%Scope{active_project_id: project_id} = scope) do
+    CodeMySpec.Stories.Story
+    |> where([s], s.project_id == ^project_id)
+    |> Repo.all()
+    |> Enum.filter(fn story ->
+      match?({true, _}, CodeMySpec.Qa.complete_check(scope, story))
+    end)
+  end
+
   @doc "Every deploy on this project, newest first."
   @spec list(Scope.t()) :: [Deploy.t()]
   def list(%Scope{active_project_id: project_id}) do

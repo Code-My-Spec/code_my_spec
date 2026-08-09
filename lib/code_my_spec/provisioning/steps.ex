@@ -35,7 +35,7 @@ defmodule CodeMySpec.Provisioning.Steps do
   prevent, so it is better to be loudly incomplete.
   """
 
-  alias CodeMySpec.{AccountSecrets, Environments, ProjectSecrets, Projects}
+  alias CodeMySpec.{AccountSecrets, Deploys, Environments, ProjectSecrets, Projects}
 
   alias CodeMySpec.Provisioning.{
     Backups,
@@ -425,6 +425,12 @@ defmodule CodeMySpec.Provisioning.Steps do
          result <- Deploy.run(env(scope), environment, deploy_opts(opts, host, image)) do
       case deploy_outcome(result, environment, host) do
         {:ok, resources} ->
+          # Recorded only here, on the success branch, because `deploy_outcome`
+          # returns `{:ok, _}` only after the health probe passed. A deploy that
+          # shipped and never answered must not read as done — criterion 1964 —
+          # and writing the row anywhere earlier would make it exactly that.
+          {:ok, _deploys} = Deploys.record_environment_deploy(scope, environment, deploy_record_attrs(image, version))
+
           {:ok, [delivery | version_resources(version) ++ image_resources(image) ++ resources]}
 
         {:error, reason, resources} ->
@@ -1101,6 +1107,21 @@ defmodule CodeMySpec.Provisioning.Steps do
 
     Enum.any?(recipients, &(&1 == to)) and not MapSet.member?(seen, message["id"])
   end
+
+  # What went out, so "the running version is traceable to the commit CI
+  # built" (criterion 8005) has something to compare against later.
+  defp deploy_record_attrs(image, version) do
+    [
+      commit_sha: image_commit(image),
+      version: version
+    ]
+  end
+
+  defp image_commit(%{reference: reference}) when is_binary(reference) do
+    reference |> String.split(":") |> List.last()
+  end
+
+  defp image_commit(_image), do: nil
 
   defp image_for(scope, environment, opts) do
     case {Keyword.get(opts, :image), Keyword.get(opts, :build)} do
