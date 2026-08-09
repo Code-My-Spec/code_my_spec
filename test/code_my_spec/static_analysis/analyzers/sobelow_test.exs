@@ -5,8 +5,10 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SobelowTest do
   import CodeMySpec.{UsersFixtures, AccountsFixtures, ProjectsFixtures}
   import ExUnit.CaptureLog
 
-  alias CodeMySpec.StaticAnalysis.Analyzers.Sobelow
   alias CodeMySpec.Problems.Problem
+  alias CodeMySpec.Projects
+  alias CodeMySpec.StaticAnalysis.Analyzers.Sobelow
+  alias CodeMySpec.Support.TestAdapter
 
   @test_repo_url "https://github.com/Code-My-Spec/test_phoenix_project.git"
 
@@ -18,16 +20,16 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SobelowTest do
     scope = user_scope_fixture(user, account, project)
 
     # Clone from pool
-    {:ok, project_dir} = CodeMySpec.Support.TestAdapter.clone(scope, @test_repo_url)
+    {:ok, project_dir} = TestAdapter.clone(scope, @test_repo_url)
 
     # Update project with cloned repo path
     {:ok, updated_project} =
-      CodeMySpec.Projects.update_project(scope, project, %{code_repo: project_dir})
+      Projects.update_project(scope, project, %{code_repo: project_dir})
 
     scope = user_scope_fixture(user, account, updated_project) |> Map.put(:cwd, project_dir)
 
     on_exit(fn ->
-      CodeMySpec.Support.TestAdapter.checkin(project_dir)
+      TestAdapter.checkin(project_dir)
     end)
 
     %{scope: scope, project: updated_project, project_dir: project_dir}
