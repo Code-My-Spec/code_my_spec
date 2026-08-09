@@ -127,10 +127,33 @@ defmodule CodeMySpecWeb.AgentConversationLive do
   attr :id, :string, required: true
   attr :message, :any, required: true
 
-  # Blank-body turns (an assistant message with nothing but tool calls) render
-  # as nothing rather than an empty bubble — a tool-only turn must never look
-  # like it produced no evidence.
-  defp turn(%{message: %{body: ""}} = assigns) do
+  # A turn whose evidence is the calls it made. This used to match on
+  # `body: ""` and hide the turn entirely, because a flattened message had
+  # nowhere to put a call. The model carries `tool_calls` now, so there is
+  # something to show — and that pattern silently stopped matching when `body`
+  # was dropped, which turned every tool call into an empty bubble. Map
+  # patterns do not complain about keys that no longer exist.
+  defp turn(%{message: %{tool_calls: calls}} = assigns) when is_list(calls) and calls != [] do
+    ~H"""
+    <div id={@id} class="space-y-2">
+      <div
+        :for={call <- @message.tool_calls}
+        data-test="tool-call"
+        data-tool={call["name"]}
+        data-tool-call-id={call["id"]}
+        data-agent-role={@message.agent_role}
+        class="rounded-box bg-base-200 p-3 font-mono text-xs"
+      >
+        <div :if={@message.agent_role} class="mb-1 uppercase opacity-60">{@message.agent_role}</div>
+        {call["name"]}
+      </div>
+    </div>
+    """
+  end
+
+  # Genuinely nothing to show — no text, no calls. Still hidden rather than
+  # rendered as an empty bubble.
+  defp turn(%{message: %{content: [], tool_calls: nil}} = assigns) do
     ~H"""
     <div id={@id} class="hidden"></div>
     """
@@ -141,6 +164,7 @@ defmodule CodeMySpecWeb.AgentConversationLive do
     <div
       id={@id}
       data-test="tool-call"
+      data-tool-call-id={@message.tool_call_id}
       data-agent-role={@message.agent_role}
       class="rounded-box bg-base-200 p-3"
     >

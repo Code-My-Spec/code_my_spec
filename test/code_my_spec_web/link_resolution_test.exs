@@ -268,11 +268,7 @@ defmodule CodeMySpecWeb.LinkResolutionTest do
     "/app/projects/:project_id/requirements/stories",
     "/app/projects/:project_id/architecture/overview",
     "/app/projects/:project_id/architecture/namespaces",
-    "/app/projects/:project_id/components/graph",
-    # AgentConversationLive — a read-only view of one sprite's turns. It only
-    # became visible to this guard when its route moved from :project_name to
-    # :project_id and started matching the portable shape. Nothing links it.
-    "/app/projects/:project_id/agent-conversation"
+    "/app/projects/:project_id/components/graph"
   ]
 
   @doc false
