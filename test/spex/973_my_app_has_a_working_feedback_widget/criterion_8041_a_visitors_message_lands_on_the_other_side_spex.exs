@@ -29,29 +29,40 @@ defmodule CodeMySpecSpex.Story973.Criterion8041Spex do
   spex "A visitor's message lands on the other side" do
     scenario "a message pushed from the widget arrives against Sam's project" do
       given_ "a visitor has the widget open on Sam's site", context do
-        conn =
-          Phoenix.ConnTest.build_conn()
-          |> Plug.Conn.put_req_header("content-type", "application/json")
-          |> post("/api/widget/socket_token", %{"project_id" => context.project.id})
+        # The app holds the credential, not the visitor. A project id is not
+        # one — the socket-token endpoint sits behind `Plugs.AppToken` so the
+        # browser is handed something the deploy key never becomes.
+        app_token = app_access_token(context.project)
 
-        body = Phoenix.ConnTest.json_response(conn, 200)
+        body =
+          Phoenix.ConnTest.build_conn()
+          |> Plug.Conn.put_req_header("authorization", "Bearer " <> app_token)
+          |> get("/api/widget/socket_token")
+          |> Phoenix.ConnTest.json_response(200)
+
+        # The visitor is whoever the widget says they are. Nothing here names
+        # the project; the socket resolves it from the token.
+        visitor = "visitor-#{System.unique_integer([:positive])}"
 
         {:ok, socket} =
           Phoenix.ChannelTest.connect(
             CodeMySpecWeb.WidgetSocket,
-            %{"token" => body["token"]},
+            %{
+              "socket_token" => body["socket_token"],
+              "user_id" => visitor,
+              "user_email" => "#{visitor}@example.com"
+            },
             %{}
           )
 
-        {:ok, _reply, channel} =
-          subscribe_and_join(socket, "conversation:visitor-probe", %{})
+        {:ok, _reply, channel} = subscribe_and_join(socket, "conversation:#{visitor}", %{})
 
         {:ok, Map.put(context, :channel, channel)}
       end
 
       when_ "they send a message", context do
         ref =
-          Phoenix.ChannelTest.push(context.channel, "message", %{
+          Phoenix.ChannelTest.push(context.channel, "send_message", %{
             "body" => "the widget works"
           })
 
@@ -69,7 +80,7 @@ defmodule CodeMySpecSpex.Story973.Criterion8041Spex do
 
       then_ "Sam can see it on the CodeMySpec side", context do
         {:ok, _view, html} =
-          live(context.conn, "/app/projects/#{context.project.id}/conversations")
+          live(context.conn, "/app/projects/#{context.project.id}/inbox")
 
         assert html =~ "the widget works",
                "expected the visitor's message to be visible against Sam's project"

@@ -27,35 +27,55 @@ defmodule CodeMySpecSpex.Story973.Criterion8042Spex do
   spex "Sam answers and the visitor sees the reply" do
     scenario "a reply from CodeMySpec is pushed to the open widget" do
       given_ "a visitor's message has arrived", context do
-        conn =
-          Phoenix.ConnTest.build_conn()
-          |> Plug.Conn.put_req_header("content-type", "application/json")
-          |> post("/api/widget/socket_token", %{"project_id" => context.project.id})
+        # The app holds the credential and mints the browser's socket token;
+        # the visitor names no project and has no account.
+        app_token = app_access_token(context.project)
 
-        body = Phoenix.ConnTest.json_response(conn, 200)
+        body =
+          Phoenix.ConnTest.build_conn()
+          |> Plug.Conn.put_req_header("authorization", "Bearer " <> app_token)
+          |> get("/api/widget/socket_token")
+          |> Phoenix.ConnTest.json_response(200)
+
+        visitor = "visitor-#{System.unique_integer([:positive])}"
 
         {:ok, socket} =
           Phoenix.ChannelTest.connect(
             CodeMySpecWeb.WidgetSocket,
-            %{"token" => body["token"]},
+            %{
+              "socket_token" => body["socket_token"],
+              "user_id" => visitor,
+              "user_email" => "#{visitor}@example.com"
+            },
             %{}
           )
 
-        {:ok, _reply, channel} =
-          subscribe_and_join(socket, "conversation:visitor-probe", %{})
+        {:ok, _reply, channel} = subscribe_and_join(socket, "conversation:#{visitor}", %{})
 
-        ref = Phoenix.ChannelTest.push(channel, "message", %{"body" => "is anyone there"})
+        ref = Phoenix.ChannelTest.push(channel, "send_message", %{"body" => "is anyone there"})
         assert_reply(ref, :ok, %{}, 1000)
 
-        {:ok, Map.put(context, :channel, channel)}
+        {:ok, context |> Map.put(:channel, channel) |> Map.put(:visitor, visitor)}
       end
 
       when_ "Sam replies from CodeMySpec", context do
         {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/conversations")
+          live(context.conn, "/app/projects/#{context.project.id}/inbox")
 
+        # The reply form lives on the conversation, not the list, so Sam opens
+        # the one the visitor started. `open_conversation` is a `push_navigate`,
+        # which ends this LiveView process and starts another — clicking and
+        # then using the old view is how the previous attempt got "no process".
+        {:ok, view, _html} =
+          view
+          |> element("[data-test='conversation']")
+          |> render_click()
+          |> follow_redirect(context.conn)
+
+        # `message-form` with a `message[body]` field — the inbox's own reply
+        # form, not a name invented for the criterion.
         view
-        |> form("[data-test='conversation-reply-form']", reply: %{body: "yes, right here"})
+        |> form("[data-test='message-form']", message: %{body: "yes, right here"})
         |> render_submit()
 
         {:ok, Map.put(context, :view, view)}
@@ -66,7 +86,9 @@ defmodule CodeMySpecSpex.Story973.Criterion8042Spex do
         # a receive whose bindings do not escape this step closure. Matching
         # the body inline asserts exactly what the criterion wants — Sam's
         # reply text reaching the visitor's open connection.
-        assert_push("message", %{"body" => "yes, right here"}, 1000)
+        # `new_message`, which is what `ConversationChannel` pushes, with an
+        # atom-keyed payload built by `message_payload/1`.
+        assert_push("new_message", %{body: "yes, right here"}, 1000)
 
         {:ok, context}
       end
