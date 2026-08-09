@@ -35,8 +35,27 @@ defmodule CodeMySpecSpex.Story972.Criterion8039Spex do
       # the render proof has nothing to fetch and the step fails for a reason
       # that has nothing to do with proving a render.
       given_ "Sam's site is deployed and his storage is ready", context do
+        # A domain, before anything runs. The `domain` and `dns` steps have
+        # nothing to register without one, and the render proof has nowhere to
+        # fetch from — the first drill made a server and two buckets and then
+        # stopped here, having never touched Cloudflare.
+        own_domain(context.project, "c8039.astralbi.com")
+
+        # Registered before the run, so it happens even when the sequence
+        # halts partway. This spex creates a real server and real buckets and
+        # was tearing down neither: the first drill left two servers running
+        # and `mix cms.provisioning_leaks` reports servers but never deletes
+        # them, so they had to be removed by hand.
+        tear_down_after(context.scope, [:server, :storage, :dns])
+
         view = mount_provisioning(context)
-        paste_storage_credentials(view)
+
+        # Every pasted credential, not just the storage pair. This `given_`
+        # runs the server step, which needs the Hetzner API token —
+        # `paste_storage_credentials/1` omits it, so the sequence halted at
+        # `server` and the steps after it never ran. The recording that
+        # produced was four interactions long and stopped at the repository.
+        paste_provider_credentials(view)
         run_steps(view, [:repository, :server, :secrets, :domain, :dns, :deploy, :storage], @given_cassette)
 
         {:ok, Map.put(context, :view, view)}
