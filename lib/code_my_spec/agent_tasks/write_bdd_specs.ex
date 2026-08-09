@@ -7,10 +7,11 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
   """
 
   alias CodeMySpec.BddSpecs
-  alias CodeMySpec.BddSpecs.Parser
+  alias CodeMySpec.BddSpecs.ContentCheck
   alias CodeMySpec.Components
   alias CodeMySpec.Environments
   alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.Files
   alias CodeMySpec.Stories
 
   require Logger
@@ -535,18 +536,18 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
   # ============================================================================
 
   defp validate_story_specs(scope, story) do
-    env = scope.environment
     criteria = story.criteria || []
+    check = spec_checker(scope)
 
     errors =
       criteria
       |> Enum.map(fn criterion ->
         spec_path = BddSpecs.spec_file_path(story, criterion)
-        {criterion, spec_path, validate_single_spec(env, spec_path)}
+        {criterion, spec_path, check.(spec_path)}
       end)
       |> Enum.reject(fn {_, _, result} -> result == :ok end)
       |> Enum.map(fn {criterion, spec_path, {:error, reason}} ->
-        "Criterion #{criterion.id} (#{criterion.description}): #{format_error(reason, spec_path)}\n  Expected: `#{spec_path}`"
+        "Criterion #{criterion.id} (#{criterion.description}): #{ContentCheck.describe(reason, spec_path)}\n  Expected: `#{spec_path}`"
       end)
 
     if Enum.empty?(errors) do
@@ -556,137 +557,55 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
     end
   end
 
-  defp format_error(reason, spec_path) do
-    case reason do
-      :file_not_found ->
-        "Spec file not found"
+  # Read the disk when there is one; otherwise read what the harness reported.
+  #
+  # There is no third option. A light harness's server has no working copy, and
+  # the version of this that only knew how to read a disk answered "Spec file
+  # not found" for every criterion — six of them, in a stop no edit could clear,
+  # while `bdd_specs_exist` read the harness's file report in the same second
+  # and correctly reported the same specs present. Two halves of one system
+  # disagreeing about one fact, because only one of them was looking.
+  defp spec_checker(%{environment: nil} = scope), do: &from_file_report(scope, &1)
+  defp spec_checker(%{environment: env}), do: &validate_single_spec(env, &1)
 
-      :no_scenarios ->
-        "Must contain at least one scenario"
-
-      :missing_steps ->
-        "All scenarios must have Given/When/Then steps"
-
-      :missing_spex_case ->
-        "Spec must `use <App>Spex.Case` as the base case template " <>
-          "(provides SexySpex DSL + Phoenix.ConnTest + Phoenix.LiveViewTest + DB sandbox). " <>
-          "Do not `use <App>Web.ConnCase` directly from a spec."
-
-      {:syntax_error, %{line: line, message: msg}} when is_integer(line) ->
-        "Compilation failed:\n  #{spec_path}:#{line}: #{msg}"
-
-      {:syntax_error, %{message: msg}} ->
-        "Compilation failed:\n  #{spec_path}: #{msg}"
-
-      {:parse_error, parse_reason} ->
-        "Parse error: #{inspect(parse_reason)}"
-
-      other ->
-        inspect(other)
+  # The manifest is the whole truth — a path absent from it is a deletion, not
+  # an omission — so no row here really is "not found", and says so.
+  defp from_file_report(scope, spec_path) do
+    case Files.get_by_path(scope, spec_path) do
+      nil -> {:error, :file_not_found}
+      %{valid: true} -> :ok
+      %{valid: false} = file -> {:error, reported_reason(file)}
+      # Present, but this harness sent no verdict for it — an older scanner that
+      # does not check spex content. Existence is all that is known, and this
+      # must not be dressed up as either a pass or a failure.
+      %{valid: nil} -> {:error, :no_verdict}
     end
   end
+
+  defp reported_reason(%{validation_errors: %{"reason" => reason}}) when is_binary(reason),
+    do: reason
+
+  defp reported_reason(%{validation_errors: errors}) when is_map(errors) and map_size(errors) > 0,
+    do: inspect(errors)
+
+  defp reported_reason(_file), do: "the harness reported this spec invalid without saying why"
 
   defp validate_single_spec(env, spec_path) do
     case Environments.read_file(env, spec_path) do
       {:ok, content} ->
-        with :ok <- validate_compiles(content, spec_path),
-             {:ok, spec} <- safe_parse(content, spec_path),
-             :ok <- validate_uses_spex_case(content) do
-          validate_spec_content(spec)
-        end
+        ContentCheck.check(content, spec_path)
+
+      # Not the same as absence, and collapsing them is what made this
+      # unresolvable. A light harness's server holds no working copy, so this
+      # read cannot succeed for any file — and every criterion came back "Spec
+      # file not found" for specs that were on the agent's disk, in a stop no
+      # edit could clear.
+      {:error, :no_environment} ->
+        {:error, :no_environment}
 
       _ ->
         {:error, :file_not_found}
     end
-  end
-
-  # Compile each spec file in-process via `Code.string_to_quoted/2` —
-  # cheap, deterministic, and operates on the in-memory string rather
-  # than shelling out to `mix compile`. Catches syntax errors with
-  # `{file, line}` location info; semantic issues like undefined macros
-  # are caught by `validate_uses_spex_case/1` instead.
-  defp validate_compiles(content, spec_path) do
-    case Code.string_to_quoted(content, file: spec_path) do
-      {:ok, _ast} ->
-        :ok
-
-      {:error, {meta, msg, token}} ->
-        line = line_from_meta(meta)
-        message = format_string_to_quoted_message(msg, token)
-        {:error, {:syntax_error, %{line: line, message: message}}}
-    end
-  end
-
-  defp safe_parse(content, spec_path) do
-    case Parser.parse(content, spec_path) do
-      {:ok, spec} -> {:ok, spec}
-      {:error, reason} -> {:error, {:parse_error, reason}}
-    end
-  end
-
-  defp line_from_meta(meta) when is_list(meta), do: Keyword.get(meta, :line)
-  defp line_from_meta(line) when is_integer(line), do: line
-  defp line_from_meta(_), do: nil
-
-  defp format_string_to_quoted_message({header, body}, token)
-       when is_binary(header) and is_binary(body) do
-    "#{header}#{body}#{token}"
-  end
-
-  defp format_string_to_quoted_message(msg, token) when is_binary(msg) do
-    "#{msg}#{token}"
-  end
-
-  defp format_string_to_quoted_message(msg, _token), do: inspect(msg)
-
-  # The `spex/scenario/given_/when_/then_` macros only resolve when the
-  # spec module pulls in SexySpex. The project's colocated case template
-  # `<App>Spex.Case` does that — and also wires up ConnTest, LiveViewTest,
-  # and the DB sandbox. A spec that reaches for `<App>Web.ConnCase` (or
-  # `use SexySpex` directly) would compile in isolation but breaks the
-  # established pattern, so reject it at validation time rather than
-  # surface a confusing macro error at run time.
-  defp validate_uses_spex_case(content) do
-    case Code.string_to_quoted(content) do
-      {:ok, ast} ->
-        if uses_spex_case?(ast),
-          do: :ok,
-          else: {:error, :missing_spex_case}
-
-      {:error, _} ->
-        :ok
-    end
-  end
-
-  defp uses_spex_case?(ast) do
-    ast
-    |> Macro.prewalker()
-    |> Enum.any?(fn
-      {:use, _, [{:__aliases__, _, parts} | _]} -> spex_case_alias?(parts)
-      _ -> false
-    end)
-  end
-
-  defp spex_case_alias?(parts) when is_list(parts) and length(parts) >= 2 do
-    parts
-    |> Enum.map_join(".", &Atom.to_string/1)
-    |> String.match?(~r/Spex\.Case$/)
-  end
-
-  defp spex_case_alias?(_), do: false
-
-  defp validate_spec_content(spec) do
-    cond do
-      Enum.empty?(spec.scenarios) -> {:error, :no_scenarios}
-      not Enum.all?(spec.scenarios, &has_steps?/1) -> {:error, :missing_steps}
-      true -> :ok
-    end
-  end
-
-  defp has_steps?(scenario) do
-    not Enum.empty?(scenario.given_steps) or
-      not Enum.empty?(scenario.when_steps) or
-      not Enum.empty?(scenario.then_steps)
   end
 
   # ============================================================================

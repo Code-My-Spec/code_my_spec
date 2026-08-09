@@ -19,6 +19,7 @@ defmodule CodeMySpec.Files.Scanner do
   this module holds no repo of its own.
   """
 
+  alias CodeMySpec.BddSpecs.ContentCheck
   alias CodeMySpec.Components.Registry, as: ComponentRegistry
   alias CodeMySpec.Documents
   alias CodeMySpec.Environments
@@ -182,6 +183,37 @@ defmodule CodeMySpec.Files.Scanner do
         Map.merge(entry, %{
           valid: false,
           validation_errors: %{error: "Read failed: #{inspect(reason)}"}
+        })
+    end
+  end
+
+  # Spex files are checked here, on the machine that has them, for the same
+  # reason `:spec` and `:review` are: the server may hold no working copy, and
+  # something that can only validate by reading a disk answers "not found" for
+  # every file when there is no disk to read. That is exactly what happened —
+  # six specs reported missing in a stop no edit could clear, while the
+  # requirement graph read this same report and correctly found them present.
+  #
+  # Only the verdict travels. `ContentCheck` is pure so it can run here without
+  # a database and without shipping file content anywhere.
+  def validate_entry(%{role: :bdd_spec} = entry, env, _component_by_id, _strict?) do
+    case Environments.read_file(env, entry.path) do
+      {:ok, content} ->
+        case ContentCheck.check(content, entry.path) do
+          :ok ->
+            Map.merge(entry, %{valid: true, validation_errors: %{}})
+
+          {:error, reason} ->
+            Map.merge(entry, %{
+              valid: false,
+              validation_errors: %{"reason" => ContentCheck.describe(reason, entry.path)}
+            })
+        end
+
+      {:error, reason} ->
+        Map.merge(entry, %{
+          valid: false,
+          validation_errors: %{"reason" => "Read failed: #{inspect(reason)}"}
         })
     end
   end
