@@ -42,6 +42,11 @@ defmodule CodeMySpec.Problems.Problem do
     field :rule, :string
     field :metadata, :map
 
+    # The fingerprint `file_path` had when this was recorded. A problem outlives
+    # its file, so this is what distinguishes "still true" from "describes a
+    # version that no longer exists" — without the server needing the disk.
+    field :file_fingerprint, :string
+
     belongs_to :component, Component, type: :binary_id
     belongs_to :project, Project, type: :binary_id
 
@@ -70,7 +75,8 @@ defmodule CodeMySpec.Problems.Problem do
       :metadata,
       :component_id,
       :project_id,
-      :harness_id
+      :harness_id,
+      :file_fingerprint
     ])
     |> put_default_source_type()
     |> validate_required([
