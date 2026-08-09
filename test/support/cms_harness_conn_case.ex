@@ -57,7 +57,15 @@ defmodule CmsHarnessTest.ConnCase do
   # which ones care is not obvious: this suite is about what the harness does
   # when it cannot reach a server, and a credential it did not know it had
   # changes that answer.
-  @environment_vars ~w(CMS_TOKEN CMS_DEPLOY_KEY CMS_SERVER_URL CMS_PROJECT_ID CMS_PROJECT_DIR)
+  #
+  # `CMS_HARNESS_ID` joined the list when `HarnessConfig.read/1` started
+  # honouring it — the environment is checked *before* the file, so one exported
+  # value makes every working copy in the suite resolve to the same harness. The
+  # plugin's hook config interpolates `${CMS_HARNESS_ID}`, so agent shells do
+  # carry it.
+  @environment_vars ~w(
+    CMS_TOKEN CMS_DEPLOY_KEY CMS_SERVER_URL CMS_PROJECT_ID CMS_PROJECT_DIR CMS_HARNESS_ID
+  )
 
   setup _tags do
     saved = Enum.map(@environment_vars, &{&1, System.get_env(&1)})
