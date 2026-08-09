@@ -532,6 +532,44 @@ defmodule CodeMySpecSpex.Case do
   change: the plug, the project row and the environment all still agree about
   where the project is.
   """
+  @doc """
+  Point the project at a real generated application on disk.
+
+  `setup_active_project` makes a stub directory holding a `mix.exs`, which is
+  enough for the working-dir plug and nothing else. The deploy step runs
+  `bin/deploy migrate <environment>` from the project's `cwd`, so against a
+  stub there is no script to run and the step fails for a reason that has
+  nothing to do with deploying.
+
+  `CMS_DRILL_APP` names a checkout produced by `mix cms.new` — one carrying
+  `bin/deploy`, `bin/backup`, `config/deploy.yml` and a Dockerfile. Defaults to
+  `code_my_spec_test_repos/devops_drill`, which is exactly that.
+
+  Only for criteria that genuinely deploy. Everything else is better off with
+  the stub, which costs nothing and cannot be dirtied by a run.
+  """
+  def drill_working_directory(%{scope: scope, project: project} = context) do
+    path =
+      System.get_env("CMS_DRILL_APP") ||
+        Path.expand("code_my_spec_test_repos/devops_drill", File.cwd!())
+
+    File.exists?(Path.join(path, "bin/deploy")) ||
+      raise """
+      No deployable application at #{path}.
+
+      The deploy step shells out to `bin/deploy`, so this criterion needs a real
+      generated app rather than the stub directory. Point CMS_DRILL_APP at one,
+      or generate it with `mix cms.new`.
+      """
+
+    {:ok, project} = Fixtures.set_project_local_path(project, path)
+
+    context
+    |> Map.put(:project, project)
+    |> Map.put(:scope, %{scope | active_project: project})
+    |> real_working_directory()
+  end
+
   def real_working_directory(%{scope: scope, project: project} = context) do
     env = Fixtures.local_environment_fixture(working_dir: project.local_path)
 

@@ -1470,6 +1470,20 @@ defmodule CodeMySpecSpex.Fixtures do
   # --- Mail (story 816) ---
 
   @doc "Set and verify a project's sending domain."
+  @doc """
+  Point the project at a real checkout on disk.
+
+  For criteria that shell out — the deploy step runs `bin/deploy` from the
+  project's `cwd`, which the stub directory does not have.
+  """
+  @spec set_project_local_path(Project.t(), String.t()) :: {:ok, Project.t()}
+  def set_project_local_path(project, path) do
+    {:ok,
+     project
+     |> Ecto.Changeset.change(local_path: path)
+     |> CodeMySpec.Repo.update!()}
+  end
+
   def verify_project_domain(project, domain) do
     now = DateTime.utc_now() |> DateTime.truncate(:second)
 

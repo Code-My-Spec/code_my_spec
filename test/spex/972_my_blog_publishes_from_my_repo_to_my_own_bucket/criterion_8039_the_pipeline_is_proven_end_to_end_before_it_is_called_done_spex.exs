@@ -24,6 +24,10 @@ defmodule CodeMySpecSpex.Story972.Criterion8039Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
   setup :devops_on
+
+  # A real application on disk, because the deploy step runs `bin/deploy` from
+  # the project's cwd and the stub directory has no such script.
+  setup :drill_working_directory
   setup :connect_providers
 
   spex "The pipeline is proven end to end before it is called done" do
@@ -39,7 +43,14 @@ defmodule CodeMySpecSpex.Story972.Criterion8039Spex do
         # nothing to register without one, and the render proof has nowhere to
         # fetch from — the first drill made a server and two buckets and then
         # stopped here, having never touched Cloudflare.
-        own_domain(context.project, "c8039.astralbi.com")
+        # The domain the drill application is actually built for. Its
+        # `config/deploy.uat.yml` names `uat.drill.astralbi.com`, and
+        # `config_targets_this_project/2` refuses to deploy when the config's
+        # proxy host belongs to a different project — correctly, since that is
+        # how one project's app lands on another's host. Giving this criterion
+        # its own subdomain made the guard refuse and the deploy step do
+        # nothing at all, silently, between dns and storage.
+        own_domain(context.project, "drill.astralbi.com")
 
         # Registered before the run, so it happens even when the sequence
         # halts partway. This spex creates a real server and real buckets and
@@ -47,6 +58,18 @@ defmodule CodeMySpecSpex.Story972.Criterion8039Spex do
         # and `mix cms.provisioning_leaks` reports servers but never deletes
         # them, so they had to be removed by hand.
         tear_down_after(context.scope, [:server, :storage, :dns])
+
+        # Ask for an image to be built. Without `:image` or `:build`,
+        # `image_for/3` answers `:not_built` and the deploy step does nothing
+        # at all — no shell command, no error on the page, just an absence
+        # between dns and storage. There is no site afterwards, so the render
+        # proof this criterion is about has nothing to fetch.
+        previous = Application.get_env(:code_my_spec, :provisioning_step_opts, [])
+        Application.put_env(:code_my_spec, :provisioning_step_opts, Keyword.put(previous, :build, true))
+
+        ExUnit.Callbacks.on_exit(fn ->
+          Application.put_env(:code_my_spec, :provisioning_step_opts, previous)
+        end)
 
         view = mount_provisioning(context)
 
@@ -57,6 +80,23 @@ defmodule CodeMySpecSpex.Story972.Criterion8039Spex do
         # produced was four interactions long and stopped at the repository.
         paste_provider_credentials(view)
         run_steps(view, [:repository, :server, :secrets, :domain, :dns, :deploy, :storage], @given_cassette)
+
+        if System.get_env("SPEX_DRILL_TRACE") do
+          doc = view |> Phoenix.LiveViewTest.render() |> Floki.parse_document!()
+
+          for key <- ~w(repository server secrets domain dns deploy storage) do
+            step = Floki.find(doc, "[data-test='setup-step'][data-step='#{key}']")
+            state = step |> Floki.attribute("data-state") |> List.first()
+            # `boot-failure` as well as `escalation`: the deploy step's
+            # provider error lives only in the former, because printing it in
+            # both made the step look like two problems.
+            why =
+              step
+              |> Floki.find("[data-test='escalation'], [data-test='boot-failure'], [data-test='paused-instructions']")
+              |> Floki.text()
+            IO.puts("STEP #{String.pad_trailing(key, 11)} #{state}  #{String.slice(why, 0, 160)}")
+          end
+        end
 
         {:ok, Map.put(context, :view, view)}
       end
