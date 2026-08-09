@@ -18,7 +18,7 @@ defmodule CmsHarness.ChannelClientTransportTest do
 
   import ExUnit.CaptureLog
 
-  alias CmsHarness.HarnessIdentity
+  alias CmsHarness.HarnessConfig
   alias CmsHarness.Project.ChannelClient
 
   setup do
@@ -186,7 +186,7 @@ defmodule CmsHarness.ChannelClientTransportTest do
     test "a first join writes down the id it is given", %{root: root} do
       out = join(root, nil, %{"harness_id" => "h_issued"})
 
-      assert {:ok, "h_issued"} = HarnessIdentity.read(root),
+      assert {:ok, %{harness_id: "h_issued"}} = HarnessConfig.read(root),
              "without this the next restart is issued a second id and orphans this one's rows"
 
       assert out.assigns.project.harness_id == "h_issued"
@@ -195,21 +195,21 @@ defmodule CmsHarness.ChannelClientTransportTest do
     test "a server that does not know the field changes nothing", %{root: root} do
       out = join(root, nil, %{})
 
-      assert :none = HarnessIdentity.read(root)
+      assert :none = HarnessConfig.read(root)
       assert out.assigns.project.harness_id == nil
       assert out.assigns.joined, "the join still succeeds — this half can land first"
     end
 
     test "being re-issued the same id is a no-op", %{root: root} do
-      :ok = HarnessIdentity.write(root, "h_held")
+      :ok = HarnessConfig.write(root, %{harness_id: "h_held", project_id: "p1", root: root})
       out = join(root, "h_held", %{"harness_id" => "h_held"})
 
-      assert {:ok, "h_held"} = HarnessIdentity.read(root)
+      assert {:ok, %{harness_id: "h_held"}} = HarnessConfig.read(root)
       assert out.assigns.project.harness_id == "h_held"
     end
 
     test "a conflicting id is named, not adopted", %{root: root} do
-      :ok = HarnessIdentity.write(root, "h_held")
+      :ok = HarnessConfig.write(root, %{harness_id: "h_held", project_id: "p1", root: root})
 
       log =
         capture_log(fn ->
@@ -221,7 +221,7 @@ defmodule CmsHarness.ChannelClientTransportTest do
         end)
 
       assert log =~ "already holds"
-      assert {:ok, "h_held"} = HarnessIdentity.read(root)
+      assert {:ok, %{harness_id: "h_held"}} = HarnessConfig.read(root)
     end
   end
 

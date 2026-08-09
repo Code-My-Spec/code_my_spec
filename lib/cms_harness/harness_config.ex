@@ -2,10 +2,17 @@ defmodule CmsHarness.HarnessConfig do
   @moduledoc """
   What a working copy knows about itself: which harness it is, and where.
 
-  Minted by `mix cms.harness.onboard` and never committed. One file per working
-  copy, at its root:
+  One file per working copy, at its root, and only one:
 
       {"harness_id": "…", "project_id": "…", "root": "/abs/path"}
+
+  There used to be two. `HarnessIdentity` wrote an id-only `.cms_harness_id`
+  when the server issued one, this wrote `.cms_harness.json` at onboarding, and
+  a working copy that had been through both carried two files naming two
+  harnesses with nothing on disk saying which counted. Reading preferred the
+  JSON, so behaviour was never ambiguous — but the first person to look at the
+  directory concluded they disagreed, which is cost enough. There is no fallback
+  now, and no second writer.
 
   ## Why the root is in here
 
@@ -36,7 +43,7 @@ defmodule CmsHarness.HarnessConfig do
   require Logger
 
   @filename ".cms_harness.json"
-  @legacy_filename ".cms_harness_id"
+  @env_var "CMS_HARNESS_ID"
 
   @type t :: %{harness_id: String.t(), project_id: String.t() | nil, root: String.t()}
 
@@ -47,44 +54,102 @@ defmodule CmsHarness.HarnessConfig do
   @doc """
   What this working copy says about itself, or `:none`.
 
-  Falls back to the legacy id-only file so a copy onboarded before this existed
-  keeps working — it yields an id and takes the root from where the file was
-  found, which is the same answer.
+  `CMS_HARNESS_ID` overrides the file, so a one-off run can name a harness
+  without editing anything — and `write/2` refuses to persist that override,
+  which would outlive it.
   """
   @spec read(String.t()) :: {:ok, t()} | :none | {:error, term()}
   def read(root) do
     root = Path.expand(root)
 
-    case File.read(path(root)) do
-      {:ok, contents} -> decode(contents, root)
-      {:error, :enoent} -> legacy(root)
-      {:error, reason} -> {:error, reason}
+    case from_env() do
+      {:ok, id} -> {:ok, %{harness_id: id, project_id: nil, root: root}}
+      :none -> from_file(root)
     end
   end
 
-  @doc "Write what a working copy knows about itself."
+  @doc """
+  The id the environment names, if it names one.
+
+  Separate from `read/1` so a caller deciding whether to persist can tell an
+  injected id from a stored one.
+  """
+  @spec from_env() :: {:ok, String.t()} | :none
+  def from_env do
+    case System.get_env(@env_var) do
+      nil -> :none
+      value -> value |> String.trim() |> present_or_none()
+    end
+  end
+
+  @doc """
+  Write what a working copy knows about itself.
+
+  Returns `{:error, reason}` rather than raising: failing to persist is not a
+  reason to stop serving this turn, but it does mean the next restart asks for
+  a new id and orphans everything written under this one, so the caller has
+  something to say about it.
+  """
   @spec write(String.t(), t()) :: :ok | {:error, term()}
   def write(root, %{harness_id: id} = config) when is_binary(id) and id != "" do
     root = Path.expand(root)
+    file = path(root)
 
     body =
       %{harness_id: id, project_id: config[:project_id], root: root}
       |> Jason.encode!(pretty: true)
 
-    case File.write(path(root), body <> "\n") do
-      :ok ->
-        drop_legacy(root)
-        :ok
-
+    with :ok <- refuse_to_clobber(root, file),
+         :ok <- File.mkdir_p(Path.dirname(file)),
+         :ok <- File.write(file, body <> "\n") do
+      :ok
+    else
       {:error, reason} ->
         Logger.error("""
-        [CmsHarness] could not write #{path(root)}: #{inspect(reason)}.
+        [CmsHarness] could not write #{file}: #{inspect(reason)}.
 
-        This working copy cannot say which harness it is, so its hooks will be
-        refused until it can.
+        This harness is serving normally, but a restart will be issued a second
+        id and the files and problems recorded under this one will belong to
+        nobody.
         """)
 
         {:error, reason}
+    end
+  end
+
+  # A config that exists but cannot be read is reported as "not issued" by
+  # `ProjectIdentity`, which means a mint can arrive for a copy that already has
+  # one. Writing it would destroy the only record of the id its existing rows
+  # are filed under. Refused, so the damage is one session rather than
+  # permanent.
+  #
+  # Checks the file rather than `read/1`: an id injected by `CMS_HARNESS_ID`
+  # says nothing about what is on disk, and letting it answer here would report
+  # "nothing stored" for a copy whose file is merely unreadable.
+  defp refuse_to_clobber(root, file) do
+    case from_file(root) do
+      {:error, reason} ->
+        Logger.error("""
+        [CmsHarness] refusing to overwrite #{file}, which exists but could not be \
+        read (#{inspect(reason)}).
+
+        Writing a new id here would destroy the only record of the one this
+        working copy's files and problems are already filed under. Fix the file's
+        permissions, or delete it deliberately.
+        """)
+
+        {:error, :existing_identity_unreadable}
+
+      _ ->
+        :ok
+    end
+  end
+
+  defp from_file(root) do
+    case File.read(path(root)) do
+      {:ok, contents} -> decode(contents, root)
+      {:error, :enoent} -> :none
+      {:error, reason} -> {:error, reason}
     end
   end
 
@@ -99,75 +164,6 @@ defmodule CmsHarness.HarnessConfig do
     end
   end
 
-  # Writing the current file completes the migration, which means removing the
-  # one it replaces. Leaving it behind is how a working copy ends up carrying
-  # two identities: devops-qa held `.cms_harness_id` naming 5d5c599b beside a
-  # `.cms_harness.json` naming 8a663385, with nothing on disk saying which won.
-  # `read/1` has always preferred the JSON, so the behaviour was never in doubt
-  # — but anyone reading the directory has to know that, and the first person to
-  # look concluded the two disagreed.
-  #
-  # Failure to remove it is not a failure to write the identity, so it is logged
-  # and swallowed.
-  defp drop_legacy(root) do
-    file = Path.join(root, @legacy_filename)
-
-    case File.rm(file) do
-      :ok ->
-        Logger.info("[CmsHarness] removed the legacy #{@legacy_filename} in #{root}")
-
-      {:error, :enoent} ->
-        :ok
-
-      {:error, reason} ->
-        Logger.warning("""
-        [CmsHarness] wrote #{path(root)} but could not remove the legacy #{file}: \
-        #{inspect(reason)}. Both files now name this working copy; the JSON is the \
-        one that counts.\
-        """)
-    end
-  end
-
-  # The id-only file this replaces. Its root is where it was found, which is the
-  # same thing the new file records.
-  #
-  # Said out loud once per root. A working copy on the legacy file has no
-  # `project_id` and will not be migrated until something writes its config, and
-  # neither fact is visible from a hook that simply works.
-  defp legacy(root) do
-    case File.read(Path.join(root, @legacy_filename)) do
-      {:ok, contents} ->
-        case String.trim(contents) do
-          "" ->
-            :none
-
-          id ->
-            warn_legacy_once(root)
-            {:ok, %{harness_id: id, project_id: nil, root: root}}
-        end
-
-      {:error, :enoent} ->
-        :none
-
-      {:error, reason} ->
-        {:error, reason}
-    end
-  end
-
-  # `read/1` runs on every hook, so this cannot log per call. Same
-  # `:persistent_term` shape `Sync` and `TestDatabase` already use for
-  # once-per-root facts.
-  defp warn_legacy_once(root) do
-    key = {__MODULE__, :legacy_warned, root}
-
-    if :persistent_term.get(key, nil) == nil do
-      :persistent_term.put(key, true)
-
-      Logger.info("""
-      [CmsHarness] #{root} identifies itself with the legacy #{@legacy_filename}. \
-      It carries no project id, and it will keep being used until something writes \
-      #{@filename} — `mix cms.harness.onboard` does.\
-      """)
-    end
-  end
+  defp present_or_none(""), do: :none
+  defp present_or_none(id), do: {:ok, id}
 end

@@ -112,7 +112,7 @@ defmodule CodeMySpecLocalWeb.Plugs.HarnessScopeTest do
       assert conn.halted
       assert conn.status == 404
       assert conn.resp_body =~ gone
-      assert conn.resp_body =~ ".cms_harness_id"
+      assert conn.resp_body =~ ".cms_harness.json"
     end
 
     test "a malformed id is a 400, not a 404" do

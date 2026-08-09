@@ -18,7 +18,7 @@ defmodule CmsHarness.ProjectIdentity do
   means syncing one checkout's files over another project's rows.
   """
 
-  alias CmsHarness.HarnessIdentity
+  alias CmsHarness.HarnessConfig
 
   @config_path ".code_my_spec/config.yml"
 
@@ -48,12 +48,12 @@ defmodule CmsHarness.ProjectIdentity do
   end
 
   # `nil` means "not issued yet", which is ordinary — the first join mints it.
-  # An unreadable id file also reads as `nil` here, but `HarnessIdentity.write/2`
+  # An unreadable config also reads as `nil` here, but `HarnessConfig.write/2`
   # refuses to overwrite one, so the stranding that would cause is contained to
   # the one session rather than made permanent.
   defp harness_id(root) do
-    case HarnessIdentity.read(root) do
-      {:ok, id} -> id
+    case HarnessConfig.read(root) do
+      {:ok, %{harness_id: id}} -> id
       _ -> nil
     end
   end

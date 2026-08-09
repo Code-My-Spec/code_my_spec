@@ -34,8 +34,8 @@ defmodule CmsHarnessTest.ConnCase do
       end
 
       defp harness_id_at(root) do
-        case CmsHarness.HarnessIdentity.read(root) do
-          {:ok, id} -> id
+        case CmsHarness.HarnessConfig.read(root) do
+          {:ok, %{harness_id: id}} -> id
           _ -> "no-harness-id-at-#{root}"
         end
       end

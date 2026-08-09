@@ -53,7 +53,7 @@ defmodule CmsHarness.Project.ChannelClient do
   require Logger
 
   alias CmsHarness.Config
-  alias CmsHarness.HarnessIdentity
+  alias CmsHarness.HarnessConfig
   alias CmsHarness.Project.AnalysisServer
   alias CmsHarness.Project.Transport
   alias CmsHarness.Project.Watcher
@@ -380,7 +380,13 @@ defmodule CmsHarness.Project.ChannelClient do
         socket
 
       {nil, issued} ->
-        case HarnessIdentity.write(root, issued) do
+        config = %{
+          harness_id: issued,
+          project_id: socket.assigns.project.id,
+          root: root
+        }
+
+        case HarnessConfig.write(root, config) do
           :ok -> put_in(socket.assigns.project.harness_id, issued)
           {:error, _} -> socket
         end

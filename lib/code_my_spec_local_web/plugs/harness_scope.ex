@@ -107,7 +107,7 @@ defmodule CodeMySpecLocalWeb.Plugs.HarnessScope do
     No harness with id #{id}.
 
     This working copy holds an id the server does not know. The row was likely \
-    deleted; delete .cms_harness_id (or unset CMS_HARNESS_ID) to be issued a \
+    deleted; delete .cms_harness.json (or unset CMS_HARNESS_ID) to be issued a \
     new one.
     """)
   end

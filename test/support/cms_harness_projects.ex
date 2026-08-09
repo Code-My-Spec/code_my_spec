@@ -31,7 +31,15 @@ defmodule CmsHarnessTest.Projects do
     # addressed to that id, so a fixture without one is not a checkout the
     # harness can be asked about.
     harness_id = Keyword.get(opts, :harness_id, Ecto.UUID.generate())
-    if harness_id, do: File.write!(Path.join(root, ".cms_harness_id"), harness_id <> "\n")
+
+    if harness_id do
+      :ok =
+        CmsHarness.HarnessConfig.write(root, %{
+          harness_id: harness_id,
+          project_id: id && to_string(id),
+          root: root
+        })
+    end
 
     ExUnit.Callbacks.on_exit(fn -> File.rm_rf(root) end)
 
