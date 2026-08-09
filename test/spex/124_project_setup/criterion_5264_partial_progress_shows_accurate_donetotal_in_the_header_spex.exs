@@ -10,7 +10,7 @@ defmodule CodeMySpecSpex.Story124.Criterion5264Spex do
   TestSupportNamespace passes by default — see fixture invariants in
   `test/support/fixtures/setup_fixtures.ex`.
 
-  Surface: `/projects/:project_name/requirements/project_setup`.
+  Surface: `/app/projects/:project_id/setup`.
   """
 
   use CodeMySpecSpex.Case
@@ -37,7 +37,7 @@ defmodule CodeMySpecSpex.Story124.Criterion5264Spex do
 
       when_ "developer views the project setup page", context do
         {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/requirements/project_setup")
+          live(context.conn, "/app/projects/#{context.project.id}/setup")
 
         {:ok, Map.put(context, :view, view)}
       end

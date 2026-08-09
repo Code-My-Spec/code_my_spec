@@ -475,6 +475,12 @@ defmodule CodeMySpecWeb.Router do
            MarkdownBrowserLive,
            :project_knowledge
 
+      # Brownfield onboarding, deliberately not under /requirements/. It stopped
+      # being a requirement when `cms new` took over setup — a generated project
+      # exits with it complete — so it is a door into the workflow rather than a
+      # step in it. See `ProjectSetupLive`.
+      live "/projects/:project_id/setup", ProjectSetupLive, :show
+
       live "/projects/:project_id/requirements", RequirementsLive, :index
       live "/projects/:project_id/requirements/graph", RequirementsLive, :graph
       live "/projects/:project_id/requirements/stories", RequirementsLive, :stories

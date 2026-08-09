@@ -7,7 +7,7 @@ defmodule CodeMySpecSpex.Story124.Criterion5257Spex do
   re-mounting the page shows the newly-completed step as checked, with
   the inline prompt removed.
 
-  Surface: `/projects/:project_name/requirements/project_setup`.
+  Surface: `/app/projects/:project_id/setup`.
   """
 
   use CodeMySpecSpex.Case
@@ -31,7 +31,7 @@ defmodule CodeMySpecSpex.Story124.Criterion5257Spex do
 
       given_ "developer has viewed the page with CodemyspecDeps incomplete", context do
         {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/requirements/project_setup")
+          live(context.conn, "/app/projects/#{context.project.id}/setup")
 
         html = render(view)
         assert html =~ "Project Setup (11/12)"
@@ -44,7 +44,7 @@ defmodule CodeMySpecSpex.Story124.Criterion5257Spex do
         Fixtures.satisfy_setup_steps(context.scope, [Fixtures.find_setup_step("codemyspec_deps")])
 
         {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/requirements/project_setup")
+          live(context.conn, "/app/projects/#{context.project.id}/setup")
 
         {:ok, Map.put(context, :view, view)}
       end

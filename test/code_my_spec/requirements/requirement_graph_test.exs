@@ -18,19 +18,27 @@ defmodule CodeMySpec.Requirements.RequirementGraphTest do
   end
 
   describe "next_actionable/1" do
-    test "returns project_setup when no setup is done" do
+    # `project_setup` used to be the root of this graph and the first thing any
+    # project was offered. It is not a requirement any more: `cms new` covers
+    # setup and the mainline exits the generator with it complete, so a
+    # generated project has nothing to do there. What survives is brownfield
+    # onboarding at `/app/projects/:id/setup`, entered deliberately rather than
+    # handed out by the graph — see `CodeMySpecWeb.ProjectSetupLive`.
+    test "the first actionable requirement is personas, not setup" do
       {scope, tmp_dir} = setup_project()
 
-      # Write mix.exs so it looks like a project dir (but setup incomplete)
       write_file(tmp_dir, "mix.exs", "defmodule MyApp.MixProject do\n  use Mix.Project\nend")
 
       actionable = RequirementGraph.next_actionable(scope)
 
-      # project_setup should be first actionable (no prerequisites)
+      refute Enum.any?(actionable, &(&1.name == "project_setup")),
+             "setup is reached explicitly now; offering it as work means offering " <>
+               "work a generated project does not have"
+
       first = List.first(actionable)
       assert first
       assert first.entity_type == "project"
-      assert first.name == "project_setup"
+      assert first.name == "personas_complete"
     end
 
     test "returns component spec requirements when the project chain is fully satisfied" do
@@ -256,7 +264,10 @@ defmodule CodeMySpec.Requirements.RequirementGraphTest do
              "expected story or component work to be actionable after kickoff"
 
       journey_index =
-        Enum.find_index(names, &(&1 in ["qa_journey_plan", "qa_journey_execute", "qa_journey_wallaby"]))
+        Enum.find_index(
+          names,
+          &(&1 in ["qa_journey_plan", "qa_journey_execute", "qa_journey_wallaby"])
+        )
 
       other_index =
         Enum.find_index(actionable, &(&1.entity_type in ["story", "component"]))
@@ -273,7 +284,7 @@ defmodule CodeMySpec.Requirements.RequirementGraphTest do
 
       {:ok, _story} =
         Stories.create_story(scope, %{
-        ready_for_dev: true,
+          ready_for_dev: true,
           title: "Test Story",
           description: "As a user...",
           acceptance_criteria: ["AC1"]
@@ -299,6 +310,7 @@ defmodule CodeMySpec.Requirements.RequirementGraphTest do
       # and isn't classified as infrastructure (its path isn't in the seeded
       # infrastructure_paths list).
       File.mkdir_p!(Path.join(tmp_dir, "lib/my_app"))
+
       File.write!(
         Path.join(tmp_dir, "lib/my_app/widget.ex"),
         "defmodule MyApp.Widget do\nend\n"
@@ -313,7 +325,7 @@ defmodule CodeMySpec.Requirements.RequirementGraphTest do
 
       {:ok, _} =
         Stories.create_story(scope, %{
-        ready_for_dev: true,
+          ready_for_dev: true,
           title: "Test Story",
           description: "As a user...",
           acceptance_criteria: ["AC1"]
@@ -349,7 +361,12 @@ defmodule CodeMySpec.Requirements.RequirementGraphTest do
       refute widget_spec.satisfied
 
       # Add spec file → spec_file satisfied
-      write_file(tmp_dir, ".code_my_spec/spec/my_app/widget.spec.md", "# MyApp.Widget\n\n## Type\n\nschema")
+      write_file(
+        tmp_dir,
+        ".code_my_spec/spec/my_app/widget.spec.md",
+        "# MyApp.Widget\n\n## Type\n\nschema"
+      )
+
       sync!(scope, tmp_dir)
 
       nodes2 = RequirementGraph.compute_all(scope)
@@ -369,8 +386,17 @@ defmodule CodeMySpec.Requirements.RequirementGraphTest do
       seed_setup(tmp_dir)
 
       # Create spec files so ComponentSync creates and retains the components
-      write_file(tmp_dir, ".code_my_spec/spec/my_app/todos.spec.md", "# MyApp.Todos\n\n## Type\n\ncontext\n\n## Components\n\n- MyApp.Todos.Todo")
-      write_file(tmp_dir, ".code_my_spec/spec/my_app/todos/todo.spec.md", "# MyApp.Todos.Todo\n\n## Type\n\nschema\n\n## Fields\n\n- title: string")
+      write_file(
+        tmp_dir,
+        ".code_my_spec/spec/my_app/todos.spec.md",
+        "# MyApp.Todos\n\n## Type\n\ncontext\n\n## Components\n\n- MyApp.Todos.Todo"
+      )
+
+      write_file(
+        tmp_dir,
+        ".code_my_spec/spec/my_app/todos/todo.spec.md",
+        "# MyApp.Todos.Todo\n\n## Type\n\nschema\n\n## Fields\n\n- title: string"
+      )
 
       sync!(scope, tmp_dir)
 
@@ -422,7 +448,7 @@ defmodule CodeMySpec.Requirements.RequirementGraphTest do
 
       {:ok, _story} =
         Stories.create_story(scope, %{
-        ready_for_dev: true,
+          ready_for_dev: true,
           title: "User Login",
           description: "As a user...",
           acceptance_criteria: ["AC1"]
@@ -469,7 +495,7 @@ defmodule CodeMySpec.Requirements.RequirementGraphTest do
 
       {:ok, _story} =
         Stories.create_story(scope, %{
-        ready_for_dev: true,
+          ready_for_dev: true,
           title: "Registration",
           description: "As a user...",
           acceptance_criteria: ["AC1"]
@@ -477,8 +503,17 @@ defmodule CodeMySpec.Requirements.RequirementGraphTest do
 
       seed_setup(tmp_dir)
 
-      write_file(tmp_dir, ".code_my_spec/spec/my_app/accounts.spec.md", "# MyApp.Accounts\n\n## Type\n\ncontext\n\n## Components\n\n- MyApp.Accounts.User")
-      write_file(tmp_dir, ".code_my_spec/spec/my_app/accounts/user.spec.md", "# MyApp.Accounts.User\n\n## Type\n\nschema\n\n## Fields\n\n- email: string")
+      write_file(
+        tmp_dir,
+        ".code_my_spec/spec/my_app/accounts.spec.md",
+        "# MyApp.Accounts\n\n## Type\n\ncontext\n\n## Components\n\n- MyApp.Accounts.User"
+      )
+
+      write_file(
+        tmp_dir,
+        ".code_my_spec/spec/my_app/accounts/user.spec.md",
+        "# MyApp.Accounts.User\n\n## Type\n\nschema\n\n## Fields\n\n- email: string"
+      )
 
       sync!(scope, tmp_dir)
 

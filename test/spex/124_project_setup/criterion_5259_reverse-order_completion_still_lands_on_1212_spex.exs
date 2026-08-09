@@ -6,7 +6,7 @@ defmodule CodeMySpecSpex.Story124.Criterion5259Spex do
   Order of step completion is not enforced. Satisfying every step in
   reverse declaration order still produces the fully-complete header.
 
-  Surface: `/projects/:project_name/requirements/project_setup`.
+  Surface: `/app/projects/:project_id/setup`.
   """
 
   use CodeMySpecSpex.Case
@@ -34,7 +34,7 @@ defmodule CodeMySpecSpex.Story124.Criterion5259Spex do
 
       then_ "the project setup page shows all steps done", context do
         {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/requirements/project_setup")
+          live(context.conn, "/app/projects/#{context.project.id}/setup")
 
         assert render(view) =~ "Project Setup (12/12)"
         {:ok, Map.put(context, :view, view)}

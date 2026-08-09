@@ -796,20 +796,6 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
   def project_graph do
     [
       new!(%{
-        id: 1,
-        name: "project_setup",
-        node_scope: :self,
-        check_type: :delegate,
-        config: %{module: AgentTasks.ProjectSetup, function: :check},
-        satisfied_by: AgentTasks.ProjectSetup,
-        artifact_type: :specification,
-        description: "Project bootstrap setup is complete",
-        prerequisites: [],
-        # Multi-step status report — always show the per-step
-        # checklist, not just when the overall requirement is unsatisfied.
-        render_command_always?: true
-      }),
-      new!(%{
         id: 13,
         name: "personas_complete",
         node_scope: :self,
@@ -819,7 +805,12 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         artifact_type: :specification,
         description:
           "At least one persona researched — DB record + summary.md + sources.md (story linkage happens later via Three Amigos)",
-        prerequisites: [1],
+        # The root of this graph since `project_setup` left it. Setup is no
+        # longer a requirement: `cms new` covers it, and the mainline exits the
+        # generator with it complete, so a generated project has nothing to do.
+        # Brownfield onboarding lives at /app/projects/:id/setup and is entered
+        # deliberately — see `CodeMySpecWeb.ProjectSetupLive`.
+        prerequisites: [],
         # Manual so the stop hook doesn't short-circuit the multi-turn
         # intake conversation. The PM and agent need room to exchange
         # questions, do research, and write artifacts across many turns

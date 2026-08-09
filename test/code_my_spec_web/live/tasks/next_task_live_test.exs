@@ -37,11 +37,15 @@ defmodule CodeMySpecWeb.Tasks.NextTaskLiveTest do
       socket = build_socket(project, scope)
       {:noreply, socket} = NextTaskLive.handle_params(%{}, "/", socket)
 
-      # An unbootstrapped project computes project-level requirements
-      # (project_setup, all_bdd_specs_passing, etc.) which appear in
-      # the rendered markdown.
-      assert socket.assigns.markdown =~ "### ProjectSetup"
+      # An unbootstrapped project computes project-level requirements, which
+      # appear in the rendered markdown. `ProjectSetup` used to head that list
+      # and no longer does — setup left the graph when `cms new` took it over,
+      # and is reached at /app/projects/:id/setup instead.
       assert socket.assigns.markdown =~ "start_task"
+
+      refute socket.assigns.markdown =~ "### ProjectSetup",
+             "offering setup as next work means offering work a generated " <>
+               "project does not have"
     end
 
     test "does nothing until the host has resolved a scope" do

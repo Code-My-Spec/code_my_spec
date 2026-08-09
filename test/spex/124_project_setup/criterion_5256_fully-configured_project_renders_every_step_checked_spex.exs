@@ -7,7 +7,7 @@ defmodule CodeMySpecSpex.Story124.Criterion5256Spex do
   already satisfied renders all 12 steps as checked, with no inline
   prompts.
 
-  Surface: `/projects/:project_name/requirements/project_setup`.
+  Surface: `/app/projects/:project_id/setup`.
   """
 
   use CodeMySpecSpex.Case
@@ -26,7 +26,7 @@ defmodule CodeMySpecSpex.Story124.Criterion5256Spex do
 
       when_ "developer views the project setup page", context do
         {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/requirements/project_setup")
+          live(context.conn, "/app/projects/#{context.project.id}/setup")
 
         {:ok, Map.put(context, :view, view)}
       end

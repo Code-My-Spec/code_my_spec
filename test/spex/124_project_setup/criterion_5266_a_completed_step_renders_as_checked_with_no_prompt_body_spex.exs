@@ -6,7 +6,7 @@ defmodule CodeMySpecSpex.Story124.Criterion5266Spex do
   Progress is visible in the prompt: a completed step's name still
   appears, but its inline prompt heading is suppressed.
 
-  Surface: `/projects/:project_name/requirements/project_setup`.
+  Surface: `/app/projects/:project_id/setup`.
   """
 
   use CodeMySpecSpex.Case
@@ -25,7 +25,7 @@ defmodule CodeMySpecSpex.Story124.Criterion5266Spex do
 
       when_ "developer views the project setup page", context do
         {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/requirements/project_setup")
+          live(context.conn, "/app/projects/#{context.project.id}/setup")
 
         {:ok, Map.put(context, :view, view)}
       end

@@ -6,7 +6,7 @@ defmodule CodeMySpecSpex.Story124.Criterion5267Spex do
   Step command errors propagate to the caller. With every step
   satisfied, no `[data-role=setup-error]` banner is rendered.
 
-  Surface: `/projects/:project_name/requirements/project_setup`.
+  Surface: `/app/projects/:project_id/setup`.
   """
 
   use CodeMySpecSpex.Case
@@ -25,7 +25,7 @@ defmodule CodeMySpecSpex.Story124.Criterion5267Spex do
 
       when_ "developer views the project setup page", context do
         {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/requirements/project_setup")
+          live(context.conn, "/app/projects/#{context.project.id}/setup")
 
         {:ok, Map.put(context, :view, view)}
       end
