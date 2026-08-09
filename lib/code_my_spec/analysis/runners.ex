@@ -214,6 +214,28 @@ defmodule CodeMySpec.Analysis.Runners do
     {:error, {:test_suite_did_not_run, raw["exit_status"], error_excerpt(raw["output"])}}
   end
 
+  # `mix test` exited without error having run nothing at all.
+  #
+  # Zero tests is not zero failures. The suite reports `execution_status:
+  # success` with no diagnostics, which reaches `exunit_result/1` as `{:ok,
+  # problems: []}` — identical to a clean sweep of the whole project — and the
+  # Reconciler then clears every recorded exunit Problem and finishes the run
+  # `:completed` at the current fingerprint. That is the trap the
+  # `execution_status: "error"` clause above exists to close; this is the same
+  # trap reached through a zero exit, which that clause cannot see.
+  #
+  # Observed: a 1,502ms `exunit []` against a project whose suite takes ~165s.
+  # It was rejected downstream as `unknown_run`, which is luck rather than a
+  # guard — accepted, it would have reported every component's tests as passing
+  # on the strength of a run that executed nothing.
+  #
+  # Only the exact `%{"tests" => 0}` shape matches, so a payload carrying no
+  # stats falls through to the clause below rather than being failed on a guess.
+  def from_raw("exunit", %{"execution_status" => status, "stats" => %{"tests" => 0}} = raw)
+      when is_binary(status) do
+    {:error, {:test_suite_did_not_run, raw["exit_status"], error_excerpt(raw["output"])}}
+  end
+
   # A run whose failures include "module ... is not available" lost its build
   # partway through. The analyzer shares `_build` with the agent, so an agent's
   # own `mix compile --force` wipes and rebuilds it while the suite is running

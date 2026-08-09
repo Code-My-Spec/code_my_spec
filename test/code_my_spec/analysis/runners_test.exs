@@ -155,6 +155,53 @@ defmodule CodeMySpec.Analysis.RunnersTest do
       assert excerpt =~ "did not match"
     end
 
+    # The same trap reached through a *zero* exit. The clause above keys on
+    # `execution_status: "error"`; this run reports success, so nothing above
+    # catches it, and `{:ok, problems: []}` from a suite that executed nothing
+    # is byte-identical to a clean sweep of the whole project.
+    #
+    # Seen in the wild: a 1,502ms `exunit []` against a suite that takes ~165s.
+    # It was rejected downstream as `unknown_run`, which is luck rather than a
+    # guard — accepted, it would have cleared every recorded exunit Problem and
+    # reported every component's tests as passing.
+    test "a suite that ran zero tests fails the run rather than reporting them clean" do
+      raw = %{
+        "exit_status" => 0,
+        "execution_status" => "success",
+        "output" =>
+          "Running ExUnit with seed: 1\n\n\nFinished in 0.00 seconds\n0 tests, 0 failures",
+        "stats" => %{"tests" => 0, "failures" => 0},
+        "diagnostics" => []
+      }
+
+      assert {:error, {:test_suite_did_not_run, 0, _excerpt}} = Runners.from_raw("exunit", raw)
+    end
+
+    test "a suite that ran tests and found nothing is still a clean sweep" do
+      raw = %{
+        "exit_status" => 0,
+        "execution_status" => "success",
+        "output" => "3793 tests, 0 failures",
+        "stats" => %{"tests" => 3793, "failures" => 0},
+        "diagnostics" => []
+      }
+
+      assert {:ok, %{problems: []}} = Runners.from_raw("exunit", raw)
+    end
+
+    # No stats at all is not evidence of a suite that did not run, so it falls
+    # through rather than being failed on a guess.
+    test "a payload carrying no stats is left alone" do
+      raw = %{
+        "exit_status" => 0,
+        "execution_status" => "success",
+        "output" => "",
+        "diagnostics" => []
+      }
+
+      assert {:ok, %{problems: []}} = Runners.from_raw("exunit", raw)
+    end
+
     test "a spex run that exited nonzero with no failures fails the run" do
       assert {:error, {:spex_suite_did_not_run, 2}} =
                Runners.from_raw("spex", %{"exit_status" => 2, "diagnostics" => []})
