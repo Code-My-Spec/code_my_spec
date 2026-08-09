@@ -1,6 +1,35 @@
 defmodule CodeMySpecWeb.PageControllerTest do
   use CodeMySpecTest.ConnCase
 
+  describe "starting the intake from the home page" do
+    test "the home page asks for the idea rather than a signup", %{conn: conn} do
+      body = conn |> get(~p"/") |> html_response(200)
+
+      assert body =~ "What do you want to build?"
+      assert body =~ ~s(name="description")
+    end
+
+    test "what they typed is recorded before /build renders", %{conn: conn} do
+      conn = post(conn, ~p"/build", %{"description" => "a booking tool for hair salons"})
+
+      assert redirected_to(conn) == ~p"/build"
+
+      # The plan is a row by the time they arrive, so the description survives
+      # a refresh — it is not carried in the URL.
+      body = conn |> recycle() |> get(~p"/build") |> html_response(200)
+      assert body =~ "Will people need to sign in to use this?"
+    end
+
+    test "an empty box is not an error, just an unanswered question", %{conn: conn} do
+      conn = post(conn, ~p"/build", %{"description" => "   "})
+
+      assert redirected_to(conn) == ~p"/build"
+
+      body = conn |> recycle() |> get(~p"/build") |> html_response(200)
+      assert body =~ "What do you want to build?"
+    end
+  end
+
   test "GET / renders the marketing home page", %{conn: conn} do
     conn = get(conn, ~p"/")
     body = html_response(conn, 200)

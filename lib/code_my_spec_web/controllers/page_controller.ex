@@ -1,6 +1,35 @@
 defmodule CodeMySpecWeb.PageController do
   use CodeMySpecWeb, :controller
 
+  alias CodeMySpec.Intake
+  alias CodeMySpecWeb.Plugs.IntakeSession
+
+  @doc """
+  Starts a plan from the home page and hands the visitor to the conversation.
+
+  The description is the one thing a visitor can give before they have been
+  asked anything, so it is what the home page collects. Recording it here
+  rather than passing it as a query parameter means the first thing they typed
+  survives a bookmark, a refresh, or a closed tab — the plan is already a row
+  by the time /build renders.
+
+  An empty box is not an error worth a page: it just means they pressed the
+  button with nothing to say, so send them to the same place and let the
+  conversation ask.
+  """
+  def start_build(conn, params) do
+    description = params |> Map.get("description", "") |> String.trim()
+
+    with token when is_binary(token) <- get_session(conn, IntakeSession.session_key()),
+         {:ok, plan} <- Intake.start_plan(token),
+         true <- description != "",
+         {:ok, _plan} <- Intake.describe(plan, description) do
+      redirect(conn, to: ~p"/build")
+    else
+      _ -> redirect(conn, to: ~p"/build")
+    end
+  end
+
   # Rendered in the visible FAQ section on the homepage AND serialized into
   # FAQPage JSON-LD — one source so the schema never claims text the page
   # doesn't show.

@@ -60,9 +60,13 @@ defmodule CodeMySpecWeb.Router do
   end
 
   scope "/", CodeMySpecWeb do
-    pipe_through :browser
+    # The intake starts on the home page, so the home page needs a session
+    # token to start it against — the same anonymous token /build reads, so a
+    # visitor who begins here and continues there is one plan, not two.
+    pipe_through [:browser, :intake]
 
     get "/", PageController, :home
+    post "/build", PageController, :start_build
     get "/product", PageController, :product
     get "/agents", PageController, :agents
     get "/design-system", PageController, :design_system
