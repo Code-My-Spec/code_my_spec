@@ -293,6 +293,32 @@ defmodule CodeMySpecWeb.ProvisioningLiveTest do
              "an unverified resource must not be marked verified"
     end
 
+    # The same claim one level down. The step's own resource list had the
+    # milder version of the problem — a resource under a `not_started` heading
+    # is ambiguous rather than a flat assertion of ownership — but it is the
+    # same record outliving the same resource, so it gets the same marking.
+    test "the step's own resource list marks what no longer verifies", %{
+      conn: conn,
+      project: project,
+      scope: scope
+    } do
+      StepRepository.upsert(scope, :server, %{
+        state: :done,
+        position: Sequence.position(:server),
+        resources: [%{kind: "server", location: "hetzner/ash/cms-prod"}]
+      })
+
+      stub_verifier(fn _scope, _key -> {:ok, :absent} end)
+
+      {:ok, view, _html} = live(conn, path(project))
+
+      assert has_element?(
+               view,
+               "[data-test='setup-step'][data-step='server'] [data-test='unverified-resource']"
+             ),
+             "the step still listed its resource without saying the check had just failed"
+    end
+
     test "a resource whose step verifies is not marked unverified", %{
       conn: conn,
       project: project,

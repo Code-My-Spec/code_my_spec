@@ -809,9 +809,21 @@ defmodule CodeMySpecWeb.ProvisioningLive do
                 data-name={resource_name(resource)}
                 data-owner={resource_owner(resource)}
                 data-disposition={resource_disposition(resource)}
-                class="badge badge-outline"
+                data-verified={to_string(step.state == :done)}
+                class={[
+                  "badge badge-outline",
+                  step.state != :done && "badge-warning opacity-70"
+                ]}
               >
                 {resource.kind} — {resource.location}
+                <span
+                  :if={step.state != :done}
+                  data-test="unverified-resource"
+                  data-step={step.key}
+                  class="ml-1"
+                >
+                  ({unverified_note(step)})
+                </span>
               </span>
             </div>
           </div>
