@@ -116,6 +116,24 @@ defmodule CodeMySpecSpex.Fixtures do
   end
 
   @doc """
+  An app access token for the project, minted the way the deployed app gets one.
+
+  Provisioning hands the app a refresh secret (the `callback_credential`
+  step); the app exchanges it for a short-lived access token and uses that to
+  ask for a browser-safe socket token. Going through `exchange/1` rather than
+  reaching for the private mint keeps a spex on the same path the app takes —
+  and the boundary requires it either way, since `CodeMySpecSpex` may not
+  reference `CodeMySpec` directly.
+  """
+  @spec app_access_token(map()) :: String.t()
+  def app_access_token(project) do
+    secret = "cms_refresh_#{System.unique_integer([:positive])}"
+    {:ok, _project} = CodeMySpec.AppTokens.put_refresh_secret(project, secret)
+    {:ok, token, _expires_in} = CodeMySpec.AppTokens.exchange(secret)
+    token
+  end
+
+  @doc """
   Give the account an SSH access key, generated for real.
 
   The server step generates one when the account has none, and generation

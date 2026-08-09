@@ -32,34 +32,57 @@ defmodule CodeMySpecSpex.Story973.Criterion8057Spex do
   spex "Feedback arrives from someone who never signed up" do
     scenario "an anonymous visitor's message reaches CodeMySpec" do
       given_ "a visitor who has not signed in is on Sam's site", context do
-        # No user session, no identity — only the project's public widget
-        # token, which is what a script tag on a public page can obtain.
+        # The app holds the token, not the visitor. A script tag on a public
+        # page cannot be handed anything that names a project — the customer's
+        # own server already carries the app token and exchanges it for a
+        # short-lived, browser-safe socket token. The visitor's browser is
+        # given that and nothing else: no project id, no account, no identity
+        # it had to create.
+        #
+        # An earlier draft of this criterion posted a `project_id` to get a
+        # token, which would mean anyone who can read a project id out of a URL
+        # can open a socket against that project. The endpoint is behind
+        # `Plugs.AppToken` deliberately; the router says so.
+        # Provisioning hands the app a refresh secret (the callback-credential
+        # step); the app exchanges it for a short-lived access token. Doing it
+        # that way here rather than reaching for a private mint keeps the spex
+        # on the same path the deployed app takes.
+        app_token = app_access_token(context.project)
+
         conn =
           Phoenix.ConnTest.build_conn()
-          |> Plug.Conn.put_req_header("content-type", "application/json")
-          |> post("/api/widget/socket_token", %{"project_id" => context.project.id})
+          |> Plug.Conn.put_req_header("authorization", "Bearer " <> app_token)
+          |> get("/api/widget/socket_token")
 
         body = Phoenix.ConnTest.json_response(conn, 200)
 
-        assert is_binary(body["token"]),
-               "expected an anonymous visitor to be able to obtain a widget token"
+        assert is_binary(body["socket_token"]),
+               "expected the app's token to mint a browser-safe socket token"
 
-        {:ok, Map.put(context, :token, body["token"])}
+        {:ok, Map.put(context, :socket_token, body["socket_token"])}
       end
 
       when_ "they open the widget and send a message", context do
+        # The visitor is whoever the widget says they are — an id and an email
+        # it generated for them. Nothing here names the project; the socket
+        # resolves that from the token the app supplied.
+        visitor = "visitor-#{System.unique_integer([:positive])}"
+
         {:ok, socket} =
           Phoenix.ChannelTest.connect(
             CodeMySpecWeb.WidgetSocket,
-            %{"token" => context.token},
+            %{
+              "socket_token" => context.socket_token,
+              "user_id" => visitor,
+              "user_email" => "#{visitor}@example.com"
+            },
             %{}
           )
 
-        {:ok, _reply, channel} =
-          subscribe_and_join(socket, "conversation:anonymous-probe", %{})
+        {:ok, _reply, channel} = subscribe_and_join(socket, "conversation:#{visitor}", %{})
 
         ref =
-          Phoenix.ChannelTest.push(channel, "message", %{
+          Phoenix.ChannelTest.push(channel, "send_message", %{
             "body" => "never signed up but here is my feedback"
           })
 
@@ -76,7 +99,10 @@ defmodule CodeMySpecSpex.Story973.Criterion8057Spex do
 
       then_ "Sam hears from someone who would otherwise have left silently", context do
         {:ok, _view, html} =
-          live(context.conn, "/app/projects/#{context.project.id}/conversations")
+          # A plain path, not `~p`. The sigil binds its router at compile time and
+          # this module's is the local one, so `~p` checks a route table that
+          # does not own the inbox — the cloud router does, under `/app`.
+          live(context.conn, "/app/projects/#{context.project.id}/inbox")
 
         assert html =~ "never signed up but here is my feedback",
                "expected the anonymous visitor's feedback to be visible to Sam"

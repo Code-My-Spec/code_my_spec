@@ -1105,6 +1105,15 @@ defmodule CodeMySpecSpex.Case do
     end
   end
 
+  @doc """
+  An app access token for the project, as the deployed app obtains one.
+
+  The customer's app holds a refresh secret from provisioning and exchanges it;
+  the browser never sees either. A criterion that needs a widget socket starts
+  here rather than by naming a project id, which is not a credential.
+  """
+  def app_access_token(project), do: Fixtures.app_access_token(project)
+
   def verified_sending_domains(scope, project, environments \\ ["prod", "uat"], opts \\ []) do
     for environment <- environments do
       sending = Fixtures.sending_domain(project.domain, environment)
