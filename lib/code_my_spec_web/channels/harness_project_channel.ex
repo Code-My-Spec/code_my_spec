@@ -267,10 +267,17 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
         {:reply, {:ok, %{"run_id" => run.id, "status" => to_string(run.status)}}, socket}
 
       {:error, :unknown_run} ->
-        # Either the run was already closed (its channel dropped and rejoined)
-        # or it belongs to another project. Not applied: reconciling it would
-        # rewrite this source's Problems off a run nobody is waiting for.
-        Logger.warning("[HarnessProject] #{source} result for a run this server is not tracking")
+        # Not applied: reconciling it would rewrite this source's Problems off a
+        # run nobody is waiting for.
+        #
+        # Says which run and why. Without that, "already closed" and "belongs to
+        # another checkout" read identically, and the second one — every join
+        # sweeping every other working copy's runs — hid a total failure for a
+        # day behind a message that looked like an ordinary reconnect.
+        Logger.warning(
+          "[HarnessProject] #{source} result for run #{payload["run_id"]} not recorded: " <>
+            Analysis.explain_unknown_run(socket.assigns.scope, payload["run_id"])
+        )
 
         {:reply, {:error, %{"reason" => "unknown_run"}}, socket}
 

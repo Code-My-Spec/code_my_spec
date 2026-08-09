@@ -81,6 +81,39 @@ defmodule CodeMySpec.Analysis.RunIsolationTest do
              })
   end
 
+  describe "explaining a refusal" do
+    test "names the working copy a run belongs to" do
+      {a, b} = two_checkouts()
+      run_a = start(a, "credo")
+
+      explanation = Analysis.explain_unknown_run(b, run_a.id)
+
+      assert explanation =~ "belongs to working copy",
+             "'already closed' and 'belongs to another checkout' have completely " <>
+               "different causes; when the message could not tell them apart, a " <>
+               "total failure read as an ordinary reconnect for a day: #{explanation}"
+
+      assert explanation =~ to_string(a.active_harness_id)
+    end
+
+    test "says when a run was swept, and as what" do
+      {a, _b} = two_checkouts()
+      run = start(a, "credo")
+      {:ok, 1} = RunsRepository.fail_running(a, :harness_reconnected)
+
+      explanation = Analysis.explain_unknown_run(a, run.id)
+
+      assert explanation =~ "closed as failed"
+      assert explanation =~ "swept"
+    end
+
+    test "says so when the id is unknown entirely" do
+      {a, _b} = two_checkouts()
+
+      assert Analysis.explain_unknown_run(a, 999_999) =~ "no run with that id"
+    end
+  end
+
   test "a checkout can record a result against its own run" do
     {a, _b} = two_checkouts()
 

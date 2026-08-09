@@ -99,6 +99,19 @@ defmodule CodeMySpec.Analysis.RunsRepository do
   end
 
   @doc """
+  Any run of this project by id, whatever its status or owner.
+
+  For explaining a refusal, never for deciding one — `get_running_run/2` is
+  what a result is matched against.
+  """
+  @spec get_run_in_project(Scope.t(), integer()) :: Run.t() | nil
+  def get_run_in_project(%Scope{active_project_id: project_id}, run_id) do
+    Run
+    |> where([r], r.id == ^run_id and r.project_id == ^project_id)
+    |> Repo.one()
+  end
+
+  @doc """
   Mark every `:running` run of this *working copy* `:failed`.
 
   For the moment its remote executor provably cannot answer them: its channel

@@ -234,6 +234,40 @@ defmodule CodeMySpec.Analysis do
 
   def record_remote_result(_scope, _payload), do: {:error, :invalid_result}
 
+  @doc """
+  Why a run id could not be answered, in words, for the log line.
+
+  Diagnostics only — never control flow. `unknown_run` used to be reported
+  without saying which run, whose, or what state it was actually in, so the
+  only way to tell "already closed" from "belongs to another checkout" was to
+  read the query. Those two have completely different causes and the same
+  message, which is how a total failure (285 results sent, 0 accepted) stayed
+  invisible for a day.
+  """
+  @spec explain_unknown_run(Scope.t(), term()) :: String.t()
+  def explain_unknown_run(%Scope{} = scope, run_id) when is_integer(run_id) do
+    scope
+    |> RunsRepository.get_run_in_project(run_id)
+    |> describe_run(scope.active_harness_id)
+  end
+
+  def explain_unknown_run(_scope, run_id), do: "run id is not an integer: #{inspect(run_id)}"
+
+  defp describe_run(nil, _harness_id), do: "no run with that id exists in this project"
+
+  defp describe_run(%Run{harness_id: owner}, harness_id) when owner != harness_id do
+    "it belongs to working copy #{inspect(owner)}, not #{inspect(harness_id)}"
+  end
+
+  defp describe_run(%Run{status: :running}, _harness_id) do
+    "it is still running, so this reply raced its own dispatch"
+  end
+
+  defp describe_run(%Run{status: status, finished_at: finished_at}, _harness_id) do
+    "it was closed as #{status} at #{inspect(finished_at)} — most likely swept " <>
+      "while the analyzer was still working"
+  end
+
   defp apply_remote_result(scope, run, %{"status" => "ok", "result" => raw}) when is_map(raw) do
     case Runners.from_raw(run.source, raw) do
       {:ok, result} ->
