@@ -31,7 +31,7 @@ defmodule CodeMySpecWeb.ContentLive.Pages.Methodology do
     assigns = assign(assigns, :phase_colors, @phase_colors)
 
     ~H"""
-    <Layouts.marketing flash={@flash} current_scope={@current_scope}>
+    <Layouts.marketing current_path={assigns[:current_path]} flash={@flash} current_scope={@current_scope}>
       <div id="methodology-page" phx-hook=".DeepContentRead">
         {hero_section(assigns)}
         {diagram_section(assigns)}

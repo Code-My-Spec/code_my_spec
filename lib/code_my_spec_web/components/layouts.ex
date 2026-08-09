@@ -262,6 +262,19 @@ defmodule CodeMySpecWeb.Layouts do
     """
   end
 
+  # Marks the nav item for the section you are actually in.
+  #
+  # Prefix match, not equality: a blog post lives at /blog/:slug and is still
+  # the Blog section. Guarded on the boundary so /blogroll does not light up
+  # /blog, which is the bug a bare String.starts_with?/2 would have.
+  defp nav_active(nil, _section), do: nil
+
+  defp nav_active(current_path, section) do
+    if current_path == section or String.starts_with?(current_path, section <> "/"),
+      do: "menu-active font-semibold",
+      else: nil
+  end
+
   # Only owners/admins administer mailboxes, so the Mailboxes nav item is
   # theirs alone. Guarded on an active account so it never raises for a
   # half-onboarded scope.
@@ -320,7 +333,7 @@ defmodule CodeMySpecWeb.Layouts do
 
   ## Examples
 
-      <Layouts.marketing flash={@flash}>
+      <Layouts.marketing current_path={assigns[:current_path]} flash={@flash}>
         <h1>Content</h1>
       </Layouts.marketing>
 
@@ -333,6 +346,11 @@ defmodule CodeMySpecWeb.Layouts do
   attr :current_scope, :map,
     default: nil,
     doc: "the current [scope](https://hexdocs.pm/phoenix/scopes.html)"
+
+  # Dead views get this from Plugs.CurrentPath, LiveViews from CurrentPathHook.
+  # Defaults to nil rather than "/" so a caller that passes nothing highlights
+  # nothing, instead of quietly claiming the visitor is on the home page.
+  attr :current_path, :string, default: nil
 
   def marketing(assigns) do
     ~H"""
@@ -410,11 +428,31 @@ defmodule CodeMySpecWeb.Layouts do
                     <li><.link href={~p"/install"} class="whitespace-nowrap">Install</.link></li>
                   </ul>
                 </li>
-                <li><.link href={~p"/developers"}>Developers</.link></li>
-                <li><.link href={~p"/methodology"}>Method</.link></li>
-                <li><.link href={~p"/pricing"}>Pricing</.link></li>
-                <li><.link href={~p"/blog"}>Blog</.link></li>
-                <li><.link href={~p"/documentation"}>Docs</.link></li>
+                <li>
+                  <.link href={~p"/developers"} class={nav_active(@current_path, "/developers")}>
+                    Developers
+                  </.link>
+                </li>
+                <li>
+                  <.link href={~p"/methodology"} class={nav_active(@current_path, "/methodology")}>
+                    Method
+                  </.link>
+                </li>
+                <li>
+                  <.link href={~p"/pricing"} class={nav_active(@current_path, "/pricing")}>
+                    Pricing
+                  </.link>
+                </li>
+                <li>
+                  <.link href={~p"/blog"} class={nav_active(@current_path, "/blog")}>
+                    Blog
+                  </.link>
+                </li>
+                <li>
+                  <.link href={~p"/documentation"} class={nav_active(@current_path, "/documentation")}>
+                    Docs
+                  </.link>
+                </li>
               </ul>
             </div>
             <div class="navbar-end gap-1 sm:gap-2">
@@ -608,14 +646,34 @@ defmodule CodeMySpecWeb.Layouts do
           </div>
           <ul class="menu p-4 text-base-content flex-1">
             <li><.link href={~p"/product"}>Product</.link></li>
-            <li><.link href={~p"/developers"}>Developers</.link></li>
+            <li>
+                  <.link href={~p"/developers"} class={nav_active(@current_path, "/developers")}>
+                    Developers
+                  </.link>
+                </li>
             <li><.link href={~p"/agents"}>Supported agents</.link></li>
             <li><.link href={~p"/design-system"}>Design system</.link></li>
             <li><.link href={~p"/vibe-coding-rebuild"}>Rebuild service</.link></li>
-            <li><.link href={~p"/methodology"}>Method</.link></li>
-            <li><.link href={~p"/pricing"}>Pricing</.link></li>
-            <li><.link href={~p"/blog"}>Blog</.link></li>
-            <li><.link href={~p"/documentation"}>Docs</.link></li>
+            <li>
+                  <.link href={~p"/methodology"} class={nav_active(@current_path, "/methodology")}>
+                    Method
+                  </.link>
+                </li>
+            <li>
+                  <.link href={~p"/pricing"} class={nav_active(@current_path, "/pricing")}>
+                    Pricing
+                  </.link>
+                </li>
+            <li>
+                  <.link href={~p"/blog"} class={nav_active(@current_path, "/blog")}>
+                    Blog
+                  </.link>
+                </li>
+            <li>
+                  <.link href={~p"/documentation"} class={nav_active(@current_path, "/documentation")}>
+                    Docs
+                  </.link>
+                </li>
           </ul>
           <div class="p-4 border-t border-base-300 flex flex-col gap-2">
             <%= if @current_scope do %>

@@ -9,7 +9,7 @@ defmodule CodeMySpecWeb.AuthorLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.marketing flash={@flash} current_scope={@current_scope}>
+    <Layouts.marketing current_path={assigns[:current_path]} flash={@flash} current_scope={@current_scope}>
       <div class="max-w-4xl mx-auto px-4 py-12">
         <article>
           <header class="mb-10">

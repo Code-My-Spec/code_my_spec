@@ -26,7 +26,7 @@ defmodule CodeMySpecWeb.ContentLive.Pages.AgenticMarketingWithMcp do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.marketing flash={@flash} current_scope={@current_scope}>
+    <Layouts.marketing current_path={assigns[:current_path]} flash={@flash} current_scope={@current_scope}>
       <div id="agentic-marketing-page">
         <div
           id="reading-progress"

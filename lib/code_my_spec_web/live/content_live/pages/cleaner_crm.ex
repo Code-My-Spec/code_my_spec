@@ -176,7 +176,7 @@ defmodule CodeMySpecWeb.ContentLive.Pages.CleanerCrm do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.marketing flash={@flash} current_scope={@current_scope}>
+    <Layouts.marketing current_path={assigns[:current_path]} flash={@flash} current_scope={@current_scope}>
       {hero_section(assigns)}
       {overview_section(assigns)}
       {stories_section(assigns)}

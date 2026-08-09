@@ -6,7 +6,7 @@ defmodule CodeMySpecWeb.UserLive.Registration do
 
   def render(assigns) do
     ~H"""
-    <Layouts.marketing flash={@flash} current_scope={@current_scope}>
+    <Layouts.marketing current_path={assigns[:current_path]} flash={@flash} current_scope={@current_scope}>
       <div
         id="register-page"
         phx-hook=".ViewRegisterPage"

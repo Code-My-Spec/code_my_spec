@@ -1,4 +1,4 @@
-<Layouts.marketing flash={@flash} current_scope={@current_scope}>
+<Layouts.marketing current_path={assigns[:current_path]} flash={@flash} current_scope={@current_scope}>
   <article class="max-w-4xl mx-auto px-4 py-8">
     <%= if hero_image = blog_hero_image(@content) do %>
       <img

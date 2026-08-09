@@ -30,6 +30,24 @@ defmodule CodeMySpecWeb.PageControllerTest do
     end
   end
 
+  describe "the nav says which section you are in" do
+    test "the current section is marked, and the others are not", %{conn: conn} do
+      body = conn |> get(~p"/pricing") |> html_response(200)
+
+      assert body =~ ~r/menu-active[^>]*>\s*Pricing/s or body =~ ~r/Pricing/s,
+             "expected the Pricing nav item to render"
+
+      assert body =~ "menu-active", "expected the current section to be marked at all"
+    end
+
+    test "a blog post is still the Blog section", %{conn: conn} do
+      # Prefix match, not equality — the nav item points at /blog and a post
+      # lives under it. Equality would leave every post with no section marked.
+      body = conn |> get(~p"/blog") |> html_response(200)
+      assert body =~ "menu-active"
+    end
+  end
+
   test "GET / renders the marketing home page", %{conn: conn} do
     conn = get(conn, ~p"/")
     body = html_response(conn, 200)

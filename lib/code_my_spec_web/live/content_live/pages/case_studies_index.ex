@@ -117,7 +117,7 @@ defmodule CodeMySpecWeb.ContentLive.Pages.CaseStudiesIndex do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.marketing flash={@flash} current_scope={@current_scope}>
+    <Layouts.marketing current_path={assigns[:current_path]} flash={@flash} current_scope={@current_scope}>
       <div class="hero mb-12">
         <div class="hero-content text-center">
           <div class="max-w-3xl">
