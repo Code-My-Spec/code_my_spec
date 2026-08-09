@@ -188,6 +188,8 @@ defmodule CodeMySpecSpex.Case do
       end)
     end
 
+    refuse_recording_into_a_personal_account()
+
     for provider <- [:github, :cloudflare, :resend] do
       grant = live_grant(provider)
 
@@ -241,6 +243,39 @@ defmodule CodeMySpecSpex.Case do
   # Only consulted while recording. On replay the HTTP never leaves the box, so
   # placeholders are not merely adequate, they are correct — a replay that
   # depended on a live credential would fail on a machine that has none.
+  # Refuse to record when the throwaway organisation is not configured.
+  #
+  # `Repository.ensure/3` asks GitHub who the token is when no `:owner` was
+  # supplied, and the Case supplies one only when `GITHUB_SPEX_OWNER` is in
+  # `System.get_env/1`. That variable lives in `envs/.env`, which Dotenvy loads
+  # into config and never into the process environment — so unless the operator
+  # exported it by hand, recording quietly creates repositories in whoever's
+  # personal account the grant belongs to.
+  #
+  # It is not hypothetical: a drill created `johns10/spex-story972-criterion8039`
+  # in a personal account this way, and nothing could delete it afterwards
+  # because the app's grant has no `delete_repo` scope by design and the admin
+  # token had expired. Silence was the whole problem — the run looked like it
+  # was doing the right thing.
+  #
+  # Replay is unaffected; it creates nothing.
+  defp refuse_recording_into_a_personal_account do
+    if recording?() and System.get_env("GITHUB_SPEX_OWNER") in [nil, ""] do
+      raise """
+      Refusing to record: GITHUB_SPEX_OWNER is not set.
+
+      Recording creates real repositories. Without this, they land in the
+      personal account behind the GitHub grant instead of the throwaway
+      organisation, and the app cannot delete them afterwards.
+
+      It is in envs/.env, which Dotenvy loads into config rather than the
+      process environment, so it has to be exported:
+
+          set -a; source envs/.env; set +a
+      """
+    end
+  end
+
   defp live_grant(provider) do
     if recording?() do
       fetch_live_grant(provider)
