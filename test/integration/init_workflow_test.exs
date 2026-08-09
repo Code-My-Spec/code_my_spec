@@ -15,10 +15,10 @@ defmodule CodeMySpec.Integration.InitWorkflowTest do
   alias CodeMySpec.Environments.Environment
   alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
   alias CodeMySpec.Projects
-
+  alias Ecto.Adapters.SQL.Sandbox
 
   setup do
-    :ok = Ecto.Adapters.SQL.Sandbox.checkout(CodeMySpec.Repo)
+    :ok = Sandbox.checkout(CodeMySpec.Repo)
   end
 
   test "full init flow: init checklist → link project → computed graph returns the first requirement" do

@@ -21,12 +21,12 @@ defmodule CodeMySpec.Integration.ProjectSetupWorkflowTest do
   import CodeMySpec.Integration.WorkflowHelpers
   import Phoenix.LiveViewTest
 
-  alias CodeMySpec.Environments.Environment
+  alias Anubis.Server.Frame
   alias CodeMySpec.AgentTasks.ProjectSetup
+  alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Files.FileSync
   alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
   alias CodeMySpec.Projects
-  alias Anubis.Server.Frame
 
   setup [:register_log_in_setup_account, :setup_active_account, :setup_active_project]
 
