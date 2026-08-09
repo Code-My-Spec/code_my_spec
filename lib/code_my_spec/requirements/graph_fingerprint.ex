@@ -42,8 +42,7 @@ defmodule CodeMySpec.Requirements.GraphFingerprint do
       {:problems, problems_digest(ctx.problems_by_component)},
       {:analysis, Enum.sort(Map.to_list(ctx.analysis_fresh))},
       {:config, struct_digest(config)},
-      {:delegated, delegated_digest(ctx)},
-      {:delegated_files, Map.get(ctx, :delegated_files, :not_loaded)}
+      {:delegated, delegated_digest(ctx)}
     ]
     |> hash()
   end

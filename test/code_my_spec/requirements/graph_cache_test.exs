@@ -162,27 +162,33 @@ defmodule CodeMySpec.Requirements.GraphCacheTest do
       refute current_fingerprint(scope) == before
     end
 
-    # `QaIntegrationPlan` globs these and nothing syncs them: `.code_my_spec`
-    # is a sync root so the walker descends, but `Scanner.classify/1` does not
-    # claim integration specs and `stream_files/1` drops what classify does not
-    # claim. Without this the fingerprint cannot see a spec written or verified.
+    # `QaIntegrationPlan` reads these, so the fingerprint has to see them move.
+    #
+    # It once could not: `Scanner.classify/1` had no rule for the integrations
+    # directory, so the walker descended into it and `stream_files/1` dropped
+    # every file it found. `DelegateFiles` hashed them off disk to close that.
+    # Classify claims them now (`{&Paths.integrations_dir/0, :integration}`),
+    # they sync like anything else, and `files_digest` carries each row's
+    # content hash — so the coverage comes from the file table and the
+    # side-channel digest is gone.
+    #
+    # Written *and synced*, because that is the sequence in production: the
+    # harness scans, rows land, the fingerprint moves. A test that only wrote
+    # to disk was asserting the side channel rather than the behaviour.
     test "an integration spec appearing moves it", %{scope: scope, before: before} do
-      spec = Path.join([scope.cwd, Paths.integrations_dir(), "stripe.md"])
-      File.mkdir_p!(Path.dirname(spec))
-      File.write!(spec, "# Stripe\n\nstatus: pending\n")
+      write_integration_spec(scope, "status: pending")
 
       refute current_fingerprint(scope) == before
     end
 
     test "an integration spec changing in place moves it", %{scope: scope} do
-      spec = Path.join([scope.cwd, Paths.integrations_dir(), "stripe.md"])
-      File.mkdir_p!(Path.dirname(spec))
-      File.write!(spec, "# Stripe\n\nstatus: pending\n")
+      write_integration_spec(scope, "status: pending")
       pending = current_fingerprint(scope)
 
-      # Same path, same glob result — only the contents move, and the status is
-      # the whole of what the check reads.
-      File.write!(spec, "# Stripe\n\nstatus: verified\n")
+      # Same path, so a digest over names alone would not move. The status is
+      # the whole of what the check reads, which is why the row's content
+      # fingerprint — not its path — is what has to carry this.
+      write_integration_spec(scope, "status: verified")
 
       refute current_fingerprint(scope) == pending
     end
@@ -192,6 +198,13 @@ defmodule CodeMySpec.Requirements.GraphCacheTest do
              "an unchanged project must produce a stable fingerprint, or the cache " <>
                "never hits and the whole projection is dead weight"
     end
+  end
+
+  defp write_integration_spec(scope, body) do
+    spec = Path.join([scope.cwd, Paths.integrations_dir(), "stripe.md"])
+    File.mkdir_p!(Path.dirname(spec))
+    File.write!(spec, "# Stripe\n\n#{body}\n")
+    {:ok, _} = FileSync.sync(scope, base_dir: scope.cwd)
   end
 
   defp persona_fixture(scope) do
