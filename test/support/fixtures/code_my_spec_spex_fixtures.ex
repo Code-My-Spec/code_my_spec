@@ -971,7 +971,15 @@ defmodule CodeMySpecSpex.Fixtures do
   end
 
   @doc "The stop hook's blocking decision, as the hook itself asks for it."
-  def validate_stop(%Scope{} = scope), do: CodeMySpec.Validation.validate_stop(scope, nil)
+  # Drops the block key. `validate_stop/3` returns `{:error, reason, key}` — the
+  # key is R8's repeat identity for the finding set, not something a spec has an
+  # opinion about, and every one of these asserts on the reason.
+  def validate_stop(%Scope{} = scope) do
+    case CodeMySpec.Validation.validate_stop(scope, nil) do
+      {:error, reason, _key} -> {:error, reason}
+      other -> other
+    end
+  end
 
   @doc "Files the harness scanned but could classify into no role."
   def unclassified_files(%Scope{} = scope),

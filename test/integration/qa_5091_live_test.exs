@@ -93,7 +93,9 @@ defmodule CodeMySpec.Integration.Qa5091LiveTest do
     """)
 
     # Reuse the canonical fixtures used by the 5091 spex.
-    fixture_dir = Path.expand("../fixtures/validation/pipeline_compile_block_exunit_advisory", __DIR__)
+    fixture_dir =
+      Path.expand("../fixtures/validation/pipeline_compile_block_exunit_advisory", __DIR__)
+
     compile_jsonl = Path.join(fixture_dir, "compile.jsonl")
     exunit_json = Path.join(fixture_dir, "exunit.json")
 
@@ -103,8 +105,12 @@ defmodule CodeMySpec.Integration.Qa5091LiveTest do
         exunit_output_file: exunit_json
       )
 
-    assert {:error, reason} = result, "expected blocking response, got: #{inspect(result)}"
+    assert {:error, reason, key} = result, "expected blocking response, got: #{inspect(result)}"
     assert is_binary(reason)
+
+    assert is_binary(key),
+           "the block carries a stable identity for the finding set — R8 counts repeats on " <>
+             "this rather than on the reason text, which carries relative ages"
 
     assert reason =~ "Fix these problems before stopping:",
            "expected blocking header, got:\n#{reason}"

@@ -83,7 +83,8 @@ defmodule CodeMySpec.Validation do
   relying on `System.cmd` side effects.
   """
   @spec validate_stop(Scope.t(), map() | nil, keyword()) ::
-          {:ok, %{changed_files: [map()], analysis: map()}} | {:error, String.t()}
+          {:ok, %{changed_files: [map()], analysis: map()}}
+          | {:error, String.t(), String.t() | nil}
   def validate_stop(%Scope{} = scope, task, opts \\ []) do
     start = System.monotonic_time(:millisecond)
 
@@ -466,11 +467,38 @@ defmodule CodeMySpec.Validation do
       Logger.info("[Validation] blocking on stale sources: #{Enum.join(stale_sources, ", ")}")
     end
 
-    {:error,
-     Problems.render_stop_response(blocking, advisory,
-       stale_sources: stale_sources,
-       last_ran: last_ran
-     )}
+    reason =
+      Problems.render_stop_response(blocking, advisory,
+        stale_sources: stale_sources,
+        last_ran: last_ran
+      )
+
+    {:error, reason, blocking_key(blocking)}
+  end
+
+  # What is blocking, as something that can be compared across stops.
+  #
+  # Deliberately not the rendered reason. R8's repeat detection hashes the text
+  # it is given, and this text carries relative ages — "stale, last ran 3
+  # minutes ago" — which change on every stop. Hashing it would produce a new
+  # value each time and the streak would never build, so the escape would be
+  # silently inert in exactly the case that needs it most: an analyzer lagging
+  # while the same findings block turn after turn.
+  #
+  # The findings themselves are stable. A fixed problem, a new one, or a moved
+  # line all change this; waiting does not.
+  @doc false
+  # Public only so the property that matters can be asserted directly: stable
+  # while a source ages, different the moment a finding changes.
+  def blocking_key([]), do: nil
+
+  def blocking_key(blocking) do
+    blocking
+    |> Enum.map(&{&1.source, &1.file_path, &1.line, &1.message})
+    |> Enum.sort()
+    |> :erlang.term_to_binary()
+    |> then(&:crypto.hash(:sha256, &1))
+    |> Base.encode16(case: :lower)
   end
 
   defp log_changed_files(changed_files) do

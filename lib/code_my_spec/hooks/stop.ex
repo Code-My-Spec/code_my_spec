@@ -171,16 +171,28 @@ defmodule CodeMySpec.Hooks.Stop do
 
     case Validation.validate_stop(scope, active_task, opts) do
       # Persisted problems already block — no need to wait on anything.
-      {:error, reason} ->
-        maybe_terminate_stuck(scope, session_id, reason, req_id)
+      #
+      # `key` is what makes R8 reach this path at all. The counter it reads was
+      # only ever bumped by `TaskEvaluator`, so a stop blocked purely on
+      # problems repeated forever with the escape sitting right here, wired up
+      # and never armed. Recorded on the finding set rather than the rendered
+      # text — see `Validation.blocking_key/1`.
+      {:error, reason, key} ->
+        maybe_terminate_stuck(scope, session_id, reason, req_id, key)
 
       {:ok, _result} ->
         if pending_analysis?(scope) do
           pending_response(scope, session, req_id)
         else
           case maybe_evaluate(scope, session_id, session) do
-            {:ok, :valid} -> maybe_continue_with_next_task(scope, session, req_id)
-            {:error, reason} -> maybe_terminate_stuck(scope, session_id, reason, req_id)
+            {:ok, :valid} ->
+              maybe_continue_with_next_task(scope, session, req_id)
+
+            # Already recorded by `TaskEvaluator`, so nothing to record here —
+            # doing it twice would advance the streak two per stop and trip the
+            # escape at half the intended threshold.
+            {:error, reason} ->
+              maybe_terminate_stuck(scope, session_id, reason, req_id, nil)
           end
         end
     end
@@ -237,9 +249,15 @@ defmodule CodeMySpec.Hooks.Stop do
   defp terminate_stuck(scope, session, req_id) do
     count = session.eval_feedback_count || 0
 
+    # Names what repeated without claiming which check produced it. The counter
+    # is now advanced by two things — a task evaluation returning the same
+    # feedback, and a stop blocked on the same finding set — and a message that
+    # says `evaluate_task` for both sends anyone reading it to the wrong place.
     message =
-      "Continuous mode terminated by stuck-detection: evaluate_task " <>
-        "returned the same feedback #{count} times in a row."
+      "Continuous mode terminated by stuck-detection: the same stop feedback " <>
+        "#{count} times in a row. Whatever was blocking has NOT been fixed — " <>
+        "it is still recorded and will block the next run. If it is real but " <>
+        "not yours to fix, file it with `create_issue`."
 
     Logger.info("[StopHook] [#{req_id}] R8 stuck-detection (count=#{count}) — terminating loop")
 
@@ -263,18 +281,38 @@ defmodule CodeMySpec.Hooks.Stop do
     Map.merge(%{"systemMessage" => message}, terminus_retrospective())
   end
 
-  defp maybe_terminate_stuck(_scope, nil, reason, req_id),
+  defp maybe_terminate_stuck(_scope, nil, reason, req_id, _key),
     do: block_with_reason(reason, req_id)
 
-  defp maybe_terminate_stuck(scope, session_id, reason, req_id) do
+  defp maybe_terminate_stuck(scope, session_id, reason, req_id, key) do
     case Sessions.get_by_external_id(scope, session_id) do
       nil ->
         block_with_reason(reason, req_id)
 
       session ->
+        session = record_block(scope, session, key)
+
         if continuous_mode?(session) and stuck_threshold_hit?(session),
           do: terminate_stuck(scope, session, req_id),
           else: block_with_reason(reason, req_id)
+    end
+  end
+
+  # A block on problems, counted the same way a repeated task-evaluation
+  # failure is. The finding set is the identity: the same problems next stop
+  # advance the streak, a fixed or new one resets it, and waiting for a lagging
+  # analyzer does neither.
+  #
+  # Without this a genuine finding the working agent cannot resolve — one
+  # belonging to another story, or to work that is not implemented — blocked
+  # every stop with nothing legitimate for the agent to do. Eight in a row was
+  # observed; unattended it spends the whole budget.
+  defp record_block(_scope, session, nil), do: session
+
+  defp record_block(scope, session, key) do
+    case Sessions.record_eval_feedback(scope, session, key) do
+      {:ok, updated} -> updated
+      _ -> session
     end
   end
 
