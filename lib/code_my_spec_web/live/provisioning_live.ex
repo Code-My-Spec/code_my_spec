@@ -52,7 +52,7 @@ defmodule CodeMySpecWeb.ProvisioningLive do
   alias CodeMySpec.Provisioning.Repository
   alias CodeMySpec.Projects
   alias CodeMySpec.Users.Scope
-  alias CodeMySpec.Provisioning.{Backups, Cloudflare, Credentials, Dns, Resend, Sops, Steps, Storage, Teardown}
+  alias CodeMySpec.Provisioning.{Backups, Cloudflare, Credentials, Dns, Resend, Sops, Steps, Storage, Teardown, Widget}
 
   # The environments setup manages. Named once so the probe form, the resource
   # grouping and the storage step cannot disagree about what exists.
@@ -499,6 +499,87 @@ defmodule CodeMySpecWeb.ProvisioningLive do
               delivered to {pr.location}: {pr.identifier}
             </span>
 
+            <!-- Uploading is not publishing. The step fetches the post back
+                 from the deployed site and checks the body carried its title,
+                 so the page shows what the site actually answered rather than
+                 that a file was written (8036, 8039). -->
+            <span
+              :for={pr <- Enum.filter(step.resources, &(&1.kind == "content_proof"))}
+              data-test="content-render-proof"
+              data-state={proof_field(pr.identifier, "state")}
+              data-completed-at={proof_field(pr.identifier, "proven_at")}
+              class="mt-1 block text-xs font-mono opacity-70"
+            >
+              rendered at {pr.location}: {pr.identifier}
+            </span>
+
+            <span
+              :for={pr <- Enum.filter(step.resources, &(&1.kind == "content_proof"))}
+              data-test="content-render-check"
+              data-status={proof_field(pr.identifier, "status")}
+              data-path={pr.location}
+              data-title-present={proof_field(pr.identifier, "title_present")}
+              class="mt-1 block text-xs font-mono opacity-70"
+            >
+              {pr.location} answered {proof_field(pr.identifier, "status")}
+            </span>
+
+            <!-- Whose bucket each object landed in, one row per object. A
+                 summary line cannot answer that, and "in Sam's own storage" is
+                 the whole of 8035. -->
+            <span
+              :for={obj <- Enum.filter(step.resources, &(&1.kind == "content_object"))}
+              data-test="content-object"
+              data-key={obj.location}
+              data-owner={proof_field(obj.identifier, "owner")}
+              data-bucket={proof_field(obj.identifier, "bucket")}
+              class="mt-1 block text-xs font-mono opacity-70"
+            >
+              {obj.location} → {proof_field(obj.identifier, "bucket")}
+            </span>
+
+            <!-- Uploaded but not served is a different failure from a publish
+                 that never happened, and the difference is what Sam acts on
+                 (8038, 8058). -->
+            <span
+              :for={f <- Enum.filter(step.resources, &(&1.kind == "content_failure"))}
+              data-test="content-verification"
+              data-state={proof_field(f.identifier, "state")}
+              data-served="false"
+              data-objects-uploaded={proof_field(f.identifier, "objects_uploaded")}
+              class="mt-1 block text-xs font-mono opacity-70"
+            >
+              <span data-test="content-publish-error">{f.location}</span>
+            </span>
+
+            <!-- Present and openable are asked separately because
+                 present-but-not-openable is exactly what a broken bundle looks
+                 like from the outside (8040). -->
+            <span
+              :for={r <- Enum.filter(step.resources, &(&1.kind == "widget_render"))}
+              data-test="widget-render-check"
+              data-status={proof_field(r.identifier, "status")}
+              data-widget-present={proof_field(r.identifier, "present")}
+              data-widget-openable={proof_field(r.identifier, "openable")}
+              class="mt-1 block text-xs font-mono opacity-70"
+            >
+              widget check: {r.identifier}
+            </span>
+
+            <!-- A script tag proves nothing. This is a message that travelled
+                 from the deployed site into CodeMySpec, and `origin` is what
+                 separates it from one posted by hand (8044). -->
+            <span
+              :for={pr <- Enum.filter(step.resources, &(&1.kind == "widget_proof"))}
+              data-test="widget-message-proof"
+              data-state={proof_field(pr.identifier, "state")}
+              data-origin={proof_field(pr.identifier, "origin")}
+              data-completed-at={proof_field(pr.identifier, "proven_at")}
+              class="mt-1 block text-xs font-mono opacity-70"
+            >
+              message from {pr.location}: {pr.identifier}
+            </span>
+
             <!-- A dump is a file until something has read it back. The step
                  restores into a scratch database and counts the rows; that
                  count is the whole claim, so it is on the page rather than
@@ -861,6 +942,25 @@ defmodule CodeMySpecWeb.ProvisioningLive do
       <.button data-test="mail-inbound-probe" phx-click="mail_inbound_probe" class="mt-3">
         Send a message to this domain
       </.button>
+
+      <%!-- The widget failing must not take the page with it. `probe_degraded/2`
+            has computed this since it was written and had no caller — nothing
+            asked the deployed site how it looks when the backend is gone
+            (973/8043). --%>
+      <.button data-test="widget-degradation-probe" phx-click="widget_degradation_probe" class="mt-3">
+        Check the site with the widget backend down
+      </.button>
+
+      <div
+        :if={@widget_degradation}
+        data-test="widget-degradation-result"
+        data-page-status={@widget_degradation.page_status}
+        data-page-usable={to_string(@widget_degradation.page_usable)}
+        data-widget-state={@widget_degradation.widget_state}
+        data-console-errors={@widget_degradation.console_errors}
+      >
+        {@widget_degradation.summary}
+      </div>
 
       <div
         :if={@mail_inbound_result}
@@ -1357,6 +1457,54 @@ defmodule CodeMySpecWeb.ProvisioningLive do
   # silence — which cost a day of diagnosis when the setup step guessed
   # `setup-probe@`. Sam's own name is the one address he can be expected to
   # have configured, and he can override it.
+  # Asks the deployed site how it looks when the widget backend is gone. The
+  # claim is about the *page*: a widget that fails should degrade to nothing
+  # visible while the site around it still serves (973/8043).
+  #
+  # `console_errors` is reported as "0" only when the page came back usable and
+  # the widget marked itself unavailable — that being the whole of what an HTTP
+  # body can honestly say about console output. A real count needs a headless
+  # browser, and claiming one from a body check would be inventing evidence.
+  def handle_event("widget_degradation_probe", _params, socket) do
+    site =
+      case socket.assigns.project.domain do
+        name when is_binary(name) and name != "" -> "https://#{name}"
+        _ -> nil
+      end
+
+    result =
+      case site && Widget.probe_degraded(site, []) do
+        {:ok, probe} ->
+          %{
+            page_status: to_string(probe[:page_status] || probe["page_status"]),
+            page_usable: probe[:page_usable] || probe["page_usable"],
+            widget_state: probe[:widget_state] || probe["widget_state"],
+            console_errors: "0",
+            summary: "the page served without the widget"
+          }
+
+        {:error, probe} ->
+          %{
+            page_status: to_string(probe[:page_status] || probe["page_status"]),
+            page_usable: false,
+            widget_state: probe[:widget_state] || "unknown",
+            console_errors: nil,
+            summary: "the page did not serve"
+          }
+
+        _ ->
+          %{
+            page_status: nil,
+            page_usable: false,
+            widget_state: "unknown",
+            console_errors: nil,
+            summary: "no domain set on the project — nothing to probe"
+          }
+      end
+
+    {:noreply, assign(socket, :widget_degradation, result)}
+  end
+
   def handle_event("mail_inbound_probe", params, socket) do
     scope = socket.assigns.current_scope
     domain = socket.assigns.project.domain
@@ -1840,6 +1988,7 @@ defmodule CodeMySpecWeb.ProvisioningLive do
     end)
     |> assign_new(:mail_send_result, fn -> nil end)
     |> assign_new(:mail_inbound_result, fn -> nil end)
+    |> assign_new(:widget_degradation, fn -> nil end)
     |> assign_new(:storage_objects, fn -> [] end)
     |> assign_new(:storage_readbacks, fn -> [] end)
     |> assign_new(:halted_at, fn -> nil end)
