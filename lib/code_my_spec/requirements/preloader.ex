@@ -13,7 +13,6 @@ defmodule CodeMySpec.Requirements.Preloader do
   alias CodeMySpec.Files.File
   alias CodeMySpec.Problems.Problem
   alias CodeMySpec.Repo
-  alias CodeMySpec.Requirements.DelegateFiles
   alias CodeMySpec.Stories.Story
   alias CodeMySpec.Users.Scope
 
@@ -28,8 +27,7 @@ defmodule CodeMySpec.Requirements.Preloader do
           components_by_id: %{Ecto.UUID.t() => Component.t()},
           children_by_parent: %{Ecto.UUID.t() => [Component.t()]},
           stories: [Story.t()],
-          delegated_inputs: %{String.t() => [{term(), NaiveDateTime.t()}]},
-          delegated_files: term()
+          delegated_inputs: %{String.t() => [{term(), NaiveDateTime.t()}]}
         }
 
   @doc """
@@ -99,8 +97,7 @@ defmodule CodeMySpec.Requirements.Preloader do
       components_by_id: Map.new(components, &{&1.id, &1}),
       children_by_parent: Enum.group_by(components, & &1.parent_component_id),
       stories: stories,
-      delegated_inputs: delegated_inputs(project_id),
-      delegated_files: DelegateFiles.digest(scope)
+      delegated_inputs: delegated_inputs(project_id)
     }
   end
 

@@ -51,9 +51,12 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   #
   #   * six read tables the preloader did not load — rules, criteria, questions,
   #     personas, issues, and `qa_attempts` behind `qa_complete`
-  #   * four read working-copy files the scanner never syncs, because
-  #     `classify/1` claims none of them — see `DelegateFiles`
   #   * the rest read components, files and stories, covered from the start
+  #
+  # A `DelegateFiles` digest used to hash a handful of working-copy files off
+  # disk, because `classify/1` claimed none of them and they never became rows.
+  # Classify claims them now, so `files_digest` covers them by their content
+  # hash and the side channel is gone.
   #
   # The gap was real and this is the second time it has been closed. Story 859's
   # spex caught it the first time, when the cache was wired read-through with a
