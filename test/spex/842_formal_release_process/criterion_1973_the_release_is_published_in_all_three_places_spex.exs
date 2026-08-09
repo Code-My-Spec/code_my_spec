@@ -74,8 +74,7 @@ defmodule CodeMySpecSpex.Story842.Criterion1973Spex do
       end
 
       then_ "the release is tagged in the repository", context do
-        assert {:ok, tags} = Environments.cmd(context.environment, "git", ["tag", "--list"]),
-               "expected the tag list to be readable"
+        {tags, _status} = Environments.cmd(context.environment, "git", ["tag", "--list"])
 
         assert tags =~ ~r/v?\d+\.\d+\.\d+/,
                "expected an annotated semver tag so the code that shipped is identifiable, got: #{inspect(tags)}"

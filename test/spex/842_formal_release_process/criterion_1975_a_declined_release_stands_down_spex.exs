@@ -26,13 +26,21 @@ defmodule CodeMySpecSpex.Story842.Criterion1975Spex do
 
   spex "A declined release stands down" do
     scenario "the user says no" do
-      given_ "a story on UAT waiting to be released", context do
+      given_ "a story on UAT waiting to be released, and an empty releases directory",
+             context do
         :ok =
           Environments.write_file(
             context.environment,
             ".code_my_spec/devops/deploys/story_9004.md",
             "# Deploy\n\nstory 9004 to uat — verified\n"
           )
+
+        # The directory is made here, holding nothing but a marker, so "no
+        # release was recorded" is one exact expectation afterwards rather than
+        # two acceptable ones — a missing directory and an empty directory
+        # would otherwise both have to be tolerated, and a test that tolerates
+        # two answers is not checking which one it got.
+        :ok = Environments.write_file(context.environment, ".code_my_spec/releases/.keep", "")
 
         {:ok, context}
       end
@@ -54,24 +62,18 @@ defmodule CodeMySpecSpex.Story842.Criterion1975Spex do
       end
 
       then_ "no release record is written", context do
-        entries =
-          case Environments.list_directory(context.environment, ".code_my_spec/releases") do
-            {:ok, names} -> names
-            _ -> []
-          end
+        assert {:ok, entries} =
+                 Environments.list_directory(context.environment, ".code_my_spec/releases")
 
-        assert entries == [],
-               "a declined release left a record behind, so the tool believes it shipped: #{inspect(entries)}"
+        assert entries == [".keep"],
+               "a declined release left a record behind, so the tool believes it shipped: " <>
+                 inspect(entries -- [".keep"])
 
         {:ok, context}
       end
 
       then_ "nothing is tagged", context do
-        tags =
-          case Environments.cmd(context.environment, "git", ["tag", "--list"]) do
-            {:ok, output} -> output
-            _ -> ""
-          end
+        {tags, _status} = Environments.cmd(context.environment, "git", ["tag", "--list"])
 
         refute tags =~ ~r/v?\d+\.\d+\.\d+/,
                "a declined release left a tag behind, got: #{inspect(tags)}"
