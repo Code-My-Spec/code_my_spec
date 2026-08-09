@@ -22,6 +22,22 @@ Ecto.Adapters.SQL.Sandbox.mode(CodeMySpec.Repo, :manual)
 # directory, a Slipstream client against a real websocket — rather than
 # constructing them, so they need the tree `cms harness` boots.
 #
+# No test reaches the real CodeMySpec server, whatever the shell exports.
+#
+# `CmsHarness.Config` reads these straight from the environment, and the
+# analyzer runs `mix test` as a child of a harness that has all of them. A test
+# that started a fixture working copy therefore opened a real socket, joined,
+# and `Harnesses.issue/3` wrote a row per fixture root: 81 of 86 harness rows on
+# the dev server had roots under /var/folders, directories that stopped existing
+# when the test ended. `Harnesses.viewing/1` defaults to the most recently
+# active harness, so an operator's view then described a checkout nobody had.
+#
+# `FakeServer.start/1` already clears these for the tests that use it — this is
+# the same guard for the ones that do not, which are exactly the ones that had
+# no business connecting anywhere. Cleared before the supervisor starts, so
+# nothing can read them on the way up.
+Enum.each(~w(CMS_SERVER_URL CMS_TOKEN CMS_DEPLOY_KEY CMS_HARNESS_ID), &System.delete_env/1)
+
 # Started here rather than from `CodeMySpecWeb.Application`'s test children, so
 # the cloud application does not gain a compile-time reference to `CmsHarness`
 # that only the test suite ever wanted. Its endpoint is `server: false` in test,
