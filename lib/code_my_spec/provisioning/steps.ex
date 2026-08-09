@@ -470,72 +470,7 @@ defmodule CodeMySpec.Provisioning.Steps do
 
         {:error, reason, resources} ->
           {:error, reason, [delivery | resources]}
-
-        other ->
-          other
       end
-    end
-  end
-
-  # Where a deploy lands is decided by the config in the checkout, not by
-  # anything setup passes kamal — the `:host` above is only the health probe's
-  # target. So a config naming another machine deploys this project's image
-  # onto that machine, and then reports a health failure against a hostname it
-  # never touched: the wrong server changed, and the error points elsewhere.
-  #
-  # A drill seeded from another app caught this with `proxy.host:
-  # uat.astralbi.com` still in place while the project's own uat was
-  # `uat.drill.astralbi.com`. The stale file was the drill's doing; acting on
-  # it would not have been, and `image: ghcr.io/your-org/...` is the shipped
-  # placeholder, so a wrong host here is an ordinary state for a real repo.
-  #
-  # Only `proxy.host` is compared. `servers.web` legitimately carries IPs,
-  # which no hostname comparison can judge, and guessing there would refuse
-  # correct configs — the opposite failure and a worse one.
-  #
-  # A config that cannot be read or parsed is left to kamal and to
-  # `Generators.DeployBoilerplate`, which already owns missing and malformed
-  # deploy files. This guard answers one question: does this file name a host
-  # that is not ours.
-  defp config_targets_this_project(scope, environment) do
-    with {:ok, body} <- read_deploy_config(scope, environment),
-         {:ok, %{"proxy" => %{"host" => named}}} when is_binary(named) <-
-           YamlElixir.read_from_string(body),
-         [_ | _] = expected <- expected_hosts(scope, environment) do
-      if named in expected do
-        :ok
-      else
-        {:error,
-         "#{deploy_config_path(environment)} deploys to #{named}, but this project's " <>
-           "#{environment} is #{Enum.join(expected, ", ")}. Setup will not deploy to a host " <>
-           "the project does not own — point the config at the right hostname, or fix the " <>
-           "project's domain."}
-      end
-    else
-      _ -> :ok
-    end
-  end
-
-  defp read_deploy_config(scope, environment) do
-    Environments.read_file(env(scope), deploy_config_path(environment))
-  end
-
-  # Mirrors `bin/deploy`, which reaches for `config/deploy.uat.yml` when the
-  # environment is uat and `config/deploy.yml` otherwise. Checking a different
-  # file from the one kamal reads would verify nothing.
-  defp deploy_config_path("uat"), do: "config/deploy.uat.yml"
-  defp deploy_config_path(_), do: "config/deploy.yml"
-
-  defp expected_hosts(scope, environment) do
-    case domain(scope) do
-      nil ->
-        []
-
-      name ->
-        scope
-        |> EnvironmentRepository.assign_hosts(name)
-        |> Enum.filter(&(&1.name == environment and is_binary(&1.host)))
-        |> Enum.map(& &1.host)
     end
   end
 
@@ -588,48 +523,6 @@ defmodule CodeMySpec.Provisioning.Steps do
     end
   end
 
-  defp content_proof(%{render: render, proven_at: proven_at}) do
-    %{
-      kind: "content_proof",
-      location: render[:path] || render["path"] || "",
-      identifier:
-        "state=rendered status=#{render[:status] || render["status"]} " <>
-          "title_present=#{title_present?(render)} proven_at=#{iso(proven_at)}"
-    }
-  end
-
-  defp content_failure(state, reason, published) do
-    %{
-      kind: "content_failure",
-      location: to_string(reason),
-      identifier: "state=#{state} objects_uploaded=#{uploaded?(published)}"
-    }
-  end
-
-  # One resource per object, because 8035 asks whose bucket each landed in and
-  # a single summary line cannot answer that.
-  defp content_objects(%{published: %{objects: objects}}) when is_list(objects) do
-    Enum.map(objects, fn object ->
-      %{
-        kind: "content_object",
-        location: object[:key] || object["key"] || "",
-        identifier:
-          "owner=#{object[:owner] || object["owner"] || "user"} " <>
-            "bucket=#{object[:bucket] || object["bucket"]}"
-      }
-    end)
-  end
-
-  defp content_objects(_), do: []
-
-  defp uploaded?(%{objects: objects}) when is_list(objects), do: objects != []
-  defp uploaded?(_), do: false
-
-  defp title_present?(render) do
-    contains = render[:body_contains] || render["body_contains"]
-    contains not in [nil, false, []]
-  end
-
   def run(:widget, %Scope{} = scope, opts) do
     # `Widget.run/3` requires both and says so with `fetch!`, which is the
     # right contract for a module that cannot do anything useful without them.
@@ -658,37 +551,6 @@ defmodule CodeMySpec.Provisioning.Steps do
       end
     end
   end
-
-  # What the live site said when it was checked: the status, and whether the
-  # widget was both present and openable. Present-but-not-openable is the shape
-  # a broken bundle takes, so 8040 asks for them separately.
-  defp widget_render(%{presence: %{} = presence}) do
-    %{
-      kind: "widget_render",
-      location: to_string(presence[:status] || presence["status"]),
-      identifier:
-        "status=#{presence[:status] || presence["status"]} " <>
-          "present=#{presence[:present] || presence["present"]} " <>
-          "openable=#{presence[:openable] || presence["openable"]}"
-    }
-  end
-
-  defp widget_render(_), do: nil
-
-  # A message that actually travelled from the deployed site. `origin` is the
-  # part that distinguishes it from one posted by hand, which is what 8044
-  # means by "not by a script tag".
-  defp widget_proof(%{proof: %{} = proof, proven_at: proven_at}) do
-    %{
-      kind: "widget_proof",
-      location: to_string(proof[:origin] || proof["origin"] || "deployed_site"),
-      identifier:
-        "state=#{proof[:state] || proof["state"]} " <>
-          "origin=#{proof[:origin] || proof["origin"]} proven_at=#{iso(proven_at)}"
-    }
-  end
-
-  defp widget_proof(_), do: nil
 
   def run(:secrets, %Scope{} = scope, opts) do
     environments = environments(scope, opts)
@@ -1250,6 +1112,148 @@ defmodule CodeMySpec.Provisioning.Steps do
         build_image(scope, environment, opts)
     end
   end
+
+  # Helpers for the steps above. Kept together below the `run/3` clauses
+  # rather than beside the one each serves: interleaving them splits the
+  # clauses, and Elixir warns about that — a warning the analyzer treats as
+  # reason to skip exunit, credo and spex outright.
+  # Where a deploy lands is decided by the config in the checkout, not by
+  # anything setup passes kamal — the `:host` above is only the health probe's
+  # target. So a config naming another machine deploys this project's image
+  # onto that machine, and then reports a health failure against a hostname it
+  # never touched: the wrong server changed, and the error points elsewhere.
+  #
+  # A drill seeded from another app caught this with `proxy.host:
+  # uat.astralbi.com` still in place while the project's own uat was
+  # `uat.drill.astralbi.com`. The stale file was the drill's doing; acting on
+  # it would not have been, and `image: ghcr.io/your-org/...` is the shipped
+  # placeholder, so a wrong host here is an ordinary state for a real repo.
+  #
+  # Only `proxy.host` is compared. `servers.web` legitimately carries IPs,
+  # which no hostname comparison can judge, and guessing there would refuse
+  # correct configs — the opposite failure and a worse one.
+  #
+  # A config that cannot be read or parsed is left to kamal and to
+  # `Generators.DeployBoilerplate`, which already owns missing and malformed
+  # deploy files. This guard answers one question: does this file name a host
+  # that is not ours.
+  defp config_targets_this_project(scope, environment) do
+    with {:ok, body} <- read_deploy_config(scope, environment),
+         {:ok, %{"proxy" => %{"host" => named}}} when is_binary(named) <-
+           YamlElixir.read_from_string(body),
+         [_ | _] = expected <- expected_hosts(scope, environment) do
+      if named in expected do
+        :ok
+      else
+        {:error,
+         "#{deploy_config_path(environment)} deploys to #{named}, but this project's " <>
+           "#{environment} is #{Enum.join(expected, ", ")}. Setup will not deploy to a host " <>
+           "the project does not own — point the config at the right hostname, or fix the " <>
+           "project's domain."}
+      end
+    else
+      _ -> :ok
+    end
+  end
+
+  defp read_deploy_config(scope, environment) do
+    Environments.read_file(env(scope), deploy_config_path(environment))
+  end
+
+  # Mirrors `bin/deploy`, which reaches for `config/deploy.uat.yml` when the
+  # environment is uat and `config/deploy.yml` otherwise. Checking a different
+  # file from the one kamal reads would verify nothing.
+  defp deploy_config_path("uat"), do: "config/deploy.uat.yml"
+  defp deploy_config_path(_), do: "config/deploy.yml"
+
+  defp expected_hosts(scope, environment) do
+    case domain(scope) do
+      nil ->
+        []
+
+      name ->
+        scope
+        |> EnvironmentRepository.assign_hosts(name)
+        |> Enum.filter(&(&1.name == environment and is_binary(&1.host)))
+        |> Enum.map(& &1.host)
+    end
+  end
+
+  defp content_proof(%{render: render, proven_at: proven_at}) do
+    %{
+      kind: "content_proof",
+      location: render[:path] || render["path"] || "",
+      identifier:
+        "state=rendered status=#{render[:status] || render["status"]} " <>
+          "title_present=#{title_present?(render)} proven_at=#{iso(proven_at)}"
+    }
+  end
+
+  defp content_failure(state, reason, published) do
+    %{
+      kind: "content_failure",
+      location: to_string(reason),
+      identifier: "state=#{state} objects_uploaded=#{uploaded?(published)}"
+    }
+  end
+
+  # One resource per object, because 8035 asks whose bucket each landed in and
+  # a single summary line cannot answer that.
+  defp content_objects(%{published: %{objects: objects}}) when is_list(objects) do
+    Enum.map(objects, fn object ->
+      %{
+        kind: "content_object",
+        location: object[:key] || object["key"] || "",
+        identifier:
+          "owner=#{object[:owner] || object["owner"] || "user"} " <>
+            "bucket=#{object[:bucket] || object["bucket"]}"
+      }
+    end)
+  end
+
+  defp content_objects(_), do: []
+
+  defp uploaded?(%{objects: objects}) when is_list(objects), do: objects != []
+  defp uploaded?(_), do: false
+
+  defp title_present?(render) do
+    contains = render[:body_contains] || render["body_contains"]
+    contains not in [nil, false, []]
+  end
+
+  # What the live site said when it was checked: the status, and whether the
+  # widget was both present and openable. Present-but-not-openable is the shape
+  # a broken bundle takes, so 8040 asks for them separately.
+  defp widget_render(%{presence: %{} = presence}) do
+    %{
+      kind: "widget_render",
+      location: to_string(presence[:status] || presence["status"]),
+      identifier:
+        "status=#{presence[:status] || presence["status"]} " <>
+          "present=#{presence[:present] || presence["present"]} " <>
+          "openable=#{presence[:openable] || presence["openable"]}"
+    }
+  end
+
+  defp widget_render(_), do: nil
+
+  # A message that actually travelled from the deployed site. `origin` is the
+  # part that distinguishes it from one posted by hand, which is what 8044
+  # means by "not by a script tag".
+  # No nil fallback: the only call site is the `:proven` branch, where `proof`
+  # is always a map. A clause for the impossible case is one the compiler
+  # reports as unreachable, and an unreachable clause is a compiler warning —
+  # which makes the analyzer skip exunit, credo and spex entirely.
+  defp widget_proof(%{proof: %{} = proof, proven_at: proven_at}) do
+    %{
+      kind: "widget_proof",
+      location: to_string(proof[:origin] || proof["origin"] || "deployed_site"),
+      identifier:
+        "state=#{proof[:state] || proof["state"]} " <>
+          "origin=#{proof[:origin] || proof["origin"]} proven_at=#{iso(proven_at)}"
+    }
+  end
+
 
   defp build_image(scope, environment, opts) do
     # Injectable for the same reason the builder's own create/build/destroy

@@ -2223,7 +2223,6 @@ defmodule CodeMySpecWeb.ProvisioningLive do
   # Every environment, because a sending domain per environment is the whole
   # of criterion 8056 — one shared domain means test mail and production mail
   # are indistinguishable to a recipient.
-  defp mail_domains(scope), do: mail_domains(scope, list_domains(scope))
 
   defp mail_domains(scope, domains) do
     scope
