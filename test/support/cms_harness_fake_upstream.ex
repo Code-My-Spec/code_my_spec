@@ -26,7 +26,7 @@ defmodule CmsHarnessTest.FakeUpstream do
   @doc "Start the listener on a free port and return it. Torn down with the test."
   @spec start!() :: pos_integer()
   def start!(opts \\ []) do
-    port = Keyword.get_lazy(opts, :port, fn -> Enum.random(4300..4399) end)
+    port = Keyword.get_lazy(opts, :port, &free_port/0)
 
     reset()
 
@@ -168,6 +168,24 @@ defmodule CmsHarnessTest.FakeUpstream do
     :persistent_term.put({__MODULE__, :requests}, [])
     :persistent_term.put({__MODULE__, :exchange}, nil)
     :persistent_term.put({__MODULE__, :exchange_answer}, {:ok, []})
+  end
+
+  # Let the OS pick, rather than `Enum.random(4300..4399)`.
+  #
+  # A hundred slots chosen at random collide often enough to matter once two
+  # suites run at once, which happens here whenever another working copy is
+  # testing at the same time. The failure is not a bind error — it is the
+  # request reaching the *other* suite's upstream, so `last_request/0` and
+  # `last_exchange/0` answer about a call this test never made, and the
+  # assertion fails on `==` with no hint that a second server was involved.
+  #
+  # Same shape as `Workspaces.free_port/0`: the TOCTOU window between closing
+  # and rebinding surfaces as a failed boot, which is loud and immediate.
+  defp free_port do
+    {:ok, socket} = :gen_tcp.listen(0, [])
+    {:ok, port} = :inet.port(socket)
+    :gen_tcp.close(socket)
+    port
   end
 
   defp stop(pid) do
