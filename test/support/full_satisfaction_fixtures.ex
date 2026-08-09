@@ -133,8 +133,32 @@ defmodule CodeMySpecSpex.FullSatisfactionFixtures do
     |> apply_story()
     |> apply_three_amigos_artifacts()
     |> apply_bdd_spec_file()
+    |> apply_specs_enforced()
     |> ProjectStateFixtures.apply_journey_artifacts()
     |> apply_fresh_analysis_runs()
+  end
+
+  # `bdd_specs_passing` checks the story's `specs_ready` latch, and writing the
+  # spec file satisfies `bdd_specs_exist` and nothing more. Without this the
+  # chain stopped one requirement short of where its own docstring says it
+  # stops: `qa_complete` never became reachable, so every spex built on this
+  # frontier got a `FixBddSpecs` prompt for the story the fixture had just
+  # created, naming an id that changed on every run.
+  #
+  # Through the button rather than `Stories.set_specs_ready/3`, for two
+  # reasons: this module's rule is bridge fixtures and MCP tools only, and the
+  # latch has no MCP surface at all — deliberately, since it decides whether
+  # spex failures block the agent, which is not the agent's call to make. The
+  # toggle in StoryLive is the whole of how it gets set.
+  defp apply_specs_enforced(context) do
+    {:ok, view, _html} =
+      live(context.conn, "/app/projects/#{context.project.id}/stories")
+
+    view
+    |> element(~s{[data-test="toggle-story-specs-ready"][phx-value-id="#{context.story.id}"]})
+    |> render_click()
+
+    context
   end
 
   # tests_passing / spex_passing require a fresh completed analysis run at
