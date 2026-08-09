@@ -73,6 +73,7 @@ defmodule CodeMySpecSpex.Fixtures do
   alias CodeMySpec.Provisioning.Hetzner
   alias CodeMySpec.Provisioning.Repository
   alias CodeMySpec.Provisioning.Resend
+  alias CodeMySpec.Provisioning.Resend
   alias CodeMySpec.Provisioning.Steps
   alias CodeMySpec.Provisioning.Storage
   alias CodeMySpec.Provisioning.Teardown
@@ -112,7 +113,7 @@ defmodule CodeMySpecSpex.Fixtures do
   """
   @spec register_sending_domain_only(Scope.t(), String.t()) :: {:ok, map()} | {:error, term()}
   def register_sending_domain_only(scope, sending_domain) do
-    CodeMySpec.Provisioning.Resend.ensure_domain(scope, sending_domain)
+    Resend.ensure_domain(scope, sending_domain)
   end
 
   @doc """
