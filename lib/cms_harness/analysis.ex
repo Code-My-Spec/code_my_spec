@@ -187,7 +187,11 @@ defmodule CmsHarness.Analysis do
   #
   # `Runners.spex_location/1` is the one place that decides it now. CmsHarness
   # may depend on CodeMySpec, so this needs no third home.
-  defp spex_failure(failure) do
+  @doc false
+  # Public only so the harness's own diagnostic can be asserted without a live
+  # `mix spex`. Its absence is why a location fix shipped against the server's
+  # copy and changed nothing here.
+  def spex_failure(failure) do
     {file, line} = Runners.spex_location(failure.error)
 
     %{
