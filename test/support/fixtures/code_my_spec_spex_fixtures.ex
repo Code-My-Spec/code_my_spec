@@ -2003,8 +2003,19 @@ defmodule CodeMySpecSpex.Fixtures do
   of them so.
   """
   @spec enable_devops(Scope.t()) :: :ok
-  def enable_devops(%Scope{} = scope) do
-    {:ok, _configuration} = CodeMySpec.Configurations.update(scope, %{devops: :prod})
+  def enable_devops(%Scope{} = scope), do: set_devops(scope, :prod)
+
+  @doc """
+  Set the project's devops level explicitly.
+
+  `:off`, `:uat` or `:prod`. `:off` is already the default, but a criterion
+  whose premise is "devops is off" should say so rather than inherit it from
+  whatever the default happens to be that week — the same reasoning that gives
+  `devops_on` its own setup.
+  """
+  @spec set_devops(Scope.t(), :off | :uat | :prod) :: :ok
+  def set_devops(%Scope{} = scope, level) when level in [:off, :uat, :prod] do
+    {:ok, _configuration} = CodeMySpec.Configurations.update(scope, %{devops: level})
 
     :ok
   end

@@ -2415,6 +2415,31 @@ defmodule CodeMySpecSpex.Case do
     context
   end
 
+  @doc """
+  Production is off; UAT is the whole plan (`devops: :uat`).
+
+  Separate from `devops_on` because "Sam opted out of prod" is a different
+  premise from "Sam has not set devops up", and a criterion about the first
+  must not pass by accident on the second.
+  """
+  def devops_uat_only(%{scope: scope} = context) do
+    Fixtures.set_devops(scope, :uat)
+
+    context
+  end
+
+  @doc """
+  DevOps is off (`devops: :off`).
+
+  Already the default, and stated anyway: a criterion whose subject is what
+  happens when devops is off should not depend on the default staying put.
+  """
+  def devops_off(%{scope: scope} = context) do
+    Fixtures.set_devops(scope, :off)
+
+    context
+  end
+
   def setup_active_project(%{user: user, account: account, scope: scope} = context) do
     # Create a real stub directory with a mix.exs to satisfy the
     # WorkingDir plug (which hits File.exists?/File.dir? directly). Real
