@@ -44,12 +44,29 @@ defmodule CodeMySpecWeb.Plugs.DeployKeyOrOAuth do
          {:ok, project} <- project_for_deploy_key(token),
          {:ok, user} <- account_owner(project.account_id) do
       conn
-      |> assign(:current_scope, scope_for(user, project) |> with_harness(conn, project))
+      |> assign(:current_scope, scope_for(user, project) |> with_harness(conn))
       |> assign(:deploy_key_project_id, project.id)
     else
       # Not a deploy key — could still be a perfectly good OAuth token, which
       # is how the desktop CLI reaches these same routes.
-      _ -> UserAuth.require_oauth_token(conn, opts)
+      #
+      # And how the *harness* reaches them: it trades its deploy key for a
+      # short-lived access token and sends that, so this is the branch it
+      # actually takes. Putting the harness lookup only in the branch above
+      # left it dead for the one caller it was written for.
+      _ -> conn |> UserAuth.require_oauth_token(opts) |> adopt_harness()
+    end
+  end
+
+  defp adopt_harness(%Plug.Conn{halted: true} = conn), do: conn
+
+  defp adopt_harness(conn) do
+    case conn.assigns[:current_scope] do
+      %{active_project_id: id} = scope when not is_nil(id) ->
+        assign(conn, :current_scope, with_harness(scope, conn))
+
+      _ ->
+        conn
     end
   end
 
@@ -82,11 +99,11 @@ defmodule CodeMySpecWeb.Plugs.DeployKeyOrOAuth do
   # was written for, and wrong here. `await_analysis` reported 1138 credo
   # problems to an agent whose own checkout had 552; the rest belonged to a
   # different worktree it cannot see and could not fix.
-  defp with_harness(scope, conn, project) do
+  defp with_harness(scope, conn) do
     conn = Plug.Conn.fetch_query_params(conn)
 
     case Harnesses.fetch(harness_id(conn)) do
-      {:ok, harness} when harness.project_id == project.id ->
+      {:ok, harness} when harness.project_id == scope.active_project_id ->
         %{scope | active_harness_id: harness.id}
 
       # No harness named, or one belonging to another project. Left unscoped
