@@ -19,14 +19,15 @@ defmodule CodeMySpec.Integration.StopHookSyncTest do
   alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Files.ComponentSync, as: FileComponentSync
   alias CodeMySpec.Files.FileSync
-  alias CodeMySpec.Requirements.RequirementCalculator
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpec.Projects
+  alias CodeMySpec.Requirements.RequirementCalculator
   alias CodeMySpec.Sessions
   alias CodeMySpecLocalWeb.Hooks.StopController
+  alias Ecto.Adapters.SQL.Sandbox
 
   setup do
-    :ok = Ecto.Adapters.SQL.Sandbox.checkout(CodeMySpec.Repo)
+    :ok = Sandbox.checkout(CodeMySpec.Repo)
   end
 
   # ============================================================================

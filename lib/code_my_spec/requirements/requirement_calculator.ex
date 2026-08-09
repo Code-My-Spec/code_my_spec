@@ -18,12 +18,11 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
   import Ecto.Query
 
   alias CodeMySpec.Components.Component
-  alias CodeMySpec.Requirements.Registry, as: RequirementsRegistry
-  alias CodeMySpec.Environments
   alias CodeMySpec.Files.File
   alias CodeMySpec.Problems.Problem
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements.Preloader
+  alias CodeMySpec.Requirements.Registry, as: RequirementsRegistry
   alias CodeMySpec.Users.Scope
 
   @type computed_requirement :: %{
@@ -238,55 +237,75 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
 
   # -- Path checks (project-level) --
 
-  # Check if path exists: try File records first, fall back to filesystem.
-  # Many project-level paths (qa/journey_plan.md, journey_result.md, etc.)
-  # aren't classified by FileSync, so the DB won't have them — filesystem is
-  # authoritative.
+  # Rows only. These used to fall back to statting the disk, on the stated
+  # grounds that "many project-level paths aren't classified by FileSync, so
+  # the DB won't have them — filesystem is authoritative". That is no longer
+  # true: every path these six requirements gate on now classifies to a role
+  # (`ClassifiableArtifactsTest` holds the list), so the row is there whenever
+  # the file is.
+  #
+  # The fallback was also the thing that made two harnesses disagree about one
+  # project. It only ever fires when the file is on disk and not yet a row, and
+  # in that window the heavy harness — which has a working copy — answers
+  # satisfied while the server, whose `scope.environment` is nil, answers
+  # unsatisfied. Same project, same instant, two answers, and the one an agent
+  # gets depends on which process it asked.
+  #
+  # Reading rows costs a scan of lag on a freshly written file and gives one
+  # answer to everyone. That is the trade this whole projection is built on:
+  # everything else here already reads rows, and a file the scanner has not
+  # seen is a file the graph does not know about.
   defp check_path_exists(scope, ctx, path) do
-    in_db = ctx[:files_by_path] && Map.has_key?(ctx.files_by_path, path)
-
-    if in_db do
-      {true, %{path: path}}
-    else
-      check_path_on_disk(scope, path)
-    end
-  end
-
-  defp check_path_prefix(scope, ctx, prefix) do
-    db_count =
-      case ctx[:files_by_project] do
-        files when is_list(files) -> Enum.count(files, &String.starts_with?(&1.path, prefix))
-        _ -> 0
-      end
-
-    if db_count > 0 do
-      {true, %{status: "#{db_count} file(s) at #{prefix}"}}
-    else
-      check_prefix_on_disk(scope, prefix)
-    end
-  end
-
-  defp check_path_on_disk(%Scope{environment: env}, path) when not is_nil(env) do
-    if Environments.file_exists?(env, path) do
+    if path_tracked?(scope, ctx, path) do
       {true, %{path: path}}
     else
       {false, %{reason: "File missing: #{path}"}}
     end
   end
 
-  defp check_path_on_disk(_, path), do: {false, %{reason: "File missing: #{path}"}}
-
-  defp check_prefix_on_disk(%Scope{environment: env}, prefix) when not is_nil(env) do
-    case Environments.list_directory(env, prefix) do
-      {:ok, entries} when entries != [] ->
-        {true, %{status: "#{length(entries)} file(s) at #{prefix}"}}
-
-      _ ->
-        {false, %{reason: "No files at #{prefix}"}}
+  defp check_path_prefix(scope, ctx, prefix) do
+    case prefix_count(scope, ctx, prefix) do
+      0 -> {false, %{reason: "No files at #{prefix}"}}
+      n -> {true, %{status: "#{n} file(s) at #{prefix}"}}
     end
   end
 
-  defp check_prefix_on_disk(_, prefix), do: {false, %{reason: "No files at #{prefix}"}}
+  # Preloaded when there is a context, queried when there is not — the same
+  # two-clause shape `get_files/3` and `get_problem_count/4` already use, and
+  # the reason this conversion is not just "delete the fallback".
+  #
+  # `Evaluator` calls `compute_one/4` without a context, so on the stop-hook
+  # path — the one that runs on every agent turn — `ctx` is nil and there are
+  # no preloaded files to consult. Dropping to `{false, "File missing"}` there
+  # blocks the stop on a file the agent had just written and synced.
+  defp path_tracked?(_scope, ctx, path) when is_map(ctx) do
+    ctx[:files_by_path] && Map.has_key?(ctx.files_by_path, path)
+  end
+
+  defp path_tracked?(%Scope{active_project_id: project_id}, _ctx, path) do
+    File
+    |> where([f], f.project_id == ^project_id and f.path == ^path)
+    |> Repo.exists?()
+  end
+
+  defp prefix_count(_scope, ctx, prefix) when is_map(ctx) do
+    case ctx[:files_by_project] do
+      files when is_list(files) -> Enum.count(files, &String.starts_with?(&1.path, prefix))
+      _ -> 0
+    end
+  end
+
+  # Matched in Elixir rather than with a `LIKE`: the prefix is a config value
+  # and `_` is a single-character wildcard in both Postgres and SQLite, so a
+  # future prefix containing one would quietly over-match. One indexed column
+  # for one project is a cheap enough read to not need the wildcard.
+  defp prefix_count(%Scope{active_project_id: project_id}, _ctx, prefix) do
+    File
+    |> where([f], f.project_id == ^project_id)
+    |> select([f], f.path)
+    |> Repo.all()
+    |> Enum.count(&String.starts_with?(&1, prefix))
+  end
 
   # -- File checks --
 
