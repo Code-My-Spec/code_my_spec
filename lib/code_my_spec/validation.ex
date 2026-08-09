@@ -347,8 +347,26 @@ defmodule CodeMySpec.Validation do
       |> Enum.reject(&Analysis.fresh?(scope, &1))
 
     {blocking, advisory} = partition_problems(problems_by_source, config, scope_context)
-    decide(blocking, advisory, stale_sources)
+    decide(blocking, advisory, stale_sources, last_ran(scope, stale_sources))
   end
+
+  # When each stale source last finished. "Stale" alone cannot tell "a rerun is
+  # coming" from "no rerun can land", and those need opposite responses: wait,
+  # or stop editing and report the analyzer. A source that last ran two minutes
+  # ago is mid-cycle; one that last ran forty minutes ago, across several
+  # stops, is not coming back on its own.
+  defp last_ran(_scope, []), do: %{}
+
+  defp last_ran(scope, sources) do
+    status = Analysis.status(scope)
+
+    Map.new(sources, fn source ->
+      {source, get_in(status, [source, :run]) |> finished_at()}
+    end)
+  end
+
+  defp finished_at(%{finished_at: %DateTime{} = at}), do: at
+  defp finished_at(_), do: nil
 
   defp active_blocking_sources(config) do
     configurable =
@@ -436,19 +454,23 @@ defmodule CodeMySpec.Validation do
     &(&1.component_id in ids)
   end
 
-  defp decide([], [], _stale), do: :ok
+  defp decide([], [], _stale, _last_ran), do: :ok
 
-  defp decide([], advisory, _stale) do
+  defp decide([], advisory, _stale, _last_ran) do
     Logger.warning("[Validation] #{length(advisory)} advisory problem(s) not blocking")
     :ok
   end
 
-  defp decide(blocking, advisory, stale_sources) do
+  defp decide(blocking, advisory, stale_sources, last_ran) do
     if stale_sources != [] do
       Logger.info("[Validation] blocking on stale sources: #{Enum.join(stale_sources, ", ")}")
     end
 
-    {:error, Problems.render_stop_response(blocking, advisory, stale_sources: stale_sources)}
+    {:error,
+     Problems.render_stop_response(blocking, advisory,
+       stale_sources: stale_sources,
+       last_ran: last_ran
+     )}
   end
 
   defp log_changed_files(changed_files) do

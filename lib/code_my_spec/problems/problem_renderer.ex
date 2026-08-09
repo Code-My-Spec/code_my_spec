@@ -176,25 +176,27 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
 
   def render_stop_response(blocking, advisory, opts) do
     stale = opts |> Keyword.get(:stale_sources, []) |> MapSet.new()
+    last_ran = Keyword.get(opts, :last_ran, %{})
 
     header = "Fix these problems before stopping:\n\n"
     advisory_section = render_advisory_section(advisory)
 
-    blocking_section = render_blocking_section(blocking, stale)
+    blocking_section = render_blocking_section(blocking, stale, last_ran)
 
-    raw = header <> blocking_section <> advisory_section <> stale_footer(blocking, stale)
+    raw =
+      header <> blocking_section <> advisory_section <> stale_footer(blocking, stale, last_ran)
 
     enforce_total_cap(raw, blocking, advisory)
   end
 
-  defp render_blocking_section(blocking, stale) do
+  defp render_blocking_section(blocking, stale, last_ran) do
     blocking
     |> Enum.group_by(& &1.source)
     |> Enum.sort_by(fn {source, _} -> source end)
-    |> Enum.map_join("\n", &render_blocking_group(&1, stale))
+    |> Enum.map_join("\n", &render_blocking_group(&1, stale, last_ran))
   end
 
-  defp render_blocking_group({source, items}, stale) do
+  defp render_blocking_group({source, items}, stale, last_ran) do
     count = length(items)
     visible = Enum.take(items, @per_source_list_cap)
 
@@ -206,16 +208,34 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
         n -> "\n  ... #{n} more #{source} problems (use get_issue to inspect)"
       end
 
-    "#{source} (#{count})#{stale_marker(source, stale)}:\n#{details}#{overflow}"
+    "#{source} (#{count})#{stale_marker(source, stale, last_ran)}:\n#{details}#{overflow}"
   end
 
   # Marked, not dropped: dropping opens an escape at the last stop of a run
   # and hides an analyzer that fails every time.
-  defp stale_marker(source, stale) do
-    if MapSet.member?(stale, source), do: " — stale", else: ""
+  #
+  # With an age, because "stale" alone does not say whether waiting will help.
+  # A source that last ran two minutes ago is mid-cycle; one that last ran
+  # forty minutes ago has not been coming back, and the right response is to
+  # report the analyzer rather than stop again. Those need opposite actions and
+  # the message could not tell them apart.
+  defp stale_marker(source, stale, last_ran) do
+    case {MapSet.member?(stale, source), Map.get(last_ran, source)} do
+      {false, _} -> ""
+      {true, %DateTime{} = at} -> " — stale, last ran #{ago(at)}"
+      {true, _} -> " — stale, has never completed"
+    end
   end
 
-  defp stale_footer(blocking, stale) do
+  defp ago(%DateTime{} = at) do
+    case DateTime.diff(DateTime.utc_now(), at, :second) do
+      s when s < 90 -> "#{s}s ago"
+      s when s < 5400 -> "#{div(s, 60)}m ago"
+      s -> "#{div(s, 3600)}h ago"
+    end
+  end
+
+  defp stale_footer(blocking, stale, last_ran) do
     blocking
     |> Enum.map(& &1.source)
     |> Enum.uniq()
@@ -228,10 +248,33 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
         "\n\nSources marked stale (#{Enum.join(Enum.sort(sources), ", ")}) last ran " <>
           "before your most recent edit. Analysis is running now. Do not re-fix " <>
           "anything you have already corrected — stop again and let the rerun " <>
-          "replace these. If they persist across several stops with no change, " <>
-          "the analyzer itself is failing; report that rather than editing around it."
+          "replace these." <> escalation(sources, last_ran)
     end
   end
+
+  # The age decides the advice. "Stop again and wait" is right for a source
+  # mid-cycle and wrong for one that has not completed in half an hour — and
+  # the old wording gave the same instruction either way, which is how five
+  # consecutive stops went by on a finding that had already been fixed.
+  defp escalation(sources, last_ran) do
+    sources
+    |> Enum.map(&Map.get(last_ran, &1))
+    |> Enum.map(&staleness_seconds/1)
+    |> Enum.max(fn -> 0 end)
+    |> case do
+      s when s > 900 ->
+        " One of these has not completed in over #{div(s, 60)} minutes, which is " <>
+          "longer than a rerun takes: treat the analyzer as failing and report it " <>
+          "rather than editing around it."
+
+      _ ->
+        " If they persist across several stops with no change, the analyzer " <>
+          "itself is failing; report that rather than editing around it."
+    end
+  end
+
+  defp staleness_seconds(%DateTime{} = at), do: DateTime.diff(DateTime.utc_now(), at, :second)
+  defp staleness_seconds(_), do: 0
 
   defp render_blocking_line(%Problem{} = problem) do
     message =
