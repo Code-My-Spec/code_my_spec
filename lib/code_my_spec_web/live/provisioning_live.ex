@@ -1259,92 +1259,6 @@ defmodule CodeMySpecWeb.ProvisioningLive do
     end
   end
 
-  # Which credentials a run needs is a function of the options; whether each is
-  # on file is the part that costs something to find out. `load/2` holds both
-  # with `assign_new` because re-proving on every event and every PubSub
-  # announce was making provider calls from the wrong process — but that also
-  # froze the *set*, so turning an option off left its credentials on screen
-  # until a reload.
-  #
-  # Stale would be forgivable if it were only a list. It is a blocker: the page
-  # says "Setup cannot start yet — still needed: Hetzner S3 access key ID" for
-  # a run that will never use it, and those keys cannot be minted through an
-  # API — the page's own directions send you to the Hetzner console, where they
-  # are shown once. Believing it costs a trip for a credential nobody needs.
-  #
-  # Recomputed from the new options, reusing the checks already made rather
-  # than asking any provider again. `list/1` without `check?` only reads
-  # storage, and `missing/1` the same.
-  #
-  # Rebuilt rather than filtered. Filtering the list already on the socket can
-  # only ever remove, so turning an option back on could not bring its
-  # credential back — the row stayed gone until a remount.
-  #
-  # It also took its option list straight from the form params, which are
-  # strings, and handed them to `required/1`, which compares against the
-  # catalogue's atoms. `MapSet.member?(["storage"], :storage)` is false, so
-  # every option-scoped credential failed the test and only the two
-  # `options: :always` entries survived — the panel collapsed to GitHub and the
-  # Hetzner API token on *any* toggle, whatever was actually enabled. The scope
-  # is the atom-typed source of truth, so it is what we read.
-  defp reselect_credentials(socket) do
-    scope = socket.assigns.current_scope
-    known = Map.new(socket.assigns.credentials, &{&1.key, &1})
-
-    credentials = Enum.map(Credentials.list(scope), &carry_known_state(&1, Map.get(known, &1.key)))
-
-    socket
-    |> assign(:credentials, credentials)
-    |> assign(:missing_credentials, Credentials.missing(scope))
-  end
-
-  # A toggle changes which credentials matter, not whether they passed. Only a
-  # stored-but-unchecked row inherits, so a credential that has since gone
-  # missing cannot carry an old "verified" forward.
-  defp carry_known_state(%{state: "unchecked"} = credential, %{state: prior} = known)
-       when prior in ["verified", "rejected"],
-       do: %{credential | state: prior, missing_permission: known.missing_permission}
-
-  defp carry_known_state(credential, _known), do: credential
-
-  defp removed_summary(name, []), do: "Removed #{name}. It had nothing provisioned."
-
-  defp removed_summary(name, removed),
-    do: "Removed #{name}, and with it: " <> Enum.map_join(removed, ", ", & &1.location) <> "."
-
-  # Says what actually goes, so the dialog is not a generic "are you sure".
-  defp remove_environment_warning(%{host: host, server_name: server})
-       when is_binary(server) and server != "" do
-    "This destroys the server #{server}" <>
-      if(is_binary(host) and host != "", do: " and removes the DNS record for #{host}", else: "") <>
-      ". The record goes first, so the name stops resolving before the address is released."
-  end
-
-  defp remove_environment_warning(%{host: host}) when is_binary(host) and host != "" do
-    "This removes the DNS record for #{host}. No server was ever provisioned for it."
-  end
-
-  defp remove_environment_warning(_environment),
-    do: "Nothing was provisioned for it, so this only removes the row."
-
-  # `key=value key=value` — the shape every proof resource uses for its
-  # identifier, so the page can pull one field without knowing the order.
-  defp proof_field(identifier, key) do
-    identifier
-    |> to_string()
-    |> String.split(" ")
-    |> Enum.find_value(fn part ->
-      case String.split(part, "=", parts: 2) do
-        [^key, value] -> value
-        _ -> nil
-      end
-    end)
-  end
-
-  # Blank means "leave it alone", not "clear it". The field renders empty for a
-  # secret that is already set — because the value is never sent back to the
-  # browser — so treating blank as a delete would wipe every other credential
-  # each time one was saved.
   def handle_event("save_credentials", params, socket) do
     scope = socket.assigns.current_scope
     # Nested under `credentials[...]` so one submit carries the whole set —
@@ -1551,16 +1465,6 @@ defmodule CodeMySpecWeb.ProvisioningLive do
     {:noreply, assign(socket, :content_publish, result)}
   end
 
-  # The path and expectation the render check fetches back. Both are required
-  # by `verify_render/2`; a publish with nothing to look for could only ever
-  # report success.
-  defp publish_opts(socket) do
-    [
-      path: socket.assigns[:content_publish_path] || "/",
-      expect: socket.assigns[:content_publish_expect] || "<html"
-    ]
-  end
-
   def handle_event("widget_degradation_probe", _params, socket) do
     site =
       case socket.assigns.project.domain do
@@ -1617,63 +1521,6 @@ defmodule CodeMySpecWeb.ProvisioningLive do
     {:noreply, assign(socket, :mail_inbound_result, inbound_probe_result(scope, to))}
   end
 
-  defp default_inbound_address(scope, domain) do
-    local = scope.user.email |> to_string() |> String.split("@") |> List.first()
-    "#{local}@#{domain}"
-  end
-
-  defp inbound_probe_result(scope, to) do
-    now = DateTime.to_iso8601(DateTime.utc_now())
-
-    case Provisioning.probe_inbound(scope, to) do
-      {:ok, message} ->
-        %{
-          state: "delivered",
-          destination: to,
-          message_id: message["id"],
-          completed_at: message["created_at"] || now,
-          # Forwarded to a mailbox is not the same as reaching the app. This
-          # message came back through Resend's receiving API, so the app is
-          # holding it — which is what 8048 asks and what a plain MX forward
-          # to somebody's inbox would not satisfy.
-          delivered_to: "app",
-          body_available: message_body?(message),
-          # Resend delivered it to the app itself. Nobody set up a forwarding
-          # rule in a mail client to make that happen, which is the difference
-          # 8048 is drawing: an inbox Sam has to babysit is not an inbox the
-          # app owns.
-          manual_forward: false,
-          summary: "delivered to #{to}"
-        }
-
-      {:error, reason} ->
-        %{
-          state: "undelivered",
-          destination: to,
-          message_id: nil,
-          completed_at: now,
-          delivered_to: nil,
-          body_available: false,
-          manual_forward: nil,
-          summary: "not delivered to #{to}: #{String.slice(to_string(reason), 0, 200)}"
-        }
-    end
-  end
-
-  # Acting on a message means reading it. A receipt with no body is a
-  # notification that something arrived, which is not the same claim.
-  defp message_body?(message) do
-    Enum.any?(["text", "html"], fn key ->
-      case message[key] do
-        value when is_binary(value) and value != "" -> true
-        _ -> false
-      end
-    end)
-  end
-
-  # Criterion: a record deleted after verification is noticed. Re-reading from
-  # the provider is the only way to see that — the stored state says verified
-  # and will go on saying so.
   def handle_event("refresh_mail_dns", _params, socket) do
     {:noreply, load(socket, socket.assigns.options)}
   end
@@ -1999,6 +1846,161 @@ defmodule CodeMySpecWeb.ProvisioningLive do
          socket |> load(socket.assigns.options) |> assign(halted_at: key, halt_reason: reason)}
     end
   end
+
+  # Which credentials a run needs is a function of the options; whether each is
+  # on file is the part that costs something to find out. `load/2` holds both
+  # with `assign_new` because re-proving on every event and every PubSub
+  # announce was making provider calls from the wrong process — but that also
+  # froze the *set*, so turning an option off left its credentials on screen
+  # until a reload.
+  #
+  # Stale would be forgivable if it were only a list. It is a blocker: the page
+  # says "Setup cannot start yet — still needed: Hetzner S3 access key ID" for
+  # a run that will never use it, and those keys cannot be minted through an
+  # API — the page's own directions send you to the Hetzner console, where they
+  # are shown once. Believing it costs a trip for a credential nobody needs.
+  #
+  # Recomputed from the new options, reusing the checks already made rather
+  # than asking any provider again. `list/1` without `check?` only reads
+  # storage, and `missing/1` the same.
+  #
+  # Rebuilt rather than filtered. Filtering the list already on the socket can
+  # only ever remove, so turning an option back on could not bring its
+  # credential back — the row stayed gone until a remount.
+  #
+  # It also took its option list straight from the form params, which are
+  # strings, and handed them to `required/1`, which compares against the
+  # catalogue's atoms. `MapSet.member?(["storage"], :storage)` is false, so
+  # every option-scoped credential failed the test and only the two
+  # `options: :always` entries survived — the panel collapsed to GitHub and the
+  # Hetzner API token on *any* toggle, whatever was actually enabled. The scope
+  # is the atom-typed source of truth, so it is what we read.
+  defp reselect_credentials(socket) do
+    scope = socket.assigns.current_scope
+    known = Map.new(socket.assigns.credentials, &{&1.key, &1})
+
+    credentials = Enum.map(Credentials.list(scope), &carry_known_state(&1, Map.get(known, &1.key)))
+
+    socket
+    |> assign(:credentials, credentials)
+    |> assign(:missing_credentials, Credentials.missing(scope))
+  end
+
+  # A toggle changes which credentials matter, not whether they passed. Only a
+  # stored-but-unchecked row inherits, so a credential that has since gone
+  # missing cannot carry an old "verified" forward.
+  defp carry_known_state(%{state: "unchecked"} = credential, %{state: prior} = known)
+       when prior in ["verified", "rejected"],
+       do: %{credential | state: prior, missing_permission: known.missing_permission}
+
+  defp carry_known_state(credential, _known), do: credential
+
+  defp removed_summary(name, []), do: "Removed #{name}. It had nothing provisioned."
+
+  defp removed_summary(name, removed),
+    do: "Removed #{name}, and with it: " <> Enum.map_join(removed, ", ", & &1.location) <> "."
+
+  # Says what actually goes, so the dialog is not a generic "are you sure".
+  defp remove_environment_warning(%{host: host, server_name: server})
+       when is_binary(server) and server != "" do
+    "This destroys the server #{server}" <>
+      if(is_binary(host) and host != "", do: " and removes the DNS record for #{host}", else: "") <>
+      ". The record goes first, so the name stops resolving before the address is released."
+  end
+
+  defp remove_environment_warning(%{host: host}) when is_binary(host) and host != "" do
+    "This removes the DNS record for #{host}. No server was ever provisioned for it."
+  end
+
+  defp remove_environment_warning(_environment),
+    do: "Nothing was provisioned for it, so this only removes the row."
+
+  # `key=value key=value` — the shape every proof resource uses for its
+  # identifier, so the page can pull one field without knowing the order.
+  defp proof_field(identifier, key) do
+    identifier
+    |> to_string()
+    |> String.split(" ")
+    |> Enum.find_value(fn part ->
+      case String.split(part, "=", parts: 2) do
+        [^key, value] -> value
+        _ -> nil
+      end
+    end)
+  end
+
+  # Blank means "leave it alone", not "clear it". The field renders empty for a
+  # secret that is already set — because the value is never sent back to the
+  # browser — so treating blank as a delete would wipe every other credential
+  # each time one was saved.
+
+  # The path and expectation the render check fetches back. Both are required
+  # by `verify_render/2`; a publish with nothing to look for could only ever
+  # report success.
+  defp publish_opts(socket) do
+    [
+      path: socket.assigns[:content_publish_path] || "/",
+      expect: socket.assigns[:content_publish_expect] || "<html"
+    ]
+  end
+
+  defp default_inbound_address(scope, domain) do
+    local = scope.user.email |> to_string() |> String.split("@") |> List.first()
+    "#{local}@#{domain}"
+  end
+
+  defp inbound_probe_result(scope, to) do
+    now = DateTime.to_iso8601(DateTime.utc_now())
+
+    case Provisioning.probe_inbound(scope, to) do
+      {:ok, message} ->
+        %{
+          state: "delivered",
+          destination: to,
+          message_id: message["id"],
+          completed_at: message["created_at"] || now,
+          # Forwarded to a mailbox is not the same as reaching the app. This
+          # message came back through Resend's receiving API, so the app is
+          # holding it — which is what 8048 asks and what a plain MX forward
+          # to somebody's inbox would not satisfy.
+          delivered_to: "app",
+          body_available: message_body?(message),
+          # Resend delivered it to the app itself. Nobody set up a forwarding
+          # rule in a mail client to make that happen, which is the difference
+          # 8048 is drawing: an inbox Sam has to babysit is not an inbox the
+          # app owns.
+          manual_forward: false,
+          summary: "delivered to #{to}"
+        }
+
+      {:error, reason} ->
+        %{
+          state: "undelivered",
+          destination: to,
+          message_id: nil,
+          completed_at: now,
+          delivered_to: nil,
+          body_available: false,
+          manual_forward: nil,
+          summary: "not delivered to #{to}: #{String.slice(to_string(reason), 0, 200)}"
+        }
+    end
+  end
+
+  # Acting on a message means reading it. A receipt with no body is a
+  # notification that something arrived, which is not the same claim.
+  defp message_body?(message) do
+    Enum.any?(["text", "html"], fn key ->
+      case message[key] do
+        value when is_binary(value) and value != "" -> true
+        _ -> false
+      end
+    end)
+  end
+
+  # Criterion: a record deleted after verification is noticed. Re-reading from
+  # the provider is the only way to see that — the stored state says verified
+  # and will go on saying so.
 
   defp reload_project(%{active_project: %{id: id}} = scope) do
     case Projects.get_project(scope, id) do

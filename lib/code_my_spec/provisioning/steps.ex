@@ -187,34 +187,6 @@ defmodule CodeMySpec.Provisioning.Steps do
     end
   end
 
-  # Whether the stored private key is the one the environment's file was
-  # encrypted to. Derived rather than trusted: the public half is the only
-  # thing the file records, so the question is whether what we hold produces
-  # it.
-  #
-  # A file that does not exist yet is not drift — there is nothing to be out of
-  # step with — so the key's presence is the answer in that case, which keeps a
-  # first run from reporting absent forever.
-  defp key_opens_its_own_file?(scope, environment) do
-    with {:ok, private} <- ProjectSecrets.fetch_value(scope, age_key_name(environment)),
-         true <- is_binary(private) and private != "" do
-      case Sops.recipients(env(scope), environment) do
-        {:ok, [_ | _] = recipients} ->
-          case Sops.public_key(private) do
-            {:ok, public} -> public in recipients
-            _ -> false
-          end
-
-        # No file, or none we can read a recipient out of. Nothing to disagree
-        # with; the key being there is all this can honestly claim.
-        _ ->
-          true
-      end
-    else
-      _ -> false
-    end
-  end
-
   def verify(:tls, %Scope{} = scope, opts) do
     case host(scope, opts) do
       nil ->
@@ -273,19 +245,6 @@ defmodule CodeMySpec.Provisioning.Steps do
       # A disabled webhook is the case worth being strict about: it looks
       # configured from every angle except the one that counts.
       _ -> {:ok, :absent}
-    end
-  end
-
-  # The delivery this step last proved, if it proved one. Read from what the
-  # step recorded rather than re-sent — a verifier that mails somebody every
-  # time the page loads would be its own bug.
-  defp delivery_proof(scope) do
-    case StepRepository.get(scope, :inbound) do
-      %{resources: resources} when is_list(resources) ->
-        Enum.find(resources, &(&1.kind == "inbound_proof"))
-
-      _ ->
-        nil
     end
   end
 
@@ -580,70 +539,6 @@ defmodule CodeMySpec.Provisioning.Steps do
     end
   end
 
-  # One target per environment, because a certificate belongs to a host and the
-  # DNS step directly above already fans out this way. Verifying the project's
-  # domain instead meant a `uat`-only project was probed at an apex the run had
-  # never pointed anywhere — and, worse, that the usual prod+uat pair reported
-  # TLS done having checked production only, so UAT's certificate was never
-  # looked at.
-  #
-  # An injected `:host` still stands in for the whole list, which is how a
-  # criterion probes one name without setting up environments.
-  defp tls_targets(scope, opts) do
-    case Keyword.get(opts, :host) do
-      host when is_binary(host) and host != "" ->
-        [%{name: nil, host: host}]
-
-      _ ->
-        case domain(scope) do
-          nil ->
-            []
-
-          name ->
-            scope
-            |> EnvironmentRepository.assign_hosts(name)
-            |> Enum.filter(&is_binary(&1.host))
-        end
-    end
-  end
-
-  # Halts on the first environment without a certificate, carrying what was
-  # already verified — the same shape the storage step uses, so a run that
-  # fails on the second environment still records the first.
-  defp verify_certificates(targets, probe, opts) do
-    Enum.reduce_while(targets, {:ok, []}, fn target, {:ok, verified} ->
-      case probe.(target.host, opts) do
-        :ok ->
-          {:cont, {:ok, verified ++ certificate_resources(target)}}
-
-        {:error, reason} ->
-          {:halt, {:error, certificate_error(target, reason), verified}}
-      end
-    end)
-  end
-
-  # A successful probe is a 200 over HTTPS with `redirect: false` and a valid
-  # chain — so scheme, status and cert validity are all implied by it
-  # succeeding, and recorded so the page can show them (8006).
-  defp certificate_resources(target) do
-    [
-      %{kind: "certificate", location: "https://#{target.host}", identifier: tls_tag(target)},
-      %{
-        kind: "environment_verification",
-        location: target.host,
-        identifier: "scheme=https status=200 cert_valid=true" <> tls_tag(target)
-      }
-    ]
-  end
-
-  defp certificate_error(target, reason) do
-    "#{target.host} did not answer over HTTPS with a valid certificate (#{format(reason)}). " <>
-      "Issuance needs DNS resolving to the server and the proxy reachable on 80."
-  end
-
-  defp tls_tag(%{name: name}) when is_binary(name), do: " environment=#{name}"
-  defp tls_tag(_target), do: ""
-
   def run(:callback_credential, %Scope{} = scope, opts) do
     environments = environments(scope, opts)
     env = env(scope)
@@ -775,6 +670,220 @@ defmodule CodeMySpec.Provisioning.Steps do
         {:error, format(reason)}
     end
   end
+
+  def run(:storage, %Scope{} = scope, opts) do
+    environments = environments(scope, opts)
+    project = project(scope)
+
+    case Storage.credentials(scope, opts) do
+      :none ->
+        # Hetzner issues object-storage keys in the console and nowhere else,
+        # so there is no call to make here. Pausing states the real limit and
+        # re-checks on resume rather than pretending it can be automated.
+        {:paused, Storage.credentials_instructions()}
+
+      {:ok, credentials} ->
+        environments
+        |> Enum.reduce_while({:ok, []}, fn environment, {:ok, acc} ->
+          bucket = Storage.bucket_name(project, environment)
+
+          case Storage.ensure_bucket(bucket, credentials, opts) do
+            {:ok, created} ->
+              {:cont,
+               {:ok,
+                acc ++
+                  [
+                    %{
+                      kind: "bucket",
+                      location: created.location,
+                      identifier: created.owner,
+                      origin: created.origin
+                    }
+                  ]}}
+
+            # The buckets already made are named in the failure, so a run
+            # that dies on the second environment can still clean up the
+            # first.
+            {:error, reason} ->
+              {:halt, {:error, format(reason), acc}}
+          end
+        end)
+    end
+  end
+
+  # Every environment, the way `run(:storage, ...)` immediately above already
+  # does it. This used to read `Keyword.get(opts, :environment, "prod")` — one
+  # environment, defaulted — while the step beside it created a bucket per
+  # environment.
+  #
+  # The visible failure was the lucky one: a project with only `uat` looked for
+  # a `-prod` bucket nothing had made and errored on NoSuchBucket. The
+  # dangerous case is an ordinary prod+uat project, where the default finds a
+  # real bucket and the step reports **done** having dumped production only.
+  # UAT's database is never written anywhere and nothing says so, which is
+  # discovered on the day somebody needs a restore.
+  #
+  # Same shape as the TLS default fixed in 69ca7625: a per-environment fact
+  # served by a project-level default.
+  def run(:backups, %Scope{} = scope, opts) do
+    environments = environments(scope, opts)
+    project = project(scope)
+
+    case Storage.credentials(scope, opts) do
+      :none ->
+        {:paused, Storage.credentials_instructions()}
+
+      {:ok, credentials} ->
+        environments
+        |> Enum.reduce_while({:ok, []}, fn environment, {:ok, acc} ->
+          bucket = Storage.bucket_name(project, environment)
+
+          # The key travels with the work, the way the deploy step carries it.
+          # `bin/backup` decrypts the environment file itself and sops reads
+          # its identity from `SOPS_AGE_KEY` — without it every dump failed on
+          # "no identity matched any of the recipients", which reads like a
+          # broken key rather than one that was never handed over.
+          environment_opts =
+            opts
+            |> Keyword.put(:bucket, bucket)
+            |> Keyword.put(:credentials, credentials)
+            |> put_age_key(scope, environment)
+
+          with :ok <- require_script(scope, "bin/backup"),
+               {:ok, resources} <-
+                 backups_outcome(
+                   Backups.run(env(scope), environment, environment_opts),
+                   bucket,
+                   environment
+                 ) do
+            {:cont, {:ok, acc ++ resources}}
+          else
+            # What was already dumped is named in the failure, so a run that
+            # dies on the second environment still accounts for the first.
+            # No `:paused` clause: neither `require_script/2` nor
+            # `backups_outcome/3` can pause, so one here only looked like
+            # backups could stop for input.
+            {:error, reason} -> {:halt, {:error, reason, acc}}
+          end
+        end)
+    end
+  end
+
+  # Named rather than silently succeeding — see the moduledoc.
+  def run(key, _scope, _opts), do: {:error, {:not_implemented, key}}
+
+  # The image a deploy runs, built now rather than when the project was made.
+  #
+  # Three ways in, and the order matters. An explicit `:image` wins, because a
+  # criterion about deploying is not a criterion about building and should not
+  # buy a builder to prove its point. Otherwise a build happens — but only when
+  # one is configured: the deploy step predates the builder, and a project
+  # whose image is already somewhere must keep deploying rather than start
+  # failing on a builder nobody asked it to use.
+  # Whether the stored private key is the one the environment's file was
+  # encrypted to. Derived rather than trusted: the public half is the only
+  # thing the file records, so the question is whether what we hold produces
+  # it.
+  #
+  # A file that does not exist yet is not drift — there is nothing to be out of
+  # step with — so the key's presence is the answer in that case, which keeps a
+  # first run from reporting absent forever.
+  defp key_opens_its_own_file?(scope, environment) do
+    with {:ok, private} <- ProjectSecrets.fetch_value(scope, age_key_name(environment)),
+         true <- is_binary(private) and private != "" do
+      case Sops.recipients(env(scope), environment) do
+        {:ok, [_ | _] = recipients} ->
+          case Sops.public_key(private) do
+            {:ok, public} -> public in recipients
+            _ -> false
+          end
+
+        # No file, or none we can read a recipient out of. Nothing to disagree
+        # with; the key being there is all this can honestly claim.
+        _ ->
+          true
+      end
+    else
+      _ -> false
+    end
+  end
+
+  # The delivery this step last proved, if it proved one. Read from what the
+  # step recorded rather than re-sent — a verifier that mails somebody every
+  # time the page loads would be its own bug.
+  defp delivery_proof(scope) do
+    case StepRepository.get(scope, :inbound) do
+      %{resources: resources} when is_list(resources) ->
+        Enum.find(resources, &(&1.kind == "inbound_proof"))
+
+      _ ->
+        nil
+    end
+  end
+
+  # One target per environment, because a certificate belongs to a host and the
+  # DNS step directly above already fans out this way. Verifying the project's
+  # domain instead meant a `uat`-only project was probed at an apex the run had
+  # never pointed anywhere — and, worse, that the usual prod+uat pair reported
+  # TLS done having checked production only, so UAT's certificate was never
+  # looked at.
+  #
+  # An injected `:host` still stands in for the whole list, which is how a
+  # criterion probes one name without setting up environments.
+  defp tls_targets(scope, opts) do
+    case Keyword.get(opts, :host) do
+      host when is_binary(host) and host != "" ->
+        [%{name: nil, host: host}]
+
+      _ ->
+        case domain(scope) do
+          nil ->
+            []
+
+          name ->
+            scope
+            |> EnvironmentRepository.assign_hosts(name)
+            |> Enum.filter(&is_binary(&1.host))
+        end
+    end
+  end
+
+  # Halts on the first environment without a certificate, carrying what was
+  # already verified — the same shape the storage step uses, so a run that
+  # fails on the second environment still records the first.
+  defp verify_certificates(targets, probe, opts) do
+    Enum.reduce_while(targets, {:ok, []}, fn target, {:ok, verified} ->
+      case probe.(target.host, opts) do
+        :ok ->
+          {:cont, {:ok, verified ++ certificate_resources(target)}}
+
+        {:error, reason} ->
+          {:halt, {:error, certificate_error(target, reason), verified}}
+      end
+    end)
+  end
+
+  # A successful probe is a 200 over HTTPS with `redirect: false` and a valid
+  # chain — so scheme, status and cert validity are all implied by it
+  # succeeding, and recorded so the page can show them (8006).
+  defp certificate_resources(target) do
+    [
+      %{kind: "certificate", location: "https://#{target.host}", identifier: tls_tag(target)},
+      %{
+        kind: "environment_verification",
+        location: target.host,
+        identifier: "scheme=https status=200 cert_valid=true" <> tls_tag(target)
+      }
+    ]
+  end
+
+  defp certificate_error(target, reason) do
+    "#{target.host} did not answer over HTTPS with a valid certificate (#{format(reason)}). " <>
+      "Issuance needs DNS resolving to the server and the proxy reachable on 80."
+  end
+
+  defp tls_tag(%{name: name}) when is_binary(name), do: " environment=#{name}"
+  defp tls_tag(_target), do: ""
 
   # Send one, and wait for it to come back. Every other step in this epic
   # proves itself against the world rather than against its own settings —
@@ -993,113 +1102,6 @@ defmodule CodeMySpec.Provisioning.Steps do
     Enum.any?(recipients, &(&1 == to)) and not MapSet.member?(seen, message["id"])
   end
 
-  def run(:storage, %Scope{} = scope, opts) do
-    environments = environments(scope, opts)
-    project = project(scope)
-
-    case Storage.credentials(scope, opts) do
-      :none ->
-        # Hetzner issues object-storage keys in the console and nowhere else,
-        # so there is no call to make here. Pausing states the real limit and
-        # re-checks on resume rather than pretending it can be automated.
-        {:paused, Storage.credentials_instructions()}
-
-      {:ok, credentials} ->
-        environments
-        |> Enum.reduce_while({:ok, []}, fn environment, {:ok, acc} ->
-          bucket = Storage.bucket_name(project, environment)
-
-          case Storage.ensure_bucket(bucket, credentials, opts) do
-            {:ok, created} ->
-              {:cont,
-               {:ok,
-                acc ++
-                  [
-                    %{
-                      kind: "bucket",
-                      location: created.location,
-                      identifier: created.owner,
-                      origin: created.origin
-                    }
-                  ]}}
-
-            # The buckets already made are named in the failure, so a run
-            # that dies on the second environment can still clean up the
-            # first.
-            {:error, reason} ->
-              {:halt, {:error, format(reason), acc}}
-          end
-        end)
-    end
-  end
-
-  # Every environment, the way `run(:storage, ...)` immediately above already
-  # does it. This used to read `Keyword.get(opts, :environment, "prod")` — one
-  # environment, defaulted — while the step beside it created a bucket per
-  # environment.
-  #
-  # The visible failure was the lucky one: a project with only `uat` looked for
-  # a `-prod` bucket nothing had made and errored on NoSuchBucket. The
-  # dangerous case is an ordinary prod+uat project, where the default finds a
-  # real bucket and the step reports **done** having dumped production only.
-  # UAT's database is never written anywhere and nothing says so, which is
-  # discovered on the day somebody needs a restore.
-  #
-  # Same shape as the TLS default fixed in 69ca7625: a per-environment fact
-  # served by a project-level default.
-  def run(:backups, %Scope{} = scope, opts) do
-    environments = environments(scope, opts)
-    project = project(scope)
-
-    case Storage.credentials(scope, opts) do
-      :none ->
-        {:paused, Storage.credentials_instructions()}
-
-      {:ok, credentials} ->
-        environments
-        |> Enum.reduce_while({:ok, []}, fn environment, {:ok, acc} ->
-          bucket = Storage.bucket_name(project, environment)
-
-          # The key travels with the work, the way the deploy step carries it.
-          # `bin/backup` decrypts the environment file itself and sops reads
-          # its identity from `SOPS_AGE_KEY` — without it every dump failed on
-          # "no identity matched any of the recipients", which reads like a
-          # broken key rather than one that was never handed over.
-          environment_opts =
-            opts
-            |> Keyword.put(:bucket, bucket)
-            |> Keyword.put(:credentials, credentials)
-            |> put_age_key(scope, environment)
-
-          with :ok <- require_script(scope, "bin/backup"),
-               {:ok, resources} <-
-                 backups_outcome(
-                   Backups.run(env(scope), environment, environment_opts),
-                   bucket,
-                   environment
-                 ) do
-            {:cont, {:ok, acc ++ resources}}
-          else
-            # What was already dumped is named in the failure, so a run that
-            # dies on the second environment still accounts for the first.
-            {:paused, instructions} -> {:halt, {:paused, instructions}}
-            {:error, reason} -> {:halt, {:error, reason, acc}}
-          end
-        end)
-    end
-  end
-
-  # Named rather than silently succeeding — see the moduledoc.
-  def run(key, _scope, _opts), do: {:error, {:not_implemented, key}}
-
-  # The image a deploy runs, built now rather than when the project was made.
-  #
-  # Three ways in, and the order matters. An explicit `:image` wins, because a
-  # criterion about deploying is not a criterion about building and should not
-  # buy a builder to prove its point. Otherwise a build happens — but only when
-  # one is configured: the deploy step predates the builder, and a project
-  # whose image is already somewhere must keep deploying rather than start
-  # failing on a builder nobody asked it to use.
   defp image_for(scope, environment, opts) do
     case {Keyword.get(opts, :image), Keyword.get(opts, :build)} do
       {reference, _} when is_binary(reference) ->

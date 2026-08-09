@@ -227,9 +227,8 @@ defmodule CodeMySpec.Provisioning.Credentials do
       :none ->
         :missing
 
-      credentials ->
+      {:ok, credentials} ->
         credentials
-        |> unwrap()
         |> Storage.list_buckets(opts)
         |> classify("Object Storage read on the Hetzner S3 key pair")
     end
@@ -281,9 +280,6 @@ defmodule CodeMySpec.Provisioning.Credentials do
     Logger.debug("[Credentials] unexpected check result: #{inspect(other)}")
     :unchecked
   end
-
-  defp unwrap({:ok, credentials}), do: credentials
-  defp unwrap(credentials), do: credentials
 
   @doc """
   Every required credential that has nothing on file.

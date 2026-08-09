@@ -111,9 +111,6 @@ defmodule CodeMySpec.Provisioning.ContentPublishing do
             proven_at: nil,
             reason: render_failure_reason(render, opts)
           }
-
-        {:error, reason} ->
-          failure(:publish_failed, inspect(reason))
       end
     else
       {:error, {:not_publishable, missing}} ->

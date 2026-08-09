@@ -123,10 +123,20 @@ defmodule Mix.Tasks.Cms.ProvisioningLeaks do
         log: false
       )
 
+    # Sequenced rather than `&&`. `put_dynamic_repo/1` answers with the repo it
+    # replaced, which is always truthy, so the conditional never decided
+    # anything — it just read as though the `:ok` were contingent on it.
     case CodeMySpec.Repo.start_link(config) do
-      {:ok, _} -> CodeMySpec.Repo.put_dynamic_repo(:leak_audit_dev_repo) && :ok
-      {:error, {:already_started, _}} -> CodeMySpec.Repo.put_dynamic_repo(:leak_audit_dev_repo) && :ok
-      other -> other
+      {:ok, _} ->
+        CodeMySpec.Repo.put_dynamic_repo(:leak_audit_dev_repo)
+        :ok
+
+      {:error, {:already_started, _}} ->
+        CodeMySpec.Repo.put_dynamic_repo(:leak_audit_dev_repo)
+        :ok
+
+      other ->
+        other
     end
   end
 
