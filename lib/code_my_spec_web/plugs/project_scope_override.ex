@@ -11,6 +11,7 @@ defmodule CodeMySpecWeb.Plugs.ProjectScopeOverride do
   import Plug.Conn
 
   alias CodeMySpec.Accounts
+  alias CodeMySpec.Harnesses
   alias CodeMySpec.Projects
   alias CodeMySpec.Projects.Project
 
@@ -38,6 +39,37 @@ defmodule CodeMySpecWeb.Plugs.ProjectScopeOverride do
     end
   end
 
+  # `x-project-id` says which project; `x-harness-id` says which checkout of it.
+  # Two worktrees of one project send the same project header, so without this
+  # the far end cannot tell them apart and answers about both: `await_analysis`
+  # reported 1141 credo problems to a copy that has 563, the rest belonging to a
+  # checkout it cannot see and could not fix.
+  #
+  # Here rather than in `DeployKeyOrOAuth`, because this is the plug the harness
+  # actually goes through — `/mcp/harness` runs `:mcp_protected`, which is
+  # `require_oauth_token` and this. Two earlier attempts put it somewhere the
+  # request never reaches.
+  #
+  # A harness belonging to another project is ignored rather than adopted, and
+  # an absent or unreadable id leaves the scope unscoped: reading widely is a
+  # bad answer, claiming another checkout's identity is a worse one.
+  defp with_harness(scope, conn, project) do
+    case get_req_header(conn, "x-harness-id") do
+      [id | _] when is_binary(id) and id != "" -> adopt(scope, id, project)
+      _ -> scope
+    end
+  end
+
+  defp adopt(scope, id, project) do
+    case Harnesses.fetch(id) do
+      {:ok, %{project_id: pid} = harness} when pid == project.id ->
+        %{scope | active_harness_id: harness.id}
+
+      _ ->
+        scope
+    end
+  end
+
   defp override_project(conn, scope, project_id) do
     case Projects.get_project_by_id(project_id) do
       nil ->
@@ -51,13 +83,15 @@ defmodule CodeMySpecWeb.Plugs.ProjectScopeOverride do
              framework_issue_create?(conn, project) do
           account = Accounts.get_account_by_id(project.account_id)
 
-          updated_scope = %{
-            scope
-            | active_project: project,
-              active_project_id: project.id,
-              active_account: account,
-              active_account_id: project.account_id
-          }
+          updated_scope =
+            %{
+              scope
+              | active_project: project,
+                active_project_id: project.id,
+                active_account: account,
+                active_account_id: project.account_id
+            }
+            |> with_harness(conn, project)
 
           assign(conn, :current_scope, updated_scope)
         else
