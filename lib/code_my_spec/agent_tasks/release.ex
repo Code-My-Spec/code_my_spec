@@ -110,7 +110,20 @@ defmodule CodeMySpec.AgentTasks.Release do
     deployed = deployed_story_ids(env)
     released = released_manifest(env)
 
-    Enum.reject(deployed, &String.contains?(released, "story_#{&1}"))
+    Enum.reject(deployed, &released?(released, &1))
+  end
+
+  # `story_1` is a substring of `story_12`, `story_19` and `story_100`, so
+  # `String.contains?/2` called story 1 released the moment any manifest named
+  # one of those. It failed open — the `release` requirement read satisfied for
+  # work that had never shipped — and on any project past nine stories that is
+  # the ordinary case rather than an edge one.
+  #
+  # The boundaries are what make this a token match instead of a prefix match:
+  # `story_1` does not match inside `story_12`, because the character after the
+  # `1` is a word character and there is no boundary there.
+  defp released?(released, id) do
+    Regex.match?(~r/\bstory_#{Regex.escape(to_string(id))}\b/, released)
   end
 
   defp deployed_story_ids(env) do
