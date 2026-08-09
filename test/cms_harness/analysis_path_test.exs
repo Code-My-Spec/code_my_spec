@@ -27,7 +27,7 @@ defmodule CmsHarness.AnalysisPathTest do
   setup do
     previous = System.get_env("CMS_PROJECT_ID")
     System.delete_env("CMS_PROJECT_ID")
-    on_exit(fn -> if previous, do: System.put_env("CMS_PROJECT_ID", previous) end)
+    on_exit(fn -> restore_project_id(previous) end)
 
     project = project_dir()
     on_exit(fn -> stop_project(project.root) end)
@@ -56,26 +56,29 @@ defmodule CmsHarness.AnalysisPathTest do
     end
     """)
 
-    source =
-      if Keyword.get(opts, :broken, false) do
-        "defmodule Demo.Thing do\n  def go do\n    unclosed(\n  end\nend\n"
-      else
-        "defmodule Demo.Thing do\n  def go, do: :ok\nend\n"
-      end
-
-    write(root, "lib/thing.ex", source)
+    write(root, "lib/thing.ex", thing_source(Keyword.get(opts, :broken, false)))
     {_, 0} = System.cmd("mix", ["deps.get"], cd: root, stderr_to_stdout: true)
     :ok
   end
 
+  # A var that was unset before the test must stay unset after it, not become
+  # the empty string.
+  defp restore_project_id(nil), do: :ok
+  defp restore_project_id(previous), do: System.put_env("CMS_PROJECT_ID", previous)
+
+  defp thing_source(true), do: "defmodule Demo.Thing do\n  def go do\n    unclosed(\n  end\nend\n"
+  defp thing_source(false), do: "defmodule Demo.Thing do\n  def go, do: :ok\nend\n"
+
+  defp connected_step(true), do: {:halt, true}
+
+  defp connected_step(false) do
+    Process.sleep(50)
+    {:cont, false}
+  end
+
   defp await_connected(root, attempts \\ 200) do
     Enum.reduce_while(1..attempts, false, fn _, _ ->
-      if ChannelClient.connected?(root) do
-        {:halt, true}
-      else
-        Process.sleep(50)
-        {:cont, false}
-      end
+      connected_step(ChannelClient.connected?(root))
     end)
   end
 
@@ -91,28 +94,36 @@ defmodule CmsHarness.AnalysisPathTest do
   end
 
   test "the server asks, the harness runs the compiler, and the diagnostics come back", ctx do
-    if ctx.client_utils? do
-      make_compilable(ctx.project.root, broken: true)
+    assert_compiler_diagnostics(ctx.client_utils?, ctx)
+  end
 
-      FakeServer.start()
-      {:ok, _} = Projects.ensure_started(ctx.project.root)
-      assert await_connected(ctx.project.root)
+  # Needs a sibling client_utils checkout to build against. Warns rather than
+  # fails when there isn't one, so the suite still runs on a machine that has
+  # not cloned it — but says so, because a silently skipped test and a passing
+  # one are the same colour.
+  defp assert_compiler_diagnostics(false, _ctx) do
+    IO.warn("no client_utils checkout at #{@client_utils}; the analyzer path is unchecked")
+  end
 
-      FakeServer.request_analysis([%{"run_id" => 7, "source" => "compiler", "args" => []}])
+  defp assert_compiler_diagnostics(true, ctx) do
+    make_compilable(ctx.project.root, broken: true)
 
-      payload = await_result(7)
+    FakeServer.start()
+    {:ok, _} = Projects.ensure_started(ctx.project.root)
+    assert await_connected(ctx.project.root)
 
-      assert payload["source"] == "compiler"
-      assert payload["status"] == "ok"
+    FakeServer.request_analysis([%{"run_id" => 7, "source" => "compiler", "args" => []}])
 
-      assert [_ | _] = payload["result"]["diagnostics"],
-             "the whole point: a working copy that does not compile produces diagnostics " <>
-               "on the wire, where before this there was no wire and no diagnostics"
+    payload = await_result(7)
 
-      assert Enum.any?(payload["result"]["diagnostics"], &(&1["severity"] == "error"))
-    else
-      IO.warn("no client_utils checkout at #{@client_utils}; the analyzer path is unchecked")
-    end
+    assert payload["source"] == "compiler"
+    assert payload["status"] == "ok"
+
+    assert [_ | _] = payload["result"]["diagnostics"],
+           "the whole point: a working copy that does not compile produces diagnostics " <>
+             "on the wire, where before this there was no wire and no diagnostics"
+
+    assert Enum.any?(payload["result"]["diagnostics"], &(&1["severity"] == "error"))
   end
 
   test "a run for an analyzer that cannot run is answered, not dropped", ctx do
