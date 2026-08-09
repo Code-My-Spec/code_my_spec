@@ -36,6 +36,17 @@ Ecto.Adapters.SQL.Sandbox.mode(CodeMySpec.Repo, :manual)
 # the same guard for the ones that do not, which are exactly the ones that had
 # no business connecting anywhere. Cleared before the supervisor starts, so
 # nothing can read them on the way up.
+#
+# It is also the best candidate anyone has for the phantom failures in issue
+# c8264c1f: two tests that exercise the stop hook and the analysis pipeline
+# failed under the analyzer's own suite run and passed standalone. That issue
+# guessed "shared application state" without a mechanism. This is one — the
+# suite was joining the live server, so tests asserting how a session resolves
+# were asserting against a system with real sessions in it.
+#
+# Stated as a candidate, not a conclusion. The failures were intermittent, and
+# nobody has reproduced them since. If they recur after this, the guess was
+# wrong and c8264c1f needs a different answer.
 Enum.each(~w(CMS_SERVER_URL CMS_TOKEN CMS_DEPLOY_KEY CMS_HARNESS_ID), &System.delete_env/1)
 
 # Started here rather than from `CodeMySpecWeb.Application`'s test children, so
