@@ -593,8 +593,9 @@ defmodule CmsHarness.Project.ChannelClient do
   # works, since it is what survives every server restart.
   defp maybe_rejoin(socket, {:error, %{"reason" => "unmatched topic"}}) do
     Logger.warning("""
-    [CmsHarness] the server has no channel on #{socket.assigns.topic}, though this harness \
-    believed it was joined. Reconnecting. Hooks refuse until it lands.\
+    [CmsHarness] the server has no channel for #{socket.assigns.project.root} \
+    (#{socket.assigns.topic}), though this harness believed it was joined. Reconnecting. \
+    Hooks refuse until it lands.\
     """)
 
     socket = socket |> assign(:joined, false) |> pause_watcher()
@@ -748,9 +749,9 @@ defmodule CmsHarness.Project.ChannelClient do
   defp drop_socket_if_silent(socket) do
     if socket.assigns.silences >= @silence_limit do
       Logger.warning("""
-      [CmsHarness] #{socket.assigns.silences} hook decisions in a row went unanswered on \
-      #{socket.assigns.topic}, though this harness believed it was joined. The channel is \
-      not carrying traffic. Reconnecting; hooks refuse until it lands.\
+      [CmsHarness] #{socket.assigns.silences} hook decisions in a row went unanswered for \
+      #{socket.assigns.project.root}, though this harness believed it was joined. The channel \
+      is not carrying traffic. Reconnecting; hooks refuse until it lands.\
       """)
 
       socket = socket |> assign(:joined, false) |> assign(:silences, 0) |> pause_watcher()

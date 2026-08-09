@@ -199,13 +199,43 @@ defmodule CmsHarness.HookDecision do
   # that arrives here is by definition one this harness did not anticipate.
   defp explain({:refused, detail}, working_dir) do
     """
-    The harness asked the CodeMySpec server and the server answered with an error rather than a decision. This is not a timeout and not a connection problem — the channel is joined and the reply came back. The server said:
+    The harness asked the CodeMySpec server and the server answered with an error rather than a decision. This is not a timeout and not a connection problem — the reply came back. The server said:
 
         #{inspect(detail)}
-
-    A version skew is the usual cause: a server that does not know an event this harness sends replies with an error rather than a decision.
+    #{likely_cause(detail)}
     Working directory: #{working_dir}
     """
     |> String.trim()
+  end
+
+  # Naming a cause is worth doing and worth being right about. "A version skew
+  # is the usual cause" was asserted for every refusal, and an `unmatched topic`
+  # is almost never skew — it is the server having no channel on a topic this
+  # harness still believes it holds, which `ChannelClient.maybe_rejoin/2` exists
+  # to correct by reconnecting. Sent as skew, it cost an investigation that
+  # started at versions and had to work backwards through a healthy server, ten
+  # clean joins and no crashes.
+  #
+  # One working copy per line of that story matters too: the topic is keyed on
+  # the *project*, so with several checkouts of one project on this machine the
+  # error names something all of them share.
+  defp likely_cause(%{"reason" => "unmatched topic"}) do
+    """
+
+    The server has no channel on the topic this harness pushed to. That is
+    usually a reconnect race rather than a version skew — the harness reconnects
+    on seeing this, so stopping again is normally enough. If it repeats, check
+    `GET /health` on the harness: the topic is keyed on the project, so several
+    working copies of one project share it and the error cannot say which one is
+    failing.
+    """
+  end
+
+  defp likely_cause(_detail) do
+    """
+
+    A version skew is one cause: a server that does not know an event this
+    harness sends replies with an error rather than a decision.
+    """
   end
 end

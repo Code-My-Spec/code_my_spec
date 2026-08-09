@@ -195,6 +195,55 @@ defmodule CmsHarness.HookDecisionTest do
                HookDecision.unreachable("stop", {:refused, :anything}, @dir)
     end
 
+    # Naming a cause is worth doing and worth being right about. Every refusal
+    # used to say "a version skew is the usual cause", and an unmatched topic is
+    # almost never skew — it is the server having no channel on a topic the
+    # harness still believes it holds. Sent as skew, it cost an investigation
+    # that started at versions and worked backwards through a healthy server,
+    # ten clean joins and no crashes.
+    test "an unmatched topic is not blamed on version skew" do
+      reason =
+        HookDecision.unreachable(
+          "stop",
+          {:refused, %{"reason" => "unmatched topic"}},
+          @dir
+        )["reason"]
+
+      refute reason =~ "version skew is",
+             "skew must not be offered as the cause — that is what sent the last " <>
+               "investigation to the wrong place"
+
+      assert reason =~ "rather than a version skew",
+             "naming it only to rule it out is worth more than staying silent about it"
+
+      assert reason =~ "reconnect race"
+      assert reason =~ "stopping again"
+    end
+
+    # With several checkouts of one project on a machine, the topic names the
+    # thing they all share, so the error cannot say which one failed. Point the
+    # reader at the surface that can.
+    test "an unmatched topic points at the health endpoint" do
+      reason =
+        HookDecision.unreachable(
+          "stop",
+          {:refused, %{"reason" => "unmatched topic"}},
+          @dir
+        )["reason"]
+
+      assert reason =~ "/health"
+      assert reason =~ "keyed on the project"
+    end
+
+    test "any other refusal still offers version skew" do
+      reason =
+        HookDecision.unreachable("stop", {:refused, %{"reason" => "unknown_event"}}, @dir)[
+          "reason"
+        ]
+
+      assert reason =~ "version skew"
+    end
+
     test "a timeout and a refusal do not render the same" do
       timed_out = HookDecision.unreachable("stop", :no_reply, @dir)["reason"]
       refused = HookDecision.unreachable("stop", {:refused, :boom}, @dir)["reason"]
