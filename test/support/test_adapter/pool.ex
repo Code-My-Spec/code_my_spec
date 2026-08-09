@@ -69,6 +69,7 @@ defmodule CodeMySpec.Support.TestAdapter.Pool do
 
   @impl true
   def init(_opts) do
+    sweep_dead_roots()
     {:ok, %__MODULE__{}}
   end
 
@@ -127,10 +128,59 @@ defmodule CodeMySpec.Support.TestAdapter.Pool do
 
   # Private functions
 
+  # One pool root per OS process.
+  #
+  # The counter this names directories from lives in *this* GenServer's state,
+  # so it starts at zero in every suite. Two suites running at once — the normal
+  # case here, one working copy per agent — therefore both created
+  # `pool_code_repo_1` and both handed it out. Not contention over a scarce
+  # resource: two processes with the same working tree, one running `git reset`
+  # and `File.rm_rf` while the other asserted against it.
+  #
+  # It surfaced as `SpecAlignment` finding no misalignment in a tree whose specs
+  # another suite had just deleted — "Expected truthy, got false", passing on
+  # every rerun in isolation. `spec_alignment_test.exs` already guards the
+  # in-suite version of this and says so in a comment; no in-suite guard can see
+  # another OS process.
+  #
+  # Keyed by OS pid rather than a random suffix so the directories of a dead run
+  # can be recognised and swept.
+  defp pool_root do
+    root = Path.join("../code_my_spec_test_repos", "run_#{System.pid()}")
+    File.mkdir_p!(root)
+    root
+  end
+
+  # Roots from runs that are no longer alive. A crashed suite never reaches
+  # `checkin`, and each root holds a full repo copy including `deps` and
+  # `_build`, so leaving them costs real disk.
+  defp sweep_dead_roots do
+    case File.ls("../code_my_spec_test_repos") do
+      {:ok, entries} ->
+        entries
+        |> Enum.filter(&String.starts_with?(&1, "run_"))
+        |> Enum.reject(&owned_or_alive?/1)
+        |> Enum.each(&File.rm_rf(Path.join("../code_my_spec_test_repos", &1)))
+
+      {:error, _} ->
+        :ok
+    end
+  end
+
+  defp owned_or_alive?("run_" <> pid), do: pid == System.pid() or alive?(pid)
+
+  # `kill -0` asks whether the pid exists without signalling it. A non-numeric
+  # leftover answers "not alive", which is the safe direction: it gets swept.
+  defp alive?(pid) do
+    match?({_, 0}, System.cmd("kill", ["-0", pid], stderr_to_stdout: true))
+  rescue
+    _ -> false
+  end
+
   defp create_directory(repo_type, counter) do
     fixture_path = fixture_for_type(repo_type)
     new_counter = counter + 1
-    dest_path = "../code_my_spec_test_repos/pool_#{repo_type}_#{new_counter}"
+    dest_path = Path.join(pool_root(), "pool_#{repo_type}_#{new_counter}")
 
     File.mkdir_p!(dest_path)
 
