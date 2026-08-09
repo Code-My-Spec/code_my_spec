@@ -55,7 +55,6 @@ defmodule CodeMySpecSpex.Fixtures do
   }
 
   alias CodeMySpec.AgentHarness.ConversationRecorder
-  alias CodeMySpecTest.FakeWorkspaceRunner
   alias CodeMySpec.AgentTasks.QaStory
   alias CodeMySpec.Analytics.GoogleAnalytics
   alias CodeMySpec.Architecture.SpecStub
@@ -85,6 +84,7 @@ defmodule CodeMySpecSpex.Fixtures do
   alias CodeMySpec.Stories.Story
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.Users.User
+  alias CodeMySpecTest.FakeWorkspaceRunner
 
   @doc """
   Register a sending domain and publish everything except its DKIM record.
