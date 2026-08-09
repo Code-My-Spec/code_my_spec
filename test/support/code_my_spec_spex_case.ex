@@ -160,6 +160,34 @@ defmodule CodeMySpecSpex.Case do
       if(recording?(), do: :real, else: :none)
     )
 
+    # Recording waits longer before its first read of the inbox.
+    #
+    # The inbound teardown removes the MX it published, so the next recording
+    # republishes it and mail does not route until that propagates. The default
+    # 60s settle plus 60 polls is about six minutes, which is under it: three
+    # recordings in a row polled to exhaustion against a domain that was
+    # verified, receiving-enabled, and whose MX resolved by the time I checked.
+    # The one that succeeded in 77s did so because a previous run's MX was
+    # still live.
+    #
+    # Five minutes before the first read, so a cold domain has time and a warm
+    # one costs only the wait. Replay is unaffected — `:provisioning_waits` is
+    # `:none` there, so `Wait.sleep/1` is a no-op and the request count is
+    # identical either way.
+    if recording?() do
+      previous = Application.get_env(:code_my_spec, :provisioning_step_opts, [])
+
+      Application.put_env(
+        :code_my_spec,
+        :provisioning_step_opts,
+        Keyword.put_new(previous, :settle_ms, :timer.minutes(5))
+      )
+
+      on_exit(fn ->
+        Application.put_env(:code_my_spec, :provisioning_step_opts, previous)
+      end)
+    end
+
     for provider <- [:github, :cloudflare, :resend] do
       grant = live_grant(provider)
 
@@ -2377,12 +2405,37 @@ defmodule CodeMySpecSpex.Case do
 
       setup :register_and_log_in_user
   """
-  def register_and_log_in_user(%{conn: conn}) do
-    user = Fixtures.user_fixture()
+  def register_and_log_in_user(%{conn: conn} = context) do
+    user = Fixtures.user_fixture(%{email: spex_user_email(context)})
     scope = Fixtures.user_scope_fixture(user)
 
     %{conn: log_in_user(conn, user), user: user, scope: scope}
   end
+
+  # Stable per spex file, because the inbound probe sends to an address built
+  # from this local part.
+  #
+  # `owner_address/2` takes the user's email local part and puts it on the
+  # project's domain, so with `unique_user_email/0` the recording captured a
+  # message to `user-576460752303406782@…` and replay went looking for
+  # `user-<a different integer>@…`. `received?/3` compares the recipient
+  # exactly — correctly, since a message to somebody else's inbox proves
+  # nothing — so it never matched, the poll ran to its limit and exhausted the
+  # cassette. Story 974 recorded green and replayed red for that reason alone.
+  #
+  # Shape is deliberate. `phash2` keeps it `user-<digits>`, which is what
+  # delivered when recording; a readable local part like `spex-probe@` did not
+  # arrive, twice. `default_inbound_probe/3` warns that Resend drops invented
+  # local parts silently, so this stays as close to the known-good form as a
+  # deterministic value can.
+  #
+  # Unique per file rather than constant: the sandbox isolates each test, but a
+  # single test that registers two users would otherwise collide on the email
+  # index.
+  defp spex_user_email(%{module: module}) when is_atom(module),
+    do: "user-#{:erlang.phash2(module)}@example.com"
+
+  defp spex_user_email(_context), do: "user-#{System.unique_integer([:positive])}@example.com"
 
   @doc """
   Setup helper that sets up an active account for the user.
