@@ -178,8 +178,6 @@ defmodule CmsHarness.Project.AnalysisServer do
 
   defp queued?(state, source), do: Enum.any?(state.queue, &(&1.source == source))
 
-  defp running?(nil, _source), do: false
-  defp running?(running, source), do: running.source == source
 
   defp maybe_start_next(%{running: nil, queue: [entry | rest]} = state) do
     project = state.project
