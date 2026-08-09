@@ -590,6 +590,38 @@ defmodule CodeMySpec.Analysis do
     end)
   end
 
+  @doc """
+  Which of `sources` are fresh, in one pass over the file ledger.
+
+  Same answer as `fresh?/2` per source, and the reason to prefer it is cost.
+  `Fingerprint.current/2` loads **every file row for the working copy** — 4,544
+  on this project — and `fresh?/2` calls it once per source. The stop hook asks
+  about every source that has problems, so a turn spent four or five full loads
+  of the same table to compute four hashes of it.
+
+  `Fingerprint.current/1` has always computed all four sources from a single
+  load. This is that, plus the per-source `latest_completed_run/2` lookups,
+  which are indexed and cheap.
+
+  Deliberately not built on `status/1`, which looks like it answers this and
+  does not: it reads `latest_full_runs/1` and treats a failed newest run as
+  stale, where `fresh?/2` skips failures to find the newest run that actually
+  *answered*. That distinction is load-bearing — a duplicate enqueue refused as
+  "already queued" must not make a good result stale — so this keeps
+  `fresh?/2`'s lookup and only shares the fingerprinting.
+  """
+  @spec fresh_sources(Scope.t(), [String.t()]) :: MapSet.t(String.t())
+  def fresh_sources(%Scope{} = scope, sources) when is_list(sources) do
+    fingerprints = Fingerprint.current(scope)
+
+    for source <- sources,
+        %Run{input_fingerprint: fp} <- [RunsRepository.latest_completed_run(scope, source)],
+        is_binary(fp),
+        fp == Map.get(fingerprints, source),
+        into: MapSet.new(),
+        do: source
+  end
+
   @doc "Is `source`'s last completed run current for today's inputs?"
   @spec fresh?(Scope.t(), String.t()) :: boolean()
   def fresh?(%Scope{} = scope, source) do

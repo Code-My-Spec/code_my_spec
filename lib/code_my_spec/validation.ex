@@ -342,10 +342,11 @@ defmodule CodeMySpec.Validation do
       specs_ready_story_ids: specs_ready_story_ids(scope)
     }
 
-    stale_sources =
-      problems_by_source
-      |> Map.keys()
-      |> Enum.reject(&Analysis.fresh?(scope, &1))
+    # One pass over the file ledger for every source, rather than one per
+    # source. See `Analysis.fresh_sources/2` — the answer is identical.
+    sources_with_problems = Map.keys(problems_by_source)
+    fresh = Analysis.fresh_sources(scope, sources_with_problems)
+    stale_sources = Enum.reject(sources_with_problems, &MapSet.member?(fresh, &1))
 
     {blocking, advisory} = partition_problems(problems_by_source, config, scope_context)
 
