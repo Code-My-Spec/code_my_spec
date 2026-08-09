@@ -152,12 +152,12 @@ defmodule CmsHarness.Project.AnalysisServer do
     case parse(request) do
       {:ok, run_id, source, args} ->
         if queued?(state, source) do
-          Logger.warning(
+          Logger.info(
             "[CmsHarness] #{source} is already queued for #{state.project.root} — " <>
-              "refusing run #{run_id}"
+              "run #{run_id} is superseded by it"
           )
 
-          push_result(state.project.root, run_id, source, {:error, "already queued"})
+          push_result(state.project.root, run_id, source, {:superseded, "already queued"})
           state
         else
           entry = %{run_id: run_id, source: source, args: args}
@@ -238,6 +238,21 @@ defmodule CmsHarness.Project.AnalysisServer do
       "source" => source,
       "status" => "ok",
       "result" => result
+    })
+  end
+
+  # Not an error, and said so on the wire: a run for this source was already
+  # queued and will answer for both. Reported as a failure, it made its source
+  # read `failed` when nothing had failed, and could unseat a good result.
+  #
+  # A server that predates this status treats it as unreadable and fails the
+  # run, which is the behaviour it had anyway.
+  defp push_result(root, run_id, source, {:superseded, reason}) do
+    ChannelClient.deliver_analysis_result(root, %{
+      "run_id" => run_id,
+      "source" => source,
+      "status" => "superseded",
+      "error" => to_string(reason)
     })
   end
 

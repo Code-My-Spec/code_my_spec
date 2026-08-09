@@ -46,7 +46,14 @@ defmodule CodeMySpec.Analysis.Run do
   schema "analysis_runs" do
     field :source, :string
     field :kind, Ecto.Enum, values: [:full, :partial]
-    field :status, Ecto.Enum, values: [:running, :completed, :failed]
+    # `:superseded` is not a failure. It is a run that never ran, because one
+    # for the same source was already queued and will answer for both. Kept
+    # apart from `:failed` because the two were indistinguishable in the
+    # ledger, and everything reading it had to guess: a duplicate enqueue made
+    # its source report `failed` when nothing had failed, and — until
+    # `latest_completed_run/2` — made a good result read stale. 14 of these in
+    # half an hour on one harness.
+    field :status, Ecto.Enum, values: [:running, :completed, :failed, :superseded]
     field :input_fingerprint, :string
     field :args, :map
     field :stats, :map

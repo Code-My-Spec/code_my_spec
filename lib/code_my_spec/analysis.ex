@@ -286,6 +286,16 @@ defmodule CodeMySpec.Analysis do
       {:error, Exception.message(exception)}
   end
 
+  # A scheduling refusal, not an analyzer outcome: the harness already had a run
+  # queued for this source and it will answer for both. Closed so the row does
+  # not sit `:running` forever, and closed as its own thing so nothing reads it
+  # as an analyzer that died.
+  defp apply_remote_result(_scope, run, %{"status" => "superseded"} = payload) do
+    reason = payload["error"] || "superseded by a run already queued"
+    Reconciler.supersede(run, reason)
+    {:error, {:superseded, reason}}
+  end
+
   defp apply_remote_result(_scope, run, %{"status" => "error"} = payload) do
     reason = payload["error"] || "the harness reported a failure with no reason"
     Reconciler.fail(run, reason)

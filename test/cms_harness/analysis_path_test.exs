@@ -162,7 +162,7 @@ defmodule CmsHarness.AnalysisPathTest do
              "one that never ran"
   end
 
-  test "a second run of a source already queued is refused, and the refusal is sent", ctx do
+  test "a second run of a source already queued is superseded, not failed", ctx do
     FakeServer.start()
     {:ok, _} = Projects.ensure_started(ctx.project.root)
     assert await_connected(ctx.project.root)
@@ -176,7 +176,11 @@ defmodule CmsHarness.AnalysisPathTest do
       %{"run_id" => 22, "source" => "sobelow", "args" => []}
     ])
 
-    assert %{"status" => "error", "error" => "already queued"} = await_result(22)
+    # `superseded`, not `error`. The run never ran and nothing went wrong — the
+    # queued one answers for both. Reported as a failure it made its source read
+    # `failed` when nothing had failed, and could unseat a good result: 14 such
+    # rows in half an hour on one harness.
+    assert %{"status" => "superseded", "error" => "already queued"} = await_result(22)
     assert %{"status" => "error"} = await_result(21)
 
     assert AnalysisServer.idle?(ctx.project.root)

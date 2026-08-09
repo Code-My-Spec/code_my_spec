@@ -97,6 +97,24 @@ defmodule CodeMySpec.Analysis.Reconciler do
     })
   end
 
+  @doc """
+  Close a run that never ran because one for the same source was already
+  queued.
+
+  At `:info`, not `:warning` — nothing is wrong. A duplicate enqueue is the
+  ordinary result of a stop hook asking again while work is pending, and
+  logging it as a failure taught readers to ignore a level that should mean
+  something.
+  """
+  @spec supersede(Run.t(), term()) :: {:ok, Run.t()} | {:error, Ecto.Changeset.t()}
+  def supersede(%Run{} = run, reason) do
+    Logger.info("[Analysis] #{run.source} superseded: #{inspect(reason)}")
+
+    RunsRepository.finish_run(run, :superseded, %{
+      stats: %{"superseded" => String.slice(inspect(reason), 0, 500)}
+    })
+  end
+
   # -- Problem preparation --
 
   defp stamp_project(problem, scope),
