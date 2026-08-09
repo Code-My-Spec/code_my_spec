@@ -36,8 +36,6 @@ defmodule CodeMySpec.Provisioning.Widget do
   can send through.
   """
 
-  require Logger
-
   alias CodeMySpec.Environments
   alias CodeMySpec.Users.Scope
 

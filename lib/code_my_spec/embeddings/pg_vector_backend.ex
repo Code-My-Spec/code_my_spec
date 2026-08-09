@@ -26,8 +26,6 @@ defmodule CodeMySpec.Embeddings.PgVectorBackend do
 
   @behaviour CodeMySpec.Embeddings.Backend
 
-  require Logger
-
   import Ecto.Query
 
   alias CodeMySpec.Embeddings.{DocEmbedding, EmbeddingService, Serving}

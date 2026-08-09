@@ -20,8 +20,6 @@ defmodule CodeMySpec.Provisioning.Deploy.UptimeRobot do
   status alone would read every failure as a success.
   """
 
-  require Logger
-
   @api_base "https://api.uptimerobot.com/v2"
 
   # 1 = HTTP(S) monitor in UptimeRobot's vocabulary.

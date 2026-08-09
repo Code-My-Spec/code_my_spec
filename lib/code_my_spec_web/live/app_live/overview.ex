@@ -6,7 +6,6 @@ defmodule CodeMySpecWeb.AppLive.Overview do
   alias CodeMySpec.Projects
   alias CodeMySpec.Projects.Project
   alias CodeMySpec.UserPreferences
-  alias CodeMySpec.Users
   alias CodeMySpec.Users.Scope
 
   def mount(_params, _session, socket) do

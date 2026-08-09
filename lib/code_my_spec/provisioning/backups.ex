@@ -43,8 +43,6 @@ defmodule CodeMySpec.Provisioning.Backups do
   discovered by someone who needed to restore (criterion 8015).
   """
 
-  require Logger
-
   alias CodeMySpec.Environments
   alias CodeMySpec.Provisioning.Storage
 

@@ -41,8 +41,6 @@ defmodule CodeMySpec.Provisioning.ContentPublishing do
   catch-all route or a styled 404.
   """
 
-  require Logger
-
   alias CodeMySpec.Users.Scope
 
   @type result :: %{

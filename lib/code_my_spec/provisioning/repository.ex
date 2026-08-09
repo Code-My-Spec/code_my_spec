@@ -55,8 +55,6 @@ defmodule CodeMySpec.Provisioning.Repository do
   and useless — the harness would fail on its first push, far from setup.
   """
 
-  require Logger
-
   alias CodeMySpec.Environments
   alias CodeMySpec.GitHub
   alias CodeMySpec.Users.Scope

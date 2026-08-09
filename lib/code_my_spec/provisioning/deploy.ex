@@ -35,8 +35,6 @@ defmodule CodeMySpec.Provisioning.Deploy do
   `CodeMySpec.Generators` guards on the other side).
   """
 
-  require Logger
-
   alias CodeMySpec.Environments
   alias CodeMySpec.Provisioning.Deploy.UptimeRobot
 

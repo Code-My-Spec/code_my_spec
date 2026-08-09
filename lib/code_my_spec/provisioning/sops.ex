@@ -43,8 +43,6 @@ defmodule CodeMySpec.Provisioning.Sops do
   is a re-encrypt plus a redeploy rather than a file edit on a server.
   """
 
-  require Logger
-
   alias CodeMySpec.Environments
 
   @sops_config ".sops.yaml"

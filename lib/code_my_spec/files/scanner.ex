@@ -19,8 +19,6 @@ defmodule CodeMySpec.Files.Scanner do
   this module holds no repo of its own.
   """
 
-  require Logger
-
   alias CodeMySpec.Components.Registry, as: ComponentRegistry
   alias CodeMySpec.Documents
   alias CodeMySpec.Environments

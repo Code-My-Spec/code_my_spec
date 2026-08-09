@@ -22,8 +22,6 @@ defmodule CodeMySpec.Chat.Runner do
   everything except the network.
   """
 
-  require Logger
-
   alias CodeMySpec.Chat.{McpToolRegistry, ToolRegistry}
   alias CodeMySpec.Conversations
 

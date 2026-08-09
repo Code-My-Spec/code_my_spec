@@ -14,8 +14,6 @@ defmodule CodeMySpec.Migration.Client do
   project receives the work — it is not the local project's id.
   """
 
-  require Logger
-
   alias CodeMySpec.Auth.OAuthClient
   alias CodeMySpec.Migration
 

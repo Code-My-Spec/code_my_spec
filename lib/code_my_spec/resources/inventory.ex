@@ -23,8 +23,6 @@ defmodule CodeMySpec.Resources.Inventory do
   account-level view is where it would do the most damage.
   """
 
-  require Logger
-
   alias CodeMySpec.Provisioning.{Cloudflare, Hetzner, Resend, Storage}
   alias CodeMySpec.Users.Scope
 

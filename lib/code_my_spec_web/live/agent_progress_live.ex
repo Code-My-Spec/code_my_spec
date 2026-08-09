@@ -28,7 +28,6 @@ defmodule CodeMySpecWeb.AgentProgressLive do
   """
   use CodeMySpecWeb, :live_view
 
-  alias CodeMySpec.Requirements
   alias CodeMySpec.Requirements.RequirementGraph
   alias CodeMySpec.Sessions
   alias CodeMySpec.TaskHelp
