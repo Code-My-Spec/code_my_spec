@@ -413,20 +413,66 @@ defmodule CodeMySpec.Migration do
     known = scope |> project_stories() |> index_stories()
     components = component_ids_by_module(scope)
 
-    collect(stories, fn story ->
-      case find_existing(known, story) do
-        %{} = already ->
-          relink(scope, already, components, epics, story)
+    stories
+    |> Enum.reduce_while({:ok, %{}, %{}}, fn story, {:ok, acc, made} ->
+      case put_story(scope, story, known, made, components, epics) do
+        {:ok, created} ->
+          {:cont,
+           {:ok, Map.put(acc, story["local_id"], created),
+            Map.put(made, story["title"], {story["local_id"], created})}}
 
-        nil ->
-          story
-          |> attrs(Stories.Story)
-          |> put_ref(:epic_id, epics[story["epic_local_id"]])
-          |> put_component(components, story["component_module_name"])
-          |> Map.put(:migrated_from_id, story["local_id"])
-          |> then(&Stories.create_story(scope, &1))
+        {:error, reason} ->
+          {:halt, {:error, reason}}
       end
     end)
+    |> case do
+      {:ok, acc, _made} -> {:ok, acc}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  # `known` is the destination as it was *before* this run, and is not updated
+  # as rows are created — so a title this run has already inserted is invisible
+  # to every later story, and the second one inserts again and dies on
+  # `stories_title_project_id_index`. That surfaced as a 500 from
+  # `POST /api/migrations` importing 98 stories into an empty project, with
+  # nothing in the message naming the title or either source story.
+  #
+  # `made` closes that. What it does about a collision depends on which one it
+  # is, because the two want opposite handling:
+  #
+  #   - the same source story twice in one payload is a duplicate entry, and
+  #     the right answer is the row already created for it
+  #   - two *different* source stories sharing a title cannot both exist under
+  #     a unique index, and no import can decide which of Sam's stories to
+  #     keep. Adopting one for the other is the silent merge `match_by_title`
+  #     already refuses; this says so instead, naming both.
+  defp put_story(scope, story, known, made, components, epics) do
+    case Map.get(made, story["title"]) do
+      nil -> create_or_relink(scope, story, known, components, epics)
+      {local_id, created} -> adopt_or_conflict(local_id, created, story)
+    end
+  end
+
+  defp adopt_or_conflict(local_id, created, %{"local_id" => local_id}), do: {:ok, created}
+
+  defp adopt_or_conflict(local_id, _created, story) do
+    {:error, {:duplicate_title, story["title"], local_id, story["local_id"]}}
+  end
+
+  defp create_or_relink(scope, story, known, components, epics) do
+    case find_existing(known, story) do
+      %{} = already ->
+        relink(scope, already, components, epics, story)
+
+      nil ->
+        story
+        |> attrs(Stories.Story)
+        |> put_ref(:epic_id, epics[story["epic_local_id"]])
+        |> put_component(components, story["component_module_name"])
+        |> Map.put(:migrated_from_id, story["local_id"])
+        |> then(&Stories.create_story(scope, &1))
+    end
   end
 
   # A story that is already here still takes its authored state from the

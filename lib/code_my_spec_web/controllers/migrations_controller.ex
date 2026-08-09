@@ -41,6 +41,17 @@ defmodule CodeMySpecWeb.MigrationsController do
   defp describe({:unknown_persona_link, link}),
     do: "a persona link referenced something not in the payload: #{inspect(link)}"
 
+  # Named rather than inspected, because this one needs a decision from the
+  # person: a project's titles are unique, so two source stories sharing one
+  # cannot both land, and no import can choose which of them to keep. Before
+  # this it surfaced as a 500 on `stories_title_project_id_index` naming
+  # neither the title nor either story.
+  defp describe({:duplicate_title, title, first_id, second_id}) do
+    "stories #{inspect(first_id)} and #{inspect(second_id)} are both titled " <>
+      "#{inspect(title)}, and a project's story titles are unique. Rename one " <>
+      "in the source and export again — the import cannot choose between them."
+  end
+
   defp describe(%Ecto.Changeset{} = changeset),
     do: inspect(Ecto.Changeset.traverse_errors(changeset, fn {msg, _} -> msg end))
 
