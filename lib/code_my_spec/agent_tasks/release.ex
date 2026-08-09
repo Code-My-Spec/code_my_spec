@@ -128,18 +128,17 @@ defmodule CodeMySpec.AgentTasks.Release do
 
   defp deployed_story_ids(env) do
     case Environments.list_directory(env, Paths.devops_deploys_dir()) do
-      {:ok, entries} ->
-        entries
-        |> Enum.flat_map(fn entry ->
-          case Regex.run(~r/story_(\d+)\.md$/, entry) do
-            [_, id] -> [id]
-            nil -> []
-          end
-        end)
-        |> Enum.sort()
+      {:ok, entries} -> entries |> Enum.flat_map(&deployed_story_id/1) |> Enum.sort()
+      _ -> []
+    end
+  end
 
-      _ ->
-        []
+  # A list so it composes with flat_map: one element for a deploy record, none
+  # for anything else in the directory.
+  defp deployed_story_id(entry) do
+    case Regex.run(~r/story_(\d+)\.md$/, entry) do
+      [_, id] -> [id]
+      nil -> []
     end
   end
 
@@ -150,17 +149,22 @@ defmodule CodeMySpec.AgentTasks.Release do
       {:ok, entries} ->
         entries
         |> Enum.filter(&String.ends_with?(&1, ".md"))
-        |> Enum.map_join("\n", fn entry ->
-          path = Path.join(Paths.releases_dir(), Path.basename(entry))
-
-          case Environments.read_file(env, path) do
-            {:ok, content} -> content
-            _ -> ""
-          end
-        end)
+        |> Enum.map_join("\n", &read_release(env, &1))
 
       _ ->
         ""
+    end
+  end
+
+  # An unreadable release record reads as empty rather than raising: it means
+  # the stories it covered look unreleased, which stops a release rather than
+  # waving one through.
+  defp read_release(env, entry) do
+    path = Path.join(Paths.releases_dir(), Path.basename(entry))
+
+    case Environments.read_file(env, path) do
+      {:ok, content} -> content
+      _ -> ""
     end
   end
 
