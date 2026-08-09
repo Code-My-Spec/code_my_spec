@@ -26,18 +26,14 @@ defmodule CodeMySpecSpex.Story886.Criterion2326Spex do
 
   import CodeMySpecSpex.IntakeSteps
 
-  alias CodeMySpecTest.FakeWorkspaceRunner
+  alias CodeMySpecSpex.Fixtures
 
   @endpoint CodeMySpecWeb.Endpoint
 
   setup :register_log_in_setup_account
 
   setup do
-    Application.put_env(:code_my_spec, CodeMySpec.Workspaces, runner: FakeWorkspaceRunner)
-    on_exit(fn -> Application.delete_env(:code_my_spec, CodeMySpec.Workspaces) end)
-
-    start_supervised!({FakeWorkspaceRunner, healthy?: true, serving: :serving})
-    :ok
+    Fixtures.install_workspace_runner(healthy?: true, serving: :serving)
   end
 
   spex "A running container and a working app are not the same claim" do
@@ -67,7 +63,7 @@ defmodule CodeMySpecSpex.Story886.Criterion2326Spex do
       end
 
       when_ "the app starts raising on every request", context do
-        FakeWorkspaceRunner.put_serving(:erroring)
+        Fixtures.put_workspace_serving(:erroring)
 
         {:ok, _view, html} = live(context.conn, ~p"/build/workspace")
 

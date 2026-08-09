@@ -55,6 +55,7 @@ defmodule CodeMySpecSpex.Fixtures do
   }
 
   alias CodeMySpec.AgentHarness.ConversationRecorder
+  alias CodeMySpecTest.FakeWorkspaceRunner
   alias CodeMySpec.AgentTasks.QaStory
   alias CodeMySpec.Analytics.GoogleAnalytics
   alias CodeMySpec.Architecture.SpecStub
@@ -1146,6 +1147,37 @@ defmodule CodeMySpecSpex.Fixtures do
 
   # -- Projects --
   defdelegate project_fixture(scope, attrs \\ %{}), to: ProjectsFixtures
+
+  # -- Workspaces --
+
+  @doc """
+  Swap the workspace runner for the fake one and start it.
+
+  A spex cannot name `CodeMySpecTest.FakeWorkspaceRunner` — `CodeMySpecSpex`
+  does not carry `CodeMySpecTest` as a boundary dep, and should not: reaching
+  into the app is this module's job, not the criterion's. This bridge already
+  has the dep, so the swap belongs here.
+
+  Exactly what the spex did inline: install the runner in application config,
+  remove it on exit, and start the fake supervised.
+  """
+  @spec install_workspace_runner(keyword()) :: :ok
+  def install_workspace_runner(opts \\ [healthy?: true, serving: :serving]) do
+    Application.put_env(:code_my_spec, CodeMySpec.Workspaces, runner: FakeWorkspaceRunner)
+
+    ExUnit.Callbacks.on_exit(fn ->
+      Application.delete_env(:code_my_spec, CodeMySpec.Workspaces)
+    end)
+
+    ExUnit.Callbacks.start_supervised!({FakeWorkspaceRunner, opts})
+    :ok
+  end
+
+  @doc """
+  Set what the fake workspace reports serving — `:serving`, `:erroring`,
+  `:down` or `:ok`. How a scenario makes a running container answer badly.
+  """
+  defdelegate put_workspace_serving(serving), to: FakeWorkspaceRunner, as: :put_serving
 
   @doc """
   Creates a project whose `local_path` points at a freshly-created tmp
