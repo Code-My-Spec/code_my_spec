@@ -124,6 +124,37 @@ defmodule CodeMySpec.Provisioning.WidgetTest do
       path
     end
 
+    # `mix run <task>` is not how you run a task — `mix run` takes a *file*, and
+    # given a task name it answers "No such file: client_utils.gen.chat_widget"
+    # and exits. The generator had never once run, and the step reported
+    # "Widget generator failed (exit 1)" with an empty body, which reads like
+    # the generator refusing rather than never being invoked.
+    #
+    # The other tests here stub `mix_bin` with a script that succeeds whatever
+    # it is passed, so they passed either way. This one records the arguments.
+    test "invokes the generator as a mix task, not as a file", %{env: env, scope: scope} do
+      recorder = Path.join(env.cwd, "recording_mix")
+      log = Path.join(env.cwd, "mix_args.txt")
+
+      File.write!(recorder, "#!/bin/sh\necho \"$@\" > #{log}\necho generator ran\nexit 0\n")
+      File.chmod!(recorder, 0o755)
+
+      Widget.run(scope, env,
+        site_url: "https://sams-site.com",
+        deploy_key: "dk_live",
+        mix_bin: recorder,
+        fetch: page(installed_page()),
+        lookup: from_site()
+      )
+
+      args = File.read!(log) |> String.trim()
+
+      assert String.starts_with?(args, "client_utils.gen.chat_widget"),
+             "expected the task name first; `mix run <task>` looks for a file of that name. got: #{args}"
+
+      assert args =~ "--deploy-key dk_live"
+    end
+
     test "is proven only when a real message arrived", %{env: env, scope: scope} do
       mix = fake_mix(env.cwd, 0)
 

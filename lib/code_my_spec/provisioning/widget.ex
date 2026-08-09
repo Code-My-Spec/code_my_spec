@@ -61,7 +61,12 @@ defmodule CodeMySpec.Provisioning.Widget do
   @spec install(Environments.Environment.t(), String.t(), keyword()) ::
           {:ok, map()} | {:error, String.t()}
   def install(env, deploy_key, opts \\ []) when is_binary(deploy_key) do
-    args = ["run", @generator, "--deploy-key", deploy_key] ++ Keyword.get(opts, :extra_args, [])
+    # `mix <task>`, not `mix run <task>`. `mix run` takes a *file* — given a
+    # task name it answers "No such file: client_utils.gen.chat_widget" and
+    # exits, so the generator has never once run. The step reported "Widget
+    # generator failed (exit 1)" with an empty body, which reads like the
+    # generator refusing rather than never being invoked.
+    args = [@generator, "--deploy-key", deploy_key] ++ Keyword.get(opts, :extra_args, [])
     # :mix_bin so a test can point at a stub without mutating PATH, which in
     # an async suite leaks into whatever else is running.
     mix = Keyword.get(opts, :mix_bin, "mix")
