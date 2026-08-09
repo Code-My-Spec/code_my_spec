@@ -138,7 +138,7 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
         header_section(story, component),
         mental_model_section(),
         knowledge_section(),
-        component_context_section(env, component),
+        component_context_section(scope, env, component),
         sibling_specs_section(env, story, criteria),
         surface_hint_section(component),
         criteria_section(story, criteria),
@@ -218,7 +218,7 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
   # Surfaces the component's source location and @moduledoc so the
   # spec-writer can see the real public interface rather than grepping
   # blind.
-  defp component_context_section(env, %{module_name: module_name}) do
+  defp component_context_section(scope, env, %{module_name: module_name} = component) do
     path = module_path(env, module_name)
 
     body =
@@ -234,8 +234,11 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
             """
           end
 
+        # Nothing was read. That is two different facts, and telling an agent
+        # the wrong one is expensive in opposite directions — so ask the file
+        # report before saying which.
         _ ->
-          stub_framing(inferred_path_hint(module_name))
+          unread_framing(scope, component, module_name)
       end
 
     """
@@ -244,6 +247,42 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
     #{body}\
     """
   end
+
+  # A read that returned nothing means one of two things, and they want opposite
+  # advice. On a light harness the server holds no working copy, so *every* read
+  # returns nothing — and this used to answer "this component is a stub, invent
+  # the API" for a 200-line implemented module. An agent that believes it writes
+  # spex against an interface it made up while a working one exists, and the
+  # spex then fail in ways that look like implementation gaps.
+  #
+  # The file report knows which it is without a disk. A row means the file is
+  # there and this server simply cannot open it; no row means there is genuinely
+  # nothing to read, which is the case `stub_framing/1` was written for.
+  defp unread_framing(scope, component, module_name) do
+    case implementation_files(scope, component) do
+      [] ->
+        stub_framing(inferred_path_hint(module_name))
+
+      [%{path: path} | _] ->
+        """
+        Source: `#{path}` — present in the project, but this server holds no
+        working copy and cannot show you its contents.
+
+        **Do not treat this as a stub.** Open the file and read the public API
+        before writing spex against it; inventing an interface when one already
+        exists produces spex that fail for reasons that look like missing
+        implementation.\
+        """
+    end
+  end
+
+  defp implementation_files(scope, %{id: id}) when not is_nil(id) do
+    scope
+    |> Files.list_component_files(id)
+    |> Enum.filter(&(&1.role == :implementation))
+  end
+
+  defp implementation_files(_scope, _component), do: []
 
   # "Open the file to see the public API" is bad advice when there is no
   # public API — a component created by `create_component` is a stub, and the
@@ -612,17 +651,35 @@ defmodule CodeMySpec.AgentTasks.WriteBddSpecs do
   # Helpers
   # ============================================================================
 
+  # `mix.exs` first, because it is the app name the project actually compiles
+  # under. When it cannot be read, the project's own module name — not
+  # `my_app`.
+  #
+  # That placeholder reached agents as real instructions. On a light harness the
+  # server has no working copy, so this read never succeeds, and the prompt told
+  # spec-writers to `use MyAppSpex.Case` and pointed at
+  # `test/support/my_app_spex_case.ex` — none of which exist in any project. The
+  # surrounding prose names real criteria and real paths, so the placeholders
+  # read as deliberate rather than as an unsubstituted template.
   defp derive_app_name(scope) do
     case scope.environment && Environments.read_file(scope.environment, "mix.exs") do
-      {:ok, content} -> extract_app_name(content)
-      _ -> "my_app"
+      {:ok, content} -> extract_app_name(content, scope)
+      _ -> app_name_from_project(scope)
     end
   end
 
-  defp extract_app_name(content) do
+  defp app_name_from_project(%{active_project: %{module_name: module_name}})
+       when is_binary(module_name) and module_name != "",
+       do: Macro.underscore(module_name)
+
+  defp app_name_from_project(_scope), do: "my_app"
+
+  # A `mix.exs` that was read but whose `app:` could not be found falls back the
+  # same way, for the same reason: `my_app` is a name no project has.
+  defp extract_app_name(content, scope) do
     case Regex.run(~r/app:\s*:(\w+)/, content) do
       [_, name] -> name
-      _ -> "my_app"
+      _ -> app_name_from_project(scope)
     end
   end
 
