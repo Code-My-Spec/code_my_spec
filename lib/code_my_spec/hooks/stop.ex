@@ -292,10 +292,44 @@ defmodule CodeMySpec.Hooks.Stop do
       session ->
         session = record_block(scope, session, key)
 
-        if continuous_mode?(session) and stuck_threshold_hit?(session),
-          do: terminate_stuck(scope, session, req_id),
-          else: block_with_reason(reason, req_id)
+        cond do
+          continuous_mode?(session) and stuck_threshold_hit?(session) ->
+            terminate_stuck(scope, session, req_id)
+
+          # The same escape for a session that was never continuous. The
+          # threshold used to be gated on continuous mode because
+          # `terminate_stuck/3` ends a *loop*, and a session with no loop had
+          # nothing to end — but the block repeats there just the same, and an
+          # interactive agent hit it five times with no legitimate move left.
+          #
+          # "A block that repeats forever is its own outage" is the reasoning
+          # `HookDecision`'s second pass already runs on, and it does not depend
+          # on who started the run. So this allows the stop and says, loudly,
+          # that nothing was fixed — rather than turning off a loop that is not
+          # running.
+          stuck_threshold_hit?(session) ->
+            allow_stuck(session, req_id)
+
+          true ->
+            block_with_reason(reason, req_id)
+        end
     end
+  end
+
+  defp allow_stuck(session, req_id) do
+    count = session.eval_feedback_count || 0
+
+    Logger.warning(
+      "[StopHook] [#{req_id}] same block #{count} times running on a non-continuous " <>
+        "session — allowing the stop, unfixed"
+    )
+
+    %{
+      "systemMessage" =>
+        "Allowed after the same block #{count} times in a row. Nothing was fixed — " <>
+          "the findings are still recorded and will block again. If they are real but " <>
+          "not yours to fix, file them with `create_issue` and tell the user."
+    }
   end
 
   # A block on problems, counted the same way a repeated task-evaluation
