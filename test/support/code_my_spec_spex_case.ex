@@ -517,22 +517,6 @@ defmodule CodeMySpecSpex.Case do
   end
 
   @doc """
-  Swap the project's environment for a real one on disk.
-
-      setup :setup_active_project
-      setup :real_working_directory
-
-  For spex whose subject is a real subprocess. `sops` and `age` are binaries —
-  they read and write actual files, and the memory environment the default
-  fixture installs is invisible to them. The encrypt reported success and the
-  file it was meant to write was never anywhere, which surfaces as "the
-  encrypted file does not carry the key" three assertions later.
-
-  The directory is the project's own `local_path`, so nothing else has to
-  change: the plug, the project row and the environment all still agree about
-  where the project is.
-  """
-  @doc """
   Print each step's state and reason, when `SPEX_DRILL_TRACE` is set.
 
   A halted provisioning sequence says nothing about itself. A step that refuses
@@ -615,6 +599,22 @@ defmodule CodeMySpecSpex.Case do
     |> real_working_directory()
   end
 
+  @doc """
+  Swap the project's environment for a real one on disk.
+
+      setup :setup_active_project
+      setup :real_working_directory
+
+  For spex whose subject is a real subprocess. `sops` and `age` are binaries —
+  they read and write actual files, and the memory environment the default
+  fixture installs is invisible to them. The encrypt reported success and the
+  file it was meant to write was never anywhere, which surfaces as "the
+  encrypted file does not carry the key" three assertions later.
+
+  The directory is the project's own `local_path`, so nothing else has to
+  change: the plug, the project row and the environment all still agree about
+  where the project is.
+  """
   def real_working_directory(%{scope: scope, project: project} = context) do
     env = Fixtures.local_environment_fixture(working_dir: project.local_path)
 
