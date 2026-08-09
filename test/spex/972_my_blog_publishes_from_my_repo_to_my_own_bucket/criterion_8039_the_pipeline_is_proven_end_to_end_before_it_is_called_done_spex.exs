@@ -81,22 +81,7 @@ defmodule CodeMySpecSpex.Story972.Criterion8039Spex do
         paste_provider_credentials(view)
         run_steps(view, [:repository, :server, :secrets, :domain, :dns, :deploy, :storage], @given_cassette)
 
-        if System.get_env("SPEX_DRILL_TRACE") do
-          doc = view |> Phoenix.LiveViewTest.render() |> Floki.parse_document!()
-
-          for key <- ~w(repository server secrets domain dns deploy storage) do
-            step = Floki.find(doc, "[data-test='setup-step'][data-step='#{key}']")
-            state = step |> Floki.attribute("data-state") |> List.first()
-            # `boot-failure` as well as `escalation`: the deploy step's
-            # provider error lives only in the former, because printing it in
-            # both made the step look like two problems.
-            why =
-              step
-              |> Floki.find("[data-test='escalation'], [data-test='boot-failure'], [data-test='paused-instructions']")
-              |> Floki.text()
-            IO.puts("STEP #{String.pad_trailing(key, 11)} #{state}  #{String.slice(why, 0, 160)}")
-          end
-        end
+        trace_steps(view, [:repository, :server, :secrets, :domain, :dns, :deploy, :storage])
 
         {:ok, Map.put(context, :view, view)}
       end

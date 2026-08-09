@@ -533,6 +533,51 @@ defmodule CodeMySpecSpex.Case do
   where the project is.
   """
   @doc """
+  Print each step's state and reason, when `SPEX_DRILL_TRACE` is set.
+
+  A halted provisioning sequence says nothing about itself. A step that refuses
+  goes from `not_started` to `not_started`, and the run reads as though it
+  never happened — three drills were spent working out that the sequence was
+  reaching `deploy` at all.
+
+  Reads `boot-failure` and `paused-instructions` alongside `escalation`,
+  because the deploy step's provider error lives only in the first of those
+  (they were printing the same sentence twice) and a pause is not an error at
+  all. Looking at `escalation` alone shows a blank reason for both.
+
+  Lives here rather than in the spex: a branch inside a `_spex.exs` is a test
+  reacting to state it should control, and credo rejects it — rightly. This is
+  scaffolding for a drill, not part of any criterion.
+  """
+  def trace_steps(view, keys) do
+    case System.get_env("SPEX_DRILL_TRACE") do
+      nil -> :ok
+      "" -> :ok
+      _ -> print_step_trace(view, keys)
+    end
+  end
+
+  defp print_step_trace(view, keys) do
+    doc = view |> Phoenix.LiveViewTest.render() |> Floki.parse_document!()
+
+    for key <- keys do
+      step = Floki.find(doc, "[data-test='setup-step'][data-step='#{key}']")
+      state = step |> Floki.attribute("data-state") |> List.first()
+
+      why =
+        step
+        |> Floki.find(
+          "[data-test='escalation'], [data-test='boot-failure'], [data-test='paused-instructions']"
+        )
+        |> Floki.text()
+
+      IO.puts("STEP #{String.pad_trailing(to_string(key), 11)} #{state}  #{String.slice(why, 0, 200)}")
+    end
+
+    :ok
+  end
+
+  @doc """
   Point the project at a real generated application on disk.
 
   `setup_active_project` makes a stub directory holding a `mix.exs`, which is
