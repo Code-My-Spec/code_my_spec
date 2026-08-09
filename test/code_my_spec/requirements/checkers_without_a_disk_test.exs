@@ -158,4 +158,72 @@ defmodule CodeMySpec.Requirements.CheckersWithoutADiskTest do
       assert status =~ "installed"
     end
   end
+
+  # `path_exists` reached the disk until now: it consulted the preloader's file
+  # map and, failing that, statted `scope.environment`. On the light harness
+  # that environment is nil, so the six requirements using it could report
+  # satisfied on a laptop and unsatisfied on the server for the same project at
+  # the same instant — the answer depended on which process was asked.
+  #
+  # It reads rows only now. The stop path syncs before it evaluates
+  # (`Validation.validate_stop/3` calls `FileSync.sync_changed/2` first), so
+  # dropping the disk costs nothing there.
+  #
+  # Both clauses are covered because they are reached by different callers and
+  # the nil-`ctx` one is easy to get wrong: `RequirementGraph` preloads a
+  # context, but `AgentTasks.Evaluator` calls `compute_one/4` without one — and
+  # that is the stop hook, on every agent turn. A first cut of this returned
+  # `false` whenever `ctx` was nil, which blocked the stop on a file the agent
+  # had written and synced.
+  describe "path_exists without a working copy" do
+    @decisions ".code_my_spec/architecture/decisions.md"
+
+    defp technical_strategy do
+      CodeMySpec.Requirements.Registry.get_project_requirements()
+      |> Enum.find(&(&1.name == "technical_strategy"))
+    end
+
+    defp check(scope, ctx) do
+      CodeMySpec.Requirements.RequirementCalculator.compute_one(
+        scope,
+        scope.active_project,
+        technical_strategy(),
+        [],
+        ctx
+      )
+    end
+
+    test "a synced file satisfies it with no environment to stat", %{scope: scope} do
+      sync(scope, @decisions, :architecture)
+
+      assert %{satisfied: true} = check(scope, nil)
+    end
+
+    test "an unsynced file does not", %{scope: scope} do
+      assert %{satisfied: false, details: %{reason: reason}} = check(scope, nil)
+      assert reason =~ "File missing"
+    end
+
+    # The `Evaluator` path. Without the query clause this answered false for a
+    # file that was sitting in the table.
+    test "a nil context queries rather than giving up", %{scope: scope} do
+      sync(scope, @decisions, :architecture)
+
+      assert %{satisfied: true} = check(scope, nil)
+    end
+
+    test "a preloaded context is used when there is one", %{scope: scope} do
+      sync(scope, @decisions, :architecture)
+      ctx = CodeMySpec.Requirements.Preloader.load(scope)
+
+      assert %{satisfied: true} = check(scope, ctx)
+    end
+
+    test "a preloaded context that lacks the file reports it missing", %{scope: scope} do
+      ctx = CodeMySpec.Requirements.Preloader.load(scope)
+
+      assert %{satisfied: false, details: %{reason: reason}} = check(scope, ctx)
+      assert reason =~ "File missing"
+    end
+  end
 end
