@@ -561,21 +561,20 @@ defmodule CodeMySpecSpex.Case do
 
   def project_tree(env, path, depth) do
     case CodeMySpec.Environments.list_directory(env, path) do
-      {:ok, names} ->
-        Enum.flat_map(names, fn name ->
-          child = if path in [".", ""], do: name, else: path <> "/" <> name
+      {:ok, names} -> Enum.flat_map(names, &tree_entry(env, path, &1, depth))
+      _ -> []
+    end
+  end
 
-          # A directory lists; a file does not. Cheaper than a stat call
-          # through an abstraction that does not offer one.
-          case CodeMySpec.Environments.list_directory(env, child) do
-            {:ok, []} -> [child]
-            {:ok, _} -> [child | project_tree(env, child, depth - 1)]
-            _ -> [child]
-          end
-        end)
+  defp tree_entry(env, path, name, depth) do
+    child = if path in [".", ""], do: name, else: path <> "/" <> name
 
-      _ ->
-        []
+    # A directory lists; a file does not. Cheaper than a stat call through an
+    # abstraction that does not offer one.
+    case CodeMySpec.Environments.list_directory(env, child) do
+      {:ok, []} -> [child]
+      {:ok, _} -> [child | project_tree(env, child, depth - 1)]
+      _ -> [child]
     end
   end
 
@@ -837,6 +836,31 @@ defmodule CodeMySpecSpex.Case do
   # assertions all passed. Retry, then warn loudly rather than fail: the test
   # result should reflect the claim, and a cleanup that could not run is worth
   # saying out loud because it means a real resource was left behind.
+  @doc """
+  Register a teardown that runs against its cassette.
+
+  The idiom is three closures deep written out — `on_exit` wrapping
+  `safe_teardown` wrapping `with_provider_cassette` — and it appeared at five
+  call sites, which is where most of this file's nesting came from. All three
+  layers are needed: the removal has to be deferred, it has to survive a
+  provider that will not answer, and it has to replay rather than reach for the
+  network. Naming it once says that in one place.
+  """
+  defp redact_sensitive_patterns(body) do
+    Enum.reduce(sensitive_patterns(), body, fn {pattern, replacement}, acc ->
+      String.replace(acc, pattern, replacement)
+    end)
+  end
+
+  @doc """
+  Register a teardown that runs against its cassette.
+  """
+  def teardown_later(label, cassette, fun) do
+    ExUnit.Callbacks.on_exit(fn ->
+      safe_teardown(label, fn -> with_provider_cassette(cassette, fun) end)
+    end)
+  end
+
   def safe_teardown(label, fun, attempts \\ 3) do
     fun.()
   rescue
@@ -933,12 +957,8 @@ defmodule CodeMySpecSpex.Case do
     # recorded it and `tear_down_after/3` — which removes only what a step
     # wrote — never touches it. Left behind it is a real MX on a real domain,
     # and the next spex reads it as an apex MX of its own.
-    ExUnit.Callbacks.on_exit(fn ->
-      safe_teardown(project.domain, fn ->
-        with_provider_cassette("teardown_#{slug(project.domain)}_apex_mx", fn ->
-          Fixtures.remove_apex_mx(scope, project.domain)
-        end)
-      end)
+    teardown_later(project.domain, "teardown_#{slug(project.domain)}_apex_mx", fn ->
+      Fixtures.remove_apex_mx(scope, project.domain)
     end)
 
     result
@@ -1048,12 +1068,8 @@ defmodule CodeMySpecSpex.Case do
              Fixtures.publish_all_records_unverified(scope, sending)
            end) do
         {:ok, created} ->
-          ExUnit.Callbacks.on_exit(fn ->
-            safe_teardown(sending, fn ->
-              with_provider_cassette("teardown_#{slug(sending)}_published", fn ->
-                Fixtures.remove_published_records(scope, created)
-              end)
-            end)
+          teardown_later(sending, "teardown_#{slug(sending)}_published", fn ->
+            Fixtures.remove_published_records(scope, created)
           end)
 
         {:error, reason} ->
@@ -1088,12 +1104,8 @@ defmodule CodeMySpecSpex.Case do
              Fixtures.register_sending_domain_only(scope, sending)
            end) do
         {:ok, _domain} ->
-          ExUnit.Callbacks.on_exit(fn ->
-            safe_teardown(sending, fn ->
-              with_provider_cassette("teardown_#{slug(sending)}_registered", fn ->
-                Fixtures.remove_sending_domain(scope, sending)
-              end)
-            end)
+          teardown_later(sending, "teardown_#{slug(sending)}_registered", fn ->
+            Fixtures.remove_sending_domain(scope, sending)
           end)
 
         {:error, reason} ->
@@ -1141,12 +1153,8 @@ defmodule CodeMySpecSpex.Case do
              Fixtures.publish_all_records(scope, sending, verification_opts() ++ opts)
            end) do
         {:ok, created} ->
-          ExUnit.Callbacks.on_exit(fn ->
-            safe_teardown(sending, fn ->
-              with_provider_cassette("teardown_#{slug(sending)}_dns", fn ->
-                Fixtures.remove_published_records(scope, created)
-              end)
-            end)
+          teardown_later(sending, "teardown_#{slug(sending)}_dns", fn ->
+            Fixtures.remove_published_records(scope, created)
           end)
 
         {:error, reason} ->
@@ -1182,12 +1190,8 @@ defmodule CodeMySpecSpex.Case do
            Fixtures.publish_then_delete_dkim(scope, project.domain)
          end) do
       {:ok, created} ->
-        ExUnit.Callbacks.on_exit(fn ->
-          safe_teardown(project.domain, fn ->
-            with_provider_cassette("teardown_#{slug(project.domain)}_dns", fn ->
-              Fixtures.remove_published_records(scope, created)
-            end)
-          end)
+        teardown_later(project.domain, "teardown_#{slug(project.domain)}_dns", fn ->
+          Fixtures.remove_published_records(scope, created)
         end)
 
         project
@@ -1869,11 +1873,7 @@ defmodule CodeMySpecSpex.Case do
             |> File.read!()
             |> redact_recorded_env()
             |> wildcard_working_directories()
-            |> then(fn body ->
-              Enum.reduce(sensitive_patterns(), body, fn {pattern, replacement}, acc ->
-                String.replace(acc, pattern, replacement)
-              end)
-            end)
+            |> redact_sensitive_patterns()
 
           File.write!(path, scrubbed)
         end
@@ -2357,23 +2357,19 @@ defmodule CodeMySpecSpex.Case do
       Keyword.get(opts, :cassette) ||
         "teardown_#{slug(project_name(scope))}_#{Enum.join(keys, "_")}"
 
-    ExUnit.Callbacks.on_exit(fn ->
-      safe_teardown(name, fn ->
-        with_provider_cassette(name, fn ->
-          for {key, result} <- tear_down_steps_with_retry(scope, keys, opts) do
-            case result do
-              {:ok, _removed} ->
-                :ok
+    teardown_later(name, name, fn ->
+      for {key, result} <- tear_down_steps_with_retry(scope, keys, opts) do
+        case result do
+          {:ok, _removed} ->
+            :ok
 
-              {:error, {:left_behind, remaining}} ->
-                IO.warn(
-                  "spex teardown left #{key} resources behind: " <>
-                    inspect(Enum.map(remaining, & &1.location))
-                )
-            end
-          end
-        end)
-      end)
+          {:error, {:left_behind, remaining}} ->
+            IO.warn(
+              "spex teardown left #{key} resources behind: " <>
+                inspect(Enum.map(remaining, & &1.location))
+            )
+        end
+      end
     end)
   end
 

@@ -47,12 +47,27 @@ defmodule CodeMySpecWeb.ProvisioningLive do
   use CodeMySpecWeb, :live_view
 
   alias CodeMySpec.Generators.DeployArtifacts
+  alias CodeMySpec.Projects
   alias CodeMySpec.ProjectSecrets
   alias CodeMySpec.Provisioning
-  alias CodeMySpec.Provisioning.Repository
-  alias CodeMySpec.Projects
+
+  alias CodeMySpec.Provisioning.{
+    Backups,
+    Cloudflare,
+    ContentPublishing,
+    Credentials,
+    Dns,
+    Hetzner,
+    Repository,
+    Resend,
+    Sops,
+    Steps,
+    Storage,
+    Teardown,
+    Widget
+  }
+
   alias CodeMySpec.Users.Scope
-  alias CodeMySpec.Provisioning.{Backups, Cloudflare, ContentPublishing, Credentials, Dns, Resend, Sops, Steps, Storage, Teardown, Widget}
 
   # The environments setup manages. Named once so the probe form, the resource
   # grouping and the storage step cannot disagree about what exists.
@@ -108,7 +123,11 @@ defmodule CodeMySpecWeb.ProvisioningLive do
         Setup cannot start yet — still needed: {Enum.map_join(@missing_credentials, ", ", & &1.label)}.
       </div>
 
-      <form data-test="credentials-form" phx-submit="save_credentials" class="mt-3 flex flex-col gap-4">
+      <form
+        data-test="credentials-form"
+        phx-submit="save_credentials"
+        class="mt-3 flex flex-col gap-4"
+      >
         <div
           :for={credential <- @credentials}
           data-test="credential-field"
@@ -142,7 +161,9 @@ defmodule CodeMySpecWeb.ProvisioningLive do
             data-test="credential-input"
             class="input input-bordered w-full"
             autocomplete="off"
-            placeholder={if credential.stored?, do: "•••••••• (leave blank to keep)", else: credential.hint}
+            placeholder={
+              if credential.stored?, do: "•••••••• (leave blank to keep)", else: credential.hint
+            }
           />
 
           <p
@@ -194,7 +215,13 @@ defmodule CodeMySpecWeb.ProvisioningLive do
       <form data-test="domain-form" phx-submit="check_domain" class="mt-3 flex gap-2 items-end">
         <label class="form-control">
           <span class="label-text text-xs">Domain</span>
-          <input type="text" name="domain[name]" value={@domain_name} class="input input-bordered input-sm" placeholder="example.com" />
+          <input
+            type="text"
+            name="domain[name]"
+            value={@domain_name}
+            class="input input-bordered input-sm"
+            placeholder="example.com"
+          />
         </label>
         <.button type="submit" data-test="check-domain">Check</.button>
       </form>
@@ -211,21 +238,28 @@ defmodule CodeMySpecWeb.ProvisioningLive do
           data-available={to_string(@domain_check.availability == :available)}
           data-supported-tld={to_string(@domain_check.supported_tld)}
           data-name={@domain_name}
-          class={["badge", @domain_check.availability == :available && "badge-success",
-                  @domain_check.availability == :taken && "badge-error"]}
+          class={[
+            "badge",
+            @domain_check.availability == :available && "badge-success",
+            @domain_check.availability == :taken && "badge-error"
+          ]}
         >
           {availability_label(@domain_check)}
         </span>
-
-        <!-- A taken name is a dead end here: choose another (criterion 7989). -->
+        
+    <!-- A taken name is a dead end here: choose another (criterion 7989). -->
         <p :if={@domain_check.availability == :taken} data-test="domain-taken" class="text-sm">
           {@domain_name} is already registered{if @domain_check.current_registrar,
             do: " (#{@domain_check.current_registrar})"}. Pick another name.
         </p>
-
-        <!-- The API can price and sell only a name the account can already act
+        
+    <!-- The API can price and sell only a name the account can already act
              on. Those rare cases keep the in-app confirm. -->
-        <span :if={@domain_check.availability == :available and @domain_check.price} data-test="domain-price" class="text-sm">
+        <span
+          :if={@domain_check.availability == :available and @domain_check.price}
+          data-test="domain-price"
+          class="text-sm"
+        >
           {@domain_check.price} {@domain_check.currency}
         </span>
 
@@ -237,13 +271,16 @@ defmodule CodeMySpecWeb.ProvisioningLive do
         >
           Yes — register {@domain_name}
         </.button>
-
-        <!-- The common new-name case: a supported TLD the API will not price
+        
+    <!-- The common new-name case: a supported TLD the API will not price
              or sell. Buying is a Cloudflare dashboard errand, not an in-app
              purchase (criteria 7988, 7990, 7993, 7994) — and setup adopts it
              once it is registered and its records resolve. -->
         <div
-          :if={@domain_check.supported_tld and @domain_check.availability != :available and @domain_check.availability != :taken}
+          :if={
+            @domain_check.supported_tld and @domain_check.availability != :available and
+              @domain_check.availability != :taken
+          }
           data-test="domain-dashboard-handoff"
           data-name={@domain_name}
           class="alert alert-info flex-col items-start text-sm"
@@ -258,8 +295,8 @@ defmodule CodeMySpecWeb.ProvisioningLive do
             class="link"
           >Register it in the Cloudflare dashboard</a>, then re-check to adopt it.
         </div>
-
-        <!-- An unsupported extension the Registrar API cannot sell at all: the
+        
+    <!-- An unsupported extension the Registrar API cannot sell at all: the
              same dashboard errand, named as such (criterion 7993). -->
         <div
           :if={not @domain_check.supported_tld}
@@ -286,10 +323,14 @@ defmodule CodeMySpecWeb.ProvisioningLive do
         data-owned-already={to_string(@domain_registered.adopted)}
         class="mt-3 badge badge-outline"
       >
-        {@domain_registered.name} {if @domain_registered.adopted, do: "(already yours)", else: "registered"}
+        {@domain_registered.name} {if @domain_registered.adopted,
+          do: "(already yours)",
+          else: "registered"}
       </div>
 
-      <p :if={@domain_error} data-test="domain-error" class="text-error text-xs mt-2">{@domain_error}</p>
+      <p :if={@domain_error} data-test="domain-error" class="text-error text-xs mt-2">
+        {@domain_error}
+      </p>
     </section>
 
     <section data-test="secrets" class="my-6">
@@ -300,14 +341,28 @@ defmodule CodeMySpecWeb.ProvisioningLive do
         the file the server reads, and the repo alone will not open it.
       </p>
 
-      <form data-test="secret-form" phx-submit="put_secret" class="mt-3 flex flex-wrap gap-2 items-end">
+      <form
+        data-test="secret-form"
+        phx-submit="put_secret"
+        class="mt-3 flex flex-wrap gap-2 items-end"
+      >
         <label class="form-control">
           <span class="label-text text-xs">Key</span>
-          <input type="text" name="secret[key]" class="input input-bordered input-sm" placeholder="RESEND_API_KEY" />
+          <input
+            type="text"
+            name="secret[key]"
+            class="input input-bordered input-sm"
+            placeholder="RESEND_API_KEY"
+          />
         </label>
         <label class="form-control">
           <span class="label-text text-xs">Value</span>
-          <input type="password" name="secret[value]" class="input input-bordered input-sm" autocomplete="off" />
+          <input
+            type="password"
+            name="secret[value]"
+            class="input input-bordered input-sm"
+            autocomplete="off"
+          />
         </label>
         <label class="form-control">
           <span class="label-text text-xs">Environment</span>
@@ -318,7 +373,9 @@ defmodule CodeMySpecWeb.ProvisioningLive do
         <.button type="submit" data-test="save-secret">Encrypt into the repo</.button>
       </form>
 
-      <p :if={@secret_error} data-test="secret-error" class="text-error text-xs mt-2">{@secret_error}</p>
+      <p :if={@secret_error} data-test="secret-error" class="text-error text-xs mt-2">
+        {@secret_error}
+      </p>
 
       <div class="mt-4 flex flex-col gap-1">
         <div
@@ -393,8 +450,8 @@ defmodule CodeMySpecWeb.ProvisioningLive do
             >
               {step.paused_instructions}
             </p>
-
-            <!-- The apex already points somewhere, and this run would move it.
+            
+    <!-- The apex already points somewhere, and this run would move it.
                  Not a default: a live site going dark is less reversible than
                  the domain purchase that already demands a second step — the
                  money comes back, the downtime does not. Behind a dialog
@@ -421,8 +478,8 @@ defmodule CodeMySpecWeb.ProvisioningLive do
                 on_confirm={JS.push("confirm_apex_repoint")}
               />
             </div>
-
-            <!-- A name collision Sam did not cause: the repository exists but
+            
+    <!-- A name collision Sam did not cause: the repository exists but
                  is not this project's. Neither choice is taken for him
                  (criterion 8185) — adopting a stranger's repo or inventing a
                  suffixed name are both decisions, not defaults. -->
@@ -454,8 +511,8 @@ defmodule CodeMySpecWeb.ProvisioningLive do
                 {step.provider_error}
               </p>
             </div>
-
-            <!-- How the decryption key reaches the app. A property of the
+            
+    <!-- How the decryption key reaches the app. A property of the
                  deploy's configuration, not of a particular run: the key is
                  supplied the same way whether the deploy then succeeds or
                  fails, and hanging this off a success path would mean "Sam
@@ -470,8 +527,8 @@ defmodule CodeMySpecWeb.ProvisioningLive do
             >
               key for {Enum.join(@age_key_environments, ", ")} supplied by the deploy
             </div>
-
-            <!-- Where the callback credential was placed. The observable
+            
+    <!-- Where the callback credential was placed. The observable
                  form of "Sam never sees the credential he is using" (8022):
                  written into the encrypted env, copied by nobody. -->
             <div
@@ -484,8 +541,8 @@ defmodule CodeMySpecWeb.ProvisioningLive do
             >
               credential placed in {cred.location}
             </div>
-
-            <!-- Configuration is not an inbox. The step sends a message to the
+            
+    <!-- Configuration is not an inbox. The step sends a message to the
                  domain it just configured and waits for Resend to report it
                  received; that delivery is the claim, so it is on the page
                  rather than folded into "done" (8033). -->
@@ -500,8 +557,8 @@ defmodule CodeMySpecWeb.ProvisioningLive do
             >
               delivered to {pr.location}: {pr.identifier}
             </span>
-
-            <!-- Uploading is not publishing. The step fetches the post back
+            
+    <!-- Uploading is not publishing. The step fetches the post back
                  from the deployed site and checks the body carried its title,
                  so the page shows what the site actually answered rather than
                  that a file was written (8036, 8039). -->
@@ -525,8 +582,8 @@ defmodule CodeMySpecWeb.ProvisioningLive do
             >
               {pr.location} answered {proof_field(pr.identifier, "status")}
             </span>
-
-            <!-- Whose bucket each object landed in, one row per object. A
+            
+    <!-- Whose bucket each object landed in, one row per object. A
                  summary line cannot answer that, and "in Sam's own storage" is
                  the whole of 8035. -->
             <span
@@ -539,8 +596,8 @@ defmodule CodeMySpecWeb.ProvisioningLive do
             >
               {obj.location} → {proof_field(obj.identifier, "bucket")}
             </span>
-
-            <!-- Uploaded but not served is a different failure from a publish
+            
+    <!-- Uploaded but not served is a different failure from a publish
                  that never happened, and the difference is what Sam acts on
                  (8038, 8058). -->
             <span
@@ -553,8 +610,8 @@ defmodule CodeMySpecWeb.ProvisioningLive do
             >
               <span data-test="content-publish-error">{f.location}</span>
             </span>
-
-            <!-- Present and openable are asked separately because
+            
+    <!-- Present and openable are asked separately because
                  present-but-not-openable is exactly what a broken bundle looks
                  like from the outside (8040). -->
             <span
@@ -567,8 +624,8 @@ defmodule CodeMySpecWeb.ProvisioningLive do
             >
               widget check: {r.identifier}
             </span>
-
-            <!-- A script tag proves nothing. This is a message that travelled
+            
+    <!-- A script tag proves nothing. This is a message that travelled
                  from the deployed site into CodeMySpec, and `origin` is what
                  separates it from one posted by hand (8044). -->
             <span
@@ -581,8 +638,8 @@ defmodule CodeMySpecWeb.ProvisioningLive do
             >
               message from {pr.location}: {pr.identifier}
             </span>
-
-            <!-- A dump is a file until something has read it back. The step
+            
+    <!-- A dump is a file until something has read it back. The step
                  restores into a scratch database and counts the rows; that
                  count is the whole claim, so it is on the page rather than
                  folded into "done" (8054). -->
@@ -590,8 +647,15 @@ defmodule CodeMySpecWeb.ProvisioningLive do
               :for={pr <- Enum.filter(step.resources, &(&1.kind == "restore_proof"))}
               data-test="backup-restore-proof"
               data-target={pr.location}
-              data-rows={pr.identifier |> String.split(" ") |> hd() |> String.replace_prefix("rows=", "")}
-              data-completed-at={pr.identifier |> String.split(" ") |> List.last() |> String.replace_prefix("proven_at=", "")}
+              data-rows={
+                pr.identifier |> String.split(" ") |> hd() |> String.replace_prefix("rows=", "")
+              }
+              data-completed-at={
+                pr.identifier
+                |> String.split(" ")
+                |> List.last()
+                |> String.replace_prefix("proven_at=", "")
+              }
               data-content-verified={
                 pr.identifier
                 |> String.split(" ")
@@ -604,8 +668,8 @@ defmodule CodeMySpecWeb.ProvisioningLive do
             >
               restored into {pr.location}: {pr.identifier}
             </span>
-
-            <!-- Retention is enforced by the bucket's own lifecycle rule, not
+            
+    <!-- Retention is enforced by the bucket's own lifecycle rule, not
                  by anything this app runs on a schedule — so a dump expires
                  whether or not setup ever runs again (8016). -->
             <span
@@ -617,8 +681,8 @@ defmodule CodeMySpecWeb.ProvisioningLive do
             >
               dumps expire after {r.location}
             </span>
-
-            <!-- The deploy's phases, from the recorded resources: migration
+            
+    <!-- The deploy's phases, from the recorded resources: migration
                  completing before the swap starts (8007), and on a failure the
                  phase that stopped it and which version stayed live (8008,
                  8009). -->
@@ -632,8 +696,8 @@ defmodule CodeMySpecWeb.ProvisioningLive do
             >
               {ph.location} at {ph.identifier}
             </span>
-
-            <!-- The image the deploy runs, and whether this deploy built it.
+            
+    <!-- The image the deploy runs, and whether this deploy built it.
                  `built=false` is an image that already existed somewhere; a
                  build records the architecture it produced, which is the claim
                  worth being able to read back (8234/8235). -->
@@ -641,15 +705,17 @@ defmodule CodeMySpecWeb.ProvisioningLive do
               :for={img <- Enum.filter(step.resources, &(&1.kind == "published_image"))}
               data-test="published-image"
               data-image={img.location}
-              data-built={img.identifier |> String.split(" ") |> hd() |> String.replace_prefix("built=", "")}
+              data-built={
+                img.identifier |> String.split(" ") |> hd() |> String.replace_prefix("built=", "")
+              }
               data-architecture={image_architecture(img)}
               data-registry={img.location |> String.split("/") |> hd()}
               class="mt-1 block text-xs font-mono opacity-70"
             >
               image {img.location}
             </span>
-
-            <!-- The box the image was built on. It exists for one build and is
+            
+    <!-- The box the image was built on. It exists for one build and is
                  destroyed either way (8236/8237); `booted_from` is the
                  pre-warmed image, so no deploy pays to install the toolchain
                  again (8239). -->
@@ -663,8 +729,8 @@ defmodule CodeMySpecWeb.ProvisioningLive do
             >
               built on {b.location}, destroyed after
             </span>
-
-            <!-- Enforced by the registry bucket's own lifecycle rule, so old
+            
+    <!-- Enforced by the registry bucket's own lifecycle rule, so old
                  images expire whether or not setup ever runs again (8241). -->
             <span
               :for={r <- Enum.filter(step.resources, &(&1.kind == "image_retention"))}
@@ -680,9 +746,21 @@ defmodule CodeMySpecWeb.ProvisioningLive do
               :for={dv <- Enum.filter(step.resources, &(&1.kind == "deployed_version"))}
               data-test="deployed-version"
               data-image={dv.location}
-              data-commit={dv.identifier |> String.split(" ") |> hd() |> String.replace_prefix("commit=", "")}
-              data-source={dv.identifier |> String.split(" ") |> List.last() |> String.replace_prefix("source=", "")}
-              data-image-source={dv.identifier |> String.split(" ") |> List.last() |> String.replace_prefix("source=", "")}
+              data-commit={
+                dv.identifier |> String.split(" ") |> hd() |> String.replace_prefix("commit=", "")
+              }
+              data-source={
+                dv.identifier
+                |> String.split(" ")
+                |> List.last()
+                |> String.replace_prefix("source=", "")
+              }
+              data-image-source={
+                dv.identifier
+                |> String.split(" ")
+                |> List.last()
+                |> String.replace_prefix("source=", "")
+              }
               class="mt-1 block text-xs font-mono opacity-70"
             >
               shipped {dv.location}
@@ -714,8 +792,8 @@ defmodule CodeMySpecWeb.ProvisioningLive do
             >
               {step.provider_error}
             </p>
-
-            <!-- The commit that actually landed. The step is proven by a
+            
+    <!-- The commit that actually landed. The step is proven by a
                  push rather than by the repository existing (8183), and an
                  empty repository is exactly what "it exists" looks like when
                  the push failed. -->
@@ -727,8 +805,8 @@ defmodule CodeMySpecWeb.ProvisioningLive do
             >
               pushed {String.slice(commit.location, 0, 12)}
             </div>
-
-            <!-- The firewall's inbound rules, from the deterministic rule set:
+            
+    <!-- The firewall's inbound rules, from the deterministic rule set:
                  only the web ports and key-only SSH face the internet, and the
                  database port never does (criterion 8004). Rendered when the
                  server step has recorded its firewall. -->
@@ -773,8 +851,8 @@ defmodule CodeMySpecWeb.ProvisioningLive do
             >
               monitoring {m.location}
             </span>
-
-            <!-- Confirmed by asking a public resolver, which is the only check that
+            
+    <!-- Confirmed by asking a public resolver, which is the only check that
                  distinguishes a working record from one that merely exists. -->
             <span
               :for={v <- Enum.filter(step.resources, &(&1.kind == "dns_verification"))}
@@ -786,8 +864,8 @@ defmodule CodeMySpecWeb.ProvisioningLive do
             >
               {v.location} resolves
             </span>
-
-            <!-- One row per environment's record, so "each environment resolves to
+            
+    <!-- One row per environment's record, so "each environment resolves to
                  its own server" is readable off the page rather than inferred. -->
             <span
               :for={record <- Enum.filter(step.resources, &(&1.kind == "dns_record"))}
@@ -840,7 +918,11 @@ defmodule CodeMySpecWeb.ProvisioningLive do
         the same as a bucket you can get your file out of again.
       </p>
 
-      <form data-test="storage-probe-form" phx-submit="storage_probe" class="mt-3 flex flex-wrap gap-2 items-end">
+      <form
+        data-test="storage-probe-form"
+        phx-submit="storage_probe"
+        class="mt-3 flex flex-wrap gap-2 items-end"
+      >
         <label class="form-control">
           <span class="label-text">Environment</span>
           <select name="probe[environment]" class="select select-bordered">
@@ -945,7 +1027,9 @@ defmodule CodeMySpecWeb.ProvisioningLive do
         data-dkim={@mail_send_result.dkim}
         data-domain={@mail_send_result.domain}
       >
-        sent from {@mail_send_result.from}: {if @mail_send_result.accepted, do: "accepted", else: "refused"}
+        sent from {@mail_send_result.from}: {if @mail_send_result.accepted,
+          do: "accepted",
+          else: "refused"}
       </div>
 
       <%!-- Sending is only half of it. A domain you can send from but not
@@ -961,7 +1045,11 @@ defmodule CodeMySpecWeb.ProvisioningLive do
         Re-check DNS
       </.button>
 
-      <div :if={@mail.missing_records != []} data-test="dns-record-deleted" data-name={List.first(@mail.missing_records)}>
+      <div
+        :if={@mail.missing_records != []}
+        data-test="dns-record-deleted"
+        data-name={List.first(@mail.missing_records)}
+      >
         a record this domain needs is no longer published: {Enum.join(@mail.missing_records, ", ")}
       </div>
     </section>
@@ -1024,7 +1112,6 @@ defmodule CodeMySpecWeb.ProvisioningLive do
       >
         {@mail_inbound_result.summary}
       </div>
-
     </section>
 
     <%!-- Environments never share a server (966/8156). That is invisible from
@@ -1292,12 +1379,12 @@ defmodule CodeMySpecWeb.ProvisioningLive do
 
     saved =
       Credentials.catalogue()
-      |> Enum.filter(&(&1.kind == :secret))
       |> Enum.filter(fn field ->
-        case Map.get(values, field.key) do
-          value when is_binary(value) -> String.trim(value) != ""
-          _ -> false
-        end
+        field.kind == :secret and
+          case Map.get(values, field.key) do
+            value when is_binary(value) -> String.trim(value) != ""
+            _ -> false
+          end
       end)
       |> Enum.map(fn field ->
         ProjectSecrets.put_value(scope, field.key, String.trim(Map.fetch!(values, field.key)))
@@ -1348,45 +1435,7 @@ defmodule CodeMySpecWeb.ProvisioningLive do
       {:ok, credentials} ->
         bucket = Storage.bucket_name(project(scope), environment)
 
-        {objects, readbacks} =
-          case Storage.put_object(bucket, key, content, credentials) do
-            :ok ->
-              object = %{key: key, environment: environment, bucket: bucket}
-
-              readback =
-                case Storage.get_object(bucket, key, credentials) do
-                  {:ok, ^content} ->
-                    %{key: key, environment: environment, status: "200", matches: true, reason: nil}
-
-                  {:ok, _other} ->
-                    %{key: key, environment: environment, status: "200", matches: false, reason: "bytes differ"}
-
-                  {:error, reason} ->
-                    %{
-                      key: key,
-                      environment: environment,
-                      status: "error",
-                      matches: false,
-                      reason: format_probe_error(reason)
-                    }
-                end
-
-              {[object], [readback]}
-
-            # The provider's own words, not "error". A probe that failed
-            # without saying why sends Sam to look at a bucket that is fine.
-            {:error, reason} ->
-              {[],
-               [
-                 %{
-                   key: key,
-                   environment: environment,
-                   status: "error",
-                   matches: false,
-                   reason: format_probe_error(reason)
-                 }
-               ]}
-          end
+        {objects, readbacks} = storage_probe(bucket, key, content, credentials, environment)
 
         {:noreply,
          socket
@@ -1490,41 +1539,8 @@ defmodule CodeMySpecWeb.ProvisioningLive do
   end
 
   def handle_event("widget_degradation_probe", _params, socket) do
-    site =
-      case socket.assigns.project.domain do
-        name when is_binary(name) and name != "" -> "https://#{name}"
-        _ -> nil
-      end
-
-    result =
-      case site && Widget.probe_degraded(site, []) do
-        {:ok, probe} ->
-          %{
-            page_status: to_string(probe[:page_status] || probe["page_status"]),
-            page_usable: probe[:page_usable] || probe["page_usable"],
-            widget_state: probe[:widget_state] || probe["widget_state"],
-            console_errors: "0",
-            summary: "the page served without the widget"
-          }
-
-        {:error, probe} ->
-          %{
-            page_status: to_string(probe[:page_status] || probe["page_status"]),
-            page_usable: false,
-            widget_state: probe[:widget_state] || "unknown",
-            console_errors: nil,
-            summary: "the page did not serve"
-          }
-
-        _ ->
-          %{
-            page_status: nil,
-            page_usable: false,
-            widget_state: "unknown",
-            console_errors: nil,
-            summary: "no domain set on the project — nothing to probe"
-          }
-      end
+    site = site_url(socket.assigns.project.domain)
+    result = widget_degradation(site && Widget.probe_degraded(site, []))
 
     {:noreply, assign(socket, :widget_degradation, result)}
   end
@@ -1695,6 +1711,7 @@ defmodule CodeMySpecWeb.ProvisioningLive do
             socket.assigns.options,
             step_opts()
           )
+
         {:noreply, assign(socket, halted_at: nil, halt_reason: nil)}
 
       missing ->
@@ -1792,7 +1809,8 @@ defmodule CodeMySpecWeb.ProvisioningLive do
     # safeguard and an obstacle.
     case Provisioning.run_step(scope, :dns, step_opts() ++ [confirm_apex_repoint: true]) do
       {:ok, _} ->
-        {:noreply, socket |> assign(:current_scope, reload_project(scope)) |> load(socket.assigns.options)}
+        {:noreply,
+         socket |> assign(:current_scope, reload_project(scope)) |> load(socket.assigns.options)}
 
       {:halt, _, reason} ->
         {:noreply, socket |> load(socket.assigns.options) |> assign(halt_reason: reason)}
@@ -1805,8 +1823,12 @@ defmodule CodeMySpecWeb.ProvisioningLive do
     # Adopt the repository that collided: re-run the step forcing adoption,
     # which is the choice Sam just made rather than one setup made for him.
     case Provisioning.run_step(scope, :repository, step_opts() ++ [adopt: true]) do
-      {:ok, _} -> {:noreply, socket |> assign(:current_scope, reload_project(scope)) |> load(socket.assigns.options)}
-      {:halt, _, reason} -> {:noreply, socket |> load(socket.assigns.options) |> assign(halt_reason: reason)}
+      {:ok, _} ->
+        {:noreply,
+         socket |> assign(:current_scope, reload_project(scope)) |> load(socket.assigns.options)}
+
+      {:halt, _, reason} ->
+        {:noreply, socket |> load(socket.assigns.options) |> assign(halt_reason: reason)}
     end
   end
 
@@ -1814,7 +1836,9 @@ defmodule CodeMySpecWeb.ProvisioningLive do
     # Naming a different repository is a project edit — send Sam to the
     # project form rather than inventing a suffix on his behalf.
     {:noreply,
-     push_navigate(socket, to: ~p"/app/projects/#{socket.assigns.current_scope.active_project.id}/edit")}
+     push_navigate(socket,
+       to: ~p"/app/projects/#{socket.assigns.current_scope.active_project.id}/edit"
+     )}
   end
 
   def handle_event("check_credentials", _params, socket) do
@@ -1903,7 +1927,8 @@ defmodule CodeMySpecWeb.ProvisioningLive do
     scope = socket.assigns.current_scope
     known = Map.new(socket.assigns.credentials, &{&1.key, &1})
 
-    credentials = Enum.map(Credentials.list(scope), &carry_known_state(&1, Map.get(known, &1.key)))
+    credentials =
+      Enum.map(Credentials.list(scope), &carry_known_state(&1, Map.get(known, &1.key)))
 
     socket
     |> assign(:credentials, credentials)
@@ -2077,7 +2102,10 @@ defmodule CodeMySpecWeb.ProvisioningLive do
     |> assign_new(:missing_credentials, fn ->
       Credentials.missing(socket.assigns.current_scope)
     end)
-    |> assign(:sops_recipients, Steps.recipients(socket.assigns.current_scope, environments(socket.assigns.current_scope)))
+    |> assign(
+      :sops_recipients,
+      Steps.recipients(socket.assigns.current_scope, environments(socket.assigns.current_scope))
+    )
     |> assign(:age_key_environments, age_key_environments(socket.assigns.current_scope))
     |> assign(:secret_sources, secret_sources(socket.assigns.current_scope))
     |> assign_new(:secret_error, fn -> nil end)
@@ -2317,6 +2345,95 @@ defmodule CodeMySpecWeb.ProvisioningLive do
 
   defp step_opts do
     Application.get_env(:code_my_spec, :provisioning_step_opts, [])
+  end
+
+  defp site_url(name) when is_binary(name) and name != "", do: "https://#{name}"
+  defp site_url(_domain), do: nil
+
+  # Split into clauses rather than one `case` of map literals. Each field was
+  # read as `probe[:key] || probe["key"]`, and eight of those in one body is
+  # eight branches — the handler measured at complexity 13 for what is really
+  # three outcomes.
+  defp widget_degradation({:ok, probe}) do
+    %{
+      page_status: to_string(probe_field(probe, :page_status)),
+      page_usable: probe_field(probe, :page_usable),
+      widget_state: probe_field(probe, :widget_state),
+      console_errors: "0",
+      summary: "the page served without the widget"
+    }
+  end
+
+  defp widget_degradation({:error, probe}) do
+    %{
+      page_status: to_string(probe_field(probe, :page_status)),
+      page_usable: false,
+      widget_state: probe_field(probe, :widget_state) || "unknown",
+      console_errors: nil,
+      summary: "the page did not serve"
+    }
+  end
+
+  defp widget_degradation(_no_site) do
+    %{
+      page_status: nil,
+      page_usable: false,
+      widget_state: "unknown",
+      console_errors: nil,
+      summary: "no domain set on the project — nothing to probe"
+    }
+  end
+
+  # Atom keys when the probe came from our own code, string keys once it has
+  # been through JSON. The page cannot tell which it is holding.
+  defp probe_field(probe, key), do: Map.get(probe, key) || Map.get(probe, Atom.to_string(key))
+
+  # Write, then read back. One operation from the page's point of view: either
+  # the object landed and came back byte-identical, or there is a reason it did
+  # not. Extracted from the handler, which was three levels deep in nested
+  # `case` and hid that shape.
+  defp storage_probe(bucket, key, content, credentials, environment) do
+    case Storage.put_object(bucket, key, content, credentials) do
+      :ok ->
+        object = %{key: key, environment: environment, bucket: bucket}
+        {[object], [storage_readback(bucket, key, content, credentials, environment)]}
+
+      # The provider's own words, not "error". A probe that failed without
+      # saying why sends Sam to look at a bucket that is fine.
+      {:error, reason} ->
+        {[], [probe_failure(key, environment, reason)]}
+    end
+  end
+
+  # "Matches" is the claim, so a 200 carrying different bytes is a failure and
+  # says so rather than reading as a successful read.
+  defp storage_readback(bucket, key, content, credentials, environment) do
+    case Storage.get_object(bucket, key, credentials) do
+      {:ok, ^content} ->
+        %{key: key, environment: environment, status: "200", matches: true, reason: nil}
+
+      {:ok, _other} ->
+        %{
+          key: key,
+          environment: environment,
+          status: "200",
+          matches: false,
+          reason: "bytes differ"
+        }
+
+      {:error, reason} ->
+        probe_failure(key, environment, reason)
+    end
+  end
+
+  defp probe_failure(key, environment, reason) do
+    %{
+      key: key,
+      environment: environment,
+      status: "error",
+      matches: false,
+      reason: format_probe_error(reason)
+    }
   end
 
   # The deploy step renders its provider error a second time as `boot-failure`,
@@ -2567,7 +2684,7 @@ defmodule CodeMySpecWeb.ProvisioningLive do
     end
   end
 
-  defp firewall_rules, do: CodeMySpec.Provisioning.Hetzner.default_firewall_rules()
+  defp firewall_rules, do: Hetzner.default_firewall_rules()
 
   defp availability_label(%{availability: :available}), do: "available"
   defp availability_label(%{availability: :taken}), do: "taken"
@@ -2620,7 +2737,6 @@ defmodule CodeMySpecWeb.ProvisioningLive do
   defp credential_badge(%{kind: :connection}), do: "not connected"
   defp credential_badge(_), do: "not set"
 
-
   # Every option any step declares, in sequence order and without duplicates,
   # so the toggles are derived from the sequence rather than a second list
   # that could fall out of step with it.
@@ -2628,5 +2744,4 @@ defmodule CodeMySpecWeb.ProvisioningLive do
   # sequence and now also persists against it, and two lists that must agree
   # eventually do not.
   defp available_options, do: Provisioning.available_options()
-
 end
