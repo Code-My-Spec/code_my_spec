@@ -22,7 +22,6 @@ defmodule CodeMySpecSpex.Story996.Criterion8329Spex do
   # call site rather than shadowing either.
   import Phoenix.ChannelTest, except: [push: 3, assert_reply: 3]
 
-  alias CodeMySpec.Conversations
 
   @endpoint CodeMySpecWeb.Endpoint
 

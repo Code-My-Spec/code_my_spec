@@ -20,6 +20,8 @@ defmodule CodeMySpecSpex.Story960.Criterion8334Spex do
   # own push/3 and assert_reply/3. The channel's are qualified at the call site.
   import Phoenix.ChannelTest, except: [push: 3, assert_reply: 3]
 
+  alias CodeMySpecSpex.Fixtures
+
   @endpoint CodeMySpecWeb.Endpoint
 
   setup :register_log_in_setup_account
@@ -56,8 +58,8 @@ defmodule CodeMySpecSpex.Story960.Criterion8334Spex do
       end
 
       when_ "a teammate on the same account opens that conversation", context do
-        teammate = CodeMySpec.UsersFixtures.user_fixture()
-        CodeMySpec.AccountsFixtures.member_fixture(teammate, context.account, :member)
+        teammate = Fixtures.user_fixture()
+        Fixtures.member_fixture(teammate, context.account, :member)
         mate_conn = log_in_user(build_conn(), teammate)
 
         {:ok, inbox, _html} = live(mate_conn, inbox_path(context.project))

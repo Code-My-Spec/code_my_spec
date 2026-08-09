@@ -22,7 +22,6 @@ defmodule CodeMySpecSpex.Story996.Criterion8328Spex do
   # call site rather than shadowing either.
   import Phoenix.ChannelTest, except: [push: 3, assert_reply: 3]
 
-  alias CodeMySpec.Conversations
 
   @endpoint CodeMySpecWeb.Endpoint
 
@@ -51,7 +50,6 @@ defmodule CodeMySpecSpex.Story996.Criterion8328Spex do
 
         Phoenix.ChannelTest.assert_reply(ref, :ok, _)
 
-        conversation = Conversations.get_agent_conversation(context.scope, context.project.id)
         {:ok, Map.put(context, :first_socket, socket)}
       end
 

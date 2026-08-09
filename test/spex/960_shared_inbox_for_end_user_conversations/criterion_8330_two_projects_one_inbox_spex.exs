@@ -20,6 +20,8 @@ defmodule CodeMySpecSpex.Story960.Criterion8330Spex do
   # own push/3 and assert_reply/3. The channel's are qualified at the call site.
   import Phoenix.ChannelTest, except: [push: 3, assert_reply: 3]
 
+  alias CodeMySpecSpex.Fixtures
+
   @endpoint CodeMySpecWeb.Endpoint
 
   setup :register_log_in_setup_account
@@ -40,7 +42,7 @@ defmodule CodeMySpecSpex.Story960.Criterion8330Spex do
   spex "One queue across the account" do
     scenario "Two projects, one inbox" do
       given_ "visitors have written in from two of Sam's projects", context do
-        other = CodeMySpec.ProjectsFixtures.project_fixture(context.scope)
+        other = Fixtures.project_fixture(context.scope)
 
         {:ok, _, first} = join_widget(context.project.id, "eu-p1", "p1@example.com")
 
