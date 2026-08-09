@@ -31,6 +31,14 @@ defmodule CodeMySpec.SpexGivensTest do
   # precondition true in the only way available — the provider is the thing
   # that decides, and the seam is how a criterion about *display* avoids
   # buying a machine to say so.
+  # A channel is a public surface too. The widget half of a support conversation
+  # has no other one — there is no page to mount, so joining the socket and
+  # pushing to it IS driving the app. `join_widget` is listed by the same
+  # precedent as `stage_`: a helper whose whole body is the drive.
+  #
+  # Nothing may be commented *inside* the sigil — ~w has no comments, so a `#`
+  # line becomes literal words like "a" and "is", which match every body and
+  # silently disable the whole check.
   @establishes ~w(
     Fixtures. live( render_click render_submit render_change element(
     post( put( patch( delete( with_provider_cassette mount_provisioning
@@ -41,6 +49,7 @@ defmodule CodeMySpec.SpexGivensTest do
     connect_providers tear_down_after Environments. File.write File.mkdir
     System.cmd assign put_session
     stage_ scripted_run built_deploy_run devops_on
+    subscribe_and_join ChannelTest. join_widget
   )
 
   # The failure message has always offered a second remedy — "if the
@@ -82,8 +91,6 @@ defmodule CodeMySpec.SpexGivensTest do
     "test/spex/686_ai_assisted_story_management/criterion_5912_agent_creates_and_applies_a_tag_spex.exs",
     "test/spex/688_always_fresh_project_documentation_search/criterion_5973_the_agents_mcp_tool_list_does_not_expose_embed_docs_spex.exs",
     "test/spex/689_always_fresh_hex_documentation_search/criterion_5981_the_agents_mcp_tool_list_does_not_expose_embed_hexdocs_spex.exs",
-    "test/spex/700_onboarding_workflow_guides_me_from_signup_to_the_local_application/criterion_6054_user_with_all_server_side_setup_done_has_application_as_the_active_step_spex.exs",
-    "test/spex/700_onboarding_workflow_guides_me_from_signup_to_the_local_application/criterion_6058_active_application_step_opens_the_local_workspace_in_a_new_tab_spex.exs",
     "test/spex/70_architecture_design/criterion_5289_architect_links_every_unsatisfied_story_to_at_least_one_component_spex.exs",
     "test/spex/70_architecture_design/criterion_5290_architect_leaves_an_unsatisfied_story_without_any_component_link_spex.exs",
     "test/spex/70_architecture_design/criterion_5313_architect_declares_a_dependency_on_a_component_that_does_not_exist_spex.exs",
@@ -113,7 +120,6 @@ defmodule CodeMySpec.SpexGivensTest do
     "test/spex/812_analytics_tracking_and_traffic_filtering/criterion_6536_register_and_onboarding_mounts_fire_their_gtag_behavior_events_spex.exs",
     "test/spex/812_analytics_tracking_and_traffic_filtering/criterion_6539_server_mp_conversions_carry_the_gtag_session_id_from_the_ga_session_cookie_spex.exs",
     "test/spex/815_sam_sends_and_receives_messages_with_his_users/criterion_6576_user_sees_only_their_own_conversation_spex.exs",
-    "test/spex/815_sam_sends_and_receives_messages_with_his_users/criterion_6577_cross-user_access_is_denied_spex.exs",
     "test/spex/817_manage_google_ads_through_the_agent/criterion_6602_an_unconnected_account_prompts_the_user_to_connect_google_spex.exs",
     "test/spex/983_spec_failures_block_only_stories_whose_specs_have_gone_green/criterion_8161_a_later_edit_stales_the_spex_run_without_un-readying_the_story_spex.exs",
     "test/spex/983_spec_failures_block_only_stories_whose_specs_have_gone_green/criterion_8168_reaching_specs-ready_releases_qa_on_the_story_spex.exs"

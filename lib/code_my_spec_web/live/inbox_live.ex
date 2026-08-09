@@ -378,6 +378,7 @@ defmodule CodeMySpecWeb.InboxLive do
               :for={message <- @messages}
               data-test="message"
               data-role={message.role}
+              data-sender-id={message.sender_id}
               class={["chat", chat_side(message.role)]}
             >
               <div class="chat-header text-xs opacity-60">{sender_label(message.role)}</div>
