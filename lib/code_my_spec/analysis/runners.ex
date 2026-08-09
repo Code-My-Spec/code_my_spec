@@ -353,7 +353,19 @@ defmodule CodeMySpec.Analysis.Runners do
 
   def spex_location(error) do
     case spec_frame(error.stacktrace) do
-      nil -> {error.file, error.line}
+      # No spec frame at all — a raise from a setup block, a shared fixture, or
+      # a plug, with nothing in the trace naming the spec that was running.
+      #
+      # This used to fall back to `error.file`, on the reasoning that filing it
+      # somewhere beat filing it nowhere. That was wrong, and it recurred with
+      # the fix in place: `ReqCassette.Plug` raised from a cassette miss and two
+      # spex failures were filed at `lib/req_cassette/plug.ex:481` — no story,
+      # no criterion, and blocking for whoever next touches the plug. Which is
+      # the whole defect the location rule was written to remove.
+      #
+      # A spex failure belongs to a spec or to no file. Saying "somewhere" when
+      # the somewhere is wrong is the louder version of saying nothing.
+      nil -> {nil, nil}
       frame -> {frame_get(frame, "file"), frame_get(frame, "line")}
     end
   end
