@@ -19,11 +19,12 @@ defmodule CodeMySpec.Analysis.RunsRepository do
 
   @doc "Insert a new `:running` run stamped with its enqueue-time fingerprint."
   @spec start_run(Scope.t(), map()) :: {:ok, Run.t()} | {:error, Ecto.Changeset.t()}
-  def start_run(%Scope{active_project_id: project_id}, attrs) do
+  def start_run(%Scope{active_project_id: project_id} = scope, attrs) do
     %Run{}
     |> Run.changeset(
       attrs
       |> Map.put(:project_id, project_id)
+      |> Map.put(:harness_id, scope.active_harness_id)
       |> Map.put_new(:status, :running)
       |> Map.put_new(:started_at, DateTime.utc_now())
     )
@@ -90,25 +91,35 @@ defmodule CodeMySpec.Analysis.RunsRepository do
   nobody is waiting for.
   """
   @spec get_running_run(Scope.t(), integer()) :: Run.t() | nil
-  def get_running_run(%Scope{active_project_id: project_id}, run_id) do
+  def get_running_run(%Scope{active_project_id: project_id} = scope, run_id) do
     Run
     |> where([r], r.id == ^run_id and r.project_id == ^project_id and r.status == :running)
+    |> where([r], r.harness_id == ^scope.active_harness_id)
     |> Repo.one()
   end
 
   @doc """
-  Mark every `:running` run of this project `:failed`.
+  Mark every `:running` run of this *working copy* `:failed`.
 
-  For the moment a project's remote executor provably cannot answer any of them:
-  its channel closed, or a new one joined and the old queue is gone.
+  For the moment its remote executor provably cannot answer them: its channel
+  closed, or a new one joined and the old queue is gone.
+
+  Scoped to the harness, because "provably cannot answer" is a claim about one
+  working copy. Scoped to the project it also failed every other checkout's
+  in-flight runs — and with a worktree per branch, a join from any harness
+  killed everyone else's work. Their analyzers then answered rows that were no
+  longer `:running` and were told `unknown_run`. 285 results sent, 0 accepted,
+  and `bdd_specs_passing` unsatisfiable for every story, because the only
+  evidence that can satisfy it is a result that could never be recorded.
   """
   @spec fail_running(Scope.t(), term()) :: {:ok, non_neg_integer()}
-  def fail_running(%Scope{active_project_id: project_id}, reason) do
+  def fail_running(%Scope{active_project_id: project_id} = scope, reason) do
     now = DateTime.utc_now()
 
     {count, _} =
       Run
       |> where([r], r.project_id == ^project_id and r.status == :running)
+      |> where([r], r.harness_id == ^scope.active_harness_id)
       |> Repo.update_all(
         set: [
           status: :failed,
