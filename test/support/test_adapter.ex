@@ -173,7 +173,24 @@ defmodule CodeMySpec.Support.TestAdapter do
     end
   end
 
-  defp pull_repo(fixture_path) do
+  # Every checkout on this machine pulls the *same* fixture clone, so two agents
+  # running `mix test` at once land in one another's fetch. That surfaced as
+  # `fatal: Cannot rebase onto multiple branches` and took the whole suite down
+  # before a single test ran — a message with nothing to do with the code under
+  # test, on a run that would have passed.
+  #
+  # Same shape as the shared test database, and the same fix is not available:
+  # the clone is expensive and deliberately shared. So: retry, and if it still
+  # will not pull, distinguish the two things the failure could mean. A fixture
+  # that is *absent* is fatal — there is nothing to test against. A fixture that
+  # is present at a good commit and merely could not be *refreshed* is a stale
+  # fixture, which is a different and much smaller problem than no fixture.
+  #
+  # Loud either way. The one outcome worth ruling out is a silent pass on a
+  # fixture nobody knows is old.
+  @pull_attempts 3
+
+  defp pull_repo(fixture_path, attempt \\ 1) do
     case System.cmd("git", ["pull", "--recurse-submodules"],
            cd: fixture_path,
            stderr_to_stdout: true
@@ -196,13 +213,55 @@ defmodule CodeMySpec.Support.TestAdapter do
             """
         end
 
+      {_output, _code} when attempt < @pull_attempts ->
+        Process.sleep(attempt * 500)
+        pull_repo(fixture_path, attempt + 1)
+
       {output, code} ->
-        raise """
-        Failed to pull fixture repository.
-        Path: #{fixture_path}
+        sha =
+          usable_commit(fixture_path) ||
+            raise """
+            Failed to pull fixture repository, and it is not usable as it stands.
+            Path: #{fixture_path}
+            Exit code: #{code}
+            Output: #{output}
+            """
+
+        IO.warn("""
+        [TestAdapter] could not refresh #{fixture_path} after #{@pull_attempts} attempts \
+        — running against the commit already on disk (#{sha}).
+
         Exit code: #{code}
         Output: #{output}
-        """
+
+        Usually another checkout's `mix test` pulling this same clone at the same
+        moment. The fixture is stale rather than missing, so the suite runs; if
+        tests fail in ways the code does not explain, refresh it by hand first.
+        """)
+
+        :ok
+    end
+  end
+
+  # A commit id if the repo is on one and no merge or rebase is half-finished,
+  # nil otherwise. `git pull` failing mid-rebase leaves a tree that will fail
+  # every test for reasons that have nothing to do with the code.
+  defp usable_commit(fixture_path) do
+    interrupted? =
+      Enum.any?(
+        ~w(rebase-merge rebase-apply MERGE_HEAD CHERRY_PICK_HEAD),
+        &File.exists?(Path.join([fixture_path, ".git", &1]))
+      )
+
+    with false <- interrupted?,
+         {sha, 0} <-
+           System.cmd("git", ["rev-parse", "--short", "HEAD"],
+             cd: fixture_path,
+             stderr_to_stdout: true
+           ) do
+      String.trim(sha)
+    else
+      _ -> nil
     end
   end
 
@@ -359,9 +418,11 @@ defmodule CodeMySpec.Support.TestAdapter do
       # Clean build to ensure fresh compilation
       File.rm_rf!(Path.join(code_repo_fixture_abs, "_build"))
 
-      result = CodeMySpec.Compile.execute(
+      result =
+        CodeMySpec.Compile.execute(
           environment: CodeMySpec.Environments.Environment.new(:local, code_repo_fixture_abs)
         )
+
       save_compile_result(result, compiler_ok_cache_abs)
 
       if !File.exists?(compiler_ok_cache_abs), do: raise("Compiler OK cache failed to be created")
@@ -378,9 +439,11 @@ defmodule CodeMySpec.Support.TestAdapter do
       # Clean and recompile to get warnings
       File.rm_rf!(Path.join(code_repo_fixture_abs, "_build"))
 
-      result = CodeMySpec.Compile.execute(
+      result =
+        CodeMySpec.Compile.execute(
           environment: CodeMySpec.Environments.Environment.new(:local, code_repo_fixture_abs)
         )
+
       save_compile_result(result, compiler_warnings_cache_abs)
 
       if !File.exists?(compiler_warnings_cache_abs),
@@ -401,9 +464,11 @@ defmodule CodeMySpec.Support.TestAdapter do
       # Clean and recompile to get errors
       File.rm_rf!(Path.join(code_repo_fixture_abs, "_build"))
 
-      result = CodeMySpec.Compile.execute(
+      result =
+        CodeMySpec.Compile.execute(
           environment: CodeMySpec.Environments.Environment.new(:local, code_repo_fixture_abs)
         )
+
       save_compile_result(result, compiler_errors_cache_abs)
 
       if !File.exists?(compiler_errors_cache_abs),
