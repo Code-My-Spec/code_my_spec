@@ -86,5 +86,8 @@ defmodule CodeMySpec.Logging do
 
   defp default_path("cli"), do: "~/.codemyspec/cli.log"
   defp default_path("harness"), do: "~/.codemyspec/harness.log"
+  # Deliberately not server.log: the packaged `cms server` owns that file, and a
+  # second writer is how a log ends up with its timestamps running backwards.
+  defp default_path("web"), do: "~/.codemyspec/web.log"
   defp default_path(_), do: "~/.codemyspec/server.log"
 end

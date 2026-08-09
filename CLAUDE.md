@@ -33,15 +33,21 @@ so you always know what to work on next and in what order.
 
 ## Logs
 
-Everything lands in `~/.codemyspec/`. **There are three application logs, not
+Everything lands in `~/.codemyspec/`. **There are four application logs, not
 two** — the split is by *source process*, and grepping the wrong one reads
 exactly like "that never happened."
+
+The one that catches everybody: `server.log` is the packaged `cms server` on
+:4003. The **cloud app on :4000 — the one `mix phx.server` runs, where imports,
+scans and MCP tool calls happen — is `web.log`.** Asking `server.log` about
+:4000 returns silence, and silence is indistinguishable from a failure.
 
 ### Files
 
 | Path | Written by | Format | Contains |
 |---|---|---|---|
-| `~/.codemyspec/server.log` | `cms server` | logfmt, `src=server` | `[StopHook]`, `[Analysis]`, `[Files.ComponentSync]`, `[Validation]`, channel handlers |
+| `~/.codemyspec/server.log` | `cms server` (:4003) | logfmt, `src=server` | `[StopHook]`, `[Analysis]`, `[Files.ComponentSync]`, `[Validation]`, channel handlers |
+| `~/.codemyspec/web.log` | `mix phx.server` (:4000, dev) | logfmt, `src=web`, `inst=<os pid>` | the cloud app: migration/import, `Files` scans, `/mcp` + `/api/harnesses/…` requests, LiveView |
 | `~/.codemyspec/harness.log` | `cms harness` | logfmt, `src=harness` | **every `[CmsHarness]` line** — scans, manifests, hook refusals, reconnects, analyzer runs |
 | `~/.codemyspec/cli.log` | `cms` CLI | plain Logger (`HH:MM:SS.mmm mfa=… [level] msg`) | CLI invocations, `LocalServer`, MCP transport |
 | `~/.codemyspec/mix_phx_4004.log` | `mix phx.server` on :4004 | raw stdout | Ecto `QUERY OK` debug, LiveView, compile output |
@@ -76,13 +82,13 @@ Timeline for one window, message text only:
 
 Both sides of one incident, merged:
 
-    cat ~/.codemyspec/{server,harness}.log \
+    cat ~/.codemyspec/{server,harness,web}.log \
       | sed -E 's/^ts=([0-9T:.-]+)Z.*src=([a-z]+).*msg="([^"]*)".*/\1 \2 \3/' \
       | grep -E '^2026-08-07T18:2' | sort
 
 Errors only, any source:
 
-    grep -hE 'level=(warning|error)' ~/.codemyspec/{server,harness}.log | tail -40
+    grep -hE 'level=(warning|error)' ~/.codemyspec/{server,harness,web}.log | tail -40
 
 ### Format
 
@@ -90,7 +96,7 @@ One logfmt event per line:
 
     ts=2026-05-09T14:23:01.123Z level=info src=server req=abc123 mfa=Foo.Bar.baz/2 msg="..."
 
-Keys are stable: `ts`, `level`, `src` (`server`|`harness`), `mfa`, `msg`, plus any
+Keys are stable: `ts`, `level`, `src` (`server`|`harness`|`web`), `mfa`, `msg`, plus any
 metadata the call site attached (`request_id` shows up as `request_id=`).
 `cli.log` is **not** logfmt and carries no `src=` — parse it separately.
 Values containing spaces, `=`, `"`, or newlines are double-quoted with

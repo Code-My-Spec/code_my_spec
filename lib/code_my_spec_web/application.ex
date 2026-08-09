@@ -10,6 +10,7 @@ defmodule CodeMySpecWeb.Application do
   @impl true
   def start(_type, _args) do
     env = Application.get_env(:code_my_spec, :env, :prod)
+    maybe_install_file_logger()
 
     children =
       [
@@ -57,6 +58,23 @@ defmodule CodeMySpecWeb.Application do
     end
   end
 
+  # Alongside stdout, never instead of it: in prod that stream is what `fly logs`
+  # reads, and in dev it is the terminal the developer is watching.
+  #
+  # Without this the dev server's only log was that terminal's scrollback, which
+  # nobody but its owner can reach — so questions about :4000 got answered from
+  # server.log, a different process on a different port, and answered wrongly.
+  defp maybe_install_file_logger do
+    if Application.get_env(:code_my_spec, :install_file_logger, false) do
+      CodeMySpec.Logging.install_file_handler!(
+        source: "web",
+        instance: System.pid(),
+        handler_id: :cms_web_file,
+        replace_default: false
+      )
+    end
+  end
+
   def children(children, :dev) do
     tunnel_config = Application.get_env(:code_my_spec, :cloudflare_tunnel, [])
 
@@ -64,7 +82,8 @@ defmodule CodeMySpecWeb.Application do
       Keyword.merge(tunnel_config,
         endpoint: CodeMySpecWeb.Endpoint,
         otp_app: :code_my_spec,
-        origin_url: tunnel_config[:origin_url] || "http://127.0.0.1:#{System.get_env("PORT") || "4000"}"
+        origin_url:
+          tunnel_config[:origin_url] || "http://127.0.0.1:#{System.get_env("PORT") || "4000"}"
       )
 
     children ++ [{ClientUtils.CloudflareTunnel, tunnel_opts}]

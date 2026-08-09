@@ -110,6 +110,10 @@ config :code_my_spec, dev_routes: true
 # Do not include metadata nor timestamps in development logs
 config :logger, :default_formatter, format: "[$level] $message\n"
 
+# ...but keep a full logfmt copy in ~/.codemyspec/web.log, because the terminal
+# above belongs to whoever started the server and an agent cannot read it.
+config :code_my_spec, install_file_logger: true
+
 # Set a higher stacktrace during development. Avoid configuring such
 # in production as building large stacktraces may be expensive.
 config :phoenix, :stacktrace_depth, 20
@@ -134,4 +138,3 @@ config :code_my_spec, :cloudflare_tunnel,
   tunnel_id: "12a798a4-81a3-4242-8b59-ac171c0a01a1",
   account_tag: "6477547f586ec90db2c2a0081dcd98bd",
   origin_url: "http://127.0.0.1:4000"
-
