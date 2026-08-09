@@ -758,6 +758,33 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         prerequisites: [3],
         execution_type: :sub_agent,
         subagent_role: :qa
+      }),
+      # Criterion 1963: the loop's next work after QA clears is the UAT deploy.
+      #
+      # This node was removed in d207ad38 along with `devops_setup` and
+      # `release`, because it gated on a markdown file the agent wrote for
+      # itself and checked for the substring "verified". It reads
+      # `CodeMySpec.Deploys` now — a row written when a deploy happens, whose
+      # `health_verified_at` only a passing check sets. A story cannot satisfy
+      # this by asserting it.
+      #
+      # UAT only. Prod promotion belongs to the release process, which is the
+      # other half of the same criterion.
+      #
+      # Filtered out entirely when the project's `devops` setting is `:off`,
+      # which is the default — see `maybe_filter_devops/2`. A project that does
+      # not do infrastructure through this tool never sees the node.
+      new!(%{
+        id: 5,
+        name: "deploy",
+        node_scope: :self,
+        check_type: :delegate,
+        config: %{module: CodeMySpec.Deploys, function: :uat_check},
+        satisfied_by: AgentTasks.Deploy,
+        artifact_type: :deployment,
+        description: "Story is deployed to UAT and its health check passed",
+        prerequisites: [4],
+        execution_type: :main_agent
       })
     ]
   end

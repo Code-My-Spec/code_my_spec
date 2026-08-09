@@ -1134,10 +1134,20 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     |> maybe_filter_devops(config)
   end
 
-  # `devops_setup`, `deploy` and `release` are gone from the graph, so there is
-  # nothing left to filter. Kept as an identity rather than deleted because
-  # `devops` is still a real configuration setting that drives the provisioning
-  # UI and the agent tasks — it just no longer decides requirement nodes.
+  # `deploy` is back, reading `CodeMySpec.Deploys` rather than a markdown file
+  # the agent wrote for itself — which is why it came out (d207ad38) and what
+  # had to change before it could return.
+  #
+  # `devops: :off` is the default, so for most projects this filter is what
+  # keeps the graph silent about infrastructure (criterion 1970). Absent, not
+  # present-and-skipped: a greyed-out step still reads as part of the run.
+  #
+  # `devops_setup` and `release` remain out. Setup is answered by
+  # `devops_status` against the providers, and release has no read model yet.
+  defp maybe_filter_devops(definitions, %{devops: :off}) do
+    Enum.reject(definitions, &(&1.artifact_type == :deployment))
+  end
+
   defp maybe_filter_devops(definitions, _config), do: definitions
 
   defp maybe_filter_specs(definitions, %{require_specs: false}) do

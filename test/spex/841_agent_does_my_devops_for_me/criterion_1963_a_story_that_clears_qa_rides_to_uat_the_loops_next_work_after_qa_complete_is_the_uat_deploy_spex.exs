@@ -27,7 +27,7 @@ defmodule CodeMySpecSpex.Story841.Criterion1963Spex do
   use CodeMySpecSpex.Case
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
+  alias CodeMySpec.McpServers.Requirements.Tools.ShowStoryRequirements
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -40,15 +40,37 @@ defmodule CodeMySpecSpex.Story841.Criterion1963Spex do
         # `qa_complete` is satisfied by a DB-backed pass attempt and nothing
         # else — a story that merely says it passed does not clear the gate the
         # criterion starts from.
-        story = CodeMySpecSpex.Fixtures.story_fixture(context.scope, %{title: "Story 841 rides to UAT"})
+        # Linked to a component, because a story with none instantiates no
+        # requirement graph at all and the question has nowhere to land.
+        component =
+          CodeMySpecSpex.ComponentHelpers.create(context.scope,
+            type: "context",
+            module_name: "Story841.RidesToUat",
+            name: "Story841 Rides To Uat"
+          )
+
+        story =
+          CodeMySpecSpex.Fixtures.story_fixture(context.scope, %{
+            title: "Story 841 rides to UAT",
+            component_id: component.id
+          })
+
         CodeMySpecSpex.Fixtures.passed_qa_attempt(context.scope, story_id: story.id)
 
         {:ok, Map.put(context, :story, story)}
       end
 
-      when_ "the loop asks for its next work", context do
+      when_ "the loop asks what is outstanding on that story", context do
+        # The story's own chain rather than `get_next_requirement`. Global
+        # priority answers "what should anyone do next on this project", which
+        # in a fresh fixture is project setup — true, and not what this
+        # criterion is about. The claim is about what comes after QA *on this
+        # story*.
         {:reply, response, _frame} =
-          GetNextRequirement.execute(%{}, %Frame{assigns: %{current_scope: context.scope}})
+          ShowStoryRequirements.execute(
+            %{story: to_string(context.story.id)},
+            %Frame{assigns: %{current_scope: context.scope}}
+          )
 
         {:ok, Map.put(context, :next, response_text(response))}
       end

@@ -18,6 +18,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinition do
           | :tests
           | :dependencies
           | :hierarchy
+          | :deployment
 
   @type scope :: :local | :children | :dependencies | :orchestrate | :pipeline
 
@@ -61,7 +62,12 @@ defmodule CodeMySpec.Requirements.RequirementDefinition do
     :code,
     :tests,
     :dependencies,
-    :hierarchy
+    :hierarchy,
+    # Something that exists on a provider rather than in the repo. Its own
+    # type because `maybe_filter_devops/2` selects on it — a project with
+    # `devops: :off` drops every deployment node, and that filter should not
+    # have to enumerate node names to do it.
+    :deployment
   ]
 
   @check_types [
