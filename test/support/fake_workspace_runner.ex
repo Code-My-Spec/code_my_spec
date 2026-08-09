@@ -53,6 +53,9 @@ defmodule CodeMySpecTest.FakeWorkspaceRunner do
   @impl true
   def healthy?(_port), do: Agent.get(__MODULE__, & &1.healthy?)
 
+  @impl true
+  def url(_container_name, port), do: "http://localhost:#{port}"
+
   # Config wins over the agent's own state when set, so a spex can kill the
   # instance mid-run without calling across a boundary into this module.
   @impl true

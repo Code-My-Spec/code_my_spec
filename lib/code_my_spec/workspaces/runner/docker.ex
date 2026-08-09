@@ -58,6 +58,12 @@ defmodule CodeMySpec.Workspaces.Runner.Docker do
     end
   end
 
+  # Loopback, because that is where a published port is. The hosted runner
+  # answers a preview-{id} subdomain instead — same-site, so a browser showing
+  # it in an iframe keeps sending the target's session cookie.
+  @impl true
+  def url(_container_name, port), do: "http://localhost:#{port}"
+
   @impl true
   def alive?(container_name) do
     case docker(["inspect", "--format", "{{.State.Running}}", container_name]) do
