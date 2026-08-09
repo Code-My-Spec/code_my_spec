@@ -73,6 +73,7 @@ defmodule CmsHarness.HarnessConfig do
 
     case File.write(path(root), body <> "\n") do
       :ok ->
+        drop_legacy(root)
         :ok
 
       {:error, reason} ->
@@ -98,14 +99,51 @@ defmodule CmsHarness.HarnessConfig do
     end
   end
 
+  # Writing the current file completes the migration, which means removing the
+  # one it replaces. Leaving it behind is how a working copy ends up carrying
+  # two identities: devops-qa held `.cms_harness_id` naming 5d5c599b beside a
+  # `.cms_harness.json` naming 8a663385, with nothing on disk saying which won.
+  # `read/1` has always preferred the JSON, so the behaviour was never in doubt
+  # — but anyone reading the directory has to know that, and the first person to
+  # look concluded the two disagreed.
+  #
+  # Failure to remove it is not a failure to write the identity, so it is logged
+  # and swallowed.
+  defp drop_legacy(root) do
+    file = Path.join(root, @legacy_filename)
+
+    case File.rm(file) do
+      :ok ->
+        Logger.info("[CmsHarness] removed the legacy #{@legacy_filename} in #{root}")
+
+      {:error, :enoent} ->
+        :ok
+
+      {:error, reason} ->
+        Logger.warning("""
+        [CmsHarness] wrote #{path(root)} but could not remove the legacy #{file}: \
+        #{inspect(reason)}. Both files now name this working copy; the JSON is the \
+        one that counts.\
+        """)
+    end
+  end
+
   # The id-only file this replaces. Its root is where it was found, which is the
   # same thing the new file records.
+  #
+  # Said out loud once per root. A working copy on the legacy file has no
+  # `project_id` and will not be migrated until something writes its config, and
+  # neither fact is visible from a hook that simply works.
   defp legacy(root) do
     case File.read(Path.join(root, @legacy_filename)) do
       {:ok, contents} ->
         case String.trim(contents) do
-          "" -> :none
-          id -> {:ok, %{harness_id: id, project_id: nil, root: root}}
+          "" ->
+            :none
+
+          id ->
+            warn_legacy_once(root)
+            {:ok, %{harness_id: id, project_id: nil, root: root}}
         end
 
       {:error, :enoent} ->
@@ -113,6 +151,23 @@ defmodule CmsHarness.HarnessConfig do
 
       {:error, reason} ->
         {:error, reason}
+    end
+  end
+
+  # `read/1` runs on every hook, so this cannot log per call. Same
+  # `:persistent_term` shape `Sync` and `TestDatabase` already use for
+  # once-per-root facts.
+  defp warn_legacy_once(root) do
+    key = {__MODULE__, :legacy_warned, root}
+
+    if :persistent_term.get(key, nil) == nil do
+      :persistent_term.put(key, true)
+
+      Logger.info("""
+      [CmsHarness] #{root} identifies itself with the legacy #{@legacy_filename}. \
+      It carries no project id, and it will keep being used until something writes \
+      #{@filename} — `mix cms.harness.onboard` does.\
+      """)
     end
   end
 end
