@@ -254,11 +254,21 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SobelowTest do
   defp map_sobelow_severity("low"), do: :info
   defp map_sobelow_severity(_), do: :warning
 
+  # Sobelow's own temp files, not everything in the directory.
+  #
+  # `create_temp_file/0` writes `sobelow_output_<id>.json` into
+  # `System.tmp_dir!()`, which is shared. Counting the whole directory made
+  # this an assertion about what else the machine was doing: the harness puts
+  # `spex_output_*.jsonl`, `test_output_*.json` and `cms_harness_*` in there,
+  # and a spex sweep runs for two to three minutes at a time. Anything landing
+  # during the 100ms sleep pushed the count past `before + 1` and failed a
+  # cleanup that had in fact happened.
   defp count_temp_files do
-    temp_dir = System.tmp_dir!()
-
-    count_listed(File.ls(temp_dir))
+    count_listed(File.ls(System.tmp_dir!()))
   end
-  defp count_listed({:ok, files}), do: length(files)
+
+  defp count_listed({:ok, files}),
+    do: Enum.count(files, &String.starts_with?(&1, "sobelow_output_"))
+
   defp count_listed({:error, _}), do: 0
 end
