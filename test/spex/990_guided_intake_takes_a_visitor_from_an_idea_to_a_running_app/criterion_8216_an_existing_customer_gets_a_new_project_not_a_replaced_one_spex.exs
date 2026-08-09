@@ -59,7 +59,7 @@ defmodule CodeMySpecSpex.Story990.Criterion8216Spex do
         |> render_submit()
 
         view
-        |> answer_shaping_questions(["yes", "yes", "salon owners"])
+        |> answer_shaping_questions()
 
         # Follow where the app actually sends them, rather than navigating to
         # the destination ourselves. Asserting the destination works says

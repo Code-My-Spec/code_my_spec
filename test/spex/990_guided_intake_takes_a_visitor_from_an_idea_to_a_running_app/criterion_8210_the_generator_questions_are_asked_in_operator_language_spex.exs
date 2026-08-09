@@ -1,67 +1,55 @@
 defmodule CodeMySpecSpex.Story990.Criterion8210Spex do
   @moduledoc """
   Story 990 — Guided intake takes a visitor from an idea to a running app.
-  Criterion 8210 — The shaping questions come one at a time, in operator language.
+  Criterion 8210 — The generator inputs are inferred, not asked.
 
-  Rule: the visitor is asked about sign-in and separate copies one question at
-  a time, in operator language.
+  Rule: what the generators need is inferred from a short conversation, never
+  asked of the visitor.
 
-  These two answers are the generator's inputs, so a wrong one costs the
-  visitor the app they get. "Do you want accounts?" gets a yes from someone
-  who means logins and a yes from someone who means tenancy, and neither of
-  them is answering the question we asked. Asking in the visitor's own terms
-  is what makes the answer worth acting on.
+  Sign-in and separate copies decide which generators run. They are our
+  questions, not the visitor's — someone with an idea for a booking tool has no
+  view on tenancy and should not be made to have one. "A booking tool for hair
+  salons, my clients book their own slots" already answers both.
 
-  One at a time is the half this spec used to miss. It asserted both questions
-  appeared in the same render, which a page of dropdowns satisfies — and that
-  is what got built. A conversation can take account of what was just said; a
-  form cannot, and asks the same three fields of everyone.
+  This spec has been wrong twice, in the same direction both times. It first
+  asserted that both questions appeared together, which a page of dropdowns
+  satisfied. It then asserted they appeared one at a time, which a paginated
+  page of dropdowns satisfied. Neither noticed that asking at all was the
+  defect: the visitor was answering the generator's questions either way.
 
   Surface: the `/build` LiveView, driven anonymously.
   """
 
   use CodeMySpecSpex.Case
 
+  import CodeMySpecSpex.IntakeSteps
+
   @endpoint CodeMySpecWeb.Endpoint
 
-  @sign_in ~r/sign in to use this/i
-  @copies ~r/separate businesses each use their own copy/i
+  # The two things that must never be put to the visitor.
+  @our_questions [~r/sign in to use this/i, ~r/separate businesses each use their own copy/i]
 
-  spex "The shaping questions are asked one at a time, in operator language" do
-    scenario "The shaping questions come one at a time, in operator language" do
+  spex "The visitor is asked about their business, never about the generators" do
+    scenario "The generator inputs are inferred, not asked" do
       given_ "a visitor who has described what they want to build", context do
         {:ok, view, _html} = live(build_conn(), "/build")
 
         html =
           view
-          |> form("form[phx-submit=describe]", %{description: "a booking tool for hair salons"})
+          |> form("form[phx-submit=describe]", %{
+            description: "a booking tool for hair salons, my clients book their own slots"
+          })
           |> render_submit()
 
         {:ok, Map.merge(context, %{view: view, html: html})}
       end
 
-      then_ "they are asked one question, not handed a page of them", context do
-        asked = Enum.count([@sign_in, @copies], &(context.html =~ &1))
-
-        assert asked == 1,
-               "expected exactly one shaping question on screen, found #{asked} — " <>
-                 "a visitor handed both at once is filling in a form, not answering a question"
-
-        {:ok, context}
-      end
-
-      when_ "they answer the question they were asked", context do
-        html =
-          context.view
-          |> form("form[phx-submit=answer]", %{answer: "yes"})
-          |> render_submit()
-
-        {:ok, Map.put(context, :html, html)}
-      end
-
-      then_ "the next question is the one they had not been asked yet", context do
-        assert context.html =~ @copies,
-               "expected the tenancy question once the first was answered, got: #{context.html}"
+      then_ "nothing put to them is one of the generator's questions", context do
+        for question <- @our_questions do
+          refute context.html =~ question,
+                 "the visitor was asked #{inspect(question)} — that is ours to work out, " <>
+                   "and someone with an idea has no view on it"
+        end
 
         {:ok, context}
       end
@@ -69,8 +57,31 @@ defmodule CodeMySpecSpex.Story990.Criterion8210Spex do
       then_ "no question uses product jargon", context do
         for jargon <- [~r/multi-?tenan/i, ~r/authentication/i, ~r/\btenancy\b/i] do
           refute context.html =~ jargon,
-                 "expected no product jargon in the shaping questions, found #{inspect(jargon)}"
+                 "expected no product jargon in the conversation, found #{inspect(jargon)}"
         end
+
+        {:ok, context}
+      end
+
+      when_ "they answer whatever was asked, in their own words", context do
+        html = answer_shaping_questions(context.view)
+
+        {:ok, Map.put(context, :html, html)}
+      end
+
+      then_ "the conversation ends and the plan is there", context do
+        assert context.html =~ "what I think you&#39;re building",
+               "expected the conversation to reach a plan within a couple of questions"
+
+        {:ok, context}
+      end
+
+      then_ "both generator inputs were worked out without being asked", context do
+        assert has_element?(context.view, "[name='plan[needs_sign_in]']"),
+               "expected a conclusion about sign-in on the plan"
+
+        assert has_element?(context.view, "[name='plan[separate_copies]']"),
+               "expected a conclusion about separate copies on the plan"
 
         {:ok, context}
       end

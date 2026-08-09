@@ -61,7 +61,7 @@ defmodule CodeMySpecSpex.Story990.Criterion8213Spex do
         |> render_submit()
 
         view
-        |> answer_shaping_questions(["yes", "yes", "salon owners"])
+        |> answer_shaping_questions()
 
         {:ok, Map.merge(context, %{conn: conn, view: view})}
       end

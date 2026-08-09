@@ -171,7 +171,8 @@ config :code_my_spec,
 # with a different answer each run.
 config :code_my_spec, CodeMySpec.Intake,
   planner: CodeMySpec.Intake.Planner.Inferred,
-  interviewer: CodeMySpec.Intake.Interviewer.Scripted
+  interviewer: CodeMySpec.Intake.Interviewer.Scripted,
+  shaper: CodeMySpec.Intake.Shaper.Scripted
 
 # Story 713: run content pull synchronously in tests so it shares the
 # ExUnit sandbox connection instead of racing the test process.

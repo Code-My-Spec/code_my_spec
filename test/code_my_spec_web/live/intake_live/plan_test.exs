@@ -18,14 +18,15 @@ defmodule CodeMySpecWeb.IntakeLive.PlanTest do
         |> form("form[phx-submit=describe]", %{description: "a booking tool for hair salons"})
         |> render_submit()
 
-      # One question, not both: the shaping questions are a conversation now,
-      # and this assertion used to pass only because they arrived as a form.
-      assert html =~ "Will people need to sign in to use this?"
+      # A question a person would ask. Sign-in and tenancy are our questions,
+      # not the visitor's — they get inferred from the answer, never put.
+      assert html =~ "Who&#39;s going to be using this"
+      refute html =~ "sign in to use this"
       refute html =~ "separate businesses each use their own copy"
 
       html =
         view
-        |> answer_shaping_questions(["yes", "yes", "salon owners"])
+        |> answer_shaping_questions()
 
       assert html =~ "Here&#39;s what I think you&#39;re building."
       assert html =~ "salon owners"
@@ -40,7 +41,7 @@ defmodule CodeMySpecWeb.IntakeLive.PlanTest do
 
       html =
         view
-        |> answer_shaping_questions(["yes", "no", "salon owners"])
+        |> answer_shaping_questions()
 
       assert html =~ "People sign in to use it."
       assert html =~ "Everyone shares the one set of data."
@@ -73,7 +74,7 @@ defmodule CodeMySpecWeb.IntakeLive.PlanTest do
       |> render_submit()
 
       view
-      |> answer_shaping_questions(["yes", "yes", "salon owners"])
+      |> answer_shaping_questions()
 
       # A fresh mount on the same session — as if they closed the tab and came back.
       {:ok, _view, html} = live(conn, ~p"/build")
@@ -105,7 +106,7 @@ defmodule CodeMySpecWeb.IntakeLive.PlanTest do
       |> render_submit()
 
       view
-      |> answer_shaping_questions(["yes", "yes", "salon owners"])
+      |> answer_shaping_questions()
 
       token = get_session(conn, "intake_token")
 

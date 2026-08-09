@@ -44,7 +44,7 @@ defmodule CodeMySpecSpex.Story990.Criterion8209Spex do
 
         html =
           context.view
-          |> answer_shaping_questions(["yes", "yes", "salon owners"])
+          |> answer_shaping_questions()
 
         {:ok, Map.put(context, :html, html)}
       end

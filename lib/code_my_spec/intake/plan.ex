@@ -65,23 +65,6 @@ defmodule CodeMySpec.Intake.Plan do
     |> put_change(:status, :answering)
   end
 
-  @doc """
-  One answer to one question.
-
-  The questions are asked one at a time, so they are recorded one at a time.
-  `answers_changeset/2` still exists for anything setting them together, but
-  it validates all three as a unit, which a conversation never has.
-  """
-  def answer_changeset(%__MODULE__{} = plan, field, value)
-      when field in [:needs_sign_in, :separate_copies, :who_uses] do
-    plan
-    |> cast(%{field => value}, [field])
-    |> validate_required([field])
-    |> then(fn changeset ->
-      if field == :who_uses, do: validate_length(changeset, :who_uses, max: 500), else: changeset
-    end)
-  end
-
   @doc "The two generator inputs plus who uses it. Booleans are required — an unanswered question is not a `false`."
   def answers_changeset(%__MODULE__{} = plan, attrs) do
     plan

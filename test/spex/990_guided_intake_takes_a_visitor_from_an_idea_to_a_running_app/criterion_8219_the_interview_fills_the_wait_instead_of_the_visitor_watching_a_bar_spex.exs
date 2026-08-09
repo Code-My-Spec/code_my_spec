@@ -48,7 +48,7 @@ defmodule CodeMySpecSpex.Story990.Criterion8219Spex do
         |> render_submit()
 
         view
-        |> answer_shaping_questions(["yes", "yes", "salon owners"])
+        |> answer_shaping_questions()
 
         view
         |> form("form[phx-submit=confirm_names]", %{

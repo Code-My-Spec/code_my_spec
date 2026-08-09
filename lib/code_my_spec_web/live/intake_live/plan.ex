@@ -11,7 +11,7 @@ defmodule CodeMySpecWeb.IntakeLive.Plan do
   use CodeMySpecWeb, :live_view
 
   alias CodeMySpec.Intake
-  alias CodeMySpec.Intake.{Funnel, Plan, Questions}
+  alias CodeMySpec.Intake.{Funnel, Plan, Shaper}
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.Users.User
   alias CodeMySpecWeb.Plugs.IntakeSession
@@ -25,11 +25,10 @@ defmodule CodeMySpecWeb.IntakeLive.Plan do
 
       <.step_describe :if={@plan.status == :describing} plan={@plan} />
       <.step_answer
-        :if={@plan.status == :answering and @question != nil}
+        :if={@plan.status == :answering}
         question={@question}
-        answered={@answered}
-        question_count={@question_count}
-        unclear={@unclear}
+        turns={@turns}
+        thinking={@thinking}
       />
       <.step_plan :if={@plan.status in [:planned, :converted]} plan={@plan} form={@names_form} />
     </div>
@@ -57,57 +56,41 @@ defmodule CodeMySpecWeb.IntakeLive.Plan do
     """
   end
 
-  # One question on screen at a time. The visitor answers what was asked and
-  # is then asked the next thing — which is the point: a page of fields asks
-  # everyone the same three questions and cannot take account of an answer.
+  # A short conversation, not a questionnaire. The model asks what a person
+  # would ask and works out sign-in and tenancy from the answers — those are
+  # our questions, and a visitor with an idea has no view on them.
   defp step_answer(assigns) do
     ~H"""
-    <p class="text-sm text-base-content/60 mb-2">
-      Question {@answered + 1} of {@question_count}
-    </p>
+    <h1 class="text-3xl font-bold mb-6">Tell me a bit more.</h1>
 
-    <h1 class="text-3xl font-bold mb-2">{@question.text}</h1>
-    <p class="text-base-content/70 mb-6">{@question.hint}</p>
+    <div class="space-y-4 mb-6">
+      <div :for={turn <- @turns} class="space-y-2">
+        <div class="chat chat-start">
+          <div class="chat-bubble chat-bubble-neutral">{turn.question}</div>
+        </div>
+        <div class="chat chat-end">
+          <div class="chat-bubble chat-bubble-primary">{turn.answer}</div>
+        </div>
+      </div>
 
-    <.form for={%{}} as={:answer} phx-submit="answer" class="space-y-4">
-      <.yes_no :if={@question.type == :boolean} />
-      <.free_text :if={@question.type == :text} />
-      <p :if={@unclear} class="text-error text-sm">
-        I didn't follow that — a yes or a no is enough.
-      </p>
-    </.form>
-    """
-  end
-
-  # Radios rather than two submit buttons: a button carries its value only when
-  # it is the one that submitted, which reads fine in a browser and gives a
-  # test no input to fill. Same two clicks either way.
-  defp yes_no(assigns) do
-    ~H"""
-    <div class="flex gap-3">
-      <label class="btn btn-outline has-[:checked]:btn-primary">
-        <input type="radio" name="answer" value="yes" class="hidden" /> Yes
-      </label>
-      <label class="btn btn-outline has-[:checked]:btn-primary">
-        <input type="radio" name="answer" value="no" class="hidden" /> No
-      </label>
-      <.button class="btn-primary">Next</.button>
+      <div :if={@question} class="chat chat-start">
+        <div class="chat-bubble chat-bubble-neutral">{@question}</div>
+      </div>
     </div>
-    """
-  end
 
-  defp free_text(assigns) do
-    ~H"""
-    <div class="flex gap-3">
+    <.form for={%{}} as={:answer} phx-submit="answer" class="flex gap-3">
       <input
         type="text"
         name="answer"
         autofocus
+        autocomplete="off"
         class="input input-bordered w-full"
-        placeholder="Salon owners and their clients"
+        placeholder="Type your answer"
       />
-      <.button class="btn-primary">Next</.button>
-    </div>
+      <.button class="btn-primary">Send</.button>
+    </.form>
+
+    <p :if={@thinking} class="text-sm text-base-content/60 mt-3">Thinking…</p>
     """
   end
 
@@ -167,26 +150,18 @@ defmodule CodeMySpecWeb.IntakeLive.Plan do
   def handle_event("describe", %{"description" => description}, socket) do
     {:ok, plan} = Intake.describe(socket.assigns.plan, description)
     Funnel.plan_reached(:described, %{plan_id: plan.id})
-    {:noreply, assign_plan(socket, plan)}
+
+    # Straight into the conversation. A description that already says who uses
+    # it and how gets no questions at all — the model goes to the plan.
+    {:noreply, socket |> assign_plan(plan) |> assign(turns: []) |> shape()}
   end
 
-  # One answer to whichever question is on screen. The plan is only generated
-  # once nothing is outstanding, so the visitor is asked, then asked again,
-  # and sees a plan when there is nothing left to ask.
+  # The answer joins the transcript and the whole conversation goes back to the
+  # model, which either asks once more or has enough to fill the form.
   def handle_event("answer", %{"answer" => written}, socket) do
-    case Intake.answer_question(socket.assigns.plan, written) do
-      {:ok, plan} ->
-        {:noreply, socket |> assign(:unclear, false) |> advance(plan)}
+    turns = socket.assigns.turns ++ [%{question: socket.assigns.question, answer: written}]
 
-      {:error, :unclear} ->
-        {:noreply, assign(socket, :unclear, true)}
-
-      {:error, :no_question} ->
-        {:noreply, advance(socket, socket.assigns.plan)}
-
-      {:error, %Ecto.Changeset{}} ->
-        {:noreply, assign(socket, :unclear, true)}
-    end
+    {:noreply, socket |> assign(turns: turns) |> shape()}
   end
 
   def handle_event("validate_names", %{"plan" => attrs}, socket) do
@@ -216,13 +191,30 @@ defmodule CodeMySpecWeb.IntakeLive.Plan do
   defp gate_for(%Scope{user: %User{}}), do: ~p"/build/workspace"
   defp gate_for(_scope), do: ~p"/users/register"
 
-  # Ask the next thing, or — when nothing is outstanding — write the plan.
-  defp advance(socket, plan) do
-    if Intake.next_question(plan) do
-      assign_plan(socket, plan)
-    else
-      generate(socket, plan)
+  # Ask once more, or take what the model inferred and write the plan.
+  defp shape(socket) do
+    plan = socket.assigns.plan
+
+    case Shaper.shape(plan, socket.assigns.turns) do
+      {:ask, question} ->
+        assign(socket, question: question, thinking: false)
+
+      {:ok, attrs} ->
+        case Intake.answer(plan, attrs) do
+          {:ok, plan} -> generate(socket, plan)
+          {:error, _} -> unavailable(socket)
+        end
+
+      {:error, _reason} ->
+        unavailable(socket)
     end
+  end
+
+  # No fallback questionnaire. The conversation is the product, so when the
+  # model is unreachable the honest thing is to say so rather than hand over
+  # the form it replaced.
+  defp unavailable(socket) do
+    put_flash(socket, :error, "I couldn't think that through. Try again in a moment.")
   end
 
   defp generate(socket, plan) do
@@ -243,10 +235,9 @@ defmodule CodeMySpecWeb.IntakeLive.Plan do
   defp assign_plan(socket, %Plan{} = plan) do
     socket
     |> assign(:plan, plan)
-    |> assign(:question, Intake.next_question(plan))
-    |> assign(:answered, Questions.answered_count(plan))
-    |> assign(:question_count, Questions.count())
-    |> assign(:unclear, Map.get(socket.assigns, :unclear, false))
+    |> assign(:turns, Map.get(socket.assigns, :turns, []))
+    |> assign(:question, Map.get(socket.assigns, :question))
+    |> assign(:thinking, false)
     |> assign(:answers_form, to_form(Plan.answers_changeset(plan, %{})))
     |> assign(:names_form, to_form(Intake.change_names(plan)))
   end

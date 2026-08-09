@@ -60,7 +60,7 @@ defmodule CodeMySpecWeb.IntakeLive.WorkspaceTest do
     |> render_submit()
 
     view
-    |> answer_shaping_questions(["yes", "yes", "salon owners"])
+    |> answer_shaping_questions()
 
     view
     |> form("form[phx-submit=confirm_names]", %{

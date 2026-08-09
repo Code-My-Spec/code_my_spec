@@ -2,11 +2,14 @@ defmodule CodeMySpecSpex.IntakeSteps do
   @moduledoc """
   Driving the guided intake the way a visitor does.
 
-  The shaping questions are asked one at a time, so a spec that needs a
-  visitor past them has to answer them one at a time. Every spec used to post
-  all three as a single form payload, which is how a page of dropdowns
-  survived a rule that never sanctioned it — thirteen specs agreed with the
-  implementation because they were written against it.
+  The shaping step is a conversation, so a spec that needs a visitor past it
+  answers in sentences, not in fields. Specs used to post three form values in
+  one go, which is how a page of dropdowns survived a rule that never
+  sanctioned it — every spec agreed with the implementation because each was
+  written against it.
+
+  How many questions get asked is the shaper's business, not the spec's, so
+  this answers whatever is on screen until the conversation ends.
 
   Import where a spec needs a plan that has got past the questions:
 
@@ -17,7 +20,7 @@ defmodule CodeMySpecSpex.IntakeSteps do
 
   import Phoenix.LiveViewTest
 
-  @default_answers ["yes", "yes", "salon owners"]
+  @default_answers ["salon owners see their week, and their clients book themselves in"]
 
   @doc "Submits the opening description and returns the view."
   def describe_idea(view, description) do

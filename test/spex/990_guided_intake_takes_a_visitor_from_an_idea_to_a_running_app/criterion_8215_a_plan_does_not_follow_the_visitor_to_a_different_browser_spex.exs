@@ -31,7 +31,7 @@ defmodule CodeMySpecSpex.Story990.Criterion8215Spex do
         |> render_submit()
 
         view
-        |> answer_shaping_questions(["yes", "yes", "salon owners"])
+        |> answer_shaping_questions()
 
         {:ok, context}
       end

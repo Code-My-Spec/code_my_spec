@@ -48,7 +48,7 @@ defmodule CodeMySpecSpex.Story990.Criterion8212Spex do
 
         proposed =
           view
-          |> answer_shaping_questions(["yes", "yes", "salon owners"])
+          |> answer_shaping_questions()
 
         {:ok, Map.merge(context, %{conn: conn, view: view, proposed: proposed})}
       end

@@ -17,7 +17,10 @@ defmodule CodeMySpecWeb.PageControllerTest do
       # The plan is a row by the time they arrive, so the description survives
       # a refresh — it is not carried in the URL.
       body = conn |> recycle() |> get(~p"/build") |> html_response(200)
-      assert body =~ "Will people need to sign in to use this?"
+
+      # Past the description and into the conversation — which is the point of
+      # recording it here rather than passing it along in the URL.
+      refute body =~ "What do you want to build?"
     end
 
     test "an empty box is not an error, just an unanswered question", %{conn: conn} do
