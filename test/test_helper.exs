@@ -44,9 +44,23 @@ Ecto.Adapters.SQL.Sandbox.mode(CodeMySpec.Repo, :manual)
 # suite was joining the live server, so tests asserting how a session resolves
 # were asserting against a system with real sessions in it.
 #
-# Stated as a candidate, not a conclusion. The failures were intermittent, and
-# nobody has reproduced them since. If they recur after this, the guess was
-# wrong and c8264c1f needs a different answer.
+# UPDATE: it recurred, so the guess was wrong. `stop_controller_test.exs:52`
+# failed under an analyzer run on 2026-08-09 at 20:1x, with this guard in place
+# and demonstrably working — the newest temp-root harness row predates the guard
+# by ninety seconds, so nothing has joined the live server since. It still
+# passes standalone (8 tests, 0 failures).
+#
+# So the live-server join was real and worth fixing, and it was not the cause.
+# c8264c1f is still open and now has four eliminations rather than three:
+# `_build` (isolated), the test database (isolated *and* at the same migration
+# version as the agent's), the env leak (this), and "an analyzer is live" on its
+# own (the named tests pass under the analyzer's exact environment).
+#
+# The candidate nobody has tested is the dullest one: ExUnit randomises order by
+# seed, and a suite that passes at one seed and fails at another needs no
+# analyzer-specific mechanism at all. That would explain every observation here
+# — passes standalone, passes a full run by hand, fails the analyzer's run —
+# without anything the analyzer does being special.
 Enum.each(~w(CMS_SERVER_URL CMS_TOKEN CMS_DEPLOY_KEY CMS_HARNESS_ID), &System.delete_env/1)
 
 # Started here rather than from `CodeMySpecWeb.Application`'s test children, so
