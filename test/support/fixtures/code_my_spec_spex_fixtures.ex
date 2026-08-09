@@ -1469,7 +1469,6 @@ defmodule CodeMySpecSpex.Fixtures do
 
   # --- Mail (story 816) ---
 
-  @doc "Set and verify a project's sending domain."
   @doc """
   Point the project at a real checkout on disk.
 
@@ -1484,6 +1483,7 @@ defmodule CodeMySpecSpex.Fixtures do
      |> CodeMySpec.Repo.update!()}
   end
 
+  @doc "Set and verify a project's sending domain."
   def verify_project_domain(project, domain) do
     now = DateTime.utc_now() |> DateTime.truncate(:second)
 
