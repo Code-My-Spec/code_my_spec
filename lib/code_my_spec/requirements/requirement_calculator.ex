@@ -18,11 +18,11 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
   import Ecto.Query
 
   alias CodeMySpec.Components.Component
-  alias CodeMySpec.Requirements.Registry, as: RequirementsRegistry
   alias CodeMySpec.Files.File
   alias CodeMySpec.Problems.Problem
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements.Preloader
+  alias CodeMySpec.Requirements.Registry, as: RequirementsRegistry
   alias CodeMySpec.Users.Scope
 
   @type computed_requirement :: %{
