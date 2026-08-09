@@ -1750,8 +1750,10 @@ defmodule CodeMySpecSpex.Case do
       # and replaying the first match every time reports the wrong one.
       result =
         use_cmd_cassette unquote(name), record: cmd_mode, sequential: true do
-          CodeMySpecSpex.Case.with_provider_cassette(unquote(name), unquote(opts), fn ->
-            unquote(block)
+          CodeMySpecSpex.Case.with_recorded_repository_owner(unquote(name), fn ->
+            CodeMySpecSpex.Case.with_provider_cassette(unquote(name), unquote(opts), fn ->
+              unquote(block)
+            end)
           end)
         end
 
@@ -1763,6 +1765,96 @@ defmodule CodeMySpecSpex.Case do
 
       result
     end
+  end
+
+  # Replay the repository step against the account the recording used.
+  #
+  # `Repository.ensure/3` asks GitHub who the token is (`GET /user`) only when
+  # no `:owner` was supplied. The spex Case supplies one from
+  # `GITHUB_SPEX_OWNER`, and that variable lives in `envs/.env`, which Dotenvy
+  # loads into config — never into `System.get_env/1`. So the owner is present
+  # exactly when the recording operator happened to export it in their shell,
+  # and the recorded request sequence differs accordingly.
+  #
+  # Thirteen cassettes were recorded with it and ten without. The ten resolved
+  # the owner at run time and carry `GET /user`; the thirteen went straight to
+  # `/repos/<org>/<name>`. Replaying the thirteen without the variable inserts
+  # a `GET /user` the cassette has never heard of, and since matching is
+  # sequential the run dies on the first step of the first block.
+  #
+  # The cassette is the only durable record of that environment, so it is what
+  # we read. A cassette carrying `GET /user` is left alone — handing it an
+  # owner would skip a recorded interaction and desynchronise everything after
+  # it, breaking the ten that currently work.
+  @doc false
+  def with_recorded_repository_owner(name, fun) do
+    case recording?() do
+      true -> fun.()
+      false -> replay_as_recorded_owner(recorded_repository_owner(name), fun)
+    end
+  end
+
+  defp replay_as_recorded_owner(nil, fun), do: fun.()
+
+  defp replay_as_recorded_owner(owner, fun) do
+    previous = Application.get_env(:code_my_spec, :provisioning_step_opts, [])
+
+    Application.put_env(
+      :code_my_spec,
+      :provisioning_step_opts,
+      Keyword.merge(previous, org: owner, owner: owner)
+    )
+
+    try do
+      fun.()
+    after
+      Application.put_env(:code_my_spec, :provisioning_step_opts, previous)
+    end
+  end
+
+  defp recorded_repository_owner(name) do
+    with path when is_binary(path) <- cassette_path(name),
+         {:ok, body} <- File.read(path),
+         {:ok, decoded} <- Jason.decode(body) do
+      uris =
+        decoded
+        |> cassette_interactions()
+        |> Enum.map(&get_in(&1, ["request", "uri"]))
+        |> Enum.filter(&is_binary/1)
+
+      case Enum.any?(uris, &(String.trim_trailing(&1, "/") == "https://api.github.com/user")) do
+        true -> nil
+        false -> owner_from_uris(uris)
+      end
+    else
+      _ -> nil
+    end
+  end
+
+  defp cassette_interactions(decoded) when is_list(decoded), do: decoded
+
+  defp cassette_interactions(%{} = decoded),
+    do: decoded["http_interactions"] || decoded["interactions"] || []
+
+  defp cassette_interactions(_), do: []
+
+  defp owner_from_uris(uris) do
+    Enum.find_value(uris, fn uri ->
+      case Regex.run(~r{^https://api\.github\.com/(?:repos|orgs)/([^/]+)}, uri) do
+        [_, owner] -> owner
+        _ -> nil
+      end
+    end)
+  end
+
+  # The HTTP cassette, which is not the only file under this name. A block
+  # records two: ReqCassette writes `interactions` to `test/cassettes`, and
+  # ExCliVcr writes `commands` to `test/fixtures/cassettes`. Reading the shell
+  # one finds no requests and reports no owner, which looks exactly like a
+  # cassette that resolved its own.
+  defp cassette_path(name) do
+    path = Path.join("test/cassettes", name <> ".json")
+    if File.exists?(path), do: path
   end
 
   @doc false
