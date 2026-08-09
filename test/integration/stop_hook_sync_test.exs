@@ -96,7 +96,8 @@ defmodule CodeMySpec.Integration.StopHookSyncTest do
       reqs2 = RequirementCalculator.compute_component(scope, accounts)
       impl_req2 = Enum.find(reqs2, &(&1.name == "implementation_file"))
 
-      assert impl_req2.satisfied, "implementation_file should be satisfied after impl file created"
+      assert impl_req2.satisfied,
+             "implementation_file should be satisfied after impl file created"
     end
   end
 
@@ -127,8 +128,14 @@ defmodule CodeMySpec.Integration.StopHookSyncTest do
       assert task
       task_id = task.id
 
-      # Seed all setup steps so ProjectSetup.evaluate passes
-      seed_all_setup_steps(tmp_dir)
+      # Satisfy `technical_strategy` — a `path_exists` check, so writing the file
+      # is the whole of it.
+      File.mkdir_p!(Path.join(tmp_dir, ".code_my_spec/architecture"))
+
+      File.write!(
+        Path.join(tmp_dir, ".code_my_spec/architecture/decisions.md"),
+        "# Decisions\n"
+      )
 
       # Call stop hook — evaluates task, marks completed, allows stop (not continuous mode)
       stop_response = call_stop_hook!(scope, external_session_id)
