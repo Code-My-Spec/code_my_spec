@@ -92,6 +92,13 @@ defmodule CodeMySpec.AcceptanceCriteria do
     Criterion.changeset(criterion, attrs)
   end
 
+  @doc """
+  Record where each criterion's spex file lives, for criteria that do not
+  already say. See `AcceptanceCriteriaRepository.claim_spec_paths/2`.
+  """
+  @spec claim_spec_paths(Scope.t(), %{integer() => String.t()}) :: {:ok, non_neg_integer()}
+  def claim_spec_paths(%Scope{} = scope, paths), do: impl().claim_spec_paths(scope, paths)
+
   @doc "Marks an acceptance criterion as verified."
   def mark_verified(%Scope{} = scope, %Criterion{} = criterion) do
     case impl().mark_verified(scope, criterion) do

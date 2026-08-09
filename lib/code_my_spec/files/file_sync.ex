@@ -15,6 +15,8 @@ defmodule CodeMySpec.Files.FileSync do
 
   require Logger
 
+  alias CodeMySpec.AcceptanceCriteria
+  alias CodeMySpec.BddSpecs.Parser
   alias CodeMySpec.Embeddings
   alias CodeMySpec.Embeddings.HexDocProjector
   alias CodeMySpec.Environments
@@ -174,6 +176,13 @@ defmodule CodeMySpec.Files.FileSync do
     # owns the database, decides what it *belongs to*.
     observations = Scanner.resolve_owners(observations, Files.read_model(scope))
 
+    # And record where each spex file is, for criteria that do not already say.
+    # The same reasoning as re-resolving ownership above: the association should
+    # live in the database rather than be re-derived from a filename every time,
+    # because the filename is built from four things that all move and the two
+    # directions can silently stop agreeing.
+    claim_spec_paths(scope, observations)
+
     {upserted, changed} =
       case observations do
         [] ->
@@ -212,6 +221,33 @@ defmodule CodeMySpec.Files.FileSync do
   # have no row yet) — i.e., files whose content actually changed since
   # the last sync. Used to drive embedding work and to populate the
   # user-visible "Changed files" count on the /files page.
+  # Only files whose name still yields a criterion id, which is every file the
+  # convention produced. One that does not is either a criterion that has been
+  # cut or a file named by hand, and neither should have a path invented for it.
+  defp claim_spec_paths(scope, observations) do
+    paths =
+      observations
+      |> Enum.filter(&(Map.get(&1, :role) == :bdd_spec))
+      |> Enum.flat_map(fn entry ->
+        case Parser.derive_criterion_id(entry.path) do
+          nil -> []
+          id -> [{id, entry.path}]
+        end
+      end)
+      |> Map.new()
+
+    case AcceptanceCriteria.claim_spec_paths(scope, paths) do
+      {:ok, 0} ->
+        :ok
+
+      {:ok, n} ->
+        Logger.info(
+          "[FileSync] recorded the spex path for #{n} criteri#{if n == 1, do: "on", else: "a"} " <>
+            "that had none — their files are now found by record rather than by name"
+        )
+    end
+  end
+
   defp changed_entries(entries, existing_by_path) do
     Enum.filter(entries, fn entry ->
       case Map.get(existing_by_path, entry.path) do
@@ -458,9 +494,7 @@ defmodule CodeMySpec.Files.FileSync do
         story.specs_ready == true do
       {:ok, _story} = Stories.set_specs_ready(scope, story, false)
 
-      Logger.info(
-        "[FileSync] Story #{story_id} BDD specs rewritten — cleared specs_ready"
-      )
+      Logger.info("[FileSync] Story #{story_id} BDD specs rewritten — cleared specs_ready")
     end
 
     :ok
