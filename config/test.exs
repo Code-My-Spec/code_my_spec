@@ -42,18 +42,20 @@ e2e? = System.get_env("CMS_E2E") in ~w(1 true)
 # never set per worktree. An explicit value still wins — CI sets it per
 # partition — and the main checkout keeps the bare name so nothing has to be
 # recreated for it.
+# In a linked worktree `.git` is a file pointing at the real git dir rather
+# than a directory. That is the whole test, and it is the same one
+# `cms_new` generates into every project — this repo carried a weaker copy
+# that matched on the path containing "worktrees", so a worktree created
+# anywhere but `.claude/worktrees/` silently shared the primary database and
+# got exactly the failure the comment above describes.
+#
+# The primary checkout keeps the bare name, and an explicit
+# MIX_TEST_PARTITION still wins.
 partition =
-  case System.get_env("MIX_TEST_PARTITION") do
-    value when is_binary(value) and value != "" ->
-      value
-
-    _ ->
-      case Path.split(File.cwd!()) do
-        # `.../.claude/worktrees/<name>` — one database per worktree, named
-        # after it so `psql -l` says who owns what.
-        path -> if "worktrees" in path, do: "_" <> List.last(path), else: ""
-      end
-  end
+  System.get_env("MIX_TEST_PARTITION") ||
+    if File.regular?(Path.join(File.cwd!(), ".git")),
+      do: "_" <> Path.basename(File.cwd!()),
+      else: ""
 
 config :code_my_spec, CodeMySpec.Repo,
   username: "postgres",
