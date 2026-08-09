@@ -59,6 +59,14 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
 
   @impl Mix.Task
   def run(args) do
+    # `:req` and nothing else. Minting an id is one HTTP call, and this runs in
+    # checkouts that have never been started — `app.start` would boot Phoenix
+    # and Ecto to make it, and fail on a database the new copy does not need.
+    # Without this the call reaches Finch before its pool registry exists and
+    # dies as `unknown registry: Req.Finch`, which reads like a dependency
+    # problem rather than a task that forgot to start one.
+    {:ok, _} = Application.ensure_all_started(:req)
+
     root = target_root(args)
     dest = Path.join(root, @plugin_dest)
 

@@ -62,7 +62,19 @@ claude-dev *args:
     PLUGIN="{{justfile_directory()}}/.claude/plugin-dev"
     if [ ! -d "$PLUGIN" ]; then
       echo "No generated plugin yet — onboarding this checkout."
-      mix cms.harness.onboard
+      # Same export `harness` does, for the same reason: minting an id is a
+      # call to the server, `CmsHarness.Config` reads `System.get_env`, and
+      # Dotenvy's default side effect writes the *process dictionary* rather
+      # than the OS environment. Without this a fresh worktree fails onboarding
+      # with `{:error, :no_credential}` while envs/.env sits right there.
+      if [ -f envs/.env ]; then
+        while IFS='=' read -r key value; do
+          [ -n "${!key:-}" ] || export "$key=$value"
+        done < <(grep -E '^CMS_(DEPLOY_KEY|TOKEN)=' envs/.env)
+      fi
+      # `elixir -S mix`, not bare `mix`: in a worktree the latter resolves
+      # against the main checkout and onboards the wrong tree.
+      elixir -S mix cms.harness.onboard
     fi
     # Session-scoped: --plugin-dir applies to this invocation only, so every
     # other Claude session keeps the marketplace plugin and the cms on 4003.
