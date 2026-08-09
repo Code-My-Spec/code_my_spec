@@ -160,7 +160,8 @@ defmodule CmsHarness.Project.AnalysisServer do
           push_result(state.project.root, run_id, source, {:error, "already queued"})
           state
         else
-          %{state | queue: state.queue ++ [%{run_id: run_id, source: source, args: args}]}
+          entry = %{run_id: run_id, source: source, args: args}
+          %{state | queue: enqueue(state.queue, entry)}
         end
 
       {:error, request} ->
@@ -177,6 +178,33 @@ defmodule CmsHarness.Project.AnalysisServer do
   defp parse(request), do: {:error, request}
 
   defp queued?(state, source), do: Enum.any?(state.queue, &(&1.source == source))
+
+  # Cheapest first. Measured on this harness: compiler ~9s, credo ~10s,
+  # exunit ~2m10s, spex ~2m35s — more than an order of magnitude between the
+  # ends, and the two an agent can act on immediately were the two arriving
+  # last.
+  #
+  # Head-of-line blocking here does not read as slowness, it reads as wrong
+  # feedback that looks authoritative. A credo finding fixed and verified came
+  # back five stops running, correctly marked stale, each stop saying a rerun
+  # would replace it — and each rerun sat behind spex, so the replacement never
+  # arrived inside the working session. An agent that trusts that re-edits
+  # correct code; one that learns to distrust it stops reading the source that
+  # would catch a real regression.
+  #
+  # Ordering rather than a second slot, deliberately: two concurrent `mix`
+  # invocations contend for the same `_build` (c032af74), so parallelism would
+  # buy latency by making a worse failure more likely.
+  @cost %{"compiler" => 0, "credo" => 1, "exunit" => 2, "spex" => 3}
+
+  @doc false
+  # Public only so the ordering can be tested without standing up a server and
+  # timing four real analyzers.
+  def enqueue(queue, entry) do
+    # `sort_by/2` is stable, so two runs of one source keep their arrival order
+    # and only the cheap-vs-expensive ordering changes.
+    Enum.sort_by(queue ++ [entry], &Map.get(@cost, &1.source, 9))
+  end
 
   defp maybe_start_next(%{running: nil, queue: [entry | rest]} = state) do
     project = state.project
