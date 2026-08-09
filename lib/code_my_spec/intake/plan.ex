@@ -98,9 +98,9 @@ defmodule CodeMySpec.Intake.Plan do
     |> put_change(:status, :planned)
   end
 
-  @doc "A correction from the visitor. Overwrites the proposal in place — nothing keeps the superseded name."
   @doc """
-  What the visitor confirms before it is built.
+  A correction from the visitor, applied before anything is built. Overwrites
+  the proposal in place — nothing keeps the superseded value.
 
   Carries the two generator conclusions as well as the names. They were prose
   the visitor could only read, which made the two most consequential
