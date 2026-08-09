@@ -71,6 +71,42 @@ defmodule CodeMySpec.Problems.StaleEscalationTest do
              "queue was empty"
   end
 
+  # `Analysis.fresh?/2` answers false both when the newest completed full run
+  # predates the edits and when there is no completed full run at all — a source
+  # whose every run failed, which is ordinary for credo and spex. Describing the
+  # second as "last ran before your most recent edit" is a claim about a run that
+  # does not exist, and it is what made one report look like exunit and credo
+  # disagreeing about the same edit.
+  test "a source that never completed a run is not described as having run" do
+    text =
+      Problems.render_stop_response(
+        [problem("spex")],
+        [],
+        stale_sources: ["spex"],
+        last_ran: %{"spex" => nil},
+        in_flight: []
+      )
+
+    assert text =~ "never completed a run"
+
+    refute text =~ "last ran before your most recent edit",
+           "there is no run to have run before anything"
+  end
+
+  test "the two conditions are reported separately when both are present" do
+    text =
+      Problems.render_stop_response(
+        [problem("exunit"), problem("spex")],
+        [],
+        stale_sources: ["exunit", "spex"],
+        last_ran: %{"exunit" => minutes_ago(3), "spex" => nil},
+        in_flight: []
+      )
+
+    assert text =~ "Sources marked stale (exunit) last ran before your most recent edit"
+    assert text =~ "spex has never completed a run"
+  end
+
   test "a source in flight is named, so the claim is checkable" do
     text = footer(last_ran: %{"exunit" => minutes_ago(2)}, in_flight: ["exunit", "credo"])
 

@@ -248,11 +248,47 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
         ""
 
       sources ->
-        "\n\nSources marked stale (#{Enum.join(Enum.sort(sources), ", ")}) last ran " <>
-          "before your most recent edit. Do not re-fix anything you have already " <>
-          "corrected." <> escalation(sources, last_ran, in_flight)
+        {ran, never} = Enum.split_with(sources, &match?(%DateTime{}, Map.get(last_ran, &1)))
+
+        stale_sentence(ran) <>
+          never_sentence(never) <>
+          " Do not re-fix anything you have already corrected." <>
+          escalation(sources, last_ran, in_flight)
     end
   end
+
+  # "Stale" covers two conditions and they are not the same news.
+  #
+  # `Analysis.fresh?/2` answers false both when the newest completed full run
+  # predates your edits *and* when there is no completed full run at all — a
+  # source whose every run failed, which is ordinary for credo and spex. The
+  # footer asserted the first for both, so a source that had never produced a
+  # result was described as having "last ran before your most recent edit".
+  #
+  # That mattered in a report where exunit read current while credo and spex
+  # read stale against the same edit: the two were not disagreeing about the
+  # edit, they were in different conditions wearing one label, and the label
+  # sent the reader looking for a comparison bug.
+  defp stale_sentence([]), do: "\n\n"
+
+  defp stale_sentence(sources),
+    do:
+      "\n\nSources marked stale (#{Enum.join(Enum.sort(sources), ", ")}) last ran " <>
+        "before your most recent edit."
+
+  defp never_sentence([]), do: ""
+
+  defp never_sentence(sources) do
+    " #{Enum.join(Enum.sort(sources), ", ")} #{verb(sources)} never completed a run, so " <>
+      "#{pronoun(sources)} findings are whatever was recorded last — not a result " <>
+      "measured against your edits."
+  end
+
+  defp verb([_]), do: "has"
+  defp verb(_), do: "have"
+
+  defp pronoun([_]), do: "its"
+  defp pronoun(_), do: "their"
 
   # Two different facts, and they had been collapsed into one sentence.
   #
