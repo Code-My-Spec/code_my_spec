@@ -129,11 +129,13 @@ defmodule CodeMySpec.Analysis.Runners do
           "exit_status" => exit_code,
           "diagnostics" =>
             Enum.map(failures, fn failure ->
+              {file, line} = spex_location(failure.error)
+
               %{
                 "spex" => failure.spex,
                 "scenario" => failure.scenario,
-                "file" => failure.error && failure.error.file,
-                "line" => failure.error && failure.error.line,
+                "file" => file,
+                "line" => line,
                 "message" => failure.error && failure.error.message
               }
             end)
@@ -325,6 +327,50 @@ defmodule CodeMySpec.Analysis.Runners do
       message: failure["message"] || "Spex scenario failed"
     })
   end
+
+  # Where a spex failure belongs: its spec, not wherever the exception was
+  # raised.
+  #
+  # `error.file` is the top stacktrace frame. For an assertion inside the spec
+  # those are the same file, which is why this held for so long. For anything
+  # that *raises* from library code they are not: two cassette failures filed
+  # against `lib/req_cassette/plug.ex:481` and `:607`, the plug that raised,
+  # with nothing left pointing at the specs that failed.
+  #
+  # That costs three things. The story link is gone — a spex path carries its
+  # story id and a library path carries nothing — so the finding cannot be
+  # traced back to the work. It reads as a bug in the library rather than a
+  # cassette that was never recorded. And under `:block_changed` it blocks
+  # whoever touches the library, who is never the person who can fix it.
+  #
+  # The spec frame is still in the stacktrace, so this takes the file *and* the
+  # line from the same frame — taking only the file would pair a spec path with
+  # a line number from somewhere else, which is worse than either alone.
+  @doc false
+  # Public only so the rule can be asserted without a live `mix spex` — the
+  # half that was wrong is the choice of location, not the conversion.
+  def spex_location(nil), do: {nil, nil}
+
+  def spex_location(error) do
+    case spec_frame(error.stacktrace) do
+      nil -> {error.file, error.line}
+      frame -> {frame_get(frame, "file"), frame_get(frame, "line")}
+    end
+  end
+
+  defp spec_frame(stacktrace) when is_list(stacktrace) do
+    Enum.find(stacktrace, fn frame ->
+      file = frame_get(frame, "file")
+      is_binary(file) and String.ends_with?(file, "_spex.exs")
+    end)
+  end
+
+  defp spec_frame(_stacktrace), do: nil
+
+  defp frame_get(frame, key) when is_map(frame),
+    do: Map.get(frame, key) || Map.get(frame, String.to_existing_atom(key))
+
+  defp frame_get(_frame, _key), do: nil
 
   defp maybe_output_file(exec_opts, opts) do
     case Keyword.get(opts, :output_file) do
