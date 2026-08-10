@@ -24,14 +24,18 @@ defmodule CodeMySpecWeb.PreviewSocket do
   @impl true
   def init({upstream_url, req_headers}) do
     case connect(upstream_url, req_headers) do
-      {:ok, conn, websocket, ref} ->
-        {:ok, %{conn: conn, websocket: websocket, ref: ref}}
+      {:ok, conn, websocket, ref, buffered} ->
+        state = %{conn: conn, websocket: websocket, ref: ref}
+        opening_frames(buffered, state)
 
       {:error, reason} ->
         Logger.warning("[PreviewSocket] could not reach #{upstream_url}: #{inspect(reason)}")
         {:stop, :normal, nil}
     end
   end
+
+  defp opening_frames([], state), do: {:ok, state}
+  defp opening_frames(frames, state), do: {:push, frames, state}
 
   # From the browser, on to the app.
   @impl true
@@ -90,11 +94,8 @@ defmodule CodeMySpecWeb.PreviewSocket do
     receive do
       message ->
         case Mint.WebSocket.stream(conn, message) do
-          {:ok, conn, [{:status, ^ref, status}, {:headers, ^ref, headers} | _]} ->
-            case Mint.WebSocket.new(conn, ref, status, headers) do
-              {:ok, conn, websocket} -> {:ok, conn, websocket, ref}
-              {:error, _conn, reason} -> {:error, reason}
-            end
+          {:ok, conn, [{:status, ^ref, status}, {:headers, ^ref, headers} | rest]} ->
+            finish_upgrade(conn, ref, status, headers, rest)
 
           {:ok, conn, _partial} ->
             await_upgrade(conn, ref)
@@ -108,6 +109,36 @@ defmodule CodeMySpecWeb.PreviewSocket do
     after
       10_000 -> {:error, :upgrade_timeout}
     end
+  end
+
+  # Whatever arrived alongside the handshake response belongs to the app and
+  # has to be carried, not dropped. An app that pushes on connect — LiveView
+  # does — commonly lands its first frames in the same TCP segment as the 101,
+  # and discarding them looked exactly like a socket that connects and then
+  # goes quiet: the pane rendered and never moved again.
+  defp finish_upgrade(conn, ref, status, headers, rest) do
+    case Mint.WebSocket.new(conn, ref, status, headers) do
+      {:ok, conn, websocket} ->
+        {websocket, frames} = decode_buffered(websocket, rest)
+        {:ok, conn, websocket, ref, frames}
+
+      {:error, _conn, reason} ->
+        {:error, reason}
+    end
+  end
+
+  defp decode_buffered(websocket, responses) do
+    responses
+    |> Enum.flat_map(fn
+      {:data, _ref, data} -> [data]
+      _ -> []
+    end)
+    |> Enum.reduce({websocket, []}, fn data, {ws, acc} ->
+      case Mint.WebSocket.decode(ws, data) do
+        {:ok, ws, frames} -> {ws, acc ++ Enum.flat_map(frames, &to_websock/1)}
+        {:error, ws, _reason} -> {ws, acc}
+      end
+    end)
   end
 
   defp send_upstream(state, frame) do

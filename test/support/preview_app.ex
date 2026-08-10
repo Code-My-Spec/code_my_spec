@@ -24,6 +24,18 @@ defmodule CodeMySpecTest.PreviewApp do
   @impl true
   def init(body), do: body
 
+  # Where a generated Phoenix app's LiveView socket lives. Echoes rather than
+  # speaking the real protocol: what the proxy criteria ask is whether frames
+  # cross intact in both directions, and LiveView's own protocol is its
+  # business — a proxy that understood it would be a proxy that could get it
+  # wrong.
+  @impl true
+  def call(%Plug.Conn{request_path: "/live/websocket"} = conn, _body) do
+    conn
+    |> WebSockAdapter.upgrade(CodeMySpecTest.PreviewApp.Echo, :ok, timeout: 10_000)
+    |> halt()
+  end
+
   @impl true
   def call(%Plug.Conn{request_path: "/whoami"} = conn, _body) do
     conn = fetch_cookies(conn)
@@ -45,4 +57,31 @@ defmodule CodeMySpecTest.PreviewApp do
     |> put_resp_content_type("text/html")
     |> send_resp(200, body)
   end
+end
+
+defmodule CodeMySpecTest.PreviewApp.Echo do
+  @moduledoc """
+  The app's end of the preview socket.
+
+  Echoes each frame back with a marker, so a spec can tell a frame that made
+  the round trip from one the proxy invented. Also pushes unprompted, which is
+  the direction that matters: LiveView updates arrive because the server
+  decided to send them, not in reply to anything.
+  """
+
+  @behaviour WebSock
+
+  @impl true
+  def init(_), do: {:push, {:text, "hello from the app"}, %{}}
+
+  @impl true
+  def handle_in({text, opcode: :text}, state), do: {:push, {:text, "app saw: " <> text}, state}
+
+  def handle_in({data, opcode: :binary}, state), do: {:push, {:binary, data}, state}
+
+  @impl true
+  def handle_info(_message, state), do: {:ok, state}
+
+  @impl true
+  def terminate(_reason, _state), do: :ok
 end
