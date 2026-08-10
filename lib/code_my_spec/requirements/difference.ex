@@ -32,6 +32,11 @@ defmodule CodeMySpec.Requirements.Difference do
   without the registry disagreeing with itself.
 
   Neither is a defect, and reporting them as one buries the defects that matter.
+
+  Describes the difference and nothing else — no verdict about which side wins.
+  Two callers compare these graphs for different reasons: one is choosing what
+  to serve, the other is checking that a write reads back. Baking "serving the
+  projection" into the sentence made it a lie in the second case.
   """
   @spec describe([Requirement.t()], [term()], [Requirement.t()], [term()]) :: String.t() | :none
   def describe(read_nodes, read_edges, nodes, edges) do
@@ -42,7 +47,7 @@ defmodule CodeMySpec.Requirements.Difference do
     |> Enum.reject(&(&1 == :none))
     |> case do
       [] -> :none
-      parts -> Enum.join(parts, "; ") <> " — serving the projection"
+      parts -> Enum.join(parts, "; ")
     end
   end
 

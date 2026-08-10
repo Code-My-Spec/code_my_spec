@@ -84,7 +84,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
 
     scope
     |> GraphCache.publish(GraphFingerprint.compute(ctx, config), {nodes, edges})
-    |> persist_projection(scope, nodes, edges)
+    |> persist_projection(scope, enriched_ctx, nodes, edges)
 
     {nodes, edges}
   end
@@ -116,8 +116,11 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
 
       {read_nodes, read_edges} = projected ->
         case Difference.describe(read_nodes, read_edges, nodes, edges) do
-          :none -> :ok
-          description -> Logger.warning("[Requirements] " <> description)
+          :none ->
+            :ok
+
+          description ->
+            Logger.warning("[Requirements] " <> description <> " — serving the projection")
         end
 
         projected
@@ -134,11 +137,12 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   # Written behind the same fingerprint check that gates the payload. Readers
   # reach here on every render, so an unconditional upsert of every node per
   # page view is exactly what `publish/3` already refuses to do for one `bytea`.
-  defp persist_projection(:unchanged, _scope, _nodes, _edges), do: :ok
+  defp persist_projection(:unchanged, _scope, _ctx, _nodes, _edges), do: :ok
 
-  defp persist_projection(:published, scope, nodes, edges) do
+  defp persist_projection(:published, scope, ctx, nodes, edges) do
     ids_by_key = NodeRepository.upsert_all(scope, nodes)
     NodeRepository.replace_edges(scope, edges, ids_by_key)
+    verify_round_trip(scope, ctx, nodes, edges)
     :ok
   rescue
     # The computation's return value is the agent's next instruction, and it is
@@ -146,6 +150,53 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     # would turn a projection bug into a stopped agent.
     error ->
       Logger.warning("[Requirements] projection write failed: #{Exception.message(error)}")
+      :ok
+  end
+
+  # Read the rows back and check they say what was just written.
+  #
+  # `served_graph/3` compares the two as well, but only on a cache *hit* — and a
+  # hit needs the inputs to have not moved since the last computation, which
+  # during active development is close to never. Measured: one comparison in
+  # 6h45m of logs, on a projection that disagreed with the payload on every
+  # single node count. The check that was supposed to prove the read model was
+  # running roughly once per working day.
+  #
+  # That is worse than not having it, because the criterion for deleting the
+  # payload was "the disagreement warning stays quiet" — and it stayed quiet by
+  # not running. Absence of evidence reading as evidence of absence.
+  #
+  # Here it runs on every real computation instead, which is where the writes
+  # are and where a write bug is one query away from being visible. The missing
+  # node deletion that served 1,426 phantom requirements would have surfaced on
+  # the first stop hook after it was introduced rather than weeks later.
+  #
+  # Publishes are gated on the fingerprint moving, so this costs one extra
+  # projection load per genuine change — not per read. It goes when the payload
+  # does; at that point the rows are the only copy and there is nothing to
+  # compare them against.
+  defp verify_round_trip(scope, ctx, nodes, edges) do
+    {read_nodes, read_edges} = Projection.load(scope, ctx)
+
+    case Difference.describe(read_nodes, read_edges, nodes, edges) do
+      :none ->
+        :ok
+
+      description ->
+        Logger.warning(
+          "[Requirements] the projection does not round-trip — what was just " <>
+            "written reads back different. " <> description
+        )
+    end
+  rescue
+    # Verification failing is not the write failing. The rows are written, the
+    # computation's return value is correct, and an agent must not be stopped
+    # because a check about a check could not run.
+    error ->
+      Logger.warning(
+        "[Requirements] projection round-trip check failed: #{Exception.message(error)}"
+      )
+
       :ok
   end
 

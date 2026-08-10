@@ -183,6 +183,34 @@ release:
     echo "Marketplace:"
     echo "  https://github.com/Code-My-Spec/plugins"
 
+# Push this worktree's HEAD to origin/main, then make it live.
+#
+# `git push origin main` from a worktree pushes the local `main` *ref*, which in
+# a worktree is whatever main pointed at when the tree was made — not HEAD. It
+# reports "Everything up-to-date" and exits 0, so the commit never leaves the
+# machine and nothing says so. That happened; it surfaced only because the
+# `sync-main` that followed said "already current".
+#
+# `HEAD:main` is the form that means what you meant. This wraps it so the
+# question does not come up again, and runs sync-main after so pushed and live
+# are one step rather than two with a silent gap between them.
+ship:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    branch=$(git rev-parse --abbrev-ref HEAD)
+    ahead=$(git rev-list --count origin/main..HEAD)
+
+    if [ "$ahead" = "0" ]; then
+      echo "nothing to push — HEAD is not ahead of origin/main"
+      exit 0
+    fi
+
+    echo "pushing $ahead commit(s) from '$branch' to origin/main:"
+    git log --oneline origin/main..HEAD | sed 's/^/  /'
+    git push origin HEAD:main
+    just sync-main
+
 # Fast-forward the main checkout to origin/main.
 #
 # The dev server on :4000 runs from the main checkout, not from a worktree, so

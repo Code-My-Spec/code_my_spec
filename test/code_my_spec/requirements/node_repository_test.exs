@@ -248,6 +248,69 @@ defmodule CodeMySpec.Requirements.NodeRepositoryTest do
       assert Repo.aggregate(Edge, :count) == length(edges)
     end
 
+    # The round-trip check runs on the write path, so a computation whose rows
+    # do not read back the way they were written says so. This asserts it stays
+    # silent on a healthy graph — a check that cried wolf on every stop hook
+    # would be muted within a day.
+    test "a healthy computation logs no round-trip complaint", %{scope: scope} do
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          RequirementGraph.compute_graph(scope)
+        end)
+
+      refute log =~ "does not round-trip"
+    end
+
+    # The bug the check exists for: rows present that the computation did not
+    # produce. Writing one behind the projection's back is the cheapest way to
+    # make the rows disagree with what was just written.
+    test "rows that outlive the computation are reported", %{scope: scope} do
+      RequirementGraph.compute_graph(scope)
+
+      NodeRepository.upsert_all(scope, [
+        node("project", scope.active_project_id, "a_requirement_nothing_computes")
+      ])
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          # Force a republish: the fingerprint gates the write, and nothing
+          # about the project moved.
+          Repo.delete_all(CodeMySpec.Requirements.CachedGraph)
+          RequirementGraph.compute_graph(scope)
+        end)
+
+      refute log =~ "a_requirement_nothing_computes",
+             "the stray row should have been deleted by the write, not reported by it"
+    end
+
+    # Six `infrastructure` components on the live project carry rows from a
+    # configuration that once produced them. The graph produces no nodes for
+    # that type now, so they are never in scope for deletion — they just sit
+    # there.
+    #
+    # They are invisible rather than phantom work: `rehydrate/2` drops a row
+    # whose name has no definition for its entity type, so the projection never
+    # returns them. This asserts that, because the round-trip check compares
+    # against everything the projection *does* return — if these surfaced, it
+    # would warn on every computation forever and be muted within a day.
+    test "rows for a type the graph no longer covers stay out of the projection",
+         %{scope: scope} do
+      component = component_fixture(scope, %{type: "infrastructure"})
+
+      NodeRepository.upsert_all(scope, [node("component", component.id, "spec_file")])
+      assert Repo.aggregate(Node, :count) >= 1
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          RequirementGraph.compute_graph(scope)
+        end)
+
+      refute log =~ "does not round-trip",
+             "an unrehydratable row must not read as a projection defect — it is " <>
+               "residue, and warning about it every time teaches everyone to ignore " <>
+               "the one warning that matters"
+    end
+
     test "recomputing an unchanged graph writes nothing new", %{scope: scope} do
       RequirementGraph.compute_graph(scope)
       node_count = Repo.aggregate(Node, :count)

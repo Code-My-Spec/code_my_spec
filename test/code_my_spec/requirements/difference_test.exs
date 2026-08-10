@@ -139,10 +139,13 @@ defmodule CodeMySpec.Requirements.DifferenceTest do
       assert String.length(message) < 400
     end
 
-    test "every message says which side is being served" do
+    # Two callers compare these graphs: one picks what to serve, the other
+    # checks that a write reads back. A verdict baked into the sentence is a lie
+    # to whichever caller is not serving.
+    test "the description carries no verdict about which side wins" do
       message = Difference.describe([req("a")], [], [], [])
 
-      assert message =~ "serving the projection"
+      refute message =~ "serving"
     end
   end
 

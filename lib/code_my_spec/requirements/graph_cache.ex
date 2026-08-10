@@ -13,12 +13,25 @@ defmodule CodeMySpec.Requirements.GraphCache do
 
   Three things have to be true before the payload column can go:
 
-    * `[Requirements] projection differs from payload` stays quiet across real
-      projects — the comparison runs on every cache hit
+    * `[Requirements] the projection does not round-trip` stays quiet across
+      real projects — the check runs on every publish, which is every genuine
+      change
     * `[Requirements] projection is empty for a payload with N nodes` stops
       appearing, meaning every live project has had its rows written at least
       once
     * nothing reads `fetch/2`'s graph except `served_graph/3`
+
+  The first condition used to name `projection differs from payload`, which
+  runs on a cache *hit*. That could not be satisfied, and worse, looked like it
+  already was: a hit needs the inputs not to have moved since the last
+  computation, so during active development it happens almost never. Measured
+  over 6h45m of production logs, that comparison ran **once** — on a projection
+  that disagreed about every node count. The criterion was being met by the
+  check not running.
+
+  So the evidence moved to the write path, where a publish is by definition a
+  real change and the rows were just written. Silence there means the round
+  trip was exercised and held.
 
   The fingerprint half stays regardless. It answers "are these rows current",
   which the rows cannot answer about themselves.
