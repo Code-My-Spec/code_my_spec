@@ -1,18 +1,21 @@
 defmodule CodeMySpecSpex.Story700.Criterion6051Spex do
   @moduledoc """
   Story 700 — Onboarding workflow guides me from signup to the local application.
-  Criterion 6051 — Rule: The dashboard presents four onboarding
-  steps in a fixed order: account, project, plugin, application.
+  Criterion 6051 — Rule: The dashboard presents its onboarding steps
+  in a fixed order: account, then project.
 
-  A newly-registered user with no account, no project, and no CLI
-  history must see all four step rungs on /app, in order, with the
-  expected eyebrow text on each.
+  Someone who registers without going through the guided intake still
+  needs an account and a project, and this page is where they make
+  them. That is all it can walk them through: the ladder once carried
+  a plugin rung and an application rung, and both were removed because
+  neither could be cleared from here. A plugin installed on another
+  machine, or a local app signed into somewhere this server cannot
+  see, left a working setup reading as unfinished.
 
   Surface contract assumed:
-    * [data-test="account-rung"], [data-test="project-rung"],
-      [data-test="plugin-rung"], [data-test="application-rung"]
+    * [data-test="account-rung"], [data-test="project-rung"]
     * Each rung's eyebrow contains "// step 0N · <name>" matching its
-      position (01 · account, 02 · project, 03 · plugin, 04 · application)
+      position (01 · account, 02 · project)
   """
 
   use CodeMySpecSpex.Case
@@ -21,16 +24,16 @@ defmodule CodeMySpecSpex.Story700.Criterion6051Spex do
 
   setup :register_and_log_in_user
 
-  spex "All four onboarding steps render on /app in the fixed order" do
-    scenario "Newly registered user sees all four steps in order on /app" do
+  spex "The onboarding steps render on /app in the fixed order" do
+    scenario "Newly registered user sees the steps in order on /app" do
       given_ "the user has just registered with no account, no project, no CLI history",
              context do
         {:ok, view, html} = live(context.conn, "/app")
         {:ok, Map.merge(context, %{view: view, html: html})}
       end
 
-      then_ "all four step rungs are present", context do
-        for rung <- ~w(account-rung project-rung plugin-rung application-rung) do
+      then_ "both step rungs are present", context do
+        for rung <- ~w(account-rung project-rung) do
           assert has_element?(context.view, "[data-test='#{rung}']"),
                  "expected [data-test='#{rung}'] to be present on /app"
         end
@@ -40,7 +43,7 @@ defmodule CodeMySpecSpex.Story700.Criterion6051Spex do
 
       then_ "the steps appear in document order", context do
         order =
-          ~w(account-rung project-rung plugin-rung application-rung)
+          ~w(account-rung project-rung)
           |> Enum.map(fn rung ->
             {rung, :binary.match(context.html, ~s|data-test="#{rung}"|)}
           end)
@@ -53,7 +56,7 @@ defmodule CodeMySpecSpex.Story700.Criterion6051Spex do
         sorted = Enum.sort_by(order, fn {_, {at, _}} -> at end)
 
         assert Enum.map(sorted, fn {rung, _} -> rung end) ==
-                 ~w(account-rung project-rung plugin-rung application-rung),
+                 ~w(account-rung project-rung),
                "expected document order account → project → plugin → application; got: #{inspect(sorted)}"
 
         {:ok, context}
@@ -64,9 +67,7 @@ defmodule CodeMySpecSpex.Story700.Criterion6051Spex do
         # zero padding, no "//" prefix.
         eyebrows = %{
           "account-rung" => {1, "Account"},
-          "project-rung" => {2, "Project"},
-          "plugin-rung" => {3, "Plugin"},
-          "application-rung" => {4, "Application"}
+          "project-rung" => {2, "Project"}
         }
 
         for {rung, {n, name}} <- eyebrows do
