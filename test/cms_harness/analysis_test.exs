@@ -43,47 +43,73 @@ defmodule CmsHarness.AnalysisTest do
       File.write!(path, contents)
     end)
 
-    if Keyword.get(opts, :client_utils, false) do
-      {_, 0} = System.cmd("mix", ["deps.get"], cd: root, stderr_to_stdout: true)
-    end
+    fetch_deps(root, Keyword.get(opts, :client_utils, false))
 
     on_exit(fn -> File.rm_rf(root) end)
     %{root: root, id: "analysis-test"}
   end
 
-  defp mix_exs(opts) do
-    if Keyword.get(opts, :client_utils, false) do
-      """
-      defmodule Demo.MixProject do
-        use Mix.Project
+  # Only the `client_utils` variant has a dependency to fetch. The `{_, 0}`
+  # match is the assertion: a fixture whose deps did not resolve would fail
+  # later as a compile error and read as the thing under test.
+  defp fetch_deps(root, true) do
+    {_, 0} = System.cmd("mix", ["deps.get"], cd: root, stderr_to_stdout: true)
+    :ok
+  end
 
-        def project do
-          [
-            app: :demo,
-            version: "0.1.0",
-            elixir: "~> 1.14",
-            compilers: [:diagnostics] ++ Mix.compilers(),
-            deps: [{:client_utils, path: #{inspect(@client_utils)}}]
-          ]
-        end
+  defp fetch_deps(_root, false), do: :ok
 
-        def application, do: [extra_applications: [:logger]]
+  defp mix_exs(opts), do: mix_exs_for(Keyword.get(opts, :client_utils, false))
+
+  # The two fixture shapes the module is about: one whose `compilers` list has
+  # `:diagnostics` and one without. The difference is the whole point — see the
+  # test recording what happens to a broken project in the second.
+  defp mix_exs_for(true) do
+    """
+    defmodule Demo.MixProject do
+      use Mix.Project
+
+      def project do
+        [
+          app: :demo,
+          version: "0.1.0",
+          elixir: "~> 1.14",
+          compilers: [:diagnostics] ++ Mix.compilers(),
+          deps: [{:client_utils, path: #{inspect(@client_utils)}}]
+        ]
       end
-      """
-    else
-      """
-      defmodule Demo.MixProject do
-        use Mix.Project
-        def project, do: [app: :demo, version: "0.1.0", elixir: "~> 1.14"]
-        def application, do: [extra_applications: [:logger]]
-      end
-      """
+
+      def application, do: [extra_applications: [:logger]]
     end
+    """
+  end
+
+  defp mix_exs_for(false) do
+    """
+    defmodule Demo.MixProject do
+      use Mix.Project
+      def project, do: [app: :demo, version: "0.1.0", elixir: "~> 1.14"]
+      def application, do: [extra_applications: [:logger]]
+    end
+    """
+  end
+
+  # These analyzers shell out to `mix` against a fixture that takes
+  # `client_utils` as a path dependency, so without a checkout there is nothing
+  # to run. Two clauses rather than a guard inside each test: the skip is a
+  # property of the environment, not a branch in the assertion.
+  #
+  # A warning rather than a silent pass, because "no checkout" and "the
+  # analyzer works" must not look the same in the output.
+  defp with_client_utils(%{client_utils?: true}, _what, fun), do: fun.()
+
+  defp with_client_utils(%{client_utils?: false}, what, _fun) do
+    IO.warn("no client_utils checkout at #{@client_utils}; #{what} not checked")
   end
 
   describe "compiler" do
     test "a file that cannot compile comes back as an error diagnostic", ctx do
-      if ctx.client_utils? do
+      with_client_utils(ctx, "compile diagnostics", fn ->
         project =
           mix_project(
             %{
@@ -112,13 +138,11 @@ defmodule CmsHarness.AnalysisTest do
 
         assert Enum.any?(result["diagnostics"], &(&1["file"] =~ "broken.ex")),
                "the diagnostic has to name the file, or the Problem lands on `unknown`"
-      else
-        IO.warn("no client_utils checkout at #{@client_utils}; compile diagnostics not checked")
-      end
+      end)
     end
 
     test "a project that compiles reports no diagnostics", ctx do
-      if ctx.client_utils? do
+      with_client_utils(ctx, "clean compile", fn ->
         project =
           mix_project(
             %{"lib/fine.ex" => "defmodule Demo.Fine do\n  def go, do: :ok\nend\n"},
@@ -127,9 +151,7 @@ defmodule CmsHarness.AnalysisTest do
 
         assert {:ok, result} = Analysis.run(project, "compiler")
         assert result["diagnostics"] == []
-      else
-        IO.warn("no client_utils checkout at #{@client_utils}; clean compile not checked")
-      end
+      end)
     end
 
     # Recorded because it is a trap, not because it is right.
@@ -183,7 +205,7 @@ defmodule CmsHarness.AnalysisTest do
 
   describe "exunit" do
     test "a failing test comes back as a failure diagnostic", ctx do
-      if ctx.client_utils? do
+      with_client_utils(ctx, "exunit failures", fn ->
         project = exunit_project(ctx, "assert 1 == 2")
 
         assert {:ok, result} = Analysis.run(project, "exunit")
@@ -197,9 +219,7 @@ defmodule CmsHarness.AnalysisTest do
 
         assert result["stats"]["failures"] == 1,
                "stats ride into the run ledger, which is what the UI gauge reads"
-      else
-        IO.warn("no client_utils checkout at #{@client_utils}; exunit failures not checked")
-      end
+      end)
     end
 
     # The distinction the whole design turns on, at the one place it has already
@@ -209,7 +229,7 @@ defmodule CmsHarness.AnalysisTest do
     # green on a project whose tests all failed. `execution_status` is the field
     # the server refuses on, so the harness has to carry it.
     test "a suite that never started says so, rather than reporting no failures", ctx do
-      if ctx.client_utils? do
+      with_client_utils(ctx, "the did-not-run case", fn ->
         project = exunit_project(ctx, "assert true")
 
         assert {:ok, result} = Analysis.run(project, "exunit", ["test/does_not_exist_test.exs"])
@@ -219,9 +239,7 @@ defmodule CmsHarness.AnalysisTest do
 
         assert result["output"] =~ "did not match",
                "the server puts the tail of this into the run's error, so it has to say why"
-      else
-        IO.warn("no client_utils checkout at #{@client_utils}; the did-not-run case is unchecked")
-      end
+      end)
     end
 
     defp exunit_project(_ctx, body) do
