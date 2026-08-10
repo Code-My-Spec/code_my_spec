@@ -64,8 +64,18 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   #
   # The gap was real and this is the second time it has been closed. Story 859's
   # spex caught it the first time, when the cache was wired read-through with a
-  # fingerprint that watched none of the above; `criterion_7321` is the one that
-  # fails, and it is the test to run before trusting any change here.
+  # fingerprint that watched none of the above.
+  #
+  # That spex is gone — no `criterion_7321`, no story 859 directory, and no spex
+  # anywhere referencing `cached_graph` or `GraphCache`. Most likely lost to the
+  # story-id migration that renumbered spex directories. This comment named it
+  # as "the test to run before trusting any change here" long after it stopped
+  # existing, which is worse than naming nothing: it reads as protection.
+  #
+  # What actually guards this is `graph_cache_test.exs`, "the fingerprint covers
+  # what the delegate checkers read" — one test per input, which is the property
+  # the spex was asserting end to end. Run that. Rebuilding the spex would be
+  # better still.
   defp compute_and_publish(scope, ctx, config) do
     {nodes, enriched_ctx} = compute_all_from_ctx(scope, ctx, config)
     edges = compute_edges(nodes, enriched_ctx, config)
