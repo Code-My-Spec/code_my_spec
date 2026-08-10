@@ -13,6 +13,7 @@ defmodule CodeMySpec.Requirements.NodeRepositoryTest do
   """
   use CodeMySpecTest.DataCase, async: true
 
+  import CodeMySpec.ComponentsFixtures
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.Requirements.{Edge, Node, NodeRepository, Requirement, RequirementGraph}
@@ -85,6 +86,54 @@ defmodule CodeMySpec.Requirements.NodeRepositoryTest do
 
       assert map_size(keys) == 2
       assert Repo.aggregate(Node, :count) == 2
+    end
+
+    # The half `upsert_all/2` was missing. Inserting and updating without ever
+    # removing meant every node ever computed stayed a row, so a graph that
+    # stopped containing a requirement kept serving it as work.
+    #
+    # Live consequence: the projection held 2,783 nodes where the computation
+    # produced 1,357 — 798 `spec_file` and 791 `test_file` rows for a project
+    # whose configuration no longer requires them. The projection agreed with
+    # itself perfectly, which is why the round-trip tests never caught it.
+    test "a node no longer in the graph stops being a row", %{scope: scope} do
+      project_id = scope.active_project_id
+
+      NodeRepository.upsert_all(scope, [
+        node("project", project_id, "stories_exist"),
+        node("project", project_id, "a_requirement_since_dropped")
+      ])
+
+      assert Repo.aggregate(Node, :count) == 2
+
+      NodeRepository.upsert_all(scope, [node("project", project_id, "stories_exist")])
+
+      assert Repo.aggregate(Node, :count) == 1,
+             "a requirement the graph stopped producing must stop being reported, " <>
+               "or an agent is handed work its project does not have"
+
+      assert Repo.one!(Node).name == "stories_exist"
+    end
+
+    # Removal is scoped to what this computation covered. A component the graph
+    # did not visit keeps its rows rather than being read as departed.
+    test "another entity's nodes are left alone", %{scope: scope} do
+      project_id = scope.active_project_id
+      component = component_fixture(scope, %{type: "context"})
+
+      NodeRepository.upsert_all(scope, [
+        node("project", project_id, "stories_exist"),
+        node("component", component.id, "implementation_file")
+      ])
+
+      assert Repo.aggregate(Node, :count) == 2
+
+      # A computation covering only the project entity.
+      NodeRepository.upsert_all(scope, [node("project", project_id, "stories_exist")])
+
+      assert Repo.aggregate(Node, :count) == 2,
+             "the component was not part of this computation, so its nodes are not " <>
+               "evidence of anything having been dropped"
     end
 
     test "an empty list writes nothing", %{scope: scope} do

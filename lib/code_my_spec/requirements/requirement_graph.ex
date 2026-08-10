@@ -18,6 +18,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
 
   require Logger
 
+  alias CodeMySpec.Requirements.Difference
   alias CodeMySpec.Requirements.GraphCache
   alias CodeMySpec.Requirements.GraphFingerprint
   alias CodeMySpec.Requirements.NodeRepository
@@ -113,15 +114,11 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
 
         cached
 
-      {^nodes, ^edges} = projected ->
-        projected
-
       {read_nodes, read_edges} = projected ->
-        Logger.warning(
-          "[Requirements] projection differs from payload — serving the projection. " <>
-            "nodes #{length(read_nodes)} vs #{length(nodes)}, " <>
-            "edges #{length(read_edges)} vs #{length(edges)}"
-        )
+        case Difference.describe(read_nodes, read_edges, nodes, edges) do
+          :none -> :ok
+          description -> Logger.warning("[Requirements] " <> description)
+        end
 
         projected
     end
@@ -967,7 +964,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
       parent_entity_id: parent_id,
       parent_entity_name: parent_name,
       prerequisites: [],
-      details: result.details
+      details: Requirement.normalize_details(result.details)
     }
   end
 
@@ -1015,7 +1012,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
               parent_entity_id: project && project.id,
               parent_entity_name: project && project.name,
               prerequisites: [],
-              details: result.details
+              details: Requirement.normalize_details(result.details)
             }
           end)
 
@@ -1057,7 +1054,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
           render_command_always?: definition.render_command_always? || false,
           subagent_role: definition.subagent_role,
           prerequisites: [],
-          details: result.details
+          details: Requirement.normalize_details(result.details)
         }
       end)
 

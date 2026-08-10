@@ -31,7 +31,7 @@ defmodule CodeMySpec.Requirements.NodeRepository do
   pair into the two row ids it needs.
   """
   @spec upsert_all(Scope.t(), [Requirement.t()]) :: %{tuple() => integer()}
-  def upsert_all(%Scope{active_project_id: project_id}, nodes) when is_list(nodes) do
+  def upsert_all(%Scope{active_project_id: project_id} = scope, nodes) when is_list(nodes) do
     now = NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
 
     nodes
@@ -40,7 +40,46 @@ defmodule CodeMySpec.Requirements.NodeRepository do
       upsert_group(entity_type, group, now)
     end)
 
-    ids_by_key(project_id, nodes)
+    keys = ids_by_key(project_id, nodes)
+    delete_departed(scope, nodes, keys)
+    keys
+  end
+
+  # Nodes that were in the graph and are not any more.
+  #
+  # `upsert_all/2` inserted and updated and never removed, so every node ever
+  # computed stayed a row. That is not a leak, it is wrong answers: a project
+  # whose configuration stops requiring specs drops `spec_file` from its graph,
+  # and without this those 798 rows kept being served as unsatisfied work. The
+  # graph read 2,783 nodes where the computation produced 1,357 — 1,426
+  # requirements an agent was told to do that its project does not have.
+  #
+  # `replace_edges/3` already did the equivalent for edges. Nodes had no such
+  # pass, and the asymmetry was invisible because both halves round-tripped
+  # consistently: the projection agreed with itself, just not with the graph.
+  #
+  # Scoped to the entities this computation covered, not to the project. A
+  # component the graph did not visit — filtered out, or belonging to work not
+  # loaded — must keep its rows rather than be treated as departed.
+  defp delete_departed(%Scope{active_project_id: project_id}, nodes, keys) do
+    keep = keys |> Map.values() |> MapSet.new()
+
+    component_ids = entity_ids(nodes, "component")
+    story_ids = entity_ids(nodes, "story")
+
+    Node
+    |> where(
+      [n],
+      n.component_id in ^component_ids or n.story_id in ^story_ids or
+        n.project_id == ^project_id
+    )
+    |> select([n], n.id)
+    |> Repo.all()
+    |> Enum.reject(&MapSet.member?(keep, &1))
+    |> case do
+      [] -> :ok
+      ids -> Repo.delete_all(from(n in Node, where: n.id in ^ids))
+    end
   end
 
   @doc """
