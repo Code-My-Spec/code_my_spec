@@ -28,6 +28,7 @@ defmodule CodeMySpec.Validation do
 
   require Logger
 
+  alias CodeMySpec.AcceptanceCriteria
   alias CodeMySpec.Analysis
   alias CodeMySpec.BddSpecs.Parser
   alias CodeMySpec.Configurations
@@ -412,7 +413,8 @@ defmodule CodeMySpec.Validation do
         |> Enum.map(& &1.component_id)
         |> Enum.reject(&is_nil/1)
         |> Enum.uniq(),
-      specs_ready_story_ids: specs_ready_story_ids(scope)
+      specs_ready_story_ids: specs_ready_story_ids(scope),
+      criterion_story_ids: AcceptanceCriteria.spec_path_story_ids(scope)
     }
 
     # One pass over the file ledger for every source, rather than one per
@@ -503,9 +505,32 @@ defmodule CodeMySpec.Validation do
   # the agent's problem yet.
   #
   # Every other source is story-agnostic and passes through untouched.
-  defp split_by_story_enforcement("spex", problems, %{specs_ready_story_ids: ready_ids}) do
+  # The criterion says which story it belongs to. The filename does not.
+  #
+  # This read the leading number out of `test/spex/<n>_.../` and treated it as a
+  # story id. Those numbers are directory names and have drifted from the ids:
+  # measured on this project, `811_user_sees_the_agents_task_queue_at_a_glance`
+  # derives 811 — a real story, "Onboarding lives at /app", `specs_ready` false
+  # — while the story with that title is 862, `specs_ready` true. So a latched
+  # story gated nothing (no path derives 862) and an unlatched one gated spex
+  # that were not its own.
+  #
+  # Both wrong answers are silent, because a number that resolves to *a* story
+  # looks exactly like one that resolves to the right story. A missing story
+  # would have hit the `nil` branch and been loud.
+  #
+  # `criteria.spec_path` is the recorded answer — `claim_spec_paths/2` writes it
+  # when a spex file is created, which is why it survives a rename. 22 of this
+  # project's 25 spex problems join on it exactly.
+  #
+  # The filename parse stays as the fallback for a spex no criterion claims.
+  # There is no right answer for an orphan, and changing what happens to those
+  # is a separate decision from fixing the ones that do have an answer.
+  defp split_by_story_enforcement("spex", problems, ctx) do
+    %{specs_ready_story_ids: ready_ids, criterion_story_ids: by_path} = ctx
+
     Enum.split_with(problems, fn problem ->
-      case Parser.derive_story_id(problem.file_path) do
+      case Map.get(by_path, problem.file_path) || Parser.derive_story_id(problem.file_path) do
         nil -> true
         story_id -> MapSet.member?(ready_ids, story_id)
       end

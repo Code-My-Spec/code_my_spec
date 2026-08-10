@@ -57,6 +57,26 @@ defmodule CodeMySpec.AcceptanceCriteria.AcceptanceCriteriaRepository do
     {:ok, count}
   end
 
+  @doc """
+  Every claimed spec path in the project, mapped to the story that owns it.
+
+  The counterpart to `claim_spec_paths/2`: that records which file a criterion
+  is checked by, this reads it back. Anything deciding what a spex failure
+  belongs to should ask here rather than parse the filename — the leading number
+  in `test/spex/<n>_.../` is a directory name, not a story id, and the two have
+  drifted apart.
+  """
+  @spec spec_path_story_ids(Scope.t()) :: %{String.t() => integer()}
+  def spec_path_story_ids(%Scope{active_project_id: project_id}) do
+    from(c in Criterion,
+      where: c.project_id == ^project_id,
+      where: not is_nil(c.spec_path) and c.spec_path != "",
+      select: {c.spec_path, c.story_id}
+    )
+    |> Repo.all()
+    |> Map.new()
+  end
+
   @spec list_story_criteria(Scope.t(), integer()) :: [Criterion.t()]
   def list_story_criteria(%Scope{active_project: %{id: project_id}}, story_id) do
     from(c in Criterion,
