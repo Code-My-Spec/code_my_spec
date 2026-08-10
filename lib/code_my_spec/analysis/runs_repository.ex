@@ -9,6 +9,8 @@ defmodule CodeMySpec.Analysis.RunsRepository do
 
   import Ecto.Query, warn: false
 
+  require Logger
+
   alias CodeMySpec.Analysis.Run
   alias CodeMySpec.Repo
   alias CodeMySpec.Users.Scope
@@ -213,17 +215,58 @@ defmodule CodeMySpec.Analysis.RunsRepository do
 
   Called at boot: a run left `:running` by a previous server process died with
   that process — its RunServer no longer exists, so nothing will ever finish it.
+
+  That premise holds for runs this server executed. It does not hold for runs
+  dispatched to a light harness: those are OS processes on another machine and a
+  server restart does not touch them. One caught mid-flight finishes, reports,
+  and is refused — the row is no longer `:running`. Restarting the server during
+  a 200-second `mix test` is enough to do it.
+
+  Left as it is deliberately, and logged instead. The join sweep is where a
+  harness can say what it still holds (`fail_running/3`); nothing can claim at
+  boot, because nothing has joined yet. Making this one smarter means either
+  keeping rows open for a harness that may never return, or a timer — and a
+  timer compensating for a deadline is what the channel exists to avoid.
+
+  So it stays blunt and says what it did.
   """
   @spec fail_stranded_runs() :: {:ok, integer()}
   def fail_stranded_runs do
     now = DateTime.utc_now()
+
+    stranded =
+      Run
+      |> where([r], r.status == :running)
+      |> select([r], {r.id, r.source, r.harness_id})
+      |> Repo.all()
 
     {count, _} =
       Run
       |> where([r], r.status == :running)
       |> Repo.update_all(set: [status: :failed, finished_at: now, updated_at: now])
 
+    log_stranded(stranded)
+
     {:ok, count}
+  end
+
+  defp log_stranded([]), do: :ok
+
+  defp log_stranded(stranded) do
+    {remote, local} = Enum.split_with(stranded, fn {_id, _source, harness_id} -> harness_id end)
+
+    Logger.warning(
+      "[Analysis] boot closed #{length(stranded)} run(s) left open by the previous server: " <>
+        "#{inspect(Enum.map(stranded, fn {id, source, _} -> {id, source} end))}"
+    )
+
+    if remote != [] do
+      Logger.warning(
+        "[Analysis] #{length(remote)} of those were dispatched to a harness and may still be " <>
+          "executing there — their results will be refused as unknown_run. " <>
+          "#{length(local)} ran on this server and are genuinely dead."
+      )
+    end
   end
 
   @doc "Prune finished runs beyond the newest #{@keep_per_source} per source."
