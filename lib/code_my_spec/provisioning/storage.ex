@@ -380,9 +380,37 @@ defmodule CodeMySpec.Provisioning.Storage do
   # A page at a time, because a bucket with thousands of layers is exactly the
   # case that breaks a single listing.
   defp empty_then_delete(bucket, credentials, location) do
-    with :ok <- empty_bucket(bucket, credentials, location) do
+    with :ok <- empty_bucket(bucket, credentials, location),
+         :ok <- abort_uploads(bucket, credentials, location) do
       ExAws.S3.delete_bucket(bucket) |> run(credentials, location)
     end
+  end
+
+  # Parts of uploads that were started and never finished.
+  #
+  # They hold a bucket open exactly like objects do, and `list_objects_v2`
+  # does not show them — so a registry bucket that had had a push interrupted
+  # listed as empty and still refused to delete, which Hetzner reports as a
+  # request that times out rather than as `BucketNotEmpty`. A registry push is
+  # multipart by nature and a drill is killed mid-push often enough, so this
+  # is the normal state of the bucket rather than an edge case.
+  defp abort_uploads(bucket, credentials, location) do
+    case ExAws.S3.list_multipart_uploads(bucket) |> run(credentials, location) do
+      {:ok, %{body: %{uploads: uploads}}} -> abort_each(bucket, uploads, credentials, location)
+      {:ok, _} -> :ok
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp abort_each(bucket, uploads, credentials, location) do
+    Enum.reduce_while(uploads, :ok, fn upload, :ok ->
+      abort = ExAws.S3.abort_multipart_upload(bucket, upload.key, upload.upload_id)
+
+      case run(abort, credentials, location) do
+        {:ok, _} -> {:cont, :ok}
+        {:error, reason} -> {:halt, {:error, reason}}
+      end
+    end)
   end
 
   # A page at a time, always from the start, until the bucket lists empty.

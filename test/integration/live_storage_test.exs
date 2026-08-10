@@ -144,6 +144,52 @@ defmodule CodeMySpec.LiveStorageTest do
     IO.puts("  non-empty  -> deleted #{ctx.uat} with 3 objects in it")
   end
 
+  # An upload that was started and never finished holds the bucket open just
+  # like an object does, and `list_objects_v2` does not show it — so the
+  # bucket lists empty and still will not delete. A registry push is multipart
+  # by nature and a killed drill leaves one behind, which is how a bucket
+  # reporting zero objects survived every attempt to remove it.
+  #
+  # Hetzner reports the refusal as a request that times out rather than as
+  # `BucketNotEmpty`, so there is nothing in the error to suggest this.
+  # Its own bucket, so an unfinished upload is the only thing holding it open —
+  # the shared one carries objects other tests wrote, which would prove
+  # nothing about multipart.
+  test "a bucket holding an unfinished upload still deletes", ctx do
+    bucket = "cms-live-store-multipart"
+    on_exit(fn -> Storage.delete_bucket(bucket, ctx.credentials, location: @location) end)
+
+    {:ok, _} = Storage.ensure_bucket(bucket, ctx.credentials, location: @location)
+
+    {:ok, %{body: %{upload_id: upload_id}}} =
+      ExAws.S3.initiate_multipart_upload(bucket, "layers/interrupted")
+      |> ExAws.request(s3_config(ctx.credentials))
+
+    assert is_binary(upload_id)
+
+    {:ok, dumps} = Storage.list_dumps(bucket, ctx.credentials, location: @location, prefix: "")
+    assert dumps == [], "the unfinished upload should not be listed as an object"
+
+    assert :ok = Storage.delete_bucket(bucket, ctx.credentials, location: @location)
+
+    assert_bucket_gone(bucket, ctx.credentials, 30)
+
+    IO.puts("  unfinished -> deleted #{bucket} with a multipart upload open")
+  end
+
+  defp s3_config(credentials) do
+    Keyword.merge(
+      [
+        http_client: CodeMySpec.Content.ExAwsReqClient,
+        host: "#{@location}.your-objectstorage.com",
+        region: @location,
+        scheme: "https://",
+        port: 443
+      ],
+      credentials
+    )
+  end
+
   defp assert_bucket_gone(bucket, credentials, attempts) do
     {:ok, buckets} = Storage.list_buckets(credentials, location: @location)
 
