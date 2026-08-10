@@ -1200,7 +1200,16 @@ defmodule CodeMySpec.Provisioning.Steps do
        |> Keyword.put(:registry_host, "#{ip}:#{Registry.port()}")
        |> Keyword.put(:network_resource, network_resource(name, network))}
     else
-      {:error, reason} -> {:error, format(reason)}
+      # Named, because every one of these is a lookup and `:not_found` on its
+      # own reads as "not found" — a whole step's failure rendered as two words
+      # that say neither what was missing nor which environment wanted it.
+      {:error, :not_found} ->
+        {:error,
+         "cannot build for #{environment}: no server named #{box}, and no private network " <>
+           "named #{name} to reach a registry on"}
+
+      {:error, reason} ->
+        {:error, "cannot build for #{environment} on #{box}: #{format(reason)}"}
     end
   end
 
@@ -1616,8 +1625,11 @@ defmodule CodeMySpec.Provisioning.Steps do
   # design and never had anything to log in with.
   defp with_registry_credential(scope, opts) do
     case Registry.credential(scope) do
-      {:ok, credential} -> {:ok, Keyword.put(opts, :registry_credentials, credential)}
-      {:error, reason} -> {:error, format(reason)}
+      {:ok, credential} ->
+        {:ok, Keyword.put(opts, :registry_credentials, credential)}
+
+      {:error, reason} ->
+        {:error, "could not read or mint the registry password: #{format(reason)}"}
     end
   end
 
