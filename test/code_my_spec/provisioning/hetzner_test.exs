@@ -396,6 +396,32 @@ defmodule CodeMySpec.Provisioning.HetznerTest do
       assert {:ok, :already_attached} = Hetzner.attach_to_network(@scope, 1, 7)
     end
 
+    # 422 is what Hetzner actually answers, which the 409 above was written
+    # from an assumption about. The idempotence was decorative for as long as
+    # that was the only case covered: a drill failed its whole deploy on
+    # `server_already_attached`, which is the state the call is trying to
+    # reach.
+    test "already attached is success at the status the provider really sends" do
+      stub(fn conn ->
+        json(conn, 422, %{
+          "error" => %{"code" => "server_already_attached", "message" => "server already attached"}
+        })
+      end)
+
+      assert {:ok, :already_attached} = Hetzner.attach_to_network(@scope, 1, 7)
+    end
+
+    # 422 is not a synonym for "already attached" — it covers a network that
+    # is full, a subnet that does not exist, and more. Swallowing all of them
+    # would turn a real failure into a deploy that proceeds without a network.
+    test "a different 422 is still a failure" do
+      stub(fn conn ->
+        json(conn, 422, %{"error" => %{"code" => "no_subnet_available"}})
+      end)
+
+      assert {:error, {:hetzner_error, 422, _}} = Hetzner.attach_to_network(@scope, 1, 7)
+    end
+
     test "attaching a server that is not attached yet is success" do
       stub(fn conn -> json(conn, 201, %{"action" => %{"status" => "running"}}) end)
 

@@ -2688,6 +2688,17 @@ defmodule CodeMySpecSpex.Case do
       # Sequential consumes one interaction per request, so a recorded
       # 404,404,200 replays as 404,404,200.
       |> Keyword.put_new(:sequential, true)
+      # Sequential state is per-process, and every step now runs in a
+      # supervised task — a deploy takes minutes and cannot be held inside a
+      # LiveView event. So each step began at the top of the cassette and
+      # replayed the earliest matching interaction: the deploy step's
+      # `GET /servers` was answered with the list recorded before any server
+      # existed, and it reported that the box the previous step had just
+      # created was not there.
+      #
+      # A shared session puts the cursor in an Agent, where every process
+      # sees the same one.
+      |> Keyword.put_new(:shared, true)
       |> Keyword.put_new(:filter_request_headers, ["authorization", "cookie"])
       |> Keyword.put_new(:filter_response_headers, ["set-cookie"])
       |> Keyword.put_new(:filter_sensitive_data, sensitive_patterns())

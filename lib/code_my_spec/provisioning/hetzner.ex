@@ -479,6 +479,17 @@ defmodule CodeMySpec.Provisioning.Hetzner do
       {:ok, _} ->
         {:ok, :attached}
 
+      # Hetzner answers an attach that has already happened with 422
+      # `server_already_attached`, not 409 — which made the idempotence here
+      # decorative. The server step attaches every box to the baseline
+      # network, and the deploy attaches again for a box added later; the
+      # second call failed the whole deploy on a condition that is the desired
+      # state. Matched on the code as well as the status, because 422 covers
+      # plenty of things that are not this.
+      {:error, {:hetzner_error, status, %{"error" => %{"code" => "server_already_attached"}}}}
+      when status in [409, 422] ->
+        {:ok, :already_attached}
+
       {:error, {:hetzner_error, 409, _}} ->
         {:ok, :already_attached}
 
