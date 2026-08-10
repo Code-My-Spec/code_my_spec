@@ -563,7 +563,13 @@ defmodule CodeMySpecSpex.Case do
 
       why = why |> String.replace(~r/\s+/, " ") |> String.trim()
 
-      IO.puts("STEP #{String.pad_trailing(to_string(key), 11)} #{state}  #{String.slice(why, 0, 300)}")
+      # The *tail*, not the head, once it is long. A failing `docker build`
+      # reports several hundred characters of successful layers before the one
+      # that broke, so the first 300 characters are reliably the part that
+      # worked — which reads as though nothing went wrong at all.
+      shown = if String.length(why) > 600, do: "…" <> String.slice(why, -600, 600), else: why
+
+      IO.puts("STEP #{String.pad_trailing(to_string(key), 11)} #{state}  #{shown}")
     end
 
     :ok

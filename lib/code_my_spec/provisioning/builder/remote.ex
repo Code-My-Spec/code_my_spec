@@ -20,7 +20,14 @@ defmodule CodeMySpec.Provisioning.Builder.Remote do
   # A freshly created box answers the API long before it answers SSH. Polled
   # rather than slept-through, so a box that comes up quickly is not waited on
   # for the worst case.
-  @ssh_attempts 30
+  #
+  # Three minutes, not one. Sixty seconds is inside the range a cold Hetzner
+  # box takes to reach sshd, so it was a coin toss: one drill delivered its
+  # source and started building, the next reported `builder unreachable` doing
+  # nothing differently. Waiting costs nothing when the box is quick, because
+  # this polls — and the failure it produces is expensive, since it reads as a
+  # broken builder rather than an impatient caller.
+  @ssh_attempts 90
   @ssh_interval_ms 2_000
 
   @doc """
@@ -49,16 +56,26 @@ defmodule CodeMySpec.Provisioning.Builder.Remote do
 
   # Reachability, not readiness of anything in particular: if `true` runs, the
   # box is up and the key works, which is the whole precondition.
-  defp await_ssh(_run, 0, _opts), do: {:error, :builder_unreachable}
+  #
+  # The give-up carries how long it waited and what SSH last said. A bare
+  # `:builder_unreachable` describes a broken box equally well as a caller who
+  # did not wait long enough, and those want opposite responses — the first
+  # needs looking at, the second needs patience.
+  defp await_ssh(run, attempts, opts, waited \\ 0, last \\ "")
 
-  defp await_ssh(run, attempts, opts) do
+  defp await_ssh(_run, 0, _opts, waited, last) do
+    {:error, {:builder_unreachable, div(waited, 1000), last}}
+  end
+
+  defp await_ssh(run, attempts, opts, waited, _last) do
     case run.(["true"]) do
       {_, 0} ->
         :ok
 
-      _ ->
-        Wait.sleep(Keyword.get(opts, :ssh_interval_ms, @ssh_interval_ms))
-        await_ssh(run, attempts - 1, opts)
+      {output, _status} ->
+        interval = Keyword.get(opts, :ssh_interval_ms, @ssh_interval_ms)
+        Wait.sleep(interval)
+        await_ssh(run, attempts - 1, opts, waited + interval, trim(output))
     end
   end
 

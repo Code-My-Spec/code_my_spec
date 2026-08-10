@@ -99,13 +99,33 @@ defmodule CodeMySpec.Provisioning.Builder.RemoteTest do
     test "gives up on a box that never answers rather than hanging" do
       run = fn _ -> {"connection refused", 255} end
 
-      assert {:error, :builder_unreachable} =
+      assert {:error, {:builder_unreachable, _seconds, last}} =
                Remote.build(
                  %{"ip" => "1.2.3.4"},
                  "abc123",
                  "reg/app:abc123",
                  opts(run, ssh_attempts: 3)
                )
+
+      # What SSH last said, because "unreachable" describes a broken box and an
+      # impatient caller equally well, and those want opposite responses. A
+      # cold Hetzner box takes long enough to reach sshd that the second is the
+      # likelier of the two.
+      assert last =~ "connection refused"
+    end
+
+    test "how long it waited is part of the giving up" do
+      run = fn _ -> {"", 255} end
+
+      assert {:error, {:builder_unreachable, seconds, _last}} =
+               Remote.build(
+                 %{"ip" => "1.2.3.4"},
+                 "abc123",
+                 "reg/app:abc123",
+                 opts(run, ssh_attempts: 3, ssh_interval_ms: 1_000)
+               )
+
+      assert seconds == 3
     end
 
     test "an architecture nobody recognises is an error, not a guess" do
