@@ -13,26 +13,26 @@ defmodule CodeMySpecSpex.Story842.Criterion1973Spex do
 
   ## What is asserted, and what that costs
 
-  Two of the three destinations are checked as artifacts: the spex carries out
-  the release the prompt describes and then reads back an annotated tag in the
-  repository and a record under `.code_my_spec/releases/`. A task that *tells*
-  an agent to tag and publish, and is satisfied by being told, is the
-  self-attestation the whole devops rework was undoing — `devops_setup` used to
-  be complete because a markdown file contained the word "verified".
+  All three destinations are checked as artifacts. The spex carries out the
+  release the prompt describes, then reads back an annotated tag in the
+  repository, a record under `.code_my_spec/releases/`, and the URL `gh` reports
+  for the published Release. A task that *tells* an agent to tag and publish,
+  and is satisfied by being told, is the self-attestation the whole devops
+  rework was undoing — `devops_setup` used to be complete because a markdown
+  file contained the word "verified".
 
-  **The third is not, and this file should not be read as covering it.**
-  `gh release create` publishes to GitHub. Recording that cassette means
-  publishing a real Release to a real repository, so it is outstanding rather
-  than stubbed: a faked GitHub call would leave this asserting that the spex can
-  write a file, which is the self-attestation above wearing a different hat. The
-  GitHub step is currently checked only by the prompt not reporting a failure,
-  which is weaker than the other two and is the gap to close.
+  The GitHub assertion was the last one to stop being that. It used to check
+  that the prompt did not contain "could not publish", which passes when nothing
+  is published at all — and passed for exactly that reason. It now publishes a
+  real Release to `codemy-my-spec-test/release-spex-fixture`, recorded once and
+  replayed after. Verified by deleting the Release from GitHub and re-running:
+  still green, so replay reads the cassette rather than the network.
 
-  There is a second, quieter limit worth stating. The spex performs the release
-  itself, so what these assertions prove is that the artifacts are well-formed
-  and the checker agrees with them — not that an agent following the prompt
-  produces them. That is the trade this criterion was rewritten to accept; the
-  alternative was asserting artifacts that nothing in the test ever creates.
+  A limit worth stating plainly. The spex performs the release itself, so what
+  these assertions prove is that the artifacts are well-formed and the checker
+  agrees with them — not that an agent following the prompt produces them. That
+  is the trade this criterion was rewritten to accept; the alternative was
+  asserting artifacts that nothing in the test ever creates.
   """
 
   use CodeMySpecSpex.Case
@@ -40,6 +40,18 @@ defmodule CodeMySpecSpex.Story842.Criterion1973Spex do
   alias CodeMySpec.Environments
 
   @release_type "release"
+
+  # A repository in the throwaway org, not anybody's real one. Recording this
+  # cassette publishes an actual GitHub Release, so it publishes it somewhere
+  # whose entire purpose is being published to.
+  @repo "codemy-my-spec-test/release-spex-fixture"
+
+  # Fixed, not unique-per-run: a cassette replays the command line it recorded,
+  # so a random tag would never match on replay. Teardown removes it, which is
+  # also what makes re-recording possible.
+  @release_tag "v1.0.0-spex"
+
+  @cassette "842_1973_release_published"
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -105,11 +117,10 @@ defmodule CodeMySpecSpex.Story842.Criterion1973Spex do
         # destinations are local and are done for real here — an annotated tag
         # in the working copy and a record naming what shipped.
         #
-        # The third is not: `gh release create` publishes to GitHub, which needs
-        # a recorded cassette and, to record it, a real repository to publish
-        # to. Left as the one outstanding call rather than faked, because a
-        # stubbed GitHub Release would make this assert that the spex can write
-        # a file, which is the self-attestation the criterion exists to refuse.
+        # The third — the GitHub Release — is published below against a real
+        # repository in the throwaway org, and recorded. Not stubbed: a faked
+        # GitHub call would leave this asserting that the spex can write a
+        # file, which is the self-attestation the criterion exists to refuse.
         env = context.environment
         version = "v1.0.0"
 
@@ -135,6 +146,30 @@ defmodule CodeMySpecSpex.Story842.Criterion1973Spex do
         {:ok, Map.put(context, :version, version)}
       end
 
+      when_ "it publishes the release on GitHub", context do
+        # Real while recording, replayed afterwards. `--target main` lets GitHub
+        # create the tag on the fixture repo, so this needs no remote on the
+        # spex's throwaway working copy.
+        {output, status} =
+          with_full_cassette @cassette do
+            Environments.cmd(context.environment, "gh", [
+              "release",
+              "create",
+              @release_tag,
+              "--repo",
+              @repo,
+              "--target",
+              "main",
+              "--title",
+              @release_tag,
+              "--notes",
+              "Published by story 842 criterion 1973."
+            ])
+          end
+
+        {:ok, Map.merge(context, %{gh_output: output, gh_status: status})}
+      end
+
       then_ "there is a record under .code_my_spec/releases", context do
         assert {:ok, entries} =
                  Environments.list_directory(context.environment, ".code_my_spec/releases"),
@@ -156,10 +191,15 @@ defmodule CodeMySpecSpex.Story842.Criterion1973Spex do
       end
 
       then_ "the release is published on GitHub", context do
-        prompt = context.response["prompt"] || ""
+        # The artifact, not the prompt. This used to assert that the prompt did
+        # not contain "could not publish" — which passes when nothing was
+        # published at all, and passed for exactly that reason.
+        assert context.gh_status == 0,
+               "expected `gh release create` to succeed, got exit #{context.gh_status}: " <>
+                 context.gh_output
 
-        refute prompt =~ "could not publish",
-               "expected the GitHub Release to be published, got: #{prompt}"
+        assert context.gh_output =~ "#{@repo}/releases/tag/#{@release_tag}",
+               "expected gh to report the published release's URL, got: #{context.gh_output}"
 
         {:ok, context}
       end
