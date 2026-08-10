@@ -1291,6 +1291,52 @@ defmodule CodeMySpecSpex.Fixtures do
   defdelegate put_workspace_healthy(healthy?), to: FakeWorkspaceRunner, as: :put_healthy
 
   @doc """
+  Puts `project_id`'s workspace into the state the pane has to render.
+
+  Story 885's whole point is that these are four different screens, so a spec
+  needs to produce each one without a container. The runner is faked; the row
+  is real, because `Workspaces.state/1` reads both and conflating them is the
+  bug the story exists to prevent.
+
+  - `:absent` — no workspace row at all. Nothing was ever built.
+  - `:starting` — booting, and the fake never answers, so the spec observes the
+    starting state deliberately rather than racing the boot watcher's clock.
+  - `:running` — running, with a port, so there is an address to frame.
+  - `:running_without_url` — running and portless. Not a contrivance:
+    `Workspace.url/1` answers nil for a running workspace whose port is not an
+    integer, which is exactly the state criterion 2323 refuses to frame.
+  - `:down` — the container has gone away.
+  """
+  @spec workspace_in(Scope.t(), String.t(), atom()) :: :ok
+  def workspace_in(%Scope{} = _scope, _project_id, :absent), do: :ok
+
+  def workspace_in(%Scope{} = _scope, project_id, state) do
+    install_workspace_runner(runner_opts(state))
+
+    {:ok, workspace} =
+      WorkspacesRepository.upsert_booting(
+        WorkspacesRepository.get_by_project(project_id),
+        %{project_id: project_id, container_name: "spex-#{project_id}", port: port_for(state)}
+      )
+
+    settle(workspace, state)
+  end
+
+  defp runner_opts(:starting), do: [healthy?: false, alive?: true, serving: :down]
+  defp runner_opts(:down), do: [healthy?: false, alive?: false, serving: :down]
+  defp runner_opts(_running), do: [healthy?: true, alive?: true, serving: :serving]
+
+  defp port_for(:running_without_url), do: nil
+  defp port_for(_state), do: 4599
+
+  defp settle(_workspace, :starting), do: :ok
+
+  defp settle(workspace, _state) do
+    {:ok, _} = WorkspacesRepository.update(Workspace.running_changeset(workspace))
+    :ok
+  end
+
+  @doc """
   An actual HTTP server standing in for the container's app, and a running
   workspace row for `project_id` pointing at it. Returns the preview hostname.
 
