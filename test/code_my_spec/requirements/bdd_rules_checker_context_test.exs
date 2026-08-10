@@ -25,6 +25,8 @@ defmodule CodeMySpec.Requirements.BddRulesCheckerContextTest do
 
   alias CodeMySpec.AcceptanceCriteria
   alias CodeMySpec.BddRules
+  alias CodeMySpec.Deploys
+  alias CodeMySpec.Deploys.Deploy
   alias CodeMySpec.Personas
   alias CodeMySpec.Qa
   alias CodeMySpec.Qa.QaAttempt
@@ -185,6 +187,65 @@ defmodule CodeMySpec.Requirements.BddRulesCheckerContextTest do
 
       assert {false, _} = preloaded
     end
+  end
+
+  # `deploy`, the third delegate. Its distinction is that a deploy row can exist
+  # and still not count — `health_verified_at` is what separates "we recorded a
+  # deploy" from "the app answered".
+  describe "Deploys.uat_check agrees across both forms" do
+    defp both_deploy(scope, story) do
+      {Deploys.uat_check(scope, story), Deploys.uat_check(scope, story, Preloader.load(scope))}
+    end
+
+    test "with no deploy", %{scope: scope} do
+      story = scope |> story!() |> then(&ready!(scope, &1))
+
+      {queried, preloaded} = both_deploy(scope, story)
+
+      assert queried == preloaded
+      assert {false, _} = preloaded
+    end
+
+    test "with a health-verified UAT deploy", %{scope: scope} do
+      story = scope |> story!() |> then(&ready!(scope, &1))
+      deploy!(scope, story, "uat", DateTime.utc_now() |> DateTime.truncate(:second))
+
+      {queried, preloaded} = both_deploy(scope, story)
+
+      assert queried == preloaded
+      assert {true, _} = preloaded
+    end
+
+    test "with a deploy that never passed its health check", %{scope: scope} do
+      story = scope |> story!() |> then(&ready!(scope, &1))
+      deploy!(scope, story, "uat", nil)
+
+      {queried, preloaded} = both_deploy(scope, story)
+
+      assert queried == preloaded
+      assert {false, _} = preloaded
+    end
+
+    # The context pins `environment == "uat"`. A prod deploy must not satisfy a
+    # node that asks about UAT.
+    test "with a prod deploy only", %{scope: scope} do
+      story = scope |> story!() |> then(&ready!(scope, &1))
+      deploy!(scope, story, "prod", DateTime.utc_now() |> DateTime.truncate(:second))
+
+      {queried, preloaded} = both_deploy(scope, story)
+
+      assert queried == preloaded
+      assert {false, _} = preloaded
+    end
+  end
+
+  defp deploy!(scope, story, environment, verified_at) do
+    Repo.insert!(%Deploy{
+      project_id: scope.active_project_id,
+      story_id: story.id,
+      environment: environment,
+      health_verified_at: verified_at
+    })
   end
 
   # Built through `QaAttempt.changeset/2` rather than `Qa.submit_qa_result/2`,

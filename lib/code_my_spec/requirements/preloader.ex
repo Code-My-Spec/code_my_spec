@@ -12,6 +12,7 @@ defmodule CodeMySpec.Requirements.Preloader do
   alias CodeMySpec.Analysis.{Fingerprint, Run, RunsRepository}
   alias CodeMySpec.BddRules.Rule
   alias CodeMySpec.Components.Component
+  alias CodeMySpec.Deploys.Deploy
   alias CodeMySpec.Files.File
   alias CodeMySpec.Personas.{Persona, PersonaStory}
   alias CodeMySpec.Problems.Problem
@@ -37,6 +38,7 @@ defmodule CodeMySpec.Requirements.Preloader do
           criteria_by_story: %{integer() => [Criterion.t()]},
           personas_by_story: %{integer() => [Persona.t()]},
           qa_latest_by_story: %{integer() => QaAttempt.t()},
+          uat_deploy_by_story: %{integer() => Deploy.t()},
           delegated_inputs: %{String.t() => [{term(), NaiveDateTime.t()}]}
         }
 
@@ -114,6 +116,7 @@ defmodule CodeMySpec.Requirements.Preloader do
       criteria_by_story: criteria_by_story(story_ids),
       personas_by_story: personas_by_story(story_ids),
       qa_latest_by_story: qa_latest_by_story(story_ids),
+      uat_deploy_by_story: uat_deploy_by_story(project_id),
       delegated_inputs: delegated_inputs(project_id)
     }
   end
@@ -201,6 +204,20 @@ defmodule CodeMySpec.Requirements.Preloader do
     |> Repo.all()
     |> Enum.group_by(& &1.story_id)
     |> Map.new(fn {story_id, [latest | _]} -> {story_id, latest} end)
+  end
+
+  # The UAT deploy per story. `Deploys.get/3` is a `Repo.one/1` on
+  # `(project_id, story_id, environment)`, so there is at most one and a map
+  # keyed by story is the same shape.
+  #
+  # Environment is pinned to "uat" here because `deploy` is the only node that
+  # reads deploys and it asks about UAT only — prod promotion is the release
+  # process's business.
+  defp uat_deploy_by_story(project_id) do
+    Deploy
+    |> where([d], d.project_id == ^project_id and d.environment == "uat")
+    |> Repo.all()
+    |> Map.new(&{&1.story_id, &1})
   end
 
   defp delegated_inputs(project_id) do
