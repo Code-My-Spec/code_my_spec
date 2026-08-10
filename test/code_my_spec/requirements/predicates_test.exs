@@ -18,7 +18,7 @@ defmodule CodeMySpec.Requirements.PredicatesTest do
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.Files.File, as: FileRecord
-  alias CodeMySpec.Requirements.{Node, Predicates, RequirementGraph}
+  alias CodeMySpec.Requirements.{Node, Predicates, RequirementCalculator, RequirementGraph}
 
   setup do
     %{scope: full_scope_fixture()}
@@ -182,6 +182,123 @@ defmodule CodeMySpec.Requirements.PredicatesTest do
       assert MapSet.member?(satisfied, component.id),
              "the loose default is the UI's read — one rule with the preloader, not " <>
                "a second one invented here"
+    end
+  end
+
+  describe "path_exists" do
+    defp project_file!(scope, path, harness_id \\ nil) do
+      Repo.insert!(%FileRecord{
+        project_id: scope.active_project_id,
+        harness_id: harness_id || scope.active_harness_id,
+        path: path,
+        role: :architecture,
+        valid: true
+      })
+    end
+
+    defp path_satisfied?(scope, config) do
+      Predicates.nodes()
+      |> where([node: n], n.name == "technical_strategy")
+      |> Predicates.satisfied(:path_exists, config, scope.active_harness_id)
+      |> Repo.exists?()
+    end
+
+    test "an exact path that is tracked satisfies it", %{scope: scope} do
+      RequirementGraph.compute_graph(scope)
+      refute path_satisfied?(scope, %{path: ".code_my_spec/architecture/decisions.md"})
+
+      project_file!(scope, ".code_my_spec/architecture/decisions.md")
+
+      assert path_satisfied?(scope, %{path: ".code_my_spec/architecture/decisions.md"})
+    end
+
+    test "string keys work, because definitions carry both", %{scope: scope} do
+      RequirementGraph.compute_graph(scope)
+      project_file!(scope, ".code_my_spec/architecture/decisions.md")
+
+      assert path_satisfied?(scope, %{"path" => ".code_my_spec/architecture/decisions.md"})
+    end
+
+    test "a prefix is satisfied by any file beneath it", %{scope: scope} do
+      RequirementGraph.compute_graph(scope)
+      refute path_satisfied?(scope, %{path_prefix: ".code_my_spec/qa/"})
+
+      project_file!(scope, ".code_my_spec/qa/journey.md")
+
+      assert path_satisfied?(scope, %{path_prefix: ".code_my_spec/qa/"})
+    end
+
+    # The trap `RequirementCalculator` avoids by matching in Elixir. `_` is a
+    # single-character wildcard in LIKE, so an unescaped prefix would match a
+    # directory that merely resembles it — and these prefixes are paths, where
+    # `_` is an ordinary character.
+    test "an underscore in the prefix is a literal, not a wildcard", %{scope: scope} do
+      RequirementGraph.compute_graph(scope)
+      project_file!(scope, ".code_my_spec/qaXjourney/plan.md")
+
+      refute path_satisfied?(scope, %{path_prefix: ".code_my_spec/qa_journey/"}),
+             "`qa_journey` must not match `qaXjourney` — an over-matching prefix " <>
+               "reports a requirement done because a differently-named directory exists"
+    end
+
+    test "a percent in the prefix is a literal too", %{scope: scope} do
+      RequirementGraph.compute_graph(scope)
+      project_file!(scope, ".code_my_spec/anything/at/all.md")
+
+      refute path_satisfied?(scope, %{path_prefix: ".code_my_spec/%/"})
+    end
+
+    # A malformed definition must be satisfied by nothing, not by everything.
+    test "no path and no prefix matches nothing", %{scope: scope} do
+      RequirementGraph.compute_graph(scope)
+      project_file!(scope, ".code_my_spec/architecture/decisions.md")
+
+      refute path_satisfied?(scope, %{}),
+             "matching everything would turn a definition missing its config into a " <>
+               "requirement that is permanently done"
+    end
+
+    test "another checkout's file does not satisfy it", %{scope: scope} do
+      RequirementGraph.compute_graph(scope)
+      project_file!(scope, ".code_my_spec/architecture/decisions.md", second_harness(scope))
+
+      refute path_satisfied?(scope, %{path: ".code_my_spec/architecture/decisions.md"})
+    end
+
+    # The property this module promises and the one that caught nothing when the
+    # harness scoping was missing: the query and the interpreter must return the
+    # same verdict, not merely plausible ones.
+    #
+    # Both directions are asserted from the same rows. All six `path_exists`
+    # definitions ship an exact `path`, so `technical_strategy` is a real
+    # definition rather than one invented for the test; the prefix cases below
+    # exercise config the interpreter supports but no definition uses yet, which
+    # is where the two implementations are most free to drift.
+    for {label, config, path, expected} <- [
+          {"an exact path that is tracked", %{path: ".code_my_spec/architecture/decisions.md"},
+           ".code_my_spec/architecture/decisions.md", true},
+          {"an exact path that is not", %{path: ".code_my_spec/architecture/decisions.md"},
+           ".code_my_spec/architecture/other.md", false},
+          {"a prefix with a file beneath it", %{path_prefix: ".code_my_spec/qa/"},
+           ".code_my_spec/qa/journey.md", true},
+          {"a prefix with nothing beneath it", %{path_prefix: ".code_my_spec/qa/"},
+           ".code_my_spec/elsewhere/journey.md", false},
+          {"a prefix whose underscore is literal", %{path_prefix: ".code_my_spec/qa_journey/"},
+           ".code_my_spec/qaXjourney/plan.md", false}
+        ] do
+      test "query and interpreter agree on #{label}", %{scope: scope} do
+        RequirementGraph.compute_graph(scope)
+        project_file!(scope, unquote(path))
+
+        config = unquote(Macro.escape(config))
+        definition = %{name: "technical_strategy", check_type: :path_exists, config: config}
+
+        %{satisfied: interpreted} =
+          RequirementCalculator.compute_one(scope, scope.active_project, definition, [], nil)
+
+        assert path_satisfied?(scope, config) == interpreted
+        assert interpreted == unquote(expected)
+      end
     end
   end
 

@@ -71,9 +71,32 @@ defmodule CodeMySpec.Requirements.Predicates do
   whichever of `component_id`/`story_id` is set and the file table records the
   same pair. A project-scoped node has neither and matches no file, which is
   correct — no file check is project-scoped.
+
+  ## `:path_exists`
+
+  Project-scoped, where the two above are entity-scoped: these correlate on
+  `project_id`. Six definitions use it and all six name a `.code_my_spec/` path
+  — a technical strategy, a QA plan, a journey.
+
+  Two config shapes, matching the interpreter: an exact `path`, or a
+  `path_prefix` satisfied by any file beneath it. A definition carrying neither
+  is satisfied by nothing rather than by everything — the interpreter reports it
+  unsatisfied with a reason, and a predicate that matched instead would turn a
+  malformed definition into a requirement that is permanently done.
+
+  ## `harness_id`
+
+  Every clause scopes its file subquery to one working copy, or blends them all
+  when given `nil` — the same asymmetry `Preloader.load/1` applies, strict for
+  the agent path and loose for the UI. Passing `nil` from an agent's scope is
+  how a file another checkout wrote becomes this one's evidence.
   """
-  @spec satisfied(Ecto.Query.t(), :file_exists | :file_valid, map(), Ecto.UUID.t() | nil) ::
-          Ecto.Query.t()
+  @spec satisfied(
+          Ecto.Query.t(),
+          :file_exists | :file_valid | :path_exists,
+          map(),
+          Ecto.UUID.t() | nil
+        ) :: Ecto.Query.t()
   def satisfied(query, check, config, harness_id \\ nil)
 
   def satisfied(query, :file_exists, %{role: role}, harness_id) do
@@ -114,6 +137,66 @@ defmodule CodeMySpec.Requirements.Predicates do
         )
       )
     )
+  end
+
+  def satisfied(query, :path_exists, config, harness_id) do
+    case {config_value(config, :path), config_value(config, :path_prefix)} do
+      {path, _} when is_binary(path) ->
+        where(
+          query,
+          [node: n],
+          exists(
+            from(f in File,
+              where: f.project_id == parent_as(:node).project_id,
+              where: f.path == ^path,
+              where: ^harness_filter(harness_id),
+              select: 1
+            )
+          )
+        )
+
+      {_, prefix} when is_binary(prefix) ->
+        pattern = like_prefix(prefix)
+
+        where(
+          query,
+          [node: n],
+          exists(
+            from(f in File,
+              where: f.project_id == parent_as(:node).project_id,
+              where: fragment("? LIKE ? ESCAPE '\\'", f.path, ^pattern),
+              where: ^harness_filter(harness_id),
+              select: 1
+            )
+          )
+        )
+
+      _ ->
+        where(query, [node: _n], fragment("FALSE"))
+    end
+  end
+
+  defp config_value(config, key) do
+    Map.get(config, key) || Map.get(config, Atom.to_string(key))
+  end
+
+  # `_` is a single-character wildcard and `%` matches anything, so a prefix
+  # containing either would over-match — and these prefixes are config values
+  # holding paths, where `_` is ordinary.
+  #
+  # `RequirementCalculator` sidesteps this by reading every path for the project
+  # and matching in Elixir, which it can afford one project at a time. A query
+  # over the whole node table cannot, so the wildcards are escaped instead and
+  # the escape character is named explicitly rather than left to the backend's
+  # default.
+  defp like_prefix(prefix) do
+    escaped =
+      prefix
+      |> String.replace("\\", "\\\\")
+      |> String.replace("%", "\\%")
+      |> String.replace("_", "\\_")
+
+    escaped <> "%"
   end
 
   # The scoping the moduledoc's argument depends on, which the query did not
