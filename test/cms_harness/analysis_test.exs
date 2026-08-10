@@ -160,8 +160,24 @@ defmodule CmsHarness.AnalysisTest do
              "`--return-errors` means the exit code is no longer a signal at all"
 
       assert result["diagnostics"] == [],
-             "if this ever fails, the fallback in CodeMySpec.Compile has been fixed " <>
-               "to read the raw output regardless of exit code — delete this test"
+             """
+             Diagnostics came back for a project with no :diagnostics compiler.
+
+             That is what a fix looks like — `CodeMySpec.Compile` reading the raw
+             output regardless of exit code — and if that is what happened, delete
+             this test.
+
+             Check first. This has also failed intermittently for reasons nobody
+             has traced (issue 75b35ac2): full-suite runs only, never standalone,
+             on a temp project that should have no way to produce diagnostics at
+             all. An environmental failure presents exactly like a fix, and acting
+             on the instruction above would delete a test guarding a trap that is
+             still there.
+
+             So: confirm `extract_compiler_errors/1` is actually reached on a zero
+             exit before deleting anything. A self-deleting test that can fire by
+             accident deletes itself by accident.
+             """
     end
   end
 
