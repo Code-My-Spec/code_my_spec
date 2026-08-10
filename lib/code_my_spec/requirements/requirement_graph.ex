@@ -22,6 +22,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   alias CodeMySpec.Requirements.GraphFingerprint
   alias CodeMySpec.Requirements.NodeRepository
   alias CodeMySpec.Requirements.Preloader
+  alias CodeMySpec.Requirements.Projection
   alias CodeMySpec.Requirements.Registry, as: RequirementsRegistry
   alias CodeMySpec.Requirements.Requirement
   alias CodeMySpec.Requirements.RequirementCalculator
@@ -76,14 +77,39 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     {nodes, edges}
   end
 
-  # Rows for the same graph the blob carries, written behind the same
-  # fingerprint check that gates the blob. Readers reach here on every render,
-  # so an unconditional upsert of ~5,000 nodes per page view is exactly what
-  # `publish/3` already refuses to do for one `bytea`.
+  # Every cache hit reads the rows and compares them against the payload.
   #
-  # The blob stays for now. These rows are not read yet — nothing queries them
-  # and nothing depends on them being complete — so writing them alongside is
-  # how they get proven against real graphs before anything is moved onto them.
+  # The rows are the projection; the payload is what they are replacing. Reading
+  # them on the hot path is the only way the two get compared against real
+  # graphs rather than against fixtures — a disagreement shows up here, in what
+  # an agent is actually told, instead of waiting for a test nobody wrote.
+  #
+  # Logged rather than raised, and the payload is what gets served. A projection
+  # that disagrees is a defect worth finding; refusing to serve a graph over it
+  # would trade a reporting bug for an outage.
+  defp served_graph(scope, ctx, {nodes, edges} = cached) do
+    case Projection.load(scope, ctx) do
+      {^nodes, ^edges} ->
+        cached
+
+      {read_nodes, read_edges} ->
+        Logger.warning(
+          "[Requirements] projection differs from payload: " <>
+            "#{length(read_nodes)}/#{length(nodes)} nodes, " <>
+            "#{length(read_edges)}/#{length(edges)} edges — serving the payload"
+        )
+
+        cached
+    end
+  rescue
+    error ->
+      Logger.warning("[Requirements] projection read failed: #{Exception.message(error)}")
+      cached
+  end
+
+  # Written behind the same fingerprint check that gates the payload. Readers
+  # reach here on every render, so an unconditional upsert of every node per
+  # page view is exactly what `publish/3` already refuses to do for one `bytea`.
   defp persist_projection(:unchanged, _scope, _nodes, _edges), do: :ok
 
   defp persist_projection(:published, scope, nodes, edges) do
@@ -91,9 +117,9 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     NodeRepository.replace_edges(scope, edges, ids_by_key)
     :ok
   rescue
-    # A projection nobody reads yet must not be able to fail a graph
-    # computation. The agent's next instruction depends on the return value
-    # above; this half is bookkeeping until a reader exists.
+    # The computation's return value is the agent's next instruction, and it is
+    # correct whether or not the rows were written. Failing it over bookkeeping
+    # would turn a projection bug into a stopped agent.
     error ->
       Logger.warning("[Requirements] projection write failed: #{Exception.message(error)}")
       :ok
@@ -136,7 +162,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
 
     {graph, computed_at} =
       case GraphCache.fetch(scope, GraphFingerprint.compute(ctx, config)) do
-        {:ok, cached, at} -> {cached, at}
+        {:ok, cached, at} -> {served_graph(scope, ctx, cached), at}
         :miss -> {compute_and_publish(scope, ctx, config), nil}
       end
 
