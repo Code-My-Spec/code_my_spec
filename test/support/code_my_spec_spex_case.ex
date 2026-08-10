@@ -2633,14 +2633,27 @@ defmodule CodeMySpecSpex.Case do
     :ok
   end
 
-  # The test's session when there is one. A spex that never called
-  # `connect_providers/1` still gets per-block sharing rather than none.
-  defp cassette_session(opts) do
+  # The test's session when there is a live one.
+  #
+  # Checked rather than assumed: the session is an `Agent.start_link`, so it is
+  # linked to the process that started it and dies with it. A block entered
+  # after that — a teardown running in `on_exit`, or anything after a crashed
+  # test — would otherwise be handed a dead pid and fail with `shared session
+  # Agent is not alive`, which is the error this whole change is about.
+  #
+  # Falling back to `shared: true` gives that block its own session, which is
+  # what it had before and is correct for a block that is on its own anyway.
+  @doc false
+  @spec cassette_session(keyword()) :: keyword()
+  def cassette_session(opts) do
     case Process.get(:cms_cassette_session) do
-      nil -> Keyword.put_new(opts, :shared, true)
-      session -> Keyword.put_new(opts, :session, session)
+      pid when is_pid(pid) -> session_opt(opts, pid, Process.alive?(pid))
+      _ -> Keyword.put_new(opts, :shared, true)
     end
   end
+
+  defp session_opt(opts, pid, true), do: Keyword.put_new(opts, :session, pid)
+  defp session_opt(opts, _pid, false), do: Keyword.put_new(opts, :shared, true)
 
   @doc """
   Set a cassette aside the first time this run asks to record it, and never
