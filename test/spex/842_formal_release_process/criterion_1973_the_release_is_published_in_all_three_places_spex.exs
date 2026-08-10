@@ -29,7 +29,7 @@ defmodule CodeMySpecSpex.Story842.Criterion1973Spex do
   alias CodeMySpec.Environments
 
   @cassette "842_1973_release_published"
-  @release_type "Elixir.CodeMySpec.AgentTasks.Release"
+  @release_type "release"
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -55,7 +55,11 @@ defmodule CodeMySpecSpex.Story842.Criterion1973Spex do
             Phoenix.ConnTest.build_conn()
             |> Plug.Conn.put_req_header("x-working-dir", context.scope.cwd)
             |> Plug.Conn.put_req_header("content-type", "application/json")
-            |> post("/api/agent-tasks/start", %{"session_type" => @release_type})
+            |> post("/api/agent-tasks/start", %{
+            "session_type" => @release_type,
+            "external_id" => "spex-#{System.unique_integer([:positive])}",
+            "external_id" => "spex-#{System.unique_integer([:positive])}"
+          })
             |> Phoenix.ConnTest.json_response(200)
           end
 

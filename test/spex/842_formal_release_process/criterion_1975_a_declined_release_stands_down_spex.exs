@@ -17,7 +17,7 @@ defmodule CodeMySpecSpex.Story842.Criterion1975Spex do
   alias CodeMySpec.Environments
 
   @cassette "842_1975_release_declined"
-  @release_type "Elixir.CodeMySpec.AgentTasks.Release"
+  @release_type "release"
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -53,6 +53,7 @@ defmodule CodeMySpecSpex.Story842.Criterion1975Spex do
             |> Plug.Conn.put_req_header("content-type", "application/json")
             |> post("/api/agent-tasks/start", %{
               "session_type" => @release_type,
+              "external_id" => "spex-#{System.unique_integer([:positive])}",
               "approval" => "declined"
             })
             |> Phoenix.ConnTest.json_response(200)

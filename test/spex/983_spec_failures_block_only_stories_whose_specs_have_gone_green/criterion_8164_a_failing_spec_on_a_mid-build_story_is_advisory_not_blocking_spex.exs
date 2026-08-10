@@ -147,8 +147,7 @@ defmodule CodeMySpecSpex.Story983.Criterion8164Spex do
   # `test/fixtures/validation/pipeline_spex_failure/spex.jsonl`.
   defp write_spex_jsonl(entries) do
     body =
-      entries
-      |> Enum.map(fn {path, message} ->
+      Enum.map_join(entries, "\n", fn {path, message} ->
         Jason.encode!(%{
           "spex" => "intentional failure",
           "scenario" => "asserts false",
@@ -163,7 +162,6 @@ defmodule CodeMySpecSpex.Story983.Criterion8164Spex do
           }
         })
       end)
-      |> Enum.join("\n")
 
     path =
       Path.join(
