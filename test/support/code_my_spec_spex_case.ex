@@ -541,6 +541,33 @@ defmodule CodeMySpecSpex.Case do
     end
   end
 
+  # Which slice of a long message to show.
+  #
+  # Neither end is right for a failing `docker build`. The head is the layers
+  # that succeeded; the tail is layer-download progress, which is where a build
+  # spends most of its output — 600 characters of
+  # `sha256:0954… 26.21MB / 44.57MB` and not one word about what broke.
+  #
+  # buildkit puts the reason on a line starting `ERROR:`, so when there is one,
+  # show that and what follows it. Falling back to the tail otherwise, since a
+  # step that failed without buildkit usually ends with its reason.
+  @trace_width 600
+
+  defp interesting(message) do
+    case String.split(message, ~r/(?=ERROR)/) |> Enum.filter(&String.starts_with?(&1, "ERROR")) do
+      [_ | _] = errors -> errors |> List.last() |> String.slice(0, @trace_width)
+      [] -> tail(message)
+    end
+  end
+
+  defp tail(message) do
+    if String.length(message) > @trace_width do
+      "…" <> String.slice(message, -@trace_width, @trace_width)
+    else
+      message
+    end
+  end
+
   defp print_step_trace(view, keys) do
     doc = view |> Phoenix.LiveViewTest.render() |> Floki.parse_document!()
 
@@ -563,13 +590,7 @@ defmodule CodeMySpecSpex.Case do
 
       why = why |> String.replace(~r/\s+/, " ") |> String.trim()
 
-      # The *tail*, not the head, once it is long. A failing `docker build`
-      # reports several hundred characters of successful layers before the one
-      # that broke, so the first 300 characters are reliably the part that
-      # worked — which reads as though nothing went wrong at all.
-      shown = if String.length(why) > 600, do: "…" <> String.slice(why, -600, 600), else: why
-
-      IO.puts("STEP #{String.pad_trailing(to_string(key), 11)} #{state}  #{shown}")
+      IO.puts("STEP #{String.pad_trailing(to_string(key), 11)} #{state}  #{interesting(why)}")
     end
 
     :ok
