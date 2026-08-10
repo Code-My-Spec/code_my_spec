@@ -102,6 +102,12 @@ defmodule CodeMySpecSpex.Story972.Criterion8039Spex do
           |> render_submit()
         end
 
+        # What setup just wrote has to be in a commit before it can be
+        # deployed: the image is versioned by commit SHA and `bin/deploy`
+        # refuses a dirty tree. This is what a customer does after their first
+        # setup run.
+        commit_generated_files(context.project.local_path)
+
         run_steps(view, [:domain, :dns, :deploy, :storage], @given_cassette)
 
         trace_steps(view, [:repository, :server, :secrets, :domain, :dns, :deploy, :storage])

@@ -100,8 +100,15 @@ defmodule CodeMySpec.Provisioning.Deploy do
     end
   end
 
+  # `stderr_to_stdout`, because kamal writes its failures there. Without it the
+  # captured output was empty and a failed migration reported only
+  # "Migration failed (exit 1)" — the exit code and nothing else. The reason
+  # was never lost; it was never collected.
   defp migrate(env, environment, script, now, opts) do
-    case Environments.cmd(env, script, ["migrate", environment], env: script_env(opts)) do
+    case Environments.cmd(env, script, ["migrate", environment],
+           env: script_env(opts),
+           stderr_to_stdout: true
+         ) do
       {output, 0} ->
         {:ok, output, %Result{migrated_at: now.()}}
 
@@ -138,7 +145,10 @@ defmodule CodeMySpec.Provisioning.Deploy do
   end
 
   defp swap(env, environment, script, result, now, opts) do
-    case Environments.cmd(env, script, ["swap", environment], env: script_env(opts)) do
+    case Environments.cmd(env, script, ["swap", environment],
+           env: script_env(opts),
+           stderr_to_stdout: true
+         ) do
       {_output, 0} ->
         {:ok, %{result | swapped_at: now.()}}
 
@@ -176,7 +186,19 @@ defmodule CodeMySpec.Provisioning.Deploy do
     for {name, value} <- [
           {"CMS_IMAGE", Keyword.get(opts, :image)},
           {"CMS_DEPLOY_HOST", Keyword.get(opts, :host)},
-          {"CMS_DEPLOY_HOST_IP", Keyword.get(opts, :host_ip)}
+          {"CMS_DEPLOY_HOST_IP", Keyword.get(opts, :host_ip)},
+          # The decryption key, straight from `ProjectSecrets` to the script's
+          # environment. `bin/deploy` reads it from `envs/<env>.age.key` when
+          # a human runs it, and setup deliberately never writes that file —
+          # the private half of an age key is the one thing kept out of the
+          # repository. An environment variable carries it without ever
+          # touching the working tree.
+          {"SOPS_AGE_KEY", Keyword.get(opts, :age_key)},
+          # kamal will not render a config without a registry password, and
+          # logs in with it before pulling. The registry is the project's own,
+          # on its own private network, and this is its credential.
+          {"KAMAL_REGISTRY_USERNAME", Keyword.get(opts, :registry_username)},
+          {"KAMAL_REGISTRY_PASSWORD", Keyword.get(opts, :registry_password)}
         ],
         is_binary(value) and value != "" do
       {name, value}

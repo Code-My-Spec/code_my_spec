@@ -1095,6 +1095,48 @@ defmodule CodeMySpecSpex.Case do
   end
 
   @doc """
+  Commit what setup wrote into the checkout.
+
+  The secrets step writes `.sops.yaml` and `envs/<env>.enc.env` into the
+  repository — encrypted, so they are meant to be committed — and `bin/deploy`
+  refuses to run on a dirty tree, correctly, since the image it deploys is
+  versioned by commit SHA. So a project that has just been set up cannot deploy
+  until somebody commits what setup produced:
+
+      working tree is dirty — commit or stash first
+      M .sops.yaml
+      D envs/prod.enc.env
+      M envs/uat.enc.env
+
+  A real customer hits this on their first run, and it is a gap worth closing
+  in the product — setup already creates and pushes the repository, so
+  committing what it then generates is not a new kind of act. Doing it here
+  keeps the drill honest in the meantime: it does what the user would do,
+  rather than pretending the files were never written.
+  """
+  def commit_generated_files(path, message \\ "Setup-generated configuration") do
+    System.cmd("git", ["add", "-A"], cd: path, stderr_to_stdout: true)
+
+    System.cmd(
+      "git",
+      [
+        "-c",
+        "user.email=drill@example.com",
+        "-c",
+        "user.name=Drill",
+        "commit",
+        "-q",
+        "-m",
+        message
+      ],
+      cd: path,
+      stderr_to_stdout: true
+    )
+
+    :ok
+  end
+
+  @doc """
   Fill in the project's Hetzner storage credentials through the setup page.
 
   Driven through the form rather than written straight into `ProjectSecrets`,

@@ -415,7 +415,12 @@ defmodule CodeMySpec.Provisioning.Steps do
          :ok <- config_targets_this_project(scope, environment),
          {:ok, image} <- image_for(scope, environment, opts),
          :ok <- require_script(scope, "bin/deploy"),
-         deploy_opts = opts |> deploy_opts(host, image) |> with_host_ip(scope, environment),
+         deploy_opts =
+           opts
+           |> deploy_opts(host, image)
+           |> with_host_ip(scope, environment)
+           |> with_age_key(scope, environment)
+           |> with_registry_credential_for_deploy(scope),
          result <- Deploy.run(env(scope), environment, deploy_opts) do
       case deploy_outcome(result, environment, host) do
         {:ok, resources} ->
@@ -1469,6 +1474,7 @@ defmodule CodeMySpec.Provisioning.Steps do
     with {:ok, architecture} <- architecture_for(scope, environment, opts),
          {:ok, opts} <- with_access_key(scope, opts),
          {:ok, opts} <- with_private_network(scope, environment, opts),
+         {:ok, opts} <- with_registry_credential(scope, opts),
          # Before the registry, not just before the build: starting the
          # registry means reaching the app's box over SSH, and that needs the
          # same key and environment the builder does.
@@ -1580,6 +1586,41 @@ defmodule CodeMySpec.Provisioning.Steps do
   # Kamal evaluates ERB in its config, so a host written that way is decided
   # when the deploy runs rather than when the file was committed.
   defp resolved_at_runtime?(value), do: String.contains?(value, "<%")
+
+  # kamal refuses to render a config without a registry password, and then
+  # performs a `docker login` with it — so the same credential the builder
+  # pushes with has to reach the deploy script.
+  defp with_registry_credential_for_deploy(opts, scope) do
+    case Registry.credential(scope) do
+      {:ok, credential} ->
+        opts
+        |> Keyword.put(:registry_username, credential.username)
+        |> Keyword.put(:registry_password, credential.password)
+
+      _ ->
+        opts
+    end
+  end
+
+  # The registry's own credential, for the builder's push and for kamal's pull.
+  # `Builder.Remote` has supported `docker login` since the shared-registry
+  # design and never had anything to log in with.
+  defp with_registry_credential(scope, opts) do
+    case Registry.credential(scope) do
+      {:ok, credential} -> {:ok, Keyword.put(opts, :registry_credentials, credential)}
+      {:error, reason} -> {:error, format(reason)}
+    end
+  end
+
+  # The key that opens this environment's encrypted env, handed to the deploy so
+  # it can hand it to the container. Kept in `ProjectSecrets` rather than in the
+  # repository, which is why the script cannot simply read it off disk.
+  defp with_age_key(opts, scope, environment) do
+    case fetch_age_key(scope, environment) do
+      {:ok, key} -> Keyword.put(opts, :age_key, key)
+      _ -> opts
+    end
+  end
 
   # The box this environment's traffic lands on. Not knowable when the deploy
   # config was written — the server is created by an earlier step, and a
@@ -1990,6 +2031,15 @@ defmodule CodeMySpec.Provisioning.Steps do
   # version serving (8008), and that an unhealthy version never went live
   # (8009). A failure keeps its resources via the partial-resource path, so
   # the record shows what happened rather than just an error string.
+  defp with_output(reason, output) when is_binary(output) do
+    case String.trim(output) do
+      "" -> reason
+      trimmed -> reason <> "\n\n" <> trimmed
+    end
+  end
+
+  defp with_output(reason, _output), do: reason
+
   defp deploy_outcome(result, environment, host) do
     phases =
       [
@@ -2009,7 +2059,11 @@ defmodule CodeMySpec.Provisioning.Steps do
           identifier: to_string(result.failed_phase)
         }
 
-        {:error, reason, [failure | phases]}
+        # With what the script said, not just that it failed. `Result` carries
+        # the output in its own field and this reported only the sentence
+        # around it — so "Migration failed (exit 1)" was the entire account of
+        # a kamal run, and the reason sat in a struct nobody rendered.
+        {:error, with_output(reason, result.output), [failure | phases]}
 
       %{swapped_at: _} ->
         {:ok, [%{kind: "deployment", location: "#{environment}/#{host}"} | phases]}

@@ -135,10 +135,15 @@ defmodule CodeMySpec.Provisioning.RegistryTest do
 
     defp creds, do: [access_key_id: "AKIA", secret_access_key: "s3cret", region: "fsn1"]
 
+    defp registry_cred, do: %{username: "cms", password: "pw"}
+
     defp serve(opts \\ []) do
       Registry.serve(
         scope(),
-        Keyword.merge([run: recorder(self()), credentials: creds()], opts)
+        Keyword.merge(
+          [run: recorder(self()), credentials: creds(), registry_credentials: registry_cred()],
+          opts
+        )
       )
     end
 
@@ -232,7 +237,7 @@ defmodule CodeMySpec.Provisioning.RegistryTest do
         {"", 0}
       end
 
-      assert {:ok, _} = Registry.serve(scope(), run: run, credentials: creds())
+      assert {:ok, _} = Registry.serve(scope(), run: run, credentials: creds(), registry_credentials: registry_cred())
 
       assert_received {:ran, _trust}
       assert_received {:ran, _start}
@@ -253,12 +258,35 @@ defmodule CodeMySpec.Provisioning.RegistryTest do
                Registry.serve(scope(),
                  run: run,
                  credentials: creds(),
+                 registry_credentials: registry_cred(),
                  registry_attempts: 2
                )
 
       # The container's own logs, not a timeout. The reason is in them, and a
       # drill costs ten minutes to repeat.
       assert logs =~ "cannot bind"
+    end
+
+    # kamal refuses to render a config without a registry password and then
+    # logs in with it, so an unauthenticated registry is not an option even on
+    # a private address. The credential is real rather than a placeholder,
+    # because "only reachable from inside" is a property of today's firewall
+    # rather than of the registry.
+    test "the registry requires a credential" do
+      assert {:ok, _} = serve()
+
+      assert_received {:ran, _trust}
+      assert_received {:ran, command}
+
+      assert command =~ "REGISTRY_AUTH=htpasswd"
+      assert command =~ "REGISTRY_AUTH_HTPASSWD_PATH=/auth/htpasswd"
+
+      # bcrypt, because `distribution` accepts nothing else — and generated
+      # here because `htpasswd` is not installed on the box.
+      assert command =~ "cms:$2b$"
+
+      refute command =~ "password='pw'",
+             "the password must reach the box hashed, not in the clear"
     end
 
     test "a registry that will not start is an error, not a success" do
@@ -268,7 +296,7 @@ defmodule CodeMySpec.Provisioning.RegistryTest do
 
     test "without storage credentials there is nothing to back it with" do
       assert {:error, :no_storage_credentials} =
-               Registry.serve(scope(), run: recorder(self()), credentials: :none)
+               Registry.serve(scope(), run: recorder(self()), credentials: :none, registry_credentials: registry_cred())
 
       refute_received {:ran, _}
     end

@@ -48,6 +48,7 @@ defmodule CodeMySpec.Provisioning.Registry do
   protocol is `distribution`'s job, not ours.
   """
 
+  alias CodeMySpec.ProjectSecrets
   alias CodeMySpec.Provisioning.Storage
   alias CodeMySpec.Provisioning.Wait
   alias CodeMySpec.Users.Scope
@@ -206,6 +207,38 @@ defmodule CodeMySpec.Provisioning.Registry do
   def default_host, do: @default_host
 
   @container "cms-registry"
+  @username "cms"
+  @password_secret "registry_password"
+
+  @doc """
+  The credential this project's registry answers to.
+
+  Minted once and kept in `ProjectSecrets`, like the age keys and the server
+  key. kamal requires a registry password even when the registry would take
+  anything — it refuses to render a config without one — and an unauthenticated
+  registry then rejects the `docker login` it performs. So the registry has real
+  credentials rather than a placeholder nobody checks.
+
+  It is not much of a secret in itself: the registry listens on a private
+  address inside one project's network. It is a real one anyway, because "only
+  reachable from inside" is a property of today's firewall rather than of the
+  registry.
+  """
+  @spec credential(Scope.t()) :: {:ok, %{username: String.t(), password: String.t()}} | {:error, term()}
+  def credential(%Scope{} = scope) do
+    case ProjectSecrets.fetch_value(scope, @password_secret) do
+      {:ok, password} when is_binary(password) and password != "" ->
+        {:ok, %{username: @username, password: password}}
+
+      _ ->
+        password = 32 |> :crypto.strong_rand_bytes() |> Base.url_encode64(padding: false)
+
+        with {:ok, _} <- ProjectSecrets.put_value(scope, @password_secret, password) do
+          {:ok, %{username: @username, password: password}}
+        end
+    end
+  end
+
 
   @doc """
   Run the registry on a server, backed by this project's bucket.
@@ -233,9 +266,10 @@ defmodule CodeMySpec.Provisioning.Registry do
     bind = Keyword.get(opts, :bind, "127.0.0.1")
     location = Keyword.get(opts, :location, "fsn1")
 
-    with {:ok, credentials} <- credentials(scope, opts) do
+    with {:ok, credentials} <- credentials(scope, opts),
+         {:ok, credential} <- serve_credential(scope, opts) do
       bucket = bucket_name(scope, opts)
-      command = serve_command(bucket, credentials, bind, location, opts)
+      command = serve_command(bucket, credentials, credential, bind, location, opts)
 
       # This box pulls from the registry it is about to host, so it needs the
       # same exemption the builder does.
@@ -243,7 +277,7 @@ defmodule CodeMySpec.Provisioning.Registry do
 
       case run.([command]) do
         {_output, 0} ->
-          await_registry(run, bucket, bind, Keyword.get(opts, :registry_attempts, 15))
+          await_registry(run, bucket, bind, credential, Keyword.get(opts, :registry_attempts, 15))
 
         {output, status} ->
           {:error, {:registry_start_failed, status, String.trim(output)}}
@@ -261,18 +295,30 @@ defmodule CodeMySpec.Provisioning.Registry do
   # this asks the registry itself, and when it never answers it brings back the
   # container's own logs rather than a timeout — the reason is in them, and a
   # drill costs ten minutes to repeat.
-  defp await_registry(run, bucket, bind, attempts) do
-    case run.(["curl -sf http://#{bind}:#{port()}/v2/ > /dev/null"]) do
+  defp await_registry(run, bucket, bind, credential, attempts) do
+    auth = "#{credential.username}:#{credential.password}"
+
+    case run.(["curl -sf -u #{shell_escape(auth)} http://#{bind}:#{port()}/v2/ > /dev/null"]) do
       {_output, 0} ->
         {:ok, %{bucket: bucket, bind: bind, port: port()}}
 
       _ when attempts > 1 ->
         Wait.sleep(2_000)
-        await_registry(run, bucket, bind, attempts - 1)
+        await_registry(run, bucket, bind, credential, attempts - 1)
 
       _ ->
         {logs, _} = run.(["docker logs --tail 50 #{@container} 2>&1"])
         {:error, {:registry_not_listening, "#{bind}:#{port()}", String.trim(logs)}}
+    end
+  end
+
+  # Injectable for the same reason the storage credentials are: a criterion
+  # about what the registry is told to do should not have to mint a project
+  # secret to say so.
+  defp serve_credential(scope, opts) do
+    case Keyword.get(opts, :registry_credentials) do
+      %{username: _, password: _} = credential -> {:ok, credential}
+      _ -> credential(scope)
     end
   end
 
@@ -284,8 +330,9 @@ defmodule CodeMySpec.Provisioning.Registry do
   # it shares with the app. A deploy that cannot pull is a deploy that cannot
   # roll back, and the moment you need a rollback is not the moment to discover
   # the registry went away with the last kernel update.
-  defp serve_command(bucket, credentials, bind, location, opts) do
+  defp serve_command(bucket, credentials, credential, bind, location, opts) do
     image = Keyword.get(opts, :registry_image, "registry:3")
+    htpasswd = "#{credential.username}:#{Bcrypt.hash_pwd_salt(credential.password)}"
 
     env =
       [
@@ -300,8 +347,18 @@ defmodule CodeMySpec.Provisioning.Registry do
       ]
       |> Enum.map_join(" ", fn {name, value} -> "-e #{name}=#{shell_escape(value)}" end)
 
-    "docker rm -f #{@container} >/dev/null 2>&1; " <>
+    # The htpasswd file is written before the container starts and mounted
+    # read-only. bcrypt because `distribution` accepts nothing else, and
+    # generated here because `htpasswd` is not installed on the box.
+    "mkdir -p /etc/cms-registry && " <>
+      "printf %s #{shell_escape(htpasswd)} > /etc/cms-registry/htpasswd && " <>
+      "chmod 600 /etc/cms-registry/htpasswd && " <>
+      "docker rm -f #{@container} >/dev/null 2>&1; " <>
       "docker run -d --name #{@container} --restart always " <>
+      "-v /etc/cms-registry/htpasswd:/auth/htpasswd:ro " <>
+      "-e REGISTRY_AUTH=htpasswd " <>
+      "-e REGISTRY_AUTH_HTPASSWD_REALM=cms " <>
+      "-e REGISTRY_AUTH_HTPASSWD_PATH=/auth/htpasswd " <>
       "-p #{bind}:#{port()}:#{port()} #{env} #{image}"
   end
 
