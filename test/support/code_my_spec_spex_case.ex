@@ -605,6 +605,8 @@ defmodule CodeMySpecSpex.Case do
       or generate it with `mix cms.new`.
       """
 
+    refuse_unbuildable_drill(path)
+
     reset_drill_checkout(path)
 
     {:ok, project} = Fixtures.set_project_local_path(project, path)
@@ -627,6 +629,77 @@ defmodule CodeMySpecSpex.Case do
   # The remote is reset for the same reason — `git remote add origin` answers
   # "already exists" and the repository step then pushes to whatever the last
   # run pointed at.
+  # `bin/deploy` exists is too weak a question. The drill checkout had it and
+  # was still a skeleton — no `assets`, no `priv`, no `mix.lock` — so every
+  # drill provisioned a repository, two servers, DNS, buckets and a builder
+  # box, ran `docker build` to step 10 of 12, and only then failed on
+  # `COPY assets assets: "/assets": not found`. Ten minutes and real money to
+  # discover something knowable before the first API call.
+  #
+  # What the build actually needs is what its own Dockerfile copies, so that is
+  # what gets checked, against the committed tree rather than the working one:
+  # the builder is sent `git archive <ref>`, which ships tracked files only. A
+  # file present on disk and never committed is exactly the case that would
+  # otherwise pass here and fail on the box.
+  defp refuse_unbuildable_drill(path) do
+    missing =
+      path
+      |> dockerfile_copy_sources()
+      |> Enum.reject(&committed?(path, &1))
+
+    missing == [] ||
+      raise """
+      The drill application at #{path} cannot build.
+
+      Its Dockerfile copies these, and they are not in the committed tree:
+
+      #{Enum.map_join(missing, "\n", &("  " <> &1))}
+
+      The builder is sent `git archive HEAD`, so untracked files do not travel
+      even when they are on disk. Commit them, or generate a complete
+      application with `mix cms.new` and point CMS_DRILL_APP at it.
+      """
+  end
+
+  # Sources are every argument but the last, which is the destination. `--from`
+  # stages copy out of an earlier image rather than out of the context, so they
+  # are not ours to check.
+  defp dockerfile_copy_sources(path) do
+    case File.read(Path.join(path, "Dockerfile")) do
+      {:ok, contents} ->
+        contents
+        |> String.split("\n")
+        |> Enum.map(&String.trim/1)
+        |> Enum.filter(&String.match?(&1, ~r/^COPY\s/i))
+        |> Enum.reject(&String.contains?(&1, "--from"))
+        |> Enum.flat_map(&copy_sources/1)
+        |> Enum.uniq()
+
+      _ ->
+        []
+    end
+  end
+
+  defp copy_sources(line) do
+    line
+    |> String.split(~r/\s+/)
+    |> Enum.drop(1)
+    |> Enum.reject(&String.starts_with?(&1, "-"))
+    |> Enum.drop(-1)
+  end
+
+  # `git cat-file -e` answers for a blob and a tree alike, so one call covers
+  # `mix.exs` and `assets` without caring which is which.
+  defp committed?(path, source) do
+    {_out, status} =
+      System.cmd("git", ["cat-file", "-e", "HEAD:#{source}"],
+        cd: path,
+        stderr_to_stdout: true
+      )
+
+    status == 0
+  end
+
   defp reset_drill_checkout(path) do
     for f <- Path.wildcard(Path.join(path, "envs/*.enc.env")), do: File.rm(f)
     File.rm(Path.join(path, ".sops.yaml"))
