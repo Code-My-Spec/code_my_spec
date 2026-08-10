@@ -1,3 +1,14 @@
+# Every `apply/3` here is the dispatch this module exists to perform, and the
+# reasoning is recorded above `run_bootstrap_task/3`: `resolve_session_type/2`
+# returns one of ~30 task modules whose `command/2` argument shapes genuinely
+# differ, the session type is what decides which comes back, and that
+# correlation is not expressible to the type checker. `apply/3` states plainly
+# that this is dynamic dispatch.
+#
+# Suppressed at file level rather than five times inline because it is one
+# decision, not five. The check stays on everywhere else, where a known arity
+# usually does mean the call could be direct.
+# credo:disable-for-this-file Credo.Check.Refactor.Apply
 defmodule CodeMySpec.AgentTasks.StartAgentTask do
   @moduledoc """
   Start an agent task session and generate the initial prompt.
