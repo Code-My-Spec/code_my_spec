@@ -1128,6 +1128,49 @@ defmodule CodeMySpec.Provisioning.Steps do
   # clauses, and Elixir warns about that — a warning the analyzer treats as
   # reason to skip exunit, credo and spex outright.
 
+  # What `Builder.Remote.ssh_runner/2` needs to reach the box it just made:
+  # somewhere to run `ssh`, and a private key on disk to run it with.
+  #
+  # Neither was ever supplied. `ssh_runner/2` fetches both with `fetch!`, so
+  # the first drill to reach a real build died on
+  # `key :env not found in: [architecture: :x86, reference: ...]` — proof that
+  # nothing had run this path before, since any real build would have hit it.
+  #
+  # The key is written out under 0600 for the length of the build and removed
+  # afterwards. It lives in `AccountSecrets` rather than on disk precisely so
+  # it is not lying around, and `ssh` will refuse a key the whole machine can
+  # read.
+  defp with_builder_ssh(scope, opts) do
+    case Keyword.get(opts, :ssh_key_path) do
+      path when is_binary(path) ->
+        {:ok, Keyword.put_new(opts, :env, env(scope))}
+
+      _ ->
+        write_builder_key(scope, opts)
+    end
+  end
+
+  defp write_builder_key(scope, opts) do
+    case AccountSecrets.fetch_value(scope, @access_key_private) do
+      {:ok, private} when is_binary(private) and private != "" ->
+        dir = Path.join(System.tmp_dir!(), "cms-build-#{System.unique_integer([:positive])}")
+        File.mkdir_p!(dir)
+        path = Path.join(dir, "id_ed25519")
+        File.write!(path, private)
+        File.chmod!(path, 0o600)
+
+        {:ok,
+         opts
+         |> Keyword.put(:ssh_key_path, path)
+         |> Keyword.put(:builder_key_dir, dir)
+         |> Keyword.put_new(:env, env(scope))}
+
+      _ ->
+        {:error,
+         "no server access key on this account — the server step mints one, so run it first"}
+    end
+  end
+
   # One environment's bucket. Named rather than inline because the step already
   # branches on credentials and reduces over environments, and a third level
   # inside that is where a reader stops being able to see which branch they are
@@ -1325,6 +1368,7 @@ defmodule CodeMySpec.Provisioning.Steps do
          # for something already finished. Deriving it needs only the tag.
          {:ok, reference} <- Registry.reference(scope, tag, opts),
          opts = Keyword.put(opts, :reference, reference),
+         {:ok, opts} <- with_builder_ssh(scope, opts),
          {:ok, build} <- build_on_builder(scope, tag, architecture, opts) do
       {:ok,
        %{
@@ -1348,6 +1392,14 @@ defmodule CodeMySpec.Provisioning.Steps do
       {:ok, build} -> {:ok, build}
       {:error, reason, disposition} -> {:error, format(reason), builder_resource(disposition)}
       {:error, reason} -> {:error, format(reason)}
+    end
+  after
+    # However the build went. A private key left in the system temp directory
+    # is the kind of residue nobody looks for, and this one opens every box the
+    # account owns.
+    case Keyword.get(opts, :builder_key_dir) do
+      dir when is_binary(dir) -> File.rm_rf(dir)
+      _ -> :ok
     end
   end
 
