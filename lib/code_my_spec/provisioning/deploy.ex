@@ -91,17 +91,17 @@ defmodule CodeMySpec.Provisioning.Deploy do
     now = Keyword.get(opts, :now, &DateTime.utc_now/0)
     script = resolve_script(env, Keyword.get(opts, :deploy_script, "bin/deploy"))
 
-    with {:ok, migrate_out, result} <- migrate(env, environment, script, now),
+    with {:ok, migrate_out, result} <- migrate(env, environment, script, now, opts),
          {:ok, result} <- health(result, opts, now),
-         {:ok, result} <- swap(env, environment, script, result, now) do
+         {:ok, result} <- swap(env, environment, script, result, now, opts) do
       %{result | output: migrate_out, live_version: :new}
     else
       {:error, %Result{} = refused} -> refused
     end
   end
 
-  defp migrate(env, environment, script, now) do
-    case Environments.cmd(env, script, ["migrate", environment]) do
+  defp migrate(env, environment, script, now, opts) do
+    case Environments.cmd(env, script, ["migrate", environment], env: script_env(opts)) do
       {output, 0} ->
         {:ok, output, %Result{migrated_at: now.()}}
 
@@ -137,8 +137,8 @@ defmodule CodeMySpec.Provisioning.Deploy do
     end
   end
 
-  defp swap(env, environment, script, result, now) do
-    case Environments.cmd(env, script, ["swap", environment]) do
+  defp swap(env, environment, script, result, now, opts) do
+    case Environments.cmd(env, script, ["swap", environment], env: script_env(opts)) do
       {_output, 0} ->
         {:ok, %{result | swapped_at: now.()}}
 
@@ -151,6 +151,35 @@ defmodule CodeMySpec.Provisioning.Deploy do
              reason: "Traffic swap failed (exit #{status}).",
              output: output
          }}
+    end
+  end
+
+  # What setup knows and the checkout cannot.
+  #
+  # The generated `bin/deploy` was written for a human: it pushes, waits for
+  # GitHub Actions to build, and pulls from ghcr.io with `gh auth token`. Setup
+  # has already built the image on its own builder and pushed it to the
+  # project's own registry, so all of that is both redundant and wrong —
+  # criterion 8240 is a deploy that pulls with no GitHub credential at all.
+  #
+  # The host and its IP are here for the same reason. A generated
+  # `config/deploy.uat.yml` carries `<UAT_HOST>` and `<UAT_HOST_IP>`
+  # placeholders, and the IP is not knowable when the file is written: it
+  # belongs to a server that setup creates later, and a different one on every
+  # provision. No committed config can hold it, so it has to arrive at run
+  # time.
+  #
+  # Only values that are actually set are passed. An empty string is worse than
+  # an absent variable — the script cannot tell "not configured" from
+  # "configured to nothing", and would deploy an image called "".
+  defp script_env(opts) do
+    for {name, value} <- [
+          {"CMS_IMAGE", Keyword.get(opts, :image)},
+          {"CMS_DEPLOY_HOST", Keyword.get(opts, :host)},
+          {"CMS_DEPLOY_HOST_IP", Keyword.get(opts, :host_ip)}
+        ],
+        is_binary(value) and value != "" do
+      {name, value}
     end
   end
 

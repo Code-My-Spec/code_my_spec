@@ -407,7 +407,8 @@ defmodule CodeMySpec.Provisioning.Steps do
          :ok <- config_targets_this_project(scope, environment),
          {:ok, image} <- image_for(scope, environment, opts),
          :ok <- require_script(scope, "bin/deploy"),
-         result <- Deploy.run(env(scope), environment, deploy_opts(opts, host, image)) do
+         deploy_opts = opts |> deploy_opts(host, image) |> with_host_ip(scope, environment),
+         result <- Deploy.run(env(scope), environment, deploy_opts) do
       case deploy_outcome(result, environment, host) do
         {:ok, resources} ->
           # Recorded only here, on the success branch, because `deploy_outcome`
@@ -1237,7 +1238,16 @@ defmodule CodeMySpec.Provisioning.Steps do
          {:ok, %{"proxy" => %{"host" => named}}} when is_binary(named) <-
            YamlElixir.read_from_string(body),
          [_ | _] = expected <- expected_hosts(scope, environment) do
-      if named in expected do
+      # A config that reads its host from the environment cannot name the wrong
+      # one: `CMS_DEPLOY_HOST` is set by this step, from this project's domain,
+      # a few lines before the script runs. The generated config resolves it
+      # that way precisely because the alternative — a committed hostname, and
+      # a committed server IP that is not even knowable until setup creates the
+      # box — is what the `<UAT_HOST>` placeholders were standing in for.
+      #
+      # So there is nothing here to disagree with, and reading the ERB as a
+      # literal hostname would refuse every generated project.
+      if resolved_at_runtime?(named) or named in expected do
         :ok
       else
         {:error,
@@ -1458,6 +1468,21 @@ defmodule CodeMySpec.Provisioning.Steps do
     do: opts |> Keyword.put(:host, host) |> Keyword.put(:image, reference)
 
   defp deploy_opts(opts, host, :not_built), do: Keyword.put(opts, :host, host)
+
+  # Kamal evaluates ERB in its config, so a host written that way is decided
+  # when the deploy runs rather than when the file was committed.
+  defp resolved_at_runtime?(value), do: String.contains?(value, "<%")
+
+  # The box this environment's traffic lands on. Not knowable when the deploy
+  # config was written — the server is created by an earlier step, and a
+  # different one on every provision — which is why the generated config
+  # carries `<UAT_HOST_IP>` rather than an address.
+  defp with_host_ip(opts, scope, environment) do
+    case environment_ip(scope, %{name: environment}, opts) do
+      ip when is_binary(ip) and ip != "" -> Keyword.put(opts, :host_ip, ip)
+      _ -> opts
+    end
+  end
 
   # The architecture rides along because it is the claim worth checking: an
   # image built for the other one deploys cleanly and dies at container start,

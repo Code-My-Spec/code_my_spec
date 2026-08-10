@@ -32,6 +32,22 @@ defmodule CodeMySpec.Provisioning.DeployTest do
     path
   end
 
+  # Records the environment it was handed, so a test can assert on the contract
+  # between setup and the deploy script rather than on the script's exit code.
+  defp recording_script(dir) do
+    path = Path.join(dir, "recording_deploy")
+    log = Path.join(dir, "deploy_env.log")
+
+    File.write!(path, """
+    #!/bin/sh
+    echo "$1 CMS_IMAGE=${CMS_IMAGE:-} CMS_DEPLOY_HOST=${CMS_DEPLOY_HOST:-} CMS_DEPLOY_HOST_IP=${CMS_DEPLOY_HOST_IP:-}" >> #{log}
+    exit 0
+    """)
+
+    File.chmod!(path, 0o755)
+    {path, log}
+  end
+
   defp healthy, do: fn _host, _opts -> :ok end
   defp unhealthy(reason), do: fn _host, _opts -> {:error, reason} end
 
@@ -178,6 +194,71 @@ defmodule CodeMySpec.Provisioning.DeployTest do
 
       assert {:error, :no_notification_target} =
                Deploy.ensure_monitors(["app.example.com"], notify: "")
+    end
+  end
+
+  # The generated `bin/deploy` waits for GitHub Actions and pulls from ghcr.io
+  # with `gh auth token`. Setup has already built the image on its own builder
+  # and pushed it to the project's own registry, so it has to be able to say
+  # so — criterion 8240 is a deploy that needs no GitHub credential.
+  describe "what setup tells the deploy script" do
+    test "the image it built reaches both phases", ctx do
+      {script, log} = recording_script(ctx.env.cwd)
+
+      Deploy.run(ctx.env, "uat",
+        deploy_script: script,
+        host: "uat.example.com",
+        host_ip: "1.2.3.4",
+        image: "localhost:5000/app:abc123",
+        probe: healthy()
+      )
+
+      recorded = File.read!(log)
+
+      assert recorded =~ "migrate CMS_IMAGE=localhost:5000/app:abc123"
+
+      assert recorded =~ "swap CMS_IMAGE=localhost:5000/app:abc123",
+             "the swap deploys the same image the migration ran against, or it " <>
+               "is not the thing that was proven"
+    end
+
+    # The IP belongs to a server an earlier step created, and a different one
+    # on every provision, so no committed config can carry it — which is why
+    # the generated config has `<UAT_HOST_IP>` rather than an address.
+    test "the host and its address are supplied at run time", ctx do
+      {script, log} = recording_script(ctx.env.cwd)
+
+      Deploy.run(ctx.env, "uat",
+        deploy_script: script,
+        host: "uat.example.com",
+        host_ip: "1.2.3.4",
+        image: "localhost:5000/app:abc123",
+        probe: healthy()
+      )
+
+      recorded = File.read!(log)
+
+      assert recorded =~ "CMS_DEPLOY_HOST=uat.example.com"
+      assert recorded =~ "CMS_DEPLOY_HOST_IP=1.2.3.4"
+    end
+
+    # An empty variable is worse than an absent one: the script cannot tell
+    # "not configured" from "configured to nothing", and would deploy an image
+    # named "".
+    test "nothing is passed for a value setup does not have", ctx do
+      {script, log} = recording_script(ctx.env.cwd)
+
+      Deploy.run(ctx.env, "uat",
+        deploy_script: script,
+        host: "uat.example.com",
+        probe: healthy()
+      )
+
+      recorded = File.read!(log)
+
+      assert recorded =~ "CMS_IMAGE="
+      refute recorded =~ "CMS_IMAGE=localhost"
+      assert recorded =~ "CMS_DEPLOY_HOST_IP="
     end
   end
 end
