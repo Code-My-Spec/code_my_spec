@@ -120,4 +120,93 @@ defmodule CodeMySpec.Provisioning.RegistryTest do
       assert Registry.blobs_prefix() =~ "blobs"
     end
   end
+
+  # Same shape as `Builder.Remote`'s tests: `:run` takes the command and
+  # returns `{output, status}`, so what we ask the box to do is assertable and
+  # running it is not. Starting a real registry would make this a network test
+  # and prove nothing about the command.
+  describe "serve/2" do
+    defp recorder(owner, status \\ 0) do
+      fn [command] ->
+        send(owner, {:ran, command})
+        {"", status}
+      end
+    end
+
+    defp creds, do: [access_key_id: "AKIA", secret_access_key: "s3cret", region: "fsn1"]
+
+    defp serve(opts \\ []) do
+      Registry.serve(
+        scope(),
+        Keyword.merge([run: recorder(self()), credentials: creds()], opts)
+      )
+    end
+
+    test "points the registry at this project's bucket" do
+      assert {:ok, %{bucket: "sam-s-app-registry"}} = serve()
+
+      assert_received {:ran, command}
+      assert command =~ "REGISTRY_STORAGE_S3_BUCKET='sam-s-app-registry'"
+    end
+
+    # Hetzner's object storage is S3-compatible but not S3. A virtual-host
+    # style request reaches a bucket that does not exist rather than failing
+    # usefully, which is the failure mode this flag exists to avoid.
+    test "addresses the bucket path-style, which Hetzner requires" do
+      assert {:ok, _} = serve()
+
+      assert_received {:ran, command}
+      assert command =~ "REGISTRY_STORAGE_S3_FORCEPATHSTYLE='true'"
+      assert command =~ "REGISTRY_STORAGE_S3_REGIONENDPOINT='https://fsn1.your-objectstorage.com'"
+    end
+
+    test "listens on loopback unless told otherwise" do
+      assert {:ok, %{bind: "127.0.0.1", port: 5000}} = serve()
+
+      assert_received {:ran, command}
+      assert command =~ "-p 127.0.0.1:5000:5000"
+    end
+
+    # The one knob the topology turns. A builder on another machine has to
+    # reach this port somehow, and where it binds decides whether that is a
+    # tunnel or a private address.
+    test "binds where it is told" do
+      assert {:ok, %{bind: "10.0.0.2"}} = serve(bind: "10.0.0.2")
+
+      assert_received {:ran, command}
+      assert command =~ "-p 10.0.0.2:5000:5000"
+    end
+
+    # Setup runs more than once, so the second run has to converge rather than
+    # fail on a container name that is already taken.
+    test "replaces the container rather than colliding with it" do
+      assert {:ok, _} = serve()
+
+      assert_received {:ran, command}
+      assert command =~ "docker rm -f cms-registry"
+      assert command =~ "docker run -d --name cms-registry"
+    end
+
+    # A deploy that cannot pull is a deploy that cannot roll back, and the
+    # moment you need a rollback is not the moment to find the registry went
+    # away with the last reboot.
+    test "survives a reboot of the box it shares with the app" do
+      assert {:ok, _} = serve()
+
+      assert_received {:ran, command}
+      assert command =~ "--restart always"
+    end
+
+    test "a registry that will not start is an error, not a success" do
+      assert {:error, {:registry_start_failed, 125, _}} =
+               serve(run: recorder(self(), 125))
+    end
+
+    test "without storage credentials there is nothing to back it with" do
+      assert {:error, :no_storage_credentials} =
+               Registry.serve(scope(), run: recorder(self()), credentials: :none)
+
+      refute_received {:ran, _}
+    end
+  end
 end

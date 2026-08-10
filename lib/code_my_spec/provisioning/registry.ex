@@ -204,6 +204,76 @@ defmodule CodeMySpec.Provisioning.Registry do
   @spec default_host() :: String.t()
   def default_host, do: @default_host
 
+  @container "cms-registry"
+
+  @doc """
+  Run the registry on a server, backed by this project's bucket.
+
+  `distribution` — the CNCF reference implementation of the registry API — as a
+  container, with its S3 driver pointed at the bucket `ensure/2` made. There is
+  nothing of ours in the serving path; this starts somebody else's daemon and
+  tells it where its blobs live.
+
+  Idempotent, because setup runs more than once: the container is replaced
+  rather than added to, so a second run converges instead of failing on a name
+  that is already taken.
+
+  `:bind` is the address it listens on, loopback by default. That is the one
+  knob the topology turns — a builder on another machine has to reach this
+  port somehow, and where it binds decides whether that is a tunnel or a
+  private address.
+
+  `:run` takes the command and returns `{output, status}`, which is what makes
+  the command assertable without a box.
+  """
+  @spec serve(Scope.t(), keyword()) :: {:ok, map()} | {:error, term()}
+  def serve(%Scope{} = scope, opts \\ []) do
+    run = Keyword.fetch!(opts, :run)
+    bind = Keyword.get(opts, :bind, "127.0.0.1")
+    location = Keyword.get(opts, :location, "fsn1")
+
+    with {:ok, credentials} <- credentials(scope, opts) do
+      bucket = bucket_name(scope, opts)
+      command = serve_command(bucket, credentials, bind, location, opts)
+
+      case run.([command]) do
+        {_output, 0} -> {:ok, %{bucket: bucket, bind: bind, port: port()}}
+        {output, status} -> {:error, {:registry_start_failed, status, String.trim(output)}}
+      end
+    end
+  end
+
+  # Hetzner's object storage is S3-compatible but not S3: it needs path-style
+  # addressing, and a virtual-host-style request reaches a bucket that does not
+  # exist rather than failing usefully.
+  #
+  # `--restart always` because the registry has to survive a reboot of the box
+  # it shares with the app. A deploy that cannot pull is a deploy that cannot
+  # roll back, and the moment you need a rollback is not the moment to discover
+  # the registry went away with the last kernel update.
+  defp serve_command(bucket, credentials, bind, location, opts) do
+    image = Keyword.get(opts, :registry_image, "registry:3")
+
+    env =
+      [
+        {"REGISTRY_STORAGE", "s3"},
+        {"REGISTRY_STORAGE_S3_REGION", location},
+        {"REGISTRY_STORAGE_S3_REGIONENDPOINT",
+         "https://#{location}.your-objectstorage.com"},
+        {"REGISTRY_STORAGE_S3_FORCEPATHSTYLE", "true"},
+        {"REGISTRY_STORAGE_S3_BUCKET", bucket},
+        {"REGISTRY_STORAGE_S3_ACCESSKEY", Keyword.fetch!(credentials, :access_key_id)},
+        {"REGISTRY_STORAGE_S3_SECRETKEY", Keyword.fetch!(credentials, :secret_access_key)}
+      ]
+      |> Enum.map_join(" ", fn {name, value} -> "-e #{name}=#{shell_escape(value)}" end)
+
+    "docker rm -f #{@container} >/dev/null 2>&1; " <>
+      "docker run -d --name #{@container} --restart always " <>
+      "-p #{bind}:#{port()}:#{port()} #{env} #{image}"
+  end
+
+  defp shell_escape(value), do: "'" <> String.replace(value, "'", "'\\''") <> "'"
+
   defp project_slug(%Scope{active_project: %{name: name}}) when is_binary(name) do
     name
     |> String.downcase()
