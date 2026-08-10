@@ -50,6 +50,24 @@ defmodule CmsHarness.Web.McpControllerTest do
       assert Jason.decode!(received.body)["method"] == "tools/list"
     end
 
+    # Every test here points `:harness_server_url` at the fake, and that setting
+    # is the whole VM's: the harness's own channel clients derive their socket
+    # URL from it and redial once a second, so their upgrades land on the fake
+    # too. When one landed between the POST and the assertion, `last_request/0`
+    # answered about a request no test had made and the file failed on `==`
+    # against a path nobody had asked for. Sent by hand here, so the
+    # interleaving that used to be a coin flip is the one this test always gets.
+    test "a reconnect landing mid-test is not the request under test", %{conn: conn} do
+      %{root: dir} = project_dir(project_id: "p-42")
+      serve(dir)
+
+      post_rpc(conn, dir, %{"jsonrpc" => "2.0", "id" => 1, "method" => "tools/list"})
+      reconnect_upstream()
+
+      assert FakeUpstream.upgrades() >= 1
+      assert FakeUpstream.last_request().path == "/mcp/harness"
+    end
+
     test "the session id round-trips in both directions", %{conn: conn} do
       %{root: dir} = project_dir()
       serve(dir)
@@ -270,6 +288,16 @@ defmodule CmsHarness.Web.McpControllerTest do
 
       assert Jason.decode!(conn.resp_body)["error"]["message"] =~ "http://127.0.0.1:1"
     end
+  end
+
+  # The request a channel client makes when it reconnects, byte for byte as far
+  # as the fake can tell: it sees an upgrade, and has no idea who dialled it.
+  defp reconnect_upstream do
+    Req.get(
+      url: Application.get_env(:code_my_spec, :harness_server_url) <> "/socket/websocket",
+      headers: [{"upgrade", "websocket"}, {"connection", "upgrade"}],
+      retry: false
+    )
   end
 
   defp post_rpc(conn, dir, payload) do

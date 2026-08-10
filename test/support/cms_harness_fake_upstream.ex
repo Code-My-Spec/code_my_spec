@@ -10,6 +10,18 @@ defmodule CmsHarnessTest.FakeUpstream do
 
   Each test configures the next answer with `respond_with/1` or `stream/1` and
   reads back what arrived with `last_request/0`.
+
+  ## It answers HTTP, and only HTTP
+
+  A test points `:harness_server_url` at this listener, and that setting is the
+  whole VM's — including the harness's own `ChannelClient`s, which derive their
+  socket URL from it and redial every second for as long as they are alive.
+  Their upgrade requests therefore arrive here, and recording them made
+  `last_request/0` answer about traffic no test had made. See
+  `websocket_upgrade?/1`.
+
+  The socket is `CmsHarnessTest.FakeServer`'s surface, not this one. Nothing
+  here can upgrade a connection, so refusing is also the truth.
   """
 
   import Plug.Conn
@@ -51,7 +63,11 @@ defmodule CmsHarnessTest.FakeUpstream do
   @spec stream([binary()]) :: :ok
   def stream(chunks), do: respond_with(chunks: chunks)
 
-  @doc "The last request that arrived, or nil. Headers are a map, downcased by HTTP."
+  @doc """
+  The last request that arrived, or nil. Headers are a map, downcased by HTTP.
+
+  Websocket upgrades are not requests — see the moduledoc.
+  """
   @spec last_request() ::
           %{method: String.t(), path: String.t(), headers: map(), body: binary()} | nil
   def last_request, do: :persistent_term.get({__MODULE__, :request}, nil)
@@ -59,9 +75,9 @@ defmodule CmsHarnessTest.FakeUpstream do
   @doc """
   The last request to `path`, or nil.
 
-  For flows that make more than one call here — the permission proxy raises the
-  request over HTTP and then opens a websocket, and `last_request/0` would hand
-  back the socket upgrade.
+  For flows that make more than one call here — the MCP proxy asks the server
+  where a working copy is before it forwards anything to it, so "did it
+  forward?" is a question about a path, not about whichever call was last.
   """
   @spec last_request_to(String.t()) :: map() | nil
   def last_request_to(path) do
@@ -75,7 +91,38 @@ defmodule CmsHarnessTest.FakeUpstream do
   def init(opts), do: opts
 
   @impl Plug
-  def call(conn, _opts) do
+  def call(conn, opts) do
+    if websocket_upgrade?(conn), do: refuse_upgrade(conn), else: record(conn, opts)
+  end
+
+  # Not this fake's surface, and not any test's request.
+  #
+  # The harness's channel clients redial `Config.server_url()` every second,
+  # and every test here points that at this listener — so a reconnect lands
+  # between a test's own request and the assertion that reads it back, and
+  # `last_request/0` hands back the upgrade. The failure names a path nobody
+  # asked for and passes on rerun, which reads as a bad assertion rather than
+  # as a second caller. Counted rather than dropped silently, so a test can
+  # wait for one and prove the isolation holds.
+  defp refuse_upgrade(conn) do
+    :persistent_term.put({__MODULE__, :upgrades}, upgrades() + 1)
+
+    conn
+    |> put_resp_content_type("application/json")
+    |> send_resp(404, ~s({"error":"this fake speaks HTTP, not websockets"}))
+  end
+
+  @doc "How many websocket upgrades were refused, rather than answered as requests."
+  @spec upgrades() :: non_neg_integer()
+  def upgrades, do: :persistent_term.get({__MODULE__, :upgrades}, 0)
+
+  defp websocket_upgrade?(conn) do
+    conn
+    |> get_req_header("upgrade")
+    |> Enum.any?(&(String.downcase(&1) == "websocket"))
+  end
+
+  defp record(conn, _opts) do
     {:ok, body, conn} = read_body(conn)
 
     request = %{
@@ -168,6 +215,7 @@ defmodule CmsHarnessTest.FakeUpstream do
     :persistent_term.put({__MODULE__, :requests}, [])
     :persistent_term.put({__MODULE__, :exchange}, nil)
     :persistent_term.put({__MODULE__, :exchange_answer}, {:ok, []})
+    :persistent_term.put({__MODULE__, :upgrades}, 0)
   end
 
   # Let the OS pick, rather than `Enum.random(4300..4399)`.
