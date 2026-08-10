@@ -8,6 +8,8 @@ defmodule CodeMySpec.Requirements.Preloader do
 
   import Ecto.Query
 
+  require Logger
+
   alias CodeMySpec.AcceptanceCriteria.Criterion
   alias CodeMySpec.Analysis.{Fingerprint, Run, RunsRepository}
   alias CodeMySpec.BddRules.Rule
@@ -45,16 +47,57 @@ defmodule CodeMySpec.Requirements.Preloader do
   @doc """
   Load all data for the project in ~6 queries.
 
-  `{:error, :no_working_copy}` when the scope names no harness. Every checkout
-  reports its own file row per path, so without one this returns every
-  checkout's files blended together — which is what it used to do, and what
-  told an agent in this working copy that 303 components had specs written
-  elsewhere.
-  """
-  @spec load(Scope.t()) :: {:ok, context()} | {:error, :no_working_copy}
-  def load(%Scope{active_harness_id: nil}), do: {:error, :no_working_copy}
+  ## One checkout, or all of them
 
-  def load(%Scope{active_project_id: project_id, active_harness_id: harness_id} = scope) do
+  Every working copy files its own row per path, so a scope naming a harness
+  gets that checkout's tree and a scope naming none gets all of them blended.
+
+  Both are wanted, by different callers:
+
+    * **an agent** always has a working copy — the hook carries `X-Harness-Id`
+      — and must see only it. Blended, 308 `(component, role)` pairs read as
+      satisfied here by files that exist only in another checkout, 303 of them
+      specs. The agent is told the spec is written, skips the component, and the
+      gap surfaces later as an implementation with nothing behind it.
+
+    * **a person** looking at the project in a browser has no checkout to name.
+      `with_harness/2` already decided what to do about that — "adopting the
+      wrong checkout's identity is worse than reading widely" — and refusing
+      instead took the graph out of the UI entirely.
+
+  So the default is loose and the agent path is strict by construction: it
+  cannot reach here without a harness, because the plug that builds its scope
+  puts one on. An unscoped load says so in the log, which is how a caller that
+  should have named one gets found.
+
+  ## Blending is a stand-in, not the answer
+
+  The tempting fix is for the UI to pick a harness — the most recently seen
+  one. It bounces: five checkouts reporting means the graph flips to whichever
+  synced last, so the same page shows different requirements on consecutive
+  renders with nothing the viewer did to cause it. Wrong-but-stable beats
+  correct-but-flickering for a page someone is reading.
+
+  The direction that resolves it is not picking better. It is that a web view
+  should read the **default branch** over an API rather than any working copy:
+  branch state is shared, stable, and canonical, where a checkout is transient
+  and private. At that point the question "which harness is the UI showing"
+  stops existing, and this clause can go.
+  """
+  @spec load(Scope.t()) :: {:ok, context()}
+  def load(%Scope{active_harness_id: nil, active_project_id: project_id} = scope) do
+    Logger.warning(
+      "[Requirements] building a graph for project #{inspect(project_id)} with no working " <>
+        "copy — every checkout's files are read together, so a file present in one and " <>
+        "absent in another reads as present. Expected for the UI; an agent path here is a bug."
+    )
+
+    do_load(scope, nil)
+  end
+
+  def load(%Scope{active_harness_id: harness_id} = scope), do: do_load(scope, harness_id)
+
+  defp do_load(%Scope{active_project_id: project_id} = scope, harness_id) do
     # 1. All components with deps and children preloaded
     components =
       Component
@@ -189,6 +232,14 @@ defmodule CodeMySpec.Requirements.Preloader do
   # caller that forgot to set one. A requirement graph is a statement about a
   # checkout, and answering "no checkout" with the default one invents a tree
   # the caller was not asking about.
+  # A nil harness reads every checkout's rows, which is what this did before and
+  # what the warning above is for. Not an error: `with_harness/2` deliberately
+  # leaves a request that names no harness unscoped — "adopting the wrong
+  # checkout's identity is worse than reading widely" — and the browser has no
+  # working copy to name. Refusing there took the requirement graph out of the
+  # UI entirely and failed 86 spex.
+  defp scope_to_harness(query, nil), do: query
+
   defp scope_to_harness(query, harness_id),
     do: where(query, [f], f.harness_id == ^harness_id)
 
