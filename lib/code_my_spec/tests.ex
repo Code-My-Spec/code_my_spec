@@ -47,13 +47,12 @@ defmodule CodeMySpec.Tests do
     # clean_otp_env clears the Burrito release's ROOTDIR/BINDIR/RELEASE_* so
     # the child `mix`/`erl` boots from the user's installed OTP, not our
     # extracted ERTS ("cannot get bootfile"). Appended last so it wins.
+    extra_env = Keyword.get(opts, :extra_env, [])
+
     cmd_env =
-      [
-        {"MIX_ENV", "test"},
-        {"MIX_TEST_PARTITION", partition(env)},
-        {"EXUNIT_JSON_OUTPUT_FILE", temp_file}
-      ] ++
-        Keyword.get(opts, :extra_env, []) ++
+      [{"MIX_ENV", "test"}, {"EXUNIT_JSON_OUTPUT_FILE", temp_file}] ++
+        partition_env(env, extra_env) ++
+        extra_env ++
         CodeMySpec.Environments.clean_otp_env()
 
     Logger.info("[Tests] Running: #{command}")
@@ -96,6 +95,24 @@ defmodule CodeMySpec.Tests do
   # running tests at all — several sessions' analyzers collide with each other,
   # which is why timing mitigations cannot work.
   #
+  # Yield to a caller that already isolated the database.
+  #
+  # The harness path does: `CmsHarness.AnalyzerEnv.extra_env/1` includes
+  # `CmsHarness.TestDatabase.env/1`, which derives a partition from the
+  # absolute path and ensures the database exists — the
+  # `code_my_spec_testh<hash>` databases. Setting a second value here and
+  # relying on `System.cmd`'s duplicate-key ordering to pick the right one
+  # would be a coin flip dressed as a fix.
+  #
+  # What is left uncovered is the server-side path, which calls this with no
+  # `extra_env` at all and therefore inherits the working copy's own test
+  # database — the same one the agent's `mix test` uses. That is the collision.
+  defp partition_env(env, extra_env) do
+    if List.keymember?(extra_env, "MIX_TEST_PARTITION", 0),
+      do: [],
+      else: [{"MIX_TEST_PARTITION", partition(env)}]
+  end
+
   # One database per working copy, created once and reused. A unique name per
   # run would be perfectly isolated and would also mean creating and migrating
   # a database on every stop.
