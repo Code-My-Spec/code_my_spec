@@ -515,6 +515,15 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   # `ctx.components` on every call — once per story, so 93 × 880 components on
   # this project to rebuild an identical map 93 times. It depends only on the
   # context, so the loop was the wrong place for it.
+  #
+  # It is worth almost nothing, and that is the useful part. Generation measured
+  # 571ms before and 563ms after: 81,840 filter-and-group operations cost about
+  # 8ms, so whoever looks here next for the remaining ~560ms should look past
+  # this at `kickoff_edge/4` and `transitive_dep_closure/2`, which between them
+  # produce 31,257 of the 32,973 edges.
+  #
+  # Kept because it is strictly less work for the same result, not because it
+  # fixed anything.
   defp component_tree_edges(ctx, config) do
     ctx = Map.put(ctx, :children_by_parent, children_by_parent(ctx))
 
