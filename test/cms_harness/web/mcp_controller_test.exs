@@ -111,6 +111,61 @@ defmodule CmsHarness.Web.McpControllerTest do
       assert Jason.decode!(conn.resp_body)["error"] == "invalid_token"
     end
 
+    # A wedged dev server answers every request with Phoenix's styled
+    # `CompileError` page — 30KB of markup and a base64 SVG logo. Relayed
+    # verbatim, that arrived in an agent's context as the result of
+    # `create_issue`: the tool for reporting friction failing by consuming the
+    # context needed to report it (5fb011f4, 6ecb257a).
+    test "an HTML error page is summarized, not relayed", %{conn: conn} do
+      %{root: dir} = project_dir()
+      serve(dir)
+
+      page =
+        "<!DOCTYPE html>\n<html><body><div>** (RuntimeError) could not compile " <>
+          "application: code_my_spec. You must restart your server after changing " <>
+          "configuration files</div>" <> String.duplicate("<span>padding</span>", 2_000) <>
+          "</body></html>"
+
+      FakeUpstream.respond_with(status: 500, body: page, headers: [{"content-type", "text/html"}])
+
+      conn = post_rpc(conn, dir, %{"jsonrpc" => "2.0", "id" => 7, "method" => "tools/call"})
+
+      body = Jason.decode!(conn.resp_body)
+
+      assert body["error"]["message"] =~ "HTML error page",
+             "the agent has to be told what happened, not shown the document"
+
+      assert body["error"]["message"] =~ "restart",
+             "the recovery is the useful part: this server needs restarting"
+
+      assert body["id"] == 7, "a JSON-RPC error still has to answer the request it failed"
+
+      refute conn.resp_body =~ "<!DOCTYPE",
+             "relaying the page is the defect — 30KB of markup into an agent's context"
+
+      assert byte_size(conn.resp_body) < 1_000,
+             "a summary that is not short has not solved the problem it exists for"
+    end
+
+    # The guard keys on HTML specifically. An SSE body is the server→client
+    # channel and a JSON body is a result; treating "not JSON" as broken would
+    # take out streaming, which is the more expensive mistake.
+    test "a non-JSON stream body is still relayed", %{conn: conn} do
+      %{root: dir} = project_dir()
+      serve(dir)
+
+      FakeUpstream.respond_with(
+        status: 200,
+        body: "event: message\ndata: {\"jsonrpc\":\"2.0\",\"id\":1}\n\n",
+        headers: [{"content-type", "text/event-stream"}]
+      )
+
+      conn = post_rpc(conn, dir, %{"jsonrpc" => "2.0", "id" => 1, "method" => "ping"})
+
+      assert conn.status == 200
+      assert conn.resp_body =~ "event: message"
+    end
+
     test "DELETE ends the session upstream", %{conn: conn} do
       %{root: dir} = project_dir()
       serve(dir)

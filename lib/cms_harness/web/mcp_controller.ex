@@ -86,10 +86,7 @@ defmodule CmsHarness.Web.McpController do
 
     case Req.request(request(conn, project, token, verb, body, @post_timeout)) do
       {:ok, response} ->
-        conn
-        |> copy_headers(response)
-        |> put_resp_content_type(content_type(response))
-        |> send_resp(response.status, response.body || "")
+        relay_or_summarize(conn, response)
 
       {:error, reason} ->
         unreachable(conn, reason)
@@ -98,6 +95,71 @@ defmodule CmsHarness.Web.McpController do
 
   defp dispatch(conn, _project, _token) do
     send_resp(conn, 405, "")
+  end
+
+  # An HTML body is never a tool result, so it is summarized rather than
+  # relayed.
+  #
+  # When the upstream dev server is wedged — a `config/*.exs` change it cannot
+  # hot-reload — every request gets Phoenix's styled `CompileError` page. That
+  # was passed through verbatim: 30KB of markup and a base64 SVG logo arriving
+  # in an agent's context as the result of `create_issue`, which is to say the
+  # tool for reporting friction failed by burning the context needed to report
+  # it (issues 5fb011f4, 6ecb257a).
+  #
+  # Only HTML is caught. A JSON body is a result and an SSE stream is the
+  # server→client channel, both legitimate; guessing "not JSON means broken"
+  # would break streaming.
+  defp relay_or_summarize(conn, response) do
+    case html_summary(response) do
+      nil ->
+        conn
+        |> copy_headers(response)
+        |> put_resp_content_type(content_type(response))
+        |> send_resp(response.status, response.body || "")
+
+      summary ->
+        Logger.error("[CmsHarness] MCP upstream returned HTML: #{summary}")
+
+        conn
+        |> put_status(200)
+        |> json(%{
+          "jsonrpc" => "2.0",
+          "id" => conn.body_params["id"],
+          "error" => %{"code" => -32_001, "message" => summary}
+        })
+    end
+  end
+
+  defp html_summary(response) do
+    body = to_string(response.body || "")
+
+    if html?(response, body) do
+      "the CodeMySpec server answered with an HTML error page (HTTP " <>
+        "#{response.status}) instead of a tool result: #{first_meaningful_line(body)}. " <>
+        "A dev server that has loaded a changed config/*.exs cannot hot-reload it " <>
+        "and serves this to every request until it is restarted."
+    end
+  end
+
+  defp html?(response, body) do
+    content_type(response) == "text/html" or
+      String.starts_with?(String.trim_leading(body), ["<!DOCTYPE", "<!doctype", "<html"])
+  end
+
+  # Phoenix's error page carries the exception text in the markup. Anything
+  # recognisable beats "an HTML page arrived", and the whole document is what
+  # this exists to avoid.
+  defp first_meaningful_line(body) do
+    body
+    |> String.replace(~r{<[^>]*>}, " ")
+    |> String.replace(~r/\s+/, " ")
+    |> String.trim()
+    |> String.slice(0, 300)
+    |> case do
+      "" -> "no readable text in the response"
+      text -> text
+    end
   end
 
   defp request(conn, project, token, method, body, receive_timeout) do
