@@ -29,48 +29,53 @@ defmodule CodeMySpec.Provisioning.EnvironmentServersTest do
   # Answers every Hetzner call plausibly and reports what was asked for. The
   # step will not finish — it goes on to reach boxes over SSH — but every
   # server it wanted has been requested by then, which is what this is about.
+  #
+  # Dispatched on method and path by head rather than by `cond`: a branch in a
+  # test is a test reacting to state it should control, and the framework's own
+  # credo check rejects it. This is a router, and a router reads better as
+  # clauses anyway.
   defp record_requests(owner) do
     plug = fn conn ->
       {:ok, body, conn} = Plug.Conn.read_body(conn)
-      payload = if body == "", do: %{}, else: Jason.decode!(body)
 
-      if conn.method == "POST" and conn.request_path == "/v1/servers" do
-        send(owner, {:creating, payload["name"]})
-      end
-
-      response =
-        cond do
-          String.contains?(conn.request_path, "/servers") and conn.method == "GET" ->
-            %{"servers" => []}
-
-          String.contains?(conn.request_path, "/servers") ->
-            %{"server" => %{"id" => 1, "name" => payload["name"], "location" => %{"name" => "fsn1"}}}
-
-          String.contains?(conn.request_path, "/firewalls") and conn.method == "GET" ->
-            %{"firewalls" => []}
-
-          String.contains?(conn.request_path, "/firewalls") ->
-            %{"firewall" => %{"id" => 2, "name" => payload["name"], "rules" => []}}
-
-          String.contains?(conn.request_path, "/ssh_keys") and conn.method == "GET" ->
-            %{"ssh_keys" => []}
-
-          String.contains?(conn.request_path, "/ssh_keys") ->
-            %{"ssh_key" => %{"id" => 3, "fingerprint" => "aa:bb"}}
-
-          String.contains?(conn.request_path, "/networks") and conn.method == "GET" ->
-            %{"networks" => []}
-
-          true ->
-            %{"network" => %{"id" => 4, "name" => payload["name"]}}
-        end
-
-      conn
-      |> Plug.Conn.put_resp_content_type("application/json")
-      |> Plug.Conn.send_resp(201, Jason.encode!(response))
+      reply(conn, conn.method, conn.request_path, decode(body), owner)
     end
 
     Application.put_env(:code_my_spec, Hetzner, api_token: "test-token", plug: plug)
+  end
+
+  defp decode(""), do: %{}
+  defp decode(body), do: Jason.decode!(body)
+
+  defp reply(conn, "POST", "/v1/servers", payload, owner) do
+    send(owner, {:creating, payload["name"]})
+
+    json(conn, %{
+      "server" => %{"id" => 1, "name" => payload["name"], "location" => %{"name" => "fsn1"}}
+    })
+  end
+
+  defp reply(conn, "GET", "/v1/servers", _payload, _owner), do: json(conn, %{"servers" => []})
+  defp reply(conn, "GET", "/v1/firewalls", _payload, _owner), do: json(conn, %{"firewalls" => []})
+  defp reply(conn, "GET", "/v1/ssh_keys", _payload, _owner), do: json(conn, %{"ssh_keys" => []})
+  defp reply(conn, "GET", "/v1/networks", _payload, _owner), do: json(conn, %{"networks" => []})
+
+  defp reply(conn, "POST", "/v1/firewalls", payload, _owner) do
+    json(conn, %{"firewall" => %{"id" => 2, "name" => payload["name"], "rules" => []}})
+  end
+
+  defp reply(conn, "POST", "/v1/ssh_keys", _payload, _owner) do
+    json(conn, %{"ssh_key" => %{"id" => 3, "fingerprint" => "aa:bb"}})
+  end
+
+  defp reply(conn, _method, _path, payload, _owner) do
+    json(conn, %{"network" => %{"id" => 4, "name" => payload["name"]}})
+  end
+
+  defp json(conn, body) do
+    conn
+    |> Plug.Conn.put_resp_content_type("application/json")
+    |> Plug.Conn.send_resp(201, Jason.encode!(body))
   end
 
   test "asks for one server per environment, named for it", ctx do
