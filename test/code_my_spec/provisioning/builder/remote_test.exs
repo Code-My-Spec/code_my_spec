@@ -26,27 +26,39 @@ defmodule CodeMySpec.Provisioning.Builder.RemoteTest do
 
   defp opts(run, overrides \\ []) do
     Keyword.merge(
-      [run: run, repository_url: "https://github.com/sam/app.git", ssh_interval_ms: 0],
+      [run: run, deliver: recording_deliver(self()), ssh_interval_ms: 0],
       overrides
     )
+  end
+
+  # Source delivery is no longer one of the `run` commands — the builder does
+  # not clone any more, so the tree arrives over a separate channel. Recorded
+  # the same way so a test can still say what was sent and where.
+  defp recording_deliver(owner) do
+    fn ref, dir ->
+      send(owner, {:delivered, ref, dir})
+      :ok
+    end
   end
 
   defp arm, do: {"arm64\n", 0}
 
   describe "build/4" do
-    test "fetches only the commit being built" do
+    # Was "fetches only the commit being built", asserting a shallow clone.
+    # The builder does not clone at all now: repositories are private and
+    # setup installs no deploy key, so cloning could never have worked, and
+    # putting a GitHub token on a throwaway box to make it work is the thing
+    # this avoids. The commit's tree is sent over the SSH we already have.
+    test "the commit being built is delivered, not cloned" do
       run = recorder(self(), %{"inspect" => arm()})
 
       assert {:ok, _} = Remote.build(%{"ip" => "1.2.3.4"}, "abc123", "reg/app:abc123", opts(run))
 
-      assert_received {:ran, "true"}
-      assert_received {:ran, fetch}
+      assert_received {:delivered, "abc123", "/build"}
 
-      # Shallow and pinned: the builder does not need the history, and cloning
-      # a long-lived repository is the difference between a build that starts
-      # now and one that starts in a minute.
-      assert fetch =~ "--depth 1"
-      assert fetch =~ "abc123"
+      # Nothing in the sequence reaches GitHub, which is the point.
+      refute_received {:ran, "git clone" <> _}
+      refute_received {:ran, "git fetch" <> _}
     end
 
     test "reads the architecture off the image rather than trusting the request" do
@@ -119,7 +131,7 @@ defmodule CodeMySpec.Provisioning.Builder.RemoteTest do
                  opts(run, registry_credentials: %{username: "cms", password: "hunter2"})
                )
 
-      [_reachable, _fetch, _build, login, push, _inspect] = ran_commands(6)
+      [_reachable, _build, login, push, _inspect] = ran_commands(5)
 
       assert push =~ "docker push", "the login must come before the push, not after it"
 
@@ -144,7 +156,7 @@ defmodule CodeMySpec.Provisioning.Builder.RemoteTest do
                  opts(run, registry_credentials: %{username: "cms", password: "pw"})
                )
 
-      [_reachable, _fetch, _build, login, _push, _inspect] = ran_commands(6)
+      [_reachable, _build, login, _push, _inspect] = ran_commands(5)
 
       assert login =~ "docker login 'registry.example.com'"
       refute login =~ "some/deep/path"
@@ -178,11 +190,14 @@ defmodule CodeMySpec.Provisioning.Builder.RemoteTest do
     end
   end
 
-  # The sequence `build/4` runs is fixed — reachability, fetch, build, login,
-  # push, inspect — so the count is known rather than searched for. Taking a
-  # known number and matching positionally says where the login belongs, which
-  # "scan forward until something matches" cannot: it would pass just as well
-  # if the login came after the push.
+  # The sequence `build/4` runs is fixed — reachability, build, login, push,
+  # inspect — so the count is known rather than searched for. Taking a known
+  # number and matching positionally says where the login belongs, which "scan
+  # forward until something matches" cannot: it would pass just as well if the
+  # login came after the push.
+  #
+  # Source delivery is not in the list: it stopped being a shell command on the
+  # builder when the builder stopped cloning.
   defp ran_commands(count) do
     for _ <- 1..count do
       assert_receive {:ran, command}, 0

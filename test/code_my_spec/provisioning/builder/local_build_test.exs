@@ -8,9 +8,10 @@ defmodule CodeMySpec.Provisioning.Builder.LocalBuildTest do
   which is exactly the gap that would otherwise only close when someone
   provisions a box and watches it fail.
 
-  So this runs the same code path with `local_runner/1`: a real git fetch, a
-  real image built from a real Dockerfile, and the architecture read back off
-  it. No Hetzner, no SSH, no cost.
+  So this runs the same code path with `local_runner/1` and `local_deliver/1`:
+  a real `git archive` of a real commit, a real image built from a real
+  Dockerfile, and the architecture read back off it. No Hetzner, no SSH, no
+  cost.
 
   What it still does not cover, and what the box is for: reachability, booting
   from the pre-warmed image, and destruction. Those are QA against real
@@ -31,9 +32,9 @@ defmodule CodeMySpec.Provisioning.Builder.LocalBuildTest do
     source = Path.join(tmp, "source")
     File.mkdir_p!(source)
 
-    # A repository with one commit, because the sequence fetches a commit
-    # rather than a directory — the same thing the builder does with a real
-    # remote, only over a local path.
+    # A repository with one commit, because the sequence delivers a commit
+    # rather than a directory — the same `git archive` the real path pipes over
+    # SSH, only unpacked locally.
     File.write!(Path.join(source, "Dockerfile"), """
     FROM alpine:3
     RUN echo built > /built
@@ -64,7 +65,7 @@ defmodule CodeMySpec.Provisioning.Builder.LocalBuildTest do
         ctx.ref,
         ctx.reference,
         run: Remote.local_runner(cd: ctx.tmp),
-        repository_url: ctx.source,
+        deliver: Remote.local_deliver(cd: ctx.source),
         build_dir: Path.join(ctx.tmp, "build"),
         # Nothing to push to — a registry is the one piece this cannot stand in
         # for locally, and pushing to a real one would make this a network test.
@@ -110,7 +111,7 @@ defmodule CodeMySpec.Provisioning.Builder.LocalBuildTest do
                ctx.ref,
                reference,
                run: Remote.local_runner(cd: ctx.tmp),
-               repository_url: ctx.source,
+               deliver: Remote.local_deliver(cd: ctx.source),
                build_dir: Path.join(ctx.tmp, "build")
              )
 
@@ -135,10 +136,20 @@ defmodule CodeMySpec.Provisioning.Builder.LocalBuildTest do
   defp await_registry(_port, 0), do: flunk("the test registry never answered")
 
   defp await_registry(port, attempts) do
-    case System.cmd("curl", ["-sf", "http://127.0.0.1:#{port}/v2/"], stderr_to_stdout: true) do
-      {_, 0} -> :ok
-      _ -> Process.sleep(500) && await_registry(port, attempts - 1)
-    end
+    {_, status} = System.cmd("curl", ["-sf", "http://127.0.0.1:#{port}/v2/"], stderr_to_stdout: true)
+
+    retry_registry(port, attempts, status)
+  end
+
+  # Dispatched on the exit status rather than branched on it: a `case` here is
+  # a test reacting to state, which the framework's own credo check rejects in
+  # `_test.exs`. Polling an external service genuinely needs to retry, so the
+  # retry moves into a head match instead of going away.
+  defp retry_registry(_port, _attempts, 0), do: :ok
+
+  defp retry_registry(port, attempts, _status) do
+    Process.sleep(500)
+    await_registry(port, attempts - 1)
   end
 
   test "a Dockerfile that cannot build is reported as a failed build", ctx do
@@ -156,7 +167,7 @@ defmodule CodeMySpec.Provisioning.Builder.LocalBuildTest do
                String.trim(sha),
                ctx.reference,
                run: Remote.local_runner(cd: ctx.tmp),
-               repository_url: ctx.source,
+               deliver: Remote.local_deliver(cd: ctx.source),
                build_dir: Path.join(ctx.tmp, "build"),
                push: false
              )

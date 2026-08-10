@@ -34,12 +34,12 @@ defmodule CodeMySpec.Provisioning.Builder.Remote do
           {:ok, %{reference: String.t(), architecture: :arm | :x86}} | {:error, term()}
   def build(server, ref, reference, opts \\ []) do
     run = Keyword.get(opts, :run) || ssh_runner(server, opts)
-    repo = Keyword.fetch!(opts, :repository_url)
+    deliver = Keyword.get(opts, :deliver) || ssh_deliver(server, opts)
 
     dir = Keyword.get(opts, :build_dir, "/build")
 
     with :ok <- await_ssh(run, Keyword.get(opts, :ssh_attempts, @ssh_attempts), opts),
-         :ok <- fetch(run, repo, ref, dir),
+         :ok <- deliver.(ref, dir),
          :ok <- docker_build(run, reference, ref, dir),
          :ok <- maybe_push(run, reference, opts),
          {:ok, architecture} <- built_architecture(run, reference) do
@@ -62,17 +62,70 @@ defmodule CodeMySpec.Provisioning.Builder.Remote do
     end
   end
 
-  # A shallow fetch of one commit. The builder does not need the history, and
-  # a full clone of a long-lived repository is the difference between a build
-  # that starts now and one that starts in a minute.
-  defp fetch(run, repo, ref, dir) do
-    case run.(["rm -rf #{dir} && mkdir -p #{dir} && cd #{dir} && git init -q && " <>
-                 "git remote add origin #{repo} && git fetch -q --depth 1 origin #{ref} && " <>
-                 "git checkout -q FETCH_HEAD"]) do
-      {_, 0} -> :ok
-      {output, status} -> {:error, {:fetch_failed, status, trim(output)}}
+  @doc """
+  Send one commit's tree to the builder, over the SSH we already have.
+
+  The builder used to clone from GitHub. Repositories are created private
+  (`Repository`, `private: true` by default) and setup installs no deploy key,
+  so it could not have worked — and it never ran, because the step died
+  earlier on a missing `:env` before it got this far.
+
+  Three ways out of that were on the table: a deploy key on the repository, a
+  token in the clone URL, or this. This one is chosen because it leaves no
+  GitHub credential anywhere near the builder — a box that exists for one
+  build, that we do not exclusively control while it lives, and whose shell
+  history and git config would otherwise hold a token. We already hold SSH to
+  it, so there is nothing to add.
+
+  `git archive` rather than a clone, so what lands is exactly the commit's
+  tree: no history, no remotes, no `.git`, and nothing to leak. Shallow
+  cloning was the old optimisation for the same reason — the builder does not
+  need the history — and this is that argument taken to its end.
+  """
+  @spec ssh_deliver(map(), keyword()) :: (String.t(), String.t() -> :ok | {:error, term()})
+  def ssh_deliver(server, opts) do
+    env = Keyword.fetch!(opts, :env)
+
+    fn ref, dir ->
+      remote = "rm -rf #{dir} && mkdir -p #{dir} && tar -x -C #{dir}"
+
+      command =
+        "git archive --format=tar #{ref} | " <>
+          Enum.join(["ssh" | ssh_args(server, opts)], " ") <>
+          " " <> shell_quote(remote)
+
+      # Through the project's own environment, so the archive is taken from
+      # the checkout the deploy is for rather than from wherever the server
+      # happens to be running.
+      case Environments.cmd(env, "sh", ["-c", command], stderr_to_stdout: true) do
+        {_, 0} -> :ok
+        {output, status} -> {:error, {:source_delivery_failed, status, trim(output)}}
+      end
     end
   end
+
+  @doc """
+  Deliver into a directory on this machine, for the local build path.
+
+  `:cd` is the checkout to archive from. Pairs with `local_runner/1` the way
+  `ssh_deliver/2` pairs with `ssh_runner/2`.
+  """
+  @spec local_deliver(keyword()) :: (String.t(), String.t() -> :ok | {:error, term()})
+  def local_deliver(opts) do
+    cd = Keyword.fetch!(opts, :cd)
+
+    fn ref, dir ->
+      command =
+        "rm -rf #{dir} && mkdir -p #{dir} && git archive --format=tar #{ref} | tar -x -C #{dir}"
+
+      case System.cmd("sh", ["-c", command], cd: cd, stderr_to_stdout: true) do
+        {_, 0} -> :ok
+        {output, status} -> {:error, {:source_delivery_failed, status, trim(output)}}
+      end
+    end
+  end
+
+  defp shell_quote(value), do: "'" <> String.replace(value, "'", "'\\''") <> "'"
 
   defp docker_build(run, reference, ref, dir) do
     case run.(["cd #{dir} && docker build --label commit=#{ref} -t #{reference} ."]) do
@@ -172,26 +225,29 @@ defmodule CodeMySpec.Provisioning.Builder.Remote do
   # a log and independently replaceable in a test.
   defp ssh_runner(server, opts) do
     env = Keyword.fetch!(opts, :env)
-    key = Keyword.fetch!(opts, :ssh_key_path)
-    host = ip(server)
+    args = ssh_args(server, opts)
 
     fn [command] ->
-      Environments.cmd(
-        env,
-        "ssh",
-        [
-          "-o",
-          "StrictHostKeyChecking=no",
-          "-o",
-          "UserKnownHostsFile=/dev/null",
-          "-i",
-          key,
-          "root@#{host}",
-          command
-        ],
-        stderr_to_stdout: true
-      )
+      Environments.cmd(env, "ssh", args ++ [command], stderr_to_stdout: true)
     end
+  end
+
+  # Shared by the runner and by `ssh_deliver/2`, which reaches the same box on
+  # the same terms. Two copies of these flags would be two things to keep in
+  # step, and the failure of drift is an authentication error on one of the
+  # two paths that says nothing about why the other one works.
+  defp ssh_args(server, opts) do
+    key = Keyword.fetch!(opts, :ssh_key_path)
+
+    [
+      "-o",
+      "StrictHostKeyChecking=no",
+      "-o",
+      "UserKnownHostsFile=/dev/null",
+      "-i",
+      key,
+      "root@#{ip(server)}"
+    ]
   end
 
   @doc """
