@@ -149,8 +149,15 @@ defmodule CodeMySpec.Provisioning.Database do
   # fails in a way that reads like a broken image rather than an impatient
   # caller — the same distinction the registry's probe draws.
   defp await(run, credential, attempts) do
+    # `-h 127.0.0.1`, so this asks the TCP listener rather than the unix socket.
+    # Without it `pg_isready` answers over the socket, which is up during
+    # Postgres's first-boot phase while TCP still refuses — so `serve/3`
+    # reported ready and the very next connection got
+    # `connection to server at "cms-postgres" ... failed: Connection refused`.
+    # The app connects over TCP, so TCP is what readiness has to mean.
     check =
-      "docker exec #{@container} pg_isready -U #{shell_escape(credential.username)} " <>
+      "docker exec #{@container} pg_isready -h 127.0.0.1 " <>
+        "-U #{shell_escape(credential.username)} " <>
         "-d #{shell_escape(credential.database)} > /dev/null"
 
     case run.([check]) do

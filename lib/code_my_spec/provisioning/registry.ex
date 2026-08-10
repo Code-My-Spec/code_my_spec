@@ -344,16 +344,9 @@ defmodule CodeMySpec.Provisioning.Registry do
     htpasswd = "#{credential.username}:#{Bcrypt.hash_pwd_salt(credential.password)}"
 
     env =
-      [
-        {"REGISTRY_STORAGE", "s3"},
-        {"REGISTRY_STORAGE_S3_REGION", location},
-        {"REGISTRY_STORAGE_S3_REGIONENDPOINT",
-         "https://#{location}.your-objectstorage.com"},
-        {"REGISTRY_STORAGE_S3_FORCEPATHSTYLE", "true"},
-        {"REGISTRY_STORAGE_S3_BUCKET", bucket},
-        {"REGISTRY_STORAGE_S3_ACCESSKEY", Keyword.fetch!(credentials, :access_key_id)},
-        {"REGISTRY_STORAGE_S3_SECRETKEY", Keyword.fetch!(credentials, :secret_access_key)}
-      ]
+      opts
+      |> Keyword.get(:storage, :s3)
+      |> storage_env(bucket, credentials, location)
       |> Enum.map_join(" ", fn {name, value} -> "-e #{name}=#{shell_escape(value)}" end)
 
     # The htpasswd file is written before the container starts and mounted
@@ -396,6 +389,31 @@ defmodule CodeMySpec.Provisioning.Registry do
     "mkdir -p /etc/docker && " <>
       "(grep -qF #{shell_escape(host)} /etc/docker/daemon.json 2>/dev/null || " <>
       "(echo #{shell_escape(config)} > /etc/docker/daemon.json && systemctl restart docker))"
+  end
+
+  # `distribution` takes its backing store from the environment, and which
+  # store is a real configuration axis rather than a constant: S3 in front of
+  # the project's bucket everywhere it runs for real, and the filesystem when
+  # it is being exercised on a machine that has no bucket and should not create
+  # one.
+  #
+  # Hetzner's object storage is S3-compatible but not S3: it needs path-style
+  # addressing, and a virtual-host-style request reaches a bucket that does not
+  # exist rather than failing usefully.
+  defp storage_env(:s3, bucket, credentials, location) do
+    [
+      {"REGISTRY_STORAGE", "s3"},
+      {"REGISTRY_STORAGE_S3_REGION", location},
+      {"REGISTRY_STORAGE_S3_REGIONENDPOINT", "https://#{location}.your-objectstorage.com"},
+      {"REGISTRY_STORAGE_S3_FORCEPATHSTYLE", "true"},
+      {"REGISTRY_STORAGE_S3_BUCKET", bucket},
+      {"REGISTRY_STORAGE_S3_ACCESSKEY", Keyword.fetch!(credentials, :access_key_id)},
+      {"REGISTRY_STORAGE_S3_SECRETKEY", Keyword.fetch!(credentials, :secret_access_key)}
+    ]
+  end
+
+  defp storage_env(:filesystem, _bucket, _credentials, _location) do
+    [{"REGISTRY_STORAGE", "filesystem"}, {"REGISTRY_STORAGE_FILESYSTEM_ROOTDIRECTORY", "/var/lib/registry"}]
   end
 
   defp shell_escape(value), do: "'" <> String.replace(value, "'", "'\\''") <> "'"
