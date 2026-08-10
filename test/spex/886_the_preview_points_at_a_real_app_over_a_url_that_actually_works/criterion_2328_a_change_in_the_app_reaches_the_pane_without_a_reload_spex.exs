@@ -37,8 +37,10 @@ defmodule CodeMySpecSpex.Story886.Criterion2328Spex do
 
   alias CodeMySpecSpex.Fixtures
 
-  @endpoint CodeMySpecWeb.Endpoint
-
+  # No `@endpoint` override, unlike its five siblings, and deliberately: this
+  # criterion makes no ConnTest call at all. It addresses the preview listener
+  # by port and Host header over a socket it opens itself, so there is no
+  # endpoint to resolve and an override here would only be decoration.
   setup :register_log_in_setup_account
   setup :setup_active_project
 
