@@ -1321,7 +1321,7 @@ defmodule CodeMySpec.Provisioning.Steps do
   defp config_targets_this_project(scope, environment) do
     with {:ok, body} <- read_deploy_config(scope, environment),
          {:ok, %{"proxy" => %{"host" => named}}} when is_binary(named) <-
-           YamlElixir.read_from_string(body),
+           parse_deploy_config(body),
          [_ | _] = expected <- expected_hosts(scope, environment) do
       # A config that reads its host from the environment cannot name the wrong
       # one: `CMS_DEPLOY_HOST` is set by this step, from this project's domain,
@@ -1360,11 +1360,44 @@ defmodule CodeMySpec.Provisioning.Steps do
   defp with_kamal_service(opts, scope, environment) do
     with {:ok, body} <- read_deploy_config(scope, environment),
          {:ok, %{"service" => service}} when is_binary(service) <-
-           YamlElixir.read_from_string(body) do
+           parse_deploy_config(body) do
       Keyword.put(opts, :service, service)
     else
       _ -> opts
     end
+  end
+
+  # kamal's config is ERB before it is YAML, and the two disagree.
+  #
+  # A control-flow tag can sit at the start of a line and be followed by a real
+  # key — `<% if ENV["CMS_SSH_KEY_PATH"] %>  keys_only: true` — which YAML
+  # rejects outright with `Block mapping value not allowed here`. Every
+  # generated config contains one, so every parse of one failed.
+  #
+  # That mattered more than it looks: `config_targets_this_project/2` tolerates
+  # a failed parse by returning `:ok`, so the check that setup will not deploy
+  # to a host the project does not own has never actually run on a generated
+  # config. It looked like a passing check and was an unparsed file.
+  #
+  # Statement tags are removed outright. Output tags stay, because
+  # `resolved_at_runtime?/1` recognises a host by the `<%` in it — but their
+  # inner double quotes are swapped for single ones first: a value like
+  #
+  #     keys: [ "<%= ENV["CMS_SSH_KEY_PATH"] %>" ]
+  #
+  # closes its own YAML string on the inner quote and leaves `ENV[` dangling
+  # as a second scalar. The tag's text survives, which is all either caller
+  # reads it for.
+  # Public for its own test: the rewrite is subtle enough that it is worth
+  # asserting on directly rather than through two callers that both swallow a
+  # failure.
+  @doc false
+  @spec parse_deploy_config(String.t()) :: {:ok, map()} | {:error, term()}
+  def parse_deploy_config(body) do
+    body
+    |> String.replace(~r/<%(?!=).*?%>/s, "")
+    |> then(&Regex.replace(~r/<%=.*?%>/s, &1, fn tag -> String.replace(tag, "\"", "'") end))
+    |> YamlElixir.read_from_string()
   end
 
   defp read_deploy_config(scope, environment) do
