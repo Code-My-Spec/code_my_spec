@@ -399,14 +399,18 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
 
     node_keys = MapSet.new(nodes, &Topology.node_key/1)
 
-    {generate_us, generated} =
+    {generate_us, by_source} =
       :timer.tc(fn ->
-        template_edges ++
-          project_to_story_edges(ctx) ++
-          component_tree_edges(ctx, config) ++
-          cross_context_dependency_edges(ctx, config) ++
-          story_to_project_edges(ctx)
+        [
+          {"template", template_edges},
+          {"project→story", project_to_story_edges(ctx)},
+          {"component tree", component_tree_edges(ctx, config)},
+          {"cross-context", cross_context_dependency_edges(ctx, config)},
+          {"story→project", story_to_project_edges(ctx)}
+        ]
       end)
+
+    generated = Enum.flat_map(by_source, fn {_name, edges} -> edges end)
 
     {filter_us, kept} =
       :timer.tc(fn ->
@@ -426,6 +430,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     {reduce_us, reduced} = :timer.tc(fn -> Topology.transitive_reduction(unique) end)
 
     log_edge_timing(generated, unique, reduced, generate_us, filter_us + dedup_us, reduce_us)
+    log_edge_sources(by_source)
 
     reduced
   end
@@ -444,6 +449,34 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   # The counts matter as much as the times. A large gap between generated and
   # kept means the generators are producing edges for nodes that do not exist,
   # which is work thrown away rather than work needed.
+  # Which generator produces the duplicates.
+  #
+  # 42% of generated edges were duplicates — 32,973 down to 19,132 — and
+  # deduplicating them before the reduction was worth ~370ms. That fixed the
+  # symptom. Producing 13,841 edges in order to throw them away is still work
+  # nobody needs, and the fix belongs in whichever generator emits the same edge
+  # more than once rather than in a wider `uniq` downstream.
+  #
+  # Per-source counts because the generators have genuinely different shapes:
+  # one walks each story's transitive dependency closure, another fans out over
+  # component children. A closure walk that revisits a node by every path that
+  # reaches it produces duplicates proportional to path count, which is the
+  # explanation to confirm or rule out first.
+  defp log_edge_sources(by_source) do
+    detail =
+      Enum.map_join(by_source, ", ", fn {name, edges} ->
+        total = length(edges)
+        unique = edges |> Enum.uniq() |> length()
+
+        case total - unique do
+          0 -> "#{name} #{total}"
+          dupes -> "#{name} #{total} (#{dupes} dupe)"
+        end
+      end)
+
+    Logger.info("[Requirements] edge sources — " <> detail)
+  end
+
   defp log_edge_timing(generated, kept, reduced, generate_us, filter_us, reduce_us) do
     ms = &round(&1 / 1000)
 
