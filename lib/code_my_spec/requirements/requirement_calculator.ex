@@ -107,60 +107,54 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
 
   defp check(%{check_type: :no_problems, config: config}, scope, entity, _files, ctx) do
     source = config_source(config)
-
-    if analysis_fresh?(scope, source, ctx) do
-      count = get_problem_count(scope, entity_id(entity), source, ctx)
-
-      if count == 0 do
-        {true, %{status: "No #{source} problems"}}
-      else
-        {false, %{reason: "#{count} #{source} problem(s)", count: count}}
-      end
-    else
-      # Same rule `tests_passing` already applies, and it belongs here for a
-      # second reason. There, stale results risk a false *pass*: zero recorded
-      # failures against yesterday's code. Here the danger runs the other way —
-      # a stale non-zero count is a false *fail*, and it is worse than it
-      # sounds.
-      #
-      # An agent fixed four credo findings and was handed the same four back, at
-      # the same line numbers, against code it had already corrected. For
-      # "nesting too deep" or "alias order" there is no idempotent second fix:
-      # to satisfy the list it would have to invent a *different* refactor of
-      # correct code, degrading it — and those edits produce another snapshot
-      # the next check reads while stale. That is a loop with no exit, and each
-      # turn makes the code worse.
-      #
-      # The one this drill hit stopped only because the analyzers eventually
-      # caught up. It reported the friction and refused to re-fix, which is the
-      # right call and not one to depend on.
-      {false, %{reason: "#{source} results not current — analysis pending or stale"}}
-    end
+    problem_verdict(scope, entity, source, ctx, "#{source} problem")
   end
 
   defp check(%{check_type: :tests_passing}, scope, entity, files, ctx) do
-    # Must have a test file before declaring tests passing
-    has_test_file = Enum.any?(files, &(&1.role == :test))
+    if Enum.any?(files, &(&1.role == :test)) do
+      problem_verdict(scope, entity, "exunit", ctx, "test failure")
+    else
+      {false, %{reason: "No test file exists yet"}}
+    end
+  end
 
-    cond do
-      not has_test_file ->
-        {false, %{reason: "No test file exists yet"}}
+  # Stale analysis is asymmetric: serve the findings, refuse the clean.
+  #
+  # A stale count above zero is a real finding that was true of recent code, so
+  # it is reported — withholding it left any source slower than the edit cadence
+  # permanently "pending", never answering at all (issue 7a7eed33). A stale zero
+  # is the dangerous direction: reporting clean from a run that never looked at
+  # the current code is a false pass, and that one still refuses.
+  #
+  # The reason says which it is. An agent once re-fixed four credo findings it
+  # had already corrected, because a stale list is indistinguishable from a
+  # current one when nothing says so — and for "nesting too deep" there is no
+  # idempotent second fix, so it degrades correct code on every pass.
+  defp problem_verdict(scope, entity, source, ctx, noun) do
+    count = get_problem_count(scope, entity_id(entity), source, ctx)
 
-      # Zero persisted failures only counts once the results are current —
-      # a test run recorded against yesterday's code proves nothing about
-      # the file the agent just wrote. Analysis runs in the background;
-      # this flips true when its run lands.
-      not analysis_fresh?(scope, "exunit", ctx) ->
-        {false, %{reason: "Test results not current — analysis pending or stale"}}
+    case {analysis_fresh?(scope, source, ctx), count} do
+      {true, 0} ->
+        {true, %{status: "No #{noun}s"}}
 
-      true ->
-        count = get_problem_count(scope, entity_id(entity), "exunit", ctx)
+      {true, n} ->
+        {false, %{reason: "#{n} #{noun}(s)", count: n}}
 
-        if count == 0 do
-          {true, %{status: "No test failures"}}
-        else
-          {false, %{reason: "#{count} test failure(s)", count: count}}
-        end
+      {false, 0} ->
+        {false,
+         %{
+           reason:
+             "#{source} results not current — the last completed run predates your " <>
+               "changes, so a clean result from it proves nothing"
+         }}
+
+      {false, n} ->
+        {false,
+         %{
+           reason: "#{n} #{noun}(s), from the last completed #{source} run",
+           count: n,
+           stale: true
+         }}
     end
   end
 
