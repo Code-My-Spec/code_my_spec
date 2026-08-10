@@ -35,6 +35,8 @@ defmodule CodeMySpec.Provisioning.Steps do
   prevent, so it is better to be loudly incomplete.
   """
 
+  require Logger
+
   alias CodeMySpec.{AccountSecrets, Deploys, Environments, Projects, ProjectSecrets}
 
   alias CodeMySpec.Provisioning.{
@@ -2206,6 +2208,11 @@ defmodule CodeMySpec.Provisioning.Steps do
   defp ensure_environment_servers(scope, opts, made) do
     environments = EnvironmentRepository.list(scope)
 
+    Logger.info(
+      "[Provisioning] server step provisioning #{length(environments)} environment(s): " <>
+        Enum.map_join(environments, ", ", & &1.name)
+    )
+
     environments
     |> Enum.reduce_while({:ok, made}, &ensure_environment_server(&1, &2, scope, opts))
     |> join_baseline_network(scope, opts, environments)
@@ -2376,6 +2383,8 @@ defmodule CodeMySpec.Provisioning.Steps do
 
   defp ensure_environment_server(environment, {:ok, acc}, scope, opts) do
     name = server_name(scope, opts, environment.name)
+
+    Logger.info("[Provisioning] #{environment.name}: ensuring server #{name}")
 
     case Hetzner.ensure_server(scope, name, opts) do
       {:ok, server} -> record_environment_server(scope, environment, name, server, acc)

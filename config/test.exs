@@ -152,8 +152,15 @@ config :code_my_spec, CodeMySpec.Mailer, adapter: Swoosh.Adapters.Test
 # Disable swoosh api client as it is only required for production adapters
 config :swoosh, :api_client, false
 
-# Print only warnings and errors during test
-config :logger, level: :warning
+# Print only warnings and errors during test, unless asked for more.
+#
+# `LOG_LEVEL=info mix spex …` is the difference between watching a drill and
+# guessing at it: the provisioning steps log what they are about to do at
+# `:info`, and with those dropped a failing drill's only account of itself is
+# whatever the step happened to put in its error message. Several cloud cycles
+# went into a defect whose explanation was being written to a logger nobody
+# could hear.
+config :logger, level: String.to_existing_atom(System.get_env("LOG_LEVEL", "warning"))
 
 # Initialize plugs at runtime for faster test compilation
 config :phoenix, :plug_init_mode, :runtime
