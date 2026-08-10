@@ -25,11 +25,7 @@ defmodule CodeMySpec.LiveStorageTest do
     id = System.get_env("HETZNER_S3_ACCESS_KEY_ID")
     secret = System.get_env("HETZNER_S3_SECRET_ACCESS_KEY")
 
-    if is_nil(id) or is_nil(secret) do
-      raise "set HETZNER_S3_ACCESS_KEY_ID and HETZNER_S3_SECRET_ACCESS_KEY to run the live storage test"
-    end
-
-    credentials = [access_key_id: id, secret_access_key: secret, region: @location]
+    credentials = credentials!(id, secret)
 
     # Distinct per environment on purpose — criterion 8012 is exactly this.
     project = %{name: "cms-live-store"}
@@ -118,19 +114,69 @@ defmodule CodeMySpec.LiveStorageTest do
     IO.puts("  dumps      -> #{dump.key} (#{dump.size} bytes, #{dump.taken_at})")
   end
 
+  # S3 refuses to delete a bucket that still holds objects, and `delete_bucket`
+  # went straight to the delete and retried the refusal eight times. Every
+  # bucket teardown had ever been asked to remove was empty, so it looked like
+  # it worked — until the registry's, which holds the image layers and is
+  # never empty. A project's registry bucket could not be deleted at all, and
+  # the next drill refused to start on residue its own teardown was incapable
+  # of clearing.
+  #
+  # This test's own helper knew to empty first. That knowledge belonged in
+  # `delete_bucket/3`, which is what teardown outside this file calls.
+  test "a bucket with objects in it still deletes", ctx do
+    {:ok, _} = Storage.ensure_bucket(ctx.uat, ctx.credentials, location: @location)
+
+    for n <- 1..3 do
+      :ok = Storage.put_object(ctx.uat, "layers/blob-#{n}", "content-#{n}", ctx.credentials)
+    end
+
+    # The return value, not the listing: S3 accepting the DELETE is the
+    # behaviour that changed. Before this, the bucket was non-empty, every one
+    # of the eight attempts was refused, and this came back `{:error, _}`.
+    assert :ok = Storage.delete_bucket(ctx.uat, ctx.credentials, location: @location)
+
+    # And it really is gone — polled, because Ceph's bucket listing lags its
+    # own deletes by up to half a minute. Asserting on one immediate listing
+    # fails against a bucket that has genuinely been removed.
+    assert_bucket_gone(ctx.uat, ctx.credentials, 30)
+
+    IO.puts("  non-empty  -> deleted #{ctx.uat} with 3 objects in it")
+  end
+
+  defp assert_bucket_gone(bucket, credentials, attempts) do
+    {:ok, buckets} = Storage.list_buckets(credentials, location: @location)
+
+    gone?(bucket, bucket in buckets, credentials, attempts)
+  end
+
+  defp gone?(_bucket, false, _credentials, _attempts), do: :ok
+
+  defp gone?(bucket, true, credentials, attempts) when attempts > 1 do
+    Process.sleep(1_000)
+    assert_bucket_gone(bucket, credentials, attempts - 1)
+  end
+
+  defp gone?(bucket, true, _credentials, _attempts) do
+    flunk("#{bucket} was still listed thirty seconds after it was deleted")
+  end
+
+  # Hetzner mints these in the console only, so a run without them cannot be
+  # made to work by anything here — it has to stop and say which two are
+  # missing. By clause rather than by `if`, which the framework's own check
+  # rejects in a test file.
+  defp credentials!(id, secret) when is_binary(id) and is_binary(secret) do
+    [access_key_id: id, secret_access_key: secret, region: @location]
+  end
+
+  defp credentials!(_id, _secret) do
+    raise "set HETZNER_S3_ACCESS_KEY_ID and HETZNER_S3_SECRET_ACCESS_KEY to run the live storage test"
+  end
+
   defp teardown(buckets, credentials) do
     for bucket <- buckets do
-      # A bucket with objects in it will not delete, so empty it first.
-      case Storage.list_dumps(bucket, credentials, location: @location, prefix: "") do
-        {:ok, objects} ->
-          for %{key: key} <- objects do
-            Storage.delete_object(bucket, key, credentials, location: @location)
-          end
-
-        _ ->
-          :ok
-      end
-
+      # Emptying first is `delete_bucket/3`'s job now — see the test above for
+      # why it had to become so.
       Storage.delete_bucket(bucket, credentials, location: @location)
     end
 

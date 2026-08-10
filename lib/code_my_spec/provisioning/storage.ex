@@ -347,7 +347,7 @@ defmodule CodeMySpec.Provisioning.Storage do
   end
 
   defp delete_bucket(bucket, credentials, location, opts, attempts, interval) do
-    case ExAws.S3.delete_bucket(bucket) |> run(credentials, location) do
+    case empty_then_delete(bucket, credentials, location) do
       {:ok, _} ->
         :ok
 
@@ -362,6 +362,46 @@ defmodule CodeMySpec.Provisioning.Storage do
           attempts - 1,
           min(interval * 2, Keyword.get(opts, :max_delete_interval_ms, 8_000))
         )
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  # S3 will not delete a bucket that still holds objects, so this emptied
+  # nothing and retried the refusal eight times.
+  #
+  # It went unnoticed for as long as every bucket teardown removed was empty.
+  # The registry's is not — it holds the image layers, which is the whole
+  # point of it — so a project's registry bucket could never be deleted, and
+  # the next drill refused to start on residue its own teardown was incapable
+  # of clearing.
+  #
+  # A page at a time, because a bucket with thousands of layers is exactly the
+  # case that breaks a single listing.
+  defp empty_then_delete(bucket, credentials, location) do
+    with :ok <- empty_bucket(bucket, credentials, location) do
+      ExAws.S3.delete_bucket(bucket) |> run(credentials, location)
+    end
+  end
+
+  # A page at a time, always from the start, until the bucket lists empty.
+  #
+  # From the start rather than following a continuation token, because the
+  # objects in the page just deleted are gone — a token taken before a delete
+  # points into a listing that no longer exists. Re-listing costs one request
+  # per page and cannot skip anything.
+  defp empty_bucket(bucket, credentials, location) do
+    case ExAws.S3.list_objects_v2(bucket) |> run(credentials, location) do
+      {:ok, %{body: %{contents: []}}} ->
+        :ok
+
+      {:ok, %{body: %{contents: contents}}} ->
+        keys = Enum.map(contents, & &1.key)
+
+        with :ok <- delete_objects(bucket, keys, credentials, location: location) do
+          empty_bucket(bucket, credentials, location)
+        end
 
       {:error, reason} ->
         {:error, reason}
