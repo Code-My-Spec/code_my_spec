@@ -409,10 +409,37 @@ defmodule CodeMySpec.Analysis.Runners do
       #
       # A spex failure belongs to a spec or to no file. Saying "somewhere" when
       # the somewhere is wrong is the louder version of saying nothing.
-      nil -> {nil, nil}
+      nil -> spec_file_fallback(error)
       frame -> {frame_get(frame, "file"), frame_get(frame, "line")}
     end
   end
+
+  # `error.file` when it is itself a spec, and nothing otherwise.
+  #
+  # The rule above is "a spex failure belongs to a spec or to no file", and the
+  # reason it stopped reading `error.file` is that the top stacktrace frame is
+  # often library code — `ReqCassette.Plug` raised and two failures were filed
+  # against the plug. Applying the same `_spex.exs` test the stacktrace search
+  # uses keeps that property: library paths are still refused.
+  #
+  # What it recovers is the failure with no usable stacktrace at all. Those were
+  # landing on `unknown`, which reads to an agent as "a spex failed somewhere"
+  # and is one step better than nothing — the file was right there in the
+  # payload, unused.
+  defp spec_file_fallback(error) do
+    file = error_get(error, :file)
+
+    if is_binary(file) and String.ends_with?(file, "_spex.exs") do
+      {file, error_get(error, :line)}
+    else
+      {nil, nil}
+    end
+  end
+
+  defp error_get(error, key) when is_map(error),
+    do: Map.get(error, key) || Map.get(error, Atom.to_string(key))
+
+  defp error_get(_error, _key), do: nil
 
   defp spec_frame(stacktrace) when is_list(stacktrace) do
     Enum.find(stacktrace, fn frame ->
