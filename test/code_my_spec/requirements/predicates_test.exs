@@ -35,6 +35,15 @@ defmodule CodeMySpec.Requirements.PredicatesTest do
     })
   end
 
+  # A real second working copy of the same project. `harness_id` is a foreign
+  # key, so a generated UUID is not a second checkout — it is a constraint
+  # error, and the difference matters because the thing under test is what
+  # happens when two checkouts both file rows.
+  defp second_harness(scope) do
+    {:ok, harness} = CodeMySpec.Harnesses.issue(scope, nil, label: "the other checkout")
+    harness.id
+  end
+
   # What the query says, as a set of component ids.
   defp by_query(scope, check, config) do
     Predicates.nodes()
@@ -108,6 +117,71 @@ defmodule CodeMySpec.Requirements.PredicatesTest do
       RequirementGraph.compute_graph(scope)
 
       refute MapSet.member?(by_query(scope, :file_valid, %{role: :spec}), component.id)
+    end
+  end
+
+  # The input that makes the two implementations differ, which the agreement
+  # tests above cannot produce because they build one harness.
+  #
+  # `by_interpreter/3` filters on `harness_id`; the query did not. With a single
+  # working copy both read the same rows and agreed perfectly, so the suite
+  # asserted equality under exactly the condition where the difference cannot
+  # appear. The moduledoc's argument — "scoped to one, first-found and any-valid
+  # are the same question" — was written about a scoping the code never applied.
+  describe "another checkout's files are not this one's evidence" do
+    test "a spec written in a second harness does not satisfy the first", %{scope: scope} do
+      component = component_fixture(scope, %{type: "context"})
+      other_harness = second_harness(scope)
+
+      Repo.insert!(%FileRecord{
+        project_id: scope.active_project_id,
+        harness_id: other_harness,
+        component_id: component.id,
+        path: "lib/demo/written_elsewhere.ex",
+        role: :spec,
+        valid: true
+      })
+
+      RequirementGraph.compute_graph(scope)
+
+      satisfied =
+        Predicates.nodes()
+        |> where([node: n], not is_nil(n.component_id))
+        |> Predicates.satisfied(:file_exists, %{role: :spec}, scope.active_harness_id)
+        |> select([node: n], n.component_id)
+        |> Repo.all()
+        |> MapSet.new()
+
+      refute MapSet.member?(satisfied, component.id),
+             "a file that exists only in another working copy is work this checkout " <>
+               "still has to do — reporting it done is work skipped and never noticed"
+    end
+
+    test "a nil harness blends every checkout, as the preloader does", %{scope: scope} do
+      component = component_fixture(scope, %{type: "context"})
+
+      Repo.insert!(%FileRecord{
+        project_id: scope.active_project_id,
+        harness_id: second_harness(scope),
+        component_id: component.id,
+        path: "lib/demo/written_elsewhere.ex",
+        role: :spec,
+        valid: true
+      })
+
+      RequirementGraph.compute_graph(scope)
+
+      satisfied =
+        Predicates.nodes()
+        |> where([node: n], not is_nil(n.component_id))
+        |> Predicates.satisfied(:file_exists, %{role: :spec}, nil)
+        |> select([node: n], n.component_id)
+        |> Repo.all()
+        |> MapSet.new()
+
+      assert MapSet.member?(satisfied, component.id),
+             "the loose default is the UI's read — one rule with the preloader, not " <>
+               "a second one invented here"
     end
   end
 

@@ -72,8 +72,11 @@ defmodule CodeMySpec.Requirements.Predicates do
   same pair. A project-scoped node has neither and matches no file, which is
   correct — no file check is project-scoped.
   """
-  @spec satisfied(Ecto.Query.t(), :file_exists | :file_valid, map()) :: Ecto.Query.t()
-  def satisfied(query, :file_exists, %{role: role}) do
+  @spec satisfied(Ecto.Query.t(), :file_exists | :file_valid, map(), Ecto.UUID.t() | nil) ::
+          Ecto.Query.t()
+  def satisfied(query, check, config, harness_id \\ nil)
+
+  def satisfied(query, :file_exists, %{role: role}, harness_id) do
     where(
       query,
       [node: n],
@@ -83,6 +86,7 @@ defmodule CodeMySpec.Requirements.Predicates do
             (f.component_id == parent_as(:node).component_id and not is_nil(f.component_id)) or
               (f.story_id == parent_as(:node).story_id and not is_nil(f.story_id)),
           where: f.role == ^role,
+          where: ^harness_filter(harness_id),
           select: 1
         )
       )
@@ -95,7 +99,7 @@ defmodule CodeMySpec.Requirements.Predicates do
   # which file answered depended on row order. With one working copy's files
   # there is exactly one file per `(component, role)`, verified across every
   # harness on this project, and first-found and any-valid are the same question.
-  def satisfied(query, :file_valid, %{role: role}) do
+  def satisfied(query, :file_valid, %{role: role}, harness_id) do
     where(
       query,
       [node: n],
@@ -105,11 +109,26 @@ defmodule CodeMySpec.Requirements.Predicates do
             (f.component_id == parent_as(:node).component_id and not is_nil(f.component_id)) or
               (f.story_id == parent_as(:node).story_id and not is_nil(f.story_id)),
           where: f.role == ^role and f.valid == true,
+          where: ^harness_filter(harness_id),
           select: 1
         )
       )
     )
   end
+
+  # The scoping the moduledoc's argument depends on, which the query did not
+  # apply.
+  #
+  # "Scoped to one, no component has two files of a role, so first-found and
+  # any-valid are the same question" — true of the preloader after it was fixed,
+  # and not true of this query, which read every checkout's files. The premise
+  # was written down and the code did the other thing.
+  #
+  # Nothing caught it because the agreement test builds one harness, so both
+  # sides saw identical rows. A test that asserts two implementations agree
+  # proves nothing about the input that makes them differ.
+  defp harness_filter(nil), do: dynamic(true)
+  defp harness_filter(harness_id), do: dynamic([f], f.harness_id == ^harness_id)
 
   @doc """
   The base query these compose against, with the node binding named.

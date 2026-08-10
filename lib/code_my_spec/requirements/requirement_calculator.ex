@@ -296,9 +296,10 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
     ctx[:files_by_path] && Map.has_key?(ctx.files_by_path, path)
   end
 
-  defp path_tracked?(%Scope{active_project_id: project_id}, _ctx, path) do
+  defp path_tracked?(%Scope{active_project_id: project_id} = scope, _ctx, path) do
     File
     |> where([f], f.project_id == ^project_id and f.path == ^path)
+    |> scope_to_harness(scope)
     |> Repo.exists?()
   end
 
@@ -313,13 +314,41 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
   # and `_` is a single-character wildcard in both Postgres and SQLite, so a
   # future prefix containing one would quietly over-match. One indexed column
   # for one project is a cheap enough read to not need the wildcard.
-  defp prefix_count(%Scope{active_project_id: project_id}, _ctx, prefix) do
+  defp prefix_count(%Scope{active_project_id: project_id} = scope, _ctx, prefix) do
     File
     |> where([f], f.project_id == ^project_id)
+    |> scope_to_harness(scope)
     |> select([f], f.path)
     |> Repo.all()
     |> Enum.count(&String.starts_with?(&1, prefix))
   end
+
+  # The same rule `Preloader.load/1` applies, for the same reason and with the
+  # same asymmetry.
+  #
+  # These two fallbacks run when there is no preloaded context — which is the
+  # stop-hook path, because `Evaluator` calls `compute_one/4` without one. So
+  # every `path_exists` requirement on every agent turn was asking "does any
+  # checkout have this file", and answering yes.
+  #
+  # The six that use it are all `.code_my_spec/` project paths — a technical
+  # strategy, a QA plan, a journey — which is exactly the category that differs
+  # between working copies, because one checkout writing it is the work the
+  # requirement is asking for. A second checkout that already had it made the
+  # first one's requirement read as done.
+  #
+  # Over-satisfaction is the dangerous direction: an unsatisfied requirement
+  # reported satisfied is work skipped and never noticed, where the reverse is
+  # work done twice and immediately obvious.
+  #
+  # Loose on a nil harness, matching the preloader: a scope with no working copy
+  # is the UI asking, and refusing there took the graph out of the web view and
+  # failed 86 spex. An agent's scope always carries a harness because the plug
+  # that builds it does.
+  defp scope_to_harness(query, %Scope{active_harness_id: nil}), do: query
+
+  defp scope_to_harness(query, %Scope{active_harness_id: harness_id}),
+    do: where(query, [f], f.harness_id == ^harness_id)
 
   # -- File checks --
 

@@ -46,6 +46,13 @@ defmodule CodeMySpec.Requirements.CheckersWithoutADiskTest do
     })
   end
 
+  # A real second working copy. `harness_id` is a foreign key, so a generated
+  # UUID is a constraint error rather than another checkout.
+  defp second_harness(scope) do
+    {:ok, harness} = CodeMySpec.Harnesses.issue(scope, nil, label: "the other checkout")
+    harness.id
+  end
+
   defp persona!(scope, slug) do
     {:ok, persona} =
       Personas.create_persona(scope, %{
@@ -210,6 +217,51 @@ defmodule CodeMySpec.Requirements.CheckersWithoutADiskTest do
     test "an unsynced file does not", %{scope: scope} do
       assert %{satisfied: false, details: %{reason: reason}} = check(scope, nil)
       assert reason =~ "File missing"
+    end
+
+    # The nil-`ctx` clause queried by `project_id` alone, so it asked "does any
+    # checkout have this file" and answered yes. That is the stop-hook path, on
+    # every agent turn.
+    #
+    # The six requirements using `path_exists` are all `.code_my_spec/` project
+    # paths — a technical strategy, a QA plan, a journey — which is precisely
+    # the category that differs between working copies, because one checkout
+    # writing it is the work the requirement is asking for. A second checkout
+    # that already had it made this one's requirement read as done.
+    #
+    # Same bug the preloader had, surviving in the fallback because the fix
+    # went in one layer up: `RequirementGraph` preloads a harness-scoped
+    # context, so the ctx clause was already correct and the gap only showed
+    # where there is no ctx at all.
+    test "a file synced by another checkout does not satisfy this one", %{scope: scope} do
+      Repo.insert!(%FileRecord{
+        project_id: scope.active_project_id,
+        harness_id: second_harness(scope),
+        path: @decisions,
+        role: :architecture,
+        valid: true,
+        validation_errors: %{"errors" => %{}, "data" => %{}}
+      })
+
+      assert %{satisfied: false, details: %{reason: reason}} = check(scope, nil),
+             "another working copy having the file is not this one having written it"
+
+      assert reason =~ "File missing"
+    end
+
+    # Loose on a nil harness, matching the preloader. The UI has no working copy
+    # and refusing there took the graph out of the web view entirely.
+    test "a scope with no harness still sees it", %{scope: scope} do
+      Repo.insert!(%FileRecord{
+        project_id: scope.active_project_id,
+        harness_id: second_harness(scope),
+        path: @decisions,
+        role: :architecture,
+        valid: true,
+        validation_errors: %{"errors" => %{}, "data" => %{}}
+      })
+
+      assert %{satisfied: true} = check(%{scope | active_harness_id: nil}, nil)
     end
 
     # The `Evaluator` path. Without the query clause this answered false for a
