@@ -239,7 +239,6 @@ defmodule CodeMySpec.Provisioning.Registry do
     end
   end
 
-
   @doc """
   Run the registry on a server, backed by this project's bucket.
 
