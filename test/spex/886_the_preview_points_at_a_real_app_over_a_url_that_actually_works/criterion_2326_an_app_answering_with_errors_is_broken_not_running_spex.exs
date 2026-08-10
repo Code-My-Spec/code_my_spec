@@ -54,7 +54,7 @@ defmodule CodeMySpecSpex.Story886.Criterion2326Spex do
         })
         |> render_submit()
 
-        {:ok, _view, html} = live(conn, ~p"/build/workspace")
+        {:ok, _view, html} = live(conn, "/build/workspace")
 
         assert html =~ "It&#39;s running.",
                "a serving app should say so before we break it"
@@ -65,7 +65,7 @@ defmodule CodeMySpecSpex.Story886.Criterion2326Spex do
       when_ "the app starts raising on every request", context do
         Fixtures.put_workspace_serving(:erroring)
 
-        {:ok, _view, html} = live(context.conn, ~p"/build/workspace")
+        {:ok, _view, html} = live(context.conn, "/build/workspace")
 
         {:ok, Map.put(context, :html, html)}
       end

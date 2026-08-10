@@ -47,6 +47,35 @@ defmodule CodeMySpecWeb.Plugs.PreviewProxyTest do
     end
   end
 
+  describe "telling a socket from a page" do
+    test "an upgrade request for a project with no workspace still 404s", %{conn: conn} do
+      # The upgrade branch must resolve the workspace like any other request.
+      # Upgrading first and discovering there is nothing upstream leaves the
+      # browser holding a socket nobody serves, which LiveView retries forever.
+      host = PreviewProxy.host_for(Ecto.UUID.generate(), "codemyspec.com")
+
+      conn =
+        %{conn | host: host}
+        |> Plug.Conn.put_req_header("connection", "Upgrade")
+        |> Plug.Conn.put_req_header("upgrade", "websocket")
+        |> PreviewProxy.call([])
+
+      assert conn.halted
+      assert conn.status == 404
+    end
+
+    test "an ordinary request is not mistaken for an upgrade", %{conn: conn} do
+      host = PreviewProxy.host_for(Ecto.UUID.generate(), "codemyspec.com")
+
+      conn =
+        %{conn | host: host}
+        |> Plug.Conn.put_req_header("connection", "keep-alive")
+        |> PreviewProxy.call([])
+
+      assert conn.status == 404
+    end
+  end
+
   describe "framing" do
     test "even a refusal says who may frame it", %{conn: conn} do
       # The pane shows this response in an iframe. A 404 that cannot be framed

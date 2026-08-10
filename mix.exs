@@ -98,6 +98,10 @@ defmodule CodeMySpec.MixProject do
       {:jason, "~> 1.2"},
       {:dns_cluster, "~> 0.2.0"},
       {:bandit, "~> 1.5"},
+      # Already present transitively; declared because the preview proxy pipes
+      # a LiveView socket upstream through it, and a direct use should not rest
+      # on someone else's dependency staying put.
+      {:mint_web_socket, "~> 1.0"},
 
       # Added by codemyspec
       {:ex_cli_vcr, git: "https://github.com/johns10/ex_cli_vcr", branch: "main", only: [:test]},

@@ -87,6 +87,32 @@ defmodule CodeMySpecWeb.Plugs.PreviewProxy do
   end
 
   defp relay(conn, workspace) do
+    if websocket?(conn), do: relay_socket(conn, workspace), else: relay_http(conn, workspace)
+  end
+
+  # LiveView's socket. Without it the app renders once and never connects,
+  # which looks like a screenshot of a working application — fine until Sam
+  # clicks something.
+  defp relay_socket(conn, workspace) do
+    upstream = Workspaces.url(workspace) <> conn.request_path <> query(conn)
+
+    conn
+    |> WebSockAdapter.upgrade(
+      CodeMySpecWeb.PreviewSocket,
+      {upstream, conn.req_headers},
+      timeout: 60_000
+    )
+    |> halt()
+  end
+
+  defp websocket?(conn) do
+    connection = get_req_header(conn, "connection") |> Enum.join(",") |> String.downcase()
+    upgrade = get_req_header(conn, "upgrade") |> Enum.join(",") |> String.downcase()
+
+    String.contains?(connection, "upgrade") and String.contains?(upgrade, "websocket")
+  end
+
+  defp relay_http(conn, workspace) do
     {:ok, body, conn} = read_body(conn)
     url = Workspaces.url(workspace) <> conn.request_path <> query(conn)
 
