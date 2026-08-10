@@ -2387,8 +2387,12 @@ defmodule CodeMySpec.Provisioning.Steps do
     Logger.info("[Provisioning] #{environment.name}: ensuring server #{name}")
 
     case Hetzner.ensure_server(scope, name, opts) do
-      {:ok, server} -> record_environment_server(scope, environment, name, server, acc)
-      {:error, reason} -> {:halt, {:error, format(reason), acc}}
+      {:ok, server} ->
+        Logger.info("[Provisioning] #{environment.name}: got #{inspect(server["name"])}")
+        record_environment_server(scope, environment, name, server, acc)
+
+      {:error, reason} ->
+        {:halt, {:error, format(reason), acc}}
     end
   end
 

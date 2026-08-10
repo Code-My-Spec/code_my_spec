@@ -2665,7 +2665,21 @@ defmodule CodeMySpecSpex.Case do
     opts =
       opts
       |> Keyword.put_new(:mode, cassette_mode())
-      |> Keyword.put_new(:match_requests_on, [:method, :uri])
+      # The body too, because without it two creates are the same request.
+      #
+      # `:record` mode replays whenever a recorded interaction matches, so
+      # `POST /v1/servers {"name":"…-uat"}` matched the `…-prod` create
+      # recorded seconds earlier and was handed prod's response. The step
+      # believed it had UAT's box, recorded production's against the UAT
+      # environment, and the deploy failed with "the provider has no such
+      # server". Nothing in the recording showed a create for UAT, because
+      # none was ever made.
+      #
+      # Headers stay out of the match — `authorization` differs between the
+      # recording and every replay, which is the reason this list was narrowed
+      # in the first place. The body is what tells two resources apart, and
+      # `filter_sensitive_data` scrubs it before it is written.
+      |> Keyword.put_new(:match_requests_on, [:method, :uri, :body])
       # Sequential, because several steps poll: bucket readiness, Resend's
       # domain verification, server boot. Matching only on method and URI
       # makes every poll iteration the same request, so the cassette answers
