@@ -58,7 +58,11 @@ defmodule CmsHarness.AnalyzerEnv do
   """
   @spec extra_env(Environment.t()) :: [{String.t(), String.t()}]
   def extra_env(%{cwd: cwd} = environment) when is_binary(cwd) do
-    [{"MIX_BUILD_PATH", build_path(cwd)}] ++ TestDatabase.env(environment)
+    # Passed on as well as returned: TestDatabase shells out to `mix` itself to
+    # create and migrate, and those took the default build path — the agent's.
+    build_env = [{"MIX_BUILD_PATH", build_path(cwd)}]
+
+    build_env ++ TestDatabase.env(environment, build_env)
   end
 
   def extra_env(environment), do: TestDatabase.env(environment)

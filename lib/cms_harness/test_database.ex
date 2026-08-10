@@ -56,12 +56,28 @@ defmodule CmsHarness.TestDatabase do
 
   Returns `[]` when isolation is not available, which is the signal to run
   against whatever the project already uses.
+
+  `build_env` is the caller's `MIX_BUILD_PATH`, passed on to the `mix`
+  invocations this makes. Without it they take the default path — `_build/test`,
+  the tree the agent's own `mix test` writes — and `ecto.create`/`ecto.migrate`
+  compile the project before running, so provisioning the analyzer's database
+  compiled into the agent's tree. That is the collision `AnalyzerEnv` exists to
+  prevent, described in its own moduledoc: modules vanish from under a running
+  suite and return as "module X is not available" for a module that plainly
+  exists.
+
+  It is rare — `ensure_once/3` memoises per partition per migration set — but it
+  fires on a fresh working copy and after a rebase that brings migrations, which
+  is exactly when the agent is likely to be compiling too.
   """
-  @spec env(Environments.Environment.t()) :: [{String.t(), String.t()}]
-  def env(%{cwd: cwd} = environment) when is_binary(cwd) do
+  @spec env(Environments.Environment.t(), [{String.t(), String.t()}]) ::
+          [{String.t(), String.t()}]
+  def env(environment, build_env \\ [])
+
+  def env(%{cwd: cwd} = environment, build_env) when is_binary(cwd) do
     partition = partition_for(cwd)
 
-    case ensure_once(environment, partition) do
+    case ensure_once(environment, partition, build_env) do
       :ok ->
         [{"MIX_TEST_PARTITION", partition}]
 
@@ -77,7 +93,7 @@ defmodule CmsHarness.TestDatabase do
     end
   end
 
-  def env(_environment), do: []
+  def env(_environment, _build_env), do: []
 
   @doc """
   Empty the analyzer's tables before a suite runs.
@@ -209,12 +225,12 @@ defmodule CmsHarness.TestDatabase do
   #
   # Cached on failure too. A project with no Ecto would otherwise pay two failing
   # `mix` boots before every test run, forever, to reach the same answer.
-  defp ensure_once(environment, partition) do
+  defp ensure_once(environment, partition, build_env) do
     key = {__MODULE__, partition, migrations_fingerprint(environment)}
 
     case :persistent_term.get(key, :miss) do
       :miss ->
-        result = ensure_database(environment, partition)
+        result = ensure_database(environment, partition, build_env)
         :persistent_term.put(key, result)
         result
 
@@ -239,13 +255,13 @@ defmodule CmsHarness.TestDatabase do
     end
   end
 
-  defp ensure_database(environment, partition) do
-    with :ok <- run_mix(environment, partition, ["ecto.create", "--quiet"]) do
-      run_mix(environment, partition, ["ecto.migrate", "--quiet"])
+  defp ensure_database(environment, partition, build_env) do
+    with :ok <- run_mix(environment, partition, ["ecto.create", "--quiet"], build_env) do
+      run_mix(environment, partition, ["ecto.migrate", "--quiet"], build_env)
     end
   end
 
-  defp run_mix(environment, partition, args, extra \\ []) do
+  defp run_mix(environment, partition, args, extra) do
     cmd_env =
       [
         {"MIX_ENV", "test"},
