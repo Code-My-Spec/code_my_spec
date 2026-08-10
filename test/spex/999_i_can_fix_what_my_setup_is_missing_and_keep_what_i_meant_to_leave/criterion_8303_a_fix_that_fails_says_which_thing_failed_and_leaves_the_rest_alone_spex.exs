@@ -25,6 +25,8 @@ defmodule CodeMySpecSpex.Story999.Criterion8303Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpecSpex.Fixtures
+
   @endpoint CodeMySpecWeb.Endpoint
 
   setup :register_log_in_setup_account
@@ -36,14 +38,14 @@ defmodule CodeMySpecSpex.Story999.Criterion8303Spex do
     scenario "one project's refusal does not stop the other" do
       given_ "two projects meant to be deployed, one of which the provider will refuse",
              context do
-        owner = self()
+        recorder = Fixtures.call_recorder()
 
         context =
           scripted_run(context, %{
             # Before `email` in the sequence, so it is reachable in every
             # project regardless of what happens later.
             server: fn ->
-              send(owner, {:built, :server})
+              Fixtures.record_call(recorder, {:built, :server})
 
               {:ok,
                [
@@ -57,12 +59,12 @@ defmodule CodeMySpecSpex.Story999.Criterion8303Spex do
             # A refusal the account cannot do anything about from here, which
             # is the ordinary case: capacity, or somebody else's verification.
             email: fn ->
-              send(owner, {:attempted, :email})
+              Fixtures.record_call(recorder, {:attempted, :email})
               {:error, "Resend refused the sending domain: already verified on another account"}
             end
           })
 
-        {:ok, context}
+        {:ok, Map.put(context, :recorder, recorder)}
       end
 
       given_ "and a second project in the same account, also meant to be deployed", context do
@@ -82,24 +84,25 @@ defmodule CodeMySpecSpex.Story999.Criterion8303Spex do
       end
 
       when_ "he fixes everything from the health page", context do
-        context = stage_inventory(context, %{hetzner: [], cloudflare: [], resend: [], storage: []})
+        context =
+          stage_inventory(context, %{hetzner: [], cloudflare: [], resend: [], storage: []})
 
         {:ok, view, _html} = live(context.conn, "/app/resources")
         render_async(view, 5_000)
 
         view |> element("[data-test='fix-all']") |> render_click()
 
-        {:ok, context |> Map.put(:view, view) |> Map.put(:html, await_settled(view))}
+        {:ok, Map.merge(context, %{view: view, html: await_settled(view)})}
       end
 
       then_ "both projects were run, so one refusal did not stop the other", context do
         # Once per project. The second message is the whole claim: the first
         # project halted at `email`, and the second still got its turn.
-        assert_received {:built, :server}
+        built = Fixtures.recorded_calls(context.recorder)
 
-        assert_received {:built, :server},
-                        "only one project was run, so a refusal in the first stopped the " <>
-                          "second from being attempted at all"
+        assert Enum.count(built, &(&1 == {:built, :server})) == 2,
+               "only one project was run, so a refusal in the first stopped the " <>
+                 "second from being attempted at all — recorded: #{inspect(built)}"
 
         {:ok, context}
       end
@@ -154,17 +157,18 @@ defmodule CodeMySpecSpex.Story999.Criterion8303Spex do
 
   defp await_settled(view, deadline, _last) do
     html = render(view)
+    running? = html =~ "data-test=\"fix-running\""
+    expired? = System.monotonic_time(:millisecond) > deadline
 
-    cond do
-      not (html =~ "data-test=\"fix-running\"") ->
-        html
+    settle_run(running?, expired?, html, view, deadline)
+  end
 
-      System.monotonic_time(:millisecond) > deadline ->
-        flunk("the fix never finished")
+  defp settle_run(false, _expired, html, _view, _deadline), do: html
 
-      true ->
-        Process.sleep(100)
-        await_settled(view, deadline, html)
-    end
+  defp settle_run(true, true, _html, _view, _deadline), do: flunk("the fix never finished")
+
+  defp settle_run(true, false, html, view, deadline) do
+    Process.sleep(100)
+    await_settled(view, deadline, html)
   end
 end

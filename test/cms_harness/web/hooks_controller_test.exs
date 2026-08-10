@@ -12,9 +12,7 @@ defmodule CmsHarness.Web.HooksControllerTest do
     previous = System.get_env("CMS_PROJECT_ID")
     System.delete_env("CMS_PROJECT_ID")
 
-    on_exit(fn ->
-      if previous, do: System.put_env("CMS_PROJECT_ID", previous)
-    end)
+    on_exit(fn -> restore_project_id(previous) end)
 
     project = project_dir()
     serve(project.root)
@@ -148,13 +146,18 @@ defmodule CmsHarness.Web.HooksControllerTest do
 
   defp await_connected(root, attempts \\ 100) do
     Enum.reduce_while(1..attempts, false, fn _, _ ->
-      if CmsHarness.Project.ChannelClient.connected?(root) do
-        {:halt, true}
-      else
-        Process.sleep(50)
-        {:cont, false}
-      end
+      halt_when_connected(CmsHarness.Project.ChannelClient.connected?(root))
     end)
+  end
+
+  defp restore_project_id(nil), do: :ok
+  defp restore_project_id(previous), do: System.put_env("CMS_PROJECT_ID", previous)
+
+  defp halt_when_connected(true), do: {:halt, true}
+
+  defp halt_when_connected(false) do
+    Process.sleep(50)
+    {:cont, false}
   end
 
   describe "serving a project" do

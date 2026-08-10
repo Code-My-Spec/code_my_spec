@@ -19,6 +19,8 @@ defmodule CodeMySpecSpex.Story994.Criterion8267Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpecSpex.Fixtures
+
   @endpoint CodeMySpecWeb.Endpoint
 
   setup :register_log_in_setup_account
@@ -26,12 +28,12 @@ defmodule CodeMySpecSpex.Story994.Criterion8267Spex do
   spex "Nothing is created until Sam says yes to a stated cost" do
     scenario "choosing a size costs nothing until it is confirmed" do
       given_ "Sam has chosen a size and a location", context do
-        owner = self()
+        recorder = Fixtures.call_recorder()
 
         context =
           stage_servers(context, [],
             create: fn _scope, attrs ->
-              send(owner, {:created, attrs})
+              Fixtures.record_call(recorder, {:created, attrs})
               {:ok, provider_server(%{name: "confirmed-box"})}
             end
           )
@@ -43,7 +45,7 @@ defmodule CodeMySpecSpex.Story994.Criterion8267Spex do
           |> form("[data-test='provision-form']", server: %{size: "cpx11", location: "fsn1"})
           |> render_submit()
 
-        {:ok, context |> Map.put(:view, view) |> Map.put(:html, html)}
+        {:ok, Map.merge(context, %{view: view, html: html, recorder: recorder})}
       end
 
       when_ "he is shown what it will cost and has not yet confirmed", context do
@@ -62,9 +64,9 @@ defmodule CodeMySpecSpex.Story994.Criterion8267Spex do
       end
 
       then_ "no server exists at the provider", context do
-        refute_received {:created, _attrs},
-                        "a server was created before Sam confirmed anything — the meter " <>
-                          "started on a decision he had not made yet"
+        assert Fixtures.recorded_calls(context.recorder) == [],
+               "a server was created before Sam confirmed anything — the meter " <>
+                 "started on a decision he had not made yet"
 
         assert context.html
                |> Floki.parse_document!()
@@ -79,7 +81,7 @@ defmodule CodeMySpecSpex.Story994.Criterion8267Spex do
           |> element("[data-test='provision-confirm']")
           |> render_click()
 
-        assert_received {:created, _attrs}
+        assert [{:created, _attrs}] = Fixtures.recorded_calls(context.recorder)
 
         assert html
                |> Floki.parse_document!()

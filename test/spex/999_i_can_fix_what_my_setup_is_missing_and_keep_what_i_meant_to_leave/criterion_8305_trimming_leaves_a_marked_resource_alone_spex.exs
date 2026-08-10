@@ -23,6 +23,8 @@ defmodule CodeMySpecSpex.Story999.Criterion8305Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpecSpex.Fixtures
+
   @endpoint CodeMySpecWeb.Endpoint
 
   setup :register_log_in_setup_account
@@ -57,7 +59,7 @@ defmodule CodeMySpecSpex.Story999.Criterion8305Spex do
       end
 
       given_ "and two records still aimed at its address", context do
-        owner = self()
+        recorder = Fixtures.call_recorder()
 
         context =
           stage_inventory(
@@ -83,12 +85,15 @@ defmodule CodeMySpecSpex.Story999.Criterion8305Spex do
 
         # The delete seam. A criterion about *what gets deleted* must not
         # delete anything real to say so, and the message is the evidence.
-        context = stage_trim(context, fn resource -> send(owner, {:trimmed, resource.location}) end)
+        context =
+          stage_trim(context, fn resource ->
+            Fixtures.record_call(recorder, {:trimmed, resource.location})
+          end)
 
         {:ok, view, _html} = live(context.conn, "/app/resources")
         render_async(view, 5_000)
 
-        {:ok, Map.put(context, :view, view)}
+        {:ok, Map.merge(context, %{view: view, recorder: recorder})}
       end
 
       given_ "one of which he has marked as deliberate", context do
@@ -113,16 +118,16 @@ defmodule CodeMySpecSpex.Story999.Criterion8305Spex do
       end
 
       then_ "the unmarked one is removed at the provider", context do
-        assert_received {:trimmed, "remove-me.example.com"},
-                        "trim reported success without deleting the thing it was for"
+        assert {:trimmed, "remove-me.example.com"} in Fixtures.recorded_calls(context.recorder),
+               "trim reported success without deleting the thing it was for"
 
         {:ok, context}
       end
 
       then_ "and the marked one is still there", context do
-        refute_received {:trimmed, "keep-me.example.com"},
-                        "a resource he explicitly said to keep was deleted at the provider, " <>
-                          "and DNS records do not come back"
+        refute {:trimmed, "keep-me.example.com"} in Fixtures.recorded_calls(context.recorder),
+               "a resource he explicitly said to keep was deleted at the provider, " <>
+                 "and DNS records do not come back"
 
         {:ok, context}
       end

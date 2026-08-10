@@ -19,6 +19,8 @@ defmodule CodeMySpecSpex.Story994.Criterion8266Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpecSpex.Fixtures
+
   @endpoint CodeMySpecWeb.Endpoint
 
   setup :register_log_in_setup_account
@@ -26,19 +28,19 @@ defmodule CodeMySpecSpex.Story994.Criterion8266Spex do
   spex "A size the provider cannot supply is named, not retried blindly" do
     scenario "a sold-out size is reported and nothing is created" do
       given_ "the size Sam asked for is sold out at the provider", context do
-        owner = self()
+        recorder = Fixtures.call_recorder()
 
         context =
           stage_servers(context, [],
             create: fn _scope, attrs ->
-              send(owner, {:create_attempted, attrs})
+              Fixtures.record_call(recorder, {:create_attempted, attrs})
               {:error, {:capacity_unavailable, "cax21 in fsn1"}}
             end
           )
 
         {:ok, view, _html} = live(context.conn, "/app/servers")
 
-        {:ok, Map.put(context, :view, view)}
+        {:ok, Map.merge(context, %{view: view, recorder: recorder})}
       end
 
       when_ "he confirms the provisioning", context do
@@ -72,8 +74,7 @@ defmodule CodeMySpecSpex.Story994.Criterion8266Spex do
       then_ "and nothing was created, so he is not charged for a box he did not get", context do
         # One attempt, and it failed. A blind retry at another size would show
         # up here as a second message with different attributes.
-        assert_received {:create_attempted, _attrs}
-        refute_received {:create_attempted, _other}
+        assert [{:create_attempted, _attrs}] = Fixtures.recorded_calls(context.recorder)
 
         rows =
           context.html
@@ -92,19 +93,19 @@ defmodule CodeMySpecSpex.Story994.Criterion8266Spex do
         # offering every size against every location — 21 options where no
         # location carried more than 16 — so most pairs it permitted could
         # not be built.
-        owner = self()
+        recorder = Fixtures.call_recorder()
 
         context =
           stage_servers(context, [],
             create: fn _scope, attrs ->
-              send(owner, {:create_attempted, attrs})
+              Fixtures.record_call(recorder, {:create_attempted, attrs})
               {:ok, provider_server(%{name: "should-not-exist"})}
             end
           )
 
         {:ok, view, html} = live(context.conn, "/app/servers")
 
-        {:ok, context |> Map.put(:view, view) |> Map.put(:html, html)}
+        {:ok, Map.merge(context, %{view: view, html: html, recorder: recorder})}
       end
 
       when_ "he picks the location that does not carry it", context do
@@ -157,7 +158,8 @@ defmodule CodeMySpecSpex.Story994.Criterion8266Spex do
         assert Floki.find(document, "[data-test='provision-confirm']") == [],
                "he was offered a server to buy with no price attached to it"
 
-        refute_received {:create_attempted, _attrs}
+        assert Fixtures.recorded_calls(context.recorder) == [],
+               "a box was ordered before any price was shown"
 
         {:ok, context}
       end

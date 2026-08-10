@@ -125,9 +125,10 @@ defmodule CodeMySpecSpex.Story958.Criterion7943Spex do
   defp story_id!(response) do
     body = response_text(response)
 
-    case Regex.run(~r/\(ID: (\d+)\)/, body) do
-      [_, id] -> id
-      _ -> raise "could not read story id from response: #{body}"
-    end
+    [_, id] =
+      Regex.run(~r/\(ID: (\d+)\)/, body) ||
+        raise("could not read story id from response: #{body}")
+
+    id
   end
 end

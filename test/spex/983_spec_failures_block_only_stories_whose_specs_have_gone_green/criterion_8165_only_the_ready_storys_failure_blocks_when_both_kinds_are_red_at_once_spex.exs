@@ -91,8 +91,7 @@ defmodule CodeMySpecSpex.Story983.Criterion8165Spex do
         :ok = Environments.write_file(context.environment, ready_path, passing_spex())
         :ok = Environments.write_file(context.environment, mid_build_path, failing_spex())
 
-        {:ok,
-         Map.merge(context, %{ready_path: ready_path, mid_build_path: mid_build_path})}
+        {:ok, Map.merge(context, %{ready_path: ready_path, mid_build_path: mid_build_path})}
       end
 
       given_ "a fresh green run has flipped the first story to specs-ready", context do
@@ -122,7 +121,7 @@ defmodule CodeMySpecSpex.Story983.Criterion8165Spex do
 
       when_ "a run reports both stories red and the stop hook fires", context do
         jsonl =
-          write_spex_jsonl([
+          Fixtures.spex_run_report([
             {context.ready_path, "ready story regression"},
             {context.mid_build_path, "mid-build story not implemented yet"}
           ])
@@ -175,36 +174,6 @@ defmodule CodeMySpecSpex.Story983.Criterion8165Spex do
     story = StoryHelpers.fetch(scope, story_id)
     [criterion | _] = story.criteria
     Fixtures.spec_file_path(story, criterion)
-  end
-
-  defp write_spex_jsonl(entries) do
-    body =
-      entries
-      |> Enum.map(fn {path, message} ->
-        Jason.encode!(%{
-          "spex" => "intentional failure",
-          "scenario" => "asserts false",
-          "steps" => [
-            %{"type" => "then", "description" => "fails", "status" => "failed"}
-          ],
-          "error" => %{
-            "message" => message,
-            "file" => path,
-            "line" => 7,
-            "stacktrace" => []
-          }
-        })
-      end)
-      |> Enum.join("\n")
-
-    path =
-      Path.join(
-        System.tmp_dir!(),
-        "spex_983_#{System.unique_integer([:positive])}.jsonl"
-      )
-
-    File.write!(path, body <> "\n")
-    path
   end
 
   defp passing_spex do

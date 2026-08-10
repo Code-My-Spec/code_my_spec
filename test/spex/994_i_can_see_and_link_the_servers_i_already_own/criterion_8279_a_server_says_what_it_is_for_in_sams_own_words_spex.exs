@@ -218,12 +218,15 @@ defmodule CodeMySpecSpex.Story994.Criterion8279Spex do
   # already linked and the unlinked rows sit behind the collapse — which is
   # criterion 8263 working, not something to route around silently.
   defp link_server(view, html, name) do
-    unless html =~ "phx-value-name=\"#{name}\"" do
-      view |> element("[data-test='unlinked-count']") |> render_click()
-    end
+    expand_unlinked(html =~ "phx-value-name=\"#{name}\"", view)
 
     view
     |> element("[data-test='link-server'][phx-value-name='#{name}']")
     |> render_click()
   end
+
+  defp expand_unlinked(true, _view), do: :ok
+
+  defp expand_unlinked(false, view),
+    do: view |> element("[data-test='unlinked-count']") |> render_click()
 end

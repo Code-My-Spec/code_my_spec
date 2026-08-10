@@ -22,6 +22,8 @@ defmodule CodeMySpecSpex.Story990.Criterion8220Spex do
 
   @endpoint CodeMySpecWeb.Endpoint
 
+  @question_form "form[phx-submit=answer]"
+
   # The number the story states, not the one the code happens to hold. Asking
   # Interview.question_cap/0 would make this assertion circular — raise the cap
   # to ten and the spex would still pass.
@@ -93,20 +95,22 @@ defmodule CodeMySpecSpex.Story990.Criterion8220Spex do
   defp answer_until_done(view, 0, asked), do: {render(view), asked}
 
   defp answer_until_done(view, remaining, asked) do
-    case has_element?(view, "form[phx-submit=answer]") do
-      false ->
-        {render(view), asked}
-
-      true ->
-        html =
-          view
-          |> form("form[phx-submit=answer]", %{answer: "whatever they typed"})
-          |> render_submit()
-
-        case has_element?(view, "form[phx-submit=answer]") do
-          false -> {html, asked + 1}
-          true -> answer_until_done(view, remaining - 1, asked + 1)
-        end
-    end
+    answer_if_asked(has_element?(view, @question_form), view, remaining, asked)
   end
+
+  defp answer_if_asked(false, view, _remaining, asked), do: {render(view), asked}
+
+  defp answer_if_asked(true, view, remaining, asked) do
+    html =
+      view
+      |> form(@question_form, %{answer: "whatever they typed"})
+      |> render_submit()
+
+    keep_answering(has_element?(view, @question_form), html, view, remaining, asked)
+  end
+
+  defp keep_answering(false, html, _view, _remaining, asked), do: {html, asked + 1}
+
+  defp keep_answering(true, _html, view, remaining, asked),
+    do: answer_until_done(view, remaining - 1, asked + 1)
 end

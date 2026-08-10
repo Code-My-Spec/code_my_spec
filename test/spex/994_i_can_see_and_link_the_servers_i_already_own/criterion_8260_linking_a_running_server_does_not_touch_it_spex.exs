@@ -16,6 +16,8 @@ defmodule CodeMySpecSpex.Story994.Criterion8260Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpecSpex.Fixtures
+
   @endpoint CodeMySpecWeb.Endpoint
 
   setup :register_log_in_setup_account
@@ -23,7 +25,7 @@ defmodule CodeMySpecSpex.Story994.Criterion8260Spex do
   spex "Linking a running server does not touch it" do
     scenario "a live server is recorded and otherwise left alone" do
       given_ "a server already serving live traffic", context do
-        owner = self()
+        recorder = Fixtures.call_recorder()
 
         context =
           stage_servers(
@@ -31,10 +33,12 @@ defmodule CodeMySpecSpex.Story994.Criterion8260Spex do
             [provider_server(%{name: "live-box", ip: "203.0.113.9", status: "running"})],
             # Any provider call that would alter the machine reports itself
             # here. The criterion is that none of them fire.
-            on_mutate: fn action, name -> send(owner, {:mutated, action, name}) end
+            on_mutate: fn action, name ->
+              Fixtures.record_call(recorder, {:mutated, action, name})
+            end
           )
 
-        {:ok, context}
+        {:ok, Map.put(context, :recorder, recorder)}
       end
 
       when_ "Sam links it", context do
@@ -59,7 +63,12 @@ defmodule CodeMySpecSpex.Story994.Criterion8260Spex do
       end
 
       then_ "and nothing was installed, restarted, reconfigured or rebooted", context do
-        refute_received {:mutated, _action, "live-box"}
+        refute Enum.any?(
+                 Fixtures.recorded_calls(context.recorder),
+                 &match?({:mutated, _action, "live-box"}, &1)
+               ),
+               "linking asked the provider to change the box: " <>
+                 inspect(Fixtures.recorded_calls(context.recorder))
 
         # And it is still running, which is the observable half of the same
         # claim — a link that rebooted the box would show here eventually.

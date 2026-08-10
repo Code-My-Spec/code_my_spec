@@ -42,14 +42,13 @@ defmodule CodeMySpecSpex.Story994.Criterion8264Spex do
       end
 
       then_ "it appears among the unlinked servers with its size and running state", context do
-        # Expand only if it is not already showing. With nothing linked there
-        # is nothing to de-emphasise it against, so the screen shows it
-        # outright — and clicking the toggle would have collapsed the very
-        # thing this is looking for.
-        html = expand_unlinked_if_needed(context, "old-side-project")
-
+        # Nothing is linked in this scenario, so there is nothing to
+        # de-emphasise the box against and the screen shows it outright. Read
+        # straight off that render: expanding first would have described a
+        # screen Sam never saw, and clicking the toggle would have collapsed
+        # the very thing this is looking for.
         row =
-          html
+          context.html
           |> Floki.parse_document!()
           |> Floki.find("[data-test='server'][data-name='old-side-project']")
 
@@ -67,25 +66,10 @@ defmodule CodeMySpecSpex.Story994.Criterion8264Spex do
         # He never linked it, never named it, and did not search for it. It is
         # on the screen because the provider says it exists, which is the only
         # thing that can be relied on months later.
-        assert expand_unlinked_if_needed(context, "old-side-project") =~ "old-side-project"
+        assert context.html =~ "old-side-project"
 
         {:ok, context}
       end
-    end
-  end
-
-  defp expand_unlinked_if_needed(context, name) do
-    document = Floki.parse_document!(context.html)
-
-    cond do
-      Floki.find(document, "[data-test='server'][data-name='#{name}']") != [] ->
-        context.html
-
-      Floki.find(document, "[data-test='unlinked-count']") != [] ->
-        context.view |> element("[data-test='unlinked-count']") |> render_click()
-
-      true ->
-        context.html
     end
   end
 end

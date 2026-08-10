@@ -89,14 +89,13 @@ defmodule CodeMySpecSpex.Story990.Criterion8217Spex do
 
   defp await(view, text, attempts) do
     html = render(view)
+    await_rendered(String.contains?(html, text), html, view, text, attempts)
+  end
 
-    case String.contains?(html, text) do
-      true ->
-        html
+  defp await_rendered(true, html, _view, _text, _attempts), do: html
 
-      false ->
-        Process.sleep(20)
-        await(view, text, attempts - 1)
-    end
+  defp await_rendered(false, _html, view, text, attempts) do
+    Process.sleep(20)
+    await(view, text, attempts - 1)
   end
 end

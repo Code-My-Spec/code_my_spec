@@ -120,7 +120,7 @@ defmodule CodeMySpecSpex.Story983.Criterion8169Spex do
         {_path, failing} = story_spec(context.scope, context.story.id, :failing)
         :ok = Environments.write_file(context.environment, context.spec_path, failing)
 
-        jsonl = write_spex_jsonl([{context.spec_path, "mid-refactor, expected red"}])
+        jsonl = Fixtures.spex_run_report([{context.spec_path, "mid-refactor, expected red"}])
 
         response =
           use_cmd_cassette "clean", record: :none do
@@ -155,11 +155,14 @@ defmodule CodeMySpecSpex.Story983.Criterion8169Spex do
 
   defp fixture_path(name), do: Path.expand(Path.join(@fixture_dir, name))
 
+  defp assertion_for(:passing), do: "assert true"
+  defp assertion_for(:failing), do: "assert false"
+
   defp story_spec(scope, story_id, kind) do
     story = StoryHelpers.fetch(scope, story_id)
     [criterion | _] = story.criteria
 
-    assertion = if kind == :passing, do: "assert true", else: "assert false"
+    assertion = assertion_for(kind)
 
     content = """
     defmodule CodeMySpecSpex.Story#{story.id}.Criterion#{criterion.id}Spex do
@@ -182,35 +185,5 @@ defmodule CodeMySpecSpex.Story983.Criterion8169Spex do
     """
 
     {Fixtures.spec_file_path(story, criterion), content}
-  end
-
-  defp write_spex_jsonl(entries) do
-    body =
-      entries
-      |> Enum.map(fn {path, message} ->
-        Jason.encode!(%{
-          "spex" => "intentional failure",
-          "scenario" => "asserts false",
-          "steps" => [
-            %{"type" => "then", "description" => "fails", "status" => "failed"}
-          ],
-          "error" => %{
-            "message" => message,
-            "file" => path,
-            "line" => 7,
-            "stacktrace" => []
-          }
-        })
-      end)
-      |> Enum.join("\n")
-
-    path =
-      Path.join(
-        System.tmp_dir!(),
-        "spex_983_#{System.unique_integer([:positive])}.jsonl"
-      )
-
-    File.write!(path, body <> "\n")
-    path
   end
 end

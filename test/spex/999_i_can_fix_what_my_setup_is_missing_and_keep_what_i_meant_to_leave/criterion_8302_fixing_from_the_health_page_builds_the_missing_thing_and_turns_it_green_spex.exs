@@ -19,6 +19,8 @@ defmodule CodeMySpecSpex.Story999.Criterion8302Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpecSpex.Fixtures
+
   @endpoint CodeMySpecWeb.Endpoint
 
   setup :register_log_in_setup_account
@@ -29,7 +31,7 @@ defmodule CodeMySpecSpex.Story999.Criterion8302Spex do
   spex "Fixing from the health page builds the missing thing and turns it green" do
     scenario "the missing bucket is built without leaving the page" do
       given_ "a project whose setup stopped before storage, so it has no bucket", context do
-        owner = self()
+        recorder = Fixtures.call_recorder()
 
         context =
           scripted_run(context, %{
@@ -46,7 +48,7 @@ defmodule CodeMySpecSpex.Story999.Criterion8302Spex do
             # Records what setup built, so the second run can be checked for
             # having built only what was missing.
             storage: fn ->
-              send(owner, {:built, :storage})
+              Fixtures.record_call(recorder, {:built, :storage})
 
               {:ok,
                [
@@ -59,11 +61,12 @@ defmodule CodeMySpecSpex.Story999.Criterion8302Spex do
             end
           })
 
-        {:ok, context}
+        {:ok, Map.put(context, :recorder, recorder)}
       end
 
       given_ "and the health page reports the account unhealthy because of it", context do
-        context = stage_inventory(context, %{hetzner: [], cloudflare: [], resend: [], storage: []})
+        context =
+          stage_inventory(context, %{hetzner: [], cloudflare: [], resend: [], storage: []})
 
         {:ok, view, _html} = live(context.conn, "/app/resources")
         html = render_async(view, 5_000)
@@ -89,8 +92,8 @@ defmodule CodeMySpecSpex.Story999.Criterion8302Spex do
       end
 
       then_ "the bucket is created at the provider", context do
-        assert_received {:built, :storage},
-                        "the fix reported success without the storage step ever running"
+        assert {:built, :storage} in Fixtures.recorded_calls(context.recorder),
+               "the fix reported success without the storage step ever running"
 
         {:ok, context}
       end
@@ -112,8 +115,8 @@ defmodule CodeMySpecSpex.Story999.Criterion8302Spex do
         # The server was already there. A fix that rebuilt it would be a fix
         # that costs money and interrupts traffic to close a gap somewhere
         # else entirely.
-        refute_received {:built, :server},
-                        "the fix rebuilt a server that already existed"
+        refute {:built, :server} in Fixtures.recorded_calls(context.recorder),
+               "the fix rebuilt a server that already existed"
 
         {:ok, context}
       end
@@ -130,23 +133,26 @@ defmodule CodeMySpecSpex.Story999.Criterion8302Spex do
 
   defp await_no_missing(view, deadline, _last) do
     html = render(view)
+    missing? = html =~ "data-test=\"missing-item\""
+    expired? = System.monotonic_time(:millisecond) > deadline
 
-    cond do
-      not (html =~ "data-test=\"missing-item\"") ->
-        html
+    settle_missing(missing?, expired?, html, view, deadline)
+  end
 
-      System.monotonic_time(:millisecond) > deadline ->
-        still =
-          html
-          |> Floki.parse_document!()
-          |> Floki.find("[data-test='missing-item']")
-          |> Floki.attribute("data-key")
+  defp settle_missing(false, _expired, html, _view, _deadline), do: html
 
-        flunk("still missing after the fix ran: #{inspect(still)}")
+  defp settle_missing(true, true, html, _view, _deadline) do
+    still =
+      html
+      |> Floki.parse_document!()
+      |> Floki.find("[data-test='missing-item']")
+      |> Floki.attribute("data-key")
 
-      true ->
-        Process.sleep(100)
-        await_no_missing(view, deadline, html)
-    end
+    flunk("still missing after the fix ran: #{inspect(still)}")
+  end
+
+  defp settle_missing(true, false, html, view, deadline) do
+    Process.sleep(100)
+    await_no_missing(view, deadline, html)
   end
 end

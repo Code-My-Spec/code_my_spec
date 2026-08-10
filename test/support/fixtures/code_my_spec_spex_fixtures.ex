@@ -1324,6 +1324,73 @@ defmodule CodeMySpecSpex.Fixtures do
   end
 
   @doc """
+  A ledger of what the app asked a provider double to do.
+
+  Doubles record through `record_call/2`; the spec reads the whole list back
+  with `recorded_calls/1` and asserts on it. Dies with the test process.
+
+  This replaced `send(self(), …)` from inside the doubles. Two reasons, and the
+  second is the real one: a spec may not call `send/2`, and a mailbox is a poor
+  record anyway — `refute_received` only sees the instant it runs, so "the app
+  never resized the box" was really "nothing had arrived yet." The ledger keeps
+  every call in order, so absence means absence.
+  """
+  @spec call_recorder() :: pid()
+  def call_recorder do
+    {:ok, recorder} = Agent.start_link(fn -> [] end)
+    recorder
+  end
+
+  @doc "Records one call against `recorder`. Synchronous, so it cannot race the assertion."
+  @spec record_call(pid(), term()) :: :ok
+  def record_call(recorder, call), do: Agent.update(recorder, &[call | &1])
+
+  @doc "Every call recorded so far, oldest first."
+  @spec recorded_calls(pid()) :: [term()]
+  def recorded_calls(recorder), do: recorder |> Agent.get(& &1) |> Enum.reverse()
+
+  @doc """
+  A spex run report on disk, in the JSONL shape `mix spex` leaves behind.
+  Returns the path; it is removed on test exit.
+
+  `entries` is a list of `{spec_path, message}`, one failed scenario each.
+
+  Specs about the specs-ready gate need a *finished* run to hand the harness,
+  and running a real one inside a spec would mean a suite inside a suite. This
+  writes what that run would have left, so the gate is driven by its actual
+  input rather than by a stub of it.
+  """
+  @spec spex_run_report([{String.t(), String.t()}]) :: String.t()
+  def spex_run_report(entries) do
+    body =
+      Enum.map_join(entries, "\n", fn {path, message} ->
+        Jason.encode!(%{
+          "spex" => "intentional failure",
+          "scenario" => "asserts false",
+          "steps" => [
+            %{"type" => "then", "description" => "fails", "status" => "failed"}
+          ],
+          "error" => %{
+            "message" => message,
+            "file" => path,
+            "line" => 7,
+            "stacktrace" => []
+          }
+        })
+      end)
+
+    path =
+      Path.join(
+        System.tmp_dir!(),
+        "spex-run-report-#{System.unique_integer([:positive])}.jsonl"
+      )
+
+    File.write!(path, body <> "\n")
+    ExUnit.Callbacks.on_exit(fn -> File.rm(path) end)
+    path
+  end
+
+  @doc """
   Turns the three requirement toggles on for a project.
 
   A fresh project defaults them off — it writes BDD spex and code and nothing
