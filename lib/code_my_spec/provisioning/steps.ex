@@ -411,7 +411,7 @@ defmodule CodeMySpec.Provisioning.Steps do
 
   def run(:deploy, %Scope{} = scope, opts) do
     environment = Keyword.get(opts, :environment, "uat")
-    host = Keyword.get(opts, :host) || domain(scope)
+    host = Keyword.get(opts, :host) || environment_host(scope, environment) || domain(scope)
     version = Keyword.get(opts, :deployed_version)
 
     with {:ok, delivery} <- check_secrets(scope, environment),
@@ -2191,6 +2191,24 @@ defmodule CodeMySpec.Provisioning.Steps do
 
   defp domain(%Scope{active_project: %{domain: d}}) when is_binary(d) and d != "", do: d
   defp domain(_), do: nil
+
+  # The environment's own hostname, which is not the project's domain for any
+  # environment but production.
+  #
+  # The deploy step used `domain/1` regardless, so a UAT deploy was handed
+  # production's hostname: it went into `CMS_DEPLOY_HOST`, and from there into
+  # the container's `PHX_HOST` and kamal's `proxy.host`, and the health check
+  # then probed production's address — where nothing had been deployed, so it
+  # answered `econnrefused` after a deploy that had actually succeeded.
+  #
+  # Falls back to the domain so a project whose environments predate hosts
+  # behaves as it did.
+  defp environment_host(scope, environment) do
+    case EnvironmentRepository.get(scope, environment) do
+      %{host: host} when is_binary(host) and host != "" -> host
+      _ -> nil
+    end
+  end
 
   # The project's environments, by name. `opts` still wins so a spex or a
   # caller can narrow the fan-out, but the default now comes from the project
