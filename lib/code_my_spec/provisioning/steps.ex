@@ -423,9 +423,10 @@ defmodule CodeMySpec.Provisioning.Steps do
            |> deploy_opts(host, image)
            |> with_host_ip(scope, environment)
            |> with_age_key(scope, environment)
-           |> with_registry_credential_for_deploy(scope),
+           |> with_registry_credential_for_deploy(scope)
+           |> with_deploy_ssh(scope),
          :ok <- forget_stale_host_key(deploy_opts),
-         result <- Deploy.run(env(scope), environment, deploy_opts) do
+         result <- run_deploy(scope, environment, deploy_opts) do
       case deploy_outcome(result, environment, host) do
         {:ok, resources} ->
           # Recorded only here, on the success branch, because `deploy_outcome`
@@ -1583,6 +1584,39 @@ defmodule CodeMySpec.Provisioning.Steps do
   # kamal refuses to render a config without a registry password, and then
   # performs a `docker login` with it — so the same credential the builder
   # pushes with has to reach the deploy script.
+  # The key kamal connects with, on the same terms the builder's SSH gets it.
+  #
+  # `build_image` writes this key too, but into its own opts, which never come
+  # back here — so kamal ran with nothing set, `CMS_SSH_KEY_PATH` was absent
+  # from its environment, the generated config's `keys_only` branch was not
+  # rendered, and net-ssh offered every identity the agent held. A box with
+  # the default `MaxAuthTries` hung up first:
+  #
+  #   ERROR (Net::SSH::Disconnect): disconnected: Too many authentication
+  #   failures (2)
+  #
+  # A deploy given a key explicitly must not fall through to the agent, and a
+  # person running `bin/deploy` by hand still does.
+  defp with_deploy_ssh(opts, scope) do
+    case with_builder_ssh(scope, opts) do
+      {:ok, opts} -> opts
+      _ -> opts
+    end
+  end
+
+  # Wrapped so the private key written for kamal is removed however the deploy
+  # goes — the same reason `build_on_builder/4` cleans up after itself. This
+  # one opens every box the account owns, and the system temp directory is not
+  # where anybody would look for it.
+  defp run_deploy(scope, environment, deploy_opts) do
+    Deploy.run(env(scope), environment, deploy_opts)
+  after
+    case Keyword.get(deploy_opts, :builder_key_dir) do
+      dir when is_binary(dir) -> File.rm_rf(dir)
+      _ -> :ok
+    end
+  end
+
   defp with_registry_credential_for_deploy(opts, scope) do
     case Registry.credential(scope) do
       {:ok, credential} ->

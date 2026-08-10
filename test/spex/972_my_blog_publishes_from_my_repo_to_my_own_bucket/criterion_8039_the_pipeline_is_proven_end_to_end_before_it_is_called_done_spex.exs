@@ -19,7 +19,14 @@ defmodule CodeMySpecSpex.Story972.Criterion8039Spex do
 
   @cassette "content_step_proves_render_before_done"
 
+  # Two blocks, two cassettes. Both used to be recorded under one name, and a
+  # cassette is loaded and consulted when it is entered — so the second block
+  # replayed the first block's reads. The deploy step was answered with the
+  # server list recorded before any server existed and reported that the box
+  # the previous step had just created was missing.
   @given_cassette "972_8039_site_deployed"
+
+  @deploy_cassette "972_8039_site_deployed_deploy"
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -108,7 +115,7 @@ defmodule CodeMySpecSpex.Story972.Criterion8039Spex do
         # setup run.
         commit_generated_files(context.project.local_path)
 
-        run_steps(view, [:domain, :dns, :deploy, :storage], @given_cassette)
+        run_steps(view, [:domain, :dns, :deploy, :storage], @deploy_cassette)
 
         trace_steps(view, [:repository, :server, :secrets, :domain, :dns, :deploy, :storage])
 
