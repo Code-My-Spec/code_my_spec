@@ -325,12 +325,34 @@ defmodule CodeMySpec.Analysis.Runners do
      }}
   end
 
+  # A module that vanished, or a dependency's function that did.
+  #
+  # The first signature was `module ... is not available`. The second is the
+  # same event seen one level in: a dep whose beams are being rewritten answers
+  # `function Jason.Decoder.parse/2 is undefined or private` while the suite is
+  # mid-run. Observed exactly that, as two failures in `Notifications` — a
+  # context that has nothing to do with JSON decoding and was not being edited.
+  #
+  # Restricted to modules outside this application's namespaces, and that
+  # restriction is the whole care in it. A dep function undefined at *runtime*
+  # when the dep compiled means its beams moved underneath the run. One of our
+  # own modules is a different matter: an undefined local function is a warning
+  # rather than a compile error, so it genuinely can fail at runtime, and
+  # swallowing that would hide a real defect behind a build excuse.
+  @foreign_undefined ~r/function (?!CodeMySpec|CmsHarness|CodeMySpecWeb|CodeMySpecSpex)[A-Z][\w.]*\.\w+\/\d+ is undefined/
+
   defp lost_build_failures(raw) do
     raw
     |> diagnostics()
     |> Enum.map(& &1["message"])
-    |> Enum.filter(&(is_binary(&1) and &1 =~ ~r/module .+ is not available/))
+    |> Enum.filter(&lost_build?/1)
   end
+
+  defp lost_build?(message) when is_binary(message) do
+    message =~ ~r/module .+ is not available/ or message =~ @foreign_undefined
+  end
+
+  defp lost_build?(_message), do: false
 
   defp summarize(problems, exit_status, stats) do
     %{
