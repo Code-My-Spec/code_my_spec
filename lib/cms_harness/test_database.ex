@@ -80,6 +80,82 @@ defmodule CmsHarness.TestDatabase do
   def env(_environment), do: []
 
   @doc """
+  Empty the analyzer's tables before a suite runs.
+
+  Isolation keeps another checkout's schema out. It does not keep *data* out,
+  and the database is created once and reused forever, so a single row that
+  escapes the ExUnit sandbox and commits is permanent.
+
+  Measured here: two `users` and three `users_tokens` committed at one moment
+  blocked five consecutive stops. The report was
+
+      ** (MatchError) no match of right hand side value: {4, nil}
+      code: {1, nil} = Repo.update_all(UserToken, set: [inserted_at: dt])
+
+  from a test asserting the table holds exactly its own row. It held three
+  strangers as well. The same file passed 41/0 against every other database on
+  the machine, and 47/0 against this one once emptied — so the output is
+  indistinguishable from a genuine break in user creation, which is the
+  property this module exists to eliminate.
+
+  Truncating rather than dropping: the schema is already correct by the time
+  this runs, and reusing it keeps the expensive migrate on its existing key.
+
+  Best effort by design, and quiet about it. A project with no Ecto, no
+  Postgres, or no privilege to truncate gets the behaviour it had before,
+  because a sweep that refuses to run is a worse failure than one that starts
+  dirty.
+  """
+  @spec reset_data(Environments.Environment.t(), [{String.t(), String.t()}]) :: :ok
+  def reset_data(environment, extra_env) do
+    case List.keyfind(extra_env, "MIX_TEST_PARTITION", 0) do
+      nil ->
+        # No partition means no database of ours to empty. Truncating whatever
+        # the project uses by default would be someone else's data.
+        :ok
+
+      {_, partition} ->
+        do_reset(environment, partition)
+    end
+  end
+
+  defp do_reset(environment, partition) do
+    case run_mix(environment, partition, ["run", "--no-compile", "-e", truncate_script()]) do
+      :ok ->
+        :ok
+
+      {:error, reason} ->
+        Logger.info("[CmsHarness] could not empty the analyzer database (#{reason})")
+        :ok
+    end
+  end
+
+  # Repos come from the project's own `:ecto_repos` rather than a hardcoded
+  # module, so this stays a harness that works on projects other than its own.
+  #
+  # `schema_migrations` is excluded because emptying it would silently undo the
+  # migrate and hand back the schema-drift failure this module already fixed.
+  defp truncate_script do
+    ~S"""
+    app = Mix.Project.config()[:app]
+
+    for repo <- Application.get_env(app, :ecto_repos, []) do
+      {:ok, %{rows: rows}} =
+        Ecto.Adapters.SQL.query(
+          repo,
+          "SELECT tablename FROM pg_tables WHERE schemaname = 'public' AND tablename <> 'schema_migrations'",
+          []
+        )
+
+      case Enum.map(rows, fn [t] -> ~s("#{t}") end) do
+        [] -> :ok
+        names -> Ecto.Adapters.SQL.query!(repo, "TRUNCATE " <> Enum.join(names, ", ") <> " RESTART IDENTITY CASCADE", [])
+      end
+    end
+    """
+  end
+
+  @doc """
   The partition name for a working copy.
 
   Short, stable, and derived from the absolute path — two worktrees of one

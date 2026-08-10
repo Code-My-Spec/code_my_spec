@@ -41,6 +41,7 @@ defmodule CmsHarness.Analysis do
   require Logger
 
   alias CmsHarness.AnalyzerEnv
+  alias CmsHarness.TestDatabase
   alias CodeMySpec.Analysis.Runners
   alias CodeMySpec.BddSpecs.Spex
   alias CodeMySpec.Compile
@@ -116,7 +117,15 @@ defmodule CmsHarness.Analysis do
   end
 
   defp execute("exunit", env, args) do
-    case CodeMySpec.Tests.execute(args, environment: env, extra_env: AnalyzerEnv.extra_env(env)) do
+    extra_env = AnalyzerEnv.extra_env(env)
+
+    # Only exunit. Its failures are the ones residue disguises itself as, and
+    # a suite that starts dirty reports a break that is not there. credo and
+    # the compiler never read the database, and spex are cleared by the same
+    # call on the run that follows them.
+    TestDatabase.reset_data(env, extra_env)
+
+    case CodeMySpec.Tests.execute(args, environment: env, extra_env: extra_env) do
       {:ok, test_run} ->
         {:ok,
          %{
