@@ -87,33 +87,49 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     {nodes, edges}
   end
 
-  # Every cache hit reads the rows and compares them against the payload.
+  # A cache hit is served from the rows. The payload is the fallback.
   #
-  # The rows are the projection; the payload is what they are replacing. Reading
-  # them on the hot path is the only way the two get compared against real
-  # graphs rather than against fixtures — a disagreement shows up here, in what
-  # an agent is actually told, instead of waiting for a test nobody wrote.
+  # That is the direction of the whole change: `requirements` and
+  # `requirement_edges` are the read model, and `requirement_graphs.payload` is
+  # what they replace. Serving the payload while writing rows nobody read proved
+  # nothing — a projection is only trustworthy once something depends on it.
   #
-  # Logged rather than raised, and the payload is what gets served. A projection
-  # that disagrees is a defect worth finding; refusing to serve a graph over it
-  # would trade a reporting bug for an outage.
+  # The payload still wins in one case, and it is not a disagreement: no rows at
+  # all for a project whose payload has nodes. That is a graph published before
+  # this existed, or one whose row write failed, and serving an empty graph
+  # would tell an agent it has no work.
+  #
+  # A genuine difference is served *from the rows* and logged loudly. Serving
+  # the payload instead would hide the defect behind the thing being retired,
+  # and leave the read model permanently unproven.
   defp served_graph(scope, ctx, {nodes, edges} = cached) do
     case Projection.load(scope, ctx) do
-      {^nodes, ^edges} ->
-        cached
-
-      {read_nodes, read_edges} ->
+      {[], _} when nodes != [] ->
         Logger.warning(
-          "[Requirements] projection differs from payload: " <>
-            "#{length(read_nodes)}/#{length(nodes)} nodes, " <>
-            "#{length(read_edges)}/#{length(edges)} edges — serving the payload"
+          "[Requirements] projection is empty for a payload with #{length(nodes)} nodes " <>
+            "— serving the payload. Rows were never written for this graph."
         )
 
         cached
+
+      {^nodes, ^edges} = projected ->
+        projected
+
+      {read_nodes, read_edges} = projected ->
+        Logger.warning(
+          "[Requirements] projection differs from payload — serving the projection. " <>
+            "nodes #{length(read_nodes)} vs #{length(nodes)}, " <>
+            "edges #{length(read_edges)} vs #{length(edges)}"
+        )
+
+        projected
     end
   rescue
     error ->
-      Logger.warning("[Requirements] projection read failed: #{Exception.message(error)}")
+      Logger.error(
+        "[Requirements] projection read failed, serving the payload: #{Exception.message(error)}"
+      )
+
       cached
   end
 

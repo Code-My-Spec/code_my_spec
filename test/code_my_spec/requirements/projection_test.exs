@@ -14,6 +14,8 @@ defmodule CodeMySpec.Requirements.ProjectionTest do
   """
   use CodeMySpecTest.DataCase, async: true
 
+  import Ecto.Query
+
   import CodeMySpec.ComponentsFixtures
   import CodeMySpec.UsersFixtures
 
@@ -175,6 +177,34 @@ defmodule CodeMySpec.Requirements.ProjectionTest do
 
     test "a path with no file row is not an error", %{scope: scope} do
       assert Projection.for_file(scope, "lib/does/not/exist.ex") == []
+    end
+  end
+
+  # Whether the rows are actually the source, or just written and compared.
+  #
+  # The payload and the rows agree by construction, so equality proves nothing
+  # about which one was read. Changing a row and watching the served graph follow
+  # does: the fingerprint is computed over files, components and stories, not
+  # over requirement rows, so editing one leaves the cache a hit and the payload
+  # saying the opposite.
+  describe "cached_graph/1 reads the rows" do
+    test "a verdict changed in a row is what the reader gets", %{scope: scope} do
+      RequirementGraph.compute_graph(scope)
+
+      row = Repo.one!(from n in CodeMySpec.Requirements.Node, limit: 1)
+      flipped = not row.satisfied
+
+      row
+      |> Ecto.Changeset.change(satisfied: flipped)
+      |> Repo.update!()
+
+      {{nodes, _edges}, _computed_at} = RequirementGraph.cached_graph(scope)
+
+      served = Enum.find(nodes, &(&1.name == row.name))
+
+      assert served.satisfied == flipped,
+             "the payload still says the old verdict — if the reader agrees with it, " <>
+               "the rows are decoration and the projection is unproven"
     end
   end
 

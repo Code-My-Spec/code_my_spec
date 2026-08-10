@@ -2,6 +2,27 @@ defmodule CodeMySpec.Requirements.GraphCache do
   @moduledoc """
   Stores the last computed requirement graph for a project.
 
+  ## Being retired
+
+  The graph itself is rows now — `requirements` for the nodes,
+  `requirement_edges` for the edges — and `RequirementGraph.cached_graph/1`
+  serves those. `Requirements.Projection` reads them. What this table still does
+  is hold the **fingerprint**, which is how a reader knows whether the rows are
+  current, and a `payload` kept only as a fallback for a graph whose rows were
+  never written.
+
+  Three things have to be true before the payload column can go:
+
+    * `[Requirements] projection differs from payload` stays quiet across real
+      projects — the comparison runs on every cache hit
+    * `[Requirements] projection is empty for a payload with N nodes` stops
+      appearing, meaning every live project has had its rows written at least
+      once
+    * nothing reads `fetch/2`'s graph except `served_graph/3`
+
+  The fingerprint half stays regardless. It answers "are these rows current",
+  which the rows cannot answer about themselves.
+
   A published snapshot, not a memoization. Computation never reads it, so
   there is no cache key that can be wrong — the graph a reader gets is one that
   was genuinely computed, and the fingerprint tells them whether the inputs
