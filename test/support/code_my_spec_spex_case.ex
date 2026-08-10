@@ -2038,9 +2038,52 @@ defmodule CodeMySpecSpex.Case do
             "[data-test='setup-step'][data-step='#{key}'] [data-test='run-step']"
           )
           |> Phoenix.LiveViewTest.render_click()
+
+          CodeMySpecSpex.Case.await_step(view, key)
         end
       end
     end
+  end
+
+  @doc """
+  Wait for a step to stop running.
+
+  Clicking Run no longer waits. The step happens under a supervised task
+  because a deploy takes minutes and cannot be held inside a LiveView event —
+  so `render_click/1` returns while the step is still `running`, and a `given_`
+  that moved straight to the next step would run them concurrently and assert
+  against a page that had not caught up.
+
+  Polls the rendered page rather than the database, because the page is what
+  the criteria read and what a person watches. A step that never leaves
+  `running` fails here rather than three assertions later.
+  """
+  @spec await_step(term(), atom(), pos_integer()) :: :ok
+  def await_step(view, key, attempts \\ 600) do
+    state =
+      view
+      |> Phoenix.LiveViewTest.render()
+      |> Floki.parse_document!()
+      |> Floki.find("[data-test='setup-step'][data-step='#{key}']")
+      |> Floki.attribute("data-state")
+      |> List.first()
+
+    settled?(view, key, state, attempts)
+  end
+
+  defp settled?(_view, key, nil, _attempts) do
+    raise "no step named #{key} on the page — nothing to wait for"
+  end
+
+  defp settled?(_view, _key, state, _attempts) when state in ~w(done errored paused), do: :ok
+
+  defp settled?(view, key, _state, attempts) when attempts > 1 do
+    Process.sleep(500)
+    await_step(view, key, attempts - 1)
+  end
+
+  defp settled?(_view, key, state, _attempts) do
+    raise "the #{key} step is still #{state} after five minutes"
   end
 
   @doc """

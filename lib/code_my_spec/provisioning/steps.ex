@@ -2218,7 +2218,7 @@ defmodule CodeMySpec.Provisioning.Steps do
          {:ok, network} <-
            Hetzner.ensure_network(scope, name, network_zone: Hetzner.network_zone(location)),
          :ok <- attach_all(scope, servers, network),
-         {:ok, registries} <- serve_registries(scope, network, opts) do
+         {:ok, registries} <- serve_registries(scope, servers, network, opts) do
       {:ok, registries ++ [network_resource(name, network) | made]}
     else
       [] -> {:ok, made}
@@ -2238,21 +2238,24 @@ defmodule CodeMySpec.Provisioning.Steps do
   # UAT may be arm and production x86, `Builder` refuses an image built for the
   # wrong one, so each environment builds its own and needs somewhere of its
   # own to put it.
-  defp serve_registries(scope, network, opts) do
-    scope
-    |> EnvironmentRepository.list()
-    |> Enum.reduce_while({:ok, []}, fn environment, {:ok, acc} ->
-      case serve_one_registry(scope, environment.name, network, opts) do
+  # Over the servers that exist, not over the environment rows. Those two can
+  # disagree — an environment whose server was not created, or a name that does
+  # not match — and when they did this failed with a bare `not found`, naming
+  # neither the environment nor the server it wanted. Iterating what was
+  # actually found cannot disagree with itself.
+  defp serve_registries(scope, servers, network, opts) do
+    Enum.reduce_while(servers, {:ok, []}, fn server, {:ok, acc} ->
+      case serve_one_registry(scope, server, network, opts) do
         {:ok, resources} -> {:cont, {:ok, resources ++ acc}}
         {:error, reason} -> {:halt, {:error, reason}}
       end
     end)
   end
 
-  defp serve_one_registry(scope, environment, network, opts) do
-    box = server_name(scope, opts, environment)
+  defp serve_one_registry(scope, server, network, opts) do
+    environment = environment_of(scope, server, opts)
 
-    with {:ok, server} <- Hetzner.find_server(scope, box),
+    with {:ok, server} <- Hetzner.find_server(scope, server["name"]),
          {:ok, ip} <- Hetzner.private_ip(server, network["id"]),
          public when is_binary(public) <- get_in(server, ["public_net", "ipv4", "ip"]),
          {:ok, opts} <- with_builder_ssh(scope, opts),
@@ -2309,6 +2312,18 @@ defmodule CodeMySpec.Provisioning.Steps do
       {:ok, _} -> :ok
       {:error, reason} -> {:error, reason}
     end
+  end
+
+  # Which environment a box belongs to, from the name the server step gave it.
+  # The alternative is passing the environment alongside every server and
+  # keeping the two in step, which is the thing that just went wrong.
+  defp environment_of(scope, server, opts) do
+    scope
+    |> EnvironmentRepository.list()
+    |> Enum.find_value("uat", fn environment ->
+      environment.name == nil ||
+        (server_name(scope, opts, environment.name) == server["name"] && environment.name)
+    end)
   end
 
   defp environment_servers(scope, opts) do

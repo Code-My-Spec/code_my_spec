@@ -1868,31 +1868,24 @@ defmodule CodeMySpecWeb.ProvisioningLive do
   # Retry is the same call as run — a step verifies before it acts, so
   # retrying one step is running it, and a separate "retry" path would be a
   # second implementation of the same thing that could drift.
+  # Started, not awaited. A deploy provisions a builder, builds an image,
+  # pushes it and runs kamal — minutes of work. Held inside this event it
+  # blocked a drill's `render_click` for 1203 seconds before the client gave
+  # up, and no socket survives that. It also killed the run: a builder was left
+  # running on the account because `Builder.destroy` never got to execute.
+  #
+  # The page follows the same way it already follows a whole-sequence run.
+  # `mark/3` broadcasts every transition and each step renders its own reason
+  # from its own row, so nothing here has to hold the answer.
   def handle_event("run_step", %{"key" => key}, socket) do
     scope = socket.assigns.current_scope
 
-    result = Provisioning.run_step(scope, String.to_existing_atom(key), step_opts())
+    :ok = Provisioning.run_step_async(scope, String.to_existing_atom(key), step_opts())
 
-    # Steps write to the project — the repository step records the remote, the
-    # domain step records the domain — and the socket is holding the struct
-    # from before that. Without reloading, the *next* step reads a stale
-    # project: a re-run could not tell the repository it had just made from one
-    # it had never seen.
-    socket = assign(socket, :current_scope, reload_project(scope))
-
-    # `load/2` keeps the cached mail state; the steps that actually change it
-    # say so here, so a page that just registered a sending domain shows it
-    # without every other click paying for a Resend round-trip.
-    socket = if key in ~w(email inbound), do: refresh_mail(socket), else: socket
-
-    case result do
-      {:ok, _step} ->
-        {:noreply, load(socket, socket.assigns.options)}
-
-      {:halt, _step, reason} ->
-        {:noreply,
-         socket |> load(socket.assigns.options) |> assign(halted_at: key, halt_reason: reason)}
-    end
+    {:noreply,
+     socket
+     |> assign(halted_at: nil, halt_reason: nil)
+     |> load(socket.assigns.options)}
   end
 
   # Which credentials a run needs is a function of the options; whether each is
@@ -2061,8 +2054,13 @@ defmodule CodeMySpecWeb.ProvisioningLive do
   defp reload_project(scope), do: scope
 
   @impl true
-  def handle_info({:provisioning, :step, _row}, socket) do
-    {:noreply, load(socket, socket.assigns.options)}
+  def handle_info({:provisioning, :step, row}, socket) do
+    socket = load(socket, socket.assigns.options)
+
+    # `load/2` keeps the cached mail state; the steps that actually change it
+    # say so here, so a page that just registered a sending domain shows it
+    # without every other announce paying for a Resend round-trip.
+    {:noreply, if(row.key in [:email, :inbound], do: refresh_mail(socket), else: socket)}
   end
 
   def handle_info({:provisioning, :finished, result}, socket) do

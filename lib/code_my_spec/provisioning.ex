@@ -320,6 +320,40 @@ defmodule CodeMySpec.Provisioning do
     end
   end
 
+  @doc """
+  Run a step without waiting for it.
+
+  A deploy provisions a builder, builds a release image, pushes it, and then
+  runs kamal, which pulls on the host and starts containers. That is minutes.
+  It used to happen inside a LiveView `handle_event`, which is survivable only
+  while the step does nothing: once the deploy step worked, a drill's
+  `render_click` blocked for 1203 seconds before the client gave up, and no
+  socket or proxy in front of one survives that.
+
+  Worse, the work died with the caller. `Builder.build/3` destroys its box
+  either way — proven against real build failures — but not when the process
+  running it is killed, which is exactly what a client timeout does. A builder
+  was left running on the account that way, attributable to no project and
+  invisible to the leak audit.
+
+  Under a supervised task, a client that disconnects no longer takes the run
+  with it, and `destroy` runs.
+
+  Returns immediately. The caller follows the same way anything else does:
+  `mark/3` broadcasts every transition, so `subscribe/1` sees the step move
+  through `running` to whatever it becomes. The `Step` row is the state; this
+  just stops the caller having to hold the connection open to watch it.
+  """
+  @spec run_step_async(Scope.t(), atom(), keyword()) :: :ok
+  def run_step_async(%Scope{} = scope, key, opts \\ []) do
+    {:ok, _pid} =
+      Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
+        run_step(scope, key, opts)
+      end)
+
+    :ok
+  end
+
   defp run_and_record(scope, key, execute, opts) do
     # Stamped when the step actually begins, not when the row is created — a
     # step that was never run has no start, and an ordering comparison against
