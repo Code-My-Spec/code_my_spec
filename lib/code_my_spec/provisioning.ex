@@ -42,7 +42,14 @@ defmodule CodeMySpec.Provisioning do
 
   alias CodeMySpec.Projects
   alias CodeMySpec.Projects.Project
-  alias CodeMySpec.Provisioning.{Sequence, Step, StepRepository, Steps}
+  alias CodeMySpec.Provisioning.{
+    Environment,
+    EnvironmentRepository,
+    Sequence,
+    Step,
+    StepRepository,
+    Steps
+  }
   alias CodeMySpec.Users.Scope
 
   @type run_result :: %{
@@ -164,7 +171,7 @@ defmodule CodeMySpec.Provisioning do
   """
   @spec environment_names(Scope.t()) :: [String.t()]
   def environment_names(%Scope{} = scope),
-    do: CodeMySpec.Provisioning.EnvironmentRepository.names(scope)
+    do: EnvironmentRepository.names(scope)
 
   @doc """
   The project's environments, in full.
@@ -173,9 +180,9 @@ defmodule CodeMySpec.Provisioning do
   each one running on", which is the question the page has to render — an
   environment sharing another's box is invisible from the names alone.
   """
-  @spec environments(Scope.t()) :: [CodeMySpec.Provisioning.Environment.t()]
+  @spec environments(Scope.t()) :: [Environment.t()]
   def environments(%Scope{} = scope),
-    do: CodeMySpec.Provisioning.EnvironmentRepository.list(scope)
+    do: EnvironmentRepository.list(scope)
 
   @doc """
   A project's environments, seeding none.
@@ -183,9 +190,9 @@ defmodule CodeMySpec.Provisioning do
   The read for anything that is only looking. See
   `EnvironmentRepository.list_existing/1`.
   """
-  @spec existing_environments(Scope.t()) :: [CodeMySpec.Provisioning.Environment.t()]
+  @spec existing_environments(Scope.t()) :: [Environment.t()]
   def existing_environments(%Scope{} = scope),
-    do: CodeMySpec.Provisioning.EnvironmentRepository.list_existing(scope)
+    do: EnvironmentRepository.list_existing(scope)
 
   @doc """
   Add an environment, or update one that is already there.
@@ -199,7 +206,7 @@ defmodule CodeMySpec.Provisioning do
     domain = Map.get(project || %{}, :domain)
     host = Map.get(attrs, :host) || derived_host(name, domain)
 
-    CodeMySpec.Provisioning.EnvironmentRepository.put(scope, name, Map.put(attrs, :host, host))
+    EnvironmentRepository.put(scope, name, Map.put(attrs, :host, host))
   end
 
   defp derived_host(_name, domain) when domain in [nil, ""], do: nil
@@ -219,27 +226,47 @@ defmodule CodeMySpec.Provisioning do
 
     enabled_options
     |> Sequence.for_options()
-    |> Enum.map(fn step ->
-      row = Map.get(persisted, step.key)
+    |> Enum.map(&entry(&1, Map.get(persisted, &1.key)))
+  end
 
-      %{
-        key: step.key,
-        label: step.label,
-        why: step.why,
-        position: Sequence.position(step.key),
-        state: (row && row.state) || :not_started,
-        attempted: row && row.attempted,
-        provider_error: row && row.provider_error,
-        paused_instructions: row && row.paused_instructions,
-        # When the step last changed state. A `done` row's timestamp is when
-        # it finished, which is what makes "setup waited for verification
-        # rather than declaring victory first" checkable rather than asserted.
-        completed_at: row && row.updated_at,
-        started_at: row && row.started_at,
-        verified_at: row && row.verified_at,
-        resources: (row && row.resources) || []
-      }
-    end)
+  # Two heads rather than a `row && row.field` for each of ten fields. Those
+  # guards were the same question asked ten times, and asking it once — has
+  # this step ever run — is both shorter and the actual distinction.
+  defp entry(step, nil) do
+    %{
+      key: step.key,
+      label: step.label,
+      why: step.why,
+      position: Sequence.position(step.key),
+      state: :not_started,
+      attempted: nil,
+      provider_error: nil,
+      paused_instructions: nil,
+      completed_at: nil,
+      started_at: nil,
+      verified_at: nil,
+      resources: []
+    }
+  end
+
+  defp entry(step, row) do
+    %{
+      key: step.key,
+      label: step.label,
+      why: step.why,
+      position: Sequence.position(step.key),
+      state: row.state || :not_started,
+      attempted: row.attempted,
+      provider_error: row.provider_error,
+      paused_instructions: row.paused_instructions,
+      # When the step last changed state. A `done` row's timestamp is when it
+      # finished, which is what makes "setup waited for verification rather
+      # than declaring victory first" checkable rather than asserted.
+      completed_at: row.updated_at,
+      started_at: row.started_at,
+      verified_at: row.verified_at,
+      resources: row.resources || []
+    }
   end
 
   ## Running
