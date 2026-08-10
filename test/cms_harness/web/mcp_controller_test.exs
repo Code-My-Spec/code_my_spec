@@ -132,11 +132,11 @@ defmodule CmsHarness.Web.McpControllerTest do
 
       body = Jason.decode!(conn.resp_body)
 
-      assert body["error"]["message"] =~ "HTML error page",
+      assert body["error"]["message"] =~ "error page",
              "the agent has to be told what happened, not shown the document"
 
-      assert body["error"]["message"] =~ "restart",
-             "the recovery is the useful part: this server needs restarting"
+      assert body["error"]["message"] =~ "config",
+             "the recovery is the useful part: this server needs dealing with"
 
       assert body["id"] == 7, "a JSON-RPC error still has to answer the request it failed"
 
@@ -145,6 +145,44 @@ defmodule CmsHarness.Web.McpControllerTest do
 
       assert byte_size(conn.resp_body) < 1_000,
              "a summary that is not short has not solved the problem it exists for"
+    end
+
+    # The same page, rendered as markdown rather than HTML.
+    #
+    # Phoenix's debug page follows what the request accepts, and the MCP client
+    # sends `application/json, text/event-stream` — so it is not always markup.
+    # A `Phoenix.Ecto.PendingMigrationError` came back this way, sailed past a
+    # check that only looked for HTML, and reached the agent as a raw stack
+    # trace. Recognising the exception marker catches both renderings.
+    test "a non-HTML error page is summarized too", %{conn: conn} do
+      %{root: dir} = project_dir()
+      serve(dir)
+
+      page =
+        "# Phoenix.Ecto.PendingMigrationError at POST /mcp/harness\n\n" <>
+          "Exception:\n\n    ** (Phoenix.Ecto.PendingMigrationError) there are " <>
+          "pending migrations for repo: CodeMySpec.Repo\n" <>
+          String.duplicate("        (stdlib 7.1) gen_server.erl:2424\n", 200)
+
+      FakeUpstream.respond_with(
+        status: 500,
+        body: page,
+        headers: [{"content-type", "text/markdown"}]
+      )
+
+      conn = post_rpc(conn, dir, %{"jsonrpc" => "2.0", "id" => 9, "method" => "tools/call"})
+      body = Jason.decode!(conn.resp_body)
+
+      assert body["error"]["message"] =~ "error page",
+             "an error page is an error page whatever it is rendered as"
+
+      assert body["error"]["message"] =~ "migration",
+             "the exception is the useful part and it survived the summary"
+
+      assert body["id"] == 9
+
+      assert byte_size(conn.resp_body) < 1_000,
+             "the stack trace is what must not reach the agent"
     end
 
     # The guard keys on HTML specifically. An SSE body is the server→client

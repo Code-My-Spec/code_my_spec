@@ -97,7 +97,7 @@ defmodule CmsHarness.Web.McpController do
     send_resp(conn, 405, "")
   end
 
-  # An HTML body is never a tool result, so it is summarized rather than
+  # An error page is never a tool result, so it is summarized rather than
   # relayed.
   #
   # When the upstream dev server is wedged — a `config/*.exs` change it cannot
@@ -107,7 +107,7 @@ defmodule CmsHarness.Web.McpController do
   # tool for reporting friction failed by burning the context needed to report
   # it (issues 5fb011f4, 6ecb257a).
   #
-  # Only HTML is caught. A JSON body is a result and an SSE stream is the
+  # Only error pages are caught. A JSON body is a result and an SSE stream is the
   # server→client channel, both legitimate; guessing "not JSON means broken"
   # would break streaming.
   defp relay_or_summarize(conn, response) do
@@ -119,7 +119,7 @@ defmodule CmsHarness.Web.McpController do
         |> send_resp(response.status, response.body || "")
 
       summary ->
-        Logger.error("[CmsHarness] MCP upstream returned HTML: #{summary}")
+        Logger.error("[CmsHarness] MCP upstream returned an error page: #{summary}")
 
         conn
         |> put_status(200)
@@ -134,17 +134,26 @@ defmodule CmsHarness.Web.McpController do
   defp html_summary(response) do
     body = to_string(response.body || "")
 
-    if html?(response, body) do
-      "the CodeMySpec server answered with an HTML error page (HTTP " <>
-        "#{response.status}) instead of a tool result: #{first_meaningful_line(body)}. " <>
-        "A dev server that has loaded a changed config/*.exs cannot hot-reload it " <>
-        "and serves this to every request until it is restarted."
+    if error_page?(response, body) do
+      "the CodeMySpec server answered with an error page (HTTP #{response.status}) " <>
+        "instead of a tool result: #{first_meaningful_line(body)}. " <>
+        "Common causes: a pending migration, or a dev server that has loaded a " <>
+        "changed config/*.exs and cannot hot-reload it. Both persist until the " <>
+        "server is dealt with, so every request fails the same way."
     end
   end
 
-  defp html?(response, body) do
+  # Not only HTML. Phoenix renders its debug page in whatever the request
+  # accepts, and the MCP client sends `application/json, text/event-stream` — so
+  # a `Phoenix.Ecto.PendingMigrationError` came back as markdown, sailed past an
+  # HTML-only check, and reached the agent as a raw stack trace. Recognising the
+  # page by its exception marker as well as its markup catches both renderings.
+  defp error_page?(response, body) do
+    trimmed = String.trim_leading(body)
+
     content_type(response) == "text/html" or
-      String.starts_with?(String.trim_leading(body), ["<!DOCTYPE", "<!doctype", "<html"])
+      String.starts_with?(trimmed, ["<!DOCTYPE", "<!doctype", "<html"]) or
+      (response.status >= 400 and String.contains?(body, "** ("))
   end
 
   # Phoenix's error page carries the exception text in the markup. Anything
