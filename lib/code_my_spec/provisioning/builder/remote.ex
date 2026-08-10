@@ -261,6 +261,17 @@ defmodule CodeMySpec.Provisioning.Builder.Remote do
       "StrictHostKeyChecking=no",
       "-o",
       "UserKnownHostsFile=/dev/null",
+      # Without these, `-i` is a suggestion: ssh offers every key the agent
+      # holds first, and a box with the default `MaxAuthTries 6` disconnects
+      # before reaching ours. `Servers.Containers` already learned this and
+      # says so; the builder did not, and paid for it — three minutes of
+      # retrying, then "Too many authentication failures", which the caller
+      # reported as an unreachable box. I raised the SSH timeout over it before
+      # reading the message, and the box had been answering all along.
+      "-o",
+      "BatchMode=yes",
+      "-o",
+      "IdentitiesOnly=yes",
       "-i",
       key,
       "root@#{ip(server)}"
