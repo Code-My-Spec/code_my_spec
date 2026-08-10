@@ -38,6 +38,18 @@ defmodule CodeMySpecSpex.Story842.Criterion1973Spex do
 
   spex "The release is published in all three places" do
     scenario "a release is cut with approval given" do
+      given_ "the user journeys have been walked", context do
+        # The release refuses until a journey result exists.
+        :ok =
+          Environments.write_file(
+            context.environment,
+            ".code_my_spec/qa/journey_result.md",
+            "# Journey result\n\nwalked end to end — passed\n"
+          )
+
+        {:ok, context}
+      end
+
       given_ "a story on UAT that has not been released", context do
         :ok =
           Environments.write_file(

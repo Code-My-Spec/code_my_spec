@@ -24,6 +24,19 @@ defmodule CodeMySpecSpex.Story842.Criterion1972Spex do
 
   spex "Release notes name the stories that shipped" do
     scenario "two stories rode to UAT since the last release" do
+      given_ "the user journeys have been walked", context do
+        # The release refuses until a journey result exists, so a spec about
+        # what the release *says* has to get past that gate first.
+        :ok =
+          Environments.write_file(
+            context.environment,
+            ".code_my_spec/qa/journey_result.md",
+            "# Journey result\n\nwalked end to end — passed\n"
+          )
+
+        {:ok, context}
+      end
+
       given_ "two named stories have been deployed to UAT and not released", context do
         first =
           CodeMySpecSpex.Fixtures.story_fixture(context.scope, %{

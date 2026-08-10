@@ -25,6 +25,18 @@ defmodule CodeMySpecSpex.Story842.Criterion1974Spex do
 
   spex "The user approves the release from their phone" do
     scenario "a release reaches the point of asking" do
+      given_ "the user journeys have been walked", context do
+        # The release refuses until a journey result exists.
+        :ok =
+          Environments.write_file(
+            context.environment,
+            ".code_my_spec/qa/journey_result.md",
+            "# Journey result\n\nwalked end to end — passed\n"
+          )
+
+        {:ok, context}
+      end
+
       given_ "a story on UAT waiting to be released", context do
         :ok =
           Environments.write_file(

@@ -43,6 +43,18 @@ defmodule CodeMySpecSpex.Story842.Criterion1976Spex do
 
   spex "A fresh UAT deploy reopens the release" do
     scenario "everything shipped, then new work lands on UAT" do
+      given_ "the user journeys have been walked", context do
+        # The release refuses until a journey result exists.
+        :ok =
+          Environments.write_file(
+            context.environment,
+            ".code_my_spec/qa/journey_result.md",
+            "# Journey result\n\nwalked end to end — passed\n"
+          )
+
+        {:ok, context}
+      end
+
       given_ "every story on UAT is covered by a release that already shipped", context do
         :ok =
           Environments.write_file(
@@ -55,7 +67,11 @@ defmodule CodeMySpecSpex.Story842.Criterion1976Spex do
           Environments.write_file(
             context.environment,
             ".code_my_spec/releases/v1.0.0.md",
-            "# v1.0.0\n\n## Stories\n\n- story 9005\n"
+            # `story_<id>`, the format the release prompt specifies and
+            # `released?/2` matches on a word boundary. Written with a space it
+            # covers nothing, so the story reads unreleased and ships twice —
+            # which is the failure this criterion is meant to catch, not stage.
+            "# v1.0.0\n\n## Stories\n\n- story_9005\n"
           )
 
         {:ok, context}

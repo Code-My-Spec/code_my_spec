@@ -34,7 +34,39 @@ defmodule CodeMySpec.AgentTasks.Release do
   Generate the prompt for the release session.
   """
   @spec command(Scope.t(), map()) :: {:ok, String.t()}
-  def command(%Scope{} = scope, _task) do
+  def command(%Scope{} = scope, task) do
+    if journeys_complete?(scope), do: release_command(scope, task), else: journeys_first()
+  end
+
+  # The prompt opened by asserting "the user journeys are complete" and nothing
+  # checked. The graph stopped handing this out as a node (d207ad38), so the
+  # only way in is an explicit request — and a request made too early got the
+  # full ceremony, tag step included, on the strength of a sentence claiming a
+  # precondition nobody had tested.
+  #
+  # Journey *results*, not the plan: a plan says the walkthrough was designed,
+  # a result says somebody walked it.
+  defp journeys_complete?(%Scope{environment: env}) do
+    match?({:ok, _}, Environments.read_file(env, Paths.qa_journey_result()))
+  end
+
+  defp journeys_first do
+    {:ok,
+     """
+     # Not yet — the user journeys come first
+
+     A release cut now would ship work nobody has walked through end to end.
+
+     `#{Paths.qa_journey_result()}` does not exist, so no journey has been
+     recorded as run against this cycle's work.
+
+     Finish the user journeys, then ask for the release again. This refusal
+     publishes and deploys nothing, and the UAT deploys stay exactly where
+     they are.
+     """}
+  end
+
+  defp release_command(%Scope{} = scope, _task) do
     unreleased = unreleased_story_ids(scope)
     manifest = manifest_section(scope, unreleased)
 
@@ -58,9 +90,12 @@ defmodule CodeMySpec.AgentTasks.Release do
      2. **Propose a semver version**: read the manifest and judge
         major/minor/patch from the changes. State your reasoning in one line.
      3. **Get the user's explicit approval** — call `ask_user` with the
-        proposed version and the notes. Deploy NOTHING before an explicit
-        yes. If the user declines, stand down: no deploy, no tag, and the
-        release stays open for a later cycle.
+        proposed version and the notes. It reaches them wherever they are:
+        the question goes out as a phone push notification as well as to the
+        terminal, so a release does not sit unanswered because nobody happens
+        to be at a keyboard. Deploy NOTHING before an explicit yes. If the
+        user declines, stand down: no deploy, no tag, and the release stays
+        open for a later cycle.
      4. **Publish** — after approval only:
         - Annotated git tag `v<version>` whose message is the release notes.
         - GitHub Release for the tag (`gh release create`) carrying the
