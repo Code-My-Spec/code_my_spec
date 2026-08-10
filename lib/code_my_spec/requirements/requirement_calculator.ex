@@ -263,13 +263,60 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
   # answer to everyone. That is the trade this whole projection is built on:
   # everything else here already reads rows, and a file the scanner has not
   # seen is a file the graph does not know about.
+  # Existence is necessary, not sufficient. Every path these six gate on is
+  # classified, and classification runs the artifact's validator — so the row
+  # already carries a verdict. Reading only `exists?` threw that verdict away
+  # and let a QA plan missing every required section satisfy `qa_setup`, whose
+  # own description is "QA plan exists with App Overview, Tools Registry, and
+  # Seed Strategy". Two of the six say "and valid" outright.
+  #
+  # `valid: nil` means no validator applies to that role, which is a pass —
+  # only an explicit `false` is a failure. The errors are carried into the
+  # reason because the agent's next move depends on which section is missing,
+  # and "File invalid" alone does not say.
+  # A path can match more than one row: `scope_to_harness/2` does not filter
+  # when the scope carries no harness, which is every read the web UI makes.
+  # So this asks the list a question rather than demanding a single row —
+  # `Repo.one` would raise there, and refusing on a harness mismatch is what
+  # took the graph out of the web view once already.
+  #
+  # One valid copy is enough. Reporting invalid because some other working
+  # copy has a stale row would block an agent on a file it cannot see.
   defp check_path_exists(scope, ctx, path) do
-    if path_tracked?(scope, ctx, path) do
-      {true, %{path: path}}
-    else
-      {false, %{reason: "File missing: #{path}"}}
+    case tracked_files(scope, ctx, path) do
+      [] ->
+        {false, %{reason: "File missing: #{path}"}}
+
+      files ->
+        case Enum.reject(files, &(&1.valid == false)) do
+          [_ | _] ->
+            {true, %{path: path}}
+
+          [] ->
+            {false, %{reason: "File invalid: #{path} — #{describe_validation_errors(hd(files))}"}}
+        end
     end
   end
+
+  # `validation_errors` is keyed by concern, and the keys vary by role — the
+  # scanner writes `%{"reason" => _}` for specs and reviews, `%{error: _}` for
+  # read failures, and a key per missing section for setup files. Join the
+  # values rather than guessing at a shape.
+  defp describe_validation_errors(%{validation_errors: errors})
+       when is_map(errors) and errors != %{} do
+    errors
+    |> Enum.sort_by(fn {key, _} -> to_string(key) end)
+    |> Enum.map_join("; ", fn {_key, value} -> format_validation_error(value) end)
+  end
+
+  defp describe_validation_errors(_file), do: "no detail recorded"
+
+  # Values are usually the validator's message, but not always — some roles
+  # write a nested map, and `to_string/1` raises on those rather than saying
+  # anything useful.
+  defp format_validation_error(value) when is_binary(value), do: value
+  defp format_validation_error(value) when is_atom(value), do: to_string(value)
+  defp format_validation_error(value), do: inspect(value)
 
   defp check_path_prefix(scope, ctx, prefix) do
     case prefix_count(scope, ctx, prefix) do
@@ -286,15 +333,18 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
   # path — the one that runs on every agent turn — `ctx` is nil and there are
   # no preloaded files to consult. Dropping to `{false, "File missing"}` there
   # blocks the stop on a file the agent had just written and synced.
-  defp path_tracked?(_scope, ctx, path) when is_map(ctx) do
-    ctx[:files_by_path] && Map.has_key?(ctx.files_by_path, path)
+  defp tracked_files(_scope, ctx, path) when is_map(ctx) do
+    case ctx[:files_by_path] && Map.get(ctx.files_by_path, path) do
+      nil -> []
+      file -> [file]
+    end
   end
 
-  defp path_tracked?(%Scope{active_project_id: project_id} = scope, _ctx, path) do
+  defp tracked_files(%Scope{active_project_id: project_id} = scope, _ctx, path) do
     File
     |> where([f], f.project_id == ^project_id and f.path == ^path)
     |> scope_to_harness(scope)
-    |> Repo.exists?()
+    |> Repo.all()
   end
 
   defp prefix_count(_scope, ctx, prefix) when is_map(ctx) do
