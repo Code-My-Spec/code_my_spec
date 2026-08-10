@@ -15,8 +15,6 @@ defmodule CodeMySpec.AgentTasks.FixAllBddSpecs do
   alias CodeMySpec.Stories
   alias CodeMySpec.Utils
 
-
-
   def dispatch(node) do
     "Call `start_task` with requirement `#{node.name}` for #{node.entity_type} `#{node.entity_id}` (#{node.entity_name})"
   end
