@@ -102,13 +102,18 @@ defmodule CodeMySpec.Requirements.GraphCache do
       # the web UI does, on every render — so writing unconditionally would mean
       # a ~30KB upsert per page view for a row that already says the same thing.
       # One indexed SELECT is the cheaper half of that trade.
-      :ok
+      :unchanged
     else
       do_publish(project_id, fingerprint, {nodes, edges})
+      :published
     end
   end
 
-  def publish(_scope, _fingerprint, _graph), do: :ok
+  # `:unchanged` rather than `:ok` so the caller can hang the node and edge
+  # writes off the same fingerprint check. A second `current?/2` would be a
+  # second indexed SELECT on a path the UI hits every render, and two checks
+  # could disagree.
+  def publish(_scope, _fingerprint, _graph), do: :unchanged
 
   defp current?(scope, fingerprint) do
     match?({:ok, _}, fetch_fingerprint(scope, fingerprint))

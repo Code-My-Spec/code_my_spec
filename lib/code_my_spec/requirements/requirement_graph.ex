@@ -16,8 +16,11 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
      graph projector uses to lay out late_project nodes at the bottom band)
   """
 
+  require Logger
+
   alias CodeMySpec.Requirements.GraphCache
   alias CodeMySpec.Requirements.GraphFingerprint
+  alias CodeMySpec.Requirements.NodeRepository
   alias CodeMySpec.Requirements.Preloader
   alias CodeMySpec.Requirements.Registry, as: RequirementsRegistry
   alias CodeMySpec.Requirements.Requirement
@@ -65,8 +68,35 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   defp compute_and_publish(scope, ctx, config) do
     {nodes, enriched_ctx} = compute_all_from_ctx(scope, ctx, config)
     edges = compute_edges(nodes, enriched_ctx, config)
-    GraphCache.publish(scope, GraphFingerprint.compute(ctx, config), {nodes, edges})
+
+    scope
+    |> GraphCache.publish(GraphFingerprint.compute(ctx, config), {nodes, edges})
+    |> persist_projection(scope, nodes, edges)
+
     {nodes, edges}
+  end
+
+  # Rows for the same graph the blob carries, written behind the same
+  # fingerprint check that gates the blob. Readers reach here on every render,
+  # so an unconditional upsert of ~5,000 nodes per page view is exactly what
+  # `publish/3` already refuses to do for one `bytea`.
+  #
+  # The blob stays for now. These rows are not read yet — nothing queries them
+  # and nothing depends on them being complete — so writing them alongside is
+  # how they get proven against real graphs before anything is moved onto them.
+  defp persist_projection(:unchanged, _scope, _nodes, _edges), do: :ok
+
+  defp persist_projection(:published, scope, nodes, edges) do
+    ids_by_key = NodeRepository.upsert_all(scope, nodes)
+    NodeRepository.replace_edges(scope, edges, ids_by_key)
+    :ok
+  rescue
+    # A projection nobody reads yet must not be able to fail a graph
+    # computation. The agent's next instruction depends on the return value
+    # above; this half is bookkeeping until a reader exists.
+    error ->
+      Logger.warning("[Requirements] projection write failed: #{Exception.message(error)}")
+      :ok
   end
 
   @doc """

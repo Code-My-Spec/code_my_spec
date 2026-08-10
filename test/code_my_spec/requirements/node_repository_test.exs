@@ -15,7 +15,7 @@ defmodule CodeMySpec.Requirements.NodeRepositoryTest do
 
   import CodeMySpec.UsersFixtures
 
-  alias CodeMySpec.Requirements.{Edge, Node, NodeRepository, Requirement}
+  alias CodeMySpec.Requirements.{Edge, Node, NodeRepository, Requirement, RequirementGraph}
 
   setup do
     %{scope: full_scope_fixture()}
@@ -175,6 +175,39 @@ defmodule CodeMySpec.Requirements.NodeRepositoryTest do
       Repo.delete!(Repo.get!(Node, keys[to]))
 
       assert Repo.all(Edge) == []
+    end
+  end
+
+  # The wiring. `compute_and_publish/3` writes rows behind the same fingerprint
+  # check that gates the blob, so a real computation should leave the two
+  # agreeing about how many nodes and edges the graph has.
+  #
+  # Worth asserting against a computed graph rather than hand-built nodes: the
+  # hand-built ones in this file all belong to one project, and the mapping from
+  # `node_key/1` to a row id is exactly where three entity types could go wrong.
+  describe "a computed graph lands as rows" do
+    test "nodes and edges match what compute_graph returned", %{scope: scope} do
+      {nodes, edges} = RequirementGraph.compute_graph(scope)
+
+      # Guard against the assertion below passing on 0 == 0.
+      assert length(nodes) > 0, "a project with no nodes makes this test vacuous"
+
+      assert Repo.aggregate(Node, :count) == length(nodes),
+             "every computed node should have a row, or the projection is partial " <>
+               "in a way nothing would notice until a reader depended on it"
+
+      assert Repo.aggregate(Edge, :count) == length(edges)
+    end
+
+    test "recomputing an unchanged graph writes nothing new", %{scope: scope} do
+      RequirementGraph.compute_graph(scope)
+      node_count = Repo.aggregate(Node, :count)
+      edge_count = Repo.aggregate(Edge, :count)
+
+      RequirementGraph.compute_graph(scope)
+
+      assert Repo.aggregate(Node, :count) == node_count
+      assert Repo.aggregate(Edge, :count) == edge_count
     end
   end
 
