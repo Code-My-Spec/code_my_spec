@@ -871,6 +871,57 @@ defmodule CodeMySpecWeb.HarnessProjectChannelTest do
     Enum.reduce_while(1..attempts, false, fn _, _ -> poll(fun.()) end)
   end
 
+  # A disconnect fails every in-flight run for the working copy, so why it
+  # happened is the most useful thing the server knows — and it was the one
+  # thing it discarded. The harness cannot supply it: a crashed channel sends
+  # `phx_error` with no payload, so the far side only ever logs
+  # `closed: {:error, %{}}`.
+  #
+  # Asserting the log rather than the sweep on purpose. The sweep already had a
+  # line; what was missing was the cause, and seven crashes in an evening read
+  # as seven network drops because of it.
+  describe "a channel that dies says why" do
+    # The channel is linked to the test process and its death is the subject.
+    setup do
+      Process.flag(:trap_exit, true)
+      :ok
+    end
+
+    # `terminate/2` is called directly rather than by killing the process.
+    # `Process.exit/2` on a channel — which does not trap exits — skips
+    # `terminate/2` altogether, so a test that kills it proves nothing about
+    # what the callback logs. The callback is public and the logging is the
+    # subject.
+    test "an abnormal exit is logged at error with its reason", %{scope: scope, topic: topic} do
+      {:ok, _reply, channel} = join_as(scope, topic)
+      socket = :sys.get_state(channel.channel_pid)
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          HarnessProjectChannel.terminate({:badmatch, :a_three_tuple}, socket)
+        end)
+
+      assert log =~ "channel DIED"
+
+      assert log =~ "a_three_tuple",
+             "the reason is the whole point — without it a crash and a network " <>
+               "drop are the same line, which is how seven crashes read as seven drops"
+    end
+
+    test "a clean leave is not alarming", %{scope: scope, topic: topic} do
+      {:ok, _reply, channel} = join_as(scope, topic)
+      ref = Process.monitor(channel.channel_pid)
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          Phoenix.ChannelTest.leave(channel)
+          assert_receive {:DOWN, ^ref, :process, _, _}, 5_000
+        end)
+
+      refute log =~ "channel DIED"
+    end
+  end
+
   defp poll(true), do: {:halt, true}
 
   defp poll(_false) do

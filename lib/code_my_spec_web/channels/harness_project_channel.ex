@@ -456,9 +456,26 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   # project report analysis pending — an allow, with a note that results apply
   # next time, forever.
   @impl true
-  def terminate(_reason, socket) do
+  # Why the channel died, not just that it did.
+  #
+  # This discarded `reason` until now, and the harness could not supply it
+  # either: a channel process that crashes sends `phx_error` with no payload, so
+  # the far side logs `closed: {:error, %{}}` and the empty map is all it ever
+  # learns. The one process that knows was throwing it away.
+  #
+  # That cost a day. Seven crashes over one evening were indistinguishable from
+  # seven network drops, and the sweep below turned each into a batch of results
+  # the server would later refuse as `unknown_run` — which is what was actually
+  # investigated, three times, from the wrong end.
+  #
+  # Deliberately loud. A disconnect here is not routine: it fails every run this
+  # working copy has open, while the analyzers themselves are OS processes on
+  # the harness that keep running regardless. Their results arrive for runs that
+  # are no longer `:running` and are refused. Nothing retries.
+  def terminate(reason, socket) do
     case socket.assigns[:scope] do
       %Scope{active_project_id: id} when not is_nil(id) ->
+        log_disconnect(reason, socket)
         Analysis.fail_in_flight(socket.assigns.scope, :harness_disconnected)
 
       _ ->
@@ -466,6 +483,22 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
     end
 
     :ok
+  end
+
+  # The harness leaving on purpose — a restart, a shutdown. Worth a line,
+  # because it still strands whatever was running, but not an alarm.
+  defp log_disconnect(reason, socket)
+       when reason in [:normal, :shutdown, {:shutdown, :left}, {:shutdown, :closed}] do
+    Logger.info("[HarnessProject] channel closed (#{inspect(reason)}) topic=#{socket.topic}")
+  end
+
+  defp log_disconnect(reason, socket) do
+    Logger.error(
+      "[HarnessProject] channel DIED topic=#{socket.topic} reason=#{inspect(reason, limit: 12)}" <>
+        " — every in-flight run for this working copy is about to be failed as" <>
+        " :harness_disconnected. The analyzers keep running on the harness and" <>
+        " their results will be refused as unknown_run. Fix the crash, not the sweep."
+    )
   end
 
   # `port` is the harness's own — the analysis curl that `pre-tool-use` rewrites
