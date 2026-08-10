@@ -3,10 +3,10 @@ defmodule CodeMySpec.Provisioning.EnvironmentServersTest do
   One box per environment, which is what having environments is for.
 
   The existing coverage injects the step's whole result, so the loop that
-  actually creates the servers was never exercised. A drill then produced two
-  `-prod` servers and no `-uat`, and the deploy failed with "the provider has
+  actually creates the servers was never exercised. A drill then produced a
+  `-prod` server and no `-uat`, and the deploy failed with "the provider has
   no such server" — a defect that unit tests could have caught in
-  milliseconds and instead cost a ten-minute cloud cycle to notice.
+  milliseconds and instead cost several ten-minute cloud cycles to notice.
 
   This asserts on what was asked of the provider, which is the part that
   matters and the part no recording can be wrong about.
@@ -26,6 +26,42 @@ defmodule CodeMySpec.Provisioning.EnvironmentServersTest do
     {:ok, scope: scope}
   end
 
+  test "asks for one server per environment, named for it", ctx do
+    record_requests(self(), :always_available)
+
+    Steps.run(:server, ctx.scope, [])
+
+    names = collect_names([])
+
+    # `prod` and `uat` are the rows a project starts with. Two servers, two
+    # names — the drill asked only for `-prod`, so the environment it was
+    # meant to deploy simply did not exist.
+    assert length(names) == 2, "expected one server per environment, got #{inspect(names)}"
+
+    assert Enum.any?(names, &String.ends_with?(&1, "-prod"))
+    assert Enum.any?(names, &String.ends_with?(&1, "-uat"))
+
+    assert names == Enum.uniq(names),
+           "the same box was requested twice — one environment has no server at all"
+  end
+
+  test "still asks for every environment when the first choice is sold out", ctx do
+    # What the real API does on every single create: 412 `error during
+    # placement` for the arm type, then 201 for the x86 fallback. The
+    # always-available stub above passes without exercising that path, and the
+    # path is where the drill lost UAT — so the sold-out answer is the test.
+    record_requests(self(), :first_attempt_sold_out)
+
+    Steps.run(:server, ctx.scope, [])
+
+    names = collect_names([]) |> Enum.uniq()
+
+    assert Enum.any?(names, &String.ends_with?(&1, "-uat")),
+           "asked for #{inspect(names)} — the capacity fallback dropped an environment"
+
+    assert length(names) == 2, "expected both environments, got #{inspect(names)}"
+  end
+
   # Answers every Hetzner call plausibly and reports what was asked for. The
   # step will not finish — it goes on to reach boxes over SSH — but every
   # server it wanted has been requested by then, which is what this is about.
@@ -34,11 +70,13 @@ defmodule CodeMySpec.Provisioning.EnvironmentServersTest do
   # test is a test reacting to state it should control, and the framework's own
   # credo check rejects it. This is a router, and a router reads better as
   # clauses anyway.
-  defp record_requests(owner) do
+  defp record_requests(owner, capacity) do
+    {:ok, state} = Agent.start_link(fn -> %{created: [], refused: MapSet.new()} end)
+
     plug = fn conn ->
       {:ok, body, conn} = Plug.Conn.read_body(conn)
 
-      reply(conn, conn.method, conn.request_path, decode(body), owner)
+      reply(conn, conn.method, conn.request_path, decode(body), {owner, state, capacity})
     end
 
     Application.put_env(:code_my_spec, Hetzner, api_token: "test-token", plug: plug)
@@ -47,55 +85,65 @@ defmodule CodeMySpec.Provisioning.EnvironmentServersTest do
   defp decode(""), do: %{}
   defp decode(body), do: Jason.decode!(body)
 
-  defp reply(conn, "POST", "/v1/servers", payload, owner) do
-    send(owner, {:creating, payload["name"]})
+  defp reply(conn, "POST", "/v1/servers", payload, {owner, state, capacity}) do
+    name = payload["name"]
+    send(owner, {:creating, name})
 
-    json(conn, %{
-      "server" => %{"id" => 1, "name" => payload["name"], "location" => %{"name" => "fsn1"}}
-    })
+    refused? = Agent.get(state, &MapSet.member?(&1.refused, name))
+
+    create(conn, name, state, sold_out?(capacity, refused?))
   end
 
-  defp reply(conn, "GET", "/v1/servers", _payload, _owner), do: json(conn, %{"servers" => []})
-  defp reply(conn, "GET", "/v1/firewalls", _payload, _owner), do: json(conn, %{"firewalls" => []})
-  defp reply(conn, "GET", "/v1/ssh_keys", _payload, _owner), do: json(conn, %{"ssh_keys" => []})
-  defp reply(conn, "GET", "/v1/networks", _payload, _owner), do: json(conn, %{"networks" => []})
+  # The list the provider would return, which grows as boxes are made — a
+  # stub that always answers `[]` would let a broken loop create the same
+  # server twice and still look right.
+  defp reply(conn, "GET", "/v1/servers", _payload, {_owner, state, _capacity}) do
+    json(conn, %{"servers" => Agent.get(state, & &1.created)})
+  end
 
-  defp reply(conn, "POST", "/v1/firewalls", payload, _owner) do
+  defp reply(conn, "GET", "/v1/firewalls", _payload, _ctx), do: json(conn, %{"firewalls" => []})
+  defp reply(conn, "GET", "/v1/ssh_keys", _payload, _ctx), do: json(conn, %{"ssh_keys" => []})
+  defp reply(conn, "GET", "/v1/networks", _payload, _ctx), do: json(conn, %{"networks" => []})
+
+  defp reply(conn, "POST", "/v1/firewalls", payload, _ctx) do
     json(conn, %{"firewall" => %{"id" => 2, "name" => payload["name"], "rules" => []}})
   end
 
-  defp reply(conn, "POST", "/v1/ssh_keys", _payload, _owner) do
+  defp reply(conn, "POST", "/v1/ssh_keys", _payload, _ctx) do
     json(conn, %{"ssh_key" => %{"id" => 3, "fingerprint" => "aa:bb"}})
   end
 
-  defp reply(conn, _method, _path, payload, _owner) do
+  defp reply(conn, _method, _path, payload, _ctx) do
     json(conn, %{"network" => %{"id" => 4, "name" => payload["name"]}})
+  end
+
+  # Sold out only on a name's first attempt, exactly like the real API's
+  # arm-then-x86 sequence.
+  defp sold_out?(:first_attempt_sold_out, false), do: true
+  defp sold_out?(_capacity, _refused?), do: false
+
+  defp create(conn, name, state, true) do
+    Agent.update(state, &%{&1 | refused: MapSet.put(&1.refused, name)})
+
+    conn
+    |> Plug.Conn.put_resp_content_type("application/json")
+    |> Plug.Conn.send_resp(
+      412,
+      Jason.encode!(%{"error" => %{"code" => "resource_unavailable", "message" => "error during placement"}})
+    )
+  end
+
+  defp create(conn, name, state, false) do
+    server = %{"id" => :erlang.phash2(name), "name" => name, "location" => %{"name" => "fsn1"}}
+    Agent.update(state, &%{&1 | created: [server | &1.created]})
+
+    json(conn, %{"server" => server})
   end
 
   defp json(conn, body) do
     conn
     |> Plug.Conn.put_resp_content_type("application/json")
     |> Plug.Conn.send_resp(201, Jason.encode!(body))
-  end
-
-  test "asks for one server per environment, named for it", ctx do
-    record_requests(self())
-
-    Steps.run(:server, ctx.scope, [])
-
-    names = collect_names([])
-
-    # `prod` and `uat` are the rows a project starts with. Two servers, two
-    # names — the drill asked for `-prod` twice and never for `-uat`, so the
-    # environment it was meant to deploy simply did not exist.
-    assert length(names) == 2,
-           "expected one server per environment, got #{inspect(names)}"
-
-    assert Enum.any?(names, &String.ends_with?(&1, "-prod"))
-    assert Enum.any?(names, &String.ends_with?(&1, "-uat"))
-
-    assert names == Enum.uniq(names),
-           "the same box was requested twice — one environment has no server at all"
   end
 
   defp collect_names(acc) do

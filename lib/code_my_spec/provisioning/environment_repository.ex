@@ -128,21 +128,48 @@ defmodule CodeMySpec.Provisioning.EnvironmentRepository do
     )
   end
 
+  # All of the initial rows or none of them, and never a duplicate.
+  #
+  # This inserted one row at a time and returned what it had inserted, so two
+  # things seeding at once — the provisioning page verifying while the server
+  # step runs — could have one of them observe a half-seeded project and get a
+  # single environment back. The server step then created a box for production
+  # and never asked for UAT, while every read before and after it saw both;
+  # the deploy failed with "the provider has no such server" and the step that
+  # skipped it reported done.
+  #
+  # In one transaction, so no reader sees half. `on_conflict: :nothing` against
+  # the `(project_id, name)` index, so a loser inserts nothing rather than
+  # raising. Reading back afterwards rather than returning the inserts is what
+  # makes the loser correct: it returns the full set either way.
   defp seed(%Scope{active_project: %{id: project_id} = project}) do
     domain = Map.get(project, :domain)
 
-    for %{name: name, prefix: prefix} <- @initial do
-      {:ok, environment} =
-        %Environment{}
-        |> Environment.changeset(%{
+    # Microsecond precision because the schema declares `:utc_datetime_usec`,
+    # and `insert_all` dumps through the schema type rather than the column.
+    now = DateTime.utc_now()
+
+    rows =
+      for %{name: name, prefix: prefix} <- @initial do
+        %{
+          id: Ecto.UUID.generate(),
           name: name,
           project_id: project_id,
-          host: seed_host(prefix, domain)
-        })
-        |> Repo.insert()
+          host: seed_host(prefix, domain),
+          inserted_at: now,
+          updated_at: now
+        }
+      end
 
-      environment
-    end
+    {:ok, _} =
+      Repo.transaction(fn ->
+        Repo.insert_all(Environment, rows,
+          on_conflict: :nothing,
+          conflict_target: [:project_id, :name]
+        )
+      end)
+
+    all(project_id)
   end
 
   defp seed_host(_prefix, domain) when domain in [nil, ""], do: nil

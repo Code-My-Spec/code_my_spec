@@ -2194,11 +2194,21 @@ defmodule CodeMySpec.Provisioning.Steps do
   # step and the deploy step have somewhere to look. A failure part-way keeps
   # what was already made in the error tuple — the recorder stores it, so a
   # re-run converges instead of stranding a box nothing remembers.
+  # Read the environments once and thread that list through everything after
+  # it, rather than each part asking again.
+  #
+  # A drill created a `-prod` box and never asked for `-uat`, while the verify
+  # pass moments earlier and the check moments later both saw two environments
+  # — the same read, three times, disagreeing. Which read was wrong barely
+  # matters: a step that fans out over a list and then checks its work against
+  # a *different* list can report a gap that is really a disagreement, or miss
+  # one that is real. One read cannot disagree with itself.
   defp ensure_environment_servers(scope, opts, made) do
-    scope
-    |> EnvironmentRepository.list()
+    environments = EnvironmentRepository.list(scope)
+
+    environments
     |> Enum.reduce_while({:ok, made}, &ensure_environment_server(&1, &2, scope, opts))
-    |> join_baseline_network(scope, opts)
+    |> join_baseline_network(scope, opts, environments)
   end
 
   # The private network the registry answers on, and the app's boxes reach it
@@ -2210,15 +2220,15 @@ defmodule CodeMySpec.Provisioning.Steps do
   # known until it exists: `create_server/3` falls back to the other
   # architecture when Hetzner has no capacity, and that fallback changes the
   # location — and therefore the zone the subnet has to be in.
-  defp join_baseline_network({:ok, made}, scope, opts) do
+  defp join_baseline_network({:ok, made}, scope, opts, environments) do
     name = server_name(scope, opts)
-    servers = environment_servers(scope, opts)
+    servers = environment_servers(scope, opts, environments)
 
     with {:ok, [%{"location" => %{"name" => location}} | _] = servers} <- servers,
          {:ok, network} <-
            Hetzner.ensure_network(scope, name, network_zone: Hetzner.network_zone(location)),
          :ok <- attach_all(scope, servers, network),
-         {:ok, registries} <- serve_registries(scope, servers, network, opts) do
+         {:ok, registries} <- serve_registries(scope, servers, network, opts, environments) do
       {:ok, registries ++ [network_resource(name, network) | made]}
     else
       {:ok, []} -> {:ok, made}
@@ -2226,7 +2236,7 @@ defmodule CodeMySpec.Provisioning.Steps do
     end
   end
 
-  defp join_baseline_network(other, _scope, _opts), do: other
+  defp join_baseline_network(other, _scope, _opts, _environments), do: other
 
   # One registry per environment, on that environment's own box.
   #
@@ -2243,17 +2253,17 @@ defmodule CodeMySpec.Provisioning.Steps do
   # not match — and when they did this failed with a bare `not found`, naming
   # neither the environment nor the server it wanted. Iterating what was
   # actually found cannot disagree with itself.
-  defp serve_registries(scope, servers, network, opts) do
+  defp serve_registries(scope, servers, network, opts, environments) do
     Enum.reduce_while(servers, {:ok, []}, fn server, {:ok, acc} ->
-      case serve_one_registry(scope, server, network, opts) do
+      case serve_one_registry(scope, server, network, opts, environments) do
         {:ok, resources} -> {:cont, {:ok, resources ++ acc}}
         {:error, reason} -> {:halt, {:error, reason}}
       end
     end)
   end
 
-  defp serve_one_registry(scope, server, network, opts) do
-    environment = environment_of(scope, server, opts)
+  defp serve_one_registry(scope, server, network, opts, environments) do
+    environment = environment_of(scope, server, opts, environments)
 
     with {:ok, server} <- Hetzner.find_server(scope, server["name"]),
          {:ok, ip} <- Hetzner.private_ip(server, network["id"]),
@@ -2317,10 +2327,8 @@ defmodule CodeMySpec.Provisioning.Steps do
   # Which environment a box belongs to, from the name the server step gave it.
   # The alternative is passing the environment alongside every server and
   # keeping the two in step, which is the thing that just went wrong.
-  defp environment_of(scope, server, opts) do
-    scope
-    |> EnvironmentRepository.list()
-    |> Enum.find_value("uat", fn environment ->
+  defp environment_of(scope, server, opts, environments) do
+    Enum.find_value(environments, "uat", fn environment ->
       environment.name == nil ||
         (server_name(scope, opts, environment.name) == server["name"] && environment.name)
     end)
@@ -2333,11 +2341,9 @@ defmodule CodeMySpec.Provisioning.Steps do
   # other — and the deploy then failed with "the provider has no such server",
   # which names the symptom two steps after the cause. A baseline that is
   # missing half of itself must say so where it happens.
-  defp environment_servers(scope, opts) do
+  defp environment_servers(scope, opts, environments) do
     found =
-      scope
-      |> EnvironmentRepository.list()
-      |> Enum.map(fn environment ->
+      Enum.map(environments, fn environment ->
         name = server_name(scope, opts, environment.name)
 
         case Hetzner.find_server(scope, name) do
