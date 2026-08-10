@@ -320,11 +320,22 @@ defmodule CodeMySpec.StaticAnalysis.Pipeline do
     )
   end
 
-  # Project-wide credo when its mode is :block_all — `nil` tells the
-  # credo analyzer to omit file-path args so `mix credo` scans every
-  # file under the configured paths. All other static analyzers stay
-  # scoped to changed files.
-  defp files_for_analyzer(:credo, _file_paths, %{credo: :block_all}), do: nil
+  # Project-wide credo, whatever its mode. `nil` tells the credo analyzer to
+  # omit file-path args so `mix credo` scans every file under the configured
+  # paths. All other static analyzers stay scoped to changed files.
+  #
+  # This used to key on `%{credo: :block_all}`, which was the older policy:
+  # the mode decided what credo *looked at*. It decides what credo *blocks on*
+  # now — `Validation.request_for/3` says so, and `apply_mode/4` does the
+  # scoping at decision time instead. Under `:block_changed` a violation
+  # outside the turn's files is meant to be found and recorded as advisory,
+  # which cannot happen if the scan never reaches it.
+  #
+  # The stop hook does not arrive here for credo — `run_pipeline/5` routes it
+  # to the subprocess set first — so this is a contradiction nobody was
+  # executing. Left in place rather than deleted because a caller that does
+  # reach it should get the current policy, not the one from two changes ago.
+  defp files_for_analyzer(:credo, _file_paths, _config), do: nil
   defp files_for_analyzer(_atom, file_paths, _config), do: file_paths
 
   defp run_validators(_scope, [], _files), do: []

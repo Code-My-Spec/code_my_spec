@@ -176,9 +176,20 @@ defmodule CodeMySpec.Validation do
   # With a task, the same answer the local path gives: every File row whose
   # mtime moved since the task started. mtime comes off the harness's manifest,
   # so this needs no disk.
-  defp remote_changed_files(scope, %{started_at: started_at}, _opts)
+  #
+  # Narrowed by attribution for the same reason the local path is, and it was
+  # not: mtime cannot tell "the agent wrote this" from "git wrote this", and a
+  # rebase rewrites mtimes on everything it touches. The window is
+  # `started_at`, so the longer a task stays open the more of the repo it
+  # swallows — a task blocked upstream for days collects the lot.
+  #
+  # `cwd` is nil here by construction: this path exists precisely because the
+  # disk is on the other end of a channel. The harness sends its edit paths
+  # project-relative, so `relativize/2` has nothing to strip and passes them
+  # through.
+  defp remote_changed_files(scope, %{started_at: started_at} = task, opts)
        when not is_nil(started_at) do
-    Files.changed_since(scope, started_at)
+    changed_files_for_task(scope, task, opts)
   end
 
   # Without a task, the local path uses the paths its own scan found dirty.
@@ -202,6 +213,16 @@ defmodule CodeMySpec.Validation do
     end
   end
 
+  @doc false
+  # Public only so the property that matters can be asserted directly: mtime
+  # moves, git state does not, and the blocking set follows what the session
+  # recorded rather than the clock. Same reasoning as `blocking_key/1`.
+  def changed_files_for_task(scope, %{started_at: started_at}, opts) do
+    scope
+    |> Files.changed_since(started_at)
+    |> filter_by_session_attribution(nil, opts)
+  end
+
   # When a session is in play, narrow the changed-file set to files this
   # session+agent actually wrote (via PostToolUse). The mtime-based
   # `Files.changed_since` view picks up every dirty file on disk; without
@@ -222,18 +243,52 @@ defmodule CodeMySpec.Validation do
           |> Enum.map(&relativize(&1, cwd))
           |> MapSet.new()
 
-        # An empty attribution set means "this session has not edited
-        # anything via PostToolUse yet" — preserve mtime semantics so we
-        # don't accidentally suppress blocking problems on a session that
-        # simply hasn't fired a tracked edit yet (e.g. direct evaluators
-        # that don't go through Claude's Write/Edit pipeline).
-        case MapSet.size(attributed) do
-          0 -> files
-          _ -> Enum.filter(files, &MapSet.member?(attributed, &1.path))
-        end
+        narrow_to_attributed(files, attributed, session_id)
 
       _ ->
         files
+    end
+  end
+
+  # A session that recorded no edits wrote nothing, and the honest changed-file
+  # set for that is empty.
+  #
+  # This returned `files` — every mtime-dirty file — on the reasoning that a
+  # direct evaluator bypassing Write/Edit should not have its problems
+  # suppressed. The cost of that reading is what it does when attribution goes
+  # empty for a reason that is not "nothing was written": a session restart, or
+  # a recorded path shape that does not match `Files.path`. Then the one filter
+  # that narrows the set instead removes itself, and a stop blocks on every
+  # dirty file in the tree.
+  #
+  # That happened. `git rebase` rewrites mtimes on everything it touches, so a
+  # session that rebased onto a busy main inherited 232 mtime-dirty files, and
+  # the hook blocked five times running on 49 credo violations in spex belonging
+  # to three other stories. The only compliant response was to edit code the
+  # agent did not own, which is a gate that cannot be satisfied honestly.
+  #
+  # Failing closed inverts the risk into the recoverable direction: a missed
+  # violation is caught by the next analysis run and stays on the Problems page,
+  # while a repo-wide block teaches everyone to route around the gate. Loudly,
+  # because "the agent wrote nothing" and "attribution is broken" are different
+  # and only the log can tell them apart.
+  defp narrow_to_attributed(files, attributed, session_id) do
+    case {MapSet.size(attributed), length(files)} do
+      {0, 0} ->
+        []
+
+      {0, dirty} ->
+        Logger.warning(
+          "[Validation] session #{session_id} recorded no edits, but #{dirty} file(s) " <>
+            "look changed. Treating the turn as having written nothing rather than " <>
+            "blocking on all of them — if the agent did edit files, PostToolUse " <>
+            "attribution is not reaching this project's File paths."
+        )
+
+        []
+
+      _ ->
+        Enum.filter(files, &MapSet.member?(attributed, &1.path))
     end
   end
 

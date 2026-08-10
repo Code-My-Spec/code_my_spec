@@ -79,7 +79,6 @@ defmodule CodeMySpecSpex.Story842.Criterion1976Spex do
           |> Plug.Conn.put_req_header("content-type", "application/json")
           |> post("/api/agent-tasks/start", %{
             "session_type" => @release_type,
-            "external_id" => "spex-#{System.unique_integer([:positive])}",
             "external_id" => "spex-#{System.unique_integer([:positive])}"
           })
           |> Phoenix.ConnTest.json_response(200)
