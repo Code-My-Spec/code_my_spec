@@ -525,7 +525,10 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   # Kept because it is strictly less work for the same result, not because it
   # fixed anything.
   defp component_tree_edges(ctx, config) do
-    ctx = Map.put(ctx, :children_by_parent, children_by_parent(ctx))
+    ctx =
+      ctx
+      |> Map.put(:children_by_parent, children_by_parent(ctx))
+      |> Map.put(:first_def_by_type, first_def_by_type(ctx, config))
 
     {edges, timing} =
       ctx.stories
@@ -631,7 +634,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   end
 
   defp kickoff_edge(comp, story, config, ctx) do
-    case first_filtered_def(comp.type, config) do
+    case first_def_for(comp.type, config, ctx) do
       nil ->
         []
 
@@ -735,6 +738,31 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     |> case do
       nil -> nil
       def -> def.name
+    end
+  end
+
+  # `first_filtered_def/2` keyed by type, computed once per graph.
+  #
+  # It is a pure function of `(type, config)` — a registry lookup and four
+  # config filters — and there are about a dozen component types. It was being
+  # evaluated once per kickoff component: 17,758 times on this project, for a
+  # dozen distinct answers.
+  #
+  # Measured, not guessed: the four-way split put 614ms of a 1,030ms edge phase
+  # inside `kickoff_edge/4`, at ~35µs a call, which is far too slow for building
+  # two-field maps. `direct_children/2` was already a map lookup, leaving this as
+  # the only per-call work that scaled with anything.
+  defp first_def_by_type(ctx, config) do
+    ctx.components
+    |> Enum.map(& &1.type)
+    |> Enum.uniq()
+    |> Map.new(&{&1, first_filtered_def(&1, config)})
+  end
+
+  defp first_def_for(type, config, ctx) do
+    case ctx[:first_def_by_type] do
+      nil -> first_filtered_def(type, config)
+      by_type -> Map.get_lazy(by_type, type, fn -> first_filtered_def(type, config) end)
     end
   end
 
