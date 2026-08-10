@@ -637,9 +637,11 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
         {expand_us, kickoff_components} =
           :timer.tc(fn -> expand_with_parent_chain_descendants(closure, ctx) end)
 
+        kickoff_ids = MapSet.new(kickoff_components, & &1.id)
+
         {kickoff_us, kickoff_edges} =
           :timer.tc(fn ->
-            Enum.flat_map(kickoff_components, &kickoff_edge(&1, story, config, ctx))
+            Enum.flat_map(kickoff_components, &kickoff_edge(&1, story, config, ctx, kickoff_ids))
           end)
 
         {exit_us, exit_edges} =
@@ -688,7 +690,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     end
   end
 
-  defp kickoff_edge(comp, story, config, ctx) do
+  defp kickoff_edge(comp, story, config, ctx, kickoff_ids) do
     case first_def_for(comp.type, config, ctx) do
       nil ->
         []
@@ -697,6 +699,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
         comp
         |> direct_children(ctx)
         |> Enum.filter(&child_supports_def_name?(&1, name))
+        |> Enum.reject(&emits_for_itself?(&1, name, config, ctx, kickoff_ids))
         |> Enum.map(fn child ->
           %{
             from: {"story", story.id, "bdd_specs_exist"},
@@ -712,6 +715,31 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
           }
         ]
     end
+  end
+
+  # A child that is itself in the kickoff closure and lands on its own node
+  # emits this exact edge already, so the parent's fan-out to it is the same
+  # edge a second time.
+  #
+  # That is every duplicate the component tree produced: 13,433 of them,
+  # uniformly ×2, none at ×3 or higher. A uniform ×2 is the signature of two
+  # paths reaching one edge once each, which is what this suppresses.
+  #
+  # Both conditions are load-bearing. A child outside the closure is not
+  # emitting anything, and a child whose own first def is `:child`-scoped fans
+  # out to *its* children instead of landing on itself — in either case the
+  # parent's edge is the only one and dropping it would lose it.
+  #
+  # Nothing about the graph changes: the duplicates were exact repeats and
+  # `Enum.uniq/1` already removed them before the transitive reduction. This
+  # stops building what was being thrown away.
+  defp emits_for_itself?(child, name, config, ctx, kickoff_ids) do
+    MapSet.member?(kickoff_ids, child.id) and
+      case first_def_for(child.type, config, ctx) do
+        %{node_scope: :child} -> false
+        %{name: ^name} -> true
+        _ -> false
+      end
   end
 
   defp child_supports_def_name?(child, name) do

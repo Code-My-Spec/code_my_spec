@@ -118,6 +118,26 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
     end
   end
 
+  defp check(%{check_type: :delegate, config: config}, scope, entity, _files, ctx) do
+    module = config[:module] || config["module"]
+    function = config[:function] || config["function"] || :check
+
+    if is_nil(module) do
+      {false, %{reason: "delegate check missing :module in config"}}
+    else
+      run_delegate(module, function, scope, entity, ctx)
+    end
+  end
+
+  # Fallback for definitions without check_type (legacy or unknown)
+  defp check(%{check_type: nil, name: name}, _scope, _entity, _files, _ctx) do
+    {false, %{reason: "No check_type defined for requirement: #{name}"}}
+  end
+
+  defp check(%{check_type: check_type}, _scope, _entity, _files, _ctx) do
+    {false, %{reason: "Unknown check_type: #{check_type}"}}
+  end
+
   # Stale analysis is asymmetric: serve the findings, refuse the clean.
   #
   # A stale count above zero is a real finding that was true of recent code, so
@@ -156,26 +176,6 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
            stale: true
          }}
     end
-  end
-
-  defp check(%{check_type: :delegate, config: config}, scope, entity, _files, ctx) do
-    module = config[:module] || config["module"]
-    function = config[:function] || config["function"] || :check
-
-    if is_nil(module) do
-      {false, %{reason: "delegate check missing :module in config"}}
-    else
-      run_delegate(module, function, scope, entity, ctx)
-    end
-  end
-
-  # Fallback for definitions without check_type (legacy or unknown)
-  defp check(%{check_type: nil, name: name}, _scope, _entity, _files, _ctx) do
-    {false, %{reason: "No check_type defined for requirement: #{name}"}}
-  end
-
-  defp check(%{check_type: check_type}, _scope, _entity, _files, _ctx) do
-    {false, %{reason: "Unknown check_type: #{check_type}"}}
   end
 
   # Checkers that export an arity-3 clause are handed the preloaded context;
