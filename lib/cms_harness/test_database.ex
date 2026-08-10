@@ -151,12 +151,43 @@ defmodule CmsHarness.TestDatabase do
   end
 
   defp do_reset(environment, partition, build_env) do
-    case run_mix(environment, partition, ["run", "--no-compile", "-e", truncate_script()], build_env) do
-      :ok ->
-        :ok
+    args = ["run", "--no-compile", "-e", truncate_script()]
+
+    case run_mix_capturing(environment, partition, args, build_env) do
+      {:ok, output} ->
+        report_rows_removed(output, partition)
 
       {:error, reason} ->
         Logger.info("[CmsHarness] could not empty the analyzer database (#{reason})")
+        :ok
+    end
+  end
+
+  # A silent repair that runs every sweep is how a defect stops being visible.
+  #
+  # This only ever logged failures, so a database that started clean and ended
+  # dirty left no trace: three sweeps in a row read as "no rows were written"
+  # and as "rows were written and quietly removed" identically, and the second
+  # is the one worth knowing about. Rows here mean something escaped the ExUnit
+  # sandbox and committed, which is a defect wherever it happens — not routine
+  # tidying.
+  #
+  # Quiet in the normal case: nothing removed, nothing said.
+  defp report_rows_removed(output, partition) do
+    case Regex.run(~r/cms_reset_rows=(\d+)/, to_string(output)) do
+      [_, "0"] ->
+        :ok
+
+      [_, count] ->
+        Logger.warning(
+          "[CmsHarness] removed #{count} committed row(s) from the analyzer database " <>
+            "#{partition} before this run. Rows here escaped the ExUnit sandbox — the " <>
+            "suite that wrote them has a process writing outside its test transaction."
+        )
+
+        :ok
+
+      nil ->
         :ok
     end
   end
@@ -178,7 +209,20 @@ defmodule CmsHarness.TestDatabase do
           []
         )
 
-      case Enum.map(rows, fn [t] -> ~s("#{t}") end) do
+      names = Enum.map(rows, fn [t] -> ~s("#{t}") end)
+
+      # Counted before truncating, so the log can say whether anything was
+      # actually there. A sum across tables is enough to answer "did something
+      # commit"; which table it was is a question for the next run's detail.
+      total =
+        Enum.reduce(names, 0, fn name, acc ->
+          {:ok, %{rows: [[n]]}} = Ecto.Adapters.SQL.query(repo, "SELECT count(*) FROM " <> name, [])
+          acc + n
+        end)
+
+      IO.puts("cms_reset_rows=" <> Integer.to_string(total))
+
+      case names do
         [] -> :ok
         names -> Ecto.Adapters.SQL.query!(repo, "TRUNCATE " <> Enum.join(names, ", ") <> " RESTART IDENTITY CASCADE", [])
       end
@@ -262,6 +306,15 @@ defmodule CmsHarness.TestDatabase do
   end
 
   defp run_mix(environment, partition, args, extra) do
+    case run_mix_capturing(environment, partition, args, extra) do
+      {:ok, _output} -> :ok
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  # Same invocation, but hands back stdout — the reset reads a row count out of
+  # it, and `ecto.create`/`ecto.migrate` have nothing to say on success.
+  defp run_mix_capturing(environment, partition, args, extra) do
     cmd_env =
       [
         {"MIX_ENV", "test"},
@@ -269,7 +322,7 @@ defmodule CmsHarness.TestDatabase do
       ] ++ extra ++ Environments.clean_otp_env()
 
     case Environments.cmd(environment, "mix", args, stderr_to_stdout: true, env: cmd_env) do
-      {_output, 0} -> :ok
+      {output, 0} -> {:ok, output}
       {output, status} -> {:error, "mix #{hd(args)} exited #{status}: #{excerpt(output)}"}
     end
   rescue
