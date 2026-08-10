@@ -182,3 +182,55 @@ release:
     echo "  https://github.com/Code-My-Spec/code_my_spec/actions/workflows/release-extension.yml"
     echo "Marketplace:"
     echo "  https://github.com/Code-My-Spec/plugins"
+
+# Fast-forward the main checkout to origin/main.
+#
+# The dev server on :4000 runs from the main checkout, not from a worktree, so
+# nothing pushed from a worktree is live until that tree pulls. Twice in one
+# session a fix sat inert for an hour because of it, and both times it read as
+# the fix not working rather than the fix not being loaded.
+#
+# Fast-forward only, and refuses a dirty tree. That checkout is where merges get
+# done by hand, so anything else there is someone's work in progress — this is
+# for picking up what is already on origin, never for resolving anything.
+sync-main root="/Users/johndavenport/Documents/github/code_my_spec":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    root="{{root}}"
+
+    if [ ! -d "$root/.git" ]; then
+      echo "not a git checkout: $root" >&2
+      exit 1
+    fi
+
+    branch=$(git -C "$root" rev-parse --abbrev-ref HEAD)
+    if [ "$branch" != "main" ]; then
+      echo "$root is on '$branch', not main — leaving it alone." >&2
+      exit 1
+    fi
+
+    # `--ignore-submodules=all` because `.code_my_spec`'s pointer is chronically
+    # dirty in that checkout and belongs to nobody. A fast-forward of the
+    # superproject does not touch submodule contents, so it is not a reason to
+    # refuse — and without this the recipe never runs at all, which is how a
+    # safety check becomes a thing people work around.
+    if [ -n "$(git -C "$root" status --porcelain --untracked-files=no --ignore-submodules=all)" ]; then
+      echo "$root has uncommitted changes; refusing to touch it:" >&2
+      git -C "$root" status --short --untracked-files=no --ignore-submodules=all >&2
+      exit 1
+    fi
+
+    before=$(git -C "$root" rev-parse --short HEAD)
+    git -C "$root" fetch --quiet origin main
+    git -C "$root" merge --ff-only --quiet FETCH_HEAD
+    after=$(git -C "$root" rev-parse --short HEAD)
+
+    if [ "$before" = "$after" ]; then
+      echo "already current at $after"
+    else
+      echo "$before -> $after"
+      git -C "$root" log --oneline "$before..$after" | sed 's/^/  /'
+      echo
+      echo "Phoenix reloads changed modules on the next request. A new dependency"
+      echo "or a config change still needs the server restarted."
+    fi
