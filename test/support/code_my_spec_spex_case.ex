@@ -1463,7 +1463,7 @@ defmodule CodeMySpecSpex.Case do
   def app_access_token(project), do: Fixtures.app_access_token(project)
 
   @doc """
-  A project whose blog can actually be published.
+  A project whose blog can actually be published, with somewhere to publish to.
 
   `ensure_publishable/1` refuses to start without a content bucket, a client
   API url and a deploy key — sync is trigger-only, so publishing into a project
@@ -1471,9 +1471,35 @@ defmodule CodeMySpecSpex.Case do
   about. A criterion whose premise is "Sam has a post ready" is asserting that
   those exist; without them the publish reports `trigger_failed` and the
   criterion fails on its own setup.
+
+  The bucket has to exist for real while recording, too: publishing signs
+  against the global `:ex_aws` config, which is the user's own AWS account by
+  design, and a PUT to a bucket that was never created answers `NoSuchBucket`.
+  The fixture named a bucket and nothing made one, so a recording session
+  captured that 404 as the story's behaviour.
+
+  Only while recording. On replay the cassette answers, and creating a real
+  bucket per run would be pure cost for a request that never leaves the VM.
   """
-  def publishable_project(scope, project, attrs \\ %{}),
-    do: Fixtures.publishable_project(scope, project, attrs)
+  def publishable_project(scope, project, attrs \\ %{}) do
+    project = Fixtures.publishable_project(scope, project, attrs)
+
+    ensure_content_bucket(recording?(), project.content_bucket)
+
+    project
+  end
+
+  defp ensure_content_bucket(false, _bucket), do: :ok
+
+  defp ensure_content_bucket(true, bucket) do
+    # `put_bucket` answers 409 for a bucket you already own, which is success
+    # here — this runs on every recording and the bucket outlives any one of
+    # them.
+    ExAws.S3.put_bucket(bucket, System.get_env("AWS_REGION", "us-east-1"))
+    |> ExAws.request()
+
+    :ok
+  end
 
   def verified_sending_domains(scope, project, environments \\ ["prod", "uat"], opts \\ []) do
     for environment <- environments do

@@ -126,6 +126,19 @@ defmodule CodeMySpecSpex.Fixtures do
   exist; without them the publish reports `trigger_failed` and the criterion
   fails on its own setup rather than on what it is testing.
   """
+  # One bucket, named the same every run.
+  #
+  # This used to be `spex-content-#{unique_integer}`, and the bucket name goes
+  # into the request URI — so every recording baked in a name that could never
+  # occur again, and the cassette it produced could not match anything on
+  # replay. A per-run name is right for a resource a spex creates and destroys;
+  # it is wrong for one that has to be recognisable in a recording.
+  #
+  # Publishing signs against the global `:ex_aws` config, which is the user's
+  # own AWS account by design (story 712 — the local CLI is the publisher).
+  # This is the bucket a recording session writes to there.
+  @content_bucket "cms-spex-content"
+
   @spec publishable_project(map(), map(), map()) :: map()
   def publishable_project(scope, project, attrs \\ %{}) do
     {:ok, project} =
@@ -134,7 +147,7 @@ defmodule CodeMySpecSpex.Fixtures do
         project,
         Map.merge(
           %{
-            content_bucket: "spex-content-#{System.unique_integer([:positive])}",
+            content_bucket: @content_bucket,
             client_api_url: "https://#{project.domain || "example.com"}/api",
             deploy_key: "dk_spex_#{System.unique_integer([:positive])}"
           },
@@ -144,6 +157,10 @@ defmodule CodeMySpecSpex.Fixtures do
 
     project
   end
+
+  @doc "The bucket `publishable_project/3` points a project at."
+  @spec content_bucket() :: String.t()
+  def content_bucket, do: @content_bucket
 
   @doc """
   An app access token for the project, minted the way the deployed app gets one.
