@@ -159,6 +159,7 @@ config :logger, :default_formatter,
     # can answer by grouping lines rather than by reading them.
     :cms_session,
     :cms_hook,
+    :cms_agent,
     :cms_decision,
     :cms_blocking,
     :cms_why
