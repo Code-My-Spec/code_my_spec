@@ -28,13 +28,21 @@ defmodule CodeMySpec.Requirements.ProjectionTest do
 
   defp round_trip(scope) do
     {nodes, edges} = RequirementGraph.compute_graph(scope)
-    {read_nodes, read_edges} = Projection.load(scope, Preloader.load(scope))
+    {read_nodes, read_edges} = Projection.load(scope, ctx!(scope))
 
     {{nodes, edges}, {read_nodes, read_edges}}
   end
 
   defp keys(nodes),
     do: nodes |> Enum.map(&{&1.entity_type, &1.entity_id, &1.name}) |> MapSet.new()
+
+  # `Preloader.load/1` answers `{:error, :no_working_copy}` for a scope with no
+  # harness, because every checkout files its own row per path and a graph
+  # without one blends them. These scopes all have one.
+  defp ctx!(scope) do
+    {:ok, ctx} = Preloader.load(scope)
+    ctx
+  end
 
   describe "load/2 against a computed graph" do
     test "every computed node comes back", %{scope: scope} do
@@ -223,7 +231,7 @@ defmodule CodeMySpec.Requirements.ProjectionTest do
         satisfied: true
       })
 
-      {read, _edges} = Projection.load(scope, Preloader.load(scope))
+      {read, _edges} = Projection.load(scope, ctx!(scope))
 
       refute Enum.any?(read, &(&1.name == "a_requirement_that_no_longer_exists"))
     end

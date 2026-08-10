@@ -44,9 +44,17 @@ defmodule CodeMySpec.Requirements.Preloader do
 
   @doc """
   Load all data for the project in ~6 queries.
+
+  `{:error, :no_working_copy}` when the scope names no harness. Every checkout
+  reports its own file row per path, so without one this returns every
+  checkout's files blended together — which is what it used to do, and what
+  told an agent in this working copy that 303 components had specs written
+  elsewhere.
   """
-  @spec load(Scope.t()) :: context()
-  def load(%Scope{active_project_id: project_id} = scope) do
+  @spec load(Scope.t()) :: {:ok, context()} | {:error, :no_working_copy}
+  def load(%Scope{active_harness_id: nil}), do: {:error, :no_working_copy}
+
+  def load(%Scope{active_project_id: project_id, active_harness_id: harness_id} = scope) do
     # 1. All components with deps and children preloaded
     components =
       Component
@@ -54,10 +62,32 @@ defmodule CodeMySpec.Requirements.Preloader do
       |> preload([:dependencies, :child_components])
       |> Repo.all()
 
-    # 2. All files grouped by component and story
+    # 2. This working copy's files, grouped by component and story
+    #
+    # Scoped to the harness, and it was not. Every checkout reports its own row
+    # per path, so an unscoped load returned five copies of every file on this
+    # project — ~18,650 rows for a tree of ~4,500 — and `has_role?/3` and
+    # `has_valid_role?/2` answered from whichever the database happened to
+    # return first.
+    #
+    # The cost is not the over-count. 308 `(component, role)` pairs were
+    # satisfied here by files that exist only in *another* checkout, 303 of them
+    # specs — so an agent in this working copy was told 303 components had specs
+    # written, and skipped them. Over-satisfaction is the expensive direction:
+    # work gets skipped rather than repeated, and the gap surfaces later as an
+    # implementation with no spec behind it.
+    #
+    # One file currently disagrees across checkouts — a spec valid in two and
+    # invalid in a third — which made `spec_valid` for that component depend on
+    # row order. That is the same defect, just the loud instance of it.
+    #
+    # `acde83fd` scoped runs and problems and its own comment says it "missed
+    # these two". This is a third site it missed, and it feeds every
+    # `file_exists` and `file_valid` check in the graph.
     all_files =
       File
       |> where([f], f.project_id == ^project_id)
+      |> scope_to_harness(harness_id)
       |> Repo.all()
 
     files_by_component =
@@ -100,25 +130,26 @@ defmodule CodeMySpec.Requirements.Preloader do
 
     story_ids = Enum.map(stories, & &1.id)
 
-    %{
-      files_by_component: files_by_component,
-      files_by_story: files_by_story,
-      files_by_project: all_files,
-      files_by_path: Map.new(all_files, &{&1.path, &1}),
-      problems_by_component: problems_by_component,
-      analysis_fresh: analysis_freshness(scope, all_files),
-      components: components,
-      components_by_id: Map.new(components, &{&1.id, &1}),
-      children_by_parent: Enum.group_by(components, & &1.parent_component_id),
-      stories: stories,
-      rules_by_story: rules_by_story(project_id),
-      questions_by_story: questions_by_story(project_id),
-      criteria_by_story: criteria_by_story(story_ids),
-      personas_by_story: personas_by_story(story_ids),
-      qa_latest_by_story: qa_latest_by_story(story_ids),
-      uat_deploy_by_story: uat_deploy_by_story(project_id),
-      delegated_inputs: delegated_inputs(project_id)
-    }
+    {:ok,
+     %{
+       files_by_component: files_by_component,
+       files_by_story: files_by_story,
+       files_by_project: all_files,
+       files_by_path: Map.new(all_files, &{&1.path, &1}),
+       problems_by_component: problems_by_component,
+       analysis_fresh: analysis_freshness(scope, all_files),
+       components: components,
+       components_by_id: Map.new(components, &{&1.id, &1}),
+       children_by_parent: Enum.group_by(components, & &1.parent_component_id),
+       stories: stories,
+       rules_by_story: rules_by_story(project_id),
+       questions_by_story: questions_by_story(project_id),
+       criteria_by_story: criteria_by_story(story_ids),
+       personas_by_story: personas_by_story(story_ids),
+       qa_latest_by_story: qa_latest_by_story(story_ids),
+       uat_deploy_by_story: uat_deploy_by_story(project_id),
+       delegated_inputs: delegated_inputs(project_id)
+     }}
   end
 
   # Everything the graph's `:delegate` requirements read that nothing else here
@@ -150,6 +181,17 @@ defmodule CodeMySpec.Requirements.Preloader do
   # Four queries here instead. They are four rather than one repeated because
   # the linkage genuinely differs: rules and questions carry `project_id`,
   # criteria carry only `story_id`, and personas hang off a join table.
+  # One clause, and no nil case.
+  #
+  # `ProblemRepository` falls back to the project's default harness when a scope
+  # has none, and that fallback is part of why this took so long to find: it
+  # makes a scope with no working copy look answerable, so nobody notices the
+  # caller that forgot to set one. A requirement graph is a statement about a
+  # checkout, and answering "no checkout" with the default one invents a tree
+  # the caller was not asking about.
+  defp scope_to_harness(query, harness_id),
+    do: where(query, [f], f.harness_id == ^harness_id)
+
   defp rules_by_story(project_id) do
     Rule
     |> where([r], r.project_id == ^project_id and not is_nil(r.story_id))

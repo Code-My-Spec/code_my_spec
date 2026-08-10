@@ -17,7 +17,6 @@ defmodule CodeMySpec.Integration.InitWorkflowTest do
   alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
   alias CodeMySpec.Projects
 
-
   setup do
     :ok = Ecto.Adapters.SQL.Sandbox.checkout(CodeMySpec.Repo)
   end
@@ -55,16 +54,27 @@ defmodule CodeMySpec.Integration.InitWorkflowTest do
     # Step 4: create project in DB with local_path (simulates init_project MCP tool)
     scope = full_scope_fixture()
     {:ok, project} = Projects.update_project(scope, scope.active_project, %{local_path: tmp_dir})
-    _scope = %{scope | active_project: project, environment: Environment.new(:local, tmp_dir)}
+    scope = %{scope | active_project: project, environment: Environment.new(:local, tmp_dir)}
+
+    # From here the frame carries the scope, which is what production does:
+    # `HarnessScope` reads `X-Harness-Id` off the request and assigns
+    # `current_scope`, so a tool that computes a graph knows which checkout it
+    # is answering about.
+    #
+    # The bare frame above resolves through `working_dir` instead, and that path
+    # attaches no harness — `HarnessScope` itself warns that walking up to the
+    # nearest `mix.exs` "cannot tell two checkouts apart reliably". A graph built
+    # that way blends every checkout's files, which is what
+    # `Preloader.load/1` now refuses with `{:error, :no_working_copy}`.
+    graph_frame = %Frame{assigns: %{working_dir: tmp_dir, current_scope: scope}}
 
     # Step 5: get_next_requirement computes the graph directly. Setup used to
     # head this list and no longer does — `cms new` covers it, so a generated
     # project has nothing to do there.
-    {:reply, graph_resp, ^frame} = GetNextRequirement.execute(%{}, frame)
+    {:reply, graph_resp, ^graph_frame} = GetNextRequirement.execute(%{}, graph_frame)
     refute graph_resp.isError
     graph_text = response_text(graph_resp)
     assert graph_text =~ "### PersonaResearch"
     assert graph_text =~ "requirement_name=`personas_complete`"
   end
-
 end

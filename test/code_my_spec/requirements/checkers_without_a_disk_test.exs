@@ -214,13 +214,13 @@ defmodule CodeMySpec.Requirements.CheckersWithoutADiskTest do
 
     test "a preloaded context is used when there is one", %{scope: scope} do
       sync(scope, @decisions, :architecture)
-      ctx = CodeMySpec.Requirements.Preloader.load(scope)
+      {:ok, ctx} = CodeMySpec.Requirements.Preloader.load(scope)
 
       assert %{satisfied: true} = check(scope, ctx)
     end
 
     test "a preloaded context that lacks the file reports it missing", %{scope: scope} do
-      ctx = CodeMySpec.Requirements.Preloader.load(scope)
+      {:ok, ctx} = CodeMySpec.Requirements.Preloader.load(scope)
 
       assert %{satisfied: false, details: %{reason: reason}} = check(scope, ctx)
       assert reason =~ "File missing"

@@ -107,9 +107,14 @@ defmodule CodeMySpec.Requirements.GraphCacheTest do
     end
   end
 
+  defp ctx!(scope) do
+    {:ok, ctx} = Preloader.load(scope)
+    ctx
+  end
+
   defp current_fingerprint(scope) do
     GraphFingerprint.compute(
-      Preloader.load(scope),
+      ctx!(scope),
       Configurations.get_or_create(scope)
     )
   end

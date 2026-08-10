@@ -38,11 +38,12 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
 
   Returns `{nodes, edges}` where edges include cross-entity dependencies.
   """
-  @spec compute_graph(Scope.t()) :: {[Requirement.t()], [edge()]}
+  @spec compute_graph(Scope.t()) :: {[Requirement.t()], [edge()]} | {:error, :no_working_copy}
   def compute_graph(%Scope{} = scope) do
-    ctx = Preloader.load(scope)
-    config = CodeMySpec.Configurations.get_or_create(scope)
-    compute_and_publish(scope, ctx, config)
+    with {:ok, ctx} <- Preloader.load(scope) do
+      config = CodeMySpec.Configurations.get_or_create(scope)
+      compute_and_publish(scope, ctx, config)
+    end
   end
 
   # Publish the computed graph so readers that cannot compute one still have
@@ -183,7 +184,12 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   @spec cached_graph_with_actionable(Scope.t()) ::
           {{[Requirement.t()], [edge()]}, [Requirement.t()], DateTime.t() | nil}
   def cached_graph_with_actionable(%Scope{} = scope) do
-    ctx = Preloader.load(scope)
+    with {:ok, ctx} <- Preloader.load(scope) do
+      cached_graph_with_actionable(scope, ctx)
+    end
+  end
+
+  defp cached_graph_with_actionable(scope, ctx) do
     config = CodeMySpec.Configurations.get_or_create(scope)
 
     {graph, computed_at} =
@@ -238,7 +244,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   @spec compute_graph_with_actionable_metrics(Scope.t()) ::
           {{[Requirement.t()], [edge()], [Requirement.t()]}, %{atom() => integer()}}
   def compute_graph_with_actionable_metrics(%Scope{} = scope) do
-    {us_preload, ctx} = :timer.tc(fn -> Preloader.load(scope) end)
+    {us_preload, {:ok, ctx}} = :timer.tc(fn -> Preloader.load(scope) end)
     {us_config, config} = :timer.tc(fn -> CodeMySpec.Configurations.get_or_create(scope) end)
     {us_nodes, {nodes, ctx}} = :timer.tc(fn -> compute_all_from_ctx(scope, ctx, config) end)
     {us_edges, edges} = :timer.tc(fn -> compute_edges(nodes, ctx, config) end)
@@ -284,12 +290,13 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   @doc """
   Compute all requirement nodes across the project.
   """
-  @spec compute_all(Scope.t()) :: [Requirement.t()]
+  @spec compute_all(Scope.t()) :: [Requirement.t()] | {:error, :no_working_copy}
   def compute_all(%Scope{} = scope) do
-    ctx = Preloader.load(scope)
-    config = CodeMySpec.Configurations.get_or_create(scope)
-    {nodes, _edges} = compute_and_publish(scope, ctx, config)
-    nodes
+    with {:ok, ctx} <- Preloader.load(scope) do
+      config = CodeMySpec.Configurations.get_or_create(scope)
+      {nodes, _edges} = compute_and_publish(scope, ctx, config)
+      nodes
+    end
   end
 
   # Satisfaction is a local property — each node's `satisfied` field is the

@@ -76,9 +76,14 @@ defmodule CodeMySpec.Requirements.BddRulesCheckerContextTest do
     story
   end
 
+  defp ctx!(scope) do
+    {:ok, ctx} = Preloader.load(scope)
+    ctx
+  end
+
   defp both(scope, story) do
     {BddRulesChecker.complete?(scope, story),
-     BddRulesChecker.complete?(scope, story, Preloader.load(scope))}
+     BddRulesChecker.complete?(scope, story, ctx!(scope))}
   end
 
   describe "the preloaded and querying forms agree" do
@@ -150,7 +155,7 @@ defmodule CodeMySpec.Requirements.BddRulesCheckerContextTest do
   # per story, so a stale earlier pass must not be what either path reads.
   describe "Qa.complete_check agrees across both forms" do
     defp both_qa(scope, story) do
-      {Qa.complete_check(scope, story), Qa.complete_check(scope, story, Preloader.load(scope))}
+      {Qa.complete_check(scope, story), Qa.complete_check(scope, story, ctx!(scope))}
     end
 
     test "with no attempt at all", %{scope: scope} do
@@ -194,7 +199,7 @@ defmodule CodeMySpec.Requirements.BddRulesCheckerContextTest do
   # deploy" from "the app answered".
   describe "Deploys.uat_check agrees across both forms" do
     defp both_deploy(scope, story) do
-      {Deploys.uat_check(scope, story), Deploys.uat_check(scope, story, Preloader.load(scope))}
+      {Deploys.uat_check(scope, story), Deploys.uat_check(scope, story, ctx!(scope))}
     end
 
     test "with no deploy", %{scope: scope} do

@@ -44,7 +44,7 @@ defmodule CodeMySpec.Requirements.StaleAnalysisTest do
     do: %{name: "credo_clean", check_type: :no_problems, config: %{"source" => "credo"}}
 
   defp evaluate(scope, definition) do
-    ctx = CodeMySpec.Requirements.Preloader.load(scope)
+    {:ok, ctx} = CodeMySpec.Requirements.Preloader.load(scope)
     result = RequirementCalculator.compute_one(scope, scope.active_project, definition, [], ctx)
     {result.satisfied, result.details}
   end
