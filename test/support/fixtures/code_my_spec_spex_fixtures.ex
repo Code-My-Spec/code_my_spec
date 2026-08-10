@@ -1592,6 +1592,19 @@ defmodule CodeMySpecSpex.Fixtures do
   """
   defdelegate session_fixture(scope, attrs \\ %{}), to: SessionsFixtures
 
+  @doc """
+  Touch a session through the real API, so subscribers hear about it.
+
+  `session_fixture/2` back-dates `inserted_at` with a raw update *after*
+  `create_session` has already broadcast, and a view that hides sessions with
+  no activity yet (`inserted_at == updated_at`) recomputes against the
+  pre-backdate row and drops it. Nothing broadcasts again, so the session never
+  appears. This is the second event a working agent would produce anyway.
+  """
+  @spec touch_session(Scope.t(), Session.t()) :: {:ok, Session.t()} | {:error, term()}
+  def touch_session(%Scope{} = scope, session),
+    do: CodeMySpec.Sessions.update_session(scope, session, %{status: session.status})
+
   # -- Sessions (QA spex fixture setup, Stories 726/727) --
   @doc """
   Creates an active session with a `qa_complete` task linked to the given

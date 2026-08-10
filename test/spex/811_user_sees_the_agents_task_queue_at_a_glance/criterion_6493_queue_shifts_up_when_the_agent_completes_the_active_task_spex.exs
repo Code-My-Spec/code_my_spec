@@ -46,16 +46,23 @@ defmodule CodeMySpecSpex.Story811.Criterion6493Spex do
 
       when_ "the agent satisfies the active task by completing its underlying requirement",
             context do
-        # The natural fresh-project head is `project_setup` — satisfy it
-        # fully via the same fixture the rest of the test suite uses,
-        # so it ACTUALLY clears the requirement.
-        ProjectStateFixtures.apply_project_setup_steps(context)
+        # Satisfy whatever is actually at the head, which is
+        # `personas_complete` — `setup_active_project` already leaves
+        # `project_setup` behind it. Completing a requirement that is not the
+        # head leaves the head where it is, so this asserted nothing.
+        context = ProjectStateFixtures.apply_persona(context)
 
-        # `apply_project_setup_steps` writes files + syncs into the
-        # Files table but doesn't fire the watcher event the LiveView
-        # subscribes to. Synthesize one watcher event so the
-        # `"project:<id>:watcher"` broadcast triggers re-render.
-        {:ok, _} = Fixtures.notify_file_changed(context.scope, "CLAUDE.md")
+        # `apply_persona` writes the two files into the environment but nothing
+        # syncs them, and `PersonasChecker` reads synced `Files` rows — so the
+        # requirement stays unsatisfied until these land. Each call also fires
+        # the `"project:<id>:watcher"` broadcast the LiveView re-renders on,
+        # which is why the file the spec syncs has to be one that matters.
+        for path <- [
+              Fixtures.persona_summary_path(context.persona_slug),
+              Fixtures.persona_sources_path(context.persona_slug)
+            ] do
+          {:ok, _} = Fixtures.notify_file_changed(context.scope, path)
+        end
 
         # PubSub fan-out is async; give the LiveView a beat to process.
         :timer.sleep(50)

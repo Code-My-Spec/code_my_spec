@@ -44,22 +44,34 @@ defmodule CodeMySpecSpex.Story813.Criterion6556Spex do
         now = DateTime.utc_now() |> DateTime.truncate(:second)
         project_id = context.scope.active_project_id
 
-        Fixtures.session_fixture(context.scope, %{
-          type: CodeMySpec.AgentTasks.ArchitectureDesign,
-          status: :active,
-          inserted_at: DateTime.add(now, -60, :second),
-          updated_at: now,
-          tasks: [
-            %{
-              id: context.new_task_id,
-              status: :active,
-              requirement_name: "architecture_designed",
-              session_type: CodeMySpec.AgentTasks.ArchitectureDesign,
-              project_id: project_id,
-              started_at: now
-            }
-          ]
-        })
+        session =
+          Fixtures.session_fixture(context.scope, %{
+            type: CodeMySpec.AgentTasks.ArchitectureDesign,
+            status: :active,
+            inserted_at: DateTime.add(now, -60, :second),
+            updated_at: now,
+            tasks: [
+              %{
+                id: context.new_task_id,
+                status: :active,
+                requirement_name: "architecture_designed",
+                session_type: CodeMySpec.AgentTasks.ArchitectureDesign,
+                project_id: project_id,
+                started_at: now
+              }
+            ]
+          })
+
+        # The view hides sessions whose `inserted_at` equals `updated_at` —
+        # created but nothing done yet. `session_fixture` back-dates
+        # `inserted_at` with a raw update *after* `create_session` has already
+        # broadcast, so the view recomputed while the session still looked
+        # activity-less and no second broadcast followed. Push one through the
+        # real API, which is what an agent doing work would do.
+        {:ok, _} = Fixtures.touch_session(context.scope, session)
+
+        # PubSub fan-out is async; give the LiveView a beat to process.
+        :timer.sleep(50)
 
         {:ok, context}
       end

@@ -41,7 +41,11 @@ defmodule CodeMySpecSpex.Story813.Criterion6545Spex do
         assert has_element?(context.view, "[data-test='requirement-row']"),
                "expected at least one requirement row in the rail"
 
-        assert html =~ "project_setup",
+        # A project-level milestone, as opposed to the `__story_work__` rollup
+        # the rail also carries. Not `project_setup`: that is the wizard's own
+        # step and this rail has never listed it, so the assertion was naming a
+        # row that could not appear rather than testing the rail.
+        assert html =~ "personas_complete",
                "expected a project-level requirement milestone in the rail"
 
         assert html =~ ~r/done|in progress|not started/i,
