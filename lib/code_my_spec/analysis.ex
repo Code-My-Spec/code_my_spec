@@ -401,7 +401,7 @@ defmodule CodeMySpec.Analysis do
   end
 
   @doc "Block until every in-flight run for the project has finished."
-  @spec await_all(Scope.t(), keyword()) :: :ok
+  @spec await_all(Scope.t(), keyword()) :: :ok | :timeout
   def await_all(%Scope{} = scope, opts \\ []) do
     timeout = Keyword.get(opts, :timeout, :timer.minutes(10))
     deadline = System.monotonic_time(:millisecond) + timeout
@@ -812,13 +812,19 @@ defmodule CodeMySpec.Analysis do
     end
   end
 
+  # `:timeout` and `:ok` are different answers and used to be the same one.
+  #
+  # Running out of time returned `:ok`, so "the analyzers finished" and "I gave
+  # up waiting" were indistinguishable to every caller. `await_analysis` then
+  # reported "Analysis complete" over a queue that was still going, which is the
+  # one thing an agent uses that tool to rule out.
   defp poll_until_idle(scope, deadline) do
     cond do
       not runs_in_flight?(scope) ->
         :ok
 
       System.monotonic_time(:millisecond) >= deadline ->
-        :ok
+        :timeout
 
       true ->
         Process.sleep(500)
