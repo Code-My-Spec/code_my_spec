@@ -508,8 +508,11 @@ defmodule CodeMySpec.Requirements.GraphProjector do
   """
   @spec component_graph(Scope.t(), String.t()) :: map()
   def component_graph(%Scope{} = scope, component_id) do
+    # The read model. This is display — it does not need a recompute, and
+    # `cached_graph_with_actionable/1` recomputes on a fingerprint miss anyway,
+    # so it is never stale.
     %{nodes: nodes, edges: edges, actionable: actionable} =
-      Requirements.project_graph_with_actionable(scope)
+      Requirements.cached_graph_with_actionable(scope)
 
     actionable_set = MapSet.new(actionable, &node_key/1)
 
@@ -557,7 +560,7 @@ defmodule CodeMySpec.Requirements.GraphProjector do
   @spec components_graph(Scope.t()) :: map()
   def components_graph(%Scope{} = scope) do
     %{nodes: nodes, actionable: actionable} =
-      Requirements.project_graph_with_actionable(scope)
+      Requirements.cached_graph_with_actionable(scope)
 
     actionable_set =
       MapSet.new(actionable, &node_key/1)
