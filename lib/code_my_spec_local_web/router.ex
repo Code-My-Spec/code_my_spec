@@ -297,9 +297,25 @@ defmodule CodeMySpecLocalWeb.Router do
 
   # ── MCP (Streamable HTTP) ──────────────────────────────────────
 
+  # The same identity resolution the hooks get, and for the same reason.
+  #
+  # This ran `LocalOnly` and `WorkingDir` only, so an MCP tool received a scope
+  # naming a project but no working copy — no `cwd`, no `environment`. Every
+  # tool that writes to disk then refused: `create_component` told agents "this
+  # server has no working copy, so the stub spec was not written" and handed
+  # them the stub to type out by hand, which reads as a limitation of the light
+  # harness rather than a missing plug.
+  #
+  # `HarnessScope` resolves the working copy from the id the checkout wrote down
+  # (`.cms_harness.json`, mirrored on `harnesses.root`), and `WorkingDirScope`
+  # falls back to the request's directory. Both build the scope through
+  # `Scope.for_local_project/2`, which is what attaches the environment — so
+  # either path now yields one, where before neither did.
   pipeline :mcp do
     plug CodeMySpecLocalWeb.Plugs.LocalOnly
+    plug CodeMySpecLocalWeb.Plugs.HarnessScope
     plug CodeMySpecLocalWeb.Plugs.WorkingDir
+    plug CodeMySpecLocalWeb.Plugs.WorkingDirScope
   end
 
   scope "/mcp", CodeMySpecLocalWeb do
