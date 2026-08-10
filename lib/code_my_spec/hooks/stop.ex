@@ -47,6 +47,13 @@ defmodule CodeMySpec.Hooks.Stop do
     validation_opts = extract_test_output_files(params)
 
     req_id = :crypto.strong_rand_bytes(4) |> Base.encode16(case: :lower)
+
+    # Stamped for the whole request, so every line this hook emits carries the
+    # session rather than only the first. Analysing where an agent gets stuck
+    # means grouping stops by session, and a prose line that names it once
+    # cannot be grouped without joining on request id first.
+    Logger.metadata(cms_session: session_id, cms_hook: "stop")
+
     Logger.info("[StopHook] [#{req_id}] session: #{session_id}")
 
     session = session_id && Sessions.get_by_external_id(scope, session_id)
@@ -353,7 +360,11 @@ defmodule CodeMySpec.Hooks.Stop do
   end
 
   defp block_with_reason(reason, req_id) do
-    Logger.info("[StopHook] [#{req_id}] Blocking: #{String.slice(reason, 0, 100)}")
+    Logger.info("[StopHook] [#{req_id}] Blocking: #{String.slice(reason, 0, 100)}",
+      cms_decision: "block",
+      cms_blocking: blocking_summary(reason)
+    )
+
     hint = harness_hint_footer()
     reason_budget = @total_response_cap - byte_size(hint)
     capped_reason = Problems.truncate_to_cap(reason, cap: reason_budget)
@@ -385,10 +396,34 @@ defmodule CodeMySpec.Hooks.Stop do
   end
 
   defp allow(req_id, label) do
-    Logger.info("[StopHook] [#{req_id}] #{label}, allowing stop")
+    Logger.info("[StopHook] [#{req_id}] #{label}, allowing stop",
+      cms_decision: "allow",
+      cms_why: label
+    )
+
     notify_complete()
     %{}
   end
+
+  @doc false
+  # Which sources blocked, and how many problems each contributed, as
+  # `exunit=1,credo=6`.
+  #
+  # Read back out of the reason text rather than threaded down from the
+  # validator: the reason is already built from exactly this, and threading it
+  # through six call sites to avoid one regex would be the more fragile of the
+  # two. The shape it parses is `Validation`'s own header — `source (count):` —
+  # so a change there shows up here as an empty summary rather than a wrong one.
+  #
+  # This is the field that answers the question worth asking about an
+  # onboarding agent: not "did it get blocked" but "on what, repeatedly".
+  def blocking_summary(reason) when is_binary(reason) do
+    ~r/^\s*(\w+) \((\d+)\)/m
+    |> Regex.scan(reason)
+    |> Enum.map_join(",", fn [_, source, count] -> "#{source}=#{count}" end)
+  end
+
+  def blocking_summary(_), do: ""
 
   defp maybe_evaluate(_scope, _session_id, nil), do: {:ok, :valid}
 
