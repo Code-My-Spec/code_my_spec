@@ -415,9 +415,17 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
         end)
       end)
 
-    {reduce_us, reduced} = :timer.tc(fn -> Topology.transitive_reduction(kept) end)
+    # Deduplicate before reducing, not after.
+    #
+    # `NodeRepository.replace_edges/3` already calls `Enum.uniq/1` on these, so
+    # duplicates were known about — they were just being carried through the
+    # expensive step first. A duplicate edge is the same edge: reachability
+    # cannot change, so this is semantics-preserving by construction.
+    {dedup_us, unique} = :timer.tc(fn -> Enum.uniq(kept) end)
 
-    log_edge_timing(generated, kept, reduced, generate_us, filter_us, reduce_us)
+    {reduce_us, reduced} = :timer.tc(fn -> Topology.transitive_reduction(unique) end)
+
+    log_edge_timing(generated, unique, reduced, generate_us, filter_us + dedup_us, reduce_us)
 
     reduced
   end
@@ -440,9 +448,9 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     ms = &round(&1 / 1000)
 
     Logger.info(
-      "[Requirements] edges — #{length(generated)} generated, #{length(kept)} kept, " <>
+      "[Requirements] edges — #{length(generated)} generated, #{length(kept)} unique, " <>
         "#{length(reduced)} after reduction; generate #{ms.(generate_us)}ms, " <>
-        "filter #{ms.(filter_us)}ms, reduce #{ms.(reduce_us)}ms"
+        "filter+dedup #{ms.(filter_us)}ms, reduce #{ms.(reduce_us)}ms"
     )
   end
 
