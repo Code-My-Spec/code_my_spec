@@ -15,7 +15,7 @@ defmodule CodeMySpec.Requirements.NodeRepositoryTest do
 
   import CodeMySpec.UsersFixtures
 
-  alias CodeMySpec.Requirements.{Node, NodeRepository, Requirement}
+  alias CodeMySpec.Requirements.{Edge, Node, NodeRepository, Requirement}
 
   setup do
     %{scope: full_scope_fixture()}
@@ -90,6 +90,91 @@ defmodule CodeMySpec.Requirements.NodeRepositoryTest do
     test "an empty list writes nothing", %{scope: scope} do
       assert NodeRepository.upsert_all(scope, []) == %{}
       assert Repo.aggregate(Node, :count) == 0
+    end
+  end
+
+  # Edges reference node ids, so they can only be written after the nodes are.
+  # These cover the two ways that goes wrong: an edge naming a node this graph
+  # does not contain, and a dependency that was removed still being a row.
+  describe "replace_edges/3" do
+    defp two_nodes(scope) do
+      project_id = scope.active_project_id
+
+      keys =
+        NodeRepository.upsert_all(scope, [
+          node("project", project_id, "stories_exist"),
+          node("project", project_id, "architecture_designed")
+        ])
+
+      {keys, {"project", project_id, "stories_exist"},
+       {"project", project_id, "architecture_designed"}}
+    end
+
+    test "an edge becomes a row pointing at both nodes", %{scope: scope} do
+      {keys, from, to} = two_nodes(scope)
+
+      assert {:ok, 1} = NodeRepository.replace_edges(scope, [%{from: from, to: to}], keys)
+
+      assert [edge] = Repo.all(Edge)
+      assert edge.from_requirement_id == keys[from]
+      assert edge.to_requirement_id == keys[to]
+    end
+
+    test "recomputing the same graph does not churn the table", %{scope: scope} do
+      {keys, from, to} = two_nodes(scope)
+      edges = [%{from: from, to: to}]
+
+      {:ok, _} = NodeRepository.replace_edges(scope, edges, keys)
+      [first] = Repo.all(Edge)
+
+      NodeRepository.replace_edges(scope, edges, keys)
+
+      assert [second] = Repo.all(Edge)
+      assert second.id == first.id, "an unchanged graph should not rewrite its edges"
+    end
+
+    # The reason this is `replace` rather than `insert`: a dependency dropped
+    # from a definition has to stop being a row, or the graph keeps enforcing an
+    # ordering nobody asked for.
+    test "an edge that is no longer in the graph is removed", %{scope: scope} do
+      {keys, from, to} = two_nodes(scope)
+
+      {:ok, 1} = NodeRepository.replace_edges(scope, [%{from: from, to: to}], keys)
+      {:ok, 0} = NodeRepository.replace_edges(scope, [], keys)
+
+      assert Repo.all(Edge) == []
+    end
+
+    # `compute_edges/3` already filters to known nodes, so an unknown endpoint
+    # here means the two passes disagree. Dropping it beats a foreign key error.
+    test "an edge naming a node outside the graph is dropped", %{scope: scope} do
+      {keys, from, _to} = two_nodes(scope)
+      stranger = {"project", scope.active_project_id, "not_a_node_here"}
+
+      assert {:ok, 0} = NodeRepository.replace_edges(scope, [%{from: from, to: stranger}], keys)
+      assert Repo.all(Edge) == []
+    end
+
+    test "a self-edge is refused by the changeset", %{scope: scope} do
+      {keys, from, _to} = two_nodes(scope)
+      id = keys[from]
+
+      changeset =
+        Edge.changeset(%Edge{}, %{from_requirement_id: id, to_requirement_id: id})
+
+      refute changeset.valid?,
+             "a self-edge is a one-node cycle — the node would never become actionable"
+    end
+
+    # The point of the foreign keys. A node going away must not leave an edge
+    # pointing at nothing.
+    test "deleting a node deletes its edges", %{scope: scope} do
+      {keys, from, to} = two_nodes(scope)
+      {:ok, 1} = NodeRepository.replace_edges(scope, [%{from: from, to: to}], keys)
+
+      Repo.delete!(Repo.get!(Node, keys[to]))
+
+      assert Repo.all(Edge) == []
     end
   end
 

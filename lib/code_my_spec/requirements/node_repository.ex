@@ -19,7 +19,7 @@ defmodule CodeMySpec.Requirements.NodeRepository do
   import Ecto.Query
 
   alias CodeMySpec.Repo
-  alias CodeMySpec.Requirements.{Node, Requirement}
+  alias CodeMySpec.Requirements.{Edge, Node, Requirement}
   alias CodeMySpec.Users.Scope
 
   @replace {:replace, [:satisfied, :details, :description, :checked_at, :updated_at]}
@@ -41,6 +41,72 @@ defmodule CodeMySpec.Requirements.NodeRepository do
     end)
 
     ids_by_key(project_id, nodes)
+  end
+
+  @doc """
+  Persist the graph's edges against the node ids `upsert_all/2` returned.
+
+  Takes the key map rather than looking nodes up again: the caller has just paid
+  for it, and an edge whose endpoints are not in it names a node this graph does
+  not contain. Those are dropped rather than inserted — `compute_edges/3` already
+  filters to known nodes, so one here means the two passes disagree, and a
+  foreign key error at 3am is a worse way to find that out than an edge count
+  that does not match.
+
+  Stale edges go: a dependency removed from a definition must stop being a row,
+  and the project's edges are the unit that recomputation replaces.
+  """
+  @spec replace_edges(Scope.t(), [%{from: tuple(), to: tuple()}], %{tuple() => integer()}) ::
+          {:ok, non_neg_integer()}
+  def replace_edges(%Scope{}, edges, ids_by_key) do
+    rows =
+      edges
+      |> Enum.flat_map(fn %{from: from, to: to} ->
+        case {Map.get(ids_by_key, from), Map.get(ids_by_key, to)} do
+          {nil, _} -> []
+          {_, nil} -> []
+          {from_id, to_id} when from_id == to_id -> []
+          {from_id, to_id} -> [%{from_requirement_id: from_id, to_requirement_id: to_id}]
+        end
+      end)
+      |> Enum.uniq()
+
+    node_ids = Map.values(ids_by_key)
+
+    Repo.transaction(fn ->
+      delete_edges_outside(node_ids, rows)
+
+      {count, _} =
+        Repo.insert_all(Edge, stamp(rows),
+          on_conflict: :nothing,
+          conflict_target: [:from_requirement_id, :to_requirement_id]
+        )
+
+      count
+    end)
+  end
+
+  defp stamp(rows) do
+    now = NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
+    Enum.map(rows, &Map.put(&1, :inserted_at, now))
+  end
+
+  # Only edges among *this* graph's nodes are ours to remove. Deleting by
+  # project would take edges belonging to nodes this computation did not
+  # produce, and there is no project column here to do it with anyway.
+  defp delete_edges_outside(node_ids, keep) do
+    keep_pairs = MapSet.new(keep, &{&1.from_requirement_id, &1.to_requirement_id})
+
+    Edge
+    |> where([e], e.from_requirement_id in ^node_ids)
+    |> select([e], {e.id, e.from_requirement_id, e.to_requirement_id})
+    |> Repo.all()
+    |> Enum.reject(fn {_id, from, to} -> MapSet.member?(keep_pairs, {from, to}) end)
+    |> Enum.map(&elem(&1, 0))
+    |> case do
+      [] -> :ok
+      ids -> Repo.delete_all(from(e in Edge, where: e.id in ^ids))
+    end
   end
 
   defp upsert_group(entity_type, nodes, now) do
