@@ -1,0 +1,124 @@
+defmodule CodeMySpec.Requirements.Predicates do
+  @moduledoc """
+  Requirement checks as query fragments.
+
+  `RequirementCalculator` interprets `check_type` + `config` in Elixir against
+  preloaded lists — 4.4 seconds of `Enum` on a 3200-component project, against
+  34ms of preload. The pair is already a predicate name plus its arguments, so
+  it can emit a query instead, and "which requirements are satisfied" becomes a
+  handful of queries over the node table rather than a pass over every node.
+
+  ## Composed against `requirements`, not against a graph
+
+  Every function here narrows a query whose node binding is named `:node`, so
+  they compose:
+
+      Node
+      |> from(as: :node)
+      |> Predicates.satisfied(:file_exists, %{role: :spec})
+
+  That is what makes this different from the interpreter it replaces. The
+  interpreter answers one node at a time and cannot be asked a question about
+  the set; a query can be counted, joined, or restricted to a component without
+  computing anything else.
+
+  ## Agreement is the contract
+
+  These must answer exactly what `RequirementCalculator` answers, or the graph
+  means one thing to a reader and another to the stop hook. The tests assert
+  agreement per component rather than asserting either answer alone, which is
+  the same property the delegate batching is held to.
+
+  ## `file_valid` was a decision, until it wasn't
+
+  This module was written expecting to have to choose. `has_valid_role?/2`
+  reports the validity of the *first* file of a role, and the table said 880
+  components had more than one `implementation` file and 302 more than one
+  `spec` — so any-valid, all-valid and first-found would have disagreed, and
+  which one to encode looked like a question about what `spec_valid` means.
+
+  It was not. Those duplicates were one row per working copy: `Preloader.load/1`
+  loaded every checkout's files, so five harnesses meant five rows per path.
+  Scoped to one, no component on this project has two files of a role — checked
+  across every harness — and the three semantics collapse into the same query.
+
+  Worth keeping because the shape recurs: a decision that dissolves once the
+  data is read correctly is a bug wearing a decision's clothes.
+  """
+
+  import Ecto.Query
+
+  alias CodeMySpec.Files.File
+  alias CodeMySpec.Requirements.Node
+
+  @doc """
+  Narrow `query` to nodes whose entity has at least one file of `config.role`.
+
+  Component-owned and story-owned nodes are both handled, because a node's
+  owner is whichever of `component_id`/`story_id` is set and the file table
+  records the same pair. A project-scoped node has neither and matches no file,
+  which is correct — no `file_exists` definition is project-scoped.
+  """
+  @spec satisfied(Ecto.Query.t(), :file_exists, map()) :: Ecto.Query.t()
+  def satisfied(query, :file_exists, %{role: role}) do
+    where(
+      query,
+      [node: n],
+      exists(
+        from(f in File,
+          where:
+            (f.component_id == parent_as(:node).component_id and not is_nil(f.component_id)) or
+              (f.story_id == parent_as(:node).story_id and not is_nil(f.story_id)),
+          where: f.role == ^role,
+          select: 1
+        )
+      )
+    )
+  end
+
+  @doc """
+  Narrow `query` to nodes whose entity has a file of `config.role` marked valid.
+
+  `has_valid_role?/2` distinguishes three unsatisfied cases — no file, an
+  invalid one, one not yet validated — for the reason it gives the agent. As a
+  predicate they are the same answer, so this is existence plus `valid: true`.
+
+  Deterministic, which it would not have been a commit ago. That function takes
+  the *first* file of a role via `Enum.find/2`, and until `Preloader.load/1` was
+  scoped to a harness it saw one row per checkout — so which file answered
+  depended on row order. With one working copy's files there is exactly one file
+  per `(component, role)`, verified across every harness on this project, and
+  first-found and any-valid are the same question.
+  """
+  @spec satisfied(Ecto.Query.t(), :file_valid, map()) :: Ecto.Query.t()
+  def satisfied(query, :file_valid, %{role: role}) do
+    where(
+      query,
+      [node: n],
+      exists(
+        from(f in File,
+          where:
+            (f.component_id == parent_as(:node).component_id and not is_nil(f.component_id)) or
+              (f.story_id == parent_as(:node).story_id and not is_nil(f.story_id)),
+          where: f.role == ^role and f.valid == true,
+          select: 1
+        )
+      )
+    )
+  end
+
+  @doc """
+  The base query these compose against, with the node binding named.
+
+  `:node` because every fragment here correlates through `parent_as(:node)`. A
+  caller that binds it differently gets a compile error rather than a query that
+  silently correlates against the wrong table.
+
+  Deliberately unscoped. Which nodes belong to a project is the caller's
+  question — `Projection.project_rows/2` already answers it, and duplicating
+  that here would be a second definition of "this project's nodes" to keep in
+  step with the first.
+  """
+  @spec nodes() :: Ecto.Query.t()
+  def nodes, do: from(n in Node, as: :node)
+end
