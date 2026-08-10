@@ -30,7 +30,6 @@ defmodule CodeMySpec.AgentTasks.FixBddSpecs do
   alias CodeMySpec.Stories
   alias CodeMySpec.Utils
 
-
   @doc """
   Read failing spex problems and build a fix prompt.
 
