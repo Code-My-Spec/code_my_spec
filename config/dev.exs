@@ -146,3 +146,8 @@ config :code_my_spec, :cloudflare_tunnel,
 config :code_my_spec, CodeMySpec.Workspaces.PreviewAddress,
   base_domain: "codemyspec.com",
   target: "12a798a4-81a3-4242-8b59-ac171c0a01a1.cfargotunnel.com"
+
+# Previews get a listener of their own because the main endpoint cannot serve
+# them: it claims /live/websocket for its own LiveView socket before any plug
+# runs. See `CodeMySpecWeb.PreviewListener`. Route preview-* here at the edge.
+config :code_my_spec, CodeMySpecWeb.PreviewListener, port: 4010
