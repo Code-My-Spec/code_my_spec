@@ -421,6 +421,7 @@ defmodule CodeMySpec.Provisioning.Steps do
            |> with_host_ip(scope, environment)
            |> with_age_key(scope, environment)
            |> with_registry_credential_for_deploy(scope),
+         :ok <- forget_stale_host_key(deploy_opts),
          result <- Deploy.run(env(scope), environment, deploy_opts) do
       case deploy_outcome(result, environment, host) do
         {:ok, resources} ->
@@ -1599,6 +1600,31 @@ defmodule CodeMySpec.Provisioning.Steps do
 
       _ ->
         opts
+    end
+  end
+
+  # A box we just created has a host key nothing has seen before, and cloud
+  # providers recycle addresses — so an address in `known_hosts` from a
+  # destroyed server is not a warning about anything, it is a stale record of a
+  # machine that no longer exists. kamal's net-ssh reads that file and refuses:
+  #
+  #   ERROR (Net::SSH::HostKeyMismatch): fingerprint SHA256:... does not match
+  #
+  # Our own SSH never saw it, using `UserKnownHostsFile=/dev/null` — which is
+  # why this surfaced only once kamal started connecting.
+  #
+  # Removed rather than disabled. Dropping host key checking for every deploy
+  # would trade a real protection for the convenience of not managing one
+  # entry, and the entry is one this step is entitled to remove: it provisioned
+  # the machine that holds the address.
+  defp forget_stale_host_key(opts) do
+    case Keyword.get(opts, :host_ip) do
+      ip when is_binary(ip) and ip != "" ->
+        System.cmd("ssh-keygen", ["-R", ip], stderr_to_stdout: true)
+        :ok
+
+      _ ->
+        :ok
     end
   end
 

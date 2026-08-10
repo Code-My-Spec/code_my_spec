@@ -198,7 +198,12 @@ defmodule CodeMySpec.Provisioning.Deploy do
           # logs in with it before pulling. The registry is the project's own,
           # on its own private network, and this is its credential.
           {"KAMAL_REGISTRY_USERNAME", Keyword.get(opts, :registry_username)},
-          {"KAMAL_REGISTRY_PASSWORD", Keyword.get(opts, :registry_password)}
+          {"KAMAL_REGISTRY_PASSWORD", Keyword.get(opts, :registry_password)},
+          # kamal's own SSH offers every identity the agent holds otherwise,
+          # and a box with the default `MaxAuthTries 6` disconnects before
+          # reaching the right one — the same failure the builder's SSH had,
+          # and the same fix.
+          {"CMS_SSH_KEY_PATH", Keyword.get(opts, :ssh_key_path)}
         ],
         is_binary(value) and value != "" do
       {name, value}
