@@ -10,7 +10,9 @@ defmodule CodeMySpec.Hooks.Stop do
   outcome: task evaluation is skipped (a repeat "analysis running" must not
   advance the stuck counter) and the "all work complete" terminus never fires
   (freshness-gated requirements would read as unsatisfied mid-run). In
-  continuous mode a pending stop blocks with an `await_analysis` directive;
+  continuous mode a pending stop blocks with a directive to wait on
+  `POST /api/harnesses/<id>/analysis/wait` (HTTP, not MCP — a sweep outlives
+  MCP's 30s request cap, so the tool this replaced could never return);
   otherwise it allows with a one-line system message. Results landing after an
   allowed stop reach the user via push notification and block the next stop.
 
