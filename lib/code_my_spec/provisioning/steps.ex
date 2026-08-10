@@ -40,6 +40,7 @@ defmodule CodeMySpec.Provisioning.Steps do
   alias CodeMySpec.Provisioning.{
     Backups,
     Builder,
+    Builder.Remote,
     Cloudflare,
     ContentPublishing,
     Deploy,
@@ -1129,6 +1130,40 @@ defmodule CodeMySpec.Provisioning.Steps do
   # clauses, and Elixir warns about that — a warning the analyzer treats as
   # reason to skip exunit, credo and spex outright.
 
+  # A bucket is not a registry. `ensure/2` makes the storage; something has to
+  # serve the API in front of it, and until now nothing did — the drill built
+  # an image end to end and then died on
+  #
+  #     Get "http://localhost:5000/v2/": connect: connection refused
+  #
+  # Started on the environment's own box, which is where the deploy pulls from.
+  # Injectable so a criterion about what gets built does not have to buy a
+  # server to say so.
+  defp serve_registry(scope, environment, opts) do
+    case Keyword.get(opts, :serve_registry) do
+      false ->
+        {:ok, :not_served}
+
+      fun when is_function(fun, 3) ->
+        fun.(scope, environment, opts)
+
+      _ ->
+        start_registry(scope, environment, opts)
+    end
+  end
+
+  defp start_registry(scope, environment, opts) do
+    case environment_ip(scope, %{name: environment}, opts) do
+      ip when is_binary(ip) and ip != "" ->
+        Registry.serve(scope, Keyword.put(opts, :run, Remote.ssh_runner(%{"ip" => ip}, opts)))
+
+      _ ->
+        {:error,
+         "the #{environment} environment has no server yet — run the server step first, " <>
+           "since the registry the deploy pulls from runs on it"}
+    end
+  end
+
   # What `Builder.Remote.ssh_runner/2` needs to reach the box it just made:
   # somewhere to run `ssh`, and a private key on disk to run it with.
   #
@@ -1369,6 +1404,7 @@ defmodule CodeMySpec.Provisioning.Steps do
     with {:ok, architecture} <- architecture_for(scope, environment, opts),
          {:ok, opts} <- with_access_key(scope, opts),
          {:ok, _bucket} <- ensure_registry.(scope, opts),
+         {:ok, _registry} <- serve_registry(scope, environment, opts),
          {:ok, tag} <- image_tag(scope, opts),
          # Computed before the build, not after: it is where the image is
          # pushed *to*, so the builder needs it in hand. `Builder.docker_build`

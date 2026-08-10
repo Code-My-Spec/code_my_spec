@@ -240,7 +240,17 @@ defmodule CodeMySpec.Provisioning.Builder.Remote do
   # One SSH invocation per command, which is slower than holding a session open
   # and much easier to reason about: every command is independently visible in
   # a log and independently replaceable in a test.
-  defp ssh_runner(server, opts) do
+  @doc """
+  Run commands on a box over SSH.
+
+  Public because the builder is not the only thing that has to reach a server
+  it just provisioned — the registry has to be started on the app's own box,
+  and that is the same question with a different address. Duplicating the flag
+  set was the alternative, and `IdentitiesOnly` is exactly the kind of thing
+  one copy learns and the other does not.
+  """
+  @spec ssh_runner(map(), keyword()) :: (list() -> {String.t(), non_neg_integer()})
+  def ssh_runner(server, opts) do
     env = Keyword.fetch!(opts, :env)
     args = ssh_args(server, opts)
 
