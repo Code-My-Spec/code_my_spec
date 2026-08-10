@@ -87,7 +87,12 @@ defmodule CodeMySpecSpex.Fixtures do
   alias CodeMySpec.Stories.Story
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.Users.User
+  alias CodeMySpec.Workspaces.PreviewAddress
+  alias CodeMySpec.Workspaces.Workspace
+  alias CodeMySpec.Workspaces.WorkspacesRepository
   alias CodeMySpecTest.FakeWorkspaceRunner
+  alias CodeMySpecTest.LocalPreviewRunner
+  alias CodeMySpecTest.PreviewApp
 
   @doc """
   Register a sending domain and publish everything except its DKIM record.
@@ -1274,6 +1279,50 @@ defmodule CodeMySpecSpex.Fixtures do
   `:down` or `:ok`. How a scenario makes a running container answer badly.
   """
   defdelegate put_workspace_serving(serving), to: FakeWorkspaceRunner, as: :put_serving
+
+  @doc """
+  An actual HTTP server standing in for the container's app, and a running
+  workspace row for `project_id` pointing at it. Returns the preview hostname.
+
+  The other workspace fixtures fake the *runner* — whether a container is up.
+  This fakes the app instead, because the proxy criteria are not about
+  container lifecycle: they are about whether a request that arrives at
+  `preview-{id}.codemyspec.com` comes back carrying what the app actually
+  sent. Nothing short of a real socket answers that. It has caught real bugs
+  already — a proxy that relays a stale `content-length` produces a response
+  no assertion on the body would notice.
+
+  The app echoes what a proxy is most likely to mangle: it sets a cookie,
+  reads one back, and reports the `host` header it was given.
+  """
+  @spec preview_app(Scope.t(), String.t(), keyword()) :: String.t()
+  def preview_app(%Scope{} = _scope, project_id, opts \\ []) do
+    Application.put_env(:code_my_spec, CodeMySpec.Workspaces, runner: LocalPreviewRunner)
+
+    ExUnit.Callbacks.on_exit(fn ->
+      Application.delete_env(:code_my_spec, CodeMySpec.Workspaces)
+    end)
+
+    body = Keyword.get(opts, :body, "<h1>Widget Tracker</h1>")
+    {:ok, listener} = Bandit.start_link(plug: {PreviewApp, body}, port: 0, startup_log: false)
+    {:ok, {_addr, port}} = ThousandIsland.listener_info(listener)
+
+    ExUnit.Callbacks.on_exit(fn -> Process.exit(listener, :normal) end)
+
+    {:ok, workspace} =
+      WorkspacesRepository.upsert_booting(
+        WorkspacesRepository.get_by_project(project_id),
+        %{project_id: project_id, container_name: "preview-app-#{port}", port: port}
+      )
+
+    {:ok, _running} = WorkspacesRepository.update(Workspace.running_changeset(workspace))
+
+    PreviewAddress.host(project_id)
+  end
+
+  @doc "The address a project's preview is served at, so a spex need not know the rule."
+  @spec preview_host(String.t()) :: String.t()
+  defdelegate preview_host(project_id), to: PreviewAddress, as: :host
 
   @doc """
   Creates a project whose `local_path` points at a freshly-created tmp
