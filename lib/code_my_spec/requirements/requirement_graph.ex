@@ -114,6 +114,20 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   # `preload_us` is nil when the caller loaded the context itself. That prints
   # "n/a" rather than a zero, because a zero here would read as "preloading is
   # free" — which is the specific claim this line exists to test.
+  #
+  # ## Do not compare two of these
+  #
+  # Seven consecutive measurements of the same workload on a developer laptop:
+  # 2500, 1397, 1025, 2026, 1036, 1424, 1360ms. A 2× spread with nothing
+  # changing but machine load, which on this box is whatever else is running —
+  # a test suite alone moves it.
+  #
+  # So a single before/after pair proves nothing at this granularity, and two
+  # optimizations tonight were credited and discredited by differences smaller
+  # than the noise. What these numbers are good for is *attribution* — 614ms in
+  # `kickoff_edge/4` against 3ms in the closure walk is a ratio no amount of
+  # jitter explains — and for counts, which do not jitter at all. Prefer
+  # "17,758 evaluations became 12" over "it got 148ms faster".
   defp log_timing(scope, preload_us, nodes_us, edges_us, nodes, edges) do
     ms = fn
       nil -> "n/a"
