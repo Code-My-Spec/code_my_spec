@@ -527,9 +527,39 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   defp component_tree_edges(ctx, config) do
     ctx = Map.put(ctx, :children_by_parent, children_by_parent(ctx))
 
-    ctx.stories
-    |> Enum.filter(&(&1.component_id != nil))
-    |> Enum.flat_map(&story_chain_edges(&1, ctx, config))
+    {edges, timing} =
+      ctx.stories
+      |> Enum.filter(&(&1.component_id != nil))
+      |> Enum.map_reduce(%{closure: 0, expand: 0, kickoff: 0, exit: 0, components: 0}, fn story,
+                                                                                          acc ->
+        story_chain_edges(story, ctx, config, acc)
+      end)
+
+    log_component_tree_timing(timing)
+    List.flatten(edges)
+  end
+
+  # Inside the 95%.
+  #
+  # `component_tree_edges/2` produces 31,257 of 32,973 edges and 13,433 of the
+  # duplicates, and generation is ~563ms of a ~1030ms edge phase. Twice tonight
+  # a guess about where that time goes has been wrong — first that node
+  # computation dominated when it was edges, then that rebuilding
+  # `children_by_parent` per story mattered when it was worth 8ms — so this
+  # splits the four things a story chain does instead of guessing a third time.
+  #
+  # `components` is the total kickoff fan-out across stories: the number of
+  # components each story's closure expands to, summed. If that is large
+  # relative to the component count, the closure walk is the shape to attack
+  # rather than the per-edge work.
+  defp log_component_tree_timing(t) do
+    ms = &round(&1 / 1000)
+
+    Logger.info(
+      "[Requirements] component tree — closure #{ms.(t.closure)}ms, " <>
+        "expand #{ms.(t.expand)}ms, kickoff #{ms.(t.kickoff)}ms, exit #{ms.(t.exit)}ms; " <>
+        "#{t.components} kickoff components across stories"
+    )
   end
 
   defp children_by_parent(ctx) do
@@ -538,19 +568,34 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     |> Enum.group_by(& &1.parent_component_id)
   end
 
-  defp story_chain_edges(story, ctx, config) do
+  defp story_chain_edges(story, ctx, config, acc) do
     case Map.get(ctx.components_by_id, story.component_id) do
       nil ->
-        []
+        {[], acc}
 
       surface ->
-        kickoff_components =
-          surface
-          |> transitive_dep_closure(ctx)
-          |> expand_with_parent_chain_descendants(ctx)
+        {closure_us, closure} = :timer.tc(fn -> transitive_dep_closure(surface, ctx) end)
 
-        kickoff_edges = Enum.flat_map(kickoff_components, &kickoff_edge(&1, story, config, ctx))
-        kickoff_edges ++ surface_exit_edge(surface, story, ctx, config)
+        {expand_us, kickoff_components} =
+          :timer.tc(fn -> expand_with_parent_chain_descendants(closure, ctx) end)
+
+        {kickoff_us, kickoff_edges} =
+          :timer.tc(fn ->
+            Enum.flat_map(kickoff_components, &kickoff_edge(&1, story, config, ctx))
+          end)
+
+        {exit_us, exit_edges} =
+          :timer.tc(fn -> surface_exit_edge(surface, story, ctx, config) end)
+
+        acc = %{
+          closure: acc.closure + closure_us,
+          expand: acc.expand + expand_us,
+          kickoff: acc.kickoff + kickoff_us,
+          exit: acc.exit + exit_us,
+          components: acc.components + length(kickoff_components)
+        }
+
+        {kickoff_edges ++ exit_edges, acc}
     end
   end
 
