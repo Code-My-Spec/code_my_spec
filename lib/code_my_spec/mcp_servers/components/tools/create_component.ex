@@ -47,7 +47,7 @@ defmodule CodeMySpec.McpServers.Components.Tools.CreateComponent do
   @impl true
   @spec execute(any(), any()) :: {:reply, Anubis.Server.Response.t(), any()}
   def execute(params, frame) do
-    with {:ok, scope} <- Validators.validate_local_scope_with_working_copy(frame),
+    with {:ok, scope} <- Validators.validate_local_scope(frame),
          {:ok, component} <- Components.create_component(scope, params) do
       {:reply, reply_for(scope, component), frame}
     else
