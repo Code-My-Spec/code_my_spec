@@ -301,20 +301,41 @@ defmodule CodeMySpec.Environments.Container do
   end
 
   defp lines(output) do
-    output |> String.split("\n", trim: true) |> Enum.map(&String.trim/1) |> Enum.reject(&(&1 == ""))
+    output
+    |> String.split("\n", trim: true)
+    |> Enum.map(&String.trim/1)
+    |> Enum.reject(&(&1 == ""))
   end
 
   defp cp_reason(output, path) do
-    if output =~ "No such file" or output =~ "not found", do: :enoent, else: "#{path}: #{trim(output)}"
+    if output =~ "No such file" or output =~ "not found",
+      do: :enoent,
+      else: "#{path}: #{trim(output)}"
   end
 
   defp trim(output), do: output |> to_string() |> String.trim()
 
   defp shell_quote(value), do: "'" <> String.replace(to_string(value), "'", "'\\''") <> "'"
 
+  # A host-side scratch path for `docker cp`, which two processes must not
+  # share: `read_file/2` copies out to it and reads it back, so a collision
+  # returns another project's file contents.
+  #
+  # `System.unique_integer/1` is unique within one BEAM and this path is in the
+  # machine-wide temp dir, which is the collision `CodeMySpec.TempFile` exists
+  # to close. It is not used here on purpose — `Environments` declares
+  # `deps: []` and is deliberately self-contained, because it ships in the CLI
+  # and the harness where the rest of the app is not present. Four lines
+  # duplicated is the cheaper side of that trade.
   defp temp_path do
-    Path.join(System.tmp_dir!(), "cms-container-#{System.unique_integer([:positive])}")
+    Path.join(System.tmp_dir!(), "cms-container-#{unique_token()}")
   end
 
-  defp generate_name, do: "cms-run-#{System.unique_integer([:positive])}"
+  defp generate_name, do: "cms-run-#{unique_token()}"
+
+  defp unique_token do
+    random = 9 |> :crypto.strong_rand_bytes() |> Base.url_encode64(padding: false)
+
+    "#{System.pid()}_#{System.unique_integer([:positive])}_#{random}"
+  end
 end

@@ -89,10 +89,7 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.Credo do
   # Private functions
 
   defp create_temp_file do
-    temp_dir = System.tmp_dir!()
-    unique_id = System.unique_integer([:positive])
-    temp_file = Path.join(temp_dir, "credo_output_#{unique_id}.json")
-    {:ok, temp_file}
+    {:ok, CodeMySpec.TempFile.path("credo_output", ".json")}
   rescue
     exception ->
       {:error, "Failed to create temporary file: #{Exception.message(exception)}"}
