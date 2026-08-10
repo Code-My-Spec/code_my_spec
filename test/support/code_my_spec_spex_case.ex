@@ -551,12 +551,26 @@ defmodule CodeMySpecSpex.Case do
   # buildkit puts the reason on a line starting `ERROR:`, so when there is one,
   # show that and what follows it. Falling back to the tail otherwise, since a
   # step that failed without buildkit usually ends with its reason.
-  @trace_width 600
+  @trace_width 1_200
 
   defp interesting(message) do
-    case String.split(message, ~r/(?=ERROR)/) |> Enum.filter(&String.starts_with?(&1, "ERROR")) do
-      [_ | _] = errors -> errors |> List.last() |> String.slice(0, @trace_width)
-      [] -> tail(message)
+    shown = tail(message)
+
+    # The tail is usually right — an error is at the end of what produced it —
+    # and it carries the context the error alone does not. `mix assets.deploy`
+    # failing says only "exit code: 1"; what it printed beforehand says why.
+    #
+    # The ERROR line is the fallback, for a message long enough that the tail
+    # misses it. That was the common case while `inspect/1` was truncating the
+    # log, and became the rare one once it stopped.
+    if String.contains?(shown, "ERROR") or not String.contains?(message, "ERROR") do
+      shown
+    else
+      message
+      |> String.split(~r/(?=ERROR)/)
+      |> Enum.filter(&String.starts_with?(&1, "ERROR"))
+      |> List.last()
+      |> String.slice(0, @trace_width)
     end
   end
 
