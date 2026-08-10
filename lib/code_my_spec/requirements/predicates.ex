@@ -52,14 +52,27 @@ defmodule CodeMySpec.Requirements.Predicates do
   alias CodeMySpec.Requirements.Node
 
   @doc """
-  Narrow `query` to nodes whose entity has at least one file of `config.role`.
+  Narrow `query` to the nodes a check is satisfied for.
 
-  Component-owned and story-owned nodes are both handled, because a node's
-  owner is whichever of `component_id`/`story_id` is set and the file table
-  records the same pair. A project-scoped node has neither and matches no file,
-  which is correct — no `file_exists` definition is project-scoped.
+  ## `:file_exists`
+
+  The entity has at least one file of `config.role`. Existence only — an invalid
+  file still exists, and conflating the two would make `spec_file` and
+  `spec_valid` the same requirement.
+
+  ## `:file_valid`
+
+  The entity has a file of `config.role` marked `valid: true`.
+  `has_valid_role?/2` distinguishes three unsatisfied cases — no file, an invalid
+  one, one not yet validated — for the reason it gives the agent. As a predicate
+  they are the same answer.
+
+  Both handle component-owned and story-owned nodes, because a node's owner is
+  whichever of `component_id`/`story_id` is set and the file table records the
+  same pair. A project-scoped node has neither and matches no file, which is
+  correct — no file check is project-scoped.
   """
-  @spec satisfied(Ecto.Query.t(), :file_exists, map()) :: Ecto.Query.t()
+  @spec satisfied(Ecto.Query.t(), :file_exists | :file_valid, map()) :: Ecto.Query.t()
   def satisfied(query, :file_exists, %{role: role}) do
     where(
       query,
@@ -76,21 +89,12 @@ defmodule CodeMySpec.Requirements.Predicates do
     )
   end
 
-  @doc """
-  Narrow `query` to nodes whose entity has a file of `config.role` marked valid.
-
-  `has_valid_role?/2` distinguishes three unsatisfied cases — no file, an
-  invalid one, one not yet validated — for the reason it gives the agent. As a
-  predicate they are the same answer, so this is existence plus `valid: true`.
-
-  Deterministic, which it would not have been a commit ago. That function takes
-  the *first* file of a role via `Enum.find/2`, and until `Preloader.load/1` was
-  scoped to a harness it saw one row per checkout — so which file answered
-  depended on row order. With one working copy's files there is exactly one file
-  per `(component, role)`, verified across every harness on this project, and
-  first-found and any-valid are the same question.
-  """
-  @spec satisfied(Ecto.Query.t(), :file_valid, map()) :: Ecto.Query.t()
+  # Deterministic, which it would not have been a commit ago. `has_valid_role?/2`
+  # takes the *first* file of a role via `Enum.find/2`, and until
+  # `Preloader.load/1` was scoped to a harness it saw one row per checkout — so
+  # which file answered depended on row order. With one working copy's files
+  # there is exactly one file per `(component, role)`, verified across every
+  # harness on this project, and first-found and any-valid are the same question.
   def satisfied(query, :file_valid, %{role: role}) do
     where(
       query,
