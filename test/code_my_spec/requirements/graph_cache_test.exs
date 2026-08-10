@@ -198,6 +198,28 @@ defmodule CodeMySpec.Requirements.GraphCacheTest do
       refute current_fingerprint(scope) == pending
     end
 
+    # The input that is not data. Everything else in the fingerprint is what the
+    # graph is computed *from*; nothing described how it is computed, so the same
+    # inputs under changed code produced the same hash and a payload written by
+    # the old code read as current.
+    #
+    # Observed: scoping the file load to one working copy took this project's
+    # graph from 1,357 nodes to 2,783, and `fetch/2` still hit. A reader was
+    # served the pre-fix graph, and only the projection comparison noticed.
+    test "the code version is part of it", %{scope: scope, before: before} do
+      assert before =~ ~r/^[0-9a-f]{64}$/
+
+      {:ok, vsn} = :application.get_key(:code_my_spec, :vsn)
+
+      assert is_list(vsn),
+             "the fingerprint mixes in the app version, so a release invalidates " <>
+               "every snapshot rather than serving one computed by older code"
+
+      # Same inputs, same version — still stable. The version must not make the
+      # fingerprint move on its own, or the cache never hits at all.
+      assert current_fingerprint(scope) == before
+    end
+
     test "nothing changing leaves it alone", %{scope: scope, before: before} do
       assert current_fingerprint(scope) == before,
              "an unchanged project must produce a stable fingerprint, or the cache " <>
