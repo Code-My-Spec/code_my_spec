@@ -75,10 +75,18 @@ defmodule CodeMySpec.Requirements do
   end
 
   @doc """
-  Every requirement node, from the published snapshot when it is still current.
+  Every requirement node, read from the projection when it is still current.
 
-  For display. See `RequirementGraph.cached_graph/1` for what a hit does and
-  does not certify — in short, it is not for deciding what an agent works on.
+  The caveat that used to be here — "not for deciding what an agent works on" —
+  was written when the fingerprint watched only files, components and stories,
+  so a hit could not certify what the delegate checkers read. It watches all of
+  them now, one test per input in `graph_cache_test.exs`, and
+  `compute_and_publish/3` says so in as many words. A hit is as good as a
+  recompute.
+
+  What it returns is the read model: `requirements` and `requirement_edges`,
+  through `Requirements.Projection`. A miss recomputes and republishes, so this
+  is never stale — `computed_at` says when, and `nil` means just now.
   """
   @spec cached_all(Scope.t()) :: {[map()], DateTime.t() | nil}
   def cached_all(%Scope{} = scope) do
