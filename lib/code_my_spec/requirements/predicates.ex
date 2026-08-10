@@ -3,10 +3,31 @@ defmodule CodeMySpec.Requirements.Predicates do
   Requirement checks as query fragments.
 
   `RequirementCalculator` interprets `check_type` + `config` in Elixir against
-  preloaded lists — 4.4 seconds of `Enum` on a 3200-component project, against
-  34ms of preload. The pair is already a predicate name plus its arguments, so
+  preloaded lists. The pair is already a predicate name plus its arguments, so
   it can emit a query instead, and "which requirements are satisfied" becomes a
   handful of queries over the node table rather than a pass over every node.
+
+  ## Not for speed — that premise was wrong
+
+  This module was written to kill "4.4 seconds of `Enum` on a 3200-component
+  project, against 34ms of preload". Once `RequirementGraph` was instrumented,
+  the split came back the other way round on an 880-component project:
+
+      1358 nodes, 26212 edges; nodes 69ms, edges 2500ms
+
+  Node computation — everything here — is under 3% of the time. Edge
+  computation is 97% of it, and 26,212 edges against 1,358 nodes is where that
+  goes. The original figure almost certainly measured the whole graph and
+  attributed it to the part being optimized.
+
+  So converting the remaining check types buys ~69ms and leaves 2.5 seconds
+  untouched. What these are still good for is the thing the interpreter cannot
+  do at all: answer a question about the *set* — count, filter, or ask which
+  requirements a file bears on — without computing every node first. That is
+  `Projection.for_file/2`'s job and the reason the graph became rows.
+
+  Anyone reaching for these to make the graph faster should go and look at
+  `compute_edges/3` instead.
 
   ## Composed against `requirements`, not against a graph
 
