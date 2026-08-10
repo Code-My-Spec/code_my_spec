@@ -101,3 +101,8 @@ relay/cms-mcp-relay
 
 # Harness stdout when started detached for local development.
 .harness-*.log
+
+# The cassette a re-recording run displaced. Kept on disk so a run that dies
+# mid-record leaves the old recording recoverable, but it is the previous
+# recording and does not belong in the repository.
+*.json.bak

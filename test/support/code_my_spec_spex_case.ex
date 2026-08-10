@@ -2562,12 +2562,21 @@ defmodule CodeMySpecSpex.Case do
   def recording?, do: cassette_mode() == :record
 
   @doc """
-  Delete a cassette the first time this run asks to record it, and never again.
+  Set a cassette aside the first time this run asks to record it, and never
+  again.
 
   Both cassette libraries load whatever is on disk and append to it, so a
   recording accumulates across runs unless something clears it — and clearing
   it on every entry is worse, because a spex that enters the same cassette
   twice then keeps only the second half.
+
+  Renamed to `.bak` rather than deleted. Re-recording starts by getting rid of
+  the old recording and ends by writing a new one, so a run that dies in
+  between destroys a cassette and puts nothing in its place —
+  `content_publish_single_command.json` went that way and existed in no
+  checkout, no branch and no backup, because it had never been committed. The
+  cost of keeping the previous one is a file; the cost of not keeping it is a
+  recording session against real infrastructure.
 
   Keyed in `:persistent_term`, which lasts exactly as long as the VM and so
   means "this `mix spex` run" without anything needing to be started or torn
@@ -2582,7 +2591,8 @@ defmodule CodeMySpecSpex.Case do
         :ok
 
       :fresh ->
-        File.rm(Path.join(dir, name <> ".json"))
+        path = Path.join(dir, name <> ".json")
+        File.rename(path, path <> ".bak")
         :persistent_term.put(key, :cleared)
     end
   end
