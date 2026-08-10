@@ -23,6 +23,7 @@ defmodule CodeMySpec.Requirements.StaleAnalysisTest do
   import CodeMySpec.{AnalysisFixtures, UsersFixtures}
 
   alias CodeMySpec.Files.File, as: FileRecord
+  alias CodeMySpec.Requirements.Preloader
   alias CodeMySpec.Requirements.RequirementCalculator
 
   setup do
@@ -44,7 +45,7 @@ defmodule CodeMySpec.Requirements.StaleAnalysisTest do
     do: %{name: "credo_clean", check_type: :no_problems, config: %{"source" => "credo"}}
 
   defp evaluate(scope, definition) do
-    {:ok, ctx} = CodeMySpec.Requirements.Preloader.load(scope)
+    {:ok, ctx} = Preloader.load(scope)
     result = RequirementCalculator.compute_one(scope, scope.active_project, definition, [], ctx)
     {result.satisfied, result.details}
   end

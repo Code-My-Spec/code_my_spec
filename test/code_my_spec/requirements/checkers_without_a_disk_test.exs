@@ -20,7 +20,15 @@ defmodule CodeMySpec.Requirements.CheckersWithoutADiskTest do
   alias CodeMySpec.Files.File, as: FileRecord
   alias CodeMySpec.Paths
   alias CodeMySpec.Personas
-  alias CodeMySpec.Requirements.{ArchitectureChecker, PersonasChecker}
+
+  alias CodeMySpec.Requirements.{
+    ArchitectureChecker,
+    PersonasChecker,
+    Preloader,
+    Registry,
+    RequirementCalculator,
+    SpexBoundaryChecker
+  }
 
   setup do
     scope = full_scope_fixture()
@@ -112,7 +120,7 @@ defmodule CodeMySpec.Requirements.CheckersWithoutADiskTest do
   describe "spex_boundary_ready" do
     test "reports every gap instead of refusing to look", %{scope: scope} do
       assert {false, %{reason: reason}} =
-               CodeMySpec.Requirements.SpexBoundaryChecker.complete?(scope, nil)
+               SpexBoundaryChecker.complete?(scope, nil)
 
       refute reason =~ "Environment is not available",
              "with no disk this used to decline to check at all, which reads to " <>
@@ -153,7 +161,7 @@ defmodule CodeMySpec.Requirements.CheckersWithoutADiskTest do
       )
 
       assert {true, %{status: status}} =
-               CodeMySpec.Requirements.SpexBoundaryChecker.complete?(scope, nil)
+               SpexBoundaryChecker.complete?(scope, nil)
 
       assert status =~ "installed"
     end
@@ -179,12 +187,12 @@ defmodule CodeMySpec.Requirements.CheckersWithoutADiskTest do
     @decisions ".code_my_spec/architecture/decisions.md"
 
     defp technical_strategy do
-      CodeMySpec.Requirements.Registry.get_project_requirements()
+      Registry.get_project_requirements()
       |> Enum.find(&(&1.name == "technical_strategy"))
     end
 
     defp check(scope, ctx) do
-      CodeMySpec.Requirements.RequirementCalculator.compute_one(
+      RequirementCalculator.compute_one(
         scope,
         scope.active_project,
         technical_strategy(),
@@ -214,13 +222,13 @@ defmodule CodeMySpec.Requirements.CheckersWithoutADiskTest do
 
     test "a preloaded context is used when there is one", %{scope: scope} do
       sync(scope, @decisions, :architecture)
-      {:ok, ctx} = CodeMySpec.Requirements.Preloader.load(scope)
+      {:ok, ctx} = Preloader.load(scope)
 
       assert %{satisfied: true} = check(scope, ctx)
     end
 
     test "a preloaded context that lacks the file reports it missing", %{scope: scope} do
-      {:ok, ctx} = CodeMySpec.Requirements.Preloader.load(scope)
+      {:ok, ctx} = Preloader.load(scope)
 
       assert %{satisfied: false, details: %{reason: reason}} = check(scope, ctx)
       assert reason =~ "File missing"

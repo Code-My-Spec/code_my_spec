@@ -17,8 +17,8 @@ defmodule CmsHarnessTest.FakeUpstream do
   whole VM's — including the harness's own `ChannelClient`s, which derive their
   socket URL from it and redial every second for as long as they are alive.
   Their upgrade requests therefore arrive here, and recording them made
-  `last_request/0` answer about traffic no test had made. See
-  `websocket_upgrade?/1`.
+  `last_request/0` answer about traffic no test had made — so an upgrade is
+  refused, unrecorded, and only counted, by `upgrades/0`.
 
   The socket is `CmsHarnessTest.FakeServer`'s surface, not this one. Nothing
   here can upgrade a connection, so refusing is also the truth.
@@ -87,12 +87,22 @@ defmodule CmsHarnessTest.FakeUpstream do
     |> List.last()
   end
 
+  @doc "How many websocket upgrades were refused, rather than answered as requests."
+  @spec upgrades() :: non_neg_integer()
+  def upgrades, do: :persistent_term.get({__MODULE__, :upgrades}, 0)
+
   @impl Plug
   def init(opts), do: opts
 
   @impl Plug
-  def call(conn, opts) do
-    if websocket_upgrade?(conn), do: refuse_upgrade(conn), else: record(conn, opts)
+  def call(conn, _opts) do
+    if websocket_upgrade?(conn), do: refuse_upgrade(conn), else: record(conn)
+  end
+
+  defp websocket_upgrade?(conn) do
+    conn
+    |> get_req_header("upgrade")
+    |> Enum.any?(&(String.downcase(&1) == "websocket"))
   end
 
   # Not this fake's surface, and not any test's request.
@@ -112,17 +122,7 @@ defmodule CmsHarnessTest.FakeUpstream do
     |> send_resp(404, ~s({"error":"this fake speaks HTTP, not websockets"}))
   end
 
-  @doc "How many websocket upgrades were refused, rather than answered as requests."
-  @spec upgrades() :: non_neg_integer()
-  def upgrades, do: :persistent_term.get({__MODULE__, :upgrades}, 0)
-
-  defp websocket_upgrade?(conn) do
-    conn
-    |> get_req_header("upgrade")
-    |> Enum.any?(&(String.downcase(&1) == "websocket"))
-  end
-
-  defp record(conn, _opts) do
+  defp record(conn) do
     {:ok, body, conn} = read_body(conn)
 
     request = %{
