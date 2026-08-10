@@ -2666,7 +2666,18 @@ defmodule CodeMySpec.Provisioning.Steps do
   defp format(%{reason: reason}) when is_atom(reason), do: format_transport(reason)
   defp format({:error, reason}), do: format(reason)
   defp format(reason) when is_atom(reason), do: format_transport(reason)
-  defp format(reason), do: inspect(reason)
+
+  # `printable_limit: :infinity`, because the default cuts a binary at 4096
+  # characters and appends `<> ...` — and for the errors that carry a build
+  # log, everything worth reading is at the *end*. A failing `docker build`
+  # reported nine thousand characters of apt-get output and then
+  # `"Building depe" <> ...`, so the reason it failed was removed by the
+  # formatter rather than never produced. Two drills were spent looking for it
+  # elsewhere.
+  #
+  # `limit: :infinity` for the same reason one level up: the log arrives inside
+  # a tuple, and the default also truncates the container's elements.
+  defp format(reason), do: inspect(reason, printable_limit: :infinity, limit: :infinity)
 
   defp format_transport(:econnrefused), do: "nothing is listening on that port"
   defp format_transport(:nxdomain), do: "the name does not resolve yet"

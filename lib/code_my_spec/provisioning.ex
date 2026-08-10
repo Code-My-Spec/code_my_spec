@@ -578,7 +578,14 @@ defmodule CodeMySpec.Provisioning do
   # rather than injecting a string.
   defp describe(reason) when is_binary(reason), do: reason
   defp describe(reason) when is_atom(reason), do: to_string(reason)
-  defp describe(reason), do: inspect(reason)
+
+  # Not the default `inspect/1`. It cuts a binary at 4096 characters and
+  # appends `<> ...`, and the errors that get anywhere near that length are
+  # build logs — where the reason for the failure is the last line, not the
+  # first. A `docker build` failure reached the page as nine thousand
+  # characters of apt-get output ending `"Building depe" <> ...`: the step
+  # said it errored and the formatter had deleted why.
+  defp describe(reason), do: inspect(reason, printable_limit: :infinity, limit: :infinity)
 
   # Every state change is announced. Doing it here rather than at each call
   # site means a transition cannot be added without being published — and a
