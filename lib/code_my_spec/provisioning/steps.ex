@@ -2214,14 +2214,14 @@ defmodule CodeMySpec.Provisioning.Steps do
     name = server_name(scope, opts)
     servers = environment_servers(scope, opts)
 
-    with [%{"location" => %{"name" => location}} | _] <- servers,
+    with {:ok, [%{"location" => %{"name" => location}} | _] = servers} <- servers,
          {:ok, network} <-
            Hetzner.ensure_network(scope, name, network_zone: Hetzner.network_zone(location)),
          :ok <- attach_all(scope, servers, network),
          {:ok, registries} <- serve_registries(scope, servers, network, opts) do
       {:ok, registries ++ [network_resource(name, network) | made]}
     else
-      [] -> {:ok, made}
+      {:ok, []} -> {:ok, made}
       {:error, reason} -> {:error, format(reason), made}
     end
   end
@@ -2326,15 +2326,37 @@ defmodule CodeMySpec.Provisioning.Steps do
     end)
   end
 
+  # Every environment's box, or a refusal naming the ones missing.
+  #
+  # This used to drop what it could not find, so a run where one environment's
+  # server was absent carried on and stood up a registry and a database for the
+  # other — and the deploy then failed with "the provider has no such server",
+  # which names the symptom two steps after the cause. A baseline that is
+  # missing half of itself must say so where it happens.
   defp environment_servers(scope, opts) do
-    scope
-    |> EnvironmentRepository.list()
-    |> Enum.flat_map(fn environment ->
-      case Hetzner.find_server(scope, server_name(scope, opts, environment.name)) do
-        {:ok, server} -> [server]
-        _ -> []
-      end
-    end)
+    found =
+      scope
+      |> EnvironmentRepository.list()
+      |> Enum.map(fn environment ->
+        name = server_name(scope, opts, environment.name)
+
+        case Hetzner.find_server(scope, name) do
+          {:ok, server} -> {:ok, server}
+          _ -> {:missing, name}
+        end
+      end)
+
+    case Enum.filter(found, &match?({:missing, _}, &1)) do
+      [] ->
+        {:ok, Enum.map(found, fn {:ok, server} -> server end)}
+
+      missing ->
+        {:error,
+         "the provider does not have " <>
+           Enum.map_join(missing, ", ", fn {:missing, name} -> name end) <>
+           " — the server step reported creating them, so they were made and then " <>
+           "could not be read back"}
+    end
   end
 
   defp attach_all(scope, servers, network) do
