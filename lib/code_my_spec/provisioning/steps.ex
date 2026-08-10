@@ -43,6 +43,7 @@ defmodule CodeMySpec.Provisioning.Steps do
     Builder.Remote,
     Cloudflare,
     ContentPublishing,
+    Database,
     Deploy,
     Dns,
     EnvironmentRepository,
@@ -2242,7 +2243,7 @@ defmodule CodeMySpec.Provisioning.Steps do
     |> EnvironmentRepository.list()
     |> Enum.reduce_while({:ok, []}, fn environment, {:ok, acc} ->
       case serve_one_registry(scope, environment.name, network, opts) do
-        {:ok, resource} -> {:cont, {:ok, [resource | acc]}}
+        {:ok, resources} -> {:cont, {:ok, resources ++ acc}}
         {:error, reason} -> {:halt, {:error, reason}}
       end
     end)
@@ -2256,22 +2257,57 @@ defmodule CodeMySpec.Provisioning.Steps do
          public when is_binary(public) <- get_in(server, ["public_net", "ipv4", "ip"]),
          {:ok, opts} <- with_builder_ssh(scope, opts),
          {:ok, opts} <- with_registry_credential(scope, opts),
+         run = Remote.ssh_runner(%{"ip" => public}, opts),
          registry_opts =
            opts
            |> Keyword.put(:environment, environment)
-           |> Keyword.put(:run, Remote.ssh_runner(%{"ip" => public}, opts))
+           |> Keyword.put(:run, run)
            |> Keyword.put(:bind, ip),
          {:ok, _bucket} <- Registry.ensure(scope, registry_opts),
-         {:ok, served} <- Registry.serve(scope, registry_opts) do
+         {:ok, served} <- Registry.serve(scope, registry_opts),
+         {:ok, database} <- serve_database(scope, environment, run, opts) do
       {:ok,
-       %{
-         kind: "registry",
-         location: "#{ip}:#{served.port}",
-         identifier: "environment=#{environment} bucket=#{served.bucket}"
-       }}
+       [
+         %{
+           kind: "registry",
+           location: "#{ip}:#{served.port}",
+           identifier: "environment=#{environment} bucket=#{served.bucket}"
+         },
+         database
+       ]}
     else
       {:error, reason} -> {:error, format(reason)}
       _ -> {:error, "the #{environment} server has no address yet"}
+    end
+  end
+
+  # The database the app talks to, and the URL it reads to find it.
+  #
+  # Nothing provisioned one before: `backups` ran `pg_dump` against a database
+  # that did not exist and the generated kamal config put the app on a
+  # `db_net` network with nothing else on it.
+  #
+  # The URL goes into the environment's encrypted env rather than anywhere the
+  # working tree can see, which is where the app already looks for everything
+  # else it needs to boot.
+  defp serve_database(scope, environment, run, opts) do
+    with {:ok, credential} <- Database.credential(scope, environment),
+         {:ok, served} <-
+           Database.serve(scope, environment, Keyword.put(opts, :run, run)),
+         :ok <- write_database_url(scope, environment, credential) do
+      {:ok,
+       %{
+         kind: "database",
+         location: "#{served.host}:#{served.port}/#{served.database}",
+         identifier: "environment=#{environment}"
+       }}
+    end
+  end
+
+  defp write_database_url(scope, environment, credential) do
+    case put_secret(scope, environment, "DATABASE_URL", Database.url(credential)) do
+      {:ok, _} -> :ok
+      {:error, reason} -> {:error, reason}
     end
   end
 
