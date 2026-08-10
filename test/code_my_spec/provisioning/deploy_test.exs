@@ -16,11 +16,14 @@ defmodule CodeMySpec.Provisioning.DeployTest do
   defp deploy_script(dir, opts) do
     migrate_exit = Keyword.get(opts, :migrate_exit, 0)
     swap_exit = Keyword.get(opts, :swap_exit, 0)
+    # What `bin/deploy` prints when it finds no env files on the host — the
+    # only signal that nothing has ever booted there.
+    first_deploy = Keyword.get(opts, :first_deploy, false) && "first_deploy=1" || ""
     path = Path.join(dir, "fake_deploy")
 
     File.write!(path, """
     #!/bin/sh
-    echo "$1 $2"
+    echo "$1 $2 #{first_deploy}"
     case "$1" in
       migrate) exit #{migrate_exit} ;;
       swap) exit #{swap_exit} ;;
@@ -124,6 +127,44 @@ defmodule CodeMySpec.Provisioning.DeployTest do
       assert result.reason =~ ~r/health/i
       # The provider's own detail survives, so the cause is visible.
       assert result.reason =~ "502"
+    end
+
+    # A first deploy has no previous version, so the pre-swap check has
+    # nothing to look at: the health phase probes whatever is currently
+    # serving, and with nothing deployed the host refuses the connection. The
+    # deploy that would create the site was being refused for the site not
+    # existing yet — which is a deadlock, not a safety check.
+    test "is not run at all when nothing has ever been deployed", %{env: env} = ctx do
+      script = deploy_script(ctx.env.cwd, first_deploy: true)
+
+      result =
+        Deploy.run(env, "prod",
+          deploy_script: script,
+          host: "app.example.com",
+          probe: fn _host, _opts ->
+            flunk("probed a host that has never had anything deployed to it")
+          end
+        )
+
+      assert %DateTime{} = result.swapped_at, "the first deploy never reached the swap"
+      assert result.live_version == :new
+      assert result.failed_phase == nil
+    end
+
+    # And the reprieve is only for that case: an existing deployment still
+    # refuses to swap onto an unhealthy site.
+    test "still guards a deployment that already exists", %{env: env} = ctx do
+      script = deploy_script(ctx.env.cwd, first_deploy: false)
+
+      result =
+        Deploy.run(env, "prod",
+          deploy_script: script,
+          host: "app.example.com",
+          probe: unhealthy("responded 502")
+        )
+
+      assert result.failed_phase == :health
+      assert result.swapped_at == nil
     end
 
     test "the migration still happened — it is the swap that is withheld", %{env: env} = ctx do

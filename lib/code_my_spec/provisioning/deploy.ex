@@ -37,6 +37,7 @@ defmodule CodeMySpec.Provisioning.Deploy do
 
   alias CodeMySpec.Environments
   alias CodeMySpec.Provisioning.Deploy.UptimeRobot
+  alias CodeMySpec.Provisioning.Wait
 
   @type phase :: :build | :migrate | :health | :swap
 
@@ -92,7 +93,7 @@ defmodule CodeMySpec.Provisioning.Deploy do
     script = resolve_script(env, Keyword.get(opts, :deploy_script, "bin/deploy"))
 
     with {:ok, migrate_out, result} <- migrate(env, environment, script, now, opts),
-         {:ok, result} <- health(result, opts, now),
+         {:ok, result} <- health(result, opts, now, first_deploy?(migrate_out)),
          {:ok, result} <- swap(env, environment, script, result, now, opts) do
       %{result | output: migrate_out, live_version: :new}
     else
@@ -124,11 +125,28 @@ defmodule CodeMySpec.Provisioning.Deploy do
     end
   end
 
-  defp health(result, opts, now) do
+  # There is nothing to protect on a first deploy, so there is nothing to check.
+  #
+  # This runs *before* the swap, which is deliberate (8009: a failed check
+  # never moves traffic). But the new version has not booted at this point —
+  # `migrate` runs a one-off container and `swap` is what boots the service —
+  # so what this probes is the version already serving. That is a real
+  # protection for an existing site and an impossibility for a new one: with
+  # nothing deployed, the host refuses the connection and the deploy that
+  # would have created the site is refused for the site not existing.
+  #
+  # `bin/deploy` is the only thing that knows, and it says so in its migrate
+  # output. Deploying past this is not skipping a safety check: kamal's own
+  # proxy health check still gates the swap, and there is no previous version
+  # for a bad one to displace.
+  defp health(result, _opts, _now, true), do: {:ok, result}
+
+  defp health(result, opts, now, _first_deploy) do
     probe = Keyword.get(opts, :probe, &probe/2)
     host = Keyword.get(opts, :host)
+    attempts = Keyword.get(opts, :health_attempts, 30)
 
-    case probe.(host, opts) do
+    case await_health(probe, host, opts, attempts) do
       :ok ->
         {:ok, %{result | health_ok_at: now.()}}
 
@@ -141,6 +159,29 @@ defmodule CodeMySpec.Provisioning.Deploy do
              failed_phase: :health,
              reason: "Health check failed for #{host}: #{reason}. The previous version is still serving."
          }}
+    end
+  end
+
+  # `bin/deploy` prints this when it finds no env files on the host, which is
+  # the one condition that means nothing has ever booted there.
+  defp first_deploy?(migrate_output) when is_binary(migrate_output),
+    do: String.contains?(migrate_output, "first_deploy=1")
+
+  defp first_deploy?(_migrate_output), do: false
+
+  defp await_health(probe, host, opts, attempts) do
+    case probe.(host, opts) do
+      :ok ->
+        :ok
+
+      {:error, _reason} when attempts > 1 ->
+        Wait.sleep(Keyword.get(opts, :health_interval_ms, 5_000))
+        await_health(probe, host, opts, attempts - 1)
+
+      # The last reason, not a bare "gave up" — what the host was doing on the
+      # final attempt is the whole diagnosis.
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 
