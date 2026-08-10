@@ -40,6 +40,7 @@ defmodule CodeMySpecSpex.Fixtures do
     OauthFixtures,
     Paths,
     ProblemsFixtures,
+    ProjectSecrets,
     ProjectsFixtures,
     ProjectSync,
     QaFixtures,
@@ -74,6 +75,7 @@ defmodule CodeMySpecSpex.Fixtures do
   alias CodeMySpec.Provisioning.Repository
   alias CodeMySpec.Provisioning.Resend
   alias CodeMySpec.Provisioning.Resend
+  alias CodeMySpec.Provisioning.Sequence
   alias CodeMySpec.Provisioning.StepRepository
   alias CodeMySpec.Provisioning.Steps
   alias CodeMySpec.Provisioning.Storage
@@ -163,12 +165,81 @@ defmodule CodeMySpecSpex.Fixtures do
   defp record_content_bucket(scope, project) do
     location = "fsn1.your-objectstorage.com/#{project.content_bucket}"
 
+    maybe_create_bucket(scope, project.content_bucket)
+
     StepRepository.upsert(scope, :storage, %{
-      status: :complete,
+      state: :done,
+      position: Sequence.position(:storage),
       resources: [%{kind: "bucket", location: location, identifier: "user"}]
     })
 
     :ok
+  end
+
+  # Recording needs the bucket to exist; replay does not.
+  #
+  # The fixture names a bucket and marks the `:storage` step done, which on
+  # replay is the whole truth — the cassette answers the publish and no bucket
+  # is involved. Recording puts real objects, so the bucket has to be there or
+  # the publish fails with `publish_failed`, which is what it did.
+  #
+  # Creating it only while recording keeps replay offline. It is created *and*
+  # recorded as a resource in the same breath, so teardown removes exactly what
+  # this made — the pairing is the point, and doing one without the other is
+  # how the account collected orphans in the first place.
+  defp maybe_create_bucket(scope, bucket) do
+    if System.get_env("SPEX_CASSETTE_MODE") == "record" do
+      seed_storage_secrets!(scope)
+      create_bucket!(scope, bucket)
+    end
+
+    :ok
+  end
+
+  # `Storage.credentials/2` reads project secrets, not the environment — Hetzner
+  # issues object-storage keys only in its console, so the project is where they
+  # live and `envs/.env` is where a recording keeps them. A fresh spex project
+  # has neither, which is why `credentials/2` answered `:none` and the publish
+  # failed as `publish_failed` without anything saying why.
+  defp seed_storage_secrets!(scope) do
+    for {key, env} <- [
+          {"hetzner_s3_access_key_id", "HETZNER_S3_ACCESS_KEY_ID"},
+          {"hetzner_s3_secret_access_key", "HETZNER_S3_SECRET_ACCESS_KEY"}
+        ] do
+      case System.get_env(env) do
+        value when is_binary(value) and value != "" ->
+          {:ok, _} = ProjectSecrets.put_value(scope, key, value)
+
+        _ ->
+          raise "recording needs #{env}; export envs/.env first (`set -a; source envs/.env`)"
+      end
+    end
+
+    :ok
+  end
+
+  # Loud on every branch. A silent `:ok` when credentials are missing leaves the
+  # publish to fail later as `publish_failed`, which names the symptom and hides
+  # that nothing ever tried to make the bucket.
+  defp create_bucket!(scope, bucket) do
+    credentials =
+      case Storage.credentials(scope, []) do
+        :none ->
+          raise "recording needs Hetzner S3 credentials to create #{bucket}, and " <>
+                  "Storage.credentials/2 returned :none — check envs/.env is exported"
+
+        {:ok, credentials} ->
+          credentials
+
+        credentials when is_list(credentials) ->
+          credentials
+      end
+
+    case Storage.ensure_bucket(bucket, credentials, []) do
+      {:ok, _} -> :ok
+      :ok -> :ok
+      other -> raise "could not create #{bucket} for recording: #{inspect(other)}"
+    end
   end
 
   @doc """
