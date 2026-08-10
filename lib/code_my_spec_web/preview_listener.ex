@@ -30,13 +30,15 @@ defmodule CodeMySpecWeb.PreviewListener do
 
   import Plug.Conn
 
+  alias CodeMySpecWeb.Plugs.PreviewProxy
+
   @impl true
-  def init(opts), do: CodeMySpecWeb.Plugs.PreviewProxy.init(opts)
+  def init(opts), do: PreviewProxy.init(opts)
 
   @impl true
   def call(conn, opts) do
     conn
-    |> CodeMySpecWeb.Plugs.PreviewProxy.call(opts)
+    |> PreviewProxy.call(opts)
     |> not_a_preview()
   end
 
