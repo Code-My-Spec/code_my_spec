@@ -37,7 +37,7 @@ defmodule CodeMySpec.Tests do
 
     temp_file =
       Keyword.get_lazy(opts, :output_file, fn ->
-        Path.join(System.tmp_dir!(), "test_output_#{System.unique_integer([:positive])}.json")
+        CodeMySpec.TempFile.path("test_output", ".json")
       end)
 
     test_args = ["test", "--formatter", "ClientUtils.TestFormatter" | args]
