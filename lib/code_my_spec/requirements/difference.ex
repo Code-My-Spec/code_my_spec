@@ -132,7 +132,7 @@ defmodule CodeMySpec.Requirements.Difference do
         "#{describe_key(key)}: #{fields}"
       end)
 
-    "#{length(diffs)} #{label}#{plural(diffs)} disagree on a field (#{detail})"
+    "#{length(diffs)} #{label}#{plural(diffs)} #{verb(diffs)} on a field (#{detail})"
   end
 
   defp sample(keys) do
@@ -146,6 +146,11 @@ defmodule CodeMySpec.Requirements.Difference do
 
   defp plural([_one]), do: ""
   defp plural(_many), do: "s"
+
+  # The noun takes the "s" and the verb loses it. "1 node disagree" reads as a
+  # typo in the tool whose entire job is being readable.
+  defp verb([_one]), do: "disagrees"
+  defp verb(_many), do: "disagree"
 
   defp node_key(node), do: Topology.node_key(node)
 

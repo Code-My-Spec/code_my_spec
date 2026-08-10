@@ -108,6 +108,10 @@ defmodule CodeMySpec.Requirements.DifferenceTest do
       assert message =~ "satisfied"
       assert message =~ "true"
       assert message =~ "false"
+
+      assert message =~ "1 node disagrees",
+             "singular takes a singular verb — `1 node disagree` reads as a typo in " <>
+               "the one tool whose whole job is being readable"
     end
 
     test "a differing edge is reported as an edge, not a node" do

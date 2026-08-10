@@ -41,9 +41,11 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   """
   @spec compute_graph(Scope.t()) :: {[Requirement.t()], [edge()]} | {:error, :no_working_copy}
   def compute_graph(%Scope{} = scope) do
-    with {:ok, ctx} <- Preloader.load(scope) do
+    {preload_us, loaded} = :timer.tc(fn -> Preloader.load(scope) end)
+
+    with {:ok, ctx} <- loaded do
       config = CodeMySpec.Configurations.get_or_create(scope)
-      compute_and_publish(scope, ctx, config)
+      compute_and_publish(scope, ctx, config, preload_us)
     end
   end
 
@@ -78,15 +80,51 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   # what the delegate checkers read" — one test per input, which is the property
   # the spex was asserting end to end. Run that. Rebuilding the spex would be
   # better still.
-  defp compute_and_publish(scope, ctx, config) do
-    {nodes, enriched_ctx} = compute_all_from_ctx(scope, ctx, config)
-    edges = compute_edges(nodes, enriched_ctx, config)
+  defp compute_and_publish(scope, ctx, config, preload_us \\ nil) do
+    {nodes_us, {nodes, enriched_ctx}} =
+      :timer.tc(fn -> compute_all_from_ctx(scope, ctx, config) end)
+
+    {edges_us, edges} = :timer.tc(fn -> compute_edges(nodes, enriched_ctx, config) end)
+
+    log_timing(scope, preload_us, nodes_us, edges_us, nodes, edges)
 
     scope
     |> GraphCache.publish(GraphFingerprint.compute(ctx, config), {nodes, edges})
     |> persist_projection(scope, enriched_ctx, nodes, edges)
 
     {nodes, edges}
+  end
+
+  # What the graph costs, split the way the work splits.
+  #
+  # `Predicates` exists on the premise that node computation dominates —
+  # "4.4 seconds of `Enum` on a 3200-component project, against 34ms of
+  # preload". That number came from one project at one time and there is no
+  # instrumentation behind it, so whether converting the remaining checks to
+  # queries is worth doing on any given project is currently unanswerable.
+  #
+  # Cheap to emit: this runs on a cache miss, not on a read, so it is one line
+  # per genuine change rather than per render. The same cadence the round-trip
+  # check already settled on.
+  #
+  # Logged rather than measured in a benchmark because the interesting case is
+  # a real project's shape — 880 components with their files and problems — and
+  # a synthetic graph would mostly measure the fixture.
+  #
+  # `preload_us` is nil when the caller loaded the context itself. That prints
+  # "n/a" rather than a zero, because a zero here would read as "preloading is
+  # free" — which is the specific claim this line exists to test.
+  defp log_timing(scope, preload_us, nodes_us, edges_us, nodes, edges) do
+    ms = fn
+      nil -> "n/a"
+      us -> "#{round(us / 1000)}ms"
+    end
+
+    Logger.info(
+      "[Requirements] graph computed for project #{inspect(scope.active_project_id)} — " <>
+        "#{length(nodes)} nodes, #{length(edges)} edges; " <>
+        "preload #{ms.(preload_us)}, nodes #{ms.(nodes_us)}, edges #{ms.(edges_us)}"
+    )
   end
 
   # A cache hit is served from the rows. The payload is the fallback.
