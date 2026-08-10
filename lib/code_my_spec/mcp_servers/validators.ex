@@ -62,6 +62,44 @@ defmodule CodeMySpec.McpServers.Validators do
     end
   end
 
+  @doc """
+  Scope for a tool that is going to touch the disk.
+
+  `validate_local_scope/2` is satisfied by a scope that names the project, which
+  is all a tool reading or writing the database needs. A tool writing a *file*
+  needs to know where the project is as well, and that is a different question:
+  the scope arriving on the frame can carry a project id and no environment, in
+  which case the branch that would have built one from the request's working
+  directory is never reached.
+
+  What that looked like: `create_component` reporting "this server has no
+  working copy, so the stub spec was not written" and handing the agent its own
+  stub to write. It reads as a limitation of the light harness. It was a scope
+  resolved one step short.
+
+  Resolving from `working_dir` matters more than having *an* environment,
+  because it passes that directory to `Scope.for_local_project/2` as the root
+  override. The fallback — the project's `local_path` column — holds a single
+  path for a project that may have several checkouts, so every worktree except
+  the recorded one would get an environment pointing into another tree. Writing
+  a spec stub into the wrong checkout is worse than not writing it: story 886's
+  drill left eight of them in the server's own repository while the agent's
+  spec directory stayed empty, and nothing in the reply said so.
+  """
+  @spec validate_local_scope_with_working_copy(map(), map()) ::
+          {:ok, struct()} | {:error, atom()}
+  def validate_local_scope_with_working_copy(frame, params \\ %{}) do
+    with {:ok, scope} <- validate_local_scope(frame, params) do
+      ensure_working_copy(scope, frame.assigns[:working_dir])
+    end
+  end
+
+  defp ensure_working_copy(%{environment: env} = scope, _working_dir) when not is_nil(env),
+    do: {:ok, scope}
+
+  defp ensure_working_copy(_scope, working_dir),
+    do: resolve_scope_from_working_dir(working_dir)
+
   # A configured sprite knows its project without a directory, so a missing
   # working_dir is only fatal when the directory *is* the identity mechanism.
   defp resolve_scope_from_working_dir(nil) do
