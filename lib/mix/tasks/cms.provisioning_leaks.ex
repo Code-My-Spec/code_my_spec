@@ -74,8 +74,15 @@ defmodule Mix.Tasks.Cms.ProvisioningLeaks do
 
     Application.put_env(:code_my_spec, CodeMySpec.Provisioning.Hetzner, api_token: token)
 
-    report("Hetzner servers", server_names(%Scope{}), false)
-    report("Hetzner SSH keys", ssh_key_names(%Scope{}), false)
+    # Servers and SSH keys took `false` here and no deleter, so `--delete`
+    # silently skipped them while the report still said "re-run with --delete
+    # to remove them" — an instruction for a remedy that did not exist. Two
+    # leaked servers survived a `--delete` run and kept billing; the bucket in
+    # the same run was removed, which is what made the gap look like success.
+    #
+    # Servers first: a key cannot be removed while a server still references it.
+    report("Hetzner servers", server_names(%Scope{}), delete?, &delete_server/1)
+    report("Hetzner SSH keys", ssh_key_names(%Scope{}), delete?, &delete_ssh_key/1)
     report("Hetzner buckets", bucket_names(credentials), delete?, &delete_bucket(&1, credentials))
 
     # Cloudflare and Resend were missing here, and they are the two that
@@ -171,16 +178,18 @@ defmodule Mix.Tasks.Cms.ProvisioningLeaks do
   defp dns_record_names(scope) do
     case Cloudflare.list_zones(scope) do
       {:ok, zones} ->
-        Enum.flat_map(zones, fn zone ->
-          case Cloudflare.list_dns_records(scope, zone["id"]) do
-            {:ok, records} -> Enum.map(records, & &1["name"])
-            _ -> []
-          end
-        end)
+        Enum.flat_map(zones, &zone_record_names(scope, &1))
 
       other ->
         Mix.shell().error("could not list zones: #{inspect(other)}")
         []
+    end
+  end
+
+  defp zone_record_names(scope, zone) do
+    case Cloudflare.list_dns_records(scope, zone["id"]) do
+      {:ok, records} -> Enum.map(records, & &1["name"])
+      _ -> []
     end
   end
 
@@ -215,6 +224,30 @@ defmodule Mix.Tasks.Cms.ProvisioningLeaks do
 
   defp registrable(name), do: name |> String.split(".") |> Enum.take(-2) |> Enum.join(".")
 
+  # Through the app's own teardown for the same reason `delete_bucket/2` is:
+  # `Teardown.resource/3` confirms the thing is actually gone rather than
+  # trusting the API's acceptance. Hetzner deletes servers asynchronously, so
+  # "accepted" and "gone" are genuinely different answers here.
+  defp delete_server(name) do
+    resource = %{kind: "server", location: "hetzner/#{name}", origin: "created"}
+
+    case Teardown.resource(%Scope{}, resource, []) do
+      {:ok, _} -> :ok
+      {:error, _} -> {:error, name}
+    end
+  end
+
+  defp delete_ssh_key(name) do
+    with {:ok, %{"id" => id}} <- Hetzner.find_ssh_key(%Scope{}, name),
+         {:ok, _} <- Hetzner.delete_ssh_key(%Scope{}, id) do
+      :ok
+    else
+      # Already gone is the outcome asked for, not a failure.
+      {:error, :not_found} -> :ok
+      _ -> {:error, name}
+    end
+  end
+
   # Through the app's own teardown, not a raw delete: emptying first is the
   # part people forget, and a bucket with one object in it refuses to go.
   defp delete_bucket(bucket, credentials) do
@@ -247,16 +280,17 @@ defmodule Mix.Tasks.Cms.ProvisioningLeaks do
   # so nobody notices seven of them. They are still a credential per recording
   # sitting in the account.
   defp ssh_key_names(scope) do
-    case CodeMySpec.Provisioning.Hetzner.list_ssh_keys(scope) do
+    case Hetzner.list_ssh_keys(scope) do
       {:ok, keys} -> Enum.map(keys, &name_of/1)
       _ -> []
     end
   end
 
   defp bucket_names(credentials) do
-    with {:ok, buckets} <- Storage.list_buckets(credentials, []) do
-      Enum.map(buckets, &name_of/1)
-    else
+    case Storage.list_buckets(credentials, []) do
+      {:ok, buckets} ->
+        Enum.map(buckets, &name_of/1)
+
       other ->
         Mix.shell().error("could not list buckets: #{inspect(other)}")
         []
@@ -278,7 +312,7 @@ defmodule Mix.Tasks.Cms.ProvisioningLeaks do
   # The two lists never merge: a leak is deleted and a real resource is not,
   # and the whole value of this task is that the distinction is obvious at a
   # glance rather than inferred from a name.
-  defp report(label, names, delete?, deleter \\ nil) do
+  defp report(label, names, delete?, deleter) do
     {leaked, real} = Enum.split_with(names, &leaked?/1)
 
     Mix.shell().info("\n#{label}")

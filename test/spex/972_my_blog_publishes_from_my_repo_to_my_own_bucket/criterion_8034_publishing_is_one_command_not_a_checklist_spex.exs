@@ -40,6 +40,12 @@ defmodule CodeMySpecSpex.Story972.Criterion8034Spex do
         # publish refuses to start and the criterion fails on its premise.
         publishable_project(context.scope, context.project)
 
+        # The publish below creates this bucket for real when recording, and
+        # nothing was removing it afterwards — one orphan per recording, named
+        # `spex-content-<n>` and owned by nobody. `publishable_project/2` now
+        # records the bucket as a `:storage` resource, which is what this finds.
+        tear_down_after(context.scope, [:storage])
+
         {:ok, view, _html} =
           live(context.conn, "/app/projects/#{context.project.id}/provisioning")
 

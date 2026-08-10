@@ -74,6 +74,7 @@ defmodule CodeMySpecSpex.Fixtures do
   alias CodeMySpec.Provisioning.Repository
   alias CodeMySpec.Provisioning.Resend
   alias CodeMySpec.Provisioning.Resend
+  alias CodeMySpec.Provisioning.StepRepository
   alias CodeMySpec.Provisioning.Steps
   alias CodeMySpec.Provisioning.Storage
   alias CodeMySpec.Provisioning.Teardown
@@ -143,7 +144,31 @@ defmodule CodeMySpecSpex.Fixtures do
         )
       )
 
+    record_content_bucket(scope, project)
+
     project
+  end
+
+  # The bucket this names does not exist yet — the first publish creates it —
+  # and until now nothing recorded that, so `tear_down_after(scope, [:storage])`
+  # found no resource and removed nothing. Recording a spex left a real bucket
+  # on the account with a random name and no owner, once per recording.
+  #
+  # Written as a `:storage` step resource rather than as bespoke cleanup in each
+  # spex, because that is where `Provisioning.Teardown` already looks and it
+  # knows how to empty a bucket before deleting it. Every spex using this
+  # fixture gets the cleanup by asking for the step it already implies.
+  defp record_content_bucket(_scope, %{content_bucket: nil}), do: :ok
+
+  defp record_content_bucket(scope, project) do
+    location = "fsn1.your-objectstorage.com/#{project.content_bucket}"
+
+    StepRepository.upsert(scope, :storage, %{
+      status: :complete,
+      resources: [%{kind: "bucket", location: location, identifier: "user"}]
+    })
+
+    :ok
   end
 
   @doc """
