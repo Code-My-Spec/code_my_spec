@@ -399,15 +399,51 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
 
     node_keys = MapSet.new(nodes, &Topology.node_key/1)
 
-    (template_edges ++
-       project_to_story_edges(ctx) ++
-       component_tree_edges(ctx, config) ++
-       cross_context_dependency_edges(ctx, config) ++
-       story_to_project_edges(ctx))
-    |> Enum.filter(fn %{from: f, to: t} ->
-      MapSet.member?(node_keys, f) and MapSet.member?(node_keys, t)
-    end)
-    |> Topology.transitive_reduction()
+    {generate_us, generated} =
+      :timer.tc(fn ->
+        template_edges ++
+          project_to_story_edges(ctx) ++
+          component_tree_edges(ctx, config) ++
+          cross_context_dependency_edges(ctx, config) ++
+          story_to_project_edges(ctx)
+      end)
+
+    {filter_us, kept} =
+      :timer.tc(fn ->
+        Enum.filter(generated, fn %{from: f, to: t} ->
+          MapSet.member?(node_keys, f) and MapSet.member?(node_keys, t)
+        end)
+      end)
+
+    {reduce_us, reduced} = :timer.tc(fn -> Topology.transitive_reduction(kept) end)
+
+    log_edge_timing(generated, kept, reduced, generate_us, filter_us, reduce_us)
+
+    reduced
+  end
+
+  # Which third of the edge phase actually costs.
+  #
+  # The outer timing said "edges 2500ms" against "nodes 69ms", which was enough
+  # to redirect the optimization effort but not enough to act on: generating
+  # edges, discarding the ones whose endpoints are not nodes, and reducing them
+  # transitively are three different problems with three different fixes.
+  #
+  # `transitive_reduction/1` has been optimized once already — a comment there
+  # records 471ms on a 1045-node graph before the bitset rewrite — so it is the
+  # obvious suspect and therefore exactly the thing not to assume.
+  #
+  # The counts matter as much as the times. A large gap between generated and
+  # kept means the generators are producing edges for nodes that do not exist,
+  # which is work thrown away rather than work needed.
+  defp log_edge_timing(generated, kept, reduced, generate_us, filter_us, reduce_us) do
+    ms = &round(&1 / 1000)
+
+    Logger.info(
+      "[Requirements] edges — #{length(generated)} generated, #{length(kept)} kept, " <>
+        "#{length(reduced)} after reduction; generate #{ms.(generate_us)}ms, " <>
+        "filter #{ms.(filter_us)}ms, reduce #{ms.(reduce_us)}ms"
+    )
   end
 
   # Cross-entity: story ↔ surface tree.
