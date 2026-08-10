@@ -430,12 +430,7 @@ defmodule CodeMySpec.Provisioning.Steps do
           # returns `{:ok, _}` only after the health probe passed. A deploy that
           # shipped and never answered must not read as done — criterion 1964 —
           # and writing the row anywhere earlier would make it exactly that.
-          {:ok, _deploys} =
-            Deploys.record_environment_deploy(
-              scope,
-              environment,
-              deploy_record_attrs(image, version)
-            )
+          {:ok, _deploys} = Deploys.record_environment_deploy(scope, environment, deploy_record_attrs(image, version))
 
           {:ok, [delivery | version_resources(version) ++ image_resources(image) ++ resources]}
 
@@ -1076,7 +1071,8 @@ defmodule CodeMySpec.Provisioning.Steps do
     %{
       kind: "inbound_proof",
       location: to,
-      identifier: "state=delivered message_id=#{message["id"]} proven_at=#{message["created_at"]}"
+      identifier:
+        "state=delivered message_id=#{message["id"]} proven_at=#{message["created_at"]}"
     }
   end
 
@@ -1281,6 +1277,7 @@ defmodule CodeMySpec.Provisioning.Steps do
           "origin=#{proof[:origin] || proof["origin"]} proven_at=#{iso(proven_at)}"
     }
   end
+
 
   defp build_image(scope, environment, opts) do
     # Injectable for the same reason the builder's own create/build/destroy
@@ -2025,34 +2022,34 @@ defmodule CodeMySpec.Provisioning.Steps do
   defp dns_record_for(scope, zone, environment, existing, acc, opts) do
     case environment_ip(scope, environment, opts) do
       nil ->
-        {:cont, {:ok, acc}}
+          {:cont, {:ok, acc}}
 
-      ip ->
-        write = Keyword.get(opts, :write_dns_record, &Cloudflare.ensure_dns_record/5)
+        ip ->
+          write = Keyword.get(opts, :write_dns_record, &Cloudflare.ensure_dns_record/5)
 
-        case write.(scope, zone["id"], environment.host, ip, records: existing) do
-          {:ok, response} ->
-            record = dns_resource(environment.host, ip, response, environment.name)
+          case write.(scope, zone["id"], environment.host, ip, records: existing) do
+            {:ok, response} ->
+              record = dns_resource(environment.host, ip, response, environment.name)
 
-            # Confirmed against a public resolver, not against our own write.
-            # A record that exists in the dashboard and does not resolve is
-            # the classic DNS failure, and it looks identical to success from
-            # the API's answer alone.
-            verification =
-              if Dns.resolves_publicly?(environment.host, :a, resolver_opts(opts)) do
-                [
-                  %{
-                    kind: "dns_verification",
-                    location: environment.host,
-                    identifier: "source=resolver environment=#{environment.name}",
-                    origin: "created"
-                  }
-                ]
-              else
-                []
-              end
+              # Confirmed against a public resolver, not against our own write.
+              # A record that exists in the dashboard and does not resolve is
+              # the classic DNS failure, and it looks identical to success from
+              # the API's answer alone.
+              verification =
+                if Dns.resolves_publicly?(environment.host, :a, resolver_opts(opts)) do
+                  [
+                    %{
+                      kind: "dns_verification",
+                      location: environment.host,
+                      identifier: "source=resolver environment=#{environment.name}",
+                      origin: "created"
+                    }
+                  ]
+                else
+                  []
+                end
 
-            {:cont, {:ok, acc ++ [record] ++ verification}}
+              {:cont, {:ok, acc ++ [record] ++ verification}}
 
           {:error, reason} ->
             {:halt, {:error, reason}}
