@@ -14,6 +14,7 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
   alias CodeMySpec.Files.FileSync
   alias CodeMySpec.Integration.WorkflowHelpers
   alias CodeMySpec.Projects
+  alias CodeMySpec.Qa.QaAttempt
   alias CodeMySpec.Requirements.RequirementGraph
   alias CodeMySpec.Stories
   alias CodeMySpecSpex.ProjectStateFixtures
@@ -768,8 +769,8 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
     # Insert a DB-backed QA pass attempt. The requirement graph now checks
     # Qa.complete?/2 (DB-driven), not result_complete.md on disk.
     {:ok, _attempt} =
-      %CodeMySpec.Qa.QaAttempt{}
-      |> CodeMySpec.Qa.QaAttempt.changeset(%{
+      %QaAttempt{}
+      |> QaAttempt.changeset(%{
         story_id: story.id,
         status: :pass,
         scenarios: [%{name: "Placeholder", status: :pass, observation: "All checks passed."}],
