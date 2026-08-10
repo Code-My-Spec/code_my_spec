@@ -2,9 +2,17 @@ defmodule CodeMySpec.Provisioning.Widget do
   @moduledoc """
   Installs the feedback widget on the deployed site and proves it works.
 
-  Installation runs the existing generator (`client_utils.gen.chat_widget`)
-  through `CodeMySpec.Environments.cmd/4` and wires the project's credential.
-  This module does not reimplement the widget.
+  Installation runs the existing generator (`cms_gen.feedback_widget`) through
+  `CodeMySpec.Environments.cmd/4`. This module does not reimplement the widget.
+
+  ## The generator has to be one the project actually ships
+
+  This step ran `client_utils.gen.chat_widget` long after that task was
+  deprecated and dropped from the published `client_utils` package, so every
+  run exited 1 on "the task could not be found". The widget the scaffolder
+  installs (`CodeMySpec.AgentTasks.CodeGeneration`) and the widget this step
+  proves have to be the same generator, or provisioning verifies something no
+  new project has.
 
   ## Anonymous by design
 
@@ -39,7 +47,7 @@ defmodule CodeMySpec.Provisioning.Widget do
   alias CodeMySpec.Environments
   alias CodeMySpec.Users.Scope
 
-  @generator "client_utils.gen.chat_widget"
+  @generator "cms_gen.feedback_widget"
 
   @type result :: %{
           state: :proven | :install_failed | :absent | :not_proven,
@@ -51,7 +59,11 @@ defmodule CodeMySpec.Provisioning.Widget do
         }
 
   @doc """
-  Run the widget generator against the project, wiring its credential.
+  Run the widget generator against the project.
+
+  Requires a deploy key because a widget installed without one cannot reach
+  CodeMySpec; the generator reads it from the app's own config rather than
+  from a flag, so this is a precondition rather than an argument.
 
   Returns the generator's output so a failure can be reported with what it
   actually said rather than "install failed".
@@ -59,17 +71,15 @@ defmodule CodeMySpec.Provisioning.Widget do
   @spec install(Environments.Environment.t(), String.t(), keyword()) ::
           {:ok, map()} | {:error, String.t()}
   def install(env, deploy_key, opts \\ []) when is_binary(deploy_key) do
-    # `mix <task>`, not `mix run <task>`. `mix run` takes a *file* — given a
-    # task name it answers "No such file: client_utils.gen.chat_widget" and
-    # exits, so the generator has never once run. The step reported "Widget
-    # generator failed (exit 1)" with an empty body, which reads like the
-    # generator refusing rather than never being invoked.
-    args = [@generator, "--deploy-key", deploy_key] ++ Keyword.get(opts, :extra_args, [])
+    args = [@generator | Keyword.get(opts, :extra_args, [])]
     # :mix_bin so a test can point at a stub without mutating PATH, which in
     # an async suite leaks into whatever else is running.
     mix = Keyword.get(opts, :mix_bin, "mix")
 
-    case Environments.cmd(env, mix, args) do
+    # Mix reports a missing task on stderr. Without :stderr_to_stdout the
+    # failure arrived as "exit 1:" and nothing, which reads like the generator
+    # refusing rather than never being found.
+    case Environments.cmd(env, mix, args, stderr_to_stdout: true) do
       {output, 0} -> {:ok, %{output: output}}
       {output, status} -> {:error, "Widget generator failed (exit #{status}): #{output}"}
     end
@@ -90,7 +100,9 @@ defmodule CodeMySpec.Provisioning.Widget do
     case fetch.(site_url) do
       {:ok, %{status: 200, body: body}} ->
         present = String.contains?(body, marker)
-        openable = present and String.contains?(body, Keyword.get(opts, :bundle_marker, "widget.js"))
+
+        openable =
+          present and String.contains?(body, Keyword.get(opts, :bundle_marker, "widget.js"))
 
         presence = %{status: 200, present: present, openable: openable}
 
@@ -121,8 +133,11 @@ defmodule CodeMySpec.Provisioning.Widget do
 
     case fetch.(site_url) do
       {:ok, %{status: 200, body: body}} ->
-        usable = not String.contains?(body, Keyword.get(opts, :broken_marker, "Application error"))
-        unavailable = String.contains?(body, Keyword.get(opts, :unavailable_marker, "widget-unavailable"))
+        usable =
+          not String.contains?(body, Keyword.get(opts, :broken_marker, "Application error"))
+
+        unavailable =
+          String.contains?(body, Keyword.get(opts, :unavailable_marker, "widget-unavailable"))
 
         probe = %{page_status: 200, page_usable: usable, widget_state: widget_state(unavailable)}
 
@@ -193,7 +208,14 @@ defmodule CodeMySpec.Provisioning.Widget do
       }
     else
       {:error, reason} when is_binary(reason) ->
-        %{state: :install_failed, install: nil, presence: nil, proof: nil, proven_at: nil, reason: reason}
+        %{
+          state: :install_failed,
+          install: nil,
+          presence: nil,
+          proof: nil,
+          proven_at: nil,
+          reason: reason
+        }
 
       {:error, :no_message} ->
         %{
@@ -223,8 +245,11 @@ defmodule CodeMySpec.Provisioning.Widget do
     req_opts = [method: :get, url: url, retry: false, receive_timeout: 15_000] ++ plug_opt()
 
     case Req.request(req_opts) do
-      {:ok, %Req.Response{status: status, body: body}} -> {:ok, %{status: status, body: to_string(body)}}
-      {:error, reason} -> {:error, reason}
+      {:ok, %Req.Response{status: status, body: body}} ->
+        {:ok, %{status: status, body: to_string(body)}}
+
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 
