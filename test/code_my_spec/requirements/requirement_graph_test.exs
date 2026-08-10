@@ -221,10 +221,13 @@ defmodule CodeMySpec.Requirements.RequirementGraphTest do
       assert first_project_index != nil,
              "expected at least one actionable project requirement"
 
-      if first_component_index do
-        assert first_project_index < first_component_index,
-               "expected project requirements to sort before component work, got: #{inspect(Enum.map(actionable, &{&1.entity_type, &1.name}))}"
-      end
+      assert_sorts_before(
+        first_project_index,
+        first_component_index,
+        actionable,
+        "project requirements",
+        "component work"
+      )
     end
 
     test "the qa journey chain sorts after story and component work" do
@@ -272,10 +275,31 @@ defmodule CodeMySpec.Requirements.RequirementGraphTest do
       other_index =
         Enum.find_index(actionable, &(&1.entity_type in ["story", "component"]))
 
-      if journey_index do
-        assert journey_index > other_index,
-               "expected the qa journey chain to sort after story/component work, got: #{inspect(Enum.map(actionable, &{&1.entity_type, &1.name}))}"
-      end
+      assert_sorts_before(
+        other_index,
+        journey_index,
+        actionable,
+        "story/component work",
+        "the qa journey chain"
+      )
+    end
+
+    # Ordering between two positions, when either may be absent.
+    #
+    # A nil index is "that kind of work is not actionable here", which is not a
+    # failure — the surrounding tests already assert separately that the graph
+    # produced something to order. Two clauses rather than a guard inside the
+    # assertion, per the no-imperative-`if` rule for test files.
+    #
+    # Both indices are reported on failure because "3 is not less than 1" says
+    # nothing about which requirements were in which order.
+    defp assert_sorts_before(_earlier, nil, _actionable, _earlier_label, _later_label), do: :ok
+    defp assert_sorts_before(nil, _later, _actionable, _earlier_label, _later_label), do: :ok
+
+    defp assert_sorts_before(earlier, later, actionable, earlier_label, later_label) do
+      assert earlier < later,
+             "expected #{earlier_label} to sort before #{later_label}, got: " <>
+               inspect(Enum.map(actionable, &{&1.entity_type, &1.name}))
     end
 
     test "story component_linked is blocked when project prerequisites are unsatisfied" do
