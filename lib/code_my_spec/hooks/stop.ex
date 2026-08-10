@@ -216,6 +216,19 @@ defmodule CodeMySpec.Hooks.Stop do
   defp pending_analysis?(%{active_project_id: nil}), do: false
   defp pending_analysis?(scope), do: Analysis.runs_in_flight?(scope)
 
+  # The address carries the harness id, because the wait endpoint is on the
+  # harness and every harness route names the working copy it is about. A scope
+  # with no harness has no local address to offer, so it gets the plain
+  # instruction rather than a URL that would 404.
+  defp wait_directive(%{active_harness_id: id}) when not is_nil(id) do
+    "Wait for it with `curl -sS -X POST localhost:4004/api/harnesses/#{id}/analysis/wait` " <>
+      "— run that in the background and you will be notified when it returns — then stop again."
+  end
+
+  defp wait_directive(_scope) do
+    "Wait for the analyzers to finish, then stop again."
+  end
+
   defp pending_response(scope, session, req_id) do
     sources = scope |> Analysis.in_flight() |> Enum.join(", ")
 
@@ -225,8 +238,7 @@ defmodule CodeMySpec.Hooks.Stop do
       %{
         "decision" => "block",
         "reason" =>
-          "Background analysis is still running: #{sources}. " <>
-            "Call `await_analysis` to wait for the results, then stop again."
+          "Background analysis is still running: #{sources}. " <> wait_directive(scope)
       }
     else
       Logger.info("[StopHook] [#{req_id}] Analysis pending (#{sources}) — allowing stop")

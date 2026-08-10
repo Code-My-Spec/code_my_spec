@@ -19,8 +19,13 @@ defmodule CodeMySpecLocalWeb.AnalysisController do
   require Logger
 
   alias CodeMySpec.Analysis
+  alias CodeMySpec.Problems
 
   @valid_sources ~w(compiler credo exunit spex)
+
+  # Long enough that reaching it means something is broken rather than slow.
+  # A sweep is 200-590s; this is twenty minutes.
+  @wait_timeout :timer.minutes(20)
 
   def run(conn, params) do
     scope = conn.assigns.current_scope
@@ -46,6 +51,69 @@ defmodule CodeMySpecLocalWeb.AnalysisController do
       true ->
         execute(conn, scope, source, args)
     end
+  end
+
+  @doc """
+  Block until this project's background analysis is idle, then report it.
+
+  The stop hook enqueues analyzers and decides from persisted problems, so an
+  agent that wants to stop against fresh results has to wait for them. This is
+  where that waiting happens.
+
+  It is an HTTP endpoint rather than an MCP tool on purpose. The same wait
+  existed as `await_analysis` and could not work: MCP's streamable-HTTP
+  transport caps a request at 30s (`@default_timeout 30_000`), sweeps here run
+  200-590s, and the transport's `GenServer.call` died first — so the tool
+  answered `-32603 Server unavailable` every time it was needed, which reads as
+  an outage rather than a timeout. Bounding the wait to fit under the cap
+  worked but cost 10 calls and ~200s to wait out one queued spex run.
+
+  Nothing caps this one. Bandit does not time out long-running handlers, which
+  is the same property the `run` endpoint above already depends on. The agent
+  fires it in the background and is notified when it returns, so one call covers
+  a wait of any length.
+  """
+  def wait(conn, _params) do
+    scope = conn.assigns.current_scope
+
+    if is_nil(scope.active_project_id) do
+      conn
+      |> put_status(422)
+      |> text("no project linked for this working directory — nothing to wait for")
+    else
+      Logger.info("[AnalysisAPI] waiting for analysis to finish")
+      text(conn, wait_body(scope, Analysis.await_all(scope, timeout: @wait_timeout)))
+    end
+  end
+
+  # `:timeout` and `:ok` are different answers and are reported as different
+  # answers. Returning "analysis complete" after giving up is the failure this
+  # whole endpoint exists to replace.
+  defp wait_body(scope, :ok), do: "Analysis complete.\n\n" <> summary(scope)
+
+  defp wait_body(scope, :timeout) do
+    """
+    Still running after #{div(@wait_timeout, 60_000)} minutes — not finished.
+
+    #{summary(scope)}
+    Something is wrong: a sweep on this project runs 200-590s. Check the
+    harness log before waiting again.
+    """
+  end
+
+  defp summary(scope) do
+    counts =
+      scope
+      |> Problems.list_project_problems([])
+      |> Enum.group_by(& &1.source)
+      |> Map.new(fn {source, problems} -> {source, length(problems)} end)
+
+    scope
+    |> Analysis.status()
+    |> Enum.map_join("\n", fn {source, %{state: state}} ->
+      "- #{source}: #{state}, #{Map.get(counts, source, 0)} problem(s)"
+    end)
+    |> Kernel.<>("\n")
   end
 
   defp execute(conn, scope, source, args) do

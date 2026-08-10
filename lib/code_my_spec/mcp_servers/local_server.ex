@@ -96,7 +96,10 @@ defmodule CodeMySpec.McpServers.LocalServer do
   component(CodeMySpec.McpServers.Tasks.Tools.TapOut)
   component(CodeMySpec.McpServers.Tasks.Tools.AskUser)
   component(CodeMySpec.McpServers.Tasks.Tools.CheckAnswer)
-  component(CodeMySpec.McpServers.Tasks.Tools.AwaitAnalysis)
+
+  # No AwaitAnalysis here. Waiting for the analyzers is `POST /api/analysis/wait`
+  # — MCP caps a request at 30s and a sweep runs 200-590s, so the tool could not
+  # return for the case it existed to serve.
 
   # Knowledge — browse, read, and unified semantic search across every
   # embedded source (knowledge, project_knowledge, spec, rules, hexdocs:*).

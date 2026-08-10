@@ -206,8 +206,10 @@ defmodule CodeMySpec.AgentTasks.FixBddSpecs do
     latest spex run does not cover the current state of the code. This is
     **not** a spec failure — nothing is known to be broken.
 
-    Call `await_analysis` to wait for the in-flight spex run to land, then
-    evaluate this requirement again.
+    Wait for the in-flight spex run with
+    `curl -sS -X POST localhost:4004/api/analysis/wait` — run it in the
+    background and you will be notified when it returns — then evaluate this
+    requirement again.
     """
   end
 

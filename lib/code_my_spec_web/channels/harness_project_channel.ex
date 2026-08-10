@@ -303,6 +303,28 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
     {:noreply, socket}
   end
 
+  # Wait until this project's analyzers are idle, then report.
+  #
+  # Replied out of band like `analysis_run` above, because the wait is minutes:
+  # a sweep runs 200-590s. Holding the channel process for that would block
+  # every other message the harness sends.
+  #
+  # This exists as a channel message, and reaches the agent as an HTTP endpoint,
+  # because the same wait as an MCP tool could not return — MCP's transport caps
+  # a request at 30s, so it answered `-32603 Server unavailable` every time it
+  # was needed.
+  def handle_in("analysis_wait", _payload, socket) do
+    ref = socket_ref(socket)
+    scope = socket.assigns.scope
+
+    Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
+      result = CodeMySpec.Analysis.await_all(scope, timeout: :timer.minutes(20))
+      Phoenix.Channel.reply(ref, {:ok, %{"state" => to_string(result), "summary" => wait_summary(scope)}})
+    end)
+
+    {:noreply, socket}
+  end
+
   # An unknown event is answered, not dropped.
   #
   # This clause used to be `{:noreply, socket}`, and that silence was a real
@@ -316,6 +338,20 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   def handle_in(event, _payload, socket) do
     Logger.warning("[HarnessProject] unknown event #{inspect(event)}")
     {:reply, {:error, %{"reason" => "unknown_event", "event" => event}}, socket}
+  end
+
+  defp wait_summary(scope) do
+    counts =
+      scope
+      |> CodeMySpec.Problems.list_project_problems([])
+      |> Enum.group_by(& &1.source)
+      |> Map.new(fn {source, problems} -> {source, length(problems)} end)
+
+    scope
+    |> CodeMySpec.Analysis.status()
+    |> Enum.map_join("\n", fn {source, %{state: state}} ->
+      "- #{source}: #{state}, #{Map.get(counts, source, 0)} problem(s)"
+    end)
   end
 
   # `Analysis` dispatches a run by sending here, because the executor it looked

@@ -235,6 +235,11 @@ defmodule CodeMySpecLocalWeb.Router do
     # `mix test` / `mix spex` commands into a curl against this endpoint,
     # so model-invoked and stop-hook-invoked runs share one record.
     post "/analysis/run", AnalysisController, :run
+
+    # Blocks until the background analyzers are idle. The agent fires this in
+    # the background and is notified when it returns — which is why it is here
+    # and not an MCP tool: MCP caps a request at 30s and a sweep is 200-590s.
+    post "/analysis/wait", AnalysisController, :wait
   end
 
   # Init runs before a project is linked, so it gets the cwd-only :init
