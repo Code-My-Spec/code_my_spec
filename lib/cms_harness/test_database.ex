@@ -115,12 +115,27 @@ defmodule CmsHarness.TestDatabase do
         :ok
 
       {_, partition} ->
-        do_reset(environment, partition)
+        do_reset(environment, partition, build_env(extra_env))
     end
   end
 
-  defp do_reset(environment, partition) do
-    case run_mix(environment, partition, ["run", "--no-compile", "-e", truncate_script()]) do
+  # Run in the analyzer's build tree, not the agent's.
+  #
+  # `--no-compile` means this only ever *loads* a tree, so pointing it at the
+  # default would read `_build/test` — the tree the agent's own `mix test`
+  # writes. Two ways that goes wrong: it fails outright on a checkout where the
+  # agent has never compiled in test env, and the failure is quiet by design,
+  # so the reset silently stops happening and the residue this exists to clear
+  # comes back. The path is already in `extra_env`; it just was not passed on.
+  defp build_env(extra_env) do
+    case List.keyfind(extra_env, "MIX_BUILD_PATH", 0) do
+      nil -> []
+      pair -> [pair]
+    end
+  end
+
+  defp do_reset(environment, partition, build_env) do
+    case run_mix(environment, partition, ["run", "--no-compile", "-e", truncate_script()], build_env) do
       :ok ->
         :ok
 
@@ -230,12 +245,12 @@ defmodule CmsHarness.TestDatabase do
     end
   end
 
-  defp run_mix(environment, partition, args) do
+  defp run_mix(environment, partition, args, extra \\ []) do
     cmd_env =
       [
         {"MIX_ENV", "test"},
         {"MIX_TEST_PARTITION", partition}
-      ] ++ Environments.clean_otp_env()
+      ] ++ extra ++ Environments.clean_otp_env()
 
     case Environments.cmd(environment, "mix", args, stderr_to_stdout: true, env: cmd_env) do
       {_output, 0} -> :ok
