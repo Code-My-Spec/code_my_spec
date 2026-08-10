@@ -757,6 +757,61 @@ defmodule CodeMySpecWeb.HarnessProjectChannelTest do
              "an open run whose executor is gone makes every later stop report analysis " <>
                "pending — an allow, forever"
     end
+
+    # The other half. Sweeping on join is right for a harness that restarted and
+    # took its queue with it; it is wrong for one whose socket dropped, because
+    # the analyzers are OS processes on its machine and a closed socket does not
+    # touch them. They finish, report, and are refused for a run that is no
+    # longer `:running` — which is `unknown_run`, and how a stop hook ends up
+    # frozen on findings nothing can refresh.
+    #
+    # The harness is the only thing that knows, so it says so on join.
+    test "are spared when the returning harness still holds them", %{
+      scope: scope,
+      topic: topic
+    } do
+      {:ok, %{harness_id: id}, channel} = join_with(scope, topic, nil)
+      served = %{scope | active_harness_id: id}
+
+      ref = push(channel, "hook_decision", %{"hook" => "stop", "payload" => %{}})
+      assert_reply ref, :ok, _decision, 5_000
+      assert_push "run_analysis", %{"runs" => _}, 5_000
+      assert Analysis.runs_in_flight?(served)
+
+      open_ids = open_run_ids(served)
+      assert open_ids != []
+
+      down = Process.monitor(channel.channel_pid)
+      Process.exit(channel.channel_pid, :kill)
+      assert_receive {:DOWN, ^down, :process, _, _}, 2_000
+
+      assert eventually(fn ->
+               match?({:ok, _, _}, join_claiming(scope, topic, id, open_ids))
+             end)
+
+      assert Analysis.runs_in_flight?(served),
+             "a run the harness is still executing must survive its socket dropping, " <>
+               "or the result it is about to send is refused as unknown_run"
+    end
+
+    defp join_claiming(scope, topic, harness_id, run_ids) do
+      scope
+      |> harness_socket([])
+      |> subscribe_and_join(HarnessProjectChannel, topic, %{
+        "label" => @label,
+        "harness_id" => harness_id,
+        "active_runs" => run_ids
+      })
+    end
+
+    defp open_run_ids(scope) do
+      import Ecto.Query
+
+      CodeMySpec.Analysis.Run
+      |> where([r], r.project_id == ^scope.active_project_id and r.status == :running)
+      |> select([r], r.id)
+      |> CodeMySpec.Repo.all()
+    end
   end
 
   # This is the test that would have caught the defect it was written for.

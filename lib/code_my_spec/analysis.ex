@@ -553,15 +553,36 @@ defmodule CodeMySpec.Analysis do
   that results apply next time, forever.
   """
   @spec fail_in_flight(Scope.t(), term()) :: {:ok, non_neg_integer()}
-  def fail_in_flight(%Scope{} = scope, reason) do
-    {:ok, count} = RunsRepository.fail_running(scope, reason)
+  def fail_in_flight(%Scope{} = scope, reason), do: fail_in_flight(scope, reason, [])
+
+  @doc """
+  As `fail_in_flight/2`, sparing the runs the harness says it is still working
+  on.
+
+  `claimed` comes from the harness's join payload. It is a claim, not a fact the
+  server can check — but the harness is the only thing that knows, since the
+  analyzers are OS processes on its machine, and a wrong claim costs one run
+  staying `:running` until the next reconnect rather than a wrong result being
+  recorded.
+  """
+  @spec fail_in_flight(Scope.t(), term(), [integer()]) :: {:ok, non_neg_integer()}
+  def fail_in_flight(%Scope{} = scope, reason, claimed) do
+    {:ok, count} = RunsRepository.fail_running(scope, reason, claimed)
 
     if count > 0 do
-      Logger.warning("[Analysis] closed #{count} stranded run(s): #{inspect(reason)}")
+      Logger.warning(
+        "[Analysis] closed #{count} stranded run(s): #{inspect(reason)}" <>
+          claimed_suffix(claimed)
+      )
     end
 
     {:ok, count}
   end
+
+  defp claimed_suffix([]), do: ""
+
+  defp claimed_suffix(claimed),
+    do: " (spared #{length(claimed)} the harness still holds: #{inspect(claimed)})"
 
   @doc """
   Per-source gauge state for the UI and the freshness check.

@@ -164,13 +164,32 @@ defmodule CodeMySpec.Analysis.RunsRepository do
   evidence that can satisfy it is a result that could never be recorded.
   """
   @spec fail_running(Scope.t(), term()) :: {:ok, non_neg_integer()}
-  def fail_running(%Scope{active_project_id: project_id} = scope, reason) do
+  def fail_running(%Scope{} = scope, reason), do: fail_running(scope, reason, [])
+
+  @doc """
+  Close this working copy's `:running` runs, except the ones the harness says it
+  is still working on.
+
+  A harness that restarted took its queue with it and those runs will never
+  finish, so closing them is what stops every later stop reporting "analysis
+  pending" on a next time that never arrives. A harness whose *socket* dropped
+  took nothing with it: the analyzers are OS processes on its machine, and they
+  finish, report, and are refused because the row is no longer `:running`.
+
+  The two are indistinguishable from here, which is why the harness declares
+  what it still holds on join. Anything it does not claim is closed, so a
+  genuinely dead harness is handled exactly as before — an empty declaration is
+  the old behaviour.
+  """
+  @spec fail_running(Scope.t(), term(), [integer()]) :: {:ok, non_neg_integer()}
+  def fail_running(%Scope{active_project_id: project_id} = scope, reason, claimed) do
     now = DateTime.utc_now()
 
     {count, _} =
       Run
       |> where([r], r.project_id == ^project_id and r.status == :running)
       |> where([r], r.harness_id == ^scope.active_harness_id)
+      |> exclude_claimed(claimed)
       |> Repo.update_all(
         set: [
           status: :failed,
@@ -182,6 +201,12 @@ defmodule CodeMySpec.Analysis.RunsRepository do
 
     {:ok, count}
   end
+
+  # An empty claim sweeps everything, which is what this did before harnesses
+  # declared anything — so an older harness, or one with nothing running, is
+  # unchanged.
+  defp exclude_claimed(query, []), do: query
+  defp exclude_claimed(query, claimed), do: where(query, [r], r.id not in ^claimed)
 
   @doc """
   Mark stranded `:running` rows as `:failed`.

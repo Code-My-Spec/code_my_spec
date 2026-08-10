@@ -74,7 +74,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
       # open run makes every later stop report analysis pending, which allows
       # the stop while saying results will apply next time, on a next time that
       # never arrives. This is the one moment it is provably safe to close them.
-      Analysis.fail_in_flight(scope, :harness_reconnected)
+      Analysis.fail_in_flight(scope, :harness_reconnected, claimed_runs(payload))
 
       # The id goes back in the join reply whether it was just minted or
       # recognised. A harness that already holds one gets the same value and
@@ -119,6 +119,16 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   end
 
   def join(_topic, _payload, _socket), do: {:error, %{reason: "invalid topic"}}
+
+  # Runs the joining harness says it is still executing.
+  #
+  # Only integers it actually sent. A harness that predates this field sends
+  # nothing and everything is swept, which is what happened before — so the
+  # rollout order does not matter.
+  defp claimed_runs(%{"active_runs" => ids}) when is_list(ids),
+    do: Enum.filter(ids, &is_integer/1)
+
+  defp claimed_runs(_payload), do: []
 
   @doc """
   Hand the harness the small slice of the domain that scanning needs.

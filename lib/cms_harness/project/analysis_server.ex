@@ -82,6 +82,28 @@ defmodule CmsHarness.Project.AnalysisServer do
     end
   end
 
+  @doc """
+  Run ids this harness is still working on — the one executing plus everything
+  queued behind it.
+
+  Declared to the server on join. The server closes a working copy's open runs
+  when a harness reconnects, on the reasoning that its queue went with it; that
+  is right for a harness that restarted and wrong for one whose socket dropped,
+  because the analyzers are OS processes here and a closed socket does not touch
+  them. They finish, report, and the result is refused for a run that is no
+  longer `:running`.
+
+  Empty list when there is no server for this root, which reads as "declaring
+  nothing" and leaves the sweep exactly as it was.
+  """
+  @spec in_flight(String.t()) :: [integer()]
+  def in_flight(root) do
+    case Registry.lookup(CmsHarness.Registry, {:analysis, root}) do
+      [{pid, _}] -> GenServer.call(pid, :in_flight, 5_000)
+      [] -> []
+    end
+  end
+
   # --- Server ---
 
   @impl true
@@ -97,6 +119,14 @@ defmodule CmsHarness.Project.AnalysisServer do
   @impl true
   def handle_call(:idle?, _from, state) do
     {:reply, is_nil(state.running) and state.queue == [], state}
+  end
+
+  # Queued runs count as in flight. Their rows are already `:running` on the
+  # server — it opens one per dispatched request — so a sweep would close them
+  # just the same, and this server will get to them.
+  def handle_call(:in_flight, _from, state) do
+    running = if state.running, do: [state.running.run_id], else: []
+    {:reply, running ++ Enum.map(state.queue, & &1.run_id), state}
   end
 
   @impl true

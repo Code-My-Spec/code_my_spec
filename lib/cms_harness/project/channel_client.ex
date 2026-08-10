@@ -327,7 +327,18 @@ defmodule CmsHarness.Project.ChannelClient do
        # instance means this process reconnecting, and the registration it is
        # colliding with is its own — so it may take it. A different instance is
        # a second harness on one `_build`, which still gets refused.
-       "instance" => instance()
+       "instance" => instance(),
+       # Runs this harness is still working on. The server closes a working
+       # copy's open runs on join, because a harness that restarted took its
+       # queue with it — but a harness whose *socket* dropped did not. The
+       # analyzers are OS processes here and a closed socket does not touch
+       # them; they finish, report, and are refused for a run that is no longer
+       # `:running`.
+       #
+       # Declaring them lets the sweep close only what goes unclaimed. An older
+       # server ignores the field and sweeps everything, which is what it does
+       # today.
+       "active_runs" => AnalysisServer.in_flight(project.root)
      })}
   end
 
