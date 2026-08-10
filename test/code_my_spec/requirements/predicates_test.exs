@@ -18,7 +18,15 @@ defmodule CodeMySpec.Requirements.PredicatesTest do
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.Files.File, as: FileRecord
-  alias CodeMySpec.Requirements.{Node, Predicates, RequirementCalculator, RequirementGraph}
+
+  alias CodeMySpec.Requirements.{
+    Node,
+    Predicates,
+    Registry,
+    RequirementCalculator,
+    RequirementDefinitionData,
+    RequirementGraph
+  }
 
   setup do
     %{scope: full_scope_fixture()}
@@ -299,6 +307,140 @@ defmodule CodeMySpec.Requirements.PredicatesTest do
         assert path_satisfied?(scope, config) == interpreted
         assert interpreted == unquote(expected)
       end
+    end
+  end
+
+  describe "field checks on a story" do
+    # `ready_for_dev: true` is not incidental. `Preloader.load/1` gates on it —
+    # only stories released for development project into the graph, so a parked
+    # story produces no nodes at all and every assertion below would compare two
+    # empty sets and pass. That is how these tests first failed: not because the
+    # predicate was wrong, but because there was nothing for it to match.
+    defp story!(scope, attrs) do
+      {:ok, story} =
+        CodeMySpec.Stories.create_story(
+          scope,
+          Map.merge(
+            %{
+              title: "A story #{System.unique_integer([:positive])}",
+              description: "for a field",
+              ready_for_dev: true
+            },
+            attrs
+          )
+        )
+
+      story
+    end
+
+    defp field_satisfied(scope, name, check, config) do
+      Predicates.nodes()
+      |> where([node: n], n.name == ^name)
+      |> Predicates.satisfied(check, config, scope.active_harness_id)
+      |> select([node: n], n.story_id)
+      |> Repo.all()
+      |> MapSet.new()
+    end
+
+    test "component_linked follows whether the story has one", %{scope: scope} do
+      linked = story!(scope, %{component_id: component_fixture(scope, %{type: "context"}).id})
+      unlinked = story!(scope, %{})
+
+      RequirementGraph.compute_graph(scope)
+
+      satisfied =
+        field_satisfied(scope, "component_linked", :field_present, %{field: :component_id})
+
+      assert MapSet.member?(satisfied, linked.id)
+      refute MapSet.member?(satisfied, unlinked.id)
+    end
+
+    # The reason `:field_true` exists separately. `specs_ready` defaults to
+    # `false`, so a presence check would call every story's specs green the
+    # moment the row exists.
+    test "specs_ready false is unsatisfied, not merely present", %{scope: scope} do
+      story = story!(scope, %{})
+
+      RequirementGraph.compute_graph(scope)
+
+      refute MapSet.member?(
+               field_satisfied(scope, "bdd_specs_passing", :field_true, %{field: :specs_ready}),
+               story.id
+             )
+
+      assert MapSet.member?(
+               field_satisfied(scope, "bdd_specs_passing", :field_present, %{
+                 field: :specs_ready
+               }),
+               story.id
+             ),
+             "present-but-false is exactly the case the two checks disagree on; if " <>
+               "they agreed here there would be no reason for both to exist"
+    end
+
+    test "a story whose specs are ready satisfies it", %{scope: scope} do
+      ready = story!(scope, %{specs_ready: true})
+      not_ready = story!(scope, %{})
+
+      RequirementGraph.compute_graph(scope)
+
+      satisfied = field_satisfied(scope, "bdd_specs_passing", :field_true, %{field: :specs_ready})
+
+      assert MapSet.member?(satisfied, ready.id)
+      refute MapSet.member?(satisfied, not_ready.id)
+    end
+
+    test "query and interpreter agree", %{scope: scope} do
+      ready = story!(scope, %{specs_ready: true})
+      RequirementGraph.compute_graph(scope)
+
+      definition = %{
+        name: "bdd_specs_passing",
+        check_type: :field_true,
+        config: %{field: :specs_ready}
+      }
+
+      %{satisfied: interpreted} =
+        RequirementCalculator.compute_one(scope, ready, definition, [], nil)
+
+      by_query =
+        MapSet.member?(
+          field_satisfied(scope, "bdd_specs_passing", :field_true, %{field: :specs_ready}),
+          ready.id
+        )
+
+      assert by_query == interpreted
+      assert interpreted
+    end
+
+    # The guard for the limit documented on `satisfied/4`: both field checks
+    # correlate through `story_id`, so one on a component or project would read
+    # unsatisfied forever. Under-satisfying is the safe direction, but silently
+    # is not — this fails when someone adds one, which is the moment to decide
+    # whether to grow the predicate or leave that definition interpreted.
+    test "no field check has escaped the story graph" do
+      field_checks = fn defs ->
+        for d <- defs, d.check_type in [:field_present, :field_true], do: d.name
+      end
+
+      # Guard against the assertion below passing on empty lists: if these
+      # lookups returned nothing, "no offenders" would be true and mean nothing.
+      assert field_checks.(RequirementDefinitionData.story_graph()) |> Enum.sort() ==
+               ["bdd_specs_passing", "component_linked"],
+             "the story graph is where field checks live; if this moved, the search " <>
+               "below is looking in the wrong places"
+
+      offenders =
+        for {type, defs} <- [
+              {"component", Registry.get_requirements_for_type("context")},
+              {"project", Registry.get_project_requirements()}
+            ],
+            name <- field_checks.(defs),
+            do: {type, name}
+
+      assert offenders == [],
+             "these correlate through story_id and would read unsatisfied forever: " <>
+               inspect(offenders)
     end
   end
 

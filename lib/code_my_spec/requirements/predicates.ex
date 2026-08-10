@@ -50,6 +50,7 @@ defmodule CodeMySpec.Requirements.Predicates do
 
   alias CodeMySpec.Files.File
   alias CodeMySpec.Requirements.Node
+  alias CodeMySpec.Stories.Story
 
   @doc """
   Narrow `query` to the nodes a check is satisfied for.
@@ -84,6 +85,24 @@ defmodule CodeMySpec.Requirements.Predicates do
   unsatisfied with a reason, and a predicate that matched instead would turn a
   malformed definition into a requirement that is permanently done.
 
+  ## `:field_present` and `:field_true`
+
+  Both read a field on the owning **story**, because both definitions that use
+  them are story-scoped: `component_linked` on `component_id`, and
+  `bdd_specs_passing` on `specs_ready`. They correlate through `story_id` rather
+  than dispatching on the owner, so a component- or project-owned node matches
+  no story and reads unsatisfied.
+
+  That is a real limit, and it is deliberate in this direction: `field(s, ^field)`
+  needs the field to exist on the schema it is applied to, and `specs_ready` is
+  not on components. Supporting all three owners would mean a subquery per
+  schema, each valid only for fields that schema has.
+
+  Under-satisfying is the safe failure — work done twice, and obvious. The
+  reverse would report a requirement done that nobody did. A test asserts the
+  registry still has no non-story field check, so adding one fails there rather
+  than silently reading false forever.
+
   ## `harness_id`
 
   Every clause scopes its file subquery to one working copy, or blends them all
@@ -93,7 +112,7 @@ defmodule CodeMySpec.Requirements.Predicates do
   """
   @spec satisfied(
           Ecto.Query.t(),
-          :file_exists | :file_valid | :path_exists,
+          :file_exists | :file_valid | :path_exists | :field_present | :field_true,
           map(),
           Ecto.UUID.t() | nil
         ) :: Ecto.Query.t()
@@ -173,6 +192,48 @@ defmodule CodeMySpec.Requirements.Predicates do
 
       _ ->
         where(query, [node: _n], fragment("FALSE"))
+    end
+  end
+
+  def satisfied(query, :field_present, config, _harness_id) do
+    field = field_name(config)
+
+    where(
+      query,
+      [node: n],
+      exists(
+        from(s in Story,
+          where: s.id == parent_as(:node).story_id,
+          where: not is_nil(field(s, ^field)),
+          select: 1
+        )
+      )
+    )
+  end
+
+  # Distinct from `:field_present` because `false` is a legitimate value that has
+  # to read as unsatisfied. `specs_ready` defaults to `false`, so presence would
+  # report every story's specs green the moment the row exists.
+  def satisfied(query, :field_true, config, _harness_id) do
+    field = field_name(config)
+
+    where(
+      query,
+      [node: n],
+      exists(
+        from(s in Story,
+          where: s.id == parent_as(:node).story_id,
+          where: field(s, ^field) == true,
+          select: 1
+        )
+      )
+    )
+  end
+
+  defp field_name(config) do
+    case config_value(config, :field) do
+      field when is_atom(field) -> field
+      field when is_binary(field) -> String.to_existing_atom(field)
     end
   end
 
