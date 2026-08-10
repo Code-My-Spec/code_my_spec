@@ -2130,6 +2130,15 @@ defmodule CodeMySpecSpex.Case do
     quote do
       cmd_mode = if CodeMySpecSpex.Case.recording?(), do: :all, else: :none
 
+      # ExCliVcr loads the existing file and appends to it, and never clears —
+      # so a recorded cassette grew across every run that ever touched it. The
+      # 972 drill's held 785 commands and four different servers' addresses,
+      # which is not a recording of a run, it is a pile of them. Cleared on
+      # first entry per run, exactly like the HTTP side.
+      if cmd_mode == :all do
+        CodeMySpecSpex.Case.clear_cassette_once(unquote(name), ExCliVcr.cassette_dir())
+      end
+
       # `sequential: true` for the same reason the HTTP side needs it: a step's
       # command sequence repeats commands whose answers change — `git
       # rev-parse HEAD` fails before the first commit and succeeds after —
@@ -2553,6 +2562,32 @@ defmodule CodeMySpecSpex.Case do
   def recording?, do: cassette_mode() == :record
 
   @doc """
+  Delete a cassette the first time this run asks to record it, and never again.
+
+  Both cassette libraries load whatever is on disk and append to it, so a
+  recording accumulates across runs unless something clears it — and clearing
+  it on every entry is worse, because a spex that enters the same cassette
+  twice then keeps only the second half.
+
+  Keyed in `:persistent_term`, which lasts exactly as long as the VM and so
+  means "this `mix spex` run" without anything needing to be started or torn
+  down.
+  """
+  @spec clear_cassette_once(String.t(), String.t()) :: :ok
+  def clear_cassette_once(name, dir) do
+    key = {__MODULE__, :cassette_cleared, dir, name}
+
+    case :persistent_term.get(key, :fresh) do
+      :cleared ->
+        :ok
+
+      :fresh ->
+        File.rm(Path.join(dir, name <> ".json"))
+        :persistent_term.put(key, :cleared)
+    end
+  end
+
+  @doc """
   Run `fun` with a cassette wired into every provisioning provider.
 
   `ReqCassette.with_cassette/3` hands the block a Req plug, and a provider only
@@ -2649,9 +2684,16 @@ defmodule CodeMySpecSpex.Case do
     # after it — a stale token recorded one 401 and then served that 401
     # forever, which reads exactly like an auth bug that will not go away.
     # Deleting first makes re-recording mean what it says.
+    #
+    # Once per run, though, not once per entry. A spex that enters the same
+    # cassette twice — a `given_` that runs the early steps, then the later
+    # ones — had its first block deleted by its second, so the file on disk
+    # held only the tail of the run. That is unreplayable, and worse, it threw
+    # away the recording of the steps that failed: several cloud cycles went
+    # into "why is there no server" with the answer sitting in a file that had
+    # been erased moments after it was written.
     if opts[:mode] == :record do
-      dir = opts[:cassette_dir] || "test/cassettes"
-      File.rm(Path.join(dir, name <> ".json"))
+      clear_cassette_once(name, opts[:cassette_dir] || "test/cassettes")
     end
 
     ReqCassette.with_cassette(name, opts, fn plug ->
