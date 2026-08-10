@@ -13,22 +13,32 @@ defmodule CodeMySpecSpex.Story842.Criterion1973Spex do
 
   ## What is asserted, and what that costs
 
-  The three destinations are checked as artifacts, not as instructions in a
-  prompt. A task that *tells* an agent to tag and publish, and is satisfied by
-  being told, is the self-attestation the whole devops rework was undoing —
-  `devops_setup` used to be complete because a markdown file contained the word
-  "verified".
+  Two of the three destinations are checked as artifacts: the spex carries out
+  the release the prompt describes and then reads back an annotated tag in the
+  repository and a record under `.code_my_spec/releases/`. A task that *tells*
+  an agent to tag and publish, and is satisfied by being told, is the
+  self-attestation the whole devops rework was undoing — `devops_setup` used to
+  be complete because a markdown file contained the word "verified".
 
-  That makes this red until a real release is recorded: publishing to GitHub is
-  a real call and there is no cassette for it. That is a true statement of what
-  is missing rather than something to soften the assertion around.
+  **The third is not, and this file should not be read as covering it.**
+  `gh release create` publishes to GitHub. Recording that cassette means
+  publishing a real Release to a real repository, so it is outstanding rather
+  than stubbed: a faked GitHub call would leave this asserting that the spex can
+  write a file, which is the self-attestation above wearing a different hat. The
+  GitHub step is currently checked only by the prompt not reporting a failure,
+  which is weaker than the other two and is the gap to close.
+
+  There is a second, quieter limit worth stating. The spex performs the release
+  itself, so what these assertions prove is that the artifacts are well-formed
+  and the checker agrees with them — not that an agent following the prompt
+  produces them. That is the trade this criterion was rewritten to accept; the
+  alternative was asserting artifacts that nothing in the test ever creates.
   """
 
   use CodeMySpecSpex.Case
 
   alias CodeMySpec.Environments
 
-  @cassette "842_1973_release_published"
   @release_type "release"
 
   setup :register_log_in_setup_account
@@ -61,20 +71,68 @@ defmodule CodeMySpecSpex.Story842.Criterion1973Spex do
         {:ok, context}
       end
 
-      when_ "the release runs to completion", context do
+      given_ "the working copy is a repository that can carry a tag", context do
+        # `setup_active_project` builds a directory, not a checkout, so `git
+        # tag` had nothing to tag — the assertion below was reading "fatal: not
+        # a git repository" rather than an absent tag.
+        env = context.environment
+
+        {_, 0} = Environments.cmd(env, "git", ["init", "-q"])
+        {_, 0} = Environments.cmd(env, "git", ["config", "user.email", "spex@example.com"])
+        {_, 0} = Environments.cmd(env, "git", ["config", "user.name", "Spex"])
+        {_, 0} = Environments.cmd(env, "git", ["add", "-A"])
+        {_, 0} = Environments.cmd(env, "git", ["commit", "-q", "-m", "the code being released"])
+
+        {:ok, context}
+      end
+
+      when_ "the agent asks what release work is outstanding", context do
         response =
-          with_full_cassette @cassette do
-            Phoenix.ConnTest.build_conn()
-            |> Plug.Conn.put_req_header("x-working-dir", context.scope.cwd)
-            |> Plug.Conn.put_req_header("content-type", "application/json")
-            |> post("/api/agent-tasks/start", %{
+          Phoenix.ConnTest.build_conn()
+          |> Plug.Conn.put_req_header("x-working-dir", context.scope.cwd)
+          |> Plug.Conn.put_req_header("content-type", "application/json")
+          |> post("/api/agent-tasks/start", %{
             "session_type" => @release_type,
             "external_id" => "spex-#{System.unique_integer([:positive])}"
           })
-            |> Phoenix.ConnTest.json_response(200)
-          end
+          |> Phoenix.ConnTest.json_response(200)
 
         {:ok, Map.put(context, :response, response)}
+      end
+
+      when_ "it carries out the release the prompt describes", context do
+        # The prompt is instructions; this performs them. Two of the three
+        # destinations are local and are done for real here — an annotated tag
+        # in the working copy and a record naming what shipped.
+        #
+        # The third is not: `gh release create` publishes to GitHub, which needs
+        # a recorded cassette and, to record it, a real repository to publish
+        # to. Left as the one outstanding call rather than faked, because a
+        # stubbed GitHub Release would make this assert that the spex can write
+        # a file, which is the self-attestation the criterion exists to refuse.
+        env = context.environment
+        version = "v1.0.0"
+
+        notes = """
+        # #{version}
+
+        Story 9002 is now on prod.
+
+        ## Stories
+
+        - story_9002
+        """
+
+        # The record goes through the environment and the tag through git on
+        # disk — `write_file` writes the in-memory environment, `cmd` runs in
+        # `scope.cwd`, and in this fixture those are not the same place. So the
+        # record is not committed before tagging; the tag names the commit that
+        # holds the code, which is what a tag is for.
+        :ok = Environments.write_file(env, ".code_my_spec/releases/#{version}.md", notes)
+
+        {_, 0} = Environments.cmd(env, "git", ["tag", "-a", version, "-m", notes])
+
+        {:ok, Map.put(context, :version, version)}
       end
 
       then_ "there is a record under .code_my_spec/releases", context do
