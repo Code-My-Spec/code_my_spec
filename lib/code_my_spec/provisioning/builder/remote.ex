@@ -47,7 +47,7 @@ defmodule CodeMySpec.Provisioning.Builder.Remote do
 
     with :ok <- await_ssh(run, Keyword.get(opts, :ssh_attempts, @ssh_attempts), opts),
          :ok <- deliver.(ref, dir),
-         :ok <- docker_build(run, reference, ref, dir),
+         :ok <- docker_build(run, reference, ref, dir, Keyword.get(opts, :service)),
          :ok <- maybe_push(run, reference, opts),
          {:ok, architecture} <- built_architecture(run, reference) do
       {:ok, %{reference: reference, architecture: architecture}}
@@ -144,12 +144,27 @@ defmodule CodeMySpec.Provisioning.Builder.Remote do
 
   defp shell_quote(value), do: "'" <> String.replace(value, "'", "'\\''") <> "'"
 
-  defp docker_build(run, reference, ref, dir) do
-    case run.(["cd #{dir} && docker build --label commit=#{ref} -t #{reference} ."]) do
+  # `service` is kamal's, and it refuses an image without it:
+  #
+  #   Image <ref> is missing the 'service' label
+  #
+  # kamal builds its own images and stamps the label itself. Setup builds on
+  # its own builder and deploys with `--skip-push`, so nothing else was ever
+  # going to add it — the pull succeeded and the very next command rejected
+  # what it had just pulled.
+  defp docker_build(run, reference, ref, dir, service) do
+    labels = "--label commit=#{ref}" <> service_label(service)
+
+    case run.(["cd #{dir} && docker build #{labels} -t #{reference} ."]) do
       {_, 0} -> :ok
       {output, status} -> {:error, {:build_failed, status, trim(output)}}
     end
   end
+
+  defp service_label(service) when is_binary(service) and service != "",
+    do: " --label service=#{shell_quote(service)}"
+
+  defp service_label(_service), do: ""
 
   # Skippable, because a registry is the one thing a local build cannot stand
   # in for — pushing to a real one would turn a build test into a network test.

@@ -1346,6 +1346,27 @@ defmodule CodeMySpec.Provisioning.Steps do
     end
   end
 
+  # kamal's service name, read from the config kamal itself reads.
+  #
+  # kamal refuses an image that does not carry a `service` label matching it —
+  # `Image <ref> is missing the 'service' label` — and it normally stamps that
+  # label itself while building. Setup builds on its own builder and deploys
+  # with `--skip-push`, so nothing added it, and the deploy rejected the image
+  # it had just pulled.
+  #
+  # Read rather than derived: the service is whatever the generated config
+  # says, and reconstructing it here from the project name would be a second
+  # opinion about a value that already exists in one place.
+  defp with_kamal_service(opts, scope, environment) do
+    with {:ok, body} <- read_deploy_config(scope, environment),
+         {:ok, %{"service" => service}} when is_binary(service) <-
+           YamlElixir.read_from_string(body) do
+      Keyword.put(opts, :service, service)
+    else
+      _ -> opts
+    end
+  end
+
   defp read_deploy_config(scope, environment) do
     Environments.read_file(env(scope), deploy_config_path(environment))
   end
@@ -1459,6 +1480,7 @@ defmodule CodeMySpec.Provisioning.Steps do
          {:ok, opts} <- with_private_network(scope, environment, opts),
          {:ok, opts} <- with_registry_credential(scope, opts),
          {:ok, opts} <- with_builder_ssh(scope, opts),
+         opts = with_kamal_service(opts, scope, environment),
          {:ok, tag} <- image_tag(scope, opts),
          # Computed before the build, not after: it is where the image is
          # pushed *to*, so the builder needs it in hand. `Builder.docker_build`

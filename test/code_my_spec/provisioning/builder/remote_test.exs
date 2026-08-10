@@ -41,6 +41,20 @@ defmodule CodeMySpec.Provisioning.Builder.RemoteTest do
     end
   end
 
+  # The `docker build` among everything the builder ran. `assert_received`
+  # takes the *first* message, which is the SSH reachability probe — so
+  # asserting on that reports "true" and says nothing about the build.
+  defp build_command do
+    receive do
+      {:ran, command} -> matching_build(command, String.contains?(command, "docker build"))
+    after
+      0 -> flunk("no docker build was run")
+    end
+  end
+
+  defp matching_build(command, true), do: command
+  defp matching_build(_command, false), do: build_command()
+
   defp arm, do: {"arm64\n", 0}
 
   describe "build/4" do
@@ -59,6 +73,37 @@ defmodule CodeMySpec.Provisioning.Builder.RemoteTest do
       # Nothing in the sequence reaches GitHub, which is the point.
       refute_received {:ran, "git clone" <> _}
       refute_received {:ran, "git fetch" <> _}
+    end
+
+    # kamal refuses an image that does not carry a `service` label matching
+    # its own service name — `Image <ref> is missing the 'service' label`. It
+    # stamps that label itself when it builds, and setup builds elsewhere and
+    # deploys with `--skip-push`, so nothing else was ever going to add it.
+    # The deploy pulled the image successfully and the very next command
+    # rejected what it had just pulled.
+    test "stamps the service label kamal checks for" do
+      run = recorder(self(), %{"inspect" => arm()})
+
+      assert {:ok, _} =
+               Remote.build(
+                 %{"ip" => "1.2.3.4"},
+                 "abc123",
+                 "reg/app:abc123",
+                 opts(run, service: "myapp-uat")
+               )
+
+      assert build_command() =~ "--label service='myapp-uat'"
+    end
+
+    # Nothing to stamp is not the same as stamping nothing: a build with no
+    # service configured must still produce a working image, and an empty
+    # label would be a label kamal compares against and rejects.
+    test "omits the label entirely when no service is configured" do
+      run = recorder(self(), %{"inspect" => arm()})
+
+      assert {:ok, _} = Remote.build(%{"ip" => "1.2.3.4"}, "abc123", "reg/app:abc123", opts(run))
+
+      refute build_command() =~ "--label service"
     end
 
     test "reads the architecture off the image rather than trusting the request" do
