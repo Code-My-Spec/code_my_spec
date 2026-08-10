@@ -125,6 +125,59 @@ defmodule CodeMySpec.Requirements.ProjectionTest do
     end
   end
 
+  # The question the payload could not answer, and the reason for all of this.
+  # A `bytea` addressed by one hash cannot say which of its nodes a changed file
+  # touches, so any change discarded the whole graph.
+  describe "for_file/2" do
+    setup %{scope: scope} do
+      component = component_fixture(scope, %{type: "context"})
+      RequirementGraph.compute_graph(scope)
+      %{component: component}
+    end
+
+    test "a component's file names that component's requirements", %{
+      scope: scope,
+      component: component
+    } do
+      path = "lib/demo/#{System.unique_integer([:positive])}.ex"
+
+      Repo.insert!(%CodeMySpec.Files.File{
+        project_id: scope.active_project_id,
+        harness_id: scope.active_harness_id,
+        component_id: component.id,
+        path: path,
+        role: :implementation
+      })
+
+      found = Projection.for_file(scope, path)
+
+      assert found != []
+      assert Enum.all?(found, &(&1.component_id == component.id))
+    end
+
+    # A pinned nil in `component_id == ^nil` compiles to `= NULL`, which is
+    # never true — so a story's file must not accidentally match every node
+    # whose component is null, which is every project node.
+    test "a file owned by nothing bears on nothing", %{scope: scope} do
+      path = "lib/demo/unowned_#{System.unique_integer([:positive])}.ex"
+
+      Repo.insert!(%CodeMySpec.Files.File{
+        project_id: scope.active_project_id,
+        harness_id: scope.active_harness_id,
+        path: path,
+        role: :implementation
+      })
+
+      assert Projection.for_file(scope, path) == [],
+             "an unowned file bearing on every project requirement would be worse " <>
+               "than no answer — it would invalidate the whole graph on any edit"
+    end
+
+    test "a path with no file row is not an error", %{scope: scope} do
+      assert Projection.for_file(scope, "lib/does/not/exist.ex") == []
+    end
+  end
+
   describe "load/2 when rows and definitions disagree" do
     # A row whose name matches no definition is dropped rather than guessed at:
     # the definitions moved and this node genuinely is not in the graph any

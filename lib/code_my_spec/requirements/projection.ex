@@ -31,6 +31,7 @@ defmodule CodeMySpec.Requirements.Projection do
 
   import Ecto.Query
 
+  alias CodeMySpec.Files.File
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements.{Edge, Node, Registry, Requirement}
   alias CodeMySpec.Users.Scope
@@ -45,6 +46,54 @@ defmodule CodeMySpec.Requirements.Projection do
 
     by_id = Map.new(rows, &{&1.id, &1})
     {nodes, edges_for(rows, by_id, ctx)}
+  end
+
+  @doc """
+  Which requirements a file bears on.
+
+  The question the blob could not answer, and the reason the graph became rows:
+  a `bytea` addressed by one hash has no way to say which of its 5,000 nodes a
+  changed file touches, so any change meant discarding the whole payload.
+
+  A file records its owner — `component_id` or `story_id` — and so does a
+  requirement, so this is one join. It returns rows rather than rehydrated
+  nodes: the caller asking "what does this file affect" wants the set, and
+  rehydration costs a definition lookup per node for fields it did not ask for.
+
+  A file owned by nothing — unclassified, or project-level — bears on nothing,
+  which is the honest answer rather than "every project requirement".
+  """
+  @spec for_file(Scope.t(), String.t()) :: [Node.t()]
+  def for_file(%Scope{active_project_id: project_id}, path) do
+    File
+    |> where([f], f.project_id == ^project_id and f.path == ^path)
+    |> select([f], {f.component_id, f.story_id})
+    |> Repo.one()
+    |> case do
+      nil -> []
+      {nil, nil} -> []
+      {component_id, story_id} -> nodes_owned_by(component_id, story_id)
+    end
+  end
+
+  # One clause per owner rather than an `or` across both. Ecto refuses
+  # `field == ^nil` outright — it would mean `= NULL`, never true — and a file
+  # has exactly one owner, so the shape of the data is two clauses.
+  defp nodes_owned_by(component_id, nil) do
+    Node |> where([n], n.component_id == ^component_id) |> Repo.all()
+  end
+
+  defp nodes_owned_by(nil, story_id) do
+    Node |> where([n], n.story_id == ^story_id) |> Repo.all()
+  end
+
+  # A file claimed by both would be a sync bug, and answering with the union
+  # would hide it. Neither is reachable through `for_file/2`, which returns
+  # early on `{nil, nil}`.
+  defp nodes_owned_by(component_id, story_id) do
+    Node
+    |> where([n], n.component_id == ^component_id or n.story_id == ^story_id)
+    |> Repo.all()
   end
 
   # Only rows belonging to entities this project currently has. A component
