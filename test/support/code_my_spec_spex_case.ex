@@ -686,7 +686,16 @@ defmodule CodeMySpecSpex.Case do
     |> Enum.drop(1)
     |> Enum.reject(&String.starts_with?(&1, "-"))
     |> Enum.drop(-1)
+    |> Enum.reject(&unresolvable?/1)
   end
+
+  # `COPY config/${MIX_ENV}.exs` names a path that only exists once Docker has
+  # substituted a build argument, and a glob names several. Neither can be
+  # looked up statically, and the generated app's Dockerfile uses the first —
+  # so a guard that treated them as literals refused a perfectly good fixture.
+  # Skipped rather than guessed at: this check exists to catch the file nobody
+  # committed, and inventing an expansion would trade that for false alarms.
+  defp unresolvable?(source), do: String.contains?(source, ["$", "*", "?"])
 
   # `git cat-file -e` answers for a blob and a tree alike, so one call covers
   # `mix.exs` and `assets` without caring which is which.
