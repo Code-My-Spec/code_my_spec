@@ -151,6 +151,8 @@ defmodule CodeMySpecSpex.Case do
   def connect_providers(%{scope: scope} = context) do
     refuse_to_run_on_residue()
 
+    start_cassette_session()
+
     # Nothing is really happening on replay, so there is nothing to wait for.
     # The pollers still ran their sleeps between replayed reads, which is where
     # a passing criterion's five and a half minutes went.
@@ -2615,6 +2617,32 @@ defmodule CodeMySpecSpex.Case do
   def recording?, do: cassette_mode() == :record
 
   @doc """
+  Start a cassette session that lasts as long as the test.
+
+  Registered before anything else registers a teardown, so it is torn down
+  last — `on_exit` callbacks run in reverse, and the teardown blocks use
+  cassettes of their own.
+  """
+  @spec start_cassette_session() :: :ok
+  def start_cassette_session do
+    session = ReqCassette.start_shared_session()
+    Process.put(:cms_cassette_session, session)
+
+    ExUnit.Callbacks.on_exit(fn -> ReqCassette.end_shared_session(session) end)
+
+    :ok
+  end
+
+  # The test's session when there is one. A spex that never called
+  # `connect_providers/1` still gets per-block sharing rather than none.
+  defp cassette_session(opts) do
+    case Process.get(:cms_cassette_session) do
+      nil -> Keyword.put_new(opts, :shared, true)
+      session -> Keyword.put_new(opts, :session, session)
+    end
+  end
+
+  @doc """
   Set a cassette aside the first time this run asks to record it, and never
   again.
 
@@ -2759,9 +2787,13 @@ defmodule CodeMySpecSpex.Case do
       # existed, and it reported that the box the previous step had just
       # created was not there.
       #
-      # A shared session puts the cursor in an Agent, where every process
-      # sees the same one.
-      |> Keyword.put_new(:shared, true)
+      # A shared session puts the cursor in an Agent, where every process sees
+      # the same one. It belongs to the *test*, not to one `with_cassette`
+      # block: `shared: true` starts and stops an Agent around each block, and
+      # a supervised step that outlives its block then reaches a dead one —
+      # `ReqCassette shared session Agent is not alive`. Started in setup and
+      # ended in `on_exit` is the library's own documented shape for this.
+      |> cassette_session()
       |> Keyword.put_new(:filter_request_headers, ["authorization", "cookie"])
       |> Keyword.put_new(:filter_response_headers, ["set-cookie"])
       |> Keyword.put_new(:filter_sensitive_data, sensitive_patterns())
