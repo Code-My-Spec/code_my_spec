@@ -236,6 +236,10 @@ defmodule CodeMySpec.Provisioning.Registry do
       bucket = bucket_name(scope, opts)
       command = serve_command(bucket, credentials, bind, location, opts)
 
+      # This box pulls from the registry it is about to host, so it needs the
+      # same exemption the builder does.
+      run.([trust_command("#{bind}:#{port()}")])
+
       case run.([command]) do
         {_output, 0} -> {:ok, %{bucket: bucket, bind: bind, port: port()}}
         {output, status} -> {:error, {:registry_start_failed, status, String.trim(output)}}
@@ -270,6 +274,33 @@ defmodule CodeMySpec.Provisioning.Registry do
     "docker rm -f #{@container} >/dev/null 2>&1; " <>
       "docker run -d --name #{@container} --restart always " <>
       "-p #{bind}:#{port()}:#{port()} #{env} #{image}"
+  end
+
+  @doc """
+  Tell a box's Docker daemon this registry speaks plain HTTP.
+
+  Docker assumes HTTPS for every registry except `localhost`, so a private
+  address gets a TLS handshake against a plain-HTTP server and fails with
+  `context deadline exceeded` — a timeout, which reads like an unreachable
+  host rather than a protocol disagreement.
+
+  Both ends need it: the builder to push, the app's box to pull.
+
+  No TLS instead of TLS because there is nothing to protect. The registry
+  listens on a private address inside one project's network, reachable only by
+  machines we attached to it, and a certificate would need issuing, renewing
+  and trusting on boxes that exist for one build.
+
+  Restarted only when the file changes, since restarting Docker stops
+  everything running on the box — which on the app's server is the app.
+  """
+  @spec trust_command(String.t()) :: String.t()
+  def trust_command(host) do
+    config = ~s({"insecure-registries":["#{host}"]})
+
+    "mkdir -p /etc/docker && " <>
+      "(grep -qF #{shell_escape(host)} /etc/docker/daemon.json 2>/dev/null || " <>
+      "(echo #{shell_escape(config)} > /etc/docker/daemon.json && systemctl restart docker))"
   end
 
   defp shell_escape(value), do: "'" <> String.replace(value, "'", "'\\''") <> "'"

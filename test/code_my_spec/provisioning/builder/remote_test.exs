@@ -151,7 +151,7 @@ defmodule CodeMySpec.Provisioning.Builder.RemoteTest do
                  opts(run, registry_credentials: %{username: "cms", password: "hunter2"})
                )
 
-      [_reachable, _build, login, push, _inspect] = ran_commands(5)
+      [_reachable, _build, _trust, login, push, _inspect] = ran_commands(6)
 
       assert push =~ "docker push", "the login must come before the push, not after it"
 
@@ -176,7 +176,7 @@ defmodule CodeMySpec.Provisioning.Builder.RemoteTest do
                  opts(run, registry_credentials: %{username: "cms", password: "pw"})
                )
 
-      [_reachable, _build, login, _push, _inspect] = ran_commands(5)
+      [_reachable, _build, _trust, login, _push, _inspect] = ran_commands(6)
 
       assert login =~ "docker login 'registry.example.com'"
       refute login =~ "some/deep/path"
@@ -210,8 +210,8 @@ defmodule CodeMySpec.Provisioning.Builder.RemoteTest do
     end
   end
 
-  # The sequence `build/4` runs is fixed — reachability, build, login, push,
-  # inspect — so the count is known rather than searched for. Taking a known
+  # The sequence `build/4` runs is fixed — reachability, build, trust, login,
+  # push, inspect — so the count is known rather than searched for. Taking a known
   # number and matching positionally says where the login belongs, which "scan
   # forward until something matches" cannot: it would pass just as well if the
   # login came after the push.

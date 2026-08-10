@@ -318,7 +318,14 @@ defmodule CodeMySpec.Provisioning.Steps do
          opts <-
            opts
            |> Keyword.put(:firewall_ids, [firewall["id"]])
-           |> Keyword.put(:ssh_key_ids, [ssh_key["id"]]) do
+           |> Keyword.put(:ssh_key_ids, [ssh_key["id"]])
+           # The Docker app image, for the reason `Builder` gives for the
+           # builder: a bare OS pays `apt-get install docker` before it can do
+           # its job, and depends on apt mirrors being up to do it. This box
+           # runs every kamal container and the registry the deploy pulls
+           # from, so it needs Docker from first boot — the first drill to
+           # start a registry got `bash: docker: command not found`.
+           |> Keyword.put_new(:image, "docker-ce") do
       ensure_environment_servers(scope, opts, made)
     else
       {:error, reason, partial} -> {:error, format(reason), partial}
@@ -1448,6 +1455,10 @@ defmodule CodeMySpec.Provisioning.Steps do
     with {:ok, architecture} <- architecture_for(scope, environment, opts),
          {:ok, opts} <- with_access_key(scope, opts),
          {:ok, opts} <- with_private_network(scope, environment, opts),
+         # Before the registry, not just before the build: starting the
+         # registry means reaching the app's box over SSH, and that needs the
+         # same key and environment the builder does.
+         {:ok, opts} <- with_builder_ssh(scope, opts),
          {:ok, _bucket} <- ensure_registry.(scope, opts),
          {:ok, _registry} <- serve_registry(scope, environment, opts),
          {:ok, tag} <- image_tag(scope, opts),
@@ -1459,7 +1470,6 @@ defmodule CodeMySpec.Provisioning.Steps do
          # for something already finished. Deriving it needs only the tag.
          {:ok, reference} <- Registry.reference(scope, tag, opts),
          opts = Keyword.put(opts, :reference, reference),
-         {:ok, opts} <- with_builder_ssh(scope, opts),
          {:ok, build} <- build_on_builder(scope, tag, architecture, opts) do
       {:ok,
        %{

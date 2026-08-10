@@ -156,8 +156,18 @@ defmodule CodeMySpec.Provisioning.Builder.Remote do
   # Never skipped in production: the deploy pulls what was pushed.
   defp maybe_push(run, reference, opts) do
     case Keyword.get(opts, :push, true) do
-      false -> :ok
-      _ -> with :ok <- login(run, reference, opts), do: docker_push(run, reference)
+      false ->
+        :ok
+
+      _ ->
+        # Docker assumes HTTPS for anything but `localhost`, and the registry
+        # on the project's private network speaks plain HTTP. Without this the
+        # push fails with `context deadline exceeded` — a timeout, which reads
+        # as an unreachable host rather than a protocol disagreement.
+        host = reference |> String.split("/") |> hd()
+        run.([CodeMySpec.Provisioning.Registry.trust_command(host)])
+
+        with :ok <- login(run, reference, opts), do: docker_push(run, reference)
     end
   end
 

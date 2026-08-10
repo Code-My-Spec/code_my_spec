@@ -145,6 +145,7 @@ defmodule CodeMySpec.Provisioning.RegistryTest do
     test "points the registry at this project's bucket" do
       assert {:ok, %{bucket: "sam-s-app-registry"}} = serve()
 
+      assert_received {:ran, _trust}
       assert_received {:ran, command}
       assert command =~ "REGISTRY_STORAGE_S3_BUCKET='sam-s-app-registry'"
     end
@@ -155,6 +156,7 @@ defmodule CodeMySpec.Provisioning.RegistryTest do
     test "addresses the bucket path-style, which Hetzner requires" do
       assert {:ok, _} = serve()
 
+      assert_received {:ran, _trust}
       assert_received {:ran, command}
       assert command =~ "REGISTRY_STORAGE_S3_FORCEPATHSTYLE='true'"
       assert command =~ "REGISTRY_STORAGE_S3_REGIONENDPOINT='https://fsn1.your-objectstorage.com'"
@@ -163,6 +165,7 @@ defmodule CodeMySpec.Provisioning.RegistryTest do
     test "listens on loopback unless told otherwise" do
       assert {:ok, %{bind: "127.0.0.1", port: 5000}} = serve()
 
+      assert_received {:ran, _trust}
       assert_received {:ran, command}
       assert command =~ "-p 127.0.0.1:5000:5000"
     end
@@ -173,6 +176,7 @@ defmodule CodeMySpec.Provisioning.RegistryTest do
     test "binds where it is told" do
       assert {:ok, %{bind: "10.0.0.2"}} = serve(bind: "10.0.0.2")
 
+      assert_received {:ran, _trust}
       assert_received {:ran, command}
       assert command =~ "-p 10.0.0.2:5000:5000"
     end
@@ -182,6 +186,7 @@ defmodule CodeMySpec.Provisioning.RegistryTest do
     test "replaces the container rather than colliding with it" do
       assert {:ok, _} = serve()
 
+      assert_received {:ran, _trust}
       assert_received {:ran, command}
       assert command =~ "docker rm -f cms-registry"
       assert command =~ "docker run -d --name cms-registry"
@@ -193,8 +198,27 @@ defmodule CodeMySpec.Provisioning.RegistryTest do
     test "survives a reboot of the box it shares with the app" do
       assert {:ok, _} = serve()
 
+      assert_received {:ran, _trust}
       assert_received {:ran, command}
       assert command =~ "--restart always"
+    end
+
+    # Docker assumes HTTPS for every registry but `localhost`, and this one
+    # speaks plain HTTP on a private address. Without the exemption the push
+    # fails with `context deadline exceeded` — a timeout, which reads as an
+    # unreachable host rather than a protocol disagreement.
+    test "the box is told the registry speaks plain HTTP" do
+      assert {:ok, _} = serve(bind: "10.0.0.2")
+
+      assert_received {:ran, trust}
+
+      assert trust =~ "insecure-registries"
+      assert trust =~ "10.0.0.2:5000"
+
+      # Restarting Docker stops everything on the box, which on the app's
+      # server is the app. Only when the file actually changes.
+      assert trust =~ "grep -qF"
+      assert trust =~ "systemctl restart docker"
     end
 
     test "a registry that will not start is an error, not a success" do
