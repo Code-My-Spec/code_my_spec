@@ -60,12 +60,22 @@ defmodule CodeMySpec.Provisioning.Builder do
   #     cores and 8GB for €0.0673/h, against cpx21's 3 cores and 4GB for
   #     €0.0601 — more of both forseven thousandths of a euro an hour.
   #
-  # cpx32 is EU-only (fsn1/nbg1/hel1/sin, not ash). A builder pushes to a
-  # registry and is gone in minutes, so where it runs matters far less than
-  # what it costs and whether it exists.
+  # cpx31 rather than cpx32, and the difference is only where they exist.
+  #
+  # They are identical on paper — 4 cores, 8GB — but cpx32 is offered in fsn1,
+  # hel1, nbg1 and sin, while cpx31 is in every location including ash and hil.
+  #
+  # This comment used to say a builder "is gone in minutes, so where it runs
+  # matters far less than what it costs". That was true when the builder pushed
+  # to a registry somewhere else. It is not true now: the builder joins the app
+  # box's private network, and a network subnet lives in exactly one zone, so
+  # the builder has to be created in the app box's own location. A type that
+  # does not exist in half of them is a builder that cannot be placed — which
+  # the API says as "unsupported location for server type", found by asking
+  # /server_types rather than by reading the docs.
   @builders %{
     arm: %{server_type: "cax21", location: "fsn1"},
-    x86: %{server_type: "cpx32", location: "fsn1"}
+    x86: %{server_type: "cpx31", location: "fsn1"}
   }
 
   # The Docker app image, not a bare OS.
@@ -159,7 +169,12 @@ defmodule CodeMySpec.Provisioning.Builder do
     # without one, and a builder nobody can log into cannot build anything.
     create.(scope, builder_name(ref), [
       server_type: spec.server_type,
-      location: spec.location,
+      # The app box's location when there is one. The builder pushes to a
+      # registry on that box's private network, and a network's subnet lives in
+      # exactly one zone — so a builder in another zone holds an address on a
+      # network it cannot actually reach. It also means the image crosses a
+      # datacenter instead of an ocean.
+      location: Keyword.get(opts, :builder_location) || spec.location,
       image: Keyword.get(opts, :builder_image, @builder_image),
       ssh_key_ids: Keyword.get(opts, :ssh_key_ids),
       # The registry it pushes to answers on a private address, so the builder

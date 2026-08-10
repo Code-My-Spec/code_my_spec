@@ -135,6 +135,20 @@ defmodule CodeMySpec.Provisioning.Builder.RemoteTest do
       assert seconds == 3
     end
 
+    # Commands run over SSH with stderr folded into stdout, and ssh writes its
+    # own `Warning: Permanently added ...` there. A real amd64 build was
+    # refused as `{:unknown_architecture, "Warning: ...\namd64"}` — the check
+    # was shown a greeting.
+    test "ssh's own greeting is not mistaken for the architecture" do
+      run =
+        recorder(self(), %{
+          "inspect" => {"Warning: Permanently added '1.2.3.4' to the list of known hosts.\namd64\n", 0}
+        })
+
+      assert {:ok, %{architecture: :x86}} =
+               Remote.build(%{"ip" => "1.2.3.4"}, "abc123", "reg/app:abc123", opts(run))
+    end
+
     test "an architecture nobody recognises is an error, not a guess" do
       run = recorder(self(), %{"inspect" => {"riscv64\n", 0}})
 

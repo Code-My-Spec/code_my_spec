@@ -227,7 +227,7 @@ defmodule CodeMySpec.Provisioning.Builder.Remote do
   defp docker_push(run, reference) do
     case run.(["docker push #{reference}"]) do
       {_, 0} -> :ok
-      {output, status} -> {:error, {:push_failed, status, trim(output) <> where_am_i(run)}}
+      {output, status} -> {:error, {:push_failed, status, trim(output) <> where_am_i(run, reference)}}
     end
   end
 
@@ -235,11 +235,23 @@ defmodule CodeMySpec.Provisioning.Builder.Remote do
   # project's private network, so the first question is whether this box is on
   # it — and the box is destroyed with the build, so asking afterwards is not
   # an option. Cheap enough to always attach, and only ever read on failure.
-  defp where_am_i(run) do
-    {addresses, _} = run.(["ip -4 -o addr show | awk '{print $2, $4}'"])
-    {routes, _} = run.(["ip route"])
+  defp where_am_i(run, reference) do
+    host = reference |> String.split("/") |> hd()
+    address = host |> String.split(":") |> hd()
 
-    "\n\nbuilder interfaces:\n" <> trim(addresses) <> "\n\nbuilder routes:\n" <> trim(routes)
+    {addresses, _} = run.(["ip -4 -o addr show | awk '{print $2, $4}'"])
+
+    # Three questions, narrowest first: does the host answer at all, is the
+    # port open, and what does an HTTP request actually do. A timeout on the
+    # push says none of them, and the box is destroyed with the build.
+    {ping, _} = run.(["ping -c2 -W2 #{address} 2>&1 | tail -3"])
+    {port, _} = run.(["timeout 5 bash -c '</dev/tcp/#{address}/5000' && echo OPEN || echo CLOSED"])
+    {http, _} = run.(["curl -sv --max-time 5 http://#{host}/v2/ 2>&1 | tail -8"])
+
+    "\n\nbuilder interfaces:\n" <> trim(addresses) <>
+      "\n\nping #{address}:\n" <> trim(ping) <>
+      "\n\ntcp #{address}:5000: " <> trim(port) <>
+      "\n\nhttp #{host}/v2/:\n" <> trim(http)
   end
 
   # Read, not assumed. `Builder` refuses to ship an image built for the wrong
@@ -247,9 +259,23 @@ defmodule CodeMySpec.Provisioning.Builder.Remote do
   # the image actually is.
   defp built_architecture(run, reference) do
     case run.(["docker image inspect --format '{{.Architecture}}' #{reference}"]) do
-      {output, 0} -> architecture(trim(output))
+      {output, 0} -> output |> last_line() |> architecture()
       {output, status} -> {:error, {:inspect_failed, status, trim(output)}}
     end
+  end
+
+  # The answer is the last line, not the whole output. Commands run over SSH
+  # with stderr folded into stdout, and ssh writes its own
+  # `Warning: Permanently added ... to the list of known hosts.` there — so a
+  # command whose output we parse gets that warning glued to the front. It read
+  # as `{:unknown_architecture, "Warning: ...\namd64"}`: a real amd64 image,
+  # refused because the architecture check was shown a greeting.
+  defp last_line(output) do
+    output
+    |> to_string()
+    |> String.split("\n", trim: true)
+    |> List.last("")
+    |> String.trim()
   end
 
   defp architecture("arm64"), do: {:ok, :arm}

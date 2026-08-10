@@ -375,6 +375,26 @@ defmodule CodeMySpec.Provisioning.Hetzner do
   @network_range "10.0.0.0/16"
   @subnet_range "10.0.0.0/24"
 
+  # Which zone a location belongs to. A network's subnet lives in exactly one
+  # zone and a server can only reach a subnet in its own — so a subnet in the
+  # wrong zone produces a network both machines appear to be on, holding
+  # addresses, with no path between them. That is not a theoretical failure: it
+  # is what happened. App servers default to `ash` for x86, the builder was
+  # pinned to `fsn1`, and the subnet was hardcoded `eu-central`. Both boxes had
+  # 10.0.0.x addresses and routes, and ping got 100% loss.
+  @network_zones %{
+    "fsn1" => "eu-central",
+    "nbg1" => "eu-central",
+    "hel1" => "eu-central",
+    "ash" => "us-east",
+    "hil" => "us-west",
+    "sin" => "ap-southeast"
+  }
+
+  @doc "The network zone a location sits in."
+  @spec network_zone(String.t()) :: String.t() | nil
+  def network_zone(location), do: Map.get(@network_zones, location)
+
   @doc """
   Return the named private network, creating it only if absent.
 
@@ -388,15 +408,15 @@ defmodule CodeMySpec.Provisioning.Hetzner do
   address would put a registry on the internet to solve a problem two machines
   in the same datacenter do not have.
   """
-  @spec ensure_network(Scope.t(), String.t()) :: {:ok, body()} | error()
-  def ensure_network(%Scope{} = scope, name) when is_binary(name) do
+  @spec ensure_network(Scope.t(), String.t(), keyword()) :: {:ok, body()} | error()
+  def ensure_network(%Scope{} = scope, name, opts \\ []) when is_binary(name) do
     case find_network(scope, name) do
       {:ok, network} ->
         Logger.info("[Hetzner] network #{name} already exists — reusing")
         {:ok, Map.put(network, "__adopted__", true)}
 
       {:error, :not_found} ->
-        create_network(scope, name)
+        create_network(scope, name, opts)
 
       {:error, _} = error ->
         error
@@ -404,12 +424,14 @@ defmodule CodeMySpec.Provisioning.Hetzner do
   end
 
   @doc "Create a private network with a subnet servers can attach to."
-  @spec create_network(Scope.t(), String.t()) :: {:ok, body()} | error()
-  def create_network(%Scope{} = scope, name) when is_binary(name) do
+  @spec create_network(Scope.t(), String.t(), keyword()) :: {:ok, body()} | error()
+  def create_network(%Scope{} = scope, name, opts \\ []) when is_binary(name) do
+    zone = Keyword.get(opts, :network_zone) || "eu-central"
+
     payload = %{
       name: name,
       ip_range: @network_range,
-      subnets: [%{type: "cloud", network_zone: "eu-central", ip_range: @subnet_range}]
+      subnets: [%{type: "cloud", network_zone: zone, ip_range: @subnet_range}]
     }
 
     with {:ok, %{"network" => network}} <- request(scope, :post, "/networks", json: payload) do

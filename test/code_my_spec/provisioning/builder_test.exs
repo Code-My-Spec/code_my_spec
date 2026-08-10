@@ -123,7 +123,68 @@ defmodule CodeMySpec.Provisioning.BuilderTest do
                  opts(build_fun: build, create: create, architecture: :x86)
                )
 
-      assert_received {:created, "cpx32", "fsn1"}
+      # cpx31, not cpx32: identical on paper, but cpx32 does not exist in ash or
+      # hil, and the builder has to be created wherever the app box is.
+      assert_received {:created, "cpx31", "fsn1"}
+    end
+
+    # The builder pushes to a registry on the app box's private network, and a
+    # network's subnet lives in exactly one zone — so a builder in a different
+    # zone holds an address on a network it cannot reach. Both boxes had
+    # 10.0.0.x addresses and routes, and ping got 100% packet loss.
+    test "is built beside the box it pushes to, when told where that is" do
+      owner = self()
+
+      create = fn _scope, _name, create_opts ->
+        send(owner, {:created, create_opts[:location]})
+        {:ok, server()}
+      end
+
+      build = fn _scope, _server, _ref, arch ->
+        {:ok, %{reference: "img", architecture: arch}}
+      end
+
+      assert {:ok, _} =
+               Builder.build(
+                 scope(),
+                 "abc123",
+                 opts(
+                   build_fun: build,
+                   create: create,
+                   architecture: :x86,
+                   builder_location: "ash"
+                 )
+               )
+
+      assert_received {:created, "ash"}
+    end
+
+    # `:builder_location`, not `:location`. The deploy step's opts are threaded
+    # to `Storage` and `Registry`, where `:location` is the object-storage
+    # region — setting it here sent S3 to `ash.your-objectstorage.com` and
+    # signing died inside the crypto NIF with `Bad text`, naming nothing. The
+    # same trap `:build` set: one key, two meanings, one bag.
+    test "the storage region is not mistaken for where to put the builder" do
+      owner = self()
+
+      create = fn _scope, _name, create_opts ->
+        send(owner, {:created, create_opts[:location]})
+        {:ok, server()}
+      end
+
+      build = fn _scope, _server, _ref, arch ->
+        {:ok, %{reference: "img", architecture: arch}}
+      end
+
+      assert {:ok, _} =
+               Builder.build(
+                 scope(),
+                 "abc123",
+                 opts(build_fun: build, create: create, architecture: :x86, location: "fsn1")
+               )
+
+      assert_received {:created, "fsn1"},
+                      "a bucket region must not decide which datacenter the builder lands in"
     end
 
     test "refuses an architecture with no builder rather than guessing one" do

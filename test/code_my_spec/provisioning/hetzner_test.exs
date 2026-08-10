@@ -343,6 +343,35 @@ defmodule CodeMySpec.Provisioning.HetznerTest do
       assert payload["ip_range"] == "10.0.0.0/16"
     end
 
+    # A network's subnet lives in exactly one zone and a server can only reach a
+    # subnet in its own. The app servers default to `ash` for x86 while the
+    # builder was pinned to `fsn1` and the subnet hardcoded `eu-central`: both
+    # boxes held 10.0.0.x addresses with routes, and ping got 100% packet loss.
+    test "the subnet is created in the zone its servers are actually in" do
+      stub(fn
+        %{method: "GET"} = conn ->
+          json(conn, 200, %{"networks" => []})
+
+        %{method: "POST"} = conn ->
+          {:ok, body, conn} = Plug.Conn.read_body(conn)
+          send(self(), {:created, Jason.decode!(body)})
+          json(conn, 201, %{"network" => %{"id" => 7}})
+      end)
+
+      assert {:ok, _} = Hetzner.ensure_network(@scope, "sam-app", network_zone: "us-east")
+
+      assert_received {:created, payload}
+      assert [%{"network_zone" => "us-east"}] = payload["subnets"]
+    end
+
+    test "a location maps to the zone its network must live in" do
+      assert Hetzner.network_zone("ash") == "us-east"
+      assert Hetzner.network_zone("fsn1") == "eu-central"
+
+      refute Hetzner.network_zone("ash") == Hetzner.network_zone("fsn1"),
+             "the whole failure was treating one as the other"
+    end
+
     test "an existing network is adopted rather than duplicated" do
       stub(fn
         %{method: "GET"} = conn ->

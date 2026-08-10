@@ -1158,8 +1158,13 @@ defmodule CodeMySpec.Provisioning.Steps do
     name = server_name(scope, opts)
     box = server_name(scope, opts, environment)
 
-    with {:ok, network} <- Hetzner.ensure_network(scope, name),
-         {:ok, server} <- Hetzner.find_server(scope, box),
+    with {:ok, server} <- Hetzner.find_server(scope, box),
+         # Top level, not under `datacenter`. Read the wrong way it is always
+         # nil, and every caller quietly falls back to its default — which is
+         # how a fix for a zone mismatch changed nothing at all.
+         location <- get_in(server, ["location", "name"]),
+         {:ok, network} <-
+           Hetzner.ensure_network(scope, name, network_zone: Hetzner.network_zone(location)),
          {:ok, _attached} <- Hetzner.attach_to_network(scope, server["id"], network["id"]),
          # Re-read, because the attach does not report the address it assigned
          # and the copy we already hold predates it.
@@ -1168,6 +1173,15 @@ defmodule CodeMySpec.Provisioning.Steps do
       {:ok,
        opts
        |> Keyword.put(:network_ids, [network["id"]])
+       # `:builder_location`, not `:location`. This opts list is threaded to
+       # `Storage` and `Registry`, where `:location` already means the
+       # object-storage region — so setting it here sent S3 requests to
+       # `ash.your-objectstorage.com` and signing blew up inside the crypto NIF
+       # with `{:badarg, ~c"mac.c", ~c"Bad text"}`, which names nothing.
+       #
+       # Exactly the trap `:build` set earlier: one key, two meanings, in a bag
+       # that gets passed through everything.
+       |> Keyword.put(:builder_location, location)
        |> Keyword.put(:registry_bind, ip)
        |> Keyword.put(:registry_host, "#{ip}:#{Registry.port()}")
        |> Keyword.put(:network_resource, network_resource(name, network))}
