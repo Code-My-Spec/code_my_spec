@@ -556,6 +556,25 @@ defmodule CodeMySpecSpex.Case do
   @trace_width 1_200
 
   defp interesting(message) do
+    # A crashed container first, because its exception is the diagnosis and
+    # everything after it is consequence. kamal reports the container dying as
+    # `target failed to become healthy within configured timeout`, which lands
+    # at the very end and so wins the tail every time — while the `** (…)` that
+    # says *why* it died sits thousands of characters earlier and gets cut off.
+    # A deploy spent a whole cloud cycle reporting a timeout for an app that
+    # was raising at boot.
+    crashed(message, String.contains?(message, "** ("))
+  end
+
+  defp crashed(message, true) do
+    message
+    |> String.split(~r/(?=\*\* \()/)
+    |> Enum.filter(&String.starts_with?(&1, "** ("))
+    |> List.last()
+    |> String.slice(0, @trace_width)
+  end
+
+  defp crashed(message, false) do
     shown = tail(message)
 
     # The tail is usually right — an error is at the end of what produced it —
