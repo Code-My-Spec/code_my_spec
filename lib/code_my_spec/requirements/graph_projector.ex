@@ -57,8 +57,8 @@ defmodule CodeMySpec.Requirements.GraphProjector do
 
   alias CodeMySpec.Components
   alias CodeMySpec.Components.Registry, as: ComponentRegistry
-  alias CodeMySpec.Requirements.Registry, as: RequirementsRegistry
   alias CodeMySpec.Requirements
+  alias CodeMySpec.Requirements.Registry, as: RequirementsRegistry
   alias CodeMySpec.Requirements.Topology
   alias CodeMySpec.Users.Scope
 

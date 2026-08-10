@@ -6,15 +6,20 @@ defmodule CodeMySpec.Requirements.RequirementGraphTest do
 
   alias CodeMySpec.Components
   alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.Files.ComponentSync
   alias CodeMySpec.Files.FileSync
-  alias CodeMySpec.Requirements.RequirementGraph
+  alias CodeMySpec.Integration.WorkflowHelpers
   alias CodeMySpec.Projects
+  alias CodeMySpec.Qa.QaAttempt
+  alias CodeMySpec.Repo
+  alias CodeMySpec.Requirements.RequirementGraph
   alias CodeMySpec.Stories
   alias CodeMySpecSpex.ProjectStateFixtures
   alias CodeMySpecSpex.StoryHelpers
+  alias Ecto.Adapters.SQL.Sandbox
 
   setup do
-    :ok = Ecto.Adapters.SQL.Sandbox.checkout(CodeMySpec.Repo)
+    :ok = Sandbox.checkout(Repo)
   end
 
   describe "next_actionable/1" do
@@ -575,12 +580,12 @@ defmodule CodeMySpec.Requirements.RequirementGraphTest do
 
   defp sync!(scope, tmp_dir) do
     {:ok, _} = FileSync.sync(scope, base_dir: tmp_dir)
-    CodeMySpec.Files.ComponentSync.sync_from_files(scope, base_dir: tmp_dir)
+    ComponentSync.sync_from_files(scope, base_dir: tmp_dir)
   end
 
   defp seed_setup(tmp_dir) do
     # Minimal files to make project_setup pass
-    CodeMySpec.Integration.WorkflowHelpers.seed_all_setup_steps(tmp_dir)
+    WorkflowHelpers.seed_all_setup_steps(tmp_dir)
   end
 
   # Clear the full story-level chain inline. (The LiveView-driven
@@ -614,8 +619,8 @@ defmodule CodeMySpec.Requirements.RequirementGraphTest do
     # Insert a DB-backed QA pass attempt directly. The requirement graph
     # now checks Qa.complete?/2 (DB-driven), not result_complete.md on disk.
     {:ok, _attempt} =
-      %CodeMySpec.Qa.QaAttempt{}
-      |> CodeMySpec.Qa.QaAttempt.changeset(%{
+      %QaAttempt{}
+      |> QaAttempt.changeset(%{
         story_id: story.id,
         status: :pass,
         scenarios: [%{name: "Placeholder", status: :pass, observation: "All checks passed."}],
