@@ -661,7 +661,7 @@ defmodule CodeMySpec.BddSpecsTest do
       result =
         BddSpecs.validate_spec_syntax(
           file_path,
-          CodeMySpec.Environments.Environment.new(:local, File.cwd!())
+          Environment.new(:local, File.cwd!())
         )
 
       assert result == :ok
@@ -677,7 +677,7 @@ defmodule CodeMySpec.BddSpecsTest do
       result =
         BddSpecs.validate_spec_syntax(
           file_path,
-          CodeMySpec.Environments.Environment.new(:local, File.cwd!())
+          Environment.new(:local, File.cwd!())
         )
 
       assert {:error, reasons} = result
@@ -695,7 +695,7 @@ defmodule CodeMySpec.BddSpecsTest do
       result =
         BddSpecs.validate_spec_syntax(
           file_path,
-          CodeMySpec.Environments.Environment.new(:local, File.cwd!())
+          Environment.new(:local, File.cwd!())
         )
 
       # Malformed scenarios might pass or fail depending on validation strictness
@@ -735,7 +735,7 @@ defmodule CodeMySpec.BddSpecsTest do
       result =
         BddSpecs.validate_spec_syntax(
           file_path,
-          CodeMySpec.Environments.Environment.new(:local, File.cwd!())
+          Environment.new(:local, File.cwd!())
         )
 
       assert result == :ok
@@ -748,7 +748,7 @@ defmodule CodeMySpec.BddSpecsTest do
       result =
         BddSpecs.validate_spec_syntax(
           nonexistent_path,
-          CodeMySpec.Environments.Environment.new(:local, File.cwd!())
+          Environment.new(:local, File.cwd!())
         )
 
       assert {:error, reasons} = result
@@ -863,7 +863,10 @@ defmodule CodeMySpec.BddSpecsTest do
 
       assert is_binary(result)
       assert String.contains?(result, "test/spex")
-      assert String.contains?(result, "#{story.id}_")
+      # The story's durable number, not its primary key. `id` renumbers on
+      # migration and the directories named from it stopped pointing at the
+      # stories they were written for — a uniform drift of 51 on this project.
+      assert String.contains?(result, "#{story.number}_")
       # Filename includes criterion ID and slugified description
       assert String.contains?(result, "criterion_#{criterion.id}_")
       assert String.ends_with?(result, "_spex.exs")
@@ -881,8 +884,8 @@ defmodule CodeMySpec.BddSpecsTest do
 
       result = BddSpecs.spec_file_path(story, criterion)
 
-      # Should include story ID from database
-      assert String.contains?(result, "#{story.id}_")
+      # The durable number, not the primary key — see above.
+      assert String.contains?(result, "#{story.number}_")
       # Should be slugified (lowercase, underscored, no special chars)
       assert String.contains?(result, "_user_authentication") or
                String.contains?(result, "user_authentication")

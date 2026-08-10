@@ -66,45 +66,14 @@ defmodule CodeMySpec.Stories.StoriesRepository do
     tag = Keyword.get(opts, :tag)
     ready_for_dev = Keyword.get(opts, :ready_for_dev)
 
-    base_query =
+    query =
       from(s in Story,
         where: s.project_id == ^scope.active_project.id,
         order_by: [desc: s.updated_at]
       )
-
-    query =
-      if search && search != "" do
-        search_term = "%#{search}%"
-
-        from(s in base_query,
-          where: like(s.title, ^search_term) or like(s.description, ^search_term)
-        )
-      else
-        base_query
-      end
-
-    query =
-      if tag && tag != "" do
-        from(s in query,
-          join: st in CodeMySpec.Tags.StoryTag,
-          on: st.story_id == s.id,
-          join: t in CodeMySpec.Tags.Tag,
-          on: t.id == st.tag_id,
-          where: t.name == ^tag and t.project_id == ^scope.active_project.id
-        )
-      else
-        query
-      end
-
-    # The backlog view. This is the only route to stories the development
-    # graph deliberately hides, so it must be able to select them.
-    # `ready_for_dev` is nullable in the DB; treat NULL as not ready.
-    query =
-      case ready_for_dev do
-        true -> from(s in query, where: s.ready_for_dev == true)
-        false -> from(s in query, where: is_nil(s.ready_for_dev) or s.ready_for_dev == false)
-        _ -> query
-      end
+      |> filter_by_search(search)
+      |> filter_by_tag(tag, scope.active_project.id)
+      |> filter_by_readiness(ready_for_dev)
 
     total = Repo.aggregate(query, :count, :id)
 
@@ -117,6 +86,35 @@ defmodule CodeMySpec.Stories.StoriesRepository do
 
     {stories, total}
   end
+
+  defp filter_by_search(query, search) when search in [nil, ""], do: query
+
+  defp filter_by_search(query, search) do
+    term = "%#{search}%"
+    from(s in query, where: like(s.title, ^term) or like(s.description, ^term))
+  end
+
+  defp filter_by_tag(query, tag, _project_id) when tag in [nil, ""], do: query
+
+  defp filter_by_tag(query, tag, project_id) do
+    from(s in query,
+      join: st in CodeMySpec.Tags.StoryTag,
+      on: st.story_id == s.id,
+      join: t in CodeMySpec.Tags.Tag,
+      on: t.id == st.tag_id,
+      where: t.name == ^tag and t.project_id == ^project_id
+    )
+  end
+
+  # The backlog view. This is the only route to stories the development graph
+  # deliberately hides, so it must be able to select them. `ready_for_dev` is
+  # nullable in the DB; NULL counts as not ready.
+  defp filter_by_readiness(query, true), do: from(s in query, where: s.ready_for_dev == true)
+
+  defp filter_by_readiness(query, false),
+    do: from(s in query, where: is_nil(s.ready_for_dev) or s.ready_for_dev == false)
+
+  defp filter_by_readiness(query, _), do: query
 
   @doc """
   Lists just story IDs and titles (lightweight, no criteria).
@@ -207,10 +205,55 @@ defmodule CodeMySpec.Stories.StoriesRepository do
     |> Story.changeset(attrs_with_ownership)
     |> Ecto.Changeset.put_change(:project_id, project_id)
     |> put_account_id(scope)
+    |> put_number(project_id)
     |> PaperTrail.insert(originator: originator(scope))
     |> case do
       {:ok, %{model: story}} -> {:ok, Repo.preload(story, [:criteria, :tags])}
       {:error, changeset} -> {:error, changeset}
+    end
+  end
+
+  # A story's durable name, minted above the highest already in the project.
+  #
+  # Not the primary key: `id` is a per-deployment sequence that renumbers on
+  # migration, and spex directories are named from it, so the files stopped
+  # pointing at the stories they were written for. Measured drift here was a
+  # uniform 51.
+  #
+  # Above the max rather than a count, so a number is never reused after a
+  # delete — a reused name would point a file at the wrong story, which is the
+  # failure this exists to end. An explicitly supplied number wins, which is how
+  # migration keeps a story's name across deployments.
+  defp put_number(changeset, project_id) do
+    case Ecto.Changeset.get_field(changeset, :number) do
+      nil -> Ecto.Changeset.put_change(changeset, :number, next_number(project_id))
+      _ -> changeset
+    end
+  end
+
+  # One above the highest in the project.
+  #
+  # Deliberately not a counter on `projects`: that made every story insert take
+  # a row lock on the project, so story creation and unrelated project updates
+  # blocked each other, and the projects row carried sequence state that has
+  # nothing to do with a project.
+  #
+  # What that costs is reuse — delete the highest-numbered story and the next
+  # one takes its number back. That was a correctness bug when a directory
+  # number was how a spex found its story; it is not any more. Attribution goes
+  # through `criteria.spec_path`, which is exact, and directories are
+  # `<number>_<slug>`, so a recycled number under a different title is a
+  # different directory. What is left is a naming oddity in conversation, which
+  # is not worth locking a hot row for.
+  #
+  # The unique index on `(project_id, number)` is what catches a genuine
+  # concurrent collision, rather than a lock preventing one.
+  defp next_number(project_id) do
+    from(s in Story, where: s.project_id == ^project_id, select: max(s.number))
+    |> Repo.one()
+    |> case do
+      nil -> 1
+      max -> max + 1
     end
   end
 
