@@ -207,3 +207,9 @@ config :code_my_spec,
   resend_client_secret: System.get_env("RESEND_CLIENT_SECRET", "test-resend-secret"),
   cloudflare_client_id: System.get_env("CLOUDFLARE_CLIENT_ID", "test-cloudflare-client"),
   cloudflare_client_secret: System.get_env("CLOUDFLARE_CLIENT_SECRET", "test-cloudflare-secret")
+
+# No network in tests. The target is a placeholder so the module has one to
+# name; the Cloudflare calls themselves are cassette-backed where exercised.
+config :code_my_spec, CodeMySpec.Workspaces.PreviewAddress,
+  base_domain: "codemyspec.com",
+  target: "test-tunnel.cfargotunnel.com"

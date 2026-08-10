@@ -22,11 +22,10 @@ defmodule CodeMySpecWeb.Plugs.PreviewProxy do
   import Plug.Conn
 
   alias CodeMySpec.Workspaces
+  alias CodeMySpec.Workspaces.PreviewAddress
   alias CodeMySpec.Workspaces.WorkspacesRepository
 
   require Logger
-
-  @prefix "preview-"
 
   # Hop-by-hop headers belong to one connection and must not be relayed. Passing
   # a stale content-length or a chunked transfer-encoding to the client
@@ -45,18 +44,24 @@ defmodule CodeMySpecWeb.Plugs.PreviewProxy do
     end
   end
 
-  @doc "The address a project's preview is always at."
-  @spec host_for(String.t(), String.t()) :: String.t()
-  def host_for(project_id, base_host), do: "#{@prefix}#{project_id}.#{base_host}"
-
   # Only the first label, and only when it carries the prefix. A project id is
   # a UUID, so anything else in that position is not ours to serve.
   defp project_id(host) do
-    with [@prefix <> id | _] <- String.split(host, "."),
+    with [<<_::binary>> = label | _] <- String.split(host, "."),
+         {:ok, id} <- strip_prefix(label),
          {:ok, _} <- Ecto.UUID.cast(id) do
       id
     else
       _ -> nil
+    end
+  end
+
+  defp strip_prefix(label) do
+    prefix = PreviewAddress.prefix()
+
+    case label do
+      <<^prefix::binary-size(byte_size(prefix)), id::binary>> -> {:ok, id}
+      _ -> :error
     end
   end
 

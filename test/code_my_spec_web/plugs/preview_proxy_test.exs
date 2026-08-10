@@ -1,6 +1,7 @@
 defmodule CodeMySpecWeb.Plugs.PreviewProxyTest do
   use CodeMySpecTest.ConnCase, async: true
 
+  alias CodeMySpec.Workspaces.PreviewAddress
   alias CodeMySpecWeb.Plugs.PreviewProxy
 
   describe "deciding whether a request is a preview at all" do
@@ -21,7 +22,7 @@ defmodule CodeMySpecWeb.Plugs.PreviewProxyTest do
     end
 
     test "a preview host for a project with no workspace says so", %{conn: conn} do
-      host = PreviewProxy.host_for(Ecto.UUID.generate(), "codemyspec.com")
+      host = PreviewAddress.host(Ecto.UUID.generate())
 
       conn = %{conn | host: host} |> PreviewProxy.call([])
 
@@ -34,12 +35,12 @@ defmodule CodeMySpecWeb.Plugs.PreviewProxyTest do
     test "is the same for a project every time" do
       id = Ecto.UUID.generate()
 
-      assert PreviewProxy.host_for(id, "codemyspec.com") ==
-               PreviewProxy.host_for(id, "codemyspec.com")
+      assert PreviewAddress.host(id) ==
+               PreviewAddress.host(id)
     end
 
     test "is one label deep, because that is what a wildcard certificate covers" do
-      host = PreviewProxy.host_for(Ecto.UUID.generate(), "codemyspec.com")
+      host = PreviewAddress.host(Ecto.UUID.generate())
 
       assert length(String.split(host, ".")) == 3,
              "preview-{id}.codemyspec.com is covered by *.codemyspec.com; " <>
@@ -52,7 +53,7 @@ defmodule CodeMySpecWeb.Plugs.PreviewProxyTest do
       # The upgrade branch must resolve the workspace like any other request.
       # Upgrading first and discovering there is nothing upstream leaves the
       # browser holding a socket nobody serves, which LiveView retries forever.
-      host = PreviewProxy.host_for(Ecto.UUID.generate(), "codemyspec.com")
+      host = PreviewAddress.host(Ecto.UUID.generate())
 
       conn =
         %{conn | host: host}
@@ -65,7 +66,7 @@ defmodule CodeMySpecWeb.Plugs.PreviewProxyTest do
     end
 
     test "an ordinary request is not mistaken for an upgrade", %{conn: conn} do
-      host = PreviewProxy.host_for(Ecto.UUID.generate(), "codemyspec.com")
+      host = PreviewAddress.host(Ecto.UUID.generate())
 
       conn =
         %{conn | host: host}
@@ -80,7 +81,7 @@ defmodule CodeMySpecWeb.Plugs.PreviewProxyTest do
     test "even a refusal says who may frame it", %{conn: conn} do
       # The pane shows this response in an iframe. A 404 that cannot be framed
       # is a blank box where an explanation should be.
-      host = PreviewProxy.host_for(Ecto.UUID.generate(), "codemyspec.com")
+      host = PreviewAddress.host(Ecto.UUID.generate())
 
       conn = %{conn | host: host} |> PreviewProxy.call([])
 
