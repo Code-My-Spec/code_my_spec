@@ -35,6 +35,11 @@ defmodule Mix.Tasks.Cms.ProvisioningLeaks do
 
   @spex_prefix "spex-"
 
+  # How recently a server has to have been created for `--delete` to leave it
+  # alone. An hour is well past any recording that is still going and well
+  # short of leaving residue around to be passed on to the next run.
+  @live_run_window_minutes 60
+
   # A DNS record is not named like a server. Hetzner resources are *prefixed*
   # `spex-`; a record made for one is `send.spex-story969-criterion8027.
   # astralbi.com` or `c8025.astralbi.com`, where the marker is a label in the
@@ -56,6 +61,7 @@ defmodule Mix.Tasks.Cms.ProvisioningLeaks do
   @impl Mix.Task
   def run(args) do
     delete? = "--delete" in args
+    force? = "--force" in args
 
     Logger.configure(level: :warning)
 
@@ -81,7 +87,9 @@ defmodule Mix.Tasks.Cms.ProvisioningLeaks do
     # the same run was removed, which is what made the gap look like success.
     #
     # Servers first: a key cannot be removed while a server still references it.
-    report("Hetzner servers", server_names(%Scope{}), delete?, &delete_server/1)
+    recent = if force?, do: MapSet.new(), else: recent_server_names(%Scope{})
+
+    report("Hetzner servers", server_names(%Scope{}), delete?, &delete_server(&1, recent))
     report("Hetzner SSH keys", ssh_key_names(%Scope{}), delete?, &delete_ssh_key/1)
     report("Hetzner buckets", bucket_names(credentials), delete?, &delete_bucket(&1, credentials))
 
@@ -228,12 +236,18 @@ defmodule Mix.Tasks.Cms.ProvisioningLeaks do
   # `Teardown.resource/3` confirms the thing is actually gone rather than
   # trusting the API's acceptance. Hetzner deletes servers asynchronously, so
   # "accepted" and "gone" are genuinely different answers here.
-  defp delete_server(name) do
-    resource = %{kind: "server", location: "hetzner/#{name}", origin: "created"}
+  defp delete_server(name, recent) do
+    if MapSet.member?(recent, name) do
+      {:skipped,
+       "created in the last #{@live_run_window_minutes}m; another run may still be using " <>
+         "it. Use --force once you know nothing is provisioning."}
+    else
+      resource = %{kind: "server", location: "hetzner/#{name}", origin: "created"}
 
-    case Teardown.resource(%Scope{}, resource, []) do
-      {:ok, _} -> :ok
-      {:error, _} -> {:error, name}
+      case Teardown.resource(%Scope{}, resource, []) do
+        {:ok, _} -> :ok
+        {:error, _} -> {:error, name}
+      end
     end
   end
 
@@ -273,6 +287,45 @@ defmodule Mix.Tasks.Cms.ProvisioningLeaks do
     case Hetzner.list_servers(scope) do
       {:ok, servers} -> Enum.map(servers, &name_of/1)
       other -> Mix.shell().error("could not list servers: #{inspect(other)}") || []
+    end
+  end
+
+  # Names of servers young enough that a run is probably still using them.
+  #
+  # "Leaked" is inferred from the name, and a name cannot tell abandoned from
+  # in-flight. That distinction is the whole safety property of this task and it
+  # was missing: a `--delete` run removed two servers that another agent's spex
+  # had provisioned minutes earlier and was still using.
+  #
+  # The file's own guard already said so — "a recording may be in flight, and
+  # deleting somebody else's live resource is worse than refusing to start" —
+  # but nothing enforced it. Age does: a recording that provisioned a server an
+  # hour ago has either finished or died, and either way its teardown is not
+  # coming.
+  #
+  # Deliberately not a lock or a harness check. Both can be stale in the
+  # direction that permits deletion, and this needs to fail the other way.
+  defp recent_server_names(scope) do
+    case Hetzner.list_servers(scope) do
+      {:ok, servers} ->
+        cutoff = DateTime.add(DateTime.utc_now(), -@live_run_window_minutes * 60, :second)
+
+        servers
+        |> Enum.filter(&created_after?(&1, cutoff))
+        |> Enum.map(&name_of/1)
+        |> MapSet.new()
+
+      _ ->
+        MapSet.new()
+    end
+  end
+
+  # No timestamp means no evidence it is old, and the safe reading of "unknown"
+  # here is "recent".
+  defp created_after?(server, cutoff) do
+    case DateTime.from_iso8601(to_string(server["created"] || "")) do
+      {:ok, created, _} -> DateTime.compare(created, cutoff) == :gt
+      _ -> true
     end
   end
 
@@ -328,6 +381,7 @@ defmodule Mix.Tasks.Cms.ProvisioningLeaks do
         for name <- leaked do
           case deleter.(name) do
             :ok -> Mix.shell().info("    deleted #{name}")
+            {:skipped, why} -> Mix.shell().info("    kept    #{name} — #{why}")
             {:error, _} -> Mix.shell().error("    FAILED  #{name}")
           end
         end
