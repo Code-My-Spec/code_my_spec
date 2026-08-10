@@ -221,6 +221,46 @@ defmodule CodeMySpec.Provisioning.RegistryTest do
       assert trust =~ "systemctl restart docker"
     end
 
+    # `docker run -d` returning 0 means the container was created, not that it
+    # is up. A bind to an address the interface does not carry yet fails after
+    # the daemon has answered, and the container exits behind a successful
+    # command — the push then times out against nothing, which reads as an
+    # unreachable host rather than a registry that died on startup.
+    test "asks the registry itself before reporting it up" do
+      run = fn [command] ->
+        send(self(), {:ran, command})
+        {"", 0}
+      end
+
+      assert {:ok, _} = Registry.serve(scope(), run: run, credentials: creds())
+
+      assert_received {:ran, _trust}
+      assert_received {:ran, _start}
+      assert_received {:ran, probe}
+
+      assert probe =~ "curl"
+      assert probe =~ "/v2/"
+    end
+
+    test "a container that starts and dies is not a running registry" do
+      run = fn
+        ["curl" <> _] -> {"", 7}
+        ["docker logs" <> _] -> {"level=fatal msg=\"cannot bind\"", 0}
+        [_] -> {"", 0}
+      end
+
+      assert {:error, {:registry_not_listening, "127.0.0.1:5000", logs}} =
+               Registry.serve(scope(),
+                 run: run,
+                 credentials: creds(),
+                 registry_attempts: 2
+               )
+
+      # The container's own logs, not a timeout. The reason is in them, and a
+      # drill costs ten minutes to repeat.
+      assert logs =~ "cannot bind"
+    end
+
     test "a registry that will not start is an error, not a success" do
       assert {:error, {:registry_start_failed, 125, _}} =
                serve(run: recorder(self(), 125))

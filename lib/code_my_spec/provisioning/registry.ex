@@ -49,6 +49,7 @@ defmodule CodeMySpec.Provisioning.Registry do
   """
 
   alias CodeMySpec.Provisioning.Storage
+  alias CodeMySpec.Provisioning.Wait
   alias CodeMySpec.Users.Scope
 
   # Long enough to roll back to something that worked, short enough that a
@@ -241,9 +242,37 @@ defmodule CodeMySpec.Provisioning.Registry do
       run.([trust_command("#{bind}:#{port()}")])
 
       case run.([command]) do
-        {_output, 0} -> {:ok, %{bucket: bucket, bind: bind, port: port()}}
-        {output, status} -> {:error, {:registry_start_failed, status, String.trim(output)}}
+        {_output, 0} ->
+          await_registry(run, bucket, bind, Keyword.get(opts, :registry_attempts, 15))
+
+        {output, status} ->
+          {:error, {:registry_start_failed, status, String.trim(output)}}
       end
+    end
+  end
+
+  # `docker run -d` returning 0 means the container was *created*, not that it
+  # is up — a bind to an address the interface does not carry yet fails after
+  # the daemon has already answered, and the container exits behind a
+  # successful command. The push then times out against nothing, which reads as
+  # an unreachable host.
+  #
+  # Same distinction teardown draws for deletions: accepted is not done. So
+  # this asks the registry itself, and when it never answers it brings back the
+  # container's own logs rather than a timeout — the reason is in them, and a
+  # drill costs ten minutes to repeat.
+  defp await_registry(run, bucket, bind, attempts) do
+    case run.(["curl -sf http://#{bind}:#{port()}/v2/ > /dev/null"]) do
+      {_output, 0} ->
+        {:ok, %{bucket: bucket, bind: bind, port: port()}}
+
+      _ when attempts > 1 ->
+        Wait.sleep(2_000)
+        await_registry(run, bucket, bind, attempts - 1)
+
+      _ ->
+        {logs, _} = run.(["docker logs --tail 50 #{@container} 2>&1"])
+        {:error, {:registry_not_listening, "#{bind}:#{port()}", String.trim(logs)}}
     end
   end
 

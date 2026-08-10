@@ -227,8 +227,19 @@ defmodule CodeMySpec.Provisioning.Builder.Remote do
   defp docker_push(run, reference) do
     case run.(["docker push #{reference}"]) do
       {_, 0} -> :ok
-      {output, status} -> {:error, {:push_failed, status, trim(output)}}
+      {output, status} -> {:error, {:push_failed, status, trim(output) <> where_am_i(run)}}
     end
+  end
+
+  # A push that times out says nothing about why. The registry answers on the
+  # project's private network, so the first question is whether this box is on
+  # it — and the box is destroyed with the build, so asking afterwards is not
+  # an option. Cheap enough to always attach, and only ever read on failure.
+  defp where_am_i(run) do
+    {addresses, _} = run.(["ip -4 -o addr show | awk '{print $2, $4}'"])
+    {routes, _} = run.(["ip route"])
+
+    "\n\nbuilder interfaces:\n" <> trim(addresses) <> "\n\nbuilder routes:\n" <> trim(routes)
   end
 
   # Read, not assumed. `Builder` refuses to ship an image built for the wrong

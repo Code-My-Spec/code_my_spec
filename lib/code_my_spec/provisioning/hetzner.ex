@@ -63,6 +63,21 @@ defmodule CodeMySpec.Provisioning.Hetzner do
   # Postgres is never on this list. See the moduledoc.
   @public_ports ["22", "80", "443"]
 
+  # The registry, reachable only from inside the project's own private network.
+  #
+  # A cloud firewall filters everything arriving at the server, private traffic
+  # included — which is why the builder's push timed out rather than being
+  # refused. Nothing listening gives you a refusal; a drop gives you a timeout,
+  # and that difference is what said "firewall" rather than "dead container"
+  # after a probe proved the registry was up and answering locally.
+  #
+  # `10.0.0.0/16` is the network `ensure_network/2` creates, so this is open to
+  # this project's own machines and nothing else. It is deliberately NOT in
+  # `public_ports/0`: that list is what the status page renders as open to the
+  # internet, and this is the opposite of that.
+  @private_range "10.0.0.0/16"
+  @private_ports ["5000"]
+
   @type body :: map()
   @type error ::
           {:error, :hetzner_not_configured}
@@ -78,14 +93,27 @@ defmodule CodeMySpec.Provisioning.Hetzner do
   """
   @spec default_firewall_rules() :: [map()]
   def default_firewall_rules do
-    Enum.map(@public_ports, fn port ->
-      %{
-        direction: "in",
-        protocol: "tcp",
-        port: port,
-        source_ips: ["0.0.0.0/0", "::/0"]
-      }
-    end)
+    public =
+      Enum.map(@public_ports, fn port ->
+        %{
+          direction: "in",
+          protocol: "tcp",
+          port: port,
+          source_ips: ["0.0.0.0/0", "::/0"]
+        }
+      end)
+
+    private =
+      Enum.map(@private_ports, fn port ->
+        %{
+          direction: "in",
+          protocol: "tcp",
+          port: port,
+          source_ips: [@private_range]
+        }
+      end)
+
+    public ++ private
   end
 
   @doc "The ports this module will ever open to the internet."
@@ -471,7 +499,8 @@ defmodule CodeMySpec.Provisioning.Hetzner do
   def ensure_firewall(%Scope{} = scope, name) when is_binary(name) do
     case find_firewall(scope, name) do
       {:ok, firewall} ->
-        {:ok, Map.put(firewall, "__adopted__", true)}
+        with {:ok, _} <- reconcile_rules(scope, firewall),
+             do: {:ok, Map.put(firewall, "__adopted__", true)}
 
       {:error, :not_found} ->
         with {:ok, %{"firewall" => firewall}} <- create_firewall(scope, name),
@@ -480,6 +509,52 @@ defmodule CodeMySpec.Provisioning.Hetzner do
       {:error, _} = error ->
         error
     end
+  end
+
+  @doc """
+  Replace a firewall's rules with the current policy.
+
+  Adopting an existing firewall used to mean keeping whatever rules it already
+  had, so a change to the policy never reached a project that had run setup
+  before. That is the shape of failure this module's own principle warns
+  about — persisted state is a record, not the truth — and it cost a drill:
+  the registry port was opened in code, every run adopted a firewall from
+  before that change, and the builder's push timed out against a rule set
+  nobody had looked at.
+
+  Only written when it differs, so a converged run makes no call.
+  """
+  @spec reconcile_rules(Scope.t(), body()) :: {:ok, :unchanged | :updated} | error()
+  def reconcile_rules(%Scope{} = scope, %{"id" => id} = firewall) do
+    wanted = default_firewall_rules()
+
+    if same_rules?(firewall["rules"] || [], wanted) do
+      {:ok, :unchanged}
+    else
+      Logger.info("[Hetzner] firewall #{firewall["name"]} has stale rules — replacing them")
+
+      with {:ok, _} <-
+             request(scope, :post, "/firewalls/#{id}/actions/set_rules", json: %{rules: wanted}) do
+        {:ok, :updated}
+      end
+    end
+  end
+
+  # Compared on what a rule *is* — direction, protocol, port, sources — rather
+  # than on the map, because the API answers with extra keys (`description`,
+  # `destination_ips`) that a comparison against our own rules would always
+  # find different, making every run rewrite the rules.
+  defp same_rules?(current, wanted) do
+    MapSet.new(current, &rule_identity/1) == MapSet.new(wanted, &rule_identity/1)
+  end
+
+  defp rule_identity(rule) do
+    {
+      rule["direction"] || rule[:direction],
+      rule["protocol"] || rule[:protocol],
+      to_string(rule["port"] || rule[:port]),
+      MapSet.new(rule["source_ips"] || rule[:source_ips] || [])
+    }
   end
 
   @doc "List every firewall in the account."

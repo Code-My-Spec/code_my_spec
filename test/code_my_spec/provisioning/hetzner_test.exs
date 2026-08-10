@@ -30,18 +30,39 @@ defmodule CodeMySpec.Provisioning.HetznerTest do
     # Criterion 8004: the database port must never answer from the internet.
     # The cheapest way to keep that true is to have no code path that opens
     # it, so the public rule set is a fixed list rather than a parameter.
+    # Asserted on what is reachable from the internet rather than on the whole
+    # rule set, because the rule set grew a rule that is not internet-facing at
+    # all. Counting rules would have made adding a private one look like
+    # opening a port.
     test "opens the deploy and web ports to the internet, and nothing else" do
       assert Hetzner.public_ports() == ["22", "80", "443"]
 
-      ports = Enum.map(Hetzner.default_firewall_rules(), & &1.port)
-      assert ports == ["22", "80", "443"]
+      public =
+        Hetzner.default_firewall_rules()
+        |> Enum.filter(&("0.0.0.0/0" in &1.source_ips))
+        |> Enum.map(& &1.port)
+
+      assert public == ["22", "80", "443"]
     end
 
-    test "every default rule is inbound from anywhere" do
+    test "every default rule is inbound" do
       for rule <- Hetzner.default_firewall_rules() do
         assert rule.direction == "in"
-        assert "0.0.0.0/0" in rule.source_ips
       end
+    end
+
+    # The registry the deploy pulls from. A cloud firewall filters private
+    # traffic too, which is why the builder's push timed out rather than being
+    # refused — and a timeout reads as an unreachable host, not as a dropped
+    # packet.
+    test "the registry port is reachable from the project's own network, and only that" do
+      rule = Enum.find(Hetzner.default_firewall_rules(), &(&1.port == "5000"))
+
+      assert rule, "the builder cannot push to a registry the firewall drops"
+      assert rule.source_ips == ["10.0.0.0/16"]
+
+      refute "0.0.0.0/0" in rule.source_ips,
+             "the registry is not for the internet — it holds every image this project ships"
     end
 
     test "the database port is absent, not merely unlisted" do
@@ -226,6 +247,70 @@ defmodule CodeMySpec.Provisioning.HetznerTest do
       stub(fn conn -> json(conn, 200, %{"servers" => []}) end)
 
       assert Hetzner.credential_valid?(@scope)
+    end
+  end
+
+  # Adopting an existing firewall used to mean keeping whatever rules it had,
+  # so a policy change never reached a project that had run setup before. This
+  # module's own principle warns about exactly that — persisted state is a
+  # record, not the truth — and it cost three drills: the registry port was
+  # opened in code, every run adopted a firewall from before that change, and
+  # the builder's push timed out against a rule set nobody had looked at.
+  describe "adopting a firewall reconciles its rules" do
+    test "stale rules are replaced with the current policy" do
+      stub(fn
+        %{method: "GET"} = conn ->
+          json(conn, 200, %{
+            "firewalls" => [
+              %{
+                "id" => 3,
+                "name" => "sam-app",
+                "rules" => [
+                  %{"direction" => "in", "protocol" => "tcp", "port" => "22",
+                    "source_ips" => ["0.0.0.0/0", "::/0"]}
+                ]
+              }
+            ]
+          })
+
+        %{method: "POST"} = conn ->
+          {:ok, body, conn} = Plug.Conn.read_body(conn)
+          send(self(), {:set_rules, Jason.decode!(body)["rules"]})
+          json(conn, 201, %{"actions" => []})
+      end)
+
+      assert {:ok, %{"id" => 3}} = Hetzner.ensure_firewall(@scope, "sam-app")
+
+      assert_received {:set_rules, rules}
+
+      assert "5000" in Enum.map(rules, & &1["port"]),
+             "a firewall adopted from before the registry existed still drops its port"
+    end
+
+    # A converged run must make no call, or every setup would rewrite the rules
+    # and the API answers with keys we do not send.
+    test "rules that already match are left alone" do
+      stub(fn
+        %{method: "GET"} = conn ->
+          rules =
+            Enum.map(Hetzner.default_firewall_rules(), fn r ->
+              %{
+                "direction" => r.direction,
+                "protocol" => r.protocol,
+                "port" => r.port,
+                "source_ips" => r.source_ips,
+                "description" => nil
+              }
+            end)
+
+          json(conn, 200, %{"firewalls" => [%{"id" => 3, "name" => "sam-app", "rules" => rules}]})
+
+        %{method: "POST"} = conn ->
+          flunk("a converged firewall was rewritten")
+          conn
+      end)
+
+      assert {:ok, _} = Hetzner.ensure_firewall(@scope, "sam-app")
     end
   end
 

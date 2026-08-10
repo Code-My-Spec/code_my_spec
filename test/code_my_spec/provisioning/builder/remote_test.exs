@@ -92,8 +92,15 @@ defmodule CodeMySpec.Provisioning.Builder.RemoteTest do
           "inspect" => arm()
         })
 
-      assert {:error, {:push_failed, 1, "unauthorized"}} =
+      assert {:error, {:push_failed, 1, output}} =
                Remote.build(%{"ip" => "1.2.3.4"}, "abc123", "reg/app:abc123", opts(run))
+
+      assert output =~ "unauthorized"
+
+      # The registry answers on a private address, so the first question a
+      # timed-out push raises is whether this box is on that network — and the
+      # box is destroyed with the build, so asking afterwards is not an option.
+      assert output =~ "builder interfaces"
     end
 
     test "gives up on a box that never answers rather than hanging" do
