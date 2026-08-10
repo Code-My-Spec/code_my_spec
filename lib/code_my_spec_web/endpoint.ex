@@ -27,6 +27,12 @@ defmodule CodeMySpecWeb.Endpoint do
     longpoll: false
   )
 
+  # First, so a preview host reaches its own app rather than ours. Before
+  # Plug.Static or /assets/app.js would serve CodeMySpec's bundle into
+  # someone's preview, and before Plug.Parsers because forwarding a request
+  # needs the body still unread.
+  plug(CodeMySpecWeb.Plugs.PreviewProxy)
+
   # Serve at "/" the static files from "priv/static" directory.
   #
   # When code reloading is disabled (e.g., in production),
