@@ -161,7 +161,11 @@ defmodule CodeMySpec.Provisioning.Builder do
       server_type: spec.server_type,
       location: spec.location,
       image: Keyword.get(opts, :builder_image, @builder_image),
-      ssh_key_ids: Keyword.get(opts, :ssh_key_ids)
+      ssh_key_ids: Keyword.get(opts, :ssh_key_ids),
+      # The registry it pushes to answers on a private address, so the builder
+      # has to be on that network. Attached at creation rather than after: the
+      # reference it was handed names an address it would not yet hold.
+      network_ids: Keyword.get(opts, :network_ids)
     ])
   end
 

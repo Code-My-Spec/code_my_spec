@@ -36,7 +36,14 @@ defmodule CodeMySpec.Provisioning.Teardown do
 
   require Logger
 
-  alias CodeMySpec.Provisioning.{Cloudflare, EnvironmentRepository, Hetzner, Resend, Storage, StepRepository}
+  alias CodeMySpec.Provisioning.{
+    Cloudflare,
+    EnvironmentRepository,
+    Hetzner,
+    Resend,
+    StepRepository,
+    Storage
+  }
   alias CodeMySpec.Users.Scope
 
   @type outcome :: {:ok, [map()]} | {:error, term()}
@@ -182,6 +189,22 @@ defmodule CodeMySpec.Provisioning.Teardown do
     end
   end
 
+  # Removed after the servers on it, for the same reason a firewall is: Hetzner
+  # refuses to delete a network with something still attached, and the servers
+  # may be mid-deletion when this runs. "Attached" is a state that clears
+  # itself moments later, so it is worth waiting for rather than reporting.
+  def resource(%Scope{} = scope, %{kind: "network", location: location} = r, _opts) do
+    name = after_slash(location)
+
+    with {:ok, %{"id" => id}} <- Hetzner.find_network(scope, name),
+         {:ok, _} <- Hetzner.delete_network(scope, id) do
+      confirm(r, absent?(fn -> Hetzner.find_network(scope, name) end))
+    else
+      {:error, :not_found} -> {:ok, r}
+      _ -> retry_network(scope, name, r)
+    end
+  end
+
   def resource(%Scope{} = scope, %{kind: "firewall", location: location} = r, _opts) do
     name = after_slash(location)
 
@@ -221,20 +244,7 @@ defmodule CodeMySpec.Provisioning.Teardown do
       |> Enum.filter(&at_or_under?(&1["name"], name))
       |> Enum.each(&Cloudflare.delete_dns_record(scope, zone_id, &1["id"]))
 
-      confirm(
-        r,
-        absent?(fn ->
-          case Cloudflare.list_dns_records(scope, zone_id) do
-            {:ok, remaining} ->
-              if Enum.any?(remaining, &at_or_under?(&1["name"], name)),
-                do: {:ok, :present},
-                else: {:error, :not_found}
-
-            other ->
-              other
-          end
-        end)
-      )
+      confirm(r, absent?(fn -> any_record_left(scope, zone_id, name) end))
     else
       {:error, :not_found} -> {:ok, r}
       _ -> {:error, r}
@@ -349,19 +359,56 @@ defmodule CodeMySpec.Provisioning.Teardown do
         {:ok, r}
 
       {:ok, %{"id" => id}} when attempts > 1 ->
-        case Hetzner.delete_firewall(scope, id) do
-          # Accepted is not gone, the same distinction the server clause draws.
-          # Returning ok on the API's say-so reported a teardown that had not
-          # happened, which is the one thing this module exists to prevent.
-          {:ok, _} ->
-            confirm(r, absent?(fn -> Hetzner.find_firewall(scope, name) end))
-
-          _ ->
-            Wait.sleep(2_000) && retry_firewall(scope, name, r, attempts - 1)
-        end
+        deleted_firewall(scope, name, id, r, attempts)
 
       _ ->
         {:error, r}
+    end
+  end
+
+  defp retry_network(scope, name, r, attempts \\ 15) do
+    case Hetzner.find_network(scope, name) do
+      {:error, :not_found} ->
+        {:ok, r}
+
+      {:ok, %{"id" => id}} when attempts > 1 ->
+        deleted_network(scope, name, id, r, attempts)
+
+      _ ->
+        {:error, r}
+    end
+  end
+
+  # Accepted is not gone, the same distinction the server clause draws.
+  # Returning ok on the API's say-so reported a teardown that had not happened,
+  # which is the one thing this module exists to prevent.
+  # Shaped like the `find_*` calls `absent?/1` polls elsewhere: `:not_found`
+  # means gone, anything else means keep waiting. A `case` nested inside the
+  # `confirm` call said the same thing three levels deep.
+  defp any_record_left(scope, zone_id, name) do
+    case Cloudflare.list_dns_records(scope, zone_id) do
+      {:ok, remaining} -> still_present(remaining, name)
+      other -> other
+    end
+  end
+
+  defp still_present(remaining, name) do
+    if Enum.any?(remaining, &at_or_under?(&1["name"], name)),
+      do: {:ok, :present},
+      else: {:error, :not_found}
+  end
+
+  defp deleted_firewall(scope, name, id, r, attempts) do
+    case Hetzner.delete_firewall(scope, id) do
+      {:ok, _} -> confirm(r, absent?(fn -> Hetzner.find_firewall(scope, name) end))
+      _ -> Wait.sleep(2_000) && retry_firewall(scope, name, r, attempts - 1)
+    end
+  end
+
+  defp deleted_network(scope, name, id, r, attempts) do
+    case Hetzner.delete_network(scope, id) do
+      {:ok, _} -> confirm(r, absent?(fn -> Hetzner.find_network(scope, name) end))
+      _ -> Wait.sleep(2_000) && retry_network(scope, name, r, attempts - 1)
     end
   end
 

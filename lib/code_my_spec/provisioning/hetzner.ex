@@ -223,6 +223,11 @@ defmodule CodeMySpec.Provisioning.Hetzner do
       }
       |> maybe_put(:firewalls, firewall_refs(Keyword.get(opts, :firewall_ids)))
       |> maybe_put(:ssh_keys, Keyword.get(opts, :ssh_key_ids))
+      # At creation rather than by a later attach, so the box has its private
+      # address from first boot. A builder that attaches afterwards has already
+      # been told where to push, and the address it was told is the one it does
+      # not have yet.
+      |> maybe_put(:networks, Keyword.get(opts, :network_ids))
 
     request(scope, :post, "/servers", json: payload)
   end

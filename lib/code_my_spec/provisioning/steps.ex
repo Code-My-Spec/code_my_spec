@@ -1130,6 +1130,45 @@ defmodule CodeMySpec.Provisioning.Steps do
   # clauses, and Elixir warns about that — a warning the analyzer treats as
   # reason to skip exunit, credo and spex outright.
 
+  # The address the registry answers to, and the network that makes it mean the
+  # same thing on two machines.
+  #
+  # The builder pushes and the app's box pulls, and an image reference is baked
+  # into the image — so one string has to be correct in both places. A private
+  # address is: it is the app box's own, and the builder joins the same network
+  # to reach it. Loopback was only ever true on one of the two.
+  #
+  # An explicit `:registry_host` wins, so a criterion about what gets built
+  # does not have to buy a network to say so.
+  defp with_private_network(scope, environment, opts) do
+    case Keyword.get(opts, :registry_host) do
+      host when is_binary(host) and host != "" -> {:ok, opts}
+      _ -> attach_private_network(scope, environment, opts)
+    end
+  end
+
+  defp attach_private_network(scope, environment, opts) do
+    name = server_name(scope, opts)
+    box = server_name(scope, opts, environment)
+
+    with {:ok, network} <- Hetzner.ensure_network(scope, name),
+         {:ok, server} <- Hetzner.find_server(scope, box),
+         {:ok, _attached} <- Hetzner.attach_to_network(scope, server["id"], network["id"]),
+         # Re-read, because the attach does not report the address it assigned
+         # and the copy we already hold predates it.
+         {:ok, joined} <- Hetzner.find_server(scope, box),
+         {:ok, ip} <- Hetzner.private_ip(joined, network["id"]) do
+      {:ok,
+       opts
+       |> Keyword.put(:network_ids, [network["id"]])
+       |> Keyword.put(:registry_bind, ip)
+       |> Keyword.put(:registry_host, "#{ip}:#{Registry.port()}")
+       |> Keyword.put(:network_resource, network_resource(name, network))}
+    else
+      {:error, reason} -> {:error, format(reason)}
+    end
+  end
+
   # A bucket is not a registry. `ensure/2` makes the storage; something has to
   # serve the API in front of it, and until now nothing did — the drill built
   # an image end to end and then died on
@@ -1155,7 +1194,12 @@ defmodule CodeMySpec.Provisioning.Steps do
   defp start_registry(scope, environment, opts) do
     case environment_ip(scope, %{name: environment}, opts) do
       ip when is_binary(ip) and ip != "" ->
-        Registry.serve(scope, Keyword.put(opts, :run, Remote.ssh_runner(%{"ip" => ip}, opts)))
+        # Reached over its public address, bound to its private one. We are not
+        # on the network; the builder is.
+        run = Remote.ssh_runner(%{"ip" => ip}, opts)
+        bind = Keyword.get(opts, :registry_bind, "127.0.0.1")
+
+        Registry.serve(scope, opts |> Keyword.put(:run, run) |> Keyword.put(:bind, bind))
 
       _ ->
         {:error,
@@ -1403,6 +1447,7 @@ defmodule CodeMySpec.Provisioning.Steps do
 
     with {:ok, architecture} <- architecture_for(scope, environment, opts),
          {:ok, opts} <- with_access_key(scope, opts),
+         {:ok, opts} <- with_private_network(scope, environment, opts),
          {:ok, _bucket} <- ensure_registry.(scope, opts),
          {:ok, _registry} <- serve_registry(scope, environment, opts),
          {:ok, tag} <- image_tag(scope, opts),
@@ -1420,6 +1465,9 @@ defmodule CodeMySpec.Provisioning.Steps do
        %{
          reference: reference,
          built: true,
+         # Carried out so the step can record it. A network created inside the
+         # build and never surfaced is one teardown cannot find.
+         network: Keyword.get(opts, :network_resource),
          architecture: build.architecture,
          retention_days: Registry.retention_days(opts),
          builder: build.builder,
@@ -1531,7 +1579,7 @@ defmodule CodeMySpec.Provisioning.Steps do
         location: reference,
         identifier: "built=true architecture=#{image.architecture}"
       }
-      | retention_resource(image) ++ builder_resource(image)
+      | retention_resource(image) ++ builder_resource(image) ++ network_resources(image)
     ]
   end
 
@@ -1539,6 +1587,8 @@ defmodule CodeMySpec.Provisioning.Steps do
     do: [%{kind: "published_image", location: reference, identifier: "built=false"}]
 
   defp image_resources(:not_built), do: []
+  defp network_resources(%{network: %{} = network}), do: [network]
+  defp network_resources(_image), do: []
 
   # Old images stop costing money because the registry's bucket expires them,
   # not because anything here runs on a schedule — the same shape as the
@@ -2271,6 +2321,12 @@ defmodule CodeMySpec.Provisioning.Steps do
       origin: origin(response["result"] || %{})
     }
   end
+
+  # Recorded so teardown can find it. Teardown works from what a step recorded,
+  # so a network created and not recorded leaks by construction — and a leaked
+  # private network holds a subnet that the next run's network cannot reuse.
+  defp network_resource(name, network),
+    do: %{kind: "network", location: "hetzner/#{name}", origin: origin(network)}
 
   defp firewall_resource(name, firewall),
     do: %{kind: "firewall", location: "hetzner/#{name}", origin: origin(firewall)}
