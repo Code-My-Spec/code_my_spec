@@ -429,8 +429,8 @@ defmodule CodeMySpec.Analysis do
     end
   end
 
-  defp local_in_flight(%Scope{active_project_id: project_id}) do
-    case Registry.lookup(CodeMySpec.Analysis.Registry, project_id) do
+  defp local_in_flight(%Scope{} = scope) do
+    case Registry.lookup(CodeMySpec.Analysis.Registry, server_key(scope)) do
       [{pid, _}] -> ProjectServer.in_flight(pid)
       [] -> []
     end
@@ -787,10 +787,24 @@ defmodule CodeMySpec.Analysis do
     end
   end
 
-  defp ensure_server(%Scope{active_project_id: project_id}) do
+  # The working copy, because that is what owns the build tree the queue exists
+  # to protect. Falls back to the project when no harness is bound — the
+  # single-checkout case, where the two keys name the same thing.
+  #
+  # Both callers derive it the same way, so a lookup can never miss a server the
+  # other one started.
+  @doc false
+  # Public only so the property that matters can be asserted directly: two
+  # checkouts of one project get different queues, the same checkout gets one.
+  def server_key(%Scope{active_harness_id: harness_id}) when not is_nil(harness_id),
+    do: {:harness, to_string(harness_id)}
+
+  def server_key(%Scope{active_project_id: project_id}), do: {:project, project_id}
+
+  defp ensure_server(%Scope{active_project_id: project_id} = scope) do
     case DynamicSupervisor.start_child(
            CodeMySpec.Analysis.ServerSupervisor,
-           {ProjectServer, project_id}
+           {ProjectServer, {server_key(scope), project_id}}
          ) do
       {:ok, pid} -> {:ok, pid}
       {:error, {:already_started, pid}} -> {:ok, pid}
