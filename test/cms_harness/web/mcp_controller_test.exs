@@ -101,8 +101,13 @@ defmodule CmsHarness.Web.McpControllerTest do
       |> Plug.Conn.put_req_header("mcp-session-id", "doomed")
       |> delete("/mcp?harness=#{harness_id_at(dir)}")
 
-      assert FakeUpstream.last_request().method == "DELETE"
-      assert FakeUpstream.last_request().headers["mcp-session-id"] == "doomed"
+      # The DELETE specifically, not whatever reached the server most recently.
+      # The harness reconnects and retries on its own schedule, so "the last
+      # request" is not something this test controls.
+      deletion = FakeUpstream.last_request_with_method("DELETE")
+
+      assert deletion, "no DELETE reached the upstream"
+      assert deletion.headers["mcp-session-id"] == "doomed"
     end
   end
 

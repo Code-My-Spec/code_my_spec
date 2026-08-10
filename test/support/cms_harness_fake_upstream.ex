@@ -71,6 +71,25 @@ defmodule CmsHarnessTest.FakeUpstream do
     |> List.last()
   end
 
+  @doc """
+  The last request made with `method`, or nil.
+
+  Same reason as `last_request_to/1`, discriminating on the verb instead of the
+  path. A test that acts and then reads `last_request/0` is asserting that
+  nothing else reached this server in between, which is not something it
+  controls: the harness reconnects and retries on its own schedule, and under a
+  full-suite load there is more room between the act and the read for one of
+  those to land. That shows up as a bare "Assertion with == failed" in a test
+  that passes every time it is run on its own.
+  """
+  @spec last_request_with_method(String.t()) :: map() | nil
+  def last_request_with_method(method) do
+    {__MODULE__, :requests}
+    |> :persistent_term.get([])
+    |> Enum.filter(&(&1.method == method))
+    |> List.last()
+  end
+
   @impl Plug
   def init(opts), do: opts
 
