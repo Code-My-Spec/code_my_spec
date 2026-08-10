@@ -53,8 +53,10 @@ defmodule CodeMySpec.Validation.ChangedFileAttributionTest do
   end
 
   describe "a session that recorded no edits" do
-    test "does not adopt every mtime-dirty file", %{scope: scope, session_id: session_id} do
-      rebase_touched(scope, 12)
+    # Rebase-sized, deliberately. Below the threshold the mtime set is kept —
+    # see `@rebase_sized` and the test at the end of this file for why.
+    test "does not adopt a rebase-sized mtime set", %{scope: scope, session_id: session_id} do
+      rebase_touched(scope, 60)
 
       changed = changed_files(scope, session_id)
 
@@ -67,7 +69,7 @@ defmodule CodeMySpec.Validation.ChangedFileAttributionTest do
       scope: scope,
       session_id: session_id
     } do
-      rebase_touched(scope, 3)
+      rebase_touched(scope, 60)
 
       log =
         ExUnit.CaptureLog.capture_log(fn ->
@@ -77,6 +79,29 @@ defmodule CodeMySpec.Validation.ChangedFileAttributionTest do
       assert log =~ "recorded no edits",
              "an agent that wrote nothing and an attribution pipeline that is broken " <>
                "produce the same empty set, and only the log separates them"
+    end
+
+    # The case that fail-closed got wrong, and it is not hypothetical: this is
+    # what broke 983's criterion 8163 (issue 90311b6b).
+    #
+    # A spex writes a file and drives the stop hook with a session_id, and spex
+    # do not fire PostToolUse — so attribution is legitimately empty while the
+    # turn genuinely changed something. Discarding that set left the real
+    # finding unblocked and a different problem answering in its place, which
+    # reads as the wrong rule rather than a missing file list.
+    #
+    # Anything under `@rebase_sized` is kept for that reason. The size is the
+    # only signal available here, and a turn's worth of edits is not a rebase.
+    test "keeps a turn-sized set written outside Write/Edit", %{
+      scope: scope,
+      session_id: session_id
+    } do
+      file!(scope, "test/spex/983_x/criterion_1_spex.exs", DateTime.utc_now())
+
+      assert [%{path: "test/spex/983_x/criterion_1_spex.exs"}] =
+               changed_files(scope, session_id),
+             "a spex writes without PostToolUse, so empty attribution here means " <>
+               "'wrote through another path', not 'wrote nothing'"
     end
 
     # A quiet turn is the common case and must not be noisy.

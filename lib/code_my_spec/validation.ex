@@ -250,6 +250,23 @@ defmodule CodeMySpec.Validation do
     end
   end
 
+  # How many mtime-dirty files stop looking like a turn and start looking like
+  # a rebase.
+  #
+  # A number rather than a rule, because the two cases are only distinguishable
+  # by size from here: a session writing through something other than
+  # Write/Edit — a spex, a direct evaluator, the harness — records no
+  # attribution and is indistinguishable from a session whose attribution
+  # broke. What separates them in practice is scale. The reported incident had
+  # 232 dirty files against 6 real edits; a spex writes one or two.
+  #
+  # Deliberately generous. Over this line the set is discarded, and discarding
+  # a real turn's work is the expensive mistake — an agent's own violations
+  # would go unblocked. Under it the mtime set is kept, which is what the
+  # behaviour was before and is wrong only in the narrow case of a small rebase
+  # with no attribution.
+  @rebase_sized 25
+
   # A session that recorded no edits wrote nothing, and the honest changed-file
   # set for that is empty.
   #
@@ -274,18 +291,19 @@ defmodule CodeMySpec.Validation do
   # and only the log can tell them apart.
   defp narrow_to_attributed(files, attributed, session_id) do
     case {MapSet.size(attributed), length(files)} do
-      {0, 0} ->
-        []
-
-      {0, dirty} ->
+      {0, dirty} when dirty > @rebase_sized ->
         Logger.warning(
           "[Validation] session #{session_id} recorded no edits, but #{dirty} file(s) " <>
-            "look changed. Treating the turn as having written nothing rather than " <>
-            "blocking on all of them — if the agent did edit files, PostToolUse " <>
-            "attribution is not reaching this project's File paths."
+            "look changed — more than a turn writes. Treating the turn as having " <>
+            "written nothing rather than blocking on all of them; if the agent did " <>
+            "edit files, PostToolUse attribution is not reaching this project's " <>
+            "File paths."
         )
 
         []
+
+      {0, _dirty} ->
+        files
 
       _ ->
         Enum.filter(files, &MapSet.member?(attributed, &1.path))
