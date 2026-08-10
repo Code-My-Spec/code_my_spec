@@ -509,10 +509,24 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   # The exit edge stays at the surface's terminal — the story's done
   # when the surface is done; deps reach the exit transitively. For
   # container surfaces it fans in from each child's terminal.
+  # `children_by_parent` is built once here rather than per story.
+  #
+  # `expand_with_parent_chain_descendants/2` needs it and used to group all of
+  # `ctx.components` on every call — once per story, so 93 × 880 components on
+  # this project to rebuild an identical map 93 times. It depends only on the
+  # context, so the loop was the wrong place for it.
   defp component_tree_edges(ctx, config) do
+    ctx = Map.put(ctx, :children_by_parent, children_by_parent(ctx))
+
     ctx.stories
     |> Enum.filter(&(&1.component_id != nil))
     |> Enum.flat_map(&story_chain_edges(&1, ctx, config))
+  end
+
+  defp children_by_parent(ctx) do
+    ctx.components
+    |> Enum.filter(& &1.parent_component_id)
+    |> Enum.group_by(& &1.parent_component_id)
   end
 
   defp story_chain_edges(story, ctx, config) do
@@ -543,10 +557,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   # add their own edges; `Topology.transitive_reduction/1` removes
   # the resulting redundancies downstream.
   defp expand_with_parent_chain_descendants(components, ctx) do
-    children_by_parent =
-      ctx.components
-      |> Enum.filter(& &1.parent_component_id)
-      |> Enum.group_by(& &1.parent_component_id)
+    children_by_parent = ctx[:children_by_parent] || children_by_parent(ctx)
 
     components
     |> Enum.flat_map(&[&1 | descendants_of(&1, children_by_parent, MapSet.new())])
