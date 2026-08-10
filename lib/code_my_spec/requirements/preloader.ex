@@ -15,6 +15,7 @@ defmodule CodeMySpec.Requirements.Preloader do
   alias CodeMySpec.Files.File
   alias CodeMySpec.Personas.{Persona, PersonaStory}
   alias CodeMySpec.Problems.Problem
+  alias CodeMySpec.Qa.QaAttempt
   alias CodeMySpec.Questions.Question
   alias CodeMySpec.Repo
   alias CodeMySpec.Stories.Story
@@ -35,6 +36,7 @@ defmodule CodeMySpec.Requirements.Preloader do
           questions_by_story: %{integer() => [Question.t()]},
           criteria_by_story: %{integer() => [Criterion.t()]},
           personas_by_story: %{integer() => [Persona.t()]},
+          qa_latest_by_story: %{integer() => QaAttempt.t()},
           delegated_inputs: %{String.t() => [{term(), NaiveDateTime.t()}]}
         }
 
@@ -111,6 +113,7 @@ defmodule CodeMySpec.Requirements.Preloader do
       questions_by_story: questions_by_story(project_id),
       criteria_by_story: criteria_by_story(story_ids),
       personas_by_story: personas_by_story(story_ids),
+      qa_latest_by_story: qa_latest_by_story(story_ids),
       delegated_inputs: delegated_inputs(project_id)
     }
   end
@@ -176,6 +179,28 @@ defmodule CodeMySpec.Requirements.Preloader do
     )
     |> Repo.all()
     |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
+  end
+
+  # The newest QA attempt per story, invalidations preloaded — exactly what
+  # `QaAttempts.complete?/2` fetches one story at a time.
+  #
+  # The whole attempt rather than a boolean: deciding pass/fail is the Qa
+  # context's judgement, and duplicating `status == :pass and invalidations == []`
+  # here would be two places to change and one place to forget.
+  #
+  # Ordered by the database on the same keys `complete?/2` uses, then taken
+  # first-per-group: `Enum.group_by/2` preserves encounter order, so the head of
+  # each group is that story's newest attempt. Ordering in Elixir would mean
+  # comparing `{inserted_at, id}` tuples by hand, and a `DISTINCT ON` would not
+  # port to the SQLite side.
+  defp qa_latest_by_story(story_ids) do
+    QaAttempt
+    |> where([a], a.story_id in ^story_ids)
+    |> order_by([a], desc: a.inserted_at, desc: a.id)
+    |> preload(:invalidations)
+    |> Repo.all()
+    |> Enum.group_by(& &1.story_id)
+    |> Map.new(fn {story_id, [latest | _]} -> {story_id, latest} end)
   end
 
   defp delegated_inputs(project_id) do

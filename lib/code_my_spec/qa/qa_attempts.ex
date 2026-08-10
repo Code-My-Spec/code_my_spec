@@ -178,11 +178,20 @@ defmodule CodeMySpec.Qa.QaAttempts do
       |> preload(:invalidations)
       |> Repo.one()
 
-    case latest do
-      %QaAttempt{status: :pass, invalidations: []} -> true
-      _ -> false
-    end
+    passed?(latest)
   end
+
+  @doc """
+  Whether an attempt counts as a QA pass.
+
+  A pass that was later invalidated is not one — re-QA is required, which is why
+  `invalidations` must be empty as well as the status being `:pass`. Public so a
+  caller holding a preloaded attempt (the requirement graph does) decides with
+  this rather than re-stating the rule.
+  """
+  @spec passed?(QaAttempt.t() | nil) :: boolean()
+  def passed?(%QaAttempt{status: :pass, invalidations: []}), do: true
+  def passed?(_), do: false
 
   defp by_story(query, story_id) do
     where(query, [a], a.story_id == ^story_id)
@@ -194,9 +203,7 @@ defmodule CodeMySpec.Qa.QaAttempts do
   defp by_project(query, %Scope{active_project: nil}), do: where(query, [_], false)
 
   defp by_project(query, %Scope{active_project: project}) do
-    join(query, :inner, [a], s in assoc(a, :story),
-      on: s.project_id == ^project.id
-    )
+    join(query, :inner, [a], s in assoc(a, :story), on: s.project_id == ^project.id)
   end
 
   defp find_latest_attempt_id(story_id) do
@@ -246,5 +253,4 @@ defmodule CodeMySpec.Qa.QaAttempts do
   defp task_field(task, key) when is_map(task) do
     Map.get(task, key) || Map.get(task, Atom.to_string(key))
   end
-
 end
