@@ -228,4 +228,92 @@ defmodule CodeMySpec.Provisioning.HetznerTest do
       assert Hetzner.credential_valid?(@scope)
     end
   end
+
+  # The registry the deploy pulls from lives on this network rather than on a
+  # public address. Both the app's server and the ephemeral builder attach, so
+  # one image reference is correct in both places — which loopback cannot do,
+  # being true on only one machine.
+  describe "private networks" do
+    test "a network is created with a subnet, because a server cannot attach without one" do
+      stub(fn
+        %{method: "GET"} = conn ->
+          json(conn, 200, %{"networks" => []})
+
+        %{method: "POST"} = conn ->
+          {:ok, body, conn} = Plug.Conn.read_body(conn)
+          payload = Jason.decode!(body)
+
+          send(self(), {:created, payload})
+
+          json(conn, 201, %{"network" => %{"id" => 7, "name" => payload["name"]}})
+      end)
+
+      assert {:ok, %{"id" => 7}} = Hetzner.ensure_network(@scope, "sam-app")
+
+      assert_received {:created, payload}
+
+      # A network with no subnet accepts the attach call and then hands out no
+      # address, which surfaces later as a registry bound to nothing.
+      assert [%{"ip_range" => _}] = payload["subnets"]
+      assert payload["ip_range"] == "10.0.0.0/16"
+    end
+
+    test "an existing network is adopted rather than duplicated" do
+      stub(fn
+        %{method: "GET"} = conn ->
+          json(conn, 200, %{"networks" => [%{"id" => 7, "name" => "sam-app"}]})
+
+        %{method: "POST"} = conn ->
+          flunk("ensure_network created a second network when one already existed")
+          conn
+      end)
+
+      assert {:ok, %{"id" => 7, "__adopted__" => true}} = Hetzner.ensure_network(@scope, "sam-app")
+    end
+
+    # Setup runs more than once and Hetzner answers a repeat attach with 409.
+    # Reporting that as failure would make the second run of an idempotent step
+    # fail, which is the opposite of what re-running is for.
+    test "attaching a server that is already attached is success" do
+      stub(fn conn ->
+        json(conn, 409, %{"error" => %{"code" => "server_already_attached"}})
+      end)
+
+      assert {:ok, :already_attached} = Hetzner.attach_to_network(@scope, 1, 7)
+    end
+
+    test "attaching a server that is not attached yet is success" do
+      stub(fn conn -> json(conn, 201, %{"action" => %{"status" => "running"}}) end)
+
+      assert {:ok, :attached} = Hetzner.attach_to_network(@scope, 1, 7)
+    end
+  end
+
+  # Hetzner assigns the address; the attach call does not report it. Guessing
+  # the next free one in the subnet is how two servers end up believing they
+  # share an address.
+  describe "private_ip/2" do
+    test "reads the address the server holds on that network" do
+      server = %{"private_net" => [%{"network" => 7, "ip" => "10.0.0.3"}]}
+
+      assert {:ok, "10.0.0.3"} = Hetzner.private_ip(server, 7)
+    end
+
+    test "an address on another network is not this one's" do
+      server = %{"private_net" => [%{"network" => 9, "ip" => "10.0.0.3"}]}
+
+      assert {:error, :no_private_address} = Hetzner.private_ip(server, 7)
+    end
+
+    test "a server on no network has no address to report" do
+      assert {:error, :no_private_address} = Hetzner.private_ip(%{"private_net" => []}, 7)
+      assert {:error, :no_private_address} = Hetzner.private_ip(%{}, 7)
+    end
+
+    test "reads through the wrapper the API returns" do
+      wrapped = %{"server" => %{"private_net" => [%{"network" => 7, "ip" => "10.0.0.4"}]}}
+
+      assert {:ok, "10.0.0.4"} = Hetzner.private_ip(wrapped, 7)
+    end
+  end
 end

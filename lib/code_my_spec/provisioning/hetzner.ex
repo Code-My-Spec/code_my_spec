@@ -334,6 +334,124 @@ defmodule CodeMySpec.Provisioning.Hetzner do
   @spec delete_server(Scope.t(), integer() | String.t()) :: {:ok, body()} | error()
   def delete_server(%Scope{} = scope, id), do: request(scope, :delete, "/servers/#{id}", [])
 
+  ## Private networks
+
+  # 10.0.0.0/16 with one 10.0.0.0/24 subnet. Hetzner requires a subnet before a
+  # server can attach, and a network with no subnet accepts the attach call and
+  # then hands out no address — which surfaces as a registry bound to nothing.
+  @network_range "10.0.0.0/16"
+  @subnet_range "10.0.0.0/24"
+
+  @doc """
+  Return the named private network, creating it only if absent.
+
+  The registry the deploy pulls from listens on this network rather than on a
+  public address. Both the app's server and the ephemeral builder attach to it,
+  which is what makes one image reference correct in both places: the builder
+  pushes to `<private-ip>:5000` and the app pulls from the same string, because
+  that address is the app box's own.
+
+  Loopback cannot do that — it is only true on one machine — and a public
+  address would put a registry on the internet to solve a problem two machines
+  in the same datacenter do not have.
+  """
+  @spec ensure_network(Scope.t(), String.t()) :: {:ok, body()} | error()
+  def ensure_network(%Scope{} = scope, name) when is_binary(name) do
+    case find_network(scope, name) do
+      {:ok, network} ->
+        Logger.info("[Hetzner] network #{name} already exists — reusing")
+        {:ok, Map.put(network, "__adopted__", true)}
+
+      {:error, :not_found} ->
+        create_network(scope, name)
+
+      {:error, _} = error ->
+        error
+    end
+  end
+
+  @doc "Create a private network with a subnet servers can attach to."
+  @spec create_network(Scope.t(), String.t()) :: {:ok, body()} | error()
+  def create_network(%Scope{} = scope, name) when is_binary(name) do
+    payload = %{
+      name: name,
+      ip_range: @network_range,
+      subnets: [%{type: "cloud", network_zone: "eu-central", ip_range: @subnet_range}]
+    }
+
+    with {:ok, %{"network" => network}} <- request(scope, :post, "/networks", json: payload) do
+      {:ok, network}
+    end
+  end
+
+  @doc "List every private network in the account."
+  @spec list_networks(Scope.t()) :: {:ok, [body()]} | error()
+  def list_networks(%Scope{} = scope) do
+    with {:ok, %{"networks" => networks}} <- request(scope, :get, "/networks", []) do
+      {:ok, networks}
+    end
+  end
+
+  @doc "Find a private network by name."
+  @spec find_network(Scope.t(), String.t()) :: {:ok, body()} | {:error, :not_found} | error()
+  def find_network(%Scope{} = scope, name) when is_binary(name) do
+    with {:ok, networks} <- list_networks(scope) do
+      case Enum.find(networks, &(&1["name"] == name)) do
+        nil -> {:error, :not_found}
+        network -> {:ok, network}
+      end
+    end
+  end
+
+  @doc "Delete a private network by id."
+  @spec delete_network(Scope.t(), integer() | String.t()) :: {:ok, body()} | error()
+  def delete_network(%Scope{} = scope, id), do: request(scope, :delete, "/networks/#{id}", [])
+
+  @doc """
+  Attach a server to a private network, treating "already attached" as success.
+
+  Setup runs more than once, and Hetzner answers a repeat attach with a 409
+  `server_already_attached`. Reporting that as failure would make the second
+  run of an idempotent step fail, which is the opposite of what re-running is
+  for.
+  """
+  @spec attach_to_network(Scope.t(), integer() | String.t(), integer() | String.t()) ::
+          {:ok, :attached | :already_attached} | error()
+  def attach_to_network(%Scope{} = scope, server_id, network_id) do
+    case request(scope, :post, "/servers/#{server_id}/actions/attach_to_network",
+           json: %{network: network_id}
+         ) do
+      {:ok, _} ->
+        {:ok, :attached}
+
+      {:error, {:hetzner_error, 409, _}} ->
+        {:ok, :already_attached}
+
+      {:error, _} = error ->
+        error
+    end
+  end
+
+  @doc """
+  The address a server holds on a private network.
+
+  Read back from the server rather than assumed, because Hetzner assigns it —
+  the attach call does not say which address it handed out, and guessing the
+  next free one in the subnet is how two servers end up believing they share
+  an address.
+  """
+  @spec private_ip(body(), integer() | String.t()) :: {:ok, String.t()} | {:error, term()}
+  def private_ip(%{"server" => server}, network_id), do: private_ip(server, network_id)
+
+  def private_ip(%{"private_net" => nets}, network_id) when is_list(nets) do
+    case Enum.find(nets, &(to_string(&1["network"]) == to_string(network_id))) do
+      %{"ip" => ip} when is_binary(ip) and ip != "" -> {:ok, ip}
+      _ -> {:error, :no_private_address}
+    end
+  end
+
+  def private_ip(_server, _network_id), do: {:error, :no_private_address}
+
   ## Firewalls
 
   @doc "Create a firewall carrying `default_firewall_rules/0`."
