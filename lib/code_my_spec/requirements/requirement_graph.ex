@@ -489,6 +489,47 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
       end)
 
     Logger.info("[Requirements] edge sources — " <> detail)
+    log_duplicate_shape(by_source)
+  end
+
+  # How the duplicates are distributed, not just how many there are.
+  #
+  # 13,433 of them come from the component tree, and the count alone does not
+  # say which generator behaviour produces them. Multiplicity does: mostly ×2
+  # means two paths reach the same edge once each — a parent fanning out to a
+  # child that is itself in the closure emitting for itself — while a long tail
+  # of high-multiplicity edges means many stories share one closure and every
+  # one of them re-emits it.
+  #
+  # Those want different fixes, so the distribution is the thing to look at
+  # before changing how the fan-out works.
+  defp log_duplicate_shape(by_source) do
+    {_, edges} = Enum.find(by_source, {nil, []}, fn {name, _} -> name == "component tree" end)
+
+    counts =
+      edges
+      |> Enum.frequencies()
+      |> Enum.reject(fn {_edge, n} -> n == 1 end)
+
+    case counts do
+      [] ->
+        :ok
+
+      _ ->
+        by_multiplicity =
+          counts
+          |> Enum.frequencies_by(fn {_edge, n} -> n end)
+          |> Enum.sort()
+          |> Enum.map_join(", ", fn {n, edges} -> "×#{n}: #{edges}" end)
+
+        {worst, worst_n} = Enum.max_by(counts, &elem(&1, 1))
+
+        Logger.info(
+          "[Requirements] component tree duplicates — #{length(counts)} distinct edges " <>
+            "repeat (#{by_multiplicity}); worst #{inspect(worst.from)} → " <>
+            "#{inspect(worst.to)} ×#{worst_n}"
+        )
+    end
   end
 
   defp log_edge_timing(generated, kept, reduced, generate_us, filter_us, reduce_us) do
