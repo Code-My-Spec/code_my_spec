@@ -1164,17 +1164,22 @@ defmodule CodeMySpec.Provisioning.Steps do
     name = server_name(scope, opts)
     box = server_name(scope, opts, environment)
 
-    with {:ok, server} <- Hetzner.find_server(scope, box),
-         # Top level, not under `datacenter`. Read the wrong way it is always
-         # nil, and every caller quietly falls back to its default — which is
-         # how a fix for a zone mismatch changed nothing at all.
-         location <- get_in(server, ["location", "name"]),
-         {:ok, network} <-
-           Hetzner.ensure_network(scope, name, network_zone: Hetzner.network_zone(location)),
+    # Found, not created. The server step owns this network now — a build is
+    # not what a network's lifetime should be tied to, and creating one here
+    # is why a failed build used to leave one behind.
+    with {:ok, network} <- find_baseline_network(scope, name),
+         {:ok, server} <- Hetzner.find_server(scope, box),
+         # Attached here as well, because a box added after the baseline ran
+         # would otherwise never join. `attach_to_network/3` treats an existing
+         # attachment as success.
          {:ok, _attached} <- Hetzner.attach_to_network(scope, server["id"], network["id"]),
          # Re-read, because the attach does not report the address it assigned
          # and the copy we already hold predates it.
          {:ok, joined} <- Hetzner.find_server(scope, box),
+         # Top level, not under `datacenter`. Read the wrong way it is always
+         # nil, and every caller quietly falls back to its default — which is
+         # how a fix for a zone mismatch changed nothing at all.
+         location <- get_in(joined, ["location", "name"]),
          {:ok, ip} <- Hetzner.private_ip(joined, network["id"]) do
       {:ok,
        opts
@@ -1193,45 +1198,6 @@ defmodule CodeMySpec.Provisioning.Steps do
        |> Keyword.put(:network_resource, network_resource(name, network))}
     else
       {:error, reason} -> {:error, format(reason)}
-    end
-  end
-
-  # A bucket is not a registry. `ensure/2` makes the storage; something has to
-  # serve the API in front of it, and until now nothing did — the drill built
-  # an image end to end and then died on
-  #
-  #     Get "http://localhost:5000/v2/": connect: connection refused
-  #
-  # Started on the environment's own box, which is where the deploy pulls from.
-  # Injectable so a criterion about what gets built does not have to buy a
-  # server to say so.
-  defp serve_registry(scope, environment, opts) do
-    case Keyword.get(opts, :serve_registry) do
-      false ->
-        {:ok, :not_served}
-
-      fun when is_function(fun, 3) ->
-        fun.(scope, environment, opts)
-
-      _ ->
-        start_registry(scope, environment, opts)
-    end
-  end
-
-  defp start_registry(scope, environment, opts) do
-    case environment_ip(scope, %{name: environment}, opts) do
-      ip when is_binary(ip) and ip != "" ->
-        # Reached over its public address, bound to its private one. We are not
-        # on the network; the builder is.
-        run = Remote.ssh_runner(%{"ip" => ip}, opts)
-        bind = Keyword.get(opts, :registry_bind, "127.0.0.1")
-
-        Registry.serve(scope, opts |> Keyword.put(:run, run) |> Keyword.put(:bind, bind))
-
-      _ ->
-        {:error,
-         "the #{environment} environment has no server yet — run the server step first, " <>
-           "since the registry the deploy pulls from runs on it"}
     end
   end
 
@@ -1470,18 +1436,16 @@ defmodule CodeMySpec.Provisioning.Steps do
     # are: making the registry's bucket is a real call to object storage, and a
     # criterion about *what gets built* should not have to buy one to say so.
     # Retention is Registry's own claim and is proven where it lives.
-    ensure_registry = Keyword.get(opts, :ensure_registry, &Registry.ensure/2)
-
+    # The registry and its bucket belong to the server step now. A build should
+    # find infrastructure, not create it — creating it here meant a project had
+    # no registry until something tried to build, and a build that died left
+    # behind a network and a container nobody had recorded.
     with {:ok, architecture} <- architecture_for(scope, environment, opts),
          {:ok, opts} <- with_access_key(scope, opts),
+         opts = Keyword.put_new(opts, :environment, environment),
          {:ok, opts} <- with_private_network(scope, environment, opts),
          {:ok, opts} <- with_registry_credential(scope, opts),
-         # Before the registry, not just before the build: starting the
-         # registry means reaching the app's box over SSH, and that needs the
-         # same key and environment the builder does.
          {:ok, opts} <- with_builder_ssh(scope, opts),
-         {:ok, _bucket} <- ensure_registry.(scope, opts),
-         {:ok, _registry} <- serve_registry(scope, environment, opts),
          {:ok, tag} <- image_tag(scope, opts),
          # Computed before the build, not after: it is where the image is
          # pushed *to*, so the builder needs it in hand. `Builder.docker_build`
@@ -1583,6 +1547,22 @@ defmodule CodeMySpec.Provisioning.Steps do
     do: opts |> Keyword.put(:host, host) |> Keyword.put(:image, reference)
 
   defp deploy_opts(opts, host, :not_built), do: Keyword.put(opts, :host, host)
+
+  # The baseline network, or a refusal that names the step which makes it.
+  defp find_baseline_network(scope, name) do
+    case Hetzner.find_network(scope, name) do
+      {:ok, network} ->
+        {:ok, network}
+
+      {:error, :not_found} ->
+        {:error,
+         "this project has no private network — the server step creates it, along with the " <>
+           "registry the deploy pulls from. Run the server step first."}
+
+      {:error, _} = error ->
+        error
+    end
+  end
 
   # Kamal evaluates ERB in its config, so a host written that way is decided
   # when the deploy runs rather than when the file was committed.
@@ -2217,6 +2197,102 @@ defmodule CodeMySpec.Provisioning.Steps do
     scope
     |> EnvironmentRepository.list()
     |> Enum.reduce_while({:ok, made}, &ensure_environment_server(&1, &2, scope, opts))
+    |> join_baseline_network(scope, opts)
+  end
+
+  # The private network the registry answers on, and the app's boxes reach it
+  # over. Baseline infrastructure, so it belongs to this step — it was created
+  # inside `build_image` before, which is why a failed build left one behind:
+  # a build is not what a network's lifetime should be tied to.
+  #
+  # After the servers rather than before, because a server's location is not
+  # known until it exists: `create_server/3` falls back to the other
+  # architecture when Hetzner has no capacity, and that fallback changes the
+  # location — and therefore the zone the subnet has to be in.
+  defp join_baseline_network({:ok, made}, scope, opts) do
+    name = server_name(scope, opts)
+    servers = environment_servers(scope, opts)
+
+    with [%{"location" => %{"name" => location}} | _] <- servers,
+         {:ok, network} <-
+           Hetzner.ensure_network(scope, name, network_zone: Hetzner.network_zone(location)),
+         :ok <- attach_all(scope, servers, network),
+         {:ok, registries} <- serve_registries(scope, network, opts) do
+      {:ok, registries ++ [network_resource(name, network) | made]}
+    else
+      [] -> {:ok, made}
+      {:error, reason} -> {:error, format(reason), made}
+    end
+  end
+
+  defp join_baseline_network(other, _scope, _opts), do: other
+
+  # One registry per environment, on that environment's own box.
+  #
+  # Baseline infrastructure rather than a build artifact. Started inside
+  # `build_image` before, which meant a project had no registry until something
+  # tried to build, and a build that died left a container nobody recorded.
+  #
+  # Per environment because a binary cannot be promoted across architectures:
+  # UAT may be arm and production x86, `Builder` refuses an image built for the
+  # wrong one, so each environment builds its own and needs somewhere of its
+  # own to put it.
+  defp serve_registries(scope, network, opts) do
+    scope
+    |> EnvironmentRepository.list()
+    |> Enum.reduce_while({:ok, []}, fn environment, {:ok, acc} ->
+      case serve_one_registry(scope, environment.name, network, opts) do
+        {:ok, resource} -> {:cont, {:ok, [resource | acc]}}
+        {:error, reason} -> {:halt, {:error, reason}}
+      end
+    end)
+  end
+
+  defp serve_one_registry(scope, environment, network, opts) do
+    box = server_name(scope, opts, environment)
+
+    with {:ok, server} <- Hetzner.find_server(scope, box),
+         {:ok, ip} <- Hetzner.private_ip(server, network["id"]),
+         public when is_binary(public) <- get_in(server, ["public_net", "ipv4", "ip"]),
+         {:ok, opts} <- with_builder_ssh(scope, opts),
+         {:ok, opts} <- with_registry_credential(scope, opts),
+         registry_opts =
+           opts
+           |> Keyword.put(:environment, environment)
+           |> Keyword.put(:run, Remote.ssh_runner(%{"ip" => public}, opts))
+           |> Keyword.put(:bind, ip),
+         {:ok, _bucket} <- Registry.ensure(scope, registry_opts),
+         {:ok, served} <- Registry.serve(scope, registry_opts) do
+      {:ok,
+       %{
+         kind: "registry",
+         location: "#{ip}:#{served.port}",
+         identifier: "environment=#{environment} bucket=#{served.bucket}"
+       }}
+    else
+      {:error, reason} -> {:error, format(reason)}
+      _ -> {:error, "the #{environment} server has no address yet"}
+    end
+  end
+
+  defp environment_servers(scope, opts) do
+    scope
+    |> EnvironmentRepository.list()
+    |> Enum.flat_map(fn environment ->
+      case Hetzner.find_server(scope, server_name(scope, opts, environment.name)) do
+        {:ok, server} -> [server]
+        _ -> []
+      end
+    end)
+  end
+
+  defp attach_all(scope, servers, network) do
+    Enum.reduce_while(servers, :ok, fn server, :ok ->
+      case Hetzner.attach_to_network(scope, server["id"], network["id"]) do
+        {:ok, _} -> {:cont, :ok}
+        {:error, reason} -> {:halt, {:error, reason}}
+      end
+    end)
   end
 
   defp ensure_environment_server(environment, {:ok, acc}, scope, opts) do

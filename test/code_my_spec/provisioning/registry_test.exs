@@ -90,15 +90,19 @@ defmodule CodeMySpec.Provisioning.RegistryTest do
       assert Registry.bucket_name(scope("Sam's App")) == "sam-s-app-registry"
     end
 
-    # Not per environment, unlike `Storage.bucket_name/2`. Promoting the exact
-    # image UAT proved is the point of the release process; separate registries
-    # would force a rebuild to promote, which is how a promotion ships
-    # something that was never tested.
-    test "one registry serves every environment" do
-      bucket = Registry.bucket_name(scope("Sam's App"))
+    # Per environment, because a binary cannot be promoted across
+    # architectures — UAT may be arm and production x86, `Builder` refuses an
+    # image built for the wrong one, so promotion is the same commit rebuilt
+    # rather than the same image moved. Each environment's registry therefore
+    # needs its own bucket: two `distribution` instances sharing one would
+    # corrupt each other's state.
+    test "each environment's registry gets its own bucket" do
+      uat = Registry.bucket_name(scope("Sam's App"), environment: "uat")
+      prod = Registry.bucket_name(scope("Sam's App"), environment: "prod")
 
-      refute bucket =~ "uat"
-      refute bucket =~ "prod"
+      assert uat == "sam-s-app-registry-uat"
+      assert prod == "sam-s-app-registry-prod"
+      refute uat == prod
     end
 
     test "an unnamed project refuses rather than sharing a generic bucket" do

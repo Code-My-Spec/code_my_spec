@@ -127,24 +127,34 @@ defmodule CodeMySpec.Provisioning.Registry do
   # backups' retention rule in one place, where the second one written wins and
   # the first silently stops applying.
   #
-  # `-registry`, not an environment suffix. `Storage.bucket_name/2` appends the
-  # environment because each environment's data must not mix; images are the
-  # opposite — promoting UAT's exact image to production is the point of the
-  # release process, and two registries would mean rebuilding to promote,
-  # which is how a promotion ships something that was never tested.
+  # Per environment after all, which reverses the reasoning this comment used to
+  # carry. It said promoting UAT's exact image to production was the point, so
+  # one registry had to serve both.
+  #
+  # That only holds if the two environments run the same architecture, and they
+  # need not: `@arm_default` is fsn1 and `@x86_default` is ash, `architecture_for/3`
+  # is answered per environment, and `Builder` refuses an image built for the
+  # wrong one. A binary cannot be promoted across architectures — so promotion
+  # is the same *commit*, rebuilt for the target, and each environment needs
+  # its own registry on its own box.
+  #
+  # Two `distribution` instances cannot share one bucket either: the registry
+  # keeps its state there, and two writers would corrupt it.
   # Public because "whose bucket holds this project's images" is the claim the
   # per-customer decision rests on, and a private function makes it assertable
   # only through a stubbed `Storage`.
   @doc "The bucket this project's images are stored in."
   @spec bucket_name(Scope.t(), keyword()) :: String.t()
   def bucket_name(%Scope{} = scope, opts \\ []) do
-    Keyword.get(opts, :bucket) || configured_bucket() || derived_bucket_name(scope)
+    Keyword.get(opts, :bucket) || configured_bucket() ||
+      derived_bucket_name(scope, Keyword.get(opts, :environment))
   end
 
-  defp derived_bucket_name(scope) do
+  defp derived_bucket_name(scope, environment) do
     case project_slug(scope) do
       slug when is_binary(slug) and slug != "" ->
-        "#{slug}-registry"
+        suffix = if environment in [nil, ""], do: "", else: "-#{environment}"
+        "#{slug}-registry#{suffix}"
 
       _ ->
         # Same refusal as `Storage.bucket_name/2`, for the same reason: bucket
