@@ -50,6 +50,7 @@ defmodule CodeMySpec.Tests do
     cmd_env =
       [
         {"MIX_ENV", "test"},
+        {"MIX_TEST_PARTITION", partition(env)},
         {"EXUNIT_JSON_OUTPUT_FILE", temp_file}
       ] ++
         Keyword.get(opts, :extra_env, []) ++
@@ -60,7 +61,7 @@ defmodule CodeMySpec.Tests do
     # Track whether we're using a caller-provided file (cache) vs a generated temp file
     caller_provided_file = Keyword.has_key?(opts, :output_file)
 
-    case Environments.cmd(env, "mix", test_args, stderr_to_stdout: true, env: cmd_env) do
+    case run_with_database(env, test_args, cmd_env) do
       {raw_output, exit_code} ->
         json_content = read_test_results(env, temp_file, caller_provided_file)
 
@@ -76,6 +77,95 @@ defmodule CodeMySpec.Tests do
     exception ->
       Logger.error("[Tests] Execution error: #{Exception.message(exception)}")
       {:error, {:execution_error, Exception.message(exception)}}
+  end
+
+  # The analyzer gets its own test database, because otherwise it shares the
+  # agent's.
+  #
+  # `config/test.exs` already partitions per working copy, so two worktrees are
+  # separate. What was not separate is the analyzer from the agent *inside* one
+  # worktree: this ran with `cd:` set to the working copy and no
+  # `MIX_TEST_PARTITION`, so it resolved to exactly the database the agent's own
+  # `mix test` uses, and every analyzer pass became a second writer on the same
+  # sandbox.
+  #
+  # The symptom is a set of `MatchError`s on fixture setup, in whatever files
+  # happened to be running — never the ones the agent changed. It blocked five
+  # consecutive stops here. Deleting the rows did not help: a second collided
+  # run replaced them within eight minutes. And it does not need an agent
+  # running tests at all — several sessions' analyzers collide with each other,
+  # which is why timing mitigations cannot work.
+  #
+  # One database per working copy, created once and reused. A unique name per
+  # run would be perfectly isolated and would also mean creating and migrating
+  # a database on every stop.
+  #
+  # Derived from the working copy, not a bare suffix. `config/test.exs` uses
+  # `MIX_TEST_PARTITION` *instead of* its own per-worktree name when set, so a
+  # constant here would give every worktree's analyzer one shared
+  # `code_my_spec_test_analyzer` — four agents' analyzers colliding with each
+  # other, which is the worse version of the bug being fixed.
+  @analyzer_partition "_analyzer"
+
+  defp partition(%{cwd: cwd}) when is_binary(cwd) and cwd != "",
+    do: "_" <> Path.basename(cwd) <> @analyzer_partition
+
+  defp partition(_env) do
+    case System.get_env("MIX_TEST_PARTITION") do
+      value when is_binary(value) and value != "" -> value <> @analyzer_partition
+      _ -> @analyzer_partition
+    end
+  end
+
+  # Create the analyzer's database only if a run says it is missing.
+  #
+  # This repo has no `test:` alias, so `mix test` neither creates nor migrates
+  # its database and a fresh partition fails on first use. Creating it up front
+  # would be simpler and would add two `mix` invocations to *every* analyzer
+  # run — which every shell cassette would then have to carry, so the first
+  # thing it broke was `runners_test` with "No recording found for: mix
+  # ecto.create --quiet".
+  #
+  # Doing it on demand costs nothing in the normal case and nothing in a
+  # replayed one: the retry is only reached when the child actually reports a
+  # missing database, which a cassette never does.
+  defp run_with_database(env, test_args, cmd_env) do
+    case Environments.cmd(env, "mix", test_args, stderr_to_stdout: true, env: cmd_env) do
+      {output, _code} = result ->
+        if missing_database?(output) do
+          create_database(env, cmd_env)
+          Environments.cmd(env, "mix", test_args, stderr_to_stdout: true, env: cmd_env)
+        else
+          result
+        end
+    end
+  end
+
+  # Postgres says this three ways depending on who is asking — the adapter, the
+  # Mix task, or the raw error — so all three are matched rather than the one
+  # that happened to show up first.
+  defp missing_database?(output) do
+    text = to_string(output)
+
+    String.contains?(text, "does not exist") and
+      (String.contains?(text, "database") or String.contains?(text, "Database"))
+  end
+
+  defp create_database(env, cmd_env) do
+    Logger.info("[Tests] analyzer database missing — creating and migrating it")
+
+    for task <- [["ecto.create", "--quiet"], ["ecto.migrate", "--quiet"]] do
+      case Environments.cmd(env, "mix", task, stderr_to_stdout: true, env: cmd_env) do
+        {_output, 0} ->
+          :ok
+
+        {output, code} ->
+          Logger.warning(
+            "[Tests] #{Enum.join(task, " ")} for the analyzer database exited #{code}: " <>
+              String.slice(to_string(output), 0, 200)
+          )
+      end
+    end
   end
 
   # A generated temp path is handed to the child as `EXUNIT_JSON_OUTPUT_FILE`,
