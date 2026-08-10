@@ -190,7 +190,7 @@ defmodule CodeMySpec.Requirements.NodeRepositoryTest do
       {nodes, edges} = RequirementGraph.compute_graph(scope)
 
       # Guard against the assertion below passing on 0 == 0.
-      assert length(nodes) > 0, "a project with no nodes makes this test vacuous"
+      assert nodes != [], "a project with no nodes makes this test vacuous"
 
       assert Repo.aggregate(Node, :count) == length(nodes),
              "every computed node should have a row, or the projection is partial " <>

@@ -6,7 +6,6 @@ defmodule CodeMySpec.Hooks.SubagentStop do
   working copy, what the result means needs only the database.
   """
 
-
   require Logger
 
   alias CodeMySpec.Analysis
@@ -31,8 +30,13 @@ defmodule CodeMySpec.Hooks.SubagentStop do
     # and idempotent — no-op if the agent_id isn't currently registered.
     if session && agent_id, do: Sessions.unregister_subagent(scope, session, agent_id)
 
+    # Three elements, not two. `validate_stop/3` has carried R8's blocking key
+    # since the stuck-detection change, and this clause kept matching the old
+    # pair — so every sub-agent stop that had something to block on raised
+    # `CaseClauseError` instead. The key is `Stop`'s to count; nothing here
+    # needs it, but the arity is not optional.
     case Validation.validate_stop(scope, task) do
-      {:error, reason} ->
+      {:error, reason, _blocking_key} ->
         Logger.info("[SubagentStopHook] [#{req_id}] Blocking: #{String.slice(reason, 0, 100)}")
         {200, %{"decision" => "block", "reason" => reason}}
 
