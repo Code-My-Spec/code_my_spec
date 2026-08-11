@@ -130,26 +130,45 @@ dirty_counts =
   case Ecto.Adapters.SQL.query(
          CodeMySpec.Repo,
          """
-         SELECT 'users', count(*) FROM users
-         UNION ALL SELECT 'accounts', count(*) FROM accounts
-         UNION ALL SELECT 'projects', count(*) FROM projects
-         UNION ALL SELECT 'stories', count(*) FROM stories
-         UNION ALL SELECT 'components', count(*) FROM components
+         SELECT 'users', count(*), min(inserted_at), max(inserted_at) FROM users
+         UNION ALL SELECT 'accounts', count(*), min(inserted_at), max(inserted_at) FROM accounts
+         UNION ALL SELECT 'projects', count(*), min(inserted_at), max(inserted_at) FROM projects
+         UNION ALL SELECT 'stories', count(*), min(inserted_at), max(inserted_at) FROM stories
+         UNION ALL SELECT 'components', count(*), min(inserted_at), max(inserted_at) FROM components
          """,
          []
        ) do
-    {:ok, %{rows: rows}} -> Enum.filter(rows, fn [_table, count] -> count > 0 end)
+    {:ok, %{rows: rows}} -> Enum.filter(rows, fn [_table, count | _] -> count > 0 end)
     {:error, _reason} -> []
   end
 
 if dirty_counts != [] do
-  summary = Enum.map_join(dirty_counts, ", ", fn [table, count] -> "#{table}=#{count}" end)
+  summary = Enum.map_join(dirty_counts, ", ", fn [table, count | _] -> "#{table}=#{count}" end)
+
+  # The timestamps, because the next step is not re-running the suite.
+  #
+  # `afaa6eae` ruled out four vectors by re-running — the full suite, two spex
+  # stories, and its own additions — and all four came back clean, which is what
+  # a condition none of them reproduce looks like. What it did not have was a
+  # way to ask *what ran at that second*, and gathering that meant querying the
+  # rows by hand after the fact. A whole fixture chain sharing one `inserted_at`
+  # is also the strongest evidence available that this is one escape rather than
+  # accumulated strays, and that shape is invisible in a count.
+  window =
+    Enum.map_join(dirty_counts, "\n  ", fn [table, count, first, last] ->
+      "#{table}: #{count} row(s), inserted_at #{first}" <>
+        if(first == last, do: "", else: " .. #{last}")
+    end)
 
   IO.puts(
     :stderr,
     "[test_helper] the test database is not empty before this run (#{summary}). " <>
       "Rows that escaped the ExUnit sandbox and committed are permanent, and they " <>
-      "surface as unrelated tests failing on unscoped reads. Clear with " <>
+      "surface as unrelated tests failing on unscoped reads.\n\n  " <>
+      window <>
+      "\n\nStart from the timestamps — grep ~/.codemyspec/*.log for that second — " <>
+      "rather than by re-running the suite; the residue is the only evidence of " <>
+      "whatever escaped, so read it before clearing it. Clear with " <>
       "`MIX_ENV=test mix ecto.drop && MIX_ENV=test mix ecto.create && " <>
       "MIX_ENV=test mix ecto.migrate`."
   )
