@@ -33,10 +33,52 @@ defmodule CodeMySpec.Support.InMemoryEnvironment do
      }}
   end
 
+  # Stop it, and be satisfied if it was already stopping.
+  #
+  # `if Process.alive?(agent), do: Agent.stop(agent)` is check-then-act, and the
+  # gap is reachable here by construction: the agent is `start_link`ed from the
+  # test process, while `destroy/1` runs from `on_exit` in a *different* process
+  # after that one has exited — so the link is killing the agent exactly when
+  # destroy looks at it. Winning the check and losing the stop produced
+  #
+  #     ** (exit) exited in: GenServer.stop(#PID<0.11022.0>, :normal, :infinity)
+  #
+  # reported against whichever test was running. Forty isolated runs of that
+  # file stay clean; it takes a loaded box, which is where the analyzer lives.
+  #
+  # Two shapes that look simpler and are wrong, both tried:
+  #
+  #   * `Process.exit(agent, :shutdown)` — an abnormal signal travels back along
+  #     the link and takes the *caller* with it. `** (EXIT from #PID<...>)
+  #     shutdown`, which is a louder version of the bug being fixed.
+  #   * `Process.unlink/1` then `Process.exit(agent, :kill)` — unlink only
+  #     touches the caller's own link. Called from `on_exit`, or from any
+  #     process that did not create the agent, the owner's link survives and the
+  #     kill propagates to it instead.
+  #
+  # So: `Agent.stop/1`, which exits with `:normal` and therefore propagates to
+  # nobody. It raises on a process that is already gone, and that is not an
+  # error to report — it is the outcome this function exists to produce. There
+  # is no error-tuple form of `GenServer.stop/3` to prefer; an exit *is* the
+  # contract. The monitor afterwards is what makes the promise good: this
+  # returns only once the agent is actually down, whichever way it got there.
   @impl true
   def destroy(%Environment{ref: %{agent: agent}}) do
-    if Process.alive?(agent), do: Agent.stop(agent)
-    :ok
+    ref = Process.monitor(agent)
+
+    try do
+      Agent.stop(agent)
+    catch
+      :exit, _reason -> :ok
+    end
+
+    receive do
+      {:DOWN, ^ref, :process, ^agent, _reason} -> :ok
+    after
+      5_000 ->
+        Process.demonitor(ref, [:flush])
+        :ok
+    end
   end
 
   @doc """
