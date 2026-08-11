@@ -205,9 +205,14 @@ defmodule CodeMySpec.Requirements.GraphCacheTest do
     #
     # This is the exact failure 16a24105 describes — "a cached graph can tell an
     # agent work is finished that a deploy has just reopened" — and the spex it
-    # names as having caught it before, story 859's `criterion_7321`, no longer
-    # exists. This block is what replaced it, and it had no test for the one
-    # input that is not a table the checkers query directly.
+    # names as having caught it before, `criterion_7321`, no longer exists: that
+    # criterion has no row, so it went when its story's criteria were rewritten.
+    # (Not lost to the renumbering, as the comment in `requirement_graph.ex` used
+    # to guess: "859" is a primary key, the story's number is 973, and
+    # `test/spex/973_…` is on disk.)
+    #
+    # This block is what replaced it, and it had no test for the one input that
+    # is not a table the checkers query directly.
     test "a deploy landing moves it", %{scope: scope, before: before} do
       story = story_fixture(scope)
       {:ok, _} = CodeMySpec.Deploys.record(scope, story.id, "uat", status: "succeeded")
