@@ -62,6 +62,34 @@ defmodule CodeMySpec.Workspaces.PreviewAddress do
   @spec prefix() :: String.t()
   def prefix, do: @prefix
 
+  @doc """
+  The address to point a browser at, which is not the container's own.
+
+  Framing the container directly does not work and the failure is silent: a
+  generated Phoenix app answers `content-security-policy: frame-ancestors
+  'self'`, so any other origin is refused and the frame renders blank — which
+  reads to the visitor as their app being broken. `PreviewProxy` exists to
+  replace that header, and it only sees a request that arrives here.
+
+  It is also the whole point of the address being same-site: framed from a
+  genuinely third-party origin, Safari drops the app's session cookie and takes
+  its CSRF token and LiveView connect with it.
+
+  Scheme and port are configurable because dev reaches the preview listener
+  directly on its own port, while production has an edge in front of it on 443.
+  """
+  @spec url(String.t()) :: String.t()
+  def url(project_id), do: scheme() <> "://" <> host(project_id) <> port_suffix()
+
+  defp scheme, do: config()[:scheme] || "https"
+
+  defp port_suffix do
+    case config()[:port] do
+      nil -> ""
+      port -> ":" <> to_string(port)
+    end
+  end
+
   defp zone(scope) do
     case Cloudflare.find_zone(scope, base_domain()) do
       {:ok, %{"id" => id}} -> {:ok, id}

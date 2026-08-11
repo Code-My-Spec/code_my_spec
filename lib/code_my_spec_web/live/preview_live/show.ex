@@ -19,6 +19,7 @@ defmodule CodeMySpecWeb.PreviewLive.Show do
   import CodeMySpecWeb.PreviewComponents
 
   alias CodeMySpec.Workspaces
+  alias CodeMySpec.Workspaces.PreviewAddress
 
   @viewports ~w(full tablet phone)
 
@@ -60,7 +61,21 @@ defmodule CodeMySpecWeb.PreviewLive.Show do
     socket
     |> assign(:workspace, workspace)
     |> assign(:app_state, Workspaces.state(workspace))
-    |> assign(:src, Workspaces.url(workspace))
+    # The preview address, not `Workspaces.url/1`. The container's own address
+    # refuses to be framed — a generated app sends `frame-ancestors 'self'` —
+    # and the refusal is silent: the iframe element looks perfectly healthy
+    # while rendering nothing. `PreviewProxy` replaces that header, and it only
+    # sees requests that arrive at the preview address.
+    |> assign(:src, preview_src(workspace))
+  end
+
+  # A preview address is worth pointing at only when there is something behind
+  # it; a workspace that is not running has nothing to serve.
+  defp preview_src(workspace) do
+    case Workspaces.state(workspace) do
+      state when state in [:running, :broken] -> PreviewAddress.url(workspace.project_id)
+      _ -> nil
+    end
   end
 
   @impl true
