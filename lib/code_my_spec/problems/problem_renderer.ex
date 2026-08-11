@@ -178,12 +178,14 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
     stale = opts |> Keyword.get(:stale_sources, []) |> MapSet.new()
     last_ran = Keyword.get(opts, :last_ran, %{})
     run_duration = Keyword.get(opts, :run_duration, %{})
+    reproduce = Keyword.get(opts, :reproduce_commands, %{})
     in_flight = Keyword.get(opts, :in_flight, [])
 
     header = "Fix these problems before stopping:\n\n"
     advisory_section = render_advisory_section(advisory)
 
-    blocking_section = render_blocking_section(blocking, stale, last_ran, run_duration)
+    blocking_section =
+      render_blocking_section(blocking, stale, last_ran, run_duration, reproduce)
 
     raw =
       header <>
@@ -193,14 +195,14 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
     enforce_total_cap(raw, blocking, advisory)
   end
 
-  defp render_blocking_section(blocking, stale, last_ran, run_duration) do
+  defp render_blocking_section(blocking, stale, last_ran, run_duration, reproduce) do
     blocking
     |> Enum.group_by(& &1.source)
     |> Enum.sort_by(fn {source, _} -> source end)
-    |> Enum.map_join("\n", &render_blocking_group(&1, stale, last_ran, run_duration))
+    |> Enum.map_join("\n", &render_blocking_group(&1, stale, last_ran, run_duration, reproduce))
   end
 
-  defp render_blocking_group({source, items}, stale, last_ran, run_duration) do
+  defp render_blocking_group({source, items}, stale, last_ran, run_duration, reproduce) do
     count = length(items)
     visible = Enum.take(items, @per_source_list_cap)
 
@@ -212,7 +214,20 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
         n -> "\n  ... #{n} more #{source} problems (use get_issue to inspect)"
       end
 
-    "#{source} (#{count})#{stale_marker(source, stale, last_ran, run_duration)}:\n#{details}#{overflow}"
+    marker = stale_marker(source, stale, last_ran, run_duration)
+
+    "#{source} (#{count})#{marker}:\n#{details}#{overflow}#{reproduce_line(source, reproduce)}"
+  end
+
+  # How to see these yourself. Only where the gate's command and the obvious
+  # one disagree — credo, whose plain invocation hides the low-priority band
+  # these are promoted from — so this stays a fact worth reading rather than
+  # noise appended to every group.
+  defp reproduce_line(source, reproduce) do
+    case Map.get(reproduce, source) do
+      command when is_binary(command) and command != "" -> "\n  reproduce: #{command}"
+      _ -> ""
+    end
   end
 
   # Marked, not dropped: dropping opens an escape at the last stop of a run

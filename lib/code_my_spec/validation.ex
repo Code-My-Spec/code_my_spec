@@ -39,6 +39,7 @@ defmodule CodeMySpec.Validation do
   alias CodeMySpec.Files.FileSync
   alias CodeMySpec.Problems
   alias CodeMySpec.StaticAnalysis
+  alias CodeMySpec.StaticAnalysis.CredoRun
   alias CodeMySpec.Stories
   alias CodeMySpec.Users.Scope
 
@@ -433,6 +434,11 @@ defmodule CodeMySpec.Validation do
       # "your edit predates this result" from "your edit landed while it was
       # running" — and only the first is fixed by waiting.
       run_duration: run_duration,
+      # How to see these findings without stopping again. Only credo has one:
+      # its plain invocation hides the low-priority band that `block_changed`
+      # promotes, so `mix credo` answers "found no issues" on the very findings
+      # that block. `mix test` and `mix spex` reproduce themselves.
+      reproduce_commands: %{"credo" => CredoRun.reproduce_command()},
       # Whether a rerun is actually running, as opposed to how old the newest
       # result is. The message used to assert the first from the second and got
       # it wrong in both directions.
