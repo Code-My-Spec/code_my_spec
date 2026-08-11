@@ -425,9 +425,14 @@ defmodule CodeMySpec.Validation do
     stale_sources = Enum.reject(sources_with_problems, &MapSet.member?(fresh, &1))
 
     {blocking, advisory} = partition_problems(problems_by_source, config, scope_context)
+    {last_ran, run_duration} = run_timing(scope, stale_sources)
 
     decide(blocking, advisory, stale_sources,
-      last_ran: last_ran(scope, stale_sources),
+      last_ran: last_ran,
+      # How long the run itself took. Read together with the age, this separates
+      # "your edit predates this result" from "your edit landed while it was
+      # running" — and only the first is fixed by waiting.
+      run_duration: run_duration,
       # Whether a rerun is actually running, as opposed to how old the newest
       # result is. The message used to assert the first from the second and got
       # it wrong in both directions.
@@ -435,23 +440,46 @@ defmodule CodeMySpec.Validation do
     )
   end
 
-  # When each stale source last finished. "Stale" alone cannot tell "a rerun is
-  # coming" from "no rerun can land", and those need opposite responses: wait,
-  # or stop editing and report the analyzer. A source that last ran two minutes
-  # ago is mid-cycle; one that last ran forty minutes ago, across several
-  # stops, is not coming back on its own.
-  defp last_ran(_scope, []), do: %{}
+  # When each stale source last finished, and how long it took to get there.
+  #
+  # "Stale" alone cannot tell "a rerun is coming" from "no rerun can land", and
+  # those need opposite responses: wait, or stop editing and report the
+  # analyzer. A source that last ran two minutes ago is mid-cycle; one that last
+  # ran forty minutes ago, across several stops, is not coming back on its own.
+  #
+  # The duration adds a third condition the age alone cannot express. A run is
+  # fingerprinted when it is enqueued and judged against the tree when it is
+  # read, so an edit landing inside its window makes the result stale the
+  # instant it arrives. For exunit and spex here — measured at 2m20s and 2m35s
+  # against compiler's 9s — that is the normal working rhythm, not an anomaly,
+  # and it produced "stale, last ran 0s ago" on a run that had just succeeded.
+  # Waiting cannot fix it, so the message must not advise it.
+  #
+  # Both come from one `Analysis.status/1` call: it computes `Fingerprint`
+  # over every file row in the working copy — 4,544 on this project — and
+  # asking twice would double that for one arithmetic result.
+  defp run_timing(_scope, []), do: {%{}, %{}}
 
-  defp last_ran(scope, sources) do
+  defp run_timing(scope, sources) do
     status = Analysis.status(scope)
 
-    Map.new(sources, fn source ->
-      {source, get_in(status, [source, :run]) |> finished_at()}
+    Enum.reduce(sources, {%{}, %{}}, fn source, {ages, durations} ->
+      run = get_in(status, [source, :run])
+
+      {Map.put(ages, source, finished_at(run)), Map.put(durations, source, duration(run))}
     end)
   end
 
   defp finished_at(%{finished_at: %DateTime{} = at}), do: at
   defp finished_at(_), do: nil
+
+  # Nil rather than zero when either end is missing: zero would read as an
+  # instant run and send the message down the "your edit predates this" branch,
+  # which is the wrong half of the very distinction this exists to draw.
+  defp duration(%{started_at: %DateTime{} = from, finished_at: %DateTime{} = to}),
+    do: DateTime.diff(to, from, :second)
+
+  defp duration(_), do: nil
 
   defp active_blocking_sources(config) do
     configurable =
