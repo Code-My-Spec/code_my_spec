@@ -85,20 +85,37 @@ defmodule CodeMySpec.Architecture.ProposalProjector do
   end
 
   defp partition_components(components) do
-    # Top-level components (no parent) split into contexts vs surface
-    {top_level, children} =
-      Enum.split_with(components, fn c -> is_nil(c.parent_component_id) end)
+    children_by_parent =
+      components
+      |> Enum.reject(&is_nil(&1.parent_component_id))
+      |> Enum.group_by(& &1.parent_component_id)
 
-    children_by_parent = Enum.group_by(children, & &1.parent_component_id)
+    # By type, not by depth.
+    #
+    # This used to take only components with no parent and split *those* into
+    # contexts and surfaces. On this project that produced a document with
+    # `## Contexts` and `## Surface Components` both empty, against 45 contexts
+    # in the database: every one of them hangs off `CodeMySpec`, the app's root
+    # namespace anchor, so none is top-level and all 45 were sorted into
+    # `children` and never emitted.
+    #
+    # Nothing caught it because `ProposalProjector` had no caller until
+    # `regenerate_proposal` — its output had never been read. The first real
+    # call replaced a hand-written proposal with an architecture-shaped hole.
+    #
+    # A context is a context wherever it sits in the namespace. Depth describes
+    # how a module is named, not what it is.
+    contexts = Enum.filter(components, fn c -> c.type == "context" end)
+    surface = Enum.filter(components, fn c -> c.type in @surface_types end)
 
-    # Only actual contexts go in the Contexts section.
-    # Surface types go in Surface Components.
-    # Other top-level modules (plugs, hooks, utility modules) are excluded —
-    # they're infrastructure, not architecture components.
-    {contexts, non_contexts} =
-      Enum.split_with(top_level, fn c -> c.type == "context" end)
+    # Minus anything that will be listed under a `#### Children` heading. A
+    # `liveview` inside a `live_context` is a child of it, and emitting it as
+    # its own `###` as well would describe it twice — once as a component and
+    # once as part of one.
+    emitted = MapSet.new(contexts ++ surface, & &1.id)
 
-    surface = Enum.filter(non_contexts, fn c -> c.type in @surface_types end)
+    {contexts, surface} =
+      {reject_children_of(contexts, emitted), reject_children_of(surface, emitted)}
 
     # Attach children to their parents
     contexts = Enum.map(contexts, &attach_children(&1, children_by_parent))
@@ -106,6 +123,12 @@ defmodule CodeMySpec.Architecture.ProposalProjector do
 
     {Enum.sort_by(contexts, & &1.module_name),
      Enum.sort_by(surface, & &1.module_name)}
+  end
+
+  defp reject_children_of(components, emitted) do
+    Enum.reject(components, fn c ->
+      not is_nil(c.parent_component_id) and MapSet.member?(emitted, c.parent_component_id)
+    end)
   end
 
   defp attach_children(%Component{} = component, children_by_parent) do

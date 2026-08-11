@@ -56,6 +56,40 @@ defmodule CodeMySpec.McpServers.Architecture.Tools.RegenerateProposalTest do
              "a refusal must not have written anything"
     end
 
+    # The first real call to this tool wrote `## Contexts` and
+    # `## Surface Components` empty over a hand-written proposal that had 25
+    # contexts in it, because the projector only looked at parentless components
+    # and every context in this project hangs off the app's root namespace
+    # anchor. `confirm: true` was given and honoured — consent is not a check on
+    # the content, so the content is checked too.
+    test "a context nested under a namespace anchor reaches the document" do
+      {scope, tmp_dir} = scope_with_disk()
+      path = Path.join(tmp_dir, Paths.proposal_path())
+      File.mkdir_p!(Path.dirname(path))
+      File.write!(path, "# the good one")
+
+      # The shape that broke it, and the shape this project actually has: every
+      # one of its 45 contexts hangs off `CodeMySpec`, so none is parentless.
+      anchor = component_fixture(scope, %{module_name: "MyApp", type: "module"})
+
+      component_fixture(scope, %{
+        module_name: "MyApp.Accounts",
+        type: "context",
+        parent_component_id: anchor.id
+      })
+
+      assert {:reply, response, _frame} = run(scope, %{confirm: true})
+      assert response.isError == false
+
+      written = File.read!(path)
+
+      assert written =~ "### MyApp.Accounts",
+             "a nested context is still a context — depth describes how a module is " <>
+               "named, not what it is"
+
+      refute written == "# the good one"
+    end
+
     # Same shape `create_component` uses when it cannot write: hand back the
     # content rather than reporting success over a file that does not exist.
     test "returns the content inline when it cannot write" do

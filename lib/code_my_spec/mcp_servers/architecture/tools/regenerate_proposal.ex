@@ -27,6 +27,7 @@ defmodule CodeMySpec.McpServers.Architecture.Tools.RegenerateProposal do
 
   alias Anubis.Server.Response
   alias CodeMySpec.Architecture.ProposalProjector
+  alias CodeMySpec.Components
   alias CodeMySpec.Environments
   alias CodeMySpec.McpServers.Architecture.ArchitectureMapper
   alias CodeMySpec.McpServers.Validators
@@ -63,6 +64,46 @@ defmodule CodeMySpec.McpServers.Architecture.Tools.RegenerateProposal do
   defp write(scope) do
     content = ProposalProjector.project(scope)
 
+    with :ok <- describes_something(scope, content) do
+      do_write(scope, content)
+    end
+  end
+
+  # A proposal with no contexts, written over one that had them, is worse than
+  # no proposal: it is a document that confidently describes an empty
+  # architecture, and the file it replaced is gone.
+  #
+  # Not hypothetical. The first real call to this tool did exactly that — the
+  # projector emitted `## Contexts` and `## Surface Components` empty against 45
+  # contexts in the database, because it only looked at components with no
+  # parent and every context here hangs off the app's root namespace anchor.
+  # `confirm: true` was given and honoured; consent is not a check on the
+  # content.
+  #
+  # So the shape of the output is compared against the database it came from.
+  # This would have caught that bug on the way out, and it catches the next one
+  # of its kind without knowing what it is.
+  defp describes_something(scope, content) do
+    context_count =
+      scope
+      |> Components.list_components_with_dependencies()
+      |> Enum.count(&(&1.type == "context"))
+
+    if context_count > 0 and not String.contains?(content, "### ") do
+      ArchitectureMapper.error("""
+      Refusing to write: the generated proposal contains no components, but the \
+      project has #{context_count} context(s).
+
+      That is a projection bug rather than an empty architecture, and writing it \
+      would replace whatever #{Paths.proposal_path()} says with a document \
+      describing nothing.
+      """)
+    else
+      :ok
+    end
+  end
+
+  defp do_write(scope, content) do
     case Environments.write_file(scope.environment, Paths.proposal_path(), content) do
       :ok ->
         text("""
