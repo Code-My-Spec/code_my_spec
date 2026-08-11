@@ -13,16 +13,22 @@ defmodule CodeMySpec.StaticAnalysis.CredoRun do
   maps travel over the wire with string keys, which is the shape
   `ProblemConverter.from_credo/1` already accepts.
 
-  ## One deliberate divergence from the original
+  ## Unreadable output is an error, not a clean sweep
 
-  The server's analyzer treats unparseable output as `{:ok, []}` — no issues.
-  This returns an error instead, because over a wire that answer is
-  indistinguishable from a clean sweep and gets recorded as one. A real run
-  proved it: a project without `:credo` in its deps printed
-  `** (Mix) The task "credo" could not be found`, which is not JSON, and the
-  harness reported the project credo-clean. The server never hit that because
-  `available?/1` skipped the analyzer first — so that check is here too, ahead
-  of everything else.
+  Output this cannot parse returns an error rather than `{:ok, []}`, because
+  over a wire that answer is indistinguishable from a clean sweep and gets
+  recorded as one. A real run proved it: a project without `:credo` in its deps
+  printed `** (Mix) The task "credo" could not be found`, which is not JSON, and
+  the harness reported the project credo-clean. The server never hit that
+  because `available?/1` skipped the analyzer first — so that check is here too,
+  ahead of everything else.
+
+  This was written as a deliberate divergence from the server's analyzer, which
+  did answer `{:ok, []}`. It is not one any more: `Analyzers.Credo` was brought
+  in line, and `Analyzers.Sobelow` after it — a `:full` reconcile against an
+  empty list deletes every Problem the source has, so all three now refuse the
+  same way. The note is kept rather than deleted because the divergence is the
+  kind of thing someone re-introduces while "simplifying" one of them.
   """
 
   require Logger
@@ -179,10 +185,13 @@ defmodule CodeMySpec.StaticAnalysis.CredoRun do
         {:error, "unexpected JSON structure from credo"}
 
       :error ->
-        # The server analyzer answers `{:ok, []}` here. Over a wire that is
-        # recorded as a clean sweep, so this says it could not read the output
-        # instead — the excerpt is carried because the reason is usually in it
-        # (`** (Mix) The task "credo" could not be found`, a compile error).
+        # Over a wire, `{:ok, []}` is recorded as a clean sweep, so this says it
+        # could not read the output instead — the excerpt is carried because the
+        # reason is usually in it (`** (Mix) The task "credo" could not be
+        # found`, a compile error, a mix refusal on a lock mismatch).
+        #
+        # The server analyzer answered `{:ok, []}` here when this was written.
+        # It no longer does, nor does sobelow; see the moduledoc.
         Logger.warning(
           "[CredoRun] no JSON document in credo's output: " <>
             (output |> String.trim() |> String.slice(0, 200))

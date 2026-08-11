@@ -206,7 +206,8 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.Credo do
       # output this could not read was recorded as a codebase with nothing wrong
       # with it, and a broken analyzer became indistinguishable from a clean run.
       # `CredoRun.parse/1` already refuses this on the harness path and its
-      # comment names this line; both answer the same way now.
+      # comment names this line; all three answer the same way now, sobelow
+      # included.
       #
       # The excerpt travels with the error because the reason is almost always
       # in it — `** (Mix) The task "credo" could not be found`, a compile error,
