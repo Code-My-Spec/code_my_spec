@@ -9,6 +9,14 @@ defmodule CodeMySpecSpex.Story995.Criterion8269Spex do
   create slips through, Sam's payout stops being one clear thing and becomes a
   list he has to sort out — which is what the guided path exists to spare him.
 
+  The two scripted calls carry **different** titles on purpose. They used to
+  share one, and that made this criterion pass without the rule existing: two
+  stories with the same title trip a unique index, so the database refused the
+  second and the spex read that as the conversation refusing it. A model naming
+  its second story differently — the likely case, since it would be describing
+  something else — created one silently, and this stayed green. Different
+  titles are the only version of this that tests the rule.
+
   Surface: `CodeMySpecWeb.ChatLive` at `/app/projects/:project_id/chat` — the
   two-way agent chat someone lands in after signup. Distinct from the intake
   interview on `/build/workspace`, which runs earlier and stops at derived
@@ -16,7 +24,6 @@ defmodule CodeMySpecSpex.Story995.Criterion8269Spex do
   """
 
   use CodeMySpecSpex.Case
-
 
   @endpoint CodeMySpecWeb.Endpoint
 
@@ -37,9 +44,9 @@ defmodule CodeMySpecSpex.Story995.Criterion8269Spex do
         %{
           name: "create_story",
           arguments: %{
-            "title" => "Bookings show up on a calendar",
+            "title" => "Stylists get a text when someone books",
             "story" =>
-              "As a salon owner, I want to see today's bookings on a calendar, so that I know who is coming in."
+              "As a stylist, I want a text when a client books with me, so that I do not have to watch the calendar."
           }
         }
       ],
@@ -67,12 +74,21 @@ defmodule CodeMySpecSpex.Story995.Criterion8269Spex do
         {:ok, Map.put(context, :html, html)}
       end
 
-      then_ "the second is refused", context do
+      then_ "the second is refused, and says so", context do
         assert context.html =~ "Bookings show up on a calendar",
                "anchor: the first story should still be here"
 
         refute has_element?(context.chat, "[data-test='story-card']:nth-of-type(2)"),
                "expected the second create to be refused"
+
+        # Refused *and* answered. The model has to be told a story already
+        # exists, or it has no way to recover except by trying again — which is
+        # the loop the cap exists to stop.
+        assert context.html =~ "already produced a story",
+               "expected the refusal to come back as the tool result the model reads"
+
+        refute context.html =~ "Stylists get a text when someone books",
+               "the second story was created rather than refused"
 
         {:ok, context}
       end
@@ -95,6 +111,9 @@ defmodule CodeMySpecSpex.Story995.Criterion8269Spex do
 
         assert length(cards) == 1,
                "expected exactly one story card on the page, got #{length(cards)}"
+
+        refute html =~ "Stylists get a text when someone books",
+               "the refused story reached the board anyway"
 
         {:ok, context}
       end
