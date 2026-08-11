@@ -131,12 +131,21 @@ defmodule CmsHarness.Web.McpController do
     end
   end
 
-  defp html_summary(response) do
-    body = to_string(response.body || "")
+  defp html_summary(response),
+    do: error_page_summary(to_string(response.body || ""), response.status, content_type(response))
 
-    if error_page?(response, body) do
-      "the CodeMySpec server answered with an error page (HTTP #{response.status}) " <>
-        "instead of a tool result: #{first_meaningful_line(body)}. " <>
+  @doc """
+  A one-line account of a server error page, or `nil` if it is not one.
+
+  Public so the extraction can be asserted directly against the shapes Phoenix
+  actually sends — the failure here was never in *detecting* the page, it was in
+  which 300 characters got picked out of it.
+  """
+  @spec error_page_summary(String.t(), integer(), String.t() | nil) :: String.t() | nil
+  def error_page_summary(body, status, content_type) do
+    if error_page?(body, status, content_type) do
+      "the CodeMySpec server answered with an error page (HTTP #{status}) " <>
+        "instead of a tool result: #{exception_text(body)}. " <>
         "Common causes: a pending migration, or a dev server that has loaded a " <>
         "changed config/*.exs and cannot hot-reload it. Both persist until the " <>
         "server is dealt with, so every request fails the same way."
@@ -148,27 +157,52 @@ defmodule CmsHarness.Web.McpController do
   # a `Phoenix.Ecto.PendingMigrationError` came back as markdown, sailed past an
   # HTML-only check, and reached the agent as a raw stack trace. Recognising the
   # page by its exception marker as well as its markup catches both renderings.
-  defp error_page?(response, body) do
+  defp error_page?(body, status, content_type) do
     trimmed = String.trim_leading(body)
 
-    content_type(response) == "text/html" or
+    content_type == "text/html" or
       String.starts_with?(trimmed, ["<!DOCTYPE", "<!doctype", "<html"]) or
-      (response.status >= 400 and String.contains?(body, "** ("))
+      (status >= 400 and String.contains?(body, "** ("))
   end
 
-  # Phoenix's error page carries the exception text in the markup. Anything
-  # recognisable beats "an HTML page arrived", and the whole document is what
-  # this exists to avoid.
-  defp first_meaningful_line(body) do
-    body
-    |> String.replace(~r{<[^>]*>}, " ")
-    |> String.replace(~r/\s+/, " ")
-    |> String.trim()
-    |> String.slice(0, 300)
-    |> case do
-      "" -> "no readable text in the response"
-      text -> text
+  # Inline `<style>` and `<script>` bodies survive tag-stripping, and Phoenix's
+  # debug page opens with one. Taking the first 300 characters of the stripped
+  # document therefore returned the stylesheet:
+  #
+  #     CompileError /*! normalize.css v4.2.0 | MIT License | … */html{font-…
+  #
+  # received verbatim through this transport, with the sentence that mattered —
+  # "could not compile application … You must restart your server" — never
+  # arriving. An agent that truncates long tool results got CSS and no cause.
+  @noise ~r{<(style|script)\b[^>]*>.*?</\1>}is
+
+  defp exception_text(body) do
+    text =
+      body
+      |> String.replace(@noise, " ")
+      |> String.replace(~r{<[^>]*>}, " ")
+      |> unescape()
+      |> String.replace(~r/\s+/, " ")
+      |> String.trim()
+
+    # The marker wins where there is one: it is the line naming what broke, and
+    # a page can carry any amount of chrome before it.
+    case String.split(text, "** (", parts: 2) do
+      [_before, rest] -> "** (" <> String.slice(rest, 0, 300)
+      [_] -> fallback_text(text)
     end
+  end
+
+  defp fallback_text(""), do: "no readable text in the response"
+  defp fallback_text(text), do: String.slice(text, 0, 300)
+
+  defp unescape(text) do
+    text
+    |> String.replace("&quot;", "\"")
+    |> String.replace("&#39;", "'")
+    |> String.replace("&lt;", "<")
+    |> String.replace("&gt;", ">")
+    |> String.replace("&amp;", "&")
   end
 
   defp request(conn, project, token, method, body, receive_timeout) do
