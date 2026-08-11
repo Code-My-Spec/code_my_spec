@@ -133,6 +133,8 @@ defmodule CodeMySpecSpex.Case do
       end)
     end
 
+    stage_local_only_push()
+
     {:ok, conn: Phoenix.ConnTest.build_conn()}
   end
 
@@ -289,6 +291,34 @@ defmodule CodeMySpecSpex.Case do
   # was doing the right thing.
   #
   # Replay is unaffected; it creates nothing.
+  # Do every local git operation, and skip the one that talks to GitHub.
+  #
+  # `git` is a subprocess rather than HTTP, so no cassette intercepts it. A
+  # replay therefore pushed to a repository that existed only while the
+  # recording was being made, and whether that succeeded depended on whether the
+  # repository still happened to be there — the app's grant has no
+  # `delete_repo` scope by design, so some survive and some do not. The same
+  # criterion passed or failed by the age of its cassette, reporting
+  # `remote: Repository not found`, which reads as a defect in the step.
+  #
+  # The push is also the part with nothing to prove here: it is slow, it needs
+  # the network, and no criterion in this suite asserts anything about GitHub
+  # having received the objects. The repository is still created, the commit is
+  # still made, the remote is still set, and the recorded sha is the real one.
+  defp stage_local_only_push do
+    previous = Application.get_env(:code_my_spec, :provisioning_step_opts, [])
+
+    Application.put_env(
+      :code_my_spec,
+      :provisioning_step_opts,
+      Keyword.merge(previous, push_remote: false)
+    )
+
+    ExUnit.Callbacks.on_exit(fn ->
+      Application.put_env(:code_my_spec, :provisioning_step_opts, previous)
+    end)
+  end
+
   # The throwaway organisation every spex repository belongs in.
   #
   # Defaulted rather than read from the environment alone, because whether this
@@ -3024,23 +3054,41 @@ defmodule CodeMySpecSpex.Case do
       clear_cassette_once(name, opts[:cassette_dir] || "test/cassettes")
     end
 
-    ReqCassette.with_cassette(name, opts, fn plug ->
-      previous = Enum.map(provider_modules(), &{&1, Application.get_env(:code_my_spec, &1, [])})
+    result =
+      ReqCassette.with_cassette(name, opts, fn plug ->
+        previous = Enum.map(provider_modules(), &{&1, Application.get_env(:code_my_spec, &1, [])})
 
-      for module <- provider_modules() do
-        Application.put_env(
-          :code_my_spec,
-          module,
-          Keyword.put(Application.get_env(:code_my_spec, module, []), :plug, plug)
-        )
-      end
+        for module <- provider_modules() do
+          Application.put_env(
+            :code_my_spec,
+            module,
+            Keyword.put(Application.get_env(:code_my_spec, module, []), :plug, plug)
+          )
+        end
 
-      try do
-        fun.()
-      after
-        for {module, config} <- previous, do: Application.put_env(:code_my_spec, module, config)
-      end
-    end)
+        try do
+          fun.()
+        after
+          for {module, config} <- previous, do: Application.put_env(:code_my_spec, module, config)
+        end
+      end)
+
+    # Here rather than in `with_full_cassette/3`, which is where it started and
+    # where it covered almost nothing: 841, 963, 965, 966 and 969 all drive
+    # providers through *this* function directly, so the guard never saw them.
+    # It showed up as `841_1962_uat_only_complete_setup` keeping a
+    # `403 resource_limit_exceeded` with no `.rejected` file beside it — a
+    # recording of the account being full, replayed ever after as the story's
+    # behaviour. `with_full_cassette/3` wraps this, so both paths are covered
+    # from here.
+    #
+    # Per entry rather than once per run. The check only ever raises on poison,
+    # so running it more often can only catch it sooner — and a spex that enters
+    # the same cassette twice gets its first block checked before the second
+    # appends to it.
+    refuse_poisoned_cassette(name)
+
+    result
   end
 
   @doc "Every provider whose HTTP a cassette should capture."

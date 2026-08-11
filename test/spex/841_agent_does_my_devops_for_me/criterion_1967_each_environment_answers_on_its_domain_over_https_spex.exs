@@ -100,9 +100,23 @@ defmodule CodeMySpecSpex.Story841.Criterion1967Spex do
     end
   end
 
+  # Refuses an environment with no host rather than fetching one.
+  #
+  # `Req.get("https://" <> nil_host)` dies inside Finch with
+  # `host is required for url: https://` — an ArgumentError that names neither
+  # the environment nor the step that failed to give it a host, and arrives
+  # before any assertion has run. What it actually means is that setup did not
+  # get as far as recording a host for that environment, which is worth saying.
   defp environment_hosts(context) do
-    context
-    |> Map.get(:environments, [])
-    |> Enum.map(fn env -> {env.name, env.host} end)
+    environments = Map.get(context, :environments, [])
+
+    for env <- environments do
+      assert is_binary(env.host) and env.host != "",
+             "environment #{env.name} has no host — setup did not get far enough to " <>
+               "record one, so there is nothing to fetch. Check which step errored " <>
+               "and why before reading this criterion as an HTTPS failure."
+
+      {env.name, env.host}
+    end
   end
 end

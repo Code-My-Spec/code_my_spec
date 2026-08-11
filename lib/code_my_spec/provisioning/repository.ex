@@ -200,12 +200,40 @@ defmodule CodeMySpec.Provisioning.Repository do
     with :ok <- ensure_repo(run, branch),
          :ok <- ensure_commit(run),
          :ok <- set_remote(run, remote_url),
-         {_, 0} <- run.(["push", "-u", "origin", branch]),
+         :ok <- push_remote(run, branch, opts),
          {sha, 0} <- run.(["rev-parse", "HEAD"]) do
       {:ok, String.trim(sha)}
     else
       {:error, reason} -> {:error, reason}
       {output, status} -> {:error, "git exited #{status}: #{String.trim(to_string(output))}"}
+    end
+  end
+
+  # The one part of this that talks to GitHub, and the only part a replay cannot
+  # honestly reproduce.
+  #
+  # `git` is a subprocess, not HTTP, so no cassette intercepts it: a replay
+  # pushes to a repository that existed only while the recording was being made.
+  # Whether it succeeds then depends on whether that repository still happens to
+  # be there — which made the same criterion pass or fail by the age of its
+  # cassette rather than by anything about the code. It read as
+  # `remote: Repository not found`, which sounds like a defect in the step.
+  #
+  # Everything local still runs: the repo is initialised, the commit is made,
+  # the remote is set, and the sha returned is the real one. Only the network
+  # round-trip is skipped, and only when a caller asks — production never does,
+  # because a repository that was not pushed to is not a usable remote and that
+  # is the whole point of the step.
+  defp push_remote(run, branch, opts) do
+    case Keyword.get(opts, :push_remote, true) do
+      false ->
+        :ok
+
+      _ ->
+        case run.(["push", "-u", "origin", branch]) do
+          {_, 0} -> :ok
+          {output, status} -> {output, status}
+        end
     end
   end
 
