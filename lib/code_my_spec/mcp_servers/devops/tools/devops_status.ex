@@ -29,9 +29,8 @@ defmodule CodeMySpec.McpServers.Devops.Tools.DevopsStatus do
 
   @impl true
   def execute(_params, frame) do
-    with {:ok, scope} <- Validators.validate_local_scope(frame, %{}) do
-      {:reply, ok(summary(Resources.report(scope))), frame}
-    else
+    case Validators.validate_local_scope(frame, %{}) do
+      {:ok, scope} -> {:reply, ok(summary(Resources.report(scope))), frame}
       {:error, reason} -> {:reply, error(reason), frame}
     end
   end
