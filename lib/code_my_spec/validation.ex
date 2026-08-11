@@ -384,13 +384,14 @@ defmodule CodeMySpec.Validation do
   # else's. An empty set from a session that genuinely wrote nothing is
   # different, and the renderer treats it as "no evidence" rather than "all
   # foreign" for the same reason.
-  defp session_paths(%Scope{cwd: cwd}, opts) when is_binary(cwd) do
+  defp session_paths(%Scope{cwd: cwd} = scope, opts) when is_binary(cwd) do
     case Keyword.get(opts, :session_id) do
       session_id when is_binary(session_id) ->
         session_id
         |> attributed_paths(Keyword.get(opts, :agent_id))
         |> Enum.map(&relativize(&1, cwd))
         |> MapSet.new()
+        |> verify_against_ledger(scope, session_id)
 
       _ ->
         nil
@@ -398,6 +399,44 @@ defmodule CodeMySpec.Validation do
   end
 
   defp session_paths(_scope, _opts), do: nil
+
+  # Does the attribution actually correspond to this project's files?
+  #
+  # The demotion turns on comparing recorded paths to `Problem.file_path`, and
+  # a set that matches nothing looks exactly like a set that matches nothing
+  # *because the session touched none of it* — one of which is a broken
+  # recording and the other is a fact. Measured on this project: a healthy
+  # session's 368 recorded paths join 988 File rows, and both shapes reach here
+  # (the harness sends repo paths project-relative; only paths outside the
+  # working copy, like a scratchpad, stay absolute). So a nonzero join is
+  # evidence the comparison works, and zero is evidence of nothing.
+  #
+  # `nil` on zero, which disables demotion and blocks on everything — the same
+  # direction every other guard here fails, because a gate that quietly stops
+  # blocking is invisible and one that blocks too much is not.
+  #
+  # `get_by_paths/2` rather than listing the ledger: this runs on every stop,
+  # and the full list is 4,544 rows here against an indexed lookup of the
+  # session's own.
+  defp verify_against_ledger(paths, scope, session_id) do
+    cond do
+      MapSet.size(paths) == 0 ->
+        paths
+
+      Files.get_by_paths(scope, MapSet.to_list(paths)) != [] ->
+        paths
+
+      true ->
+        Logger.warning(
+          "[Validation] session #{session_id} recorded #{MapSet.size(paths)} edited " <>
+            "path(s), none of which name a file in this project. Attribution is not " <>
+            "usable, so nothing will be demoted and every finding blocks. Check that " <>
+            "PostToolUse paths normalize against #{inspect(scope.cwd)}."
+        )
+
+        nil
+    end
+  end
 
   defp attributed_paths(session_id, nil), do: FileEdits.get_edited_files(session_id)
 
