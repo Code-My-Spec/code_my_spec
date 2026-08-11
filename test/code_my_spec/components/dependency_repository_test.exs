@@ -5,7 +5,7 @@ defmodule CodeMySpec.Components.DependencyRepositoryTest do
   import CodeMySpec.DependencyFixtures
   import CodeMySpec.UsersFixtures
 
-  alias CodeMySpec.Components.{DependencyRepository, Dependency}
+  alias CodeMySpec.Components.{Dependency, DependencyRepository}
   alias CodeMySpec.Repo
 
   describe "list_dependencies/1" do
@@ -217,6 +217,38 @@ defmodule CodeMySpec.Components.DependencyRepositoryTest do
       assert DependencyRepository.validate_dependency_graph(scope) == :ok
     end
 
+    # The self-join only ever matched a mutual pair — `A -> B` alongside
+    # `B -> A` — so anything longer was invisible while the tool reported
+    # "detected cycles" and read as complete.
+    #
+    # Measured on this project before the fix: 32 cycles in the dependency
+    # graph, of which the self-join found 17. The fifteen it missed included
+    # `Components -> Documents -> Requirements -> Components` and a six-hop
+    # `AgentTasks -> Sessions -> Interaction -> InteractionsRepository ->
+    # Session -> SessionType -> AgentTasks`. d10f65e8 records that a cyclic
+    # dependency graph is catastrophic for edge computation — 877 seconds
+    # against 4 for the acyclic equivalent — and puts the project's cycle count
+    # at 4, so it grew eightfold unseen.
+    test "detects a cycle longer than two components" do
+      scope = full_scope_fixture()
+
+      a = component_fixture(scope, %{name: "CycleA"})
+      b = component_fixture(scope, %{name: "CycleB"})
+      c = component_fixture(scope, %{name: "CycleC"})
+
+      dependency_fixture(scope, a, b)
+      dependency_fixture(scope, b, c)
+      dependency_fixture(scope, c, a)
+
+      assert {:error, [cycle | _]} = DependencyRepository.validate_dependency_graph(scope)
+
+      assert length(cycle.path) >= 3,
+             "a three-component ring is a cycle; reporting only mutual pairs " <>
+               "leaves the graph looking acyclic when it is not"
+
+      assert "CycleA" in cycle.path
+    end
+
     test "returns error with circular dependency details when cycle exists" do
       scope = full_scope_fixture()
 
@@ -227,14 +259,21 @@ defmodule CodeMySpec.Components.DependencyRepositoryTest do
       {_dep1, _dep2} = circular_dependency_fixture(scope, comp_a, comp_b)
 
       assert {:error, cycles} = DependencyRepository.validate_dependency_graph(scope)
-      # Both directions detected
-      assert length(cycles) == 2
+
+      # One ring, reported once. This asserted two, because the self-join
+      # matched `A -> B` against `B -> A` and again the other way round, so a
+      # single cycle arrived twice. That was an artefact of the query rather
+      # than a fact about the graph, and on a real project it inflated the
+      # count while still missing every cycle longer than a pair.
+      assert length(cycles) == 1
 
       cycle = List.first(cycles)
       assert Map.has_key?(cycle, :components)
       assert Map.has_key?(cycle, :path)
       assert length(cycle.components) == 2
       assert length(cycle.path) == 2
+      assert "ComponentA" in cycle.path
+      assert "ComponentB" in cycle.path
     end
 
     test "ignores circular dependencies from other projects" do
