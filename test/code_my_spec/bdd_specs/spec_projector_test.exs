@@ -1,9 +1,9 @@
 defmodule CodeMySpec.BddSpecs.SpecProjectorTest do
   use ExUnit.Case, async: true
 
-  alias CodeMySpec.BddSpecs.{Spec, Scenario, Step, SpecProjector}
-  alias CodeMySpec.Stories.Story
   alias CodeMySpec.AcceptanceCriteria.Criterion
+  alias CodeMySpec.BddSpecs.{Scenario, Spec, SpecProjector, Step}
+  alias CodeMySpec.Stories.Story
 
   # ============================================================================
   # Fixtures

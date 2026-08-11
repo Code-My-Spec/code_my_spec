@@ -59,6 +59,7 @@ defmodule CmsHarness.Project.ChannelClient do
   alias CmsHarness.Project.Watcher
   alias CmsHarness.Sync
   alias CmsHarness.Web.Endpoint
+  alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Files.Scanner.ReadModel
 
   # Long enough for a transatlantic round trip against a busy server, short
@@ -683,7 +684,7 @@ defmodule CmsHarness.Project.ChannelClient do
   # this machine's disk.
   def handle_message(_topic, "fs_request", %{"ref" => ref, "op" => op} = msg, socket) do
     payload = msg["payload"] || %{}
-    env = CodeMySpec.Environments.Environment.new(:local, socket.assigns.project.root)
+    env = Environment.new(:local, socket.assigns.project.root)
 
     result = apply_fs(env, op, payload)
 

@@ -73,7 +73,6 @@ defmodule CodeMySpecSpex.Fixtures do
   alias CodeMySpec.Provisioning.Dns
   alias CodeMySpec.Provisioning.Hetzner
   alias CodeMySpec.Provisioning.Repository
-  alias CodeMySpec.Repo
   alias CodeMySpec.Provisioning.Resend
   alias CodeMySpec.Provisioning.Resend
   alias CodeMySpec.Provisioning.Sequence
@@ -82,6 +81,7 @@ defmodule CodeMySpecSpex.Fixtures do
   alias CodeMySpec.Provisioning.Storage
   alias CodeMySpec.Provisioning.Teardown
   alias CodeMySpec.Provisioning.Wait
+  alias CodeMySpec.Repo
   alias CodeMySpec.Requirements.RequirementGraph
   alias CodeMySpec.Sessions.Session
   alias CodeMySpec.SetupFixtures.ErroringStep
