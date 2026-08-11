@@ -79,7 +79,10 @@ defmodule CodeMySpec.ContentPublishing do
     case Enum.find(rows, &(&1.parse_status == :error)) do
       %Snapshot{} = bad ->
         {:error,
-         %{message: "Cannot publish: #{bad.metadata["filename"]} has parse errors — re-sync clean first"}}
+         %{
+           message:
+             "Cannot publish: #{bad.metadata["filename"]} has parse errors — re-sync clean first"
+         }}
 
       nil ->
         do_publish(project, Enum.filter(rows, &(&1.parse_status == :success)))
@@ -90,8 +93,8 @@ defmodule CodeMySpec.ContentPublishing do
     bucket = project.content_bucket
     creds = aws_credentials(project)
     blob_json = success_rows |> Enum.map(&blob_row/1) |> Jason.encode!()
-    blob_url = "https://#{bucket}/content.json"
-    manifest_url = "https://#{bucket}/manifest.json"
+    blob_url = object_url(project, bucket, "content.json")
+    manifest_url = object_url(project, bucket, "manifest.json")
     counts = counts_by_type(success_rows)
 
     manifest = %{
@@ -121,8 +124,7 @@ defmodule CodeMySpec.ContentPublishing do
       objects =
         Enum.map(["content.json", "manifest.json"], &%{key: &1, bucket: bucket, owner: "user"})
 
-      {:ok,
-       Map.merge(result, %{counts: counts, total: length(success_rows), objects: objects})}
+      {:ok, Map.merge(result, %{counts: counts, total: length(success_rows), objects: objects})}
     else
       {:error, %{message: _} = err} -> {:error, err}
       {:error, reason} -> {:error, %{message: "S3 write failed: #{inspect(reason)}"}}
@@ -189,6 +191,44 @@ defmodule CodeMySpec.ContentPublishing do
     |> Enum.reject(fn {_k, v} -> v in [nil, ""] end)
   end
 
+  # Where the site can actually fetch these from.
+  #
+  # This was `"https://" <> bucket`, which names a host only if the bucket is
+  # one — and no provider we use works that way. The site resolved
+  # `https://cms-spex-content/manifest.json`, got NXDOMAIN, and the pull aborted:
+  # the trigger was accepted, the objects were in the bucket, and nothing ever
+  # arrived. From outside that is indistinguishable from a publish that never
+  # ran.
+  #
+  # Path-style against the configured endpoint, which is what Hetzner requires
+  # anyway — it is S3-compatible but not S3, and a virtual-host-style request
+  # reaches a bucket that does not exist rather than failing usefully. The old
+  # shape is kept for a project with no endpoint, so nothing that worked before
+  # changes.
+  defp object_url(project, bucket, key) do
+    project
+    |> Map.get(:s3_endpoint)
+    |> endpoint_base()
+    |> object_url_for(bucket, key)
+  end
+
+  defp endpoint_base(endpoint) when is_binary(endpoint) and endpoint != "" do
+    uri = URI.parse(endpoint)
+
+    case uri.host do
+      nil -> "https://" <> endpoint
+      _host -> URI.to_string(%{uri | path: nil, query: nil, fragment: nil})
+    end
+  end
+
+  defp endpoint_base(_endpoint), do: nil
+
+  defp object_url_for(nil, bucket, key), do: "https://#{bucket}/#{key}"
+
+  defp object_url_for(base, bucket, key) do
+    "#{String.trim_trailing(base, "/")}/#{bucket}/#{key}"
+  end
+
   # ExAws wants the host on its own, without a scheme — a value pasted as
   # `https://fsn1.your-objectstorage.com` would otherwise be signed into a URL
   # with the scheme twice over.
@@ -227,7 +267,8 @@ defmodule CodeMySpec.ContentPublishing do
   end
 
   defp validate_against_schema(metadata, processed_content) do
-    changeset = PublishedContent.changeset(%PublishedContent{}, content_attrs(metadata, processed_content))
+    changeset =
+      PublishedContent.changeset(%PublishedContent{}, content_attrs(metadata, processed_content))
 
     if changeset.valid? do
       :ok
@@ -435,7 +476,11 @@ defmodule CodeMySpec.ContentPublishing do
           {:error, errors} ->
             Map.merge(base, %{
               parse_status: :error,
-              parse_errors: %{type: :schema_validation, message: "Content schema validation failed", errors: errors},
+              parse_errors: %{
+                type: :schema_validation,
+                message: "Content schema validation failed",
+                errors: errors
+              },
               processed_content: nil,
               metadata: metadata
             })
@@ -502,7 +547,8 @@ defmodule CodeMySpec.ContentPublishing do
     Earmark.as_html!(markdown, %Earmark.Options{compact_output: true, breaks: true, gfm: true})
   end
 
-  defp rewrite_markdown_images(body, images_host) when is_binary(images_host) and images_host != "" do
+  defp rewrite_markdown_images(body, images_host)
+       when is_binary(images_host) and images_host != "" do
     host = String.trim_trailing(images_host, "/")
 
     Regex.replace(~r/!\[([^\]]*)\]\(([^)]+)\)/, body, fn whole, alt, url ->
