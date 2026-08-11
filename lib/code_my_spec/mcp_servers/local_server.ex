@@ -97,9 +97,17 @@ defmodule CodeMySpec.McpServers.LocalServer do
   component(CodeMySpec.McpServers.Tasks.Tools.AskUser)
   component(CodeMySpec.McpServers.Tasks.Tools.CheckAnswer)
 
-  # No AwaitAnalysis here. Waiting for the analyzers is `POST /api/analysis/wait`
-  # — MCP caps a request at 30s and a sweep runs 200-590s, so the tool could not
-  # return for the case it existed to serve.
+  # AwaitAnalysis is a tombstone, not a tool. Waiting for the analyzers is
+  # `POST /api/analysis/wait` — MCP caps a request at 30s and a sweep runs
+  # 200-590s, so the tool could not return for the case it existed to serve.
+  #
+  # It is registered anyway because removing it from the server did not remove
+  # it from agents: a client fetches the tool list once at session start, and a
+  # session here runs for hours. Calling the absent tool answered "Invalid
+  # params", which reads as the agent's mistake and sent one inventing
+  # arguments for a schema with none (ba6904d6). Registered, it answers with the
+  # HTTP endpoints and the harness id filled in.
+  component(CodeMySpec.McpServers.Analysis.Tools.AwaitAnalysis)
 
   # Knowledge — browse, read, and unified semantic search across every
   # embedded source (knowledge, project_knowledge, spec, rules, hexdocs:*).
