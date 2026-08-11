@@ -322,6 +322,58 @@ defmodule CodeMySpec.Validation do
 
   defp relativize(path, _cwd), do: path
 
+  @doc """
+  Split blocking findings into this session's and everyone else's.
+
+  A finding in a file this session never edited does not block. Several agents
+  share this repo and rebase onto main, so a warning one pushes became a hard
+  block on every other's stop — and the obvious repair on someone else's
+  in-flight file can be actively wrong, which leaves editing code you do not
+  own or staying blocked as the only two responses.
+
+  Two things refuse to demote, both because the failure mode points the same
+  way — a gate that quietly stops blocking is worse than one that blocks too
+  much, and it is invisible:
+
+    * An empty or `nil` attribution set. "The session wrote nothing" and
+      "attribution broke" — a restart, a path shape that did not normalize —
+      are indistinguishable from here, and only one makes the demotion true.
+    * A finding with no `file_path`. A spex that died in `setup_all` has
+      nothing to attribute; unattributable is not the same as somebody else's,
+      and collapsing them drops the finding nobody can place.
+
+  Public so the property that decides whether the gate still works can be
+  asserted directly, the same reason `blocking_key/1` is.
+  """
+  @spec split_unattributed([Problems.Problem.t()], MapSet.t(String.t()) | nil) ::
+          {[Problems.Problem.t()], [Problems.Problem.t()]}
+  def split_unattributed(blocking, %MapSet{} = session_paths) do
+    if MapSet.size(session_paths) == 0 do
+      {blocking, []}
+    else
+      Enum.split_with(blocking, fn problem ->
+        not is_binary(problem.file_path) or MapSet.member?(session_paths, problem.file_path)
+      end)
+    end
+  end
+
+  def split_unattributed(blocking, _session_paths), do: {blocking, []}
+
+  # Loudly, because this is the gate declining to block. A demotion that is
+  # right is uninteresting and a demotion that is wrong is invisible in the
+  # response — the log is the only place the difference shows up.
+  defp log_demotions([], _opts), do: :ok
+
+  defp log_demotions(unattributed, opts) do
+    paths = unattributed |> Enum.map(& &1.file_path) |> Enum.uniq() |> Enum.take(5)
+
+    Logger.info(
+      "[Validation] session #{inspect(Keyword.get(opts, :session_id))} — demoted " <>
+        "#{length(unattributed)} blocking finding(s) to advisory: files it never " <>
+        "edited (#{Enum.join(paths, ", ")})"
+    )
+  end
+
   # This session's edits, normalized the same way `filter_by_session_attribution`
   # normalizes them — PostToolUse stores whatever Claude passed, typically
   # absolute, while `Problem.file_path` is project-relative.
@@ -451,6 +503,11 @@ defmodule CodeMySpec.Validation do
     stale_sources = Enum.reject(sources_with_problems, &MapSet.member?(fresh, &1))
 
     {blocking, advisory} = partition_problems(problems_by_source, config, scope_context)
+    session_paths = session_paths(scope, opts)
+    {blocking, unattributed} = split_unattributed(blocking, session_paths)
+    advisory = advisory ++ unattributed
+    log_demotions(unattributed, opts)
+
     {last_ran, run_duration} = run_timing(scope, stale_sources)
 
     decide(blocking, advisory, stale_sources,
@@ -464,11 +521,14 @@ defmodule CodeMySpec.Validation do
       # promotes, so `mix credo` answers "found no issues" on the very findings
       # that block. `mix test` and `mix spex` reproduce themselves.
       reproduce_commands: %{"credo" => CredoRun.reproduce_command()},
-      # Which files this session actually wrote, so a finding in someone else's
-      # can say so. Several agents share this repo and rebase onto main, and a
-      # warning one pushes blocks every other's stop in the same voice as their
-      # own work.
+      # Which files this session actually wrote. Blocking findings outside that
+      # set have already been demoted above, so this only labels what survives
+      # — it is the safety net for the case where the set is unknown and
+      # nothing was demoted.
       session_paths: session_paths(scope, opts),
+      # How many moved to advisory, and why, so the advisory pile does not
+      # absorb them silently. A gate that stops blocking has to say so.
+      unattributed_count: length(unattributed),
       # Whether a rerun is actually running, as opposed to how old the newest
       # result is. The message used to assert the first from the second and got
       # it wrong in both directions.

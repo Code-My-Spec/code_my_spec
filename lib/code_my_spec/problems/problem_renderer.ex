@@ -183,7 +183,7 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
     in_flight = Keyword.get(opts, :in_flight, [])
 
     header = "Fix these problems before stopping:\n\n"
-    advisory_section = render_advisory_section(advisory)
+    advisory_section = render_advisory_section(advisory, Keyword.get(opts, :unattributed_count, 0))
 
     blocking_section =
       render_blocking_section(blocking, stale, last_ran, run_duration, reproduce, session_paths)
@@ -491,9 +491,9 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
 
   defp truncate_message(message, _max), do: message
 
-  defp render_advisory_section([]), do: ""
+  defp render_advisory_section([], _unattributed), do: ""
 
-  defp render_advisory_section(advisory) do
+  defp render_advisory_section(advisory, unattributed) do
     lines =
       advisory
       |> Enum.group_by(& &1.source)
@@ -502,7 +502,20 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
         "  - #{source}: #{length(items)} #{dominant_severity_label(items)} (advisory)"
       end)
 
-    "\n\nAdditional problems (not blocking):\n" <> lines
+    "\n\nAdditional problems (not blocking):\n" <> lines <> demoted_note(unattributed)
+  end
+
+  # Said out loud, because this is the gate having declined to block on
+  # something. Folding them into the advisory counts unannounced would make
+  # "the gate stopped blocking" and "there was nothing to block on" read the
+  # same, which is the one confusion a demotion must not create.
+  defp demoted_note(0), do: ""
+
+  defp demoted_note(count) do
+    "\n\n#{count} finding#{if count == 1, do: " is", else: "s are"} in files this " <>
+      "session did not edit, so #{if count == 1, do: "it is", else: "they are"} " <>
+      "advisory rather than blocking. If #{if count == 1, do: "it", else: "one"} " <>
+      "is genuinely yours, the attribution is wrong — say so rather than working around it."
   end
 
   defp dominant_severity_label(items) do
