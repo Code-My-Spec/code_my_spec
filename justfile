@@ -150,6 +150,37 @@ refresh-harness port="4004":
     # serves everybody.
     main="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")"
 
+    # And pulls it, because otherwise the workflow above does not close. "Push
+    # to main, restart, main serves it" needs the restart to actually fetch what
+    # was pushed; without this the harness relaunches on whatever main happened
+    # to be sitting at, which is a *quieter* version of the same staleness — the
+    # drift check compares boot to checkout, and both would be equally old.
+    #
+    # Same refusal as `just refresh`, for the same reason: pulling over another
+    # agent's uncommitted work in the shared checkout is worse than not
+    # restarting.
+    dirty="$(git -C "$main" status --porcelain --untracked-files=no --ignore-submodules=all)"
+    if [ -n "$dirty" ]; then
+        echo "✗ refusing: the main checkout has uncommitted work." >&2
+        echo "$dirty" >&2
+        echo "" >&2
+        echo "  Another agent is probably mid-change there. Commit or stash it," >&2
+        echo "  or restart by hand once it is clear." >&2
+        exit 1
+    fi
+
+    before="$(git -C "$main" rev-parse --short HEAD)"
+    git -C "$main" pull --ff-only
+    after="$(git -C "$main" rev-parse --short HEAD)"
+    echo "→ $before → $after"
+
+    if [ -n "$(git -C "$main" diff --name-only "$before".."$after" -- mix.lock)" ]; then
+        echo "→ mix.lock moved, fetching deps"
+        ( cd "$main" && mix deps.get )
+    else
+        echo "→ mix.lock unchanged, skipping deps.get"
+    fi
+
     pid="$(lsof -nP -iTCP:{{port}} -sTCP:LISTEN -t || true)"
 
     if [ -n "$pid" ]; then
