@@ -180,10 +180,46 @@ defmodule CodeMySpec.Provisioning.Builder.Remote do
         # push fails with `context deadline exceeded` — a timeout, which reads
         # as an unreachable host rather than a protocol disagreement.
         host = reference |> String.split("/") |> hd()
-        run.([CodeMySpec.Provisioning.Registry.trust_command(host)])
 
-        with :ok <- login(run, reference, opts), do: docker_push(run, reference)
+        with :ok <- trust(run, host),
+             :ok <- login(run, reference, opts) do
+          docker_push(run, reference)
+        end
     end
+  end
+
+  # The result used to be discarded, and the cost of that was paid in the wrong
+  # place: when the trust step fails the push fails too, with `server gave HTTP
+  # response to HTTPS client`, which describes the registry rather than the
+  # thing that actually went wrong on this box. Naming it here means the next
+  # reader is told the daemon was never reconfigured instead of being pointed
+  # at a registry that is behaving correctly.
+  #
+  # `trust_command/1` is a no-op when the host is already trusted, so this is
+  # only ever reached on a box that had to be changed.
+  defp trust(run, host) do
+    case loopback?(host) do
+      true -> :ok
+      false -> attempt_trust(run, host)
+    end
+  end
+
+  defp attempt_trust(run, host) do
+    case run.([CodeMySpec.Provisioning.Registry.trust_command(host)]) do
+      {_, 0} -> :ok
+      {output, status} -> {:error, {:registry_trust_failed, host, status, trim(output)}}
+    end
+  end
+
+  # Docker already treats a loopback registry as insecure — that is its own
+  # rule, not ours — so there is nothing to configure and no daemon to restart.
+  # Which makes the write worse than pointless there: the local build path runs
+  # as whoever is running the tests, and `mkdir /etc/docker` on a developer's
+  # machine is a permission error at best and an edit to their real daemon at
+  # worst.
+  defp loopback?(host) do
+    address = host |> String.split(":") |> hd()
+    address == "localhost" or String.starts_with?(address, "127.")
   end
 
   # A registry on a public hostname must not accept anonymous writes, and this
@@ -241,8 +277,11 @@ defmodule CodeMySpec.Provisioning.Builder.Remote do
 
   defp docker_push(run, reference) do
     case run.(["docker push #{reference}"]) do
-      {_, 0} -> :ok
-      {output, status} -> {:error, {:push_failed, status, trim(output) <> where_am_i(run, reference)}}
+      {_, 0} ->
+        :ok
+
+      {output, status} ->
+        {:error, {:push_failed, status, trim(output) <> where_am_i(run, reference)}}
     end
   end
 
@@ -260,12 +299,18 @@ defmodule CodeMySpec.Provisioning.Builder.Remote do
     # port open, and what does an HTTP request actually do. A timeout on the
     # push says none of them, and the box is destroyed with the build.
     {ping, _} = run.(["ping -c2 -W2 #{address} 2>&1 | tail -3"])
-    {port, _} = run.(["timeout 5 bash -c '</dev/tcp/#{address}/5000' && echo OPEN || echo CLOSED"])
+
+    {port, _} =
+      run.(["timeout 5 bash -c '</dev/tcp/#{address}/5000' && echo OPEN || echo CLOSED"])
+
     {http, _} = run.(["curl -sv --max-time 5 http://#{host}/v2/ 2>&1 | tail -8"])
 
-    "\n\nbuilder interfaces:\n" <> trim(addresses) <>
-      "\n\nping #{address}:\n" <> trim(ping) <>
-      "\n\ntcp #{address}:5000: " <> trim(port) <>
+    "\n\nbuilder interfaces:\n" <>
+      trim(addresses) <>
+      "\n\nping #{address}:\n" <>
+      trim(ping) <>
+      "\n\ntcp #{address}:5000: " <>
+      trim(port) <>
       "\n\nhttp #{host}/v2/:\n" <> trim(http)
   end
 
@@ -328,27 +373,36 @@ defmodule CodeMySpec.Provisioning.Builder.Remote do
   defp ssh_args(server, opts) do
     key = Keyword.fetch!(opts, :ssh_key_path)
 
-    [
-      "-o",
-      "StrictHostKeyChecking=no",
-      "-o",
-      "UserKnownHostsFile=/dev/null",
-      # Without these, `-i` is a suggestion: ssh offers every key the agent
-      # holds first, and a box with the default `MaxAuthTries 6` disconnects
-      # before reaching ours. `Servers.Containers` already learned this and
-      # says so; the builder did not, and paid for it — three minutes of
-      # retrying, then "Too many authentication failures", which the caller
-      # reported as an unreachable box. I raised the SSH timeout over it before
-      # reading the message, and the box had been answering all along.
-      "-o",
-      "BatchMode=yes",
-      "-o",
-      "IdentitiesOnly=yes",
-      "-i",
-      key,
-      "root@#{ip(server)}"
-    ]
+    ssh_port(Keyword.get(opts, :ssh_port)) ++
+      [
+        "-o",
+        "StrictHostKeyChecking=no",
+        "-o",
+        "UserKnownHostsFile=/dev/null",
+        # Without these, `-i` is a suggestion: ssh offers every key the agent
+        # holds first, and a box with the default `MaxAuthTries 6` disconnects
+        # before reaching ours. `Servers.Containers` already learned this and
+        # says so; the builder did not, and paid for it — three minutes of
+        # retrying, then "Too many authentication failures", which the caller
+        # reported as an unreachable box. I raised the SSH timeout over it before
+        # reading the message, and the box had been answering all along.
+        "-o",
+        "BatchMode=yes",
+        "-o",
+        "IdentitiesOnly=yes",
+        "-i",
+        key,
+        "root@#{ip(server)}"
+      ]
   end
+
+  # A cloud box is always on 22, so this is absent in production and the flags
+  # are byte-identical to what they were. It exists for the local fleet, where
+  # boxes are containers reached on published loopback ports — and the point of
+  # that fleet is to run *this* function rather than a local imitation of it,
+  # so the one thing it cannot do is fork the command it builds.
+  defp ssh_port(nil), do: []
+  defp ssh_port(port), do: ["-p", to_string(port)]
 
   @doc """
   A runner that uses the local machine instead of a box.

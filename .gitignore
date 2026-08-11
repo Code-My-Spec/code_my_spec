@@ -106,3 +106,6 @@ relay/cms-mcp-relay
 # mid-record leaves the old recording recoverable, but it is the previous
 # recording and does not belong in the repository.
 *.json.bak
+
+# Fleet SSH key — generated per machine by docker/fleet/fleet.sh, never committed
+docker/fleet/keys/

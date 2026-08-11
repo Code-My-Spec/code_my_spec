@@ -4,12 +4,15 @@ ExUnit.start(
   # :docker builds a real image on this machine — seconds, and it needs a
   # working daemon. Run it with `mix test --include docker` when the build
   # sequence changes.
+  # :fleet needs the local fleet up (`docker/fleet/fleet.sh up`) — real boxes
+  # over real SSH, on this machine. Run it with `mix test --only fleet`.
   exclude: [
     :scenario,
     :e2e,
     :pending,
     :live,
     :docker,
+    :fleet,
     :registry,
     :record_google_login_shape,
     :record_github_login_shape

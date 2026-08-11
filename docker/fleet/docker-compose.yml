@@ -1,0 +1,152 @@
+# The local fleet: the same provisioning code, pointed at this machine.
+#
+# The point is not a simulator. `builder` and `app` run a real sshd and a real
+# Docker daemon, so `ssh_runner/2`, `ssh_deliver/2`, `docker build`, the
+# registry trust dance and the push all run unmodified — the same commands the
+# cloud path sends, to a box that costs a second instead of a slot on a
+# five-server account.
+#
+# What that buys is the thing recordings cannot give: a cassette cannot tell
+# "this works" from "this has never run". Most of this epic's defects were of
+# the second kind, and several were recorded *as* the story's behaviour — a
+# bucket signed for at the wrong provider, a server-limit 403, a publish with
+# nowhere to send its trigger.
+#
+# What stays in the cloud is what only the cloud can answer: whether Hetzner
+# has a server type in a location, whether a private subnet spans zones,
+# whether a cloud firewall passes private traffic.
+#
+#   docker/fleet/fleet.sh up
+#   docker/fleet/fleet.sh down
+#
+# Everything binds to 127.0.0.1. The boxes are privileged (they run their own
+# Docker daemon — see box/Dockerfile for why that is not optional) and hold a
+# key that grants root on them, so they are not something to expose to a LAN.
+
+name: cms-fleet
+
+services:
+  # Where `Builder.Remote.build/4` builds. Reached exactly as a Hetzner box is:
+  # ssh as root, on a key, with the same flags.
+  builder:
+    build: ./box
+    privileged: true
+    environment:
+      # dind generates a CA and client certs on boot when this is unset, which
+      # is for exposing the daemon over TCP. Nothing here does — the only
+      # client is the CLI in this same container, over its unix socket.
+      DOCKER_TLS_CERTDIR: ""
+    volumes:
+      - ./keys/authorized_keys:/fleet/authorized_keys:ro
+      # Named, so a rebuild does not re-pull every base image. `fleet.sh down`
+      # takes it with `-v` — a build that passes on a stale layer cache is the
+      # failure this exists to catch.
+      - builder-docker:/var/lib/docker
+    ports:
+      - "127.0.0.1:2222:22"
+    healthcheck:
+      # Both halves, because the box is only useful when both are up and they
+      # come up independently: sshd is ready almost at once, dockerd takes
+      # seconds. A test that starts on sshd alone fails on `docker build`.
+      test: ["CMD-SHELL", "docker info >/dev/null 2>&1 && nc -z 127.0.0.1 22"]
+      interval: 2s
+      timeout: 5s
+      retries: 45
+    networks:
+      - fleet
+
+  # Where a deploy lands. Same image as the builder, because in the cloud it is
+  # the same thing — a box with a daemon — and kamal reaches it the same way.
+  app:
+    build: ./box
+    privileged: true
+    environment:
+      DOCKER_TLS_CERTDIR: ""
+    volumes:
+      - ./keys/authorized_keys:/fleet/authorized_keys:ro
+      - app-docker:/var/lib/docker
+    ports:
+      - "127.0.0.1:2223:22"
+      # What the deployed app itself answers on, so a health check has
+      # something to check.
+      - "127.0.0.1:8080:80"
+    healthcheck:
+      test: ["CMD-SHELL", "docker info >/dev/null 2>&1 && nc -z 127.0.0.1 22"]
+      interval: 2s
+      timeout: 5s
+      retries: 45
+    networks:
+      - fleet
+
+  # `Registry.serve/2` starts one of these on a provisioned box. This is the
+  # same daemon, reachable without one — and on the fleet network, so the
+  # builder pushes to `registry:5000` and the app pulls from it, which is the
+  # private-network shape the real deploy uses.
+  registry:
+    image: registry:2
+    ports:
+      # 5010, not 5001: `local_build_test.exs` starts its own registry on
+      # 5001 and `baseline_local_test.exs` uses 5000, and a fleet left
+      # running would then break tests that have nothing to do with it.
+      - "127.0.0.1:5010:5000"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O- http://127.0.0.1:5000/v2/ || exit 1"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    networks:
+      - fleet
+
+  # S3, and on its own the reason the fleet is worth building: Hetzner issues
+  # object-storage keys from a console with no API, so there is no
+  # `Storage.serve` and never can be. `Project.s3_endpoint` already exists —
+  # the field that lets a customer choose a provider lets a test choose this.
+  minio:
+    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: cms-fleet
+      MINIO_ROOT_PASSWORD: cms-fleet-secret
+    ports:
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9001:9001"
+    healthcheck:
+      # `mc ready` rather than the health endpoint: MinIO answers
+      # /minio/health/live before it will accept a bucket, and a test that
+      # starts on that answer fails on its first PUT.
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    networks:
+      - fleet
+
+  # What a deployed app runs against. Same image and same defaults as
+  # `Database.serve/3` puts on a box, so a migration that works here works
+  # there.
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: app
+      POSTGRES_DB: app_uat
+    ports:
+      - "127.0.0.1:5433:5432"
+    healthcheck:
+      # `-h 127.0.0.1` so this asks the TCP listener rather than the unix
+      # socket: the socket answers during first boot while TCP still refuses,
+      # and the app connects over TCP.
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U app -d app_uat"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    networks:
+      - fleet
+
+volumes:
+  builder-docker:
+  app-docker:
+
+networks:
+  fleet:
+    driver: bridge
