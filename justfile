@@ -120,6 +120,36 @@ refresh-harness port="4004":
     #
     # It does cost the other agents their in-flight sweeps, the same way a
     # server restart does (406f85db). Say so rather than doing it quietly.
+    #
+    # Launched from the main checkout, whatever directory you run this in.
+    #
+    # Two trees travel separately here and only one of them was ever in doubt.
+    # *Analysis* follows the target: the harness shells into each working copy
+    # and builds into that copy's `_build/analyzer`, so a worktree is always
+    # analyzed by its own code. The harness's *own* code — `lib/cms_harness`,
+    # the channel client, hook decisions — came from whichever checkout happened
+    # to launch the process, and that is the whole of `c8a7f11d`.
+    #
+    # It matters because we edit `lib/cms_harness` while it is running. A
+    # worktree that drifts past a channel-contract change takes every other
+    # agent's hooks down with it — `{:error, %{"reason" => "unmatched topic"}}`
+    # on every stop, across all three working copies at once — and the agent who
+    # notices is left restarting a process rooted in somebody else's tree, whose
+    # compile state they do not control. Measured on this machine: the harness
+    # answering for three worktrees had its cwd in one of them.
+    #
+    # Pinned here, "is the harness stale" becomes "has main moved", which is one
+    # question with one answer instead of one per checkout.
+    #
+    # Including while the harness itself is being changed. The workflow is push
+    # to main, then restart — not run your worktree's copy and let everyone else
+    # inherit it. Running it from a worktree is what makes this frothy: the
+    # server has to be restarted for its own changes anyway, and a harness on a
+    # third tree turns one restart into a three-way version negotiation nobody
+    # is tracking. Merges are the only thing that should move the code that
+    # serves everybody.
+    main="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")"
+
     pid="$(lsof -nP -iTCP:{{port}} -sTCP:LISTEN -t || true)"
 
     if [ -n "$pid" ]; then
@@ -141,8 +171,12 @@ refresh-harness port="4004":
     # descriptors it inherited — so a caller waiting for its pipe to close waits
     # forever on a recipe that has already exited. Redirecting the child alone
     # is not enough; the descendant already has copies.
-    ( exec </dev/null >>"$log" 2>&1; nohup just harness & )
-    echo "→ starting, logging to $log"
+    # `cd` on its own line, not `cd && exec`: with `&&` a failed cd skips only
+    # the redirect, and `nohup just harness &` after the `;` would still launch —
+    # from the wrong tree, which is the exact thing this recipe now exists to
+    # prevent. Bare, `set -e` aborts the subshell instead.
+    ( cd "$main"; exec </dev/null >>"$log" 2>&1; nohup just harness & )
+    echo "→ starting from $main, logging to $log"
 
     for _ in $(seq 1 90); do
         if lsof -nP -iTCP:{{port}} -sTCP:LISTEN -t >/dev/null 2>&1; then
