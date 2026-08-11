@@ -18,6 +18,7 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
   import Ecto.Query
 
   alias CodeMySpec.Components.Component
+  alias CodeMySpec.Deploys
   alias CodeMySpec.Files.File
   alias CodeMySpec.Problems.Problem
   alias CodeMySpec.Repo
@@ -126,6 +127,34 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
       {false, %{reason: "delegate check missing :module in config"}}
     else
       run_delegate(module, function, scope, entity, ctx)
+    end
+  end
+
+  # Is this story live on the environment the definition names?
+  #
+  # The environment comes from config rather than being baked into a function
+  # name, because environments are rows: a project has whatever set it has, and
+  # `uat_check/2` could only ever answer for one of them.
+  #
+  # `Predicates.satisfied(:deployed, …)` is the query form of this and must
+  # agree with it — same table, same `health_verified_at` rule.
+  defp check(%{check_type: :deployed, config: config}, scope, entity, _files, _ctx) do
+    deployed_verdict(scope, entity, environment_from(config))
+  end
+
+  # Is every released story live on that environment?
+  #
+  # Project-scoped, and the release gate the prod half of story 841 needs:
+  # production goes out when the graph is green, not when one story is.
+  defp check(%{check_type: :all_deployed, config: config}, scope, _entity, _files, _ctx) do
+    environment = environment_from(config)
+
+    case Deploys.environment_deployed?(scope, environment) do
+      true ->
+        {true, %{status: "every released story is live on #{environment}"}}
+
+      false ->
+        {false, %{status: "not every released story is live on #{environment}"}}
     end
   end
 
@@ -282,6 +311,21 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
   #
   # One valid copy is enough. Reporting invalid because some other working
   # copy has a stale row would block an agent on a file it cannot see.
+  defp environment_from(config), do: config[:environment] || config["environment"]
+
+  defp deployed_verdict(_scope, _entity, nil),
+    do: {false, %{reason: "deployed check missing :environment in config"}}
+
+  defp deployed_verdict(scope, %{id: story_id}, environment) do
+    case Deploys.deployed?(scope, story_id, environment) do
+      true -> {true, %{status: "deployed to #{environment} and health-verified"}}
+      false -> {false, %{status: "not deployed to #{environment}, or deployed without a passing health check"}}
+    end
+  end
+
+  defp deployed_verdict(_scope, _entity, _environment),
+    do: {false, %{status: "no story to check"}}
+
   defp check_path_exists(scope, ctx, path) do
     case tracked_files(scope, ctx, path) do
       [] ->

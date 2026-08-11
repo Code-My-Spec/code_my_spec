@@ -29,6 +29,17 @@ defmodule CodeMySpecSpex.Story841.Criterion1966Spex do
         {:ok, view, _html} =
           live(context.conn, "/app/projects/#{context.project.id}/provisioning")
 
+        # UAT has its age key and nothing else. Without the key the deploy
+        # stops one check earlier — "uat has no age key yet — set a secret, or
+        # run the secrets step, before deploying" — which is a different
+        # refusal about a different missing thing, and it is what this
+        # criterion was actually observing.
+        #
+        # The secrets step is what mints the key, so running it is the premise:
+        # a project that has been through setup and simply never had this
+        # secret set.
+        run_steps(view, [:secrets], @cassette <> "_setup")
+
         {:ok, Map.put(context, :view, view)}
       end
 

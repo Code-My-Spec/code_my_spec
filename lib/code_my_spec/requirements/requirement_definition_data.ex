@@ -778,8 +778,12 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         id: 5,
         name: "deploy",
         node_scope: :self,
-        check_type: :delegate,
-        config: %{module: CodeMySpec.Deploys, function: :uat_check},
+        # The environment is config, not a function name. `uat_check/2` could
+        # only ever answer for one environment, and environments are rows — a
+        # project has whatever set it has. Naming it here means the same check
+        # serves any of them.
+        check_type: :deployed,
+        config: %{environment: "uat"},
         satisfied_by: AgentTasks.Deploy,
         artifact_type: :deployment,
         description: "Story is deployed to UAT and its health check passed",

@@ -16,7 +16,9 @@ defmodule CodeMySpec.Deploys do
   import Ecto.Query
 
   alias CodeMySpec.Deploys.Deploy
+  alias CodeMySpec.Provisioning.EnvironmentRepository
   alias CodeMySpec.Repo
+  alias CodeMySpec.Stories.Story
   alias CodeMySpec.Users.Scope
 
   @doc """
@@ -103,7 +105,7 @@ defmodule CodeMySpec.Deploys do
   end
 
   defp stories_clearing_qa(%Scope{active_project_id: project_id} = scope) do
-    CodeMySpec.Stories.Story
+    Story
     |> where([s], s.project_id == ^project_id)
     |> Repo.all()
     |> Enum.filter(fn story ->
@@ -129,6 +131,75 @@ defmodule CodeMySpec.Deploys do
   @spec deployed?(Scope.t(), integer(), String.t()) :: boolean()
   def deployed?(%Scope{active_project_id: project_id}, story_id, environment) do
     project_id |> get(story_id, environment) |> healthy?()
+  end
+
+  @doc """
+  Is every story that is released for development live on `environment`?
+
+  The environment-level question, which the story-level `deployed?/3` cannot
+  answer: "is UAT up to date" is about the set, not about any one story.
+
+  Only stories released for development count. A parked story produces no
+  requirement nodes either (`Preloader` filters on `ready_for_dev`), so
+  counting it here would make an environment permanently behind for work that
+  was deliberately not started.
+
+  An environment with no released stories is **not** deployed. Shipping nothing
+  is not shipping.
+  """
+  @spec environment_deployed?(Scope.t(), String.t()) :: boolean()
+  def environment_deployed?(%Scope{active_project_id: project_id}, environment) do
+    released = released_story_ids(project_id)
+
+    case released do
+      [] -> false
+      ids -> Enum.all?(ids, &healthy?(get(project_id, &1, environment)))
+    end
+  end
+
+  @doc """
+  Which of the project's environments are fully deployed.
+
+  Environments are rows rather than a fixed pair, so this answers for whatever
+  the project actually has — two, five, or one per story under test.
+  """
+  @spec deployed_environments(Scope.t()) :: [String.t()]
+  def deployed_environments(%Scope{} = scope) do
+    scope
+    |> EnvironmentRepository.list_existing()
+    |> Enum.map(& &1.name)
+    |> Enum.filter(&environment_deployed?(scope, &1))
+  end
+
+  @doc """
+  Is everything that runs on `server_name` deployed?
+
+  A server carries whichever environments were placed on it — one box can hold
+  UAT and production, and setup can move production to its own later. So "is
+  this server deployed" is a question about the environments pointing at it,
+  and it is false when none do: a box nothing runs on has nothing deployed to
+  it.
+  """
+  @spec server_deployed?(Scope.t(), String.t()) :: boolean()
+  def server_deployed?(%Scope{} = scope, server_name) do
+    environments =
+      scope
+      |> EnvironmentRepository.list_existing()
+      |> Enum.filter(&(&1.server_name == server_name))
+
+    case environments do
+      [] -> false
+      envs -> Enum.all?(envs, &environment_deployed?(scope, &1.name))
+    end
+  end
+
+  # Released for development, matching the pace gate the graph applies. A
+  # parked story is not late.
+  defp released_story_ids(project_id) do
+    Story
+    |> where([s], s.project_id == ^project_id and s.ready_for_dev == true)
+    |> select([s], s.id)
+    |> Repo.all()
   end
 
   @doc """

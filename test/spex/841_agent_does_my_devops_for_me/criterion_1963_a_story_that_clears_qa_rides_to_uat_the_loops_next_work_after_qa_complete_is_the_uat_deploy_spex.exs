@@ -52,7 +52,12 @@ defmodule CodeMySpecSpex.Story841.Criterion1963Spex do
         story =
           CodeMySpecSpex.Fixtures.story_fixture(context.scope, %{
             title: "Story 841 rides to UAT",
-            component_id: component.id
+            component_id: component.id,
+            # Released for development, which is the pace gate: a parked story
+            # produces no requirement nodes at all, so the graph came back
+            # 0/0 and the question "what is next after QA" had nowhere to
+            # land. A story that has cleared QA was necessarily released.
+            ready_for_dev: true
           })
 
         CodeMySpecSpex.Fixtures.passed_qa_attempt(context.scope, story_id: story.id)
@@ -79,7 +84,10 @@ defmodule CodeMySpecSpex.Story841.Criterion1963Spex do
         assert context.next =~ "deploy",
                "expected the deploy to be the next work after QA cleared, got: #{context.next}"
 
-        assert context.next =~ "uat",
+        # Case-insensitive: the environment is named `uat` and the node
+        # describes it as "UAT". Same environment, and the criterion is about
+        # which one, not how it is spelled.
+        assert context.next =~ ~r/uat/i,
                "expected UAT specifically — prod promotion belongs to the release process"
 
         {:ok, context}
