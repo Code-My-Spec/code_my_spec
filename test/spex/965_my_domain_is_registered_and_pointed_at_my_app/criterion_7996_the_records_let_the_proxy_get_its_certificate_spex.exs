@@ -86,7 +86,6 @@ defmodule CodeMySpecSpex.Story965.Criterion7996Spex do
             render(view)
           end)
 
-        File.write!("/private/tmp/claude-501/-Users-johndavenport-Documents-github-code-my-spec/c359ad14-715c-4b86-84fb-bd0b9e0d21aa/scratchpad/7996d.html", html)
         {:ok, context |> Map.put(:view, view) |> Map.put(:dns_html, html)}
       end
 

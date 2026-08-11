@@ -23,6 +23,11 @@ defmodule CodeMySpecSpex.Story841.Criterion1962Spex do
   setup :devops_uat_only
   setup :provider_credentials_on_file
   setup :connect_providers
+  # sops and age are real binaries reading real files. The default fixture's
+  # memory environment is invisible to them, so the server step's write of
+  # DATABASE_URL into envs/<env>.enc.env landed nowhere sops could see and it
+  # exited 100 with "cannot operate on non-existent file".
+  setup :real_working_directory
 
   spex "Opting out of prod completes setup UAT-only" do
     scenario "production is off, and setup still reaches done" do
