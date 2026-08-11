@@ -37,6 +37,11 @@ defmodule CmsHarness.Web.HooksController do
         |> put_status(200)
         |> json(unknown_harness(hook, id, params))
 
+      {:server_unreachable, id, reason} ->
+        conn
+        |> put_status(200)
+        |> json(server_unreachable(hook, id, reason, params))
+
       :no_harness ->
         conn
         |> put_status(200)
@@ -89,6 +94,7 @@ defmodule CmsHarness.Web.HooksController do
     case WorkingCopies.root(id) do
       {:ok, root} -> {:ok, root}
       :unknown -> {:unknown_harness, id}
+      {:unreachable, reason} -> {:server_unreachable, id, reason}
     end
   end
 
@@ -99,6 +105,19 @@ defmodule CmsHarness.Web.HooksController do
     Logger.warning("[CmsHarness] #{hook} names harness #{id}, which this machine does not serve")
 
     HookDecision.unreachable(hook, {:unknown_harness, id}, "(addressed by id)", params)
+  end
+
+  # Separate from `unknown_harness/3` because the fix is different. There the
+  # server answered and did not recognise the id, so onboarding is the answer.
+  # Here the server could not be asked, and telling the reader to onboard sends
+  # them to rewrite a config that was never wrong.
+  defp server_unreachable(hook, id, reason, params) do
+    Logger.warning(
+      "[CmsHarness] #{hook} could not resolve harness #{id}: the server is unreachable " <>
+        "(#{inspect(reason, limit: 5)})"
+    )
+
+    HookDecision.unreachable(hook, {:server_unreachable, id, reason}, "(addressed by id)", params)
   end
 
   # A hook that names nothing. Not resolvable by any means this harness is

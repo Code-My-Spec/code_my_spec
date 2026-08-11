@@ -71,10 +71,20 @@ defmodule CmsHarness.Web.HooksControllerTest do
 
       assert body["decision"] == "block"
 
-      assert body["reason"] =~ "not serving the working copy",
-             "an id nobody onboarded resolves to nothing — the alternative was " <>
-               "walking up from the request's directory until a mix.exs turned up, " <>
-               "which adopted whichever project sat above an unonboarded checkout"
+      # The guarantee is that an unresolvable id is refused rather than guessed
+      # at — the alternative was walking up from the request's directory until a
+      # mix.exs turned up, which adopted whichever project sat above an
+      # unonboarded checkout.
+      #
+      # Which refusal it gets depends on why the id did not resolve, and this
+      # test env has no credential, so the harness cannot ask the server and
+      # correctly says so rather than blaming the id. Both are refusals; only
+      # one of them tells the reader to re-onboard, and telling somebody to
+      # re-onboard a good id while the server is down is the thing that made
+      # this distinction worth having.
+      assert body["reason"] =~ "not serving the working copy" or
+               body["reason"] =~ "could not reach the CodeMySpec server",
+             "an unresolvable id must be refused, not guessed at — got: #{body["reason"]}"
     end
 
     test "a hook with no working directory at all is refused", %{conn: conn} do

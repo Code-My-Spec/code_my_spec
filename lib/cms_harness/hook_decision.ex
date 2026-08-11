@@ -175,6 +175,24 @@ defmodule CmsHarness.HookDecision do
     |> String.trim()
   end
 
+  # The id may be perfectly good — nobody got to check. Says so, because the
+  # clause above used to answer this case too, and "the server does not
+  # recognise your id" sends the reader to re-onboard a config that was never
+  # wrong. Measured: `:4000` was down, the token exchange returned
+  # `econnrefused`, and the refusal blamed the id.
+  defp explain({:server_unreachable, harness_id, reason}, _working_dir) do
+    """
+    The harness could not reach the CodeMySpec server to find out where \
+    #{harness_id} is: #{inspect(reason, limit: 5)}
+
+    Nothing is wrong with the id, and re-onboarding will not help. The server \
+    is down or unreachable from here — check that it is listening, then stop \
+    again. `GET /health` on the harness reports `server_url`, which is the \
+    address it tried.
+    """
+    |> String.trim()
+  end
+
   defp explain(:no_project, working_dir) do
     """
     The harness is not serving this directory. It has no project id for it — set `project_id` in `#{Path.join(working_dir, ".code_my_spec/config.yml")}`, or set CMS_PROJECT_ID, and restart the harness.

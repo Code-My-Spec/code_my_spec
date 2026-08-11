@@ -48,13 +48,29 @@ defmodule CmsHarness.WorkingCopiesTest do
   end
 
   describe "an id with nothing behind it" do
-    test "does not resolve, and does not crash the lookup" do
-      assert WorkingCopies.root(Ecto.UUID.generate()) == :unknown
+    # Not `:unknown`, and the difference is the point. `:unknown` means the
+    # server was asked and said no, which re-onboarding fixes. This test env has
+    # no credential, so the token exchange fails and the server is never asked —
+    # the id is not implicated and onboarding would fix nothing.
+    #
+    # Both used to answer `:unknown`, and the hook refusal built on it told the
+    # reader "the server does not recognise this id, re-run
+    # `mix cms.harness.onboard`" on a perfectly good id while `:4000` was down.
+    test "says it could not ask, rather than blaming the id, when the server is unreachable" do
+      assert {:unreachable, _reason} = WorkingCopies.root(Ecto.UUID.generate())
     end
 
+    # The claim is that none of these resolves — not which flavour of refusal
+    # each gets. `root/1`'s guard rejects `""`, `nil` and `42` outright without
+    # asking anyone; `"   "` passes it (`is_binary(id) and id != ""`) and gets
+    # asked about, so it comes back `{:unreachable, _}` here rather than
+    # `:unknown`. Worth knowing — a whitespace id reaching the network is not
+    # useful — but the guarantee this test exists for is that no malformed id
+    # ever produces a root.
     test "an empty or malformed id never resolves" do
       for id <- ["", "   ", nil, 42] do
-        assert WorkingCopies.root(id) == :unknown
+        refute match?({:ok, _root}, WorkingCopies.root(id)),
+               "#{inspect(id)} must never resolve to a working copy"
       end
     end
   end

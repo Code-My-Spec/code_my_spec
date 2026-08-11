@@ -65,6 +65,17 @@ defmodule CmsHarness.Web.AnalysisController do
 
       :unknown ->
         fail(conn, 404, "this machine does not serve harness id #{harness_id}")
+
+      # 503, not 404: the id may be fine and nobody could check. A 404 tells the
+      # caller their id is wrong, which is the same wrong turn the hook refusal
+      # used to take when `:4000` was down.
+      {:unreachable, reason} ->
+        fail(
+          conn,
+          503,
+          "could not reach the CodeMySpec server to resolve harness id " <>
+            "#{harness_id}: #{inspect(reason, limit: 5)}"
+        )
     end
   end
 
@@ -95,6 +106,17 @@ defmodule CmsHarness.Web.AnalysisController do
       # working copy's name.
       :unknown ->
         fail(conn, 404, "this machine does not serve harness id #{harness_id}")
+
+      # 503, not 404: the id may be fine and nobody could check. A 404 tells the
+      # caller their id is wrong, which is the same wrong turn the hook refusal
+      # used to take when `:4000` was down.
+      {:unreachable, reason} ->
+        fail(
+          conn,
+          503,
+          "could not reach the CodeMySpec server to resolve harness id " <>
+            "#{harness_id}: #{inspect(reason, limit: 5)}"
+        )
     end
   end
 

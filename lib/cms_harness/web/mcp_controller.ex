@@ -281,6 +281,7 @@ defmodule CmsHarness.Web.McpController do
     case WorkingCopies.root(id) do
       {:ok, root} -> ProjectIdentity.resolve(root)
       :unknown -> {:error, {:unknown_harness, id}}
+      {:unreachable, reason} -> {:error, {:server_unreachable, id, reason}}
     end
   end
 
@@ -319,6 +320,14 @@ defmodule CmsHarness.Web.McpController do
       "This harness is not serving the working copy #{id}. Either it serves a " <>
         "different set of copies, or this checkout's plugin was generated against " <>
         "an id that has since been reissued — re-run `mix cms.harness.onboard`."
+
+  # Distinct from the clause above, where the server answered and said no. Here
+  # nobody got to ask, so the id is not implicated and onboarding is not the fix.
+  defp message({:server_unreachable, id, reason}),
+    do:
+      "The harness could not reach #{Config.server_url()} to find out where #{id} " <>
+        "is: #{inspect(reason, limit: 5)}. Nothing is wrong with the id and " <>
+        "re-onboarding will not help — the server is down or unreachable from here."
 
   defp message(:no_harness),
     do:
