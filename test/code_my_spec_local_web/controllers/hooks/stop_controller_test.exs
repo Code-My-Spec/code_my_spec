@@ -44,6 +44,37 @@ defmodule CodeMySpecLocalWeb.Hooks.StopControllerTest do
     # nil}` clause, and these tests would pass without reaching the
     # session-resolution path they are about.
     {:ok, tmp} = Briefly.create(directory: true)
+
+    # A real Mix project, because the pipeline compiles this directory inline
+    # (`analysis_mode: :inline`) and an empty one is not a stable thing to
+    # compile. Against a bare temp dir mix answers
+    #
+    #     ** (Mix) Could not find a Mix.Project, please ensure you are running
+    #        Mix in a directory with a mix.exs file
+    #
+    # which `[Compile]` records as "no diagnostics file and no compiler error
+    # markers in output — treating as transient". Whether that transient outcome
+    # reaches the decision depends on run-ledger state, and the ledger is not the
+    # same for the two calls below: the first creates the run the second finds.
+    # So the comparison could differ on a variable it does not name (cbe216dd,
+    # ~1 failure in 15-30 iterations).
+    #
+    # A project that compiles cleanly gives both calls the same analyzer outcome,
+    # which leaves session resolution as the only thing that varies — the point
+    # of the file. Fixing the environment rather than relaxing the assertion,
+    # which is what the report asks for and is right: the assertion is the file.
+    File.write!(Path.join(tmp, "mix.exs"), """
+    defmodule StopHookFixture.MixProject do
+      use Mix.Project
+
+      def project, do: [app: :stop_hook_fixture, version: "0.1.0", elixir: "~> 1.14"]
+      def application, do: []
+    end
+    """)
+
+    File.mkdir_p!(Path.join(tmp, "lib"))
+    File.write!(Path.join(tmp, "lib/fixture.ex"), "defmodule StopHookFixture do\nend\n")
+
     %{scope: %{full_scope_fixture() | cwd: tmp}}
   end
 
