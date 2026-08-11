@@ -48,6 +48,8 @@ defmodule CodeMySpecLocalWeb.Application do
     ensure_directories()
     harness_log = install_harness_file_logger()
 
+    halt_without_credential()
+
     # The endpoint is configured `server: false` so that every *other* way this
     # application boots compiles the harness modules without opening its port.
     # This is the one caller that wants it listening.
@@ -68,6 +70,49 @@ defmodule CodeMySpecLocalWeb.Application do
 
       other ->
         other
+    end
+  end
+
+  # A harness with no credential is connected to nothing, and there is nothing
+  # about binding a port that changes that. It used to bind anyway: `serving
+  # project <id> at <path>` one line after "connected to nothing", every hook
+  # refused, and every check an agent runs to see whether the harness is alive
+  # answering yes. The one before this cost a boot that came up clean and
+  # refused everything, and the fix chosen then was to make `just harness`
+  # careful — which leaves every other way of starting it reproducing the trap.
+  #
+  # So it is fatal, and fatal *before* the endpoint opens: "it did not start" is
+  # a far better answer than a listening port that refuses.
+  #
+  # Both sources are named because the config file is the one that should be
+  # used — `envs/.env` loads into the process dictionary for `env!/2` and never
+  # into the OS environment, so a credential sitting plainly in that file is
+  # invisible to `System.get_env/1` and reads as "I set it and it ignored me".
+  defp halt_without_credential do
+    case CmsHarness.Config.credential() do
+      {:ok, _} ->
+        :ok
+
+      {:error, :no_credential} ->
+        IO.puts(:stderr, """
+
+        cms harness: no credential, so this harness would be connected to nothing.
+
+        Not starting. A listening port that refuses every hook is harder to
+        diagnose than a process that did not come up.
+
+        Set one of, in preference order:
+
+          config :code_my_spec, harness_token: "…"       # config file
+          config :code_my_spec, harness_deploy_key: "…"  # sprite or container
+          CMS_TOKEN=…  /  CMS_DEPLOY_KEY=…               # environment
+
+        Note that a value in `envs/.env` is NOT enough on its own: Dotenvy loads
+        it for `env!/2`, not into the OS environment, so it has to be exported or
+        put in config for `System.get_env/1` to see it.
+        """)
+
+        System.halt(1)
     end
   end
 

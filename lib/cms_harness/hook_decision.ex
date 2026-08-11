@@ -278,7 +278,7 @@ defmodule CmsHarness.HookDecision do
     on seeing this, so stopping again is normally enough. If it repeats, check
     `GET /health` on the harness: the topic is keyed on the project, so several
     working copies of one project share it and the error cannot say which one is
-    failing.
+    failing.#{boot_drift()}
     """
   end
 
@@ -302,12 +302,26 @@ defmodule CmsHarness.HookDecision do
   # Only here, on the failure path. Drift is the normal state of an active
   # session and most commits do not touch the harness, so saying it proactively
   # would fire constantly and be ignored.
+  #
+  # Said on the `unmatched topic` clause as well as the generic one, because
+  # drift is the only thing that separates its two causes. A reconnect race
+  # clears itself on the next stop; a harness older than the running server
+  # never does, and both arrive as the same string. Reported across all three
+  # worktrees at once after a server restart, which is the skew case — the
+  # advice to "stop again" was wrong for every one of them.
+  #
+  # Names the command, because the session that notices is the one least able to
+  # act: a harness's command line is only `-S mix run --no-halt`, so its port,
+  # server URL and launch directory are invisible to a peer process, and killing
+  # it without a correct relaunch takes hooks down for every working copy.
   defp boot_drift do
     case CodeMySpec.BootVersion.drift() do
       {:drifted, booted, current} ->
         "\n\n    This harness booted from #{booted} and its checkout is now at " <>
           "#{current}. If that range touched the harness or the channel " <>
-          "contract, restart the harness — it is still running the older code."
+          "contract, it is still running the older code and reconnecting will " <>
+          "not help — restart it with `just refresh-harness`, which rediscovers " <>
+          "the port and credential rather than needing them passed."
 
       :none ->
         ""
