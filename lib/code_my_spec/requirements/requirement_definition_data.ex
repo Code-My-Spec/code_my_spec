@@ -742,7 +742,11 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         config: %{field: :specs_ready},
         satisfied_by: AgentTasks.FixBddSpecs,
         artifact_type: :tests,
-        description: "BDD specs have gone green on a fresh spex run",
+        # Phrased as the step, not the state. "BDD specs have gone green on a
+        # fresh spex run" reads as a fact about the world, so an agent whose
+        # sweep had gone green read the unsatisfied node as a broken gate rather
+        # than as an evaluation it had not run yet.
+        description: "BDD specs green on a fresh spex run, and evaluated to record it",
         prerequisites: [2],
         execution_type: :main_agent
       }),
