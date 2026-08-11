@@ -62,6 +62,22 @@ defmodule CmsHarness.TestDatabaseTest do
     test "it builds nothing" do
       assert "--no-compile" in CmsHarness.TestDatabase.reset_args()
     end
+
+    # The provisioning call site, which 6d9523a9 did not touch. Refusing here is
+    # worse than refusing in the reset: the database is never brought up to
+    # date, exunit runs against a schema behind the code, and the result is bulk
+    # failures across contexts the session never touched. b0486568 documents 15
+    # such findings, all five named files passing once the merge completed.
+    test "creating and migrating skip the deps check too" do
+      assert "--no-deps-check" in CmsHarness.TestDatabase.provision_args()
+    end
+
+    # Unlike the reset, this one must still compile — a migration runs against
+    # the project's own code. Skipping the lock comparison is not skipping the
+    # build.
+    test "provisioning does not skip compilation" do
+      refute "--no-compile" in CmsHarness.TestDatabase.provision_args()
+    end
   end
 
   describe "env/1" do

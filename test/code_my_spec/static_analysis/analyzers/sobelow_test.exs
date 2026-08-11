@@ -273,4 +273,43 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SobelowTest do
     do: Enum.count(files, &String.starts_with?(&1, "sobelow_output_"))
 
   defp count_listed({:error, _}), do: 0
+
+  # Output this could not read is not a clean sweep. `Analyzers.Credo` and
+  # `CredoRun` were both fixed away from answering `{:ok, []}` here, and their
+  # comments say why: an empty finding list is a clean sweep, a `:full`
+  # reconcile against one deletes every Problem the source has, and a broken
+  # analyzer becomes indistinguishable from a codebase with nothing wrong.
+  #
+  # Reachable the same way: `mix` refuses on a lock mismatch with exit 1 and a
+  # plain-text explanation, and exit 1 is sobelow's own "issues found" code, so
+  # the refusal reaches the parser rather than the error branch.
+  describe "output that is not sobelow's" do
+    test "a mix refusal is an error, not zero findings" do
+      refusal = """
+      Unchecked dependencies for environment test:
+      * telemetry_metrics (Hex package)
+        the dependency is not available, run "mix deps.get"
+      """
+
+      assert {:error, message} = Sobelow.parse_output_for_test(refusal)
+      assert message =~ "not JSON"
+      assert message =~ "Unchecked dependencies"
+    end
+
+    test "no output at all is an error" do
+      assert {:error, message} = Sobelow.parse_output_for_test("")
+      assert message =~ "never ran"
+    end
+
+    test "valid JSON of the wrong shape is an error" do
+      assert {:error, message} = Sobelow.parse_output_for_test(~s([1, 2, 3]))
+      assert message =~ "unexpected JSON structure"
+    end
+
+    # The genuine clean sweep still reads as one: the document parsed and said
+    # nothing was found.
+    test "a findings object with nothing in it is still clean" do
+      assert {:ok, []} = Sobelow.parse_output_for_test(~s({"findings": {}}))
+    end
+  end
 end

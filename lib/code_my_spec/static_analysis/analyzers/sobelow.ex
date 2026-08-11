@@ -119,12 +119,37 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.Sobelow do
     ["sobelow", "--format", "json", "--private"]
   end
 
+  # Output this could not read is not a clean sweep.
+  #
+  # The same defect `Analyzers.Credo.parse_json_output/1` and
+  # `CredoRun.parse/1` were both fixed away from, and their comments already
+  # say why: an empty finding list is a clean sweep, a `:full` reconcile
+  # against one deletes every Problem the source has, and a broken analyzer
+  # therefore becomes indistinguishable from a codebase with nothing wrong
+  # with it.
+  #
+  # It is reachable here the same way. `mix` refuses on a lock mismatch — the
+  # state a rebase leaves between a new `mix.lock` and the next `deps.get` —
+  # with exit **1** and a plain-text explanation, and exit 1 is sobelow's own
+  # "issues found" code, so the refusal lands in the parser rather than in the
+  # error branch above. Measured: `Unchecked dependencies for environment
+  # test: …`, exit 1.
+  #
+  # Empty output counts too. `--format json` emits `{"findings": …}` on a real
+  # run whether or not it found anything, so nothing to read means it never
+  # ran — the same reasoning `CredoRun` uses for exit > 1 with no output.
+  @doc false
+  # Public so the "could not read" branches can be asserted without a sobelow
+  # run — the same reason `CredoRun.reproduce_command/0` is. Nothing downstream
+  # fails if one of them regresses to `{:ok, []}`; it just quietly reports a
+  # clean sweep.
+  def parse_output_for_test(output), do: parse_json_output(output)
+
   defp parse_json_output(output) do
-    # Handle empty output
     output = String.trim(output)
 
     if output == "" do
-      {:ok, []}
+      {:error, "sobelow produced no output; it likely never ran"}
     else
       # Extract JSON from output (may have compilation messages before it)
       json_output = extract_json(output)
@@ -143,17 +168,25 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.Sobelow do
           {:ok, findings}
 
         {:ok, %{}} ->
-          # No findings key, return empty list
+          # A JSON object with no `findings` key really is a clean sweep — the
+          # document parsed and said nothing was found. Distinct from the two
+          # below, which are "this is not sobelow's output at all".
           {:ok, []}
 
         {:ok, _other} ->
-          # Unexpected structure but valid JSON, return empty list
-          {:ok, []}
+          {:error, "unexpected JSON structure from sobelow"}
 
         {:error, %Jason.DecodeError{} = error} ->
-          # JSON parsing failed - likely not JSON output
-          Logger.warning("Failed to parse Sobelow output as JSON: #{Exception.message(error)}")
-          {:ok, []}
+          # The excerpt travels with the error because the reason is almost
+          # always in it — a mix refusal, a compile error, a stray log line.
+          Logger.warning(
+            "[Sobelow] output is not JSON: " <>
+              (output |> String.trim() |> String.slice(0, 200))
+          )
+
+          {:error,
+           "sobelow produced output that is not JSON (#{Exception.message(error)}): " <>
+             (output |> String.trim() |> String.slice(0, 300))}
       end
     end
   end

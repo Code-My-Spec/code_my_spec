@@ -29,6 +29,48 @@ defmodule CodeMySpec.Support.InMemoryEnvironmentTest do
       refute Process.alive?(agent)
     end
 
+    # The race the old implementation lost. It asked `Process.alive?/1` and then
+    # called `Agent.stop/1`, and the gap between the two is reachable by
+    # construction: the agent is `start_link`ed from the test process, while
+    # `destroy/1` runs from `on_exit` in a different process after that one has
+    # exited — so the link is killing the agent exactly when destroy looks at
+    # it. Winning the check and losing the stop produced
+    #
+    #     ** (exit) exited in: GenServer.stop(#PID<...>, :normal, :infinity)
+    #
+    # reported against whichever test was running. It needs a loaded box, which
+    # is why the file passes forty times in isolation and fails under the
+    # analyzer.
+    #
+    # Several destroys at once is the closest deterministic stand-in: only one
+    # can be the kill that lands, and the others meet a process that is dying or
+    # gone.
+    test "concurrent destroys all answer, none exits" do
+      {:ok, env} = InMemoryEnvironment.create()
+
+      results =
+        1..20
+        |> Task.async_stream(fn _ -> InMemoryEnvironment.destroy(env) end,
+          max_concurrency: 20,
+          ordered: false
+        )
+        |> Enum.map(fn {:ok, result} -> result end)
+
+      assert Enum.all?(results, &(&1 == :ok))
+      refute Process.alive?(env.ref.agent)
+    end
+
+    # Destroying from a process that never owned it, which is what `on_exit`
+    # does. The old version's `Agent.stop/1` would have been fine here and the
+    # kill must be too — in particular it must not need the link it does not
+    # have.
+    test "destroy works from a process that did not create it" do
+      {:ok, env} = InMemoryEnvironment.create()
+
+      assert :ok = Task.await(Task.async(fn -> InMemoryEnvironment.destroy(env) end))
+      refute Process.alive?(env.ref.agent)
+    end
+
     test "destroy is idempotent when the Agent is already dead" do
       {:ok, env} = InMemoryEnvironment.create()
       :ok = InMemoryEnvironment.destroy(env)
