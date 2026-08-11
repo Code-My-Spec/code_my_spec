@@ -32,7 +32,13 @@ refresh port="4000":
     main="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")"
     echo "→ main checkout: $main"
 
-    dirty="$(git -C "$main" status --porcelain)"
+    # Tracked, non-submodule changes only. Untracked files are not disturbed by
+    # a fast-forward, and `.code_my_spec` is a submodule whose pointer moves
+    # whenever an agent commits a spec — refusing on either makes this refuse
+    # essentially always, which is the same as not having it. What it is for is
+    # the case that actually turned up: seven modified files under `config/` and
+    # `lib/`, mid-change, belonging to someone else.
+    dirty="$(git -C "$main" status --porcelain --untracked-files=no --ignore-submodules=all)"
     if [ -n "$dirty" ]; then
         echo "✗ refusing: the main checkout has uncommitted work." >&2
         echo "$dirty" >&2
@@ -47,10 +53,20 @@ refresh port="4000":
     after="$(git -C "$main" rev-parse --short HEAD)"
     echo "→ $before → $after"
 
-    # The lock moves often enough that skipping this turns into "Unchecked
-    # dependencies" on the next mix invocation, which several analyzers report
-    # as findings rather than as an environment problem.
-    ( cd "$main" && mix deps.get )
+    # Only when the lock actually moved. `deps.get` plus the compile it triggers
+    # is most of this recipe's wall time — the first real run took over ten
+    # minutes — and the lock is unchanged on the majority of refreshes.
+    #
+    # Not skippable in general, though: a lock that moved and is not fetched
+    # turns into "Unchecked dependencies" on the next mix invocation, which
+    # several analyzers report as findings rather than as an environment
+    # problem. That is what 6d9523a9 and 3430012e were about.
+    if [ -n "$(git -C "$main" diff --name-only "$before".."$after" -- mix.lock)" ]; then
+        echo "→ mix.lock moved, fetching deps"
+        ( cd "$main" && mix deps.get )
+    else
+        echo "→ mix.lock unchanged, skipping deps.get"
+    fi
 
     # By port, not by name: several beams run on this machine and only one of
     # them is serving {{port}}.
