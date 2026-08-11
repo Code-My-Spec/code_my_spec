@@ -97,11 +97,15 @@ defmodule CodeMySpec.ContentPublishing do
     manifest_url = object_url(project, bucket, "manifest.json")
     counts = counts_by_type(success_rows)
 
+    # The hash identifies *which* content is live, which is what tells a failed
+    # publish from one that replaced what visitors see.
+    blob_hash = "sha256:" <> hex(:crypto.hash(:sha256, blob_json))
+
     manifest = %{
       "version" => "1.0",
       "generated_at" => DateTime.utc_now() |> DateTime.to_iso8601(),
       "content_blob_url" => blob_url,
-      "content_blob_hash" => "sha256:" <> hex(:crypto.hash(:sha256, blob_json)),
+      "content_blob_hash" => blob_hash,
       "counts" => counts
     }
 
@@ -132,7 +136,12 @@ defmodule CodeMySpec.ContentPublishing do
       case trigger_client(project, manifest_url) do
         {:ok, result} ->
           {:ok,
-           Map.merge(result, %{counts: counts, total: length(success_rows), objects: objects})}
+           Map.merge(result, %{
+             counts: counts,
+             total: length(success_rows),
+             objects: objects,
+             content_hash: blob_hash
+           })}
 
         {:error, err} ->
           {:error, Map.put(err, :objects, objects)}

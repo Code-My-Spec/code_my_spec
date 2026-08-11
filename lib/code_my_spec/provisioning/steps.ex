@@ -1429,15 +1429,22 @@ defmodule CodeMySpec.Provisioning.Steps do
     end
   end
 
-  defp content_proof(%{render: render, proven_at: proven_at}) do
+  defp content_proof(%{render: render, proven_at: proven_at} = result) do
     %{
       kind: "content_proof",
       location: render[:path] || render["path"] || "",
       identifier:
         "state=rendered status=#{render[:status] || render["status"]} " <>
-          "title_present=#{title_present?(render)} proven_at=#{iso(proven_at)}"
+          "title_present=#{title_present?(render)} proven_at=#{iso(proven_at)} " <>
+          "version=#{content_version(result)}"
     }
   end
+
+  # Which content is live, not merely that something is. A failed publish keeps
+  # the proof of the last one that worked — `content_proof` is not run-scoped —
+  # so this is what says the version visitors see did not change (8038).
+  defp content_version(%{published: %{content_hash: hash}}) when is_binary(hash), do: hash
+  defp content_version(_result), do: ""
 
   defp content_failure(state, reason, published) do
     %{

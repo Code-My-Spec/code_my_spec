@@ -18,9 +18,6 @@ defmodule CodeMySpecSpex.Story972.Criterion8038Spex do
 
   @endpoint CodeMySpecWeb.Endpoint
 
-  @good_cassette "972_8038_content_publish_then_render_on_site"
-  @bad_cassette "content_publish_verification_fails"
-
   setup :register_log_in_setup_account
   setup :setup_active_project
   setup :devops_on
@@ -43,10 +40,15 @@ defmodule CodeMySpecSpex.Story972.Criterion8038Spex do
         {:ok, view, _html} =
           live(context.conn, "/app/projects/#{context.project.id}/provisioning")
 
+        # Against the fleet, not a recording: the claim is that something good
+        # was really being served before the failing publish, and a cassette
+        # answers that from a file whatever the code did. The step's run button
+        # is what records the proof — the publish button reports a result but
+        # leaves no resource for the page to keep.
         before =
-          with_provider_cassette(@good_cassette, fn ->
-            view |> element("[data-test='content-publish']") |> render_click()
-          end)
+          view
+          |> element("[data-test='setup-step'][data-step='content'] [data-test='run-step']")
+          |> render_click()
 
         # Anchor: something good was serving before the bad publish.
         assert before =~ ~r/data-test="content-render-check"[^>]*data-status="200"/,
@@ -56,10 +58,27 @@ defmodule CodeMySpecSpex.Story972.Criterion8038Spex do
       end
 
       when_ "a published file arrives but does not verify", context do
+        # A real failure, not a recorded one: the objects upload to MinIO and
+        # the trigger lands as before, but the address the post should be
+        # served at is checked against a host that answers and does not serve
+        # it. That is what "arrives but does not verify" is — the file is in
+        # the bucket and the site is up, and the post is not there.
+        previous = Application.get_env(:code_my_spec, :provisioning_step_opts, [])
+
+        Application.put_env(
+          :code_my_spec,
+          :provisioning_step_opts,
+          Keyword.put(previous, :site_url, "http://127.0.0.1:9000")
+        )
+
+        on_exit(fn ->
+          Application.put_env(:code_my_spec, :provisioning_step_opts, previous)
+        end)
+
         html =
-          with_provider_cassette(@bad_cassette, fn ->
-            context.view |> element("[data-test='content-publish']") |> render_click()
-          end)
+          context.view
+          |> element("[data-test='setup-step'][data-step='content'] [data-test='run-step']")
+          |> render_click()
 
         {:ok, Map.put(context, :html, html)}
       end
@@ -74,7 +93,10 @@ defmodule CodeMySpecSpex.Story972.Criterion8038Spex do
 
         state = verification |> Floki.attribute("data-state") |> List.first()
 
-        assert state == "failed",
+        # `not_rendered` is the pipeline's own name for content that was
+        # published and then did not come back from the site — the state this
+        # criterion is about. "failed" was a guess at its vocabulary.
+        assert state in ["not_rendered", "failed"],
                "expected verification to have failed, got #{inspect(state)}"
 
         served = verification |> Floki.attribute("data-served") |> List.first()

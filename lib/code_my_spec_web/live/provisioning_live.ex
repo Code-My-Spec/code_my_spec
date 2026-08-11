@@ -582,6 +582,18 @@ defmodule CodeMySpecWeb.ProvisioningLive do
             >
               {pr.location} answered {proof_field(pr.identifier, "status")}
             </span>
+
+    <!-- Which version is live. A publish that fails verification leaves
+                 the last proven one serving, and Sam needs to see that the
+                 thing visitors get did not change under him (8038). -->
+            <span
+              :for={pr <- Enum.filter(step.resources, &(&1.kind == "content_proof"))}
+              data-test="content-served-version"
+              data-version={proof_field(pr.identifier, "version")}
+              class="mt-1 block text-xs font-mono opacity-70"
+            >
+              serving {proof_field(pr.identifier, "version")}
+            </span>
             
     <!-- Whose bucket each object landed in, one row per object. A
                  summary line cannot answer that, and "in Sam's own storage" is
