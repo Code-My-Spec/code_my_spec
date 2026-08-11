@@ -59,11 +59,18 @@ defmodule CmsHarness.Web.HealthController do
   defp drift do
     case BootVersion.drift() do
       {:drifted, booted, current} ->
-        "booted #{booted}, checkout now #{current} — restart if that range " <>
-          "touched the harness or the channel contract"
+        "booted #{booted}, checkout now #{current}" <>
+          verdict(BootVersion.contract_changed?(booted, current))
 
       :none ->
         nil
     end
   end
+
+  # Answered rather than left as a condition, for the same reason the stop
+  # message answers it: a caller asking a health endpoint whether to restart
+  # should not have to run `git diff` to interpret the reply.
+  defp verdict(true), do: " — that range changed the harness or channel modules, so restart"
+  defp verdict(false), do: " — that range did not touch the harness or channel modules"
+  defp verdict(:unknown), do: " — could not read that range; restart if in doubt"
 end

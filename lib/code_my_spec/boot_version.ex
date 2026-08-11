@@ -104,6 +104,47 @@ defmodule CodeMySpec.BootVersion do
   defp compare(_booted, nil), do: :none
   defp compare(booted, current), do: {:drifted, booted, current}
 
+  # Whether the drifted range touched the code that decides whether a harness
+  # and a server can talk to each other.
+  #
+  # `drift/0` alone says the checkout moved, which is the normal state of an
+  # active session and true after almost every commit. Whether it *matters* is a
+  # different question, and the answer was left to the reader: the message said
+  # "if that range touched the harness or the channel contract, restart it", and
+  # the reader who acted on it ran
+  #
+  #     git diff --stat 0dd3fc43..8a18a296 -- lib/cms_harness lib/code_my_spec_web/channels
+  #
+  # by hand, then called it diagnosis to confirmation in one command. This is
+  # that command, so the message can state a fact instead of a condition.
+  #
+  # `:unknown` rather than a guess when the range cannot be read — a rebase can
+  # leave the booted commit unreachable, and a confident "nothing changed" would
+  # send a genuinely stale harness back to look at its network.
+  @contract_paths ["lib/cms_harness", "lib/code_my_spec_web/channels"]
+
+  @spec contract_changed?(String.t(), String.t()) :: boolean() | :unknown
+  def contract_changed?(booted, current) do
+    case :persistent_term.get(@key, nil) do
+      {root, _} -> changed_paths(root, booted, current)
+      _ -> :unknown
+    end
+  end
+
+  defp changed_paths(root, booted, current) do
+    with true <- is_binary(root) and File.dir?(root),
+         git when is_binary(git) <- System.find_executable("git"),
+         {output, 0} <-
+           System.cmd(git, ["diff", "--name-only", "#{booted}..#{current}", "--" | @contract_paths],
+             cd: root,
+             stderr_to_stdout: true
+           ) do
+      String.trim(output) != ""
+    else
+      _ -> :unknown
+    end
+  end
+
   # `find_executable/1` before `cmd/3` and a `File.dir?/1` before the `:cd`,
   # because both of those raise rather than returning a tuple and this must not
   # be able to take down the path it is decorating.

@@ -318,13 +318,32 @@ defmodule CmsHarness.HookDecision do
     case CodeMySpec.BootVersion.drift() do
       {:drifted, booted, current} ->
         "\n\n    This harness booted from #{booted} and its checkout is now at " <>
-          "#{current}. If that range touched the harness or the channel " <>
-          "contract, it is still running the older code and reconnecting will " <>
-          "not help — restart it with `just refresh-harness`, which rediscovers " <>
-          "the port and credential rather than needing them passed."
+          "#{current}." <>
+          contract_verdict(CodeMySpec.BootVersion.contract_changed?(booted, current))
 
       :none ->
         ""
     end
+  end
+
+  # The condition answered, rather than handed to the reader. It used to say "if
+  # that range touched the harness or the channel contract" — and the reader who
+  # acted on it ran the `git diff --stat` themselves before believing it.
+  defp contract_verdict(true) do
+    " That range changed `lib/cms_harness` or the channel modules, so this " <>
+      "harness is running an older contract than the server and reconnecting " <>
+      "will not help. Restart it with `just refresh-harness`, which rediscovers " <>
+      "the port and credential rather than needing them passed."
+  end
+
+  defp contract_verdict(false) do
+    " That range did not touch `lib/cms_harness` or the channel modules, so " <>
+      "skew is not the cause here — look elsewhere before restarting."
+  end
+
+  defp contract_verdict(:unknown) do
+    " Whether that range touched the harness or the channel modules could not " <>
+      "be read (a rebase can leave the booted commit unreachable). If in doubt, " <>
+      "restart with `just refresh-harness`."
   end
 end
