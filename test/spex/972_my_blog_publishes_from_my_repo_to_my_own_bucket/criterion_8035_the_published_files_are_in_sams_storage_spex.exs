@@ -18,7 +18,6 @@ defmodule CodeMySpecSpex.Story972.Criterion8035Spex do
 
   @endpoint CodeMySpecWeb.Endpoint
 
-  @cassette "content_publish_objects_in_user_bucket"
 
   setup :register_log_in_setup_account
   setup :setup_active_project
