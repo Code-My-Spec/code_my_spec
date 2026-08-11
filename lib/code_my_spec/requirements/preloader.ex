@@ -211,7 +211,18 @@ defmodule CodeMySpec.Requirements.Preloader do
   # bulk-upserted — they are written one at a time through their contexts — so
   # here a timestamp is both stable across no-ops and strictly more sensitive
   # than hashing chosen columns, which is the failure mode that would matter.
-  @delegated_tables ~w(bdd_rules criteria questions personas issues)
+  # `deploys` is the sixth and it arrived late, because it is the only one the
+  # preloader was already loading — `uat_deploy_by_story` — while the
+  # fingerprint hashed none of it. `deploy` asks `Deploys.uat_check/3`, which
+  # reads that collection, so a deploy landing moved the graph and not the hash
+  # and `cached_graph/1` served the pre-deploy projection as current. That is
+  # the failure `16a24105` names: "a cached graph can tell an agent work is
+  # finished that a deploy has just reopened".
+  #
+  # Loading a collection is not covering it. The other five were found by asking
+  # what the checkers read; this one hid because the preloader's answer looked
+  # like coverage.
+  @delegated_tables ~w(bdd_rules criteria questions personas issues deploys)
 
   # The four collections `BddRulesChecker` reads, batched.
   #

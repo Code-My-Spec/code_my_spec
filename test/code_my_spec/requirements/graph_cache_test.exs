@@ -198,6 +198,25 @@ defmodule CodeMySpec.Requirements.GraphCacheTest do
       refute current_fingerprint(scope) == pending
     end
 
+    # `deploy` asks `Deploys.uat_check/3`, which reads `uat_deploy_by_story` — a
+    # collection the preloader loads and the fingerprint did not hash. So a
+    # deploy landing moved the graph and not the hash, and `cached_graph/1`
+    # served the pre-deploy projection as current.
+    #
+    # This is the exact failure 16a24105 describes — "a cached graph can tell an
+    # agent work is finished that a deploy has just reopened" — and the spex it
+    # names as having caught it before, story 859's `criterion_7321`, no longer
+    # exists. This block is what replaced it, and it had no test for the one
+    # input that is not a table the checkers query directly.
+    test "a deploy landing moves it", %{scope: scope, before: before} do
+      story = story_fixture(scope)
+      {:ok, _} = CodeMySpec.Deploys.record(scope, story.id, "uat", status: "succeeded")
+
+      refute current_fingerprint(scope) == before,
+             "a deploy reopens `deploy` for its story; a fingerprint blind to it " <>
+               "serves the graph from before the deploy"
+    end
+
     # The input that is not data. Everything else in the fingerprint is what the
     # graph is computed *from*; nothing described how it is computed, so the same
     # inputs under changed code produced the same hash and a payload written by
