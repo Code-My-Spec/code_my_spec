@@ -2585,8 +2585,14 @@ defmodule CodeMySpecSpex.Fixtures do
   # The environment's own file first, then the shared one — the order Dotenvy
   # layers them in, so a value set for test wins over the same name set for
   # everything.
+  # Resolved at compile time, not called at runtime. `Mix` is not bundled in a
+  # release, so a `Mix.env()` here puts the module in the beam's atom table and
+  # `release_safety_test.exs` refuses the build — correctly: it would raise
+  # `UndefinedFunctionError` the first time it ran in one.
+  @dotenv_files ["envs/#{Mix.env()}.env", "envs/.env"]
+
   defp dotenv_value(name) do
-    ["envs/#{Mix.env()}.env", "envs/.env"]
+    @dotenv_files
     |> Enum.find_value(fn file ->
       case File.read(Path.expand(file, File.cwd!())) do
         {:ok, contents} -> find_dotenv_value(contents, name)
