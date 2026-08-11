@@ -81,7 +81,12 @@ refresh port="4000":
     fi
 
     log="$HOME/.codemyspec/phx_{{port}}.restart.log"
-    ( cd "$main" && nohup mix phx.server >>"$log" 2>&1 & )
+    # `</dev/null` matters as much as the output redirect. Without it the server
+    # inherits the caller's stdin, and a caller that waits for every writer to
+    # close — a CI step, an agent's shell tool — hangs for its whole timeout on
+    # a recipe that has already exited. Measured: the recipe takes 3s, and
+    # invoking it without this looked like ten minutes and an empty log.
+    ( cd "$main" && exec </dev/null >>"$log" 2>&1; nohup mix phx.server & )
     echo "→ starting, logging to $log"
 
     for _ in $(seq 1 90); do
