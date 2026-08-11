@@ -18,6 +18,8 @@ defmodule CodeMySpecWeb.PreviewLive.Show do
 
   import CodeMySpecWeb.PreviewComponents
 
+  require Logger
+
   alias CodeMySpec.Events
   alias CodeMySpec.Workspaces
   alias CodeMySpec.Workspaces.PreviewAddress
@@ -30,12 +32,56 @@ defmodule CodeMySpecWeb.PreviewLive.Show do
 
     if workspace, do: Workspaces.subscribe_workspace(workspace.project_id)
 
-    {:ok,
-     socket
-     |> assign(page_title: "Your app")
-     |> assign(viewport: "full")
-     |> assign(crash: nil)
-     |> assign_workspace(workspace)}
+    socket =
+      socket
+      |> assign(page_title: "Your app")
+      |> assign(viewport: "full")
+      |> assign(crash: nil)
+      |> assign_workspace(workspace)
+
+    {:ok, ensure_address(socket, connected?(socket))}
+  end
+
+  # The record is written the first time a preview is asked for, and never
+  # again. Not at boot — a workspace that cannot start because Cloudflare is
+  # rate-limiting is an infrastructure failure wearing the costume of a broken
+  # app. Not at project creation either — most projects are never previewed and
+  # a record each is zone litter with a lifetime of forever.
+  #
+  # Asynchronously, because it is a network call to somebody else's API and the
+  # page has something to show either way: the address may not resolve for a
+  # moment, which is a preview that is not ready, not a page that is broken.
+  #
+  # Only on the connected mount, since the static one runs for every request.
+  defp ensure_address(socket, false), do: socket
+
+  defp ensure_address(%{assigns: %{src: nil}} = socket, _connected), do: socket
+
+  defp ensure_address(socket, true) do
+    scope = socket.assigns.current_scope
+    project_id = socket.assigns.workspace.project_id
+
+    start_async(socket, :preview_address, fn -> PreviewAddress.ensure(scope, project_id) end)
+  end
+
+  @impl true
+  def handle_async(:preview_address, {:ok, {:ok, _host}}, socket), do: {:noreply, socket}
+
+  # Worth saying out loud rather than swallowing: the pane will render and the
+  # frame will fail to load, and without this the only evidence is a blank
+  # rectangle that looks exactly like the app being broken.
+  def handle_async(:preview_address, {:ok, {:error, reason}}, socket) do
+    Logger.warning(
+      "[PreviewLive] preview address could not be pointed anywhere: #{inspect(reason)}"
+    )
+
+    {:noreply, socket}
+  end
+
+  def handle_async(:preview_address, {:exit, reason}, socket) do
+    Logger.warning("[PreviewLive] pointing the preview address crashed: #{inspect(reason)}")
+
+    {:noreply, socket}
   end
 
   @impl true

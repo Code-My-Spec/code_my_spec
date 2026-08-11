@@ -38,6 +38,16 @@ defmodule CodeMySpec.Workspaces.PreviewAddress do
   def ensure(%Scope{} = scope, project_id) do
     host = host(project_id)
 
+    ensure_record(manage_dns?(), scope, host)
+  end
+
+  # Where the address already resolves without us — dev, where every label under
+  # `.localhost` is 127.0.0.1 — there is no record to write and asking
+  # Cloudflare for a zone named "localhost" would fail once per preview, loudly
+  # and pointlessly. The contract is that the address resolves, and it does.
+  defp ensure_record(false, _scope, host), do: {:ok, host}
+
+  defp ensure_record(true, scope, host) do
     with {:ok, zone} <- zone(scope),
          {:ok, _record} <- write(scope, zone, host) do
       {:ok, host}
@@ -93,6 +103,10 @@ defmodule CodeMySpec.Workspaces.PreviewAddress do
   """
   @spec csp_origin() :: String.t()
   def csp_origin, do: scheme() <> "://*." <> base_domain() <> port_suffix()
+
+  # Off unless a real zone is configured. A machine that reaches previews some
+  # other way should not be writing records into a zone it does not own.
+  defp manage_dns?, do: Keyword.get(config(), :manage_dns, true)
 
   defp scheme, do: config()[:scheme] || "https"
 

@@ -155,7 +155,10 @@ config :code_my_spec, CodeMySpec.Workspaces.PreviewAddress,
   base_domain: "localhost",
   target: "12a798a4-81a3-4242-8b59-ac171c0a01a1.cfargotunnel.com",
   scheme: "http",
-  port: 4010
+  port: 4010,
+  # No records to write: `.localhost` resolves without a zone, and asking
+  # Cloudflare for one named "localhost" would fail once per preview.
+  manage_dns: false
 
 # The pane is served from the dev endpoint, so that is who has to be allowed to
 # frame a preview. Without this the proxy names the production origin, the
