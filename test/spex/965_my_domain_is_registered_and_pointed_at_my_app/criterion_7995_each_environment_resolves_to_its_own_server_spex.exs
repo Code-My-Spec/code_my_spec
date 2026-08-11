@@ -19,7 +19,9 @@ defmodule CodeMySpecSpex.Story965.Criterion7995Spex do
 
   @cassette "cloudflare_dns_records_created_per_environment"
 
-  @given_cassette "965_7995_domain_and_servers"
+  # Fixed, distinct addresses so the DNS bodies recorded here are the same
+  # every time and no server has to exist to supply them.
+  @environment_ips [{"prod", "192.0.2.10"}, {"uat", "192.0.2.11"}]
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -33,7 +35,12 @@ defmodule CodeMySpecSpex.Story965.Criterion7995Spex do
       # step in the `when_` has nothing to point anywhere without a domain —
       # it fails on the missing domain, which reads as a DNS bug.
       given_ "Sam has a domain and a provisioned server per environment", context do
-        view = mount_provisioning(context)
+        # Before the mount, not after. The LiveView loads the project into its
+        # assigns when it mounts and every step it runs reads that copy, so a
+        # domain written to the row afterwards is invisible to it — the DNS step
+        # refuses with "no domain set on the project" while the row plainly has
+        # one, and the criterion reads that as a DNS failure.
+        #
         # Its own subdomain. Two spex sharing one name share a DNS namespace:
         # whichever runs second finds the first's records already there,
         # *adopts* them instead of creating them, and adopted resources are
@@ -41,32 +48,33 @@ defmodule CodeMySpecSpex.Story965.Criterion7995Spex do
         # creation at all.
         own_domain(context.project, "c7995.astralbi.com")
 
-        # Registered before anything is made: this spex provisions a real
-        # server and writes real DNS records, and a recording that fails
-        # partway must still not leave a box running or a record pointing at
-        # nothing.
-        tear_down_after(context.scope, [:dns, :server])
+        view = mount_provisioning(context)
 
-        # Hetzner has no OAuth, so its token is pasted per project — without it
-        # the server step stops at `hetzner_not_configured` and the DNS step
-        # then has no server to point at, which reads as a DNS failure.
-        # Saving a credential proves it with a real provider call, so it
-        # belongs inside the cassette.
-        with_provider_cassette(@given_cassette, fn ->
-          paste_provider_credentials(view)
+        # Only DNS is created here now, so only DNS needs returning.
+        tear_down_after(context.scope, [:dns])
 
-          view
-          |> element("[data-test='setup-step'][data-step='server'] [data-test='run-step']")
-          |> render_click()
+        paste_provider_credentials(view)
 
-          # The page *after* the run, not what the click handed back. A step
-          # announces itself with `{:provisioning, :step, …}`, and the
-          # sections this criterion reads are assigned when that arrives —
-          # which is after the event `render_click/1` returns from. Its
-          # return value therefore shows the page before anything was
-          # recorded, and an empty section reads as "nothing happened".
-          render(view)
-        end)
+        # A distinct address per environment, without a box behind either.
+        # `environment_ip/3` uses the environment's own `ip` when it has one and
+        # only asks Hetzner when it does not, so this skips the server step
+        # entirely — nothing is created and nothing is torn down.
+        #
+        # It also fits what this criterion actually claims. The assertions below
+        # are about DNS *targets*: that they exist, that they name something,
+        # and that no two environments share one. Distinct seeded addresses prove
+        # that as well as distinct boxes would, and they prove it the same way
+        # every time.
+        #
+        # Which matters, because a real server made this cassette perishable: the
+        # DNS record's request body carries the server's IP, minted fresh on each
+        # recording, so this cassette and the server's could only ever replay
+        # together and drifted apart the moment either was re-recorded alone.
+        # Documentation-range (RFC 5737), so a record that ever outlives its
+        # teardown cannot point at somebody's real host.
+        for {name, ip} <- @environment_ips do
+          CodeMySpecSpex.Fixtures.seed_environment_ip(context.scope, name, ip)
+        end
 
         {:ok, Map.put(context, :view, view)}
       end
@@ -77,6 +85,12 @@ defmodule CodeMySpecSpex.Story965.Criterion7995Spex do
             context.view
             |> element("[data-test='setup-step'][data-step='dns'] [data-test='run-step']")
             |> render_click()
+
+            # The page after the run, not what the click handed back. The step
+            # announces itself with `{:provisioning, :step, …}` and the records
+            # section is assigned when that arrives — after the event
+            # `render_click/1` returns from.
+            render(context.view)
           end)
 
         {:ok, Map.put(context, :html, html)}

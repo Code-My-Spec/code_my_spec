@@ -1,7 +1,7 @@
 {
   "interactions": [
     {
-      "recorded_at": "2026-08-02T05:38:13.721301Z",
+      "recorded_at": "2026-08-11T14:04:41.582942Z",
       "request": {
         "body": "",
         "body_type": "text",
@@ -366,7 +366,7 @@
               },
               "activated_on": "2026-02-27T01:51:59.160872Z",
               "created_on": "2026-02-27T01:49:03.058411Z",
-              "development_mode": -12818164,
+              "development_mode": -13626152,
               "id": "51d25b6e048c9f5797cc0ea3ed6fc10e",
               "meta": {
                 "custom_certificate_quota": 0,
@@ -706,13 +706,13 @@
             "no-store, no-cache, must-revalidate, post-check=0, pre-check=0"
           ],
           "cf-auditlog-id": [
-            "019fc0fa-db8f-7a04-a28d-8a62ad1fcd73"
+            "019ff123-c581-7c1c-8b9b-64a5ef1b4bac"
           ],
           "cf-cache-status": [
             "DYNAMIC"
           ],
           "cf-ray": [
-            "a24abc32792adf96-YUL"
+            "a297ca759b74c521-YUL"
           ],
           "connection": [
             "keep-alive"
@@ -721,7 +721,7 @@
             "application/json"
           ],
           "date": [
-            "Sun, 02 Aug 2026 05:38:13 GMT"
+            "Tue, 11 Aug 2026 14:04:41 GMT"
           ],
           "expires": [
             "Sun, 25 Jan 1981 05:00:00 GMT"
@@ -758,7 +758,7 @@
       }
     },
     {
-      "recorded_at": "2026-08-02T05:38:13.907901Z",
+      "recorded_at": "2026-08-11T14:04:41.800175Z",
       "request": {
         "body": "",
         "body_type": "text",
@@ -799,6 +799,21 @@
             },
             {
               "comment": null,
+              "content": "178.156.216.165",
+              "created_on": "2026-08-09T21:05:07.181997Z",
+              "id": "e2243b92a5c474ce6ee3fd8a7ad538e8",
+              "meta": {},
+              "modified_on": "2026-08-09T21:05:07.181997Z",
+              "name": "drill.astralbi.com",
+              "proxiable": true,
+              "proxied": false,
+              "settings": {},
+              "tags": [],
+              "ttl": 60,
+              "type": "A"
+            },
+            {
+              "comment": null,
               "content": "82.180.172.214",
               "created_on": "2026-06-25T15:14:36.633542Z",
               "id": "10e7c711eb181f2a935fec541115eadb",
@@ -810,6 +825,36 @@
               "settings": {},
               "tags": [],
               "ttl": 1,
+              "type": "A"
+            },
+            {
+              "comment": null,
+              "content": "5.161.239.73",
+              "created_on": "2026-08-03T23:25:25.949725Z",
+              "id": "c8d42d2d36ce5cb016fbff064d379fee",
+              "meta": {},
+              "modified_on": "2026-08-03T23:25:25.949725Z",
+              "name": "uat.astralbi.com",
+              "proxiable": true,
+              "proxied": false,
+              "settings": {},
+              "tags": [],
+              "ttl": 60,
+              "type": "A"
+            },
+            {
+              "comment": null,
+              "content": "178.156.200.94",
+              "created_on": "2026-08-10T18:40:31.386024Z",
+              "id": "3c3cabe79b4a31bd40ce463c6f971b09",
+              "meta": {},
+              "modified_on": "2026-08-10T19:07:56.907814Z",
+              "name": "uat.drill.astralbi.com",
+              "proxiable": true,
+              "proxied": false,
+              "settings": {},
+              "tags": [],
+              "ttl": 60,
               "type": "A"
             },
             {
@@ -826,6 +871,40 @@
               "tags": [],
               "ttl": 1,
               "type": "AAAA"
+            },
+            {
+              "comment": null,
+              "content": "test-tunnel.cfargotunnel.com",
+              "created_on": "2026-08-11T09:26:19.177992Z",
+              "id": "550d6c977ff56d6ec38afb7ecabfdc96",
+              "meta": {},
+              "modified_on": "2026-08-11T09:26:19.177992Z",
+              "name": "preview-3a7296f3-9903-498c-ba2a-8012b78e7219.codemyspec.com.astralbi.com",
+              "proxiable": true,
+              "proxied": true,
+              "settings": {
+                "flatten_cname": false
+              },
+              "tags": [],
+              "ttl": 1,
+              "type": "CNAME"
+            },
+            {
+              "comment": null,
+              "content": "12a798a4-81a3-4242-8b59-ac171c0a01a1.cfargotunnel.com",
+              "created_on": "2026-08-11T04:38:40.097833Z",
+              "id": "53ca0e7ebbc4adb8a0892eaa8ba05b77",
+              "meta": {},
+              "modified_on": "2026-08-11T04:38:40.097833Z",
+              "name": "preview-47d78148-6b92-4d9c-bfa9-6dbed5057ddd.astralbi.com",
+              "proxiable": true,
+              "proxied": true,
+              "settings": {
+                "flatten_cname": false
+              },
+              "tags": [],
+              "ttl": 1,
+              "type": "CNAME"
             },
             {
               "comment": null,
@@ -846,26 +925,57 @@
             },
             {
               "comment": null,
-              "content": "inbound-smtp.spex.invalid",
-              "created_on": "2026-08-01T22:29:20.556681Z",
-              "id": "bb9faf1ee9168c3dd5cd4c8e592912da",
+              "content": "inbound-smtp.us-east-1.amazonaws.com",
+              "created_on": "2026-08-08T02:43:38.528294Z",
+              "id": "ef0a2e19902fa7eee845c1f4a76cc517",
               "meta": {},
-              "modified_on": "2026-08-01T22:29:20.556681Z",
+              "modified_on": "2026-08-08T02:43:38.528294Z",
               "name": "astralbi.com",
               "priority": 10,
               "proxiable": false,
               "proxied": false,
               "settings": {},
               "tags": [],
-              "ttl": 60,
+              "ttl": 3600,
               "type": "MX"
+            },
+            {
+              "comment": null,
+              "content": "feedback-smtp.us-east-1.amazonses.com",
+              "created_on": "2026-08-08T02:43:38.527529Z",
+              "id": "0be43ec1d52f6fd8dc9efabf785ebe7c",
+              "meta": {},
+              "modified_on": "2026-08-08T02:43:38.527529Z",
+              "name": "send.astralbi.com",
+              "priority": 10,
+              "proxiable": false,
+              "proxied": false,
+              "settings": {},
+              "tags": [],
+              "ttl": 3600,
+              "type": "MX"
+            },
+            {
+              "comment": null,
+              "content": "\"v=spf1 include:amazonses.com ~all\"",
+              "created_on": "2026-08-08T02:43:38.586932Z",
+              "id": "01085a17a8a193b6d4f1833514cc23a8",
+              "meta": {},
+              "modified_on": "2026-08-08T02:43:38.586932Z",
+              "name": "send.astralbi.com",
+              "proxiable": false,
+              "proxied": false,
+              "settings": {},
+              "tags": [],
+              "ttl": 3600,
+              "type": "TXT"
             }
           ],
           "result_info": {
-            "count": 5,
+            "count": 12,
             "page": 1,
             "per_page": 100,
-            "total_count": 5,
+            "total_count": 12,
             "total_pages": 1
           },
           "success": true
@@ -876,13 +986,13 @@
             "2026-09-26.epoch"
           ],
           "cf-auditlog-id": [
-            "019fc0fa-dc7c-7d29-857c-9fe795941f9d"
+            "019ff123-c710-759d-88d6-2515dce970f8"
           ],
           "cf-cache-status": [
             "DYNAMIC"
           ],
           "cf-ray": [
-            "a24abc33fbf0df96-YUL"
+            "a297ca781de4c521-YUL"
           ],
           "connection": [
             "keep-alive"
@@ -891,7 +1001,7 @@
             "application/json"
           ],
           "date": [
-            "Sun, 02 Aug 2026 05:38:13 GMT"
+            "Tue, 11 Aug 2026 14:04:41 GMT"
           ],
           "ratelimit": [
             "\"default\";r=1199;t=1"
@@ -913,10 +1023,10 @@
       }
     },
     {
-      "recorded_at": "2026-08-02T05:38:14.157104Z",
+      "recorded_at": "2026-08-11T14:04:42.135841Z",
       "request": {
         "body_json": {
-          "content": "5.161.239.73",
+          "content": "192.0.2.20",
           "name": "c7996.astralbi.com",
           "proxied": false,
           "ttl": 60,
@@ -947,11 +1057,11 @@
           "messages": [],
           "result": {
             "comment": null,
-            "content": "5.161.239.73",
-            "created_on": "2026-08-02T05:38:14.111548Z",
-            "id": "e253cf72d15d8ecc222a27ebc488e3c0",
+            "content": "192.0.2.20",
+            "created_on": "2026-08-11T14:04:42.081133Z",
+            "id": "3a41ede5f235a9dcea1ccd92e709d0ad",
             "meta": {},
-            "modified_on": "2026-08-02T05:38:14.111548Z",
+            "modified_on": "2026-08-11T14:04:42.081133Z",
             "name": "c7996.astralbi.com",
             "proxiable": true,
             "proxied": false,
@@ -968,13 +1078,13 @@
             "2026-09-26.epoch"
           ],
           "cf-auditlog-id": [
-            "019fc0fa-dd32-7940-8177-ed40f917ff76"
+            "019ff123-c7df-7e70-9bf2-dfe5bdbaa799"
           ],
           "cf-cache-status": [
             "DYNAMIC"
           ],
           "cf-ray": [
-            "a24abc351e0bdf96-YUL"
+            "a297ca795aa3c521-YUL"
           ],
           "connection": [
             "keep-alive"
@@ -983,7 +1093,7 @@
             "application/json"
           ],
           "date": [
-            "Sun, 02 Aug 2026 05:38:14 GMT"
+            "Tue, 11 Aug 2026 14:04:42 GMT"
           ],
           "ratelimit": [
             "\"default\";r=1198;t=1"
@@ -1005,7 +1115,7 @@
       }
     },
     {
-      "recorded_at": "2026-08-02T05:38:14.266732Z",
+      "recorded_at": "2026-08-11T14:04:42.225657Z",
       "request": {
         "body": "",
         "body_type": "text",
@@ -1027,13 +1137,13 @@
           "Authority": [
             {
               "TTL": 1800,
-              "data": "demi.ns.cloudflare.com. dns.cloudflare.com. 2411134300 10000 2400 604800 1800",
+              "data": "demi.ns.cloudflare.com. dns.cloudflare.com. 2411942401 10000 2400 604800 1800",
               "name": "astralbi.com.",
               "type": 6
             }
           ],
           "CD": false,
-          "Comment": "Response from 172.64.33.248.",
+          "Comment": "Response from 173.245.59.248.",
           "Question": [
             {
               "name": "c7996.astralbi.com.",
@@ -1060,10 +1170,10 @@
             "application/json; charset=UTF-8"
           ],
           "date": [
-            "Sun, 02 Aug 2026 05:38:14 GMT"
+            "Tue, 11 Aug 2026 14:04:42 GMT"
           ],
           "expires": [
-            "Sun, 02 Aug 2026 05:38:14 GMT"
+            "Tue, 11 Aug 2026 14:04:42 GMT"
           ],
           "server": [
             "HTTP server (unknown)"
@@ -1088,7 +1198,7 @@
       }
     },
     {
-      "recorded_at": "2026-08-02T05:38:19.316921Z",
+      "recorded_at": "2026-08-11T14:04:47.248164Z",
       "request": {
         "body": "",
         "body_type": "text",
@@ -1109,91 +1219,8 @@
           "AD": false,
           "Authority": [
             {
-              "TTL": 1800,
-              "data": "demi.ns.cloudflare.com. dns.cloudflare.com. 2411134300 10000 2400 604800 1800",
-              "name": "astralbi.com.",
-              "type": 6
-            }
-          ],
-          "CD": false,
-          "Comment": "Response from 108.162.192.95.",
-          "Question": [
-            {
-              "name": "c7996.astralbi.com.",
-              "type": 1
-            }
-          ],
-          "RA": true,
-          "RD": true,
-          "Status": 3,
-          "TC": false
-        },
-        "body_type": "json",
-        "headers": {
-          "access-control-allow-origin": [
-            "*"
-          ],
-          "alt-svc": [
-            "h3=\":443\"; ma=2592000,h3-29=\":443\"; ma=2592000"
-          ],
-          "cache-control": [
-            "private, max-age=1800"
-          ],
-          "content-type": [
-            "application/json; charset=UTF-8"
-          ],
-          "date": [
-            "Sun, 02 Aug 2026 05:38:19 GMT"
-          ],
-          "expires": [
-            "Sun, 02 Aug 2026 05:38:19 GMT"
-          ],
-          "server": [
-            "HTTP server (unknown)"
-          ],
-          "strict-transport-security": [
-            "max-age=31536000; includeSubDomains; preload"
-          ],
-          "transfer-encoding": [
-            "chunked"
-          ],
-          "x-content-type-options": [
-            "nosniff"
-          ],
-          "x-frame-options": [
-            "SAMEORIGIN"
-          ],
-          "x-xss-protection": [
-            "0"
-          ]
-        },
-        "status": 200
-      }
-    },
-    {
-      "recorded_at": "2026-08-02T05:38:24.338388Z",
-      "request": {
-        "body": "",
-        "body_type": "text",
-        "headers": {
-          "accept-encoding": [
-            "gzip"
-          ],
-          "user-agent": [
-            "req/0.5.17"
-          ]
-        },
-        "method": "GET",
-        "query_string": "name=c7996.astralbi.com&type=A",
-        "uri": "https://dns.google/resolve"
-      },
-      "response": {
-        "body_json": {
-          "AD": false,
-          "Authority": [
-            {
-              "TTL": 1790,
-              "data": "demi.ns.cloudflare.com. dns.cloudflare.com. 2411134300 10000 2400 604800 1800",
+              "TTL": 1795,
+              "data": "demi.ns.cloudflare.com. dns.cloudflare.com. 2411942401 10000 2400 604800 1800",
               "name": "astralbi.com.",
               "type": 6
             }
@@ -1219,16 +1246,16 @@
             "h3=\":443\"; ma=2592000,h3-29=\":443\"; ma=2592000"
           ],
           "cache-control": [
-            "private, max-age=1790"
+            "private, max-age=1795"
           ],
           "content-type": [
             "application/json; charset=UTF-8"
           ],
           "date": [
-            "Sun, 02 Aug 2026 05:38:24 GMT"
+            "Tue, 11 Aug 2026 14:04:47 GMT"
           ],
           "expires": [
-            "Sun, 02 Aug 2026 05:38:24 GMT"
+            "Tue, 11 Aug 2026 14:04:47 GMT"
           ],
           "server": [
             "HTTP server (unknown)"
@@ -1253,7 +1280,7 @@
       }
     },
     {
-      "recorded_at": "2026-08-02T05:38:29.369330Z",
+      "recorded_at": "2026-08-11T14:04:52.291997Z",
       "request": {
         "body": "",
         "body_type": "text",
@@ -1275,13 +1302,13 @@
           "Answer": [
             {
               "TTL": 60,
-              "data": "5.161.239.73",
+              "data": "192.0.2.20",
               "name": "c7996.astralbi.com.",
               "type": 1
             }
           ],
           "CD": false,
-          "Comment": "Response from 108.162.192.95.",
+          "Comment": "Response from 172.64.33.248.",
           "Question": [
             {
               "name": "c7996.astralbi.com.",
@@ -1308,10 +1335,10 @@
             "application/json; charset=UTF-8"
           ],
           "date": [
-            "Sun, 02 Aug 2026 05:38:29 GMT"
+            "Tue, 11 Aug 2026 14:04:52 GMT"
           ],
           "expires": [
-            "Sun, 02 Aug 2026 05:38:29 GMT"
+            "Tue, 11 Aug 2026 14:04:52 GMT"
           ],
           "server": [
             "HTTP server (unknown)"
@@ -1336,10 +1363,10 @@
       }
     },
     {
-      "recorded_at": "2026-08-02T05:38:29.610922Z",
+      "recorded_at": "2026-08-11T14:04:52.552889Z",
       "request": {
         "body_json": {
-          "content": "178.156.251.80",
+          "content": "192.0.2.21",
           "name": "uat.c7996.astralbi.com",
           "proxied": false,
           "ttl": 60,
@@ -1370,11 +1397,11 @@
           "messages": [],
           "result": {
             "comment": null,
-            "content": "178.156.251.80",
-            "created_on": "2026-08-02T05:38:29.56645Z",
-            "id": "1405f15174011a1632b975402f504d50",
+            "content": "192.0.2.21",
+            "created_on": "2026-08-11T14:04:52.488508Z",
+            "id": "46d2f84459704e810df5d2145af57b63",
             "meta": {},
-            "modified_on": "2026-08-02T05:38:29.56645Z",
+            "modified_on": "2026-08-11T14:04:52.488508Z",
             "name": "uat.c7996.astralbi.com",
             "proxiable": true,
             "proxied": false,
@@ -1391,13 +1418,13 @@
             "2026-09-26.epoch"
           ],
           "cf-auditlog-id": [
-            "019fc0fb-199c-7aba-9dcc-20bdcec410a5"
+            "019ff123-f0dc-7f2b-af36-277a5aa18dce"
           ],
           "cf-cache-status": [
             "DYNAMIC"
           ],
           "cf-ray": [
-            "a24abc95bf60df96-YUL"
+            "a297cabae8b3c521-YUL"
           ],
           "connection": [
             "keep-alive"
@@ -1406,7 +1433,7 @@
             "application/json"
           ],
           "date": [
-            "Sun, 02 Aug 2026 05:38:29 GMT"
+            "Tue, 11 Aug 2026 14:04:52 GMT"
           ],
           "ratelimit": [
             "\"default\";r=1199;t=1"
@@ -1428,7 +1455,7 @@
       }
     },
     {
-      "recorded_at": "2026-08-02T05:38:29.641161Z",
+      "recorded_at": "2026-08-11T14:04:52.583241Z",
       "request": {
         "body": "",
         "body_type": "text",
@@ -1450,13 +1477,13 @@
           "Authority": [
             {
               "TTL": 1800,
-              "data": "demi.ns.cloudflare.com. dns.cloudflare.com. 2411134799 10000 2400 604800 1800",
+              "data": "demi.ns.cloudflare.com. dns.cloudflare.com. 2411942787 10000 2400 604800 1800",
               "name": "astralbi.com.",
               "type": 6
             }
           ],
           "CD": false,
-          "Comment": "Response from 108.162.192.95.",
+          "Comment": "Response from 108.162.193.248.",
           "Question": [
             {
               "name": "uat.c7996.astralbi.com.",
@@ -1483,10 +1510,10 @@
             "application/json; charset=UTF-8"
           ],
           "date": [
-            "Sun, 02 Aug 2026 05:38:29 GMT"
+            "Tue, 11 Aug 2026 14:04:52 GMT"
           ],
           "expires": [
-            "Sun, 02 Aug 2026 05:38:29 GMT"
+            "Tue, 11 Aug 2026 14:04:52 GMT"
           ],
           "server": [
             "HTTP server (unknown)"
@@ -1511,7 +1538,7 @@
       }
     },
     {
-      "recorded_at": "2026-08-02T05:38:34.661434Z",
+      "recorded_at": "2026-08-11T14:04:57.601460Z",
       "request": {
         "body": "",
         "body_type": "text",
@@ -1533,7 +1560,7 @@
           "Authority": [
             {
               "TTL": 1795,
-              "data": "demi.ns.cloudflare.com. dns.cloudflare.com. 2411134799 10000 2400 604800 1800",
+              "data": "demi.ns.cloudflare.com. dns.cloudflare.com. 2411942787 10000 2400 604800 1800",
               "name": "astralbi.com.",
               "type": 6
             }
@@ -1565,10 +1592,10 @@
             "application/json; charset=UTF-8"
           ],
           "date": [
-            "Sun, 02 Aug 2026 05:38:34 GMT"
+            "Tue, 11 Aug 2026 14:04:57 GMT"
           ],
           "expires": [
-            "Sun, 02 Aug 2026 05:38:34 GMT"
+            "Tue, 11 Aug 2026 14:04:57 GMT"
           ],
           "server": [
             "HTTP server (unknown)"
@@ -1593,7 +1620,7 @@
       }
     },
     {
-      "recorded_at": "2026-08-02T05:38:39.681662Z",
+      "recorded_at": "2026-08-11T14:05:02.623680Z",
       "request": {
         "body": "",
         "body_type": "text",
@@ -1615,7 +1642,7 @@
           "Authority": [
             {
               "TTL": 1790,
-              "data": "demi.ns.cloudflare.com. dns.cloudflare.com. 2411134799 10000 2400 604800 1800",
+              "data": "demi.ns.cloudflare.com. dns.cloudflare.com. 2411942787 10000 2400 604800 1800",
               "name": "astralbi.com.",
               "type": 6
             }
@@ -1647,10 +1674,10 @@
             "application/json; charset=UTF-8"
           ],
           "date": [
-            "Sun, 02 Aug 2026 05:38:39 GMT"
+            "Tue, 11 Aug 2026 14:05:02 GMT"
           ],
           "expires": [
-            "Sun, 02 Aug 2026 05:38:39 GMT"
+            "Tue, 11 Aug 2026 14:05:02 GMT"
           ],
           "server": [
             "HTTP server (unknown)"
@@ -1675,89 +1702,7 @@
       }
     },
     {
-      "recorded_at": "2026-08-02T05:38:44.700087Z",
-      "request": {
-        "body": "",
-        "body_type": "text",
-        "headers": {
-          "accept-encoding": [
-            "gzip"
-          ],
-          "user-agent": [
-            "req/0.5.17"
-          ]
-        },
-        "method": "GET",
-        "query_string": "name=uat.c7996.astralbi.com&type=A",
-        "uri": "https://dns.google/resolve"
-      },
-      "response": {
-        "body_json": {
-          "AD": false,
-          "Authority": [
-            {
-              "TTL": 1785,
-              "data": "demi.ns.cloudflare.com. dns.cloudflare.com. 2411134799 10000 2400 604800 1800",
-              "name": "astralbi.com.",
-              "type": 6
-            }
-          ],
-          "CD": false,
-          "Question": [
-            {
-              "name": "uat.c7996.astralbi.com.",
-              "type": 1
-            }
-          ],
-          "RA": true,
-          "RD": true,
-          "Status": 3,
-          "TC": false
-        },
-        "body_type": "json",
-        "headers": {
-          "access-control-allow-origin": [
-            "*"
-          ],
-          "alt-svc": [
-            "h3=\":443\"; ma=2592000,h3-29=\":443\"; ma=2592000"
-          ],
-          "cache-control": [
-            "private, max-age=1785"
-          ],
-          "content-type": [
-            "application/json; charset=UTF-8"
-          ],
-          "date": [
-            "Sun, 02 Aug 2026 05:38:44 GMT"
-          ],
-          "expires": [
-            "Sun, 02 Aug 2026 05:38:44 GMT"
-          ],
-          "server": [
-            "HTTP server (unknown)"
-          ],
-          "strict-transport-security": [
-            "max-age=31536000; includeSubDomains; preload"
-          ],
-          "transfer-encoding": [
-            "chunked"
-          ],
-          "x-content-type-options": [
-            "nosniff"
-          ],
-          "x-frame-options": [
-            "SAMEORIGIN"
-          ],
-          "x-xss-protection": [
-            "0"
-          ]
-        },
-        "status": 200
-      }
-    },
-    {
-      "recorded_at": "2026-08-02T05:38:49.734724Z",
+      "recorded_at": "2026-08-11T14:05:07.653822Z",
       "request": {
         "body": "",
         "body_type": "text",
@@ -1779,7 +1724,7 @@
           "Answer": [
             {
               "TTL": 60,
-              "data": "178.156.251.80",
+              "data": "192.0.2.21",
               "name": "uat.c7996.astralbi.com.",
               "type": 1
             }
@@ -1812,10 +1757,10 @@
             "application/json; charset=UTF-8"
           ],
           "date": [
-            "Sun, 02 Aug 2026 05:38:49 GMT"
+            "Tue, 11 Aug 2026 14:05:07 GMT"
           ],
           "expires": [
-            "Sun, 02 Aug 2026 05:38:49 GMT"
+            "Tue, 11 Aug 2026 14:05:07 GMT"
           ],
           "server": [
             "HTTP server (unknown)"

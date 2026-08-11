@@ -42,7 +42,8 @@ defmodule CodeMySpecSpex.Story965.Criterion7989Spex do
         {:ok, Map.put(context, :html, html)}
       end
 
-      then_ "setup does not claim it as Sam's, and leaves the form so he can choose again", context do
+      then_ "setup does not claim it as Sam's, and leaves the form so he can choose again",
+            context do
         # A domain the account does not hold cannot be confirmed available or
         # taken through the registrar API — it answers only that the extension
         # is supported. So setup does not report google.com as *Sam's* and does
