@@ -54,10 +54,10 @@ defmodule CodeMySpec.Files.ComponentSync do
 
     {spec_files, impl_files} = query_files(scope, changed_paths)
 
-    spec_data =
-      spec_files
-      |> Enum.map(&parse_spec_file(&1, env))
-      |> Enum.reject(&is_nil/1)
+    parsed_specs = Enum.map(spec_files, &parse_spec_file(&1, env))
+    unreadable = Enum.count(parsed_specs, &(&1 == :unreadable))
+
+    spec_data = Enum.reject(parsed_specs, &(is_nil(&1) or &1 == :unreadable))
 
     impl_data =
       impl_files
@@ -71,7 +71,7 @@ defmodule CodeMySpec.Files.ComponentSync do
       Logger.info("[Files.ComponentSync] No components to sync (#{ms}ms)")
       {:ok, %{all_components: [], changed_component_ids: []}}
     else
-      do_sync(scope, merged, incremental?, start)
+      do_sync(scope, merged, incremental? or unreadable > 0, start, unreadable)
     end
   end
 
@@ -97,7 +97,22 @@ defmodule CodeMySpec.Files.ComponentSync do
     }
   end
 
-  defp do_sync(scope, merged, incremental?, start) do
+  # `incremental?` also covers "a spec could not be read", because both mean the
+  # same thing to `cleanup_removed/3`: this run does not know the full set, so it
+  # must not delete anything for being missing from it.
+  #
+  # On the light harness the server holds no working copy, so a spec without
+  # scanner-stored data reads as `{:error, :no_environment}` and the component it
+  # names is simply absent from `merged`. A full sync then deleted it —
+  # destroying architecture state because a file could not be opened. Measured:
+  # 904 of 904 components resynced with `:no_environment` warnings throughout,
+  # and the only reason nothing was lost is that 1494 of 1519 specs carry parsed
+  # data from the scanner and never reach the disk path at all.
+  #
+  # Refusing to prune on an incomplete picture is the same rule the harness
+  # already applies to an empty scan, and for the same reason: sending it "would
+  # have deleted every file this project has on the server".
+  defp do_sync(scope, merged, incremental?, start, unreadable) do
     now = DateTime.utc_now() |> DateTime.truncate(:second)
 
     existing_components = Components.list_components(scope)
@@ -112,6 +127,14 @@ defmodule CodeMySpec.Files.ComponentSync do
 
     update_parent_relationships(scope, synced_components, component_map)
     sync_dependencies(scope, merged, component_map)
+
+    if unreadable > 0 do
+      Logger.warning(
+        "[Files.ComponentSync] #{unreadable} spec file(s) could not be read; skipping cleanup. " <>
+          "A component missing from an incomplete sync is unknown, not deleted — see the " <>
+          "per-file warnings above for which."
+      )
+    end
 
     unless incremental? do
       all_module_names = MapSet.new(merged, & &1.module_name)
@@ -215,10 +238,14 @@ defmodule CodeMySpec.Files.ComponentSync do
       {:error, reason} ->
         Logger.warning(
           "[Files.ComponentSync] could not read spec file #{path} (#{inspect(reason)}); " <>
-            "its component will not be synced and may be pruned."
+            "its component is unknown to this sync, which will therefore not prune."
         )
 
-        nil
+        # `:unreadable`, not `nil`. Both keep the component out of `merged`, but
+        # only this one says the sync's picture is incomplete — and that is what
+        # stops `cleanup_removed/3` deleting a component for being absent from a
+        # list that could not be built.
+        :unreadable
     end
   end
 
