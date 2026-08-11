@@ -70,12 +70,12 @@ defmodule CmsHarness.TestDatabase do
   fires on a fresh working copy and after a rebase that brings migrations, which
   is exactly when the agent is likely to be compiling too.
   """
-  @spec env(Environments.Environment.t(), [{String.t(), String.t()}]) ::
+  @spec env(Environments.Environment.t(), [{String.t(), String.t()}], String.t() | nil) ::
           [{String.t(), String.t()}]
-  def env(environment, build_env \\ [])
+  def env(environment, build_env \\ [], source \\ nil)
 
-  def env(%{cwd: cwd} = environment, build_env) when is_binary(cwd) do
-    partition = partition_for(cwd)
+  def env(%{cwd: cwd} = environment, build_env, source) when is_binary(cwd) do
+    partition = partition_for(cwd, source)
 
     case ensure_once(environment, partition, build_env) do
       :ok ->
@@ -93,7 +93,7 @@ defmodule CmsHarness.TestDatabase do
     end
   end
 
-  def env(_environment, _build_env), do: []
+  def env(_environment, _build_env, _source), do: []
 
   @doc """
   Empty the analyzer's tables before a suite runs.
@@ -248,6 +248,31 @@ defmodule CmsHarness.TestDatabase do
 
     "h#{digest}"
   end
+
+  @doc """
+  The partition name for a working copy and one analyzer source.
+
+  spex gets its own; everything else keeps the shared one.
+
+  `Analysis` enqueues compiler, exunit and spex together, so exunit and spex
+  suites run at the same time — and they ran against one database. Symptom
+  (`bcad622d`): a sweep truncates before exunit and rows appear *during* it. 13
+  committed `requirements` rows against an empty `projects` table, orphans of a
+  project that no longer exists, and 17 failures in a file whose suite had
+  passed 3,936/0 two minutes earlier. Failures that name files the session
+  never touched and read exactly like real ones.
+
+  Only spex moves. Giving exunit a new name would orphan the database it has
+  and force a fresh `ecto.create` + `ecto.migrate`, measured at 37.6s; spex
+  pays that once and nothing else pays it at all.
+
+  The suffix rather than a separate digest so the two stay visibly related —
+  `h1a2b3c4d` and `h1a2b3c4ds` are recognisably one working copy when you are
+  looking at a list of databases wondering which to drop.
+  """
+  @spec partition_for(String.t(), String.t() | nil) :: String.t()
+  def partition_for(cwd, "spex"), do: partition_for(cwd) <> "s"
+  def partition_for(cwd, _source), do: partition_for(cwd)
 
   # Once per partition per *migration set*, because it is not cheap: measured at
   # 37.6s on this repo, and it was on the path of every exunit sweep.

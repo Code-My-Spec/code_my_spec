@@ -50,22 +50,34 @@ defmodule CmsHarness.AnalyzerEnv do
   @build_subdir "_build/analyzer"
 
   @doc """
-  Extra environment for an analyzer command in `environment`.
+  Extra environment for `source`'s analyzer command in `environment`.
 
-  Every source gets the same value — compiler, credo, exunit and spex — because
-  isolating some of them would mean the analyzer compiled into one tree and
-  tested from another, which is slower than sharing and no safer.
+  Every source shares one **build tree**, because compiling into one tree and
+  testing from another is slower than sharing and no safer. That was the whole
+  of the original reasoning, and it applied to `MIX_BUILD_PATH`.
+
+  It does not apply to the **database**, which was sharing a value only by
+  being returned alongside it. `Analysis` enqueues compiler, exunit and spex
+  together, so two suites run against one database at the same time —
+  `bcad622d` measured the result: 13 committed `requirements` rows against an
+  empty `projects` table, and 17 failures in a file that had passed 3,936/0 two
+  minutes earlier, naming files the session never touched.
+
+  So spex gets its own partition and everything else keeps the shared one. See
+  `TestDatabase.partition_for/2` for why only spex moves.
   """
-  @spec extra_env(Environment.t()) :: [{String.t(), String.t()}]
-  def extra_env(%{cwd: cwd} = environment) when is_binary(cwd) do
+  @spec extra_env(Environment.t(), String.t() | nil) :: [{String.t(), String.t()}]
+  def extra_env(environment, source \\ nil)
+
+  def extra_env(%{cwd: cwd} = environment, source) when is_binary(cwd) do
     # Passed on as well as returned: TestDatabase shells out to `mix` itself to
     # create and migrate, and those took the default build path — the agent's.
     build_env = [{"MIX_BUILD_PATH", build_path(cwd)}]
 
-    build_env ++ TestDatabase.env(environment, build_env)
+    build_env ++ TestDatabase.env(environment, build_env, source)
   end
 
-  def extra_env(environment), do: TestDatabase.env(environment)
+  def extra_env(environment, source), do: TestDatabase.env(environment, [], source)
 
   @doc "Where the analyzer builds, for a working copy at `cwd`."
   @spec build_path(String.t()) :: String.t()
