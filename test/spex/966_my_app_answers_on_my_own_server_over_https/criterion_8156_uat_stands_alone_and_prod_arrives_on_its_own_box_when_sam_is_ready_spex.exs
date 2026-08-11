@@ -152,20 +152,26 @@ defmodule CodeMySpecSpex.Story966.Criterion8156Spex do
         name = s |> Floki.attribute("data-step") |> List.first()
         state = s |> Floki.attribute("data-state") |> List.first()
 
-        if state in ["errored", "paused"] do
-          # Wide enough to carry a cassette miss, which is the failure this
-          # criterion actually produces. At 160 it cut off inside the cassette's
-          # own filename — so the diagnostic named neither which request missed
-          # nor which cassette, which is the entire question.
-          detail = s |> Floki.text() |> String.replace(~r/\s+/, " ") |> String.slice(0, 900)
-          "#{name}=#{state} (#{detail})"
-        else
-          "#{name}=#{state}"
-        end
+        step_line(name, state, s)
       end)
 
     "environments: #{environments}. steps: #{steps}"
   end
+
+  # Only a failed step carries a reason worth printing, and a healthy one's text
+  # is the whole rendered card — which would bury the failures this exists to
+  # surface.
+  #
+  # 900 characters, not 160. At 160 it cut off inside the cassette's own
+  # filename, so the diagnostic named neither the request that missed nor the
+  # cassette it missed in — which is the entire question. Reading the
+  # untruncated message is what identified the SSH key mismatch.
+  defp step_line(name, state, element) when state in ["errored", "paused"] do
+    detail = element |> Floki.text() |> String.replace(~r/\s+/, " ") |> String.slice(0, 900)
+    "#{name}=#{state} (#{detail})"
+  end
+
+  defp step_line(name, state, _element), do: "#{name}=#{state}"
 
   defp servers_by_environment(html) do
     html
@@ -175,10 +181,17 @@ defmodule CodeMySpecSpex.Story966.Criterion8156Spex do
       env = el |> Floki.attribute("data-environment") |> List.first()
       server = el |> Floki.attribute("data-server") |> List.first()
 
-      case {env, server} do
-        {e, s} when is_binary(e) and is_binary(s) and s != "" -> Map.put(acc, e, s)
-        _ -> acc
-      end
+      put_server(acc, env, server)
     end)
   end
+
+  # An environment row renders whether or not a server was provisioned, so the
+  # attribute is present and empty for one that was not. Treating that as a
+  # server is what would let "prod exists" pass on a row that only proves prod
+  # was listed — which is exactly what this criterion refutes.
+  defp put_server(acc, env, server)
+       when is_binary(env) and is_binary(server) and server != "",
+       do: Map.put(acc, env, server)
+
+  defp put_server(acc, _env, _server), do: acc
 end
