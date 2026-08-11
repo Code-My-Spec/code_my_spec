@@ -43,7 +43,9 @@ defmodule CodeMySpec.Workspaces.PreviewAddress do
       {:ok, host}
     else
       {:error, reason} ->
-        Logger.warning("[PreviewAddress] #{host} could not be pointed anywhere: #{inspect(reason)}")
+        Logger.warning(
+          "[PreviewAddress] #{host} could not be pointed anywhere: #{inspect(reason)}"
+        )
 
         {:error, reason}
     end
@@ -80,6 +82,17 @@ defmodule CodeMySpec.Workspaces.PreviewAddress do
   """
   @spec url(String.t()) :: String.t()
   def url(project_id), do: scheme() <> "://" <> host(project_id) <> port_suffix()
+
+  @doc """
+  The CSP source expression covering every preview address.
+
+  Our own pages have to be allowed to *frame* a preview, and `'self'` does not
+  cover it — a different host is a different origin however closely related.
+  Derived from the same configuration the addresses are minted from, so the
+  two cannot drift apart and leave a policy that silently blocks the pane.
+  """
+  @spec csp_origin() :: String.t()
+  def csp_origin, do: scheme() <> "://*." <> base_domain() <> port_suffix()
 
   defp scheme, do: config()[:scheme] || "https"
 
