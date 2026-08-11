@@ -59,4 +59,16 @@ defmodule CodeMySpec.McpServers.IssuesStoreNoteTest do
            "the warning belongs on the local store, where filings really are invisible " <>
              "to the server"
   end
+
+  test "the server's note warns about the other store too" do
+    # Only the local branch warned. An agent reading the server's store saw
+    # "Store: the CodeMySpec server." and nothing suggesting a second one
+    # exists — which is the silent case the note is for, and the side the
+    # report that prompted it was written from.
+    output = listing()
+
+    assert output =~ "harness swap changes which store answers",
+           "the hazard is symmetric; naming the store without naming the risk " <>
+             "tells a reader where they are and not what they might be missing"
+  end
 end
