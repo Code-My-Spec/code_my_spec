@@ -149,6 +149,15 @@ defmodule CodeMySpecSpex.Fixtures do
   # This is the bucket a recording session writes to there.
   @content_bucket "cms-spex-content"
 
+  # The bucket lives on Hetzner, so the publish has to be told to sign against
+  # Hetzner. Without an endpoint ExAws defaults to Amazon, and a recording of a
+  # publish captured `NoSuchBucket` from a provider that had never heard of the
+  # bucket — a 404 written into a cassette as the story's expected behaviour.
+  #
+  # Same host `record_content_bucket/2` reports the bucket at, so the thing
+  # that makes it and the thing that writes to it cannot disagree.
+  @content_endpoint "fsn1.your-objectstorage.com"
+
   @spec publishable_project(map(), map(), map()) :: map()
   def publishable_project(scope, project, attrs \\ %{}) do
     {:ok, project} =
@@ -156,11 +165,15 @@ defmodule CodeMySpecSpex.Fixtures do
         scope,
         project,
         Map.merge(
-          %{
-            content_bucket: @content_bucket,
-            client_api_url: "https://#{project.domain || "example.com"}/api",
-            deploy_key: "dk_spex_#{System.unique_integer([:positive])}"
-          },
+          Map.merge(
+            %{
+              content_bucket: @content_bucket,
+              s3_endpoint: @content_endpoint,
+              client_api_url: "https://#{project.domain || "example.com"}/api",
+              deploy_key: "dk_spex_#{System.unique_integer([:positive])}"
+            },
+            content_s3_credentials()
+          ),
           attrs
         )
       )
@@ -168,6 +181,27 @@ defmodule CodeMySpecSpex.Fixtures do
     record_content_bucket(scope, project)
 
     project
+  end
+
+  # The keys the publish signs with, on the project itself.
+  #
+  # `ContentPublishing` reads the project's own columns — a published install
+  # signs uploads without a global `:ex_aws` env — while `Storage.credentials/2`
+  # reads project *secrets*. Seeding only the secrets left the bucket created on
+  # Hetzner and the publish signed with nothing, which Hetzner answers
+  # `InvalidAccessKeyId`. Both halves have to point at the same account.
+  #
+  # Real values when recording, placeholders otherwise: on replay the cassette
+  # answers and the credential never leaves the VM, and a recording made with a
+  # placeholder is a cassette full of 403s that replays perfectly and proves
+  # nothing.
+  defp content_s3_credentials do
+    %{
+      aws_access_key_id: System.get_env("HETZNER_S3_ACCESS_KEY_ID", "spex-placeholder-id"),
+      aws_secret_access_key:
+        System.get_env("HETZNER_S3_SECRET_ACCESS_KEY", "spex-placeholder-secret"),
+      aws_region: "fsn1"
+    }
   end
 
   # The bucket this names does not exist yet — the first publish creates it —
