@@ -47,6 +47,28 @@ defmodule CodeMySpecLocalWeb.Hooks.StopControllerTest do
     %{scope: %{full_scope_fixture() | cwd: tmp}}
   end
 
+  # `998f4d93` reports the comparison below failing about 1 run in 10, and
+  # diagnoses it as a confound: the two calls are sequential, analysis is
+  # asynchronous, and a run landing between them makes the second decide with
+  # problems the first did not have.
+  #
+  # It does not reproduce. 61 consecutive runs of the issue's own command —
+  # `--repeat-until-failure 30 --seed 7`, twice — zero failures.
+  #
+  # The mechanism that would explain both the report and the silence is
+  # `analysis_mode: :inline`, which `config/test.exs` has set since 469530bb
+  # (2026-07-09, before the report). Inline runs execute in the calling process,
+  # so each `post_stop` finishes its analysis before returning and there is no
+  # window between the calls to lose. Whatever the reporter hit, it was not
+  # simply "async run lands mid-test" in this configuration.
+  #
+  # The confound is still real as *design* — the variable this claims to isolate
+  # does sit on top of call order — so if it returns, fix the shape rather than
+  # re-diagnosing it. What the report also noticed and is worth more attention:
+  # the 28 problems it saw were the real project's compiler warnings, absolute
+  # paths under the worktree, against a fixture whose cwd is a temp dir. A
+  # correctly isolated test cannot see those at all, and that part has no
+  # explanation yet.
   describe "payloads that name no resolvable session" do
     for {label, params} <- @degenerate do
       test "#{label} decides the same as a resolvable session", %{scope: scope} do
