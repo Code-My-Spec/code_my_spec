@@ -16,6 +16,98 @@ ExUnit.start(
   ]
 )
 
+# Refuse to run against a schema this working copy has outgrown.
+#
+# Nothing advances a worktree's test database, so every rebase that brings a
+# migration leaves it behind — and the failure wears the costume of broken code.
+# Measured twice on one worktree immediately after `git rebase origin/main`: 374
+# failures, then 166, spread across contexts the agent had never touched, with
+# nothing naming a migration. Both times `MIX_ENV=test mix ecto.migrate` took it
+# straight to 0. (f58acb37)
+#
+# An agent that has just rebased and sees 374 failures has no reason to suspect
+# migrations; the rational move is to bisect its own changes, which is exactly
+# wrong and expensive.
+#
+# A refusal rather than a `test` alias that migrates: measured, the alias costs
+# ~14s on *every* `mix test` invocation, and it is pure waste for the analyzer,
+# whose partition `CmsHarness.TestDatabase` already keeps current by keying its
+# migrate on the migration filename set. This is one query, and it only ever
+# speaks when something is actually wrong.
+#
+# Before `Sandbox.mode(:manual)`, which is load-bearing: under manual mode a
+# process that has not checked out ownership cannot query at all.
+#
+# Built from two functions that return tuples — `File.ls/1` and
+# `Ecto.Adapters.SQL.query/3` — rather than `Ecto.Migrator.migrations/1`, which
+# raises. There is no rescue here on purpose: a first version wrapped the
+# migrator in `try/rescue` with a bare `_ -> :ok`, which swallowed the ownership
+# error, answered nothing, and read as a clean database. A check that fails
+# silently is worse than no check, and this file is full of comments about
+# exactly that shape.
+#
+# Cannot-answer is reported, not treated as clean.
+migration_versions = fn files ->
+  files
+  |> Enum.filter(&String.ends_with?(&1, ".exs"))
+  |> Enum.flat_map(fn file ->
+    case Integer.parse(file) do
+      {version, "_" <> rest} -> [{version, Path.rootname(rest)}]
+      _ -> []
+    end
+  end)
+end
+
+pending_migrations =
+  case File.ls(Path.join(["priv", "repo", "migrations"])) do
+    {:ok, files} ->
+      case Ecto.Adapters.SQL.query(CodeMySpec.Repo, "SELECT version FROM schema_migrations", []) do
+        {:ok, %{rows: rows}} ->
+          applied = MapSet.new(rows, fn [version] -> version end)
+
+          {:ok,
+           files
+           |> migration_versions.()
+           |> Enum.reject(fn {version, _name} -> MapSet.member?(applied, version) end)
+           |> Enum.sort()}
+
+        {:error, reason} ->
+          {:error, reason}
+      end
+
+    {:error, reason} ->
+      {:error, reason}
+  end
+
+case pending_migrations do
+  {:ok, []} ->
+    :ok
+
+  {:ok, pending} ->
+    names = pending |> Enum.take(3) |> Enum.map_join(", ", fn {v, n} -> "#{v}_#{n}" end)
+    more = if length(pending) > 3, do: ", and #{length(pending) - 3} more", else: ""
+
+    raise """
+    This working copy's test database is #{length(pending)} migration(s) behind.
+
+    Pending: #{names}#{more}
+
+    Run `MIX_ENV=test mix ecto.migrate` and try again.
+
+    Refusing rather than running: the suite would fail in bulk, across contexts
+    you have not touched, with nothing naming a migration — which reads as
+    broken code and costs a bisect of the wrong thing.
+    """
+
+  {:error, reason} ->
+    IO.puts(
+      :stderr,
+      "[test_helper] could not check for pending migrations (#{inspect(reason)}); " <>
+        "proceeding. If the suite fails in bulk across untouched contexts, try " <>
+        "`MIX_ENV=test mix ecto.migrate` first."
+    )
+end
+
 Ecto.Adapters.SQL.Sandbox.mode(CodeMySpec.Repo, :manual)
 
 # The light harness tree. Its tests drive real processes — a watcher on a real
