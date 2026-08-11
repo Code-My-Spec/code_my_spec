@@ -74,6 +74,14 @@ defmodule CodeMySpecSpex.Story969.Criterion8029Spex do
             Process.put(:spex_view, view)
 
             view |> element("[data-test='dns-refresh']") |> render_click()
+
+            # The page *after* the run, not what the click handed back. A step
+            # announces itself with `{:provisioning, :step, …}`, and the
+            # sections this criterion reads are assigned when that arrives —
+            # which is after the event `render_click/1` returns from. Its
+            # return value therefore shows the page before anything was
+            # recorded, and an empty section reads as "nothing happened".
+            render(view)
           end)
 
         view = Process.get(:spex_view)

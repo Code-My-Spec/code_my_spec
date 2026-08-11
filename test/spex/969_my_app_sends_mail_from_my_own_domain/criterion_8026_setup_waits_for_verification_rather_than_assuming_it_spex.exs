@@ -51,6 +51,14 @@ defmodule CodeMySpecSpex.Story969.Criterion8026Spex do
             context.view
             |> element("[data-test='setup-step'][data-step='email'] [data-test='run-step']")
             |> render_click()
+
+            # The page *after* the run, not what the click handed back. A step
+            # announces itself with `{:provisioning, :step, …}`, and the
+            # sections this criterion reads are assigned when that arrives —
+            # which is after the event `render_click/1` returns from. Its
+            # return value therefore shows the page before anything was
+            # recorded, and an empty section reads as "nothing happened".
+            render(context.view)
           end)
 
         {:ok, Map.put(context, :html, html)}

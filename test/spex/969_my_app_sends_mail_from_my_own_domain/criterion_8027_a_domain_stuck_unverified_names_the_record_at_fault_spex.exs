@@ -46,17 +46,25 @@ defmodule CodeMySpecSpex.Story969.Criterion8027Spex do
       end
 
       when_ "setup gives up waiting", context do
+        # First-match rather than sequential. The premise here is a domain
+        # that never verifies, so every poll legitimately returns the same
+        # unverified answer — there is no sequence to preserve. Sequential
+        # matching only made the cassette exhaustible, so the page reloading
+        # once more on replay than it did while recording failed the run for
+        # a reason unrelated to the claim.
         html =
-          # First-match rather than sequential. The premise here is a domain
-          # that never verifies, so every poll legitimately returns the same
-          # unverified answer — there is no sequence to preserve. Sequential
-          # matching only made the cassette exhaustible, so the page reloading
-          # once more on replay than it did while recording failed the run for
-          # a reason unrelated to the claim.
           with_provider_cassette(@cassette, [sequential: false], fn ->
             context.view
             |> element("[data-test='setup-step'][data-step='email'] [data-test='run-step']")
             |> render_click()
+
+            # The page *after* the run, not what the click handed back. A step
+            # announces itself with `{:provisioning, :step, …}`, and the
+            # sections this criterion reads are assigned when that arrives —
+            # which is after the event `render_click/1` returns from. Its
+            # return value therefore shows the page before anything was
+            # recorded, and an empty section reads as "nothing happened".
+            render(context.view)
           end)
 
         {:ok, Map.put(context, :html, html)}

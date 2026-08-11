@@ -46,18 +46,24 @@ defmodule CodeMySpecSpex.Story969.Criterion8024Spex do
             context.view
             |> element("[data-test='setup-step'][data-step='email'] [data-test='run-step']")
             |> render_click()
+
+            # The page *after* the run, not what the click handed back. The
+            # mail section is assigned when the step announces itself
+            # (`handle_info({:provisioning, :step, …})` refreshes it), which
+            # happens after the event that `render_click/1` returns from — so
+            # its return value shows the page before the domain existed, and
+            # the criterion read an empty section as "nothing was registered".
+            render(context.view)
           end)
 
         {:ok, Map.put(context, :html, html)}
       end
 
       then_ "the domain is registered with the mail provider for sending", context do
-
         domain =
           context.html
           |> Floki.parse_document!()
           |> Floki.find("[data-test='mail-sending-domain']")
-
 
         # Anchor: a sending domain was recorded at all.
         assert domain != [], "expected the email step to record the sending domain it registered"
