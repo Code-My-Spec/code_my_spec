@@ -2059,6 +2059,11 @@ defmodule CodeMySpecSpex.Fixtures do
     EnvironmentRepository.names(scope)
   end
 
+  # The throwaway organisation spex repositories belong in — never a personal
+  # account. Two call sites defaulted to `"johns10"`, which is how a teardown
+  # came to report success for repositories it had aimed at the wrong owner.
+  @spex_owner "codemy-my-spec-test"
+
   @doc "The repository name setup would use for this project."
   def repository_name(project), do: Repository.default_name(project)
 
@@ -2073,47 +2078,6 @@ defmodule CodeMySpecSpex.Fixtures do
   `commits: true` gives it an initial commit, which is what makes a fresh
   history unable to fast-forward onto it.
   """
-  # `envs/.env` holds these, and Dotenvy loads that file into *config* rather
-  # than into the process environment — so `System.get_env/1` answers nil for a
-  # value that is plainly sitting in the file, unless somebody exported it by
-  # hand first. Three of story 985's criteria failed on exactly that, reporting
-  # a missing token that was never missing.
-  #
-  # Read the environment first, so an operator who did export something wins,
-  # and fall back to the file the value actually lives in. Parsing it here is
-  # what Dotenvy does for the application; the alternative is a suite that only
-  # runs for whoever remembered the incantation.
-  defp spex_env(name) do
-    case System.get_env(name) do
-      value when is_binary(value) and value != "" -> value
-      _ -> dotenv_value(name)
-    end
-  end
-
-  # The environment's own file first, then the shared one — the order Dotenvy
-  # layers them in, so a value set for test wins over the same name set for
-  # everything.
-  defp dotenv_value(name) do
-    ["envs/#{Mix.env()}.env", "envs/.env"]
-    |> Enum.find_value(fn file ->
-      case File.read(Path.expand(file, File.cwd!())) do
-        {:ok, contents} -> find_dotenv_value(contents, name)
-        _ -> nil
-      end
-    end)
-  end
-
-  defp find_dotenv_value(contents, name) do
-    contents
-    |> String.split("\n")
-    |> Enum.find_value(fn line ->
-      case String.split(String.trim(line), "=", parts: 2) do
-        [^name, value] -> value |> String.trim() |> String.trim(~s("))
-        _ -> nil
-      end
-    end)
-  end
-
   @spec create_spex_repository(String.t(), keyword()) :: :ok | {:error, term()}
   def create_spex_repository(name, opts \\ []) do
     with token when is_binary(token) <- spex_env("GITHUB_SPEX_ADMIN_TOKEN"),
@@ -2167,6 +2131,7 @@ defmodule CodeMySpecSpex.Fixtures do
   normally — it just leaves the repository behind, which is the situation we
   are already in.
   """
+
   @spec delete_spex_repository(String.t()) :: :ok | {:error, term()}
   def delete_spex_repository(name) do
     case spex_env("GITHUB_SPEX_ADMIN_TOKEN") do
@@ -2186,7 +2151,19 @@ defmodule CodeMySpecSpex.Fixtures do
   defp delete_generated_repository(false, name, _token), do: {:error, {:refused, name}}
 
   defp delete_generated_repository(true, name, token) do
-    owner = System.get_env("GITHUB_SPEX_OWNER", "johns10")
+    # Through `spex_env/1`, and never defaulting to a personal account.
+    #
+    # This read `System.get_env("GITHUB_SPEX_OWNER", "johns10")`. The variable
+    # lives in envs/.env, which Dotenvy loads into config and not into the
+    # process environment, so the default won — and the teardown deleted from a
+    # personal account that has never held these repositories. GitHub answered
+    # 404, which this treats as "already gone", and it reported `:ok` for three
+    # repositories it had not touched.
+    #
+    # 404-is-ok stays: a teardown that has already run must be able to run
+    # again. What was wrong is being aimed somewhere nothing could ever exist,
+    # where "not found" and "cleaned up" are indistinguishable.
+    owner = spex_env("GITHUB_SPEX_OWNER") || @spex_owner
 
     "https://api.github.com/repos/#{owner}/#{name}"
     |> Req.delete(
@@ -2213,7 +2190,7 @@ defmodule CodeMySpecSpex.Fixtures do
   """
   def own_repository(project) do
     name = Repository.default_name(project)
-    owner = System.get_env("GITHUB_SPEX_OWNER", "johns10")
+    owner = spex_env("GITHUB_SPEX_OWNER") || @spex_owner
     set_code_repo(project, "https://github.com/#{owner}/#{name}")
   end
 
@@ -2586,5 +2563,46 @@ defmodule CodeMySpecSpex.Fixtures do
         raise "no project named #{inspect(project_name)} on this account"
 
     enable_devops(%Scope{scope | active_project: project, active_project_id: project.id})
+  end
+
+  # `envs/.env` holds these, and Dotenvy loads that file into *config* rather
+  # than into the process environment — so `System.get_env/1` answers nil for a
+  # value that is plainly sitting in the file, unless somebody exported it by
+  # hand first. Three of story 985's criteria failed on exactly that, reporting
+  # a missing token that was never missing.
+  #
+  # Read the environment first, so an operator who did export something wins,
+  # and fall back to the file the value actually lives in. Parsing it here is
+  # what Dotenvy does for the application; the alternative is a suite that only
+  # runs for whoever remembered the incantation.
+  defp spex_env(name) do
+    case System.get_env(name) do
+      value when is_binary(value) and value != "" -> value
+      _ -> dotenv_value(name)
+    end
+  end
+
+  # The environment's own file first, then the shared one — the order Dotenvy
+  # layers them in, so a value set for test wins over the same name set for
+  # everything.
+  defp dotenv_value(name) do
+    ["envs/#{Mix.env()}.env", "envs/.env"]
+    |> Enum.find_value(fn file ->
+      case File.read(Path.expand(file, File.cwd!())) do
+        {:ok, contents} -> find_dotenv_value(contents, name)
+        _ -> nil
+      end
+    end)
+  end
+
+  defp find_dotenv_value(contents, name) do
+    contents
+    |> String.split("\n")
+    |> Enum.find_value(fn line ->
+      case String.split(String.trim(line), "=", parts: 2) do
+        [^name, value] -> value |> String.trim() |> String.trim(~s("))
+        _ -> nil
+      end
+    end)
   end
 end
