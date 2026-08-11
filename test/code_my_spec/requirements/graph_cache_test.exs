@@ -217,6 +217,67 @@ defmodule CodeMySpec.Requirements.GraphCacheTest do
                "serves the graph from before the deploy"
     end
 
+    # `stories_exist` asks `StoriesChecker`, which calls
+    # `Stories.project_has_stories?/1` — every story in the project. The
+    # fingerprint hashes `ctx.stories`, which the preloader filters to
+    # `ready_for_dev == true`, because only released stories project into the
+    # graph. So a project whose only story is parked reads as having none, and
+    # creating one does not move the hash.
+    #
+    # Same shape as the deploy gap one test up, and the reason both existed: the
+    # fingerprint hashes what the graph is computed *from*, and a delegate is
+    # free to read something the graph is not computed from.
+    #
+    # Onboarding is exactly when this bites — a first story is created before
+    # anyone marks it ready, and the graph is what the agent is following.
+    test "a story that is not ready for dev still moves it", %{scope: scope, before: before} do
+      {:ok, _story} =
+        CodeMySpec.Stories.create_story(scope, %{
+          title: "parked",
+          description: "not released for development",
+          ready_for_dev: false
+        })
+
+      refute current_fingerprint(scope) == before,
+             "`stories_exist` counts every story; a fingerprint that only sees " <>
+               "ready ones serves a graph saying the project has none"
+    end
+
+    # `architecture_designed` asks `ArchitectureChecker`, whose `orphans/1` reads
+    # `Components.list_components_with_dependencies/1` — a component is not an
+    # orphan if something depends on it, and no table carries that: it is the
+    # `:dependencies` association preloaded onto each component.
+    #
+    # It is covered, and by a narrower rule than the comment on `struct_digest/1`
+    # reads at a glance. "Associations are dropped" means *not-loaded* ones;
+    # loaded ones are summarized by `assoc_id/1`, so a preloaded dependency list
+    # is hashed as a list of ids and gains one when an edge is added.
+    #
+    # Pinned because that is a fine distinction holding up a whole requirement.
+    # A change to `struct_digest/1` that dropped loaded associations too — which
+    # its own comment could be read as licence for — would silently stop the
+    # architecture check being covered, and nothing else would notice.
+    test "a dependency between components moves it", %{scope: scope} do
+      source = CodeMySpec.ComponentsFixtures.component_fixture(scope)
+      target = CodeMySpec.ComponentsFixtures.component_fixture(scope)
+
+      # After the components exist, not before. Taking the baseline from `setup`
+      # would let the two `component_fixture` calls move the hash and the test
+      # would pass without the edge ever being hashed — which is what the first
+      # version of it did.
+      before = current_fingerprint(scope)
+
+      {:ok, _} =
+        CodeMySpec.Components.create_dependency(scope, %{
+          source_component_id: source.id,
+          target_component_id: target.id
+        })
+
+      refute current_fingerprint(scope) == before,
+             "an edge decides whether a component is an orphan, which decides " <>
+               "whether the architecture is designed"
+    end
+
     # The input that is not data. Everything else in the fingerprint is what the
     # graph is computed *from*; nothing described how it is computed, so the same
     # inputs under changed code produced the same hash and a payload written by

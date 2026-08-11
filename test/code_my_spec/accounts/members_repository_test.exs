@@ -368,8 +368,11 @@ defmodule CodeMySpec.Accounts.MembersRepositoryTest do
       account = account_fixture()
       member_fixture(user, account)
 
+      # The row this test made, not the first one back: a member that escaped
+      # the sandbox and committed is permanent in a reused test database, and
+      # `hd()` answers about it without saying so. This database holds one.
       query = MembersRepository.with_user_preloads()
-      member = Repo.all(query) |> hd()
+      member = query |> Repo.all() |> Enum.find(&(&1.user_id == user.id))
 
       assert member.user.id == user.id
       assert member.user.email == user.email
@@ -381,7 +384,7 @@ defmodule CodeMySpec.Accounts.MembersRepositoryTest do
       member_fixture(user, account)
 
       query = MembersRepository.with_account_preloads()
-      member = Repo.all(query) |> hd()
+      member = query |> Repo.all() |> Enum.find(&(&1.account_id == account.id))
 
       assert member.account.id == account.id
       assert member.account.name == account.name

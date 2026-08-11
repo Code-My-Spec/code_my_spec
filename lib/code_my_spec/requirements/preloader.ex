@@ -222,7 +222,15 @@ defmodule CodeMySpec.Requirements.Preloader do
   # Loading a collection is not covering it. The other five were found by asking
   # what the checkers read; this one hid because the preloader's answer looked
   # like coverage.
-  @delegated_tables ~w(bdd_rules criteria questions personas issues deploys)
+  # `stories` is the seventh, and it is here for a reason worth stating: the
+  # context already carries stories, and that is not the same set. `ctx.stories`
+  # is filtered to `ready_for_dev == true` — only released stories project into
+  # the graph — while `StoriesChecker` asks `Stories.project_has_stories?/1`,
+  # which counts every one. A project whose only story is parked therefore read
+  # as having none, and creating one did not move the hash. Onboarding is
+  # exactly when that bites: the first story exists before anyone marks it
+  # ready, and the graph is what the agent is following.
+  @delegated_tables ~w(bdd_rules criteria questions personas issues deploys stories)
 
   # The four collections `BddRulesChecker` reads, batched.
   #
