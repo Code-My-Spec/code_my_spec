@@ -6,6 +6,8 @@ defmodule CmsHarness.Web.HooksControllerTest do
 
   use CmsHarnessTest.ConnCase, async: false
 
+  alias CmsHarness.Project.ChannelClient
+  alias CmsHarness.Projects
   alias CmsHarnessTest.FakeServer
 
   setup do
@@ -131,7 +133,7 @@ defmodule CmsHarness.Web.HooksControllerTest do
     end
 
     test "means nothing to say, not something unreadable", %{conn: conn, project: project} do
-      {:ok, _} = CmsHarness.Projects.ensure_started(project.root)
+      {:ok, _} = Projects.ensure_started(project.root)
       assert await_connected(project.root)
 
       body = conn |> post_hook("stop", project.root) |> json_response(200)
@@ -144,7 +146,7 @@ defmodule CmsHarness.Web.HooksControllerTest do
     end
 
     test "post-tool-use is not refused on every tool call", %{conn: conn, project: project} do
-      {:ok, _} = CmsHarness.Projects.ensure_started(project.root)
+      {:ok, _} = Projects.ensure_started(project.root)
       assert await_connected(project.root)
 
       body = conn |> post_hook("post-tool-use", project.root) |> json_response(200)
@@ -156,7 +158,7 @@ defmodule CmsHarness.Web.HooksControllerTest do
 
   defp await_connected(root, attempts \\ 100) do
     Enum.reduce_while(1..attempts, false, fn _, _ ->
-      halt_when_connected(CmsHarness.Project.ChannelClient.connected?(root))
+      halt_when_connected(ChannelClient.connected?(root))
     end)
   end
 
@@ -175,7 +177,7 @@ defmodule CmsHarness.Web.HooksControllerTest do
       conn: conn,
       project: project
     } do
-      assert project.root in CmsHarness.Projects.list()
+      assert project.root in Projects.list()
 
       body = conn |> post_hook("stop", project.root) |> json_response(200)
 
