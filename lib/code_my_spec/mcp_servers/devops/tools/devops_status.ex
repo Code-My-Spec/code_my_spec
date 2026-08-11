@@ -42,7 +42,7 @@ defmodule CodeMySpec.McpServers.Devops.Tools.DevopsStatus do
 
     [
       headline(report, missing),
-      section("Missing", missing, &"#{&1.project_name}/#{&1.key}"),
+      section("Missing", missing, &missing_line/1),
       section("Dangling", dangling, &"#{&1.kind} #{&1.location}"),
       unreachable(report.errors)
     ]
@@ -51,12 +51,29 @@ defmodule CodeMySpec.McpServers.Devops.Tools.DevopsStatus do
   end
 
   defp headline(%{errors: errors}, _missing) when errors != %{},
-    do: "Cannot say. One or more providers could not be read, so the answer is unknown rather than no."
+    do:
+      "Cannot say. One or more providers could not be read, so the answer is unknown rather than no."
 
   defp headline(_report, []), do: "Setup is complete: every step's resources are present."
 
   defp headline(_report, missing),
     do: "Setup is not complete: #{length(missing)} step(s) have nothing behind them."
+
+  # The reason, when the step recorded one.
+  #
+  # The checklist has carried `detail` all along and this printed only the key,
+  # so an agent asking what was missing got a list of names and no cause — and
+  # then had to reproduce the run to learn what any of them said. One step
+  # failing for a reason nobody could see cost three separate theories about
+  # story 841 (provider capacity, an inventory bug, a placement fallback) before
+  # anyone read the error the step had already stored.
+  #
+  # Truncated because a provider error can be a page of JSON, and the point here
+  # is which step and why, not the whole body.
+  defp missing_line(%{detail: detail} = entry) when is_binary(detail) and detail != "",
+    do: "#{entry.project_name}/#{entry.key} — #{String.slice(detail, 0, 300)}"
+
+  defp missing_line(entry), do: "#{entry.project_name}/#{entry.key}"
 
   defp section(_label, [], _fmt), do: ""
 
