@@ -18,6 +18,7 @@ defmodule CodeMySpecWeb.PreviewLive.Show do
 
   import CodeMySpecWeb.PreviewComponents
 
+  alias CodeMySpec.Events
   alias CodeMySpec.Workspaces
   alias CodeMySpec.Workspaces.PreviewAddress
 
@@ -33,12 +34,39 @@ defmodule CodeMySpecWeb.PreviewLive.Show do
      socket
      |> assign(page_title: "Your app")
      |> assign(viewport: "full")
+     |> assign(crash: nil)
      |> assign_workspace(workspace)}
   end
 
   @impl true
   def handle_event("viewport", %{"size" => size}, socket) when size in @viewports do
     {:noreply, assign(socket, :viewport, size)}
+  end
+
+  # The app announcing its bridge is alive. Worth knowing on its own: it
+  # separates "framed and quiet" from "framed and not reporting", which are the
+  # same picture and different problems.
+  def handle_event("preview_bridge", %{"type" => "ready"}, socket) do
+    {:noreply, assign(socket, :crash, nil)}
+  end
+
+  # A crash inside the app. Shown, so Sam is not staring at a frame that went
+  # blank with no explanation, and recorded, so it outlives the page — 886 asks
+  # for a failed render to become a signal the agent can act on, and a flash
+  # message that dies with the socket is not that.
+  def handle_event("preview_bridge", %{"type" => "error"} = params, socket) do
+    payload = Map.get(params, "payload", %{})
+
+    Events.record(:preview_crash, %{
+      project_id: socket.assigns.workspace && socket.assigns.workspace.project_id,
+      message: Map.get(payload, "message"),
+      source: Map.get(payload, "source"),
+      line: Map.get(payload, "line"),
+      stack: Map.get(payload, "stack")
+    })
+
+    {:noreply,
+     assign(socket, :crash, Map.get(payload, "message", "Something failed in your app."))}
   end
 
   # Transitions arrive by broadcast, so the page keeps up without Sam
@@ -82,6 +110,27 @@ defmodule CodeMySpecWeb.PreviewLive.Show do
   def render(assigns) do
     ~H"""
     <div class="mx-auto max-w-5xl p-6">
+      <script :type={Phoenix.LiveView.ColocatedHook} name=".PreviewBridge">
+        export default {
+          mounted() {
+            // Both checks matter. `source` says it is our bridge speaking;
+            // `origin` says it is *this pane's* app speaking. Any page holding
+            // a handle on this window can postMessage to it, and without the
+            // origin check a hostile frame elsewhere could report crashes into
+            // somebody else's preview.
+            this.expected = this.el.dataset.previewOrigin;
+            this.onMessage = (e) => {
+              if (!this.expected || e.origin !== this.expected) return;
+              const d = e.data;
+              if (!d || d.source !== "cms-preview") return;
+              this.pushEvent("preview_bridge", { type: d.type, payload: d.payload || {} });
+            };
+            window.addEventListener("message", this.onMessage);
+          },
+          destroyed() { window.removeEventListener("message", this.onMessage); }
+        }
+      </script>
+
       <div :if={@app_state != :absent} class="mb-4 flex gap-2" data-test="viewport-controls">
         <button
           :for={size <- viewports()}
@@ -93,6 +142,18 @@ defmodule CodeMySpecWeb.PreviewLive.Show do
         >
           {size}
         </button>
+      </div>
+
+      <div
+        :if={@src}
+        id="preview-bridge"
+        phx-hook=".PreviewBridge"
+        data-preview-origin={@src && URI.parse(@src) |> then(&"#{&1.scheme}://#{&1.authority}")}
+      >
+      </div>
+
+      <div :if={@crash} data-test="preview-crash" class="alert alert-error mb-4">
+        <span class="text-sm">Your app hit an error: {@crash}</span>
       </div>
 
       <.pane src={@src} state={@app_state} viewport={@viewport} />
