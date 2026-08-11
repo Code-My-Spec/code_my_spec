@@ -1648,6 +1648,61 @@ defmodule CodeMySpecSpex.Case do
     do: Fixtures.publishable_project(scope, project, attrs)
 
   @doc """
+  Point publishing at the fleet: MinIO for storage, the fleet site for the
+  trigger.
+
+      setup :publishing_to_the_fleet
+
+  A publish is two real things — objects written to S3, and a trigger POSTed to
+  the deployed site — and both have a local counterpart now, so neither needs
+  recording.
+
+  That matters more than the cost. These criteria's cassettes were lost to the
+  cassette-deletion bug, and re-recording them would have meant a Hetzner bucket
+  and a deployed site per run. Worse, a recorded publish cannot fail the way a
+  real one does: the assertions here are that the objects are *in the bucket*
+  and that the site *accepted the trigger*, and a cassette answers both from a
+  file no matter what the code did.
+
+  Needs the fleet up and the site running:
+
+      docker/fleet/fleet.sh up
+      scratchpad/restart_site.sh   # the generated app on :4100
+  """
+  def publishing_to_the_fleet(%{scope: scope, project: project} = context) do
+    project =
+      publishable_project(scope, project, %{
+        content_bucket: "cms-spex-content",
+        s3_endpoint: "http://127.0.0.1:9000",
+        aws_access_key_id: "cms-fleet",
+        aws_secret_access_key: "cms-fleet-secret",
+        aws_region: "us-east-1",
+        client_api_url: "http://127.0.0.1:4100",
+        deploy_key: "dk_fleet_spex"
+      })
+
+    # The publish also fetches the post back from the live site to prove it
+    # rendered — `verify_render/2` — and without a site URL it builds "/" and
+    # dies inside Finch with `scheme is required for url: /`, which names
+    # neither the site nor the step.
+    previous = Application.get_env(:code_my_spec, :provisioning_step_opts, [])
+
+    Application.put_env(
+      :code_my_spec,
+      :provisioning_step_opts,
+      Keyword.merge(previous, site_url: "http://127.0.0.1:4100")
+    )
+
+    ExUnit.Callbacks.on_exit(fn ->
+      Application.put_env(:code_my_spec, :provisioning_step_opts, previous)
+    end)
+
+    context
+    |> Map.put(:project, project)
+    |> Map.put(:scope, %{scope | active_project: project})
+  end
+
+  @doc """
   Configure the project so a publish can actually run.
 
       setup :publishing_configured

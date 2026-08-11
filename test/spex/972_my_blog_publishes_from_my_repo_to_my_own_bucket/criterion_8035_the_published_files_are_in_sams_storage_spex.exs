@@ -27,7 +27,7 @@ defmodule CodeMySpecSpex.Story972.Criterion8035Spex do
   # A publish refuses outright without content_bucket, client_api_url and
   # deploy_key — "Publishing is not configured" — so the step never reaches
   # storage and the criterion reads that as nothing having been written.
-  setup :publishing_configured
+  setup :publishing_to_the_fleet
 
   spex "The published files are in Sam's storage" do
     scenario "the published objects are recorded in Sam's own bucket" do
@@ -42,10 +42,14 @@ defmodule CodeMySpecSpex.Story972.Criterion8035Spex do
         {:ok, view, _html} =
           live(context.conn, "/app/projects/#{context.project.id}/provisioning")
 
+        # No cassette. The publish writes to MinIO and triggers the fleet site,
+        # both of which are real and local — and both are what this criterion is
+        # actually about, so replaying them would answer from a file regardless
+        # of what the code did.
         html =
-          with_provider_cassette(@cassette, fn ->
-            view |> element("[data-test='content-publish']") |> render_click()
-          end)
+          view
+          |> element("[data-test='content-publish']")
+          |> render_click()
 
         {:ok, context |> Map.put(:view, view) |> Map.put(:html, html)}
       end

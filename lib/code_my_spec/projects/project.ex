@@ -209,11 +209,37 @@ defmodule CodeMySpec.Projects.Project do
 
   # The client API URL carries the deploy key (and, through it, the target app's
   # user PII) — so it must be https, never plaintext http.
+  #
+  # Loopback excepted, and only loopback. A request to 127.0.0.1 never leaves
+  # the machine, so there is no wire for it to be plaintext on; every browser
+  # and every OAuth spec draws the same line for the same reason. It is what
+  # lets a local site — the fleet's, in the spex — be a real publish target
+  # rather than something recorded.
   defp validate_client_api_url(changeset) do
     case get_field(changeset, :client_api_url) do
       nil -> changeset
       "" -> changeset
-      _url -> validate_format(changeset, :client_api_url, ~r/^https:\/\/.+/, message: "must use https")
+      url when is_binary(url) -> validate_url_scheme(changeset, url)
+      _url -> changeset
     end
+  end
+
+  defp validate_url_scheme(changeset, url) do
+    url
+    |> loopback?()
+    |> apply_url_scheme_validation(changeset)
+  end
+
+  defp loopback?(url) do
+    case URI.parse(url) do
+      %URI{host: host} when host in ["localhost", "127.0.0.1", "::1"] -> true
+      _ -> false
+    end
+  end
+
+  defp apply_url_scheme_validation(true, changeset), do: changeset
+
+  defp apply_url_scheme_validation(false, changeset) do
+    validate_format(changeset, :client_api_url, ~r/^https:\/\/.+/, message: "must use https")
   end
 end

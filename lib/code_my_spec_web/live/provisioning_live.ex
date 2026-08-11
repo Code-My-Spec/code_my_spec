@@ -2345,8 +2345,27 @@ defmodule CodeMySpecWeb.ProvisioningLive do
     Application.get_env(:code_my_spec, :provisioning_step_opts, [])
   end
 
-  defp site_url(name) when is_binary(name) and name != "", do: "https://#{name}"
-  defp site_url(_domain), do: nil
+  # A configured site takes precedence over the one derived from the domain.
+  #
+  # Unset in production, where the project's own domain over https is the site
+  # and anything else would verify a render on a page nobody visits. It exists
+  # so a local site can be the publish target — the fleet's generated app on
+  # loopback — which is what lets "the post appears on the live site" be checked
+  # against a site that actually renders it rather than a recorded response.
+  defp site_url(name) do
+    :code_my_spec
+    |> Application.get_env(:provisioning_step_opts, [])
+    |> Keyword.get(:site_url)
+    |> site_url_or_domain(name)
+  end
+
+  defp site_url_or_domain(configured, _name) when is_binary(configured) and configured != "",
+    do: configured
+
+  defp site_url_or_domain(_configured, name) when is_binary(name) and name != "",
+    do: "https://#{name}"
+
+  defp site_url_or_domain(_configured, _name), do: nil
 
   # Split into clauses rather than one `case` of map literals. Each field was
   # read as `probe[:key] || probe["key"]`, and eight of those in one body is
