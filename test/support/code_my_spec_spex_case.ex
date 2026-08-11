@@ -1530,52 +1530,8 @@ defmodule CodeMySpecSpex.Case do
   Only while recording. On replay the cassette answers, and creating a real
   bucket per run would be pure cost for a request that never leaves the VM.
   """
-  def publishable_project(scope, project, attrs \\ %{}) do
-    project = Fixtures.publishable_project(scope, project, attrs)
-
-    ensure_content_bucket(recording?(), project.content_bucket)
-
-    project
-  end
-
-  defp ensure_content_bucket(false, _bucket), do: :ok
-
-  defp ensure_content_bucket(true, bucket) do
-    # Checked, not created. The credential in `envs/.env` is the IAM user
-    # `codemyspec-uploads`, which is scoped to uploading and is allowed
-    # neither `s3:CreateBucket` nor `s3:ListAllMyBuckets` — so nothing here
-    # can make this bucket, and a recording run against a missing one writes
-    # a cassette whose single interaction is a 404. That cassette then IS the
-    # story's expected behaviour, for every replay after it.
-    #
-    # Through the same client the publish uses: a bare `ExAws.request/1`
-    # defaults to hackney, which is not a dependency of this app and fails
-    # with `function :hackney.request/5 is undefined` — an error that says
-    # nothing about buckets.
-    probe = ExAws.S3.put_object(bucket, ".spex-probe", "")
-
-    case ExAws.request(probe, http_client: CodeMySpec.Content.ExAwsReqClient) do
-      {:ok, _} ->
-        :ok
-
-      {:error, reason} ->
-        raise """
-        cannot record a content publish: the bucket #{bucket} is not writable.
-
-          #{inspect(reason) |> String.slice(0, 200)}
-
-        Publishing signs against the global :ex_aws config, which is the AWS
-        account in envs/.env by design (story 712 — the local CLI is the
-        publisher). Recording needs a real bucket there, and the credential
-        this project carries cannot create one.
-
-        Someone with AWS admin has to create #{bucket} and grant
-        codemyspec-uploads s3:PutObject on it. Recording without that writes a
-        cassette whose only interaction is a NoSuchBucket 404, which then
-        replays forever as the story's behaviour.
-        """
-    end
-  end
+  def publishable_project(scope, project, attrs \\ %{}),
+    do: Fixtures.publishable_project(scope, project, attrs)
 
   def verified_sending_domains(scope, project, environments \\ ["prod", "uat"], opts \\ []) do
     for environment <- environments do
