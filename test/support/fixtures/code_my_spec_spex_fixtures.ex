@@ -2060,17 +2060,6 @@ defmodule CodeMySpecSpex.Fixtures do
   @doc "The repository name setup would use for this project."
   def repository_name(project), do: Repository.default_name(project)
 
-  @doc """
-  Create a repository in the spex organisation, as a precondition.
-
-  Criteria whose premise is "a repository already exists" — adopt rather than
-  duplicate, a name collision, a push that gets rejected — have to put it
-  there. They used to inherit one from a previous run, which meant they passed
-  on a dirty account and failed on a clean one: exactly backwards.
-
-  `commits: true` gives it an initial commit, which is what makes a fresh
-  history unable to fast-forward onto it.
-  """
   # `envs/.env` holds these, and Dotenvy loads that file into *config* rather
   # than into the process environment — so `System.get_env/1` answers nil for a
   # value that is plainly sitting in the file, unless somebody exported it by
@@ -2112,6 +2101,17 @@ defmodule CodeMySpecSpex.Fixtures do
     end)
   end
 
+  @doc """
+  Create a repository in the spex organisation, as a precondition.
+
+  Criteria whose premise is "a repository already exists" — adopt rather than
+  duplicate, a name collision, a push that gets rejected — have to put it
+  there. They used to inherit one from a previous run, which meant they passed
+  on a dirty account and failed on a clean one: exactly backwards.
+
+  `commits: true` gives it an initial commit, which is what makes a fresh
+  history unable to fast-forward onto it.
+  """
   @spec create_spex_repository(String.t(), keyword()) :: :ok | {:error, term()}
   def create_spex_repository(name, opts \\ []) do
     with token when is_binary(token) <- spex_env("GITHUB_SPEX_ADMIN_TOKEN"),
