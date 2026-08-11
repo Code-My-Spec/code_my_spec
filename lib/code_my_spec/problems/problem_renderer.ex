@@ -205,7 +205,8 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
       header <>
         blocking_section <>
         advisory_section <>
-        stale_footer(blocking, stale, last_ran, run_duration, flight)
+        stale_footer(blocking, stale, last_ran, run_duration, flight) <>
+        attribution_note(session_paths)
 
     enforce_total_cap(raw, blocking, advisory)
   end
@@ -542,6 +543,45 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
   end
 
   defp unedited_marker(_problem, _session_paths), do: ""
+
+  # Say when nothing could be attributed, because the two states that produce no
+  # demotion look identical from the response and lead opposite ways.
+  #
+  # `split_unattributed/2` refuses to demote on an empty or `nil` path set, and
+  # that refusal is right — "the session wrote nothing" and "attribution broke"
+  # are indistinguishable from there, and a gate that quietly stops blocking is
+  # invisible where one that blocks too much is not. But the *agent* is then
+  # handed somebody else's finding in the same voice as its own, with no marker
+  # (`unedited_marker/2` returns "" on an empty set, having nothing to compare
+  # against) and no reason to suspect it.
+  #
+  # That is what 7a0fadeb ran into: a spex warning that arrived with a rebase,
+  # where the obvious one-line repair silently retargets the wrong endpoint. The
+  # demotion in 5dd2fc02 fixes the case where the session edited *something*;
+  # this covers the case where it edited nothing, which is exactly when every
+  # finding is someone else's and the gate can prove none of it.
+  #
+  # A sentence rather than `git log -1 -- <path>` per distinct path, which the
+  # report offered as its fallback: this runs inside a hook the harness calls
+  # with `curl --max-time 30`, and shelling out per path is the kind of cost
+  # that turns a confusing gate into no gate at all.
+  defp attribution_note(%MapSet{} = session_paths) do
+    if MapSet.size(session_paths) == 0 do
+      "\n\nThis session has no recorded edits, so none of these could be checked " <>
+        "against your work and nothing was demoted. A finding naming a file you " <>
+        "have not touched most likely arrived with a rebase — check " <>
+        "`git log -1 -- <path>` before repairing it, and prefer telling its owner " <>
+        "over editing an in-flight file you do not own."
+    else
+      ""
+    end
+  end
+
+  defp attribution_note(_session_paths) do
+    "\n\nAttribution is unavailable for this session, so nothing could be demoted " <>
+      "and every finding blocks — including any that arrived with a rebase. Check " <>
+      "`git log -1 -- <path>` before repairing anything you do not recognise."
+  end
 
   defp truncate_message(message, max) when is_binary(message) do
     if byte_size(message) <= max do
