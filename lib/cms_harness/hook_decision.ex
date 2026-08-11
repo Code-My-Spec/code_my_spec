@@ -123,9 +123,22 @@ defmodule CmsHarness.HookDecision do
     |> String.trim()
   end
 
+  # "Start it" was the whole of this, and starting it is not always enough.
+  #
+  # A build that is stale against the tree takes the server down again on its
+  # first code-reload, with a message that reads as absurd on a server you have
+  # just restarted: "You must restart your server after changing configuration
+  # files". Phoenix treats a changed config as fatal to the reloader and can
+  # never pick up a dependency that was added, so the restart boots, serves one
+  # request, and dies (7e8fd1c6). Seen twice more since that report.
+  #
+  # The order matters and is the part nobody guesses: fetch and compile *before*
+  # `phx.server`, because the failure is the build rather than the boot.
   defp explain({:not_connected, {:error, reason}}, working_dir) do
     """
     The harness's channel to the CodeMySpec server is down, and the server is not answering at all: #{inspect(reason)}. Start it, or point CMS_SERVER_URL somewhere that is running.
+
+    If it has already been restarted and went down again, the build is stale against the tree rather than the boot being wrong: run `mix deps.get && mix compile` before `mix phx.server`. Phoenix cannot hot-reload a changed config or a new dependency, so a plain restart boots, serves one request, and dies on its first reload — saying you must restart a server you just restarted.
     Working directory: #{working_dir}
     """
     |> String.trim()
