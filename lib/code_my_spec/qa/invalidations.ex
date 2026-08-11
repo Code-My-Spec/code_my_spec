@@ -14,7 +14,7 @@ defmodule CodeMySpec.Qa.Invalidations do
   import Ecto.Query, only: [from: 2]
 
   alias CodeMySpec.Qa.Invalidation
-  alias CodeMySpec.Qa.QaAttempt
+  alias CodeMySpec.Qa.QaAttempts
   alias CodeMySpec.Repo
   alias CodeMySpec.Users.Scope
 
@@ -34,7 +34,7 @@ defmodule CodeMySpec.Qa.Invalidations do
   @spec invalidate(Scope.t(), Ecto.UUID.t(), String.t()) ::
           {:ok, Invalidation.t()} | {:error, Ecto.Changeset.t() | atom()}
   def invalidate(%Scope{} = scope, attempt_id, reason) do
-    with {:ok, _attempt} <- fetch_attempt(attempt_id),
+    with {:ok, _attempt} <- fetch_attempt(scope, attempt_id),
          :ok <- ensure_not_invalidated(attempt_id) do
       attrs = %{
         qa_attempt_id: attempt_id,
@@ -49,8 +49,24 @@ defmodule CodeMySpec.Qa.Invalidations do
     end
   end
 
-  defp fetch_attempt(attempt_id) do
-    case Repo.get(QaAttempt, attempt_id) do
+  # Scoped to the caller's project, which it was not.
+  #
+  # This takes a `%Scope{}` and used it only to stamp *who* invalidated —
+  # `Repo.get(QaAttempt, attempt_id)` authorised nothing, so an agent working one
+  # project could invalidate another project's QA attempt by id, and the
+  # invalidation would be recorded against them as though it were theirs. The
+  # docstring's "Pre-checks: the target attempt exists" was accurate and was the
+  # whole of it.
+  #
+  # Same shape as b3f08e21 in `InvitationRepository`: a function holding a scope
+  # and reading past it. Found by auditing for that shape rather than from a
+  # report.
+  #
+  # `QaAttempts.get_in_project/2` rather than a join here, because that module
+  # owns attempt queries and its `by_project/2` already fails closed on a scope
+  # with no active project.
+  defp fetch_attempt(scope, attempt_id) do
+    case QaAttempts.get_in_project(scope, attempt_id) do
       nil -> {:error, :attempt_not_found}
       attempt -> {:ok, attempt}
     end
