@@ -8,6 +8,22 @@
 # daemonized from a hook anyway — that's the service manager's job.)
 #
 # If the server isn't running the POST simply fails and the hook is a no-op.
+#
+# WINDOWS: `hooks.json` invokes this as `bash <path> <endpoint>`, and Claude
+# Code runs a hook command through `cmd.exe` there, so `bash` has to be on PATH
+# — Git Bash or WSL. That is not guaranteed, and it is a regression from the
+# `curl` this replaced, since curl ships with Windows 10+.
+#
+# There is no per-platform key to fix it with. Claude Code 2.1.227 does not know
+# `commandWindows` at all: it appears zero times in the binary, while
+# `hookSpecificOutput` appears 40 times and `SubagentStop` 53, so the probe
+# works and the absence is real. (Codex does support it, which is why
+# `plugins/codex/hooks/hooks.json` carries one — the precedent does not
+# transfer.)
+#
+# `hook.cmd` and `hook.ps1` beside this file are the Windows pair and take the
+# same endpoint argument, so whatever mechanism ends up invoking them will find
+# them ready.
 
 STDIN_DATA=$(cat)
 
