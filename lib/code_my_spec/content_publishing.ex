@@ -19,6 +19,7 @@ defmodule CodeMySpec.ContentPublishing do
   alias CodeMySpec.Content.Content, as: PublishedContent
   alias CodeMySpec.Content.S3Client
   alias CodeMySpec.Content.TriggerClient
+  alias CodeMySpec.ContentPublishing.Ctas
   alias CodeMySpec.ContentPublishing.FrontmatterParser
   alias CodeMySpec.ContentPublishing.ImageAsset
   alias CodeMySpec.ContentPublishing.Snapshot
@@ -160,17 +161,47 @@ defmodule CodeMySpec.ContentPublishing do
      }}
   end
 
-  # The project's own AWS keys (encrypted at rest), passed per-request to ExAws
+  @doc false
+  @spec s3_credentials(map()) :: keyword()
+  def s3_credentials(project), do: aws_credentials(project)
+
+  # The project's own S3 keys (encrypted at rest), passed per-request to ExAws
   # so a published install signs uploads without a global `:ex_aws` env. Blank
   # entries are dropped so ExAws falls back to its app-env/default config.
+  #
+  # The host is part of that, or the credentials are signed against the wrong
+  # provider. These fields are named `aws_*` but they are just S3 credentials —
+  # any S3-compatible provider works, and provisioning's own storage is Hetzner
+  # throughout. Without an endpoint ExAws defaults to Amazon, so a project set
+  # up entirely through our own flow could not publish to the buckets that flow
+  # had just created for it: valid keys, real bucket, `NoSuchBucket` from a
+  # provider that had never heard of it.
+  #
+  # A project with no endpoint still goes to Amazon, which is what every
+  # existing one is already doing.
   defp aws_credentials(project) do
     [
       access_key_id: project.aws_access_key_id,
       secret_access_key: project.aws_secret_access_key,
       region: project.aws_region
     ]
+    |> Keyword.merge(endpoint_config(project.s3_endpoint))
     |> Enum.reject(fn {_k, v} -> v in [nil, ""] end)
   end
+
+  # ExAws wants the host on its own, without a scheme — a value pasted as
+  # `https://fsn1.your-objectstorage.com` would otherwise be signed into a URL
+  # with the scheme twice over.
+  defp endpoint_config(endpoint) when is_binary(endpoint) and endpoint != "" do
+    uri = URI.parse(endpoint)
+
+    host = uri.host || endpoint
+    scheme = uri.scheme || "https"
+
+    [host: host, scheme: scheme <> "://", port: uri.port || 443]
+  end
+
+  defp endpoint_config(_endpoint), do: []
 
   defp blob_row(%Snapshot{} = row), do: content_attrs(row.metadata || %{}, row.processed_content)
 
@@ -201,13 +232,16 @@ defmodule CodeMySpec.ContentPublishing do
     if changeset.valid? do
       :ok
     else
-      errors =
-        Ecto.Changeset.traverse_errors(changeset, fn {msg, opts} ->
-          Enum.reduce(opts, msg, fn {k, v}, acc -> String.replace(acc, "%{#{k}}", to_string(v)) end)
-        end)
-
-      {:error, errors}
+      {:error, Ecto.Changeset.traverse_errors(changeset, &interpolate_error/1)}
     end
+  end
+
+  # Ecto hands back the message with its placeholders intact and the values
+  # beside it; substituting them is what makes an error readable.
+  defp interpolate_error({msg, opts}) do
+    Enum.reduce(opts, msg, fn {key, value}, acc ->
+      String.replace(acc, "%{#{key}}", to_string(value))
+    end)
   end
 
   defp counts_by_type(rows) do
@@ -453,14 +487,14 @@ defmodule CodeMySpec.ContentPublishing do
   # views. See `CodeMySpec.ContentPublishing.Ctas`.
   defp render_body(body, :markdown, images_host) do
     body
-    |> CodeMySpec.ContentPublishing.Ctas.expand()
+    |> Ctas.expand()
     |> rewrite_markdown_images(images_host)
     |> markdown_to_html()
   end
 
   defp render_body(body, :html, images_host) do
     body
-    |> CodeMySpec.ContentPublishing.Ctas.expand()
+    |> Ctas.expand()
     |> rewrite_html_images(images_host)
   end
 

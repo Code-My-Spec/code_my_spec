@@ -207,6 +207,21 @@ defmodule CodeMySpecWeb.ContentLive do
                 <span class="label-text text-xs">AWS region</span>
                 <input type="text" name="settings[aws_region]" value={@project.aws_region} class="input input-bordered input-sm" placeholder="us-east-1" />
               </label>
+              <%!-- Which provider those credentials belong to. Blank means
+                    Amazon, which is what every project did before this existed
+                    — and why a Hetzner key pair used to fail with NoSuchBucket
+                    on a bucket that was really there. --%>
+              <label class="form-control">
+                <span class="label-text text-xs">S3 endpoint</span>
+                <input
+                  type="text"
+                  name="settings[s3_endpoint]"
+                  value={@project.s3_endpoint}
+                  data-test="s3-endpoint"
+                  class="input input-bordered input-sm"
+                  placeholder="blank for AWS, e.g. fsn1.your-objectstorage.com"
+                />
+              </label>
               <label class="form-control">
                 <span class="label-text text-xs">Deploy key</span>
                 <input type="password" name="settings[deploy_key]" value={@project.deploy_key} class="input input-bordered input-sm" autocomplete="off" />

@@ -53,6 +53,7 @@ defmodule CodeMySpec.Projects.Project do
     field :aws_access_key_id, CodeMySpec.Encrypted.Binary
     field :aws_secret_access_key, CodeMySpec.Encrypted.Binary
     field :aws_region, :string
+    field :s3_endpoint, :string
     field :deploy_key, CodeMySpec.Encrypted.Binary
     # Deterministic SHA-256 of the deploy key (the encrypted column can't be
     # searched), letting the widget authenticate with only the key — no
@@ -128,6 +129,7 @@ defmodule CodeMySpec.Projects.Project do
       :aws_access_key_id,
       :aws_secret_access_key,
       :aws_region,
+      :s3_endpoint,
       :deploy_key,
       :google_analytics_property_id,
       :status,
