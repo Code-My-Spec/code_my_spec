@@ -74,6 +74,31 @@ defmodule CodeMySpec.Integration.EmptyManifestNeverDeletesTest do
 
       assert length(Files.list_files(local)) == before
     end
+
+    # `sync_changed/2` is the stop hook's path and the one that actually fired
+    # in production — four minutes after `sync/2` was fixed, on a healthy
+    # harness: `0 files scanned in 0ms … 3937 removed`. Fixing `sync/2` alone
+    # left the hotter of the two callers doing exactly what it always had.
+    #
+    # `cwd` is set here on purpose. It is what the hook's `x-working-dir` header
+    # produces, so it does not mean a walkable tree is present, and
+    # `Validation`'s `cwd: nil` guard therefore never caught this.
+    test "the stop hook's changed-file scan refuses too" do
+      {local, tmp_dir} = local_scope()
+
+      write_impl(tmp_dir, "my_app/accounts", "MyApp.Accounts")
+      {:ok, _} = FileSync.sync(local, base_dir: tmp_dir, embed: false)
+
+      before = Files.list_files(local) |> length()
+      assert before >= 1
+
+      server = %{local | environment: Environment.new(:harness, nil)}
+
+      assert {:error, {:cannot_scan, :not_supported_on_harness}} =
+               FileSync.sync_changed(server, base_dir: tmp_dir)
+
+      assert length(Files.list_files(local)) == before
+    end
   end
 
   describe "a working copy that really is empty" do

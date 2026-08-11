@@ -411,11 +411,32 @@ defmodule CodeMySpec.Files.FileSync do
     #   * App boot — `FileWatcherServer.handle_continue/2`
     #   * Dep change — `FileWatcherServer` mix.lock-poll handler runs
     #     `HexDocProjector.project/1` after a debounce settle window
-    file_entries =
-      env
-      |> stream_files()
-      |> Enum.to_list()
+    with {:ok, stream} <- walk(scope, env) do
+      finish_sync_changed(scope, env, Enum.to_list(stream), start)
+    end
+  end
 
+  # The stop hook's entry into the same trap `sync/2` was in, and the one the
+  # `scannable/1` comment named by name. It ran on every stop, so it is the
+  # deletion that actually fired: `0 files scanned … 3937 removed`, four minutes
+  # after the fix to `sync/2` went live and while the harness was healthy.
+  defp walk(%Scope{} = scope, env) do
+    case Scanner.stream_files(env) do
+      {:ok, stream} ->
+        {:ok, stream}
+
+      {:error, reason} ->
+        Logger.error(
+          "[FileSync] #{working_copy(scope)}: refusing to sync changed files — this " <>
+            "environment cannot walk a working copy (#{inspect(reason)}). Nothing was " <>
+            "scanned, so nothing is authoritative and the recorded rows stand."
+        )
+
+        {:error, {:cannot_scan, reason}}
+    end
+  end
+
+  defp finish_sync_changed(%Scope{} = scope, env, file_entries, start) do
     scan_ms = System.monotonic_time(:millisecond) - start
 
     # Snapshot existing rows up front so the embedding hook can compute
@@ -493,8 +514,8 @@ defmodule CodeMySpec.Files.FileSync do
     total_ms = System.monotonic_time(:millisecond) - start
 
     Logger.info(
-      "[FileSync] #{length(file_entries)} files scanned in #{scan_ms}ms, " <>
-        "#{length(changed_paths)} changed, validated in #{validate_ms}ms, " <>
+      "[FileSync] #{working_copy(scope)}: #{length(file_entries)} files scanned in " <>
+        "#{scan_ms}ms, #{length(changed_paths)} changed, validated in #{validate_ms}ms, " <>
         "#{upserted} upserted, #{removed} removed, total #{total_ms}ms"
     )
 

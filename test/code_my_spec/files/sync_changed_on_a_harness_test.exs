@@ -15,6 +15,21 @@ defmodule CodeMySpec.Files.SyncChangedOnAHarnessTest do
   Found by the recording agent, whose stops had been failing this way, from a
   `Protocol.UndefinedError` in the server log naming
   `{:error, :not_supported_on_harness}` as the value.
+
+  ## The first fix here was half of one
+
+  Handling it meant answering `{:ok, %{total_files: 0}}` — no crash, and the
+  refusal folded into an empty scan anyway. `Files.delete_removed/2` then took
+  that empty scan as a snapshot and removed every row for the working copy:
+  3937 of them plus 452 Problems, on every stop, while the harness re-sent its
+  manifest in between and both ends logged success.
+
+  The test below asserted `removed == 0` against that, and passed — because the
+  fixture has no rows, so the count it checked could not have come out any other
+  way. The assertion was right about the intent and blind to the behaviour.
+
+  So the contract is the refusal now, and the second test gives it something to
+  lose first.
   """
 
   use CodeMySpecTest.DataCase, async: true
@@ -22,6 +37,7 @@ defmodule CodeMySpec.Files.SyncChangedOnAHarnessTest do
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.Files
   alias CodeMySpec.Files.FileSync
 
   setup do
@@ -33,23 +49,29 @@ defmodule CodeMySpec.Files.SyncChangedOnAHarnessTest do
   end
 
   test "returns rather than raising when the environment cannot be scanned", %{scope: scope} do
-    assert {:ok, result} = FileSync.sync_changed(scope)
-
-    # Nothing to scan is not nothing to do — the rest of the sync still
-    # reconciles against what is already recorded — but nothing was found here,
-    # and the count has to say so rather than inheriting a previous run's.
-    assert result.total_files == 0
+    assert {:error, {:cannot_scan, :not_supported_on_harness}} = FileSync.sync_changed(scope)
   end
 
   test "does not remove records for files it could not see", %{scope: scope} do
-    # The dangerous shape, and the reason an empty list is only safe because the
-    # harness's own manifest is what maintains these rows. A scan that returned
-    # "no files" *as if it had looked* would prune every record the harness had
-    # sent — the same event as "the server has no disk" deleting the
-    # architecture, which `ComponentSync` already carries scars from.
-    assert {:ok, result} = FileSync.sync_changed(scope)
+    # Rows first. Asserting a zero from a fixture that has nothing to delete is
+    # a probe that cannot come back positive, which is how this passed for as
+    # long as the defect lived.
+    {1, _} = Files.upsert_files(scope, [file_row("lib/my_app/kept.ex")])
+    assert length(Files.list_files(scope)) == 1
 
-    assert result.removed == [] or result.removed == 0,
+    assert {:error, {:cannot_scan, :not_supported_on_harness}} = FileSync.sync_changed(scope)
+
+    assert length(Files.list_files(scope)) == 1,
            "a scan that could not run must not be read as an empty working copy"
+  end
+
+  defp file_row(path) do
+    %{
+      path: path,
+      role: :implementation,
+      mtime: DateTime.utc_now(),
+      size: 1,
+      fingerprint: "deadbeef"
+    }
   end
 end

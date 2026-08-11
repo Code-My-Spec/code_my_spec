@@ -125,8 +125,21 @@ defmodule CodeMySpec.Validation do
   end
 
   defp do_validate_stop(%Scope{cwd: cwd} = scope, task, opts) do
-    {:ok, sync_result} = FileSync.sync_changed(scope, base_dir: cwd)
+    case FileSync.sync_changed(scope, base_dir: cwd) do
+      {:ok, sync_result} -> local_validate_stop(scope, task, opts, cwd, sync_result)
+      {:error, {:cannot_scan, _}} -> do_validate_stop(%{scope | cwd: nil}, task, opts)
+    end
+  end
 
+  # `cwd` is not the same claim as "there is a working copy here". It comes off
+  # the hook's `x-working-dir` header, so the clause above matches on the
+  # server too, where `scope.environment` is a `Harness` that walks nothing —
+  # and the sync it ran deleted every row for the checkout it was named after.
+  #
+  # An environment that cannot scan is the case the `cwd: nil` clause already
+  # answers: ask the harness that holds this project, and if none does, return
+  # the empty result rather than one computed from a walk that never happened.
+  defp local_validate_stop(%Scope{} = scope, task, opts, cwd, sync_result) do
     FileComponentSync.sync_from_files(scope,
       base_dir: cwd,
       changed_paths: sync_result.changed_paths
