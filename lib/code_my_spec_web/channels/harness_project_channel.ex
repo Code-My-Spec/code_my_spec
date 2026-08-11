@@ -561,7 +561,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
     case socket.assigns[:scope] do
       %Scope{active_project_id: id} when not is_nil(id) ->
         log_disconnect(reason, socket)
-        Analysis.fail_in_flight(socket.assigns.scope, :harness_disconnected)
+        Analysis.fail_in_flight(socket.assigns.scope, failure_reason(reason))
 
       _ ->
         :ok
@@ -569,6 +569,29 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
 
     :ok
   end
+
+  # Say which of the two things happened, because they read identically and
+  # only one of them is about the working copy.
+  #
+  # Phoenix drains its channels on shutdown, so `{:shutdown, :draining}` means
+  # the *server* went away — someone restarted :4000 — and every in-flight run
+  # for every working copy dies with it, since one harness serves them all.
+  # Recording that as `:harness_disconnected` sent agents looking for a harness
+  # problem they did not have: a 12-minute spex sweep returning
+  # `:not_connected`, a completed sweep whose latch did not flip, three hours
+  # read as analyzer-queue starvation. Three separate wrong theories, each
+  # ending at "somebody else restarted the server" (406f85db).
+  #
+  # The timestamp is the part that ends the investigation. An agent that can see
+  # its sweep died at the moment of a restart stops looking at its own code.
+  defp failure_reason({:shutdown, :draining}) do
+    "the shared dev server was restarted at " <>
+      DateTime.to_iso8601(DateTime.utc_now()) <>
+      " — this run was killed by that restart, not by anything in your working " <>
+      "copy or its analyzers"
+  end
+
+  defp failure_reason(_reason), do: :harness_disconnected
 
   # The harness leaving on purpose — a restart, a shutdown. Worth a line,
   # because it still strands whatever was running, but not an alarm.

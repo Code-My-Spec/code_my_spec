@@ -19,6 +19,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannelTest do
 
   @endpoint CodeMySpecWeb.Endpoint
 
+  alias CodeMySpec.Analysis.RunsRepository
   alias CodeMySpec.Harnesses
   alias CodeMySpecWeb.HarnessProjectChannel
   alias CodeMySpecWeb.UserSocket
@@ -49,6 +50,13 @@ defmodule CodeMySpecWeb.HarnessProjectChannelTest do
   # stranger: files and problems are keyed on the harness now, so a test that
   # writes through the channel and reads through `scope` has to be the same
   # checkout on both sides. Tests about *minting* pass an explicit id instead.
+  # `terminate/2` is where the reason is read, and an ordinary `leave` does not
+  # carry one. Calling it on the channel process is what puts the reason through
+  # the path under test.
+  defp terminate_channel(socket, reason) do
+    CodeMySpecWeb.HarnessProjectChannel.terminate(reason, socket)
+  end
+
   defp join_as(scope, topic, opts \\ []) do
     scope
     |> harness_socket(opts)
@@ -184,6 +192,49 @@ defmodule CodeMySpecWeb.HarnessProjectChannelTest do
       harness = Enum.find(Harnesses.list_harnesses(scope), &(&1.id == id))
 
       assert harness.label =~ "did not say where it is"
+    end
+  end
+
+  # A restart and a disconnect read identically from inside an agent, and only
+  # one of them is about the working copy. `terminate/2` recorded both as
+  # `:harness_disconnected`, which sent three separate investigations after
+  # harness problems that did not exist — a 12-minute spex sweep returning
+  # `:not_connected`, a completed sweep whose latch did not flip, and three
+  # hours of no sweeps read as analyzer-queue starvation. Each ended at
+  # "somebody else restarted :4000" (406f85db).
+  #
+  # Phoenix drains channels on shutdown, so `{:shutdown, :draining}` is the
+  # server going away. One harness serves every working copy of a project, so a
+  # single restart fails the running set for all of them at once.
+  describe "why an in-flight run was failed" do
+    setup %{scope: scope, topic: topic} do
+      {:ok, _reply, socket} = join_as(scope, topic)
+
+      {:ok, run} =
+        RunsRepository.start_run(scope, %{source: "spex", kind: :full})
+
+      %{socket: socket, run: run}
+    end
+
+    test "a server restart says so, with the time", ctx do
+      terminate_channel(ctx.socket, {:shutdown, :draining})
+
+      assert %{stats: %{"error" => error}} =
+               RunsRepository.get_run_in_project(ctx.scope, ctx.run.id)
+      assert error =~ "shared dev server was restarted"
+      assert error =~ "not by anything in your working copy"
+    end
+
+    # The other half. A harness that genuinely went away must not claim a
+    # restart happened — that would send the reader to the wrong place just as
+    # surely, in the other direction.
+    test "an ordinary disconnect still reads as one", ctx do
+      terminate_channel(ctx.socket, {:shutdown, :closed})
+
+      assert %{stats: %{"error" => error}} =
+               RunsRepository.get_run_in_project(ctx.scope, ctx.run.id)
+      assert error =~ "harness_disconnected"
+      refute error =~ "restarted"
     end
   end
 
