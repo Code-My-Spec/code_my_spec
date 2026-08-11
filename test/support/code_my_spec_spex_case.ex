@@ -660,6 +660,60 @@ defmodule CodeMySpecSpex.Case do
   end
 
   @doc """
+  Run the box-side steps against the local fleet rather than a recorded address.
+
+  The registry and database steps shell docker commands over SSH to the server
+  the run just created. On replay that address comes out of the cassette, and it
+  stopped being ours weeks ago — so the step reached a stranger's machine, waited
+  out the connect timeout, and failed. `serve_registries/5` halts on the first
+  error, so nothing downstream recorded a resource and setup reported every step
+  from `server` onward as having nothing behind it. That is story 841's 1961,
+  1967 and 1969, all three of which have clean cassettes with both servers
+  created.
+
+  Needs the fleet up:
+
+      docker/fleet/fleet.sh up
+
+  Deliberately raises rather than skipping when it is not. A criterion that
+  quietly passed without running the commands it is about would be the same
+  failure this whole exercise has been chasing — something green that never ran.
+  """
+  def fleet_box(%{scope: scope} = context) do
+    key = Path.expand("docker/fleet/keys/fleet", File.cwd!())
+
+    File.exists?(key) ||
+      raise """
+      No fleet key at #{key}.
+
+      This criterion runs the registry and database steps for real, against the
+      local fleet's app box. Bring it up with:
+
+          docker/fleet/fleet.sh up
+      """
+
+    previous = Application.get_env(:code_my_spec, :provisioning_step_opts, [])
+
+    Application.put_env(
+      :code_my_spec,
+      :provisioning_step_opts,
+      Keyword.merge(previous,
+        run: Fixtures.fleet_runner(scope.environment, ssh_key_path: key),
+        # The fleet box carries no private network address, so the registry
+        # publishes on loopback there. `serve_one_registry/5` uses `put_new`,
+        # which is what lets this stand.
+        bind: "127.0.0.1"
+      )
+    )
+
+    ExUnit.Callbacks.on_exit(fn ->
+      Application.put_env(:code_my_spec, :provisioning_step_opts, previous)
+    end)
+
+    context
+  end
+
+  @doc """
   Point the project at a real generated application on disk.
 
   `setup_active_project` makes a stub directory holding a `mix.exs`, which is

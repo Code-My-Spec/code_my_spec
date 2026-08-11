@@ -1935,6 +1935,35 @@ defmodule CodeMySpecSpex.Fixtures do
   end
 
   @doc """
+  A runner that reaches the local fleet's app box instead of a provisioned one.
+
+  The box-side steps — starting the registry, starting the database — build
+  their runner from the server's public IP *as recorded in the cassette*. Those
+  addresses were released weeks ago and belong to someone else now, so replaying
+  reached out to strangers and waited out the connect timeout, and the step
+  failed for a reason that has nothing to do with the story. `serve_registries`
+  halts on the first error, so nothing after it recorded a resource and setup
+  reported every step from `server` onward as having nothing behind it.
+
+  This is the same `ssh_runner/2` the production path uses, pointed at a box on
+  loopback — so the docker commands really run, against a daemon that really
+  exists, and what they prove is that they work rather than that they were
+  attempted.
+
+  `CodeMySpecSpex` may not reach into `CodeMySpec`, which is why it is here.
+  """
+  @spec fleet_runner(map(), keyword()) :: (list() -> {String.t(), non_neg_integer()})
+  def fleet_runner(environment, opts \\ []) do
+    alias CodeMySpec.Provisioning.Builder.Remote
+
+    Remote.ssh_runner(%{"ip" => "127.0.0.1"},
+      env: environment,
+      ssh_key_path: Keyword.fetch!(opts, :ssh_key_path),
+      ssh_port: Keyword.get(opts, :ssh_port, 2223)
+    )
+  end
+
+  @doc """
   The project's environments, as rows.
 
   A criterion that fetches "every environment's host" has to know what was

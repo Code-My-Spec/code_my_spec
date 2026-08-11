@@ -2407,7 +2407,17 @@ defmodule CodeMySpec.Provisioning.Steps do
            opts
            |> Keyword.put(:environment, environment)
            |> Keyword.put(:run, run)
-           |> Keyword.put(:bind, ip),
+           # `put_new`, so a caller that supplied its own address keeps it. The
+           # registry publishes on `-p <address>:5000:5000`, and the private IP
+           # is right for a Hetzner box on a private network and meaningless on
+           # anything else — a local box has no 10.x address, so the container
+           # would refuse to start on an address the host does not carry.
+           #
+           # Pairs with `:run` above: together they are what lets the local
+           # fleet stand in for the box, so this step runs its real docker
+           # commands against something that exists instead of against a
+           # server address that was released weeks ago.
+           |> Keyword.put_new(:bind, ip),
          {:ok, _bucket} <- Registry.ensure(scope, registry_opts),
          {:ok, served} <- Registry.serve(scope, registry_opts),
          {:ok, database} <- serve_database(scope, environment, run, opts) do

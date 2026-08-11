@@ -24,6 +24,12 @@ defmodule CodeMySpecSpex.Story841.Criterion1961Spex do
   setup :devops_on
   setup :provider_credentials_on_file
   setup :connect_providers
+  # The registry and database steps run for real against the fleet's app
+  # box. Without this they SSH to the server address in the cassette, which
+  # was released weeks ago — and `serve_registries/5` halts on that, so
+  # nothing downstream records a resource and setup reports every step from
+  # `server` onward as having nothing behind it.
+  setup :fleet_box
 
   spex "Default setup ends with UAT and prod live" do
     scenario "the default plan leaves both environments serving" do
