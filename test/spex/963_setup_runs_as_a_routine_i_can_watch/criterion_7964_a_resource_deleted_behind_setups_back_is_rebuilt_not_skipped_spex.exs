@@ -26,6 +26,14 @@ defmodule CodeMySpecSpex.Story963.Criterion7964Spex do
   setup :setup_active_project
   setup :devops_on
   setup :connect_providers
+  # The registry runs on the box over SSH, and the box in a cassette is an
+  # address that was released weeks ago — so this stepped out to a stranger's
+  # machine and failed with `ssh: connect to host … Operation timed out`.
+  # The fleet's app box is a real box with a real Docker daemon, reachable on
+  # loopback, so the step runs its actual commands against something that
+  # exists. Needs `docker/fleet/fleet.sh up`.
+  setup :real_working_directory
+  setup :fleet_box
 
   spex "A resource deleted behind setup's back is rebuilt, not skipped" do
     scenario "the server step runs again when the server is gone" do
