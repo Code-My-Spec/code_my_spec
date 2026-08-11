@@ -37,6 +37,19 @@ defmodule CodeMySpecSpex.Story965.Criterion7996Spex do
   spex "The records let the proxy get its certificate" do
     scenario "the challenge reaches the server and the certificate is issued" do
       given_ "the DNS step has created the records for an environment", context do
+        # Before the mount, not after. The LiveView loads the project into its
+        # assigns when it mounts and every step it runs reads that copy, so a
+        # domain written to the row afterwards is invisible to it — the DNS step
+        # refused with "no domain set on the project" while the row plainly had
+        # one, and the criterion read that as a certificate failure.
+        #
+        # Its own subdomain. Two spex sharing one name share a DNS namespace:
+        # whichever runs second finds the first's records already there,
+        # *adopts* them instead of creating them, and adopted resources are
+        # never torn down — so the records leak and the recording contains no
+        # creation at all.
+        own_domain(context.project, "c7996.astralbi.com")
+
         {:ok, view, _html} =
           live(context.conn, "/app/projects/#{context.project.id}/provisioning")
 
@@ -48,16 +61,6 @@ defmodule CodeMySpecSpex.Story965.Criterion7996Spex do
         # retry can get it back. Teardown has to do its reads while the
         # LiveView is still up.
         tear_down_after(context.scope, [:dns, :server])
-
-        # The DNS step has nothing to write records under without a verified
-        # domain, so it fails on the missing domain — which reads as the
-        # certificate claim failing when it never got that far.
-        # Its own subdomain. Two spex sharing one name share a DNS namespace:
-        # whichever runs second finds the first's records already there,
-        # *adopts* them instead of creating them, and adopted resources are
-        # never torn down — so the records leak and the recording contains no
-        # creation at all.
-        own_domain(context.project, "c7996.astralbi.com")
 
         # DNS points a name at a server, so there has to be one. Without it the
         # step writes no records at all and the certificate claim fails for a
