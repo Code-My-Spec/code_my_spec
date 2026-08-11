@@ -34,7 +34,7 @@ defmodule CodeMySpecSpex.Story972.Criterion8035Spex do
           Environments.write_file(
             context.environment,
             "content/posts/hello.md",
-            "---\ntitle: Hello\n---\n\nFirst post.\n"
+            "---\ntitle: Hello\ntype: blog\n---\n\nFirst post.\n"
           )
 
         {:ok, view, _html} =

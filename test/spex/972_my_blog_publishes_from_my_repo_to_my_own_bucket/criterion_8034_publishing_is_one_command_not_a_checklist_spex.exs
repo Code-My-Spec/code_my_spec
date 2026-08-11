@@ -31,7 +31,7 @@ defmodule CodeMySpecSpex.Story972.Criterion8034Spex do
           Environments.write_file(
             context.environment,
             "content/posts/hello.md",
-            "---\ntitle: Hello\n---\n\nFirst post.\n"
+            "---\ntitle: Hello\ntype: blog\n---\n\nFirst post.\n"
           )
 
         # Somewhere to publish to is part of the premise — sync is trigger-only,

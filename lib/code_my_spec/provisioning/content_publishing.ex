@@ -89,6 +89,7 @@ defmodule CodeMySpec.Provisioning.ContentPublishing do
   def run(%Scope{} = scope, opts \\ []) do
     now = Keyword.get(opts, :now, &DateTime.utc_now/0)
     publish = Keyword.get(opts, :publish, &CodeMySpec.ContentPublishing.publish/1)
+    sync = Keyword.get(opts, :sync, &CodeMySpec.ContentPublishing.sync/1)
 
     # `verify_render/2` is handled in a `case` rather than as another `with`
     # clause so `published` is still in scope when it fails. As an `else`
@@ -98,6 +99,7 @@ defmodule CodeMySpec.Provisioning.ContentPublishing do
     # served is a different failure from a publish that never happened, and it
     # was unanswerable one layer above.
     with :ok <- ensure_publishable(scope),
+         :ok <- snapshot(sync, scope),
          {:ok, published} <- publish.(scope) do
       case verify_render(published, opts) do
         {:ok, render} ->
@@ -127,6 +129,22 @@ defmodule CodeMySpec.Provisioning.ContentPublishing do
 
       {:error, reason} ->
         failure(:publish_failed, inspect(reason))
+    end
+  end
+
+  # One command, not a checklist: the post on disk is the post that gets
+  # published. `publish/1` reads the snapshot table and nothing here filled it,
+  # so a publish uploaded whatever the last sync had left — for a project that
+  # had never synced, an empty `content.json` of two bytes, uploaded and
+  # triggered and reported as a success with no content in it.
+  #
+  # A project with no source path configured has its snapshot filled some other
+  # way; publishing what is already there is right, and is left alone.
+  defp snapshot(sync, scope) do
+    case sync.(scope) do
+      {:ok, _counts} -> :ok
+      {:error, :no_source_path} -> :ok
+      {:error, reason} -> {:error, %{message: "Content sync failed: #{inspect(reason)}"}}
     end
   end
 

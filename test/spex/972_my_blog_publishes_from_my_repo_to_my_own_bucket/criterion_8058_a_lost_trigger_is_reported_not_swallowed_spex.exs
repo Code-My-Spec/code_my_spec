@@ -38,7 +38,7 @@ defmodule CodeMySpecSpex.Story972.Criterion8058Spex do
           Environments.write_file(
             context.environment,
             "content/posts/hello.md",
-            "---\ntitle: Hello\n---\n\nFirst post.\n"
+            "---\ntitle: Hello\ntype: blog\n---\n\nFirst post.\n"
           )
 
         # The unreachable site is the whole premise, and nothing here was

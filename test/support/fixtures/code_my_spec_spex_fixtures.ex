@@ -168,6 +168,11 @@ defmodule CodeMySpecSpex.Fixtures do
         Map.merge(
           Map.merge(
             %{
+              # Where the posts are. Without it the publish's snapshot pass
+              # has nowhere to read from and returns `:no_source_path`, so the
+              # post a criterion just wrote to the environment was never in
+              # what got published.
+              content_source_path: "content",
               content_bucket: @content_bucket,
               s3_endpoint: @content_endpoint,
               client_api_url: "https://#{project.domain || "example.com"}/api",
