@@ -148,6 +148,53 @@ defmodule CodeMySpec.AgentTasks.FixBddSpecsTest do
       assert prompt =~ "MyAppWeb.DashboardLive"
     end
 
+    # The prompt is per story because the gate is. Asked for story 885 it used
+    # to answer with twenty failures across seven other stories, under "the
+    # following BDD specs are failing" and "fix the implementation code" —
+    # sending an agent into eight components it was never asked to touch, in
+    # another agent's territory. `evaluate/2` filtered correctly the whole time
+    # and passed instantly on the same task.
+    test "a story's prompt does not carry another story's failures", %{tmp_dir: tmp_dir} do
+      scope = scope_with_env(tmp_dir)
+
+      other_component = create_implemented_component(scope, "MyApp.SomebodyElse")
+      other_story = create_story_with_component(scope, other_component, "Not My Story")
+      create_spex_problem(scope, other_story)
+
+      mine = create_story_with_component(scope, create_implemented_component(scope), "My Story")
+
+      assert {:ok, prompt} = FixBddSpecs.command(scope, story_task(mine))
+
+      refute prompt =~ "Not My Story"
+      refute prompt =~ "MyApp.SomebodyElse"
+    end
+
+    test "a story whose own specs are green is told to evaluate, not to fix", %{tmp_dir: tmp_dir} do
+      scope = scope_with_env(tmp_dir)
+
+      elsewhere_component = create_implemented_component(scope, "MyApp.Elsewhere")
+      elsewhere = create_story_with_component(scope, elsewhere_component, "Elsewhere")
+      create_spex_problem(scope, elsewhere)
+
+      mine = create_story_with_component(scope, create_implemented_component(scope), "My Story")
+
+      assert {:ok, prompt} = FixBddSpecs.command(scope, story_task(mine))
+      assert prompt =~ "evaluate to latch it"
+      assert prompt =~ "re-running the sweep will not change this requirement"
+      refute prompt =~ "Elsewhere"
+    end
+
+    test "a story's own failures still reach its prompt", %{tmp_dir: tmp_dir} do
+      scope = scope_with_env(tmp_dir)
+      component = create_implemented_component(scope)
+      story = create_story_with_component(scope, component)
+      create_spex_problem(scope, story)
+
+      assert {:ok, prompt} = FixBddSpecs.command(scope, story_task(story))
+      assert prompt =~ "Fix BDD Specs"
+      assert prompt =~ story.title
+    end
+
     test "filters out problems with no derivable story_id", %{tmp_dir: tmp_dir} do
       scope = scope_with_env(tmp_dir)
 
