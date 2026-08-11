@@ -114,7 +114,7 @@ defmodule CodeMySpec.Integration.EmptyManifestNeverDeletesTest do
       write_impl(tmp_dir, "my_app/only", "MyApp.Only")
 
       {:ok, _} = FileSync.sync(scope, base_dir: tmp_dir, embed: false)
-      assert length(Files.list_files(scope)) >= 1
+      refute Files.list_files(scope) == []
 
       File.rm!(path)
 

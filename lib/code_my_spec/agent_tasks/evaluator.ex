@@ -18,9 +18,9 @@ defmodule CodeMySpec.AgentTasks.Evaluator do
 
   alias CodeMySpec.AgentTasks.ProblemFeedback
   alias CodeMySpec.Components
-  alias CodeMySpec.Requirements.Registry, as: RequirementsRegistry
   alias CodeMySpec.Files.ComponentSync, as: FileComponentSync
   alias CodeMySpec.Files.FileSync
+  alias CodeMySpec.Requirements.Registry, as: RequirementsRegistry
   alias CodeMySpec.Requirements.RequirementCalculator
   alias CodeMySpec.Requirements.RequirementDefinitionData
   alias CodeMySpec.Requirements.RequirementsFormatter
