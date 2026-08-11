@@ -65,7 +65,7 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignmentTest do
   describe "an environment that cannot stream files" do
     setup do
       previous = Application.get_env(:code_my_spec, :harness_fs_transport)
-      Application.put_env(:code_my_spec, :harness_fs_transport, CodeMySpecTest.StubHarnessTransport)
+      Application.put_env(:code_my_spec, :harness_fs_transport, CodeMySpec.Support.StubHarnessTransport)
       on_exit(fn -> EnvRestore.restore_app_env(:harness_fs_transport, previous) end)
       :ok
     end

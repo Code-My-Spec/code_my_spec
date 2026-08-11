@@ -351,9 +351,7 @@ defmodule CodeMySpecSpex.SharedGivens do
     session_id = "spex-#{System.unique_integer([:positive])}"
 
     post(
-      Phoenix.ConnTest.build_conn()
-      |> Plug.Conn.put_req_header("x-working-dir", context.scope.cwd)
-      |> Plug.Conn.put_req_header("content-type", "application/json"),
+      hook_conn(context.scope),
       "/api/hooks/session-start",
       %{"session_id" => session_id}
     )
@@ -386,9 +384,7 @@ defmodule CodeMySpecSpex.SharedGivens do
     session_id = "spex-#{System.unique_integer([:positive])}"
 
     post(
-      Phoenix.ConnTest.build_conn()
-      |> Plug.Conn.put_req_header("x-working-dir", context.scope.cwd)
-      |> Plug.Conn.put_req_header("content-type", "application/json"),
+      hook_conn(context.scope),
       "/api/hooks/session-start",
       %{"session_id" => session_id}
     )
@@ -515,9 +511,7 @@ defmodule CodeMySpecSpex.SharedGivens do
     session_id = "spex-#{System.unique_integer([:positive])}"
 
     post(
-      Phoenix.ConnTest.build_conn()
-      |> Plug.Conn.put_req_header("x-working-dir", context.scope.cwd)
-      |> Plug.Conn.put_req_header("content-type", "application/json"),
+      hook_conn(context.scope),
       "/api/hooks/session-start",
       %{"session_id" => session_id}
     )
@@ -548,9 +542,7 @@ defmodule CodeMySpecSpex.SharedGivens do
     session_id = "spex-#{System.unique_integer([:positive])}"
 
     post(
-      Phoenix.ConnTest.build_conn()
-      |> Plug.Conn.put_req_header("x-working-dir", context.scope.cwd)
-      |> Plug.Conn.put_req_header("content-type", "application/json"),
+      hook_conn(context.scope),
       "/api/hooks/session-start",
       %{"session_id" => session_id}
     )
@@ -595,9 +587,7 @@ defmodule CodeMySpecSpex.SharedGivens do
     session_id = "spex-#{System.unique_integer([:positive])}"
 
     post(
-      Phoenix.ConnTest.build_conn()
-      |> Plug.Conn.put_req_header("x-working-dir", context.scope.cwd)
-      |> Plug.Conn.put_req_header("content-type", "application/json"),
+      hook_conn(context.scope),
       "/api/hooks/session-start",
       %{"session_id" => session_id}
     )
@@ -635,9 +625,7 @@ defmodule CodeMySpecSpex.SharedGivens do
     session_id = "spex-#{System.unique_integer([:positive])}"
 
     post(
-      Phoenix.ConnTest.build_conn()
-      |> Plug.Conn.put_req_header("x-working-dir", context.scope.cwd)
-      |> Plug.Conn.put_req_header("content-type", "application/json"),
+      hook_conn(context.scope),
       "/api/hooks/session-start",
       %{"session_id" => session_id}
     )
@@ -675,9 +663,7 @@ defmodule CodeMySpecSpex.SharedGivens do
     session_id = "spex-#{System.unique_integer([:positive])}"
 
     post(
-      Phoenix.ConnTest.build_conn()
-      |> Plug.Conn.put_req_header("x-working-dir", context.scope.cwd)
-      |> Plug.Conn.put_req_header("content-type", "application/json"),
+      hook_conn(context.scope),
       "/api/hooks/session-start",
       %{"session_id" => session_id}
     )
@@ -709,9 +695,7 @@ defmodule CodeMySpecSpex.SharedGivens do
     session_id = "spex-#{System.unique_integer([:positive])}"
 
     post(
-      Phoenix.ConnTest.build_conn()
-      |> Plug.Conn.put_req_header("x-working-dir", context.scope.cwd)
-      |> Plug.Conn.put_req_header("content-type", "application/json"),
+      hook_conn(context.scope),
       "/api/hooks/session-start",
       %{"session_id" => session_id}
     )
@@ -751,9 +735,7 @@ defmodule CodeMySpecSpex.SharedGivens do
     session_id = "spex-#{System.unique_integer([:positive])}"
 
     post(
-      Phoenix.ConnTest.build_conn()
-      |> Plug.Conn.put_req_header("x-working-dir", context.scope.cwd)
-      |> Plug.Conn.put_req_header("content-type", "application/json"),
+      hook_conn(context.scope),
       "/api/hooks/session-start",
       %{"session_id" => session_id}
     )
@@ -792,9 +774,7 @@ defmodule CodeMySpecSpex.SharedGivens do
     session_id = "spex-#{System.unique_integer([:positive])}"
 
     post(
-      Phoenix.ConnTest.build_conn()
-      |> Plug.Conn.put_req_header("x-working-dir", context.scope.cwd)
-      |> Plug.Conn.put_req_header("content-type", "application/json"),
+      hook_conn(context.scope),
       "/api/hooks/session-start",
       %{"session_id" => session_id}
     )
@@ -833,9 +813,7 @@ defmodule CodeMySpecSpex.SharedGivens do
     session_id = "spex-#{System.unique_integer([:positive])}"
 
     post(
-      Phoenix.ConnTest.build_conn()
-      |> Plug.Conn.put_req_header("x-working-dir", context.scope.cwd)
-      |> Plug.Conn.put_req_header("content-type", "application/json"),
+      hook_conn(context.scope),
       "/api/hooks/session-start",
       %{"session_id" => session_id}
     )
@@ -1044,4 +1022,27 @@ defmodule CodeMySpecSpex.SharedGivens do
     end
     """
   end
+
+  # A hook posted the way a real one arrives: naming its working copy by id.
+  #
+  # These sent `x-working-dir` alone, so every one of them took `HarnessScope`'s
+  # walk-up fallback — "guesses the working copy by walking up to the nearest
+  # mix.exs and cannot tell two checkouts apart reliably". Fifteen of those
+  # warnings in a single spex slice, and none at all in production across every
+  # log rotation, because onboarded hooks carry the id in the path.
+  #
+  # That asymmetry is the problem: the suite was exercising the fallback rather
+  # than the mechanism that runs. A spex that drives "the real POST
+  # /api/hooks/session-start hook" should drive the real identity path with it,
+  # or it cannot notice the day that path breaks.
+  #
+  # `x-working-dir` stays because `WorkingDir` still wants it; what changes is
+  # that identity no longer has to be inferred from it.
+  defp hook_conn(scope) do
+    Phoenix.ConnTest.build_conn()
+    |> Plug.Conn.put_req_header("x-harness-id", scope.active_harness_id)
+    |> Plug.Conn.put_req_header("x-working-dir", scope.cwd)
+    |> Plug.Conn.put_req_header("content-type", "application/json")
+  end
+
 end

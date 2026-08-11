@@ -1,4 +1,4 @@
-defmodule CodeMySpecTest.StubHarnessTransport do
+defmodule CodeMySpec.Support.StubHarnessTransport do
   @moduledoc """
   A harness transport that answers `stat` and refuses everything else.
 
@@ -12,6 +12,11 @@ defmodule CodeMySpecTest.StubHarnessTransport do
   A top-level module rather than one nested in a test: fakes live in
   `test/support` beside the other ones, and a nested module has to be reached
   through `__MODULE__.` at every call site.
+
+  Named under `CodeMySpec.Support` rather than `CodeMySpecTest`, which is where
+  `InMemoryEnvironment` and `RecordingEnvironment` already sit for the same
+  reason: the `CodeMySpecTest` boundary may not reference
+  `CodeMySpec.Environments`, and a stub of an Environments behaviour has to.
   """
 
   @behaviour CodeMySpec.Environments.HarnessTransport
