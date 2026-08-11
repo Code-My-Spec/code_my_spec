@@ -37,6 +37,7 @@ defmodule CodeMySpec.Servers do
   alias CodeMySpec.Provisioning
   alias CodeMySpec.Provisioning.{Hetzner, Repository}
   alias CodeMySpec.Servers.{Containers, Server}
+  alias CodeMySpec.TempFile
   alias CodeMySpec.Users.Scope
 
   @access_key_public "server_ssh_public_key"
@@ -315,7 +316,7 @@ defmodule CodeMySpec.Servers do
   end
 
   defp generate_access_key(scope) do
-    dir = Path.join(System.tmp_dir!(), "cms-ssh-#{System.unique_integer([:positive])}")
+    dir = TempFile.dir("cms-ssh")
     File.mkdir_p!(dir)
     path = Path.join(dir, "id_ed25519")
 
@@ -330,7 +331,8 @@ defmodule CodeMySpec.Servers do
           {:ok, public}
 
         {out, status} ->
-          {:error, "could not generate an access key (ssh-keygen exit #{status}): #{String.trim(out)}"}
+          {:error,
+           "could not generate an access key (ssh-keygen exit #{status}): #{String.trim(out)}"}
       end
     after
       File.rm_rf(dir)

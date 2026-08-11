@@ -11,6 +11,7 @@ defmodule CodeMySpec.Compile do
   require Logger
 
   alias CodeMySpec.Environments
+  alias CodeMySpec.TempFile
 
   @doc """
   Execute mix compile synchronously and read the diagnostics JSONL file.
@@ -233,9 +234,9 @@ defmodule CodeMySpec.Compile do
   defp output_exists?(_env, path, true), do: File.exists?(path)
   defp output_exists?(env, path, false), do: Environments.file_exists?(env, path)
 
-  defp create_temp_file_path do
-    temp_dir = System.tmp_dir!()
-    filename = "compile_diagnostics_#{System.unique_integer([:positive])}.jsonl"
-    Path.join(temp_dir, filename)
-  end
+  # `System.unique_integer/1` alone named this, and it is unique only within one
+  # BEAM while the path is machine-wide — so a concurrent process compiling a
+  # project that *does* have the `:diagnostics` compiler could write the file
+  # this one then read. See `CodeMySpec.TempFile`.
+  defp create_temp_file_path, do: TempFile.path("compile_diagnostics", ".jsonl")
 end

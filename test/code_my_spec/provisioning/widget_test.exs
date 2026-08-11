@@ -1,6 +1,7 @@
 defmodule CodeMySpec.Provisioning.WidgetTest do
   use ExUnit.Case, async: true
 
+  alias CodeMySpec.AgentTasks.CodeGeneration
   alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Provisioning.Widget
   alias CodeMySpec.Users.Scope
@@ -13,7 +14,8 @@ defmodule CodeMySpec.Provisioning.WidgetTest do
   defp page(body), do: fn _url -> {:ok, %{status: 200, body: body}} end
 
   defp installed_page,
-    do: ~s(<html><body><div data-cms-widget></div><script src="/widget.js"></script></body></html>)
+    do:
+      ~s(<html><body><div data-cms-widget></div><script src="/widget.js"></script></body></html>)
 
   defp from_site, do: fn _scope -> [%{origin: "deployed_site", body: "the widget works"}] end
   defp no_messages, do: fn _scope -> [] end
@@ -58,7 +60,8 @@ defmodule CodeMySpec.Provisioning.WidgetTest do
     # Criterion 8043. A feedback widget that white-screens the site is worse
     # than no widget: it breaks the thing it was added to improve.
     test "passes when the page still serves and the widget says unavailable" do
-      body = ~s(<html><body><h1>Sam's site</h1><div class="widget-unavailable"></div></body></html>)
+      body =
+        ~s(<html><body><h1>Sam's site</h1><div class="widget-unavailable"></div></body></html>)
 
       assert {:ok, %{page_status: 200, page_usable: true, widget_state: "unavailable"}} =
                Widget.probe_degraded("https://sams-site.com", fetch: page(body))
@@ -124,15 +127,10 @@ defmodule CodeMySpec.Provisioning.WidgetTest do
       path
     end
 
-    # `mix run <task>` is not how you run a task — `mix run` takes a *file*, and
-    # given a task name it answers "No such file: client_utils.gen.chat_widget"
-    # and exits. The generator had never once run, and the step reported
-    # "Widget generator failed (exit 1)" with an empty body, which reads like
-    # the generator refusing rather than never being invoked.
-    #
-    # The other tests here stub `mix_bin` with a script that succeeds whatever
-    # it is passed, so they passed either way. This one records the arguments.
-    test "invokes the generator as a mix task, not as a file", %{env: env, scope: scope} do
+    # Records what the step actually shelled out to. The other tests here stub
+    # `mix_bin` with a script that succeeds whatever it is passed, so a wrong
+    # command passed them all.
+    defp recorded_args(env, scope) do
       recorder = Path.join(env.cwd, "recording_mix")
       log = Path.join(env.cwd, "mix_args.txt")
 
@@ -147,12 +145,30 @@ defmodule CodeMySpec.Provisioning.WidgetTest do
         lookup: from_site()
       )
 
-      args = File.read!(log) |> String.trim()
+      log |> File.read!() |> String.trim()
+    end
 
-      assert String.starts_with?(args, "client_utils.gen.chat_widget"),
-             "expected the task name first; `mix run <task>` looks for a file of that name. got: #{args}"
+    # The step ran `client_utils.gen.chat_widget` long after that task was
+    # deprecated and dropped from the published package, so every run exited 1
+    # on "the task could not be found". Pinning the name to the scaffolder's
+    # list is the check that survives the next move: the widget provisioning
+    # proves has to be the widget new projects are given.
+    test "invokes a generator this project actually ships", %{env: env, scope: scope} do
+      task = recorded_args(env, scope) |> String.split() |> List.first()
 
-      assert args =~ "--deploy-key dk_live"
+      shipped =
+        CodeGeneration.generators()
+        |> Enum.map(fn {_id, command, _desc, _dep, _artifact} -> command end)
+
+      assert "mix #{task}" in shipped,
+             "the widget step runs `mix #{task}`, which is not one of the generators " <>
+               "this project installs: #{inspect(shipped)}"
+    end
+
+    # `mix run <task>` looks for a *file* of that name and exits, so the task
+    # has to come first rather than behind a subcommand.
+    test "invokes the generator as a mix task, not as a file", %{env: env, scope: scope} do
+      assert recorded_args(env, scope) |> String.starts_with?("cms_gen.")
     end
 
     test "is proven only when a real message arrived", %{env: env, scope: scope} do
@@ -205,6 +221,30 @@ defmodule CodeMySpec.Provisioning.WidgetTest do
 
       assert result.state == :install_failed
       assert result.reason =~ "generator ran"
+    end
+
+    # Mix says why it failed on stderr — "The task could not be found" never
+    # touches stdout. Without :stderr_to_stdout the step reported
+    # "Widget generator failed (exit 1): " and nothing, which is the reason
+    # a dead generator sat unnoticed: the failure named no cause to chase.
+    test "reports a generator that failed on stderr only", %{env: env, scope: scope} do
+      mix = Path.join(env.cwd, "stderr_mix")
+      File.write!(mix, "#!/bin/sh\necho 'the task could not be found' >&2\nexit 1\n")
+      File.chmod!(mix, 0o755)
+
+      result =
+        Widget.run(scope, env,
+          site_url: "https://sams-site.com",
+          deploy_key: "dk_live",
+          mix_bin: mix,
+          fetch: page(installed_page()),
+          lookup: from_site()
+        )
+
+      assert result.state == :install_failed
+
+      assert result.reason =~ "the task could not be found",
+             "the failure has to carry the generator's own words. got: #{inspect(result.reason)}"
     end
   end
 end

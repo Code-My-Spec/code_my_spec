@@ -103,4 +103,31 @@ defmodule CodeMySpec.Qa do
       {false, %{reason: "No valid QA pass attempt in DB for story #{story_id}"}}
     end
   end
+
+  @doc """
+  The same check, reading the graph context instead of querying per story.
+
+  `RequirementGraph` walks every ready story in one pass, so the two-argument
+  form above runs one query per story on every graph computation — and the graph
+  is recomputed on every stop hook. The context carries the newest attempt for
+  each story with its invalidations already loaded.
+
+  The verdict still comes from `QaAttempts.passed?/1`, so the preloaded and
+  querying paths cannot disagree about what makes an attempt count.
+  """
+  def complete_check(%Scope{} = scope, story, ctx) when is_map(ctx) do
+    case ctx[:qa_latest_by_story] do
+      latest when is_map(latest) ->
+        if QaAttempts.passed?(Map.get(latest, story.id)) do
+          {true, %{status: "QA passed — valid DB attempt exists"}}
+        else
+          {false, %{reason: "No valid QA pass attempt in DB for story #{story.id}"}}
+        end
+
+      _ ->
+        complete_check(scope, story)
+    end
+  end
+
+  def complete_check(scope, story, _ctx), do: complete_check(scope, story)
 end

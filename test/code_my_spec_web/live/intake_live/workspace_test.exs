@@ -40,7 +40,12 @@ defmodule CodeMySpecWeb.IntakeLive.WorkspaceTest do
   # watcher's deadline — under load the test loses that race.
   defp never_times_out do
     config = Application.get_env(:code_my_spec, CodeMySpec.Workspaces)
-    Application.put_env(:code_my_spec, CodeMySpec.Workspaces, put_in(config[:boot_timeout], 60_000))
+
+    Application.put_env(
+      :code_my_spec,
+      CodeMySpec.Workspaces,
+      put_in(config[:boot_timeout], 60_000)
+    )
   end
 
   # Lets the instance start answering, so the watcher completes and stops.
@@ -79,7 +84,9 @@ defmodule CodeMySpecWeb.IntakeLive.WorkspaceTest do
 
       {:ok, view, html} = live(conn, ~p"/build/workspace")
 
-      assert html =~ "Now let's decide what it actually does." or html =~ "decide what it actually does"
+      assert html =~ "Now let's decide what it actually does." or
+               html =~ "decide what it actually does"
+
       assert render_async_progress(view) =~ "Fetching dependencies"
 
       finish_boot()
@@ -186,20 +193,15 @@ defmodule CodeMySpecWeb.IntakeLive.WorkspaceTest do
   defp settle(0), do: :ok
 
   defp settle(attempts) do
-    case CodeMySpec.Repo.all(Workspaces.Workspace) do
-      [] ->
-        :ok
+    booting? = Enum.any?(CodeMySpec.Repo.all(Workspaces.Workspace), &(&1.status == :booting))
+    settle_booting(booting?, attempts)
+  end
 
-      workspaces ->
-        case Enum.any?(workspaces, &(&1.status == :booting)) do
-          false ->
-            :ok
+  defp settle_booting(false, _attempts), do: :ok
 
-          true ->
-            Process.sleep(20)
-            settle(attempts - 1)
-        end
-    end
+  defp settle_booting(true, attempts) do
+    Process.sleep(20)
+    settle(attempts - 1)
   end
 
   # Transitions record their event and then broadcast, and the screen can also
@@ -210,14 +212,14 @@ defmodule CodeMySpecWeb.IntakeLive.WorkspaceTest do
   defp eventually_recorded(_event_type, 0), do: false
 
   defp eventually_recorded(event_type, attempts) do
-    case Events.exists?(event_type) do
-      true ->
-        true
+    recorded(Events.exists?(event_type), event_type, attempts)
+  end
 
-      false ->
-        Process.sleep(20)
-        eventually_recorded(event_type, attempts - 1)
-    end
+  defp recorded(true, _event_type, _attempts), do: true
+
+  defp recorded(false, event_type, attempts) do
+    Process.sleep(20)
+    eventually_recorded(event_type, attempts - 1)
   end
 
   # The boot watcher reports by broadcast, so the screen updates a beat after
@@ -229,14 +231,13 @@ defmodule CodeMySpecWeb.IntakeLive.WorkspaceTest do
 
   defp eventually(view, text, attempts) do
     html = render(view)
+    eventually_rendered(String.contains?(html, text), html, view, text, attempts)
+  end
 
-    case String.contains?(html, text) do
-      true ->
-        html
+  defp eventually_rendered(true, html, _view, _text, _attempts), do: html
 
-      false ->
-        Process.sleep(20)
-        eventually(view, text, attempts - 1)
-    end
+  defp eventually_rendered(false, _html, view, text, attempts) do
+    Process.sleep(20)
+    eventually(view, text, attempts - 1)
   end
 end

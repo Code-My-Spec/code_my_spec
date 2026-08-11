@@ -42,9 +42,16 @@ defmodule CodeMySpec.Requirements do
   Returns the full computed requirements graph plus the next actionable
   requirements, computed in a single pass.
 
-  Use this when you need both views — saves a duplicate preload + graph
-  compute compared to calling `project_graph/1` and
-  `next_actionable_project/1` separately.
+  > #### Prefer `cached_graph_with_actionable/1` {: .warning}
+  >
+  > This recomputes every node and edge — 4.4 seconds against 34ms of preload on
+  > a 3200-component project — and no caller needs that. The graph is a read
+  > model now (`requirements`, `requirement_edges`), and the cached form recomputes
+  > on a fingerprint miss, so it is never stale.
+  >
+  > Nothing calls this. It is kept because `project_graph_with_actionable_metrics/1`
+  > exists to *time* a compute, and a timing function that read a cache would
+  > measure nothing.
   """
   @spec project_graph_with_actionable(Scope.t()) ::
           %{nodes: [Requirement.t()], edges: [map()], actionable: [Requirement.t()]}
@@ -75,15 +82,42 @@ defmodule CodeMySpec.Requirements do
   end
 
   @doc """
-  Every requirement node, from the published snapshot when it is still current.
+  Every requirement node, read from the projection when it is still current.
 
-  For display. See `RequirementGraph.cached_graph/1` for what a hit does and
-  does not certify — in short, it is not for deciding what an agent works on.
+  The caveat that used to be here — "not for deciding what an agent works on" —
+  was written when the fingerprint watched only files, components and stories,
+  so a hit could not certify what the delegate checkers read. It watches all of
+  them now, one test per input in `graph_cache_test.exs`, and
+  `compute_and_publish/3` says so in as many words. A hit is as good as a
+  recompute.
+
+  What it returns is the read model: `requirements` and `requirement_edges`,
+  through `Requirements.Projection`. A miss recomputes and republishes, so this
+  is never stale — `computed_at` says when, and `nil` means just now.
   """
   @spec cached_all(Scope.t()) :: {[map()], DateTime.t() | nil}
   def cached_all(%Scope{} = scope) do
     {{nodes, _edges}, computed_at} = RequirementGraph.cached_graph(scope)
     {nodes, computed_at}
+  end
+
+  @doc """
+  Nodes, edges and the actionable set, from the read model.
+
+  The cached counterpart to `project_graph_with_actionable/1`, for readers that
+  want the whole graph without paying to recompute it — which on a
+  3200-component project is 4.4 seconds against 34ms of preload.
+
+  Same certification as `cached_all/1`: a miss recomputes and republishes, so
+  this is never stale.
+  """
+  @spec cached_graph_with_actionable(Scope.t()) ::
+          %{nodes: [Requirement.t()], edges: [map()], actionable: [Requirement.t()]}
+  def cached_graph_with_actionable(%Scope{} = scope) do
+    {{nodes, edges}, actionable, _computed_at} =
+      RequirementGraph.cached_graph_with_actionable(scope)
+
+    %{nodes: nodes, edges: edges, actionable: actionable}
   end
 
   # --- Legacy shims (TODO: move evaluation criteria onto agent tasks) ---

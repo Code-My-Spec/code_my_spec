@@ -815,8 +815,22 @@ defmodule CodeMySpec.Files.Scanner do
 
   defp classify_docs(path) do
     classify_persona(path) ||
-      if String.ends_with?(path, ".md"),
-        do: Enum.find_value(doc_dir_roles(), &match_doc_dir(path, &1))
+      if String.ends_with?(path, ".md") do
+        exact_doc_role(path) || Enum.find_value(doc_dir_roles(), &match_doc_dir(path, &1))
+      end
+  end
+
+  # `.code_my_spec/integrations.md` is a sibling of `integrations/`, not a file
+  # inside it, so `match_doc_dir/2` — which requires the trailing slash — never
+  # claimed it and it never synced.
+  #
+  # `QaIntegrationPlan` reads it twice: `check_index/1` is the first gate of its
+  # state machine, and writing it is half the task's stated done signal. So an
+  # agent could do exactly what it was told, write the index, and the graph
+  # fingerprint would not move — the requirement stays unsatisfied and the
+  # agent is handed the same instruction again.
+  defp exact_doc_role(path) do
+    if path == Paths.integrations_index(), do: {path, :integration}
   end
 
   # `.code_my_spec/personas/<slug>/{summary,sources}.md`.

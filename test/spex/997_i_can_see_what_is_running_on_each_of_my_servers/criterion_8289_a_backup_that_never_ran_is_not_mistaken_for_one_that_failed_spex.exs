@@ -14,6 +14,12 @@ defmodule CodeMySpecSpex.Story997.Criterion8289Spex do
   and this is the screen where it counts: backups is the step nobody notices
   is off until the day it matters.
 
+  The done mark is read off the server step, not the certificate. `tls` runs
+  *after* `deploy` in the sequence — the cert is issued against a host that is
+  already answering — so a run that halts on a failed deploy cannot also have
+  made a certificate. Asking for one was asking for a state the sequence
+  cannot produce.
+
   Surface: `CodeMySpecWeb.ServerLive.Show` at `/app/servers/:name`.
   """
 
@@ -27,7 +33,7 @@ defmodule CodeMySpecSpex.Story997.Criterion8289Spex do
 
   spex "A backup that never ran is not mistaken for one that failed" do
     scenario "done, never run, and failed are three different marks" do
-      given_ "a box whose certificate was made, whose deploy failed, and whose backups never ran",
+      given_ "a box that was made, whose deploy failed, and whose backups never ran",
              context do
         context =
           scripted_run(context, %{
@@ -38,16 +44,6 @@ defmodule CodeMySpecSpex.Story997.Criterion8289Spex do
                    kind: "server",
                    location: "hetzner/uat-box",
                    identifier: "environment=uat ip=203.0.113.10"
-                 }
-               ]}
-            end,
-            tls: fn ->
-              {:ok,
-               [
-                 %{
-                   kind: "certificate",
-                   location: "https://uat.example.com",
-                   identifier: "environment=uat"
                  }
                ]}
             end,
@@ -99,9 +95,9 @@ defmodule CodeMySpecSpex.Story997.Criterion8289Spex do
         {:ok, context |> Map.put(:html, html) |> Map.put(:document, Floki.parse_document!(html))}
       end
 
-      then_ "the certificate reads as done", context do
+      then_ "the server reads as done", context do
         assert context.document
-               |> Floki.find("[data-test='step'][data-key='tls']")
+               |> Floki.find("[data-test='step'][data-key='server']")
                |> Floki.attribute("data-state") == ["done"]
 
         {:ok, context}

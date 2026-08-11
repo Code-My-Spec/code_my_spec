@@ -51,7 +51,12 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.ListRequirements do
   def execute(params, frame) do
     case Validators.validate_local_scope(frame) do
       {:ok, scope} ->
-        %{nodes: nodes} = Requirements.project_graph(scope)
+        # The read model, not a recompute. `project_graph/1` recomputes every
+        # node and edge on every call — 4.4s on a 3200-component project — and
+        # this tool is agent-facing, so it paid that per invocation to produce a
+        # graph the projection already holds. `cached_all/1` recomputes on a
+        # fingerprint miss, so it is never stale.
+        {nodes, _computed_at} = Requirements.cached_all(scope)
 
         opts = parse_opts(params)
         filtered = apply_filters(nodes, opts)

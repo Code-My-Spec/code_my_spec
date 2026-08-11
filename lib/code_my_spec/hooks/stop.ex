@@ -10,7 +10,9 @@ defmodule CodeMySpec.Hooks.Stop do
   outcome: task evaluation is skipped (a repeat "analysis running" must not
   advance the stuck counter) and the "all work complete" terminus never fires
   (freshness-gated requirements would read as unsatisfied mid-run). In
-  continuous mode a pending stop blocks with an `await_analysis` directive;
+  continuous mode a pending stop blocks with a directive to wait on
+  `POST /api/harnesses/<id>/analysis/wait` (HTTP, not MCP — a sweep outlives
+  MCP's 30s request cap, so the tool this replaced could never return);
   otherwise it allows with a one-line system message. Results landing after an
   allowed stop reach the user via push notification and block the next stop.
 
@@ -47,6 +49,13 @@ defmodule CodeMySpec.Hooks.Stop do
     validation_opts = extract_test_output_files(params)
 
     req_id = :crypto.strong_rand_bytes(4) |> Base.encode16(case: :lower)
+
+    # Stamped for the whole request, so every line this hook emits carries the
+    # session rather than only the first. Analysing where an agent gets stuck
+    # means grouping stops by session, and a prose line that names it once
+    # cannot be grouped without joining on request id first.
+    Logger.metadata(cms_session: session_id, cms_hook: "stop")
+
     Logger.info("[StopHook] [#{req_id}] session: #{session_id}")
 
     session = session_id && Sessions.get_by_external_id(scope, session_id)
@@ -209,6 +218,19 @@ defmodule CodeMySpec.Hooks.Stop do
   defp pending_analysis?(%{active_project_id: nil}), do: false
   defp pending_analysis?(scope), do: Analysis.runs_in_flight?(scope)
 
+  # The address carries the harness id, because the wait endpoint is on the
+  # harness and every harness route names the working copy it is about. A scope
+  # with no harness has no local address to offer, so it gets the plain
+  # instruction rather than a URL that would 404.
+  defp wait_directive(%{active_harness_id: id}) when not is_nil(id) do
+    "Wait for it with `curl -sS -X POST localhost:4004/api/harnesses/#{id}/analysis/wait` " <>
+      "— run that in the background and you will be notified when it returns — then stop again."
+  end
+
+  defp wait_directive(_scope) do
+    "Wait for the analyzers to finish, then stop again."
+  end
+
   defp pending_response(scope, session, req_id) do
     sources = scope |> Analysis.in_flight() |> Enum.join(", ")
 
@@ -218,8 +240,7 @@ defmodule CodeMySpec.Hooks.Stop do
       %{
         "decision" => "block",
         "reason" =>
-          "Background analysis is still running: #{sources}. " <>
-            "Call `await_analysis` to wait for the results, then stop again."
+          "Background analysis is still running: #{sources}. " <> wait_directive(scope)
       }
     else
       Logger.info("[StopHook] [#{req_id}] Analysis pending (#{sources}) — allowing stop")
@@ -353,7 +374,11 @@ defmodule CodeMySpec.Hooks.Stop do
   end
 
   defp block_with_reason(reason, req_id) do
-    Logger.info("[StopHook] [#{req_id}] Blocking: #{String.slice(reason, 0, 100)}")
+    Logger.info("[StopHook] [#{req_id}] Blocking: #{String.slice(reason, 0, 100)}",
+      cms_decision: "block",
+      cms_blocking: blocking_summary(reason)
+    )
+
     hint = harness_hint_footer()
     reason_budget = @total_response_cap - byte_size(hint)
     capped_reason = Problems.truncate_to_cap(reason, cap: reason_budget)
@@ -385,10 +410,34 @@ defmodule CodeMySpec.Hooks.Stop do
   end
 
   defp allow(req_id, label) do
-    Logger.info("[StopHook] [#{req_id}] #{label}, allowing stop")
+    Logger.info("[StopHook] [#{req_id}] #{label}, allowing stop",
+      cms_decision: "allow",
+      cms_why: label
+    )
+
     notify_complete()
     %{}
   end
+
+  @doc false
+  # Which sources blocked, and how many problems each contributed, as
+  # `exunit=1,credo=6`.
+  #
+  # Read back out of the reason text rather than threaded down from the
+  # validator: the reason is already built from exactly this, and threading it
+  # through six call sites to avoid one regex would be the more fragile of the
+  # two. The shape it parses is `Validation`'s own header — `source (count):` —
+  # so a change there shows up here as an empty summary rather than a wrong one.
+  #
+  # This is the field that answers the question worth asking about an
+  # onboarding agent: not "did it get blocked" but "on what, repeatedly".
+  def blocking_summary(reason) when is_binary(reason) do
+    ~r/^\s*(\w+) \((\d+)\)/m
+    |> Regex.scan(reason)
+    |> Enum.map_join(",", fn [_, source, count] -> "#{source}=#{count}" end)
+  end
+
+  def blocking_summary(_), do: ""
 
   defp maybe_evaluate(_scope, _session_id, nil), do: {:ok, :valid}
 

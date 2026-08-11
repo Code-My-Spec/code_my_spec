@@ -97,20 +97,29 @@ defmodule CodeMySpec.Analysis.SpexLocationTest do
       assert {@spec_file, 27} = locate(error)
     end
 
-    # No spec frame at all — a failure raised entirely outside a spec file.
-    # Falling back to what the error reported is better than filing it nowhere.
-    test "with no spec frame it keeps the error's own location" do
+    # No spec frame at all — a raise from a setup block, a shared fixture or a
+    # plug, with nothing in the trace naming the spec that was running.
+    #
+    # This used to keep the error's own location, on the reasoning that
+    # somewhere beat nowhere. It recurred with that fix in place: a cassette
+    # miss raised inside `ReqCassette.Plug` and two spex failures were filed at
+    # `lib/req_cassette/plug.ex:481` — no story, no criterion, and blocking for
+    # whoever next touched the plug. A spex failure belongs to a spec or to no
+    # file.
+    test "with no spec frame it names no file rather than the wrong one" do
       error = %{
         file: "lib/req_cassette/plug.ex",
         line: 481,
         stacktrace: [%{"file" => "lib/req_cassette/plug.ex", "line" => 481}]
       }
 
-      assert {"lib/req_cassette/plug.ex", 481} = locate(error)
+      assert {nil, nil} = locate(error),
+             "filing a spex failure against a library loses its story and blocks " <>
+               "whoever touches the library"
     end
 
-    test "a missing stacktrace keeps the error's own location" do
-      assert {"a.ex", 1} = locate(%{file: "a.ex", line: 1, stacktrace: nil})
+    test "a missing stacktrace names no file either" do
+      assert {nil, nil} = locate(%{file: "a.ex", line: 1, stacktrace: nil})
     end
 
     test "no error at all locates nothing" do

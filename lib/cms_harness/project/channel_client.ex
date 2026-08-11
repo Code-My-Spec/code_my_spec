@@ -200,6 +200,22 @@ defmodule CmsHarness.Project.ChannelClient do
     :exit, _ -> {:error, :no_reply}
   end
 
+  @doc """
+  Block until the project's analyzers are idle, then return their state.
+
+  Backs `POST /api/analysis/wait`. Blocks for as long as the queue takes; the
+  server replies out of band, so no channel process is held meanwhile.
+  """
+  @spec await_idle(String.t()) :: {:ok, map()} | {:error, term()}
+  def await_idle(root) do
+    case Registry.lookup(CmsHarness.Registry, {:channel, root}) do
+      [{pid, _}] -> GenServer.call(pid, :await_idle, analysis_timeout() + 5_000)
+      [] -> {:error, :not_connected}
+    end
+  catch
+    :exit, _ -> {:error, :no_reply}
+  end
+
   @doc "The read model this project last received. `nil` before the first join."
   @spec read_model(String.t()) :: ReadModel.t() | nil
   def read_model(root) do
@@ -327,7 +343,18 @@ defmodule CmsHarness.Project.ChannelClient do
        # instance means this process reconnecting, and the registration it is
        # colliding with is its own — so it may take it. A different instance is
        # a second harness on one `_build`, which still gets refused.
-       "instance" => instance()
+       "instance" => instance(),
+       # Runs this harness is still working on. The server closes a working
+       # copy's open runs on join, because a harness that restarted took its
+       # queue with it — but a harness whose *socket* dropped did not. The
+       # analyzers are OS processes here and a closed socket does not touch
+       # them; they finish, report, and are refused for a run that is no longer
+       # `:running`.
+       #
+       # Declaring them lets the sweep close only what goes unclaimed. An older
+       # server ignores the field and sweeps everything, which is what it does
+       # today.
+       "active_runs" => AnalysisServer.in_flight(project.root)
      })}
   end
 
@@ -803,6 +830,24 @@ defmodule CmsHarness.Project.ChannelClient do
   def handle_call({:await_analysis, _source, _args}, _from, %{assigns: %{joined: false}} = socket) do
     reason = if socket.assigns[:no_credential?], do: :no_credential, else: :not_connected
     {:reply, {:error, reason}, socket}
+  end
+
+  def handle_call(:await_idle, _from, %{assigns: %{joined: false}} = socket) do
+    reason = if socket.assigns[:no_credential?], do: :no_credential, else: :not_connected
+    {:reply, {:error, reason}, socket}
+  end
+
+  # Same out-of-band reply as `:await_analysis`: the server answers when the
+  # analyzers go idle, which is minutes away.
+  def handle_call(:await_idle, from, socket) do
+    case push(socket, socket.assigns.topic, "analysis_wait", %{}, analysis_timeout()) do
+      {:ok, ref} ->
+        timer = Process.send_after(self(), {:reply_timeout, ref}, analysis_timeout())
+        {:noreply, put_in(socket.assigns.pending[ref], {from, timer})}
+
+      {:error, _reason} ->
+        {:reply, {:error, :not_connected}, socket}
+    end
   end
 
   # Same `pending` machinery as a hook decision, on a timeout two orders of

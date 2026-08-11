@@ -6,15 +6,20 @@ defmodule CodeMySpec.Requirements.RequirementGraphTest do
 
   alias CodeMySpec.Components
   alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.Files.ComponentSync
   alias CodeMySpec.Files.FileSync
-  alias CodeMySpec.Requirements.RequirementGraph
+  alias CodeMySpec.Integration.WorkflowHelpers
   alias CodeMySpec.Projects
+  alias CodeMySpec.Qa.QaAttempt
+  alias CodeMySpec.Repo
+  alias CodeMySpec.Requirements.RequirementGraph
   alias CodeMySpec.Stories
   alias CodeMySpecSpex.ProjectStateFixtures
   alias CodeMySpecSpex.StoryHelpers
+  alias Ecto.Adapters.SQL.Sandbox
 
   setup do
-    :ok = Ecto.Adapters.SQL.Sandbox.checkout(CodeMySpec.Repo)
+    :ok = Sandbox.checkout(Repo)
   end
 
   describe "next_actionable/1" do
@@ -221,10 +226,13 @@ defmodule CodeMySpec.Requirements.RequirementGraphTest do
       assert first_project_index != nil,
              "expected at least one actionable project requirement"
 
-      if first_component_index do
-        assert first_project_index < first_component_index,
-               "expected project requirements to sort before component work, got: #{inspect(Enum.map(actionable, &{&1.entity_type, &1.name}))}"
-      end
+      assert_sorts_before(
+        first_project_index,
+        first_component_index,
+        actionable,
+        "project requirements",
+        "component work"
+      )
     end
 
     test "the qa journey chain sorts after story and component work" do
@@ -272,10 +280,31 @@ defmodule CodeMySpec.Requirements.RequirementGraphTest do
       other_index =
         Enum.find_index(actionable, &(&1.entity_type in ["story", "component"]))
 
-      if journey_index do
-        assert journey_index > other_index,
-               "expected the qa journey chain to sort after story/component work, got: #{inspect(Enum.map(actionable, &{&1.entity_type, &1.name}))}"
-      end
+      assert_sorts_before(
+        other_index,
+        journey_index,
+        actionable,
+        "story/component work",
+        "the qa journey chain"
+      )
+    end
+
+    # Ordering between two positions, when either may be absent.
+    #
+    # A nil index is "that kind of work is not actionable here", which is not a
+    # failure — the surrounding tests already assert separately that the graph
+    # produced something to order. Two clauses rather than a guard inside the
+    # assertion, per the no-imperative-`if` rule for test files.
+    #
+    # Both indices are reported on failure because "3 is not less than 1" says
+    # nothing about which requirements were in which order.
+    defp assert_sorts_before(_earlier, nil, _actionable, _earlier_label, _later_label), do: :ok
+    defp assert_sorts_before(nil, _later, _actionable, _earlier_label, _later_label), do: :ok
+
+    defp assert_sorts_before(earlier, later, actionable, earlier_label, later_label) do
+      assert earlier < later,
+             "expected #{earlier_label} to sort before #{later_label}, got: " <>
+               inspect(Enum.map(actionable, &{&1.entity_type, &1.name}))
     end
 
     test "story component_linked is blocked when project prerequisites are unsatisfied" do
@@ -551,12 +580,12 @@ defmodule CodeMySpec.Requirements.RequirementGraphTest do
 
   defp sync!(scope, tmp_dir) do
     {:ok, _} = FileSync.sync(scope, base_dir: tmp_dir)
-    CodeMySpec.Files.ComponentSync.sync_from_files(scope, base_dir: tmp_dir)
+    ComponentSync.sync_from_files(scope, base_dir: tmp_dir)
   end
 
   defp seed_setup(tmp_dir) do
     # Minimal files to make project_setup pass
-    CodeMySpec.Integration.WorkflowHelpers.seed_all_setup_steps(tmp_dir)
+    WorkflowHelpers.seed_all_setup_steps(tmp_dir)
   end
 
   # Clear the full story-level chain inline. (The LiveView-driven
@@ -590,8 +619,8 @@ defmodule CodeMySpec.Requirements.RequirementGraphTest do
     # Insert a DB-backed QA pass attempt directly. The requirement graph
     # now checks Qa.complete?/2 (DB-driven), not result_complete.md on disk.
     {:ok, _attempt} =
-      %CodeMySpec.Qa.QaAttempt{}
-      |> CodeMySpec.Qa.QaAttempt.changeset(%{
+      %QaAttempt{}
+      |> QaAttempt.changeset(%{
         story_id: story.id,
         status: :pass,
         scenarios: [%{name: "Placeholder", status: :pass, observation: "All checks passed."}],

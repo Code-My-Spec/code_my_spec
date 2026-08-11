@@ -193,6 +193,31 @@ defmodule CodeMySpec.McpServers.Bootstrap.Content do
     | `install_agents_md` | Create/update this file |
     | `install_rules` | Copy design and test rules |
 
+    ## HTTP Endpoints (not MCP tools)
+
+    Two things the harness does over plain HTTP rather than MCP, because both
+    can run for minutes and MCP caps a request at 30 seconds.
+
+    | Endpoint | Purpose |
+    |---|---|
+    | `POST localhost:4004/api/harnesses/<harness_id>/analysis/run` | Run one analyzer (`compiler`/`credo`/`exunit`/`spex`). The PreToolUse hook rewrites your `mix test` into this, so you rarely call it yourself. |
+    | `POST localhost:4004/api/harnesses/<harness_id>/analysis/wait` | Block until the background analyzers are idle, then report each source's state and problem count. |
+
+    **Run the wait in the background.** A full sweep on a large project takes
+    200-590 seconds; fire it as a background command and you will be notified
+    when it returns, rather than sitting on the call.
+
+    Use it when a stop is refused with "Background analysis is still running" —
+    the refusal includes the exact command with your harness id filled in. The
+    stop hook decides from persisted problems, so waiting is how you get a stop
+    evaluated against fresh results rather than the previous sweep's.
+
+    This used to be an MCP tool called `await_analysis`. It could not work: a
+    sweep outlives MCP's 30s request cap, so it answered
+    `-32603 Server unavailable` every time it was actually needed — which reads
+    as the server being down rather than as a timeout. If you find that name in
+    an older prompt, the prompt is stale.
+
     ## Component Types
 
     The harness supports these component types, each with their own requirement

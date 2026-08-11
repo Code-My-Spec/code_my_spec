@@ -50,7 +50,7 @@ defmodule CodeMySpec.BddSpecs.Spex do
         Keyword.get(
           opts,
           :jsonl_path,
-          Path.join(System.tmp_dir!(), "spex_output_#{System.unique_integer([:positive])}.jsonl")
+          CodeMySpec.TempFile.path("spex_output", ".jsonl")
         )
       )
 

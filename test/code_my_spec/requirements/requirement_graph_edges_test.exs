@@ -14,6 +14,7 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
   alias CodeMySpec.Files.FileSync
   alias CodeMySpec.Integration.WorkflowHelpers
   alias CodeMySpec.Projects
+  alias CodeMySpec.Qa.QaAttempt
   alias CodeMySpec.Requirements.RequirementGraph
   alias CodeMySpec.Stories
   alias CodeMySpecSpex.ProjectStateFixtures
@@ -104,6 +105,75 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
       refute qa.satisfied
       refute Map.has_key?(qa, :locally_satisfied),
              "qa_complete's leaf check is already false (no qa_result file) — clamping skips it"
+    end
+  end
+
+  # A parent whose first def is `:child`-scoped fans out to its children, and a
+  # child in the same kickoff closure emits the identical edge for itself. Both
+  # paths ran, so the component tree produced 13,433 duplicates on this project
+  # — uniformly ×2, none higher, which is the signature of exactly two paths
+  # reaching one edge.
+  #
+  # `Enum.uniq/1` already removed them before the reduction, so suppressing the
+  # parent's copy cannot change the graph. These assert that: the edge survives,
+  # and nothing is emitted twice.
+  describe "the parent/child fan-out no longer emits an edge twice" do
+    defp parent_and_child(scope, tmp_dir) do
+      {:ok, parent} = Components.create_component(scope, %{
+        name: "Todos", type: "context", module_name: "MyApp.Todos"
+      })
+
+      {:ok, child} = Components.create_component(scope, %{
+        name: "Todo",
+        type: "schema",
+        module_name: "MyApp.Todos.Todo",
+        parent_component_id: parent.id
+      })
+
+      {:ok, story} = Stories.create_story(scope, %{
+        ready_for_dev: true,
+        title: "Test Story",
+        description: "As a user...",
+        acceptance_criteria: ["AC1"],
+        component_id: parent.id
+      })
+
+      write_file(tmp_dir, "lib/my_app/todos.ex", impl_content("MyApp.Todos"))
+      write_file(tmp_dir, "lib/my_app/todos/todo.ex", impl_content("MyApp.Todos.Todo"))
+      sync!(scope, tmp_dir)
+
+      {story, child}
+    end
+
+    test "a container's kickoff edge to its child is emitted once" do
+      {scope, tmp_dir} = setup_project()
+      seed_setup(tmp_dir)
+      {story, child} = parent_and_child(scope, tmp_dir)
+
+      {_nodes, edges} = RequirementGraph.compute_graph(scope)
+
+      kickoff =
+        Enum.filter(edges, fn e ->
+          e.from == {"story", story.id, "bdd_specs_exist"} and
+            match?({"component", id, _} when id == child.id, e.to)
+        end)
+
+      assert kickoff == Enum.uniq(kickoff),
+             "the graph must not carry the same kickoff edge twice"
+    end
+
+    test "the story still reaches the child's work" do
+      {scope, tmp_dir} = setup_project()
+      seed_setup(tmp_dir)
+      {_story, child} = parent_and_child(scope, tmp_dir)
+
+      {_nodes, edges} = RequirementGraph.compute_graph(scope)
+
+      assert Enum.any?(edges, fn e ->
+               match?({"component", id, _} when id == child.id, e.to)
+             end),
+             "suppressing the parent's duplicate must not orphan the child — " <>
+               "dropping an edge nothing else emits is how this goes wrong"
     end
   end
 
@@ -699,8 +769,8 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
     # Insert a DB-backed QA pass attempt. The requirement graph now checks
     # Qa.complete?/2 (DB-driven), not result_complete.md on disk.
     {:ok, _attempt} =
-      %CodeMySpec.Qa.QaAttempt{}
-      |> CodeMySpec.Qa.QaAttempt.changeset(%{
+      %QaAttempt{}
+      |> QaAttempt.changeset(%{
         story_id: story.id,
         status: :pass,
         scenarios: [%{name: "Placeholder", status: :pass, observation: "All checks passed."}],

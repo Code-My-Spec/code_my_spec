@@ -19,14 +19,15 @@ defmodule CodeMySpec.Integration.StopHookSyncTest do
   alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Files.ComponentSync, as: FileComponentSync
   alias CodeMySpec.Files.FileSync
-  alias CodeMySpec.Requirements.RequirementCalculator
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpec.Projects
+  alias CodeMySpec.Requirements.RequirementCalculator
   alias CodeMySpec.Sessions
   alias CodeMySpecLocalWeb.Hooks.StopController
+  alias Ecto.Adapters.SQL.Sandbox
 
   setup do
-    :ok = Ecto.Adapters.SQL.Sandbox.checkout(CodeMySpec.Repo)
+    :ok = Sandbox.checkout(CodeMySpec.Repo)
   end
 
   # ============================================================================
@@ -96,7 +97,8 @@ defmodule CodeMySpec.Integration.StopHookSyncTest do
       reqs2 = RequirementCalculator.compute_component(scope, accounts)
       impl_req2 = Enum.find(reqs2, &(&1.name == "implementation_file"))
 
-      assert impl_req2.satisfied, "implementation_file should be satisfied after impl file created"
+      assert impl_req2.satisfied,
+             "implementation_file should be satisfied after impl file created"
     end
   end
 
@@ -111,18 +113,13 @@ defmodule CodeMySpec.Integration.StopHookSyncTest do
         frame: frame,
         session_id: session_id,
         external_session_id: external_session_id,
-        req2: req2,
+        req1: req1,
         tmp_dir: tmp_dir
       } = setup_workflow_scenario()
 
-      # `technical_strategy`, not the graph's root. The root is
-      # `personas_complete`, whose validation_type is :manual — the stop hook
-      # deliberately does not evaluate those (the test below is exactly that
-      # claim), so it could never complete and this test would be asserting
-      # against its own sibling. This one is `path_exists`, which the hook does
-      # evaluate, and its artifact is a file the test can write.
+      # Start task for project_setup
       {:reply, resp, ^frame} =
-        StartTask.execute(Map.put(req2, :session_id, session_id), frame)
+        StartTask.execute(Map.put(req1, :session_id, session_id), frame)
 
       refute resp.isError
 
@@ -132,10 +129,14 @@ defmodule CodeMySpec.Integration.StopHookSyncTest do
       assert task
       task_id = task.id
 
-      # The artifact `technical_strategy` checks for.
-      decisions = Path.join(tmp_dir, ".code_my_spec/architecture/decisions.md")
-      File.mkdir_p!(Path.dirname(decisions))
-      File.write!(decisions, "# Decisions\n")
+      # Satisfy `technical_strategy` — a `path_exists` check, so writing the file
+      # is the whole of it.
+      File.mkdir_p!(Path.join(tmp_dir, ".code_my_spec/architecture"))
+
+      File.write!(
+        Path.join(tmp_dir, ".code_my_spec/architecture/decisions.md"),
+        "# Decisions\n"
+      )
 
       # Call stop hook — evaluates task, marks completed, allows stop (not continuous mode)
       stop_response = call_stop_hook!(scope, external_session_id)

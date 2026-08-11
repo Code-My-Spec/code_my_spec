@@ -17,7 +17,7 @@ defmodule CodeMySpecSpex.Story842.Criterion1974Spex do
 
   alias CodeMySpec.Environments
 
-  @release_type "Elixir.CodeMySpec.AgentTasks.Release"
+  @release_type "release"
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -25,6 +25,18 @@ defmodule CodeMySpecSpex.Story842.Criterion1974Spex do
 
   spex "The user approves the release from their phone" do
     scenario "a release reaches the point of asking" do
+      given_ "the user journeys have been walked", context do
+        # The release refuses until a journey result exists.
+        :ok =
+          Environments.write_file(
+            context.environment,
+            ".code_my_spec/qa/journey_result.md",
+            "# Journey result\n\nwalked end to end — passed\n"
+          )
+
+        {:ok, context}
+      end
+
       given_ "a story on UAT waiting to be released", context do
         :ok =
           Environments.write_file(
@@ -41,7 +53,10 @@ defmodule CodeMySpecSpex.Story842.Criterion1974Spex do
           Phoenix.ConnTest.build_conn()
           |> Plug.Conn.put_req_header("x-working-dir", context.scope.cwd)
           |> Plug.Conn.put_req_header("content-type", "application/json")
-          |> post("/api/agent-tasks/start", %{"session_type" => @release_type})
+          |> post("/api/agent-tasks/start", %{
+            "session_type" => @release_type,
+            "external_id" => "spex-#{System.unique_integer([:positive])}"
+          })
           |> Phoenix.ConnTest.json_response(200)
 
         {:ok, Map.put(context, :prompt, response["prompt"] || response["error"] || "")}

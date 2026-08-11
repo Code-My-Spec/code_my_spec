@@ -86,10 +86,7 @@ defmodule CmsHarness.Web.McpController do
 
     case Req.request(request(conn, project, token, verb, body, @post_timeout)) do
       {:ok, response} ->
-        conn
-        |> copy_headers(response)
-        |> put_resp_content_type(content_type(response))
-        |> send_resp(response.status, response.body || "")
+        relay_or_summarize(conn, response)
 
       {:error, reason} ->
         unreachable(conn, reason)
@@ -98,6 +95,80 @@ defmodule CmsHarness.Web.McpController do
 
   defp dispatch(conn, _project, _token) do
     send_resp(conn, 405, "")
+  end
+
+  # An error page is never a tool result, so it is summarized rather than
+  # relayed.
+  #
+  # When the upstream dev server is wedged — a `config/*.exs` change it cannot
+  # hot-reload — every request gets Phoenix's styled `CompileError` page. That
+  # was passed through verbatim: 30KB of markup and a base64 SVG logo arriving
+  # in an agent's context as the result of `create_issue`, which is to say the
+  # tool for reporting friction failed by burning the context needed to report
+  # it (issues 5fb011f4, 6ecb257a).
+  #
+  # Only error pages are caught. A JSON body is a result and an SSE stream is the
+  # server→client channel, both legitimate; guessing "not JSON means broken"
+  # would break streaming.
+  defp relay_or_summarize(conn, response) do
+    case html_summary(response) do
+      nil ->
+        conn
+        |> copy_headers(response)
+        |> put_resp_content_type(content_type(response))
+        |> send_resp(response.status, response.body || "")
+
+      summary ->
+        Logger.error("[CmsHarness] MCP upstream returned an error page: #{summary}")
+
+        conn
+        |> put_status(200)
+        |> json(%{
+          "jsonrpc" => "2.0",
+          "id" => conn.body_params["id"],
+          "error" => %{"code" => -32_001, "message" => summary}
+        })
+    end
+  end
+
+  defp html_summary(response) do
+    body = to_string(response.body || "")
+
+    if error_page?(response, body) do
+      "the CodeMySpec server answered with an error page (HTTP #{response.status}) " <>
+        "instead of a tool result: #{first_meaningful_line(body)}. " <>
+        "Common causes: a pending migration, or a dev server that has loaded a " <>
+        "changed config/*.exs and cannot hot-reload it. Both persist until the " <>
+        "server is dealt with, so every request fails the same way."
+    end
+  end
+
+  # Not only HTML. Phoenix renders its debug page in whatever the request
+  # accepts, and the MCP client sends `application/json, text/event-stream` — so
+  # a `Phoenix.Ecto.PendingMigrationError` came back as markdown, sailed past an
+  # HTML-only check, and reached the agent as a raw stack trace. Recognising the
+  # page by its exception marker as well as its markup catches both renderings.
+  defp error_page?(response, body) do
+    trimmed = String.trim_leading(body)
+
+    content_type(response) == "text/html" or
+      String.starts_with?(trimmed, ["<!DOCTYPE", "<!doctype", "<html"]) or
+      (response.status >= 400 and String.contains?(body, "** ("))
+  end
+
+  # Phoenix's error page carries the exception text in the markup. Anything
+  # recognisable beats "an HTML page arrived", and the whole document is what
+  # this exists to avoid.
+  defp first_meaningful_line(body) do
+    body
+    |> String.replace(~r{<[^>]*>}, " ")
+    |> String.replace(~r/\s+/, " ")
+    |> String.trim()
+    |> String.slice(0, 300)
+    |> case do
+      "" -> "no readable text in the response"
+      text -> text
+    end
   end
 
   defp request(conn, project, token, method, body, receive_timeout) do

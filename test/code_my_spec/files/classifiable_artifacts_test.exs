@@ -47,6 +47,12 @@ defmodule CodeMySpec.Files.ClassifiableArtifactsTest do
     {Path.join(Paths.personas_dir(), "some-slug/summary.md"), "persona summary"},
     {Path.join(Paths.personas_dir(), "some-slug/sources.md"), "persona sources"},
     {"test/support/fixtures/my_app_spex_fixtures.ex", "spex fixtures bridge"},
+    {Path.join(Paths.integrations_dir(), "stripe.md"), "an integration spec"},
+    # A sibling of `integrations/`, not a file inside it, so the directory
+    # prefix rule never claimed it — the sixth instance of this exact bug, and
+    # the one this list existed to catch. `QaIntegrationPlan.check_index/1`
+    # gates on it and writing it is half the task's done signal.
+    {Paths.integrations_index(), "integration index"},
     {"mix.exs", "mix.exs"},
     {".credo.exs", ".credo.exs"},
     {"CLAUDE.md", "CLAUDE.md"},

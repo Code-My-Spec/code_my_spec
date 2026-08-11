@@ -138,3 +138,16 @@ config :code_my_spec, :cloudflare_tunnel,
   tunnel_id: "12a798a4-81a3-4242-8b59-ac171c0a01a1",
   account_tag: "6477547f586ec90db2c2a0081dcd98bd",
   origin_url: "http://127.0.0.1:4000"
+
+# Previews resolve through the same tunnel that serves dev.codemyspec.com, so
+# a preview address works from a phone or a colleague's browser rather than
+# only from this machine. The record is a CNAME to the tunnel, written once
+# per project the first time its preview is asked for.
+config :code_my_spec, CodeMySpec.Workspaces.PreviewAddress,
+  base_domain: "codemyspec.com",
+  target: "12a798a4-81a3-4242-8b59-ac171c0a01a1.cfargotunnel.com"
+
+# Previews get a listener of their own because the main endpoint cannot serve
+# them: it claims /live/websocket for its own LiveView socket before any plug
+# runs. See `CodeMySpecWeb.PreviewListener`. Route preview-* here at the edge.
+config :code_my_spec, CodeMySpecWeb.PreviewListener, port: 4010

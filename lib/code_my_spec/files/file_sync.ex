@@ -601,8 +601,28 @@ defmodule CodeMySpec.Files.FileSync do
   # complete; without validation the row gets `validation_errors: nil`
   # and `Setup.Context.error/4` returns the missing_msg fallback,
   # leaving the requirement permanently unsatisfied.
+  # This is every role `Scanner.validate_entry/4` has a clause for that is not
+  # owner-bearing. It was five, and the three that were missing —
+  # `:qa_plan`, `:persona_summary`, `:persona_sources` — fell to the branch
+  # below that stamps `valid: true` without reading the file.
+  #
+  # That made the two sync paths disagree. A full scan validated them; a single
+  # path write, which is what the watcher fires and what an agent's edit goes
+  # through, marked them valid unconditionally. So a QA plan missing every
+  # required section came back valid until something happened to trigger a full
+  # scan, and `qa_setup` — "QA plan exists with App Overview, Tools Registry,
+  # and Seed Strategy" — was satisfied by a file that had none of them.
   defp setup_validated_role?(role)
-       when role in [:claude_md, :mix_exs, :credo_exs, :setup_config, :test_support],
+       when role in [
+              :claude_md,
+              :mix_exs,
+              :credo_exs,
+              :setup_config,
+              :test_support,
+              :qa_plan,
+              :persona_summary,
+              :persona_sources
+            ],
        do: true
 
   defp setup_validated_role?(_), do: false

@@ -14,6 +14,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannelTest do
 
   import Phoenix.ChannelTest
   import CodeMySpec.ComponentsFixtures
+  import CodeMySpec.ProblemsFixtures
   import CodeMySpec.UsersFixtures
 
   @endpoint CodeMySpecWeb.Endpoint
@@ -658,6 +659,62 @@ defmodule CodeMySpecWeb.HarnessProjectChannelTest do
 
       assert_reply ref, :error, %{"reason" => "unknown_run"}, 5_000
     end
+
+    # How `unknown_run` was actually being produced, end to end.
+    #
+    # `SubagentStop` matched `{:error, reason}` while `Validation.validate_stop/3`
+    # returns `{:error, reason, blocking_key}`, so a sub-agent stopping with
+    # anything to block on raised `CaseClauseError` *inside the channel process*.
+    # The channel died, `terminate/2` read that as the harness going away and
+    # failed every run it had open — while the harness, which never went
+    # anywhere, was still running them. Those analyzers finished, sent their
+    # results, and were told `unknown_run` because the rows were no longer
+    # `:running`.
+    #
+    # Self-sustaining: nothing could refresh, so the stale finding that crashed
+    # the stop was still there to crash the next one. Observed as seven channel
+    # closes and eleven rejected results in one evening.
+    test "a sub-agent stopping with problems blocks, rather than killing the channel",
+         %{channel: channel, scope: scope} do
+      Process.flag(:trap_exit, true)
+
+      # A compiler error blocks unconditionally — no mode, no changed-file
+      # scoping to arrange. What matters is only that something blocks.
+      problem_fixture(scope, %{
+        source: "compiler",
+        severity: :error,
+        file_path: "lib/demo/broken.ex"
+      })
+
+      ref =
+        push(channel, "hook_decision", %{
+          "hook" => "subagent-stop",
+          "payload" => %{"session_id" => "s1", "agent_id" => "a1"}
+        })
+
+      assert_reply ref, :ok, decision, 5_000
+
+      assert decision["decision"] == "block",
+             "the sub-agent has an unresolved compiler error and must be told so"
+
+      assert decision["reason"] =~ "broken.ex"
+
+      # The runs this very stop enqueued. The harness is still holding them, so
+      # nothing here may close them — closing them is what made their results
+      # unrecordable.
+      assert Analysis.runs_in_flight?(scope), """
+      The stop swept the runs the harness is still working on.
+
+      They can only be closed when their executor provably cannot answer. A
+      decision made *on* this channel is not that: the harness is on the other
+      end of it, still running the analyzers, and every result it sends back
+      will now be refused as `unknown_run`.
+      """
+
+      assert Process.alive?(channel.channel_pid),
+             "a hook that cannot decide must answer, not crash — the channel is the harness's " <>
+               "only route to this server, and it takes the run ledger down with it"
+    end
   end
 
   # A run left `:running` makes `in_flight/1` report analysis pending on every
@@ -699,6 +756,61 @@ defmodule CodeMySpecWeb.HarnessProjectChannelTest do
       refute Analysis.runs_in_flight?(served),
              "an open run whose executor is gone makes every later stop report analysis " <>
                "pending — an allow, forever"
+    end
+
+    # The other half. Sweeping on join is right for a harness that restarted and
+    # took its queue with it; it is wrong for one whose socket dropped, because
+    # the analyzers are OS processes on its machine and a closed socket does not
+    # touch them. They finish, report, and are refused for a run that is no
+    # longer `:running` — which is `unknown_run`, and how a stop hook ends up
+    # frozen on findings nothing can refresh.
+    #
+    # The harness is the only thing that knows, so it says so on join.
+    test "are spared when the returning harness still holds them", %{
+      scope: scope,
+      topic: topic
+    } do
+      {:ok, %{harness_id: id}, channel} = join_with(scope, topic, nil)
+      served = %{scope | active_harness_id: id}
+
+      ref = push(channel, "hook_decision", %{"hook" => "stop", "payload" => %{}})
+      assert_reply ref, :ok, _decision, 5_000
+      assert_push "run_analysis", %{"runs" => _}, 5_000
+      assert Analysis.runs_in_flight?(served)
+
+      open_ids = open_run_ids(served)
+      assert open_ids != []
+
+      down = Process.monitor(channel.channel_pid)
+      Process.exit(channel.channel_pid, :kill)
+      assert_receive {:DOWN, ^down, :process, _, _}, 2_000
+
+      assert eventually(fn ->
+               match?({:ok, _, _}, join_claiming(scope, topic, id, open_ids))
+             end)
+
+      assert Analysis.runs_in_flight?(served),
+             "a run the harness is still executing must survive its socket dropping, " <>
+               "or the result it is about to send is refused as unknown_run"
+    end
+
+    defp join_claiming(scope, topic, harness_id, run_ids) do
+      scope
+      |> harness_socket([])
+      |> subscribe_and_join(HarnessProjectChannel, topic, %{
+        "label" => @label,
+        "harness_id" => harness_id,
+        "active_runs" => run_ids
+      })
+    end
+
+    defp open_run_ids(scope) do
+      import Ecto.Query
+
+      CodeMySpec.Analysis.Run
+      |> where([r], r.project_id == ^scope.active_project_id and r.status == :running)
+      |> select([r], r.id)
+      |> CodeMySpec.Repo.all()
     end
   end
 
@@ -812,6 +924,57 @@ defmodule CodeMySpecWeb.HarnessProjectChannelTest do
   # not synchronous with the channel process dying.
   defp eventually(fun, attempts \\ 40) do
     Enum.reduce_while(1..attempts, false, fn _, _ -> poll(fun.()) end)
+  end
+
+  # A disconnect fails every in-flight run for the working copy, so why it
+  # happened is the most useful thing the server knows — and it was the one
+  # thing it discarded. The harness cannot supply it: a crashed channel sends
+  # `phx_error` with no payload, so the far side only ever logs
+  # `closed: {:error, %{}}`.
+  #
+  # Asserting the log rather than the sweep on purpose. The sweep already had a
+  # line; what was missing was the cause, and seven crashes in an evening read
+  # as seven network drops because of it.
+  describe "a channel that dies says why" do
+    # The channel is linked to the test process and its death is the subject.
+    setup do
+      Process.flag(:trap_exit, true)
+      :ok
+    end
+
+    # `terminate/2` is called directly rather than by killing the process.
+    # `Process.exit/2` on a channel — which does not trap exits — skips
+    # `terminate/2` altogether, so a test that kills it proves nothing about
+    # what the callback logs. The callback is public and the logging is the
+    # subject.
+    test "an abnormal exit is logged at error with its reason", %{scope: scope, topic: topic} do
+      {:ok, _reply, channel} = join_as(scope, topic)
+      socket = :sys.get_state(channel.channel_pid)
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          HarnessProjectChannel.terminate({:badmatch, :a_three_tuple}, socket)
+        end)
+
+      assert log =~ "channel DIED"
+
+      assert log =~ "a_three_tuple",
+             "the reason is the whole point — without it a crash and a network " <>
+               "drop are the same line, which is how seven crashes read as seven drops"
+    end
+
+    test "a clean leave is not alarming", %{scope: scope, topic: topic} do
+      {:ok, _reply, channel} = join_as(scope, topic)
+      ref = Process.monitor(channel.channel_pid)
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          Phoenix.ChannelTest.leave(channel)
+          assert_receive {:DOWN, ^ref, :process, _, _}, 5_000
+        end)
+
+      refute log =~ "channel DIED"
+    end
   end
 
   defp poll(true), do: {:halt, true}

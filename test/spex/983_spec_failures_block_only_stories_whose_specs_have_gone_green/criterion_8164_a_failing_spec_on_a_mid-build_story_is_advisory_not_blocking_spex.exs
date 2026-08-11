@@ -69,12 +69,13 @@ defmodule CodeMySpecSpex.Story983.Criterion8164Spex do
 
       when_ "the stop hook fires with that story's spec red", context do
         jsonl =
-          write_spex_jsonl([{context.spec_path, "implementation not written yet"}])
+          Fixtures.spex_run_report([{context.spec_path, "implementation not written yet"}])
 
         response =
           use_cmd_cassette "clean", record: :none do
             Phoenix.ConnTest.build_conn()
             |> Plug.Conn.put_req_header("x-working-dir", context.scope.cwd)
+            |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_harness_id)
             |> Plug.Conn.put_req_header("content-type", "application/json")
             |> post(~p"/api/hooks/stop", %{
               "session_id" => context.session_id,
@@ -138,39 +139,5 @@ defmodule CodeMySpecSpex.Story983.Criterion8164Spex do
     """
 
     {Fixtures.spec_file_path(story, criterion), content}
-  end
-
-  # Story attribution joins spex problems to files by path, and a story's
-  # spec path carries its runtime-assigned id — so the JSONL is written
-  # here with the real path rather than checked in. Same shape as
-  # `test/fixtures/validation/pipeline_spex_failure/spex.jsonl`.
-  defp write_spex_jsonl(entries) do
-    body =
-      entries
-      |> Enum.map(fn {path, message} ->
-        Jason.encode!(%{
-          "spex" => "intentional failure",
-          "scenario" => "asserts false",
-          "steps" => [
-            %{"type" => "then", "description" => "fails", "status" => "failed"}
-          ],
-          "error" => %{
-            "message" => message,
-            "file" => path,
-            "line" => 7,
-            "stacktrace" => []
-          }
-        })
-      end)
-      |> Enum.join("\n")
-
-    path =
-      Path.join(
-        System.tmp_dir!(),
-        "spex_983_#{System.unique_integer([:positive])}.jsonl"
-      )
-
-    File.write!(path, body <> "\n")
-    path
   end
 end

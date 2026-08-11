@@ -19,6 +19,8 @@ defmodule CodeMySpecSpex.Story994.Criterion8265Spex do
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpecSpex.Fixtures
+
   @endpoint CodeMySpecWeb.Endpoint
 
   setup :register_log_in_setup_account
@@ -26,19 +28,19 @@ defmodule CodeMySpecSpex.Story994.Criterion8265Spex do
   spex "A new box is created without leaving the screen" do
     scenario "provisioning from the screen produces a linked server" do
       given_ "Sam is on the servers screen with nothing provisioned yet", context do
-        owner = self()
+        recorder = Fixtures.call_recorder()
 
         context =
           stage_servers(context, [],
             create: fn _scope, attrs ->
-              send(owner, {:created, attrs})
+              Fixtures.record_call(recorder, {:created, attrs})
               {:ok, provider_server(Map.merge(%{name: "new-box"}, attrs))}
             end
           )
 
         {:ok, view, _html} = live(context.conn, "/app/servers")
 
-        {:ok, Map.put(context, :view, view)}
+        {:ok, Map.merge(context, %{view: view, recorder: recorder})}
       end
 
       when_ "he asks for a new server and confirms it", context do
@@ -55,7 +57,7 @@ defmodule CodeMySpecSpex.Story994.Criterion8265Spex do
       end
 
       then_ "the server is created in his own provider account", context do
-        assert_received {:created, attrs}
+        assert [{:created, attrs}] = Fixtures.recorded_calls(context.recorder)
         assert attrs[:size] == "cpx11" or attrs["size"] == "cpx11"
 
         {:ok, context}

@@ -42,6 +42,34 @@ defmodule CodeMySpec.Workspaces do
   def url(%Workspace{} = workspace), do: Workspace.url(workspace)
 
   @doc """
+  What the app is doing right now, asked rather than inferred.
+
+  The pane cannot work this out from the proxy's answer: a booting container
+  and a crashed one both fail to reply, and an app raising on every request
+  replies just as readily as a healthy one. Those are three different things
+  to tell Sam — wait, we broke it, you broke it — so they are three states.
+
+  `:starting` is ours and is read off the stored step. `:broken` is the app's
+  own doing. `:down` is an instance that is not there.
+  """
+  @spec state(Workspace.t()) :: :starting | :running | :broken | :down
+  def state(%Workspace{status: :failed}), do: :down
+  def state(%Workspace{status: :booting}), do: :starting
+
+  def state(%Workspace{container_name: name, port: port})
+      when is_binary(name) and is_integer(port) do
+    if Runner.alive?(name), do: from_serving(Runner.serving(port)), else: :down
+  end
+
+  def state(%Workspace{}), do: :down
+
+  defp from_serving(:serving), do: :running
+  defp from_serving(:erroring), do: :broken
+  # Alive but answering nothing is still coming up — the container is there,
+  # so this is the wait, not a failure.
+  defp from_serving(:down), do: :starting
+
+  @doc """
   Brings up the instance for the scope's active project.
 
   Returns a `:booting` workspace once the runner has accepted it. A workspace

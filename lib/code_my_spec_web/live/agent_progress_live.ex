@@ -321,6 +321,7 @@ defmodule CodeMySpecWeb.AgentProgressLive do
             <li
               :for={req <- @requirements}
               data-test="requirement-row"
+              data-requirement={req.name}
               data-status={req.status}
               class={["cms-rail-item", req.name == @focused_requirement && "is-focus"]}
             >

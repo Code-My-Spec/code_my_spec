@@ -20,6 +20,7 @@ defmodule CodeMySpecSpex.Story668.Criterion5482Spex do
   alias Anubis.Server.Frame
   alias CodeMySpec.Environments
   alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
+  alias CodeMySpecSpex.Fixtures
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -35,6 +36,11 @@ defmodule CodeMySpecSpex.Story668.Criterion5482Spex do
             ".code_my_spec/qa/plan.md",
             valid_plan()
           )
+
+        # The checker reads its verdict from the Files projection, not from
+        # disk — a plan that was never classified could never be found. Sync
+        # the file through the same event the watcher fires.
+        {:ok, _} = Fixtures.notify_file_changed(context.scope, ".code_my_spec/qa/plan.md")
 
         {:ok, context}
       end

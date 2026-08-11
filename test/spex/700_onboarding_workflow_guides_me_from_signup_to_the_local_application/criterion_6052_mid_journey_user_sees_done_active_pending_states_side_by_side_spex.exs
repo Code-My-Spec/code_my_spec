@@ -1,15 +1,14 @@
 defmodule CodeMySpecSpex.Story700.Criterion6052Spex do
   @moduledoc """
   Story 700 — Onboarding workflow guides me from signup to the local application.
-  Criterion 6052 — Rule: All four steps are visible at all times —
-  completed steps as compact summary tiles, the active step as the
-  focal expanded element, and not-yet-reached steps as dimmed/disabled
-  tiles.
+  Criterion 6052 — Rule: Every step stays visible, completed ones as
+  compact summary tiles and the active one as the focal element.
 
-  A user with an active account and a project but no CLI history
-  must see the account and project rungs in their done state, the
-  plugin rung in its active state, and the application rung in its
-  pending state — all in one render.
+  A user with an account and a project has finished everything this
+  page can walk them through, so both rungs read done and nothing is
+  active. That is the state anyone arriving from the guided intake
+  lands in — it makes their account and project for them — and a
+  ladder still showing an active step there would be inventing work.
 
   Surface contract: each rung carries `data-test="<step>-rung"` and
   `data-state="active"|"done"|"pending"`.
@@ -44,19 +43,10 @@ defmodule CodeMySpecSpex.Story700.Criterion6052Spex do
         {:ok, context}
       end
 
-      then_ "the plugin rung is in the active state", context do
-        assert has_element?(context.view, "[data-test='plugin-rung'][data-state='active']"),
-               "expected plugin-rung in 'active' state for a never-connected user with project"
-
-        {:ok, context}
-      end
-
-      then_ "the application rung is in the pending state", context do
-        assert has_element?(
-                 context.view,
-                 "[data-test='application-rung'][data-state='pending']"
-               ),
-               "expected application-rung in 'pending' state until the CLI has connected"
+      then_ "nothing is left active, because nothing is left to do here", context do
+        refute has_element?(context.view, "[data-state='active']"),
+               "a user with an account and a project has finished this ladder — " <>
+                 "an active step would be inventing work they cannot do here"
 
         {:ok, context}
       end

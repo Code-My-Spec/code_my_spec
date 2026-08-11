@@ -1,3 +1,14 @@
+# Every `apply/3` here is the dispatch this module exists to perform, and the
+# reasoning is recorded above `run_bootstrap_task/3`: `resolve_session_type/2`
+# returns one of ~30 task modules whose `command/2` argument shapes genuinely
+# differ, the session type is what decides which comes back, and that
+# correlation is not expressible to the type checker. `apply/3` states plainly
+# that this is dynamic dispatch.
+#
+# Suppressed at file level rather than five times inline because it is one
+# decision, not five. The check stays on everywhere else, where a known arity
+# usually does mean the call could be direct.
+# credo:disable-for-this-file Credo.Check.Refactor.Apply
 defmodule CodeMySpec.AgentTasks.StartAgentTask do
   @moduledoc """
   Start an agent task session and generate the initial prompt.
@@ -63,6 +74,7 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
     "spex_boundary_ready" => AgentTasks.SpexBoundaryReady,
     "persona_research" => AgentTasks.PersonaResearch,
     "controller_spec" => AgentTasks.ControllerSpec,
+    "release" => AgentTasks.Release,
     "init" => AgentTasks.Init
   }
 
@@ -92,7 +104,13 @@ defmodule CodeMySpec.AgentTasks.StartAgentTask do
     "triage_issues",
     "fix_issues",
     "spex_boundary_ready",
-    "persona_research"
+    "persona_research",
+    # A release is project-wide by definition — it gathers what shipped across
+    # every story. `AgentTasks.Release` has been a registered session type all
+    # along, but was absent from this dispatcher, so a request for one fell
+    # through to the component branch and was refused with "Module name is
+    # required for this task type" — asking for a component that cannot exist.
+    "release"
   ]
 
   # Tasks that take a topic name (passed as module_name arg) instead of a component lookup.

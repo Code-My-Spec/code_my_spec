@@ -522,12 +522,45 @@ defmodule CodeMySpec.Problems.ProblemRepository do
   # problem. Everything else tonight went wrong by treating absent information
   # as good news, and hiding a real finding is worse than showing an old one.
   defp reject_superseded(query) do
+    # The replacement run, not the edit, is what retires a finding.
+    #
+    # This used to hide a problem the moment its file's fingerprint moved on.
+    # The row survived — supersession is a query-time filter, never a delete —
+    # so the finding simply stopped being visible, and stopped blocking, before
+    # any analyzer had looked at the new content. Story 988's criterion 8201 is
+    # exactly that: "a finding from before the last edit still blocks until the
+    # rerun lands". It did not; an edit was enough to clear the gate.
+    #
+    # That is also why it read as a plumbing bug for so long. Every input to the
+    # blocking decision was correct — mode `:block_all`, one credo problem,
+    # matching harness — and the problem was still there afterwards, which looks
+    # like proof that supersession never fired. A filter that hides without
+    # deleting leaves no evidence of having run.
+    #
+    # So the fingerprint difference is now a necessary condition rather than a
+    # sufficient one: the analyzer must also have finished a run for that source
+    # against the changed file. Once it has, reconciliation has already replaced
+    # that source's set, so anything still standing was re-reported and belongs
+    # on the gate anyway.
+    reruns =
+      from(r in CodeMySpec.Analysis.Run,
+        where: r.source == parent_as(:problem).source,
+        where: r.project_id == parent_as(:problem).project_id,
+        where: r.status == :completed,
+        where: not is_nil(r.finished_at),
+        where: r.finished_at > parent_as(:file).mtime,
+        select: 1
+      )
+
     files =
       from(f in CodeMySpec.Files.File,
+        as: :file,
         where: parent_as(:problem).file_path == f.path,
         where: parent_as(:problem).harness_id == f.harness_id,
         where: not is_nil(f.fingerprint),
         where: f.fingerprint != parent_as(:problem).file_fingerprint,
+        where: not is_nil(f.mtime),
+        where: exists(reruns),
         select: 1
       )
 

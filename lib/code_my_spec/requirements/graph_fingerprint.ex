@@ -36,16 +36,42 @@ defmodule CodeMySpec.Requirements.GraphFingerprint do
   @spec compute(Preloader.context(), struct() | map() | nil) :: String.t()
   def compute(ctx, config) do
     [
+      {:code, code_version()},
       {:files, files_digest(ctx.files_by_project)},
       {:components, structs_digest(ctx.components, & &1.id)},
       {:stories, structs_digest(ctx.stories, & &1.id)},
       {:problems, problems_digest(ctx.problems_by_component)},
       {:analysis, Enum.sort(Map.to_list(ctx.analysis_fresh))},
       {:config, struct_digest(config)},
-      {:delegated, delegated_digest(ctx)},
-      {:delegated_files, Map.get(ctx, :delegated_files, :not_loaded)}
+      {:delegated, delegated_digest(ctx)}
     ]
     |> hash()
+  end
+
+  # The code that turns inputs into a graph is an input.
+  #
+  # Everything else here is what the graph is computed *from*. Nothing described
+  # how it is computed, so the same inputs under changed code produced the same
+  # fingerprint — and a payload written by the old code read as current.
+  #
+  # That is not hypothetical. Scoping the file load to one working copy changed
+  # the graph from 1,357 nodes to 2,783 on this project, and the cached payload
+  # still matched: `fetch/2` hit, and a reader was served a graph that predated
+  # the fix. It surfaced only because `served_graph/3` compares the projection
+  # against the payload and said so.
+  #
+  # The app version rather than a constant to bump by hand. It is coarser —
+  # every release invalidates every project's snapshot, costing one recompute —
+  # but the direction of error is the one already chosen throughout this module:
+  # a fingerprint that changes when it need not costs CPU, and one that stays
+  # the same when it should have moved serves an agent stale instructions.
+  # Remembering to bump a constant is exactly the kind of step that gets missed
+  # on the change that most needed it.
+  defp code_version do
+    case :application.get_key(:code_my_spec, :vsn) do
+      {:ok, vsn} -> to_string(vsn)
+      _ -> "unknown"
+    end
   end
 
   # Rules, criteria, questions, personas and issues.

@@ -78,6 +78,19 @@ defmodule CodeMySpec.Stories.Story do
     # per-deployment sequences and the ranges overlap, so without this the same
     # number names different stories on either side and nothing errors.
     field :migrated_from_id, :integer
+
+    # The durable name for this story, as opposed to `id`, which is a
+    # per-deployment sequence that renumbers on migration. Spex directories and
+    # QA folders are named from this, so a file on disk keeps pointing at the
+    # story it was written for.
+    #
+    # Seeded from the numbers already in those directory names, so nothing on
+    # disk had to move: the drift it fixes was a uniform 51 here —
+    # `test/spex/811_user_sees_the_agents_task_queue…` named a real but
+    # unrelated story 811, while the story that owns those spex is 862.
+    #
+    # Unique per project, not globally.
+    field :number, :integer
     field :acceptance_criteria, {:array, :string}
     # `:active` is a legacy status that predates the narrowed enum
     # (`:in_progress | :completed | :dirty`). Accepted on read to
@@ -123,7 +136,8 @@ defmodule CodeMySpec.Stories.Story do
       :project_id,
       :component_id,
       :epic_id,
-      :migrated_from_id
+      :migrated_from_id,
+      :number
     ])
     |> sync_story_and_description()
     |> clear_specs_ready_on_readiness_change()

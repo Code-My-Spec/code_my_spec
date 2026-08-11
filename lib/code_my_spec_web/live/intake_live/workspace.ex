@@ -44,7 +44,11 @@ defmodule CodeMySpecWeb.IntakeLive.Workspace do
         interview_error={@interview_error}
       />
 
-      <.boot_status :if={@workspace.status != :failed} workspace={@workspace} />
+      <.boot_status
+        :if={@workspace.status != :failed}
+        workspace={@workspace}
+        app_state={@app_state}
+      />
     </div>
     """
   end
@@ -107,10 +111,30 @@ defmodule CodeMySpecWeb.IntakeLive.Workspace do
         <span class="text-sm">{Workspaces.progress_label(@workspace)}</span>
       </div>
 
-      <div :if={@workspace.status == :running} class="flex items-center justify-between gap-3">
+      <%!--
+        Asked, not inferred from the stored column. A container that is up and
+        raising answers the proxy just as readily as a healthy one, so "it's
+        running" was true of an app that did nothing but 500.
+      --%>
+      <div
+        :if={@workspace.status == :running and @app_state == :running}
+        class="flex items-center justify-between gap-3"
+      >
         <span class="text-sm font-medium">It's running.</span>
         <a href={Workspaces.url(@workspace)} target="_blank" rel="noopener" class="btn btn-sm btn-primary">
           Open your application
+        </a>
+      </div>
+
+      <div
+        :if={@workspace.status == :running and @app_state == :broken}
+        class="flex items-center justify-between gap-3"
+      >
+        <span class="text-sm font-medium text-error">
+          It's up, but the app is erroring.
+        </span>
+        <a href={Workspaces.url(@workspace)} target="_blank" rel="noopener" class="btn btn-sm">
+          See the error
         </a>
       </div>
 
@@ -167,7 +191,8 @@ defmodule CodeMySpecWeb.IntakeLive.Workspace do
 
       socket
       |> assign(page_title: "Your workspace")
-      |> assign(scope: scope, plan: plan, workspace: workspace)
+      |> assign(scope: scope, plan: plan)
+      |> assign_workspace(workspace)
       |> assign_interview(plan)
     else
       # A boot that never starts is still a boot that failed, and the visitor
@@ -183,11 +208,11 @@ defmodule CodeMySpecWeb.IntakeLive.Workspace do
 
     socket
     |> assign(page_title: "Your workspace")
-    |> assign(
-      scope: scope,
-      plan: plan,
-      workspace: %Workspace{status: :failed, error: "Your workspace could not be started."}
-    )
+    |> assign(scope: scope, plan: plan)
+    |> assign_workspace(%Workspace{
+      status: :failed,
+      error: "Your workspace could not be started."
+    })
     |> assign_interview(plan)
   end
 
@@ -252,19 +277,27 @@ defmodule CodeMySpecWeb.IntakeLive.Workspace do
   def handle_event("retry", _params, socket) do
     {:ok, workspace} = Workspaces.boot(socket.assigns.scope)
 
-    {:noreply, assign(socket, :workspace, workspace)}
+    {:noreply, assign_workspace(socket, workspace)}
   end
 
   # Transitions are recorded where they happen, in Workspaces — this task can
   # finish before the screen has subscribed, so the broadcast only updates.
   def handle_info({event, workspace}, socket)
       when event in [:booting, :progress, :running, :failed] do
-    {:noreply, assign(socket, :workspace, workspace)}
+    {:noreply, assign_workspace(socket, workspace)}
   end
 
   # Leaving while it is still coming up is the signal that decides whether
   # boot time is worth optimising. Recorded here because only the surface
   # knows the visitor went away.
+  # The stored row and what the app is doing right now are two different
+  # facts, and the row cannot answer the second — so they travel together.
+  defp assign_workspace(socket, workspace) do
+    socket
+    |> assign(:workspace, workspace)
+    |> assign(:app_state, Workspaces.state(workspace))
+  end
+
   def terminate(_reason, %{assigns: %{workspace: workspace}}) do
     Workspaces.abandoned(workspace)
   end

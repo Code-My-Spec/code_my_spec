@@ -27,6 +27,20 @@ defmodule CodeMySpec.Workspaces.Runner do
   @doc "Whether the instance is answering on `port` yet."
   @callback healthy?(port :: pos_integer()) :: boolean()
 
+  @doc """
+  What the app on `port` is actually doing.
+
+  `healthy?/1` answers "did anything reply", which is the right question while
+  waiting for a boot and the wrong one afterwards: it was written to replace a
+  TCP connect that succeeded before the app served, and any HTTP response
+  counts, 500 included. So an app raising on every request reads as ready.
+
+  `:serving` — answered, and not with a server error.
+  `:erroring` — answered with 5xx. The instance is fine; the app is not.
+  `:down` — nothing answered.
+  """
+  @callback serving(port :: pos_integer()) :: :serving | :erroring | :down
+
   @doc "Whether the instance is still alive at all — a dead container never becomes healthy."
   @callback alive?(container_name :: String.t()) :: boolean()
 
@@ -40,6 +54,9 @@ defmodule CodeMySpec.Workspaces.Runner do
 
   @spec url(String.t(), pos_integer()) :: String.t()
   def url(container_name, port), do: impl().url(container_name, port)
+
+  @spec serving(pos_integer()) :: :serving | :erroring | :down
+  def serving(port), do: impl().serving(port)
 
   @spec logs(String.t()) :: String.t()
   def logs(container_name), do: impl().logs(container_name)

@@ -44,6 +44,7 @@ defmodule CodeMySpec.Provisioning.Sops do
   """
 
   alias CodeMySpec.Environments
+  alias CodeMySpec.TempFile
 
   @sops_config ".sops.yaml"
 
@@ -96,7 +97,7 @@ defmodule CodeMySpec.Provisioning.Sops do
       # `System.cmd/3` cannot write to a child's stdin — and not via a shell
       # either, which would put the private key on a command line. Written
       # 0600 in a directory of its own and removed immediately.
-      dir = Path.join(System.tmp_dir!(), "cms-age-#{System.unique_integer([:positive])}")
+      dir = TempFile.dir("cms-age")
       File.mkdir_p!(dir)
       path = Path.join(dir, "key.txt")
 
@@ -229,7 +230,8 @@ defmodule CodeMySpec.Provisioning.Sops do
   encryption says nothing about existing ciphertext. This is what the status
   page renders as each environment's key fingerprint.
   """
-  @spec recipients(Environments.Environment.t(), env_name()) :: {:ok, [String.t()]} | {:error, term()}
+  @spec recipients(Environments.Environment.t(), env_name()) ::
+          {:ok, [String.t()]} | {:error, term()}
   def recipients(env, environment) do
     with {:ok, contents} <- Environments.read_file(env, env_file(environment)) do
       {:ok, Regex.scan(~r/age1[a-z0-9]+/, contents) |> List.flatten() |> Enum.uniq()}
@@ -310,8 +312,11 @@ defmodule CodeMySpec.Provisioning.Sops do
   # questions with the key it does have — the recipient.
   defp ensure_encrypted(env, path) do
     case sops(["encrypt", "--in-place", path], cd: env.cwd) do
-      {_out, 0} -> :ok
-      {out, status} -> if already_encrypted?(out), do: :ok, else: {:error, {:sops_failed, status, out}}
+      {_out, 0} ->
+        :ok
+
+      {out, status} ->
+        if already_encrypted?(out), do: :ok, else: {:error, {:sops_failed, status, out}}
     end
   end
 

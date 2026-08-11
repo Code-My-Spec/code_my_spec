@@ -401,7 +401,7 @@ defmodule CodeMySpec.Analysis do
   end
 
   @doc "Block until every in-flight run for the project has finished."
-  @spec await_all(Scope.t(), keyword()) :: :ok
+  @spec await_all(Scope.t(), keyword()) :: :ok | :timeout
   def await_all(%Scope{} = scope, opts \\ []) do
     timeout = Keyword.get(opts, :timeout, :timer.minutes(10))
     deadline = System.monotonic_time(:millisecond) + timeout
@@ -429,8 +429,8 @@ defmodule CodeMySpec.Analysis do
     end
   end
 
-  defp local_in_flight(%Scope{active_project_id: project_id}) do
-    case Registry.lookup(CodeMySpec.Analysis.Registry, project_id) do
+  defp local_in_flight(%Scope{} = scope) do
+    case Registry.lookup(CodeMySpec.Analysis.Registry, server_key(scope)) do
       [{pid, _}] -> ProjectServer.in_flight(pid)
       [] -> []
     end
@@ -553,15 +553,36 @@ defmodule CodeMySpec.Analysis do
   that results apply next time, forever.
   """
   @spec fail_in_flight(Scope.t(), term()) :: {:ok, non_neg_integer()}
-  def fail_in_flight(%Scope{} = scope, reason) do
-    {:ok, count} = RunsRepository.fail_running(scope, reason)
+  def fail_in_flight(%Scope{} = scope, reason), do: fail_in_flight(scope, reason, [])
+
+  @doc """
+  As `fail_in_flight/2`, sparing the runs the harness says it is still working
+  on.
+
+  `claimed` comes from the harness's join payload. It is a claim, not a fact the
+  server can check — but the harness is the only thing that knows, since the
+  analyzers are OS processes on its machine, and a wrong claim costs one run
+  staying `:running` until the next reconnect rather than a wrong result being
+  recorded.
+  """
+  @spec fail_in_flight(Scope.t(), term(), [integer()]) :: {:ok, non_neg_integer()}
+  def fail_in_flight(%Scope{} = scope, reason, claimed) do
+    {:ok, count} = RunsRepository.fail_running(scope, reason, claimed)
 
     if count > 0 do
-      Logger.warning("[Analysis] closed #{count} stranded run(s): #{inspect(reason)}")
+      Logger.warning(
+        "[Analysis] closed #{count} stranded run(s): #{inspect(reason)}" <>
+          claimed_suffix(claimed)
+      )
     end
 
     {:ok, count}
   end
+
+  defp claimed_suffix([]), do: ""
+
+  defp claimed_suffix(claimed),
+    do: " (spared #{length(claimed)} the harness still holds: #{inspect(claimed)})"
 
   @doc """
   Per-source gauge state for the UI and the freshness check.
@@ -766,10 +787,24 @@ defmodule CodeMySpec.Analysis do
     end
   end
 
-  defp ensure_server(%Scope{active_project_id: project_id}) do
+  # The working copy, because that is what owns the build tree the queue exists
+  # to protect. Falls back to the project when no harness is bound — the
+  # single-checkout case, where the two keys name the same thing.
+  #
+  # Both callers derive it the same way, so a lookup can never miss a server the
+  # other one started.
+  @doc false
+  # Public only so the property that matters can be asserted directly: two
+  # checkouts of one project get different queues, the same checkout gets one.
+  def server_key(%Scope{active_harness_id: harness_id}) when not is_nil(harness_id),
+    do: {:harness, to_string(harness_id)}
+
+  def server_key(%Scope{active_project_id: project_id}), do: {:project, project_id}
+
+  defp ensure_server(%Scope{active_project_id: project_id} = scope) do
     case DynamicSupervisor.start_child(
            CodeMySpec.Analysis.ServerSupervisor,
-           {ProjectServer, project_id}
+           {ProjectServer, {server_key(scope), project_id}}
          ) do
       {:ok, pid} -> {:ok, pid}
       {:error, {:already_started, pid}} -> {:ok, pid}
@@ -777,13 +812,19 @@ defmodule CodeMySpec.Analysis do
     end
   end
 
+  # `:timeout` and `:ok` are different answers and used to be the same one.
+  #
+  # Running out of time returned `:ok`, so "the analyzers finished" and "I gave
+  # up waiting" were indistinguishable to every caller. `await_analysis` then
+  # reported "Analysis complete" over a queue that was still going, which is the
+  # one thing an agent uses that tool to rule out.
   defp poll_until_idle(scope, deadline) do
     cond do
       not runs_in_flight?(scope) ->
         :ok
 
       System.monotonic_time(:millisecond) >= deadline ->
-        :ok
+        :timeout
 
       true ->
         Process.sleep(500)

@@ -33,6 +33,7 @@ defmodule CodeMySpec.Servers.Containers do
   """
 
   alias CodeMySpec.AccountSecrets
+  alias CodeMySpec.TempFile
   alias CodeMySpec.Users.Scope
 
   @access_key_private "server_ssh_private_key"
@@ -87,7 +88,7 @@ defmodule CodeMySpec.Servers.Containers do
   # private key outliving the read it was written for is a worse problem than
   # the read failing.
   defp with_key_file(key, fun) do
-    dir = Path.join(System.tmp_dir!(), "cms-key-#{System.unique_integer([:positive])}")
+    dir = TempFile.dir("cms-key")
     File.mkdir_p!(dir)
     path = Path.join(dir, "id_ed25519")
 

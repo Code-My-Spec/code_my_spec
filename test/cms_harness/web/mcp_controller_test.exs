@@ -50,6 +50,24 @@ defmodule CmsHarness.Web.McpControllerTest do
       assert Jason.decode!(received.body)["method"] == "tools/list"
     end
 
+    # Every test here points `:harness_server_url` at the fake, and that setting
+    # is the whole VM's: the harness's own channel clients derive their socket
+    # URL from it and redial once a second, so their upgrades land on the fake
+    # too. When one landed between the POST and the assertion, `last_request/0`
+    # answered about a request no test had made and the file failed on `==`
+    # against a path nobody had asked for. Sent by hand here, so the
+    # interleaving that used to be a coin flip is the one this test always gets.
+    test "a reconnect landing mid-test is not the request under test", %{conn: conn} do
+      %{root: dir} = project_dir(project_id: "p-42")
+      serve(dir)
+
+      post_rpc(conn, dir, %{"jsonrpc" => "2.0", "id" => 1, "method" => "tools/list"})
+      reconnect_upstream()
+
+      assert FakeUpstream.upgrades() >= 1
+      assert FakeUpstream.last_request().path == "/mcp/harness"
+    end
+
     test "the session id round-trips in both directions", %{conn: conn} do
       %{root: dir} = project_dir()
       serve(dir)
@@ -91,6 +109,99 @@ defmodule CmsHarness.Web.McpControllerTest do
 
       assert conn.status == 401
       assert Jason.decode!(conn.resp_body)["error"] == "invalid_token"
+    end
+
+    # A wedged dev server answers every request with Phoenix's styled
+    # `CompileError` page — 30KB of markup and a base64 SVG logo. Relayed
+    # verbatim, that arrived in an agent's context as the result of
+    # `create_issue`: the tool for reporting friction failing by consuming the
+    # context needed to report it (5fb011f4, 6ecb257a).
+    test "an HTML error page is summarized, not relayed", %{conn: conn} do
+      %{root: dir} = project_dir()
+      serve(dir)
+
+      page =
+        "<!DOCTYPE html>\n<html><body><div>** (RuntimeError) could not compile " <>
+          "application: code_my_spec. You must restart your server after changing " <>
+          "configuration files</div>" <> String.duplicate("<span>padding</span>", 2_000) <>
+          "</body></html>"
+
+      FakeUpstream.respond_with(status: 500, body: page, headers: [{"content-type", "text/html"}])
+
+      conn = post_rpc(conn, dir, %{"jsonrpc" => "2.0", "id" => 7, "method" => "tools/call"})
+
+      body = Jason.decode!(conn.resp_body)
+
+      assert body["error"]["message"] =~ "error page",
+             "the agent has to be told what happened, not shown the document"
+
+      assert body["error"]["message"] =~ "config",
+             "the recovery is the useful part: this server needs dealing with"
+
+      assert body["id"] == 7, "a JSON-RPC error still has to answer the request it failed"
+
+      refute conn.resp_body =~ "<!DOCTYPE",
+             "relaying the page is the defect — 30KB of markup into an agent's context"
+
+      assert byte_size(conn.resp_body) < 1_000,
+             "a summary that is not short has not solved the problem it exists for"
+    end
+
+    # The same page, rendered as markdown rather than HTML.
+    #
+    # Phoenix's debug page follows what the request accepts, and the MCP client
+    # sends `application/json, text/event-stream` — so it is not always markup.
+    # A `Phoenix.Ecto.PendingMigrationError` came back this way, sailed past a
+    # check that only looked for HTML, and reached the agent as a raw stack
+    # trace. Recognising the exception marker catches both renderings.
+    test "a non-HTML error page is summarized too", %{conn: conn} do
+      %{root: dir} = project_dir()
+      serve(dir)
+
+      page =
+        "# Phoenix.Ecto.PendingMigrationError at POST /mcp/harness\n\n" <>
+          "Exception:\n\n    ** (Phoenix.Ecto.PendingMigrationError) there are " <>
+          "pending migrations for repo: CodeMySpec.Repo\n" <>
+          String.duplicate("        (stdlib 7.1) gen_server.erl:2424\n", 200)
+
+      FakeUpstream.respond_with(
+        status: 500,
+        body: page,
+        headers: [{"content-type", "text/markdown"}]
+      )
+
+      conn = post_rpc(conn, dir, %{"jsonrpc" => "2.0", "id" => 9, "method" => "tools/call"})
+      body = Jason.decode!(conn.resp_body)
+
+      assert body["error"]["message"] =~ "error page",
+             "an error page is an error page whatever it is rendered as"
+
+      assert body["error"]["message"] =~ "migration",
+             "the exception is the useful part and it survived the summary"
+
+      assert body["id"] == 9
+
+      assert byte_size(conn.resp_body) < 1_000,
+             "the stack trace is what must not reach the agent"
+    end
+
+    # The guard keys on HTML specifically. An SSE body is the server→client
+    # channel and a JSON body is a result; treating "not JSON" as broken would
+    # take out streaming, which is the more expensive mistake.
+    test "a non-JSON stream body is still relayed", %{conn: conn} do
+      %{root: dir} = project_dir()
+      serve(dir)
+
+      FakeUpstream.respond_with(
+        status: 200,
+        body: "event: message\ndata: {\"jsonrpc\":\"2.0\",\"id\":1}\n\n",
+        headers: [{"content-type", "text/event-stream"}]
+      )
+
+      conn = post_rpc(conn, dir, %{"jsonrpc" => "2.0", "id" => 1, "method" => "ping"})
+
+      assert conn.status == 200
+      assert conn.resp_body =~ "event: message"
     end
 
     test "DELETE ends the session upstream", %{conn: conn} do
@@ -275,6 +386,16 @@ defmodule CmsHarness.Web.McpControllerTest do
 
       assert Jason.decode!(conn.resp_body)["error"]["message"] =~ "http://127.0.0.1:1"
     end
+  end
+
+  # The request a channel client makes when it reconnects, byte for byte as far
+  # as the fake can tell: it sees an upgrade, and has no idea who dialled it.
+  defp reconnect_upstream do
+    Req.get(
+      url: Application.get_env(:code_my_spec, :harness_server_url) <> "/socket/websocket",
+      headers: [{"upgrade", "websocket"}, {"connection", "upgrade"}],
+      retry: false
+    )
   end
 
   defp post_rpc(conn, dir, payload) do

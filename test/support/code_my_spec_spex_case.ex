@@ -153,6 +153,34 @@ defmodule CodeMySpecSpex.Case do
 
     start_cassette_session()
 
+    # The provider plug is put back here, not only by `with_provider_cassette`.
+    #
+    # That function restores in an `after`, which does not run when the test
+    # process is killed by an exit signal rather than an exception — a LiveView
+    # crashing inside a cassette block takes the linked test process down
+    # without unwinding anything. The plug then stays installed for the rest of
+    # the VM, and every later spex that reaches a provider *outside* a cassette
+    # gets that dead cassette instead of its own.
+    #
+    # Which is not a hypothetical: 972's criterion 8034 died that way on a
+    # missing cassette, and 973's 8040 and 974's 8032 were then both reported
+    # failing for `content_publish_single_command` — a cassette neither of them
+    # names. Their own failures were real and correctly attributed; only the
+    # reason was another spex's, and the spex responsible was invisible because
+    # a process killed by a signal never reports one either.
+    #
+    # `on_exit` runs in its own process and fires however the test ended, so it
+    # gives the guarantee `after` cannot. It is registered before any step runs,
+    # and callbacks fire last-registered-first, so a `tear_down_after` cassette
+    # still opens and closes normally before this resets everything.
+    pristine_providers =
+      Enum.map(provider_modules(), &{&1, Application.get_env(:code_my_spec, &1, [])})
+
+    on_exit(fn ->
+      for {module, config} <- pristine_providers,
+          do: Application.put_env(:code_my_spec, module, config)
+    end)
+
     # Nothing is really happening on replay, so there is nothing to wait for.
     # The pollers still ran their sleeps between replayed reads, which is where
     # a passing criterion's five and a half minutes went.

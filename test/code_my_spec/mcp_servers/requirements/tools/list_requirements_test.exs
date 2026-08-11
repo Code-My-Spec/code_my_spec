@@ -8,10 +8,9 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.ListRequirementsTest do
   alias Anubis.Server.Frame
   alias Anubis.Server.Response
   alias CodeMySpec.McpServers.Requirements.Tools.ListRequirements
-  alias Ecto.Adapters.SQL.Sandbox
 
   setup do
-    :ok = Sandbox.checkout(CodeMySpec.Repo)
+    :ok = Ecto.Adapters.SQL.Sandbox.checkout(CodeMySpec.Repo)
   end
 
   describe "execute/2" do
@@ -32,9 +31,6 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.ListRequirementsTest do
 
       assert content =~ "Project Requirements"
       assert content =~ "spec_file"
-      # `personas_complete`, not `project_setup` — setup left the graph in
-      # 545fb741 because `cms new` completes it, so a generated project has
-      # nothing to do there and personas is the root.
       assert content =~ "personas_complete"
     end
 

@@ -56,12 +56,28 @@ defmodule CmsHarness.TestDatabase do
 
   Returns `[]` when isolation is not available, which is the signal to run
   against whatever the project already uses.
+
+  `build_env` is the caller's `MIX_BUILD_PATH`, passed on to the `mix`
+  invocations this makes. Without it they take the default path — `_build/test`,
+  the tree the agent's own `mix test` writes — and `ecto.create`/`ecto.migrate`
+  compile the project before running, so provisioning the analyzer's database
+  compiled into the agent's tree. That is the collision `AnalyzerEnv` exists to
+  prevent, described in its own moduledoc: modules vanish from under a running
+  suite and return as "module X is not available" for a module that plainly
+  exists.
+
+  It is rare — `ensure_once/3` memoises per partition per migration set — but it
+  fires on a fresh working copy and after a rebase that brings migrations, which
+  is exactly when the agent is likely to be compiling too.
   """
-  @spec env(Environments.Environment.t()) :: [{String.t(), String.t()}]
-  def env(%{cwd: cwd} = environment) when is_binary(cwd) do
+  @spec env(Environments.Environment.t(), [{String.t(), String.t()}]) ::
+          [{String.t(), String.t()}]
+  def env(environment, build_env \\ [])
+
+  def env(%{cwd: cwd} = environment, build_env) when is_binary(cwd) do
     partition = partition_for(cwd)
 
-    case ensure_once(environment, partition) do
+    case ensure_once(environment, partition, build_env) do
       :ok ->
         [{"MIX_TEST_PARTITION", partition}]
 
@@ -77,7 +93,142 @@ defmodule CmsHarness.TestDatabase do
     end
   end
 
-  def env(_environment), do: []
+  def env(_environment, _build_env), do: []
+
+  @doc """
+  Empty the analyzer's tables before a suite runs.
+
+  Isolation keeps another checkout's schema out. It does not keep *data* out,
+  and the database is created once and reused forever, so a single row that
+  escapes the ExUnit sandbox and commits is permanent.
+
+  Measured here: two `users` and three `users_tokens` committed at one moment
+  blocked five consecutive stops. The report was
+
+      ** (MatchError) no match of right hand side value: {4, nil}
+      code: {1, nil} = Repo.update_all(UserToken, set: [inserted_at: dt])
+
+  from a test asserting the table holds exactly its own row. It held three
+  strangers as well. The same file passed 41/0 against every other database on
+  the machine, and 47/0 against this one once emptied — so the output is
+  indistinguishable from a genuine break in user creation, which is the
+  property this module exists to eliminate.
+
+  Truncating rather than dropping: the schema is already correct by the time
+  this runs, and reusing it keeps the expensive migrate on its existing key.
+
+  Best effort by design, and quiet about it. A project with no Ecto, no
+  Postgres, or no privilege to truncate gets the behaviour it had before,
+  because a sweep that refuses to run is a worse failure than one that starts
+  dirty.
+  """
+  @spec reset_data(Environments.Environment.t(), [{String.t(), String.t()}]) :: :ok
+  def reset_data(environment, extra_env) do
+    case List.keyfind(extra_env, "MIX_TEST_PARTITION", 0) do
+      nil ->
+        # No partition means no database of ours to empty. Truncating whatever
+        # the project uses by default would be someone else's data.
+        :ok
+
+      {_, partition} ->
+        do_reset(environment, partition, build_env(extra_env))
+    end
+  end
+
+  # Run in the analyzer's build tree, not the agent's.
+  #
+  # `--no-compile` means this only ever *loads* a tree, so pointing it at the
+  # default would read `_build/test` — the tree the agent's own `mix test`
+  # writes. Two ways that goes wrong: it fails outright on a checkout where the
+  # agent has never compiled in test env, and the failure is quiet by design,
+  # so the reset silently stops happening and the residue this exists to clear
+  # comes back. The path is already in `extra_env`; it just was not passed on.
+  defp build_env(extra_env) do
+    case List.keyfind(extra_env, "MIX_BUILD_PATH", 0) do
+      nil -> []
+      pair -> [pair]
+    end
+  end
+
+  defp do_reset(environment, partition, build_env) do
+    args = ["run", "--no-compile", "-e", truncate_script()]
+
+    case run_mix_capturing(environment, partition, args, build_env) do
+      {:ok, output} ->
+        report_rows_removed(output, partition)
+
+      {:error, reason} ->
+        Logger.info("[CmsHarness] could not empty the analyzer database (#{reason})")
+        :ok
+    end
+  end
+
+  # A silent repair that runs every sweep is how a defect stops being visible.
+  #
+  # This only ever logged failures, so a database that started clean and ended
+  # dirty left no trace: three sweeps in a row read as "no rows were written"
+  # and as "rows were written and quietly removed" identically, and the second
+  # is the one worth knowing about. Rows here mean something escaped the ExUnit
+  # sandbox and committed, which is a defect wherever it happens — not routine
+  # tidying.
+  #
+  # Quiet in the normal case: nothing removed, nothing said.
+  defp report_rows_removed(output, partition) do
+    case Regex.run(~r/cms_reset_rows=(\d+)/, to_string(output)) do
+      [_, "0"] ->
+        :ok
+
+      [_, count] ->
+        Logger.warning(
+          "[CmsHarness] removed #{count} committed row(s) from the analyzer database " <>
+            "#{partition} before this run. Rows here escaped the ExUnit sandbox — the " <>
+            "suite that wrote them has a process writing outside its test transaction."
+        )
+
+        :ok
+
+      nil ->
+        :ok
+    end
+  end
+
+  # Repos come from the project's own `:ecto_repos` rather than a hardcoded
+  # module, so this stays a harness that works on projects other than its own.
+  #
+  # `schema_migrations` is excluded because emptying it would silently undo the
+  # migrate and hand back the schema-drift failure this module already fixed.
+  defp truncate_script do
+    ~S"""
+    app = Mix.Project.config()[:app]
+
+    for repo <- Application.get_env(app, :ecto_repos, []) do
+      {:ok, %{rows: rows}} =
+        Ecto.Adapters.SQL.query(
+          repo,
+          "SELECT tablename FROM pg_tables WHERE schemaname = 'public' AND tablename <> 'schema_migrations'",
+          []
+        )
+
+      names = Enum.map(rows, fn [t] -> ~s("#{t}") end)
+
+      # Counted before truncating, so the log can say whether anything was
+      # actually there. A sum across tables is enough to answer "did something
+      # commit"; which table it was is a question for the next run's detail.
+      total =
+        Enum.reduce(names, 0, fn name, acc ->
+          {:ok, %{rows: [[n]]}} = Ecto.Adapters.SQL.query(repo, "SELECT count(*) FROM " <> name, [])
+          acc + n
+        end)
+
+      IO.puts("cms_reset_rows=" <> Integer.to_string(total))
+
+      case names do
+        [] -> :ok
+        names -> Ecto.Adapters.SQL.query!(repo, "TRUNCATE " <> Enum.join(names, ", ") <> " RESTART IDENTITY CASCADE", [])
+      end
+    end
+    """
+  end
 
   @doc """
   The partition name for a working copy.
@@ -118,12 +269,12 @@ defmodule CmsHarness.TestDatabase do
   #
   # Cached on failure too. A project with no Ecto would otherwise pay two failing
   # `mix` boots before every test run, forever, to reach the same answer.
-  defp ensure_once(environment, partition) do
+  defp ensure_once(environment, partition, build_env) do
     key = {__MODULE__, partition, migrations_fingerprint(environment)}
 
     case :persistent_term.get(key, :miss) do
       :miss ->
-        result = ensure_database(environment, partition)
+        result = ensure_database(environment, partition, build_env)
         :persistent_term.put(key, result)
         result
 
@@ -148,21 +299,30 @@ defmodule CmsHarness.TestDatabase do
     end
   end
 
-  defp ensure_database(environment, partition) do
-    with :ok <- run_mix(environment, partition, ["ecto.create", "--quiet"]) do
-      run_mix(environment, partition, ["ecto.migrate", "--quiet"])
+  defp ensure_database(environment, partition, build_env) do
+    with :ok <- run_mix(environment, partition, ["ecto.create", "--quiet"], build_env) do
+      run_mix(environment, partition, ["ecto.migrate", "--quiet"], build_env)
     end
   end
 
-  defp run_mix(environment, partition, args) do
+  defp run_mix(environment, partition, args, extra) do
+    case run_mix_capturing(environment, partition, args, extra) do
+      {:ok, _output} -> :ok
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  # Same invocation, but hands back stdout — the reset reads a row count out of
+  # it, and `ecto.create`/`ecto.migrate` have nothing to say on success.
+  defp run_mix_capturing(environment, partition, args, extra) do
     cmd_env =
       [
         {"MIX_ENV", "test"},
         {"MIX_TEST_PARTITION", partition}
-      ] ++ Environments.clean_otp_env()
+      ] ++ extra ++ Environments.clean_otp_env()
 
     case Environments.cmd(environment, "mix", args, stderr_to_stdout: true, env: cmd_env) do
-      {_output, 0} -> :ok
+      {output, 0} -> {:ok, output}
       {output, status} -> {:error, "mix #{hd(args)} exited #{status}: #{excerpt(output)}"}
     end
   rescue

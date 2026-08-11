@@ -50,6 +50,11 @@ defmodule CmsHarness.Web.Router do
     pipe_through(:hook)
 
     post("/analysis/run", AnalysisController, :run)
+
+    # Blocks until the analyzers are idle. Fired in the background by an agent
+    # that wants to stop against fresh results — see `AnalysisController.wait/2`
+    # for why this is HTTP and not an MCP tool.
+    post("/analysis/wait", AnalysisController, :wait)
   end
 
   # There is no unaddressed hook surface. A request that does not name a

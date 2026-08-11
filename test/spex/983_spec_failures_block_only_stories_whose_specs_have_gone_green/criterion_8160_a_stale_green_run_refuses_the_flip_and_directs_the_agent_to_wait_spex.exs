@@ -152,11 +152,17 @@ defmodule CodeMySpecSpex.Story983.Criterion8160Spex do
     end
   end
 
+  # Matched, not searched: the response this reads is the one `start_task` just
+  # returned, so a missing id means that call failed. Falling back to nil sent
+  # the failure downstream as a task id and the spec failed somewhere else.
   defp extract_task_id(response) do
-    case Regex.run(~r/[Tt]ask [Ii][Dd]:?\s*`?([0-9a-f-]{36})`?/, response_text(response)) do
-      [_, id] -> id
-      _ -> nil
-    end
+    body = response_text(response)
+
+    [_, id] =
+      Regex.run(~r/[Tt]ask [Ii][Dd]:?\s*`?([0-9a-f-]{36})`?/, body) ||
+        flunk("no task id in the start_task response: #{body}")
+
+    id
   end
 
   defp story_spec(scope, story_id) do

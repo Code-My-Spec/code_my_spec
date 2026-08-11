@@ -35,15 +35,18 @@ defmodule CodeMySpecSpex.Story700.Criterion6053Spex do
         {:ok, context}
       end
 
-      then_ "the plugin and application rungs are in the pending state", context do
-        assert has_element?(context.view, "[data-test='plugin-rung'][data-state='pending']"),
-               "expected plugin-rung in 'pending' state until project is done"
+      # The ladder ends at a project. The plugin and application rungs were
+      # removed because neither could be cleared from this page: a plugin
+      # installed on another machine, and a local app signed into somewhere
+      # this server cannot see, both left a working setup looking unfinished.
+      then_ "nothing is claimed about steps this page cannot see", context do
+        refute has_element?(context.view, "[data-test='plugin-rung']"),
+               "the plugin rung is gone — whether a plugin connected here says " <>
+                 "nothing about whether Sam has one"
 
-        assert has_element?(
-                 context.view,
-                 "[data-test='application-rung'][data-state='pending']"
-               ),
-               "expected application-rung in 'pending' state until project is done"
+        refute has_element?(context.view, "[data-test='application-rung']"),
+               "the application rung is gone — signing in to the local app happens " <>
+                 "somewhere this page cannot observe"
 
         {:ok, context}
       end

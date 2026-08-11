@@ -128,10 +128,7 @@ defmodule CodeMySpec.Deploys do
   """
   @spec deployed?(Scope.t(), integer(), String.t()) :: boolean()
   def deployed?(%Scope{active_project_id: project_id}, story_id, environment) do
-    case get(project_id, story_id, environment) do
-      %Deploy{health_verified_at: %DateTime{}} -> true
-      _ -> false
-    end
+    project_id |> get(story_id, environment) |> healthy?()
   end
 
   @doc """
@@ -143,13 +140,45 @@ defmodule CodeMySpec.Deploys do
   """
   @spec uat_check(Scope.t(), map()) :: {boolean(), map()}
   def uat_check(%Scope{} = scope, %{id: story_id}) do
-    case deployed?(scope, story_id, "uat") do
-      true -> {true, %{status: "Deployed to UAT and health-verified"}}
-      false -> {false, %{status: "Not deployed to UAT, or deployed without a passing health check"}}
-    end
+    scope |> deployed?(story_id, "uat") |> verdict()
   end
 
   def uat_check(_scope, _entity), do: {false, %{status: "No story to check"}}
+
+  @doc """
+  The same check, reading the graph context instead of one query per story.
+
+  `RequirementGraph` walks every ready story on every stop hook, so the
+  two-argument form above ran a `Repo.one/1` per story. The context carries the
+  UAT deploy for each, keyed by story id.
+
+  `healthy?/1` decides in both paths, so a preloaded run and a querying run
+  cannot disagree about what counts as deployed.
+  """
+  def uat_check(%Scope{} = scope, %{id: story_id} = story, ctx) when is_map(ctx) do
+    case ctx[:uat_deploy_by_story] do
+      deploys when is_map(deploys) -> verdict(healthy?(Map.get(deploys, story_id)))
+      _ -> uat_check(scope, story)
+    end
+  end
+
+  def uat_check(scope, entity, _ctx), do: uat_check(scope, entity)
+
+  @doc """
+  Whether a deploy row counts as live: present, and health-verified.
+
+  A deploy that was recorded but never passed its health check is not a deploy
+  this requirement accepts — that distinction is the whole point of the node,
+  so it lives in one function rather than at each call site.
+  """
+  @spec healthy?(Deploy.t() | nil) :: boolean()
+  def healthy?(%Deploy{health_verified_at: %DateTime{}}), do: true
+  def healthy?(_), do: false
+
+  defp verdict(true), do: {true, %{status: "Deployed to UAT and health-verified"}}
+
+  defp verdict(false),
+    do: {false, %{status: "Not deployed to UAT, or deployed without a passing health check"}}
 
   defp get(project_id, story_id, environment) do
     Deploy

@@ -28,6 +28,7 @@ defmodule CodeMySpecSpex.Story668.Criterion5484Spex do
   alias Anubis.Server.Frame
   alias CodeMySpec.Environments
   alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
+  alias CodeMySpecSpex.Fixtures
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -43,6 +44,11 @@ defmodule CodeMySpecSpex.Story668.Criterion5484Spex do
             ".code_my_spec/qa/plan.md",
             outline_only_plan()
           )
+
+        # The checker reads its verdict from the Files projection, so a plan
+        # that is never synced is never seen — and "not found" is not the
+        # rejection this criterion is about.
+        {:ok, _} = Fixtures.notify_file_changed(context.scope, ".code_my_spec/qa/plan.md")
 
         {:ok, context}
       end

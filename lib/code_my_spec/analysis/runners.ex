@@ -214,6 +214,28 @@ defmodule CodeMySpec.Analysis.Runners do
     {:error, {:test_suite_did_not_run, raw["exit_status"], error_excerpt(raw["output"])}}
   end
 
+  # `mix test` exited without error having run nothing at all.
+  #
+  # Zero tests is not zero failures. The suite reports `execution_status:
+  # success` with no diagnostics, which reaches `exunit_result/1` as `{:ok,
+  # problems: []}` — identical to a clean sweep of the whole project — and the
+  # Reconciler then clears every recorded exunit Problem and finishes the run
+  # `:completed` at the current fingerprint. That is the trap the
+  # `execution_status: "error"` clause above exists to close; this is the same
+  # trap reached through a zero exit, which that clause cannot see.
+  #
+  # Observed: a 1,502ms `exunit []` against a project whose suite takes ~165s.
+  # It was rejected downstream as `unknown_run`, which is luck rather than a
+  # guard — accepted, it would have reported every component's tests as passing
+  # on the strength of a run that executed nothing.
+  #
+  # Only the exact `%{"tests" => 0}` shape matches, so a payload carrying no
+  # stats falls through to the clause below rather than being failed on a guess.
+  def from_raw("exunit", %{"execution_status" => status, "stats" => %{"tests" => 0}} = raw)
+      when is_binary(status) do
+    {:error, {:test_suite_did_not_run, raw["exit_status"], error_excerpt(raw["output"])}}
+  end
+
   # A run whose failures include "module ... is not available" lost its build
   # partway through. The analyzer shares `_build` with the agent, so an agent's
   # own `mix compile --force` wipes and rebuilds it while the suite is running
@@ -303,12 +325,34 @@ defmodule CodeMySpec.Analysis.Runners do
      }}
   end
 
+  # A module that vanished, or a dependency's function that did.
+  #
+  # The first signature was `module ... is not available`. The second is the
+  # same event seen one level in: a dep whose beams are being rewritten answers
+  # `function Jason.Decoder.parse/2 is undefined or private` while the suite is
+  # mid-run. Observed exactly that, as two failures in `Notifications` — a
+  # context that has nothing to do with JSON decoding and was not being edited.
+  #
+  # Restricted to modules outside this application's namespaces, and that
+  # restriction is the whole care in it. A dep function undefined at *runtime*
+  # when the dep compiled means its beams moved underneath the run. One of our
+  # own modules is a different matter: an undefined local function is a warning
+  # rather than a compile error, so it genuinely can fail at runtime, and
+  # swallowing that would hide a real defect behind a build excuse.
+  @foreign_undefined ~r/function (?!CodeMySpec|CmsHarness|CodeMySpecWeb|CodeMySpecSpex)[A-Z][\w.]*\.\w+\/\d+ is undefined/
+
   defp lost_build_failures(raw) do
     raw
     |> diagnostics()
     |> Enum.map(& &1["message"])
-    |> Enum.filter(&(is_binary(&1) and &1 =~ ~r/module .+ is not available/))
+    |> Enum.filter(&lost_build?/1)
   end
+
+  defp lost_build?(message) when is_binary(message) do
+    message =~ ~r/module .+ is not available/ or message =~ @foreign_undefined
+  end
+
+  defp lost_build?(_message), do: false
 
   defp summarize(problems, exit_status, stats) do
     %{
@@ -353,10 +397,49 @@ defmodule CodeMySpec.Analysis.Runners do
 
   def spex_location(error) do
     case spec_frame(error.stacktrace) do
-      nil -> {error.file, error.line}
+      # No spec frame at all — a raise from a setup block, a shared fixture, or
+      # a plug, with nothing in the trace naming the spec that was running.
+      #
+      # This used to fall back to `error.file`, on the reasoning that filing it
+      # somewhere beat filing it nowhere. That was wrong, and it recurred with
+      # the fix in place: `ReqCassette.Plug` raised from a cassette miss and two
+      # spex failures were filed at `lib/req_cassette/plug.ex:481` — no story,
+      # no criterion, and blocking for whoever next touches the plug. Which is
+      # the whole defect the location rule was written to remove.
+      #
+      # A spex failure belongs to a spec or to no file. Saying "somewhere" when
+      # the somewhere is wrong is the louder version of saying nothing.
+      nil -> spec_file_fallback(error)
       frame -> {frame_get(frame, "file"), frame_get(frame, "line")}
     end
   end
+
+  # `error.file` when it is itself a spec, and nothing otherwise.
+  #
+  # The rule above is "a spex failure belongs to a spec or to no file", and the
+  # reason it stopped reading `error.file` is that the top stacktrace frame is
+  # often library code — `ReqCassette.Plug` raised and two failures were filed
+  # against the plug. Applying the same `_spex.exs` test the stacktrace search
+  # uses keeps that property: library paths are still refused.
+  #
+  # What it recovers is the failure with no usable stacktrace at all. Those were
+  # landing on `unknown`, which reads to an agent as "a spex failed somewhere"
+  # and is one step better than nothing — the file was right there in the
+  # payload, unused.
+  defp spec_file_fallback(error) do
+    file = error_get(error, :file)
+
+    if is_binary(file) and String.ends_with?(file, "_spex.exs") do
+      {file, error_get(error, :line)}
+    else
+      {nil, nil}
+    end
+  end
+
+  defp error_get(error, key) when is_map(error),
+    do: Map.get(error, key) || Map.get(error, Atom.to_string(key))
+
+  defp error_get(_error, _key), do: nil
 
   defp spec_frame(stacktrace) when is_list(stacktrace) do
     Enum.find(stacktrace, fn frame ->

@@ -2,6 +2,40 @@ defmodule CodeMySpec.Requirements.GraphCache do
   @moduledoc """
   Stores the last computed requirement graph for a project.
 
+  ## Being retired
+
+  The graph itself is rows now — `requirements` for the nodes,
+  `requirement_edges` for the edges — and `RequirementGraph.cached_graph/1`
+  serves those. `Requirements.Projection` reads them. What this table still does
+  is hold the **fingerprint**, which is how a reader knows whether the rows are
+  current, and a `payload` kept only as a fallback for a graph whose rows were
+  never written.
+
+  Three things have to be true before the payload column can go:
+
+    * `[Requirements] the projection does not round-trip` stays quiet across
+      real projects — the check runs on every publish, which is every genuine
+      change
+    * `[Requirements] projection is empty for a payload with N nodes` stops
+      appearing, meaning every live project has had its rows written at least
+      once
+    * nothing reads `fetch/2`'s graph except `served_graph/3`
+
+  The first condition used to name `projection differs from payload`, which
+  runs on a cache *hit*. That could not be satisfied, and worse, looked like it
+  already was: a hit needs the inputs not to have moved since the last
+  computation, so during active development it happens almost never. Measured
+  over 6h45m of production logs, that comparison ran **once** — on a projection
+  that disagreed about every node count. The criterion was being met by the
+  check not running.
+
+  So the evidence moved to the write path, where a publish is by definition a
+  real change and the rows were just written. Silence there means the round
+  trip was exercised and held.
+
+  The fingerprint half stays regardless. It answers "are these rows current",
+  which the rows cannot answer about themselves.
+
   A published snapshot, not a memoization. Computation never reads it, so
   there is no cache key that can be wrong — the graph a reader gets is one that
   was genuinely computed, and the fingerprint tells them whether the inputs
@@ -102,13 +136,18 @@ defmodule CodeMySpec.Requirements.GraphCache do
       # the web UI does, on every render — so writing unconditionally would mean
       # a ~30KB upsert per page view for a row that already says the same thing.
       # One indexed SELECT is the cheaper half of that trade.
-      :ok
+      :unchanged
     else
       do_publish(project_id, fingerprint, {nodes, edges})
+      :published
     end
   end
 
-  def publish(_scope, _fingerprint, _graph), do: :ok
+  # `:unchanged` rather than `:ok` so the caller can hang the node and edge
+  # writes off the same fingerprint check. A second `current?/2` would be a
+  # second indexed SELECT on a path the UI hits every render, and two checks
+  # could disagree.
+  def publish(_scope, _fingerprint, _graph), do: :unchanged
 
   defp current?(scope, fingerprint) do
     match?({:ok, _}, fetch_fingerprint(scope, fingerprint))

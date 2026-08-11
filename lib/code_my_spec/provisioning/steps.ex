@@ -37,7 +37,8 @@ defmodule CodeMySpec.Provisioning.Steps do
 
   require Logger
 
-  alias CodeMySpec.{AccountSecrets, Deploys, Environments, Projects, ProjectSecrets}
+  alias CodeMySpec.TempFile
+  alias CodeMySpec.{AccountSecrets, Deploys, Environments, ProjectSecrets, Projects}
 
   alias CodeMySpec.Provisioning.{
     Backups,
@@ -2836,7 +2837,7 @@ defmodule CodeMySpec.Provisioning.Steps do
   end
 
   defp generate_access_key(scope, name) do
-    dir = Path.join(System.tmp_dir!(), "cms-ssh-#{System.unique_integer([:positive])}")
+    dir = TempFile.dir("cms-ssh")
     File.mkdir_p!(dir)
     path = Path.join(dir, "id_ed25519")
 

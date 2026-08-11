@@ -35,6 +35,11 @@ defmodule Mix.Tasks.Cms.ProvisioningLeaks do
 
   @spex_prefix "spex-"
 
+  # How recently a server has to have been created for `--delete` to leave it
+  # alone. An hour is well past any recording that is still going and well
+  # short of leaving residue around to be passed on to the next run.
+  @live_run_window_minutes 60
+
   # A DNS record is not named like a server. Hetzner resources are *prefixed*
   # `spex-`; a record made for one is `send.spex-story969-criterion8027.
   # astralbi.com` or `c8025.astralbi.com`, where the marker is a label in the
@@ -56,6 +61,7 @@ defmodule Mix.Tasks.Cms.ProvisioningLeaks do
   @impl Mix.Task
   def run(args) do
     delete? = "--delete" in args
+    force? = "--force" in args
 
     Logger.configure(level: :warning)
 
@@ -74,8 +80,17 @@ defmodule Mix.Tasks.Cms.ProvisioningLeaks do
 
     Application.put_env(:code_my_spec, CodeMySpec.Provisioning.Hetzner, api_token: token)
 
-    report("Hetzner servers", server_names(%Scope{}), false)
-    report("Hetzner SSH keys", ssh_key_names(%Scope{}), false)
+    # Servers and SSH keys took `false` here and no deleter, so `--delete`
+    # silently skipped them while the report still said "re-run with --delete
+    # to remove them" — an instruction for a remedy that did not exist. Two
+    # leaked servers survived a `--delete` run and kept billing; the bucket in
+    # the same run was removed, which is what made the gap look like success.
+    #
+    # Servers first: a key cannot be removed while a server still references it.
+    recent = if force?, do: MapSet.new(), else: recent_server_names(%Scope{})
+
+    report("Hetzner servers", server_names(%Scope{}), delete?, &delete_server(&1, recent))
+    report("Hetzner SSH keys", ssh_key_names(%Scope{}), delete?, &delete_ssh_key/1)
     report("Hetzner buckets", bucket_names(credentials), delete?, &delete_bucket(&1, credentials))
 
     # Cloudflare and Resend were missing here, and they are the two that
@@ -171,16 +186,18 @@ defmodule Mix.Tasks.Cms.ProvisioningLeaks do
   defp dns_record_names(scope) do
     case Cloudflare.list_zones(scope) do
       {:ok, zones} ->
-        Enum.flat_map(zones, fn zone ->
-          case Cloudflare.list_dns_records(scope, zone["id"]) do
-            {:ok, records} -> Enum.map(records, & &1["name"])
-            _ -> []
-          end
-        end)
+        Enum.flat_map(zones, &zone_record_names(scope, &1))
 
       other ->
         Mix.shell().error("could not list zones: #{inspect(other)}")
         []
+    end
+  end
+
+  defp zone_record_names(scope, zone) do
+    case Cloudflare.list_dns_records(scope, zone["id"]) do
+      {:ok, records} -> Enum.map(records, & &1["name"])
+      _ -> []
     end
   end
 
@@ -215,6 +232,36 @@ defmodule Mix.Tasks.Cms.ProvisioningLeaks do
 
   defp registrable(name), do: name |> String.split(".") |> Enum.take(-2) |> Enum.join(".")
 
+  # Through the app's own teardown for the same reason `delete_bucket/2` is:
+  # `Teardown.resource/3` confirms the thing is actually gone rather than
+  # trusting the API's acceptance. Hetzner deletes servers asynchronously, so
+  # "accepted" and "gone" are genuinely different answers here.
+  defp delete_server(name, recent) do
+    if MapSet.member?(recent, name) do
+      {:skipped,
+       "created in the last #{@live_run_window_minutes}m; another run may still be using " <>
+         "it. Use --force once you know nothing is provisioning."}
+    else
+      resource = %{kind: "server", location: "hetzner/#{name}", origin: "created"}
+
+      case Teardown.resource(%Scope{}, resource, []) do
+        {:ok, _} -> :ok
+        {:error, _} -> {:error, name}
+      end
+    end
+  end
+
+  defp delete_ssh_key(name) do
+    with {:ok, %{"id" => id}} <- Hetzner.find_ssh_key(%Scope{}, name),
+         {:ok, _} <- Hetzner.delete_ssh_key(%Scope{}, id) do
+      :ok
+    else
+      # Already gone is the outcome asked for, not a failure.
+      {:error, :not_found} -> :ok
+      _ -> {:error, name}
+    end
+  end
+
   # Through the app's own teardown, not a raw delete: emptying first is the
   # part people forget, and a bucket with one object in it refuses to go.
   defp delete_bucket(bucket, credentials) do
@@ -243,20 +290,60 @@ defmodule Mix.Tasks.Cms.ProvisioningLeaks do
     end
   end
 
+  # Names of servers young enough that a run is probably still using them.
+  #
+  # "Leaked" is inferred from the name, and a name cannot tell abandoned from
+  # in-flight. That distinction is the whole safety property of this task and it
+  # was missing: a `--delete` run removed two servers that another agent's spex
+  # had provisioned minutes earlier and was still using.
+  #
+  # The file's own guard already said so — "a recording may be in flight, and
+  # deleting somebody else's live resource is worse than refusing to start" —
+  # but nothing enforced it. Age does: a recording that provisioned a server an
+  # hour ago has either finished or died, and either way its teardown is not
+  # coming.
+  #
+  # Deliberately not a lock or a harness check. Both can be stale in the
+  # direction that permits deletion, and this needs to fail the other way.
+  defp recent_server_names(scope) do
+    case Hetzner.list_servers(scope) do
+      {:ok, servers} ->
+        cutoff = DateTime.add(DateTime.utc_now(), -@live_run_window_minutes * 60, :second)
+
+        servers
+        |> Enum.filter(&created_after?(&1, cutoff))
+        |> Enum.map(&name_of/1)
+        |> MapSet.new()
+
+      _ ->
+        MapSet.new()
+    end
+  end
+
+  # No timestamp means no evidence it is old, and the safe reading of "unknown"
+  # here is "recent".
+  defp created_after?(server, cutoff) do
+    case DateTime.from_iso8601(to_string(server["created"] || "")) do
+      {:ok, created, _} -> DateTime.compare(created, cutoff) == :gt
+      _ -> true
+    end
+  end
+
   # Keys leak the same way servers do and are easier to miss: they cost nothing,
   # so nobody notices seven of them. They are still a credential per recording
   # sitting in the account.
   defp ssh_key_names(scope) do
-    case CodeMySpec.Provisioning.Hetzner.list_ssh_keys(scope) do
+    case Hetzner.list_ssh_keys(scope) do
       {:ok, keys} -> Enum.map(keys, &name_of/1)
       _ -> []
     end
   end
 
   defp bucket_names(credentials) do
-    with {:ok, buckets} <- Storage.list_buckets(credentials, []) do
-      Enum.map(buckets, &name_of/1)
-    else
+    case Storage.list_buckets(credentials, []) do
+      {:ok, buckets} ->
+        Enum.map(buckets, &name_of/1)
+
       other ->
         Mix.shell().error("could not list buckets: #{inspect(other)}")
         []
@@ -278,7 +365,7 @@ defmodule Mix.Tasks.Cms.ProvisioningLeaks do
   # The two lists never merge: a leak is deleted and a real resource is not,
   # and the whole value of this task is that the distinction is obvious at a
   # glance rather than inferred from a name.
-  defp report(label, names, delete?, deleter \\ nil) do
+  defp report(label, names, delete?, deleter) do
     {leaked, real} = Enum.split_with(names, &leaked?/1)
 
     Mix.shell().info("\n#{label}")
@@ -294,6 +381,7 @@ defmodule Mix.Tasks.Cms.ProvisioningLeaks do
         for name <- leaked do
           case deleter.(name) do
             :ok -> Mix.shell().info("    deleted #{name}")
+            {:skipped, why} -> Mix.shell().info("    kept    #{name} — #{why}")
             {:error, _} -> Mix.shell().error("    FAILED  #{name}")
           end
         end

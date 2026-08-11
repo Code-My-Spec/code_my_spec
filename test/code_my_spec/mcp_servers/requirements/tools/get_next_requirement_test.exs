@@ -6,10 +6,9 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.GetNextRequirementTest do
   alias Anubis.Server.Frame
   alias Anubis.Server.Response
   alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
-  alias Ecto.Adapters.SQL.Sandbox
 
   setup do
-    :ok = Sandbox.checkout(CodeMySpec.Repo)
+    :ok = Ecto.Adapters.SQL.Sandbox.checkout(CodeMySpec.Repo)
   end
 
   describe "execute/2" do
@@ -22,8 +21,7 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.GetNextRequirementTest do
       refute response.isError
       content = response_text(response)
 
-      # Should return the first actionable project-level requirement, which is
-      # persona research since setup left the graph in 545fb741.
+      # Should return the first actionable project-level requirement
       assert content =~ "### PersonaResearch"
       assert content =~ "start_task"
     end

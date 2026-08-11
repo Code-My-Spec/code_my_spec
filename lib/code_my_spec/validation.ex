@@ -28,6 +28,7 @@ defmodule CodeMySpec.Validation do
 
   require Logger
 
+  alias CodeMySpec.AcceptanceCriteria
   alias CodeMySpec.Analysis
   alias CodeMySpec.BddSpecs.Parser
   alias CodeMySpec.Configurations
@@ -176,9 +177,20 @@ defmodule CodeMySpec.Validation do
   # With a task, the same answer the local path gives: every File row whose
   # mtime moved since the task started. mtime comes off the harness's manifest,
   # so this needs no disk.
-  defp remote_changed_files(scope, %{started_at: started_at}, _opts)
+  #
+  # Narrowed by attribution for the same reason the local path is, and it was
+  # not: mtime cannot tell "the agent wrote this" from "git wrote this", and a
+  # rebase rewrites mtimes on everything it touches. The window is
+  # `started_at`, so the longer a task stays open the more of the repo it
+  # swallows — a task blocked upstream for days collects the lot.
+  #
+  # `cwd` is nil here by construction: this path exists precisely because the
+  # disk is on the other end of a channel. The harness sends its edit paths
+  # project-relative, so `relativize/2` has nothing to strip and passes them
+  # through.
+  defp remote_changed_files(scope, %{started_at: started_at} = task, opts)
        when not is_nil(started_at) do
-    Files.changed_since(scope, started_at)
+    changed_files_for_task(scope, task, opts)
   end
 
   # Without a task, the local path uses the paths its own scan found dirty.
@@ -202,6 +214,16 @@ defmodule CodeMySpec.Validation do
     end
   end
 
+  @doc false
+  # Public only so the property that matters can be asserted directly: mtime
+  # moves, git state does not, and the blocking set follows what the session
+  # recorded rather than the clock. Same reasoning as `blocking_key/1`.
+  def changed_files_for_task(scope, %{started_at: started_at}, opts) do
+    scope
+    |> Files.changed_since(started_at)
+    |> filter_by_session_attribution(nil, opts)
+  end
+
   # When a session is in play, narrow the changed-file set to files this
   # session+agent actually wrote (via PostToolUse). The mtime-based
   # `Files.changed_since` view picks up every dirty file on disk; without
@@ -222,18 +244,70 @@ defmodule CodeMySpec.Validation do
           |> Enum.map(&relativize(&1, cwd))
           |> MapSet.new()
 
-        # An empty attribution set means "this session has not edited
-        # anything via PostToolUse yet" — preserve mtime semantics so we
-        # don't accidentally suppress blocking problems on a session that
-        # simply hasn't fired a tracked edit yet (e.g. direct evaluators
-        # that don't go through Claude's Write/Edit pipeline).
-        case MapSet.size(attributed) do
-          0 -> files
-          _ -> Enum.filter(files, &MapSet.member?(attributed, &1.path))
-        end
+        narrow_to_attributed(files, attributed, session_id)
 
       _ ->
         files
+    end
+  end
+
+  # How many mtime-dirty files stop looking like a turn and start looking like
+  # a rebase.
+  #
+  # A number rather than a rule, because the two cases are only distinguishable
+  # by size from here: a session writing through something other than
+  # Write/Edit — a spex, a direct evaluator, the harness — records no
+  # attribution and is indistinguishable from a session whose attribution
+  # broke. What separates them in practice is scale. The reported incident had
+  # 232 dirty files against 6 real edits; a spex writes one or two.
+  #
+  # Deliberately generous. Over this line the set is discarded, and discarding
+  # a real turn's work is the expensive mistake — an agent's own violations
+  # would go unblocked. Under it the mtime set is kept, which is what the
+  # behaviour was before and is wrong only in the narrow case of a small rebase
+  # with no attribution.
+  @rebase_sized 25
+
+  # A session that recorded no edits wrote nothing, and the honest changed-file
+  # set for that is empty.
+  #
+  # This returned `files` — every mtime-dirty file — on the reasoning that a
+  # direct evaluator bypassing Write/Edit should not have its problems
+  # suppressed. The cost of that reading is what it does when attribution goes
+  # empty for a reason that is not "nothing was written": a session restart, or
+  # a recorded path shape that does not match `Files.path`. Then the one filter
+  # that narrows the set instead removes itself, and a stop blocks on every
+  # dirty file in the tree.
+  #
+  # That happened. `git rebase` rewrites mtimes on everything it touches, so a
+  # session that rebased onto a busy main inherited 232 mtime-dirty files, and
+  # the hook blocked five times running on 49 credo violations in spex belonging
+  # to three other stories. The only compliant response was to edit code the
+  # agent did not own, which is a gate that cannot be satisfied honestly.
+  #
+  # Failing closed inverts the risk into the recoverable direction: a missed
+  # violation is caught by the next analysis run and stays on the Problems page,
+  # while a repo-wide block teaches everyone to route around the gate. Loudly,
+  # because "the agent wrote nothing" and "attribution is broken" are different
+  # and only the log can tell them apart.
+  defp narrow_to_attributed(files, attributed, session_id) do
+    case {MapSet.size(attributed), length(files)} do
+      {0, dirty} when dirty > @rebase_sized ->
+        Logger.warning(
+          "[Validation] session #{session_id} recorded no edits, but #{dirty} file(s) " <>
+            "look changed — more than a turn writes. Treating the turn as having " <>
+            "written nothing rather than blocking on all of them; if the agent did " <>
+            "edit files, PostToolUse attribution is not reaching this project's " <>
+            "File paths."
+        )
+
+        []
+
+      {0, _dirty} ->
+        files
+
+      _ ->
+        Enum.filter(files, &MapSet.member?(attributed, &1.path))
     end
   end
 
@@ -339,7 +413,8 @@ defmodule CodeMySpec.Validation do
         |> Enum.map(& &1.component_id)
         |> Enum.reject(&is_nil/1)
         |> Enum.uniq(),
-      specs_ready_story_ids: specs_ready_story_ids(scope)
+      specs_ready_story_ids: specs_ready_story_ids(scope),
+      criterion_story_ids: AcceptanceCriteria.spec_path_story_ids(scope)
     }
 
     # One pass over the file ledger for every source, rather than one per
@@ -430,9 +505,32 @@ defmodule CodeMySpec.Validation do
   # the agent's problem yet.
   #
   # Every other source is story-agnostic and passes through untouched.
-  defp split_by_story_enforcement("spex", problems, %{specs_ready_story_ids: ready_ids}) do
+  # The criterion says which story it belongs to. The filename does not.
+  #
+  # This read the leading number out of `test/spex/<n>_.../` and treated it as a
+  # story id. Those numbers are directory names and have drifted from the ids:
+  # measured on this project, `811_user_sees_the_agents_task_queue_at_a_glance`
+  # derives 811 — a real story, "Onboarding lives at /app", `specs_ready` false
+  # — while the story with that title is 862, `specs_ready` true. So a latched
+  # story gated nothing (no path derives 862) and an unlatched one gated spex
+  # that were not its own.
+  #
+  # Both wrong answers are silent, because a number that resolves to *a* story
+  # looks exactly like one that resolves to the right story. A missing story
+  # would have hit the `nil` branch and been loud.
+  #
+  # `criteria.spec_path` is the recorded answer — `claim_spec_paths/2` writes it
+  # when a spex file is created, which is why it survives a rename. 22 of this
+  # project's 25 spex problems join on it exactly.
+  #
+  # The filename parse stays as the fallback for a spex no criterion claims.
+  # There is no right answer for an orphan, and changing what happens to those
+  # is a separate decision from fixing the ones that do have an answer.
+  defp split_by_story_enforcement("spex", problems, ctx) do
+    %{specs_ready_story_ids: ready_ids, criterion_story_ids: by_path} = ctx
+
     Enum.split_with(problems, fn problem ->
-      case Parser.derive_story_id(problem.file_path) do
+      case Map.get(by_path, problem.file_path) || Parser.derive_story_id(problem.file_path) do
         nil -> true
         story_id -> MapSet.member?(ready_ids, story_id)
       end

@@ -153,7 +153,16 @@ config :logger, :default_formatter,
     :origin,
     :mp_status,
     :error,
-    :body
+    :body,
+    # Stop-hook decision trace. `cms_blocking` carries `exunit=1,credo=6`, which
+    # is what makes "where does an onboarding agent get stuck" a question you
+    # can answer by grouping lines rather than by reading them.
+    :cms_session,
+    :cms_hook,
+    :cms_agent,
+    :cms_decision,
+    :cms_blocking,
+    :cms_why
   ]
 
 # Use Jason for JSON parsing in Phoenix

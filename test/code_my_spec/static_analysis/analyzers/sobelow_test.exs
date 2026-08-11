@@ -5,8 +5,10 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SobelowTest do
   import CodeMySpec.{UsersFixtures, AccountsFixtures, ProjectsFixtures}
   import ExUnit.CaptureLog
 
-  alias CodeMySpec.StaticAnalysis.Analyzers.Sobelow
   alias CodeMySpec.Problems.Problem
+  alias CodeMySpec.Projects
+  alias CodeMySpec.StaticAnalysis.Analyzers.Sobelow
+  alias CodeMySpec.Support.TestAdapter
 
   @test_repo_url "https://github.com/Code-My-Spec/test_phoenix_project.git"
 
@@ -18,16 +20,16 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SobelowTest do
     scope = user_scope_fixture(user, account, project)
 
     # Clone from pool
-    {:ok, project_dir} = CodeMySpec.Support.TestAdapter.clone(scope, @test_repo_url)
+    {:ok, project_dir} = TestAdapter.clone(scope, @test_repo_url)
 
     # Update project with cloned repo path
     {:ok, updated_project} =
-      CodeMySpec.Projects.update_project(scope, project, %{code_repo: project_dir})
+      Projects.update_project(scope, project, %{code_repo: project_dir})
 
     scope = user_scope_fixture(user, account, updated_project) |> Map.put(:cwd, project_dir)
 
     on_exit(fn ->
-      CodeMySpec.Support.TestAdapter.checkin(project_dir)
+      TestAdapter.checkin(project_dir)
     end)
 
     %{scope: scope, project: updated_project, project_dir: project_dir}
@@ -254,11 +256,21 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SobelowTest do
   defp map_sobelow_severity("low"), do: :info
   defp map_sobelow_severity(_), do: :warning
 
+  # Sobelow's own temp files, not everything in the directory.
+  #
+  # `create_temp_file/0` writes `sobelow_output_<id>.json` into
+  # `System.tmp_dir!()`, which is shared. Counting the whole directory made
+  # this an assertion about what else the machine was doing: the harness puts
+  # `spex_output_*.jsonl`, `test_output_*.json` and `cms_harness_*` in there,
+  # and a spex sweep runs for two to three minutes at a time. Anything landing
+  # during the 100ms sleep pushed the count past `before + 1` and failed a
+  # cleanup that had in fact happened.
   defp count_temp_files do
-    temp_dir = System.tmp_dir!()
-
-    count_listed(File.ls(temp_dir))
+    count_listed(File.ls(System.tmp_dir!()))
   end
-  defp count_listed({:ok, files}), do: length(files)
+
+  defp count_listed({:ok, files}),
+    do: Enum.count(files, &String.starts_with?(&1, "sobelow_output_"))
+
   defp count_listed({:error, _}), do: 0
 end

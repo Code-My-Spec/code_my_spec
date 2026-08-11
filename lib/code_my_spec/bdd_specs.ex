@@ -200,7 +200,18 @@ defmodule CodeMySpec.BddSpecs do
 
   def spec_file_path(%{id: _, title: _} = story, %{id: _, description: _} = criterion) do
     story_slug = slugify(story.title)
-    story_dir = "#{story.id}_#{story_slug}"
+    # The story's durable number, not its primary key. `id` is a per-deployment
+    # sequence that renumbers on migration — this comment's own warning above —
+    # and the directories named from it stopped pointing at the stories they
+    # were written for. Drift measured here was a uniform 51:
+    # `test/spex/811_user_sees_the_agents_task_queue…` named a real but
+    # unrelated story 811 while the story owning those spex was 862.
+    #
+    # `Map.get`, not `story.number`: this head accepts any map carrying an id
+    # and a title, and the graph tests pass bare maps that have neither the
+    # struct nor the field. Falls back to `id` for those and for a story
+    # predating the column, so a path is still produced rather than raising.
+    story_dir = "#{Map.get(story, :number) || story.id}_#{story_slug}"
     criterion_slug = slugify(criterion.description)
     filename = "criterion_#{criterion.id}_#{criterion_slug}_spex.exs"
 

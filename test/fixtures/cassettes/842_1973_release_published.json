@@ -1,0 +1,63 @@
+{
+  "commands": [
+    {
+      "args": [
+        "release",
+        "create",
+        "v1.0.0-spex",
+        "--repo",
+        "codemy-my-spec-test/release-spex-fixture",
+        "--target",
+        "main",
+        "--title",
+        "v1.0.0-spex",
+        "--notes",
+        "Published by story 842 criterion 1973."
+      ],
+      "command": "gh",
+      "exit_code": 0,
+      "opts": {
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-25122",
+        "env": {
+          "SCRIPT_PATH": null,
+          "RELEASE_ROOT": null,
+          "ERTS_BIN": null,
+          "RELEASE_DISTRIBUTION_FLAG": null,
+          "RELEASE_DISTRIBUTION": null,
+          "EMU": null,
+          "RELEASE_COMMAND": null,
+          "PROGNAME": null,
+          "ELIXIR_VERSION": null,
+          "RELEASE_MODE": null,
+          "beforeExtra": null,
+          "REL_EXEC": null,
+          "RELEASE_PROG": null,
+          "ERL_LIBS": null,
+          "RELEASE_NODE": null,
+          "REL_EXTRA": null,
+          "RELEASE_BOOT_SCRIPT_CLEAN": null,
+          "RELEASE_NAME": null,
+          "RELEASE_VM_ARGS": null,
+          "ERLEXEC_DIR": null,
+          "ERTS_VSN": null,
+          "RELEASE_SYS_CONFIG": null,
+          "ROOTDIR": null,
+          "ERL_CONSOLE_MODE": null,
+          "parsErlang": null,
+          "RELEASE_TMP": null,
+          "REL_VSN_DIR": null,
+          "RELEASE_VSN": null,
+          "RELEASE_BOOT_SCRIPT": null,
+          "RELEASE_REMOTE_VM_ARGS": null,
+          "BINDIR": null,
+          "REL_GOTO": null,
+          "endLoop": null,
+          "RELEASE_COOKIE": null
+        }
+      },
+      "output": "https://github.com/codemy-my-spec-test/release-spex-fixture/releases/tag/v1.0.0-spex\n",
+      "recorded_at": "2026-08-10T20:12:24.276411Z"
+    }
+  ],
+  "ports": []
+}

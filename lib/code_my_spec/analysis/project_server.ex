@@ -1,11 +1,34 @@
 defmodule CodeMySpec.Analysis.ProjectServer do
   @moduledoc """
-  Per-project analysis queue: single-flight dedup + serialized execution.
+  Per-working-copy analysis queue: single-flight dedup + serialized execution.
 
-  One GenServer per project (Registry + DynamicSupervisor). All analyzer
-  subprocesses for a project funnel through here one at a time — exunit and
-  spex share `_build/test`, and target projects on older Elixir have no OS
-  build lock, so concurrent mix runs can corrupt the build.
+  One GenServer per working copy (Registry + DynamicSupervisor). All analyzer
+  subprocesses for one checkout funnel through here at a time — exunit and spex
+  share that checkout's `_build`, and target projects on older Elixir have no OS
+  build lock, so concurrent mix runs there can corrupt the build.
+
+  ## Why the working copy and not the project
+
+  It was keyed on the project, which is the same serialization for a machine
+  running one checkout and far too much for a machine running several: three
+  worktrees of one project queued behind each other for no shared resource.
+  Sweeps here run 200-590s, so the wait was minutes, and it surfaced as a stop
+  refused `:no_reply` six seconds before another checkout's suite finished —
+  with a message blaming the server or the network.
+
+  The constraint the serialization exists for is per checkout, not per project:
+  `AnalyzerEnv.extra_env/1` gives each working copy its own `MIX_BUILD_PATH` and
+  its own test database, so two checkouts share nothing to corrupt. Within one,
+  exunit and spex still share a build tree and still take turns.
+
+  `remote_executor/1` was already keyed this way, for the same reason stated in
+  its own comment. This makes the queue agree with it.
+
+  The key is the harness id — the working copy — falling back to the project
+  when there is no harness, which is the single-checkout case where the two are
+  the same thing anyway. The PubSub topic stays `analysis:<project_id>`: a
+  LiveView watches a project, and which checkout produced a result is not
+  something it subscribes by.
 
   Dedup: a request matching a running or queued job (same source + args +
   input fingerprint) joins it instead of double-running. Await callers are
@@ -31,12 +54,12 @@ defmodule CodeMySpec.Analysis.ProjectServer do
 
   # -- Client --
 
-  def start_link(project_id) do
-    GenServer.start_link(__MODULE__, project_id, name: via(project_id))
+  def start_link({key, project_id}) do
+    GenServer.start_link(__MODULE__, {key, project_id}, name: via(key))
   end
 
-  def via(project_id) do
-    {:via, Registry, {CodeMySpec.Analysis.Registry, project_id}}
+  def via(key) do
+    {:via, Registry, {CodeMySpec.Analysis.Registry, key}}
   end
 
   @doc """
@@ -65,9 +88,10 @@ defmodule CodeMySpec.Analysis.ProjectServer do
   # -- Server --
 
   @impl true
-  def init(project_id) do
+  def init({key, project_id}) do
     {:ok,
      %{
+       key: key,
        project_id: project_id,
        running: nil,
        queue: [],

@@ -155,6 +155,102 @@ defmodule CodeMySpec.Analysis.RunnersTest do
       assert excerpt =~ "did not match"
     end
 
+    # The same trap reached through a *zero* exit. The clause above keys on
+    # `execution_status: "error"`; this run reports success, so nothing above
+    # catches it, and `{:ok, problems: []}` from a suite that executed nothing
+    # is byte-identical to a clean sweep of the whole project.
+    #
+    # Seen in the wild: a 1,502ms `exunit []` against a suite that takes ~165s.
+    # It was rejected downstream as `unknown_run`, which is luck rather than a
+    # guard — accepted, it would have cleared every recorded exunit Problem and
+    # reported every component's tests as passing.
+    test "a suite that ran zero tests fails the run rather than reporting them clean" do
+      raw = %{
+        "exit_status" => 0,
+        "execution_status" => "success",
+        "output" =>
+          "Running ExUnit with seed: 1\n\n\nFinished in 0.00 seconds\n0 tests, 0 failures",
+        "stats" => %{"tests" => 0, "failures" => 0},
+        "diagnostics" => []
+      }
+
+      assert {:error, {:test_suite_did_not_run, 0, _excerpt}} = Runners.from_raw("exunit", raw)
+    end
+
+    test "a suite that ran tests and found nothing is still a clean sweep" do
+      raw = %{
+        "exit_status" => 0,
+        "execution_status" => "success",
+        "output" => "3793 tests, 0 failures",
+        "stats" => %{"tests" => 3793, "failures" => 0},
+        "diagnostics" => []
+      }
+
+      assert {:ok, %{problems: []}} = Runners.from_raw("exunit", raw)
+    end
+
+    # No stats at all is not evidence of a suite that did not run, so it falls
+    # through rather than being failed on a guess.
+    test "a payload carrying no stats is left alone" do
+      raw = %{
+        "exit_status" => 0,
+        "execution_status" => "success",
+        "output" => "",
+        "diagnostics" => []
+      }
+
+      assert {:ok, %{problems: []}} = Runners.from_raw("exunit", raw)
+    end
+
+    # The same event as `module ... is not available`, seen one level in. A dep
+    # whose beams are being rewritten answers "undefined or private" while the
+    # suite runs — observed as two failures in `Notifications`, a context with
+    # nothing to do with JSON decoding and no edits that day.
+    #
+    # Reported as real, they send whoever reads them into the named file, where
+    # nothing is wrong. That is the expensive kind of wrong answer.
+    test "a dependency function that vanished mid-run fails the run" do
+      raw = %{
+        "exit_status" => 1,
+        "execution_status" => "failure",
+        "output" => "2 tests, 2 failures",
+        "stats" => %{"tests" => 2, "failures" => 2},
+        "diagnostics" => [
+          %{
+            "file" => "test/code_my_spec/notifications/question_request_test.exs",
+            "line" => 51,
+            "message" =>
+              "** (UndefinedFunctionError) function Jason.Decoder.parse/2 is undefined or private"
+          }
+        ]
+      }
+
+      assert {:error, {:build_changed_mid_run, 1, _}} = Runners.from_raw("exunit", raw)
+    end
+
+    # The restriction that makes the above safe. An undefined function in our
+    # own code is a warning at compile time, not an error, so it genuinely can
+    # fail at runtime — and blaming the build would hide a real defect.
+    test "one of our own undefined functions is still a real failure" do
+      raw = %{
+        "exit_status" => 1,
+        "execution_status" => "failure",
+        "output" => "1 test, 1 failure",
+        "stats" => %{"tests" => 1, "failures" => 1},
+        "diagnostics" => [
+          %{
+            "file" => "test/code_my_spec/demo_test.exs",
+            "line" => 3,
+            "message" =>
+              "** (UndefinedFunctionError) function CodeMySpec.Demo.missing/1 is undefined or private"
+          }
+        ]
+      }
+
+      assert {:ok, %{problems: [problem]}} = Runners.from_raw("exunit", raw)
+      assert problem.file_path == "test/code_my_spec/demo_test.exs"
+    end
+
     test "a spex run that exited nonzero with no failures fails the run" do
       assert {:error, {:spex_suite_did_not_run, 2}} =
                Runners.from_raw("spex", %{"exit_status" => 2, "diagnostics" => []})

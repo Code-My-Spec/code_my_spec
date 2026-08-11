@@ -18,12 +18,11 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
   import Ecto.Query
 
   alias CodeMySpec.Components.Component
-  alias CodeMySpec.Requirements.Registry, as: RequirementsRegistry
-  alias CodeMySpec.Environments
   alias CodeMySpec.Files.File
   alias CodeMySpec.Problems.Problem
   alias CodeMySpec.Repo
   alias CodeMySpec.Requirements.Preloader
+  alias CodeMySpec.Requirements.Registry, as: RequirementsRegistry
   alias CodeMySpec.Users.Scope
 
   @type computed_requirement :: %{
@@ -108,71 +107,25 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
 
   defp check(%{check_type: :no_problems, config: config}, scope, entity, _files, ctx) do
     source = config_source(config)
-
-    if analysis_fresh?(scope, source, ctx) do
-      count = get_problem_count(scope, entity_id(entity), source, ctx)
-
-      if count == 0 do
-        {true, %{status: "No #{source} problems"}}
-      else
-        {false, %{reason: "#{count} #{source} problem(s)", count: count}}
-      end
-    else
-      # Same rule `tests_passing` already applies, and it belongs here for a
-      # second reason. There, stale results risk a false *pass*: zero recorded
-      # failures against yesterday's code. Here the danger runs the other way —
-      # a stale non-zero count is a false *fail*, and it is worse than it
-      # sounds.
-      #
-      # An agent fixed four credo findings and was handed the same four back, at
-      # the same line numbers, against code it had already corrected. For
-      # "nesting too deep" or "alias order" there is no idempotent second fix:
-      # to satisfy the list it would have to invent a *different* refactor of
-      # correct code, degrading it — and those edits produce another snapshot
-      # the next check reads while stale. That is a loop with no exit, and each
-      # turn makes the code worse.
-      #
-      # The one this drill hit stopped only because the analyzers eventually
-      # caught up. It reported the friction and refused to re-fix, which is the
-      # right call and not one to depend on.
-      {false, %{reason: "#{source} results not current — analysis pending or stale"}}
-    end
+    problem_verdict(scope, entity, source, ctx, "#{source} problem")
   end
 
   defp check(%{check_type: :tests_passing}, scope, entity, files, ctx) do
-    # Must have a test file before declaring tests passing
-    has_test_file = Enum.any?(files, &(&1.role == :test))
-
-    cond do
-      not has_test_file ->
-        {false, %{reason: "No test file exists yet"}}
-
-      # Zero persisted failures only counts once the results are current —
-      # a test run recorded against yesterday's code proves nothing about
-      # the file the agent just wrote. Analysis runs in the background;
-      # this flips true when its run lands.
-      not analysis_fresh?(scope, "exunit", ctx) ->
-        {false, %{reason: "Test results not current — analysis pending or stale"}}
-
-      true ->
-        count = get_problem_count(scope, entity_id(entity), "exunit", ctx)
-
-        if count == 0 do
-          {true, %{status: "No test failures"}}
-        else
-          {false, %{reason: "#{count} test failure(s)", count: count}}
-        end
+    if Enum.any?(files, &(&1.role == :test)) do
+      problem_verdict(scope, entity, "exunit", ctx, "test failure")
+    else
+      {false, %{reason: "No test file exists yet"}}
     end
   end
 
-  defp check(%{check_type: :delegate, config: config}, scope, entity, _files, _ctx) do
+  defp check(%{check_type: :delegate, config: config}, scope, entity, _files, ctx) do
     module = config[:module] || config["module"]
     function = config[:function] || config["function"] || :check
 
     if is_nil(module) do
       {false, %{reason: "delegate check missing :module in config"}}
     else
-      run_delegate(module, function, scope, entity)
+      run_delegate(module, function, scope, entity, ctx)
     end
   end
 
@@ -185,12 +138,66 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
     {false, %{reason: "Unknown check_type: #{check_type}"}}
   end
 
-  defp run_delegate(module, function, scope, entity) do
+  # Stale analysis is asymmetric: serve the findings, refuse the clean.
+  #
+  # A stale count above zero is a real finding that was true of recent code, so
+  # it is reported — withholding it left any source slower than the edit cadence
+  # permanently "pending", never answering at all (issue 7a7eed33). A stale zero
+  # is the dangerous direction: reporting clean from a run that never looked at
+  # the current code is a false pass, and that one still refuses.
+  #
+  # The reason says which it is. An agent once re-fixed four credo findings it
+  # had already corrected, because a stale list is indistinguishable from a
+  # current one when nothing says so — and for "nesting too deep" there is no
+  # idempotent second fix, so it degrades correct code on every pass.
+  defp problem_verdict(scope, entity, source, ctx, noun) do
+    count = get_problem_count(scope, entity_id(entity), source, ctx)
+
+    case {analysis_fresh?(scope, source, ctx), count} do
+      {true, 0} ->
+        {true, %{status: "No #{noun}s"}}
+
+      {true, n} ->
+        {false, %{reason: "#{n} #{noun}(s)", count: n}}
+
+      {false, 0} ->
+        {false,
+         %{
+           reason:
+             "#{source} results not current — the last completed run predates your " <>
+               "changes, so a clean result from it proves nothing"
+         }}
+
+      {false, n} ->
+        {false,
+         %{
+           reason: "#{n} #{noun}(s), from the last completed #{source} run",
+           count: n,
+           stale: true
+         }}
+    end
+  end
+
+  # Checkers that export an arity-3 clause are handed the preloaded context;
+  # the rest keep the two-argument contract and query for themselves.
+  #
+  # Opt-in per checker rather than a flag day: `compute_story_nodes/3` calls
+  # this once per story per definition, so a checker that queries four tables
+  # does it 4×N times in one graph computation. Converting them one at a time
+  # needs both shapes to work, and a checker that has not been converted is
+  # exactly as correct as before.
+  defp run_delegate(module, function, scope, entity, ctx) do
     module
-    |> apply(function, [scope, entity])
+    |> apply(function, delegate_args(module, function, scope, entity, ctx))
     |> normalize_delegate_result()
   rescue
     e -> {false, %{reason: "delegate check failed: #{Exception.message(e)}"}}
+  end
+
+  defp delegate_args(module, function, scope, entity, ctx) do
+    if is_map(ctx) and Code.ensure_loaded?(module) and function_exported?(module, function, 3),
+      do: [scope, entity, ctx],
+      else: [scope, entity]
   end
 
   defp normalize_delegate_result({true, details}), do: {true, details}
@@ -238,55 +245,154 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
 
   # -- Path checks (project-level) --
 
-  # Check if path exists: try File records first, fall back to filesystem.
-  # Many project-level paths (qa/journey_plan.md, journey_result.md, etc.)
-  # aren't classified by FileSync, so the DB won't have them — filesystem is
-  # authoritative.
+  # Rows only. These used to fall back to statting the disk, on the stated
+  # grounds that "many project-level paths aren't classified by FileSync, so
+  # the DB won't have them — filesystem is authoritative". That is no longer
+  # true: every path these six requirements gate on now classifies to a role
+  # (`ClassifiableArtifactsTest` holds the list), so the row is there whenever
+  # the file is.
+  #
+  # The fallback was also the thing that made two harnesses disagree about one
+  # project. It only ever fires when the file is on disk and not yet a row, and
+  # in that window the heavy harness — which has a working copy — answers
+  # satisfied while the server, whose `scope.environment` is nil, answers
+  # unsatisfied. Same project, same instant, two answers, and the one an agent
+  # gets depends on which process it asked.
+  #
+  # Reading rows costs a scan of lag on a freshly written file and gives one
+  # answer to everyone. That is the trade this whole projection is built on:
+  # everything else here already reads rows, and a file the scanner has not
+  # seen is a file the graph does not know about.
+  # Existence is necessary, not sufficient. Every path these six gate on is
+  # classified, and classification runs the artifact's validator — so the row
+  # already carries a verdict. Reading only `exists?` threw that verdict away
+  # and let a QA plan missing every required section satisfy `qa_setup`, whose
+  # own description is "QA plan exists with App Overview, Tools Registry, and
+  # Seed Strategy". Two of the six say "and valid" outright.
+  #
+  # `valid: nil` means no validator applies to that role, which is a pass —
+  # only an explicit `false` is a failure. The errors are carried into the
+  # reason because the agent's next move depends on which section is missing,
+  # and "File invalid" alone does not say.
+  # A path can match more than one row: `scope_to_harness/2` does not filter
+  # when the scope carries no harness, which is every read the web UI makes.
+  # So this asks the list a question rather than demanding a single row —
+  # `Repo.one` would raise there, and refusing on a harness mismatch is what
+  # took the graph out of the web view once already.
+  #
+  # One valid copy is enough. Reporting invalid because some other working
+  # copy has a stale row would block an agent on a file it cannot see.
   defp check_path_exists(scope, ctx, path) do
-    in_db = ctx[:files_by_path] && Map.has_key?(ctx.files_by_path, path)
+    case tracked_files(scope, ctx, path) do
+      [] ->
+        {false, %{reason: "File missing: #{path}"}}
 
-    if in_db do
-      {true, %{path: path}}
-    else
-      check_path_on_disk(scope, path)
+      files ->
+        case Enum.reject(files, &(&1.valid == false)) do
+          [_ | _] ->
+            {true, %{path: path}}
+
+          [] ->
+            {false, %{reason: "File invalid: #{path} — #{describe_validation_errors(hd(files))}"}}
+        end
     end
   end
+
+  # `validation_errors` is keyed by concern, and the keys vary by role — the
+  # scanner writes `%{"reason" => _}` for specs and reviews, `%{error: _}` for
+  # read failures, and a key per missing section for setup files. Join the
+  # values rather than guessing at a shape.
+  defp describe_validation_errors(%{validation_errors: errors})
+       when is_map(errors) and errors != %{} do
+    errors
+    |> Enum.sort_by(fn {key, _} -> to_string(key) end)
+    |> Enum.map_join("; ", fn {_key, value} -> format_validation_error(value) end)
+  end
+
+  defp describe_validation_errors(_file), do: "no detail recorded"
+
+  # Values are usually the validator's message, but not always — some roles
+  # write a nested map, and `to_string/1` raises on those rather than saying
+  # anything useful.
+  defp format_validation_error(value) when is_binary(value), do: value
+  defp format_validation_error(value) when is_atom(value), do: to_string(value)
+  defp format_validation_error(value), do: inspect(value)
 
   defp check_path_prefix(scope, ctx, prefix) do
-    db_count =
-      case ctx[:files_by_project] do
-        files when is_list(files) -> Enum.count(files, &String.starts_with?(&1.path, prefix))
-        _ -> 0
-      end
-
-    if db_count > 0 do
-      {true, %{status: "#{db_count} file(s) at #{prefix}"}}
-    else
-      check_prefix_on_disk(scope, prefix)
+    case prefix_count(scope, ctx, prefix) do
+      0 -> {false, %{reason: "No files at #{prefix}"}}
+      n -> {true, %{status: "#{n} file(s) at #{prefix}"}}
     end
   end
 
-  defp check_path_on_disk(%Scope{environment: env}, path) when not is_nil(env) do
-    if Environments.file_exists?(env, path) do
-      {true, %{path: path}}
-    else
-      {false, %{reason: "File missing: #{path}"}}
+  # Preloaded when there is a context, queried when there is not — the same
+  # two-clause shape `get_files/3` and `get_problem_count/4` already use, and
+  # the reason this conversion is not just "delete the fallback".
+  #
+  # `Evaluator` calls `compute_one/4` without a context, so on the stop-hook
+  # path — the one that runs on every agent turn — `ctx` is nil and there are
+  # no preloaded files to consult. Dropping to `{false, "File missing"}` there
+  # blocks the stop on a file the agent had just written and synced.
+  defp tracked_files(_scope, ctx, path) when is_map(ctx) do
+    case ctx[:files_by_path] && Map.get(ctx.files_by_path, path) do
+      nil -> []
+      file -> [file]
     end
   end
 
-  defp check_path_on_disk(_, path), do: {false, %{reason: "File missing: #{path}"}}
+  defp tracked_files(%Scope{active_project_id: project_id} = scope, _ctx, path) do
+    File
+    |> where([f], f.project_id == ^project_id and f.path == ^path)
+    |> scope_to_harness(scope)
+    |> Repo.all()
+  end
 
-  defp check_prefix_on_disk(%Scope{environment: env}, prefix) when not is_nil(env) do
-    case Environments.list_directory(env, prefix) do
-      {:ok, entries} when entries != [] ->
-        {true, %{status: "#{length(entries)} file(s) at #{prefix}"}}
-
-      _ ->
-        {false, %{reason: "No files at #{prefix}"}}
+  defp prefix_count(_scope, ctx, prefix) when is_map(ctx) do
+    case ctx[:files_by_project] do
+      files when is_list(files) -> Enum.count(files, &String.starts_with?(&1.path, prefix))
+      _ -> 0
     end
   end
 
-  defp check_prefix_on_disk(_, prefix), do: {false, %{reason: "No files at #{prefix}"}}
+  # Matched in Elixir rather than with a `LIKE`: the prefix is a config value
+  # and `_` is a single-character wildcard in both Postgres and SQLite, so a
+  # future prefix containing one would quietly over-match. One indexed column
+  # for one project is a cheap enough read to not need the wildcard.
+  defp prefix_count(%Scope{active_project_id: project_id} = scope, _ctx, prefix) do
+    File
+    |> where([f], f.project_id == ^project_id)
+    |> scope_to_harness(scope)
+    |> select([f], f.path)
+    |> Repo.all()
+    |> Enum.count(&String.starts_with?(&1, prefix))
+  end
+
+  # The same rule `Preloader.load/1` applies, for the same reason and with the
+  # same asymmetry.
+  #
+  # These two fallbacks run when there is no preloaded context — which is the
+  # stop-hook path, because `Evaluator` calls `compute_one/4` without one. So
+  # every `path_exists` requirement on every agent turn was asking "does any
+  # checkout have this file", and answering yes.
+  #
+  # The six that use it are all `.code_my_spec/` project paths — a technical
+  # strategy, a QA plan, a journey — which is exactly the category that differs
+  # between working copies, because one checkout writing it is the work the
+  # requirement is asking for. A second checkout that already had it made the
+  # first one's requirement read as done.
+  #
+  # Over-satisfaction is the dangerous direction: an unsatisfied requirement
+  # reported satisfied is work skipped and never noticed, where the reverse is
+  # work done twice and immediately obvious.
+  #
+  # Loose on a nil harness, matching the preloader: a scope with no working copy
+  # is the UI asking, and refusing there took the graph out of the web view and
+  # failed 86 spex. An agent's scope always carries a harness because the plug
+  # that builds it does.
+  defp scope_to_harness(query, %Scope{active_harness_id: nil}), do: query
+
+  defp scope_to_harness(query, %Scope{active_harness_id: harness_id}),
+    do: where(query, [f], f.harness_id == ^harness_id)
 
   # -- File checks --
 

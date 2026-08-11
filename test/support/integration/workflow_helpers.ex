@@ -17,7 +17,7 @@ defmodule CodeMySpec.Integration.WorkflowHelpers do
   Creates a scope, session, frame, and a two-requirement graph:
 
   - `project_setup` (actionable, no deps) — uses ProjectSetup task module
-  - `technical_strategy` (blocked, depends on project_setup) — uses ProjectSetup for simplicity
+  - `qa_setup` (blocked) — a second project-level requirement
 
   Scope includes an environment backed by a tmp directory for filesystem control.
 
@@ -41,11 +41,18 @@ defmodule CodeMySpec.Integration.WorkflowHelpers do
     {:ok, session} = Sessions.find_or_create_session(scope, external_id)
     frame = %Frame{assigns: %{current_scope: scope}}
 
-    # Still a valid `start_task` target — `start_agent_task.ex` maps it — even
-    # though 545fb741 took it out of the requirement graph, so `get_next` no
-    # longer offers it.
-    req1 = project_requirement_ref(scope, "project_setup")
-    req2 = project_requirement_ref(scope, "technical_strategy")
+    # `req1` is the chain's vehicle: something automatic, so the stop hook can
+    # actually evaluate it. It used to be `project_setup`, which left the graph
+    # when `cms new` took setup over — and the graph's new root,
+    # `personas_complete`, is `validation_type: :manual`, so the stop hook skips
+    # it and there is nothing to assert.
+    #
+    # `technical_strategy` is `path_exists` on a file under `.code_my_spec/`, so
+    # a test satisfies it by writing one into the tmp dir. Blocked in the graph,
+    # which does not matter here: `start_task` takes a named requirement rather
+    # than an actionable one.
+    req1 = project_requirement_ref(scope, "technical_strategy")
+    req2 = project_requirement_ref(scope, "qa_setup")
 
     %{
       scope: scope,
@@ -123,13 +130,25 @@ defmodule CodeMySpec.Integration.WorkflowHelpers do
     # ApplicationInWeb
     web_app_dir = Path.join([tmp_dir, "lib", "#{app}_web"])
     File.mkdir_p!(web_app_dir)
-    File.write!(Path.join(web_app_dir, "application.ex"), "defmodule MyAppWeb.Application do\nend")
+
+    File.write!(
+      Path.join(web_app_dir, "application.ex"),
+      "defmodule MyAppWeb.Application do\nend"
+    )
 
     # TestBoundaries
     test_support = Path.join([tmp_dir, "test", "support"])
     File.mkdir_p!(test_support)
-    File.write!(Path.join(test_support, "#{app}_spex.ex"), "defmodule MyAppSpex do\n  use Boundary\nend")
-    File.write!(Path.join(test_support, "#{app}_test_boundary.ex"), "defmodule MyAppTest do\n  use Boundary\nend")
+
+    File.write!(
+      Path.join(test_support, "#{app}_spex.ex"),
+      "defmodule MyAppSpex do\n  use Boundary\nend"
+    )
+
+    File.write!(
+      Path.join(test_support, "#{app}_test_boundary.ex"),
+      "defmodule MyAppTest do\n  use Boundary\nend"
+    )
 
     # SpexCase — validator requires defmodule <App>Spex.Case + use SexySpex + import Phoenix.LiveViewTest
     File.write!(
@@ -149,20 +168,21 @@ defmodule CodeMySpec.Integration.WorkflowHelpers do
 
     # ProjectStructure
     base = ".code_my_spec"
+
     for dir <- [
-      Path.join(base, "rules"),
-      Path.join([base, "spec", app]),
-      Path.join([base, "spec", "#{app}_web"])
-    ] do
+          Path.join(base, "rules"),
+          Path.join([base, "spec", app]),
+          Path.join([base, "spec", "#{app}_web"])
+        ] do
       File.mkdir_p!(Path.join(tmp_dir, dir))
     end
 
     # AppResources — framework, tools, credo_checks dirs
     for dir <- [
-      Path.join(base, "framework"),
-      Path.join(base, "tools"),
-      Path.join([base, "credo_checks"])
-    ] do
+          Path.join(base, "framework"),
+          Path.join(base, "tools"),
+          Path.join([base, "credo_checks"])
+        ] do
       File.mkdir_p!(Path.join(tmp_dir, dir))
     end
 
@@ -181,7 +201,10 @@ defmodule CodeMySpec.Integration.WorkflowHelpers do
     """)
 
     # ClaudeMd
-    File.write!(Path.join(tmp_dir, "CLAUDE.md"), "# Project\n<!-- code_my_spec:start -->\nmanaged\n<!-- code_my_spec:end -->")
+    File.write!(
+      Path.join(tmp_dir, "CLAUDE.md"),
+      "# Project\n<!-- code_my_spec:start -->\nmanaged\n<!-- code_my_spec:end -->"
+    )
 
     # infrastructure_paths — framework-generated modules that ComponentSync
     # tags as `type: "infrastructure"` (empty requirement graph, no work driven).
@@ -219,5 +242,4 @@ defmodule CodeMySpec.Integration.WorkflowHelpers do
     protocol = Response.to_protocol(response)
     hd(protocol["content"])["text"]
   end
-
 end

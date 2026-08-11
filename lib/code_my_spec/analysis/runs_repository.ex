@@ -9,6 +9,8 @@ defmodule CodeMySpec.Analysis.RunsRepository do
 
   import Ecto.Query, warn: false
 
+  require Logger
+
   alias CodeMySpec.Analysis.Run
   alias CodeMySpec.Repo
   alias CodeMySpec.Users.Scope
@@ -164,13 +166,32 @@ defmodule CodeMySpec.Analysis.RunsRepository do
   evidence that can satisfy it is a result that could never be recorded.
   """
   @spec fail_running(Scope.t(), term()) :: {:ok, non_neg_integer()}
-  def fail_running(%Scope{active_project_id: project_id} = scope, reason) do
+  def fail_running(%Scope{} = scope, reason), do: fail_running(scope, reason, [])
+
+  @doc """
+  Close this working copy's `:running` runs, except the ones the harness says it
+  is still working on.
+
+  A harness that restarted took its queue with it and those runs will never
+  finish, so closing them is what stops every later stop reporting "analysis
+  pending" on a next time that never arrives. A harness whose *socket* dropped
+  took nothing with it: the analyzers are OS processes on its machine, and they
+  finish, report, and are refused because the row is no longer `:running`.
+
+  The two are indistinguishable from here, which is why the harness declares
+  what it still holds on join. Anything it does not claim is closed, so a
+  genuinely dead harness is handled exactly as before — an empty declaration is
+  the old behaviour.
+  """
+  @spec fail_running(Scope.t(), term(), [integer()]) :: {:ok, non_neg_integer()}
+  def fail_running(%Scope{active_project_id: project_id} = scope, reason, claimed) do
     now = DateTime.utc_now()
 
     {count, _} =
       Run
       |> where([r], r.project_id == ^project_id and r.status == :running)
       |> where([r], r.harness_id == ^scope.active_harness_id)
+      |> exclude_claimed(claimed)
       |> Repo.update_all(
         set: [
           status: :failed,
@@ -183,22 +204,69 @@ defmodule CodeMySpec.Analysis.RunsRepository do
     {:ok, count}
   end
 
+  # An empty claim sweeps everything, which is what this did before harnesses
+  # declared anything — so an older harness, or one with nothing running, is
+  # unchanged.
+  defp exclude_claimed(query, []), do: query
+  defp exclude_claimed(query, claimed), do: where(query, [r], r.id not in ^claimed)
+
   @doc """
   Mark stranded `:running` rows as `:failed`.
 
   Called at boot: a run left `:running` by a previous server process died with
   that process — its RunServer no longer exists, so nothing will ever finish it.
+
+  That premise holds for runs this server executed. It does not hold for runs
+  dispatched to a light harness: those are OS processes on another machine and a
+  server restart does not touch them. One caught mid-flight finishes, reports,
+  and is refused — the row is no longer `:running`. Restarting the server during
+  a 200-second `mix test` is enough to do it.
+
+  Left as it is deliberately, and logged instead. The join sweep is where a
+  harness can say what it still holds (`fail_running/3`); nothing can claim at
+  boot, because nothing has joined yet. Making this one smarter means either
+  keeping rows open for a harness that may never return, or a timer — and a
+  timer compensating for a deadline is what the channel exists to avoid.
+
+  So it stays blunt and says what it did.
   """
   @spec fail_stranded_runs() :: {:ok, integer()}
   def fail_stranded_runs do
     now = DateTime.utc_now()
+
+    stranded =
+      Run
+      |> where([r], r.status == :running)
+      |> select([r], {r.id, r.source, r.harness_id})
+      |> Repo.all()
 
     {count, _} =
       Run
       |> where([r], r.status == :running)
       |> Repo.update_all(set: [status: :failed, finished_at: now, updated_at: now])
 
+    log_stranded(stranded)
+
     {:ok, count}
+  end
+
+  defp log_stranded([]), do: :ok
+
+  defp log_stranded(stranded) do
+    {remote, local} = Enum.split_with(stranded, fn {_id, _source, harness_id} -> harness_id end)
+
+    Logger.warning(
+      "[Analysis] boot closed #{length(stranded)} run(s) left open by the previous server: " <>
+        "#{inspect(Enum.map(stranded, fn {id, source, _} -> {id, source} end))}"
+    )
+
+    if remote != [] do
+      Logger.warning(
+        "[Analysis] #{length(remote)} of those were dispatched to a harness and may still be " <>
+          "executing there — their results will be refused as unknown_run. " <>
+          "#{length(local)} ran on this server and are genuinely dead."
+      )
+    end
   end
 
   @doc "Prune finished runs beyond the newest #{@keep_per_source} per source."

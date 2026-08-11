@@ -74,7 +74,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
       # open run makes every later stop report analysis pending, which allows
       # the stop while saying results will apply next time, on a next time that
       # never arrives. This is the one moment it is provably safe to close them.
-      Analysis.fail_in_flight(scope, :harness_reconnected)
+      Analysis.fail_in_flight(scope, :harness_reconnected, claimed_runs(payload))
 
       # The id goes back in the join reply whether it was just minted or
       # recognised. A harness that already holds one gets the same value and
@@ -119,6 +119,16 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   end
 
   def join(_topic, _payload, _socket), do: {:error, %{reason: "invalid topic"}}
+
+  # Runs the joining harness says it is still executing.
+  #
+  # Only integers it actually sent. A harness that predates this field sends
+  # nothing and everything is swept, which is what happened before — so the
+  # rollout order does not matter.
+  defp claimed_runs(%{"active_runs" => ids}) when is_list(ids),
+    do: Enum.filter(ids, &is_integer/1)
+
+  defp claimed_runs(_payload), do: []
 
   @doc """
   Hand the harness the small slice of the domain that scanning needs.
@@ -293,6 +303,28 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
     {:noreply, socket}
   end
 
+  # Wait until this project's analyzers are idle, then report.
+  #
+  # Replied out of band like `analysis_run` above, because the wait is minutes:
+  # a sweep runs 200-590s. Holding the channel process for that would block
+  # every other message the harness sends.
+  #
+  # This exists as a channel message, and reaches the agent as an HTTP endpoint,
+  # because the same wait as an MCP tool could not return — MCP's transport caps
+  # a request at 30s, so it answered `-32603 Server unavailable` every time it
+  # was needed.
+  def handle_in("analysis_wait", _payload, socket) do
+    ref = socket_ref(socket)
+    scope = socket.assigns.scope
+
+    Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
+      result = CodeMySpec.Analysis.await_all(scope, timeout: :timer.minutes(20))
+      Phoenix.Channel.reply(ref, {:ok, %{"state" => to_string(result), "summary" => wait_summary(scope)}})
+    end)
+
+    {:noreply, socket}
+  end
+
   # An unknown event is answered, not dropped.
   #
   # This clause used to be `{:noreply, socket}`, and that silence was a real
@@ -306,6 +338,20 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   def handle_in(event, _payload, socket) do
     Logger.warning("[HarnessProject] unknown event #{inspect(event)}")
     {:reply, {:error, %{"reason" => "unknown_event", "event" => event}}, socket}
+  end
+
+  defp wait_summary(scope) do
+    counts =
+      scope
+      |> CodeMySpec.Problems.list_project_problems([])
+      |> Enum.group_by(& &1.source)
+      |> Map.new(fn {source, problems} -> {source, length(problems)} end)
+
+    scope
+    |> CodeMySpec.Analysis.status()
+    |> Enum.map_join("\n", fn {source, %{state: state}} ->
+      "- #{source}: #{state}, #{Map.get(counts, source, 0)} problem(s)"
+    end)
   end
 
   # `Analysis` dispatches a run by sending here, because the executor it looked
@@ -456,9 +502,26 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   # project report analysis pending — an allow, with a note that results apply
   # next time, forever.
   @impl true
-  def terminate(_reason, socket) do
+  # Why the channel died, not just that it did.
+  #
+  # This discarded `reason` until now, and the harness could not supply it
+  # either: a channel process that crashes sends `phx_error` with no payload, so
+  # the far side logs `closed: {:error, %{}}` and the empty map is all it ever
+  # learns. The one process that knows was throwing it away.
+  #
+  # That cost a day. Seven crashes over one evening were indistinguishable from
+  # seven network drops, and the sweep below turned each into a batch of results
+  # the server would later refuse as `unknown_run` — which is what was actually
+  # investigated, three times, from the wrong end.
+  #
+  # Deliberately loud. A disconnect here is not routine: it fails every run this
+  # working copy has open, while the analyzers themselves are OS processes on
+  # the harness that keep running regardless. Their results arrive for runs that
+  # are no longer `:running` and are refused. Nothing retries.
+  def terminate(reason, socket) do
     case socket.assigns[:scope] do
       %Scope{active_project_id: id} when not is_nil(id) ->
+        log_disconnect(reason, socket)
         Analysis.fail_in_flight(socket.assigns.scope, :harness_disconnected)
 
       _ ->
@@ -466,6 +529,22 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
     end
 
     :ok
+  end
+
+  # The harness leaving on purpose — a restart, a shutdown. Worth a line,
+  # because it still strands whatever was running, but not an alarm.
+  defp log_disconnect(reason, socket)
+       when reason in [:normal, :shutdown, {:shutdown, :left}, {:shutdown, :closed}] do
+    Logger.info("[HarnessProject] channel closed (#{inspect(reason)}) topic=#{socket.topic}")
+  end
+
+  defp log_disconnect(reason, socket) do
+    Logger.error(
+      "[HarnessProject] channel DIED topic=#{socket.topic} reason=#{inspect(reason, limit: 12)}" <>
+        " — every in-flight run for this working copy is about to be failed as" <>
+        " :harness_disconnected. The analyzers keep running on the harness and" <>
+        " their results will be refused as unknown_run. Fix the crash, not the sweep."
+    )
   end
 
   # `port` is the harness's own — the analysis curl that `pre-tool-use` rewrites

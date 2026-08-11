@@ -40,6 +40,7 @@ defmodule CodeMySpecSpex.Fixtures do
     OauthFixtures,
     Paths,
     ProblemsFixtures,
+    ProjectSecrets,
     ProjectsFixtures,
     ProjectSync,
     QaFixtures,
@@ -74,6 +75,8 @@ defmodule CodeMySpecSpex.Fixtures do
   alias CodeMySpec.Provisioning.Repository
   alias CodeMySpec.Provisioning.Resend
   alias CodeMySpec.Provisioning.Resend
+  alias CodeMySpec.Provisioning.Sequence
+  alias CodeMySpec.Provisioning.StepRepository
   alias CodeMySpec.Provisioning.Steps
   alias CodeMySpec.Provisioning.Storage
   alias CodeMySpec.Provisioning.Teardown
@@ -84,6 +87,13 @@ defmodule CodeMySpecSpex.Fixtures do
   alias CodeMySpec.Stories.Story
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.Users.User
+  alias CodeMySpec.Workspaces.PreviewAddress
+  alias CodeMySpec.Workspaces.Workspace
+  alias CodeMySpec.Workspaces.WorkspacesRepository
+  alias CodeMySpecTest.FakeWorkspaceRunner
+  alias CodeMySpecTest.LocalPreviewRunner
+  alias CodeMySpecTest.PreviewApp
+  alias CodeMySpecTest.PreviewWsClient
 
   @doc """
   Register a sending domain and publish everything except its DKIM record.
@@ -155,12 +165,101 @@ defmodule CodeMySpecSpex.Fixtures do
         )
       )
 
+    record_content_bucket(scope, project)
+
     project
   end
 
-  @doc "The bucket `publishable_project/3` points a project at."
-  @spec content_bucket() :: String.t()
-  def content_bucket, do: @content_bucket
+  # The bucket this names does not exist yet — the first publish creates it —
+  # and until now nothing recorded that, so `tear_down_after(scope, [:storage])`
+  # found no resource and removed nothing. Recording a spex left a real bucket
+  # on the account with a random name and no owner, once per recording.
+  #
+  # Written as a `:storage` step resource rather than as bespoke cleanup in each
+  # spex, because that is where `Provisioning.Teardown` already looks and it
+  # knows how to empty a bucket before deleting it. Every spex using this
+  # fixture gets the cleanup by asking for the step it already implies.
+  defp record_content_bucket(_scope, %{content_bucket: nil}), do: :ok
+
+  defp record_content_bucket(scope, project) do
+    location = "fsn1.your-objectstorage.com/#{project.content_bucket}"
+
+    maybe_create_bucket(scope, project.content_bucket)
+
+    StepRepository.upsert(scope, :storage, %{
+      state: :done,
+      position: Sequence.position(:storage),
+      resources: [%{kind: "bucket", location: location, identifier: "user"}]
+    })
+
+    :ok
+  end
+
+  # Recording needs the bucket to exist; replay does not.
+  #
+  # The fixture names a bucket and marks the `:storage` step done, which on
+  # replay is the whole truth — the cassette answers the publish and no bucket
+  # is involved. Recording puts real objects, so the bucket has to be there or
+  # the publish fails with `publish_failed`, which is what it did.
+  #
+  # Creating it only while recording keeps replay offline. It is created *and*
+  # recorded as a resource in the same breath, so teardown removes exactly what
+  # this made — the pairing is the point, and doing one without the other is
+  # how the account collected orphans in the first place.
+  defp maybe_create_bucket(scope, bucket) do
+    if System.get_env("SPEX_CASSETTE_MODE") == "record" do
+      seed_storage_secrets!(scope)
+      create_bucket!(scope, bucket)
+    end
+
+    :ok
+  end
+
+  # `Storage.credentials/2` reads project secrets, not the environment — Hetzner
+  # issues object-storage keys only in its console, so the project is where they
+  # live and `envs/.env` is where a recording keeps them. A fresh spex project
+  # has neither, which is why `credentials/2` answered `:none` and the publish
+  # failed as `publish_failed` without anything saying why.
+  defp seed_storage_secrets!(scope) do
+    for {key, env} <- [
+          {"hetzner_s3_access_key_id", "HETZNER_S3_ACCESS_KEY_ID"},
+          {"hetzner_s3_secret_access_key", "HETZNER_S3_SECRET_ACCESS_KEY"}
+        ] do
+      case System.get_env(env) do
+        value when is_binary(value) and value != "" ->
+          {:ok, _} = ProjectSecrets.put_value(scope, key, value)
+
+        _ ->
+          raise "recording needs #{env}; export envs/.env first (`set -a; source envs/.env`)"
+      end
+    end
+
+    :ok
+  end
+
+  # Loud on every branch. A silent `:ok` when credentials are missing leaves the
+  # publish to fail later as `publish_failed`, which names the symptom and hides
+  # that nothing ever tried to make the bucket.
+  defp create_bucket!(scope, bucket) do
+    credentials =
+      case Storage.credentials(scope, []) do
+        :none ->
+          raise "recording needs Hetzner S3 credentials to create #{bucket}, and " <>
+                  "Storage.credentials/2 returned :none — check envs/.env is exported"
+
+        {:ok, credentials} ->
+          credentials
+
+        credentials when is_list(credentials) ->
+          credentials
+      end
+
+    case Storage.ensure_bucket(bucket, credentials, []) do
+      {:ok, _} -> :ok
+      :ok -> :ok
+      other -> raise "could not create #{bucket} for recording: #{inspect(other)}"
+    end
+  end
 
   @doc """
   An app access token for the project, minted the way the deployed app gets one.
@@ -1164,6 +1263,172 @@ defmodule CodeMySpecSpex.Fixtures do
   # -- Projects --
   defdelegate project_fixture(scope, attrs \\ %{}), to: ProjectsFixtures
 
+  # -- Workspaces --
+
+  @doc """
+  Swap the workspace runner for the fake one and start it.
+
+  A spex cannot name `CodeMySpecTest.FakeWorkspaceRunner` — `CodeMySpecSpex`
+  does not carry `CodeMySpecTest` as a boundary dep, and should not: reaching
+  into the app is this module's job, not the criterion's. This bridge already
+  has the dep, so the swap belongs here.
+
+  Exactly what the spex did inline: install the runner in application config,
+  remove it on exit, and start the fake supervised.
+  """
+  @spec install_workspace_runner(keyword()) :: :ok
+  def install_workspace_runner(opts \\ [healthy?: true, serving: :serving]) do
+    Application.put_env(:code_my_spec, CodeMySpec.Workspaces, runner: FakeWorkspaceRunner)
+
+    ExUnit.Callbacks.on_exit(fn ->
+      Application.delete_env(:code_my_spec, CodeMySpec.Workspaces)
+    end)
+
+    ExUnit.Callbacks.start_supervised!({FakeWorkspaceRunner, opts})
+    :ok
+  end
+
+  @doc """
+  Set what the fake workspace reports serving — `:serving`, `:erroring`,
+  `:down` or `:ok`. How a scenario makes a running container answer badly.
+  """
+  defdelegate put_workspace_serving(serving), to: FakeWorkspaceRunner, as: :put_serving
+
+  @doc """
+  Decide, from the scenario, whether the instance has started answering.
+
+  Lets a spec observe the starting state deliberately and then end it, rather
+  than racing the boot watcher's wall clock — a race lost on a loaded machine,
+  which is exactly where it must not flake.
+  """
+  defdelegate put_workspace_healthy(healthy?), to: FakeWorkspaceRunner, as: :put_healthy
+
+  @doc """
+  Puts `project_id`'s workspace into the state the pane has to render.
+
+  Story 885's whole point is that these are four different screens, so a spec
+  needs to produce each one without a container. The runner is faked; the row
+  is real, because `Workspaces.state/1` reads both and conflating them is the
+  bug the story exists to prevent.
+
+  - `:absent` — no workspace row at all. Nothing was ever built.
+  - `:starting` — booting, and the fake never answers, so the spec observes the
+    starting state deliberately rather than racing the boot watcher's clock.
+  - `:running` — running, with a port, so there is an address to frame.
+  - `:running_without_url` — running and portless. Not a contrivance:
+    `Workspace.url/1` answers nil for a running workspace whose port is not an
+    integer, which is exactly the state criterion 2323 refuses to frame.
+  - `:down` — the container has gone away.
+  """
+  @spec workspace_in(Scope.t(), String.t(), atom()) :: :ok
+  def workspace_in(%Scope{} = _scope, _project_id, :absent), do: :ok
+
+  def workspace_in(%Scope{} = _scope, project_id, state) do
+    install_workspace_runner(runner_opts(state))
+
+    {:ok, workspace} =
+      WorkspacesRepository.upsert_booting(
+        WorkspacesRepository.get_by_project(project_id),
+        %{project_id: project_id, container_name: "spex-#{project_id}", port: port_for(state)}
+      )
+
+    settle(workspace, state)
+  end
+
+  defp runner_opts(:starting), do: [healthy?: false, alive?: true, serving: :down]
+  defp runner_opts(:down), do: [healthy?: false, alive?: false, serving: :down]
+  defp runner_opts(_running), do: [healthy?: true, alive?: true, serving: :serving]
+
+  defp port_for(:running_without_url), do: nil
+  defp port_for(_state), do: 4599
+
+  defp settle(_workspace, :starting), do: :ok
+
+  defp settle(workspace, _state) do
+    {:ok, _} = WorkspacesRepository.update(Workspace.running_changeset(workspace))
+    :ok
+  end
+
+  @doc """
+  An actual HTTP server standing in for the container's app, and a running
+  workspace row for `project_id` pointing at it. Returns the preview hostname.
+
+  The other workspace fixtures fake the *runner* — whether a container is up.
+  This fakes the app instead, because the proxy criteria are not about
+  container lifecycle: they are about whether a request that arrives at
+  `preview-{id}.codemyspec.com` comes back carrying what the app actually
+  sent. Nothing short of a real socket answers that. It has caught real bugs
+  already — a proxy that relays a stale `content-length` produces a response
+  no assertion on the body would notice.
+
+  The app echoes what a proxy is most likely to mangle: it sets a cookie,
+  reads one back, and reports the `host` header it was given.
+  """
+  @spec preview_app(Scope.t(), String.t(), keyword()) :: String.t()
+  def preview_app(%Scope{} = _scope, project_id, opts \\ []) do
+    Application.put_env(:code_my_spec, CodeMySpec.Workspaces, runner: LocalPreviewRunner)
+
+    ExUnit.Callbacks.on_exit(fn ->
+      Application.delete_env(:code_my_spec, CodeMySpec.Workspaces)
+    end)
+
+    body = Keyword.get(opts, :body, "<h1>Widget Tracker</h1>")
+    {:ok, listener} = Bandit.start_link(plug: {PreviewApp, body}, port: 0, startup_log: false)
+    {:ok, {_addr, port}} = ThousandIsland.listener_info(listener)
+
+    ExUnit.Callbacks.on_exit(fn -> Process.exit(listener, :normal) end)
+
+    {:ok, workspace} =
+      WorkspacesRepository.upsert_booting(
+        WorkspacesRepository.get_by_project(project_id),
+        %{project_id: project_id, container_name: "preview-app-#{port}", port: port}
+      )
+
+    {:ok, _running} = WorkspacesRepository.update(Workspace.running_changeset(workspace))
+
+    PreviewAddress.host(project_id)
+  end
+
+  @doc """
+  Binds the preview listener on an OS-assigned port and returns it.
+
+  The preview socket needs a real one — `Phoenix.ConnTest` never opens a
+  socket, so the proxy's upgrade path is unreachable from it. Port 0 rather
+  than a fixed number on purpose: a fixed port collides the moment two specs
+  run together, and this suite runs `max_cases: 20`.
+
+  `CodeMySpecWeb.PreviewListener` rather than the endpoint, and that is the
+  point rather than a convenience — the endpoint claims `/live/websocket` for
+  its own LiveView socket before any plug runs, so it can never serve a
+  preview's socket. See that module.
+  """
+  @spec preview_endpoint() :: pos_integer()
+  def preview_endpoint do
+    {:ok, listener} =
+      Bandit.start_link(plug: CodeMySpecWeb.PreviewListener, port: 0, startup_log: false)
+
+    {:ok, {_addr, port}} = ThousandIsland.listener_info(listener)
+    ExUnit.Callbacks.on_exit(fn -> Process.exit(listener, :normal) end)
+
+    port
+  end
+
+  @doc "Opens a preview socket as a browser would, addressed by Host header."
+  defdelegate open_preview_socket(port, host), to: PreviewWsClient, as: :connect
+
+  @doc "Sends a text frame up through the preview socket."
+  defdelegate send_preview_frame(client, text), to: PreviewWsClient, as: :send_text
+
+  @doc "Reads whatever frames have come back down, or none within the deadline."
+  defdelegate preview_frames(client, timeout \\ 2_000), to: PreviewWsClient, as: :recv
+
+  @doc "Closes a preview socket."
+  defdelegate close_preview_socket(client), to: PreviewWsClient, as: :close
+
+  @doc "The address a project's preview is served at, so a spex need not know the rule."
+  @spec preview_host(String.t()) :: String.t()
+  defdelegate preview_host(project_id), to: PreviewAddress, as: :host
+
   @doc """
   Creates a project whose `local_path` points at a freshly-created tmp
   directory that is NOT the spex's `scope.cwd`. Used by scenarios that
@@ -1210,6 +1475,73 @@ defmodule CodeMySpecSpex.Fixtures do
     File.write!(Path.join(dir, "mix.exs"), "# stub for PhoenixProject.evaluate\n")
     ExUnit.Callbacks.on_exit(fn -> File.rm_rf(dir) end)
     dir
+  end
+
+  @doc """
+  A ledger of what the app asked a provider double to do.
+
+  Doubles record through `record_call/2`; the spec reads the whole list back
+  with `recorded_calls/1` and asserts on it. Dies with the test process.
+
+  This replaced `send(self(), …)` from inside the doubles. Two reasons, and the
+  second is the real one: a spec may not call `send/2`, and a mailbox is a poor
+  record anyway — `refute_received` only sees the instant it runs, so "the app
+  never resized the box" was really "nothing had arrived yet." The ledger keeps
+  every call in order, so absence means absence.
+  """
+  @spec call_recorder() :: pid()
+  def call_recorder do
+    {:ok, recorder} = Agent.start_link(fn -> [] end)
+    recorder
+  end
+
+  @doc "Records one call against `recorder`. Synchronous, so it cannot race the assertion."
+  @spec record_call(pid(), term()) :: :ok
+  def record_call(recorder, call), do: Agent.update(recorder, &[call | &1])
+
+  @doc "Every call recorded so far, oldest first."
+  @spec recorded_calls(pid()) :: [term()]
+  def recorded_calls(recorder), do: recorder |> Agent.get(& &1) |> Enum.reverse()
+
+  @doc """
+  A spex run report on disk, in the JSONL shape `mix spex` leaves behind.
+  Returns the path; it is removed on test exit.
+
+  `entries` is a list of `{spec_path, message}`, one failed scenario each.
+
+  Specs about the specs-ready gate need a *finished* run to hand the harness,
+  and running a real one inside a spec would mean a suite inside a suite. This
+  writes what that run would have left, so the gate is driven by its actual
+  input rather than by a stub of it.
+  """
+  @spec spex_run_report([{String.t(), String.t()}]) :: String.t()
+  def spex_run_report(entries) do
+    body =
+      Enum.map_join(entries, "\n", fn {path, message} ->
+        Jason.encode!(%{
+          "spex" => "intentional failure",
+          "scenario" => "asserts false",
+          "steps" => [
+            %{"type" => "then", "description" => "fails", "status" => "failed"}
+          ],
+          "error" => %{
+            "message" => message,
+            "file" => path,
+            "line" => 7,
+            "stacktrace" => []
+          }
+        })
+      end)
+
+    path =
+      Path.join(
+        System.tmp_dir!(),
+        "spex-run-report-#{System.unique_integer([:positive])}.jsonl"
+      )
+
+    File.write!(path, body <> "\n")
+    ExUnit.Callbacks.on_exit(fn -> File.rm(path) end)
+    path
   end
 
   @doc """
@@ -1318,6 +1650,19 @@ defmodule CodeMySpecSpex.Fixtures do
   full agent run.
   """
   defdelegate session_fixture(scope, attrs \\ %{}), to: SessionsFixtures
+
+  @doc """
+  Touch a session through the real API, so subscribers hear about it.
+
+  `session_fixture/2` back-dates `inserted_at` with a raw update *after*
+  `create_session` has already broadcast, and a view that hides sessions with
+  no activity yet (`inserted_at == updated_at`) recomputes against the
+  pre-backdate row and drops it. Nothing broadcasts again, so the session never
+  appears. This is the second event a working agent would produce anyway.
+  """
+  @spec touch_session(Scope.t(), Session.t()) :: {:ok, Session.t()} | {:error, term()}
+  def touch_session(%Scope{} = scope, session),
+    do: CodeMySpec.Sessions.update_session(scope, session, %{status: session.status})
 
   # -- Sessions (QA spex fixture setup, Stories 726/727) --
   @doc """
@@ -1500,6 +1845,7 @@ defmodule CodeMySpecSpex.Fixtures do
      |> CodeMySpec.Repo.update!()}
   end
 
+  @doc "Set and verify a project's sending domain."
   def verify_project_domain(project, domain) do
     now = DateTime.utc_now() |> DateTime.truncate(:second)
 

@@ -43,6 +43,46 @@ defmodule CmsHarness.Web.AnalysisController do
     end
   end
 
+  @doc """
+  Block until this working copy's analyzers are idle, then report.
+
+  The stop hook decides from persisted problems, so an agent that wants to stop
+  against fresh results has to wait for them. This is where that waiting
+  happens, and it is HTTP rather than an MCP tool for a measured reason: MCP's
+  transport caps a request at 30s, sweeps here run 200-590s, so the same wait as
+  a tool answered `-32603 Server unavailable` every time it was needed. Bounding
+  it under the cap worked but cost 10 calls and ~200s for one queued run.
+
+  Nothing caps this. Bandit does not time out long-running handlers, which the
+  `run` action above already relies on. Fire it in the background and be
+  notified when it returns.
+  """
+  def wait(conn, %{"harness_id" => harness_id}) do
+    case WorkingCopies.root(harness_id) do
+      {:ok, root} ->
+        Logger.info("[CmsHarness] waiting for analysis to go idle")
+        reply_wait(conn, ChannelClient.await_idle(root))
+
+      :unknown ->
+        fail(conn, 404, "this machine does not serve harness id #{harness_id}")
+    end
+  end
+
+  defp reply_wait(conn, {:ok, %{"state" => state, "summary" => summary}}) do
+    text(conn, """
+    #{summary}
+
+    ── analysis wait: #{state} ──
+    exit status: #{if state == "ok", do: 0, else: 1}
+    """)
+  end
+
+  defp reply_wait(conn, {:ok, other}),
+    do: fail(conn, 502, "unreadable wait reply: #{inspect(other)}")
+
+  defp reply_wait(conn, {:error, reason}),
+    do: fail(conn, 502, "could not wait for analysis: #{inspect(reason)}")
+
   defp dispatch(conn, harness_id, source, args) do
     case WorkingCopies.root(harness_id) do
       {:ok, root} ->

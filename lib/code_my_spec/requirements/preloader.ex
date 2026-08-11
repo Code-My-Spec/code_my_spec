@@ -8,12 +8,19 @@ defmodule CodeMySpec.Requirements.Preloader do
 
   import Ecto.Query
 
+  require Logger
+
+  alias CodeMySpec.AcceptanceCriteria.Criterion
   alias CodeMySpec.Analysis.{Fingerprint, Run, RunsRepository}
+  alias CodeMySpec.BddRules.Rule
   alias CodeMySpec.Components.Component
+  alias CodeMySpec.Deploys.Deploy
   alias CodeMySpec.Files.File
+  alias CodeMySpec.Personas.{Persona, PersonaStory}
   alias CodeMySpec.Problems.Problem
+  alias CodeMySpec.Qa.QaAttempt
+  alias CodeMySpec.Questions.Question
   alias CodeMySpec.Repo
-  alias CodeMySpec.Requirements.DelegateFiles
   alias CodeMySpec.Stories.Story
   alias CodeMySpec.Users.Scope
 
@@ -28,15 +35,69 @@ defmodule CodeMySpec.Requirements.Preloader do
           components_by_id: %{Ecto.UUID.t() => Component.t()},
           children_by_parent: %{Ecto.UUID.t() => [Component.t()]},
           stories: [Story.t()],
-          delegated_inputs: %{String.t() => [{term(), NaiveDateTime.t()}]},
-          delegated_files: term()
+          rules_by_story: %{integer() => [Rule.t()]},
+          questions_by_story: %{integer() => [Question.t()]},
+          criteria_by_story: %{integer() => [Criterion.t()]},
+          personas_by_story: %{integer() => [Persona.t()]},
+          qa_latest_by_story: %{integer() => QaAttempt.t()},
+          uat_deploy_by_story: %{integer() => Deploy.t()},
+          delegated_inputs: %{String.t() => [{term(), NaiveDateTime.t()}]}
         }
 
   @doc """
   Load all data for the project in ~6 queries.
+
+  ## One checkout, or all of them
+
+  Every working copy files its own row per path, so a scope naming a harness
+  gets that checkout's tree and a scope naming none gets all of them blended.
+
+  Both are wanted, by different callers:
+
+    * **an agent** always has a working copy — the hook carries `X-Harness-Id`
+      — and must see only it. Blended, 308 `(component, role)` pairs read as
+      satisfied here by files that exist only in another checkout, 303 of them
+      specs. The agent is told the spec is written, skips the component, and the
+      gap surfaces later as an implementation with nothing behind it.
+
+    * **a person** looking at the project in a browser has no checkout to name.
+      `with_harness/2` already decided what to do about that — "adopting the
+      wrong checkout's identity is worse than reading widely" — and refusing
+      instead took the graph out of the UI entirely.
+
+  So the default is loose and the agent path is strict by construction: it
+  cannot reach here without a harness, because the plug that builds its scope
+  puts one on. An unscoped load says so in the log, which is how a caller that
+  should have named one gets found.
+
+  ## Blending is a stand-in, not the answer
+
+  The tempting fix is for the UI to pick a harness — the most recently seen
+  one. It bounces: five checkouts reporting means the graph flips to whichever
+  synced last, so the same page shows different requirements on consecutive
+  renders with nothing the viewer did to cause it. Wrong-but-stable beats
+  correct-but-flickering for a page someone is reading.
+
+  The direction that resolves it is not picking better. It is that a web view
+  should read the **default branch** over an API rather than any working copy:
+  branch state is shared, stable, and canonical, where a checkout is transient
+  and private. At that point the question "which harness is the UI showing"
+  stops existing, and this clause can go.
   """
-  @spec load(Scope.t()) :: context()
-  def load(%Scope{active_project_id: project_id} = scope) do
+  @spec load(Scope.t()) :: {:ok, context()}
+  def load(%Scope{active_harness_id: nil, active_project_id: project_id} = scope) do
+    Logger.warning(
+      "[Requirements] building a graph for project #{inspect(project_id)} with no working " <>
+        "copy — every checkout's files are read together, so a file present in one and " <>
+        "absent in another reads as present. Expected for the UI; an agent path here is a bug."
+    )
+
+    do_load(scope, nil)
+  end
+
+  def load(%Scope{active_harness_id: harness_id} = scope), do: do_load(scope, harness_id)
+
+  defp do_load(%Scope{active_project_id: project_id} = scope, harness_id) do
     # 1. All components with deps and children preloaded
     components =
       Component
@@ -44,10 +105,32 @@ defmodule CodeMySpec.Requirements.Preloader do
       |> preload([:dependencies, :child_components])
       |> Repo.all()
 
-    # 2. All files grouped by component and story
+    # 2. This working copy's files, grouped by component and story
+    #
+    # Scoped to the harness, and it was not. Every checkout reports its own row
+    # per path, so an unscoped load returned five copies of every file on this
+    # project — ~18,650 rows for a tree of ~4,500 — and `has_role?/3` and
+    # `has_valid_role?/2` answered from whichever the database happened to
+    # return first.
+    #
+    # The cost is not the over-count. 308 `(component, role)` pairs were
+    # satisfied here by files that exist only in *another* checkout, 303 of them
+    # specs — so an agent in this working copy was told 303 components had specs
+    # written, and skipped them. Over-satisfaction is the expensive direction:
+    # work gets skipped rather than repeated, and the gap surfaces later as an
+    # implementation with no spec behind it.
+    #
+    # One file currently disagrees across checkouts — a spec valid in two and
+    # invalid in a third — which made `spec_valid` for that component depend on
+    # row order. That is the same defect, just the loud instance of it.
+    #
+    # `acde83fd` scoped runs and problems and its own comment says it "missed
+    # these two". This is a third site it missed, and it feeds every
+    # `file_exists` and `file_valid` check in the graph.
     all_files =
       File
       |> where([f], f.project_id == ^project_id)
+      |> scope_to_harness(harness_id)
       |> Repo.all()
 
     files_by_component =
@@ -88,20 +171,28 @@ defmodule CodeMySpec.Requirements.Preloader do
       |> where([s], s.project_id == ^project_id and s.ready_for_dev == true)
       |> Repo.all()
 
-    %{
-      files_by_component: files_by_component,
-      files_by_story: files_by_story,
-      files_by_project: all_files,
-      files_by_path: Map.new(all_files, &{&1.path, &1}),
-      problems_by_component: problems_by_component,
-      analysis_fresh: analysis_freshness(scope, all_files),
-      components: components,
-      components_by_id: Map.new(components, &{&1.id, &1}),
-      children_by_parent: Enum.group_by(components, & &1.parent_component_id),
-      stories: stories,
-      delegated_inputs: delegated_inputs(project_id),
-      delegated_files: DelegateFiles.digest(scope)
-    }
+    story_ids = Enum.map(stories, & &1.id)
+
+    {:ok,
+     %{
+       files_by_component: files_by_component,
+       files_by_story: files_by_story,
+       files_by_project: all_files,
+       files_by_path: Map.new(all_files, &{&1.path, &1}),
+       problems_by_component: problems_by_component,
+       analysis_fresh: analysis_freshness(scope, all_files),
+       components: components,
+       components_by_id: Map.new(components, &{&1.id, &1}),
+       children_by_parent: Enum.group_by(components, & &1.parent_component_id),
+       stories: stories,
+       rules_by_story: rules_by_story(project_id),
+       questions_by_story: questions_by_story(project_id),
+       criteria_by_story: criteria_by_story(story_ids),
+       personas_by_story: personas_by_story(story_ids),
+       qa_latest_by_story: qa_latest_by_story(story_ids),
+       uat_deploy_by_story: uat_deploy_by_story(project_id),
+       delegated_inputs: delegated_inputs(project_id)
+     }}
   end
 
   # Everything the graph's `:delegate` requirements read that nothing else here
@@ -121,6 +212,106 @@ defmodule CodeMySpec.Requirements.Preloader do
   # here a timestamp is both stable across no-ops and strictly more sensitive
   # than hashing chosen columns, which is the failure mode that would matter.
   @delegated_tables ~w(bdd_rules criteria questions personas issues)
+
+  # The four collections `BddRulesChecker` reads, batched.
+  #
+  # `compute_story_nodes/3` loops every ready story and `run_delegate/5` hands
+  # the checker a scope and a story and nothing else, so the checker queried per
+  # story: personas, rules, criteria and questions, four round trips each. On a
+  # project with 76 ready stories that is 304 queries inside one graph
+  # computation, and the graph is recomputed on every stop hook.
+  #
+  # Four queries here instead. They are four rather than one repeated because
+  # the linkage genuinely differs: rules and questions carry `project_id`,
+  # criteria carry only `story_id`, and personas hang off a join table.
+  # One clause, and no nil case.
+  #
+  # `ProblemRepository` falls back to the project's default harness when a scope
+  # has none, and that fallback is part of why this took so long to find: it
+  # makes a scope with no working copy look answerable, so nobody notices the
+  # caller that forgot to set one. A requirement graph is a statement about a
+  # checkout, and answering "no checkout" with the default one invents a tree
+  # the caller was not asking about.
+  # A nil harness reads every checkout's rows, which is what this did before and
+  # what the warning above is for. Not an error: `with_harness/2` deliberately
+  # leaves a request that names no harness unscoped — "adopting the wrong
+  # checkout's identity is worse than reading widely" — and the browser has no
+  # working copy to name. Refusing there took the requirement graph out of the
+  # UI entirely and failed 86 spex.
+  defp scope_to_harness(query, nil), do: query
+
+  defp scope_to_harness(query, harness_id),
+    do: where(query, [f], f.harness_id == ^harness_id)
+
+  defp rules_by_story(project_id) do
+    Rule
+    |> where([r], r.project_id == ^project_id and not is_nil(r.story_id))
+    |> Repo.all()
+    |> Enum.group_by(& &1.story_id)
+  end
+
+  defp questions_by_story(project_id) do
+    Question
+    |> where([q], q.project_id == ^project_id and not is_nil(q.story_id))
+    |> Repo.all()
+    |> Enum.group_by(& &1.story_id)
+  end
+
+  # No `project_id` on a criterion — it is reachable only through its story, so
+  # the story ids are the scope.
+  defp criteria_by_story(story_ids) do
+    Criterion
+    |> where([c], c.story_id in ^story_ids)
+    |> Repo.all()
+    |> Enum.group_by(& &1.story_id)
+  end
+
+  defp personas_by_story(story_ids) do
+    from(ps in PersonaStory,
+      join: p in Persona,
+      on: p.id == ps.persona_id,
+      where: ps.story_id in ^story_ids,
+      select: {ps.story_id, p}
+    )
+    |> Repo.all()
+    |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
+  end
+
+  # The newest QA attempt per story, invalidations preloaded — exactly what
+  # `QaAttempts.complete?/2` fetches one story at a time.
+  #
+  # The whole attempt rather than a boolean: deciding pass/fail is the Qa
+  # context's judgement, and duplicating `status == :pass and invalidations == []`
+  # here would be two places to change and one place to forget.
+  #
+  # Ordered by the database on the same keys `complete?/2` uses, then taken
+  # first-per-group: `Enum.group_by/2` preserves encounter order, so the head of
+  # each group is that story's newest attempt. Ordering in Elixir would mean
+  # comparing `{inserted_at, id}` tuples by hand, and a `DISTINCT ON` would not
+  # port to the SQLite side.
+  defp qa_latest_by_story(story_ids) do
+    QaAttempt
+    |> where([a], a.story_id in ^story_ids)
+    |> order_by([a], desc: a.inserted_at, desc: a.id)
+    |> preload(:invalidations)
+    |> Repo.all()
+    |> Enum.group_by(& &1.story_id)
+    |> Map.new(fn {story_id, [latest | _]} -> {story_id, latest} end)
+  end
+
+  # The UAT deploy per story. `Deploys.get/3` is a `Repo.one/1` on
+  # `(project_id, story_id, environment)`, so there is at most one and a map
+  # keyed by story is the same shape.
+  #
+  # Environment is pinned to "uat" here because `deploy` is the only node that
+  # reads deploys and it asks about UAT only — prod promotion is the release
+  # process's business.
+  defp uat_deploy_by_story(project_id) do
+    Deploy
+    |> where([d], d.project_id == ^project_id and d.environment == "uat")
+    |> Repo.all()
+    |> Map.new(&{&1.story_id, &1})
+  end
 
   defp delegated_inputs(project_id) do
     @delegated_tables

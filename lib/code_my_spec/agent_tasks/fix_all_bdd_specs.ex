@@ -6,6 +6,7 @@ defmodule CodeMySpec.AgentTasks.FixAllBddSpecs do
   spex across all stories.
   """
 
+  alias CodeMySpec.AcceptanceCriteria
   alias CodeMySpec.BddSpecs.Parser
   alias CodeMySpec.Components
   alias CodeMySpec.Environments
@@ -13,8 +14,6 @@ defmodule CodeMySpec.AgentTasks.FixAllBddSpecs do
   alias CodeMySpec.Requirements
   alias CodeMySpec.Stories
   alias CodeMySpec.Utils
-
-
 
   def dispatch(node) do
     "Call `start_task` with requirement `#{node.name}` for #{node.entity_type} `#{node.entity_id}` (#{node.entity_name})"
@@ -64,10 +63,24 @@ defmodule CodeMySpec.AgentTasks.FixAllBddSpecs do
   # Problem Filtering
   # ============================================================================
 
+  # The criterion says which story a spex belongs to; the directory number does
+  # not. Those numbers have drifted from the ids — on this project
+  # `test/spex/811_…` derives 811, a real but unrelated story, while the story
+  # that owns those spex is 862.
+  #
+  # It matters more here than in the blocking gate. This groups by the derived
+  # id and then looks the story up: a wrong id filters the problem against some
+  # other story's component, and an id belonging to no story drops it silently
+  # (`get_story` returns nil, the `with` falls through to `[]`). Either way a
+  # real spex failure stops reaching the agent that should fix it.
   defp filter_relevant_problems(scope, problems) do
+    by_path = AcceptanceCriteria.spec_path_story_ids(scope)
+
     problems
     |> Enum.map(fn problem ->
-      story_id = Parser.derive_story_id(problem.file_path)
+      story_id =
+        Map.get(by_path, problem.file_path) || Parser.derive_story_id(problem.file_path)
+
       {problem, story_id}
     end)
     |> Enum.reject(fn {_problem, story_id} -> is_nil(story_id) end)

@@ -16,9 +16,14 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
      graph projector uses to lay out late_project nodes at the bottom band)
   """
 
+  require Logger
+
+  alias CodeMySpec.Requirements.Difference
   alias CodeMySpec.Requirements.GraphCache
   alias CodeMySpec.Requirements.GraphFingerprint
+  alias CodeMySpec.Requirements.NodeRepository
   alias CodeMySpec.Requirements.Preloader
+  alias CodeMySpec.Requirements.Projection
   alias CodeMySpec.Requirements.Registry, as: RequirementsRegistry
   alias CodeMySpec.Requirements.Requirement
   alias CodeMySpec.Requirements.RequirementCalculator
@@ -34,11 +39,14 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
 
   Returns `{nodes, edges}` where edges include cross-entity dependencies.
   """
-  @spec compute_graph(Scope.t()) :: {[Requirement.t()], [edge()]}
+  @spec compute_graph(Scope.t()) :: {[Requirement.t()], [edge()]} | {:error, :no_working_copy}
   def compute_graph(%Scope{} = scope) do
-    ctx = Preloader.load(scope)
-    config = CodeMySpec.Configurations.get_or_create(scope)
-    compute_and_publish(scope, ctx, config)
+    {preload_us, loaded} = :timer.tc(fn -> Preloader.load(scope) end)
+
+    with {:ok, ctx} <- loaded do
+      config = CodeMySpec.Configurations.get_or_create(scope)
+      compute_and_publish(scope, ctx, config, preload_us)
+    end
   end
 
   # Publish the computed graph so readers that cannot compute one still have
@@ -51,19 +59,197 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   #
   #   * six read tables the preloader did not load — rules, criteria, questions,
   #     personas, issues, and `qa_attempts` behind `qa_complete`
-  #   * four read working-copy files the scanner never syncs, because
-  #     `classify/1` claims none of them — see `DelegateFiles`
   #   * the rest read components, files and stories, covered from the start
+  #
+  # A `DelegateFiles` digest used to hash a handful of working-copy files off
+  # disk, because `classify/1` claimed none of them and they never became rows.
+  # Classify claims them now, so `files_digest` covers them by their content
+  # hash and the side channel is gone.
   #
   # The gap was real and this is the second time it has been closed. Story 859's
   # spex caught it the first time, when the cache was wired read-through with a
-  # fingerprint that watched none of the above; `criterion_7321` is the one that
-  # fails, and it is the test to run before trusting any change here.
-  defp compute_and_publish(scope, ctx, config) do
-    {nodes, enriched_ctx} = compute_all_from_ctx(scope, ctx, config)
-    edges = compute_edges(nodes, enriched_ctx, config)
-    GraphCache.publish(scope, GraphFingerprint.compute(ctx, config), {nodes, edges})
+  # fingerprint that watched none of the above.
+  #
+  # That spex is gone — no `criterion_7321`, no story 859 directory, and no spex
+  # anywhere referencing `cached_graph` or `GraphCache`. Most likely lost to the
+  # story-id migration that renumbered spex directories. This comment named it
+  # as "the test to run before trusting any change here" long after it stopped
+  # existing, which is worse than naming nothing: it reads as protection.
+  #
+  # What actually guards this is `graph_cache_test.exs`, "the fingerprint covers
+  # what the delegate checkers read" — one test per input, which is the property
+  # the spex was asserting end to end. Run that. Rebuilding the spex would be
+  # better still.
+  defp compute_and_publish(scope, ctx, config, preload_us \\ nil) do
+    {nodes_us, {nodes, enriched_ctx}} =
+      :timer.tc(fn -> compute_all_from_ctx(scope, ctx, config) end)
+
+    {edges_us, edges} = :timer.tc(fn -> compute_edges(nodes, enriched_ctx, config) end)
+
+    log_timing(scope, preload_us, nodes_us, edges_us, nodes, edges)
+
+    scope
+    |> GraphCache.publish(GraphFingerprint.compute(ctx, config), {nodes, edges})
+    |> persist_projection(scope, enriched_ctx, nodes, edges)
+
     {nodes, edges}
+  end
+
+  # What the graph costs, split the way the work splits.
+  #
+  # `Predicates` exists on the premise that node computation dominates —
+  # "4.4 seconds of `Enum` on a 3200-component project, against 34ms of
+  # preload". That number came from one project at one time and there is no
+  # instrumentation behind it, so whether converting the remaining checks to
+  # queries is worth doing on any given project is currently unanswerable.
+  #
+  # Cheap to emit: this runs on a cache miss, not on a read, so it is one line
+  # per genuine change rather than per render. The same cadence the round-trip
+  # check already settled on.
+  #
+  # Logged rather than measured in a benchmark because the interesting case is
+  # a real project's shape — 880 components with their files and problems — and
+  # a synthetic graph would mostly measure the fixture.
+  #
+  # `preload_us` is nil when the caller loaded the context itself. That prints
+  # "n/a" rather than a zero, because a zero here would read as "preloading is
+  # free" — which is the specific claim this line exists to test.
+  #
+  # ## Do not compare two of these
+  #
+  # Seven consecutive measurements of the same workload on a developer laptop:
+  # 2500, 1397, 1025, 2026, 1036, 1424, 1360ms. A 2× spread with nothing
+  # changing but machine load, which on this box is whatever else is running —
+  # a test suite alone moves it.
+  #
+  # So a single before/after pair proves nothing at this granularity, and two
+  # optimizations tonight were credited and discredited by differences smaller
+  # than the noise. What these numbers are good for is *attribution* — 614ms in
+  # `kickoff_edge/4` against 3ms in the closure walk is a ratio no amount of
+  # jitter explains — and for counts, which do not jitter at all. Prefer
+  # "17,758 evaluations became 12" over "it got 148ms faster".
+  defp log_timing(scope, preload_us, nodes_us, edges_us, nodes, edges) do
+    ms = fn
+      nil -> "n/a"
+      us -> "#{round(us / 1000)}ms"
+    end
+
+    Logger.info(
+      "[Requirements] graph computed for project #{inspect(scope.active_project_id)} — " <>
+        "#{length(nodes)} nodes, #{length(edges)} edges; " <>
+        "preload #{ms.(preload_us)}, nodes #{ms.(nodes_us)}, edges #{ms.(edges_us)}"
+    )
+  end
+
+  # A cache hit is served from the rows. The payload is the fallback.
+  #
+  # That is the direction of the whole change: `requirements` and
+  # `requirement_edges` are the read model, and `requirement_graphs.payload` is
+  # what they replace. Serving the payload while writing rows nobody read proved
+  # nothing — a projection is only trustworthy once something depends on it.
+  #
+  # The payload still wins in one case, and it is not a disagreement: no rows at
+  # all for a project whose payload has nodes. That is a graph published before
+  # this existed, or one whose row write failed, and serving an empty graph
+  # would tell an agent it has no work.
+  #
+  # A genuine difference is served *from the rows* and logged loudly. Serving
+  # the payload instead would hide the defect behind the thing being retired,
+  # and leave the read model permanently unproven.
+  defp served_graph(scope, ctx, {nodes, edges} = cached) do
+    case Projection.load(scope, ctx) do
+      {[], _} when nodes != [] ->
+        Logger.warning(
+          "[Requirements] projection is empty for a payload with #{length(nodes)} nodes " <>
+            "— serving the payload. Rows were never written for this graph."
+        )
+
+        cached
+
+      {read_nodes, read_edges} = projected ->
+        case Difference.describe(read_nodes, read_edges, nodes, edges) do
+          :none ->
+            :ok
+
+          description ->
+            Logger.warning("[Requirements] " <> description <> " — serving the projection")
+        end
+
+        projected
+    end
+  rescue
+    error ->
+      Logger.error(
+        "[Requirements] projection read failed, serving the payload: #{Exception.message(error)}"
+      )
+
+      cached
+  end
+
+  # Written behind the same fingerprint check that gates the payload. Readers
+  # reach here on every render, so an unconditional upsert of every node per
+  # page view is exactly what `publish/3` already refuses to do for one `bytea`.
+  defp persist_projection(:unchanged, _scope, _ctx, _nodes, _edges), do: :ok
+
+  defp persist_projection(:published, scope, ctx, nodes, edges) do
+    ids_by_key = NodeRepository.upsert_all(scope, nodes)
+    NodeRepository.replace_edges(scope, edges, ids_by_key)
+    verify_round_trip(scope, ctx, nodes, edges)
+    :ok
+  rescue
+    # The computation's return value is the agent's next instruction, and it is
+    # correct whether or not the rows were written. Failing it over bookkeeping
+    # would turn a projection bug into a stopped agent.
+    error ->
+      Logger.warning("[Requirements] projection write failed: #{Exception.message(error)}")
+      :ok
+  end
+
+  # Read the rows back and check they say what was just written.
+  #
+  # `served_graph/3` compares the two as well, but only on a cache *hit* — and a
+  # hit needs the inputs to have not moved since the last computation, which
+  # during active development is close to never. Measured: one comparison in
+  # 6h45m of logs, on a projection that disagreed with the payload on every
+  # single node count. The check that was supposed to prove the read model was
+  # running roughly once per working day.
+  #
+  # That is worse than not having it, because the criterion for deleting the
+  # payload was "the disagreement warning stays quiet" — and it stayed quiet by
+  # not running. Absence of evidence reading as evidence of absence.
+  #
+  # Here it runs on every real computation instead, which is where the writes
+  # are and where a write bug is one query away from being visible. The missing
+  # node deletion that served 1,426 phantom requirements would have surfaced on
+  # the first stop hook after it was introduced rather than weeks later.
+  #
+  # Publishes are gated on the fingerprint moving, so this costs one extra
+  # projection load per genuine change — not per read. It goes when the payload
+  # does; at that point the rows are the only copy and there is nothing to
+  # compare them against.
+  defp verify_round_trip(scope, ctx, nodes, edges) do
+    {read_nodes, read_edges} = Projection.load(scope, ctx)
+
+    case Difference.describe(read_nodes, read_edges, nodes, edges) do
+      :none ->
+        :ok
+
+      description ->
+        Logger.warning(
+          "[Requirements] the projection does not round-trip — what was just " <>
+            "written reads back different. " <> description
+        )
+    end
+  rescue
+    # Verification failing is not the write failing. The rows are written, the
+    # computation's return value is correct, and an agent must not be stopped
+    # because a check about a check could not run.
+    error ->
+      Logger.warning(
+        "[Requirements] projection round-trip check failed: #{Exception.message(error)}"
+      )
+
+      :ok
   end
 
   @doc """
@@ -98,12 +284,17 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   @spec cached_graph_with_actionable(Scope.t()) ::
           {{[Requirement.t()], [edge()]}, [Requirement.t()], DateTime.t() | nil}
   def cached_graph_with_actionable(%Scope{} = scope) do
-    ctx = Preloader.load(scope)
+    with {:ok, ctx} <- Preloader.load(scope) do
+      cached_graph_with_actionable(scope, ctx)
+    end
+  end
+
+  defp cached_graph_with_actionable(scope, ctx) do
     config = CodeMySpec.Configurations.get_or_create(scope)
 
     {graph, computed_at} =
       case GraphCache.fetch(scope, GraphFingerprint.compute(ctx, config)) do
-        {:ok, cached, at} -> {cached, at}
+        {:ok, cached, at} -> {served_graph(scope, ctx, cached), at}
         :miss -> {compute_and_publish(scope, ctx, config), nil}
       end
 
@@ -153,7 +344,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   @spec compute_graph_with_actionable_metrics(Scope.t()) ::
           {{[Requirement.t()], [edge()], [Requirement.t()]}, %{atom() => integer()}}
   def compute_graph_with_actionable_metrics(%Scope{} = scope) do
-    {us_preload, ctx} = :timer.tc(fn -> Preloader.load(scope) end)
+    {us_preload, {:ok, ctx}} = :timer.tc(fn -> Preloader.load(scope) end)
     {us_config, config} = :timer.tc(fn -> CodeMySpec.Configurations.get_or_create(scope) end)
     {us_nodes, {nodes, ctx}} = :timer.tc(fn -> compute_all_from_ctx(scope, ctx, config) end)
     {us_edges, edges} = :timer.tc(fn -> compute_edges(nodes, ctx, config) end)
@@ -199,12 +390,13 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   @doc """
   Compute all requirement nodes across the project.
   """
-  @spec compute_all(Scope.t()) :: [Requirement.t()]
+  @spec compute_all(Scope.t()) :: [Requirement.t()] | {:error, :no_working_copy}
   def compute_all(%Scope{} = scope) do
-    ctx = Preloader.load(scope)
-    config = CodeMySpec.Configurations.get_or_create(scope)
-    {nodes, _edges} = compute_and_publish(scope, ctx, config)
-    nodes
+    with {:ok, ctx} <- Preloader.load(scope) do
+      config = CodeMySpec.Configurations.get_or_create(scope)
+      {nodes, _edges} = compute_and_publish(scope, ctx, config)
+      nodes
+    end
   end
 
   # Satisfaction is a local property — each node's `satisfied` field is the
@@ -221,15 +413,133 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
 
     node_keys = MapSet.new(nodes, &Topology.node_key/1)
 
-    (template_edges ++
-       project_to_story_edges(ctx) ++
-       component_tree_edges(ctx, config) ++
-       cross_context_dependency_edges(ctx, config) ++
-       story_to_project_edges(ctx))
-    |> Enum.filter(fn %{from: f, to: t} ->
-      MapSet.member?(node_keys, f) and MapSet.member?(node_keys, t)
-    end)
-    |> Topology.transitive_reduction()
+    {generate_us, by_source} =
+      :timer.tc(fn ->
+        [
+          {"template", template_edges},
+          {"project→story", project_to_story_edges(ctx)},
+          {"component tree", component_tree_edges(ctx, config)},
+          {"cross-context", cross_context_dependency_edges(ctx, config)},
+          {"story→project", story_to_project_edges(ctx)}
+        ]
+      end)
+
+    generated = Enum.flat_map(by_source, fn {_name, edges} -> edges end)
+
+    {filter_us, kept} =
+      :timer.tc(fn ->
+        Enum.filter(generated, fn %{from: f, to: t} ->
+          MapSet.member?(node_keys, f) and MapSet.member?(node_keys, t)
+        end)
+      end)
+
+    # Deduplicate before reducing, not after.
+    #
+    # `NodeRepository.replace_edges/3` already calls `Enum.uniq/1` on these, so
+    # duplicates were known about — they were just being carried through the
+    # expensive step first. A duplicate edge is the same edge: reachability
+    # cannot change, so this is semantics-preserving by construction.
+    {dedup_us, unique} = :timer.tc(fn -> Enum.uniq(kept) end)
+
+    {reduce_us, reduced} = :timer.tc(fn -> Topology.transitive_reduction(unique) end)
+
+    log_edge_timing(generated, unique, reduced, generate_us, filter_us + dedup_us, reduce_us)
+    log_edge_sources(by_source)
+
+    reduced
+  end
+
+  # Which third of the edge phase actually costs.
+  #
+  # The outer timing said "edges 2500ms" against "nodes 69ms", which was enough
+  # to redirect the optimization effort but not enough to act on: generating
+  # edges, discarding the ones whose endpoints are not nodes, and reducing them
+  # transitively are three different problems with three different fixes.
+  #
+  # `transitive_reduction/1` has been optimized once already — a comment there
+  # records 471ms on a 1045-node graph before the bitset rewrite — so it is the
+  # obvious suspect and therefore exactly the thing not to assume.
+  #
+  # The counts matter as much as the times. A large gap between generated and
+  # kept means the generators are producing edges for nodes that do not exist,
+  # which is work thrown away rather than work needed.
+  # Which generator produces the duplicates.
+  #
+  # 42% of generated edges were duplicates — 32,973 down to 19,132 — and
+  # deduplicating them before the reduction was worth ~370ms. That fixed the
+  # symptom. Producing 13,841 edges in order to throw them away is still work
+  # nobody needs, and the fix belongs in whichever generator emits the same edge
+  # more than once rather than in a wider `uniq` downstream.
+  #
+  # Per-source counts because the generators have genuinely different shapes:
+  # one walks each story's transitive dependency closure, another fans out over
+  # component children. A closure walk that revisits a node by every path that
+  # reaches it produces duplicates proportional to path count, which is the
+  # explanation to confirm or rule out first.
+  defp log_edge_sources(by_source) do
+    detail =
+      Enum.map_join(by_source, ", ", fn {name, edges} ->
+        total = length(edges)
+        unique = edges |> Enum.uniq() |> length()
+
+        case total - unique do
+          0 -> "#{name} #{total}"
+          dupes -> "#{name} #{total} (#{dupes} dupe)"
+        end
+      end)
+
+    Logger.info("[Requirements] edge sources — " <> detail)
+    log_duplicate_shape(by_source)
+  end
+
+  # How the duplicates are distributed, not just how many there are.
+  #
+  # 13,433 of them come from the component tree, and the count alone does not
+  # say which generator behaviour produces them. Multiplicity does: mostly ×2
+  # means two paths reach the same edge once each — a parent fanning out to a
+  # child that is itself in the closure emitting for itself — while a long tail
+  # of high-multiplicity edges means many stories share one closure and every
+  # one of them re-emits it.
+  #
+  # Those want different fixes, so the distribution is the thing to look at
+  # before changing how the fan-out works.
+  defp log_duplicate_shape(by_source) do
+    {_, edges} = Enum.find(by_source, {nil, []}, fn {name, _} -> name == "component tree" end)
+
+    counts =
+      edges
+      |> Enum.frequencies()
+      |> Enum.reject(fn {_edge, n} -> n == 1 end)
+
+    case counts do
+      [] ->
+        :ok
+
+      _ ->
+        by_multiplicity =
+          counts
+          |> Enum.frequencies_by(fn {_edge, n} -> n end)
+          |> Enum.sort()
+          |> Enum.map_join(", ", fn {n, edges} -> "×#{n}: #{edges}" end)
+
+        {worst, worst_n} = Enum.max_by(counts, &elem(&1, 1))
+
+        Logger.info(
+          "[Requirements] component tree duplicates — #{length(counts)} distinct edges " <>
+            "repeat (#{by_multiplicity}); worst #{inspect(worst.from)} → " <>
+            "#{inspect(worst.to)} ×#{worst_n}"
+        )
+    end
+  end
+
+  defp log_edge_timing(generated, kept, reduced, generate_us, filter_us, reduce_us) do
+    ms = &round(&1 / 1000)
+
+    Logger.info(
+      "[Requirements] edges — #{length(generated)} generated, #{length(kept)} unique, " <>
+        "#{length(reduced)} after reduction; generate #{ms.(generate_us)}ms, " <>
+        "filter+dedup #{ms.(filter_us)}ms, reduce #{ms.(reduce_us)}ms"
+    )
   end
 
   # Cross-entity: story ↔ surface tree.
@@ -254,25 +564,98 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   # The exit edge stays at the surface's terminal — the story's done
   # when the surface is done; deps reach the exit transitively. For
   # container surfaces it fans in from each child's terminal.
+  # `children_by_parent` is built once here rather than per story.
+  #
+  # `expand_with_parent_chain_descendants/2` needs it and used to group all of
+  # `ctx.components` on every call — once per story, so 93 × 880 components on
+  # this project to rebuild an identical map 93 times. It depends only on the
+  # context, so the loop was the wrong place for it.
+  #
+  # It is worth almost nothing, and that is the useful part. Generation measured
+  # 571ms before and 563ms after: 81,840 filter-and-group operations cost about
+  # 8ms, so whoever looks here next for the remaining ~560ms should look past
+  # this at `kickoff_edge/4` and `transitive_dep_closure/2`, which between them
+  # produce 31,257 of the 32,973 edges.
+  #
+  # Kept because it is strictly less work for the same result, not because it
+  # fixed anything.
   defp component_tree_edges(ctx, config) do
-    ctx.stories
-    |> Enum.filter(&(&1.component_id != nil))
-    |> Enum.flat_map(&story_chain_edges(&1, ctx, config))
+    ctx =
+      ctx
+      |> Map.put(:children_by_parent, children_by_parent(ctx))
+      |> Map.put(:first_def_by_type, first_def_by_type(ctx, config))
+
+    {edges, timing} =
+      ctx.stories
+      |> Enum.filter(&(&1.component_id != nil))
+      |> Enum.map_reduce(%{closure: 0, expand: 0, kickoff: 0, exit: 0, components: 0}, fn story,
+                                                                                          acc ->
+        story_chain_edges(story, ctx, config, acc)
+      end)
+
+    log_component_tree_timing(timing)
+    List.flatten(edges)
   end
 
-  defp story_chain_edges(story, ctx, config) do
+  # Inside the 95%.
+  #
+  # `component_tree_edges/2` produces 31,257 of 32,973 edges and 13,433 of the
+  # duplicates, and generation is ~563ms of a ~1030ms edge phase. Twice tonight
+  # a guess about where that time goes has been wrong — first that node
+  # computation dominated when it was edges, then that rebuilding
+  # `children_by_parent` per story mattered when it was worth 8ms — so this
+  # splits the four things a story chain does instead of guessing a third time.
+  #
+  # `components` is the total kickoff fan-out across stories: the number of
+  # components each story's closure expands to, summed. If that is large
+  # relative to the component count, the closure walk is the shape to attack
+  # rather than the per-edge work.
+  defp log_component_tree_timing(t) do
+    ms = &round(&1 / 1000)
+
+    Logger.info(
+      "[Requirements] component tree — closure #{ms.(t.closure)}ms, " <>
+        "expand #{ms.(t.expand)}ms, kickoff #{ms.(t.kickoff)}ms, exit #{ms.(t.exit)}ms; " <>
+        "#{t.components} kickoff components across stories"
+    )
+  end
+
+  defp children_by_parent(ctx) do
+    ctx.components
+    |> Enum.filter(& &1.parent_component_id)
+    |> Enum.group_by(& &1.parent_component_id)
+  end
+
+  defp story_chain_edges(story, ctx, config, acc) do
     case Map.get(ctx.components_by_id, story.component_id) do
       nil ->
-        []
+        {[], acc}
 
       surface ->
-        kickoff_components =
-          surface
-          |> transitive_dep_closure(ctx)
-          |> expand_with_parent_chain_descendants(ctx)
+        {closure_us, closure} = :timer.tc(fn -> transitive_dep_closure(surface, ctx) end)
 
-        kickoff_edges = Enum.flat_map(kickoff_components, &kickoff_edge(&1, story, config, ctx))
-        kickoff_edges ++ surface_exit_edge(surface, story, ctx, config)
+        {expand_us, kickoff_components} =
+          :timer.tc(fn -> expand_with_parent_chain_descendants(closure, ctx) end)
+
+        kickoff_ids = MapSet.new(kickoff_components, & &1.id)
+
+        {kickoff_us, kickoff_edges} =
+          :timer.tc(fn ->
+            Enum.flat_map(kickoff_components, &kickoff_edge(&1, story, config, ctx, kickoff_ids))
+          end)
+
+        {exit_us, exit_edges} =
+          :timer.tc(fn -> surface_exit_edge(surface, story, ctx, config) end)
+
+        acc = %{
+          closure: acc.closure + closure_us,
+          expand: acc.expand + expand_us,
+          kickoff: acc.kickoff + kickoff_us,
+          exit: acc.exit + exit_us,
+          components: acc.components + length(kickoff_components)
+        }
+
+        {kickoff_edges ++ exit_edges, acc}
     end
   end
 
@@ -288,10 +671,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   # add their own edges; `Topology.transitive_reduction/1` removes
   # the resulting redundancies downstream.
   defp expand_with_parent_chain_descendants(components, ctx) do
-    children_by_parent =
-      ctx.components
-      |> Enum.filter(& &1.parent_component_id)
-      |> Enum.group_by(& &1.parent_component_id)
+    children_by_parent = ctx[:children_by_parent] || children_by_parent(ctx)
 
     components
     |> Enum.flat_map(&[&1 | descendants_of(&1, children_by_parent, MapSet.new())])
@@ -310,8 +690,8 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     end
   end
 
-  defp kickoff_edge(comp, story, config, ctx) do
-    case first_filtered_def(comp.type, config) do
+  defp kickoff_edge(comp, story, config, ctx, kickoff_ids) do
+    case first_def_for(comp.type, config, ctx) do
       nil ->
         []
 
@@ -319,6 +699,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
         comp
         |> direct_children(ctx)
         |> Enum.filter(&child_supports_def_name?(&1, name))
+        |> Enum.reject(&emits_for_itself?(&1, name, config, ctx, kickoff_ids))
         |> Enum.map(fn child ->
           %{
             from: {"story", story.id, "bdd_specs_exist"},
@@ -334,6 +715,31 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
           }
         ]
     end
+  end
+
+  # A child that is itself in the kickoff closure and lands on its own node
+  # emits this exact edge already, so the parent's fan-out to it is the same
+  # edge a second time.
+  #
+  # That is every duplicate the component tree produced: 13,433 of them,
+  # uniformly ×2, none at ×3 or higher. A uniform ×2 is the signature of two
+  # paths reaching one edge once each, which is what this suppresses.
+  #
+  # Both conditions are load-bearing. A child outside the closure is not
+  # emitting anything, and a child whose own first def is `:child`-scoped fans
+  # out to *its* children instead of landing on itself — in either case the
+  # parent's edge is the only one and dropping it would lose it.
+  #
+  # Nothing about the graph changes: the duplicates were exact repeats and
+  # `Enum.uniq/1` already removed them before the transitive reduction. This
+  # stops building what was being thrown away.
+  defp emits_for_itself?(child, name, config, ctx, kickoff_ids) do
+    MapSet.member?(kickoff_ids, child.id) and
+      case first_def_for(child.type, config, ctx) do
+        %{node_scope: :child} -> false
+        %{name: ^name} -> true
+        _ -> false
+      end
   end
 
   defp child_supports_def_name?(child, name) do
@@ -415,6 +821,31 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
     |> case do
       nil -> nil
       def -> def.name
+    end
+  end
+
+  # `first_filtered_def/2` keyed by type, computed once per graph.
+  #
+  # It is a pure function of `(type, config)` — a registry lookup and four
+  # config filters — and there are about a dozen component types. It was being
+  # evaluated once per kickoff component: 17,758 times on this project, for a
+  # dozen distinct answers.
+  #
+  # Measured, not guessed: the four-way split put 614ms of a 1,030ms edge phase
+  # inside `kickoff_edge/4`, at ~35µs a call, which is far too slow for building
+  # two-field maps. `direct_children/2` was already a map lookup, leaving this as
+  # the only per-call work that scaled with anything.
+  defp first_def_by_type(ctx, config) do
+    ctx.components
+    |> Enum.map(& &1.type)
+    |> Enum.uniq()
+    |> Map.new(&{&1, first_filtered_def(&1, config)})
+  end
+
+  defp first_def_for(type, config, ctx) do
+    case ctx[:first_def_by_type] do
+      nil -> first_filtered_def(type, config)
+      by_type -> Map.get_lazy(by_type, type, fn -> first_filtered_def(type, config) end)
     end
   end
 
@@ -875,7 +1306,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
       parent_entity_id: parent_id,
       parent_entity_name: parent_name,
       prerequisites: [],
-      details: result.details
+      details: Requirement.normalize_details(result.details)
     }
   end
 
@@ -923,7 +1354,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
               parent_entity_id: project && project.id,
               parent_entity_name: project && project.name,
               prerequisites: [],
-              details: result.details
+              details: Requirement.normalize_details(result.details)
             }
           end)
 
@@ -965,7 +1396,7 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
           render_command_always?: definition.render_command_always? || false,
           subagent_role: definition.subagent_role,
           prerequisites: [],
-          details: result.details
+          details: Requirement.normalize_details(result.details)
         }
       end)
 

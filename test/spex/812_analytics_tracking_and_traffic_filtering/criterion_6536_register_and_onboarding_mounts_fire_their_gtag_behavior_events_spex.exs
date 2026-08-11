@@ -4,22 +4,24 @@ defmodule CodeMySpecSpex.Story812.Criterion6536Spex do
   Criterion 6536 — Rule 4 (hybrid): Register and onboarding mounts fire
   their gtag behavior events.
 
-  Hybrid design: view_register_page, onboarding_panel_viewed, and
-  install_step_copied are browser behavior events fired by gtag colocated
-  hooks — not dispatched server-side via Analytics.dispatch/3. The surface
-  contract this spec guards:
+  Hybrid design: view_register_page and onboarding_panel_viewed are browser
+  behavior events fired by gtag colocated hooks — not dispatched server-side
+  via Analytics.dispatch/3. The surface contract this spec guards:
 
   1. The registration LiveView renders with its `.ViewRegisterPage` gtag
      hook attached, so `view_register_page` fires on mount.
   2. The app overview LiveView renders with its `.SignUpTracking` gtag
      hook attached, so `onboarding_panel_viewed` fires on mount.
-  3. Copying an install step pushes `install_step_copied` from the server
-     to the browser, where the `.SignUpTracking` hook forwards it to gtag.
 
-  Driven through the LiveView surface — the hooks render into the DOM the
-  browser receives, and the step-copy event is pushed by the server. The
-  gtag call itself is browser JS, exercised by browser QA. Fails if a hook
-  stops rendering or the server stops pushing the step-copy event.
+  A third scenario covered `install_step_copied`, pushed when the user copied
+  a plugin-install command off /app. `f84dffb9` removed that card and its
+  `copy_step` handler with it, so the scenario was pushing an event no clause
+  matched and crashing the view. Both mounts — which is what this criterion
+  names — are unaffected.
+
+  Driven through the LiveView surface: the hooks render into the DOM the
+  browser receives. The gtag call itself is browser JS, exercised by browser
+  QA. Fails if a hook stops rendering.
   """
 
   use CodeMySpecSpex.Case
@@ -66,25 +68,6 @@ defmodule CodeMySpecSpex.Story812.Criterion6536Spex do
         assert context.html =~ "SignUpTracking",
                "expected the app overview to wire the .SignUpTracking gtag hook (fires onboarding_panel_viewed on mount)"
 
-        {:ok, context}
-      end
-    end
-
-    scenario "copying an install step pushes install_step_copied to the browser" do
-      given_ "a logged-in user on the app overview", context do
-        user = CodeMySpecSpex.Fixtures.user_fixture()
-        conn = log_in_user(context.conn, user)
-        {:ok, lv, _html} = live(conn, "/app")
-        {:ok, Map.put(context, :lv, lv)}
-      end
-
-      when_ "an install step is copied", context do
-        render_hook(context.lv, "copy_step", %{"step" => "1"})
-        {:ok, context}
-      end
-
-      then_ "the server pushes install_step_copied for the gtag hook to forward", context do
-        assert_push_event(context.lv, "install_step_copied", %{step: 1})
         {:ok, context}
       end
     end
