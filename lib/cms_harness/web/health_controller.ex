@@ -11,6 +11,7 @@ defmodule CmsHarness.Web.HealthController do
   use Phoenix.Controller, formats: [:json]
 
   alias CmsHarness.Config
+  alias CmsHarness.Project.ChannelClient
   alias CmsHarness.Project.Watcher
   alias CmsHarness.Projects
   alias CodeMySpec.BootVersion
@@ -23,7 +24,21 @@ defmodule CmsHarness.Web.HealthController do
         %{
           root: root,
           connected: Projects.connected?(root),
-          watching: Watcher.watching?(root)
+          watching: Watcher.watching?(root),
+          # Belief and evidence, side by side.
+          #
+          # `connected` is this harness's own view of its socket, set at join.
+          # It cannot be wrong from where it stands, and it reported `true`
+          # throughout an incident where the server's registry held no entry for
+          # this harness and every request answered `:harness_unreachable` —
+          # both ends healthy, nothing doing a round trip.
+          #
+          # A reply is proof the server addressed us, because the server sent
+          # it. Recorded on replies that already happen, so this adds no latency
+          # and cannot hang: a health check that blocks on the network is its
+          # own outage. `nil` means the server has never answered this channel,
+          # which is a different fact from `connected: false`.
+          server_replied_ago_s: ChannelClient.server_replied_ago(root)
         }
       end)
 
