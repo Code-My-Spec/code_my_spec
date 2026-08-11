@@ -1753,7 +1753,30 @@ defmodule CodeMySpecSpex.Case do
         image: nil,
         tag: tag,
         architecture: architecture,
-        build: build,
+        # Two keys, because `:build` already meant something here.
+        #
+        # `image_for/3` reads `:build` as the boolean "should this deploy build
+        # at all", and `Builder.run/5` reads `:build_fun` as the function to
+        # build with. They were one key until the collision surfaced — a real
+        # drill passed `build: true` and died with "expected a function, got:
+        # true" — and this fixture kept setting the function under the old
+        # name afterwards, so the stub was never called. The deploy ran its
+        # real build path with no server to build on and recorded no image,
+        # which is every failure in story 992.
+        build: true,
+        build_fun: build,
+        # The two seams that otherwise reach a provider for real.
+        #
+        # `with_access_key/2` asks Hetzner for the account's SSH key when
+        # `:ssh_key_ids` is absent, and `with_builder_ssh/2` writes the private
+        # half to disk when `:ssh_key_path` is. Neither is what story 992 is
+        # about, and unstaged they made the deploy fail with a live
+        # `{:hetzner_error, 401, ... "the token you have provided is invalid"}`
+        # against the placeholder credential — so the step never reached the
+        # build and recorded no image, which is what every criterion here was
+        # reading.
+        ssh_key_ids: [4242],
+        ssh_key_path: "/dev/null",
         create: fn _scope, name, _o -> {:ok, %{"id" => 4242, "name" => name}} end,
         destroy: fn _scope, id -> on_destroy.(id) && {:ok, %{"id" => id}} end,
         ensure_registry: fn _scope, _o -> {:ok, "codemyspec-registry"} end,
@@ -2216,6 +2239,8 @@ defmodule CodeMySpecSpex.Case do
       # private keys into the cassette in the clear. Scrub after writing.
       CodeMySpecSpex.Case.scrub_cmd_cassette(unquote(name))
 
+      CodeMySpecSpex.Case.refuse_poisoned_cassette(unquote(name))
+
       result
     end
   end
@@ -2657,6 +2682,69 @@ defmodule CodeMySpecSpex.Case do
 
   defp session_opt(opts, pid, true), do: Keyword.put_new(opts, :session, pid)
   defp session_opt(opts, _pid, false), do: Keyword.put_new(opts, :shared, true)
+
+  # Provider refusals that are about *our account*, not about the story.
+  #
+  # A recording that captures one of these writes a failure in as the expected
+  # behaviour, and it then replays green-ish forever while proving nothing.
+  # Three have bitten already: a NoSuchBucket from signing against the wrong
+  # provider, an InvalidAccessKeyId from a project with no credentials, and a
+  # server-limit 403 from a recording sweep that had eaten its own headroom —
+  # that last one poisoned eight cassettes before anyone noticed.
+  #
+  # 412 `resource_unavailable` is deliberately NOT here: Hetzner answers that
+  # for every create before the architecture fallback succeeds, so it is a
+  # normal part of a healthy recording.
+  @poison ~w(resource_limit_exceeded InvalidAccessKeyId NoSuchBucket unauthorized)
+
+  @doc """
+  Refuse a recording that captured a refusal about our own account.
+
+  Raises at the moment of recording rather than letting the cassette be
+  discovered as wrong a day later by a spex that reads it as the story's
+  behaviour. The cassette is set aside as `.rejected` rather than deleted, so
+  the evidence survives for whoever has to work out which limit was hit.
+  """
+  @spec refuse_poisoned_cassette(String.t()) :: :ok
+  def refuse_poisoned_cassette(name), do: refuse_poisoned_cassette(name, recording?())
+
+  # Recording only. On replay the cassette is an input, not an output — reading
+  # one that already carries poison is a diagnosis for whoever recorded it, and
+  # renaming it mid-replay would destroy the very file the run is reading.
+  defp refuse_poisoned_cassette(_name, false), do: :ok
+
+  defp refuse_poisoned_cassette(name, true) do
+    path = Path.join("test/cassettes", name <> ".json")
+
+    case File.read(path) do
+      {:ok, body} -> check_poison(path, body, Enum.filter(@poison, &String.contains?(body, &1)))
+      _ -> :ok
+    end
+  end
+
+  defp check_poison(_path, _body, []), do: :ok
+
+  defp check_poison(path, _body, found) do
+    File.rename(path, path <> ".rejected")
+
+    raise """
+    refusing to keep this recording: it captured #{Enum.join(found, ", ")}.
+
+      #{path}
+
+    That is a refusal about this account, not about the story — a limit
+    reached, a credential missing, a bucket signed for at the wrong provider.
+    Kept as #{Path.basename(path)}.rejected so you can see which.
+
+    Recording it would make the failure the story's expected behaviour, and it
+    would then replay forever without ever touching a provider again.
+
+    Fix the account condition and record again. For the server limit: this
+    account allows 5 and two are permanently in use, so a recording has three
+    slots — check headroom, not just residue, and make sure the criteria you
+    are recording tear down what they make.
+    """
+  end
 
   @doc """
   Set a cassette aside the first time this run asks to record it, and never

@@ -28,6 +28,20 @@ defmodule CodeMySpecSpex.Story841.Criterion1967Spex do
   spex "Each environment answers on its domain over HTTPS" do
     scenario "every provisioned environment serves on its own host" do
       given_ "the project has its environments provisioned", context do
+        # Registered before anything provisions, so a run that dies partway
+        # still returns its boxes.
+        #
+        # Hetzner's server limit on this account is 5 and two are permanently
+        # John's, so a recording has three slots. None of story 841's
+        # setup-running criteria returned any, so they accumulated *within a
+        # single run*: the first took two, the second took the third, and every
+        # one after it got `resource_limit_exceeded` — which then went into the
+        # cassette as the story's expected behaviour. No amount of cleaning
+        # between runs could have helped, because the exhaustion happens inside
+        # one.
+        tear_down_after(context.scope, [:server, :storage, :dns])
+        tear_down_repository(context.project)
+
         # Provisioned by running setup. A visitor gets an answer only if
         # something is serving, so the thing that makes something serve has to
         # run before the request in `when_`.

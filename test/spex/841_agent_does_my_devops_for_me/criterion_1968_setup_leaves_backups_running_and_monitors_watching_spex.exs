@@ -28,6 +28,20 @@ defmodule CodeMySpecSpex.Story841.Criterion1968Spex do
   spex "Setup leaves backups running and monitors watching" do
     scenario "setup has finished, and both are in place" do
       given_ "a project whose setup has run to completion", context do
+        # Registered before anything provisions, so a run that dies partway
+        # still returns its boxes.
+        #
+        # Hetzner's server limit on this account is 5 and two are permanently
+        # John's, so a recording has three slots. None of story 841's
+        # setup-running criteria returned any, so they accumulated *within a
+        # single run*: the first took two, the second took the third, and every
+        # one after it got `resource_limit_exceeded` — which then went into the
+        # cassette as the story's expected behaviour. No amount of cleaning
+        # between runs could have helped, because the exhaustion happens inside
+        # one.
+        tear_down_after(context.scope, [:server, :storage, :dns])
+        tear_down_repository(context.project)
+
         # Run, not asserted. Backups and monitors being in place is what the
         # criterion is about, so the run that would put them there has to
         # actually happen.

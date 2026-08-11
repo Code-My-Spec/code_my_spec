@@ -27,6 +27,20 @@ defmodule CodeMySpecSpex.Story841.Criterion1962Spex do
   spex "Opting out of prod completes setup UAT-only" do
     scenario "production is off, and setup still reaches done" do
       given_ "Sam has turned production off and UAT is provisioned", context do
+        # Registered before anything provisions, so a run that dies partway
+        # still returns its boxes.
+        #
+        # Hetzner's server limit on this account is 5 and two are permanently
+        # John's, so a recording has three slots. None of story 841's
+        # setup-running criteria returned any, so they accumulated *within a
+        # single run*: the first took two, the second took the third, and every
+        # one after it got `resource_limit_exceeded` — which then went into the
+        # cassette as the story's expected behaviour. No amount of cleaning
+        # between runs could have helped, because the exhaustion happens inside
+        # one.
+        tear_down_after(context.scope, [:server, :storage, :dns])
+        tear_down_repository(context.project)
+
         # Production is off from `setup :devops_uat_only`. UAT is provisioned by
         # running setup — the criterion is about what is true afterwards, so
         # something has to make it true.

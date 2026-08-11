@@ -30,6 +30,14 @@ defmodule CodeMySpecSpex.Story841.Criterion1969Spex do
     scenario "the resources are gone, and setup makes them again" do
       given_ "the repo holds its deployment configuration, and nothing is provisioned",
              context do
+        # Registered before anything provisions, so a run that dies partway
+        # still returns its boxes. The account's server limit is 5 with two
+        # permanently spoken for, and none of 841's setup-running criteria
+        # returned a slot — so they exhausted the account inside a single run
+        # and recorded `resource_limit_exceeded` as the story's behaviour.
+        tear_down_after(context.scope, [:server, :storage, :dns])
+        tear_down_repository(context.project)
+
         # "From scratch" is the premise, so nothing is provisioned — this
         # scenario never runs setup before the `when_`. What has to be
         # established is the other half: the repo actually carries the
