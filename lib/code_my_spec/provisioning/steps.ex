@@ -37,8 +37,8 @@ defmodule CodeMySpec.Provisioning.Steps do
 
   require Logger
 
+  alias CodeMySpec.{AccountSecrets, Deploys, Environments, Projects, ProjectSecrets}
   alias CodeMySpec.TempFile
-  alias CodeMySpec.{AccountSecrets, Deploys, Environments, ProjectSecrets, Projects}
 
   alias CodeMySpec.Provisioning.{
     Backups,
