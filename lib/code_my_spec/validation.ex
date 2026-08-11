@@ -143,7 +143,7 @@ defmodule CodeMySpec.Validation do
 
     if Keyword.get(opts, :await, false), do: Analysis.await_all(scope)
 
-    with :ok <- check_blocking_problems(scope, changed_files, config) do
+    with :ok <- check_blocking_problems(scope, changed_files, config, opts) do
       {:ok, %{changed_files: changed_files, analysis: analysis}}
     end
   end
@@ -170,7 +170,7 @@ defmodule CodeMySpec.Validation do
 
     if Keyword.get(opts, :await, false), do: Analysis.await_all(scope)
 
-    with :ok <- check_blocking_problems(scope, changed_files, config) do
+    with :ok <- check_blocking_problems(scope, changed_files, config, opts) do
       {:ok, %{changed_files: changed_files, analysis: analysis}}
     end
   end
@@ -322,6 +322,31 @@ defmodule CodeMySpec.Validation do
 
   defp relativize(path, _cwd), do: path
 
+  # This session's edits, normalized the same way `filter_by_session_attribution`
+  # normalizes them — PostToolUse stores whatever Claude passed, typically
+  # absolute, while `Problem.file_path` is project-relative.
+  #
+  # `nil` rather than an empty set when there is no session or no cwd. Both mean
+  # the comparison cannot be trusted: without a cwd the relativize is a no-op
+  # and nothing would ever match, which would mark every finding as somebody
+  # else's. An empty set from a session that genuinely wrote nothing is
+  # different, and the renderer treats it as "no evidence" rather than "all
+  # foreign" for the same reason.
+  defp session_paths(%Scope{cwd: cwd}, opts) when is_binary(cwd) do
+    case Keyword.get(opts, :session_id) do
+      session_id when is_binary(session_id) ->
+        session_id
+        |> attributed_paths(Keyword.get(opts, :agent_id))
+        |> Enum.map(&relativize(&1, cwd))
+        |> MapSet.new()
+
+      _ ->
+        nil
+    end
+  end
+
+  defp session_paths(_scope, _opts), do: nil
+
   defp attributed_paths(session_id, nil), do: FileEdits.get_edited_files(session_id)
 
   defp attributed_paths(session_id, agent_id) when is_binary(agent_id),
@@ -397,7 +422,7 @@ defmodule CodeMySpec.Validation do
     end
   end
 
-  defp check_blocking_problems(scope, changed_files, config) do
+  defp check_blocking_problems(scope, changed_files, config, opts) do
     sources = active_blocking_sources(config)
 
     # Problems are an eventually consistent projection: block on what is
@@ -439,6 +464,11 @@ defmodule CodeMySpec.Validation do
       # promotes, so `mix credo` answers "found no issues" on the very findings
       # that block. `mix test` and `mix spex` reproduce themselves.
       reproduce_commands: %{"credo" => CredoRun.reproduce_command()},
+      # Which files this session actually wrote, so a finding in someone else's
+      # can say so. Several agents share this repo and rebase onto main, and a
+      # warning one pushes blocks every other's stop in the same voice as their
+      # own work.
+      session_paths: session_paths(scope, opts),
       # Whether a rerun is actually running, as opposed to how old the newest
       # result is. The message used to assert the first from the second and got
       # it wrong in both directions.

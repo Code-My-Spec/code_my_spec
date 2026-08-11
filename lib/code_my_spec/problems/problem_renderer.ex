@@ -179,13 +179,14 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
     last_ran = Keyword.get(opts, :last_ran, %{})
     run_duration = Keyword.get(opts, :run_duration, %{})
     reproduce = Keyword.get(opts, :reproduce_commands, %{})
+    session_paths = Keyword.get(opts, :session_paths)
     in_flight = Keyword.get(opts, :in_flight, [])
 
     header = "Fix these problems before stopping:\n\n"
     advisory_section = render_advisory_section(advisory)
 
     blocking_section =
-      render_blocking_section(blocking, stale, last_ran, run_duration, reproduce)
+      render_blocking_section(blocking, stale, last_ran, run_duration, reproduce, session_paths)
 
     raw =
       header <>
@@ -195,18 +196,28 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
     enforce_total_cap(raw, blocking, advisory)
   end
 
-  defp render_blocking_section(blocking, stale, last_ran, run_duration, reproduce) do
+  defp render_blocking_section(blocking, stale, last_ran, run_duration, reproduce, session_paths) do
     blocking
     |> Enum.group_by(& &1.source)
     |> Enum.sort_by(fn {source, _} -> source end)
-    |> Enum.map_join("\n", &render_blocking_group(&1, stale, last_ran, run_duration, reproduce))
+    |> Enum.map_join(
+      "\n",
+      &render_blocking_group(&1, stale, last_ran, run_duration, reproduce, session_paths)
+    )
   end
 
-  defp render_blocking_group({source, items}, stale, last_ran, run_duration, reproduce) do
+  defp render_blocking_group(
+         {source, items},
+         stale,
+         last_ran,
+         run_duration,
+         reproduce,
+         session_paths
+       ) do
     count = length(items)
     visible = Enum.take(items, @per_source_list_cap)
 
-    details = Enum.map_join(visible, "\n", &render_blocking_line/1)
+    details = Enum.map_join(visible, "\n", &render_blocking_line(&1, session_paths))
 
     overflow =
       case count - length(visible) do
@@ -413,14 +424,42 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
   defp staleness_seconds(%DateTime{} = at), do: DateTime.diff(DateTime.utc_now(), at, :second)
   defp staleness_seconds(_), do: 0
 
-  defp render_blocking_line(%Problem{} = problem) do
+  defp render_blocking_line(%Problem{} = problem, session_paths) do
     message =
       problem.message
       |> maybe_compact_message(true)
       |> truncate_message(@per_problem_cap)
 
-    "  - #{format_location(problem)} — #{message}"
+    "  - #{format_location(problem)} — #{message}#{unedited_marker(problem, session_paths)}"
   end
+
+  # Whose finding this is, when the answer is known.
+  #
+  # Several agents share one repo and rebase onto main, so a warning one pushes
+  # blocks every other's stop in the same voice as their own work — and the
+  # obvious repair on someone else's in-flight file can be actively wrong. One
+  # case: deleting an unused `@endpoint` that a preview story overrides on
+  # purpose, which silently falls back to the local endpoint that `~p` binds at
+  # compile time.
+  #
+  # An empty set means no evidence rather than no edits: a session restart or a
+  # path shape that did not normalize looks identical to a turn that wrote
+  # nothing. Marking everything foreign on that reading would tell an agent to
+  # ignore its own work, so absence of evidence stays silent.
+  #
+  # Marks only. Whether an unattributed finding should still block is a
+  # question about what the gate is for, and getting it wrong switches the gate
+  # off silently — not a decision to take from a message renderer.
+  defp unedited_marker(%Problem{file_path: path}, %MapSet{} = session_paths)
+       when is_binary(path) do
+    cond do
+      MapSet.size(session_paths) == 0 -> ""
+      MapSet.member?(session_paths, path) -> ""
+      true -> " (not edited by this session)"
+    end
+  end
+
+  defp unedited_marker(_problem, _session_paths), do: ""
 
   defp truncate_message(message, max) when is_binary(message) do
     if byte_size(message) <= max do
