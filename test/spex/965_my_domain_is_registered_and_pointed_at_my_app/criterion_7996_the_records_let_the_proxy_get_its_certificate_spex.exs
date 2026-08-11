@@ -22,11 +22,10 @@ defmodule CodeMySpecSpex.Story965.Criterion7996Spex do
   # then fails on whichever makes one more request than the recording did.
   @dns_cassette "965_7996_dns_records_for_certificate"
 
-  # Separate from @dns_cassette. `with_provider_cassette` deletes the cassette
-  # file when it opens in record mode, so two blocks naming the same cassette
-  # in one spex means the second erases what the first recorded — and replay
-  # then fails on requests that genuinely happened.
-  @given_cassette "965_7996_server"
+  # Fixed addresses, so the DNS bodies this records are the same every time.
+  # Documentation-range (RFC 5737), which cannot be mistaken for a real host if
+  # one of these records ever outlives its teardown.
+  @environment_ips [{"prod", "192.0.2.20"}, {"uat", "192.0.2.21"}]
   @cert_cassette "kamal_proxy_certificate_issued"
 
   setup :register_log_in_setup_account
@@ -60,18 +59,25 @@ defmodule CodeMySpecSpex.Story965.Criterion7996Spex do
         # the process holding it exits the connection is gone for good and no
         # retry can get it back. Teardown has to do its reads while the
         # LiveView is still up.
-        tear_down_after(context.scope, [:dns, :server])
+        tear_down_after(context.scope, [:dns])
 
-        # DNS points a name at a server, so there has to be one. Without it the
-        # step writes no records at all and the certificate claim fails for a
-        # reason that has nothing to do with certificates.
-        with_provider_cassette(@given_cassette, fn ->
-          paste_provider_credentials(view)
+        paste_provider_credentials(view)
 
-          view
-          |> element("[data-test='setup-step'][data-step='server'] [data-test='run-step']")
-          |> render_click()
-        end)
+        # DNS points a name at a server, so there has to be an address — but not
+        # a box. `environment_ip/3` uses the environment's own `ip` when it has
+        # one and only asks Hetzner when it does not, so seeding it skips the
+        # server step entirely: nothing is created, nothing is torn down, and no
+        # Hetzner cassette is involved.
+        #
+        # That is what makes this criterion recordable on its own. The DNS
+        # record's request body carries the server's IP, and a real server is
+        # minted fresh on every recording — so this cassette and the server's
+        # could only ever replay together, and recorded two days apart they did
+        # not: the bodies wanted 5.161.239.73 while the server cassette handed
+        # out something else. A fixed address is the same address next year.
+        for {name, ip} <- @environment_ips do
+          CodeMySpecSpex.Fixtures.seed_environment_ip(context.scope, name, ip)
+        end
 
         html =
           with_provider_cassette(@dns_cassette, fn ->

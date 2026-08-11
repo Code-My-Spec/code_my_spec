@@ -1965,6 +1965,31 @@ defmodule CodeMySpecSpex.Fixtures do
   end
 
   @doc """
+  Give an environment a fixed address, without provisioning a box for it.
+
+  `environment_ip/3` uses the environment's own `ip` when it has one and only
+  asks Hetzner when it does not. So seeding it means a criterion that needs
+  *somewhere to point at* — DNS, TLS — no longer needs a server created,
+  recorded, and torn down to get an address.
+
+  It also decouples cassettes that were coupled by accident. A DNS record's
+  request body carries the server's IP, and the server is minted fresh on every
+  recording, so `965_7996_dns_records_for_certificate` and
+  `965_7996_server` could only ever replay together: recorded two days apart,
+  the DNS bodies wanted 5.161.239.73 and the server cassette handed out
+  something else entirely, and the create could never match. A fixed address is
+  the same address next year.
+
+  Not for criteria whose subject *is* the server. Those want the real thing.
+  """
+  @spec seed_environment_ip(Scope.t(), String.t(), String.t()) :: {:ok, map()} | {:error, term()}
+  def seed_environment_ip(%Scope{} = scope, name, ip) do
+    alias CodeMySpec.Provisioning.EnvironmentRepository
+
+    EnvironmentRepository.put(scope, name, %{ip: ip})
+  end
+
+  @doc """
   A runner that reaches the local fleet's app box instead of a provisioned one.
 
   The box-side steps — starting the registry, starting the database — build
@@ -2048,10 +2073,51 @@ defmodule CodeMySpecSpex.Fixtures do
   `commits: true` gives it an initial commit, which is what makes a fresh
   history unable to fast-forward onto it.
   """
+  # `envs/.env` holds these, and Dotenvy loads that file into *config* rather
+  # than into the process environment — so `System.get_env/1` answers nil for a
+  # value that is plainly sitting in the file, unless somebody exported it by
+  # hand first. Three of story 985's criteria failed on exactly that, reporting
+  # a missing token that was never missing.
+  #
+  # Read the environment first, so an operator who did export something wins,
+  # and fall back to the file the value actually lives in. Parsing it here is
+  # what Dotenvy does for the application; the alternative is a suite that only
+  # runs for whoever remembered the incantation.
+  defp spex_env(name) do
+    case System.get_env(name) do
+      value when is_binary(value) and value != "" -> value
+      _ -> dotenv_value(name)
+    end
+  end
+
+  # The environment's own file first, then the shared one — the order Dotenvy
+  # layers them in, so a value set for test wins over the same name set for
+  # everything.
+  defp dotenv_value(name) do
+    ["envs/#{Mix.env()}.env", "envs/.env"]
+    |> Enum.find_value(fn file ->
+      case File.read(Path.expand(file, File.cwd!())) do
+        {:ok, contents} -> find_dotenv_value(contents, name)
+        _ -> nil
+      end
+    end)
+  end
+
+  defp find_dotenv_value(contents, name) do
+    contents
+    |> String.split("\n")
+    |> Enum.find_value(fn line ->
+      case String.split(String.trim(line), "=", parts: 2) do
+        [^name, value] -> value |> String.trim() |> String.trim(~s("))
+        _ -> nil
+      end
+    end)
+  end
+
   @spec create_spex_repository(String.t(), keyword()) :: :ok | {:error, term()}
   def create_spex_repository(name, opts \\ []) do
-    with token when is_binary(token) <- System.get_env("GITHUB_SPEX_ADMIN_TOKEN"),
-         owner when is_binary(owner) <- System.get_env("GITHUB_SPEX_OWNER") do
+    with token when is_binary(token) <- spex_env("GITHUB_SPEX_ADMIN_TOKEN"),
+         owner when is_binary(owner) <- spex_env("GITHUB_SPEX_OWNER") do
       Req.post("https://api.github.com/orgs/#{owner}/repos",
         headers: [
           {"authorization", "Bearer #{token}"},
@@ -2103,7 +2169,7 @@ defmodule CodeMySpecSpex.Fixtures do
   """
   @spec delete_spex_repository(String.t()) :: :ok | {:error, term()}
   def delete_spex_repository(name) do
-    case System.get_env("GITHUB_SPEX_ADMIN_TOKEN") do
+    case spex_env("GITHUB_SPEX_ADMIN_TOKEN") do
       token when is_binary(token) and token != "" ->
         # Guarded twice: only names this harness generates, and only through a
         # token whose scope the operator chose. A teardown that could delete an
