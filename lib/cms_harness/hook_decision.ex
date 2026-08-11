@@ -235,7 +235,31 @@ defmodule CmsHarness.HookDecision do
     """
 
     A version skew is one cause: a server that does not know an event this
-    harness sends replies with an error rather than a decision.
+    harness sends replies with an error rather than a decision.#{boot_drift()}
     """
+  end
+
+  # Turns that skew hypothesis into a fact where there is one.
+  #
+  # A harness runs the code it booted with, so a checkout that has moved
+  # underneath it — a merge, a rebase, a branch switch — can leave its idea of
+  # the channel contract behind the server's. `7e8fd1c6`: 137 commits merged
+  # mid-session, and every stop afterwards failed with `unmatched topic` until
+  # the harness was restarted. Nothing in the error connected the two, and the
+  # skew line above was the closest thing to a lead.
+  #
+  # Only here, on the failure path. Drift is the normal state of an active
+  # session and most commits do not touch the harness, so saying it proactively
+  # would fire constantly and be ignored.
+  defp boot_drift do
+    case CmsHarness.BootVersion.drift() do
+      {:drifted, booted, current} ->
+        "\n\n    This harness booted from #{booted} and its checkout is now at " <>
+          "#{current}. If that range touched the harness or the channel " <>
+          "contract, restart the harness — it is still running the older code."
+
+      :none ->
+        ""
+    end
   end
 end

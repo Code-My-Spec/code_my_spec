@@ -52,6 +52,15 @@ defmodule CodeMySpec.NoFabricatedWorkingDirectoryTest do
     # depends on which of them cwd happened to be.
     "lib/cms_harness/working_copies.ex" => "harness lists the copy it was started in",
 
+    # Records where the harness's *own* code came from, once, at boot — the
+    # same case as `working_copies.ex` one line up. It is not resolving a
+    # caller's project: `capture/1` runs from `Supervisor.init/1`, and the
+    # question it answers ("has this process outlived its checkout") is about
+    # the directory the harness was started in and nowhere else. `drift/0`,
+    # which *is* reachable from a request, reads the root recorded at boot and
+    # never consults cwd.
+    "lib/cms_harness/boot_version.ex" => "harness records the checkout it booted from",
+
     # The local desktop app: one machine, one project, cwd is it.
     "lib/code_my_spec_local_web/live/projects/form.ex" => "local desktop UI",
     "lib/code_my_spec/project_sync/file_watcher_server.ex" => "watches a local checkout",

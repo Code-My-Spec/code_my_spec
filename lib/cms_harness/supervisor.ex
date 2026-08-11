@@ -38,6 +38,13 @@ defmodule CmsHarness.Supervisor do
 
   @impl true
   def init(_opts) do
+    # Where this harness's code came from, recorded before anything runs. A
+    # harness runs what it booted with, and when its checkout moves underneath
+    # it the two can disagree about the channel contract — which surfaces as an
+    # error naming neither the merge nor the harness (7e8fd1c6). Read only on a
+    # failure path; see `CmsHarness.BootVersion`.
+    CmsHarness.BootVersion.capture()
+
     children = [
       # A hook arrives as an HTTP request carrying a working directory, and
       # something has to turn that into that project's channel client. Without
