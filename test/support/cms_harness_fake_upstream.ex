@@ -38,7 +38,10 @@ defmodule CmsHarnessTest.FakeUpstream do
   @doc "Start the listener on a free port and return it. Torn down with the test."
   @spec start!() :: pos_integer()
   def start!(opts \\ []) do
-    port = Keyword.get_lazy(opts, :port, &free_port/0)
+    # 0 means "the OS assigns one at bind time", and the port is read back off
+    # the bound listener. An explicit `:port` still wins, for a test that needs
+    # a known one.
+    port = Keyword.get(opts, :port, 0)
 
     reset()
 
@@ -50,7 +53,7 @@ defmodule CmsHarnessTest.FakeUpstream do
 
     ExUnit.Callbacks.on_exit(fn -> stop(pid) end)
 
-    port
+    bound_port(pid, port)
   end
 
   @doc "What the next request should be answered with."
@@ -237,21 +240,23 @@ defmodule CmsHarnessTest.FakeUpstream do
     :persistent_term.put({__MODULE__, :upgrades}, 0)
   end
 
-  # Let the OS pick, rather than `Enum.random(4300..4399)`.
+  # The port the listener actually bound, asked of the listener.
   #
-  # A hundred slots chosen at random collide often enough to matter once two
-  # suites run at once, which happens here whenever another working copy is
-  # testing at the same time. The failure is not a bind error — it is the
-  # request reaching the *other* suite's upstream, so `last_request/0` and
-  # `last_exchange/0` answer about a call this test never made, and the
-  # assertion fails on `==` with no hint that a second server was involved.
+  # This used to pick a port first and hand it to Bandit — originally
+  # `Enum.random(4300..4399)`, then a probe socket opened on 0, read, and closed.
+  # Both leave a window between choosing and binding, and under three worktrees'
+  # suites on one box a narrow window still gets hit. The failure is not a bind
+  # error: the request reaches the *other* suite's upstream, so `last_request/0`
+  # answers about a call this test never made and the assertion fails on `==`
+  # with no hint a second server was involved. That shape cost two framework
+  # issues filed and retracted, and three dead-end investigations (0bc611c9).
   #
-  # Same shape as `Workspaces.free_port/0`: the TOCTOU window between closing
-  # and rebinding surfaces as a failed boot, which is loud and immediate.
-  defp free_port do
-    {:ok, socket} = :gen_tcp.listen(0, [])
-    {:ok, port} = :inet.port(socket)
-    :gen_tcp.close(socket)
+  # Binding 0 and reading back closes the window rather than narrowing it —
+  # there is no interval during which the port is spoken for but not held.
+  defp bound_port(_pid, port) when port > 0, do: port
+
+  defp bound_port(pid, 0) do
+    {:ok, {_address, port}} = ThousandIsland.listener_info(pid)
     port
   end
 
