@@ -47,7 +47,7 @@ defmodule CodeMySpec.Provisioning.Builder.Remote do
 
     with :ok <- await_ssh(run, Keyword.get(opts, :ssh_attempts, @ssh_attempts), opts),
          :ok <- deliver.(ref, dir),
-         :ok <- docker_build(run, reference, ref, dir, Keyword.get(opts, :service)),
+         :ok <- docker_build(run, reference, ref, dir, opts),
          :ok <- maybe_push(run, reference, opts),
          {:ok, architecture} <- built_architecture(run, reference) do
       {:ok, %{reference: reference, architecture: architecture}}
@@ -152,14 +152,33 @@ defmodule CodeMySpec.Provisioning.Builder.Remote do
   # its own builder and deploys with `--skip-push`, so nothing else was ever
   # going to add it — the pull succeeded and the very next command rejected
   # what it had just pulled.
-  defp docker_build(run, reference, ref, dir, service) do
-    labels = "--label commit=#{ref}" <> service_label(service)
+  defp docker_build(run, reference, ref, dir, opts) do
+    labels = "--label commit=#{ref}" <> service_label(Keyword.get(opts, :service))
+    flags = labels <> platform_flag(Keyword.get(opts, :platform))
 
-    case run.(["cd #{dir} && docker build #{labels} -t #{reference} ."]) do
+    case run.(["cd #{dir} && docker build #{flags} -t #{reference} ."]) do
       {_, 0} -> :ok
       {output, status} -> {:error, {:build_failed, status, trim(output)}}
     end
   end
+
+  # NEVER set this in production, and the reason is the opposite of the usual
+  # one: it would work.
+  #
+  # `Builder` refuses to publish an image whose architecture is not the one the
+  # servers run, and that refusal is load-bearing — a mismatched image starts
+  # and dies at the swap, long after the deploy looks like it is going well. In
+  # production the architecture is an *input*: the builder box is created as the
+  # same type as the app's box, so what comes out is what that box is, and a
+  # mismatch means something upstream picked wrong. Forcing the platform would
+  # make Docker emulate its way to the right answer and the check would never
+  # fire again — the guard would still be there, still be green, and never
+  # catch anything.
+  #
+  # It exists for the local fleet, where a single box has to stand in for boxes
+  # of both architectures. That is a property of the fixture, not of the build.
+  defp platform_flag(nil), do: ""
+  defp platform_flag(platform), do: " --platform #{platform}"
 
   defp service_label(service) when is_binary(service) and service != "",
     do: " --label service=#{shell_quote(service)}"
