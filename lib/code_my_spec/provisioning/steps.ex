@@ -434,7 +434,12 @@ defmodule CodeMySpec.Provisioning.Steps do
           # returns `{:ok, _}` only after the health probe passed. A deploy that
           # shipped and never answered must not read as done — criterion 1964 —
           # and writing the row anywhere earlier would make it exactly that.
-          {:ok, _deploys} = Deploys.record_environment_deploy(scope, environment, deploy_record_attrs(image, version))
+          {:ok, _deploys} =
+            Deploys.record_environment_deploy(
+              scope,
+              environment,
+              deploy_record_attrs(image, version)
+            )
 
           {:ok, [delivery | version_resources(version) ++ image_resources(image) ++ resources]}
 
@@ -1055,8 +1060,7 @@ defmodule CodeMySpec.Provisioning.Steps do
     %{
       kind: "inbound_proof",
       location: to,
-      identifier:
-        "state=delivered message_id=#{message["id"]} proven_at=#{message["created_at"]}"
+      identifier: "state=delivered message_id=#{message["id"]} proven_at=#{message["created_at"]}"
     }
   end
 
@@ -1299,6 +1303,7 @@ defmodule CodeMySpec.Provisioning.Steps do
       origin: created.origin
     }
   end
+
   # Where a deploy lands is decided by the config in the checkout, not by
   # anything setup passes kamal — the `:host` above is only the health probe's
   # target. So a config naming another machine deploys this project's image
@@ -2397,7 +2402,7 @@ defmodule CodeMySpec.Provisioning.Steps do
          public when is_binary(public) <- get_in(server, ["public_net", "ipv4", "ip"]),
          {:ok, opts} <- with_builder_ssh(scope, opts),
          {:ok, opts} <- with_registry_credential(scope, opts),
-         run = Remote.ssh_runner(%{"ip" => public}, opts),
+         run = Keyword.get(opts, :run) || Remote.ssh_runner(%{"ip" => public}, opts),
          registry_opts =
            opts
            |> Keyword.put(:environment, environment)

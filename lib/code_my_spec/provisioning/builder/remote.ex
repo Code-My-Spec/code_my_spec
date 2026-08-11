@@ -409,6 +409,18 @@ defmodule CodeMySpec.Provisioning.Builder.Remote do
         "BatchMode=yes",
         "-o",
         "IdentitiesOnly=yes",
+        # Without this, an address that answers nothing costs the OS default —
+        # around 75 seconds per attempt on macOS — and the caller has no way to
+        # shorten it. A box we just created either answers quickly or is not
+        # ready, and the callers that care already poll (`await_ssh/5` makes 90
+        # attempts), so a long single attempt buys nothing and delays the retry
+        # that would have succeeded.
+        #
+        # Measured: two such attempts were 150 of the 304 seconds a single spex
+        # story spent, against server addresses that stopped being ours weeks
+        # ago.
+        "-o",
+        "ConnectTimeout=10",
         "-i",
         key,
         "root@#{ip(server)}"
