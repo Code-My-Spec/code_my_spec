@@ -1696,8 +1696,11 @@ defmodule CodeMySpecSpex.Case do
         # LiveView supplies these for the standalone publish button; the
         # step reads them from here and `Keyword.fetch!/2`s them, so their
         # absence is a `key :path not found` rather than a default.
-        path: "/",
-        expect: "<html"
+        # The post's own address, not the site root. 8036 asserts the check
+        # requested it — a publish that only ever proved "/" renders has not
+        # shown that the post did.
+        path: "/blog/hello",
+        expect: "Hello"
       )
     )
 
