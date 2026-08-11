@@ -150,15 +150,43 @@ defmodule CmsHarness.TestDatabase do
     end
   end
 
+  # `--no-deps-check` because `--no-compile` does not imply it, and the check
+  # refuses on a lock mismatch — the state a rebase leaves between bringing a
+  # new `mix.lock` and the next `mix deps.get`. Measured on this machine: five
+  # resets refused with
+  #
+  #     Unchecked dependencies for environment test:
+  #     * client_utils (Hex package)
+  #       lock mismatch: the dependency is out of date
+  #
+  # four of them inside ten minutes of rebasing. Nothing is being built here —
+  # `--no-compile` already says so — and the deps are present and loadable; only
+  # the recorded version disagreed. So the check had nothing to protect and cost
+  # the reset entirely, in the window where a rebase makes residue most likely.
+  @doc false
+  # Public so the flags can be asserted without shelling out, the same reason
+  # `CredoRun.reproduce_command/0` is. The failure this guards against is a
+  # refusal, logged at info and otherwise invisible — nothing downstream would
+  # fail if a flag were dropped, which is what makes it worth pinning.
+  def reset_args, do: ["run", "--no-compile", "--no-deps-check"]
+
   defp do_reset(environment, partition, build_env) do
-    args = ["run", "--no-compile", "-e", truncate_script()]
+    args = reset_args() ++ ["-e", truncate_script()]
 
     case run_mix_capturing(environment, partition, args, build_env) do
       {:ok, output} ->
         report_rows_removed(output, partition)
 
       {:error, reason} ->
-        Logger.info("[CmsHarness] could not empty the analyzer database (#{reason})")
+        # Says what follows from it, because this stays at info — a project with
+        # no Ecto would otherwise warn on every sweep forever — and an info line
+        # nobody can act on is how a repair stops running unnoticed.
+        Logger.info(
+          "[CmsHarness] could not empty the analyzer database (#{reason}). This run " <>
+            "starts against whatever the last one left; committed residue there " <>
+            "reads as test failures in files this session never touched."
+        )
+
         :ok
     end
   end

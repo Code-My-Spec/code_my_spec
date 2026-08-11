@@ -40,6 +40,30 @@ defmodule CmsHarness.TestDatabaseTest do
     end
   end
 
+  describe "the reset's mix invocation" do
+    # `--no-compile` does not imply `--no-deps-check`, and the deps check
+    # refuses on a lock mismatch — the state a rebase leaves between bringing a
+    # new mix.lock and the next `mix deps.get`. Five resets on this machine
+    # refused with "lock mismatch: the dependency is out of date", four of them
+    # inside ten minutes of rebasing, so the truncate that eb75952f runs before
+    # every sweep was not running at all in exactly the window where a rebase
+    # makes residue most likely (bcad622d).
+    #
+    # Verified against mix rather than assumed: with an empty deps path,
+    # `mix run --no-compile` answers "Unchecked dependencies for environment
+    # test" and the same command with `--no-deps-check` gets past it.
+    test "it skips the deps check, which no-compile does not do for it" do
+      assert "--no-deps-check" in CmsHarness.TestDatabase.reset_args()
+    end
+
+    # Nothing is built here, so a tree that has never been compiled must not be
+    # compiled by the reset — that is the collision AnalyzerEnv exists to
+    # prevent, modules vanishing from under a running suite.
+    test "it builds nothing" do
+      assert "--no-compile" in CmsHarness.TestDatabase.reset_args()
+    end
+  end
+
   describe "env/1" do
     # An analyzer that refused to run because it could not manage a database
     # would be a worse failure than the one this exists to fix.
