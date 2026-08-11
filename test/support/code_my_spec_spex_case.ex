@@ -119,7 +119,7 @@ defmodule CodeMySpecSpex.Case do
     # a recording never creates anything in somebody's personal account. The
     # step already supports this (`:org` to create there, `:owner` to look for
     # an existing one); it only needed telling.
-    if owner = System.get_env("GITHUB_SPEX_OWNER") do
+    if owner = spex_owner() do
       previous_step_opts = Application.get_env(:code_my_spec, :provisioning_step_opts, [])
 
       Application.put_env(
@@ -289,6 +289,36 @@ defmodule CodeMySpecSpex.Case do
   # was doing the right thing.
   #
   # Replay is unaffected; it creates nothing.
+  # The throwaway organisation every spex repository belongs in.
+  #
+  # Defaulted rather than read from the environment alone, because whether this
+  # is set changes the *shape of the run*, not just where a repository lands.
+  # `Repository.ensure/3` asks GitHub who the token is — `GET /user` — only when
+  # no `:owner` was supplied. Recording always supplies one, because
+  # `refuse_recording_into_a_personal_account/0` will not let a recording start
+  # without it. So no cassette contains that request.
+  #
+  # A replay on a machine that had not exported the variable therefore made a
+  # request no recording holds, missed, and errored the repository step — the
+  # first step of the run. Everything after it never ran, which is how a
+  # perfectly good cassette produced "14 step(s) have nothing behind them" with
+  # `server` among the missing, and sent three separate investigations after
+  # provider capacity, an inventory bug and a placement fallback.
+  #
+  # The value lives in `envs/.env`, which Dotenvy loads into config and never
+  # into the process environment, so it is absent unless someone exported it by
+  # hand — meaning the cassettes replayed only on the machine that recorded
+  # them. The environment still wins when it is set; this only stops the shape
+  # of a replay from depending on a shell.
+  @spex_owner "codemy-my-spec-test"
+
+  defp spex_owner do
+    case System.get_env("GITHUB_SPEX_OWNER") do
+      owner when is_binary(owner) and owner != "" -> owner
+      _ -> @spex_owner
+    end
+  end
+
   defp refuse_recording_into_a_personal_account do
     if recording?() and System.get_env("GITHUB_SPEX_OWNER") in [nil, ""] do
       raise """
