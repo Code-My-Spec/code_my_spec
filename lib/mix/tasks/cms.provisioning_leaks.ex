@@ -56,7 +56,21 @@ defmodule Mix.Tasks.Cms.ProvisioningLeaks do
   # requiring a dot after it matched nothing, and
   # `send.spex-story969-criterion8027.astralbi.com` was reported as a real
   # record while sitting in a live zone.
-  @spex_marker ~r/(^|\.)(spex-|c80\d{2}(\.|$))/
+  #
+  # The criterion half was wrong twice over, and both ways left live resources
+  # reported as real:
+  #
+  #   * `c80\d{2}` only ever matched criteria 8000-8099. Every other criterion
+  #     — 8156, 8182, 8233 — was invisible to the sweep entirely.
+  #   * It demanded the label end right after the digits, so a criterion that
+  #     suffixes its host (`c8025b.astralbi.com`, one environment per letter)
+  #     did not match. Two live Resend sending domains and four DNS records
+  #     were sitting behind that one.
+  #
+  # A `c` followed by four digits at the start of a label is specific enough
+  # that no real domain of ours looks like it, and the trailing `[a-z0-9]*`
+  # covers whatever a criterion appends to distinguish its environments.
+  @spex_marker ~r/(^|\.)(spex-|c\d{4}[a-z0-9]*(\.|$))/
 
   @impl Mix.Task
   def run(args) do
@@ -350,7 +364,9 @@ defmodule Mix.Tasks.Cms.ProvisioningLeaks do
     end
   end
 
-  defp leaked?(name) do
+  @doc false
+  @spec leaked?(term()) :: boolean()
+  def leaked?(name) do
     name = to_string(name)
     String.starts_with?(name, @spex_prefix) or name =~ @spex_marker
   end
