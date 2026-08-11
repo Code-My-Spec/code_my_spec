@@ -25,7 +25,7 @@ defmodule CmsHarness.McpErrorPageTest do
 
   use ExUnit.Case, async: true
 
-  alias CmsHarness.Web.McpController
+  alias CmsHarness.Web.UpstreamError
 
   # The shape Phoenix actually sends: a title, an inline stylesheet, then the
   # exception. Trimmed, but the ordering is what matters and it is faithful.
@@ -49,7 +49,7 @@ defmodule CmsHarness.McpErrorPageTest do
 
   describe "a Phoenix debug page" do
     test "surfaces the exception rather than the stylesheet" do
-      summary = McpController.error_page_summary(debug_page(@compile_error), 500, "text/html")
+      summary = UpstreamError.summary(debug_page(@compile_error), 500, "text/html")
 
       assert summary =~ "could not compile application: code_my_spec",
              "this is the only sentence in 30KB that tells anyone what to do"
@@ -61,7 +61,7 @@ defmodule CmsHarness.McpErrorPageTest do
     end
 
     test "keeps the actionable hint" do
-      summary = McpController.error_page_summary(debug_page(@compile_error), 500, "text/html")
+      summary = UpstreamError.summary(debug_page(@compile_error), 500, "text/html")
 
       assert summary =~ "cannot hot-reload",
              "no agent can fix this; the hint is what sends it to a human restart"
@@ -73,7 +73,7 @@ defmodule CmsHarness.McpErrorPageTest do
       <body><h1>Bad Gateway</h1></body></html>
       """
 
-      summary = McpController.error_page_summary(page, 502, "text/html")
+      summary = UpstreamError.summary(page, 502, "text/html")
 
       assert summary =~ "Bad Gateway"
       refute summary =~ "margin"
@@ -88,7 +88,7 @@ defmodule CmsHarness.McpErrorPageTest do
       # HTML-only check once already.
       body = "# PendingMigrationError\n\n** (Ecto.MigrationError) pending migrations\n"
 
-      summary = McpController.error_page_summary(body, 500, "text/markdown")
+      summary = UpstreamError.summary(body, 500, "text/markdown")
 
       assert summary =~ "pending migrations"
     end
@@ -96,8 +96,25 @@ defmodule CmsHarness.McpErrorPageTest do
 
   describe "a normal response" do
     test "is not treated as an error page" do
-      assert McpController.error_page_summary(~s({"jsonrpc":"2.0"}), 200, "application/json") ==
+      assert UpstreamError.summary(~s({"jsonrpc":"2.0"}), 200, "application/json") ==
                nil
+    end
+  end
+
+  # The same page reaches `harness.log` by a second route: the permission path
+  # forwards the server's body into an error tuple whose caller logs it, and a
+  # log message is not truncated the way metadata is. One implementation, so the
+  # 300 characters chosen are the same ones in both places (6ecb257a).
+  describe "reuse off the MCP path" do
+    test "a page with no content-type is still recognised" do
+      summary = UpstreamError.summary(debug_page(@compile_error), 500, nil)
+
+      assert summary =~ "** (RuntimeError)"
+      assert summary =~ "restart"
+    end
+
+    test "an ordinary error body is left for the caller to handle" do
+      refute UpstreamError.summary(~s({"error":"invalid_token"}), 401, "application/json")
     end
   end
 end
