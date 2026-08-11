@@ -163,6 +163,27 @@ defmodule CmsHarness.TestDatabase do
   # `--no-compile` already says so — and the deps are present and loadable; only
   # the recorded version disagreed. So the check had nothing to protect and cost
   # the reset entirely, in the window where a rebase makes residue most likely.
+  # `--no-deps-check` for the same reason `reset_args/0` carries it, at the call
+  # site 6d9523a9 did not touch. The check refuses on a lock mismatch — the state
+  # a rebase leaves between bringing a new `mix.lock` and the next
+  # `mix deps.get` — and refusing here is worse than refusing there: the
+  # database is simply never brought up to date, exunit then runs against a
+  # schema behind the code, and the result is bulk failures across contexts the
+  # session never touched.
+  #
+  # That is not hypothetical. `b0486568` documents 15 such findings sampled from
+  # a worktree sitting between a merge and its `deps.get` + `ecto.migrate`, all
+  # five named files passing once the merge completed — findings that outlived
+  # the condition that produced them and read as real defects throughout.
+  #
+  # Unlike the reset this does compile, which is correct: a migration has to run
+  # against the project's own code. Skipping the *lock comparison* is not
+  # skipping the build.
+  @provision_args ["--quiet", "--no-deps-check"]
+
+  @doc false
+  def provision_args, do: @provision_args
+
   @doc false
   # Public so the flags can be asserted without shelling out, the same reason
   # `CredoRun.reproduce_command/0` is. The failure this guards against is a
@@ -353,8 +374,8 @@ defmodule CmsHarness.TestDatabase do
   end
 
   defp ensure_database(environment, partition, build_env) do
-    with :ok <- run_mix(environment, partition, ["ecto.create", "--quiet"], build_env) do
-      run_mix(environment, partition, ["ecto.migrate", "--quiet"], build_env)
+    with :ok <- run_mix(environment, partition, ["ecto.create" | @provision_args], build_env) do
+      run_mix(environment, partition, ["ecto.migrate" | @provision_args], build_env)
     end
   end
 
