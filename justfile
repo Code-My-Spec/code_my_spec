@@ -6,6 +6,80 @@ default:
 server:
     iex -S mix phx.server
 
+# Pull main and restart the dev server, from any worktree.
+refresh port="4000":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    # 
+    # The :4000 server runs the *main* checkout, not the worktree an agent works in,
+    # so a fix that is committed, pushed and green can be absent from every response
+    # an agent sees — and the responses that matter are messages about correctness,
+    # where a stale one reads as "the fix does not work" rather than "the build is
+    # old". Three of those cost a diversion each in one session before
+    # `[Boot] serving <sha>` existed to answer it in one line.
+    # 
+    # Doing it by hand needs a directory an agent in a worktree cannot cd to, so
+    # this exists to be run from anywhere in the repo. `--git-common-dir` resolves
+    # to the main checkout's `.git` from inside any worktree, which is what makes
+    # that possible.
+    # 
+    # It refuses on a dirty checkout rather than pulling over someone's uncommitted
+    # work: several agents share that directory, and a rebase on top of a
+    # half-finished change is the one outcome nobody can undo from here.
+
+
+    main="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")"
+    echo "→ main checkout: $main"
+
+    dirty="$(git -C "$main" status --porcelain)"
+    if [ -n "$dirty" ]; then
+        echo "✗ refusing: the main checkout has uncommitted work." >&2
+        echo "$dirty" >&2
+        echo "" >&2
+        echo "  Another agent is probably mid-change there. Commit or stash it," >&2
+        echo "  or restart by hand once it is clear." >&2
+        exit 1
+    fi
+
+    before="$(git -C "$main" rev-parse --short HEAD)"
+    git -C "$main" pull --ff-only
+    after="$(git -C "$main" rev-parse --short HEAD)"
+    echo "→ $before → $after"
+
+    # The lock moves often enough that skipping this turns into "Unchecked
+    # dependencies" on the next mix invocation, which several analyzers report
+    # as findings rather than as an environment problem.
+    ( cd "$main" && mix deps.get )
+
+    # By port, not by name: several beams run on this machine and only one of
+    # them is serving {{port}}.
+    pid="$(lsof -nP -iTCP:{{port}} -sTCP:LISTEN -t || true)"
+    if [ -n "$pid" ]; then
+        echo "→ stopping $pid on {{port}}"
+        kill "$pid"
+        for _ in $(seq 1 30); do
+            lsof -nP -iTCP:{{port}} -sTCP:LISTEN -t >/dev/null 2>&1 || break
+            sleep 1
+        done
+    fi
+
+    log="$HOME/.codemyspec/phx_{{port}}.restart.log"
+    ( cd "$main" && nohup mix phx.server >>"$log" 2>&1 & )
+    echo "→ starting, logging to $log"
+
+    for _ in $(seq 1 90); do
+        if curl -sS -o /dev/null --max-time 2 "http://localhost:{{port}}/" 2>/dev/null; then
+            echo "✓ {{port}} is answering on $after"
+            echo "  confirm with: grep '\[Boot\] serving' ~/.codemyspec/web.log | tail -1"
+            exit 0
+        fi
+        sleep 2
+    done
+
+    echo "✗ {{port}} did not come up in 180s — see $log" >&2
+    exit 1
+
 cli *args:
     MIX_ENV=dev_cli iex -S mix run --no-halt {{args}}
 

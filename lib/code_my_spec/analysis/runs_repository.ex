@@ -106,6 +106,18 @@ defmodule CodeMySpec.Analysis.RunsRepository do
   # different files — so a source could never be fresh while another agent
   # worked. `acde83fd` scoped the lookup on submit and the sweep on join and
   # missed these two.
+  # A nil id is not "every harness", and it is not a comparison either: Ecto
+  # forbids `== nil` and raises `ArgumentError` rather than matching nothing.
+  # `fail_running/3` hit that on channel join during a restart storm — six
+  # `%ArgumentError{}` crashes out of `Analysis.fail_in_flight/3`, from a query
+  # written as `r.harness_id == ^scope.active_harness_id` while this helper sat
+  # two hundred lines above already handling it.
+  #
+  # Reading it as "no filter" is right for the queries that *report* — the UI
+  # asks about a project, not a checkout. It is wrong for one that *writes*:
+  # closing every harness's runs because this scope names none would fail runs
+  # belonging to working copies that are still going. So the two part here, and
+  # `fail_running/3` says so at its own call site.
   defp scope_to_harness(query, %Scope{active_harness_id: nil}), do: query
 
   defp scope_to_harness(query, %Scope{active_harness_id: harness_id}),
@@ -209,13 +221,20 @@ defmodule CodeMySpec.Analysis.RunsRepository do
   the old behaviour.
   """
   @spec fail_running(Scope.t(), term(), [integer()]) :: {:ok, non_neg_integer()}
+  # No harness on the scope means there is no working copy whose runs these are,
+  # so there is nothing to close. Falling through to `scope_to_harness/2`'s
+  # unfiltered clause would close every other checkout's in-flight runs — the
+  # opposite of what the caller asked for, and invisible until an unrelated
+  # agent's sweep came back as `:harness_disconnected`.
+  def fail_running(%Scope{active_harness_id: nil}, _reason, _claimed), do: {:ok, 0}
+
   def fail_running(%Scope{active_project_id: project_id} = scope, reason, claimed) do
     now = DateTime.utc_now()
 
     {count, _} =
       Run
       |> where([r], r.project_id == ^project_id and r.status == :running)
-      |> where([r], r.harness_id == ^scope.active_harness_id)
+      |> scope_to_harness(scope)
       |> exclude_claimed(claimed)
       |> Repo.update_all(
         set: [

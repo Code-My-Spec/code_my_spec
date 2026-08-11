@@ -5,7 +5,10 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignmentTest do
   import CodeMySpec.AccountsFixtures
   import CodeMySpec.ProjectsFixtures
 
+  alias CodeMySpec.Environments.Environment
   alias CodeMySpec.StaticAnalysis.Analyzers.SpecAlignment
+  alias CodeMySpec.Support.TestAdapter
+  alias CodeMySpecTest.EnvRestore
 
   @test_repo_url "https://github.com/Code-My-Spec/test_phoenix_project.git"
 
@@ -18,7 +21,7 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignmentTest do
 
     # Clone from pool
     {:ok, project_dir} =
-      CodeMySpec.Support.TestAdapter.clone(scope, @test_repo_url)
+      TestAdapter.clone(scope, @test_repo_url)
 
     # Update project with cloned repo path
     {:ok, updated_project} =
@@ -39,10 +42,41 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignmentTest do
       docs_spec_dir = Path.join(project_dir, ".code_my_spec/spec")
       File.rm_rf(docs_spec_dir)
 
-      CodeMySpec.Support.TestAdapter.checkin(project_dir)
+      TestAdapter.checkin(project_dir)
     end)
 
     %{scope: scope, project: updated_project, project_dir: project_dir}
+  end
+
+  # An environment that cannot list files must not crash the caller.
+  #
+  # `Environments.Harness` answers `{:error, :not_supported_on_harness}` for
+  # `stream_files/3` — the server holds no disk, and streaming a remote working
+  # copy is not something the channel offers. Piped into `Enum.filter/2` that
+  # raised `Protocol.UndefinedError`, and because this analyzer runs inside
+  # `HarnessProjectChannel`, the raise took the channel down: every stop on
+  # every worktree failed with "the harness never got to ask", the harness
+  # reconnected, and the next stop did the same. Thirty-three channel deaths
+  # before it was found.
+  #
+  # `{:error, _}` rather than `{:ok, []}` on purpose. An empty list is a clean
+  # sweep, and a reconcile against one deletes every spec-alignment Problem the
+  # project has — "could not look" and "found nothing" are different answers.
+  describe "an environment that cannot stream files" do
+    setup do
+      previous = Application.get_env(:code_my_spec, :harness_fs_transport)
+      Application.put_env(:code_my_spec, :harness_fs_transport, CodeMySpecTest.StubHarnessTransport)
+      on_exit(fn -> EnvRestore.restore_app_env(:harness_fs_transport, previous) end)
+      :ok
+    end
+
+    test "is an error, not a crash and not a clean sweep", %{scope: scope} do
+      env = %Environment{type: :harness, cwd: "/anywhere", ref: %{"harness_id" => "x"}}
+
+      assert {:error, message} = SpecAlignment.run(scope, environment: env, cwd: "/anywhere")
+      assert message =~ "cannot list spec files"
+      assert message =~ "not_supported_on_harness"
+    end
   end
 
   describe "run/2" do
