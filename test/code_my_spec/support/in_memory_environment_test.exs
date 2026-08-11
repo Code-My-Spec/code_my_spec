@@ -29,7 +29,6 @@ defmodule CodeMySpec.Support.InMemoryEnvironmentTest do
       refute Process.alive?(agent)
     end
 
-
     # The race the old implementation lost. It asked `Process.alive?/1` and then
     # called `Agent.stop/1`, and the gap between the two is reachable by
     # construction: the agent is `start_link`ed from the test process, while
