@@ -8,7 +8,7 @@
       "command": "git",
       "exit_code": 128,
       "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-21061",
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-24866",
         "env": {
           "SCRIPT_PATH": null,
           "RELEASE_ROOT": null,
@@ -48,7 +48,7 @@
         "stderr_to_stdout": true
       },
       "output": "fatal: not a git repository (or any of the parent directories): .git\n",
-      "recorded_at": "2026-08-03T02:42:13.281919Z"
+      "recorded_at": "2026-08-11T01:35:14.615066Z"
     },
     {
       "args": [
@@ -59,7 +59,7 @@
       "command": "git",
       "exit_code": 0,
       "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-21061",
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-24866",
         "env": {
           "SCRIPT_PATH": null,
           "RELEASE_ROOT": null,
@@ -98,8 +98,8 @@
         },
         "stderr_to_stdout": true
       },
-      "output": "Initialized empty Git repository in /private/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-21061/.git/\n",
-      "recorded_at": "2026-08-03T02:42:13.292714Z"
+      "output": "Initialized empty Git repository in /private/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-24866/.git/\n",
+      "recorded_at": "2026-08-11T01:35:14.641091Z"
     },
     {
       "args": [
@@ -109,7 +109,7 @@
       "command": "git",
       "exit_code": 128,
       "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-21061",
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-24866",
         "env": {
           "SCRIPT_PATH": null,
           "RELEASE_ROOT": null,
@@ -149,7 +149,7 @@
         "stderr_to_stdout": true
       },
       "output": "fatal: ambiguous argument 'HEAD': unknown revision or path not in the working tree.\nUse '--' to separate paths from revisions, like this:\n'git <command> [<revision>...] -- [<file>...]'\nHEAD\n",
-      "recorded_at": "2026-08-03T02:42:13.297957Z"
+      "recorded_at": "2026-08-11T01:35:14.650752Z"
     },
     {
       "args": [
@@ -159,7 +159,7 @@
       "command": "git",
       "exit_code": 0,
       "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-21061",
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-24866",
         "env": {
           "SCRIPT_PATH": null,
           "RELEASE_ROOT": null,
@@ -199,7 +199,7 @@
         "stderr_to_stdout": true
       },
       "output": "",
-      "recorded_at": "2026-08-03T02:42:13.304510Z"
+      "recorded_at": "2026-08-11T01:35:14.659833Z"
     },
     {
       "args": [
@@ -210,7 +210,7 @@
       "command": "git",
       "exit_code": 0,
       "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-21061",
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-24866",
         "env": {
           "SCRIPT_PATH": null,
           "RELEASE_ROOT": null,
@@ -249,8 +249,8 @@
         },
         "stderr_to_stdout": true
       },
-      "output": "[main (root-commit) 5794ef8] Initial commit\n 1 file changed, 1 insertion(+)\n create mode 100644 mix.exs\n",
-      "recorded_at": "2026-08-03T02:42:13.318188Z"
+      "output": "[main (root-commit) 40910d5] Initial commit\n 1 file changed, 1 insertion(+)\n create mode 100644 mix.exs\n",
+      "recorded_at": "2026-08-11T01:35:14.675226Z"
     },
     {
       "args": [
@@ -262,7 +262,7 @@
       "command": "git",
       "exit_code": 0,
       "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-21061",
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-24866",
         "env": {
           "SCRIPT_PATH": null,
           "RELEASE_ROOT": null,
@@ -302,7 +302,7 @@
         "stderr_to_stdout": true
       },
       "output": "",
-      "recorded_at": "2026-08-03T02:42:13.323267Z"
+      "recorded_at": "2026-08-11T01:35:14.682906Z"
     },
     {
       "args": [
@@ -314,7 +314,7 @@
       "command": "git",
       "exit_code": 0,
       "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-21061",
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-24866",
         "env": {
           "SCRIPT_PATH": null,
           "RELEASE_ROOT": null,
@@ -354,7 +354,7 @@
         "stderr_to_stdout": true
       },
       "output": "To https://github.com/codemy-my-spec-test/spex-story985-criterion8182.git\n * [new branch]      main -> main\nbranch 'main' set up to track 'origin/main'.\n",
-      "recorded_at": "2026-08-03T02:42:14.317637Z"
+      "recorded_at": "2026-08-11T01:35:15.873979Z"
     },
     {
       "args": [
@@ -364,7 +364,7 @@
       "command": "git",
       "exit_code": 0,
       "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-21061",
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-24866",
         "env": {
           "SCRIPT_PATH": null,
           "RELEASE_ROOT": null,
@@ -403,8 +403,8 @@
         },
         "stderr_to_stdout": true
       },
-      "output": "5794ef8af0eb70973251a65c4a8cdb6d69300f34\n",
-      "recorded_at": "2026-08-03T02:42:14.327152Z"
+      "output": "40910d5709183ed7abeb74adb7f01a81dbe74278\n",
+      "recorded_at": "2026-08-11T01:35:15.880120Z"
     },
     {
       "args": [
@@ -415,15 +415,375 @@
         "-C",
         "spex-story985-criterion8182",
         "-f",
-        "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/cms-ssh-16675/id_ed25519"
+        "*/id_ed25519"
       ],
       "command": "ssh-keygen",
       "exit_code": 0,
       "opts": {
         "stderr_to_stdout": true
       },
-      "output": "Generating public/private ed25519 key pair.\nYour identification has been saved in /var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/cms-ssh-16675/id_ed25519\nYour public key has been saved in /var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/cms-ssh-16675/id_ed25519.pub\nThe key fingerprint is:\nSHA256:aihDURs6YgCsYXvXolXDrOTcSk8URAAsge4xVIbxJ04 spex-story985-criterion8182\nThe key's randomart image is:\n+--[ED25519 256]--+\n|*o*++.*+.        |\n|+*o+ + *         |\n|*o*E=.* .        |\n|o*o+oO +         |\n|. =.= = S        |\n| o . o o         |\n|  o . o          |\n|   o .           |\n|                 |\n+----[SHA256]-----+\n",
-      "recorded_at": "2026-08-03T02:42:14.903355Z"
+      "output": "Generating public/private ed25519 key pair.\nYour identification has been saved in /var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/cms-ssh-88304_25122_q3as9GJEeSVU/id_ed25519\nYour public key has been saved in /var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/cms-ssh-88304_25122_q3as9GJEeSVU/id_ed25519.pub\nThe key fingerprint is:\nSHA256:nzHlmxbcyhulYL9seZ66QftjQ8ddRuK2TPuzUBURj/s spex-story985-criterion8182\nThe key's randomart image is:\n+--[ED25519 256]--+\n|               +o|\n|              ..+|\n|            ...oo|\n|           + .+.+|\n|        S = =++*o|\n|         o O O*.+|\n|          o %+ oE|\n|           oo**o.|\n|           .**++o|\n+----[SHA256]-----+\n",
+      "recorded_at": "2026-08-11T01:35:16.482914Z"
+    },
+    {
+      "args": [
+        "-o",
+        "StrictHostKeyChecking=no",
+        "-o",
+        "UserKnownHostsFile=/dev/null",
+        "-o",
+        "BatchMode=yes",
+        "-o",
+        "IdentitiesOnly=yes",
+        "-i",
+        "*/id_ed25519",
+        "root@178.156.200.94",
+        "mkdir -p /etc/docker && (grep -qF '10.0.0.2:5000' /etc/docker/daemon.json 2>/dev/null || (echo '{\"insecure-registries\":[\"10.0.0.2:5000\"]}' > /etc/docker/daemon.json && systemctl restart docker))"
+      ],
+      "command": "ssh",
+      "exit_code": 0,
+      "opts": {
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-24866",
+        "env": {
+          "SCRIPT_PATH": null,
+          "RELEASE_ROOT": null,
+          "ERTS_BIN": null,
+          "RELEASE_DISTRIBUTION_FLAG": null,
+          "RELEASE_DISTRIBUTION": null,
+          "EMU": null,
+          "RELEASE_COMMAND": null,
+          "PROGNAME": null,
+          "ELIXIR_VERSION": null,
+          "RELEASE_MODE": null,
+          "beforeExtra": null,
+          "REL_EXEC": null,
+          "RELEASE_PROG": null,
+          "ERL_LIBS": null,
+          "RELEASE_NODE": null,
+          "REL_EXTRA": null,
+          "RELEASE_BOOT_SCRIPT_CLEAN": null,
+          "RELEASE_NAME": null,
+          "RELEASE_VM_ARGS": null,
+          "ERLEXEC_DIR": null,
+          "ERTS_VSN": null,
+          "RELEASE_SYS_CONFIG": null,
+          "ROOTDIR": null,
+          "ERL_CONSOLE_MODE": null,
+          "parsErlang": null,
+          "RELEASE_TMP": null,
+          "REL_VSN_DIR": null,
+          "RELEASE_VSN": null,
+          "RELEASE_BOOT_SCRIPT": null,
+          "RELEASE_REMOTE_VM_ARGS": null,
+          "BINDIR": null,
+          "REL_GOTO": null,
+          "endLoop": null,
+          "RELEASE_COOKIE": null
+        },
+        "stderr_to_stdout": true
+      },
+      "output": "Warning: Permanently added '178.156.200.94' (ED25519) to the list of known hosts.\r\n",
+      "recorded_at": "2026-08-11T01:36:30.222579Z"
+    },
+    {
+      "args": [
+        "-o",
+        "StrictHostKeyChecking=no",
+        "-o",
+        "UserKnownHostsFile=/dev/null",
+        "-o",
+        "BatchMode=yes",
+        "-o",
+        "IdentitiesOnly=yes",
+        "-i",
+        "*/id_ed25519",
+        "root@178.156.200.94",
+        "mkdir -p /etc/cms-registry && printf %s 'cms:$2b$04$X1CLXyq2OuM/J3P7FPIST.9W4Iv.s42enMA1wyYoRevsAWPeUf3IW' > /etc/cms-registry/htpasswd && chmod 600 /etc/cms-registry/htpasswd && docker rm -f cms-registry >/dev/null 2>&1; docker run -d --name cms-registry --restart always -v /etc/cms-registry/htpasswd:/auth/htpasswd:ro -e REGISTRY_AUTH=htpasswd -e REGISTRY_AUTH_HTPASSWD_REALM=cms -e REGISTRY_AUTH_HTPASSWD_PATH=/auth/htpasswd -p 10.0.0.2:5000:5000 -e REGISTRY_STORAGE='s3' -e REGISTRY_STORAGE_S3_REGION='fsn1' -e REGISTRY_STORAGE_S3_REGIONENDPOINT='https://fsn1.your-objectstorage.com' -e REGISTRY_STORAGE_S3_FORCEPATHSTYLE='true' -e REGISTRY_STORAGE_S3_BUCKET='spex-story985-criterion8182-registry-prod' -e REGISTRY_STORAGE_S3_ACCESSKEY='0J74VPCQHNQTI6XH75XU' -e REGISTRY_STORAGE_S3_SECRETKEY='1I99qXtzVhNoJH4wkRw9wfClbMwbvjSn7eQI4t2j' registry:3"
+      ],
+      "command": "ssh",
+      "exit_code": 0,
+      "opts": {
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-24866",
+        "env": {
+          "SCRIPT_PATH": null,
+          "RELEASE_ROOT": null,
+          "ERTS_BIN": null,
+          "RELEASE_DISTRIBUTION_FLAG": null,
+          "RELEASE_DISTRIBUTION": null,
+          "EMU": null,
+          "RELEASE_COMMAND": null,
+          "PROGNAME": null,
+          "ELIXIR_VERSION": null,
+          "RELEASE_MODE": null,
+          "beforeExtra": null,
+          "REL_EXEC": null,
+          "RELEASE_PROG": null,
+          "ERL_LIBS": null,
+          "RELEASE_NODE": null,
+          "REL_EXTRA": null,
+          "RELEASE_BOOT_SCRIPT_CLEAN": null,
+          "RELEASE_NAME": null,
+          "RELEASE_VM_ARGS": null,
+          "ERLEXEC_DIR": null,
+          "ERTS_VSN": null,
+          "RELEASE_SYS_CONFIG": null,
+          "ROOTDIR": null,
+          "ERL_CONSOLE_MODE": null,
+          "parsErlang": null,
+          "RELEASE_TMP": null,
+          "REL_VSN_DIR": null,
+          "RELEASE_VSN": null,
+          "RELEASE_BOOT_SCRIPT": null,
+          "RELEASE_REMOTE_VM_ARGS": null,
+          "BINDIR": null,
+          "REL_GOTO": null,
+          "endLoop": null,
+          "RELEASE_COOKIE": null
+        },
+        "stderr_to_stdout": true
+      },
+      "output": "Warning: Permanently added '178.156.200.94' (ED25519) to the list of known hosts.\r\nUnable to find image 'registry:3' locally\n3: Pulling from library/registry\ne6f31ffc071e: Pulling fs layer\n47465c9fe4b1: Pulling fs layer\n269b60c1a347: Pulling fs layer\nf90c3e905677: Pulling fs layer\n8f4e1177a675: Pulling fs layer\nf90c3e905677: Waiting\n8f4e1177a675: Waiting\n47465c9fe4b1: Verifying Checksum\n47465c9fe4b1: Download complete\ne6f31ffc071e: Verifying Checksum\ne6f31ffc071e: Download complete\n269b60c1a347: Verifying Checksum\n269b60c1a347: Download complete\nf90c3e905677: Verifying Checksum\nf90c3e905677: Download complete\n8f4e1177a675: Verifying Checksum\n8f4e1177a675: Download complete\ne6f31ffc071e: Pull complete\n47465c9fe4b1: Pull complete\n269b60c1a347: Pull complete\nf90c3e905677: Pull complete\n8f4e1177a675: Pull complete\nDigest: sha256:1be55279f18a2fe1a74edf2664cac61c1bea305b7b4642dab412e7affdcb3e33\nStatus: Downloaded newer image for registry:3\n0d784c042a6648087213cae531c4fe1b5a2ee5ed5a706ffc72a19ce05b9e6406\n",
+      "recorded_at": "2026-08-11T01:36:32.159367Z"
+    },
+    {
+      "args": [
+        "-o",
+        "StrictHostKeyChecking=no",
+        "-o",
+        "UserKnownHostsFile=/dev/null",
+        "-o",
+        "BatchMode=yes",
+        "-o",
+        "IdentitiesOnly=yes",
+        "-i",
+        "*/id_ed25519",
+        "root@178.156.200.94",
+        "curl -sf -u 'cms:5AXAgzclARPDfbALfUTwdAJHJrxL04DczvZ-6kIyuTo' http://10.0.0.2:5000/v2/ > /dev/null"
+      ],
+      "command": "ssh",
+      "exit_code": 0,
+      "opts": {
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-24866",
+        "env": {
+          "SCRIPT_PATH": null,
+          "RELEASE_ROOT": null,
+          "ERTS_BIN": null,
+          "RELEASE_DISTRIBUTION_FLAG": null,
+          "RELEASE_DISTRIBUTION": null,
+          "EMU": null,
+          "RELEASE_COMMAND": null,
+          "PROGNAME": null,
+          "ELIXIR_VERSION": null,
+          "RELEASE_MODE": null,
+          "beforeExtra": null,
+          "REL_EXEC": null,
+          "RELEASE_PROG": null,
+          "ERL_LIBS": null,
+          "RELEASE_NODE": null,
+          "REL_EXTRA": null,
+          "RELEASE_BOOT_SCRIPT_CLEAN": null,
+          "RELEASE_NAME": null,
+          "RELEASE_VM_ARGS": null,
+          "ERLEXEC_DIR": null,
+          "ERTS_VSN": null,
+          "RELEASE_SYS_CONFIG": null,
+          "ROOTDIR": null,
+          "ERL_CONSOLE_MODE": null,
+          "parsErlang": null,
+          "RELEASE_TMP": null,
+          "REL_VSN_DIR": null,
+          "RELEASE_VSN": null,
+          "RELEASE_BOOT_SCRIPT": null,
+          "RELEASE_REMOTE_VM_ARGS": null,
+          "BINDIR": null,
+          "REL_GOTO": null,
+          "endLoop": null,
+          "RELEASE_COOKIE": null
+        },
+        "stderr_to_stdout": true
+      },
+      "output": "Warning: Permanently added '178.156.200.94' (ED25519) to the list of known hosts.\r\n",
+      "recorded_at": "2026-08-11T01:36:32.830809Z"
+    },
+    {
+      "args": [
+        "-o",
+        "StrictHostKeyChecking=no",
+        "-o",
+        "UserKnownHostsFile=/dev/null",
+        "-o",
+        "BatchMode=yes",
+        "-o",
+        "IdentitiesOnly=yes",
+        "-i",
+        "*/id_ed25519",
+        "root@178.156.200.94",
+        "docker network create db_net >/dev/null 2>&1; docker rm -f cms-postgres >/dev/null 2>&1; docker run -d --name cms-postgres --restart always --network db_net -v cms-postgres-data:/var/lib/postgresql/data -e POSTGRES_USER='app' -e POSTGRES_PASSWORD='9OCfnJc6QT_VVuxExcNOMRC31NiYFS5IdZeoTyxdbO4' -e POSTGRES_DB='app_prod' postgres:17"
+      ],
+      "command": "ssh",
+      "exit_code": 0,
+      "opts": {
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-24866",
+        "env": {
+          "SCRIPT_PATH": null,
+          "RELEASE_ROOT": null,
+          "ERTS_BIN": null,
+          "RELEASE_DISTRIBUTION_FLAG": null,
+          "RELEASE_DISTRIBUTION": null,
+          "EMU": null,
+          "RELEASE_COMMAND": null,
+          "PROGNAME": null,
+          "ELIXIR_VERSION": null,
+          "RELEASE_MODE": null,
+          "beforeExtra": null,
+          "REL_EXEC": null,
+          "RELEASE_PROG": null,
+          "ERL_LIBS": null,
+          "RELEASE_NODE": null,
+          "REL_EXTRA": null,
+          "RELEASE_BOOT_SCRIPT_CLEAN": null,
+          "RELEASE_NAME": null,
+          "RELEASE_VM_ARGS": null,
+          "ERLEXEC_DIR": null,
+          "ERTS_VSN": null,
+          "RELEASE_SYS_CONFIG": null,
+          "ROOTDIR": null,
+          "ERL_CONSOLE_MODE": null,
+          "parsErlang": null,
+          "RELEASE_TMP": null,
+          "REL_VSN_DIR": null,
+          "RELEASE_VSN": null,
+          "RELEASE_BOOT_SCRIPT": null,
+          "RELEASE_REMOTE_VM_ARGS": null,
+          "BINDIR": null,
+          "REL_GOTO": null,
+          "endLoop": null,
+          "RELEASE_COOKIE": null
+        },
+        "stderr_to_stdout": true
+      },
+      "output": "Warning: Permanently added '178.156.200.94' (ED25519) to the list of known hosts.\r\nUnable to find image 'postgres:17' locally\n17: Pulling from library/postgres\n26c307b5e35a: Pulling fs layer\nc7ce579d92bc: Pulling fs layer\n57b3b7f0e8be: Pulling fs layer\n639f0ce3e131: Pulling fs layer\n315760abeb8e: Pulling fs layer\n1e27b4f5b34f: Pulling fs layer\n7feaef9a63ac: Pulling fs layer\n4fa43b3f35bd: Pulling fs layer\nccc368eb7cc7: Pulling fs layer\nf5991d0b8b5b: Pulling fs layer\n3b520f7c783b: Pulling fs layer\nb33915915b51: Pulling fs layer\n881078803fc8: Pulling fs layer\n99adb42d27ad: Pulling fs layer\n4fa43b3f35bd: Waiting\nccc368eb7cc7: Waiting\nf5991d0b8b5b: Waiting\n3b520f7c783b: Waiting\nb33915915b51: Waiting\n881078803fc8: Waiting\n99adb42d27ad: Waiting\n639f0ce3e131: Waiting\n315760abeb8e: Waiting\n1e27b4f5b34f: Waiting\n7feaef9a63ac: Waiting\nc7ce579d92bc: Verifying Checksum\nc7ce579d92bc: Download complete\n57b3b7f0e8be: Verifying Checksum\n57b3b7f0e8be: Download complete\n639f0ce3e131: Verifying Checksum\n639f0ce3e131: Download complete\n315760abeb8e: Verifying Checksum\n315760abeb8e: Download complete\n26c307b5e35a: Verifying Checksum\n26c307b5e35a: Download complete\n1e27b4f5b34f: Verifying Checksum\n1e27b4f5b34f: Download complete\n7feaef9a63ac: Verifying Checksum\n7feaef9a63ac: Download complete\n4fa43b3f35bd: Verifying Checksum\n4fa43b3f35bd: Download complete\nf5991d0b8b5b: Verifying Checksum\nf5991d0b8b5b: Download complete\n3b520f7c783b: Verifying Checksum\n3b520f7c783b: Download complete\nb33915915b51: Download complete\n881078803fc8: Verifying Checksum\n881078803fc8: Download complete\n99adb42d27ad: Verifying Checksum\n99adb42d27ad: Download complete\nccc368eb7cc7: Verifying Checksum\nccc368eb7cc7: Download complete\n26c307b5e35a: Pull complete\nc7ce579d92bc: Pull complete\n57b3b7f0e8be: Pull complete\n639f0ce3e131: Pull complete\n315760abeb8e: Pull complete\n1e27b4f5b34f: Pull complete\n7feaef9a63ac: Pull complete\n4fa43b3f35bd: Pull complete\nccc368eb7cc7: Pull complete\nf5991d0b8b5b: Pull complete\n3b520f7c783b: Pull complete\nb33915915b51: Pull complete\n881078803fc8: Pull complete\n99adb42d27ad: Pull complete\nDigest: sha256:7958605b474b3d264a969cb3a123d6aa00ad1e1fe9da8a69984dabb704d93317\nStatus: Downloaded newer image for postgres:17\n2556a356c0e32640af06ae1fb81e3a82dc2115af109f4040ff4155400d9eab9f\n",
+      "recorded_at": "2026-08-11T01:36:39.028617Z"
+    },
+    {
+      "args": [
+        "-o",
+        "StrictHostKeyChecking=no",
+        "-o",
+        "UserKnownHostsFile=/dev/null",
+        "-o",
+        "BatchMode=yes",
+        "-o",
+        "IdentitiesOnly=yes",
+        "-i",
+        "*/id_ed25519",
+        "root@178.156.200.94",
+        "docker exec cms-postgres pg_isready -h 127.0.0.1 -U 'app' -d 'app_prod' > /dev/null"
+      ],
+      "command": "ssh",
+      "exit_code": 2,
+      "opts": {
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-24866",
+        "env": {
+          "SCRIPT_PATH": null,
+          "RELEASE_ROOT": null,
+          "ERTS_BIN": null,
+          "RELEASE_DISTRIBUTION_FLAG": null,
+          "RELEASE_DISTRIBUTION": null,
+          "EMU": null,
+          "RELEASE_COMMAND": null,
+          "PROGNAME": null,
+          "ELIXIR_VERSION": null,
+          "RELEASE_MODE": null,
+          "beforeExtra": null,
+          "REL_EXEC": null,
+          "RELEASE_PROG": null,
+          "ERL_LIBS": null,
+          "RELEASE_NODE": null,
+          "REL_EXTRA": null,
+          "RELEASE_BOOT_SCRIPT_CLEAN": null,
+          "RELEASE_NAME": null,
+          "RELEASE_VM_ARGS": null,
+          "ERLEXEC_DIR": null,
+          "ERTS_VSN": null,
+          "RELEASE_SYS_CONFIG": null,
+          "ROOTDIR": null,
+          "ERL_CONSOLE_MODE": null,
+          "parsErlang": null,
+          "RELEASE_TMP": null,
+          "REL_VSN_DIR": null,
+          "RELEASE_VSN": null,
+          "RELEASE_BOOT_SCRIPT": null,
+          "RELEASE_REMOTE_VM_ARGS": null,
+          "BINDIR": null,
+          "REL_GOTO": null,
+          "endLoop": null,
+          "RELEASE_COOKIE": null
+        },
+        "stderr_to_stdout": true
+      },
+      "output": "Warning: Permanently added '178.156.200.94' (ED25519) to the list of known hosts.\r\n",
+      "recorded_at": "2026-08-11T01:36:39.727885Z"
+    },
+    {
+      "args": [
+        "-o",
+        "StrictHostKeyChecking=no",
+        "-o",
+        "UserKnownHostsFile=/dev/null",
+        "-o",
+        "BatchMode=yes",
+        "-o",
+        "IdentitiesOnly=yes",
+        "-i",
+        "*/id_ed25519",
+        "root@178.156.200.94",
+        "docker exec cms-postgres pg_isready -h 127.0.0.1 -U 'app' -d 'app_prod' > /dev/null"
+      ],
+      "command": "ssh",
+      "exit_code": 0,
+      "opts": {
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-24866",
+        "env": {
+          "SCRIPT_PATH": null,
+          "RELEASE_ROOT": null,
+          "ERTS_BIN": null,
+          "RELEASE_DISTRIBUTION_FLAG": null,
+          "RELEASE_DISTRIBUTION": null,
+          "EMU": null,
+          "RELEASE_COMMAND": null,
+          "PROGNAME": null,
+          "ELIXIR_VERSION": null,
+          "RELEASE_MODE": null,
+          "beforeExtra": null,
+          "REL_EXEC": null,
+          "RELEASE_PROG": null,
+          "ERL_LIBS": null,
+          "RELEASE_NODE": null,
+          "REL_EXTRA": null,
+          "RELEASE_BOOT_SCRIPT_CLEAN": null,
+          "RELEASE_NAME": null,
+          "RELEASE_VM_ARGS": null,
+          "ERLEXEC_DIR": null,
+          "ERTS_VSN": null,
+          "RELEASE_SYS_CONFIG": null,
+          "ROOTDIR": null,
+          "ERL_CONSOLE_MODE": null,
+          "parsErlang": null,
+          "RELEASE_TMP": null,
+          "REL_VSN_DIR": null,
+          "RELEASE_VSN": null,
+          "RELEASE_BOOT_SCRIPT": null,
+          "RELEASE_REMOTE_VM_ARGS": null,
+          "BINDIR": null,
+          "REL_GOTO": null,
+          "endLoop": null,
+          "RELEASE_COOKIE": null
+        },
+        "stderr_to_stdout": true
+      },
+      "output": "Warning: Permanently added '178.156.200.94' (ED25519) to the list of known hosts.\r\n",
+      "recorded_at": "2026-08-11T01:36:42.456149Z"
     },
     {
       "args": [],
@@ -432,463 +792,23 @@
       "opts": {
         "stderr_to_stdout": true
       },
-      "output": "Public key: age1lq9vzddcuspetghwdddfs28wxyzu5hrz9rj0wwqtnl2zq8w3pc6qy8e9yt\n# created: 2026-01-01T00:00:00-00:00\n# public key: age1lq9vzddcuspetghwdddfs28wxyzu5hrz9rj0wwqtnl2zq8w3pc6qy8e9yt\nAGE-SECRET-KEY-1H4P3933A0Y5GE7SFJYXTANPNPWVKZMJGWRZZVTD60QGKNH26AY6QN6MJM4\n",
-      "recorded_at": "2026-08-03T02:42:16.423487Z"
-    },
-    {
-      "args": [],
-      "command": "age-keygen",
-      "exit_code": 0,
-      "opts": {
-        "stderr_to_stdout": true
-      },
-      "output": "Public key: age12gswm4kz6pswkhtyzrqaaw5ac9a9sxn5n960d2mjxhkchgp5kezq2q29yr\n# created: 2026-01-01T00:00:00-00:00\n# public key: age12gswm4kz6pswkhtyzrqaaw5ac9a9sxn5n960d2mjxhkchgp5kezq2q29yr\nAGE-SECRET-KEY-1GLU5CYDL9MHXCFYCZZTNS7YA5RT56N0M4PT40A2DVNJ0DCN4TU7SGPFTRH\n",
-      "recorded_at": "2026-08-03T02:42:16.428022Z"
+      "output": "Public key: age13dppuulq6609pc82d20u4rrnavrw5lhqfygg5zu42msppra7jy3srsnprj\n# created: 2026-08-10T21:36:42-04:00\n# public key: age13dppuulq6609pc82d20u4rrnavrw5lhqfygg5zu42msppra7jy3srsnprj\nAGE-SECRET-KEY-1H4P3933A0Y5GE7SFJYXTANPNPWVKZMJGWRZZVTD60QGKNH26AY6QN6MJM4\n",
+      "recorded_at": "2026-08-11T01:36:42.468396Z"
     },
     {
       "args": [
-        "rev-parse",
-        "--is-inside-work-tree"
+        "encrypt",
+        "--in-place",
+        "envs/prod.enc.env"
       ],
-      "command": "git",
-      "exit_code": 128,
+      "command": "sops",
+      "exit_code": 100,
       "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-20359",
-        "env": {
-          "SCRIPT_PATH": null,
-          "RELEASE_ROOT": null,
-          "ERTS_BIN": null,
-          "RELEASE_DISTRIBUTION_FLAG": null,
-          "RELEASE_DISTRIBUTION": null,
-          "EMU": null,
-          "RELEASE_COMMAND": null,
-          "PROGNAME": null,
-          "ELIXIR_VERSION": null,
-          "RELEASE_MODE": null,
-          "beforeExtra": null,
-          "REL_EXEC": null,
-          "RELEASE_PROG": null,
-          "ERL_LIBS": null,
-          "RELEASE_NODE": null,
-          "REL_EXTRA": null,
-          "RELEASE_BOOT_SCRIPT_CLEAN": null,
-          "RELEASE_NAME": null,
-          "RELEASE_VM_ARGS": null,
-          "ERLEXEC_DIR": null,
-          "ERTS_VSN": null,
-          "RELEASE_SYS_CONFIG": null,
-          "ROOTDIR": null,
-          "ERL_CONSOLE_MODE": null,
-          "parsErlang": null,
-          "RELEASE_TMP": null,
-          "REL_VSN_DIR": null,
-          "RELEASE_VSN": null,
-          "RELEASE_BOOT_SCRIPT": null,
-          "RELEASE_REMOTE_VM_ARGS": null,
-          "BINDIR": null,
-          "REL_GOTO": null,
-          "endLoop": null,
-          "RELEASE_COOKIE": null
-        },
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-24866",
         "stderr_to_stdout": true
       },
-      "output": "fatal: not a git repository (or any of the parent directories): .git\n",
-      "recorded_at": "2026-08-03T02:42:39.021991Z"
-    },
-    {
-      "args": [
-        "init",
-        "-b",
-        "main"
-      ],
-      "command": "git",
-      "exit_code": 0,
-      "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-20359",
-        "env": {
-          "SCRIPT_PATH": null,
-          "RELEASE_ROOT": null,
-          "ERTS_BIN": null,
-          "RELEASE_DISTRIBUTION_FLAG": null,
-          "RELEASE_DISTRIBUTION": null,
-          "EMU": null,
-          "RELEASE_COMMAND": null,
-          "PROGNAME": null,
-          "ELIXIR_VERSION": null,
-          "RELEASE_MODE": null,
-          "beforeExtra": null,
-          "REL_EXEC": null,
-          "RELEASE_PROG": null,
-          "ERL_LIBS": null,
-          "RELEASE_NODE": null,
-          "REL_EXTRA": null,
-          "RELEASE_BOOT_SCRIPT_CLEAN": null,
-          "RELEASE_NAME": null,
-          "RELEASE_VM_ARGS": null,
-          "ERLEXEC_DIR": null,
-          "ERTS_VSN": null,
-          "RELEASE_SYS_CONFIG": null,
-          "ROOTDIR": null,
-          "ERL_CONSOLE_MODE": null,
-          "parsErlang": null,
-          "RELEASE_TMP": null,
-          "REL_VSN_DIR": null,
-          "RELEASE_VSN": null,
-          "RELEASE_BOOT_SCRIPT": null,
-          "RELEASE_REMOTE_VM_ARGS": null,
-          "BINDIR": null,
-          "REL_GOTO": null,
-          "endLoop": null,
-          "RELEASE_COOKIE": null
-        },
-        "stderr_to_stdout": true
-      },
-      "output": "Initialized empty Git repository in /private/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-20359/.git/\n",
-      "recorded_at": "2026-08-03T02:42:39.031651Z"
-    },
-    {
-      "args": [
-        "rev-parse",
-        "HEAD"
-      ],
-      "command": "git",
-      "exit_code": 128,
-      "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-20359",
-        "env": {
-          "SCRIPT_PATH": null,
-          "RELEASE_ROOT": null,
-          "ERTS_BIN": null,
-          "RELEASE_DISTRIBUTION_FLAG": null,
-          "RELEASE_DISTRIBUTION": null,
-          "EMU": null,
-          "RELEASE_COMMAND": null,
-          "PROGNAME": null,
-          "ELIXIR_VERSION": null,
-          "RELEASE_MODE": null,
-          "beforeExtra": null,
-          "REL_EXEC": null,
-          "RELEASE_PROG": null,
-          "ERL_LIBS": null,
-          "RELEASE_NODE": null,
-          "REL_EXTRA": null,
-          "RELEASE_BOOT_SCRIPT_CLEAN": null,
-          "RELEASE_NAME": null,
-          "RELEASE_VM_ARGS": null,
-          "ERLEXEC_DIR": null,
-          "ERTS_VSN": null,
-          "RELEASE_SYS_CONFIG": null,
-          "ROOTDIR": null,
-          "ERL_CONSOLE_MODE": null,
-          "parsErlang": null,
-          "RELEASE_TMP": null,
-          "REL_VSN_DIR": null,
-          "RELEASE_VSN": null,
-          "RELEASE_BOOT_SCRIPT": null,
-          "RELEASE_REMOTE_VM_ARGS": null,
-          "BINDIR": null,
-          "REL_GOTO": null,
-          "endLoop": null,
-          "RELEASE_COOKIE": null
-        },
-        "stderr_to_stdout": true
-      },
-      "output": "fatal: ambiguous argument 'HEAD': unknown revision or path not in the working tree.\nUse '--' to separate paths from revisions, like this:\n'git <command> [<revision>...] -- [<file>...]'\nHEAD\n",
-      "recorded_at": "2026-08-03T02:42:39.036515Z"
-    },
-    {
-      "args": [
-        "add",
-        "-A"
-      ],
-      "command": "git",
-      "exit_code": 0,
-      "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-20359",
-        "env": {
-          "SCRIPT_PATH": null,
-          "RELEASE_ROOT": null,
-          "ERTS_BIN": null,
-          "RELEASE_DISTRIBUTION_FLAG": null,
-          "RELEASE_DISTRIBUTION": null,
-          "EMU": null,
-          "RELEASE_COMMAND": null,
-          "PROGNAME": null,
-          "ELIXIR_VERSION": null,
-          "RELEASE_MODE": null,
-          "beforeExtra": null,
-          "REL_EXEC": null,
-          "RELEASE_PROG": null,
-          "ERL_LIBS": null,
-          "RELEASE_NODE": null,
-          "REL_EXTRA": null,
-          "RELEASE_BOOT_SCRIPT_CLEAN": null,
-          "RELEASE_NAME": null,
-          "RELEASE_VM_ARGS": null,
-          "ERLEXEC_DIR": null,
-          "ERTS_VSN": null,
-          "RELEASE_SYS_CONFIG": null,
-          "ROOTDIR": null,
-          "ERL_CONSOLE_MODE": null,
-          "parsErlang": null,
-          "RELEASE_TMP": null,
-          "REL_VSN_DIR": null,
-          "RELEASE_VSN": null,
-          "RELEASE_BOOT_SCRIPT": null,
-          "RELEASE_REMOTE_VM_ARGS": null,
-          "BINDIR": null,
-          "REL_GOTO": null,
-          "endLoop": null,
-          "RELEASE_COOKIE": null
-        },
-        "stderr_to_stdout": true
-      },
-      "output": "",
-      "recorded_at": "2026-08-03T02:42:39.042634Z"
-    },
-    {
-      "args": [
-        "commit",
-        "-m",
-        "Initial commit"
-      ],
-      "command": "git",
-      "exit_code": 0,
-      "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-20359",
-        "env": {
-          "SCRIPT_PATH": null,
-          "RELEASE_ROOT": null,
-          "ERTS_BIN": null,
-          "RELEASE_DISTRIBUTION_FLAG": null,
-          "RELEASE_DISTRIBUTION": null,
-          "EMU": null,
-          "RELEASE_COMMAND": null,
-          "PROGNAME": null,
-          "ELIXIR_VERSION": null,
-          "RELEASE_MODE": null,
-          "beforeExtra": null,
-          "REL_EXEC": null,
-          "RELEASE_PROG": null,
-          "ERL_LIBS": null,
-          "RELEASE_NODE": null,
-          "REL_EXTRA": null,
-          "RELEASE_BOOT_SCRIPT_CLEAN": null,
-          "RELEASE_NAME": null,
-          "RELEASE_VM_ARGS": null,
-          "ERLEXEC_DIR": null,
-          "ERTS_VSN": null,
-          "RELEASE_SYS_CONFIG": null,
-          "ROOTDIR": null,
-          "ERL_CONSOLE_MODE": null,
-          "parsErlang": null,
-          "RELEASE_TMP": null,
-          "REL_VSN_DIR": null,
-          "RELEASE_VSN": null,
-          "RELEASE_BOOT_SCRIPT": null,
-          "RELEASE_REMOTE_VM_ARGS": null,
-          "BINDIR": null,
-          "REL_GOTO": null,
-          "endLoop": null,
-          "RELEASE_COOKIE": null
-        },
-        "stderr_to_stdout": true
-      },
-      "output": "[main (root-commit) aeb87aa] Initial commit\n 1 file changed, 1 insertion(+)\n create mode 100644 mix.exs\n",
-      "recorded_at": "2026-08-03T02:42:39.056168Z"
-    },
-    {
-      "args": [
-        "remote",
-        "add",
-        "origin",
-        "https://github.com/codemy-my-spec-test/spex-story985-criterion8182.git"
-      ],
-      "command": "git",
-      "exit_code": 0,
-      "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-20359",
-        "env": {
-          "SCRIPT_PATH": null,
-          "RELEASE_ROOT": null,
-          "ERTS_BIN": null,
-          "RELEASE_DISTRIBUTION_FLAG": null,
-          "RELEASE_DISTRIBUTION": null,
-          "EMU": null,
-          "RELEASE_COMMAND": null,
-          "PROGNAME": null,
-          "ELIXIR_VERSION": null,
-          "RELEASE_MODE": null,
-          "beforeExtra": null,
-          "REL_EXEC": null,
-          "RELEASE_PROG": null,
-          "ERL_LIBS": null,
-          "RELEASE_NODE": null,
-          "REL_EXTRA": null,
-          "RELEASE_BOOT_SCRIPT_CLEAN": null,
-          "RELEASE_NAME": null,
-          "RELEASE_VM_ARGS": null,
-          "ERLEXEC_DIR": null,
-          "ERTS_VSN": null,
-          "RELEASE_SYS_CONFIG": null,
-          "ROOTDIR": null,
-          "ERL_CONSOLE_MODE": null,
-          "parsErlang": null,
-          "RELEASE_TMP": null,
-          "REL_VSN_DIR": null,
-          "RELEASE_VSN": null,
-          "RELEASE_BOOT_SCRIPT": null,
-          "RELEASE_REMOTE_VM_ARGS": null,
-          "BINDIR": null,
-          "REL_GOTO": null,
-          "endLoop": null,
-          "RELEASE_COOKIE": null
-        },
-        "stderr_to_stdout": true
-      },
-      "output": "",
-      "recorded_at": "2026-08-03T02:42:39.061441Z"
-    },
-    {
-      "args": [
-        "push",
-        "-u",
-        "origin",
-        "main"
-      ],
-      "command": "git",
-      "exit_code": 0,
-      "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-20359",
-        "env": {
-          "SCRIPT_PATH": null,
-          "RELEASE_ROOT": null,
-          "ERTS_BIN": null,
-          "RELEASE_DISTRIBUTION_FLAG": null,
-          "RELEASE_DISTRIBUTION": null,
-          "EMU": null,
-          "RELEASE_COMMAND": null,
-          "PROGNAME": null,
-          "ELIXIR_VERSION": null,
-          "RELEASE_MODE": null,
-          "beforeExtra": null,
-          "REL_EXEC": null,
-          "RELEASE_PROG": null,
-          "ERL_LIBS": null,
-          "RELEASE_NODE": null,
-          "REL_EXTRA": null,
-          "RELEASE_BOOT_SCRIPT_CLEAN": null,
-          "RELEASE_NAME": null,
-          "RELEASE_VM_ARGS": null,
-          "ERLEXEC_DIR": null,
-          "ERTS_VSN": null,
-          "RELEASE_SYS_CONFIG": null,
-          "ROOTDIR": null,
-          "ERL_CONSOLE_MODE": null,
-          "parsErlang": null,
-          "RELEASE_TMP": null,
-          "REL_VSN_DIR": null,
-          "RELEASE_VSN": null,
-          "RELEASE_BOOT_SCRIPT": null,
-          "RELEASE_REMOTE_VM_ARGS": null,
-          "BINDIR": null,
-          "REL_GOTO": null,
-          "endLoop": null,
-          "RELEASE_COOKIE": null
-        },
-        "stderr_to_stdout": true
-      },
-      "output": "To https://github.com/codemy-my-spec-test/spex-story985-criterion8182.git\n * [new branch]      main -> main\nbranch 'main' set up to track 'origin/main'.\n",
-      "recorded_at": "2026-08-03T02:42:40.025486Z"
-    },
-    {
-      "args": [
-        "rev-parse",
-        "HEAD"
-      ],
-      "command": "git",
-      "exit_code": 0,
-      "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-20359",
-        "env": {
-          "SCRIPT_PATH": null,
-          "RELEASE_ROOT": null,
-          "ERTS_BIN": null,
-          "RELEASE_DISTRIBUTION_FLAG": null,
-          "RELEASE_DISTRIBUTION": null,
-          "EMU": null,
-          "RELEASE_COMMAND": null,
-          "PROGNAME": null,
-          "ELIXIR_VERSION": null,
-          "RELEASE_MODE": null,
-          "beforeExtra": null,
-          "REL_EXEC": null,
-          "RELEASE_PROG": null,
-          "ERL_LIBS": null,
-          "RELEASE_NODE": null,
-          "REL_EXTRA": null,
-          "RELEASE_BOOT_SCRIPT_CLEAN": null,
-          "RELEASE_NAME": null,
-          "RELEASE_VM_ARGS": null,
-          "ERLEXEC_DIR": null,
-          "ERTS_VSN": null,
-          "RELEASE_SYS_CONFIG": null,
-          "ROOTDIR": null,
-          "ERL_CONSOLE_MODE": null,
-          "parsErlang": null,
-          "RELEASE_TMP": null,
-          "REL_VSN_DIR": null,
-          "RELEASE_VSN": null,
-          "RELEASE_BOOT_SCRIPT": null,
-          "RELEASE_REMOTE_VM_ARGS": null,
-          "BINDIR": null,
-          "REL_GOTO": null,
-          "endLoop": null,
-          "RELEASE_COOKIE": null
-        },
-        "stderr_to_stdout": true
-      },
-      "output": "aeb87aa8e3087f694a42e594997cb2edf87cfb04\n",
-      "recorded_at": "2026-08-03T02:42:40.031903Z"
-    },
-    {
-      "args": [
-        "-t",
-        "ed25519",
-        "-N",
-        "",
-        "-C",
-        "spex-story985-criterion8182",
-        "-f",
-        "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/cms-ssh-16706/id_ed25519"
-      ],
-      "command": "ssh-keygen",
-      "exit_code": 0,
-      "opts": {
-        "stderr_to_stdout": true
-      },
-      "output": "Generating public/private ed25519 key pair.\nYour identification has been saved in /var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/cms-ssh-16706/id_ed25519\nYour public key has been saved in /var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/cms-ssh-16706/id_ed25519.pub\nThe key fingerprint is:\nSHA256:u+jCVWIwwRj6FiQh3KYayoY3UP5QsGHROQraLMUQbcM spex-story985-criterion8182\nThe key's randomart image is:\n+--[ED25519 256]--+\n|BBOB.o           |\n|o*E=O            |\n|oO=+ +           |\n|=o*.  o .        |\n|=+oo . oS        |\n|++o . .  .       |\n|.. o .  .        |\n|    o  . .       |\n|     oo .        |\n+----[SHA256]-----+\n",
-      "recorded_at": "2026-08-03T02:42:40.641287Z"
-    },
-    {
-      "args": [],
-      "command": "age-keygen",
-      "exit_code": 0,
-      "opts": {
-        "stderr_to_stdout": true
-      },
-      "output": "Public key: age1dejwx5cnp9q689dhq93cdjwawvwqy9v8axs8x6gt8z62xsztz3eq0u7l6s\n# created: 2026-01-01T00:00:00-00:00\n# public key: age1dejwx5cnp9q689dhq93cdjwawvwqy9v8axs8x6gt8z62xsztz3eq0u7l6s\nAGE-SECRET-KEY-1EJWM9AEXKZKZKHH5R5L0VSV5VUHAPFQSJUTZ4RHJ0R2X92UUTYLS2T3C36\n",
-      "recorded_at": "2026-08-03T02:42:42.187748Z"
-    },
-    {
-      "args": [],
-      "command": "age-keygen",
-      "exit_code": 0,
-      "opts": {
-        "stderr_to_stdout": true
-      },
-      "output": "Public key: age12gswm4kz6pswkhtyzrqaaw5ac9a9sxn5n960d2mjxhkchgp5kezq2q29yr\n# created: 2026-01-01T00:00:00-00:00\n# public key: age12gswm4kz6pswkhtyzrqaaw5ac9a9sxn5n960d2mjxhkchgp5kezq2q29yr\nAGE-SECRET-KEY-1GLU5CYDL9MHXCFYCZZTNS7YA5RT56N0M4PT40A2DVNJ0DCN4TU7SGPFTRH\n",
-      "recorded_at": "2026-08-03T02:42:42.191120Z"
+      "output": "Error: cannot operate on non-existent file \"/private/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-24866/envs/prod.enc.env\"\n",
+      "recorded_at": "2026-08-11T01:36:42.587550Z"
     }
   ],
   "ports": []

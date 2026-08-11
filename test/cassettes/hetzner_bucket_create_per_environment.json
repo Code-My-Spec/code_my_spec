@@ -1,7 +1,7 @@
 {
   "interactions": [
     {
-      "recorded_at": "2026-08-07T00:38:29.198812Z",
+      "recorded_at": "2026-08-11T01:16:04.790095Z",
       "request": {
         "body": "",
         "body_type": "text",
@@ -19,7 +19,7 @@
             "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
           ],
           "x-amz-date": [
-            "20260807T003829Z"
+            "20260811T011604Z"
           ]
         },
         "method": "GET",
@@ -27,14 +27,14 @@
         "uri": "https://fsn1.your-objectstorage.com/"
       },
       "response": {
-        "body": "<?xml version=\"1.0\" encoding=\"UTF-8\"?><ListAllMyBucketsResult xmlns=\"http://s3.amazonaws.com/doc/2006-03-01/\"><Owner><ID>p13614200</ID><DisplayName>p13614200</DisplayName></Owner><Buckets><Bucket><Name>qa-fixture-project-uat</Name><CreationDate>2026-08-04T00:48:14.758Z</CreationDate></Bucket></Buckets></ListAllMyBucketsResult>",
+        "body": "<?xml version=\"1.0\" encoding=\"UTF-8\"?><ListAllMyBucketsResult xmlns=\"http://s3.amazonaws.com/doc/2006-03-01/\"><Owner><ID>p13614200</ID><DisplayName>p13614200</DisplayName></Owner><Buckets><Bucket><Name>cms-spex-content</Name><CreationDate>2026-08-11T00:16:32.571Z</CreationDate></Bucket><Bucket><Name>codemyspec-registry</Name><CreationDate>2026-08-09T22:07:18.996Z</CreationDate></Bucket><Bucket><Name>qa-fixture-project-uat</Name><CreationDate>2026-08-04T00:48:14.758Z</CreationDate></Bucket></Buckets></ListAllMyBucketsResult>",
         "body_type": "text",
         "headers": {
           "content-type": [
             "application/xml"
           ],
           "date": [
-            "Fri, 07 Aug 2026 00:38:29 GMT"
+            "Tue, 11 Aug 2026 01:16:04 GMT"
           ],
           "strict-transport-security": [
             "max-age=63072000"
@@ -43,7 +43,7 @@
             "chunked"
           ],
           "x-amz-request-id": [
-            "tx00000c41680af325e1935-006a752905-7ff9c124-fsn1-prod1-ceph3"
+            "tx000003d1dc72867860d31-006a7a77d4-81af1d64-fsn1-prod1-ceph3"
           ],
           "x-debug-bucket": [
             ""
@@ -53,7 +53,7 @@
       }
     },
     {
-      "recorded_at": "2026-08-07T00:38:29.808266Z",
+      "recorded_at": "2026-08-11T01:16:05.540116Z",
       "request": {
         "body": "<CreateBucketConfiguration xmlns=\"http://s3.amazonaws.com/doc/2006-03-01/\">\n  <LocationConstraint>fsn1</LocationConstraint>\n</CreateBucketConfiguration>\n",
         "body_type": "text",
@@ -74,7 +74,7 @@
             "d0247a684612d2f8a0dfd054cfbb39cf3098c94a37844aed8fbe62d39e583230"
           ],
           "x-amz-date": [
-            "20260807T003829Z"
+            "20260811T011604Z"
           ]
         },
         "method": "PUT",
@@ -89,7 +89,7 @@
             "0"
           ],
           "date": [
-            "Fri, 07 Aug 2026 00:38:29 GMT"
+            "Tue, 11 Aug 2026 01:16:05 GMT"
           ],
           "location": [
             "/spex-story968-criterion8012-prod"
@@ -108,7 +108,7 @@
       }
     },
     {
-      "recorded_at": "2026-08-07T00:38:29.928077Z",
+      "recorded_at": "2026-08-11T01:16:05.668086Z",
       "request": {
         "body": "",
         "body_type": "text",
@@ -126,7 +126,7 @@
             "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
           ],
           "x-amz-date": [
-            "20260807T003829Z"
+            "20260811T011605Z"
           ]
         },
         "method": "HEAD",
@@ -147,13 +147,13 @@
             "application/xml"
           ],
           "date": [
-            "Fri, 07 Aug 2026 00:38:29 GMT"
+            "Tue, 11 Aug 2026 01:16:05 GMT"
           ],
           "strict-transport-security": [
             "max-age=63072000"
           ],
           "x-amz-request-id": [
-            "tx000007b06090b26614642-006a752905-3035abfc-fsn1-prod1-ceph5"
+            "tx000006309105c43ff7c6b-006a7a77d5-310b25a9-fsn1-prod1-ceph5"
           ],
           "x-debug-bucket": [
             "spex-story968-criterion8012-prod"
@@ -163,7 +163,7 @@
       }
     },
     {
-      "recorded_at": "2026-08-07T00:38:30.552800Z",
+      "recorded_at": "2026-08-11T01:16:06.305955Z",
       "request": {
         "body": "",
         "body_type": "text",
@@ -181,7 +181,7 @@
             "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
           ],
           "x-amz-date": [
-            "20260807T003830Z"
+            "20260811T011606Z"
           ]
         },
         "method": "HEAD",
@@ -196,13 +196,13 @@
             "0"
           ],
           "date": [
-            "Fri, 07 Aug 2026 00:38:30 GMT"
+            "Tue, 11 Aug 2026 01:16:06 GMT"
           ],
           "strict-transport-security": [
             "max-age=63072000"
           ],
           "x-amz-request-id": [
-            "tx000005dccc9ab686674e2-006a752906-310b25a9-fsn1-prod1-ceph5"
+            "tx000007006b865d24f3aa3-006a7a77d6-32945ca9-fsn1-prod1-ceph5"
           ],
           "x-debug-bucket": [
             "spex-story968-criterion8012-prod"
@@ -233,7 +233,7 @@
       }
     },
     {
-      "recorded_at": "2026-08-07T00:38:31.162629Z",
+      "recorded_at": "2026-08-11T01:16:07.199631Z",
       "request": {
         "body": "<CreateBucketConfiguration xmlns=\"http://s3.amazonaws.com/doc/2006-03-01/\">\n  <LocationConstraint>fsn1</LocationConstraint>\n</CreateBucketConfiguration>\n",
         "body_type": "text",
@@ -254,7 +254,7 @@
             "d0247a684612d2f8a0dfd054cfbb39cf3098c94a37844aed8fbe62d39e583230"
           ],
           "x-amz-date": [
-            "20260807T003830Z"
+            "20260811T011606Z"
           ]
         },
         "method": "PUT",
@@ -269,7 +269,7 @@
             "0"
           ],
           "date": [
-            "Fri, 07 Aug 2026 00:38:31 GMT"
+            "Tue, 11 Aug 2026 01:16:07 GMT"
           ],
           "location": [
             "/spex-story968-criterion8012-uat"
@@ -288,7 +288,7 @@
       }
     },
     {
-      "recorded_at": "2026-08-07T00:38:31.282848Z",
+      "recorded_at": "2026-08-11T01:16:07.360033Z",
       "request": {
         "body": "",
         "body_type": "text",
@@ -306,7 +306,7 @@
             "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
           ],
           "x-amz-date": [
-            "20260807T003831Z"
+            "20260811T011607Z"
           ]
         },
         "method": "HEAD",
@@ -327,13 +327,13 @@
             "application/xml"
           ],
           "date": [
-            "Fri, 07 Aug 2026 00:38:31 GMT"
+            "Tue, 11 Aug 2026 01:16:07 GMT"
           ],
           "strict-transport-security": [
             "max-age=63072000"
           ],
           "x-amz-request-id": [
-            "tx0000094e084f76cf37a4b-006a752907-2f240b76-fsn1-prod1-ceph5"
+            "tx00000b1c376b1e84028fb-006a7a77d7-334e60e2-fsn1-prod1-ceph5"
           ],
           "x-debug-bucket": [
             "spex-story968-criterion8012-uat"
@@ -343,7 +343,7 @@
       }
     },
     {
-      "recorded_at": "2026-08-07T00:38:31.908181Z",
+      "recorded_at": "2026-08-11T01:16:08.024160Z",
       "request": {
         "body": "",
         "body_type": "text",
@@ -361,7 +361,7 @@
             "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
           ],
           "x-amz-date": [
-            "20260807T003831Z"
+            "20260811T011607Z"
           ]
         },
         "method": "HEAD",
@@ -376,13 +376,13 @@
             "0"
           ],
           "date": [
-            "Fri, 07 Aug 2026 00:38:31 GMT"
+            "Tue, 11 Aug 2026 01:16:07 GMT"
           ],
           "strict-transport-security": [
             "max-age=63072000"
           ],
           "x-amz-request-id": [
-            "tx00000abe0b871ad5a22cc-006a752907-310b25a9-fsn1-prod1-ceph5"
+            "tx000007ef33311a570c3aa-006a7a77d7-368297e5-fsn1-prod1-ceph5"
           ],
           "x-debug-bucket": [
             "spex-story968-criterion8012-uat"

@@ -1,2313 +1,7 @@
 {
   "interactions": [
     {
-      "recorded_at": "2026-08-02T05:38:50.106004Z",
-      "request": {
-        "body": "",
-        "body_type": "text",
-        "headers": {
-          "accept-encoding": [
-            "gzip"
-          ],
-          "content-type": [
-            "application/json"
-          ],
-          "user-agent": [
-            "req/0.5.17"
-          ]
-        },
-        "method": "GET",
-        "query_string": "",
-        "uri": "https://api.cloudflare.com/client/v4/zones"
-      },
-      "response": {
-        "body_json": {
-          "errors": [],
-          "messages": [],
-          "result": [
-            {
-              "account": {
-                "id": "6477547f586ec90db2c2a0081dcd98bd",
-                "name": "Johns10@gmail.com's Account"
-              },
-              "activated_on": "2026-06-25T15:16:07.473058Z",
-              "created_on": "2026-06-25T15:14:34.004099Z",
-              "development_mode": 0,
-              "id": "0287fe8206425a2aac660a57a62f65bc",
-              "meta": {
-                "custom_certificate_quota": 0,
-                "page_rule_quota": 3,
-                "phishing_detected": false,
-                "step": 2
-              },
-              "modified_on": "2026-06-25T15:16:07.473058Z",
-              "name": "astralbi.com",
-              "name_servers": [
-                "demi.ns.cloudflare.com",
-                "yichun.ns.cloudflare.com"
-              ],
-              "original_dnshost": null,
-              "original_name_servers": [
-                "ns1.dns-parking.com",
-                "ns2.dns-parking.com"
-              ],
-              "original_registrar": "hostinger operations, uab (id: 1636)",
-              "owner": {
-                "email": null,
-                "id": null,
-                "type": "user"
-              },
-              "paused": false,
-              "permissions": [
-                "#dns_records:edit",
-                "#dns_records:read",
-                "#zone:edit",
-                "#zone:read",
-                "#zone_settings:edit",
-                "#zone_settings:read",
-                "#domain:read",
-                "#organization:read",
-                "#organization:edit"
-              ],
-              "plan": {
-                "can_subscribe": false,
-                "currency": "USD",
-                "externally_managed": false,
-                "frequency": "",
-                "id": "0feeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
-                "is_subscribed": false,
-                "legacy_discount": false,
-                "legacy_id": "free",
-                "name": "Free Website",
-                "price": 0
-              },
-              "status": "active",
-              "tenant": {
-                "id": null,
-                "name": null
-              },
-              "tenant_unit": {
-                "id": null
-              },
-              "type": "full",
-              "vanity_name_servers": [],
-              "vanity_name_servers_ips": null
-            },
-            {
-              "account": {
-                "id": "6477547f586ec90db2c2a0081dcd98bd",
-                "name": "Johns10@gmail.com's Account"
-              },
-              "activated_on": "2026-07-13T12:36:46.554959Z",
-              "created_on": "2026-07-13T12:36:46.211045Z",
-              "development_mode": 0,
-              "id": "799ed6f6bd983eb0f0cd0d810c602ae9",
-              "meta": {
-                "custom_certificate_quota": 0,
-                "page_rule_quota": 3,
-                "phishing_detected": false,
-                "step": 4
-              },
-              "modified_on": "2026-07-13T12:36:46.656852Z",
-              "name": "broken-oaths.com",
-              "name_servers": [
-                "demi.ns.cloudflare.com",
-                "yichun.ns.cloudflare.com"
-              ],
-              "original_dnshost": null,
-              "original_name_servers": null,
-              "original_registrar": null,
-              "owner": {
-                "email": null,
-                "id": null,
-                "type": "user"
-              },
-              "paused": false,
-              "permissions": [
-                "#dns_records:edit",
-                "#dns_records:read",
-                "#zone:edit",
-                "#zone:read",
-                "#zone_settings:edit",
-                "#zone_settings:read",
-                "#domain:read",
-                "#organization:read",
-                "#organization:edit"
-              ],
-              "plan": {
-                "can_subscribe": false,
-                "currency": "USD",
-                "externally_managed": false,
-                "frequency": "",
-                "id": "0feeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
-                "is_subscribed": false,
-                "legacy_discount": false,
-                "legacy_id": "free",
-                "name": "Free Website",
-                "price": 0
-              },
-              "status": "active",
-              "tenant": {
-                "id": null,
-                "name": null
-              },
-              "tenant_unit": {
-                "id": null
-              },
-              "type": "full",
-              "vanity_name_servers": [],
-              "vanity_name_servers_ips": null
-            },
-            {
-              "account": {
-                "id": "6477547f586ec90db2c2a0081dcd98bd",
-                "name": "Johns10@gmail.com's Account"
-              },
-              "activated_on": "2026-02-28T17:45:36.370072Z",
-              "created_on": "2026-02-28T17:38:06.963541Z",
-              "development_mode": 0,
-              "id": "ba45c3c2010cb275de73f91f4f05edab",
-              "meta": {
-                "custom_certificate_quota": 0,
-                "page_rule_quota": 3,
-                "phishing_detected": false,
-                "step": 2
-              },
-              "modified_on": "2026-02-28T17:45:36.370072Z",
-              "name": "codemyspec.com",
-              "name_servers": [
-                "demi.ns.cloudflare.com",
-                "yichun.ns.cloudflare.com"
-              ],
-              "original_dnshost": null,
-              "original_name_servers": [
-                "dns1.registrar-servers.com",
-                "dns2.registrar-servers.com"
-              ],
-              "original_registrar": "namecheap, inc. (id: 1068)",
-              "owner": {
-                "email": null,
-                "id": null,
-                "type": "user"
-              },
-              "paused": false,
-              "permissions": [
-                "#dns_records:edit",
-                "#dns_records:read",
-                "#zone:edit",
-                "#zone:read",
-                "#zone_settings:edit",
-                "#zone_settings:read",
-                "#domain:read",
-                "#organization:read",
-                "#organization:edit"
-              ],
-              "plan": {
-                "can_subscribe": false,
-                "currency": "USD",
-                "externally_managed": false,
-                "frequency": "",
-                "id": "0feeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
-                "is_subscribed": false,
-                "legacy_discount": false,
-                "legacy_id": "free",
-                "name": "Free Website",
-                "price": 0
-              },
-              "status": "active",
-              "tenant": {
-                "id": null,
-                "name": null
-              },
-              "tenant_unit": {
-                "id": null
-              },
-              "type": "full",
-              "vanity_name_servers": [],
-              "vanity_name_servers_ips": null
-            },
-            {
-              "account": {
-                "id": "6477547f586ec90db2c2a0081dcd98bd",
-                "name": "Johns10@gmail.com's Account"
-              },
-              "activated_on": "2026-05-01T13:33:34.481973Z",
-              "created_on": "2026-04-21T14:43:08.969666Z",
-              "development_mode": 0,
-              "id": "2c28888129f4acb4a066986fbf055cc0",
-              "meta": {
-                "custom_certificate_quota": 0,
-                "page_rule_quota": 3,
-                "phishing_detected": false,
-                "step": 2
-              },
-              "modified_on": "2026-05-01T13:33:34.481973Z",
-              "name": "desertfirstcleaning.com",
-              "name_servers": [
-                "demi.ns.cloudflare.com",
-                "yichun.ns.cloudflare.com"
-              ],
-              "original_dnshost": null,
-              "original_name_servers": [
-                "ns1.dns-parking.com",
-                "ns2.dns-parking.com"
-              ],
-              "original_registrar": "hostinger operations, uab (id: 1636)",
-              "owner": {
-                "email": null,
-                "id": null,
-                "type": "user"
-              },
-              "paused": false,
-              "permissions": [
-                "#dns_records:edit",
-                "#dns_records:read",
-                "#zone:edit",
-                "#zone:read",
-                "#zone_settings:edit",
-                "#zone_settings:read",
-                "#domain:read",
-                "#organization:read",
-                "#organization:edit"
-              ],
-              "plan": {
-                "can_subscribe": false,
-                "currency": "USD",
-                "externally_managed": false,
-                "frequency": "",
-                "id": "0feeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
-                "is_subscribed": false,
-                "legacy_discount": false,
-                "legacy_id": "free",
-                "name": "Free Website",
-                "price": 0
-              },
-              "status": "active",
-              "tenant": {
-                "id": null,
-                "name": null
-              },
-              "tenant_unit": {
-                "id": null
-              },
-              "type": "full",
-              "vanity_name_servers": [],
-              "vanity_name_servers_ips": null
-            },
-            {
-              "account": {
-                "id": "6477547f586ec90db2c2a0081dcd98bd",
-                "name": "Johns10@gmail.com's Account"
-              },
-              "activated_on": "2026-07-11T18:26:06.329522Z",
-              "created_on": "2026-07-11T18:26:05.934640Z",
-              "development_mode": 0,
-              "id": "8c8b2afc2b8b6bf024e454d3510bc4c1",
-              "meta": {
-                "custom_certificate_quota": 0,
-                "page_rule_quota": 3,
-                "phishing_detected": false,
-                "step": 4
-              },
-              "modified_on": "2026-07-11T18:26:06.436633Z",
-              "name": "earwitness.app",
-              "name_servers": [
-                "demi.ns.cloudflare.com",
-                "yichun.ns.cloudflare.com"
-              ],
-              "original_dnshost": null,
-              "original_name_servers": null,
-              "original_registrar": null,
-              "owner": {
-                "email": null,
-                "id": null,
-                "type": "user"
-              },
-              "paused": false,
-              "permissions": [
-                "#dns_records:edit",
-                "#dns_records:read",
-                "#zone:edit",
-                "#zone:read",
-                "#zone_settings:edit",
-                "#zone_settings:read",
-                "#domain:read",
-                "#organization:read",
-                "#organization:edit"
-              ],
-              "plan": {
-                "can_subscribe": false,
-                "currency": "USD",
-                "externally_managed": false,
-                "frequency": "",
-                "id": "0feeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
-                "is_subscribed": false,
-                "legacy_discount": false,
-                "legacy_id": "free",
-                "name": "Free Website",
-                "price": 0
-              },
-              "status": "active",
-              "tenant": {
-                "id": null,
-                "name": null
-              },
-              "tenant_unit": {
-                "id": null
-              },
-              "type": "full",
-              "vanity_name_servers": [],
-              "vanity_name_servers_ips": null
-            },
-            {
-              "account": {
-                "id": "6477547f586ec90db2c2a0081dcd98bd",
-                "name": "Johns10@gmail.com's Account"
-              },
-              "activated_on": "2026-02-27T01:51:59.160872Z",
-              "created_on": "2026-02-27T01:49:03.058411Z",
-              "development_mode": -12818201,
-              "id": "51d25b6e048c9f5797cc0ea3ed6fc10e",
-              "meta": {
-                "custom_certificate_quota": 0,
-                "page_rule_quota": 3,
-                "phishing_detected": false,
-                "step": 2
-              },
-              "modified_on": "2026-02-27T01:51:59.160872Z",
-              "name": "fuellytics.app",
-              "name_servers": [
-                "demi.ns.cloudflare.com",
-                "yichun.ns.cloudflare.com"
-              ],
-              "original_dnshost": null,
-              "original_name_servers": [
-                "dns1.registrar-servers.com",
-                "dns2.registrar-servers.com"
-              ],
-              "original_registrar": "namecheap inc. (id: 1068)",
-              "owner": {
-                "email": null,
-                "id": null,
-                "type": "user"
-              },
-              "paused": false,
-              "permissions": [
-                "#dns_records:edit",
-                "#dns_records:read",
-                "#zone:edit",
-                "#zone:read",
-                "#zone_settings:edit",
-                "#zone_settings:read",
-                "#domain:read",
-                "#organization:read",
-                "#organization:edit"
-              ],
-              "plan": {
-                "can_subscribe": false,
-                "currency": "USD",
-                "externally_managed": false,
-                "frequency": "",
-                "id": "0feeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
-                "is_subscribed": false,
-                "legacy_discount": false,
-                "legacy_id": "free",
-                "name": "Free Website",
-                "price": 0
-              },
-              "status": "active",
-              "tenant": {
-                "id": null,
-                "name": null
-              },
-              "tenant_unit": {
-                "id": null
-              },
-              "type": "full",
-              "vanity_name_servers": [],
-              "vanity_name_servers_ips": null
-            },
-            {
-              "account": {
-                "id": "6477547f586ec90db2c2a0081dcd98bd",
-                "name": "Johns10@gmail.com's Account"
-              },
-              "activated_on": "2026-06-02T21:56:44.166326Z",
-              "created_on": "2026-06-02T21:56:39.952959Z",
-              "development_mode": 0,
-              "id": "6cc37c6eb5d52a3291dba0675ae5b4dd",
-              "meta": {
-                "custom_certificate_quota": 0,
-                "page_rule_quota": 3,
-                "phishing_detected": false,
-                "step": 4
-              },
-              "modified_on": "2026-06-02T21:56:44.272647Z",
-              "name": "get-ai-traffic.com",
-              "name_servers": [
-                "demi.ns.cloudflare.com",
-                "yichun.ns.cloudflare.com"
-              ],
-              "original_dnshost": null,
-              "original_name_servers": null,
-              "original_registrar": null,
-              "owner": {
-                "email": null,
-                "id": null,
-                "type": "user"
-              },
-              "paused": false,
-              "permissions": [
-                "#dns_records:edit",
-                "#dns_records:read",
-                "#zone:edit",
-                "#zone:read",
-                "#zone_settings:edit",
-                "#zone_settings:read",
-                "#domain:read",
-                "#organization:read",
-                "#organization:edit"
-              ],
-              "plan": {
-                "can_subscribe": false,
-                "currency": "USD",
-                "externally_managed": false,
-                "frequency": "",
-                "id": "0feeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
-                "is_subscribed": false,
-                "legacy_discount": false,
-                "legacy_id": "free",
-                "name": "Free Website",
-                "price": 0
-              },
-              "status": "active",
-              "tenant": {
-                "id": null,
-                "name": null
-              },
-              "tenant_unit": {
-                "id": null
-              },
-              "type": "full",
-              "vanity_name_servers": [],
-              "vanity_name_servers_ips": null
-            },
-            {
-              "account": {
-                "id": "6477547f586ec90db2c2a0081dcd98bd",
-                "name": "Johns10@gmail.com's Account"
-              },
-              "activated_on": "2026-07-05T18:18:37.871013Z",
-              "created_on": "2026-07-05T18:18:34.478210Z",
-              "development_mode": 0,
-              "id": "ee2bd5364c099fbd0bf57845c1523ac0",
-              "meta": {
-                "custom_certificate_quota": 0,
-                "page_rule_quota": 3,
-                "phishing_detected": false,
-                "step": 4
-              },
-              "modified_on": "2026-07-05T18:18:37.972283Z",
-              "name": "legwork.ca",
-              "name_servers": [
-                "demi.ns.cloudflare.com",
-                "yichun.ns.cloudflare.com"
-              ],
-              "original_dnshost": null,
-              "original_name_servers": null,
-              "original_registrar": null,
-              "owner": {
-                "email": null,
-                "id": null,
-                "type": "user"
-              },
-              "paused": false,
-              "permissions": [
-                "#dns_records:edit",
-                "#dns_records:read",
-                "#zone:edit",
-                "#zone:read",
-                "#zone_settings:edit",
-                "#zone_settings:read",
-                "#domain:read",
-                "#organization:read",
-                "#organization:edit"
-              ],
-              "plan": {
-                "can_subscribe": false,
-                "currency": "USD",
-                "externally_managed": false,
-                "frequency": "",
-                "id": "0feeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
-                "is_subscribed": false,
-                "legacy_discount": false,
-                "legacy_id": "free",
-                "name": "Free Website",
-                "price": 0
-              },
-              "status": "active",
-              "tenant": {
-                "id": null,
-                "name": null
-              },
-              "tenant_unit": {
-                "id": null
-              },
-              "type": "full",
-              "vanity_name_servers": [],
-              "vanity_name_servers_ips": null
-            },
-            {
-              "account": {
-                "id": "6477547f586ec90db2c2a0081dcd98bd",
-                "name": "Johns10@gmail.com's Account"
-              },
-              "activated_on": "2026-04-25T21:59:03.929608Z",
-              "created_on": "2026-04-25T21:58:59.039591Z",
-              "development_mode": 0,
-              "id": "ca9564c0c590c9af6e479d7de9440795",
-              "meta": {
-                "custom_certificate_quota": 0,
-                "page_rule_quota": 3,
-                "phishing_detected": false,
-                "step": 4
-              },
-              "modified_on": "2026-04-25T21:59:04.050978Z",
-              "name": "marketmyspec.com",
-              "name_servers": [
-                "demi.ns.cloudflare.com",
-                "yichun.ns.cloudflare.com"
-              ],
-              "original_dnshost": null,
-              "original_name_servers": null,
-              "original_registrar": null,
-              "owner": {
-                "email": null,
-                "id": null,
-                "type": "user"
-              },
-              "paused": false,
-              "permissions": [
-                "#dns_records:edit",
-                "#dns_records:read",
-                "#zone:edit",
-                "#zone:read",
-                "#zone_settings:edit",
-                "#zone_settings:read",
-                "#domain:read",
-                "#organization:read",
-                "#organization:edit"
-              ],
-              "plan": {
-                "can_subscribe": false,
-                "currency": "USD",
-                "externally_managed": false,
-                "frequency": "",
-                "id": "0feeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
-                "is_subscribed": false,
-                "legacy_discount": false,
-                "legacy_id": "free",
-                "name": "Free Website",
-                "price": 0
-              },
-              "status": "active",
-              "tenant": {
-                "id": null,
-                "name": null
-              },
-              "tenant_unit": {
-                "id": null
-              },
-              "type": "full",
-              "vanity_name_servers": [],
-              "vanity_name_servers_ips": null
-            },
-            {
-              "account": {
-                "id": "6477547f586ec90db2c2a0081dcd98bd",
-                "name": "Johns10@gmail.com's Account"
-              },
-              "activated_on": "2026-03-06T03:29:51.081486Z",
-              "created_on": "2026-03-06T03:29:45.548543Z",
-              "development_mode": 0,
-              "id": "618b7d6ae0af6ee3a58f8efff0f959e7",
-              "meta": {
-                "custom_certificate_quota": 0,
-                "page_rule_quota": 3,
-                "phishing_detected": false,
-                "step": 4
-              },
-              "modified_on": "2026-03-06T03:29:51.259457Z",
-              "name": "metric-flow.app",
-              "name_servers": [
-                "demi.ns.cloudflare.com",
-                "yichun.ns.cloudflare.com"
-              ],
-              "original_dnshost": null,
-              "original_name_servers": null,
-              "original_registrar": null,
-              "owner": {
-                "email": null,
-                "id": null,
-                "type": "user"
-              },
-              "paused": false,
-              "permissions": [
-                "#dns_records:edit",
-                "#dns_records:read",
-                "#zone:edit",
-                "#zone:read",
-                "#zone_settings:edit",
-                "#zone_settings:read",
-                "#domain:read",
-                "#organization:read",
-                "#organization:edit"
-              ],
-              "plan": {
-                "can_subscribe": false,
-                "currency": "USD",
-                "externally_managed": false,
-                "frequency": "",
-                "id": "0feeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
-                "is_subscribed": false,
-                "legacy_discount": false,
-                "legacy_id": "free",
-                "name": "Free Website",
-                "price": 0
-              },
-              "status": "active",
-              "tenant": {
-                "id": null,
-                "name": null
-              },
-              "tenant_unit": {
-                "id": null
-              },
-              "type": "full",
-              "vanity_name_servers": [],
-              "vanity_name_servers_ips": null
-            }
-          ],
-          "result_info": {
-            "count": 10,
-            "page": 1,
-            "per_page": 20,
-            "total_count": 10,
-            "total_pages": 1
-          },
-          "success": true
-        },
-        "body_type": "json",
-        "headers": {
-          "api-version": [
-            "2026-09-26.epoch"
-          ],
-          "cache-control": [
-            "no-store, no-cache, must-revalidate, post-check=0, pre-check=0"
-          ],
-          "cf-auditlog-id": [
-            "019fc0fb-694b-79bc-b536-643a611b4ad0"
-          ],
-          "cf-cache-status": [
-            "DYNAMIC"
-          ],
-          "cf-ray": [
-            "a24abd153ab5df96-YUL"
-          ],
-          "connection": [
-            "keep-alive"
-          ],
-          "content-type": [
-            "application/json"
-          ],
-          "date": [
-            "Sun, 02 Aug 2026 05:38:50 GMT"
-          ],
-          "expires": [
-            "Sun, 25 Jan 1981 05:00:00 GMT"
-          ],
-          "pragma": [
-            "no-cache"
-          ],
-          "ratelimit": [
-            "\"list_zones\";r=1200;t=1"
-          ],
-          "ratelimit-policy": [
-            "\"list_zones\";q=1201;w=300"
-          ],
-          "server": [
-            "cloudflare"
-          ],
-          "strict-transport-security": [
-            "max-age=31536000"
-          ],
-          "transfer-encoding": [
-            "chunked"
-          ],
-          "vary": [
-            "Accept-Encoding"
-          ],
-          "x-content-type-options": [
-            "nosniff"
-          ],
-          "x-frame-options": [
-            "SAMEORIGIN"
-          ]
-        },
-        "status": 200
-      }
-    },
-    {
-      "recorded_at": "2026-08-02T05:38:50.305923Z",
-      "request": {
-        "body": "",
-        "body_type": "text",
-        "headers": {
-          "accept-encoding": [
-            "gzip"
-          ],
-          "content-type": [
-            "application/json"
-          ],
-          "user-agent": [
-            "req/0.5.17"
-          ]
-        },
-        "method": "GET",
-        "query_string": "",
-        "uri": "https://api.cloudflare.com/client/v4/zones/0287fe8206425a2aac660a57a62f65bc/dns_records"
-      },
-      "response": {
-        "body_json": {
-          "errors": [],
-          "messages": [],
-          "result": [
-            {
-              "comment": null,
-              "content": "82.180.172.214",
-              "created_on": "2026-06-25T15:14:36.601003Z",
-              "id": "1b15586a602ae3df39d439053a6d449c",
-              "meta": {},
-              "modified_on": "2026-06-25T15:14:36.601003Z",
-              "name": "astralbi.com",
-              "proxiable": true,
-              "proxied": true,
-              "settings": {},
-              "tags": [],
-              "ttl": 1,
-              "type": "A"
-            },
-            {
-              "comment": null,
-              "content": "5.161.239.73",
-              "created_on": "2026-08-02T05:38:14.111548Z",
-              "id": "e253cf72d15d8ecc222a27ebc488e3c0",
-              "meta": {},
-              "modified_on": "2026-08-02T05:38:14.111548Z",
-              "name": "c7996.astralbi.com",
-              "proxiable": true,
-              "proxied": false,
-              "settings": {},
-              "tags": [],
-              "ttl": 60,
-              "type": "A"
-            },
-            {
-              "comment": null,
-              "content": "82.180.172.214",
-              "created_on": "2026-06-25T15:14:36.633542Z",
-              "id": "10e7c711eb181f2a935fec541115eadb",
-              "meta": {},
-              "modified_on": "2026-06-25T15:14:36.633542Z",
-              "name": "ftp.astralbi.com",
-              "proxiable": true,
-              "proxied": true,
-              "settings": {},
-              "tags": [],
-              "ttl": 1,
-              "type": "A"
-            },
-            {
-              "comment": null,
-              "content": "178.156.251.80",
-              "created_on": "2026-08-02T05:38:29.56645Z",
-              "id": "1405f15174011a1632b975402f504d50",
-              "meta": {},
-              "modified_on": "2026-08-02T05:38:29.56645Z",
-              "name": "uat.c7996.astralbi.com",
-              "proxiable": true,
-              "proxied": false,
-              "settings": {},
-              "tags": [],
-              "ttl": 60,
-              "type": "A"
-            },
-            {
-              "comment": null,
-              "content": "2a02:4780:b:861:0:14f1:e865:e",
-              "created_on": "2026-06-25T15:14:36.624068Z",
-              "id": "a7fff60b839a09d9113eb31b09d63d62",
-              "meta": {},
-              "modified_on": "2026-06-25T15:14:36.624068Z",
-              "name": "astralbi.com",
-              "proxiable": true,
-              "proxied": true,
-              "settings": {},
-              "tags": [],
-              "ttl": 1,
-              "type": "AAAA"
-            },
-            {
-              "comment": null,
-              "content": "astralbi.com",
-              "created_on": "2026-06-25T15:14:36.610811Z",
-              "id": "91786626335ce0f0670057a3f14c4af4",
-              "meta": {},
-              "modified_on": "2026-06-25T15:14:36.610811Z",
-              "name": "www.astralbi.com",
-              "proxiable": true,
-              "proxied": true,
-              "settings": {
-                "flatten_cname": false
-              },
-              "tags": [],
-              "ttl": 1,
-              "type": "CNAME"
-            },
-            {
-              "comment": null,
-              "content": "inbound-smtp.spex.invalid",
-              "created_on": "2026-08-01T22:29:20.556681Z",
-              "id": "bb9faf1ee9168c3dd5cd4c8e592912da",
-              "meta": {},
-              "modified_on": "2026-08-01T22:29:20.556681Z",
-              "name": "astralbi.com",
-              "priority": 10,
-              "proxiable": false,
-              "proxied": false,
-              "settings": {},
-              "tags": [],
-              "ttl": 60,
-              "type": "MX"
-            }
-          ],
-          "result_info": {
-            "count": 7,
-            "page": 1,
-            "per_page": 100,
-            "total_count": 7,
-            "total_pages": 1
-          },
-          "success": true
-        },
-        "body_type": "json",
-        "headers": {
-          "api-version": [
-            "2026-09-26.epoch"
-          ],
-          "cf-auditlog-id": [
-            "019fc0fb-6aa1-793d-8d50-58bcc5846c87"
-          ],
-          "cf-cache-status": [
-            "DYNAMIC"
-          ],
-          "cf-ray": [
-            "a24abd176ecddf96-YUL"
-          ],
-          "connection": [
-            "keep-alive"
-          ],
-          "content-type": [
-            "application/json"
-          ],
-          "date": [
-            "Sun, 02 Aug 2026 05:38:50 GMT"
-          ],
-          "ratelimit": [
-            "\"default\";r=1199;t=1"
-          ],
-          "ratelimit-policy": [
-            "\"default\";q=1200;w=300"
-          ],
-          "server": [
-            "cloudflare"
-          ],
-          "transfer-encoding": [
-            "chunked"
-          ],
-          "vary": [
-            "Accept-Encoding"
-          ]
-        },
-        "status": 200
-      }
-    },
-    {
-      "recorded_at": "2026-08-02T05:38:50.498776Z",
-      "request": {
-        "body": "",
-        "body_type": "text",
-        "headers": {
-          "accept-encoding": [
-            "gzip"
-          ],
-          "content-type": [
-            "application/json"
-          ],
-          "user-agent": [
-            "req/0.5.17"
-          ]
-        },
-        "method": "DELETE",
-        "query_string": "",
-        "uri": "https://api.cloudflare.com/client/v4/zones/0287fe8206425a2aac660a57a62f65bc/dns_records/e253cf72d15d8ecc222a27ebc488e3c0"
-      },
-      "response": {
-        "body_json": {
-          "errors": [],
-          "messages": [],
-          "result": {
-            "id": "e253cf72d15d8ecc222a27ebc488e3c0"
-          },
-          "success": true
-        },
-        "body_type": "json",
-        "headers": {
-          "api-version": [
-            "2026-09-26.epoch"
-          ],
-          "cf-auditlog-id": [
-            "019fc0fb-6b60-7a2d-8bd3-45f89e7afcc3"
-          ],
-          "cf-cache-status": [
-            "DYNAMIC"
-          ],
-          "cf-ray": [
-            "a24abd1898d1df96-YUL"
-          ],
-          "connection": [
-            "keep-alive"
-          ],
-          "content-type": [
-            "application/json"
-          ],
-          "date": [
-            "Sun, 02 Aug 2026 05:38:50 GMT"
-          ],
-          "ratelimit": [
-            "\"default\";r=1198;t=1"
-          ],
-          "ratelimit-policy": [
-            "\"default\";q=1200;w=300"
-          ],
-          "server": [
-            "cloudflare"
-          ],
-          "transfer-encoding": [
-            "chunked"
-          ],
-          "vary": [
-            "Accept-Encoding"
-          ]
-        },
-        "status": 200
-      }
-    },
-    {
-      "recorded_at": "2026-08-02T05:38:50.681873Z",
-      "request": {
-        "body": "",
-        "body_type": "text",
-        "headers": {
-          "accept-encoding": [
-            "gzip"
-          ],
-          "content-type": [
-            "application/json"
-          ],
-          "user-agent": [
-            "req/0.5.17"
-          ]
-        },
-        "method": "DELETE",
-        "query_string": "",
-        "uri": "https://api.cloudflare.com/client/v4/zones/0287fe8206425a2aac660a57a62f65bc/dns_records/1405f15174011a1632b975402f504d50"
-      },
-      "response": {
-        "body_json": {
-          "errors": [],
-          "messages": [],
-          "result": {
-            "id": "1405f15174011a1632b975402f504d50"
-          },
-          "success": true
-        },
-        "body_type": "json",
-        "headers": {
-          "api-version": [
-            "2026-09-26.epoch"
-          ],
-          "cf-auditlog-id": [
-            "019fc0fb-6c20-71c2-838b-85cba21a1ea2"
-          ],
-          "cf-cache-status": [
-            "DYNAMIC"
-          ],
-          "cf-ray": [
-            "a24abd19cb64df96-YUL"
-          ],
-          "connection": [
-            "keep-alive"
-          ],
-          "content-type": [
-            "application/json"
-          ],
-          "date": [
-            "Sun, 02 Aug 2026 05:38:50 GMT"
-          ],
-          "ratelimit": [
-            "\"default\";r=1197;t=1"
-          ],
-          "ratelimit-policy": [
-            "\"default\";q=1200;w=300"
-          ],
-          "server": [
-            "cloudflare"
-          ],
-          "transfer-encoding": [
-            "chunked"
-          ],
-          "vary": [
-            "Accept-Encoding"
-          ]
-        },
-        "status": 200
-      }
-    },
-    {
-      "recorded_at": "2026-08-02T05:38:50.882129Z",
-      "request": {
-        "body": "",
-        "body_type": "text",
-        "headers": {
-          "accept-encoding": [
-            "gzip"
-          ],
-          "content-type": [
-            "application/json"
-          ],
-          "user-agent": [
-            "req/0.5.17"
-          ]
-        },
-        "method": "GET",
-        "query_string": "",
-        "uri": "https://api.cloudflare.com/client/v4/zones/0287fe8206425a2aac660a57a62f65bc/dns_records"
-      },
-      "response": {
-        "body_json": {
-          "errors": [],
-          "messages": [],
-          "result": [
-            {
-              "comment": null,
-              "content": "82.180.172.214",
-              "created_on": "2026-06-25T15:14:36.601003Z",
-              "id": "1b15586a602ae3df39d439053a6d449c",
-              "meta": {},
-              "modified_on": "2026-06-25T15:14:36.601003Z",
-              "name": "astralbi.com",
-              "proxiable": true,
-              "proxied": true,
-              "settings": {},
-              "tags": [],
-              "ttl": 1,
-              "type": "A"
-            },
-            {
-              "comment": null,
-              "content": "82.180.172.214",
-              "created_on": "2026-06-25T15:14:36.633542Z",
-              "id": "10e7c711eb181f2a935fec541115eadb",
-              "meta": {},
-              "modified_on": "2026-06-25T15:14:36.633542Z",
-              "name": "ftp.astralbi.com",
-              "proxiable": true,
-              "proxied": true,
-              "settings": {},
-              "tags": [],
-              "ttl": 1,
-              "type": "A"
-            },
-            {
-              "comment": null,
-              "content": "2a02:4780:b:861:0:14f1:e865:e",
-              "created_on": "2026-06-25T15:14:36.624068Z",
-              "id": "a7fff60b839a09d9113eb31b09d63d62",
-              "meta": {},
-              "modified_on": "2026-06-25T15:14:36.624068Z",
-              "name": "astralbi.com",
-              "proxiable": true,
-              "proxied": true,
-              "settings": {},
-              "tags": [],
-              "ttl": 1,
-              "type": "AAAA"
-            },
-            {
-              "comment": null,
-              "content": "astralbi.com",
-              "created_on": "2026-06-25T15:14:36.610811Z",
-              "id": "91786626335ce0f0670057a3f14c4af4",
-              "meta": {},
-              "modified_on": "2026-06-25T15:14:36.610811Z",
-              "name": "www.astralbi.com",
-              "proxiable": true,
-              "proxied": true,
-              "settings": {
-                "flatten_cname": false
-              },
-              "tags": [],
-              "ttl": 1,
-              "type": "CNAME"
-            },
-            {
-              "comment": null,
-              "content": "inbound-smtp.spex.invalid",
-              "created_on": "2026-08-01T22:29:20.556681Z",
-              "id": "bb9faf1ee9168c3dd5cd4c8e592912da",
-              "meta": {},
-              "modified_on": "2026-08-01T22:29:20.556681Z",
-              "name": "astralbi.com",
-              "priority": 10,
-              "proxiable": false,
-              "proxied": false,
-              "settings": {},
-              "tags": [],
-              "ttl": 60,
-              "type": "MX"
-            }
-          ],
-          "result_info": {
-            "count": 5,
-            "page": 1,
-            "per_page": 100,
-            "total_count": 7,
-            "total_pages": 1
-          },
-          "success": true
-        },
-        "body_type": "json",
-        "headers": {
-          "api-version": [
-            "2026-09-26.epoch"
-          ],
-          "cf-auditlog-id": [
-            "019fc0fb-6cd6-7363-8160-cc33e2cf6517"
-          ],
-          "cf-cache-status": [
-            "DYNAMIC"
-          ],
-          "cf-ray": [
-            "a24abd1aed88df96-YUL"
-          ],
-          "connection": [
-            "keep-alive"
-          ],
-          "content-type": [
-            "application/json"
-          ],
-          "date": [
-            "Sun, 02 Aug 2026 05:38:50 GMT"
-          ],
-          "ratelimit": [
-            "\"default\";r=1197;t=1"
-          ],
-          "ratelimit-policy": [
-            "\"default\";q=1200;w=300"
-          ],
-          "server": [
-            "cloudflare"
-          ],
-          "transfer-encoding": [
-            "chunked"
-          ],
-          "vary": [
-            "Accept-Encoding"
-          ]
-        },
-        "status": 200
-      }
-    },
-    {
-      "recorded_at": "2026-08-02T05:38:51.093659Z",
-      "request": {
-        "body": "",
-        "body_type": "text",
-        "headers": {
-          "accept-encoding": [
-            "gzip"
-          ],
-          "content-type": [
-            "application/json"
-          ],
-          "user-agent": [
-            "req/0.5.17"
-          ]
-        },
-        "method": "GET",
-        "query_string": "",
-        "uri": "https://api.cloudflare.com/client/v4/zones"
-      },
-      "response": {
-        "body_json": {
-          "errors": [],
-          "messages": [],
-          "result": [
-            {
-              "account": {
-                "id": "6477547f586ec90db2c2a0081dcd98bd",
-                "name": "Johns10@gmail.com's Account"
-              },
-              "activated_on": "2026-06-25T15:16:07.473058Z",
-              "created_on": "2026-06-25T15:14:34.004099Z",
-              "development_mode": 0,
-              "id": "0287fe8206425a2aac660a57a62f65bc",
-              "meta": {
-                "custom_certificate_quota": 0,
-                "page_rule_quota": 3,
-                "phishing_detected": false,
-                "step": 2
-              },
-              "modified_on": "2026-06-25T15:16:07.473058Z",
-              "name": "astralbi.com",
-              "name_servers": [
-                "demi.ns.cloudflare.com",
-                "yichun.ns.cloudflare.com"
-              ],
-              "original_dnshost": null,
-              "original_name_servers": [
-                "ns1.dns-parking.com",
-                "ns2.dns-parking.com"
-              ],
-              "original_registrar": "hostinger operations, uab (id: 1636)",
-              "owner": {
-                "email": null,
-                "id": null,
-                "type": "user"
-              },
-              "paused": false,
-              "permissions": [
-                "#dns_records:edit",
-                "#dns_records:read",
-                "#zone:edit",
-                "#zone:read",
-                "#zone_settings:edit",
-                "#zone_settings:read",
-                "#domain:read",
-                "#organization:read",
-                "#organization:edit"
-              ],
-              "plan": {
-                "can_subscribe": false,
-                "currency": "USD",
-                "externally_managed": false,
-                "frequency": "",
-                "id": "0feeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
-                "is_subscribed": false,
-                "legacy_discount": false,
-                "legacy_id": "free",
-                "name": "Free Website",
-                "price": 0
-              },
-              "status": "active",
-              "tenant": {
-                "id": null,
-                "name": null
-              },
-              "tenant_unit": {
-                "id": null
-              },
-              "type": "full",
-              "vanity_name_servers": [],
-              "vanity_name_servers_ips": null
-            },
-            {
-              "account": {
-                "id": "6477547f586ec90db2c2a0081dcd98bd",
-                "name": "Johns10@gmail.com's Account"
-              },
-              "activated_on": "2026-07-13T12:36:46.554959Z",
-              "created_on": "2026-07-13T12:36:46.211045Z",
-              "development_mode": 0,
-              "id": "799ed6f6bd983eb0f0cd0d810c602ae9",
-              "meta": {
-                "custom_certificate_quota": 0,
-                "page_rule_quota": 3,
-                "phishing_detected": false,
-                "step": 4
-              },
-              "modified_on": "2026-07-13T12:36:46.656852Z",
-              "name": "broken-oaths.com",
-              "name_servers": [
-                "demi.ns.cloudflare.com",
-                "yichun.ns.cloudflare.com"
-              ],
-              "original_dnshost": null,
-              "original_name_servers": null,
-              "original_registrar": null,
-              "owner": {
-                "email": null,
-                "id": null,
-                "type": "user"
-              },
-              "paused": false,
-              "permissions": [
-                "#dns_records:edit",
-                "#dns_records:read",
-                "#zone:edit",
-                "#zone:read",
-                "#zone_settings:edit",
-                "#zone_settings:read",
-                "#domain:read",
-                "#organization:read",
-                "#organization:edit"
-              ],
-              "plan": {
-                "can_subscribe": false,
-                "currency": "USD",
-                "externally_managed": false,
-                "frequency": "",
-                "id": "0feeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
-                "is_subscribed": false,
-                "legacy_discount": false,
-                "legacy_id": "free",
-                "name": "Free Website",
-                "price": 0
-              },
-              "status": "active",
-              "tenant": {
-                "id": null,
-                "name": null
-              },
-              "tenant_unit": {
-                "id": null
-              },
-              "type": "full",
-              "vanity_name_servers": [],
-              "vanity_name_servers_ips": null
-            },
-            {
-              "account": {
-                "id": "6477547f586ec90db2c2a0081dcd98bd",
-                "name": "Johns10@gmail.com's Account"
-              },
-              "activated_on": "2026-02-28T17:45:36.370072Z",
-              "created_on": "2026-02-28T17:38:06.963541Z",
-              "development_mode": 0,
-              "id": "ba45c3c2010cb275de73f91f4f05edab",
-              "meta": {
-                "custom_certificate_quota": 0,
-                "page_rule_quota": 3,
-                "phishing_detected": false,
-                "step": 2
-              },
-              "modified_on": "2026-02-28T17:45:36.370072Z",
-              "name": "codemyspec.com",
-              "name_servers": [
-                "demi.ns.cloudflare.com",
-                "yichun.ns.cloudflare.com"
-              ],
-              "original_dnshost": null,
-              "original_name_servers": [
-                "dns1.registrar-servers.com",
-                "dns2.registrar-servers.com"
-              ],
-              "original_registrar": "namecheap, inc. (id: 1068)",
-              "owner": {
-                "email": null,
-                "id": null,
-                "type": "user"
-              },
-              "paused": false,
-              "permissions": [
-                "#dns_records:edit",
-                "#dns_records:read",
-                "#zone:edit",
-                "#zone:read",
-                "#zone_settings:edit",
-                "#zone_settings:read",
-                "#domain:read",
-                "#organization:read",
-                "#organization:edit"
-              ],
-              "plan": {
-                "can_subscribe": false,
-                "currency": "USD",
-                "externally_managed": false,
-                "frequency": "",
-                "id": "0feeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
-                "is_subscribed": false,
-                "legacy_discount": false,
-                "legacy_id": "free",
-                "name": "Free Website",
-                "price": 0
-              },
-              "status": "active",
-              "tenant": {
-                "id": null,
-                "name": null
-              },
-              "tenant_unit": {
-                "id": null
-              },
-              "type": "full",
-              "vanity_name_servers": [],
-              "vanity_name_servers_ips": null
-            },
-            {
-              "account": {
-                "id": "6477547f586ec90db2c2a0081dcd98bd",
-                "name": "Johns10@gmail.com's Account"
-              },
-              "activated_on": "2026-05-01T13:33:34.481973Z",
-              "created_on": "2026-04-21T14:43:08.969666Z",
-              "development_mode": 0,
-              "id": "2c28888129f4acb4a066986fbf055cc0",
-              "meta": {
-                "custom_certificate_quota": 0,
-                "page_rule_quota": 3,
-                "phishing_detected": false,
-                "step": 2
-              },
-              "modified_on": "2026-05-01T13:33:34.481973Z",
-              "name": "desertfirstcleaning.com",
-              "name_servers": [
-                "demi.ns.cloudflare.com",
-                "yichun.ns.cloudflare.com"
-              ],
-              "original_dnshost": null,
-              "original_name_servers": [
-                "ns1.dns-parking.com",
-                "ns2.dns-parking.com"
-              ],
-              "original_registrar": "hostinger operations, uab (id: 1636)",
-              "owner": {
-                "email": null,
-                "id": null,
-                "type": "user"
-              },
-              "paused": false,
-              "permissions": [
-                "#dns_records:edit",
-                "#dns_records:read",
-                "#zone:edit",
-                "#zone:read",
-                "#zone_settings:edit",
-                "#zone_settings:read",
-                "#domain:read",
-                "#organization:read",
-                "#organization:edit"
-              ],
-              "plan": {
-                "can_subscribe": false,
-                "currency": "USD",
-                "externally_managed": false,
-                "frequency": "",
-                "id": "0feeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
-                "is_subscribed": false,
-                "legacy_discount": false,
-                "legacy_id": "free",
-                "name": "Free Website",
-                "price": 0
-              },
-              "status": "active",
-              "tenant": {
-                "id": null,
-                "name": null
-              },
-              "tenant_unit": {
-                "id": null
-              },
-              "type": "full",
-              "vanity_name_servers": [],
-              "vanity_name_servers_ips": null
-            },
-            {
-              "account": {
-                "id": "6477547f586ec90db2c2a0081dcd98bd",
-                "name": "Johns10@gmail.com's Account"
-              },
-              "activated_on": "2026-07-11T18:26:06.329522Z",
-              "created_on": "2026-07-11T18:26:05.934640Z",
-              "development_mode": 0,
-              "id": "8c8b2afc2b8b6bf024e454d3510bc4c1",
-              "meta": {
-                "custom_certificate_quota": 0,
-                "page_rule_quota": 3,
-                "phishing_detected": false,
-                "step": 4
-              },
-              "modified_on": "2026-07-11T18:26:06.436633Z",
-              "name": "earwitness.app",
-              "name_servers": [
-                "demi.ns.cloudflare.com",
-                "yichun.ns.cloudflare.com"
-              ],
-              "original_dnshost": null,
-              "original_name_servers": null,
-              "original_registrar": null,
-              "owner": {
-                "email": null,
-                "id": null,
-                "type": "user"
-              },
-              "paused": false,
-              "permissions": [
-                "#dns_records:edit",
-                "#dns_records:read",
-                "#zone:edit",
-                "#zone:read",
-                "#zone_settings:edit",
-                "#zone_settings:read",
-                "#domain:read",
-                "#organization:read",
-                "#organization:edit"
-              ],
-              "plan": {
-                "can_subscribe": false,
-                "currency": "USD",
-                "externally_managed": false,
-                "frequency": "",
-                "id": "0feeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
-                "is_subscribed": false,
-                "legacy_discount": false,
-                "legacy_id": "free",
-                "name": "Free Website",
-                "price": 0
-              },
-              "status": "active",
-              "tenant": {
-                "id": null,
-                "name": null
-              },
-              "tenant_unit": {
-                "id": null
-              },
-              "type": "full",
-              "vanity_name_servers": [],
-              "vanity_name_servers_ips": null
-            },
-            {
-              "account": {
-                "id": "6477547f586ec90db2c2a0081dcd98bd",
-                "name": "Johns10@gmail.com's Account"
-              },
-              "activated_on": "2026-02-27T01:51:59.160872Z",
-              "created_on": "2026-02-27T01:49:03.058411Z",
-              "development_mode": -12818202,
-              "id": "51d25b6e048c9f5797cc0ea3ed6fc10e",
-              "meta": {
-                "custom_certificate_quota": 0,
-                "page_rule_quota": 3,
-                "phishing_detected": false,
-                "step": 2
-              },
-              "modified_on": "2026-02-27T01:51:59.160872Z",
-              "name": "fuellytics.app",
-              "name_servers": [
-                "demi.ns.cloudflare.com",
-                "yichun.ns.cloudflare.com"
-              ],
-              "original_dnshost": null,
-              "original_name_servers": [
-                "dns1.registrar-servers.com",
-                "dns2.registrar-servers.com"
-              ],
-              "original_registrar": "namecheap inc. (id: 1068)",
-              "owner": {
-                "email": null,
-                "id": null,
-                "type": "user"
-              },
-              "paused": false,
-              "permissions": [
-                "#dns_records:edit",
-                "#dns_records:read",
-                "#zone:edit",
-                "#zone:read",
-                "#zone_settings:edit",
-                "#zone_settings:read",
-                "#domain:read",
-                "#organization:read",
-                "#organization:edit"
-              ],
-              "plan": {
-                "can_subscribe": false,
-                "currency": "USD",
-                "externally_managed": false,
-                "frequency": "",
-                "id": "0feeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
-                "is_subscribed": false,
-                "legacy_discount": false,
-                "legacy_id": "free",
-                "name": "Free Website",
-                "price": 0
-              },
-              "status": "active",
-              "tenant": {
-                "id": null,
-                "name": null
-              },
-              "tenant_unit": {
-                "id": null
-              },
-              "type": "full",
-              "vanity_name_servers": [],
-              "vanity_name_servers_ips": null
-            },
-            {
-              "account": {
-                "id": "6477547f586ec90db2c2a0081dcd98bd",
-                "name": "Johns10@gmail.com's Account"
-              },
-              "activated_on": "2026-06-02T21:56:44.166326Z",
-              "created_on": "2026-06-02T21:56:39.952959Z",
-              "development_mode": 0,
-              "id": "6cc37c6eb5d52a3291dba0675ae5b4dd",
-              "meta": {
-                "custom_certificate_quota": 0,
-                "page_rule_quota": 3,
-                "phishing_detected": false,
-                "step": 4
-              },
-              "modified_on": "2026-06-02T21:56:44.272647Z",
-              "name": "get-ai-traffic.com",
-              "name_servers": [
-                "demi.ns.cloudflare.com",
-                "yichun.ns.cloudflare.com"
-              ],
-              "original_dnshost": null,
-              "original_name_servers": null,
-              "original_registrar": null,
-              "owner": {
-                "email": null,
-                "id": null,
-                "type": "user"
-              },
-              "paused": false,
-              "permissions": [
-                "#dns_records:edit",
-                "#dns_records:read",
-                "#zone:edit",
-                "#zone:read",
-                "#zone_settings:edit",
-                "#zone_settings:read",
-                "#domain:read",
-                "#organization:read",
-                "#organization:edit"
-              ],
-              "plan": {
-                "can_subscribe": false,
-                "currency": "USD",
-                "externally_managed": false,
-                "frequency": "",
-                "id": "0feeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
-                "is_subscribed": false,
-                "legacy_discount": false,
-                "legacy_id": "free",
-                "name": "Free Website",
-                "price": 0
-              },
-              "status": "active",
-              "tenant": {
-                "id": null,
-                "name": null
-              },
-              "tenant_unit": {
-                "id": null
-              },
-              "type": "full",
-              "vanity_name_servers": [],
-              "vanity_name_servers_ips": null
-            },
-            {
-              "account": {
-                "id": "6477547f586ec90db2c2a0081dcd98bd",
-                "name": "Johns10@gmail.com's Account"
-              },
-              "activated_on": "2026-07-05T18:18:37.871013Z",
-              "created_on": "2026-07-05T18:18:34.478210Z",
-              "development_mode": 0,
-              "id": "ee2bd5364c099fbd0bf57845c1523ac0",
-              "meta": {
-                "custom_certificate_quota": 0,
-                "page_rule_quota": 3,
-                "phishing_detected": false,
-                "step": 4
-              },
-              "modified_on": "2026-07-05T18:18:37.972283Z",
-              "name": "legwork.ca",
-              "name_servers": [
-                "demi.ns.cloudflare.com",
-                "yichun.ns.cloudflare.com"
-              ],
-              "original_dnshost": null,
-              "original_name_servers": null,
-              "original_registrar": null,
-              "owner": {
-                "email": null,
-                "id": null,
-                "type": "user"
-              },
-              "paused": false,
-              "permissions": [
-                "#dns_records:edit",
-                "#dns_records:read",
-                "#zone:edit",
-                "#zone:read",
-                "#zone_settings:edit",
-                "#zone_settings:read",
-                "#domain:read",
-                "#organization:read",
-                "#organization:edit"
-              ],
-              "plan": {
-                "can_subscribe": false,
-                "currency": "USD",
-                "externally_managed": false,
-                "frequency": "",
-                "id": "0feeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
-                "is_subscribed": false,
-                "legacy_discount": false,
-                "legacy_id": "free",
-                "name": "Free Website",
-                "price": 0
-              },
-              "status": "active",
-              "tenant": {
-                "id": null,
-                "name": null
-              },
-              "tenant_unit": {
-                "id": null
-              },
-              "type": "full",
-              "vanity_name_servers": [],
-              "vanity_name_servers_ips": null
-            },
-            {
-              "account": {
-                "id": "6477547f586ec90db2c2a0081dcd98bd",
-                "name": "Johns10@gmail.com's Account"
-              },
-              "activated_on": "2026-04-25T21:59:03.929608Z",
-              "created_on": "2026-04-25T21:58:59.039591Z",
-              "development_mode": 0,
-              "id": "ca9564c0c590c9af6e479d7de9440795",
-              "meta": {
-                "custom_certificate_quota": 0,
-                "page_rule_quota": 3,
-                "phishing_detected": false,
-                "step": 4
-              },
-              "modified_on": "2026-04-25T21:59:04.050978Z",
-              "name": "marketmyspec.com",
-              "name_servers": [
-                "demi.ns.cloudflare.com",
-                "yichun.ns.cloudflare.com"
-              ],
-              "original_dnshost": null,
-              "original_name_servers": null,
-              "original_registrar": null,
-              "owner": {
-                "email": null,
-                "id": null,
-                "type": "user"
-              },
-              "paused": false,
-              "permissions": [
-                "#dns_records:edit",
-                "#dns_records:read",
-                "#zone:edit",
-                "#zone:read",
-                "#zone_settings:edit",
-                "#zone_settings:read",
-                "#domain:read",
-                "#organization:read",
-                "#organization:edit"
-              ],
-              "plan": {
-                "can_subscribe": false,
-                "currency": "USD",
-                "externally_managed": false,
-                "frequency": "",
-                "id": "0feeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
-                "is_subscribed": false,
-                "legacy_discount": false,
-                "legacy_id": "free",
-                "name": "Free Website",
-                "price": 0
-              },
-              "status": "active",
-              "tenant": {
-                "id": null,
-                "name": null
-              },
-              "tenant_unit": {
-                "id": null
-              },
-              "type": "full",
-              "vanity_name_servers": [],
-              "vanity_name_servers_ips": null
-            },
-            {
-              "account": {
-                "id": "6477547f586ec90db2c2a0081dcd98bd",
-                "name": "Johns10@gmail.com's Account"
-              },
-              "activated_on": "2026-03-06T03:29:51.081486Z",
-              "created_on": "2026-03-06T03:29:45.548543Z",
-              "development_mode": 0,
-              "id": "618b7d6ae0af6ee3a58f8efff0f959e7",
-              "meta": {
-                "custom_certificate_quota": 0,
-                "page_rule_quota": 3,
-                "phishing_detected": false,
-                "step": 4
-              },
-              "modified_on": "2026-03-06T03:29:51.259457Z",
-              "name": "metric-flow.app",
-              "name_servers": [
-                "demi.ns.cloudflare.com",
-                "yichun.ns.cloudflare.com"
-              ],
-              "original_dnshost": null,
-              "original_name_servers": null,
-              "original_registrar": null,
-              "owner": {
-                "email": null,
-                "id": null,
-                "type": "user"
-              },
-              "paused": false,
-              "permissions": [
-                "#dns_records:edit",
-                "#dns_records:read",
-                "#zone:edit",
-                "#zone:read",
-                "#zone_settings:edit",
-                "#zone_settings:read",
-                "#domain:read",
-                "#organization:read",
-                "#organization:edit"
-              ],
-              "plan": {
-                "can_subscribe": false,
-                "currency": "USD",
-                "externally_managed": false,
-                "frequency": "",
-                "id": "0feeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
-                "is_subscribed": false,
-                "legacy_discount": false,
-                "legacy_id": "free",
-                "name": "Free Website",
-                "price": 0
-              },
-              "status": "active",
-              "tenant": {
-                "id": null,
-                "name": null
-              },
-              "tenant_unit": {
-                "id": null
-              },
-              "type": "full",
-              "vanity_name_servers": [],
-              "vanity_name_servers_ips": null
-            }
-          ],
-          "result_info": {
-            "count": 10,
-            "page": 1,
-            "per_page": 20,
-            "total_count": 10,
-            "total_pages": 1
-          },
-          "success": true
-        },
-        "body_type": "json",
-        "headers": {
-          "api-version": [
-            "2026-09-26.epoch"
-          ],
-          "cache-control": [
-            "no-store, no-cache, must-revalidate, post-check=0, pre-check=0"
-          ],
-          "cf-auditlog-id": [
-            "019fc0fb-6d9f-7346-ad00-0610d05983f0"
-          ],
-          "cf-cache-status": [
-            "DYNAMIC"
-          ],
-          "cf-ray": [
-            "a24abd1c2812df96-YUL"
-          ],
-          "connection": [
-            "keep-alive"
-          ],
-          "content-type": [
-            "application/json"
-          ],
-          "date": [
-            "Sun, 02 Aug 2026 05:38:51 GMT"
-          ],
-          "expires": [
-            "Sun, 25 Jan 1981 05:00:00 GMT"
-          ],
-          "pragma": [
-            "no-cache"
-          ],
-          "ratelimit": [
-            "\"list_zones\";r=1200;t=1"
-          ],
-          "ratelimit-policy": [
-            "\"list_zones\";q=1201;w=300"
-          ],
-          "server": [
-            "cloudflare"
-          ],
-          "strict-transport-security": [
-            "max-age=31536000"
-          ],
-          "transfer-encoding": [
-            "chunked"
-          ],
-          "vary": [
-            "Accept-Encoding"
-          ],
-          "x-content-type-options": [
-            "nosniff"
-          ],
-          "x-frame-options": [
-            "SAMEORIGIN"
-          ]
-        },
-        "status": 200
-      }
-    },
-    {
-      "recorded_at": "2026-08-02T05:38:51.281279Z",
-      "request": {
-        "body": "",
-        "body_type": "text",
-        "headers": {
-          "accept-encoding": [
-            "gzip"
-          ],
-          "content-type": [
-            "application/json"
-          ],
-          "user-agent": [
-            "req/0.5.17"
-          ]
-        },
-        "method": "GET",
-        "query_string": "",
-        "uri": "https://api.cloudflare.com/client/v4/zones/0287fe8206425a2aac660a57a62f65bc/dns_records"
-      },
-      "response": {
-        "body_json": {
-          "errors": [],
-          "messages": [],
-          "result": [
-            {
-              "comment": null,
-              "content": "82.180.172.214",
-              "created_on": "2026-06-25T15:14:36.601003Z",
-              "id": "1b15586a602ae3df39d439053a6d449c",
-              "meta": {},
-              "modified_on": "2026-06-25T15:14:36.601003Z",
-              "name": "astralbi.com",
-              "proxiable": true,
-              "proxied": true,
-              "settings": {},
-              "tags": [],
-              "ttl": 1,
-              "type": "A"
-            },
-            {
-              "comment": null,
-              "content": "82.180.172.214",
-              "created_on": "2026-06-25T15:14:36.633542Z",
-              "id": "10e7c711eb181f2a935fec541115eadb",
-              "meta": {},
-              "modified_on": "2026-06-25T15:14:36.633542Z",
-              "name": "ftp.astralbi.com",
-              "proxiable": true,
-              "proxied": true,
-              "settings": {},
-              "tags": [],
-              "ttl": 1,
-              "type": "A"
-            },
-            {
-              "comment": null,
-              "content": "2a02:4780:b:861:0:14f1:e865:e",
-              "created_on": "2026-06-25T15:14:36.624068Z",
-              "id": "a7fff60b839a09d9113eb31b09d63d62",
-              "meta": {},
-              "modified_on": "2026-06-25T15:14:36.624068Z",
-              "name": "astralbi.com",
-              "proxiable": true,
-              "proxied": true,
-              "settings": {},
-              "tags": [],
-              "ttl": 1,
-              "type": "AAAA"
-            },
-            {
-              "comment": null,
-              "content": "astralbi.com",
-              "created_on": "2026-06-25T15:14:36.610811Z",
-              "id": "91786626335ce0f0670057a3f14c4af4",
-              "meta": {},
-              "modified_on": "2026-06-25T15:14:36.610811Z",
-              "name": "www.astralbi.com",
-              "proxiable": true,
-              "proxied": true,
-              "settings": {
-                "flatten_cname": false
-              },
-              "tags": [],
-              "ttl": 1,
-              "type": "CNAME"
-            },
-            {
-              "comment": null,
-              "content": "inbound-smtp.spex.invalid",
-              "created_on": "2026-08-01T22:29:20.556681Z",
-              "id": "bb9faf1ee9168c3dd5cd4c8e592912da",
-              "meta": {},
-              "modified_on": "2026-08-01T22:29:20.556681Z",
-              "name": "astralbi.com",
-              "priority": 10,
-              "proxiable": false,
-              "proxied": false,
-              "settings": {},
-              "tags": [],
-              "ttl": 60,
-              "type": "MX"
-            }
-          ],
-          "result_info": {
-            "count": 5,
-            "page": 1,
-            "per_page": 100,
-            "total_count": 7,
-            "total_pages": 1
-          },
-          "success": true
-        },
-        "body_type": "json",
-        "headers": {
-          "api-version": [
-            "2026-09-26.epoch"
-          ],
-          "cf-auditlog-id": [
-            "019fc0fb-6e76-79e6-ba86-c4957589dd40"
-          ],
-          "cf-cache-status": [
-            "DYNAMIC"
-          ],
-          "cf-ray": [
-            "a24abd1d8a96df96-YUL"
-          ],
-          "connection": [
-            "keep-alive"
-          ],
-          "content-type": [
-            "application/json"
-          ],
-          "date": [
-            "Sun, 02 Aug 2026 05:38:51 GMT"
-          ],
-          "ratelimit": [
-            "\"default\";r=1198;t=1"
-          ],
-          "ratelimit-policy": [
-            "\"default\";q=1200;w=300"
-          ],
-          "server": [
-            "cloudflare"
-          ],
-          "transfer-encoding": [
-            "chunked"
-          ],
-          "vary": [
-            "Accept-Encoding"
-          ]
-        },
-        "status": 200
-      }
-    },
-    {
-      "recorded_at": "2026-08-02T05:38:51.464126Z",
-      "request": {
-        "body": "",
-        "body_type": "text",
-        "headers": {
-          "accept-encoding": [
-            "gzip"
-          ],
-          "content-type": [
-            "application/json"
-          ],
-          "user-agent": [
-            "req/0.5.17"
-          ]
-        },
-        "method": "GET",
-        "query_string": "",
-        "uri": "https://api.cloudflare.com/client/v4/zones/0287fe8206425a2aac660a57a62f65bc/dns_records"
-      },
-      "response": {
-        "body_json": {
-          "errors": [],
-          "messages": [],
-          "result": [
-            {
-              "comment": null,
-              "content": "82.180.172.214",
-              "created_on": "2026-06-25T15:14:36.601003Z",
-              "id": "1b15586a602ae3df39d439053a6d449c",
-              "meta": {},
-              "modified_on": "2026-06-25T15:14:36.601003Z",
-              "name": "astralbi.com",
-              "proxiable": true,
-              "proxied": true,
-              "settings": {},
-              "tags": [],
-              "ttl": 1,
-              "type": "A"
-            },
-            {
-              "comment": null,
-              "content": "82.180.172.214",
-              "created_on": "2026-06-25T15:14:36.633542Z",
-              "id": "10e7c711eb181f2a935fec541115eadb",
-              "meta": {},
-              "modified_on": "2026-06-25T15:14:36.633542Z",
-              "name": "ftp.astralbi.com",
-              "proxiable": true,
-              "proxied": true,
-              "settings": {},
-              "tags": [],
-              "ttl": 1,
-              "type": "A"
-            },
-            {
-              "comment": null,
-              "content": "2a02:4780:b:861:0:14f1:e865:e",
-              "created_on": "2026-06-25T15:14:36.624068Z",
-              "id": "a7fff60b839a09d9113eb31b09d63d62",
-              "meta": {},
-              "modified_on": "2026-06-25T15:14:36.624068Z",
-              "name": "astralbi.com",
-              "proxiable": true,
-              "proxied": true,
-              "settings": {},
-              "tags": [],
-              "ttl": 1,
-              "type": "AAAA"
-            },
-            {
-              "comment": null,
-              "content": "astralbi.com",
-              "created_on": "2026-06-25T15:14:36.610811Z",
-              "id": "91786626335ce0f0670057a3f14c4af4",
-              "meta": {},
-              "modified_on": "2026-06-25T15:14:36.610811Z",
-              "name": "www.astralbi.com",
-              "proxiable": true,
-              "proxied": true,
-              "settings": {
-                "flatten_cname": false
-              },
-              "tags": [],
-              "ttl": 1,
-              "type": "CNAME"
-            },
-            {
-              "comment": null,
-              "content": "inbound-smtp.spex.invalid",
-              "created_on": "2026-08-01T22:29:20.556681Z",
-              "id": "bb9faf1ee9168c3dd5cd4c8e592912da",
-              "meta": {},
-              "modified_on": "2026-08-01T22:29:20.556681Z",
-              "name": "astralbi.com",
-              "priority": 10,
-              "proxiable": false,
-              "proxied": false,
-              "settings": {},
-              "tags": [],
-              "ttl": 60,
-              "type": "MX"
-            }
-          ],
-          "result_info": {
-            "count": 5,
-            "page": 1,
-            "per_page": 100,
-            "total_count": 7,
-            "total_pages": 1
-          },
-          "success": true
-        },
-        "body_type": "json",
-        "headers": {
-          "api-version": [
-            "2026-09-26.epoch"
-          ],
-          "cf-auditlog-id": [
-            "019fc0fb-6f2f-7571-93a7-7a2003ad4a04"
-          ],
-          "cf-cache-status": [
-            "DYNAMIC"
-          ],
-          "cf-ray": [
-            "a24abd1eaca5df96-YUL"
-          ],
-          "connection": [
-            "keep-alive"
-          ],
-          "content-type": [
-            "application/json"
-          ],
-          "date": [
-            "Sun, 02 Aug 2026 05:38:51 GMT"
-          ],
-          "ratelimit": [
-            "\"default\";r=1197;t=1"
-          ],
-          "ratelimit-policy": [
-            "\"default\";q=1200;w=300"
-          ],
-          "server": [
-            "cloudflare"
-          ],
-          "transfer-encoding": [
-            "chunked"
-          ],
-          "vary": [
-            "Accept-Encoding"
-          ]
-        },
-        "status": 200
-      }
-    },
-    {
-      "recorded_at": "2026-08-02T05:38:51.608884Z",
+      "recorded_at": "2026-08-10T23:28:44.364470Z",
       "request": {
         "body": "",
         "body_type": "text",
@@ -2366,7 +60,7 @@
                 "type": "system"
               },
               "included_traffic": 21990232555520,
-              "ingoing_traffic": 37830000,
+              "ingoing_traffic": 390025000,
               "iso": null,
               "labels": {},
               "load_balancers": [],
@@ -2382,7 +76,7 @@
               },
               "locked": false,
               "name": "fuellytics",
-              "outgoing_traffic": 109560000,
+              "outgoing_traffic": 704890000,
               "placement_group": null,
               "primary_disk_size": 40,
               "private_net": [],
@@ -2524,7 +218,7 @@
                 "type": "system"
               },
               "included_traffic": 2199023255552,
-              "ingoing_traffic": 60580000,
+              "ingoing_traffic": 856255000,
               "iso": null,
               "labels": {},
               "load_balancers": [],
@@ -2540,7 +234,7 @@
               },
               "locked": false,
               "name": "fuellytics-prod",
-              "outgoing_traffic": 212880000,
+              "outgoing_traffic": 1636725000,
               "placement_group": null,
               "primary_disk_size": 80,
               "private_net": [],
@@ -2738,29 +432,29 @@
             },
             {
               "backup_window": null,
-              "created": "2026-08-02T05:38:12Z",
-              "id": 158110391,
+              "created": "2026-08-10T23:22:45Z",
+              "id": 161281448,
               "image": {
                 "architecture": "x86",
                 "bound_to": null,
-                "created": "2024-04-25T13:26:27Z",
+                "created": "2021-06-08T06:22:47Z",
                 "created_from": null,
                 "deleted": null,
                 "deprecated": null,
-                "description": "Ubuntu 24.04",
-                "disk_size": 5,
-                "id": 161547269,
+                "description": "docker-ce",
+                "disk_size": 40,
+                "id": 40093247,
                 "image_size": null,
                 "labels": {},
-                "name": "ubuntu-24.04",
+                "name": "docker-ce",
                 "os_flavor": "ubuntu",
-                "os_version": "24.04",
+                "os_version": "unknown",
                 "protection": {
                   "delete": false
                 },
                 "rapid_deploy": true,
                 "status": "available",
-                "type": "system"
+                "type": "app"
               },
               "included_traffic": 1099511627776,
               "ingoing_traffic": 0,
@@ -2778,11 +472,18 @@
                 "network_zone": "us-east"
               },
               "locked": false,
-              "name": "spex-story965-criterion7996-prod",
+              "name": "spex-story972-criterion8039-prod",
               "outgoing_traffic": 0,
               "placement_group": null,
               "primary_disk_size": 40,
-              "private_net": [],
+              "private_net": [
+                {
+                  "alias_ips": [],
+                  "ip": "10.0.0.2",
+                  "mac_address": "86:00:00:3b:1f:2b",
+                  "network": 12535281
+                }
+              ],
               "protection": {
                 "delete": false,
                 "rebuild": false
@@ -2790,21 +491,21 @@
               "public_net": {
                 "firewalls": [
                   {
-                    "id": 11404348,
+                    "id": 11446375,
                     "status": "applied"
                   }
                 ],
                 "floating_ips": [],
                 "ipv4": {
                   "blocked": false,
-                  "dns_ptr": "static.73.239.161.5.clients.your-server.de",
-                  "id": 143110190,
-                  "ip": "5.161.239.73"
+                  "dns_ptr": "static.165.216.156.178.clients.your-server.de",
+                  "id": 144311987,
+                  "ip": "178.156.216.165"
                 },
                 "ipv6": {
                   "blocked": false,
                   "dns_ptr": [],
-                  "id": 143110191,
+                  "id": 144311988,
                   "ip": "2a01:4ff:f0:549b::/64"
                 }
               },
@@ -2982,29 +683,29 @@
             },
             {
               "backup_window": null,
-              "created": "2026-08-02T05:38:13Z",
-              "id": 158110396,
+              "created": "2026-08-10T23:22:46Z",
+              "id": 161281452,
               "image": {
                 "architecture": "x86",
                 "bound_to": null,
-                "created": "2024-04-25T13:26:27Z",
+                "created": "2021-06-08T06:22:47Z",
                 "created_from": null,
                 "deleted": null,
                 "deprecated": null,
-                "description": "Ubuntu 24.04",
-                "disk_size": 5,
-                "id": 161547269,
+                "description": "docker-ce",
+                "disk_size": 40,
+                "id": 40093247,
                 "image_size": null,
                 "labels": {},
-                "name": "ubuntu-24.04",
+                "name": "docker-ce",
                 "os_flavor": "ubuntu",
-                "os_version": "24.04",
+                "os_version": "unknown",
                 "protection": {
                   "delete": false
                 },
                 "rapid_deploy": true,
                 "status": "available",
-                "type": "system"
+                "type": "app"
               },
               "included_traffic": 1099511627776,
               "ingoing_traffic": 0,
@@ -3022,11 +723,18 @@
                 "network_zone": "us-east"
               },
               "locked": false,
-              "name": "spex-story965-criterion7996-uat",
+              "name": "spex-story972-criterion8039-uat",
               "outgoing_traffic": 0,
               "placement_group": null,
               "primary_disk_size": 40,
-              "private_net": [],
+              "private_net": [
+                {
+                  "alias_ips": [],
+                  "ip": "10.0.0.3",
+                  "mac_address": "86:00:00:3b:1f:2a",
+                  "network": 12535281
+                }
+              ],
               "protection": {
                 "delete": false,
                 "rebuild": false
@@ -3034,21 +742,21 @@
               "public_net": {
                 "firewalls": [
                   {
-                    "id": 11404348,
+                    "id": 11446375,
                     "status": "applied"
                   }
                 ],
                 "floating_ips": [],
                 "ipv4": {
                   "blocked": false,
-                  "dns_ptr": "static.80.251.156.178.clients.your-server.de",
-                  "id": 143110192,
-                  "ip": "178.156.251.80"
+                  "dns_ptr": "static.94.200.156.178.clients.your-server.de",
+                  "id": 144311991,
+                  "ip": "178.156.200.94"
                 },
                 "ipv6": {
                   "blocked": false,
                   "dns_ptr": [],
-                  "id": 143110193,
+                  "id": 144311992,
                   "ip": "2a01:4ff:f0:8ac1::/64"
                 }
               },
@@ -3247,7 +955,7 @@
             "application/json"
           ],
           "date": [
-            "Sun, 02 Aug 2026 05:38:51 GMT"
+            "Mon, 10 Aug 2026 23:28:44 GMT"
           ],
           "link": [
             "<https://api.hetzner.cloud/v1/servers?page=1>; rel=\"last\""
@@ -3259,7 +967,7 @@
             "3599"
           ],
           "ratelimit-reset": [
-            "1785649132"
+            "1786404525"
           ],
           "strict-transport-security": [
             "max-age=31536000; includeSubDomains"
@@ -3271,14 +979,14 @@
             "Accept-Encoding"
           ],
           "x-correlation-id": [
-            "69febbc1dd2e34455109d9063dcd89b7"
+            "e8677f081e9f03061316561efee3de5e"
           ]
         },
         "status": 200
       }
     },
     {
-      "recorded_at": "2026-08-02T05:38:51.773985Z",
+      "recorded_at": "2026-08-10T23:28:44.521430Z",
       "request": {
         "body": "",
         "body_type": "text",
@@ -3295,7 +1003,7 @@
         },
         "method": "DELETE",
         "query_string": "",
-        "uri": "https://api.hetzner.cloud/v1/servers/158110396"
+        "uri": "https://api.hetzner.cloud/v1/servers/161281452"
       },
       "response": {
         "body_json": {
@@ -3303,15 +1011,15 @@
             "command": "delete_server",
             "error": null,
             "finished": null,
-            "id": 646349634850409,
+            "id": 648153521570154,
             "progress": 0,
             "resources": [
               {
-                "id": 158110396,
+                "id": 161281452,
                 "type": "server"
               }
             ],
-            "started": "2026-08-02T05:38:51Z",
+            "started": "2026-08-10T23:28:44Z",
             "status": "running"
           }
         },
@@ -3336,7 +1044,7 @@
             "application/json"
           ],
           "date": [
-            "Sun, 02 Aug 2026 05:38:51 GMT"
+            "Mon, 10 Aug 2026 23:28:44 GMT"
           ],
           "ratelimit-limit": [
             "3600"
@@ -3345,7 +1053,7 @@
             "3598"
           ],
           "ratelimit-reset": [
-            "1785649133"
+            "1786404526"
           ],
           "strict-transport-security": [
             "max-age=31536000; includeSubDomains"
@@ -3357,14 +1065,14 @@
             "Accept-Encoding"
           ],
           "x-correlation-id": [
-            "deac6d365f36745dbda1fa65b4562497"
+            "a3b306c408b2a8b0d3e8270ad31317ce"
           ]
         },
         "status": 200
       }
     },
     {
-      "recorded_at": "2026-08-02T05:38:51.922111Z",
+      "recorded_at": "2026-08-10T23:28:44.669731Z",
       "request": {
         "body": "",
         "body_type": "text",
@@ -3423,7 +1131,7 @@
                 "type": "system"
               },
               "included_traffic": 21990232555520,
-              "ingoing_traffic": 37830000,
+              "ingoing_traffic": 390025000,
               "iso": null,
               "labels": {},
               "load_balancers": [],
@@ -3439,7 +1147,7 @@
               },
               "locked": false,
               "name": "fuellytics",
-              "outgoing_traffic": 109560000,
+              "outgoing_traffic": 704890000,
               "placement_group": null,
               "primary_disk_size": 40,
               "private_net": [],
@@ -3581,7 +1289,7 @@
                 "type": "system"
               },
               "included_traffic": 2199023255552,
-              "ingoing_traffic": 60580000,
+              "ingoing_traffic": 856255000,
               "iso": null,
               "labels": {},
               "load_balancers": [],
@@ -3597,7 +1305,7 @@
               },
               "locked": false,
               "name": "fuellytics-prod",
-              "outgoing_traffic": 212880000,
+              "outgoing_traffic": 1636725000,
               "placement_group": null,
               "primary_disk_size": 80,
               "private_net": [],
@@ -3795,29 +1503,29 @@
             },
             {
               "backup_window": null,
-              "created": "2026-08-02T05:38:12Z",
-              "id": 158110391,
+              "created": "2026-08-10T23:22:45Z",
+              "id": 161281448,
               "image": {
                 "architecture": "x86",
                 "bound_to": null,
-                "created": "2024-04-25T13:26:27Z",
+                "created": "2021-06-08T06:22:47Z",
                 "created_from": null,
                 "deleted": null,
                 "deprecated": null,
-                "description": "Ubuntu 24.04",
-                "disk_size": 5,
-                "id": 161547269,
+                "description": "docker-ce",
+                "disk_size": 40,
+                "id": 40093247,
                 "image_size": null,
                 "labels": {},
-                "name": "ubuntu-24.04",
+                "name": "docker-ce",
                 "os_flavor": "ubuntu",
-                "os_version": "24.04",
+                "os_version": "unknown",
                 "protection": {
                   "delete": false
                 },
                 "rapid_deploy": true,
                 "status": "available",
-                "type": "system"
+                "type": "app"
               },
               "included_traffic": 1099511627776,
               "ingoing_traffic": 0,
@@ -3835,11 +1543,18 @@
                 "network_zone": "us-east"
               },
               "locked": false,
-              "name": "spex-story965-criterion7996-prod",
+              "name": "spex-story972-criterion8039-prod",
               "outgoing_traffic": 0,
               "placement_group": null,
               "primary_disk_size": 40,
-              "private_net": [],
+              "private_net": [
+                {
+                  "alias_ips": [],
+                  "ip": "10.0.0.2",
+                  "mac_address": "86:00:00:3b:1f:2b",
+                  "network": 12535281
+                }
+              ],
               "protection": {
                 "delete": false,
                 "rebuild": false
@@ -3847,21 +1562,21 @@
               "public_net": {
                 "firewalls": [
                   {
-                    "id": 11404348,
+                    "id": 11446375,
                     "status": "applied"
                   }
                 ],
                 "floating_ips": [],
                 "ipv4": {
                   "blocked": false,
-                  "dns_ptr": "static.73.239.161.5.clients.your-server.de",
-                  "id": 143110190,
-                  "ip": "5.161.239.73"
+                  "dns_ptr": "static.165.216.156.178.clients.your-server.de",
+                  "id": 144311987,
+                  "ip": "178.156.216.165"
                 },
                 "ipv6": {
                   "blocked": false,
                   "dns_ptr": [],
-                  "id": 143110191,
+                  "id": 144311988,
                   "ip": "2a01:4ff:f0:549b::/64"
                 }
               },
@@ -4060,7 +1775,7 @@
             "application/json"
           ],
           "date": [
-            "Sun, 02 Aug 2026 05:38:51 GMT"
+            "Mon, 10 Aug 2026 23:28:44 GMT"
           ],
           "link": [
             "<https://api.hetzner.cloud/v1/servers?page=1>; rel=\"last\""
@@ -4072,7 +1787,7 @@
             "3597"
           ],
           "ratelimit-reset": [
-            "1785649134"
+            "1786404527"
           ],
           "strict-transport-security": [
             "max-age=31536000; includeSubDomains"
@@ -4084,14 +1799,14 @@
             "Accept-Encoding"
           ],
           "x-correlation-id": [
-            "ada80db173e5416692ff11f5033a8141"
+            "207c1d177471bbad5fa197abc09fa59b"
           ]
         },
         "status": 200
       }
     },
     {
-      "recorded_at": "2026-08-02T05:38:52.070214Z",
+      "recorded_at": "2026-08-10T23:28:44.827248Z",
       "request": {
         "body": "",
         "body_type": "text",
@@ -4150,7 +1865,7 @@
                 "type": "system"
               },
               "included_traffic": 21990232555520,
-              "ingoing_traffic": 37830000,
+              "ingoing_traffic": 390025000,
               "iso": null,
               "labels": {},
               "load_balancers": [],
@@ -4166,7 +1881,7 @@
               },
               "locked": false,
               "name": "fuellytics",
-              "outgoing_traffic": 109560000,
+              "outgoing_traffic": 704890000,
               "placement_group": null,
               "primary_disk_size": 40,
               "private_net": [],
@@ -4308,7 +2023,7 @@
                 "type": "system"
               },
               "included_traffic": 2199023255552,
-              "ingoing_traffic": 60580000,
+              "ingoing_traffic": 856255000,
               "iso": null,
               "labels": {},
               "load_balancers": [],
@@ -4324,7 +2039,7 @@
               },
               "locked": false,
               "name": "fuellytics-prod",
-              "outgoing_traffic": 212880000,
+              "outgoing_traffic": 1636725000,
               "placement_group": null,
               "primary_disk_size": 80,
               "private_net": [],
@@ -4522,29 +2237,29 @@
             },
             {
               "backup_window": null,
-              "created": "2026-08-02T05:38:12Z",
-              "id": 158110391,
+              "created": "2026-08-10T23:22:45Z",
+              "id": 161281448,
               "image": {
                 "architecture": "x86",
                 "bound_to": null,
-                "created": "2024-04-25T13:26:27Z",
+                "created": "2021-06-08T06:22:47Z",
                 "created_from": null,
                 "deleted": null,
                 "deprecated": null,
-                "description": "Ubuntu 24.04",
-                "disk_size": 5,
-                "id": 161547269,
+                "description": "docker-ce",
+                "disk_size": 40,
+                "id": 40093247,
                 "image_size": null,
                 "labels": {},
-                "name": "ubuntu-24.04",
+                "name": "docker-ce",
                 "os_flavor": "ubuntu",
-                "os_version": "24.04",
+                "os_version": "unknown",
                 "protection": {
                   "delete": false
                 },
                 "rapid_deploy": true,
                 "status": "available",
-                "type": "system"
+                "type": "app"
               },
               "included_traffic": 1099511627776,
               "ingoing_traffic": 0,
@@ -4562,11 +2277,18 @@
                 "network_zone": "us-east"
               },
               "locked": false,
-              "name": "spex-story965-criterion7996-prod",
+              "name": "spex-story972-criterion8039-prod",
               "outgoing_traffic": 0,
               "placement_group": null,
               "primary_disk_size": 40,
-              "private_net": [],
+              "private_net": [
+                {
+                  "alias_ips": [],
+                  "ip": "10.0.0.2",
+                  "mac_address": "86:00:00:3b:1f:2b",
+                  "network": 12535281
+                }
+              ],
               "protection": {
                 "delete": false,
                 "rebuild": false
@@ -4574,21 +2296,21 @@
               "public_net": {
                 "firewalls": [
                   {
-                    "id": 11404348,
+                    "id": 11446375,
                     "status": "applied"
                   }
                 ],
                 "floating_ips": [],
                 "ipv4": {
                   "blocked": false,
-                  "dns_ptr": "static.73.239.161.5.clients.your-server.de",
-                  "id": 143110190,
-                  "ip": "5.161.239.73"
+                  "dns_ptr": "static.165.216.156.178.clients.your-server.de",
+                  "id": 144311987,
+                  "ip": "178.156.216.165"
                 },
                 "ipv6": {
                   "blocked": false,
                   "dns_ptr": [],
-                  "id": 143110191,
+                  "id": 144311988,
                   "ip": "2a01:4ff:f0:549b::/64"
                 }
               },
@@ -4787,7 +2509,7 @@
             "application/json"
           ],
           "date": [
-            "Sun, 02 Aug 2026 05:38:52 GMT"
+            "Mon, 10 Aug 2026 23:28:44 GMT"
           ],
           "link": [
             "<https://api.hetzner.cloud/v1/servers?page=1>; rel=\"last\""
@@ -4799,7 +2521,7 @@
             "3596"
           ],
           "ratelimit-reset": [
-            "1785649136"
+            "1786404528"
           ],
           "strict-transport-security": [
             "max-age=31536000; includeSubDomains"
@@ -4811,14 +2533,14 @@
             "Accept-Encoding"
           ],
           "x-correlation-id": [
-            "65aee8abbb5f58bcac904708b6b61761"
+            "ca1123c6ddbc746e54b23858189733d6"
           ]
         },
         "status": 200
       }
     },
     {
-      "recorded_at": "2026-08-02T05:38:52.223761Z",
+      "recorded_at": "2026-08-10T23:28:44.992072Z",
       "request": {
         "body": "",
         "body_type": "text",
@@ -4835,7 +2557,7 @@
         },
         "method": "DELETE",
         "query_string": "",
-        "uri": "https://api.hetzner.cloud/v1/servers/158110391"
+        "uri": "https://api.hetzner.cloud/v1/servers/161281448"
       },
       "response": {
         "body_json": {
@@ -4843,15 +2565,15 @@
             "command": "delete_server",
             "error": null,
             "finished": null,
-            "id": 646349634850411,
+            "id": 648153521570156,
             "progress": 0,
             "resources": [
               {
-                "id": 158110391,
+                "id": 161281448,
                 "type": "server"
               }
             ],
-            "started": "2026-08-02T05:38:52Z",
+            "started": "2026-08-10T23:28:44Z",
             "status": "running"
           }
         },
@@ -4876,7 +2598,7 @@
             "application/json"
           ],
           "date": [
-            "Sun, 02 Aug 2026 05:38:52 GMT"
+            "Mon, 10 Aug 2026 23:28:44 GMT"
           ],
           "ratelimit-limit": [
             "3600"
@@ -4885,7 +2607,7 @@
             "3595"
           ],
           "ratelimit-reset": [
-            "1785649137"
+            "1786404529"
           ],
           "strict-transport-security": [
             "max-age=31536000; includeSubDomains"
@@ -4897,14 +2619,14 @@
             "Accept-Encoding"
           ],
           "x-correlation-id": [
-            "305157ebd8287085f240ee7bbda1a8a0"
+            "78545f6a7896f2a6b16092c3bd016cd8"
           ]
         },
         "status": 200
       }
     },
     {
-      "recorded_at": "2026-08-02T05:38:52.374753Z",
+      "recorded_at": "2026-08-10T23:28:45.136456Z",
       "request": {
         "body": "",
         "body_type": "text",
@@ -4963,7 +2685,7 @@
                 "type": "system"
               },
               "included_traffic": 21990232555520,
-              "ingoing_traffic": 37830000,
+              "ingoing_traffic": 390025000,
               "iso": null,
               "labels": {},
               "load_balancers": [],
@@ -4979,7 +2701,7 @@
               },
               "locked": false,
               "name": "fuellytics",
-              "outgoing_traffic": 109560000,
+              "outgoing_traffic": 704890000,
               "placement_group": null,
               "primary_disk_size": 40,
               "private_net": [],
@@ -5121,7 +2843,7 @@
                 "type": "system"
               },
               "included_traffic": 2199023255552,
-              "ingoing_traffic": 60580000,
+              "ingoing_traffic": 856255000,
               "iso": null,
               "labels": {},
               "load_balancers": [],
@@ -5137,7 +2859,7 @@
               },
               "locked": false,
               "name": "fuellytics-prod",
-              "outgoing_traffic": 212880000,
+              "outgoing_traffic": 1636725000,
               "placement_group": null,
               "primary_disk_size": 80,
               "private_net": [],
@@ -5356,7 +3078,7 @@
             "application/json"
           ],
           "date": [
-            "Sun, 02 Aug 2026 05:38:52 GMT"
+            "Mon, 10 Aug 2026 23:28:45 GMT"
           ],
           "link": [
             "<https://api.hetzner.cloud/v1/servers?page=1>; rel=\"last\""
@@ -5368,7 +3090,7 @@
             "3594"
           ],
           "ratelimit-reset": [
-            "1785649138"
+            "1786404531"
           ],
           "strict-transport-security": [
             "max-age=31536000; includeSubDomains"
@@ -5380,14 +3102,14 @@
             "Accept-Encoding"
           ],
           "x-correlation-id": [
-            "c6d9aae611921c6735dfcd7957877d52"
+            "f62009c072954a66e0372ac1ee0b1bd2"
           ]
         },
         "status": 200
       }
     },
     {
-      "recorded_at": "2026-08-02T05:38:52.517652Z",
+      "recorded_at": "2026-08-10T23:28:45.273837Z",
       "request": {
         "body": "",
         "body_type": "text",
@@ -5403,7 +3125,7 @@
           ]
         },
         "method": "GET",
-        "query_string": "fingerprint=87:92:82:a8:a6:98:23:b9:60:bf:6d:f2:6c:ab:21:59",
+        "query_string": "fingerprint=1c:53:1e:9f:1b:e9:1f:d0:71:01:29:c8:fa:bd:f3:87",
         "uri": "https://api.hetzner.cloud/v1/ssh_keys"
       },
       "response": {
@@ -5420,12 +3142,12 @@
           },
           "ssh_keys": [
             {
-              "created": "2026-08-02T05:38:12Z",
-              "fingerprint": "87:92:82:a8:a6:98:23:b9:60:bf:6d:f2:6c:ab:21:59",
-              "id": 116265052,
+              "created": "2026-08-10T23:22:45Z",
+              "fingerprint": "1c:53:1e:9f:1b:e9:1f:d0:71:01:29:c8:fa:bd:f3:87",
+              "id": 116888310,
               "labels": {},
-              "name": "spex-story965-criterion7996",
-              "public_key": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFWtpaa7Ot+jJPRFOlYRf07fTF9Q8ESHr8Wkbx7xBNjY spex-story965-criterion7996"
+              "name": "spex-story972-criterion8039",
+              "public_key": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINYtlDr5RzxWrvZxpPo8vcTD1JRgGimonnJdrSAF5b3p spex-story972-criterion8039"
             }
           ]
         },
@@ -5450,10 +3172,10 @@
             "application/json"
           ],
           "date": [
-            "Sun, 02 Aug 2026 05:38:52 GMT"
+            "Mon, 10 Aug 2026 23:28:45 GMT"
           ],
           "link": [
-            "<https://api.hetzner.cloud/v1/ssh_keys?fingerprint=87%3A92%3A82%3Aa8%3Aa6%3A98%3A23%3Ab9%3A60%3Abf%3A6d%3Af2%3A6c%3Aab%3A21%3A59&page=1>; rel=\"last\""
+            "<https://api.hetzner.cloud/v1/ssh_keys?fingerprint=1c%3A53%3A1e%3A9f%3A1b%3Ae9%3A1f%3Ad0%3A71%3A01%3A29%3Ac8%3Afa%3Abd%3Af3%3A87&page=1>; rel=\"last\""
           ],
           "ratelimit-limit": [
             "3600"
@@ -5462,7 +3184,7 @@
             "3593"
           ],
           "ratelimit-reset": [
-            "1785649139"
+            "1786404532"
           ],
           "strict-transport-security": [
             "max-age=31536000; includeSubDomains"
@@ -5474,14 +3196,14 @@
             "Accept-Encoding"
           ],
           "x-correlation-id": [
-            "de058fd9fb313ed23b5abde535f4bdaa"
+            "d5bad4020a50567622967425b1c555b5"
           ]
         },
         "status": 200
       }
     },
     {
-      "recorded_at": "2026-08-02T05:38:52.664018Z",
+      "recorded_at": "2026-08-10T23:28:45.414189Z",
       "request": {
         "body": "",
         "body_type": "text",
@@ -5498,7 +3220,7 @@
         },
         "method": "DELETE",
         "query_string": "",
-        "uri": "https://api.hetzner.cloud/v1/ssh_keys/116265052"
+        "uri": "https://api.hetzner.cloud/v1/ssh_keys/116888310"
       },
       "response": {
         "body": "",
@@ -5520,7 +3242,7 @@
             "86400"
           ],
           "date": [
-            "Sun, 02 Aug 2026 05:38:52 GMT"
+            "Mon, 10 Aug 2026 23:28:45 GMT"
           ],
           "ratelimit-limit": [
             "3600"
@@ -5529,20 +3251,23 @@
             "3592"
           ],
           "ratelimit-reset": [
-            "1785649140"
+            "1786404533"
           ],
           "strict-transport-security": [
             "max-age=31536000; includeSubDomains"
           ],
+          "vary": [
+            "Accept-Encoding"
+          ],
           "x-correlation-id": [
-            "5eb5f3bd9bb757700e5a120528c2a60a"
+            "4adc75d5e5ccee0cfa768e16492c1116"
           ]
         },
         "status": 204
       }
     },
     {
-      "recorded_at": "2026-08-02T05:38:52.805362Z",
+      "recorded_at": "2026-08-10T23:28:45.548529Z",
       "request": {
         "body": "",
         "body_type": "text",
@@ -5558,7 +3283,7 @@
           ]
         },
         "method": "GET",
-        "query_string": "fingerprint=87:92:82:a8:a6:98:23:b9:60:bf:6d:f2:6c:ab:21:59",
+        "query_string": "fingerprint=1c:53:1e:9f:1b:e9:1f:d0:71:01:29:c8:fa:bd:f3:87",
         "uri": "https://api.hetzner.cloud/v1/ssh_keys"
       },
       "response": {
@@ -5596,10 +3321,10 @@
             "application/json"
           ],
           "date": [
-            "Sun, 02 Aug 2026 05:38:52 GMT"
+            "Mon, 10 Aug 2026 23:28:45 GMT"
           ],
           "link": [
-            "<https://api.hetzner.cloud/v1/ssh_keys?fingerprint=87%3A92%3A82%3Aa8%3Aa6%3A98%3A23%3Ab9%3A60%3Abf%3A6d%3Af2%3A6c%3Aab%3A21%3A59&page=1>; rel=\"last\""
+            "<https://api.hetzner.cloud/v1/ssh_keys?fingerprint=1c%3A53%3A1e%3A9f%3A1b%3Ae9%3A1f%3Ad0%3A71%3A01%3A29%3Ac8%3Afa%3Abd%3Af3%3A87&page=1>; rel=\"last\""
           ],
           "ratelimit-limit": [
             "3600"
@@ -5608,170 +3333,26 @@
             "3591"
           ],
           "ratelimit-reset": [
-            "1785649141"
+            "1786404534"
           ],
           "strict-transport-security": [
             "max-age=31536000; includeSubDomains"
-          ],
-          "vary": [
-            "Accept-Encoding"
-          ],
-          "x-correlation-id": [
-            "5638edf0ecbe3f1e636fb579bf1eeecf"
-          ]
-        },
-        "status": 200
-      }
-    },
-    {
-      "recorded_at": "2026-08-02T05:38:52.947077Z",
-      "request": {
-        "body": "",
-        "body_type": "text",
-        "headers": {
-          "accept-encoding": [
-            "gzip"
-          ],
-          "content-type": [
-            "application/json"
-          ],
-          "user-agent": [
-            "req/0.5.17"
-          ]
-        },
-        "method": "GET",
-        "query_string": "",
-        "uri": "https://api.hetzner.cloud/v1/firewalls"
-      },
-      "response": {
-        "body_json": {
-          "firewalls": [
-            {
-              "applied_to": [
-                {
-                  "server": {
-                    "id": 158110391
-                  },
-                  "type": "server"
-                },
-                {
-                  "server": {
-                    "id": 158110396
-                  },
-                  "type": "server"
-                }
-              ],
-              "created": "2026-08-02T05:38:11Z",
-              "id": 11404348,
-              "labels": {},
-              "name": "spex-story965-criterion7996",
-              "rules": [
-                {
-                  "description": null,
-                  "destination_ips": [],
-                  "direction": "in",
-                  "port": "22",
-                  "protocol": "tcp",
-                  "source_ips": [
-                    "0.0.0.0/0",
-                    "::/0"
-                  ]
-                },
-                {
-                  "description": null,
-                  "destination_ips": [],
-                  "direction": "in",
-                  "port": "80",
-                  "protocol": "tcp",
-                  "source_ips": [
-                    "0.0.0.0/0",
-                    "::/0"
-                  ]
-                },
-                {
-                  "description": null,
-                  "destination_ips": [],
-                  "direction": "in",
-                  "port": "443",
-                  "protocol": "tcp",
-                  "source_ips": [
-                    "0.0.0.0/0",
-                    "::/0"
-                  ]
-                }
-              ]
-            }
-          ],
-          "meta": {
-            "pagination": {
-              "last_page": 1,
-              "next_page": null,
-              "page": 1,
-              "per_page": 25,
-              "previous_page": null,
-              "total_entries": 1
-            }
-          }
-        },
-        "body_type": "json",
-        "headers": {
-          "access-control-allow-headers": [
-            "X-Requested-With,Authorization,Content-Type"
-          ],
-          "access-control-allow-methods": [
-            "OPTIONS,GET,POST,PUT,PATCH,DELETE"
-          ],
-          "access-control-allow-origin": [
-            "*"
-          ],
-          "access-control-expose-headers": [
-            "Link,X-Correlation-ID"
-          ],
-          "access-control-max-age": [
-            "86400"
-          ],
-          "content-type": [
-            "application/json"
-          ],
-          "date": [
-            "Sun, 02 Aug 2026 05:38:52 GMT"
-          ],
-          "link": [
-            "<https://api.hetzner.cloud/v1/firewalls?page=1&per_page=25>; rel=\"last\""
-          ],
-          "ratelimit-limit": [
-            "3600"
-          ],
-          "ratelimit-remaining": [
-            "3590"
-          ],
-          "ratelimit-reset": [
-            "1785649142"
-          ],
-          "strict-transport-security": [
-            "max-age=31536000; includeSubDomains"
-          ],
-          "traceparent": [
-            "00-d4cebaad7cda5aa9cfe535100a653828-6c928df3595cabb6-01"
           ],
           "transfer-encoding": [
             "chunked"
           ],
-          "uber-trace-id": [
-            "d4cebaad7cda5aa9cfe535100a653828:6c928df3595cabb6:0:1"
-          ],
           "vary": [
             "Accept-Encoding"
           ],
           "x-correlation-id": [
-            "d4cebaad7cda5aa9cfe535100a653828"
+            "d99a3ba90240150ed97ba1fdfc228a06"
           ]
         },
         "status": 200
       }
     },
     {
-      "recorded_at": "2026-08-02T05:38:53.084087Z",
+      "recorded_at": "2026-08-10T23:28:45.679491Z",
       "request": {
         "body": "",
         "body_type": "text",
@@ -5779,222 +3360,51 @@
           "accept-encoding": [
             "gzip"
           ],
-          "content-type": [
-            "application/json"
+          "host": [
+            "fsn1.your-objectstorage.com"
           ],
           "user-agent": [
             "req/0.5.17"
-          ]
-        },
-        "method": "DELETE",
-        "query_string": "",
-        "uri": "https://api.hetzner.cloud/v1/firewalls/11404348"
-      },
-      "response": {
-        "body_json": {
-          "error": {
-            "code": "resource_in_use",
-            "details": null,
-            "message": "firewall with ID 11404348 is still in use"
-          }
-        },
-        "body_type": "json",
-        "headers": {
-          "access-control-allow-headers": [
-            "X-Requested-With,Authorization,Content-Type"
           ],
-          "access-control-allow-methods": [
-            "OPTIONS,GET,POST,PUT,PATCH,DELETE"
+          "x-amz-content-sha256": [
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
           ],
-          "access-control-allow-origin": [
-            "*"
-          ],
-          "access-control-expose-headers": [
-            "Link,X-Correlation-ID"
-          ],
-          "access-control-max-age": [
-            "86400"
-          ],
-          "content-type": [
-            "application/json"
-          ],
-          "date": [
-            "Sun, 02 Aug 2026 05:38:53 GMT"
-          ],
-          "ratelimit-limit": [
-            "3600"
-          ],
-          "ratelimit-remaining": [
-            "3589"
-          ],
-          "ratelimit-reset": [
-            "1785649144"
-          ],
-          "strict-transport-security": [
-            "max-age=31536000; includeSubDomains"
-          ],
-          "traceparent": [
-            "00-12f4404f2c4862c09d19375dddd4c981-e7c20274a0362426-01"
-          ],
-          "uber-trace-id": [
-            "12f4404f2c4862c09d19375dddd4c981:e7c20274a0362426:0:1"
-          ],
-          "x-correlation-id": [
-            "12f4404f2c4862c09d19375dddd4c981"
-          ]
-        },
-        "status": 422
-      }
-    },
-    {
-      "recorded_at": "2026-08-02T05:38:53.225448Z",
-      "request": {
-        "body": "",
-        "body_type": "text",
-        "headers": {
-          "accept-encoding": [
-            "gzip"
-          ],
-          "content-type": [
-            "application/json"
-          ],
-          "user-agent": [
-            "req/0.5.17"
+          "x-amz-date": [
+            "20260810T232845Z"
           ]
         },
         "method": "GET",
-        "query_string": "",
-        "uri": "https://api.hetzner.cloud/v1/firewalls"
+        "query_string": "list-type=2&prefix=",
+        "uri": "https://fsn1.your-objectstorage.com/spex-story972-criterion8039-prod/"
       },
       "response": {
-        "body_json": {
-          "firewalls": [
-            {
-              "applied_to": [
-                {
-                  "server": {
-                    "id": 158110391
-                  },
-                  "type": "server"
-                },
-                {
-                  "server": {
-                    "id": 158110396
-                  },
-                  "type": "server"
-                }
-              ],
-              "created": "2026-08-02T05:38:11Z",
-              "id": 11404348,
-              "labels": {},
-              "name": "spex-story965-criterion7996",
-              "rules": [
-                {
-                  "description": null,
-                  "destination_ips": [],
-                  "direction": "in",
-                  "port": "22",
-                  "protocol": "tcp",
-                  "source_ips": [
-                    "0.0.0.0/0",
-                    "::/0"
-                  ]
-                },
-                {
-                  "description": null,
-                  "destination_ips": [],
-                  "direction": "in",
-                  "port": "80",
-                  "protocol": "tcp",
-                  "source_ips": [
-                    "0.0.0.0/0",
-                    "::/0"
-                  ]
-                },
-                {
-                  "description": null,
-                  "destination_ips": [],
-                  "direction": "in",
-                  "port": "443",
-                  "protocol": "tcp",
-                  "source_ips": [
-                    "0.0.0.0/0",
-                    "::/0"
-                  ]
-                }
-              ]
-            }
-          ],
-          "meta": {
-            "pagination": {
-              "last_page": 1,
-              "next_page": null,
-              "page": 1,
-              "per_page": 25,
-              "previous_page": null,
-              "total_entries": 1
-            }
-          }
-        },
-        "body_type": "json",
+        "body": "<?xml version=\"1.0\" encoding=\"UTF-8\"?><ListBucketResult xmlns=\"http://s3.amazonaws.com/doc/2006-03-01/\"><Name>spex-story972-criterion8039-prod</Name><Prefix></Prefix><MaxKeys>1000</MaxKeys><IsTruncated>false</IsTruncated><KeyCount>0</KeyCount></ListBucketResult>",
+        "body_type": "text",
         "headers": {
-          "access-control-allow-headers": [
-            "X-Requested-With,Authorization,Content-Type"
-          ],
-          "access-control-allow-methods": [
-            "OPTIONS,GET,POST,PUT,PATCH,DELETE"
-          ],
-          "access-control-allow-origin": [
-            "*"
-          ],
-          "access-control-expose-headers": [
-            "Link,X-Correlation-ID"
-          ],
-          "access-control-max-age": [
-            "86400"
-          ],
           "content-type": [
-            "application/json"
+            "application/xml"
           ],
           "date": [
-            "Sun, 02 Aug 2026 05:38:53 GMT"
-          ],
-          "link": [
-            "<https://api.hetzner.cloud/v1/firewalls?page=1&per_page=25>; rel=\"last\""
-          ],
-          "ratelimit-limit": [
-            "3600"
-          ],
-          "ratelimit-remaining": [
-            "3588"
-          ],
-          "ratelimit-reset": [
-            "1785649145"
+            "Mon, 10 Aug 2026 23:28:45 GMT"
           ],
           "strict-transport-security": [
-            "max-age=31536000; includeSubDomains"
-          ],
-          "traceparent": [
-            "00-3cdf94bc0687a985561b278a57fe5c08-dc283f67979e0dd1-01"
+            "max-age=63072000"
           ],
           "transfer-encoding": [
             "chunked"
           ],
-          "uber-trace-id": [
-            "3cdf94bc0687a985561b278a57fe5c08:dc283f67979e0dd1:0:1"
+          "x-amz-request-id": [
+            "tx0000050a93d61eb563da9-006a7a5ead-34e70ae6-fsn1-prod1-ceph5"
           ],
-          "vary": [
-            "Accept-Encoding"
-          ],
-          "x-correlation-id": [
-            "3cdf94bc0687a985561b278a57fe5c08"
+          "x-debug-bucket": [
+            "spex-story972-criterion8039-prod"
           ]
         },
         "status": 200
       }
     },
     {
-      "recorded_at": "2026-08-02T05:38:53.368609Z",
+      "recorded_at": "2026-08-10T23:28:45.815468Z",
       "request": {
         "body": "",
         "body_type": "text",
@@ -6002,222 +3412,51 @@
           "accept-encoding": [
             "gzip"
           ],
-          "content-type": [
-            "application/json"
+          "host": [
+            "fsn1.your-objectstorage.com"
           ],
           "user-agent": [
             "req/0.5.17"
-          ]
-        },
-        "method": "DELETE",
-        "query_string": "",
-        "uri": "https://api.hetzner.cloud/v1/firewalls/11404348"
-      },
-      "response": {
-        "body_json": {
-          "error": {
-            "code": "resource_in_use",
-            "details": null,
-            "message": "firewall with ID 11404348 is still in use"
-          }
-        },
-        "body_type": "json",
-        "headers": {
-          "access-control-allow-headers": [
-            "X-Requested-With,Authorization,Content-Type"
           ],
-          "access-control-allow-methods": [
-            "OPTIONS,GET,POST,PUT,PATCH,DELETE"
+          "x-amz-content-sha256": [
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
           ],
-          "access-control-allow-origin": [
-            "*"
-          ],
-          "access-control-expose-headers": [
-            "Link,X-Correlation-ID"
-          ],
-          "access-control-max-age": [
-            "86400"
-          ],
-          "content-type": [
-            "application/json"
-          ],
-          "date": [
-            "Sun, 02 Aug 2026 05:38:53 GMT"
-          ],
-          "ratelimit-limit": [
-            "3600"
-          ],
-          "ratelimit-remaining": [
-            "3587"
-          ],
-          "ratelimit-reset": [
-            "1785649146"
-          ],
-          "strict-transport-security": [
-            "max-age=31536000; includeSubDomains"
-          ],
-          "traceparent": [
-            "00-28402a64dc69840ef3b06f80b85cb602-12db64ec1f43f91a-01"
-          ],
-          "uber-trace-id": [
-            "28402a64dc69840ef3b06f80b85cb602:12db64ec1f43f91a:0:1"
-          ],
-          "x-correlation-id": [
-            "28402a64dc69840ef3b06f80b85cb602"
-          ]
-        },
-        "status": 422
-      }
-    },
-    {
-      "recorded_at": "2026-08-02T05:38:55.511408Z",
-      "request": {
-        "body": "",
-        "body_type": "text",
-        "headers": {
-          "accept-encoding": [
-            "gzip"
-          ],
-          "content-type": [
-            "application/json"
-          ],
-          "user-agent": [
-            "req/0.5.17"
+          "x-amz-date": [
+            "20260810T232845Z"
           ]
         },
         "method": "GET",
-        "query_string": "",
-        "uri": "https://api.hetzner.cloud/v1/firewalls"
+        "query_string": "list-type=2",
+        "uri": "https://fsn1.your-objectstorage.com/spex-story972-criterion8039-prod/"
       },
       "response": {
-        "body_json": {
-          "firewalls": [
-            {
-              "applied_to": [
-                {
-                  "server": {
-                    "id": 158110391
-                  },
-                  "type": "server"
-                },
-                {
-                  "server": {
-                    "id": 158110396
-                  },
-                  "type": "server"
-                }
-              ],
-              "created": "2026-08-02T05:38:11Z",
-              "id": 11404348,
-              "labels": {},
-              "name": "spex-story965-criterion7996",
-              "rules": [
-                {
-                  "description": null,
-                  "destination_ips": [],
-                  "direction": "in",
-                  "port": "22",
-                  "protocol": "tcp",
-                  "source_ips": [
-                    "0.0.0.0/0",
-                    "::/0"
-                  ]
-                },
-                {
-                  "description": null,
-                  "destination_ips": [],
-                  "direction": "in",
-                  "port": "80",
-                  "protocol": "tcp",
-                  "source_ips": [
-                    "0.0.0.0/0",
-                    "::/0"
-                  ]
-                },
-                {
-                  "description": null,
-                  "destination_ips": [],
-                  "direction": "in",
-                  "port": "443",
-                  "protocol": "tcp",
-                  "source_ips": [
-                    "0.0.0.0/0",
-                    "::/0"
-                  ]
-                }
-              ]
-            }
-          ],
-          "meta": {
-            "pagination": {
-              "last_page": 1,
-              "next_page": null,
-              "page": 1,
-              "per_page": 25,
-              "previous_page": null,
-              "total_entries": 1
-            }
-          }
-        },
-        "body_type": "json",
+        "body": "<?xml version=\"1.0\" encoding=\"UTF-8\"?><ListBucketResult xmlns=\"http://s3.amazonaws.com/doc/2006-03-01/\"><Name>spex-story972-criterion8039-prod</Name><Prefix></Prefix><MaxKeys>1000</MaxKeys><IsTruncated>false</IsTruncated><KeyCount>0</KeyCount></ListBucketResult>",
+        "body_type": "text",
         "headers": {
-          "access-control-allow-headers": [
-            "X-Requested-With,Authorization,Content-Type"
-          ],
-          "access-control-allow-methods": [
-            "OPTIONS,GET,POST,PUT,PATCH,DELETE"
-          ],
-          "access-control-allow-origin": [
-            "*"
-          ],
-          "access-control-expose-headers": [
-            "Link,X-Correlation-ID"
-          ],
-          "access-control-max-age": [
-            "86400"
-          ],
           "content-type": [
-            "application/json"
+            "application/xml"
           ],
           "date": [
-            "Sun, 02 Aug 2026 05:38:55 GMT"
-          ],
-          "link": [
-            "<https://api.hetzner.cloud/v1/firewalls?page=1&per_page=25>; rel=\"last\""
-          ],
-          "ratelimit-limit": [
-            "3600"
-          ],
-          "ratelimit-remaining": [
-            "3588"
-          ],
-          "ratelimit-reset": [
-            "1785649147"
+            "Mon, 10 Aug 2026 23:28:45 GMT"
           ],
           "strict-transport-security": [
-            "max-age=31536000; includeSubDomains"
-          ],
-          "traceparent": [
-            "00-e1ca9d001449708bd1ddc1c22956cbd1-3cf901b236695b3e-01"
+            "max-age=63072000"
           ],
           "transfer-encoding": [
             "chunked"
           ],
-          "uber-trace-id": [
-            "e1ca9d001449708bd1ddc1c22956cbd1:3cf901b236695b3e:0:1"
+          "x-amz-request-id": [
+            "tx00000011714402008dd44-006a7a5ead-334e60e2-fsn1-prod1-ceph5"
           ],
-          "vary": [
-            "Accept-Encoding"
-          ],
-          "x-correlation-id": [
-            "e1ca9d001449708bd1ddc1c22956cbd1"
+          "x-debug-bucket": [
+            "spex-story972-criterion8039-prod"
           ]
         },
         "status": 200
       }
     },
     {
-      "recorded_at": "2026-08-02T05:38:55.659577Z",
+      "recorded_at": "2026-08-10T23:28:45.949010Z",
       "request": {
         "body": "",
         "body_type": "text",
@@ -6225,209 +3464,51 @@
           "accept-encoding": [
             "gzip"
           ],
-          "content-type": [
-            "application/json"
+          "host": [
+            "fsn1.your-objectstorage.com"
           ],
           "user-agent": [
             "req/0.5.17"
-          ]
-        },
-        "method": "DELETE",
-        "query_string": "",
-        "uri": "https://api.hetzner.cloud/v1/firewalls/11404348"
-      },
-      "response": {
-        "body_json": {
-          "error": {
-            "code": "resource_in_use",
-            "details": null,
-            "message": "firewall with ID 11404348 is still in use"
-          }
-        },
-        "body_type": "json",
-        "headers": {
-          "access-control-allow-headers": [
-            "X-Requested-With,Authorization,Content-Type"
           ],
-          "access-control-allow-methods": [
-            "OPTIONS,GET,POST,PUT,PATCH,DELETE"
+          "x-amz-content-sha256": [
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
           ],
-          "access-control-allow-origin": [
-            "*"
-          ],
-          "access-control-expose-headers": [
-            "Link,X-Correlation-ID"
-          ],
-          "access-control-max-age": [
-            "86400"
-          ],
-          "content-type": [
-            "application/json"
-          ],
-          "date": [
-            "Sun, 02 Aug 2026 05:38:55 GMT"
-          ],
-          "ratelimit-limit": [
-            "3600"
-          ],
-          "ratelimit-remaining": [
-            "3587"
-          ],
-          "ratelimit-reset": [
-            "1785649148"
-          ],
-          "strict-transport-security": [
-            "max-age=31536000; includeSubDomains"
-          ],
-          "traceparent": [
-            "00-dcf708e58a95f93a81529ac1d66b374f-f1fb2dbb2710655c-01"
-          ],
-          "uber-trace-id": [
-            "dcf708e58a95f93a81529ac1d66b374f:f1fb2dbb2710655c:0:1"
-          ],
-          "x-correlation-id": [
-            "dcf708e58a95f93a81529ac1d66b374f"
-          ]
-        },
-        "status": 422
-      }
-    },
-    {
-      "recorded_at": "2026-08-02T05:38:57.811289Z",
-      "request": {
-        "body": "",
-        "body_type": "text",
-        "headers": {
-          "accept-encoding": [
-            "gzip"
-          ],
-          "content-type": [
-            "application/json"
-          ],
-          "user-agent": [
-            "req/0.5.17"
+          "x-amz-date": [
+            "20260810T232845Z"
           ]
         },
         "method": "GET",
-        "query_string": "",
-        "uri": "https://api.hetzner.cloud/v1/firewalls"
+        "query_string": "uploads=1",
+        "uri": "https://fsn1.your-objectstorage.com/spex-story972-criterion8039-prod/"
       },
       "response": {
-        "body_json": {
-          "firewalls": [
-            {
-              "applied_to": [],
-              "created": "2026-08-02T05:38:11Z",
-              "id": 11404348,
-              "labels": {},
-              "name": "spex-story965-criterion7996",
-              "rules": [
-                {
-                  "description": null,
-                  "destination_ips": [],
-                  "direction": "in",
-                  "port": "22",
-                  "protocol": "tcp",
-                  "source_ips": [
-                    "0.0.0.0/0",
-                    "::/0"
-                  ]
-                },
-                {
-                  "description": null,
-                  "destination_ips": [],
-                  "direction": "in",
-                  "port": "80",
-                  "protocol": "tcp",
-                  "source_ips": [
-                    "0.0.0.0/0",
-                    "::/0"
-                  ]
-                },
-                {
-                  "description": null,
-                  "destination_ips": [],
-                  "direction": "in",
-                  "port": "443",
-                  "protocol": "tcp",
-                  "source_ips": [
-                    "0.0.0.0/0",
-                    "::/0"
-                  ]
-                }
-              ]
-            }
-          ],
-          "meta": {
-            "pagination": {
-              "last_page": 1,
-              "next_page": null,
-              "page": 1,
-              "per_page": 25,
-              "previous_page": null,
-              "total_entries": 1
-            }
-          }
-        },
-        "body_type": "json",
+        "body": "<?xml version=\"1.0\" encoding=\"UTF-8\"?><ListMultipartUploadsResult xmlns=\"http://s3.amazonaws.com/doc/2006-03-01/\"><Bucket>spex-story972-criterion8039-prod</Bucket><MaxUploads>1000</MaxUploads><IsTruncated>false</IsTruncated></ListMultipartUploadsResult>",
+        "body_type": "text",
         "headers": {
-          "access-control-allow-headers": [
-            "X-Requested-With,Authorization,Content-Type"
-          ],
-          "access-control-allow-methods": [
-            "OPTIONS,GET,POST,PUT,PATCH,DELETE"
-          ],
-          "access-control-allow-origin": [
-            "*"
-          ],
-          "access-control-expose-headers": [
-            "Link,X-Correlation-ID"
-          ],
-          "access-control-max-age": [
-            "86400"
-          ],
           "content-type": [
-            "application/json"
+            "application/xml"
           ],
           "date": [
-            "Sun, 02 Aug 2026 05:38:57 GMT"
-          ],
-          "link": [
-            "<https://api.hetzner.cloud/v1/firewalls?page=1&per_page=25>; rel=\"last\""
-          ],
-          "ratelimit-limit": [
-            "3600"
-          ],
-          "ratelimit-remaining": [
-            "3588"
-          ],
-          "ratelimit-reset": [
-            "1785649149"
+            "Mon, 10 Aug 2026 23:28:45 GMT"
           ],
           "strict-transport-security": [
-            "max-age=31536000; includeSubDomains"
-          ],
-          "traceparent": [
-            "00-68706c6e869c6375be47f2a0ec076688-9c3a86f83c0c6acf-01"
+            "max-age=63072000"
           ],
           "transfer-encoding": [
             "chunked"
           ],
-          "uber-trace-id": [
-            "68706c6e869c6375be47f2a0ec076688:9c3a86f83c0c6acf:0:1"
+          "x-amz-request-id": [
+            "tx00000be2a5c172561758b-006a7a5ead-366e672a-fsn1-prod1-ceph5"
           ],
-          "vary": [
-            "Accept-Encoding"
-          ],
-          "x-correlation-id": [
-            "68706c6e869c6375be47f2a0ec076688"
+          "x-debug-bucket": [
+            "spex-story972-criterion8039-prod"
           ]
         },
         "status": 200
       }
     },
     {
-      "recorded_at": "2026-08-02T05:38:57.958656Z",
+      "recorded_at": "2026-08-10T23:28:46.205339Z",
       "request": {
         "body": "",
         "body_type": "text",
@@ -6435,62 +3516,347 @@
           "accept-encoding": [
             "gzip"
           ],
-          "content-type": [
-            "application/json"
+          "host": [
+            "fsn1.your-objectstorage.com"
           ],
           "user-agent": [
             "req/0.5.17"
+          ],
+          "x-amz-content-sha256": [
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          ],
+          "x-amz-date": [
+            "20260810T232845Z"
           ]
         },
         "method": "DELETE",
         "query_string": "",
-        "uri": "https://api.hetzner.cloud/v1/firewalls/11404348"
+        "uri": "https://fsn1.your-objectstorage.com/spex-story972-criterion8039-prod/"
       },
       "response": {
         "body": "",
         "body_type": "text",
         "headers": {
-          "access-control-allow-headers": [
-            "X-Requested-With,Authorization,Content-Type"
-          ],
-          "access-control-allow-methods": [
-            "OPTIONS,GET,POST,PUT,PATCH,DELETE"
-          ],
-          "access-control-allow-origin": [
-            "*"
-          ],
-          "access-control-expose-headers": [
-            "Link,X-Correlation-ID"
-          ],
-          "access-control-max-age": [
-            "86400"
-          ],
           "date": [
-            "Sun, 02 Aug 2026 05:38:57 GMT"
-          ],
-          "ratelimit-limit": [
-            "3600"
-          ],
-          "ratelimit-remaining": [
-            "3587"
-          ],
-          "ratelimit-reset": [
-            "1785649150"
+            "Mon, 10 Aug 2026 23:28:46 GMT"
           ],
           "strict-transport-security": [
-            "max-age=31536000; includeSubDomains"
+            "max-age=63072000"
           ],
-          "traceparent": [
-            "00-666f096315860aa4005c8df35f1e6843-e6b4f0486d1ca0a5-01"
+          "x-debug-backend": [
+            "hcbm"
           ],
-          "uber-trace-id": [
-            "666f096315860aa4005c8df35f1e6843:e6b4f0486d1ca0a5:0:1"
-          ],
-          "x-correlation-id": [
-            "666f096315860aa4005c8df35f1e6843"
+          "x-debug-bucket": [
+            "spex-story972-criterion8039-prod"
           ]
         },
         "status": 204
+      }
+    },
+    {
+      "recorded_at": "2026-08-10T23:28:46.330084Z",
+      "request": {
+        "body": "",
+        "body_type": "text",
+        "headers": {
+          "accept-encoding": [
+            "gzip"
+          ],
+          "host": [
+            "fsn1.your-objectstorage.com"
+          ],
+          "user-agent": [
+            "req/0.5.17"
+          ],
+          "x-amz-content-sha256": [
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          ],
+          "x-amz-date": [
+            "20260810T232846Z"
+          ]
+        },
+        "method": "GET",
+        "query_string": "",
+        "uri": "https://fsn1.your-objectstorage.com/"
+      },
+      "response": {
+        "body": "<?xml version=\"1.0\" encoding=\"UTF-8\"?><ListAllMyBucketsResult xmlns=\"http://s3.amazonaws.com/doc/2006-03-01/\"><Owner><ID>p13614200</ID><DisplayName>p13614200</DisplayName></Owner><Buckets><Bucket><Name>codemyspec-registry</Name><CreationDate>2026-08-09T22:07:18.996Z</CreationDate></Bucket><Bucket><Name>qa-fixture-project-uat</Name><CreationDate>2026-08-04T00:48:14.758Z</CreationDate></Bucket><Bucket><Name>spex-story972-criterion8039-registry-prod</Name><CreationDate>2026-08-10T23:22:47.911Z</CreationDate></Bucket><Bucket><Name>spex-story972-criterion8039-registry-uat</Name><CreationDate>2026-08-10T23:24:11.211Z</CreationDate></Bucket><Bucket><Name>spex-story972-criterion8039-uat</Name><CreationDate>2026-08-10T23:28:43.098Z</CreationDate></Bucket></Buckets></ListAllMyBucketsResult>",
+        "body_type": "text",
+        "headers": {
+          "content-type": [
+            "application/xml"
+          ],
+          "date": [
+            "Mon, 10 Aug 2026 23:28:46 GMT"
+          ],
+          "strict-transport-security": [
+            "max-age=63072000"
+          ],
+          "transfer-encoding": [
+            "chunked"
+          ],
+          "x-amz-request-id": [
+            "tx00000697694162a0fc4c7-006a7a5eae-810d6beb-fsn1-prod1-ceph3"
+          ],
+          "x-debug-bucket": [
+            ""
+          ]
+        },
+        "status": 200
+      }
+    },
+    {
+      "recorded_at": "2026-08-10T23:28:46.463149Z",
+      "request": {
+        "body": "",
+        "body_type": "text",
+        "headers": {
+          "accept-encoding": [
+            "gzip"
+          ],
+          "host": [
+            "fsn1.your-objectstorage.com"
+          ],
+          "user-agent": [
+            "req/0.5.17"
+          ],
+          "x-amz-content-sha256": [
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          ],
+          "x-amz-date": [
+            "20260810T232846Z"
+          ]
+        },
+        "method": "GET",
+        "query_string": "list-type=2&prefix=",
+        "uri": "https://fsn1.your-objectstorage.com/spex-story972-criterion8039-uat/"
+      },
+      "response": {
+        "body": "<?xml version=\"1.0\" encoding=\"UTF-8\"?><ListBucketResult xmlns=\"http://s3.amazonaws.com/doc/2006-03-01/\"><Name>spex-story972-criterion8039-uat</Name><Prefix></Prefix><MaxKeys>1000</MaxKeys><IsTruncated>false</IsTruncated><KeyCount>0</KeyCount></ListBucketResult>",
+        "body_type": "text",
+        "headers": {
+          "content-type": [
+            "application/xml"
+          ],
+          "date": [
+            "Mon, 10 Aug 2026 23:28:46 GMT"
+          ],
+          "strict-transport-security": [
+            "max-age=63072000"
+          ],
+          "transfer-encoding": [
+            "chunked"
+          ],
+          "x-amz-request-id": [
+            "tx0000004882793fb9c7314-006a7a5eae-310f83c2-fsn1-prod1-ceph5"
+          ],
+          "x-debug-bucket": [
+            "spex-story972-criterion8039-uat"
+          ]
+        },
+        "status": 200
+      }
+    },
+    {
+      "recorded_at": "2026-08-10T23:28:46.595739Z",
+      "request": {
+        "body": "",
+        "body_type": "text",
+        "headers": {
+          "accept-encoding": [
+            "gzip"
+          ],
+          "host": [
+            "fsn1.your-objectstorage.com"
+          ],
+          "user-agent": [
+            "req/0.5.17"
+          ],
+          "x-amz-content-sha256": [
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          ],
+          "x-amz-date": [
+            "20260810T232846Z"
+          ]
+        },
+        "method": "GET",
+        "query_string": "list-type=2",
+        "uri": "https://fsn1.your-objectstorage.com/spex-story972-criterion8039-uat/"
+      },
+      "response": {
+        "body": "<?xml version=\"1.0\" encoding=\"UTF-8\"?><ListBucketResult xmlns=\"http://s3.amazonaws.com/doc/2006-03-01/\"><Name>spex-story972-criterion8039-uat</Name><Prefix></Prefix><MaxKeys>1000</MaxKeys><IsTruncated>false</IsTruncated><KeyCount>0</KeyCount></ListBucketResult>",
+        "body_type": "text",
+        "headers": {
+          "content-type": [
+            "application/xml"
+          ],
+          "date": [
+            "Mon, 10 Aug 2026 23:28:46 GMT"
+          ],
+          "strict-transport-security": [
+            "max-age=63072000"
+          ],
+          "transfer-encoding": [
+            "chunked"
+          ],
+          "x-amz-request-id": [
+            "tx00000de631dea80f919e2-006a7a5eae-32d2ab28-fsn1-prod1-ceph5"
+          ],
+          "x-debug-bucket": [
+            "spex-story972-criterion8039-uat"
+          ]
+        },
+        "status": 200
+      }
+    },
+    {
+      "recorded_at": "2026-08-10T23:28:46.772628Z",
+      "request": {
+        "body": "",
+        "body_type": "text",
+        "headers": {
+          "accept-encoding": [
+            "gzip"
+          ],
+          "host": [
+            "fsn1.your-objectstorage.com"
+          ],
+          "user-agent": [
+            "req/0.5.17"
+          ],
+          "x-amz-content-sha256": [
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          ],
+          "x-amz-date": [
+            "20260810T232846Z"
+          ]
+        },
+        "method": "GET",
+        "query_string": "uploads=1",
+        "uri": "https://fsn1.your-objectstorage.com/spex-story972-criterion8039-uat/"
+      },
+      "response": {
+        "body": "<?xml version=\"1.0\" encoding=\"UTF-8\"?><ListMultipartUploadsResult xmlns=\"http://s3.amazonaws.com/doc/2006-03-01/\"><Bucket>spex-story972-criterion8039-uat</Bucket><MaxUploads>1000</MaxUploads><IsTruncated>false</IsTruncated></ListMultipartUploadsResult>",
+        "body_type": "text",
+        "headers": {
+          "content-type": [
+            "application/xml"
+          ],
+          "date": [
+            "Mon, 10 Aug 2026 23:28:46 GMT"
+          ],
+          "strict-transport-security": [
+            "max-age=63072000"
+          ],
+          "transfer-encoding": [
+            "chunked"
+          ],
+          "x-amz-request-id": [
+            "tx00000dbeab5d62ce8c592-006a7a5eae-352b91ad-fsn1-prod1-ceph5"
+          ],
+          "x-debug-bucket": [
+            "spex-story972-criterion8039-uat"
+          ]
+        },
+        "status": 200
+      }
+    },
+    {
+      "recorded_at": "2026-08-10T23:28:47.027556Z",
+      "request": {
+        "body": "",
+        "body_type": "text",
+        "headers": {
+          "accept-encoding": [
+            "gzip"
+          ],
+          "host": [
+            "fsn1.your-objectstorage.com"
+          ],
+          "user-agent": [
+            "req/0.5.17"
+          ],
+          "x-amz-content-sha256": [
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          ],
+          "x-amz-date": [
+            "20260810T232846Z"
+          ]
+        },
+        "method": "DELETE",
+        "query_string": "",
+        "uri": "https://fsn1.your-objectstorage.com/spex-story972-criterion8039-uat/"
+      },
+      "response": {
+        "body": "",
+        "body_type": "text",
+        "headers": {
+          "date": [
+            "Mon, 10 Aug 2026 23:28:46 GMT"
+          ],
+          "strict-transport-security": [
+            "max-age=63072000"
+          ],
+          "x-debug-backend": [
+            "hcbm"
+          ],
+          "x-debug-bucket": [
+            "spex-story972-criterion8039-uat"
+          ]
+        },
+        "status": 204
+      }
+    },
+    {
+      "recorded_at": "2026-08-10T23:28:47.200861Z",
+      "request": {
+        "body": "",
+        "body_type": "text",
+        "headers": {
+          "accept-encoding": [
+            "gzip"
+          ],
+          "host": [
+            "fsn1.your-objectstorage.com"
+          ],
+          "user-agent": [
+            "req/0.5.17"
+          ],
+          "x-amz-content-sha256": [
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          ],
+          "x-amz-date": [
+            "20260810T232847Z"
+          ]
+        },
+        "method": "GET",
+        "query_string": "",
+        "uri": "https://fsn1.your-objectstorage.com/"
+      },
+      "response": {
+        "body": "<?xml version=\"1.0\" encoding=\"UTF-8\"?><ListAllMyBucketsResult xmlns=\"http://s3.amazonaws.com/doc/2006-03-01/\"><Owner><ID>p13614200</ID><DisplayName>p13614200</DisplayName></Owner><Buckets><Bucket><Name>codemyspec-registry</Name><CreationDate>2026-08-09T22:07:18.996Z</CreationDate></Bucket><Bucket><Name>qa-fixture-project-uat</Name><CreationDate>2026-08-04T00:48:14.758Z</CreationDate></Bucket><Bucket><Name>spex-story972-criterion8039-registry-prod</Name><CreationDate>2026-08-10T23:22:47.911Z</CreationDate></Bucket><Bucket><Name>spex-story972-criterion8039-registry-uat</Name><CreationDate>2026-08-10T23:24:11.211Z</CreationDate></Bucket></Buckets></ListAllMyBucketsResult>",
+        "body_type": "text",
+        "headers": {
+          "content-type": [
+            "application/xml"
+          ],
+          "date": [
+            "Mon, 10 Aug 2026 23:28:47 GMT"
+          ],
+          "strict-transport-security": [
+            "max-age=63072000"
+          ],
+          "transfer-encoding": [
+            "chunked"
+          ],
+          "x-amz-request-id": [
+            "tx0000022583e331556ba44-006a7a5eaf-8170922c-fsn1-prod1-ceph3"
+          ],
+          "x-debug-bucket": [
+            ""
+          ]
+        },
+        "status": 200
       }
     }
   ],

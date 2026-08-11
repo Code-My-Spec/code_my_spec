@@ -1,0 +1,386 @@
+{
+  "interactions": [
+    {
+      "recorded_at": "2026-08-11T02:05:26.666000Z",
+      "request": {
+        "body": "",
+        "body_type": "text",
+        "headers": {
+          "accept": [
+            "application/vnd.github+json"
+          ],
+          "accept-encoding": [
+            "gzip"
+          ],
+          "user-agent": [
+            "CodeMySpec"
+          ],
+          "x-github-api-version": [
+            "2022-11-28"
+          ]
+        },
+        "method": "GET",
+        "query_string": "",
+        "uri": "https://api.github.com/repos/codemy-my-spec-test/spex-story973-criterion8043"
+      },
+      "response": {
+        "body_json": {
+          "documentation_url": "https://docs.github.com/rest/repos/repos#get-a-repository",
+          "message": "Not Found",
+          "status": "404"
+        },
+        "body_type": "json",
+        "headers": {
+          "access-control-allow-origin": [
+            "*"
+          ],
+          "access-control-expose-headers": [
+            "ETag, Link, Location, Retry-After, X-GitHub-OTP, X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Used, X-RateLimit-Resource, X-RateLimit-Reset, X-OAuth-Scopes, X-Accepted-OAuth-Scopes, X-Poll-Interval, X-GitHub-Media-Type, X-GitHub-SSO, X-GitHub-Request-Id, Deprecation, Sunset, Warning"
+          ],
+          "content-security-policy": [
+            "default-src 'none'"
+          ],
+          "content-type": [
+            "application/json; charset=utf-8"
+          ],
+          "date": [
+            "Tue, 11 Aug 2026 02:05:26 GMT"
+          ],
+          "referrer-policy": [
+            "origin-when-cross-origin, strict-origin-when-cross-origin"
+          ],
+          "server": [
+            "github.com"
+          ],
+          "strict-transport-security": [
+            "max-age=31536000; includeSubdomains; preload"
+          ],
+          "transfer-encoding": [
+            "chunked"
+          ],
+          "vary": [
+            "Accept-Encoding, Accept, X-Requested-With"
+          ],
+          "x-accepted-oauth-scopes": [
+            "repo"
+          ],
+          "x-content-type-options": [
+            "nosniff"
+          ],
+          "x-frame-options": [
+            "deny"
+          ],
+          "x-github-api-version-selected": [
+            "2022-11-28"
+          ],
+          "x-github-edge-region": [
+            "iad"
+          ],
+          "x-github-media-type": [
+            "github.v3; format=json"
+          ],
+          "x-github-request-id": [
+            "D3CB:283EA9:4FA5314:10C16285:6A7A8366"
+          ],
+          "x-oauth-client-id": [
+            "Ov23liFpnT7j3bK5OC1L"
+          ],
+          "x-oauth-scopes": [
+            "repo, user:email"
+          ],
+          "x-ratelimit-limit": [
+            "5000"
+          ],
+          "x-ratelimit-remaining": [
+            "4998"
+          ],
+          "x-ratelimit-reset": [
+            "1786417369"
+          ],
+          "x-ratelimit-resource": [
+            "core"
+          ],
+          "x-ratelimit-used": [
+            "2"
+          ],
+          "x-xss-protection": [
+            "0"
+          ]
+        },
+        "status": 404
+      }
+    },
+    {
+      "recorded_at": "2026-08-11T02:05:28.427972Z",
+      "request": {
+        "body_json": {
+          "name": "spex-story973-criterion8043",
+          "private": true
+        },
+        "body_type": "json",
+        "headers": {
+          "accept": [
+            "application/vnd.github+json"
+          ],
+          "accept-encoding": [
+            "gzip"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "user-agent": [
+            "CodeMySpec"
+          ],
+          "x-github-api-version": [
+            "2022-11-28"
+          ]
+        },
+        "method": "POST",
+        "query_string": "",
+        "uri": "https://api.github.com/orgs/codemy-my-spec-test/repos"
+      },
+      "response": {
+        "body_json": {
+          "delete_branch_on_merge": false,
+          "mirror_url": null,
+          "pushed_at": "2026-08-11T02:05:27Z",
+          "allow_update_branch": false,
+          "svn_url": "https://github.com/codemy-my-spec-test/spex-story973-criterion8043",
+          "open_issues_count": 0,
+          "forks_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story973-criterion8043/forks",
+          "watchers_count": 0,
+          "issues_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story973-criterion8043/issues{/number}",
+          "disabled": false,
+          "collaborators_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story973-criterion8043/collaborators{/collaborator}",
+          "has_wiki": false,
+          "statuses_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story973-criterion8043/statuses/{sha}",
+          "merge_commit_title": "MERGE_MESSAGE",
+          "homepage": null,
+          "allow_auto_merge": false,
+          "full_name": "codemy-my-spec-test/spex-story973-criterion8043",
+          "stargazers_count": 0,
+          "subscription_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story973-criterion8043/subscription",
+          "use_squash_pr_title_as_default": false,
+          "stargazers_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story973-criterion8043/stargazers",
+          "events_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story973-criterion8043/events",
+          "has_projects": true,
+          "archive_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story973-criterion8043/{archive_format}{/ref}",
+          "commits_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story973-criterion8043/commits{/sha}",
+          "merges_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story973-criterion8043/merges",
+          "downloads_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story973-criterion8043/downloads",
+          "blobs_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story973-criterion8043/git/blobs{/sha}",
+          "comments_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story973-criterion8043/comments{/number}",
+          "contributors_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story973-criterion8043/contributors",
+          "subscribers_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story973-criterion8043/subscribers",
+          "custom_properties": {},
+          "squash_merge_commit_message": "COMMIT_MESSAGES",
+          "git_tags_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story973-criterion8043/git/tags{/sha}",
+          "updated_at": "2026-08-11T02:05:27Z",
+          "issue_events_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story973-criterion8043/issues/events{/number}",
+          "visibility": "private",
+          "pull_request_creation_policy": "all",
+          "description": null,
+          "name": "spex-story973-criterion8043",
+          "id": 1330406169,
+          "labels_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story973-criterion8043/labels{/name}",
+          "branches_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story973-criterion8043/branches{/branch}",
+          "network_count": 0,
+          "private": true,
+          "issue_comment_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story973-criterion8043/issues/comments{/number}",
+          "merge_commit_message": "PR_TITLE",
+          "releases_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story973-criterion8043/releases{/id}",
+          "notifications_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story973-criterion8043/notifications{?since,all,participating}",
+          "hooks_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story973-criterion8043/hooks",
+          "allow_squash_merge": true,
+          "default_branch": "main",
+          "web_commit_signoff_required": false,
+          "teams_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story973-criterion8043/teams",
+          "topics": [],
+          "compare_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story973-criterion8043/compare/{base}...{head}",
+          "deployments_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story973-criterion8043/deployments",
+          "git_url": "git://github.com/codemy-my-spec-test/spex-story973-criterion8043.git",
+          "allow_merge_commit": true,
+          "git_refs_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story973-criterion8043/git/refs{/sha}",
+          "pulls_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story973-criterion8043/pulls{/number}",
+          "url": "https://api.github.com/repos/codemy-my-spec-test/spex-story973-criterion8043",
+          "has_issues": true,
+          "contents_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story973-criterion8043/contents/{+path}",
+          "size": 0,
+          "allow_rebase_merge": true,
+          "owner": {
+            "avatar_url": "https://avatars.githubusercontent.com/u/312172974?v=4",
+            "events_url": "https://api.github.com/users/codemy-my-spec-test/events{/privacy}",
+            "followers_url": "https://api.github.com/users/codemy-my-spec-test/followers",
+            "following_url": "https://api.github.com/users/codemy-my-spec-test/following{/other_user}",
+            "gists_url": "https://api.github.com/users/codemy-my-spec-test/gists{/gist_id}",
+            "gravatar_id": "",
+            "html_url": "https://github.com/codemy-my-spec-test",
+            "id": 312172974,
+            "login": "codemy-my-spec-test",
+            "node_id": "O_kgDOEpthrg",
+            "organizations_url": "https://api.github.com/users/codemy-my-spec-test/orgs",
+            "received_events_url": "https://api.github.com/users/codemy-my-spec-test/received_events",
+            "repos_url": "https://api.github.com/users/codemy-my-spec-test/repos",
+            "site_admin": false,
+            "starred_url": "https://api.github.com/users/codemy-my-spec-test/starred{/owner}{/repo}",
+            "subscriptions_url": "https://api.github.com/users/codemy-my-spec-test/subscriptions",
+            "type": "Organization",
+            "url": "https://api.github.com/users/codemy-my-spec-test",
+            "user_view_type": "public"
+          },
+          "git_commits_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story973-criterion8043/git/commits{/sha}",
+          "tags_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story973-criterion8043/tags",
+          "permissions": {
+            "admin": true,
+            "maintain": true,
+            "pull": true,
+            "push": true,
+            "triage": true
+          },
+          "language": null,
+          "fork": false,
+          "has_discussions": false,
+          "watchers": 0,
+          "html_url": "https://github.com/codemy-my-spec-test/spex-story973-criterion8043",
+          "open_issues": 0,
+          "is_template": false,
+          "node_id": "R_kgDOT0xjGQ",
+          "milestones_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story973-criterion8043/milestones{/number}",
+          "license": null,
+          "forks_count": 0,
+          "squash_merge_commit_title": "COMMIT_OR_PR_TITLE",
+          "allow_forking": false,
+          "has_pages": false,
+          "organization": {
+            "avatar_url": "https://avatars.githubusercontent.com/u/312172974?v=4",
+            "events_url": "https://api.github.com/users/codemy-my-spec-test/events{/privacy}",
+            "followers_url": "https://api.github.com/users/codemy-my-spec-test/followers",
+            "following_url": "https://api.github.com/users/codemy-my-spec-test/following{/other_user}",
+            "gists_url": "https://api.github.com/users/codemy-my-spec-test/gists{/gist_id}",
+            "gravatar_id": "",
+            "html_url": "https://github.com/codemy-my-spec-test",
+            "id": 312172974,
+            "login": "codemy-my-spec-test",
+            "node_id": "O_kgDOEpthrg",
+            "organizations_url": "https://api.github.com/users/codemy-my-spec-test/orgs",
+            "received_events_url": "https://api.github.com/users/codemy-my-spec-test/received_events",
+            "repos_url": "https://api.github.com/users/codemy-my-spec-test/repos",
+            "site_admin": false,
+            "starred_url": "https://api.github.com/users/codemy-my-spec-test/starred{/owner}{/repo}",
+            "subscriptions_url": "https://api.github.com/users/codemy-my-spec-test/subscriptions",
+            "type": "Organization",
+            "url": "https://api.github.com/users/codemy-my-spec-test",
+            "user_view_type": "public"
+          },
+          "trees_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story973-criterion8043/git/trees{/sha}",
+          "ssh_url": "git@github.com:codemy-my-spec-test/spex-story973-criterion8043.git",
+          "has_pull_requests": true,
+          "assignees_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story973-criterion8043/assignees{/user}",
+          "clone_url": "https://github.com/codemy-my-spec-test/spex-story973-criterion8043.git",
+          "forks": 0,
+          "archived": false,
+          "subscribers_count": 0,
+          "keys_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story973-criterion8043/keys{/key_id}",
+          "has_downloads": false,
+          "created_at": "2026-08-11T02:05:26Z",
+          "languages_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story973-criterion8043/languages"
+        },
+        "body_type": "json",
+        "headers": {
+          "access-control-allow-origin": [
+            "*"
+          ],
+          "access-control-expose-headers": [
+            "ETag, Link, Location, Retry-After, X-GitHub-OTP, X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Used, X-RateLimit-Resource, X-RateLimit-Reset, X-OAuth-Scopes, X-Accepted-OAuth-Scopes, X-Poll-Interval, X-GitHub-Media-Type, X-GitHub-SSO, X-GitHub-Request-Id, Deprecation, Sunset, Warning"
+          ],
+          "cache-control": [
+            "private, max-age=60, s-maxage=60"
+          ],
+          "content-security-policy": [
+            "default-src 'none'"
+          ],
+          "content-type": [
+            "application/json; charset=utf-8"
+          ],
+          "date": [
+            "Tue, 11 Aug 2026 02:05:28 GMT"
+          ],
+          "deprecation": [
+            "Tue, 10 Mar 2026 00:00:00 GMT"
+          ],
+          "etag": [
+            "\"44ed291405b07b5d2432a85c5709d31b7513c7b4dbaefde3780bf2d85b48cf9a\""
+          ],
+          "link": [
+            "<https://docs.github.com/en/rest/about-the-rest-api/api-versions>; rel=\"deprecation\"; type=\"text/html\""
+          ],
+          "location": [
+            "https://api.github.com/repos/codemy-my-spec-test/spex-story973-criterion8043"
+          ],
+          "referrer-policy": [
+            "origin-when-cross-origin, strict-origin-when-cross-origin"
+          ],
+          "server": [
+            "github.com"
+          ],
+          "strict-transport-security": [
+            "max-age=31536000; includeSubdomains; preload"
+          ],
+          "sunset": [
+            "Fri, 10 Mar 2028 00:00:00 GMT"
+          ],
+          "vary": [
+            "Accept, Authorization, Cookie, X-GitHub-OTP,Accept-Encoding, Accept, X-Requested-With"
+          ],
+          "x-accepted-oauth-scopes": [
+            "public_repo, repo"
+          ],
+          "x-content-type-options": [
+            "nosniff"
+          ],
+          "x-frame-options": [
+            "deny"
+          ],
+          "x-github-api-version-selected": [
+            "2022-11-28"
+          ],
+          "x-github-edge-region": [
+            "iad"
+          ],
+          "x-github-media-type": [
+            "github.v3; format=json"
+          ],
+          "x-github-request-id": [
+            "D3CB:283EA9:4FA5437:10C1661D:6A7A8366"
+          ],
+          "x-oauth-client-id": [
+            "Ov23liFpnT7j3bK5OC1L"
+          ],
+          "x-oauth-scopes": [
+            "repo, user:email"
+          ],
+          "x-ratelimit-limit": [
+            "5000"
+          ],
+          "x-ratelimit-remaining": [
+            "4968"
+          ],
+          "x-ratelimit-reset": [
+            "1786415571"
+          ],
+          "x-ratelimit-resource": [
+            "core"
+          ],
+          "x-ratelimit-used": [
+            "32"
+          ],
+          "x-xss-protection": [
+            "0"
+          ]
+        },
+        "status": 201
+      }
+    }
+  ],
+  "version": "2.0"
+}

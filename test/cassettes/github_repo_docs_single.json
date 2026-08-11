@@ -1,7 +1,7 @@
 {
   "interactions": [
     {
-      "recorded_at": "2026-08-03T02:35:45.181313Z",
+      "recorded_at": "2026-08-11T01:35:00.548862Z",
       "request": {
         "body": "",
         "body_type": "text",
@@ -44,7 +44,7 @@
             "application/json; charset=utf-8"
           ],
           "date": [
-            "Mon, 03 Aug 2026 02:35:45 GMT"
+            "Tue, 11 Aug 2026 01:35:00 GMT"
           ],
           "referrer-policy": [
             "origin-when-cross-origin, strict-origin-when-cross-origin"
@@ -80,7 +80,7 @@
             "github.v3; format=json"
           ],
           "x-github-request-id": [
-            "C47F:2AC78B:116F726:3DDC00A:6A6FFE80"
+            "F31C:2546BB:C95AF3:2A30466:6A7A7C44"
           ],
           "x-oauth-client-id": [
             "Ov23liFpnT7j3bK5OC1L"
@@ -92,16 +92,16 @@
             "5000"
           ],
           "x-ratelimit-remaining": [
-            "4968"
+            "4995"
           ],
           "x-ratelimit-reset": [
-            "1785724579"
+            "1786413690"
           ],
           "x-ratelimit-resource": [
             "core"
           ],
           "x-ratelimit-used": [
-            "32"
+            "5"
           ],
           "x-xss-protection": [
             "0"
@@ -111,7 +111,7 @@
       }
     },
     {
-      "recorded_at": "2026-08-03T02:35:46.670718Z",
+      "recorded_at": "2026-08-11T01:35:02.395192Z",
       "request": {
         "body_json": {
           "name": "spex-story985-criterion8178",
@@ -143,7 +143,7 @@
         "body_json": {
           "delete_branch_on_merge": false,
           "mirror_url": null,
-          "pushed_at": "2026-08-03T02:35:46Z",
+          "pushed_at": "2026-08-11T01:35:01Z",
           "allow_update_branch": false,
           "svn_url": "https://github.com/codemy-my-spec-test/spex-story985-criterion8178",
           "open_issues_count": 0,
@@ -175,13 +175,13 @@
           "custom_properties": {},
           "squash_merge_commit_message": "COMMIT_MESSAGES",
           "git_tags_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story985-criterion8178/git/tags{/sha}",
-          "updated_at": "2026-08-03T02:35:46Z",
+          "updated_at": "2026-08-11T01:35:01Z",
           "issue_events_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story985-criterion8178/issues/events{/number}",
           "visibility": "private",
           "pull_request_creation_policy": "all",
           "description": null,
           "name": "spex-story985-criterion8178",
-          "id": 1321117821,
+          "id": 1330388503,
           "labels_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story985-criterion8178/labels{/name}",
           "branches_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story985-criterion8178/branches{/branch}",
           "network_count": 0,
@@ -244,7 +244,7 @@
           "html_url": "https://github.com/codemy-my-spec-test/spex-story985-criterion8178",
           "open_issues": 0,
           "is_template": false,
-          "node_id": "R_kgDOTr6ofQ",
+          "node_id": "R_kgDOT0weFw",
           "milestones_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story985-criterion8178/milestones{/number}",
           "license": null,
           "forks_count": 0,
@@ -282,7 +282,7 @@
           "subscribers_count": 0,
           "keys_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story985-criterion8178/keys{/key_id}",
           "has_downloads": false,
-          "created_at": "2026-08-03T02:35:45Z",
+          "created_at": "2026-08-11T01:35:00Z",
           "languages_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story985-criterion8178/languages"
         },
         "body_type": "json",
@@ -303,13 +303,13 @@
             "application/json; charset=utf-8"
           ],
           "date": [
-            "Mon, 03 Aug 2026 02:35:46 GMT"
+            "Tue, 11 Aug 2026 01:35:02 GMT"
           ],
           "deprecation": [
             "Tue, 10 Mar 2026 00:00:00 GMT"
           ],
           "etag": [
-            "\"f056c786dccf5b37caccaa33d94afae4135e35444d72e4ce758abbec72bcfbd2\""
+            "\"0afb51ed59c1b41dc55ab82a8125d11a1a89689518a2742d2ca621ec3dd54eff\""
           ],
           "link": [
             "<https://docs.github.com/en/rest/about-the-rest-api/api-versions>; rel=\"deprecation\"; type=\"text/html\""
@@ -351,7 +351,7 @@
             "github.v3; format=json"
           ],
           "x-github-request-id": [
-            "C47F:2AC78B:116F7FC:3DDC2D1:6A6FFE81"
+            "F31C:2546BB:C95B9E:2A306AD:6A7A7C44"
           ],
           "x-oauth-client-id": [
             "Ov23liFpnT7j3bK5OC1L"
@@ -363,16 +363,16 @@
             "5000"
           ],
           "x-ratelimit-remaining": [
-            "4938"
+            "4997"
           ],
           "x-ratelimit-reset": [
-            "1785727315"
+            "1786415571"
           ],
           "x-ratelimit-resource": [
             "core"
           ],
           "x-ratelimit-used": [
-            "62"
+            "3"
           ],
           "x-xss-protection": [
             "0"

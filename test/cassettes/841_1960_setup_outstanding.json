@@ -1,0 +1,4748 @@
+{
+  "interactions": [
+    {
+      "recorded_at": "2026-08-11T04:36:30.016155Z",
+      "request": {
+        "body": "",
+        "body_type": "text",
+        "headers": {
+          "accept-encoding": [
+            "gzip"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "user-agent": [
+            "req/0.5.17"
+          ]
+        },
+        "method": "GET",
+        "query_string": "",
+        "uri": "https://api.hetzner.cloud/v1/servers"
+      },
+      "response": {
+        "body_json": {
+          "meta": {
+            "pagination": {
+              "last_page": 1,
+              "next_page": null,
+              "page": 1,
+              "per_page": 25,
+              "previous_page": null,
+              "total_entries": 2
+            }
+          },
+          "servers": [
+            {
+              "backup_window": null,
+              "created": "2026-02-26T20:30:48Z",
+              "id": 122233257,
+              "image": {
+                "architecture": "arm",
+                "bound_to": null,
+                "created": "2024-04-25T13:26:51Z",
+                "created_from": null,
+                "deleted": null,
+                "deprecated": null,
+                "description": "Ubuntu 24.04",
+                "disk_size": 5,
+                "id": 161547270,
+                "image_size": null,
+                "labels": {},
+                "name": "ubuntu-24.04",
+                "os_flavor": "ubuntu",
+                "os_version": "24.04",
+                "protection": {
+                  "delete": false
+                },
+                "rapid_deploy": true,
+                "status": "available",
+                "type": "system"
+              },
+              "included_traffic": 21990232555520,
+              "ingoing_traffic": 400895000,
+              "iso": null,
+              "labels": {},
+              "load_balancers": [],
+              "location": {
+                "city": "Nuremberg",
+                "country": "DE",
+                "description": "Nuremberg DC Park 1",
+                "id": 2,
+                "latitude": 49.452102,
+                "longitude": 11.076665,
+                "name": "nbg1",
+                "network_zone": "eu-central"
+              },
+              "locked": false,
+              "name": "fuellytics",
+              "outgoing_traffic": 713130000,
+              "placement_group": null,
+              "primary_disk_size": 40,
+              "private_net": [],
+              "protection": {
+                "delete": false,
+                "rebuild": false
+              },
+              "public_net": {
+                "firewalls": [],
+                "floating_ips": [],
+                "ipv4": {
+                  "blocked": false,
+                  "dns_ptr": "static.88.105.225.46.clients.your-server.de",
+                  "id": 119911718,
+                  "ip": "46.225.105.88"
+                },
+                "ipv6": {
+                  "blocked": false,
+                  "dns_ptr": [],
+                  "id": 119911719,
+                  "ip": "2a01:4f8:1c19:3581::/64"
+                }
+              },
+              "rescue_enabled": false,
+              "server_type": {
+                "architecture": "arm",
+                "category": "cost_optimized",
+                "cores": 2,
+                "cpu_type": "shared",
+                "deprecated": false,
+                "deprecation": null,
+                "description": "CAX11",
+                "disk": 40,
+                "id": 45,
+                "locations": [
+                  {
+                    "available": false,
+                    "deprecation": null,
+                    "id": 1,
+                    "name": "fsn1",
+                    "recommended": false
+                  },
+                  {
+                    "available": false,
+                    "deprecation": null,
+                    "id": 2,
+                    "name": "nbg1",
+                    "recommended": false
+                  },
+                  {
+                    "available": false,
+                    "deprecation": null,
+                    "id": 3,
+                    "name": "hel1",
+                    "recommended": false
+                  }
+                ],
+                "memory": 4,
+                "name": "cax11",
+                "prices": [
+                  {
+                    "included_traffic": 21990232555520,
+                    "location": "fsn1",
+                    "price_hourly": {
+                      "gross": "0.0112000000000000",
+                      "net": "0.0112000000"
+                    },
+                    "price_monthly": {
+                      "gross": "6.9900000000000000",
+                      "net": "6.9900000000"
+                    },
+                    "price_per_tb_traffic": {
+                      "gross": "1.2000000000000000",
+                      "net": "1.2000000000"
+                    }
+                  },
+                  {
+                    "included_traffic": 21990232555520,
+                    "location": "hel1",
+                    "price_hourly": {
+                      "gross": "0.0112000000000000",
+                      "net": "0.0112000000"
+                    },
+                    "price_monthly": {
+                      "gross": "6.9900000000000000",
+                      "net": "6.9900000000"
+                    },
+                    "price_per_tb_traffic": {
+                      "gross": "1.2000000000000000",
+                      "net": "1.2000000000"
+                    }
+                  },
+                  {
+                    "included_traffic": 21990232555520,
+                    "location": "nbg1",
+                    "price_hourly": {
+                      "gross": "0.0112000000000000",
+                      "net": "0.0112000000"
+                    },
+                    "price_monthly": {
+                      "gross": "6.9900000000000000",
+                      "net": "6.9900000000"
+                    },
+                    "price_per_tb_traffic": {
+                      "gross": "1.2000000000000000",
+                      "net": "1.2000000000"
+                    }
+                  }
+                ],
+                "storage_type": "local"
+              },
+              "status": "running",
+              "volumes": []
+            },
+            {
+              "backup_window": null,
+              "created": "2026-03-06T21:19:01Z",
+              "id": 122994839,
+              "image": {
+                "architecture": "x86",
+                "bound_to": null,
+                "created": "2024-04-25T13:26:27Z",
+                "created_from": null,
+                "deleted": null,
+                "deprecated": null,
+                "description": "Ubuntu 24.04",
+                "disk_size": 5,
+                "id": 161547269,
+                "image_size": null,
+                "labels": {},
+                "name": "ubuntu-24.04",
+                "os_flavor": "ubuntu",
+                "os_version": "24.04",
+                "protection": {
+                  "delete": false
+                },
+                "rapid_deploy": true,
+                "status": "available",
+                "type": "system"
+              },
+              "included_traffic": 2199023255552,
+              "ingoing_traffic": 896085000,
+              "iso": null,
+              "labels": {},
+              "load_balancers": [],
+              "location": {
+                "city": "Ashburn, VA",
+                "country": "US",
+                "description": "Ashburn, VA",
+                "id": 4,
+                "latitude": 39.045821,
+                "longitude": -77.487073,
+                "name": "ash",
+                "network_zone": "us-east"
+              },
+              "locked": false,
+              "name": "fuellytics-prod",
+              "outgoing_traffic": 1761455000,
+              "placement_group": null,
+              "primary_disk_size": 80,
+              "private_net": [],
+              "protection": {
+                "delete": false,
+                "rebuild": false
+              },
+              "public_net": {
+                "firewalls": [],
+                "floating_ips": [],
+                "ipv4": {
+                  "blocked": false,
+                  "dns_ptr": "static.212.143.156.178.clients.your-server.de",
+                  "id": 121044011,
+                  "ip": "178.156.143.212"
+                },
+                "ipv6": {
+                  "blocked": false,
+                  "dns_ptr": [],
+                  "id": 121044012,
+                  "ip": "2a01:4ff:f4:3a1b::/64"
+                }
+              },
+              "rescue_enabled": false,
+              "server_type": {
+                "architecture": "x86",
+                "category": "regular_purpose",
+                "cores": 3,
+                "cpu_type": "shared",
+                "deprecated": false,
+                "deprecation": null,
+                "description": "CPX 21",
+                "disk": 80,
+                "id": 23,
+                "locations": [
+                  {
+                    "available": false,
+                    "deprecation": {
+                      "announced": "2025-10-16T06:00:00Z",
+                      "unavailable_after": "2025-12-31T23:59:59Z"
+                    },
+                    "id": 1,
+                    "name": "fsn1",
+                    "recommended": false
+                  },
+                  {
+                    "available": false,
+                    "deprecation": {
+                      "announced": "2025-10-16T06:00:00Z",
+                      "unavailable_after": "2025-12-31T23:59:59Z"
+                    },
+                    "id": 2,
+                    "name": "nbg1",
+                    "recommended": false
+                  },
+                  {
+                    "available": false,
+                    "deprecation": {
+                      "announced": "2025-10-16T06:00:00Z",
+                      "unavailable_after": "2025-12-31T23:59:59Z"
+                    },
+                    "id": 3,
+                    "name": "hel1",
+                    "recommended": false
+                  },
+                  {
+                    "available": true,
+                    "deprecation": null,
+                    "id": 4,
+                    "name": "ash",
+                    "recommended": false
+                  },
+                  {
+                    "available": true,
+                    "deprecation": null,
+                    "id": 5,
+                    "name": "hil",
+                    "recommended": false
+                  },
+                  {
+                    "available": false,
+                    "deprecation": {
+                      "announced": "2025-10-16T06:00:00Z",
+                      "unavailable_after": "2025-12-31T23:59:59Z"
+                    },
+                    "id": 6,
+                    "name": "sin",
+                    "recommended": false
+                  }
+                ],
+                "memory": 4,
+                "name": "cpx21",
+                "prices": [
+                  {
+                    "included_traffic": 2199023255552,
+                    "location": "ash",
+                    "price_hourly": {
+                      "gross": "0.0601000000000000",
+                      "net": "0.0601000000"
+                    },
+                    "price_monthly": {
+                      "gross": "37.4900000000000000",
+                      "net": "37.4900000000"
+                    },
+                    "price_per_tb_traffic": {
+                      "gross": "1.2000000000000000",
+                      "net": "1.2000000000"
+                    }
+                  },
+                  {
+                    "included_traffic": 21990232555520,
+                    "location": "fsn1",
+                    "price_hourly": {
+                      "gross": "0.0176000000000000",
+                      "net": "0.0176000000"
+                    },
+                    "price_monthly": {
+                      "gross": "10.9900000000000000",
+                      "net": "10.9900000000"
+                    },
+                    "price_per_tb_traffic": {
+                      "gross": "1.2000000000000000",
+                      "net": "1.2000000000"
+                    }
+                  },
+                  {
+                    "included_traffic": 21990232555520,
+                    "location": "hel1",
+                    "price_hourly": {
+                      "gross": "0.0176000000000000",
+                      "net": "0.0176000000"
+                    },
+                    "price_monthly": {
+                      "gross": "10.9900000000000000",
+                      "net": "10.9900000000"
+                    },
+                    "price_per_tb_traffic": {
+                      "gross": "1.2000000000000000",
+                      "net": "1.2000000000"
+                    }
+                  },
+                  {
+                    "included_traffic": 2199023255552,
+                    "location": "hil",
+                    "price_hourly": {
+                      "gross": "0.0601000000000000",
+                      "net": "0.0601000000"
+                    },
+                    "price_monthly": {
+                      "gross": "37.4900000000000000",
+                      "net": "37.4900000000"
+                    },
+                    "price_per_tb_traffic": {
+                      "gross": "1.2000000000000000",
+                      "net": "1.2000000000"
+                    }
+                  },
+                  {
+                    "included_traffic": 21990232555520,
+                    "location": "nbg1",
+                    "price_hourly": {
+                      "gross": "0.0176000000000000",
+                      "net": "0.0176000000"
+                    },
+                    "price_monthly": {
+                      "gross": "10.9900000000000000",
+                      "net": "10.9900000000"
+                    },
+                    "price_per_tb_traffic": {
+                      "gross": "1.2000000000000000",
+                      "net": "1.2000000000"
+                    }
+                  },
+                  {
+                    "included_traffic": 2199023255552,
+                    "location": "sin",
+                    "price_hourly": {
+                      "gross": "0.0352000000000000",
+                      "net": "0.0352000000"
+                    },
+                    "price_monthly": {
+                      "gross": "21.9900000000000000",
+                      "net": "21.9900000000"
+                    },
+                    "price_per_tb_traffic": {
+                      "gross": "8.3000000000000000",
+                      "net": "8.3000000000"
+                    }
+                  }
+                ],
+                "storage_type": "local"
+              },
+              "status": "running",
+              "volumes": []
+            }
+          ]
+        },
+        "body_type": "json",
+        "headers": {
+          "access-control-allow-headers": [
+            "X-Requested-With,Authorization,Content-Type"
+          ],
+          "access-control-allow-methods": [
+            "OPTIONS,GET,POST,PUT,PATCH,DELETE"
+          ],
+          "access-control-allow-origin": [
+            "*"
+          ],
+          "access-control-expose-headers": [
+            "Link,X-Correlation-ID"
+          ],
+          "access-control-max-age": [
+            "86400"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "date": [
+            "Tue, 11 Aug 2026 04:36:29 GMT"
+          ],
+          "link": [
+            "<https://api.hetzner.cloud/v1/servers?page=1>; rel=\"last\""
+          ],
+          "ratelimit-limit": [
+            "3600"
+          ],
+          "ratelimit-remaining": [
+            "3599"
+          ],
+          "ratelimit-reset": [
+            "1786422990"
+          ],
+          "strict-transport-security": [
+            "max-age=31536000; includeSubDomains"
+          ],
+          "transfer-encoding": [
+            "chunked"
+          ],
+          "vary": [
+            "Accept-Encoding"
+          ],
+          "x-correlation-id": [
+            "705f752510e4ea1c353dfa45288bb11d"
+          ]
+        },
+        "status": 200
+      }
+    },
+    {
+      "recorded_at": "2026-08-11T04:36:30.166921Z",
+      "request": {
+        "body": "",
+        "body_type": "text",
+        "headers": {
+          "accept-encoding": [
+            "gzip"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "user-agent": [
+            "req/0.5.17"
+          ]
+        },
+        "method": "GET",
+        "query_string": "",
+        "uri": "https://api.hetzner.cloud/v1/firewalls"
+      },
+      "response": {
+        "body_json": {
+          "firewalls": [
+            {
+              "applied_to": [],
+              "created": "2026-08-03T23:25:24Z",
+              "id": 11413727,
+              "labels": {},
+              "name": "qa-fixture-project",
+              "rules": [
+                {
+                  "description": null,
+                  "destination_ips": [],
+                  "direction": "in",
+                  "port": "22",
+                  "protocol": "tcp",
+                  "source_ips": [
+                    "0.0.0.0/0",
+                    "::/0"
+                  ]
+                },
+                {
+                  "description": null,
+                  "destination_ips": [],
+                  "direction": "in",
+                  "port": "80",
+                  "protocol": "tcp",
+                  "source_ips": [
+                    "0.0.0.0/0",
+                    "::/0"
+                  ]
+                },
+                {
+                  "description": null,
+                  "destination_ips": [],
+                  "direction": "in",
+                  "port": "443",
+                  "protocol": "tcp",
+                  "source_ips": [
+                    "0.0.0.0/0",
+                    "::/0"
+                  ]
+                }
+              ]
+            },
+            {
+              "applied_to": [],
+              "created": "2026-08-09T23:09:59Z",
+              "id": 11440996,
+              "labels": {},
+              "name": "codemyspec-registry",
+              "rules": [
+                {
+                  "description": null,
+                  "destination_ips": [],
+                  "direction": "in",
+                  "port": "22",
+                  "protocol": "tcp",
+                  "source_ips": [
+                    "0.0.0.0/0",
+                    "::/0"
+                  ]
+                },
+                {
+                  "description": null,
+                  "destination_ips": [],
+                  "direction": "in",
+                  "port": "80",
+                  "protocol": "tcp",
+                  "source_ips": [
+                    "0.0.0.0/0",
+                    "::/0"
+                  ]
+                },
+                {
+                  "description": null,
+                  "destination_ips": [],
+                  "direction": "in",
+                  "port": "443",
+                  "protocol": "tcp",
+                  "source_ips": [
+                    "0.0.0.0/0",
+                    "::/0"
+                  ]
+                }
+              ]
+            },
+            {
+              "applied_to": [],
+              "created": "2026-08-10T18:40:27Z",
+              "id": 11446375,
+              "labels": {},
+              "name": "spex-story972-criterion8039",
+              "rules": [
+                {
+                  "description": null,
+                  "destination_ips": [],
+                  "direction": "in",
+                  "port": "22",
+                  "protocol": "tcp",
+                  "source_ips": [
+                    "0.0.0.0/0",
+                    "::/0"
+                  ]
+                },
+                {
+                  "description": null,
+                  "destination_ips": [],
+                  "direction": "in",
+                  "port": "80",
+                  "protocol": "tcp",
+                  "source_ips": [
+                    "0.0.0.0/0",
+                    "::/0"
+                  ]
+                },
+                {
+                  "description": null,
+                  "destination_ips": [],
+                  "direction": "in",
+                  "port": "443",
+                  "protocol": "tcp",
+                  "source_ips": [
+                    "0.0.0.0/0",
+                    "::/0"
+                  ]
+                },
+                {
+                  "description": null,
+                  "destination_ips": [],
+                  "direction": "in",
+                  "port": "5000",
+                  "protocol": "tcp",
+                  "source_ips": [
+                    "10.0.0.0/16"
+                  ]
+                }
+              ]
+            },
+            {
+              "applied_to": [],
+              "created": "2026-08-11T00:34:45Z",
+              "id": 11447381,
+              "labels": {},
+              "name": "spex-story966-criterion8156",
+              "rules": [
+                {
+                  "description": null,
+                  "destination_ips": [],
+                  "direction": "in",
+                  "port": "22",
+                  "protocol": "tcp",
+                  "source_ips": [
+                    "0.0.0.0/0",
+                    "::/0"
+                  ]
+                },
+                {
+                  "description": null,
+                  "destination_ips": [],
+                  "direction": "in",
+                  "port": "80",
+                  "protocol": "tcp",
+                  "source_ips": [
+                    "0.0.0.0/0",
+                    "::/0"
+                  ]
+                },
+                {
+                  "description": null,
+                  "destination_ips": [],
+                  "direction": "in",
+                  "port": "443",
+                  "protocol": "tcp",
+                  "source_ips": [
+                    "0.0.0.0/0",
+                    "::/0"
+                  ]
+                },
+                {
+                  "description": null,
+                  "destination_ips": [],
+                  "direction": "in",
+                  "port": "5000",
+                  "protocol": "tcp",
+                  "source_ips": [
+                    "10.0.0.0/16"
+                  ]
+                }
+              ]
+            },
+            {
+              "applied_to": [],
+              "created": "2026-08-11T01:25:28Z",
+              "id": 11447480,
+              "labels": {},
+              "name": "spex-story965-criterion7995",
+              "rules": [
+                {
+                  "description": null,
+                  "destination_ips": [],
+                  "direction": "in",
+                  "port": "22",
+                  "protocol": "tcp",
+                  "source_ips": [
+                    "0.0.0.0/0",
+                    "::/0"
+                  ]
+                },
+                {
+                  "description": null,
+                  "destination_ips": [],
+                  "direction": "in",
+                  "port": "80",
+                  "protocol": "tcp",
+                  "source_ips": [
+                    "0.0.0.0/0",
+                    "::/0"
+                  ]
+                },
+                {
+                  "description": null,
+                  "destination_ips": [],
+                  "direction": "in",
+                  "port": "443",
+                  "protocol": "tcp",
+                  "source_ips": [
+                    "0.0.0.0/0",
+                    "::/0"
+                  ]
+                },
+                {
+                  "description": null,
+                  "destination_ips": [],
+                  "direction": "in",
+                  "port": "5000",
+                  "protocol": "tcp",
+                  "source_ips": [
+                    "10.0.0.0/16"
+                  ]
+                }
+              ]
+            },
+            {
+              "applied_to": [],
+              "created": "2026-08-11T02:20:18Z",
+              "id": 11447592,
+              "labels": {},
+              "name": "spex-story841-criterion1961",
+              "rules": [
+                {
+                  "description": null,
+                  "destination_ips": [],
+                  "direction": "in",
+                  "port": "22",
+                  "protocol": "tcp",
+                  "source_ips": [
+                    "0.0.0.0/0",
+                    "::/0"
+                  ]
+                },
+                {
+                  "description": null,
+                  "destination_ips": [],
+                  "direction": "in",
+                  "port": "80",
+                  "protocol": "tcp",
+                  "source_ips": [
+                    "0.0.0.0/0",
+                    "::/0"
+                  ]
+                },
+                {
+                  "description": null,
+                  "destination_ips": [],
+                  "direction": "in",
+                  "port": "443",
+                  "protocol": "tcp",
+                  "source_ips": [
+                    "0.0.0.0/0",
+                    "::/0"
+                  ]
+                },
+                {
+                  "description": null,
+                  "destination_ips": [],
+                  "direction": "in",
+                  "port": "5000",
+                  "protocol": "tcp",
+                  "source_ips": [
+                    "10.0.0.0/16"
+                  ]
+                }
+              ]
+            },
+            {
+              "applied_to": [],
+              "created": "2026-08-11T02:21:54Z",
+              "id": 11447593,
+              "labels": {},
+              "name": "spex-story841-criterion1962",
+              "rules": [
+                {
+                  "description": null,
+                  "destination_ips": [],
+                  "direction": "in",
+                  "port": "22",
+                  "protocol": "tcp",
+                  "source_ips": [
+                    "0.0.0.0/0",
+                    "::/0"
+                  ]
+                },
+                {
+                  "description": null,
+                  "destination_ips": [],
+                  "direction": "in",
+                  "port": "80",
+                  "protocol": "tcp",
+                  "source_ips": [
+                    "0.0.0.0/0",
+                    "::/0"
+                  ]
+                },
+                {
+                  "description": null,
+                  "destination_ips": [],
+                  "direction": "in",
+                  "port": "443",
+                  "protocol": "tcp",
+                  "source_ips": [
+                    "0.0.0.0/0",
+                    "::/0"
+                  ]
+                },
+                {
+                  "description": null,
+                  "destination_ips": [],
+                  "direction": "in",
+                  "port": "5000",
+                  "protocol": "tcp",
+                  "source_ips": [
+                    "10.0.0.0/16"
+                  ]
+                }
+              ]
+            },
+            {
+              "applied_to": [],
+              "created": "2026-08-11T02:22:03Z",
+              "id": 11447594,
+              "labels": {},
+              "name": "spex-story841-criterion1967",
+              "rules": [
+                {
+                  "description": null,
+                  "destination_ips": [],
+                  "direction": "in",
+                  "port": "22",
+                  "protocol": "tcp",
+                  "source_ips": [
+                    "0.0.0.0/0",
+                    "::/0"
+                  ]
+                },
+                {
+                  "description": null,
+                  "destination_ips": [],
+                  "direction": "in",
+                  "port": "80",
+                  "protocol": "tcp",
+                  "source_ips": [
+                    "0.0.0.0/0",
+                    "::/0"
+                  ]
+                },
+                {
+                  "description": null,
+                  "destination_ips": [],
+                  "direction": "in",
+                  "port": "443",
+                  "protocol": "tcp",
+                  "source_ips": [
+                    "0.0.0.0/0",
+                    "::/0"
+                  ]
+                },
+                {
+                  "description": null,
+                  "destination_ips": [],
+                  "direction": "in",
+                  "port": "5000",
+                  "protocol": "tcp",
+                  "source_ips": [
+                    "10.0.0.0/16"
+                  ]
+                }
+              ]
+            },
+            {
+              "applied_to": [],
+              "created": "2026-08-11T02:22:08Z",
+              "id": 11447595,
+              "labels": {},
+              "name": "spex-story841-criterion1968",
+              "rules": [
+                {
+                  "description": null,
+                  "destination_ips": [],
+                  "direction": "in",
+                  "port": "22",
+                  "protocol": "tcp",
+                  "source_ips": [
+                    "0.0.0.0/0",
+                    "::/0"
+                  ]
+                },
+                {
+                  "description": null,
+                  "destination_ips": [],
+                  "direction": "in",
+                  "port": "80",
+                  "protocol": "tcp",
+                  "source_ips": [
+                    "0.0.0.0/0",
+                    "::/0"
+                  ]
+                },
+                {
+                  "description": null,
+                  "destination_ips": [],
+                  "direction": "in",
+                  "port": "443",
+                  "protocol": "tcp",
+                  "source_ips": [
+                    "0.0.0.0/0",
+                    "::/0"
+                  ]
+                },
+                {
+                  "description": null,
+                  "destination_ips": [],
+                  "direction": "in",
+                  "port": "5000",
+                  "protocol": "tcp",
+                  "source_ips": [
+                    "10.0.0.0/16"
+                  ]
+                }
+              ]
+            },
+            {
+              "applied_to": [],
+              "created": "2026-08-11T02:22:15Z",
+              "id": 11447596,
+              "labels": {},
+              "name": "spex-story841-criterion1969",
+              "rules": [
+                {
+                  "description": null,
+                  "destination_ips": [],
+                  "direction": "in",
+                  "port": "22",
+                  "protocol": "tcp",
+                  "source_ips": [
+                    "0.0.0.0/0",
+                    "::/0"
+                  ]
+                },
+                {
+                  "description": null,
+                  "destination_ips": [],
+                  "direction": "in",
+                  "port": "80",
+                  "protocol": "tcp",
+                  "source_ips": [
+                    "0.0.0.0/0",
+                    "::/0"
+                  ]
+                },
+                {
+                  "description": null,
+                  "destination_ips": [],
+                  "direction": "in",
+                  "port": "443",
+                  "protocol": "tcp",
+                  "source_ips": [
+                    "0.0.0.0/0",
+                    "::/0"
+                  ]
+                },
+                {
+                  "description": null,
+                  "destination_ips": [],
+                  "direction": "in",
+                  "port": "5000",
+                  "protocol": "tcp",
+                  "source_ips": [
+                    "10.0.0.0/16"
+                  ]
+                }
+              ]
+            },
+            {
+              "applied_to": [],
+              "created": "2026-08-11T02:23:10Z",
+              "id": 11447602,
+              "labels": {},
+              "name": "spex-story966-criterion8003",
+              "rules": [
+                {
+                  "description": null,
+                  "destination_ips": [],
+                  "direction": "in",
+                  "port": "22",
+                  "protocol": "tcp",
+                  "source_ips": [
+                    "0.0.0.0/0",
+                    "::/0"
+                  ]
+                },
+                {
+                  "description": null,
+                  "destination_ips": [],
+                  "direction": "in",
+                  "port": "80",
+                  "protocol": "tcp",
+                  "source_ips": [
+                    "0.0.0.0/0",
+                    "::/0"
+                  ]
+                },
+                {
+                  "description": null,
+                  "destination_ips": [],
+                  "direction": "in",
+                  "port": "443",
+                  "protocol": "tcp",
+                  "source_ips": [
+                    "0.0.0.0/0",
+                    "::/0"
+                  ]
+                },
+                {
+                  "description": null,
+                  "destination_ips": [],
+                  "direction": "in",
+                  "port": "5000",
+                  "protocol": "tcp",
+                  "source_ips": [
+                    "10.0.0.0/16"
+                  ]
+                }
+              ]
+            }
+          ],
+          "meta": {
+            "pagination": {
+              "last_page": 1,
+              "next_page": null,
+              "page": 1,
+              "per_page": 25,
+              "previous_page": null,
+              "total_entries": 11
+            }
+          }
+        },
+        "body_type": "json",
+        "headers": {
+          "access-control-allow-headers": [
+            "X-Requested-With,Authorization,Content-Type"
+          ],
+          "access-control-allow-methods": [
+            "OPTIONS,GET,POST,PUT,PATCH,DELETE"
+          ],
+          "access-control-allow-origin": [
+            "*"
+          ],
+          "access-control-expose-headers": [
+            "Link,X-Correlation-ID"
+          ],
+          "access-control-max-age": [
+            "86400"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "date": [
+            "Tue, 11 Aug 2026 04:36:30 GMT"
+          ],
+          "link": [
+            "<https://api.hetzner.cloud/v1/firewalls?page=1&per_page=25>; rel=\"last\""
+          ],
+          "ratelimit-limit": [
+            "3600"
+          ],
+          "ratelimit-remaining": [
+            "3598"
+          ],
+          "ratelimit-reset": [
+            "1786422992"
+          ],
+          "strict-transport-security": [
+            "max-age=31536000; includeSubDomains"
+          ],
+          "traceparent": [
+            "00-c38571af89e5950a4035a351e5aadb3b-27271697d90559d6-01"
+          ],
+          "transfer-encoding": [
+            "chunked"
+          ],
+          "uber-trace-id": [
+            "c38571af89e5950a4035a351e5aadb3b:27271697d90559d6:0:1"
+          ],
+          "vary": [
+            "Accept-Encoding"
+          ],
+          "x-correlation-id": [
+            "c38571af89e5950a4035a351e5aadb3b"
+          ]
+        },
+        "status": 200
+      }
+    },
+    {
+      "recorded_at": "2026-08-11T04:36:30.305734Z",
+      "request": {
+        "body": "",
+        "body_type": "text",
+        "headers": {
+          "accept-encoding": [
+            "gzip"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "user-agent": [
+            "req/0.5.17"
+          ]
+        },
+        "method": "GET",
+        "query_string": "",
+        "uri": "https://api.hetzner.cloud/v1/ssh_keys"
+      },
+      "response": {
+        "body_json": {
+          "meta": {
+            "pagination": {
+              "last_page": 1,
+              "next_page": null,
+              "page": 1,
+              "per_page": 25,
+              "previous_page": null,
+              "total_entries": 3
+            }
+          },
+          "ssh_keys": [
+            {
+              "created": "2026-02-26T20:30:04Z",
+              "fingerprint": "c9:5b:5a:54:f0:3a:66:53:b6:db:30:54:12:48:6d:42",
+              "id": 108222671,
+              "labels": {},
+              "name": "macbook",
+              "public_key": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPyfdOOqeYWgnTIunq9s0NLhf9kMFfGO4+aXQ1kE1qxi johns10@gmail.com\n\n"
+            },
+            {
+              "created": "2026-08-03T23:25:24Z",
+              "fingerprint": "12:37:ae:a0:d3:9b:86:4d:30:12:a6:79:2f:56:ef:94",
+              "id": 116372121,
+              "labels": {},
+              "name": "qa-fixture-project",
+              "public_key": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPlHOWn8ABWeSXmbh/yr5Xep32YzzMdNyQ3RNVJXbstI qa-fixture-project"
+            },
+            {
+              "created": "2026-08-04T18:46:43Z",
+              "fingerprint": "f8:19:90:7d:19:3f:e6:8f:1d:62:18:6b:b1:ab:03:0d",
+              "id": 116430717,
+              "labels": {},
+              "name": "codemyspec",
+              "public_key": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIItGdvRTslTWNigotZBHDs3iRcxt33g5tpz8II9cosLm codemyspec"
+            }
+          ]
+        },
+        "body_type": "json",
+        "headers": {
+          "access-control-allow-headers": [
+            "X-Requested-With,Authorization,Content-Type"
+          ],
+          "access-control-allow-methods": [
+            "OPTIONS,GET,POST,PUT,PATCH,DELETE"
+          ],
+          "access-control-allow-origin": [
+            "*"
+          ],
+          "access-control-expose-headers": [
+            "Link,X-Correlation-ID"
+          ],
+          "access-control-max-age": [
+            "86400"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "date": [
+            "Tue, 11 Aug 2026 04:36:30 GMT"
+          ],
+          "link": [
+            "<https://api.hetzner.cloud/v1/ssh_keys?page=1>; rel=\"last\""
+          ],
+          "ratelimit-limit": [
+            "3600"
+          ],
+          "ratelimit-remaining": [
+            "3597"
+          ],
+          "ratelimit-reset": [
+            "1786422993"
+          ],
+          "strict-transport-security": [
+            "max-age=31536000; includeSubDomains"
+          ],
+          "transfer-encoding": [
+            "chunked"
+          ],
+          "vary": [
+            "Accept-Encoding"
+          ],
+          "x-correlation-id": [
+            "da6ab6f6e132bf6b664514a2e25164ac"
+          ]
+        },
+        "status": 200
+      }
+    },
+    {
+      "recorded_at": "2026-08-11T04:36:30.528847Z",
+      "request": {
+        "body": "",
+        "body_type": "text",
+        "headers": {
+          "accept-encoding": [
+            "gzip"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "user-agent": [
+            "req/0.5.17"
+          ]
+        },
+        "method": "GET",
+        "query_string": "",
+        "uri": "https://api.cloudflare.com/client/v4/zones"
+      },
+      "response": {
+        "body_json": {
+          "errors": [],
+          "messages": [],
+          "result": [
+            {
+              "account": {
+                "id": "6477547f586ec90db2c2a0081dcd98bd",
+                "name": "Johns10@gmail.com's Account"
+              },
+              "activated_on": "2026-06-25T15:16:07.473058Z",
+              "created_on": "2026-06-25T15:14:34.004099Z",
+              "development_mode": 0,
+              "id": "0287fe8206425a2aac660a57a62f65bc",
+              "meta": {
+                "custom_certificate_quota": 0,
+                "page_rule_quota": 3,
+                "phishing_detected": false,
+                "step": 2
+              },
+              "modified_on": "2026-06-25T15:16:07.473058Z",
+              "name": "astralbi.com",
+              "name_servers": [
+                "demi.ns.cloudflare.com",
+                "yichun.ns.cloudflare.com"
+              ],
+              "original_dnshost": null,
+              "original_name_servers": [
+                "ns1.dns-parking.com",
+                "ns2.dns-parking.com"
+              ],
+              "original_registrar": "hostinger operations, uab (id: 1636)",
+              "owner": {
+                "email": null,
+                "id": null,
+                "type": "user"
+              },
+              "paused": false,
+              "permissions": [
+                "#dns_records:edit",
+                "#dns_records:read",
+                "#zone:edit",
+                "#zone:read",
+                "#zone_settings:edit",
+                "#zone_settings:read",
+                "#domain:read",
+                "#organization:read",
+                "#organization:edit"
+              ],
+              "plan": {
+                "can_subscribe": false,
+                "currency": "USD",
+                "externally_managed": false,
+                "frequency": "",
+                "id": "0feeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+                "is_subscribed": false,
+                "legacy_discount": false,
+                "legacy_id": "free",
+                "name": "Free Website",
+                "price": 0
+              },
+              "status": "active",
+              "tenant": {
+                "id": null,
+                "name": null
+              },
+              "tenant_unit": {
+                "id": null
+              },
+              "type": "full",
+              "vanity_name_servers": [],
+              "vanity_name_servers_ips": null
+            },
+            {
+              "account": {
+                "id": "6477547f586ec90db2c2a0081dcd98bd",
+                "name": "Johns10@gmail.com's Account"
+              },
+              "activated_on": "2026-07-13T12:36:46.554959Z",
+              "created_on": "2026-07-13T12:36:46.211045Z",
+              "development_mode": 0,
+              "id": "799ed6f6bd983eb0f0cd0d810c602ae9",
+              "meta": {
+                "custom_certificate_quota": 0,
+                "page_rule_quota": 3,
+                "phishing_detected": false,
+                "step": 4
+              },
+              "modified_on": "2026-07-13T12:36:46.656852Z",
+              "name": "broken-oaths.com",
+              "name_servers": [
+                "demi.ns.cloudflare.com",
+                "yichun.ns.cloudflare.com"
+              ],
+              "original_dnshost": null,
+              "original_name_servers": null,
+              "original_registrar": null,
+              "owner": {
+                "email": null,
+                "id": null,
+                "type": "user"
+              },
+              "paused": false,
+              "permissions": [
+                "#dns_records:edit",
+                "#dns_records:read",
+                "#zone:edit",
+                "#zone:read",
+                "#zone_settings:edit",
+                "#zone_settings:read",
+                "#domain:read",
+                "#organization:read",
+                "#organization:edit"
+              ],
+              "plan": {
+                "can_subscribe": false,
+                "currency": "USD",
+                "externally_managed": false,
+                "frequency": "",
+                "id": "0feeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+                "is_subscribed": false,
+                "legacy_discount": false,
+                "legacy_id": "free",
+                "name": "Free Website",
+                "price": 0
+              },
+              "status": "active",
+              "tenant": {
+                "id": null,
+                "name": null
+              },
+              "tenant_unit": {
+                "id": null
+              },
+              "type": "full",
+              "vanity_name_servers": [],
+              "vanity_name_servers_ips": null
+            },
+            {
+              "account": {
+                "id": "6477547f586ec90db2c2a0081dcd98bd",
+                "name": "Johns10@gmail.com's Account"
+              },
+              "activated_on": "2026-02-28T17:45:36.370072Z",
+              "created_on": "2026-02-28T17:38:06.963541Z",
+              "development_mode": 0,
+              "id": "ba45c3c2010cb275de73f91f4f05edab",
+              "meta": {
+                "custom_certificate_quota": 0,
+                "page_rule_quota": 3,
+                "phishing_detected": false,
+                "step": 2
+              },
+              "modified_on": "2026-02-28T17:45:36.370072Z",
+              "name": "codemyspec.com",
+              "name_servers": [
+                "demi.ns.cloudflare.com",
+                "yichun.ns.cloudflare.com"
+              ],
+              "original_dnshost": null,
+              "original_name_servers": [
+                "dns1.registrar-servers.com",
+                "dns2.registrar-servers.com"
+              ],
+              "original_registrar": "namecheap, inc. (id: 1068)",
+              "owner": {
+                "email": null,
+                "id": null,
+                "type": "user"
+              },
+              "paused": false,
+              "permissions": [
+                "#dns_records:edit",
+                "#dns_records:read",
+                "#zone:edit",
+                "#zone:read",
+                "#zone_settings:edit",
+                "#zone_settings:read",
+                "#domain:read",
+                "#organization:read",
+                "#organization:edit"
+              ],
+              "plan": {
+                "can_subscribe": false,
+                "currency": "USD",
+                "externally_managed": false,
+                "frequency": "",
+                "id": "0feeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+                "is_subscribed": false,
+                "legacy_discount": false,
+                "legacy_id": "free",
+                "name": "Free Website",
+                "price": 0
+              },
+              "status": "active",
+              "tenant": {
+                "id": null,
+                "name": null
+              },
+              "tenant_unit": {
+                "id": null
+              },
+              "type": "full",
+              "vanity_name_servers": [],
+              "vanity_name_servers_ips": null
+            },
+            {
+              "account": {
+                "id": "6477547f586ec90db2c2a0081dcd98bd",
+                "name": "Johns10@gmail.com's Account"
+              },
+              "activated_on": "2026-05-01T13:33:34.481973Z",
+              "created_on": "2026-04-21T14:43:08.969666Z",
+              "development_mode": 0,
+              "id": "2c28888129f4acb4a066986fbf055cc0",
+              "meta": {
+                "custom_certificate_quota": 0,
+                "page_rule_quota": 3,
+                "phishing_detected": false,
+                "step": 2
+              },
+              "modified_on": "2026-05-01T13:33:34.481973Z",
+              "name": "desertfirstcleaning.com",
+              "name_servers": [
+                "demi.ns.cloudflare.com",
+                "yichun.ns.cloudflare.com"
+              ],
+              "original_dnshost": null,
+              "original_name_servers": [
+                "ns1.dns-parking.com",
+                "ns2.dns-parking.com"
+              ],
+              "original_registrar": "hostinger operations, uab (id: 1636)",
+              "owner": {
+                "email": null,
+                "id": null,
+                "type": "user"
+              },
+              "paused": false,
+              "permissions": [
+                "#dns_records:edit",
+                "#dns_records:read",
+                "#zone:edit",
+                "#zone:read",
+                "#zone_settings:edit",
+                "#zone_settings:read",
+                "#domain:read",
+                "#organization:read",
+                "#organization:edit"
+              ],
+              "plan": {
+                "can_subscribe": false,
+                "currency": "USD",
+                "externally_managed": false,
+                "frequency": "",
+                "id": "0feeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+                "is_subscribed": false,
+                "legacy_discount": false,
+                "legacy_id": "free",
+                "name": "Free Website",
+                "price": 0
+              },
+              "status": "active",
+              "tenant": {
+                "id": null,
+                "name": null
+              },
+              "tenant_unit": {
+                "id": null
+              },
+              "type": "full",
+              "vanity_name_servers": [],
+              "vanity_name_servers_ips": null
+            },
+            {
+              "account": {
+                "id": "6477547f586ec90db2c2a0081dcd98bd",
+                "name": "Johns10@gmail.com's Account"
+              },
+              "activated_on": "2026-07-11T18:26:06.329522Z",
+              "created_on": "2026-07-11T18:26:05.934640Z",
+              "development_mode": 0,
+              "id": "8c8b2afc2b8b6bf024e454d3510bc4c1",
+              "meta": {
+                "custom_certificate_quota": 0,
+                "page_rule_quota": 3,
+                "phishing_detected": false,
+                "step": 4
+              },
+              "modified_on": "2026-07-11T18:26:06.436633Z",
+              "name": "earwitness.app",
+              "name_servers": [
+                "demi.ns.cloudflare.com",
+                "yichun.ns.cloudflare.com"
+              ],
+              "original_dnshost": null,
+              "original_name_servers": null,
+              "original_registrar": null,
+              "owner": {
+                "email": null,
+                "id": null,
+                "type": "user"
+              },
+              "paused": false,
+              "permissions": [
+                "#dns_records:edit",
+                "#dns_records:read",
+                "#zone:edit",
+                "#zone:read",
+                "#zone_settings:edit",
+                "#zone_settings:read",
+                "#domain:read",
+                "#organization:read",
+                "#organization:edit"
+              ],
+              "plan": {
+                "can_subscribe": false,
+                "currency": "USD",
+                "externally_managed": false,
+                "frequency": "",
+                "id": "0feeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+                "is_subscribed": false,
+                "legacy_discount": false,
+                "legacy_id": "free",
+                "name": "Free Website",
+                "price": 0
+              },
+              "status": "active",
+              "tenant": {
+                "id": null,
+                "name": null
+              },
+              "tenant_unit": {
+                "id": null
+              },
+              "type": "full",
+              "vanity_name_servers": [],
+              "vanity_name_servers_ips": null
+            },
+            {
+              "account": {
+                "id": "6477547f586ec90db2c2a0081dcd98bd",
+                "name": "Johns10@gmail.com's Account"
+              },
+              "activated_on": "2026-02-27T01:51:59.160872Z",
+              "created_on": "2026-02-27T01:49:03.058411Z",
+              "development_mode": -13592061,
+              "id": "51d25b6e048c9f5797cc0ea3ed6fc10e",
+              "meta": {
+                "custom_certificate_quota": 0,
+                "page_rule_quota": 3,
+                "phishing_detected": false,
+                "step": 2
+              },
+              "modified_on": "2026-02-27T01:51:59.160872Z",
+              "name": "fuellytics.app",
+              "name_servers": [
+                "demi.ns.cloudflare.com",
+                "yichun.ns.cloudflare.com"
+              ],
+              "original_dnshost": null,
+              "original_name_servers": [
+                "dns1.registrar-servers.com",
+                "dns2.registrar-servers.com"
+              ],
+              "original_registrar": "namecheap inc. (id: 1068)",
+              "owner": {
+                "email": null,
+                "id": null,
+                "type": "user"
+              },
+              "paused": false,
+              "permissions": [
+                "#dns_records:edit",
+                "#dns_records:read",
+                "#zone:edit",
+                "#zone:read",
+                "#zone_settings:edit",
+                "#zone_settings:read",
+                "#domain:read",
+                "#organization:read",
+                "#organization:edit"
+              ],
+              "plan": {
+                "can_subscribe": false,
+                "currency": "USD",
+                "externally_managed": false,
+                "frequency": "",
+                "id": "0feeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+                "is_subscribed": false,
+                "legacy_discount": false,
+                "legacy_id": "free",
+                "name": "Free Website",
+                "price": 0
+              },
+              "status": "active",
+              "tenant": {
+                "id": null,
+                "name": null
+              },
+              "tenant_unit": {
+                "id": null
+              },
+              "type": "full",
+              "vanity_name_servers": [],
+              "vanity_name_servers_ips": null
+            },
+            {
+              "account": {
+                "id": "6477547f586ec90db2c2a0081dcd98bd",
+                "name": "Johns10@gmail.com's Account"
+              },
+              "activated_on": "2026-06-02T21:56:44.166326Z",
+              "created_on": "2026-06-02T21:56:39.952959Z",
+              "development_mode": 0,
+              "id": "6cc37c6eb5d52a3291dba0675ae5b4dd",
+              "meta": {
+                "custom_certificate_quota": 0,
+                "page_rule_quota": 3,
+                "phishing_detected": false,
+                "step": 4
+              },
+              "modified_on": "2026-06-02T21:56:44.272647Z",
+              "name": "get-ai-traffic.com",
+              "name_servers": [
+                "demi.ns.cloudflare.com",
+                "yichun.ns.cloudflare.com"
+              ],
+              "original_dnshost": null,
+              "original_name_servers": null,
+              "original_registrar": null,
+              "owner": {
+                "email": null,
+                "id": null,
+                "type": "user"
+              },
+              "paused": false,
+              "permissions": [
+                "#dns_records:edit",
+                "#dns_records:read",
+                "#zone:edit",
+                "#zone:read",
+                "#zone_settings:edit",
+                "#zone_settings:read",
+                "#domain:read",
+                "#organization:read",
+                "#organization:edit"
+              ],
+              "plan": {
+                "can_subscribe": false,
+                "currency": "USD",
+                "externally_managed": false,
+                "frequency": "",
+                "id": "0feeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+                "is_subscribed": false,
+                "legacy_discount": false,
+                "legacy_id": "free",
+                "name": "Free Website",
+                "price": 0
+              },
+              "status": "active",
+              "tenant": {
+                "id": null,
+                "name": null
+              },
+              "tenant_unit": {
+                "id": null
+              },
+              "type": "full",
+              "vanity_name_servers": [],
+              "vanity_name_servers_ips": null
+            },
+            {
+              "account": {
+                "id": "6477547f586ec90db2c2a0081dcd98bd",
+                "name": "Johns10@gmail.com's Account"
+              },
+              "activated_on": "2026-07-05T18:18:37.871013Z",
+              "created_on": "2026-07-05T18:18:34.478210Z",
+              "development_mode": 0,
+              "id": "ee2bd5364c099fbd0bf57845c1523ac0",
+              "meta": {
+                "custom_certificate_quota": 0,
+                "page_rule_quota": 3,
+                "phishing_detected": false,
+                "step": 4
+              },
+              "modified_on": "2026-07-05T18:18:37.972283Z",
+              "name": "legwork.ca",
+              "name_servers": [
+                "demi.ns.cloudflare.com",
+                "yichun.ns.cloudflare.com"
+              ],
+              "original_dnshost": null,
+              "original_name_servers": null,
+              "original_registrar": null,
+              "owner": {
+                "email": null,
+                "id": null,
+                "type": "user"
+              },
+              "paused": false,
+              "permissions": [
+                "#dns_records:edit",
+                "#dns_records:read",
+                "#zone:edit",
+                "#zone:read",
+                "#zone_settings:edit",
+                "#zone_settings:read",
+                "#domain:read",
+                "#organization:read",
+                "#organization:edit"
+              ],
+              "plan": {
+                "can_subscribe": false,
+                "currency": "USD",
+                "externally_managed": false,
+                "frequency": "",
+                "id": "0feeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+                "is_subscribed": false,
+                "legacy_discount": false,
+                "legacy_id": "free",
+                "name": "Free Website",
+                "price": 0
+              },
+              "status": "active",
+              "tenant": {
+                "id": null,
+                "name": null
+              },
+              "tenant_unit": {
+                "id": null
+              },
+              "type": "full",
+              "vanity_name_servers": [],
+              "vanity_name_servers_ips": null
+            },
+            {
+              "account": {
+                "id": "6477547f586ec90db2c2a0081dcd98bd",
+                "name": "Johns10@gmail.com's Account"
+              },
+              "activated_on": "2026-04-25T21:59:03.929608Z",
+              "created_on": "2026-04-25T21:58:59.039591Z",
+              "development_mode": 0,
+              "id": "ca9564c0c590c9af6e479d7de9440795",
+              "meta": {
+                "custom_certificate_quota": 0,
+                "page_rule_quota": 3,
+                "phishing_detected": false,
+                "step": 4
+              },
+              "modified_on": "2026-04-25T21:59:04.050978Z",
+              "name": "marketmyspec.com",
+              "name_servers": [
+                "demi.ns.cloudflare.com",
+                "yichun.ns.cloudflare.com"
+              ],
+              "original_dnshost": null,
+              "original_name_servers": null,
+              "original_registrar": null,
+              "owner": {
+                "email": null,
+                "id": null,
+                "type": "user"
+              },
+              "paused": false,
+              "permissions": [
+                "#dns_records:edit",
+                "#dns_records:read",
+                "#zone:edit",
+                "#zone:read",
+                "#zone_settings:edit",
+                "#zone_settings:read",
+                "#domain:read",
+                "#organization:read",
+                "#organization:edit"
+              ],
+              "plan": {
+                "can_subscribe": false,
+                "currency": "USD",
+                "externally_managed": false,
+                "frequency": "",
+                "id": "0feeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+                "is_subscribed": false,
+                "legacy_discount": false,
+                "legacy_id": "free",
+                "name": "Free Website",
+                "price": 0
+              },
+              "status": "active",
+              "tenant": {
+                "id": null,
+                "name": null
+              },
+              "tenant_unit": {
+                "id": null
+              },
+              "type": "full",
+              "vanity_name_servers": [],
+              "vanity_name_servers_ips": null
+            },
+            {
+              "account": {
+                "id": "6477547f586ec90db2c2a0081dcd98bd",
+                "name": "Johns10@gmail.com's Account"
+              },
+              "activated_on": "2026-03-06T03:29:51.081486Z",
+              "created_on": "2026-03-06T03:29:45.548543Z",
+              "development_mode": 0,
+              "id": "618b7d6ae0af6ee3a58f8efff0f959e7",
+              "meta": {
+                "custom_certificate_quota": 0,
+                "page_rule_quota": 3,
+                "phishing_detected": false,
+                "step": 4
+              },
+              "modified_on": "2026-03-06T03:29:51.259457Z",
+              "name": "metric-flow.app",
+              "name_servers": [
+                "demi.ns.cloudflare.com",
+                "yichun.ns.cloudflare.com"
+              ],
+              "original_dnshost": null,
+              "original_name_servers": null,
+              "original_registrar": null,
+              "owner": {
+                "email": null,
+                "id": null,
+                "type": "user"
+              },
+              "paused": false,
+              "permissions": [
+                "#dns_records:edit",
+                "#dns_records:read",
+                "#zone:edit",
+                "#zone:read",
+                "#zone_settings:edit",
+                "#zone_settings:read",
+                "#domain:read",
+                "#organization:read",
+                "#organization:edit"
+              ],
+              "plan": {
+                "can_subscribe": false,
+                "currency": "USD",
+                "externally_managed": false,
+                "frequency": "",
+                "id": "0feeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+                "is_subscribed": false,
+                "legacy_discount": false,
+                "legacy_id": "free",
+                "name": "Free Website",
+                "price": 0
+              },
+              "status": "active",
+              "tenant": {
+                "id": null,
+                "name": null
+              },
+              "tenant_unit": {
+                "id": null
+              },
+              "type": "full",
+              "vanity_name_servers": [],
+              "vanity_name_servers_ips": null
+            }
+          ],
+          "result_info": {
+            "count": 10,
+            "page": 1,
+            "per_page": 20,
+            "total_count": 10,
+            "total_pages": 1
+          },
+          "success": true
+        },
+        "body_type": "json",
+        "headers": {
+          "api-version": [
+            "2026-09-26.epoch"
+          ],
+          "cache-control": [
+            "no-store, no-cache, must-revalidate, post-check=0, pre-check=0"
+          ],
+          "cf-auditlog-id": [
+            "019fef1b-95fa-7201-bdd2-3916f6bed35f"
+          ],
+          "cf-cache-status": [
+            "DYNAMIC"
+          ],
+          "cf-ray": [
+            "a2948a298ef35b53-YUL"
+          ],
+          "connection": [
+            "keep-alive"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "date": [
+            "Tue, 11 Aug 2026 04:36:30 GMT"
+          ],
+          "expires": [
+            "Sun, 25 Jan 1981 05:00:00 GMT"
+          ],
+          "pragma": [
+            "no-cache"
+          ],
+          "ratelimit": [
+            "\"list_zones\";r=1200;t=1"
+          ],
+          "ratelimit-policy": [
+            "\"list_zones\";q=1201;w=300"
+          ],
+          "server": [
+            "cloudflare"
+          ],
+          "strict-transport-security": [
+            "max-age=31536000"
+          ],
+          "transfer-encoding": [
+            "chunked"
+          ],
+          "vary": [
+            "Accept-Encoding"
+          ],
+          "x-content-type-options": [
+            "nosniff"
+          ],
+          "x-frame-options": [
+            "SAMEORIGIN"
+          ]
+        },
+        "status": 200
+      }
+    },
+    {
+      "recorded_at": "2026-08-11T04:36:30.796412Z",
+      "request": {
+        "body": "",
+        "body_type": "text",
+        "headers": {
+          "accept-encoding": [
+            "gzip"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "user-agent": [
+            "req/0.5.17"
+          ]
+        },
+        "method": "GET",
+        "query_string": "",
+        "uri": "https://api.cloudflare.com/client/v4/zones/0287fe8206425a2aac660a57a62f65bc/dns_records"
+      },
+      "response": {
+        "body_json": {
+          "errors": [],
+          "messages": [],
+          "result": [
+            {
+              "comment": null,
+              "content": "82.180.172.214",
+              "created_on": "2026-06-25T15:14:36.601003Z",
+              "id": "1b15586a602ae3df39d439053a6d449c",
+              "meta": {},
+              "modified_on": "2026-06-25T15:14:36.601003Z",
+              "name": "astralbi.com",
+              "proxiable": true,
+              "proxied": true,
+              "settings": {},
+              "tags": [],
+              "ttl": 1,
+              "type": "A"
+            },
+            {
+              "comment": null,
+              "content": "178.156.216.165",
+              "created_on": "2026-08-09T21:05:07.181997Z",
+              "id": "e2243b92a5c474ce6ee3fd8a7ad538e8",
+              "meta": {},
+              "modified_on": "2026-08-09T21:05:07.181997Z",
+              "name": "drill.astralbi.com",
+              "proxiable": true,
+              "proxied": false,
+              "settings": {},
+              "tags": [],
+              "ttl": 60,
+              "type": "A"
+            },
+            {
+              "comment": null,
+              "content": "82.180.172.214",
+              "created_on": "2026-06-25T15:14:36.633542Z",
+              "id": "10e7c711eb181f2a935fec541115eadb",
+              "meta": {},
+              "modified_on": "2026-06-25T15:14:36.633542Z",
+              "name": "ftp.astralbi.com",
+              "proxiable": true,
+              "proxied": true,
+              "settings": {},
+              "tags": [],
+              "ttl": 1,
+              "type": "A"
+            },
+            {
+              "comment": null,
+              "content": "5.161.239.73",
+              "created_on": "2026-08-03T23:25:25.949725Z",
+              "id": "c8d42d2d36ce5cb016fbff064d379fee",
+              "meta": {},
+              "modified_on": "2026-08-03T23:25:25.949725Z",
+              "name": "uat.astralbi.com",
+              "proxiable": true,
+              "proxied": false,
+              "settings": {},
+              "tags": [],
+              "ttl": 60,
+              "type": "A"
+            },
+            {
+              "comment": null,
+              "content": "178.156.200.94",
+              "created_on": "2026-08-10T18:40:31.386024Z",
+              "id": "3c3cabe79b4a31bd40ce463c6f971b09",
+              "meta": {},
+              "modified_on": "2026-08-10T19:07:56.907814Z",
+              "name": "uat.drill.astralbi.com",
+              "proxiable": true,
+              "proxied": false,
+              "settings": {},
+              "tags": [],
+              "ttl": 60,
+              "type": "A"
+            },
+            {
+              "comment": null,
+              "content": "2a02:4780:b:861:0:14f1:e865:e",
+              "created_on": "2026-06-25T15:14:36.624068Z",
+              "id": "a7fff60b839a09d9113eb31b09d63d62",
+              "meta": {},
+              "modified_on": "2026-06-25T15:14:36.624068Z",
+              "name": "astralbi.com",
+              "proxiable": true,
+              "proxied": true,
+              "settings": {},
+              "tags": [],
+              "ttl": 1,
+              "type": "AAAA"
+            },
+            {
+              "comment": null,
+              "content": "12a798a4-81a3-4242-8b59-ac171c0a01a1.cfargotunnel.com",
+              "created_on": "2026-08-11T04:35:28.588001Z",
+              "id": "bd3604dead967b452e21c82c5c6addf9",
+              "meta": {},
+              "modified_on": "2026-08-11T04:35:28.588001Z",
+              "name": "preview-probe-check.astralbi.com",
+              "proxiable": true,
+              "proxied": true,
+              "settings": {
+                "flatten_cname": false
+              },
+              "tags": [],
+              "ttl": 1,
+              "type": "CNAME"
+            },
+            {
+              "comment": null,
+              "content": "astralbi.com",
+              "created_on": "2026-06-25T15:14:36.610811Z",
+              "id": "91786626335ce0f0670057a3f14c4af4",
+              "meta": {},
+              "modified_on": "2026-06-25T15:14:36.610811Z",
+              "name": "www.astralbi.com",
+              "proxiable": true,
+              "proxied": true,
+              "settings": {
+                "flatten_cname": false
+              },
+              "tags": [],
+              "ttl": 1,
+              "type": "CNAME"
+            },
+            {
+              "comment": null,
+              "content": "inbound-smtp.us-east-1.amazonaws.com",
+              "created_on": "2026-08-08T02:43:38.528294Z",
+              "id": "ef0a2e19902fa7eee845c1f4a76cc517",
+              "meta": {},
+              "modified_on": "2026-08-08T02:43:38.528294Z",
+              "name": "astralbi.com",
+              "priority": 10,
+              "proxiable": false,
+              "proxied": false,
+              "settings": {},
+              "tags": [],
+              "ttl": 3600,
+              "type": "MX"
+            },
+            {
+              "comment": null,
+              "content": "feedback-smtp.us-east-1.amazonses.com",
+              "created_on": "2026-08-08T02:43:38.527529Z",
+              "id": "0be43ec1d52f6fd8dc9efabf785ebe7c",
+              "meta": {},
+              "modified_on": "2026-08-08T02:43:38.527529Z",
+              "name": "send.astralbi.com",
+              "priority": 10,
+              "proxiable": false,
+              "proxied": false,
+              "settings": {},
+              "tags": [],
+              "ttl": 3600,
+              "type": "MX"
+            },
+            {
+              "comment": null,
+              "content": "\"v=spf1 include:amazonses.com ~all\"",
+              "created_on": "2026-08-08T02:43:38.586932Z",
+              "id": "01085a17a8a193b6d4f1833514cc23a8",
+              "meta": {},
+              "modified_on": "2026-08-08T02:43:38.586932Z",
+              "name": "send.astralbi.com",
+              "proxiable": false,
+              "proxied": false,
+              "settings": {},
+              "tags": [],
+              "ttl": 3600,
+              "type": "TXT"
+            }
+          ],
+          "result_info": {
+            "count": 11,
+            "page": 1,
+            "per_page": 100,
+            "total_count": 11,
+            "total_pages": 1
+          },
+          "success": true
+        },
+        "body_type": "json",
+        "headers": {
+          "api-version": [
+            "2026-09-26.epoch"
+          ],
+          "cf-auditlog-id": [
+            "019fef1b-96dc-7be5-8411-f45b36112352"
+          ],
+          "cf-cache-status": [
+            "DYNAMIC"
+          ],
+          "cf-ray": [
+            "a2948a2af97b5b53-YUL"
+          ],
+          "connection": [
+            "keep-alive"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "date": [
+            "Tue, 11 Aug 2026 04:36:30 GMT"
+          ],
+          "ratelimit": [
+            "\"default\";r=1199;t=1"
+          ],
+          "ratelimit-policy": [
+            "\"default\";q=1200;w=300"
+          ],
+          "server": [
+            "cloudflare"
+          ],
+          "transfer-encoding": [
+            "chunked"
+          ],
+          "vary": [
+            "Accept-Encoding"
+          ]
+        },
+        "status": 200
+      }
+    },
+    {
+      "recorded_at": "2026-08-11T04:36:30.978004Z",
+      "request": {
+        "body": "",
+        "body_type": "text",
+        "headers": {
+          "accept-encoding": [
+            "gzip"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "user-agent": [
+            "req/0.5.17"
+          ]
+        },
+        "method": "GET",
+        "query_string": "",
+        "uri": "https://api.cloudflare.com/client/v4/zones/799ed6f6bd983eb0f0cd0d810c602ae9/dns_records"
+      },
+      "response": {
+        "body_json": {
+          "errors": [],
+          "messages": [],
+          "result": [
+            {
+              "comment": null,
+              "content": "178.156.143.212",
+              "created_on": "2026-07-14T02:32:04.783924Z",
+              "id": "bc8cc80eaa7fc6ae293cd4b73351539f",
+              "meta": {},
+              "modified_on": "2026-07-14T02:32:04.783924Z",
+              "name": "broken-oaths.com",
+              "proxiable": true,
+              "proxied": false,
+              "settings": {},
+              "tags": [],
+              "ttl": 300,
+              "type": "A"
+            },
+            {
+              "comment": null,
+              "content": "46.225.105.88",
+              "created_on": "2026-07-14T02:32:05.20627Z",
+              "id": "5b549334a06dbbc4f3ee364426045b89",
+              "meta": {},
+              "modified_on": "2026-07-14T02:32:05.20627Z",
+              "name": "uat.broken-oaths.com",
+              "proxiable": true,
+              "proxied": false,
+              "settings": {},
+              "tags": [],
+              "ttl": 300,
+              "type": "A"
+            },
+            {
+              "comment": null,
+              "content": "inbound-smtp.us-east-1.amazonaws.com",
+              "created_on": "2026-07-15T00:22:49.072435Z",
+              "id": "f7af5ac152bdd2a1604bc7c0c802ae49",
+              "meta": {},
+              "modified_on": "2026-07-15T00:22:49.072435Z",
+              "name": "broken-oaths.com",
+              "priority": 10,
+              "proxiable": false,
+              "proxied": false,
+              "settings": {},
+              "tags": [],
+              "ttl": 3600,
+              "type": "MX"
+            },
+            {
+              "comment": null,
+              "content": "feedback-smtp.us-east-1.amazonses.com",
+              "created_on": "2026-07-14T02:23:35.871683Z",
+              "id": "483ae60874e6b9d37c193aa60e4a1ed0",
+              "meta": {},
+              "modified_on": "2026-07-14T02:23:35.871683Z",
+              "name": "send.broken-oaths.com",
+              "priority": 10,
+              "proxiable": false,
+              "proxied": false,
+              "settings": {},
+              "tags": [],
+              "ttl": 3600,
+              "type": "MX"
+            },
+            {
+              "comment": null,
+              "content": "\"p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDZSTG+4kORsDLvaSZQOoXdcSiVJ10p1ZXZj20KpiVUHxd5HXYI6Y1lixpse8+U6NuEYpxtyiyktx6ziH3nPWLYNFanDYvOUdLfsbCmmQ56Xy3bJYp6gsXxn+3kFVL3LQG6b7YgdY/VcXkRUiNd5Iaix+bJuI+AIO8KxTRM0u/xGwIDAQAB\"",
+              "created_on": "2026-07-14T02:23:35.79903Z",
+              "id": "860fcbe25b75b17314fc709f0dff9a0b",
+              "meta": {},
+              "modified_on": "2026-07-14T02:23:35.79903Z",
+              "name": "resend._domainkey.broken-oaths.com",
+              "proxiable": false,
+              "proxied": false,
+              "settings": {},
+              "tags": [],
+              "ttl": 3600,
+              "type": "TXT"
+            },
+            {
+              "comment": null,
+              "content": "\"v=spf1 include:amazonses.com ~all\"",
+              "created_on": "2026-07-14T02:23:35.79544Z",
+              "id": "ec339b6a0c26b6e18d73c3764f4ab175",
+              "meta": {},
+              "modified_on": "2026-07-14T02:23:35.79544Z",
+              "name": "send.broken-oaths.com",
+              "proxiable": false,
+              "proxied": false,
+              "settings": {},
+              "tags": [],
+              "ttl": 3600,
+              "type": "TXT"
+            }
+          ],
+          "result_info": {
+            "count": 6,
+            "page": 1,
+            "per_page": 100,
+            "total_count": 6,
+            "total_pages": 1
+          },
+          "success": true
+        },
+        "body_type": "json",
+        "headers": {
+          "api-version": [
+            "2026-09-26.epoch"
+          ],
+          "cf-auditlog-id": [
+            "019fef1b-97e7-70da-8d3f-bd79534f76eb"
+          ],
+          "cf-cache-status": [
+            "DYNAMIC"
+          ],
+          "cf-ray": [
+            "a2948a2c9c635b53-YUL"
+          ],
+          "connection": [
+            "keep-alive"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "date": [
+            "Tue, 11 Aug 2026 04:36:30 GMT"
+          ],
+          "ratelimit": [
+            "\"default\";r=1199;t=1"
+          ],
+          "ratelimit-policy": [
+            "\"default\";q=1200;w=300"
+          ],
+          "server": [
+            "cloudflare"
+          ],
+          "transfer-encoding": [
+            "chunked"
+          ],
+          "vary": [
+            "Accept-Encoding"
+          ]
+        },
+        "status": 200
+      }
+    },
+    {
+      "recorded_at": "2026-08-11T04:36:31.194191Z",
+      "request": {
+        "body": "",
+        "body_type": "text",
+        "headers": {
+          "accept-encoding": [
+            "gzip"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "user-agent": [
+            "req/0.5.17"
+          ]
+        },
+        "method": "GET",
+        "query_string": "",
+        "uri": "https://api.cloudflare.com/client/v4/zones/ba45c3c2010cb275de73f91f4f05edab/dns_records"
+      },
+      "response": {
+        "body_json": {
+          "errors": [],
+          "messages": [],
+          "result": [
+            {
+              "comment": null,
+              "content": "66.241.125.13",
+              "created_on": "2026-02-28T17:38:09.913483Z",
+              "id": "ce7faa536177b6a8982a698fc0d8e7da",
+              "meta": {},
+              "modified_on": "2026-02-28T17:38:09.913483Z",
+              "name": "codemyspec.com",
+              "proxiable": true,
+              "proxied": true,
+              "settings": {},
+              "tags": [],
+              "ttl": 1,
+              "type": "A"
+            },
+            {
+              "comment": null,
+              "content": "66.241.124.236",
+              "created_on": "2026-02-28T17:38:09.946134Z",
+              "id": "17b27dff36d05c08c6bd942a4b8c05c5",
+              "meta": {},
+              "modified_on": "2026-02-28T17:38:09.946134Z",
+              "name": "uat.codemyspec.com",
+              "proxiable": true,
+              "proxied": true,
+              "settings": {},
+              "tags": [],
+              "ttl": 1,
+              "type": "A"
+            },
+            {
+              "comment": null,
+              "content": "66.241.125.13",
+              "created_on": "2026-02-28T17:38:09.885981Z",
+              "id": "7f172620fce4f3b2ac5ffb0081d48f85",
+              "meta": {},
+              "modified_on": "2026-03-04T23:55:05.624791Z",
+              "name": "www.codemyspec.com",
+              "proxiable": true,
+              "proxied": true,
+              "settings": {},
+              "tags": [],
+              "ttl": 1,
+              "type": "A"
+            },
+            {
+              "comment": null,
+              "content": "2a09:8280:1::a0:c88b:0",
+              "created_on": "2026-02-28T17:38:09.866522Z",
+              "id": "599c8a4abe96a9c2f0bcb96b5140c70e",
+              "meta": {},
+              "modified_on": "2026-02-28T17:38:09.866522Z",
+              "name": "codemyspec.com",
+              "proxiable": true,
+              "proxied": true,
+              "settings": {},
+              "tags": [],
+              "ttl": 1,
+              "type": "AAAA"
+            },
+            {
+              "comment": null,
+              "content": "2a09:8280:1::a0:c88b:0",
+              "created_on": "2026-03-04T23:55:10.780051Z",
+              "id": "108c387004a995b5c0b57eaef6314c1b",
+              "meta": {},
+              "modified_on": "2026-03-04T23:55:10.780051Z",
+              "name": "www.codemyspec.com",
+              "proxiable": true,
+              "proxied": true,
+              "settings": {},
+              "tags": [],
+              "ttl": 1,
+              "type": "AAAA"
+            },
+            {
+              "comment": null,
+              "content": "content.codemyspec.com.s3-website-us-east-1.amazonaws.com",
+              "created_on": "2026-06-23T13:45:12.646247Z",
+              "id": "71526d6f2f14bd0c62c531a8875c1cd4",
+              "meta": {},
+              "modified_on": "2026-06-23T13:45:12.646247Z",
+              "name": "content.codemyspec.com",
+              "proxiable": true,
+              "proxied": true,
+              "settings": {
+                "flatten_cname": false
+              },
+              "tags": [],
+              "ttl": 1,
+              "type": "CNAME"
+            },
+            {
+              "comment": null,
+              "content": "12a798a4-81a3-4242-8b59-ac171c0a01a1.cfargotunnel.com",
+              "created_on": "2026-03-01T01:08:26.81951Z",
+              "id": "7e86063d60168a32264ef231b394286f",
+              "meta": {},
+              "modified_on": "2026-03-01T01:08:26.81951Z",
+              "name": "dev.codemyspec.com",
+              "proxiable": true,
+              "proxied": true,
+              "settings": {
+                "flatten_cname": false
+              },
+              "tags": [],
+              "ttl": 1,
+              "type": "CNAME"
+            },
+            {
+              "comment": null,
+              "content": "6d58f8d8-b571-4256-acfe-1a39714d5b22.cfargotunnel.com",
+              "created_on": "2026-06-07T13:12:46.133329Z",
+              "id": "419e542b8bb91c8ff88d0cd504eb5e65",
+              "meta": {},
+              "modified_on": "2026-06-07T13:12:46.133329Z",
+              "name": "dev.get-ai-traffic.com.codemyspec.com",
+              "proxiable": true,
+              "proxied": true,
+              "settings": {
+                "flatten_cname": false
+              },
+              "tags": [],
+              "ttl": 1,
+              "type": "CNAME"
+            },
+            {
+              "comment": null,
+              "content": "12a798a4-81a3-4242-8b59-ac171c0a01a1.cfargotunnel.com",
+              "created_on": "2026-05-16T13:08:59.448877Z",
+              "id": "7821cc846ac3da4bb15c12185e9bd485",
+              "meta": {},
+              "modified_on": "2026-05-16T13:08:59.448877Z",
+              "name": "dev.marketmyspec.com.codemyspec.com",
+              "proxiable": true,
+              "proxied": true,
+              "settings": {
+                "flatten_cname": false
+              },
+              "tags": [],
+              "ttl": 1,
+              "type": "CNAME"
+            },
+            {
+              "comment": "S3 website endpoint, bucket name matches host so virtual-hosted routing works",
+              "comment_modified_on": "2026-05-03T16:03:17.741369Z",
+              "content": "images.codemyspec.com.s3-website-us-east-1.amazonaws.com",
+              "created_on": "2026-05-03T15:47:47.064224Z",
+              "id": "35c78d977a6003a0b3a2cc001e472b82",
+              "meta": {},
+              "modified_on": "2026-05-03T16:03:17.741369Z",
+              "name": "images.codemyspec.com",
+              "proxiable": true,
+              "proxied": true,
+              "settings": {
+                "flatten_cname": false
+              },
+              "tags": [],
+              "ttl": 1,
+              "type": "CNAME"
+            },
+            {
+              "comment": null,
+              "content": "12a798a4-81a3-4242-8b59-ac171c0a01a1.cfargotunnel.com",
+              "created_on": "2026-08-11T04:33:00.023576Z",
+              "id": "bc19a7d73c06e9461a855417093f1f2e",
+              "meta": {},
+              "modified_on": "2026-08-11T04:33:00.023576Z",
+              "name": "preview-47d78148-6b92-4d9c-bfa9-6dbed5057ddd.astralbi.com.codemyspec.com",
+              "proxiable": true,
+              "proxied": true,
+              "settings": {
+                "flatten_cname": false
+              },
+              "tags": [],
+              "ttl": 1,
+              "type": "CNAME"
+            },
+            {
+              "comment": null,
+              "content": "12a798a4-81a3-4242-8b59-ac171c0a01a1.cfargotunnel.com",
+              "created_on": "2026-08-11T03:00:15.12625Z",
+              "id": "cd425c2189d7f5e1753bf3667cdebc2d",
+              "meta": {},
+              "modified_on": "2026-08-11T03:00:15.12625Z",
+              "name": "preview-47d78148-6b92-4d9c-bfa9-6dbed5057ddd.codemyspec.com",
+              "proxiable": true,
+              "proxied": true,
+              "settings": {
+                "flatten_cname": false
+              },
+              "tags": [],
+              "ttl": 1,
+              "type": "CNAME"
+            },
+            {
+              "comment": null,
+              "content": "inbound-smtp.us-east-1.amazonaws.com",
+              "created_on": "2026-06-22T16:26:45.992096Z",
+              "id": "befa143da7821bbdff64f5595bee573b",
+              "meta": {},
+              "modified_on": "2026-06-22T16:26:45.992096Z",
+              "name": "codemyspec.com",
+              "priority": 10,
+              "proxiable": false,
+              "proxied": false,
+              "settings": {},
+              "tags": [],
+              "ttl": 1,
+              "type": "MX"
+            },
+            {
+              "comment": null,
+              "content": "feedback-smtp.us-east-1.amazonses.com",
+              "created_on": "2026-04-27T02:57:12.690025Z",
+              "id": "bf175337f5207ff1dc1a5bd17d15b22f",
+              "meta": {},
+              "modified_on": "2026-04-27T02:57:12.690025Z",
+              "name": "send.codemyspec.com",
+              "priority": 10,
+              "proxiable": false,
+              "proxied": false,
+              "settings": {},
+              "tags": [],
+              "ttl": 1,
+              "type": "MX"
+            },
+            {
+              "comment": null,
+              "content": "v=DKIM1; h=sha256; k=rsa; p=MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAiweykoi+o48IOGuP7GR3X0MOExCUDY/BCRHoWBnh3rChl7WhdyCxW3jgq1daEjPPqoi7sJvdg5hEQVsgVRQP4DcnQDVjGMbASQtrY4WmB1VebF+RPJB2ECPsEDTpeiI5ZyUAwJaVX7r6bznU67g7LvFq35yIo4sdlmtZGV+i0H4cpYH9+3JJ78km4KXwaf9xUJCWF6nxeD+qG6Fyruw1Qlbds2r85U9dkNDVAS3gioCvELryh1TxKGiVTkg4wqHTyHfWsp7KD3WQHYJn0RyfJJu6YEmL77zonn7p2SRMvTMP3ZEXibnC9gz3nnhR6wcYL8Q7zXypKTMD58bTixDSJwIDAQAB",
+              "created_on": "2026-04-27T03:21:01.358693Z",
+              "id": "d8fefb9211f9448f19fd41931899aff7",
+              "meta": {},
+              "modified_on": "2026-04-27T03:21:01.358693Z",
+              "name": "cf2024-1._domainkey.codemyspec.com",
+              "proxiable": false,
+              "proxied": false,
+              "settings": {},
+              "tags": [],
+              "ttl": 1,
+              "type": "TXT"
+            },
+            {
+              "comment": null,
+              "content": "\"google-site-verification=F5oDSQEij2MY9h_7bc_9SL1Mg1IwJZnUjbpe2eeCPWo\"",
+              "created_on": "2026-03-17T03:02:13.440563Z",
+              "id": "a30fc3b8ad38b313341396d13ce6a1ab",
+              "meta": {},
+              "modified_on": "2026-03-17T03:02:13.440563Z",
+              "name": "codemyspec.com",
+              "proxiable": false,
+              "proxied": false,
+              "settings": {},
+              "tags": [],
+              "ttl": 3600,
+              "type": "TXT"
+            },
+            {
+              "comment": "DMARC monitor-only; reports forwarded to gmail via catch-all",
+              "comment_modified_on": "2026-05-09T15:12:54.373425Z",
+              "content": "v=DMARC1; p=none; rua=mailto:dmarc@codemyspec.com",
+              "created_on": "2026-05-09T15:12:54.373425Z",
+              "id": "fa3b76e34985f12b965b1ac620c51f57",
+              "meta": {},
+              "modified_on": "2026-05-09T15:12:54.373425Z",
+              "name": "_dmarc.codemyspec.com",
+              "proxiable": false,
+              "proxied": false,
+              "settings": {},
+              "tags": [],
+              "ttl": 1,
+              "type": "TXT"
+            },
+            {
+              "comment": null,
+              "content": "app-qx13mkd",
+              "created_on": "2026-03-04T23:54:07.829293Z",
+              "id": "76d005264f00d57fc805cfc7d83def2f",
+              "meta": {},
+              "modified_on": "2026-03-04T23:54:07.829293Z",
+              "name": "_fly-ownership.codemyspec.com",
+              "proxiable": false,
+              "proxied": false,
+              "settings": {},
+              "tags": [],
+              "ttl": 1,
+              "type": "TXT"
+            },
+            {
+              "comment": null,
+              "content": "app-qx13mkd",
+              "created_on": "2026-03-04T23:53:57.578305Z",
+              "id": "358f108b4cc76d74fbe82bcd617408bf",
+              "meta": {},
+              "modified_on": "2026-03-04T23:53:57.578305Z",
+              "name": "_fly-ownership.www.codemyspec.com",
+              "proxiable": false,
+              "proxied": false,
+              "settings": {},
+              "tags": [],
+              "ttl": 1,
+              "type": "TXT"
+            },
+            {
+              "comment": null,
+              "content": "p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQCuEe36KXJiThZigUwumCzJHaThNJq7NWVScUEnyLya+HSWznCs62O9JTtrzXcbtHuCKA5rjcFFxEc5bJcC0/yt0Qr0NhS8Aw1MSoKqi3cR67WWBYLwQ5gygASz5SRbW7SE4Y30RpAqGF0Pu7YN1DO7LmaEkwmMJlIh0V9VzxzajwIDAQAB",
+              "created_on": "2026-04-27T02:57:12.382529Z",
+              "id": "18262b0cf4c50091641e50349613b0a0",
+              "meta": {},
+              "modified_on": "2026-04-27T02:57:12.382529Z",
+              "name": "resend._domainkey.codemyspec.com",
+              "proxiable": false,
+              "proxied": false,
+              "settings": {},
+              "tags": [],
+              "ttl": 1,
+              "type": "TXT"
+            },
+            {
+              "comment": null,
+              "content": "v=spf1 include:amazonses.com ~all",
+              "created_on": "2026-04-27T02:57:12.967466Z",
+              "id": "ad02f84e552bd08c2b4e66632f48da5b",
+              "meta": {},
+              "modified_on": "2026-04-27T02:57:12.967466Z",
+              "name": "send.codemyspec.com",
+              "proxiable": false,
+              "proxied": false,
+              "settings": {},
+              "tags": [],
+              "ttl": 1,
+              "type": "TXT"
+            }
+          ],
+          "result_info": {
+            "count": 21,
+            "page": 1,
+            "per_page": 100,
+            "total_count": 21,
+            "total_pages": 1
+          },
+          "success": true
+        },
+        "body_type": "json",
+        "headers": {
+          "api-version": [
+            "2026-09-26.epoch"
+          ],
+          "cf-auditlog-id": [
+            "019fef1b-989f-70cb-ab11-7b7d0e1e55ac"
+          ],
+          "cf-cache-status": [
+            "DYNAMIC"
+          ],
+          "cf-ray": [
+            "a2948a2dce835b53-YUL"
+          ],
+          "connection": [
+            "keep-alive"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "date": [
+            "Tue, 11 Aug 2026 04:36:31 GMT"
+          ],
+          "ratelimit": [
+            "\"default\";r=1198;t=1"
+          ],
+          "ratelimit-policy": [
+            "\"default\";q=1200;w=300"
+          ],
+          "server": [
+            "cloudflare"
+          ],
+          "transfer-encoding": [
+            "chunked"
+          ],
+          "vary": [
+            "Accept-Encoding"
+          ]
+        },
+        "status": 200
+      }
+    },
+    {
+      "recorded_at": "2026-08-11T04:36:31.389815Z",
+      "request": {
+        "body": "",
+        "body_type": "text",
+        "headers": {
+          "accept-encoding": [
+            "gzip"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "user-agent": [
+            "req/0.5.17"
+          ]
+        },
+        "method": "GET",
+        "query_string": "",
+        "uri": "https://api.cloudflare.com/client/v4/zones/2c28888129f4acb4a066986fbf055cc0/dns_records"
+      },
+      "response": {
+        "body_json": {
+          "errors": [],
+          "messages": [],
+          "result": [
+            {
+              "comment": null,
+              "content": "46.225.105.88",
+              "created_on": "2026-07-09T15:39:50.457739Z",
+              "id": "e46379f216d3c60a61153a967a7b5d0e",
+              "meta": {},
+              "modified_on": "2026-07-09T15:39:50.457739Z",
+              "name": "crm-uat.desertfirstcleaning.com",
+              "proxiable": true,
+              "proxied": false,
+              "settings": {},
+              "tags": [],
+              "ttl": 1,
+              "type": "A"
+            },
+            {
+              "comment": null,
+              "content": "178.156.143.212",
+              "created_on": "2026-04-21T14:43:12.660267Z",
+              "id": "155fd48a7da1da804f6b6bce611dd8ae",
+              "meta": {},
+              "modified_on": "2026-05-01T20:15:16.689445Z",
+              "name": "desertfirstcleaning.com",
+              "proxiable": true,
+              "proxied": false,
+              "settings": {},
+              "tags": [],
+              "ttl": 60,
+              "type": "A"
+            },
+            {
+              "comment": null,
+              "content": "82.180.172.214",
+              "created_on": "2026-04-21T14:43:12.720427Z",
+              "id": "21dcc7fa2eb31f5d84e73f87d3862757",
+              "meta": {},
+              "modified_on": "2026-05-01T20:36:33.823527Z",
+              "name": "ftp.desertfirstcleaning.com",
+              "proxiable": true,
+              "proxied": false,
+              "settings": {},
+              "tags": [],
+              "ttl": 1,
+              "type": "A"
+            },
+            {
+              "comment": null,
+              "content": "178.156.143.212",
+              "created_on": "2026-05-01T13:43:03.775517Z",
+              "id": "4895ef39a5b93e7bd3ed67d981a726c7",
+              "meta": {},
+              "modified_on": "2026-08-05T09:39:51.199461Z",
+              "name": "staging.desertfirstcleaning.com",
+              "proxiable": true,
+              "proxied": false,
+              "settings": {},
+              "tags": [],
+              "ttl": 300,
+              "type": "A"
+            },
+            {
+              "comment": null,
+              "content": "autoconfig.mail.hostinger.com",
+              "created_on": "2026-04-21T14:43:12.74328Z",
+              "id": "073f9e82d58bb79f6670b707af246709",
+              "meta": {},
+              "modified_on": "2026-08-05T09:39:51.509901Z",
+              "name": "autoconfig.desertfirstcleaning.com",
+              "proxiable": true,
+              "proxied": false,
+              "settings": {
+                "flatten_cname": false
+              },
+              "tags": [],
+              "ttl": 1,
+              "type": "CNAME"
+            },
+            {
+              "comment": null,
+              "content": "autodiscover.mail.hostinger.com",
+              "created_on": "2026-04-21T14:43:12.730853Z",
+              "id": "8bfe757c020535afe3d2a6c460579845",
+              "meta": {},
+              "modified_on": "2026-08-05T09:39:51.838035Z",
+              "name": "autodiscover.desertfirstcleaning.com",
+              "proxiable": true,
+              "proxied": false,
+              "settings": {
+                "flatten_cname": false
+              },
+              "tags": [],
+              "ttl": 1,
+              "type": "CNAME"
+            },
+            {
+              "comment": null,
+              "content": "hostingermail-a.dkim.mail.hostinger.com",
+              "created_on": "2026-04-21T14:43:12.778187Z",
+              "id": "1b60c3c6cbaa6aed4595ff4a19b64673",
+              "meta": {},
+              "modified_on": "2026-08-05T09:39:52.148446Z",
+              "name": "hostingermail-a._domainkey.desertfirstcleaning.com",
+              "proxiable": true,
+              "proxied": false,
+              "settings": {
+                "flatten_cname": false
+              },
+              "tags": [],
+              "ttl": 1,
+              "type": "CNAME"
+            },
+            {
+              "comment": null,
+              "content": "hostingermail-b.dkim.mail.hostinger.com",
+              "created_on": "2026-04-21T14:43:12.755047Z",
+              "id": "e88b78ee0cb81ad39a64bda4578b5142",
+              "meta": {},
+              "modified_on": "2026-08-05T09:39:52.452104Z",
+              "name": "hostingermail-b._domainkey.desertfirstcleaning.com",
+              "proxiable": true,
+              "proxied": false,
+              "settings": {
+                "flatten_cname": false
+              },
+              "tags": [],
+              "ttl": 1,
+              "type": "CNAME"
+            },
+            {
+              "comment": null,
+              "content": "hostingermail-c.dkim.mail.hostinger.com",
+              "created_on": "2026-04-21T14:43:12.767014Z",
+              "id": "fdb67c0f46f8d79bb9fa63bef5a30a26",
+              "meta": {},
+              "modified_on": "2026-08-05T09:39:52.762701Z",
+              "name": "hostingermail-c._domainkey.desertfirstcleaning.com",
+              "proxiable": true,
+              "proxied": false,
+              "settings": {
+                "flatten_cname": false
+              },
+              "tags": [],
+              "ttl": 1,
+              "type": "CNAME"
+            },
+            {
+              "comment": null,
+              "content": "74ad9488-9acd-43ee-8bac-95435d4ef4cc.cfargotunnel.com",
+              "created_on": "2026-05-03T17:41:47.049397Z",
+              "id": "a32903e858c900b37f0fd0cd37e52487",
+              "meta": {},
+              "modified_on": "2026-08-05T09:39:53.058244Z",
+              "name": "qbmcp.desertfirstcleaning.com",
+              "proxiable": true,
+              "proxied": false,
+              "settings": {
+                "flatten_cname": false
+              },
+              "tags": [],
+              "ttl": 1,
+              "type": "CNAME"
+            },
+            {
+              "comment": null,
+              "content": "desertfirstcleaning.com",
+              "created_on": "2026-04-21T14:43:12.671076Z",
+              "id": "1f63c2c0b6f51db7054767017c3b76b3",
+              "meta": {},
+              "modified_on": "2026-08-05T09:39:53.394689Z",
+              "name": "www.desertfirstcleaning.com",
+              "proxiable": true,
+              "proxied": false,
+              "settings": {
+                "flatten_cname": false
+              },
+              "tags": [],
+              "ttl": 1,
+              "type": "CNAME"
+            },
+            {
+              "comment": null,
+              "content": "mx1.titan.email",
+              "created_on": "2026-04-21T14:43:12.709698Z",
+              "id": "0607cab4ac3ae8374cbc45a6bd3c90ab",
+              "meta": {},
+              "modified_on": "2026-04-21T14:43:12.709698Z",
+              "name": "desertfirstcleaning.com",
+              "priority": 10,
+              "proxiable": false,
+              "proxied": false,
+              "settings": {},
+              "tags": [],
+              "ttl": 1,
+              "type": "MX"
+            },
+            {
+              "comment": null,
+              "content": "mx2.titan.email",
+              "created_on": "2026-04-21T14:43:12.697017Z",
+              "id": "a1825dc58197b1acb3e57c63d604bf74",
+              "meta": {},
+              "modified_on": "2026-04-21T14:43:12.697017Z",
+              "name": "desertfirstcleaning.com",
+              "priority": 5,
+              "proxiable": false,
+              "proxied": false,
+              "settings": {},
+              "tags": [],
+              "ttl": 1,
+              "type": "MX"
+            },
+            {
+              "comment": null,
+              "content": "feedback-smtp.us-east-1.amazonses.com",
+              "created_on": "2026-07-09T16:23:04.020279Z",
+              "id": "67a9813919da60f109195e985b87ac01",
+              "meta": {},
+              "modified_on": "2026-07-09T16:23:04.020279Z",
+              "name": "send.desertfirstcleaning.com",
+              "priority": 10,
+              "proxiable": false,
+              "proxied": false,
+              "settings": {},
+              "tags": [],
+              "ttl": 3600,
+              "type": "MX"
+            },
+            {
+              "comment": null,
+              "content": "\"google-site-verification=exbQqvlvsFYemzePQ6M00BbCDfXA2SUv2-NS6Kquq0k\"",
+              "created_on": "2026-04-21T14:43:12.65249Z",
+              "id": "2c710687e6f9961a70a92325546f7d01",
+              "meta": {},
+              "modified_on": "2026-04-21T14:43:12.65249Z",
+              "name": "desertfirstcleaning.com",
+              "proxiable": false,
+              "proxied": false,
+              "settings": {},
+              "tags": [],
+              "ttl": 1,
+              "type": "TXT"
+            },
+            {
+              "comment": null,
+              "content": "\"google-site-verification=VMyggbFWoKlxST52A5U8X18Bf3aWZ-B3nAhtYhJwqhc\"",
+              "created_on": "2026-04-21T14:43:12.643362Z",
+              "id": "d6fffd8df32d95e8f42bfa4471eb0f68",
+              "meta": {},
+              "modified_on": "2026-04-21T14:43:12.643362Z",
+              "name": "desertfirstcleaning.com",
+              "proxiable": false,
+              "proxied": false,
+              "settings": {},
+              "tags": [],
+              "ttl": 1,
+              "type": "TXT"
+            },
+            {
+              "comment": null,
+              "content": "\"v=spf1 include:spf.titan.email ~all\"",
+              "created_on": "2026-04-21T14:43:12.636488Z",
+              "id": "b4336b5b596fcbb8261f07bc0e355645",
+              "meta": {},
+              "modified_on": "2026-04-21T14:43:12.636488Z",
+              "name": "desertfirstcleaning.com",
+              "proxiable": false,
+              "proxied": false,
+              "settings": {},
+              "tags": [],
+              "ttl": 1,
+              "type": "TXT"
+            },
+            {
+              "comment": null,
+              "content": "\"google-site-verification=iOVB6peLId8B0heI0I3fVKEdtCNXNL6wy8CVxxwze_E\"",
+              "created_on": "2026-04-21T14:43:12.626363Z",
+              "id": "daa56f299be9741248efa0b5237b9411",
+              "meta": {},
+              "modified_on": "2026-04-21T14:43:12.626363Z",
+              "name": "desertfirstcleaning.com",
+              "proxiable": false,
+              "proxied": false,
+              "settings": {},
+              "tags": [],
+              "ttl": 1,
+              "type": "TXT"
+            },
+            {
+              "comment": null,
+              "content": "\"p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQCrrnKMEdODxsOxaWNyKGdP8iUPe8qlKlvssRxdgOJvAP2NGQ2jZZqA4mu6LKyUKdMbqBZl5S1aNIL1T8fBy/x96RnmVMYHgPICyQbmGq6GLTCptk1yM7rpKNVKqrsS5F7lTfGzJyKrlmqmt9PjMpOZmbDh6fqkTbIAYO5OD8aXjQIDAQAB\"",
+              "created_on": "2026-07-09T16:23:04.027311Z",
+              "id": "babd07520b88ad0ef37a6b6112970e73",
+              "meta": {},
+              "modified_on": "2026-07-09T16:23:04.027311Z",
+              "name": "resend._domainkey.desertfirstcleaning.com",
+              "proxiable": false,
+              "proxied": false,
+              "settings": {},
+              "tags": [],
+              "ttl": 3600,
+              "type": "TXT"
+            },
+            {
+              "comment": null,
+              "content": "\"v=spf1 include:amazonses.com ~all\"",
+              "created_on": "2026-07-09T16:23:04.029291Z",
+              "id": "e5b8815e8d31a775dfc7cd44633175e5",
+              "meta": {},
+              "modified_on": "2026-07-09T16:23:04.029291Z",
+              "name": "send.desertfirstcleaning.com",
+              "proxiable": false,
+              "proxied": false,
+              "settings": {},
+              "tags": [],
+              "ttl": 3600,
+              "type": "TXT"
+            }
+          ],
+          "result_info": {
+            "count": 20,
+            "page": 1,
+            "per_page": 100,
+            "total_count": 20,
+            "total_pages": 1
+          },
+          "success": true
+        },
+        "body_type": "json",
+        "headers": {
+          "api-version": [
+            "2026-09-26.epoch"
+          ],
+          "cf-auditlog-id": [
+            "019fef1b-9976-7cd6-8b87-23b46fd2f0dd"
+          ],
+          "cf-cache-status": [
+            "DYNAMIC"
+          ],
+          "cf-ray": [
+            "a2948a2f191e5b53-YUL"
+          ],
+          "connection": [
+            "keep-alive"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "date": [
+            "Tue, 11 Aug 2026 04:36:31 GMT"
+          ],
+          "ratelimit": [
+            "\"default\";r=1197;t=1"
+          ],
+          "ratelimit-policy": [
+            "\"default\";q=1200;w=300"
+          ],
+          "server": [
+            "cloudflare"
+          ],
+          "transfer-encoding": [
+            "chunked"
+          ],
+          "vary": [
+            "Accept-Encoding"
+          ]
+        },
+        "status": 200
+      }
+    },
+    {
+      "recorded_at": "2026-08-11T04:36:31.577914Z",
+      "request": {
+        "body": "",
+        "body_type": "text",
+        "headers": {
+          "accept-encoding": [
+            "gzip"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "user-agent": [
+            "req/0.5.17"
+          ]
+        },
+        "method": "GET",
+        "query_string": "",
+        "uri": "https://api.cloudflare.com/client/v4/zones/8c8b2afc2b8b6bf024e454d3510bc4c1/dns_records"
+      },
+      "response": {
+        "body_json": {
+          "errors": [],
+          "messages": [],
+          "result": [],
+          "result_info": {
+            "count": 0,
+            "page": 1,
+            "per_page": 100,
+            "total_count": 0,
+            "total_pages": 1
+          },
+          "success": true
+        },
+        "body_type": "json",
+        "headers": {
+          "api-version": [
+            "2026-09-26.epoch"
+          ],
+          "cf-auditlog-id": [
+            "019fef1b-9a3d-755a-9088-bdbee9290328"
+          ],
+          "cf-cache-status": [
+            "DYNAMIC"
+          ],
+          "cf-ray": [
+            "a2948a305b815b53-YUL"
+          ],
+          "connection": [
+            "keep-alive"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "date": [
+            "Tue, 11 Aug 2026 04:36:31 GMT"
+          ],
+          "ratelimit": [
+            "\"default\";r=1197;t=1"
+          ],
+          "ratelimit-policy": [
+            "\"default\";q=1200;w=300"
+          ],
+          "server": [
+            "cloudflare"
+          ],
+          "transfer-encoding": [
+            "chunked"
+          ],
+          "vary": [
+            "Accept-Encoding"
+          ]
+        },
+        "status": 200
+      }
+    },
+    {
+      "recorded_at": "2026-08-11T04:36:31.772219Z",
+      "request": {
+        "body": "",
+        "body_type": "text",
+        "headers": {
+          "accept-encoding": [
+            "gzip"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "user-agent": [
+            "req/0.5.17"
+          ]
+        },
+        "method": "GET",
+        "query_string": "",
+        "uri": "https://api.cloudflare.com/client/v4/zones/51d25b6e048c9f5797cc0ea3ed6fc10e/dns_records"
+      },
+      "response": {
+        "body_json": {
+          "errors": [],
+          "messages": [],
+          "result": [
+            {
+              "comment": null,
+              "content": "178.156.143.212",
+              "created_on": "2026-02-27T01:49:05.945881Z",
+              "id": "c17b019b396b75e14841e7b5dd81ce31",
+              "meta": {},
+              "modified_on": "2026-03-06T21:25:56.68663Z",
+              "name": "fuellytics.app",
+              "proxiable": true,
+              "proxied": true,
+              "settings": {},
+              "tags": [],
+              "ttl": 1,
+              "type": "A"
+            },
+            {
+              "comment": null,
+              "content": "46.225.105.88",
+              "created_on": "2026-03-06T19:20:07.978382Z",
+              "id": "a499901058b7ed78ababaedc30cac413",
+              "meta": {},
+              "modified_on": "2026-05-07T13:46:48.045851Z",
+              "name": "uat.fuellytics.app",
+              "proxiable": true,
+              "proxied": false,
+              "settings": {},
+              "tags": [],
+              "ttl": 1,
+              "type": "A"
+            },
+            {
+              "comment": null,
+              "content": "087e2228-74d8-437d-bc92-b41c9fc9f253.cfargotunnel.com",
+              "created_on": "2026-04-16T13:33:46.503357Z",
+              "id": "07cd68f48c7de50e527601f62ee4dcfb",
+              "meta": {},
+              "modified_on": "2026-04-16T13:33:46.503357Z",
+              "name": "analytics.fuellytics.app",
+              "proxiable": true,
+              "proxied": true,
+              "settings": {
+                "flatten_cname": false
+              },
+              "tags": [],
+              "ttl": 1,
+              "type": "CNAME"
+            },
+            {
+              "comment": null,
+              "content": "82c13f72-7b13-4d8c-b702-bfabbf8efacd.cfargotunnel.com",
+              "created_on": "2026-02-27T02:50:37.900151Z",
+              "id": "42be168579e449eff32049e99239c787",
+              "meta": {},
+              "modified_on": "2026-02-27T02:50:37.900151Z",
+              "name": "dev.fuellytics.app",
+              "proxiable": true,
+              "proxied": true,
+              "settings": {
+                "flatten_cname": false
+              },
+              "tags": [],
+              "ttl": 1,
+              "type": "CNAME"
+            },
+            {
+              "comment": null,
+              "content": "route3.mx.cloudflare.net",
+              "created_on": "2026-03-07T12:43:10.769482Z",
+              "id": "354d2aba419cf950c2018fab0d4e309c",
+              "meta": {
+                "email_routing": true,
+                "read_only": true
+              },
+              "modified_on": "2026-03-07T12:43:34.735528Z",
+              "name": "fuellytics.app",
+              "priority": 93,
+              "proxiable": false,
+              "proxied": false,
+              "settings": {},
+              "tags": [],
+              "ttl": 1,
+              "type": "MX"
+            },
+            {
+              "comment": null,
+              "content": "route2.mx.cloudflare.net",
+              "created_on": "2026-03-07T12:43:10.074885Z",
+              "id": "246c2d1d4af1775546360f490ebff5e7",
+              "meta": {
+                "email_routing": true,
+                "read_only": true
+              },
+              "modified_on": "2026-03-07T12:43:34.726262Z",
+              "name": "fuellytics.app",
+              "priority": 5,
+              "proxiable": false,
+              "proxied": false,
+              "settings": {},
+              "tags": [],
+              "ttl": 1,
+              "type": "MX"
+            },
+            {
+              "comment": null,
+              "content": "route1.mx.cloudflare.net",
+              "created_on": "2026-03-07T12:43:09.130488Z",
+              "id": "b60085310dceb759a57b91d9b12ff068",
+              "meta": {
+                "email_routing": true,
+                "read_only": true
+              },
+              "modified_on": "2026-03-07T12:43:34.717094Z",
+              "name": "fuellytics.app",
+              "priority": 7,
+              "proxiable": false,
+              "proxied": false,
+              "settings": {},
+              "tags": [],
+              "ttl": 1,
+              "type": "MX"
+            },
+            {
+              "comment": null,
+              "content": "feedback-smtp.us-east-1.amazonses.com",
+              "created_on": "2026-03-06T21:55:11.514238Z",
+              "id": "2501b2f970ecef51ccbaacd3e37af9cd",
+              "meta": {},
+              "modified_on": "2026-03-06T21:55:11.514238Z",
+              "name": "send.fuellytics.app",
+              "priority": 10,
+              "proxiable": false,
+              "proxied": false,
+              "settings": {},
+              "tags": [],
+              "ttl": 1,
+              "type": "MX"
+            },
+            {
+              "comment": null,
+              "content": "\"v=DKIM1; h=sha256; k=rsa; p=MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAiweykoi+o48IOGuP7GR3X0MOExCUDY/BCRHoWBnh3rChl7WhdyCxW3jgq1daEjPPqoi7sJvdg5hEQVsgVRQP4DcnQDVjGMbASQtrY4WmB1VebF+RPJB2ECPsEDTpeiI5ZyUAwJaVX7r6bznU67g7LvFq35yIo4sdlmtZGV+i0H4cpYH9+3JJ78k\" \"m4KXwaf9xUJCWF6nxeD+qG6Fyruw1Qlbds2r85U9dkNDVAS3gioCvELryh1TxKGiVTkg4wqHTyHfWsp7KD3WQHYJn0RyfJJu6YEmL77zonn7p2SRMvTMP3ZEXibnC9gz3nnhR6wcYL8Q7zXypKTMD58bTixDSJwIDAQAB\"",
+              "created_on": "2026-03-07T12:43:34.703036Z",
+              "id": "ccf8d1dbbf77b50754060ccc9cce4a7c",
+              "meta": {
+                "email_routing": true,
+                "read_only": true
+              },
+              "modified_on": "2026-03-07T12:43:34.703036Z",
+              "name": "cf2024-1._domainkey.fuellytics.app",
+              "proxiable": false,
+              "proxied": false,
+              "settings": {},
+              "tags": [],
+              "ttl": 1,
+              "type": "TXT"
+            },
+            {
+              "comment": null,
+              "content": "v=DKIM1; h=sha256; k=rsa; p=MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAiweykoi+o48IOGuP7GR3X0MOExCUDY/BCRHoWBnh3rChl7WhdyCxW3jgq1daEjPPqoi7sJvdg5hEQVsgVRQP4DcnQDVjGMbASQtrY4WmB1VebF+RPJB2ECPsEDTpeiI5ZyUAwJaVX7r6bznU67g7LvFq35yIo4sdlmtZGV+i0H4cpYH9+3JJ78km4KXwaf9xUJCWF6nxeD+qG6Fyruw1Qlbds2r85U9dkNDVAS3gioCvELryh1TxKGiVTkg4wqHTyHfWsp7KD3WQHYJn0RyfJJu6YEmL77zonn7p2SRMvTMP3ZEXibnC9gz3nnhR6wcYL8Q7zXypKTMD58bTixDSJwIDAQAB",
+              "created_on": "2026-03-07T12:43:11.826038Z",
+              "id": "60cb19992d8a73e2e30b1b79de0212f3",
+              "meta": {},
+              "modified_on": "2026-03-07T12:43:11.826038Z",
+              "name": "cf2024-1._domainkey.fuellytics.app",
+              "proxiable": false,
+              "proxied": false,
+              "settings": {},
+              "tags": [],
+              "ttl": 1,
+              "type": "TXT"
+            },
+            {
+              "comment": null,
+              "content": "v=spf1 include:_spf.mx.cloudflare.net ~all",
+              "created_on": "2026-03-07T12:43:11.343377Z",
+              "id": "33ffeead1de47bf750615c4634a286ff",
+              "meta": {},
+              "modified_on": "2026-03-07T12:43:11.343377Z",
+              "name": "fuellytics.app",
+              "proxiable": false,
+              "proxied": false,
+              "settings": {},
+              "tags": [],
+              "ttl": 1,
+              "type": "TXT"
+            },
+            {
+              "comment": null,
+              "content": "p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDXDg/sWmo6GrACDo+ZLSngZXqwgGnbB3Zfrhyn2fsGOFPXPZBhr8ElPLpMQms10fbxYSQX/Rn9pcDVnR/7SjCpDZfc3b88ia7xoFR4qyaUGxfxadaYA7FFuXdf0ckdg+mAjEmbBERHCAMgXmV8Wt2q0SfRgzZt3i/ySpwNUmYTfQIDAQAB",
+              "created_on": "2026-03-06T21:55:06.357335Z",
+              "id": "b16cc460060f335d52e7b98b3a574613",
+              "meta": {},
+              "modified_on": "2026-03-06T21:55:06.357335Z",
+              "name": "resend._domainkey.fuellytics.app",
+              "proxiable": false,
+              "proxied": false,
+              "settings": {},
+              "tags": [],
+              "ttl": 1,
+              "type": "TXT"
+            },
+            {
+              "comment": null,
+              "content": "v=spf1 include:amazonses.com ~all",
+              "created_on": "2026-03-06T21:55:15.637231Z",
+              "id": "efa4b2caafdbf34231ccb6ff05a65cc0",
+              "meta": {},
+              "modified_on": "2026-03-06T21:55:15.637231Z",
+              "name": "send.fuellytics.app",
+              "proxiable": false,
+              "proxied": false,
+              "settings": {},
+              "tags": [],
+              "ttl": 1,
+              "type": "TXT"
+            }
+          ],
+          "result_info": {
+            "count": 13,
+            "page": 1,
+            "per_page": 100,
+            "total_count": 13,
+            "total_pages": 1
+          },
+          "success": true
+        },
+        "body_type": "json",
+        "headers": {
+          "api-version": [
+            "2026-09-26.epoch"
+          ],
+          "cf-auditlog-id": [
+            "019fef1b-9af4-7483-adb5-e1c002e51704"
+          ],
+          "cf-cache-status": [
+            "DYNAMIC"
+          ],
+          "cf-ray": [
+            "a2948a317dbd5b53-YUL"
+          ],
+          "connection": [
+            "keep-alive"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "date": [
+            "Tue, 11 Aug 2026 04:36:31 GMT"
+          ],
+          "ratelimit": [
+            "\"default\";r=1198;t=1"
+          ],
+          "ratelimit-policy": [
+            "\"default\";q=1200;w=300"
+          ],
+          "server": [
+            "cloudflare"
+          ],
+          "transfer-encoding": [
+            "chunked"
+          ],
+          "vary": [
+            "Accept-Encoding"
+          ]
+        },
+        "status": 200
+      }
+    },
+    {
+      "recorded_at": "2026-08-11T04:36:31.964897Z",
+      "request": {
+        "body": "",
+        "body_type": "text",
+        "headers": {
+          "accept-encoding": [
+            "gzip"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "user-agent": [
+            "req/0.5.17"
+          ]
+        },
+        "method": "GET",
+        "query_string": "",
+        "uri": "https://api.cloudflare.com/client/v4/zones/6cc37c6eb5d52a3291dba0675ae5b4dd/dns_records"
+      },
+      "response": {
+        "body_json": {
+          "errors": [],
+          "messages": [],
+          "result": [
+            {
+              "comment": null,
+              "content": "178.156.143.212",
+              "created_on": "2026-06-06T19:03:46.031212Z",
+              "id": "06d1dad5f8292859dea7c6c36b77540b",
+              "meta": {},
+              "modified_on": "2026-07-17T21:53:04.692927Z",
+              "name": "get-ai-traffic.com",
+              "proxiable": true,
+              "proxied": true,
+              "settings": {},
+              "tags": [],
+              "ttl": 1,
+              "type": "A"
+            },
+            {
+              "comment": null,
+              "content": "46.225.105.88",
+              "created_on": "2026-06-06T19:03:46.771302Z",
+              "id": "0e44b4477ca335aafdb0269dbb62129b",
+              "meta": {},
+              "modified_on": "2026-07-17T21:48:15.206646Z",
+              "name": "uat.get-ai-traffic.com",
+              "proxiable": true,
+              "proxied": true,
+              "settings": {},
+              "tags": [],
+              "ttl": 1,
+              "type": "A"
+            },
+            {
+              "comment": null,
+              "content": "content.get-ai-traffic.com.s3-website-us-east-1.amazonaws.com",
+              "created_on": "2026-07-16T18:18:41.127566Z",
+              "id": "57c33c826fe895f3cd8237d8dd3de886",
+              "meta": {},
+              "modified_on": "2026-07-16T19:20:18.406005Z",
+              "name": "content.get-ai-traffic.com",
+              "proxiable": true,
+              "proxied": true,
+              "settings": {
+                "flatten_cname": false
+              },
+              "tags": [],
+              "ttl": 1,
+              "type": "CNAME"
+            },
+            {
+              "comment": null,
+              "content": "81843505-12f6-4a3a-8bbc-2f66572e351e.cfargotunnel.com",
+              "created_on": "2026-06-08T13:19:49.114754Z",
+              "id": "c118f8df3b5c1669cdeb457aaa426fb1",
+              "meta": {},
+              "modified_on": "2026-06-08T13:19:49.114754Z",
+              "name": "dev.get-ai-traffic.com",
+              "proxiable": true,
+              "proxied": true,
+              "settings": {
+                "flatten_cname": false
+              },
+              "tags": [],
+              "ttl": 1,
+              "type": "CNAME"
+            },
+            {
+              "comment": null,
+              "content": "images.get-ai-traffic.com.s3-website-us-east-1.amazonaws.com",
+              "created_on": "2026-07-16T19:05:58.176813Z",
+              "id": "6c1d0435b8449e2382896836dd68349b",
+              "meta": {},
+              "modified_on": "2026-07-16T19:20:18.952753Z",
+              "name": "images.get-ai-traffic.com",
+              "proxiable": true,
+              "proxied": true,
+              "settings": {
+                "flatten_cname": false
+              },
+              "tags": [],
+              "ttl": 1,
+              "type": "CNAME"
+            },
+            {
+              "comment": "www -> apex 301 via page rule; proxied so CF's universal cert covers www (Caddy has no www cert)",
+              "comment_modified_on": "2026-07-17T04:45:38.911193Z",
+              "content": "get-ai-traffic.com",
+              "created_on": "2026-07-17T04:45:38.911193Z",
+              "id": "a9597989cfd5295b73e9bdd498600e11",
+              "meta": {},
+              "modified_on": "2026-07-17T04:45:38.911193Z",
+              "name": "www.get-ai-traffic.com",
+              "proxiable": true,
+              "proxied": true,
+              "settings": {
+                "flatten_cname": false
+              },
+              "tags": [],
+              "ttl": 1,
+              "type": "CNAME"
+            },
+            {
+              "comment": null,
+              "content": "inbound-smtp.us-east-1.amazonaws.com",
+              "created_on": "2026-07-15T03:09:10.758747Z",
+              "id": "18026811eba122916ced6a4bc6d377c3",
+              "meta": {},
+              "modified_on": "2026-07-15T03:09:10.758747Z",
+              "name": "get-ai-traffic.com",
+              "priority": 10,
+              "proxiable": false,
+              "proxied": false,
+              "settings": {},
+              "tags": [],
+              "ttl": 1,
+              "type": "MX"
+            },
+            {
+              "comment": null,
+              "content": "feedback-smtp.us-east-1.amazonses.com",
+              "created_on": "2026-06-06T15:08:26.028072Z",
+              "id": "e8e2dc61a31de59a1cb7b372b3675baa",
+              "meta": {},
+              "modified_on": "2026-06-06T15:08:26.028072Z",
+              "name": "send.get-ai-traffic.com",
+              "priority": 10,
+              "proxiable": false,
+              "proxied": false,
+              "settings": {},
+              "tags": [],
+              "ttl": 3600,
+              "type": "MX"
+            },
+            {
+              "comment": null,
+              "content": "v=DMARC1; p=none; rua=mailto:john@get-ai-traffic.com",
+              "created_on": "2026-06-05T19:20:04.183141Z",
+              "id": "86e542afe197193f3d16902bd3cd84eb",
+              "meta": {},
+              "modified_on": "2026-06-05T19:20:04.183141Z",
+              "name": "_dmarc.get-ai-traffic.com",
+              "proxiable": false,
+              "proxied": false,
+              "settings": {},
+              "tags": [],
+              "ttl": 3600,
+              "type": "TXT"
+            },
+            {
+              "comment": null,
+              "content": "v=spf1 -all",
+              "created_on": "2026-07-15T03:09:47.741029Z",
+              "id": "0464b066b28940ece3924b04ead4cffa",
+              "meta": {},
+              "modified_on": "2026-07-15T03:09:47.741029Z",
+              "name": "get-ai-traffic.com",
+              "proxiable": false,
+              "proxied": false,
+              "settings": {},
+              "tags": [],
+              "ttl": 1,
+              "type": "TXT"
+            },
+            {
+              "comment": null,
+              "content": "\"google-site-verification=iI3Seikny0oLrIV5Q8Yj5MKsyY2ztO5rTLaF02xlfQ8\"",
+              "created_on": "2026-07-14T22:56:21.835868Z",
+              "id": "d4547f40c10b70cc5226991f25e11627",
+              "meta": {},
+              "modified_on": "2026-07-14T22:56:21.835868Z",
+              "name": "get-ai-traffic.com",
+              "proxiable": false,
+              "proxied": false,
+              "settings": {},
+              "tags": [],
+              "ttl": 3600,
+              "type": "TXT"
+            },
+            {
+              "comment": null,
+              "content": "\"p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQCl6d8Z0i1mBVsUSwQHS8JoY0ZeFY3MTE67h4AA9DF+r1h3wta7agW1bW9nO+Trh5mJZWPkfy5hNGQ/wdCA8d3SaIuU94AOgT/H4on5jcvd9+2m4Ll+VBkh6NXjAX8ZHxQYbhwG3b/0lAu3rpQIdR/NW0DV1kzy/RGcAdmWp0SpzwIDAQAB\"",
+              "created_on": "2026-06-06T15:08:26.031086Z",
+              "id": "538e6b739eacb8df2ce7bd39468dca47",
+              "meta": {},
+              "modified_on": "2026-06-06T15:08:26.031086Z",
+              "name": "resend._domainkey.get-ai-traffic.com",
+              "proxiable": false,
+              "proxied": false,
+              "settings": {},
+              "tags": [],
+              "ttl": 3600,
+              "type": "TXT"
+            },
+            {
+              "comment": null,
+              "content": "p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQCl6d8Z0i1mBVsUSwQHS8JoY0ZeFY3MTE67h4AA9DF+r1h3wta7agW1bW9nO+Trh5mJZWPkfy5hNGQ/wdCA8d3SaIuU94AOgT/H4on5jcvd9+2m4Ll+VBkh6NXjAX8ZHxQYbhwG3b/0lAu3rpQIdR/NW0DV1kzy/RGcAdmWp0SpzwIDAQAB",
+              "created_on": "2026-06-06T13:22:39.190516Z",
+              "id": "c79a47b0510765c21ee25432d67d4ea2",
+              "meta": {},
+              "modified_on": "2026-06-06T13:22:39.190516Z",
+              "name": "resend._domainkey.get-ai-traffic.com",
+              "proxiable": false,
+              "proxied": false,
+              "settings": {},
+              "tags": [],
+              "ttl": 1,
+              "type": "TXT"
+            },
+            {
+              "comment": null,
+              "content": "\"v=spf1 include:amazonses.com ~all\"",
+              "created_on": "2026-06-06T15:08:26.05731Z",
+              "id": "acba1e4cdf38973fe8be989a67470006",
+              "meta": {},
+              "modified_on": "2026-06-06T15:08:26.05731Z",
+              "name": "send.get-ai-traffic.com",
+              "proxiable": false,
+              "proxied": false,
+              "settings": {},
+              "tags": [],
+              "ttl": 3600,
+              "type": "TXT"
+            }
+          ],
+          "result_info": {
+            "count": 14,
+            "page": 1,
+            "per_page": 100,
+            "total_count": 14,
+            "total_pages": 1
+          },
+          "success": true
+        },
+        "body_type": "json",
+        "headers": {
+          "api-version": [
+            "2026-09-26.epoch"
+          ],
+          "cf-auditlog-id": [
+            "019fef1b-9bb8-7a35-aff9-93ce3f43c9cf"
+          ],
+          "cf-cache-status": [
+            "DYNAMIC"
+          ],
+          "cf-ray": [
+            "a2948a32b8395b53-YUL"
+          ],
+          "connection": [
+            "keep-alive"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "date": [
+            "Tue, 11 Aug 2026 04:36:31 GMT"
+          ],
+          "ratelimit": [
+            "\"default\";r=1197;t=1"
+          ],
+          "ratelimit-policy": [
+            "\"default\";q=1200;w=300"
+          ],
+          "server": [
+            "cloudflare"
+          ],
+          "transfer-encoding": [
+            "chunked"
+          ],
+          "vary": [
+            "Accept-Encoding"
+          ]
+        },
+        "status": 200
+      }
+    },
+    {
+      "recorded_at": "2026-08-11T04:36:32.149063Z",
+      "request": {
+        "body": "",
+        "body_type": "text",
+        "headers": {
+          "accept-encoding": [
+            "gzip"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "user-agent": [
+            "req/0.5.17"
+          ]
+        },
+        "method": "GET",
+        "query_string": "",
+        "uri": "https://api.cloudflare.com/client/v4/zones/ee2bd5364c099fbd0bf57845c1523ac0/dns_records"
+      },
+      "response": {
+        "body_json": {
+          "errors": [],
+          "messages": [],
+          "result": [],
+          "result_info": {
+            "count": 0,
+            "page": 1,
+            "per_page": 100,
+            "total_count": 0,
+            "total_pages": 1
+          },
+          "success": true
+        },
+        "body_type": "json",
+        "headers": {
+          "api-version": [
+            "2026-09-26.epoch"
+          ],
+          "cf-auditlog-id": [
+            "019fef1b-9c78-7b5e-ad0e-29571a1edd29"
+          ],
+          "cf-cache-status": [
+            "DYNAMIC"
+          ],
+          "cf-ray": [
+            "a2948a33eb0b5b53-YUL"
+          ],
+          "connection": [
+            "keep-alive"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "date": [
+            "Tue, 11 Aug 2026 04:36:32 GMT"
+          ],
+          "ratelimit": [
+            "\"default\";r=1196;t=1"
+          ],
+          "ratelimit-policy": [
+            "\"default\";q=1200;w=300"
+          ],
+          "server": [
+            "cloudflare"
+          ],
+          "transfer-encoding": [
+            "chunked"
+          ],
+          "vary": [
+            "Accept-Encoding"
+          ]
+        },
+        "status": 200
+      }
+    },
+    {
+      "recorded_at": "2026-08-11T04:36:32.342367Z",
+      "request": {
+        "body": "",
+        "body_type": "text",
+        "headers": {
+          "accept-encoding": [
+            "gzip"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "user-agent": [
+            "req/0.5.17"
+          ]
+        },
+        "method": "GET",
+        "query_string": "",
+        "uri": "https://api.cloudflare.com/client/v4/zones/ca9564c0c590c9af6e479d7de9440795/dns_records"
+      },
+      "response": {
+        "body_json": {
+          "errors": [],
+          "messages": [],
+          "result": [
+            {
+              "comment": null,
+              "content": "178.156.143.212",
+              "created_on": "2026-05-05T02:58:14.032112Z",
+              "id": "5dc7bc5836251e9269ff4dc5788b51a6",
+              "meta": {},
+              "modified_on": "2026-05-06T11:44:09.903172Z",
+              "name": "marketmyspec.com",
+              "proxiable": true,
+              "proxied": false,
+              "settings": {},
+              "tags": [],
+              "ttl": 1,
+              "type": "A"
+            },
+            {
+              "comment": null,
+              "content": "46.225.105.88",
+              "created_on": "2026-05-05T02:58:14.349564Z",
+              "id": "ee36242a353892643e751d32016071e6",
+              "meta": {},
+              "modified_on": "2026-05-06T15:12:54.352197Z",
+              "name": "uat.marketmyspec.com",
+              "proxiable": true,
+              "proxied": false,
+              "settings": {},
+              "tags": [],
+              "ttl": 1,
+              "type": "A"
+            },
+            {
+              "comment": null,
+              "content": "6d58f8d8-b571-4256-acfe-1a39714d5b22.cfargotunnel.com",
+              "created_on": "2026-05-16T13:10:01.286304Z",
+              "id": "7a1cb735d186fb7472ffacd684964190",
+              "meta": {},
+              "modified_on": "2026-05-16T13:10:01.286304Z",
+              "name": "dev.marketmyspec.com",
+              "proxiable": true,
+              "proxied": true,
+              "settings": {
+                "flatten_cname": false
+              },
+              "tags": [],
+              "ttl": 1,
+              "type": "CNAME"
+            },
+            {
+              "comment": null,
+              "content": "feedback-smtp.us-east-1.amazonses.com",
+              "created_on": "2026-05-08T15:10:16.638467Z",
+              "id": "20ed730b51ffbe2b1c41612de7630e91",
+              "meta": {},
+              "modified_on": "2026-05-08T15:10:16.638467Z",
+              "name": "send.marketmyspec.com",
+              "priority": 10,
+              "proxiable": false,
+              "proxied": false,
+              "settings": {},
+              "tags": [],
+              "ttl": 3600,
+              "type": "MX"
+            },
+            {
+              "comment": null,
+              "content": "\"google-site-verification=-WNHaXMdjMtlqlIUrdwMWoP3kF3nkOS2K5kA7NHl0zU\"",
+              "created_on": "2026-06-03T15:22:40.43043Z",
+              "id": "e94b6650a67a261e68078ec27edeff30",
+              "meta": {},
+              "modified_on": "2026-06-03T15:22:40.43043Z",
+              "name": "marketmyspec.com",
+              "proxiable": false,
+              "proxied": false,
+              "settings": {},
+              "tags": [],
+              "ttl": 3600,
+              "type": "TXT"
+            },
+            {
+              "comment": null,
+              "content": "\"p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDHfuJhffn14D8YZLwDzCf5LR5ScK9DiJ7y1yuZc1Iwc4ZXvuq/ei5VFPZVHx8mFz9wLA9uwJqp+reVAWh7yxBrxnS2Mf98raqQn6PJYkuMRC0fLiYtD1nCenW2urocfmwcV9s5RMJ5itpmI0+4KU7rDc1KqitjXIoAhD+INWLVRwIDAQAB\"",
+              "created_on": "2026-05-08T15:10:16.623707Z",
+              "id": "bcfd6dc0dd0bcbb6f354a74c63567ff6",
+              "meta": {},
+              "modified_on": "2026-05-08T15:10:16.623707Z",
+              "name": "resend._domainkey.marketmyspec.com",
+              "proxiable": false,
+              "proxied": false,
+              "settings": {},
+              "tags": [],
+              "ttl": 3600,
+              "type": "TXT"
+            },
+            {
+              "comment": null,
+              "content": "\"v=spf1 include:amazonses.com ~all\"",
+              "created_on": "2026-05-08T15:10:16.617672Z",
+              "id": "6a5ae34fe865d70bde082caa490cc940",
+              "meta": {},
+              "modified_on": "2026-05-08T15:10:16.617672Z",
+              "name": "send.marketmyspec.com",
+              "proxiable": false,
+              "proxied": false,
+              "settings": {},
+              "tags": [],
+              "ttl": 3600,
+              "type": "TXT"
+            }
+          ],
+          "result_info": {
+            "count": 7,
+            "page": 1,
+            "per_page": 100,
+            "total_count": 7,
+            "total_pages": 1
+          },
+          "success": true
+        },
+        "body_type": "json",
+        "headers": {
+          "api-version": [
+            "2026-09-26.epoch"
+          ],
+          "cf-auditlog-id": [
+            "019fef1b-9d32-70a6-9516-6c7f07282fc1"
+          ],
+          "cf-cache-status": [
+            "DYNAMIC"
+          ],
+          "cf-ray": [
+            "a2948a351d3b5b53-YUL"
+          ],
+          "connection": [
+            "keep-alive"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "date": [
+            "Tue, 11 Aug 2026 04:36:32 GMT"
+          ],
+          "ratelimit": [
+            "\"default\";r=1196;t=1"
+          ],
+          "ratelimit-policy": [
+            "\"default\";q=1200;w=300"
+          ],
+          "server": [
+            "cloudflare"
+          ],
+          "transfer-encoding": [
+            "chunked"
+          ],
+          "vary": [
+            "Accept-Encoding"
+          ]
+        },
+        "status": 200
+      }
+    },
+    {
+      "recorded_at": "2026-08-11T04:36:32.537427Z",
+      "request": {
+        "body": "",
+        "body_type": "text",
+        "headers": {
+          "accept-encoding": [
+            "gzip"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "user-agent": [
+            "req/0.5.17"
+          ]
+        },
+        "method": "GET",
+        "query_string": "",
+        "uri": "https://api.cloudflare.com/client/v4/zones/618b7d6ae0af6ee3a58f8efff0f959e7/dns_records"
+      },
+      "response": {
+        "body_json": {
+          "errors": [],
+          "messages": [],
+          "result": [
+            {
+              "comment": null,
+              "content": "178.156.143.212",
+              "created_on": "2026-03-09T03:28:46.771131Z",
+              "id": "10215c7a00fd2193667ee2a4aa7c5baf",
+              "meta": {},
+              "modified_on": "2026-05-03T13:08:03.094482Z",
+              "name": "metric-flow.app",
+              "proxiable": true,
+              "proxied": false,
+              "settings": {},
+              "tags": [],
+              "ttl": 1,
+              "type": "A"
+            },
+            {
+              "comment": null,
+              "content": "46.225.105.88",
+              "created_on": "2026-03-06T04:47:10.895597Z",
+              "id": "4bf4207f9cc5a7a490a8a85df9a8e6e6",
+              "meta": {},
+              "modified_on": "2026-05-07T03:10:06.603734Z",
+              "name": "uat.metric-flow.app",
+              "proxiable": true,
+              "proxied": false,
+              "settings": {},
+              "tags": [],
+              "ttl": 1,
+              "type": "A"
+            },
+            {
+              "comment": "Dev tunnel",
+              "comment_modified_on": "2026-03-06T04:06:25.102321Z",
+              "content": "087e2228-74d8-437d-bc92-b41c9fc9f253.cfargotunnel.com",
+              "created_on": "2026-03-06T04:06:25.102321Z",
+              "id": "c3bcec423fc3b35ce89e63fc830b3601",
+              "meta": {},
+              "modified_on": "2026-03-06T04:06:25.102321Z",
+              "name": "dev.metric-flow.app",
+              "proxiable": true,
+              "proxied": true,
+              "settings": {
+                "flatten_cname": false
+              },
+              "tags": [],
+              "ttl": 1,
+              "type": "CNAME"
+            },
+            {
+              "comment": null,
+              "content": "route3.mx.cloudflare.net",
+              "created_on": "2026-03-09T02:45:09.518538Z",
+              "id": "2d0593a942074fe8de50c1f7faa889dd",
+              "meta": {},
+              "modified_on": "2026-03-09T02:45:09.518538Z",
+              "name": "metric-flow.app",
+              "priority": 29,
+              "proxiable": false,
+              "proxied": false,
+              "settings": {},
+              "tags": [],
+              "ttl": 1,
+              "type": "MX"
+            },
+            {
+              "comment": null,
+              "content": "route2.mx.cloudflare.net",
+              "created_on": "2026-03-09T02:45:09.081733Z",
+              "id": "e3804927e51f97b7b27fd401c5580068",
+              "meta": {},
+              "modified_on": "2026-03-09T02:45:09.081733Z",
+              "name": "metric-flow.app",
+              "priority": 45,
+              "proxiable": false,
+              "proxied": false,
+              "settings": {},
+              "tags": [],
+              "ttl": 1,
+              "type": "MX"
+            },
+            {
+              "comment": null,
+              "content": "route1.mx.cloudflare.net",
+              "created_on": "2026-03-09T02:45:08.419816Z",
+              "id": "871cea5184f0ee01b81c91ad808a3c1b",
+              "meta": {},
+              "modified_on": "2026-03-09T02:45:08.419816Z",
+              "name": "metric-flow.app",
+              "priority": 3,
+              "proxiable": false,
+              "proxied": false,
+              "settings": {},
+              "tags": [],
+              "ttl": 1,
+              "type": "MX"
+            },
+            {
+              "comment": null,
+              "content": "feedback-smtp.us-east-1.amazonses.com",
+              "created_on": "2026-03-06T04:28:59.971756Z",
+              "id": "526f98b96ddf1566d1cf80b86e8f5e1a",
+              "meta": {},
+              "modified_on": "2026-03-06T04:28:59.971756Z",
+              "name": "send.metric-flow.app",
+              "priority": 10,
+              "proxiable": false,
+              "proxied": false,
+              "settings": {},
+              "tags": [],
+              "ttl": 1,
+              "type": "MX"
+            },
+            {
+              "comment": null,
+              "content": "v=DKIM1; h=sha256; k=rsa; p=MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAiweykoi+o48IOGuP7GR3X0MOExCUDY/BCRHoWBnh3rChl7WhdyCxW3jgq1daEjPPqoi7sJvdg5hEQVsgVRQP4DcnQDVjGMbASQtrY4WmB1VebF+RPJB2ECPsEDTpeiI5ZyUAwJaVX7r6bznU67g7LvFq35yIo4sdlmtZGV+i0H4cpYH9+3JJ78km4KXwaf9xUJCWF6nxeD+qG6Fyruw1Qlbds2r85U9dkNDVAS3gioCvELryh1TxKGiVTkg4wqHTyHfWsp7KD3WQHYJn0RyfJJu6YEmL77zonn7p2SRMvTMP3ZEXibnC9gz3nnhR6wcYL8Q7zXypKTMD58bTixDSJwIDAQAB",
+              "created_on": "2026-03-09T02:45:34.767576Z",
+              "id": "78d3c48ed575a1faaed4976416bcab02",
+              "meta": {},
+              "modified_on": "2026-03-09T02:45:34.767576Z",
+              "name": "cf2024-1._domainkey.metric-flow.app",
+              "proxiable": false,
+              "proxied": false,
+              "settings": {},
+              "tags": [],
+              "ttl": 1,
+              "type": "TXT"
+            },
+            {
+              "comment": null,
+              "content": "v=spf1 include:_spf.mx.cloudflare.net include:amazonses.com ~all",
+              "created_on": "2026-03-09T02:45:15.203516Z",
+              "id": "922159eadb492b591ce3c50596863aa8",
+              "meta": {},
+              "modified_on": "2026-03-09T02:45:15.203516Z",
+              "name": "metric-flow.app",
+              "proxiable": false,
+              "proxied": false,
+              "settings": {},
+              "tags": [],
+              "ttl": 1,
+              "type": "TXT"
+            },
+            {
+              "comment": null,
+              "content": "p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDKvCwH/ET3zjQY5QwaR7uZv9/bW2CVuf8HBxWSnI4Z0ScpX7igqvUDnbxBQCqWhz2pXnrmhPijGjmfueYrSgT6oJcNvJWuHzrMO8rZLZIktPpisjKWeO2Rsk43bbGdKAFW/EfMLz3XL0HrHhzirsMROCl5lCgcaKAZOHvzL8ixgwIDAQAB",
+              "created_on": "2026-03-06T04:28:57.543836Z",
+              "id": "dfe51d2060c2c31c72223dece5a09421",
+              "meta": {},
+              "modified_on": "2026-03-06T04:28:57.543836Z",
+              "name": "resend._domainkey.metric-flow.app",
+              "proxiable": false,
+              "proxied": false,
+              "settings": {},
+              "tags": [],
+              "ttl": 1,
+              "type": "TXT"
+            },
+            {
+              "comment": null,
+              "content": "v=spf1 include:amazonses.com ~all",
+              "created_on": "2026-03-06T04:29:01.599672Z",
+              "id": "13918cb97abda9b41127868ad87b884a",
+              "meta": {},
+              "modified_on": "2026-03-06T04:29:01.599672Z",
+              "name": "send.metric-flow.app",
+              "proxiable": false,
+              "proxied": false,
+              "settings": {},
+              "tags": [],
+              "ttl": 1,
+              "type": "TXT"
+            }
+          ],
+          "result_info": {
+            "count": 11,
+            "page": 1,
+            "per_page": 100,
+            "total_count": 11,
+            "total_pages": 1
+          },
+          "success": true
+        },
+        "body_type": "json",
+        "headers": {
+          "api-version": [
+            "2026-09-26.epoch"
+          ],
+          "cf-auditlog-id": [
+            "019fef1b-9df5-71c8-a271-fa4601840b8c"
+          ],
+          "cf-cache-status": [
+            "DYNAMIC"
+          ],
+          "cf-ray": [
+            "a2948a364fb05b53-YUL"
+          ],
+          "connection": [
+            "keep-alive"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "date": [
+            "Tue, 11 Aug 2026 04:36:32 GMT"
+          ],
+          "ratelimit": [
+            "\"default\";r=1195;t=2"
+          ],
+          "ratelimit-policy": [
+            "\"default\";q=1200;w=300"
+          ],
+          "server": [
+            "cloudflare"
+          ],
+          "transfer-encoding": [
+            "chunked"
+          ],
+          "vary": [
+            "Accept-Encoding"
+          ]
+        },
+        "status": 200
+      }
+    },
+    {
+      "recorded_at": "2026-08-11T04:36:32.632705Z",
+      "request": {
+        "body": "",
+        "body_type": "text",
+        "headers": {
+          "accept-encoding": [
+            "gzip"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "user-agent": [
+            "req/0.5.17"
+          ]
+        },
+        "method": "GET",
+        "query_string": "",
+        "uri": "https://api.resend.com/domains"
+      },
+      "response": {
+        "body_json": {
+          "data": [
+            {
+              "capabilities": {
+                "receiving": "enabled",
+                "sending": "enabled"
+              },
+              "created_at": "2026-08-07 21:28:04.900351+00",
+              "id": "f3ec6cf5-84ff-4d51-b4bb-60aa955afb91",
+              "name": "astralbi.com",
+              "region": "us-east-1",
+              "status": "verified"
+            },
+            {
+              "capabilities": {
+                "receiving": "enabled",
+                "sending": "enabled"
+              },
+              "created_at": "2026-07-31 18:58:09.186223+00",
+              "id": "c0fc3f32-45a7-4076-97d9-0d6e4592b386",
+              "name": "codemyspec.com",
+              "region": "us-east-1",
+              "status": "verified"
+            },
+            {
+              "capabilities": {
+                "receiving": "disabled",
+                "sending": "enabled"
+              },
+              "created_at": "2026-07-31 18:58:05.277633+00",
+              "id": "aa04515b-68c2-41b4-8d46-76ee26ba50b8",
+              "name": "uat.codemyspec.com",
+              "region": "us-east-1",
+              "status": "verified"
+            },
+            {
+              "capabilities": {
+                "receiving": "enabled",
+                "sending": "enabled"
+              },
+              "created_at": "2026-07-14 02:23:28.793185+00",
+              "id": "3f765d03-6a26-4c0d-b4f1-13359c91e6e8",
+              "name": "broken-oaths.com",
+              "region": "us-east-1",
+              "status": "verified"
+            },
+            {
+              "capabilities": {
+                "receiving": "disabled",
+                "sending": "enabled"
+              },
+              "created_at": "2026-07-09 16:22:54.116785+00",
+              "id": "0034cc09-bf14-4ab6-b7f7-47ce033bdf02",
+              "name": "desertfirstcleaning.com",
+              "region": "us-east-1",
+              "status": "verified"
+            },
+            {
+              "capabilities": {
+                "receiving": "enabled",
+                "sending": "enabled"
+              },
+              "created_at": "2026-06-05 19:05:16.920732+00",
+              "id": "0a5c459f-cc87-4469-8ea7-fb68ef0e2e61",
+              "name": "get-ai-traffic.com",
+              "region": "us-east-1",
+              "status": "verified"
+            },
+            {
+              "capabilities": {
+                "receiving": "disabled",
+                "sending": "enabled"
+              },
+              "created_at": "2026-05-08 15:09:54.491925+00",
+              "id": "5fb1031b-afe6-4208-8c62-a4a989904ec6",
+              "name": "marketmyspec.com",
+              "region": "us-east-1",
+              "status": "verified"
+            },
+            {
+              "capabilities": {
+                "receiving": "disabled",
+                "sending": "enabled"
+              },
+              "created_at": "2026-03-06 21:54:42.183283+00",
+              "id": "89f98d14-6b89-48df-b090-4c5a4cf1c51b",
+              "name": "fuellytics.app",
+              "region": "us-east-1",
+              "status": "verified"
+            },
+            {
+              "capabilities": {
+                "receiving": "disabled",
+                "sending": "enabled"
+              },
+              "created_at": "2026-03-06 04:22:39.595452+00",
+              "id": "c97951b6-570f-4726-a780-cb338f59b1c9",
+              "name": "metric-flow.app",
+              "region": "us-east-1",
+              "status": "verified"
+            }
+          ],
+          "has_more": false,
+          "object": "list"
+        },
+        "body_type": "json",
+        "headers": {
+          "cf-cache-status": [
+            "DYNAMIC"
+          ],
+          "cf-ray": [
+            "a2948a378db03870-YYZ"
+          ],
+          "connection": [
+            "keep-alive"
+          ],
+          "content-security-policy": [
+            "default-src 'none'; frame-ancestors 'none'"
+          ],
+          "content-type": [
+            "application/json; charset=utf-8"
+          ],
+          "date": [
+            "Tue, 11 Aug 2026 04:36:32 GMT"
+          ],
+          "etag": [
+            "W/\"7d3-qPvNbpBPqaU4RFk4AHWG3gMhYsE\""
+          ],
+          "permissions-policy": [
+            "camera=(), microphone=(), geolocation=(), payment=()"
+          ],
+          "ratelimit-limit": [
+            "10"
+          ],
+          "ratelimit-policy": [
+            "10;w=1"
+          ],
+          "ratelimit-remaining": [
+            "9"
+          ],
+          "ratelimit-reset": [
+            "1"
+          ],
+          "referrer-policy": [
+            "strict-origin-when-cross-origin"
+          ],
+          "server": [
+            "cloudflare"
+          ],
+          "strict-transport-security": [
+            "max-age=63072000; includeSubDomains"
+          ],
+          "transfer-encoding": [
+            "chunked"
+          ],
+          "x-content-type-options": [
+            "nosniff"
+          ],
+          "x-frame-options": [
+            "DENY"
+          ]
+        },
+        "status": 200
+      }
+    },
+    {
+      "recorded_at": "2026-08-11T04:36:32.708965Z",
+      "request": {
+        "body": "",
+        "body_type": "text",
+        "headers": {
+          "accept-encoding": [
+            "gzip"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "user-agent": [
+            "req/0.5.17"
+          ]
+        },
+        "method": "GET",
+        "query_string": "",
+        "uri": "https://api.resend.com/webhooks"
+      },
+      "response": {
+        "body_json": {
+          "data": [
+            {
+              "created_at": "2026-08-08 18:05:28.334204+00",
+              "endpoint": "https://c8033.astralbi.com/webhooks/resend",
+              "events": [
+                "email.received"
+              ],
+              "id": "a5eb67d1-b55c-48b9-ba2e-703d08586641",
+              "status": "enabled"
+            },
+            {
+              "created_at": "2026-06-22 19:59:02.059463+00",
+              "endpoint": "https://codemyspec.com/webhooks/resend",
+              "events": [
+                "email.received"
+              ],
+              "id": "b1f75b2d-2314-46a9-806a-174303eaf22a",
+              "status": "enabled"
+            },
+            {
+              "created_at": "2026-06-22 16:20:46.21956+00",
+              "endpoint": "https://dev.codemyspec.com/webhooks/resend",
+              "events": [
+                "email.received"
+              ],
+              "id": "86b9adc6-09f8-4a91-ad05-381b964ff684",
+              "status": "disabled"
+            }
+          ],
+          "has_more": false,
+          "object": "list"
+        },
+        "body_type": "json",
+        "headers": {
+          "cf-cache-status": [
+            "DYNAMIC"
+          ],
+          "cf-ray": [
+            "a2948a382df93870-YYZ"
+          ],
+          "connection": [
+            "keep-alive"
+          ],
+          "content-security-policy": [
+            "default-src 'none'; frame-ancestors 'none'"
+          ],
+          "content-type": [
+            "application/json; charset=utf-8"
+          ],
+          "date": [
+            "Tue, 11 Aug 2026 04:36:32 GMT"
+          ],
+          "etag": [
+            "W/\"26d-Bq2iY7ZUWpqjsGzXJFbBqh/cbZs\""
+          ],
+          "permissions-policy": [
+            "camera=(), microphone=(), geolocation=(), payment=()"
+          ],
+          "ratelimit-limit": [
+            "10"
+          ],
+          "ratelimit-policy": [
+            "10;w=1"
+          ],
+          "ratelimit-remaining": [
+            "8"
+          ],
+          "ratelimit-reset": [
+            "1"
+          ],
+          "referrer-policy": [
+            "strict-origin-when-cross-origin"
+          ],
+          "server": [
+            "cloudflare"
+          ],
+          "strict-transport-security": [
+            "max-age=63072000; includeSubDomains"
+          ],
+          "transfer-encoding": [
+            "chunked"
+          ],
+          "x-content-type-options": [
+            "nosniff"
+          ],
+          "x-frame-options": [
+            "DENY"
+          ]
+        },
+        "status": 200
+      }
+    },
+    {
+      "recorded_at": "2026-08-11T04:36:32.831699Z",
+      "request": {
+        "body": "",
+        "body_type": "text",
+        "headers": {
+          "accept-encoding": [
+            "gzip"
+          ],
+          "host": [
+            "fsn1.your-objectstorage.com"
+          ],
+          "user-agent": [
+            "req/0.5.17"
+          ],
+          "x-amz-content-sha256": [
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          ],
+          "x-amz-date": [
+            "20260811T043632Z"
+          ]
+        },
+        "method": "GET",
+        "query_string": "",
+        "uri": "https://fsn1.your-objectstorage.com/"
+      },
+      "response": {
+        "body": "<?xml version=\"1.0\" encoding=\"UTF-8\"?><ListAllMyBucketsResult xmlns=\"http://s3.amazonaws.com/doc/2006-03-01/\"><Owner><ID>p13614200</ID><DisplayName>p13614200</DisplayName></Owner><Buckets><Bucket><Name>cms-spex-content</Name><CreationDate>2026-08-11T00:16:32.571Z</CreationDate></Bucket><Bucket><Name>codemyspec-registry</Name><CreationDate>2026-08-09T22:07:18.996Z</CreationDate></Bucket><Bucket><Name>qa-fixture-project-uat</Name><CreationDate>2026-08-04T00:48:14.758Z</CreationDate></Bucket></Buckets></ListAllMyBucketsResult>",
+        "body_type": "text",
+        "headers": {
+          "content-type": [
+            "application/xml"
+          ],
+          "date": [
+            "Tue, 11 Aug 2026 04:36:32 GMT"
+          ],
+          "strict-transport-security": [
+            "max-age=63072000"
+          ],
+          "transfer-encoding": [
+            "chunked"
+          ],
+          "x-amz-request-id": [
+            "tx000009ec6b5f5948fe984-006a7aa6d0-816d0535-fsn1-prod1-ceph3"
+          ],
+          "x-debug-bucket": [
+            ""
+          ]
+        },
+        "status": 200
+      }
+    }
+  ],
+  "version": "2.0"
+}

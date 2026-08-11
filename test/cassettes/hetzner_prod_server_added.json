@@ -1,7 +1,7 @@
 {
   "interactions": [
     {
-      "recorded_at": "2026-08-08T16:24:54.670526Z",
+      "recorded_at": "2026-08-11T04:12:47.779802Z",
       "request": {
         "body": "",
         "body_type": "text",
@@ -25,39 +25,72 @@
       },
       "response": {
         "body_json": {
-          "pushed_at": "2026-08-08T16:24:52Z",
+          "delete_branch_on_merge": false,
           "mirror_url": null,
-          "merges_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/merges",
-          "allow_squash_merge": true,
-          "private": true,
-          "has_pages": false,
-          "url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156",
-          "hooks_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/hooks",
-          "contributors_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/contributors",
-          "fork": false,
-          "squash_merge_commit_title": "COMMIT_OR_PR_TITLE",
-          "stargazers_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/stargazers",
-          "keys_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/keys{/key_id}",
-          "stargazers_count": 0,
-          "downloads_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/downloads",
-          "events_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/events",
-          "compare_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/compare/{base}...{head}",
-          "updated_at": "2026-08-08T16:24:51Z",
-          "web_commit_signoff_required": false,
-          "permissions": {
-            "admin": true,
-            "maintain": true,
-            "pull": true,
-            "push": true,
-            "triage": true
-          },
+          "pushed_at": "2026-08-11T04:11:22Z",
+          "allow_update_branch": false,
           "svn_url": "https://github.com/codemy-my-spec-test/spex-story966-criterion8156",
-          "allow_rebase_merge": true,
-          "default_branch": "main",
-          "subscribers_count": 0,
-          "blobs_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/git/blobs{/sha}",
+          "open_issues_count": 0,
+          "forks_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/forks",
+          "watchers_count": 0,
+          "issues_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/issues{/number}",
+          "disabled": false,
+          "collaborators_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/collaborators{/collaborator}",
           "has_wiki": false,
+          "statuses_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/statuses/{sha}",
+          "merge_commit_title": "MERGE_MESSAGE",
+          "homepage": null,
+          "allow_auto_merge": false,
+          "full_name": "codemy-my-spec-test/spex-story966-criterion8156",
+          "stargazers_count": 0,
+          "subscription_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/subscription",
+          "use_squash_pr_title_as_default": false,
+          "stargazers_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/stargazers",
+          "events_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/events",
+          "has_projects": true,
+          "archive_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/{archive_format}{/ref}",
+          "commits_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/commits{/sha}",
+          "merges_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/merges",
+          "downloads_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/downloads",
+          "blobs_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/git/blobs{/sha}",
+          "comments_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/comments{/number}",
+          "contributors_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/contributors",
+          "subscribers_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/subscribers",
+          "custom_properties": {},
+          "squash_merge_commit_message": "COMMIT_MESSAGES",
+          "git_tags_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/git/tags{/sha}",
+          "updated_at": "2026-08-11T04:11:26Z",
+          "issue_events_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/issues/events{/number}",
+          "visibility": "private",
+          "pull_request_creation_policy": "all",
           "description": null,
+          "name": "spex-story966-criterion8156",
+          "id": 1330481007,
+          "labels_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/labels{/name}",
+          "branches_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/branches{/branch}",
+          "network_count": 0,
+          "private": true,
+          "issue_comment_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/issues/comments{/number}",
+          "merge_commit_message": "PR_TITLE",
+          "releases_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/releases{/id}",
+          "notifications_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/notifications{?since,all,participating}",
+          "hooks_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/hooks",
+          "allow_squash_merge": true,
+          "default_branch": "main",
+          "web_commit_signoff_required": false,
+          "teams_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/teams",
+          "topics": [],
+          "compare_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/compare/{base}...{head}",
+          "deployments_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/deployments",
+          "git_url": "git://github.com/codemy-my-spec-test/spex-story966-criterion8156.git",
+          "allow_merge_commit": true,
+          "git_refs_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/git/refs{/sha}",
+          "pulls_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/pulls{/number}",
+          "url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156",
+          "has_issues": true,
+          "contents_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/contents/{+path}",
+          "size": 0,
+          "allow_rebase_merge": true,
           "owner": {
             "avatar_url": "https://avatars.githubusercontent.com/u/312172974?v=4",
             "events_url": "https://api.github.com/users/codemy-my-spec-test/events{/privacy}",
@@ -79,18 +112,29 @@
             "url": "https://api.github.com/users/codemy-my-spec-test",
             "user_view_type": "public"
           },
-          "node_id": "R_kgDOTybVBA",
-          "size": 0,
-          "license": null,
-          "pull_request_creation_policy": "all",
-          "created_at": "2026-08-08T16:24:50Z",
-          "allow_merge_commit": true,
-          "network_count": 0,
-          "watchers": 0,
           "git_commits_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/git/commits{/sha}",
-          "commits_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/commits{/sha}",
-          "git_refs_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/git/refs{/sha}",
-          "name": "spex-story966-criterion8156",
+          "tags_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/tags",
+          "permissions": {
+            "admin": true,
+            "maintain": true,
+            "pull": true,
+            "push": true,
+            "triage": true
+          },
+          "language": "Elixir",
+          "fork": false,
+          "has_discussions": false,
+          "watchers": 0,
+          "html_url": "https://github.com/codemy-my-spec-test/spex-story966-criterion8156",
+          "open_issues": 0,
+          "is_template": false,
+          "node_id": "R_kgDOT02Hbw",
+          "milestones_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/milestones{/number}",
+          "license": null,
+          "forks_count": 0,
+          "squash_merge_commit_title": "COMMIT_OR_PR_TITLE",
+          "allow_forking": false,
+          "has_pages": false,
           "organization": {
             "avatar_url": "https://avatars.githubusercontent.com/u/312172974?v=4",
             "events_url": "https://api.github.com/users/codemy-my-spec-test/events{/privacy}",
@@ -112,63 +156,19 @@
             "url": "https://api.github.com/users/codemy-my-spec-test",
             "user_view_type": "public"
           },
-          "archived": false,
-          "languages_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/languages",
-          "delete_branch_on_merge": false,
-          "full_name": "codemy-my-spec-test/spex-story966-criterion8156",
-          "allow_auto_merge": false,
-          "milestones_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/milestones{/number}",
-          "squash_merge_commit_message": "COMMIT_MESSAGES",
-          "merge_commit_message": "PR_TITLE",
-          "has_downloads": false,
-          "issue_comment_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/issues/comments{/number}",
-          "clone_url": "https://github.com/codemy-my-spec-test/spex-story966-criterion8156.git",
-          "teams_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/teams",
-          "statuses_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/statuses/{sha}",
-          "custom_properties": {},
           "trees_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/git/trees{/sha}",
-          "comments_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/comments{/number}",
-          "temp_clone_token": "AAXKPXKDKWTWQMUH5KTWCJTKO5MYE",
-          "allow_forking": false,
-          "labels_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/labels{/name}",
-          "subscribers_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/subscribers",
           "ssh_url": "git@github.com:codemy-my-spec-test/spex-story966-criterion8156.git",
+          "temp_clone_token": "AAXKPXLLB7ELMVXF762KMNTKPKRGW",
           "has_pull_requests": true,
-          "language": null,
-          "issues_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/issues{/number}",
-          "html_url": "https://github.com/codemy-my-spec-test/spex-story966-criterion8156",
-          "contents_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/contents/{+path}",
-          "has_discussions": false,
-          "forks_count": 0,
-          "merge_commit_title": "MERGE_MESSAGE",
-          "subscription_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/subscription",
-          "forks_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/forks",
-          "is_template": false,
-          "branches_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/branches{/branch}",
-          "deployments_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/deployments",
-          "open_issues_count": 0,
-          "git_tags_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/git/tags{/sha}",
-          "forks": 0,
-          "has_projects": true,
-          "issue_events_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/issues/events{/number}",
-          "topics": [],
-          "homepage": null,
-          "notifications_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/notifications{?since,all,participating}",
-          "allow_update_branch": false,
-          "id": 1327944964,
           "assignees_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/assignees{/user}",
-          "collaborators_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/collaborators{/collaborator}",
-          "open_issues": 0,
-          "releases_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/releases{/id}",
-          "use_squash_pr_title_as_default": false,
-          "disabled": false,
-          "pulls_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/pulls{/number}",
-          "tags_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/tags",
-          "watchers_count": 0,
-          "git_url": "git://github.com/codemy-my-spec-test/spex-story966-criterion8156.git",
-          "has_issues": true,
-          "visibility": "private",
-          "archive_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/{archive_format}{/ref}"
+          "clone_url": "https://github.com/codemy-my-spec-test/spex-story966-criterion8156.git",
+          "forks": 0,
+          "archived": false,
+          "subscribers_count": 0,
+          "keys_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/keys{/key_id}",
+          "has_downloads": false,
+          "created_at": "2026-08-11T04:11:19Z",
+          "languages_url": "https://api.github.com/repos/codemy-my-spec-test/spex-story966-criterion8156/languages"
         },
         "body_type": "json",
         "headers": {
@@ -188,13 +188,13 @@
             "application/json; charset=utf-8"
           ],
           "date": [
-            "Sat, 08 Aug 2026 16:24:54 GMT"
+            "Tue, 11 Aug 2026 04:12:47 GMT"
           ],
           "etag": [
-            "W/\"33d585507727ea71fb1b72396d3a51bbfd9ec5f3fe7922586a12e9b8cc2164aa\""
+            "W/\"bbc996c26d838b3e5fad475ba9bf753cd08d0386d080cd938e4751346000bfa0\""
           ],
           "last-modified": [
-            "Sat, 08 Aug 2026 16:24:51 GMT"
+            "Tue, 11 Aug 2026 04:11:26 GMT"
           ],
           "referrer-policy": [
             "origin-when-cross-origin, strict-origin-when-cross-origin"
@@ -230,7 +230,7 @@
             "github.v3; format=json"
           ],
           "x-github-request-id": [
-            "DDCB:12B410:2EE9BB1:9F2715C:6A775853"
+            "D249:2ECF88:416D489:DA70BD2:6A7AA13F"
           ],
           "x-oauth-client-id": [
             "Ov23liFpnT7j3bK5OC1L"
@@ -242,16 +242,16 @@
             "5000"
           ],
           "x-ratelimit-remaining": [
-            "4988"
+            "4997"
           ],
           "x-ratelimit-reset": [
-            "1786209251"
+            "1786424961"
           ],
           "x-ratelimit-resource": [
             "core"
           ],
           "x-ratelimit-used": [
-            "12"
+            "3"
           ],
           "x-xss-protection": [
             "0"
@@ -261,7 +261,7 @@
       }
     },
     {
-      "recorded_at": "2026-08-08T16:24:55.427112Z",
+      "recorded_at": "2026-08-11T04:12:48.561387Z",
       "request": {
         "body": "",
         "body_type": "text",
@@ -320,7 +320,7 @@
                 "type": "system"
               },
               "included_traffic": 21990232555520,
-              "ingoing_traffic": 303385000,
+              "ingoing_traffic": 393135000,
               "iso": null,
               "labels": {},
               "load_balancers": [],
@@ -336,7 +336,7 @@
               },
               "locked": false,
               "name": "fuellytics",
-              "outgoing_traffic": 553280000,
+              "outgoing_traffic": 711530000,
               "placement_group": null,
               "primary_disk_size": 40,
               "private_net": [],
@@ -478,7 +478,7 @@
                 "type": "system"
               },
               "included_traffic": 2199023255552,
-              "ingoing_traffic": 693210000,
+              "ingoing_traffic": 877560000,
               "iso": null,
               "labels": {},
               "load_balancers": [],
@@ -494,7 +494,7 @@
               },
               "locked": false,
               "name": "fuellytics-prod",
-              "outgoing_traffic": 1248400000,
+              "outgoing_traffic": 1677615000,
               "placement_group": null,
               "primary_disk_size": 80,
               "private_net": [],
@@ -692,31 +692,31 @@
             },
             {
               "backup_window": null,
-              "created": "2026-08-08T16:24:54Z",
-              "id": 160424319,
+              "created": "2026-08-11T04:11:23Z",
+              "id": 161341879,
               "image": {
                 "architecture": "x86",
                 "bound_to": null,
-                "created": "2024-04-25T13:26:27Z",
+                "created": "2021-06-08T06:22:47Z",
                 "created_from": null,
                 "deleted": null,
                 "deprecated": null,
-                "description": "Ubuntu 24.04",
-                "disk_size": 5,
-                "id": 161547269,
+                "description": "docker-ce",
+                "disk_size": 40,
+                "id": 40093247,
                 "image_size": null,
                 "labels": {},
-                "name": "ubuntu-24.04",
+                "name": "docker-ce",
                 "os_flavor": "ubuntu",
-                "os_version": "24.04",
+                "os_version": "unknown",
                 "protection": {
                   "delete": false
                 },
                 "rapid_deploy": true,
                 "status": "available",
-                "type": "system"
+                "type": "app"
               },
-              "included_traffic": 0,
+              "included_traffic": 1099511627776,
               "ingoing_traffic": 0,
               "iso": null,
               "labels": {},
@@ -736,7 +736,14 @@
               "outgoing_traffic": 0,
               "placement_group": null,
               "primary_disk_size": 40,
-              "private_net": [],
+              "private_net": [
+                {
+                  "alias_ips": [],
+                  "ip": "10.0.0.2",
+                  "mac_address": "86:00:00:3b:12:45",
+                  "network": 12535690
+                }
+              ],
               "protection": {
                 "delete": false,
                 "rebuild": false
@@ -744,21 +751,21 @@
               "public_net": {
                 "firewalls": [
                   {
-                    "id": 11436088,
-                    "status": "pending"
+                    "id": 11447381,
+                    "status": "applied"
                   }
                 ],
                 "floating_ips": [],
                 "ipv4": {
                   "blocked": false,
-                  "dns_ptr": "static.165.216.156.178.clients.your-server.de",
-                  "id": 144017087,
-                  "ip": "178.156.216.165"
+                  "dns_ptr": "static.94.200.156.178.clients.your-server.de",
+                  "id": 144333672,
+                  "ip": "178.156.200.94"
                 },
                 "ipv6": {
                   "blocked": false,
                   "dns_ptr": [],
-                  "id": 144017088,
+                  "id": 144333673,
                   "ip": "2a01:4ff:f0:549b::/64"
                 }
               },
@@ -931,7 +938,7 @@
                 ],
                 "storage_type": "local"
               },
-              "status": "initializing",
+              "status": "running",
               "volumes": []
             }
           ]
@@ -957,7 +964,7 @@
             "application/json"
           ],
           "date": [
-            "Sat, 08 Aug 2026 16:24:55 GMT"
+            "Tue, 11 Aug 2026 04:12:48 GMT"
           ],
           "link": [
             "<https://api.hetzner.cloud/v1/servers?page=1>; rel=\"last\""
@@ -966,10 +973,10 @@
             "3600"
           ],
           "ratelimit-remaining": [
-            "3592"
+            "3599"
           ],
           "ratelimit-reset": [
-            "1786206303"
+            "1786421569"
           ],
           "strict-transport-security": [
             "max-age=31536000; includeSubDomains"
@@ -981,14 +988,14 @@
             "Accept-Encoding"
           ],
           "x-correlation-id": [
-            "726838be0b96a296aa0c821940a52486"
+            "d13db72a2e3e7654d77330917f9e5355"
           ]
         },
         "status": 200
       }
     },
     {
-      "recorded_at": "2026-08-08T16:24:55.584763Z",
+      "recorded_at": "2026-08-11T04:12:48.719270Z",
       "request": {
         "body": "",
         "body_type": "text",
@@ -1047,7 +1054,7 @@
                 "type": "system"
               },
               "included_traffic": 21990232555520,
-              "ingoing_traffic": 303385000,
+              "ingoing_traffic": 393135000,
               "iso": null,
               "labels": {},
               "load_balancers": [],
@@ -1063,7 +1070,7 @@
               },
               "locked": false,
               "name": "fuellytics",
-              "outgoing_traffic": 553280000,
+              "outgoing_traffic": 711530000,
               "placement_group": null,
               "primary_disk_size": 40,
               "private_net": [],
@@ -1205,7 +1212,7 @@
                 "type": "system"
               },
               "included_traffic": 2199023255552,
-              "ingoing_traffic": 693210000,
+              "ingoing_traffic": 877560000,
               "iso": null,
               "labels": {},
               "load_balancers": [],
@@ -1221,7 +1228,7 @@
               },
               "locked": false,
               "name": "fuellytics-prod",
-              "outgoing_traffic": 1248400000,
+              "outgoing_traffic": 1677615000,
               "placement_group": null,
               "primary_disk_size": 80,
               "private_net": [],
@@ -1419,31 +1426,31 @@
             },
             {
               "backup_window": null,
-              "created": "2026-08-08T16:24:54Z",
-              "id": 160424319,
+              "created": "2026-08-11T04:11:23Z",
+              "id": 161341879,
               "image": {
                 "architecture": "x86",
                 "bound_to": null,
-                "created": "2024-04-25T13:26:27Z",
+                "created": "2021-06-08T06:22:47Z",
                 "created_from": null,
                 "deleted": null,
                 "deprecated": null,
-                "description": "Ubuntu 24.04",
-                "disk_size": 5,
-                "id": 161547269,
+                "description": "docker-ce",
+                "disk_size": 40,
+                "id": 40093247,
                 "image_size": null,
                 "labels": {},
-                "name": "ubuntu-24.04",
+                "name": "docker-ce",
                 "os_flavor": "ubuntu",
-                "os_version": "24.04",
+                "os_version": "unknown",
                 "protection": {
                   "delete": false
                 },
                 "rapid_deploy": true,
                 "status": "available",
-                "type": "system"
+                "type": "app"
               },
-              "included_traffic": 0,
+              "included_traffic": 1099511627776,
               "ingoing_traffic": 0,
               "iso": null,
               "labels": {},
@@ -1463,7 +1470,14 @@
               "outgoing_traffic": 0,
               "placement_group": null,
               "primary_disk_size": 40,
-              "private_net": [],
+              "private_net": [
+                {
+                  "alias_ips": [],
+                  "ip": "10.0.0.2",
+                  "mac_address": "86:00:00:3b:12:45",
+                  "network": 12535690
+                }
+              ],
               "protection": {
                 "delete": false,
                 "rebuild": false
@@ -1471,21 +1485,21 @@
               "public_net": {
                 "firewalls": [
                   {
-                    "id": 11436088,
-                    "status": "pending"
+                    "id": 11447381,
+                    "status": "applied"
                   }
                 ],
                 "floating_ips": [],
                 "ipv4": {
                   "blocked": false,
-                  "dns_ptr": "static.165.216.156.178.clients.your-server.de",
-                  "id": 144017087,
-                  "ip": "178.156.216.165"
+                  "dns_ptr": "static.94.200.156.178.clients.your-server.de",
+                  "id": 144333672,
+                  "ip": "178.156.200.94"
                 },
                 "ipv6": {
                   "blocked": false,
                   "dns_ptr": [],
-                  "id": 144017088,
+                  "id": 144333673,
                   "ip": "2a01:4ff:f0:549b::/64"
                 }
               },
@@ -1658,7 +1672,7 @@
                 ],
                 "storage_type": "local"
               },
-              "status": "initializing",
+              "status": "running",
               "volumes": []
             }
           ]
@@ -1684,7 +1698,7 @@
             "application/json"
           ],
           "date": [
-            "Sat, 08 Aug 2026 16:24:55 GMT"
+            "Tue, 11 Aug 2026 04:12:48 GMT"
           ],
           "link": [
             "<https://api.hetzner.cloud/v1/servers?page=1>; rel=\"last\""
@@ -1693,10 +1707,10 @@
             "3600"
           ],
           "ratelimit-remaining": [
-            "3591"
+            "3598"
           ],
           "ratelimit-reset": [
-            "1786206304"
+            "1786421570"
           ],
           "strict-transport-security": [
             "max-age=31536000; includeSubDomains"
@@ -1708,14 +1722,14 @@
             "Accept-Encoding"
           ],
           "x-correlation-id": [
-            "66428c036c260c4abd5a475b9e75efa6"
+            "fc43dc4bc8ac68106a4d77bade4c3016"
           ]
         },
         "status": 200
       }
     },
     {
-      "recorded_at": "2026-08-08T16:24:55.732639Z",
+      "recorded_at": "2026-08-11T04:12:48.872529Z",
       "request": {
         "body": "",
         "body_type": "text",
@@ -1780,18 +1794,11 @@
               ]
             },
             {
-              "applied_to": [
-                {
-                  "server": {
-                    "id": 160424319
-                  },
-                  "type": "server"
-                }
-              ],
-              "created": "2026-08-08T16:24:53Z",
-              "id": 11436088,
+              "applied_to": [],
+              "created": "2026-08-09T23:09:59Z",
+              "id": 11440996,
               "labels": {},
-              "name": "spex-story966-criterion8156",
+              "name": "codemyspec-registry",
               "rules": [
                 {
                   "description": null,
@@ -1827,6 +1834,481 @@
                   ]
                 }
               ]
+            },
+            {
+              "applied_to": [],
+              "created": "2026-08-10T18:40:27Z",
+              "id": 11446375,
+              "labels": {},
+              "name": "spex-story972-criterion8039",
+              "rules": [
+                {
+                  "description": null,
+                  "destination_ips": [],
+                  "direction": "in",
+                  "port": "22",
+                  "protocol": "tcp",
+                  "source_ips": [
+                    "0.0.0.0/0",
+                    "::/0"
+                  ]
+                },
+                {
+                  "description": null,
+                  "destination_ips": [],
+                  "direction": "in",
+                  "port": "80",
+                  "protocol": "tcp",
+                  "source_ips": [
+                    "0.0.0.0/0",
+                    "::/0"
+                  ]
+                },
+                {
+                  "description": null,
+                  "destination_ips": [],
+                  "direction": "in",
+                  "port": "443",
+                  "protocol": "tcp",
+                  "source_ips": [
+                    "0.0.0.0/0",
+                    "::/0"
+                  ]
+                },
+                {
+                  "description": null,
+                  "destination_ips": [],
+                  "direction": "in",
+                  "port": "5000",
+                  "protocol": "tcp",
+                  "source_ips": [
+                    "10.0.0.0/16"
+                  ]
+                }
+              ]
+            },
+            {
+              "applied_to": [
+                {
+                  "server": {
+                    "id": 161341879
+                  },
+                  "type": "server"
+                }
+              ],
+              "created": "2026-08-11T00:34:45Z",
+              "id": 11447381,
+              "labels": {},
+              "name": "spex-story966-criterion8156",
+              "rules": [
+                {
+                  "description": null,
+                  "destination_ips": [],
+                  "direction": "in",
+                  "port": "22",
+                  "protocol": "tcp",
+                  "source_ips": [
+                    "0.0.0.0/0",
+                    "::/0"
+                  ]
+                },
+                {
+                  "description": null,
+                  "destination_ips": [],
+                  "direction": "in",
+                  "port": "80",
+                  "protocol": "tcp",
+                  "source_ips": [
+                    "0.0.0.0/0",
+                    "::/0"
+                  ]
+                },
+                {
+                  "description": null,
+                  "destination_ips": [],
+                  "direction": "in",
+                  "port": "443",
+                  "protocol": "tcp",
+                  "source_ips": [
+                    "0.0.0.0/0",
+                    "::/0"
+                  ]
+                },
+                {
+                  "description": null,
+                  "destination_ips": [],
+                  "direction": "in",
+                  "port": "5000",
+                  "protocol": "tcp",
+                  "source_ips": [
+                    "10.0.0.0/16"
+                  ]
+                }
+              ]
+            },
+            {
+              "applied_to": [],
+              "created": "2026-08-11T01:25:28Z",
+              "id": 11447480,
+              "labels": {},
+              "name": "spex-story965-criterion7995",
+              "rules": [
+                {
+                  "description": null,
+                  "destination_ips": [],
+                  "direction": "in",
+                  "port": "22",
+                  "protocol": "tcp",
+                  "source_ips": [
+                    "0.0.0.0/0",
+                    "::/0"
+                  ]
+                },
+                {
+                  "description": null,
+                  "destination_ips": [],
+                  "direction": "in",
+                  "port": "80",
+                  "protocol": "tcp",
+                  "source_ips": [
+                    "0.0.0.0/0",
+                    "::/0"
+                  ]
+                },
+                {
+                  "description": null,
+                  "destination_ips": [],
+                  "direction": "in",
+                  "port": "443",
+                  "protocol": "tcp",
+                  "source_ips": [
+                    "0.0.0.0/0",
+                    "::/0"
+                  ]
+                },
+                {
+                  "description": null,
+                  "destination_ips": [],
+                  "direction": "in",
+                  "port": "5000",
+                  "protocol": "tcp",
+                  "source_ips": [
+                    "10.0.0.0/16"
+                  ]
+                }
+              ]
+            },
+            {
+              "applied_to": [],
+              "created": "2026-08-11T02:20:18Z",
+              "id": 11447592,
+              "labels": {},
+              "name": "spex-story841-criterion1961",
+              "rules": [
+                {
+                  "description": null,
+                  "destination_ips": [],
+                  "direction": "in",
+                  "port": "22",
+                  "protocol": "tcp",
+                  "source_ips": [
+                    "0.0.0.0/0",
+                    "::/0"
+                  ]
+                },
+                {
+                  "description": null,
+                  "destination_ips": [],
+                  "direction": "in",
+                  "port": "80",
+                  "protocol": "tcp",
+                  "source_ips": [
+                    "0.0.0.0/0",
+                    "::/0"
+                  ]
+                },
+                {
+                  "description": null,
+                  "destination_ips": [],
+                  "direction": "in",
+                  "port": "443",
+                  "protocol": "tcp",
+                  "source_ips": [
+                    "0.0.0.0/0",
+                    "::/0"
+                  ]
+                },
+                {
+                  "description": null,
+                  "destination_ips": [],
+                  "direction": "in",
+                  "port": "5000",
+                  "protocol": "tcp",
+                  "source_ips": [
+                    "10.0.0.0/16"
+                  ]
+                }
+              ]
+            },
+            {
+              "applied_to": [],
+              "created": "2026-08-11T02:21:54Z",
+              "id": 11447593,
+              "labels": {},
+              "name": "spex-story841-criterion1962",
+              "rules": [
+                {
+                  "description": null,
+                  "destination_ips": [],
+                  "direction": "in",
+                  "port": "22",
+                  "protocol": "tcp",
+                  "source_ips": [
+                    "0.0.0.0/0",
+                    "::/0"
+                  ]
+                },
+                {
+                  "description": null,
+                  "destination_ips": [],
+                  "direction": "in",
+                  "port": "80",
+                  "protocol": "tcp",
+                  "source_ips": [
+                    "0.0.0.0/0",
+                    "::/0"
+                  ]
+                },
+                {
+                  "description": null,
+                  "destination_ips": [],
+                  "direction": "in",
+                  "port": "443",
+                  "protocol": "tcp",
+                  "source_ips": [
+                    "0.0.0.0/0",
+                    "::/0"
+                  ]
+                },
+                {
+                  "description": null,
+                  "destination_ips": [],
+                  "direction": "in",
+                  "port": "5000",
+                  "protocol": "tcp",
+                  "source_ips": [
+                    "10.0.0.0/16"
+                  ]
+                }
+              ]
+            },
+            {
+              "applied_to": [],
+              "created": "2026-08-11T02:22:03Z",
+              "id": 11447594,
+              "labels": {},
+              "name": "spex-story841-criterion1967",
+              "rules": [
+                {
+                  "description": null,
+                  "destination_ips": [],
+                  "direction": "in",
+                  "port": "22",
+                  "protocol": "tcp",
+                  "source_ips": [
+                    "0.0.0.0/0",
+                    "::/0"
+                  ]
+                },
+                {
+                  "description": null,
+                  "destination_ips": [],
+                  "direction": "in",
+                  "port": "80",
+                  "protocol": "tcp",
+                  "source_ips": [
+                    "0.0.0.0/0",
+                    "::/0"
+                  ]
+                },
+                {
+                  "description": null,
+                  "destination_ips": [],
+                  "direction": "in",
+                  "port": "443",
+                  "protocol": "tcp",
+                  "source_ips": [
+                    "0.0.0.0/0",
+                    "::/0"
+                  ]
+                },
+                {
+                  "description": null,
+                  "destination_ips": [],
+                  "direction": "in",
+                  "port": "5000",
+                  "protocol": "tcp",
+                  "source_ips": [
+                    "10.0.0.0/16"
+                  ]
+                }
+              ]
+            },
+            {
+              "applied_to": [],
+              "created": "2026-08-11T02:22:08Z",
+              "id": 11447595,
+              "labels": {},
+              "name": "spex-story841-criterion1968",
+              "rules": [
+                {
+                  "description": null,
+                  "destination_ips": [],
+                  "direction": "in",
+                  "port": "22",
+                  "protocol": "tcp",
+                  "source_ips": [
+                    "0.0.0.0/0",
+                    "::/0"
+                  ]
+                },
+                {
+                  "description": null,
+                  "destination_ips": [],
+                  "direction": "in",
+                  "port": "80",
+                  "protocol": "tcp",
+                  "source_ips": [
+                    "0.0.0.0/0",
+                    "::/0"
+                  ]
+                },
+                {
+                  "description": null,
+                  "destination_ips": [],
+                  "direction": "in",
+                  "port": "443",
+                  "protocol": "tcp",
+                  "source_ips": [
+                    "0.0.0.0/0",
+                    "::/0"
+                  ]
+                },
+                {
+                  "description": null,
+                  "destination_ips": [],
+                  "direction": "in",
+                  "port": "5000",
+                  "protocol": "tcp",
+                  "source_ips": [
+                    "10.0.0.0/16"
+                  ]
+                }
+              ]
+            },
+            {
+              "applied_to": [],
+              "created": "2026-08-11T02:22:15Z",
+              "id": 11447596,
+              "labels": {},
+              "name": "spex-story841-criterion1969",
+              "rules": [
+                {
+                  "description": null,
+                  "destination_ips": [],
+                  "direction": "in",
+                  "port": "22",
+                  "protocol": "tcp",
+                  "source_ips": [
+                    "0.0.0.0/0",
+                    "::/0"
+                  ]
+                },
+                {
+                  "description": null,
+                  "destination_ips": [],
+                  "direction": "in",
+                  "port": "80",
+                  "protocol": "tcp",
+                  "source_ips": [
+                    "0.0.0.0/0",
+                    "::/0"
+                  ]
+                },
+                {
+                  "description": null,
+                  "destination_ips": [],
+                  "direction": "in",
+                  "port": "443",
+                  "protocol": "tcp",
+                  "source_ips": [
+                    "0.0.0.0/0",
+                    "::/0"
+                  ]
+                },
+                {
+                  "description": null,
+                  "destination_ips": [],
+                  "direction": "in",
+                  "port": "5000",
+                  "protocol": "tcp",
+                  "source_ips": [
+                    "10.0.0.0/16"
+                  ]
+                }
+              ]
+            },
+            {
+              "applied_to": [],
+              "created": "2026-08-11T02:23:10Z",
+              "id": 11447602,
+              "labels": {},
+              "name": "spex-story966-criterion8003",
+              "rules": [
+                {
+                  "description": null,
+                  "destination_ips": [],
+                  "direction": "in",
+                  "port": "22",
+                  "protocol": "tcp",
+                  "source_ips": [
+                    "0.0.0.0/0",
+                    "::/0"
+                  ]
+                },
+                {
+                  "description": null,
+                  "destination_ips": [],
+                  "direction": "in",
+                  "port": "80",
+                  "protocol": "tcp",
+                  "source_ips": [
+                    "0.0.0.0/0",
+                    "::/0"
+                  ]
+                },
+                {
+                  "description": null,
+                  "destination_ips": [],
+                  "direction": "in",
+                  "port": "443",
+                  "protocol": "tcp",
+                  "source_ips": [
+                    "0.0.0.0/0",
+                    "::/0"
+                  ]
+                },
+                {
+                  "description": null,
+                  "destination_ips": [],
+                  "direction": "in",
+                  "port": "5000",
+                  "protocol": "tcp",
+                  "source_ips": [
+                    "10.0.0.0/16"
+                  ]
+                }
+              ]
             }
           ],
           "meta": {
@@ -1836,7 +2318,7 @@
               "page": 1,
               "per_page": 25,
               "previous_page": null,
-              "total_entries": 2
+              "total_entries": 11
             }
           }
         },
@@ -1861,7 +2343,7 @@
             "application/json"
           ],
           "date": [
-            "Sat, 08 Aug 2026 16:24:55 GMT"
+            "Tue, 11 Aug 2026 04:12:48 GMT"
           ],
           "link": [
             "<https://api.hetzner.cloud/v1/firewalls?page=1&per_page=25>; rel=\"last\""
@@ -1870,35 +2352,35 @@
             "3600"
           ],
           "ratelimit-remaining": [
-            "3590"
+            "3597"
           ],
           "ratelimit-reset": [
-            "1786206305"
+            "1786421571"
           ],
           "strict-transport-security": [
             "max-age=31536000; includeSubDomains"
           ],
           "traceparent": [
-            "00-fbb66b2b671c532cb69d967926aa8bd8-e4dcd42405228179-01"
+            "00-fe20ba53ce8dafb87781696cfcf02ba0-36ca652c515b0154-01"
           ],
           "transfer-encoding": [
             "chunked"
           ],
           "uber-trace-id": [
-            "fbb66b2b671c532cb69d967926aa8bd8:e4dcd42405228179:0:1"
+            "fe20ba53ce8dafb87781696cfcf02ba0:36ca652c515b0154:0:1"
           ],
           "vary": [
             "Accept-Encoding"
           ],
           "x-correlation-id": [
-            "fbb66b2b671c532cb69d967926aa8bd8"
+            "fe20ba53ce8dafb87781696cfcf02ba0"
           ]
         },
         "status": 200
       }
     },
     {
-      "recorded_at": "2026-08-08T16:24:55.872353Z",
+      "recorded_at": "2026-08-11T04:12:49.015917Z",
       "request": {
         "body": "",
         "body_type": "text",
@@ -1914,7 +2396,7 @@
           ]
         },
         "method": "GET",
-        "query_string": "fingerprint=35:f1:30:56:85:26:39:fc:7c:d8:3d:ac:db:3e:ad:16",
+        "query_string": "fingerprint=01:d6:db:ad:b1:9d:37:d9:d9:6c:4b:49:47:0b:4b:e7",
         "uri": "https://api.hetzner.cloud/v1/ssh_keys"
       },
       "response": {
@@ -1931,12 +2413,12 @@
           },
           "ssh_keys": [
             {
-              "created": "2026-08-08T16:24:53Z",
-              "fingerprint": "35:f1:30:56:85:26:39:fc:7c:d8:3d:ac:db:3e:ad:16",
-              "id": 116724966,
+              "created": "2026-08-11T04:11:22Z",
+              "fingerprint": "01:d6:db:ad:b1:9d:37:d9:d9:6c:4b:49:47:0b:4b:e7",
+              "id": 116901033,
               "labels": {},
               "name": "spex-story966-criterion8156",
-              "public_key": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGVV+p+orzPbd5PNfOpuz7eDH+EjpC7Glp3CfbNBhG93 spex"
+              "public_key": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKEO3fNJPAR6XygjCqY51PmWdkBrWPCM85H3up1Eb0vA spex"
             }
           ]
         },
@@ -1961,19 +2443,19 @@
             "application/json"
           ],
           "date": [
-            "Sat, 08 Aug 2026 16:24:55 GMT"
+            "Tue, 11 Aug 2026 04:12:48 GMT"
           ],
           "link": [
-            "<https://api.hetzner.cloud/v1/ssh_keys?fingerprint=35%3Af1%3A30%3A56%3A85%3A26%3A39%3Afc%3A7c%3Ad8%3A3d%3Aac%3Adb%3A3e%3Aad%3A16&page=1>; rel=\"last\""
+            "<https://api.hetzner.cloud/v1/ssh_keys?fingerprint=01%3Ad6%3Adb%3Aad%3Ab1%3A9d%3A37%3Ad9%3Ad9%3A6c%3A4b%3A49%3A47%3A0b%3A4b%3Ae7&page=1>; rel=\"last\""
           ],
           "ratelimit-limit": [
             "3600"
           ],
           "ratelimit-remaining": [
-            "3589"
+            "3596"
           ],
           "ratelimit-reset": [
-            "1786206306"
+            "1786421572"
           ],
           "strict-transport-security": [
             "max-age=31536000; includeSubDomains"
@@ -1985,14 +2467,14 @@
             "Accept-Encoding"
           ],
           "x-correlation-id": [
-            "0e541d9d6ee060dad6a6204b9f8f7f9f"
+            "47177cf65b8248e941bf86013b14effd"
           ]
         },
         "status": 200
       }
     },
     {
-      "recorded_at": "2026-08-08T16:24:56.024914Z",
+      "recorded_at": "2026-08-11T04:12:49.177941Z",
       "request": {
         "body": "",
         "body_type": "text",
@@ -2051,7 +2533,7 @@
                 "type": "system"
               },
               "included_traffic": 21990232555520,
-              "ingoing_traffic": 303385000,
+              "ingoing_traffic": 393135000,
               "iso": null,
               "labels": {},
               "load_balancers": [],
@@ -2067,7 +2549,7 @@
               },
               "locked": false,
               "name": "fuellytics",
-              "outgoing_traffic": 553280000,
+              "outgoing_traffic": 711530000,
               "placement_group": null,
               "primary_disk_size": 40,
               "private_net": [],
@@ -2209,7 +2691,7 @@
                 "type": "system"
               },
               "included_traffic": 2199023255552,
-              "ingoing_traffic": 693210000,
+              "ingoing_traffic": 877560000,
               "iso": null,
               "labels": {},
               "load_balancers": [],
@@ -2225,7 +2707,7 @@
               },
               "locked": false,
               "name": "fuellytics-prod",
-              "outgoing_traffic": 1248400000,
+              "outgoing_traffic": 1677615000,
               "placement_group": null,
               "primary_disk_size": 80,
               "private_net": [],
@@ -2423,31 +2905,31 @@
             },
             {
               "backup_window": null,
-              "created": "2026-08-08T16:24:54Z",
-              "id": 160424319,
+              "created": "2026-08-11T04:11:23Z",
+              "id": 161341879,
               "image": {
                 "architecture": "x86",
                 "bound_to": null,
-                "created": "2024-04-25T13:26:27Z",
+                "created": "2021-06-08T06:22:47Z",
                 "created_from": null,
                 "deleted": null,
                 "deprecated": null,
-                "description": "Ubuntu 24.04",
-                "disk_size": 5,
-                "id": 161547269,
+                "description": "docker-ce",
+                "disk_size": 40,
+                "id": 40093247,
                 "image_size": null,
                 "labels": {},
-                "name": "ubuntu-24.04",
+                "name": "docker-ce",
                 "os_flavor": "ubuntu",
-                "os_version": "24.04",
+                "os_version": "unknown",
                 "protection": {
                   "delete": false
                 },
                 "rapid_deploy": true,
                 "status": "available",
-                "type": "system"
+                "type": "app"
               },
-              "included_traffic": 0,
+              "included_traffic": 1099511627776,
               "ingoing_traffic": 0,
               "iso": null,
               "labels": {},
@@ -2467,7 +2949,14 @@
               "outgoing_traffic": 0,
               "placement_group": null,
               "primary_disk_size": 40,
-              "private_net": [],
+              "private_net": [
+                {
+                  "alias_ips": [],
+                  "ip": "10.0.0.2",
+                  "mac_address": "86:00:00:3b:12:45",
+                  "network": 12535690
+                }
+              ],
               "protection": {
                 "delete": false,
                 "rebuild": false
@@ -2475,21 +2964,21 @@
               "public_net": {
                 "firewalls": [
                   {
-                    "id": 11436088,
-                    "status": "pending"
+                    "id": 11447381,
+                    "status": "applied"
                   }
                 ],
                 "floating_ips": [],
                 "ipv4": {
                   "blocked": false,
-                  "dns_ptr": "static.165.216.156.178.clients.your-server.de",
-                  "id": 144017087,
-                  "ip": "178.156.216.165"
+                  "dns_ptr": "static.94.200.156.178.clients.your-server.de",
+                  "id": 144333672,
+                  "ip": "178.156.200.94"
                 },
                 "ipv6": {
                   "blocked": false,
                   "dns_ptr": [],
-                  "id": 144017088,
+                  "id": 144333673,
                   "ip": "2a01:4ff:f0:549b::/64"
                 }
               },
@@ -2662,7 +3151,7 @@
                 ],
                 "storage_type": "local"
               },
-              "status": "initializing",
+              "status": "running",
               "volumes": []
             }
           ]
@@ -2688,7 +3177,7 @@
             "application/json"
           ],
           "date": [
-            "Sat, 08 Aug 2026 16:24:55 GMT"
+            "Tue, 11 Aug 2026 04:12:49 GMT"
           ],
           "link": [
             "<https://api.hetzner.cloud/v1/servers?page=1>; rel=\"last\""
@@ -2697,10 +3186,10 @@
             "3600"
           ],
           "ratelimit-remaining": [
-            "3588"
+            "3595"
           ],
           "ratelimit-reset": [
-            "1786206307"
+            "1786421574"
           ],
           "strict-transport-security": [
             "max-age=31536000; includeSubDomains"
@@ -2712,14 +3201,14 @@
             "Accept-Encoding"
           ],
           "x-correlation-id": [
-            "13177e8a8c2c93681dbc2649e04bf607"
+            "6da45938914c567044d79f1df386c343"
           ]
         },
         "status": 200
       }
     },
     {
-      "recorded_at": "2026-08-08T16:24:56.181385Z",
+      "recorded_at": "2026-08-11T04:12:49.334747Z",
       "request": {
         "body": "",
         "body_type": "text",
@@ -2778,7 +3267,7 @@
                 "type": "system"
               },
               "included_traffic": 21990232555520,
-              "ingoing_traffic": 303385000,
+              "ingoing_traffic": 393135000,
               "iso": null,
               "labels": {},
               "load_balancers": [],
@@ -2794,7 +3283,7 @@
               },
               "locked": false,
               "name": "fuellytics",
-              "outgoing_traffic": 553280000,
+              "outgoing_traffic": 711530000,
               "placement_group": null,
               "primary_disk_size": 40,
               "private_net": [],
@@ -2936,7 +3425,7 @@
                 "type": "system"
               },
               "included_traffic": 2199023255552,
-              "ingoing_traffic": 693210000,
+              "ingoing_traffic": 877560000,
               "iso": null,
               "labels": {},
               "load_balancers": [],
@@ -2952,7 +3441,7 @@
               },
               "locked": false,
               "name": "fuellytics-prod",
-              "outgoing_traffic": 1248400000,
+              "outgoing_traffic": 1677615000,
               "placement_group": null,
               "primary_disk_size": 80,
               "private_net": [],
@@ -3150,31 +3639,31 @@
             },
             {
               "backup_window": null,
-              "created": "2026-08-08T16:24:54Z",
-              "id": 160424319,
+              "created": "2026-08-11T04:11:23Z",
+              "id": 161341879,
               "image": {
                 "architecture": "x86",
                 "bound_to": null,
-                "created": "2024-04-25T13:26:27Z",
+                "created": "2021-06-08T06:22:47Z",
                 "created_from": null,
                 "deleted": null,
                 "deprecated": null,
-                "description": "Ubuntu 24.04",
-                "disk_size": 5,
-                "id": 161547269,
+                "description": "docker-ce",
+                "disk_size": 40,
+                "id": 40093247,
                 "image_size": null,
                 "labels": {},
-                "name": "ubuntu-24.04",
+                "name": "docker-ce",
                 "os_flavor": "ubuntu",
-                "os_version": "24.04",
+                "os_version": "unknown",
                 "protection": {
                   "delete": false
                 },
                 "rapid_deploy": true,
                 "status": "available",
-                "type": "system"
+                "type": "app"
               },
-              "included_traffic": 0,
+              "included_traffic": 1099511627776,
               "ingoing_traffic": 0,
               "iso": null,
               "labels": {},
@@ -3194,7 +3683,14 @@
               "outgoing_traffic": 0,
               "placement_group": null,
               "primary_disk_size": 40,
-              "private_net": [],
+              "private_net": [
+                {
+                  "alias_ips": [],
+                  "ip": "10.0.0.2",
+                  "mac_address": "86:00:00:3b:12:45",
+                  "network": 12535690
+                }
+              ],
               "protection": {
                 "delete": false,
                 "rebuild": false
@@ -3202,21 +3698,21 @@
               "public_net": {
                 "firewalls": [
                   {
-                    "id": 11436088,
-                    "status": "pending"
+                    "id": 11447381,
+                    "status": "applied"
                   }
                 ],
                 "floating_ips": [],
                 "ipv4": {
                   "blocked": false,
-                  "dns_ptr": "static.165.216.156.178.clients.your-server.de",
-                  "id": 144017087,
-                  "ip": "178.156.216.165"
+                  "dns_ptr": "static.94.200.156.178.clients.your-server.de",
+                  "id": 144333672,
+                  "ip": "178.156.200.94"
                 },
                 "ipv6": {
                   "blocked": false,
                   "dns_ptr": [],
-                  "id": 144017088,
+                  "id": 144333673,
                   "ip": "2a01:4ff:f0:549b::/64"
                 }
               },
@@ -3389,7 +3885,7 @@
                 ],
                 "storage_type": "local"
               },
-              "status": "initializing",
+              "status": "running",
               "volumes": []
             }
           ]
@@ -3415,7 +3911,7 @@
             "application/json"
           ],
           "date": [
-            "Sat, 08 Aug 2026 16:24:56 GMT"
+            "Tue, 11 Aug 2026 04:12:49 GMT"
           ],
           "link": [
             "<https://api.hetzner.cloud/v1/servers?page=1>; rel=\"last\""
@@ -3424,10 +3920,10 @@
             "3600"
           ],
           "ratelimit-remaining": [
-            "3587"
+            "3594"
           ],
           "ratelimit-reset": [
-            "1786206309"
+            "1786421575"
           ],
           "strict-transport-security": [
             "max-age=31536000; includeSubDomains"
@@ -3439,27 +3935,27 @@
             "Accept-Encoding"
           ],
           "x-correlation-id": [
-            "0ba8c153935a80d0cb155b5fc2d0fa60"
+            "4962621efb8870fecb566c192e8e3f11"
           ]
         },
         "status": 200
       }
     },
     {
-      "recorded_at": "2026-08-08T16:24:56.362817Z",
+      "recorded_at": "2026-08-11T04:12:49.533714Z",
       "request": {
         "body_json": {
           "firewalls": [
             {
-              "firewall": 11436088
+              "firewall": 11447381
             }
           ],
-          "image": "ubuntu-24.04",
+          "image": "docker-ce",
           "location": "fsn1",
           "name": "spex-story966-criterion8156-prod",
           "server_type": "cax11",
           "ssh_keys": [
-            116724966
+            116901033
           ],
           "start_after_create": true
         },
@@ -3511,16 +4007,16 @@
             "application/json"
           ],
           "date": [
-            "Sat, 08 Aug 2026 16:24:56 GMT"
+            "Tue, 11 Aug 2026 04:12:49 GMT"
           ],
           "ratelimit-limit": [
             "3600"
           ],
           "ratelimit-remaining": [
-            "3586"
+            "3593"
           ],
           "ratelimit-reset": [
-            "1786206310"
+            "1786421576"
           ],
           "strict-transport-security": [
             "max-age=31536000; includeSubDomains"
@@ -3532,27 +4028,27 @@
             "Accept-Encoding"
           ],
           "x-correlation-id": [
-            "566580b4900a757d3cbcbd12141c9b70"
+            "84c8ffc2146a051f5be9e04d5764cd6a"
           ]
         },
         "status": 412
       }
     },
     {
-      "recorded_at": "2026-08-08T16:24:56.618139Z",
+      "recorded_at": "2026-08-11T04:12:49.787725Z",
       "request": {
         "body_json": {
           "firewalls": [
             {
-              "firewall": 11436088
+              "firewall": 11447381
             }
           ],
-          "image": "ubuntu-24.04",
+          "image": "docker-ce",
           "location": "ash",
           "name": "spex-story966-criterion8156-prod",
           "server_type": "cpx11",
           "ssh_keys": [
-            116724966
+            116901033
           ],
           "start_after_create": true
         },
@@ -3581,19 +4077,19 @@
             "command": "create_server",
             "error": null,
             "finished": null,
-            "id": 647681075349749,
+            "id": 648196471383946,
             "progress": 0,
             "resources": [
               {
-                "id": 160424324,
+                "id": 161342322,
                 "type": "server"
               },
               {
-                "id": 161547269,
+                "id": 40093247,
                 "type": "image"
               }
             ],
-            "started": "2026-08-08T16:24:56Z",
+            "started": "2026-08-11T04:12:49Z",
             "status": "running"
           },
           "next_actions": [
@@ -3601,63 +4097,63 @@
               "command": "apply_firewall",
               "error": null,
               "finished": null,
-              "id": 647681072721482,
+              "id": 648196469100619,
               "progress": 10,
               "resources": [
                 {
-                  "id": 11436088,
+                  "id": 11447381,
                   "type": "firewall"
                 },
                 {
-                  "id": 160424324,
+                  "id": 161342322,
                   "type": "server"
                 }
               ],
-              "started": "2026-08-08T16:24:56Z",
+              "started": "2026-08-11T04:12:49Z",
               "status": "running"
             },
             {
               "command": "start_server",
               "error": null,
               "finished": null,
-              "id": 647681075349750,
+              "id": 648196471383947,
               "progress": 0,
               "resources": [
                 {
-                  "id": 160424324,
+                  "id": 161342322,
                   "type": "server"
                 }
               ],
-              "started": "2026-08-08T16:24:56Z",
+              "started": "2026-08-11T04:12:49Z",
               "status": "running"
             }
           ],
           "root_password": null,
           "server": {
             "backup_window": null,
-            "created": "2026-08-08T16:24:56Z",
-            "id": 160424324,
+            "created": "2026-08-11T04:12:49Z",
+            "id": 161342322,
             "image": {
               "architecture": "x86",
               "bound_to": null,
-              "created": "2024-04-25T13:26:27Z",
+              "created": "2021-06-08T06:22:47Z",
               "created_from": null,
               "deleted": null,
               "deprecated": null,
-              "description": "Ubuntu 24.04",
-              "disk_size": 5,
-              "id": 161547269,
+              "description": "docker-ce",
+              "disk_size": 40,
+              "id": 40093247,
               "image_size": null,
               "labels": {},
-              "name": "ubuntu-24.04",
+              "name": "docker-ce",
               "os_flavor": "ubuntu",
-              "os_version": "24.04",
+              "os_version": "unknown",
               "protection": {
                 "delete": false
               },
               "rapid_deploy": true,
               "status": "available",
-              "type": "system"
+              "type": "app"
             },
             "included_traffic": 0,
             "ingoing_traffic": 0,
@@ -3687,22 +4183,22 @@
             "public_net": {
               "firewalls": [
                 {
-                  "id": 11436088,
+                  "id": 11447381,
                   "status": "pending"
                 }
               ],
               "floating_ips": [],
               "ipv4": {
                 "blocked": false,
-                "dns_ptr": "static.94.200.156.178.clients.your-server.de",
-                "id": 144017089,
-                "ip": "178.156.200.94"
+                "dns_ptr": "static.165.216.156.178.clients.your-server.de",
+                "id": 144333756,
+                "ip": "178.156.216.165"
               },
               "ipv6": {
                 "blocked": false,
                 "dns_ptr": [],
-                "id": 144017090,
-                "ip": "2a01:4ff:f0:8ac1::/64"
+                "id": 144333757,
+                "ip": "2a01:4ff:f0:af2d::/64"
               }
             },
             "rescue_enabled": false,
@@ -3899,16 +4395,16 @@
             "application/json"
           ],
           "date": [
-            "Sat, 08 Aug 2026 16:24:56 GMT"
+            "Tue, 11 Aug 2026 04:12:49 GMT"
           ],
           "ratelimit-limit": [
             "3600"
           ],
           "ratelimit-remaining": [
-            "3585"
+            "3592"
           ],
           "ratelimit-reset": [
-            "1786206311"
+            "1786421577"
           ],
           "strict-transport-security": [
             "max-age=31536000; includeSubDomains"
@@ -3920,10 +4416,3527 @@
             "Accept-Encoding"
           ],
           "x-correlation-id": [
-            "f740d0c1cc6a92be03bc7f4a42cd8857"
+            "20e43dcbde765e88765d53dbe3890d16"
           ]
         },
         "status": 201
+      }
+    },
+    {
+      "recorded_at": "2026-08-11T04:12:49.940867Z",
+      "request": {
+        "body": "",
+        "body_type": "text",
+        "headers": {
+          "accept-encoding": [
+            "gzip"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "user-agent": [
+            "req/0.5.17"
+          ]
+        },
+        "method": "GET",
+        "query_string": "",
+        "uri": "https://api.hetzner.cloud/v1/servers"
+      },
+      "response": {
+        "body_json": {
+          "meta": {
+            "pagination": {
+              "last_page": 1,
+              "next_page": null,
+              "page": 1,
+              "per_page": 25,
+              "previous_page": null,
+              "total_entries": 4
+            }
+          },
+          "servers": [
+            {
+              "backup_window": null,
+              "created": "2026-02-26T20:30:48Z",
+              "id": 122233257,
+              "image": {
+                "architecture": "arm",
+                "bound_to": null,
+                "created": "2024-04-25T13:26:51Z",
+                "created_from": null,
+                "deleted": null,
+                "deprecated": null,
+                "description": "Ubuntu 24.04",
+                "disk_size": 5,
+                "id": 161547270,
+                "image_size": null,
+                "labels": {},
+                "name": "ubuntu-24.04",
+                "os_flavor": "ubuntu",
+                "os_version": "24.04",
+                "protection": {
+                  "delete": false
+                },
+                "rapid_deploy": true,
+                "status": "available",
+                "type": "system"
+              },
+              "included_traffic": 21990232555520,
+              "ingoing_traffic": 393135000,
+              "iso": null,
+              "labels": {},
+              "load_balancers": [],
+              "location": {
+                "city": "Nuremberg",
+                "country": "DE",
+                "description": "Nuremberg DC Park 1",
+                "id": 2,
+                "latitude": 49.452102,
+                "longitude": 11.076665,
+                "name": "nbg1",
+                "network_zone": "eu-central"
+              },
+              "locked": false,
+              "name": "fuellytics",
+              "outgoing_traffic": 711530000,
+              "placement_group": null,
+              "primary_disk_size": 40,
+              "private_net": [],
+              "protection": {
+                "delete": false,
+                "rebuild": false
+              },
+              "public_net": {
+                "firewalls": [],
+                "floating_ips": [],
+                "ipv4": {
+                  "blocked": false,
+                  "dns_ptr": "static.88.105.225.46.clients.your-server.de",
+                  "id": 119911718,
+                  "ip": "46.225.105.88"
+                },
+                "ipv6": {
+                  "blocked": false,
+                  "dns_ptr": [],
+                  "id": 119911719,
+                  "ip": "2a01:4f8:1c19:3581::/64"
+                }
+              },
+              "rescue_enabled": false,
+              "server_type": {
+                "architecture": "arm",
+                "category": "cost_optimized",
+                "cores": 2,
+                "cpu_type": "shared",
+                "deprecated": false,
+                "deprecation": null,
+                "description": "CAX11",
+                "disk": 40,
+                "id": 45,
+                "locations": [
+                  {
+                    "available": false,
+                    "deprecation": null,
+                    "id": 1,
+                    "name": "fsn1",
+                    "recommended": false
+                  },
+                  {
+                    "available": false,
+                    "deprecation": null,
+                    "id": 2,
+                    "name": "nbg1",
+                    "recommended": false
+                  },
+                  {
+                    "available": false,
+                    "deprecation": null,
+                    "id": 3,
+                    "name": "hel1",
+                    "recommended": false
+                  }
+                ],
+                "memory": 4,
+                "name": "cax11",
+                "prices": [
+                  {
+                    "included_traffic": 21990232555520,
+                    "location": "fsn1",
+                    "price_hourly": {
+                      "gross": "0.0112000000000000",
+                      "net": "0.0112000000"
+                    },
+                    "price_monthly": {
+                      "gross": "6.9900000000000000",
+                      "net": "6.9900000000"
+                    },
+                    "price_per_tb_traffic": {
+                      "gross": "1.2000000000000000",
+                      "net": "1.2000000000"
+                    }
+                  },
+                  {
+                    "included_traffic": 21990232555520,
+                    "location": "hel1",
+                    "price_hourly": {
+                      "gross": "0.0112000000000000",
+                      "net": "0.0112000000"
+                    },
+                    "price_monthly": {
+                      "gross": "6.9900000000000000",
+                      "net": "6.9900000000"
+                    },
+                    "price_per_tb_traffic": {
+                      "gross": "1.2000000000000000",
+                      "net": "1.2000000000"
+                    }
+                  },
+                  {
+                    "included_traffic": 21990232555520,
+                    "location": "nbg1",
+                    "price_hourly": {
+                      "gross": "0.0112000000000000",
+                      "net": "0.0112000000"
+                    },
+                    "price_monthly": {
+                      "gross": "6.9900000000000000",
+                      "net": "6.9900000000"
+                    },
+                    "price_per_tb_traffic": {
+                      "gross": "1.2000000000000000",
+                      "net": "1.2000000000"
+                    }
+                  }
+                ],
+                "storage_type": "local"
+              },
+              "status": "running",
+              "volumes": []
+            },
+            {
+              "backup_window": null,
+              "created": "2026-03-06T21:19:01Z",
+              "id": 122994839,
+              "image": {
+                "architecture": "x86",
+                "bound_to": null,
+                "created": "2024-04-25T13:26:27Z",
+                "created_from": null,
+                "deleted": null,
+                "deprecated": null,
+                "description": "Ubuntu 24.04",
+                "disk_size": 5,
+                "id": 161547269,
+                "image_size": null,
+                "labels": {},
+                "name": "ubuntu-24.04",
+                "os_flavor": "ubuntu",
+                "os_version": "24.04",
+                "protection": {
+                  "delete": false
+                },
+                "rapid_deploy": true,
+                "status": "available",
+                "type": "system"
+              },
+              "included_traffic": 2199023255552,
+              "ingoing_traffic": 877560000,
+              "iso": null,
+              "labels": {},
+              "load_balancers": [],
+              "location": {
+                "city": "Ashburn, VA",
+                "country": "US",
+                "description": "Ashburn, VA",
+                "id": 4,
+                "latitude": 39.045821,
+                "longitude": -77.487073,
+                "name": "ash",
+                "network_zone": "us-east"
+              },
+              "locked": false,
+              "name": "fuellytics-prod",
+              "outgoing_traffic": 1677615000,
+              "placement_group": null,
+              "primary_disk_size": 80,
+              "private_net": [],
+              "protection": {
+                "delete": false,
+                "rebuild": false
+              },
+              "public_net": {
+                "firewalls": [],
+                "floating_ips": [],
+                "ipv4": {
+                  "blocked": false,
+                  "dns_ptr": "static.212.143.156.178.clients.your-server.de",
+                  "id": 121044011,
+                  "ip": "178.156.143.212"
+                },
+                "ipv6": {
+                  "blocked": false,
+                  "dns_ptr": [],
+                  "id": 121044012,
+                  "ip": "2a01:4ff:f4:3a1b::/64"
+                }
+              },
+              "rescue_enabled": false,
+              "server_type": {
+                "architecture": "x86",
+                "category": "regular_purpose",
+                "cores": 3,
+                "cpu_type": "shared",
+                "deprecated": false,
+                "deprecation": null,
+                "description": "CPX 21",
+                "disk": 80,
+                "id": 23,
+                "locations": [
+                  {
+                    "available": false,
+                    "deprecation": {
+                      "announced": "2025-10-16T06:00:00Z",
+                      "unavailable_after": "2025-12-31T23:59:59Z"
+                    },
+                    "id": 1,
+                    "name": "fsn1",
+                    "recommended": false
+                  },
+                  {
+                    "available": false,
+                    "deprecation": {
+                      "announced": "2025-10-16T06:00:00Z",
+                      "unavailable_after": "2025-12-31T23:59:59Z"
+                    },
+                    "id": 2,
+                    "name": "nbg1",
+                    "recommended": false
+                  },
+                  {
+                    "available": false,
+                    "deprecation": {
+                      "announced": "2025-10-16T06:00:00Z",
+                      "unavailable_after": "2025-12-31T23:59:59Z"
+                    },
+                    "id": 3,
+                    "name": "hel1",
+                    "recommended": false
+                  },
+                  {
+                    "available": true,
+                    "deprecation": null,
+                    "id": 4,
+                    "name": "ash",
+                    "recommended": false
+                  },
+                  {
+                    "available": true,
+                    "deprecation": null,
+                    "id": 5,
+                    "name": "hil",
+                    "recommended": false
+                  },
+                  {
+                    "available": false,
+                    "deprecation": {
+                      "announced": "2025-10-16T06:00:00Z",
+                      "unavailable_after": "2025-12-31T23:59:59Z"
+                    },
+                    "id": 6,
+                    "name": "sin",
+                    "recommended": false
+                  }
+                ],
+                "memory": 4,
+                "name": "cpx21",
+                "prices": [
+                  {
+                    "included_traffic": 2199023255552,
+                    "location": "ash",
+                    "price_hourly": {
+                      "gross": "0.0601000000000000",
+                      "net": "0.0601000000"
+                    },
+                    "price_monthly": {
+                      "gross": "37.4900000000000000",
+                      "net": "37.4900000000"
+                    },
+                    "price_per_tb_traffic": {
+                      "gross": "1.2000000000000000",
+                      "net": "1.2000000000"
+                    }
+                  },
+                  {
+                    "included_traffic": 21990232555520,
+                    "location": "fsn1",
+                    "price_hourly": {
+                      "gross": "0.0176000000000000",
+                      "net": "0.0176000000"
+                    },
+                    "price_monthly": {
+                      "gross": "10.9900000000000000",
+                      "net": "10.9900000000"
+                    },
+                    "price_per_tb_traffic": {
+                      "gross": "1.2000000000000000",
+                      "net": "1.2000000000"
+                    }
+                  },
+                  {
+                    "included_traffic": 21990232555520,
+                    "location": "hel1",
+                    "price_hourly": {
+                      "gross": "0.0176000000000000",
+                      "net": "0.0176000000"
+                    },
+                    "price_monthly": {
+                      "gross": "10.9900000000000000",
+                      "net": "10.9900000000"
+                    },
+                    "price_per_tb_traffic": {
+                      "gross": "1.2000000000000000",
+                      "net": "1.2000000000"
+                    }
+                  },
+                  {
+                    "included_traffic": 2199023255552,
+                    "location": "hil",
+                    "price_hourly": {
+                      "gross": "0.0601000000000000",
+                      "net": "0.0601000000"
+                    },
+                    "price_monthly": {
+                      "gross": "37.4900000000000000",
+                      "net": "37.4900000000"
+                    },
+                    "price_per_tb_traffic": {
+                      "gross": "1.2000000000000000",
+                      "net": "1.2000000000"
+                    }
+                  },
+                  {
+                    "included_traffic": 21990232555520,
+                    "location": "nbg1",
+                    "price_hourly": {
+                      "gross": "0.0176000000000000",
+                      "net": "0.0176000000"
+                    },
+                    "price_monthly": {
+                      "gross": "10.9900000000000000",
+                      "net": "10.9900000000"
+                    },
+                    "price_per_tb_traffic": {
+                      "gross": "1.2000000000000000",
+                      "net": "1.2000000000"
+                    }
+                  },
+                  {
+                    "included_traffic": 2199023255552,
+                    "location": "sin",
+                    "price_hourly": {
+                      "gross": "0.0352000000000000",
+                      "net": "0.0352000000"
+                    },
+                    "price_monthly": {
+                      "gross": "21.9900000000000000",
+                      "net": "21.9900000000"
+                    },
+                    "price_per_tb_traffic": {
+                      "gross": "8.3000000000000000",
+                      "net": "8.3000000000"
+                    }
+                  }
+                ],
+                "storage_type": "local"
+              },
+              "status": "running",
+              "volumes": []
+            },
+            {
+              "backup_window": null,
+              "created": "2026-08-11T04:11:23Z",
+              "id": 161341879,
+              "image": {
+                "architecture": "x86",
+                "bound_to": null,
+                "created": "2021-06-08T06:22:47Z",
+                "created_from": null,
+                "deleted": null,
+                "deprecated": null,
+                "description": "docker-ce",
+                "disk_size": 40,
+                "id": 40093247,
+                "image_size": null,
+                "labels": {},
+                "name": "docker-ce",
+                "os_flavor": "ubuntu",
+                "os_version": "unknown",
+                "protection": {
+                  "delete": false
+                },
+                "rapid_deploy": true,
+                "status": "available",
+                "type": "app"
+              },
+              "included_traffic": 1099511627776,
+              "ingoing_traffic": 0,
+              "iso": null,
+              "labels": {},
+              "load_balancers": [],
+              "location": {
+                "city": "Ashburn, VA",
+                "country": "US",
+                "description": "Ashburn, VA",
+                "id": 4,
+                "latitude": 39.045821,
+                "longitude": -77.487073,
+                "name": "ash",
+                "network_zone": "us-east"
+              },
+              "locked": false,
+              "name": "spex-story966-criterion8156-uat",
+              "outgoing_traffic": 0,
+              "placement_group": null,
+              "primary_disk_size": 40,
+              "private_net": [
+                {
+                  "alias_ips": [],
+                  "ip": "10.0.0.2",
+                  "mac_address": "86:00:00:3b:12:45",
+                  "network": 12535690
+                }
+              ],
+              "protection": {
+                "delete": false,
+                "rebuild": false
+              },
+              "public_net": {
+                "firewalls": [
+                  {
+                    "id": 11447381,
+                    "status": "applied"
+                  }
+                ],
+                "floating_ips": [],
+                "ipv4": {
+                  "blocked": false,
+                  "dns_ptr": "static.94.200.156.178.clients.your-server.de",
+                  "id": 144333672,
+                  "ip": "178.156.200.94"
+                },
+                "ipv6": {
+                  "blocked": false,
+                  "dns_ptr": [],
+                  "id": 144333673,
+                  "ip": "2a01:4ff:f0:549b::/64"
+                }
+              },
+              "rescue_enabled": false,
+              "server_type": {
+                "architecture": "x86",
+                "category": "regular_purpose",
+                "cores": 2,
+                "cpu_type": "shared",
+                "deprecated": false,
+                "deprecation": null,
+                "description": "CPX 11",
+                "disk": 40,
+                "id": 22,
+                "locations": [
+                  {
+                    "available": false,
+                    "deprecation": {
+                      "announced": "2025-10-16T06:00:00Z",
+                      "unavailable_after": "2025-12-31T23:59:59Z"
+                    },
+                    "id": 1,
+                    "name": "fsn1",
+                    "recommended": false
+                  },
+                  {
+                    "available": false,
+                    "deprecation": {
+                      "announced": "2025-10-16T06:00:00Z",
+                      "unavailable_after": "2025-12-31T23:59:59Z"
+                    },
+                    "id": 2,
+                    "name": "nbg1",
+                    "recommended": false
+                  },
+                  {
+                    "available": false,
+                    "deprecation": {
+                      "announced": "2025-10-16T06:00:00Z",
+                      "unavailable_after": "2025-12-31T23:59:59Z"
+                    },
+                    "id": 3,
+                    "name": "hel1",
+                    "recommended": false
+                  },
+                  {
+                    "available": true,
+                    "deprecation": null,
+                    "id": 4,
+                    "name": "ash",
+                    "recommended": false
+                  },
+                  {
+                    "available": true,
+                    "deprecation": null,
+                    "id": 5,
+                    "name": "hil",
+                    "recommended": false
+                  },
+                  {
+                    "available": false,
+                    "deprecation": {
+                      "announced": "2025-10-16T06:00:00Z",
+                      "unavailable_after": "2025-12-31T23:59:59Z"
+                    },
+                    "id": 6,
+                    "name": "sin",
+                    "recommended": false
+                  }
+                ],
+                "memory": 2,
+                "name": "cpx11",
+                "prices": [
+                  {
+                    "included_traffic": 1099511627776,
+                    "location": "ash",
+                    "price_hourly": {
+                      "gross": "0.0328000000000000",
+                      "net": "0.0328000000"
+                    },
+                    "price_monthly": {
+                      "gross": "20.4900000000000000",
+                      "net": "20.4900000000"
+                    },
+                    "price_per_tb_traffic": {
+                      "gross": "1.2000000000000000",
+                      "net": "1.2000000000"
+                    }
+                  },
+                  {
+                    "included_traffic": 21990232555520,
+                    "location": "fsn1",
+                    "price_hourly": {
+                      "gross": "0.0096000000000000",
+                      "net": "0.0096000000"
+                    },
+                    "price_monthly": {
+                      "gross": "5.9900000000000000",
+                      "net": "5.9900000000"
+                    },
+                    "price_per_tb_traffic": {
+                      "gross": "1.2000000000000000",
+                      "net": "1.2000000000"
+                    }
+                  },
+                  {
+                    "included_traffic": 21990232555520,
+                    "location": "hel1",
+                    "price_hourly": {
+                      "gross": "0.0096000000000000",
+                      "net": "0.0096000000"
+                    },
+                    "price_monthly": {
+                      "gross": "5.9900000000000000",
+                      "net": "5.9900000000"
+                    },
+                    "price_per_tb_traffic": {
+                      "gross": "1.2000000000000000",
+                      "net": "1.2000000000"
+                    }
+                  },
+                  {
+                    "included_traffic": 1099511627776,
+                    "location": "hil",
+                    "price_hourly": {
+                      "gross": "0.0328000000000000",
+                      "net": "0.0328000000"
+                    },
+                    "price_monthly": {
+                      "gross": "20.4900000000000000",
+                      "net": "20.4900000000"
+                    },
+                    "price_per_tb_traffic": {
+                      "gross": "1.2000000000000000",
+                      "net": "1.2000000000"
+                    }
+                  },
+                  {
+                    "included_traffic": 21990232555520,
+                    "location": "nbg1",
+                    "price_hourly": {
+                      "gross": "0.0096000000000000",
+                      "net": "0.0096000000"
+                    },
+                    "price_monthly": {
+                      "gross": "5.9900000000000000",
+                      "net": "5.9900000000"
+                    },
+                    "price_per_tb_traffic": {
+                      "gross": "1.2000000000000000",
+                      "net": "1.2000000000"
+                    }
+                  },
+                  {
+                    "included_traffic": 1099511627776,
+                    "location": "sin",
+                    "price_hourly": {
+                      "gross": "0.0184000000000000",
+                      "net": "0.0184000000"
+                    },
+                    "price_monthly": {
+                      "gross": "11.4900000000000000",
+                      "net": "11.4900000000"
+                    },
+                    "price_per_tb_traffic": {
+                      "gross": "8.3000000000000000",
+                      "net": "8.3000000000"
+                    }
+                  }
+                ],
+                "storage_type": "local"
+              },
+              "status": "running",
+              "volumes": []
+            },
+            {
+              "backup_window": null,
+              "created": "2026-08-11T04:12:49Z",
+              "id": 161342322,
+              "image": {
+                "architecture": "x86",
+                "bound_to": null,
+                "created": "2021-06-08T06:22:47Z",
+                "created_from": null,
+                "deleted": null,
+                "deprecated": null,
+                "description": "docker-ce",
+                "disk_size": 40,
+                "id": 40093247,
+                "image_size": null,
+                "labels": {},
+                "name": "docker-ce",
+                "os_flavor": "ubuntu",
+                "os_version": "unknown",
+                "protection": {
+                  "delete": false
+                },
+                "rapid_deploy": true,
+                "status": "available",
+                "type": "app"
+              },
+              "included_traffic": 0,
+              "ingoing_traffic": 0,
+              "iso": null,
+              "labels": {},
+              "load_balancers": [],
+              "location": {
+                "city": "Ashburn, VA",
+                "country": "US",
+                "description": "Ashburn, VA",
+                "id": 4,
+                "latitude": 39.045821,
+                "longitude": -77.487073,
+                "name": "ash",
+                "network_zone": "us-east"
+              },
+              "locked": false,
+              "name": "spex-story966-criterion8156-prod",
+              "outgoing_traffic": 0,
+              "placement_group": null,
+              "primary_disk_size": 40,
+              "private_net": [],
+              "protection": {
+                "delete": false,
+                "rebuild": false
+              },
+              "public_net": {
+                "firewalls": [
+                  {
+                    "id": 11447381,
+                    "status": "pending"
+                  }
+                ],
+                "floating_ips": [],
+                "ipv4": {
+                  "blocked": false,
+                  "dns_ptr": "static.165.216.156.178.clients.your-server.de",
+                  "id": 144333756,
+                  "ip": "178.156.216.165"
+                },
+                "ipv6": {
+                  "blocked": false,
+                  "dns_ptr": [],
+                  "id": 144333757,
+                  "ip": "2a01:4ff:f0:af2d::/64"
+                }
+              },
+              "rescue_enabled": false,
+              "server_type": {
+                "architecture": "x86",
+                "category": "regular_purpose",
+                "cores": 2,
+                "cpu_type": "shared",
+                "deprecated": false,
+                "deprecation": null,
+                "description": "CPX 11",
+                "disk": 40,
+                "id": 22,
+                "locations": [
+                  {
+                    "available": false,
+                    "deprecation": {
+                      "announced": "2025-10-16T06:00:00Z",
+                      "unavailable_after": "2025-12-31T23:59:59Z"
+                    },
+                    "id": 1,
+                    "name": "fsn1",
+                    "recommended": false
+                  },
+                  {
+                    "available": false,
+                    "deprecation": {
+                      "announced": "2025-10-16T06:00:00Z",
+                      "unavailable_after": "2025-12-31T23:59:59Z"
+                    },
+                    "id": 2,
+                    "name": "nbg1",
+                    "recommended": false
+                  },
+                  {
+                    "available": false,
+                    "deprecation": {
+                      "announced": "2025-10-16T06:00:00Z",
+                      "unavailable_after": "2025-12-31T23:59:59Z"
+                    },
+                    "id": 3,
+                    "name": "hel1",
+                    "recommended": false
+                  },
+                  {
+                    "available": true,
+                    "deprecation": null,
+                    "id": 4,
+                    "name": "ash",
+                    "recommended": false
+                  },
+                  {
+                    "available": true,
+                    "deprecation": null,
+                    "id": 5,
+                    "name": "hil",
+                    "recommended": false
+                  },
+                  {
+                    "available": false,
+                    "deprecation": {
+                      "announced": "2025-10-16T06:00:00Z",
+                      "unavailable_after": "2025-12-31T23:59:59Z"
+                    },
+                    "id": 6,
+                    "name": "sin",
+                    "recommended": false
+                  }
+                ],
+                "memory": 2,
+                "name": "cpx11",
+                "prices": [
+                  {
+                    "included_traffic": 1099511627776,
+                    "location": "ash",
+                    "price_hourly": {
+                      "gross": "0.0328000000000000",
+                      "net": "0.0328000000"
+                    },
+                    "price_monthly": {
+                      "gross": "20.4900000000000000",
+                      "net": "20.4900000000"
+                    },
+                    "price_per_tb_traffic": {
+                      "gross": "1.2000000000000000",
+                      "net": "1.2000000000"
+                    }
+                  },
+                  {
+                    "included_traffic": 21990232555520,
+                    "location": "fsn1",
+                    "price_hourly": {
+                      "gross": "0.0096000000000000",
+                      "net": "0.0096000000"
+                    },
+                    "price_monthly": {
+                      "gross": "5.9900000000000000",
+                      "net": "5.9900000000"
+                    },
+                    "price_per_tb_traffic": {
+                      "gross": "1.2000000000000000",
+                      "net": "1.2000000000"
+                    }
+                  },
+                  {
+                    "included_traffic": 21990232555520,
+                    "location": "hel1",
+                    "price_hourly": {
+                      "gross": "0.0096000000000000",
+                      "net": "0.0096000000"
+                    },
+                    "price_monthly": {
+                      "gross": "5.9900000000000000",
+                      "net": "5.9900000000"
+                    },
+                    "price_per_tb_traffic": {
+                      "gross": "1.2000000000000000",
+                      "net": "1.2000000000"
+                    }
+                  },
+                  {
+                    "included_traffic": 1099511627776,
+                    "location": "hil",
+                    "price_hourly": {
+                      "gross": "0.0328000000000000",
+                      "net": "0.0328000000"
+                    },
+                    "price_monthly": {
+                      "gross": "20.4900000000000000",
+                      "net": "20.4900000000"
+                    },
+                    "price_per_tb_traffic": {
+                      "gross": "1.2000000000000000",
+                      "net": "1.2000000000"
+                    }
+                  },
+                  {
+                    "included_traffic": 21990232555520,
+                    "location": "nbg1",
+                    "price_hourly": {
+                      "gross": "0.0096000000000000",
+                      "net": "0.0096000000"
+                    },
+                    "price_monthly": {
+                      "gross": "5.9900000000000000",
+                      "net": "5.9900000000"
+                    },
+                    "price_per_tb_traffic": {
+                      "gross": "1.2000000000000000",
+                      "net": "1.2000000000"
+                    }
+                  },
+                  {
+                    "included_traffic": 1099511627776,
+                    "location": "sin",
+                    "price_hourly": {
+                      "gross": "0.0184000000000000",
+                      "net": "0.0184000000"
+                    },
+                    "price_monthly": {
+                      "gross": "11.4900000000000000",
+                      "net": "11.4900000000"
+                    },
+                    "price_per_tb_traffic": {
+                      "gross": "8.3000000000000000",
+                      "net": "8.3000000000"
+                    }
+                  }
+                ],
+                "storage_type": "local"
+              },
+              "status": "initializing",
+              "volumes": []
+            }
+          ]
+        },
+        "body_type": "json",
+        "headers": {
+          "access-control-allow-headers": [
+            "X-Requested-With,Authorization,Content-Type"
+          ],
+          "access-control-allow-methods": [
+            "OPTIONS,GET,POST,PUT,PATCH,DELETE"
+          ],
+          "access-control-allow-origin": [
+            "*"
+          ],
+          "access-control-expose-headers": [
+            "Link,X-Correlation-ID"
+          ],
+          "access-control-max-age": [
+            "86400"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "date": [
+            "Tue, 11 Aug 2026 04:12:49 GMT"
+          ],
+          "link": [
+            "<https://api.hetzner.cloud/v1/servers?page=1>; rel=\"last\""
+          ],
+          "ratelimit-limit": [
+            "3600"
+          ],
+          "ratelimit-remaining": [
+            "3591"
+          ],
+          "ratelimit-reset": [
+            "1786421578"
+          ],
+          "strict-transport-security": [
+            "max-age=31536000; includeSubDomains"
+          ],
+          "transfer-encoding": [
+            "chunked"
+          ],
+          "vary": [
+            "Accept-Encoding"
+          ],
+          "x-correlation-id": [
+            "eac0c44bd8dc944cb896057ffcfc65e3"
+          ]
+        },
+        "status": 200
+      }
+    },
+    {
+      "recorded_at": "2026-08-11T04:12:50.100085Z",
+      "request": {
+        "body": "",
+        "body_type": "text",
+        "headers": {
+          "accept-encoding": [
+            "gzip"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "user-agent": [
+            "req/0.5.17"
+          ]
+        },
+        "method": "GET",
+        "query_string": "",
+        "uri": "https://api.hetzner.cloud/v1/servers"
+      },
+      "response": {
+        "body_json": {
+          "meta": {
+            "pagination": {
+              "last_page": 1,
+              "next_page": null,
+              "page": 1,
+              "per_page": 25,
+              "previous_page": null,
+              "total_entries": 4
+            }
+          },
+          "servers": [
+            {
+              "backup_window": null,
+              "created": "2026-02-26T20:30:48Z",
+              "id": 122233257,
+              "image": {
+                "architecture": "arm",
+                "bound_to": null,
+                "created": "2024-04-25T13:26:51Z",
+                "created_from": null,
+                "deleted": null,
+                "deprecated": null,
+                "description": "Ubuntu 24.04",
+                "disk_size": 5,
+                "id": 161547270,
+                "image_size": null,
+                "labels": {},
+                "name": "ubuntu-24.04",
+                "os_flavor": "ubuntu",
+                "os_version": "24.04",
+                "protection": {
+                  "delete": false
+                },
+                "rapid_deploy": true,
+                "status": "available",
+                "type": "system"
+              },
+              "included_traffic": 21990232555520,
+              "ingoing_traffic": 393135000,
+              "iso": null,
+              "labels": {},
+              "load_balancers": [],
+              "location": {
+                "city": "Nuremberg",
+                "country": "DE",
+                "description": "Nuremberg DC Park 1",
+                "id": 2,
+                "latitude": 49.452102,
+                "longitude": 11.076665,
+                "name": "nbg1",
+                "network_zone": "eu-central"
+              },
+              "locked": false,
+              "name": "fuellytics",
+              "outgoing_traffic": 711530000,
+              "placement_group": null,
+              "primary_disk_size": 40,
+              "private_net": [],
+              "protection": {
+                "delete": false,
+                "rebuild": false
+              },
+              "public_net": {
+                "firewalls": [],
+                "floating_ips": [],
+                "ipv4": {
+                  "blocked": false,
+                  "dns_ptr": "static.88.105.225.46.clients.your-server.de",
+                  "id": 119911718,
+                  "ip": "46.225.105.88"
+                },
+                "ipv6": {
+                  "blocked": false,
+                  "dns_ptr": [],
+                  "id": 119911719,
+                  "ip": "2a01:4f8:1c19:3581::/64"
+                }
+              },
+              "rescue_enabled": false,
+              "server_type": {
+                "architecture": "arm",
+                "category": "cost_optimized",
+                "cores": 2,
+                "cpu_type": "shared",
+                "deprecated": false,
+                "deprecation": null,
+                "description": "CAX11",
+                "disk": 40,
+                "id": 45,
+                "locations": [
+                  {
+                    "available": false,
+                    "deprecation": null,
+                    "id": 1,
+                    "name": "fsn1",
+                    "recommended": false
+                  },
+                  {
+                    "available": false,
+                    "deprecation": null,
+                    "id": 2,
+                    "name": "nbg1",
+                    "recommended": false
+                  },
+                  {
+                    "available": false,
+                    "deprecation": null,
+                    "id": 3,
+                    "name": "hel1",
+                    "recommended": false
+                  }
+                ],
+                "memory": 4,
+                "name": "cax11",
+                "prices": [
+                  {
+                    "included_traffic": 21990232555520,
+                    "location": "fsn1",
+                    "price_hourly": {
+                      "gross": "0.0112000000000000",
+                      "net": "0.0112000000"
+                    },
+                    "price_monthly": {
+                      "gross": "6.9900000000000000",
+                      "net": "6.9900000000"
+                    },
+                    "price_per_tb_traffic": {
+                      "gross": "1.2000000000000000",
+                      "net": "1.2000000000"
+                    }
+                  },
+                  {
+                    "included_traffic": 21990232555520,
+                    "location": "hel1",
+                    "price_hourly": {
+                      "gross": "0.0112000000000000",
+                      "net": "0.0112000000"
+                    },
+                    "price_monthly": {
+                      "gross": "6.9900000000000000",
+                      "net": "6.9900000000"
+                    },
+                    "price_per_tb_traffic": {
+                      "gross": "1.2000000000000000",
+                      "net": "1.2000000000"
+                    }
+                  },
+                  {
+                    "included_traffic": 21990232555520,
+                    "location": "nbg1",
+                    "price_hourly": {
+                      "gross": "0.0112000000000000",
+                      "net": "0.0112000000"
+                    },
+                    "price_monthly": {
+                      "gross": "6.9900000000000000",
+                      "net": "6.9900000000"
+                    },
+                    "price_per_tb_traffic": {
+                      "gross": "1.2000000000000000",
+                      "net": "1.2000000000"
+                    }
+                  }
+                ],
+                "storage_type": "local"
+              },
+              "status": "running",
+              "volumes": []
+            },
+            {
+              "backup_window": null,
+              "created": "2026-03-06T21:19:01Z",
+              "id": 122994839,
+              "image": {
+                "architecture": "x86",
+                "bound_to": null,
+                "created": "2024-04-25T13:26:27Z",
+                "created_from": null,
+                "deleted": null,
+                "deprecated": null,
+                "description": "Ubuntu 24.04",
+                "disk_size": 5,
+                "id": 161547269,
+                "image_size": null,
+                "labels": {},
+                "name": "ubuntu-24.04",
+                "os_flavor": "ubuntu",
+                "os_version": "24.04",
+                "protection": {
+                  "delete": false
+                },
+                "rapid_deploy": true,
+                "status": "available",
+                "type": "system"
+              },
+              "included_traffic": 2199023255552,
+              "ingoing_traffic": 877560000,
+              "iso": null,
+              "labels": {},
+              "load_balancers": [],
+              "location": {
+                "city": "Ashburn, VA",
+                "country": "US",
+                "description": "Ashburn, VA",
+                "id": 4,
+                "latitude": 39.045821,
+                "longitude": -77.487073,
+                "name": "ash",
+                "network_zone": "us-east"
+              },
+              "locked": false,
+              "name": "fuellytics-prod",
+              "outgoing_traffic": 1677615000,
+              "placement_group": null,
+              "primary_disk_size": 80,
+              "private_net": [],
+              "protection": {
+                "delete": false,
+                "rebuild": false
+              },
+              "public_net": {
+                "firewalls": [],
+                "floating_ips": [],
+                "ipv4": {
+                  "blocked": false,
+                  "dns_ptr": "static.212.143.156.178.clients.your-server.de",
+                  "id": 121044011,
+                  "ip": "178.156.143.212"
+                },
+                "ipv6": {
+                  "blocked": false,
+                  "dns_ptr": [],
+                  "id": 121044012,
+                  "ip": "2a01:4ff:f4:3a1b::/64"
+                }
+              },
+              "rescue_enabled": false,
+              "server_type": {
+                "architecture": "x86",
+                "category": "regular_purpose",
+                "cores": 3,
+                "cpu_type": "shared",
+                "deprecated": false,
+                "deprecation": null,
+                "description": "CPX 21",
+                "disk": 80,
+                "id": 23,
+                "locations": [
+                  {
+                    "available": false,
+                    "deprecation": {
+                      "announced": "2025-10-16T06:00:00Z",
+                      "unavailable_after": "2025-12-31T23:59:59Z"
+                    },
+                    "id": 1,
+                    "name": "fsn1",
+                    "recommended": false
+                  },
+                  {
+                    "available": false,
+                    "deprecation": {
+                      "announced": "2025-10-16T06:00:00Z",
+                      "unavailable_after": "2025-12-31T23:59:59Z"
+                    },
+                    "id": 2,
+                    "name": "nbg1",
+                    "recommended": false
+                  },
+                  {
+                    "available": false,
+                    "deprecation": {
+                      "announced": "2025-10-16T06:00:00Z",
+                      "unavailable_after": "2025-12-31T23:59:59Z"
+                    },
+                    "id": 3,
+                    "name": "hel1",
+                    "recommended": false
+                  },
+                  {
+                    "available": true,
+                    "deprecation": null,
+                    "id": 4,
+                    "name": "ash",
+                    "recommended": false
+                  },
+                  {
+                    "available": true,
+                    "deprecation": null,
+                    "id": 5,
+                    "name": "hil",
+                    "recommended": false
+                  },
+                  {
+                    "available": false,
+                    "deprecation": {
+                      "announced": "2025-10-16T06:00:00Z",
+                      "unavailable_after": "2025-12-31T23:59:59Z"
+                    },
+                    "id": 6,
+                    "name": "sin",
+                    "recommended": false
+                  }
+                ],
+                "memory": 4,
+                "name": "cpx21",
+                "prices": [
+                  {
+                    "included_traffic": 2199023255552,
+                    "location": "ash",
+                    "price_hourly": {
+                      "gross": "0.0601000000000000",
+                      "net": "0.0601000000"
+                    },
+                    "price_monthly": {
+                      "gross": "37.4900000000000000",
+                      "net": "37.4900000000"
+                    },
+                    "price_per_tb_traffic": {
+                      "gross": "1.2000000000000000",
+                      "net": "1.2000000000"
+                    }
+                  },
+                  {
+                    "included_traffic": 21990232555520,
+                    "location": "fsn1",
+                    "price_hourly": {
+                      "gross": "0.0176000000000000",
+                      "net": "0.0176000000"
+                    },
+                    "price_monthly": {
+                      "gross": "10.9900000000000000",
+                      "net": "10.9900000000"
+                    },
+                    "price_per_tb_traffic": {
+                      "gross": "1.2000000000000000",
+                      "net": "1.2000000000"
+                    }
+                  },
+                  {
+                    "included_traffic": 21990232555520,
+                    "location": "hel1",
+                    "price_hourly": {
+                      "gross": "0.0176000000000000",
+                      "net": "0.0176000000"
+                    },
+                    "price_monthly": {
+                      "gross": "10.9900000000000000",
+                      "net": "10.9900000000"
+                    },
+                    "price_per_tb_traffic": {
+                      "gross": "1.2000000000000000",
+                      "net": "1.2000000000"
+                    }
+                  },
+                  {
+                    "included_traffic": 2199023255552,
+                    "location": "hil",
+                    "price_hourly": {
+                      "gross": "0.0601000000000000",
+                      "net": "0.0601000000"
+                    },
+                    "price_monthly": {
+                      "gross": "37.4900000000000000",
+                      "net": "37.4900000000"
+                    },
+                    "price_per_tb_traffic": {
+                      "gross": "1.2000000000000000",
+                      "net": "1.2000000000"
+                    }
+                  },
+                  {
+                    "included_traffic": 21990232555520,
+                    "location": "nbg1",
+                    "price_hourly": {
+                      "gross": "0.0176000000000000",
+                      "net": "0.0176000000"
+                    },
+                    "price_monthly": {
+                      "gross": "10.9900000000000000",
+                      "net": "10.9900000000"
+                    },
+                    "price_per_tb_traffic": {
+                      "gross": "1.2000000000000000",
+                      "net": "1.2000000000"
+                    }
+                  },
+                  {
+                    "included_traffic": 2199023255552,
+                    "location": "sin",
+                    "price_hourly": {
+                      "gross": "0.0352000000000000",
+                      "net": "0.0352000000"
+                    },
+                    "price_monthly": {
+                      "gross": "21.9900000000000000",
+                      "net": "21.9900000000"
+                    },
+                    "price_per_tb_traffic": {
+                      "gross": "8.3000000000000000",
+                      "net": "8.3000000000"
+                    }
+                  }
+                ],
+                "storage_type": "local"
+              },
+              "status": "running",
+              "volumes": []
+            },
+            {
+              "backup_window": null,
+              "created": "2026-08-11T04:11:23Z",
+              "id": 161341879,
+              "image": {
+                "architecture": "x86",
+                "bound_to": null,
+                "created": "2021-06-08T06:22:47Z",
+                "created_from": null,
+                "deleted": null,
+                "deprecated": null,
+                "description": "docker-ce",
+                "disk_size": 40,
+                "id": 40093247,
+                "image_size": null,
+                "labels": {},
+                "name": "docker-ce",
+                "os_flavor": "ubuntu",
+                "os_version": "unknown",
+                "protection": {
+                  "delete": false
+                },
+                "rapid_deploy": true,
+                "status": "available",
+                "type": "app"
+              },
+              "included_traffic": 1099511627776,
+              "ingoing_traffic": 0,
+              "iso": null,
+              "labels": {},
+              "load_balancers": [],
+              "location": {
+                "city": "Ashburn, VA",
+                "country": "US",
+                "description": "Ashburn, VA",
+                "id": 4,
+                "latitude": 39.045821,
+                "longitude": -77.487073,
+                "name": "ash",
+                "network_zone": "us-east"
+              },
+              "locked": false,
+              "name": "spex-story966-criterion8156-uat",
+              "outgoing_traffic": 0,
+              "placement_group": null,
+              "primary_disk_size": 40,
+              "private_net": [
+                {
+                  "alias_ips": [],
+                  "ip": "10.0.0.2",
+                  "mac_address": "86:00:00:3b:12:45",
+                  "network": 12535690
+                }
+              ],
+              "protection": {
+                "delete": false,
+                "rebuild": false
+              },
+              "public_net": {
+                "firewalls": [
+                  {
+                    "id": 11447381,
+                    "status": "applied"
+                  }
+                ],
+                "floating_ips": [],
+                "ipv4": {
+                  "blocked": false,
+                  "dns_ptr": "static.94.200.156.178.clients.your-server.de",
+                  "id": 144333672,
+                  "ip": "178.156.200.94"
+                },
+                "ipv6": {
+                  "blocked": false,
+                  "dns_ptr": [],
+                  "id": 144333673,
+                  "ip": "2a01:4ff:f0:549b::/64"
+                }
+              },
+              "rescue_enabled": false,
+              "server_type": {
+                "architecture": "x86",
+                "category": "regular_purpose",
+                "cores": 2,
+                "cpu_type": "shared",
+                "deprecated": false,
+                "deprecation": null,
+                "description": "CPX 11",
+                "disk": 40,
+                "id": 22,
+                "locations": [
+                  {
+                    "available": false,
+                    "deprecation": {
+                      "announced": "2025-10-16T06:00:00Z",
+                      "unavailable_after": "2025-12-31T23:59:59Z"
+                    },
+                    "id": 1,
+                    "name": "fsn1",
+                    "recommended": false
+                  },
+                  {
+                    "available": false,
+                    "deprecation": {
+                      "announced": "2025-10-16T06:00:00Z",
+                      "unavailable_after": "2025-12-31T23:59:59Z"
+                    },
+                    "id": 2,
+                    "name": "nbg1",
+                    "recommended": false
+                  },
+                  {
+                    "available": false,
+                    "deprecation": {
+                      "announced": "2025-10-16T06:00:00Z",
+                      "unavailable_after": "2025-12-31T23:59:59Z"
+                    },
+                    "id": 3,
+                    "name": "hel1",
+                    "recommended": false
+                  },
+                  {
+                    "available": true,
+                    "deprecation": null,
+                    "id": 4,
+                    "name": "ash",
+                    "recommended": false
+                  },
+                  {
+                    "available": true,
+                    "deprecation": null,
+                    "id": 5,
+                    "name": "hil",
+                    "recommended": false
+                  },
+                  {
+                    "available": false,
+                    "deprecation": {
+                      "announced": "2025-10-16T06:00:00Z",
+                      "unavailable_after": "2025-12-31T23:59:59Z"
+                    },
+                    "id": 6,
+                    "name": "sin",
+                    "recommended": false
+                  }
+                ],
+                "memory": 2,
+                "name": "cpx11",
+                "prices": [
+                  {
+                    "included_traffic": 1099511627776,
+                    "location": "ash",
+                    "price_hourly": {
+                      "gross": "0.0328000000000000",
+                      "net": "0.0328000000"
+                    },
+                    "price_monthly": {
+                      "gross": "20.4900000000000000",
+                      "net": "20.4900000000"
+                    },
+                    "price_per_tb_traffic": {
+                      "gross": "1.2000000000000000",
+                      "net": "1.2000000000"
+                    }
+                  },
+                  {
+                    "included_traffic": 21990232555520,
+                    "location": "fsn1",
+                    "price_hourly": {
+                      "gross": "0.0096000000000000",
+                      "net": "0.0096000000"
+                    },
+                    "price_monthly": {
+                      "gross": "5.9900000000000000",
+                      "net": "5.9900000000"
+                    },
+                    "price_per_tb_traffic": {
+                      "gross": "1.2000000000000000",
+                      "net": "1.2000000000"
+                    }
+                  },
+                  {
+                    "included_traffic": 21990232555520,
+                    "location": "hel1",
+                    "price_hourly": {
+                      "gross": "0.0096000000000000",
+                      "net": "0.0096000000"
+                    },
+                    "price_monthly": {
+                      "gross": "5.9900000000000000",
+                      "net": "5.9900000000"
+                    },
+                    "price_per_tb_traffic": {
+                      "gross": "1.2000000000000000",
+                      "net": "1.2000000000"
+                    }
+                  },
+                  {
+                    "included_traffic": 1099511627776,
+                    "location": "hil",
+                    "price_hourly": {
+                      "gross": "0.0328000000000000",
+                      "net": "0.0328000000"
+                    },
+                    "price_monthly": {
+                      "gross": "20.4900000000000000",
+                      "net": "20.4900000000"
+                    },
+                    "price_per_tb_traffic": {
+                      "gross": "1.2000000000000000",
+                      "net": "1.2000000000"
+                    }
+                  },
+                  {
+                    "included_traffic": 21990232555520,
+                    "location": "nbg1",
+                    "price_hourly": {
+                      "gross": "0.0096000000000000",
+                      "net": "0.0096000000"
+                    },
+                    "price_monthly": {
+                      "gross": "5.9900000000000000",
+                      "net": "5.9900000000"
+                    },
+                    "price_per_tb_traffic": {
+                      "gross": "1.2000000000000000",
+                      "net": "1.2000000000"
+                    }
+                  },
+                  {
+                    "included_traffic": 1099511627776,
+                    "location": "sin",
+                    "price_hourly": {
+                      "gross": "0.0184000000000000",
+                      "net": "0.0184000000"
+                    },
+                    "price_monthly": {
+                      "gross": "11.4900000000000000",
+                      "net": "11.4900000000"
+                    },
+                    "price_per_tb_traffic": {
+                      "gross": "8.3000000000000000",
+                      "net": "8.3000000000"
+                    }
+                  }
+                ],
+                "storage_type": "local"
+              },
+              "status": "running",
+              "volumes": []
+            },
+            {
+              "backup_window": null,
+              "created": "2026-08-11T04:12:49Z",
+              "id": 161342322,
+              "image": {
+                "architecture": "x86",
+                "bound_to": null,
+                "created": "2021-06-08T06:22:47Z",
+                "created_from": null,
+                "deleted": null,
+                "deprecated": null,
+                "description": "docker-ce",
+                "disk_size": 40,
+                "id": 40093247,
+                "image_size": null,
+                "labels": {},
+                "name": "docker-ce",
+                "os_flavor": "ubuntu",
+                "os_version": "unknown",
+                "protection": {
+                  "delete": false
+                },
+                "rapid_deploy": true,
+                "status": "available",
+                "type": "app"
+              },
+              "included_traffic": 0,
+              "ingoing_traffic": 0,
+              "iso": null,
+              "labels": {},
+              "load_balancers": [],
+              "location": {
+                "city": "Ashburn, VA",
+                "country": "US",
+                "description": "Ashburn, VA",
+                "id": 4,
+                "latitude": 39.045821,
+                "longitude": -77.487073,
+                "name": "ash",
+                "network_zone": "us-east"
+              },
+              "locked": false,
+              "name": "spex-story966-criterion8156-prod",
+              "outgoing_traffic": 0,
+              "placement_group": null,
+              "primary_disk_size": 40,
+              "private_net": [],
+              "protection": {
+                "delete": false,
+                "rebuild": false
+              },
+              "public_net": {
+                "firewalls": [
+                  {
+                    "id": 11447381,
+                    "status": "pending"
+                  }
+                ],
+                "floating_ips": [],
+                "ipv4": {
+                  "blocked": false,
+                  "dns_ptr": "static.165.216.156.178.clients.your-server.de",
+                  "id": 144333756,
+                  "ip": "178.156.216.165"
+                },
+                "ipv6": {
+                  "blocked": false,
+                  "dns_ptr": [],
+                  "id": 144333757,
+                  "ip": "2a01:4ff:f0:af2d::/64"
+                }
+              },
+              "rescue_enabled": false,
+              "server_type": {
+                "architecture": "x86",
+                "category": "regular_purpose",
+                "cores": 2,
+                "cpu_type": "shared",
+                "deprecated": false,
+                "deprecation": null,
+                "description": "CPX 11",
+                "disk": 40,
+                "id": 22,
+                "locations": [
+                  {
+                    "available": false,
+                    "deprecation": {
+                      "announced": "2025-10-16T06:00:00Z",
+                      "unavailable_after": "2025-12-31T23:59:59Z"
+                    },
+                    "id": 1,
+                    "name": "fsn1",
+                    "recommended": false
+                  },
+                  {
+                    "available": false,
+                    "deprecation": {
+                      "announced": "2025-10-16T06:00:00Z",
+                      "unavailable_after": "2025-12-31T23:59:59Z"
+                    },
+                    "id": 2,
+                    "name": "nbg1",
+                    "recommended": false
+                  },
+                  {
+                    "available": false,
+                    "deprecation": {
+                      "announced": "2025-10-16T06:00:00Z",
+                      "unavailable_after": "2025-12-31T23:59:59Z"
+                    },
+                    "id": 3,
+                    "name": "hel1",
+                    "recommended": false
+                  },
+                  {
+                    "available": true,
+                    "deprecation": null,
+                    "id": 4,
+                    "name": "ash",
+                    "recommended": false
+                  },
+                  {
+                    "available": true,
+                    "deprecation": null,
+                    "id": 5,
+                    "name": "hil",
+                    "recommended": false
+                  },
+                  {
+                    "available": false,
+                    "deprecation": {
+                      "announced": "2025-10-16T06:00:00Z",
+                      "unavailable_after": "2025-12-31T23:59:59Z"
+                    },
+                    "id": 6,
+                    "name": "sin",
+                    "recommended": false
+                  }
+                ],
+                "memory": 2,
+                "name": "cpx11",
+                "prices": [
+                  {
+                    "included_traffic": 1099511627776,
+                    "location": "ash",
+                    "price_hourly": {
+                      "gross": "0.0328000000000000",
+                      "net": "0.0328000000"
+                    },
+                    "price_monthly": {
+                      "gross": "20.4900000000000000",
+                      "net": "20.4900000000"
+                    },
+                    "price_per_tb_traffic": {
+                      "gross": "1.2000000000000000",
+                      "net": "1.2000000000"
+                    }
+                  },
+                  {
+                    "included_traffic": 21990232555520,
+                    "location": "fsn1",
+                    "price_hourly": {
+                      "gross": "0.0096000000000000",
+                      "net": "0.0096000000"
+                    },
+                    "price_monthly": {
+                      "gross": "5.9900000000000000",
+                      "net": "5.9900000000"
+                    },
+                    "price_per_tb_traffic": {
+                      "gross": "1.2000000000000000",
+                      "net": "1.2000000000"
+                    }
+                  },
+                  {
+                    "included_traffic": 21990232555520,
+                    "location": "hel1",
+                    "price_hourly": {
+                      "gross": "0.0096000000000000",
+                      "net": "0.0096000000"
+                    },
+                    "price_monthly": {
+                      "gross": "5.9900000000000000",
+                      "net": "5.9900000000"
+                    },
+                    "price_per_tb_traffic": {
+                      "gross": "1.2000000000000000",
+                      "net": "1.2000000000"
+                    }
+                  },
+                  {
+                    "included_traffic": 1099511627776,
+                    "location": "hil",
+                    "price_hourly": {
+                      "gross": "0.0328000000000000",
+                      "net": "0.0328000000"
+                    },
+                    "price_monthly": {
+                      "gross": "20.4900000000000000",
+                      "net": "20.4900000000"
+                    },
+                    "price_per_tb_traffic": {
+                      "gross": "1.2000000000000000",
+                      "net": "1.2000000000"
+                    }
+                  },
+                  {
+                    "included_traffic": 21990232555520,
+                    "location": "nbg1",
+                    "price_hourly": {
+                      "gross": "0.0096000000000000",
+                      "net": "0.0096000000"
+                    },
+                    "price_monthly": {
+                      "gross": "5.9900000000000000",
+                      "net": "5.9900000000"
+                    },
+                    "price_per_tb_traffic": {
+                      "gross": "1.2000000000000000",
+                      "net": "1.2000000000"
+                    }
+                  },
+                  {
+                    "included_traffic": 1099511627776,
+                    "location": "sin",
+                    "price_hourly": {
+                      "gross": "0.0184000000000000",
+                      "net": "0.0184000000"
+                    },
+                    "price_monthly": {
+                      "gross": "11.4900000000000000",
+                      "net": "11.4900000000"
+                    },
+                    "price_per_tb_traffic": {
+                      "gross": "8.3000000000000000",
+                      "net": "8.3000000000"
+                    }
+                  }
+                ],
+                "storage_type": "local"
+              },
+              "status": "initializing",
+              "volumes": []
+            }
+          ]
+        },
+        "body_type": "json",
+        "headers": {
+          "access-control-allow-headers": [
+            "X-Requested-With,Authorization,Content-Type"
+          ],
+          "access-control-allow-methods": [
+            "OPTIONS,GET,POST,PUT,PATCH,DELETE"
+          ],
+          "access-control-allow-origin": [
+            "*"
+          ],
+          "access-control-expose-headers": [
+            "Link,X-Correlation-ID"
+          ],
+          "access-control-max-age": [
+            "86400"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "date": [
+            "Tue, 11 Aug 2026 04:12:50 GMT"
+          ],
+          "link": [
+            "<https://api.hetzner.cloud/v1/servers?page=1>; rel=\"last\""
+          ],
+          "ratelimit-limit": [
+            "3600"
+          ],
+          "ratelimit-remaining": [
+            "3590"
+          ],
+          "ratelimit-reset": [
+            "1786421580"
+          ],
+          "strict-transport-security": [
+            "max-age=31536000; includeSubDomains"
+          ],
+          "transfer-encoding": [
+            "chunked"
+          ],
+          "vary": [
+            "Accept-Encoding"
+          ],
+          "x-correlation-id": [
+            "750ed7b1150526c1b6f4d0a68bcc0072"
+          ]
+        },
+        "status": 200
+      }
+    },
+    {
+      "recorded_at": "2026-08-11T04:12:50.250603Z",
+      "request": {
+        "body": "",
+        "body_type": "text",
+        "headers": {
+          "accept-encoding": [
+            "gzip"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "user-agent": [
+            "req/0.5.17"
+          ]
+        },
+        "method": "GET",
+        "query_string": "",
+        "uri": "https://api.hetzner.cloud/v1/networks"
+      },
+      "response": {
+        "body_json": {
+          "meta": {
+            "pagination": {
+              "last_page": 1,
+              "next_page": null,
+              "page": 1,
+              "per_page": 25,
+              "previous_page": null,
+              "total_entries": 8
+            }
+          },
+          "networks": [
+            {
+              "created": "2026-08-10T19:06:12Z",
+              "expose_routes_to_vswitch": false,
+              "id": 12535281,
+              "ip_range": "10.0.0.0/16",
+              "labels": {},
+              "load_balancers": [],
+              "name": "spex-story972-criterion8039",
+              "protection": {
+                "delete": false
+              },
+              "routes": [],
+              "servers": [],
+              "subnets": [
+                {
+                  "gateway": "10.0.0.1",
+                  "ip_range": "10.0.0.0/24",
+                  "network_zone": "us-east",
+                  "type": "cloud",
+                  "vswitch_id": null
+                }
+              ]
+            },
+            {
+              "created": "2026-08-11T00:34:46Z",
+              "expose_routes_to_vswitch": false,
+              "id": 12535690,
+              "ip_range": "10.0.0.0/16",
+              "labels": {},
+              "load_balancers": [],
+              "name": "spex-story966-criterion8156",
+              "protection": {
+                "delete": false
+              },
+              "routes": [],
+              "servers": [
+                161341879
+              ],
+              "subnets": [
+                {
+                  "gateway": "10.0.0.1",
+                  "ip_range": "10.0.0.0/24",
+                  "network_zone": "us-east",
+                  "type": "cloud",
+                  "vswitch_id": null
+                }
+              ]
+            },
+            {
+              "created": "2026-08-11T01:25:30Z",
+              "expose_routes_to_vswitch": false,
+              "id": 12535739,
+              "ip_range": "10.0.0.0/16",
+              "labels": {},
+              "load_balancers": [],
+              "name": "spex-story965-criterion7995",
+              "protection": {
+                "delete": false
+              },
+              "routes": [],
+              "servers": [],
+              "subnets": [
+                {
+                  "gateway": "10.0.0.1",
+                  "ip_range": "10.0.0.0/24",
+                  "network_zone": "us-east",
+                  "type": "cloud",
+                  "vswitch_id": null
+                }
+              ]
+            },
+            {
+              "created": "2026-08-11T01:31:27Z",
+              "expose_routes_to_vswitch": false,
+              "id": 12535749,
+              "ip_range": "10.0.0.0/16",
+              "labels": {},
+              "load_balancers": [],
+              "name": "spex-story963-criterion7964",
+              "protection": {
+                "delete": false
+              },
+              "routes": [],
+              "servers": [],
+              "subnets": [
+                {
+                  "gateway": "10.0.0.1",
+                  "ip_range": "10.0.0.0/24",
+                  "network_zone": "us-east",
+                  "type": "cloud",
+                  "vswitch_id": null
+                }
+              ]
+            },
+            {
+              "created": "2026-08-11T01:35:18Z",
+              "expose_routes_to_vswitch": false,
+              "id": 12535753,
+              "ip_range": "10.0.0.0/16",
+              "labels": {},
+              "load_balancers": [],
+              "name": "spex-story985-criterion8182",
+              "protection": {
+                "delete": false
+              },
+              "routes": [],
+              "servers": [],
+              "subnets": [
+                {
+                  "gateway": "10.0.0.1",
+                  "ip_range": "10.0.0.0/24",
+                  "network_zone": "us-east",
+                  "type": "cloud",
+                  "vswitch_id": null
+                }
+              ]
+            },
+            {
+              "created": "2026-08-11T02:20:21Z",
+              "expose_routes_to_vswitch": false,
+              "id": 12535795,
+              "ip_range": "10.0.0.0/16",
+              "labels": {},
+              "load_balancers": [],
+              "name": "spex-story841-criterion1961",
+              "protection": {
+                "delete": false
+              },
+              "routes": [],
+              "servers": [],
+              "subnets": [
+                {
+                  "gateway": "10.0.0.1",
+                  "ip_range": "10.0.0.0/24",
+                  "network_zone": "us-east",
+                  "type": "cloud",
+                  "vswitch_id": null
+                }
+              ]
+            },
+            {
+              "created": "2026-08-11T02:58:02Z",
+              "expose_routes_to_vswitch": false,
+              "id": 12535832,
+              "ip_range": "10.0.0.0/16",
+              "labels": {},
+              "load_balancers": [],
+              "name": "spex-story966-criterion8003",
+              "protection": {
+                "delete": false
+              },
+              "routes": [],
+              "servers": [],
+              "subnets": [
+                {
+                  "gateway": "10.0.0.1",
+                  "ip_range": "10.0.0.0/24",
+                  "network_zone": "us-east",
+                  "type": "cloud",
+                  "vswitch_id": null
+                }
+              ]
+            },
+            {
+              "created": "2026-08-11T03:44:26Z",
+              "expose_routes_to_vswitch": false,
+              "id": 12535878,
+              "ip_range": "10.0.0.0/16",
+              "labels": {},
+              "load_balancers": [],
+              "name": "spex-story963-criterion7965",
+              "protection": {
+                "delete": false
+              },
+              "routes": [],
+              "servers": [],
+              "subnets": [
+                {
+                  "gateway": "10.0.0.1",
+                  "ip_range": "10.0.0.0/24",
+                  "network_zone": "us-east",
+                  "type": "cloud",
+                  "vswitch_id": null
+                }
+              ]
+            }
+          ]
+        },
+        "body_type": "json",
+        "headers": {
+          "access-control-allow-headers": [
+            "X-Requested-With,Authorization,Content-Type"
+          ],
+          "access-control-allow-methods": [
+            "OPTIONS,GET,POST,PUT,PATCH,DELETE"
+          ],
+          "access-control-allow-origin": [
+            "*"
+          ],
+          "access-control-expose-headers": [
+            "Link,X-Correlation-ID"
+          ],
+          "access-control-max-age": [
+            "86400"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "date": [
+            "Tue, 11 Aug 2026 04:12:50 GMT"
+          ],
+          "link": [
+            "<https://api.hetzner.cloud/v1/networks?page=1&per_page=25>; rel=\"last\""
+          ],
+          "ratelimit-limit": [
+            "3600"
+          ],
+          "ratelimit-remaining": [
+            "3589"
+          ],
+          "ratelimit-reset": [
+            "1786421581"
+          ],
+          "strict-transport-security": [
+            "max-age=31536000; includeSubDomains"
+          ],
+          "traceparent": [
+            "00-1ad23b4d63d72d8624da596b7930e739-c987ef15835366bf-01"
+          ],
+          "transfer-encoding": [
+            "chunked"
+          ],
+          "uber-trace-id": [
+            "1ad23b4d63d72d8624da596b7930e739:c987ef15835366bf:0:1"
+          ],
+          "vary": [
+            "Accept-Encoding"
+          ],
+          "x-correlation-id": [
+            "1ad23b4d63d72d8624da596b7930e739"
+          ]
+        },
+        "status": 200
+      }
+    },
+    {
+      "recorded_at": "2026-08-11T04:12:50.392365Z",
+      "request": {
+        "body_json": {
+          "network": 12535690
+        },
+        "body_type": "json",
+        "headers": {
+          "accept": [
+            "application/json"
+          ],
+          "accept-encoding": [
+            "gzip"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "user-agent": [
+            "req/0.5.17"
+          ]
+        },
+        "method": "POST",
+        "query_string": "",
+        "uri": "https://api.hetzner.cloud/v1/servers/161341879/actions/attach_to_network"
+      },
+      "response": {
+        "body_json": {
+          "error": {
+            "code": "server_already_attached",
+            "details": null,
+            "message": "server already attached"
+          }
+        },
+        "body_type": "json",
+        "headers": {
+          "access-control-allow-headers": [
+            "X-Requested-With,Authorization,Content-Type"
+          ],
+          "access-control-allow-methods": [
+            "OPTIONS,GET,POST,PUT,PATCH,DELETE"
+          ],
+          "access-control-allow-origin": [
+            "*"
+          ],
+          "access-control-expose-headers": [
+            "Link,X-Correlation-ID"
+          ],
+          "access-control-max-age": [
+            "86400"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "date": [
+            "Tue, 11 Aug 2026 04:12:50 GMT"
+          ],
+          "ratelimit-limit": [
+            "7200"
+          ],
+          "ratelimit-remaining": [
+            "7199"
+          ],
+          "ratelimit-reset": [
+            "1786421570"
+          ],
+          "strict-transport-security": [
+            "max-age=31536000; includeSubDomains"
+          ],
+          "traceparent": [
+            "00-aaeea38cd8e8a521401e9ee22d204b4b-da2918a723e77389-01"
+          ],
+          "transfer-encoding": [
+            "chunked"
+          ],
+          "uber-trace-id": [
+            "aaeea38cd8e8a521401e9ee22d204b4b:da2918a723e77389:0:1"
+          ],
+          "vary": [
+            "Accept-Encoding"
+          ],
+          "x-correlation-id": [
+            "aaeea38cd8e8a521401e9ee22d204b4b"
+          ]
+        },
+        "status": 422
+      }
+    },
+    {
+      "recorded_at": "2026-08-11T04:12:50.556321Z",
+      "request": {
+        "body_json": {
+          "network": 12535690
+        },
+        "body_type": "json",
+        "headers": {
+          "accept": [
+            "application/json"
+          ],
+          "accept-encoding": [
+            "gzip"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "user-agent": [
+            "req/0.5.17"
+          ]
+        },
+        "method": "POST",
+        "query_string": "",
+        "uri": "https://api.hetzner.cloud/v1/servers/161342322/actions/attach_to_network"
+      },
+      "response": {
+        "body_json": {
+          "action": {
+            "command": "attach_to_network",
+            "error": null,
+            "finished": null,
+            "id": 648196467982496,
+            "progress": 0,
+            "resources": [
+              {
+                "id": 161342322,
+                "type": "server"
+              },
+              {
+                "id": 12535690,
+                "type": "network"
+              }
+            ],
+            "started": "2026-08-11T04:12:50Z",
+            "status": "running"
+          }
+        },
+        "body_type": "json",
+        "headers": {
+          "access-control-allow-headers": [
+            "X-Requested-With,Authorization,Content-Type"
+          ],
+          "access-control-allow-methods": [
+            "OPTIONS,GET,POST,PUT,PATCH,DELETE"
+          ],
+          "access-control-allow-origin": [
+            "*"
+          ],
+          "access-control-expose-headers": [
+            "Link,X-Correlation-ID"
+          ],
+          "access-control-max-age": [
+            "86400"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "date": [
+            "Tue, 11 Aug 2026 04:12:50 GMT"
+          ],
+          "ratelimit-limit": [
+            "7200"
+          ],
+          "ratelimit-remaining": [
+            "7198"
+          ],
+          "ratelimit-reset": [
+            "1786421571"
+          ],
+          "strict-transport-security": [
+            "max-age=31536000; includeSubDomains"
+          ],
+          "traceparent": [
+            "00-7a24b2252be56d56075ef8c2e98b0635-d53229e38ebc8593-01"
+          ],
+          "transfer-encoding": [
+            "chunked"
+          ],
+          "uber-trace-id": [
+            "7a24b2252be56d56075ef8c2e98b0635:d53229e38ebc8593:0:1"
+          ],
+          "vary": [
+            "Accept-Encoding"
+          ],
+          "x-correlation-id": [
+            "7a24b2252be56d56075ef8c2e98b0635"
+          ]
+        },
+        "status": 201
+      }
+    },
+    {
+      "recorded_at": "2026-08-11T04:12:50.714778Z",
+      "request": {
+        "body": "",
+        "body_type": "text",
+        "headers": {
+          "accept-encoding": [
+            "gzip"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "user-agent": [
+            "req/0.5.17"
+          ]
+        },
+        "method": "GET",
+        "query_string": "",
+        "uri": "https://api.hetzner.cloud/v1/servers"
+      },
+      "response": {
+        "body_json": {
+          "meta": {
+            "pagination": {
+              "last_page": 1,
+              "next_page": null,
+              "page": 1,
+              "per_page": 25,
+              "previous_page": null,
+              "total_entries": 4
+            }
+          },
+          "servers": [
+            {
+              "backup_window": null,
+              "created": "2026-02-26T20:30:48Z",
+              "id": 122233257,
+              "image": {
+                "architecture": "arm",
+                "bound_to": null,
+                "created": "2024-04-25T13:26:51Z",
+                "created_from": null,
+                "deleted": null,
+                "deprecated": null,
+                "description": "Ubuntu 24.04",
+                "disk_size": 5,
+                "id": 161547270,
+                "image_size": null,
+                "labels": {},
+                "name": "ubuntu-24.04",
+                "os_flavor": "ubuntu",
+                "os_version": "24.04",
+                "protection": {
+                  "delete": false
+                },
+                "rapid_deploy": true,
+                "status": "available",
+                "type": "system"
+              },
+              "included_traffic": 21990232555520,
+              "ingoing_traffic": 393135000,
+              "iso": null,
+              "labels": {},
+              "load_balancers": [],
+              "location": {
+                "city": "Nuremberg",
+                "country": "DE",
+                "description": "Nuremberg DC Park 1",
+                "id": 2,
+                "latitude": 49.452102,
+                "longitude": 11.076665,
+                "name": "nbg1",
+                "network_zone": "eu-central"
+              },
+              "locked": false,
+              "name": "fuellytics",
+              "outgoing_traffic": 711530000,
+              "placement_group": null,
+              "primary_disk_size": 40,
+              "private_net": [],
+              "protection": {
+                "delete": false,
+                "rebuild": false
+              },
+              "public_net": {
+                "firewalls": [],
+                "floating_ips": [],
+                "ipv4": {
+                  "blocked": false,
+                  "dns_ptr": "static.88.105.225.46.clients.your-server.de",
+                  "id": 119911718,
+                  "ip": "46.225.105.88"
+                },
+                "ipv6": {
+                  "blocked": false,
+                  "dns_ptr": [],
+                  "id": 119911719,
+                  "ip": "2a01:4f8:1c19:3581::/64"
+                }
+              },
+              "rescue_enabled": false,
+              "server_type": {
+                "architecture": "arm",
+                "category": "cost_optimized",
+                "cores": 2,
+                "cpu_type": "shared",
+                "deprecated": false,
+                "deprecation": null,
+                "description": "CAX11",
+                "disk": 40,
+                "id": 45,
+                "locations": [
+                  {
+                    "available": false,
+                    "deprecation": null,
+                    "id": 1,
+                    "name": "fsn1",
+                    "recommended": false
+                  },
+                  {
+                    "available": false,
+                    "deprecation": null,
+                    "id": 2,
+                    "name": "nbg1",
+                    "recommended": false
+                  },
+                  {
+                    "available": false,
+                    "deprecation": null,
+                    "id": 3,
+                    "name": "hel1",
+                    "recommended": false
+                  }
+                ],
+                "memory": 4,
+                "name": "cax11",
+                "prices": [
+                  {
+                    "included_traffic": 21990232555520,
+                    "location": "fsn1",
+                    "price_hourly": {
+                      "gross": "0.0112000000000000",
+                      "net": "0.0112000000"
+                    },
+                    "price_monthly": {
+                      "gross": "6.9900000000000000",
+                      "net": "6.9900000000"
+                    },
+                    "price_per_tb_traffic": {
+                      "gross": "1.2000000000000000",
+                      "net": "1.2000000000"
+                    }
+                  },
+                  {
+                    "included_traffic": 21990232555520,
+                    "location": "hel1",
+                    "price_hourly": {
+                      "gross": "0.0112000000000000",
+                      "net": "0.0112000000"
+                    },
+                    "price_monthly": {
+                      "gross": "6.9900000000000000",
+                      "net": "6.9900000000"
+                    },
+                    "price_per_tb_traffic": {
+                      "gross": "1.2000000000000000",
+                      "net": "1.2000000000"
+                    }
+                  },
+                  {
+                    "included_traffic": 21990232555520,
+                    "location": "nbg1",
+                    "price_hourly": {
+                      "gross": "0.0112000000000000",
+                      "net": "0.0112000000"
+                    },
+                    "price_monthly": {
+                      "gross": "6.9900000000000000",
+                      "net": "6.9900000000"
+                    },
+                    "price_per_tb_traffic": {
+                      "gross": "1.2000000000000000",
+                      "net": "1.2000000000"
+                    }
+                  }
+                ],
+                "storage_type": "local"
+              },
+              "status": "running",
+              "volumes": []
+            },
+            {
+              "backup_window": null,
+              "created": "2026-03-06T21:19:01Z",
+              "id": 122994839,
+              "image": {
+                "architecture": "x86",
+                "bound_to": null,
+                "created": "2024-04-25T13:26:27Z",
+                "created_from": null,
+                "deleted": null,
+                "deprecated": null,
+                "description": "Ubuntu 24.04",
+                "disk_size": 5,
+                "id": 161547269,
+                "image_size": null,
+                "labels": {},
+                "name": "ubuntu-24.04",
+                "os_flavor": "ubuntu",
+                "os_version": "24.04",
+                "protection": {
+                  "delete": false
+                },
+                "rapid_deploy": true,
+                "status": "available",
+                "type": "system"
+              },
+              "included_traffic": 2199023255552,
+              "ingoing_traffic": 877560000,
+              "iso": null,
+              "labels": {},
+              "load_balancers": [],
+              "location": {
+                "city": "Ashburn, VA",
+                "country": "US",
+                "description": "Ashburn, VA",
+                "id": 4,
+                "latitude": 39.045821,
+                "longitude": -77.487073,
+                "name": "ash",
+                "network_zone": "us-east"
+              },
+              "locked": false,
+              "name": "fuellytics-prod",
+              "outgoing_traffic": 1677615000,
+              "placement_group": null,
+              "primary_disk_size": 80,
+              "private_net": [],
+              "protection": {
+                "delete": false,
+                "rebuild": false
+              },
+              "public_net": {
+                "firewalls": [],
+                "floating_ips": [],
+                "ipv4": {
+                  "blocked": false,
+                  "dns_ptr": "static.212.143.156.178.clients.your-server.de",
+                  "id": 121044011,
+                  "ip": "178.156.143.212"
+                },
+                "ipv6": {
+                  "blocked": false,
+                  "dns_ptr": [],
+                  "id": 121044012,
+                  "ip": "2a01:4ff:f4:3a1b::/64"
+                }
+              },
+              "rescue_enabled": false,
+              "server_type": {
+                "architecture": "x86",
+                "category": "regular_purpose",
+                "cores": 3,
+                "cpu_type": "shared",
+                "deprecated": false,
+                "deprecation": null,
+                "description": "CPX 21",
+                "disk": 80,
+                "id": 23,
+                "locations": [
+                  {
+                    "available": false,
+                    "deprecation": {
+                      "announced": "2025-10-16T06:00:00Z",
+                      "unavailable_after": "2025-12-31T23:59:59Z"
+                    },
+                    "id": 1,
+                    "name": "fsn1",
+                    "recommended": false
+                  },
+                  {
+                    "available": false,
+                    "deprecation": {
+                      "announced": "2025-10-16T06:00:00Z",
+                      "unavailable_after": "2025-12-31T23:59:59Z"
+                    },
+                    "id": 2,
+                    "name": "nbg1",
+                    "recommended": false
+                  },
+                  {
+                    "available": false,
+                    "deprecation": {
+                      "announced": "2025-10-16T06:00:00Z",
+                      "unavailable_after": "2025-12-31T23:59:59Z"
+                    },
+                    "id": 3,
+                    "name": "hel1",
+                    "recommended": false
+                  },
+                  {
+                    "available": true,
+                    "deprecation": null,
+                    "id": 4,
+                    "name": "ash",
+                    "recommended": false
+                  },
+                  {
+                    "available": true,
+                    "deprecation": null,
+                    "id": 5,
+                    "name": "hil",
+                    "recommended": false
+                  },
+                  {
+                    "available": false,
+                    "deprecation": {
+                      "announced": "2025-10-16T06:00:00Z",
+                      "unavailable_after": "2025-12-31T23:59:59Z"
+                    },
+                    "id": 6,
+                    "name": "sin",
+                    "recommended": false
+                  }
+                ],
+                "memory": 4,
+                "name": "cpx21",
+                "prices": [
+                  {
+                    "included_traffic": 2199023255552,
+                    "location": "ash",
+                    "price_hourly": {
+                      "gross": "0.0601000000000000",
+                      "net": "0.0601000000"
+                    },
+                    "price_monthly": {
+                      "gross": "37.4900000000000000",
+                      "net": "37.4900000000"
+                    },
+                    "price_per_tb_traffic": {
+                      "gross": "1.2000000000000000",
+                      "net": "1.2000000000"
+                    }
+                  },
+                  {
+                    "included_traffic": 21990232555520,
+                    "location": "fsn1",
+                    "price_hourly": {
+                      "gross": "0.0176000000000000",
+                      "net": "0.0176000000"
+                    },
+                    "price_monthly": {
+                      "gross": "10.9900000000000000",
+                      "net": "10.9900000000"
+                    },
+                    "price_per_tb_traffic": {
+                      "gross": "1.2000000000000000",
+                      "net": "1.2000000000"
+                    }
+                  },
+                  {
+                    "included_traffic": 21990232555520,
+                    "location": "hel1",
+                    "price_hourly": {
+                      "gross": "0.0176000000000000",
+                      "net": "0.0176000000"
+                    },
+                    "price_monthly": {
+                      "gross": "10.9900000000000000",
+                      "net": "10.9900000000"
+                    },
+                    "price_per_tb_traffic": {
+                      "gross": "1.2000000000000000",
+                      "net": "1.2000000000"
+                    }
+                  },
+                  {
+                    "included_traffic": 2199023255552,
+                    "location": "hil",
+                    "price_hourly": {
+                      "gross": "0.0601000000000000",
+                      "net": "0.0601000000"
+                    },
+                    "price_monthly": {
+                      "gross": "37.4900000000000000",
+                      "net": "37.4900000000"
+                    },
+                    "price_per_tb_traffic": {
+                      "gross": "1.2000000000000000",
+                      "net": "1.2000000000"
+                    }
+                  },
+                  {
+                    "included_traffic": 21990232555520,
+                    "location": "nbg1",
+                    "price_hourly": {
+                      "gross": "0.0176000000000000",
+                      "net": "0.0176000000"
+                    },
+                    "price_monthly": {
+                      "gross": "10.9900000000000000",
+                      "net": "10.9900000000"
+                    },
+                    "price_per_tb_traffic": {
+                      "gross": "1.2000000000000000",
+                      "net": "1.2000000000"
+                    }
+                  },
+                  {
+                    "included_traffic": 2199023255552,
+                    "location": "sin",
+                    "price_hourly": {
+                      "gross": "0.0352000000000000",
+                      "net": "0.0352000000"
+                    },
+                    "price_monthly": {
+                      "gross": "21.9900000000000000",
+                      "net": "21.9900000000"
+                    },
+                    "price_per_tb_traffic": {
+                      "gross": "8.3000000000000000",
+                      "net": "8.3000000000"
+                    }
+                  }
+                ],
+                "storage_type": "local"
+              },
+              "status": "running",
+              "volumes": []
+            },
+            {
+              "backup_window": null,
+              "created": "2026-08-11T04:11:23Z",
+              "id": 161341879,
+              "image": {
+                "architecture": "x86",
+                "bound_to": null,
+                "created": "2021-06-08T06:22:47Z",
+                "created_from": null,
+                "deleted": null,
+                "deprecated": null,
+                "description": "docker-ce",
+                "disk_size": 40,
+                "id": 40093247,
+                "image_size": null,
+                "labels": {},
+                "name": "docker-ce",
+                "os_flavor": "ubuntu",
+                "os_version": "unknown",
+                "protection": {
+                  "delete": false
+                },
+                "rapid_deploy": true,
+                "status": "available",
+                "type": "app"
+              },
+              "included_traffic": 1099511627776,
+              "ingoing_traffic": 0,
+              "iso": null,
+              "labels": {},
+              "load_balancers": [],
+              "location": {
+                "city": "Ashburn, VA",
+                "country": "US",
+                "description": "Ashburn, VA",
+                "id": 4,
+                "latitude": 39.045821,
+                "longitude": -77.487073,
+                "name": "ash",
+                "network_zone": "us-east"
+              },
+              "locked": false,
+              "name": "spex-story966-criterion8156-uat",
+              "outgoing_traffic": 0,
+              "placement_group": null,
+              "primary_disk_size": 40,
+              "private_net": [
+                {
+                  "alias_ips": [],
+                  "ip": "10.0.0.2",
+                  "mac_address": "86:00:00:3b:12:45",
+                  "network": 12535690
+                }
+              ],
+              "protection": {
+                "delete": false,
+                "rebuild": false
+              },
+              "public_net": {
+                "firewalls": [
+                  {
+                    "id": 11447381,
+                    "status": "applied"
+                  }
+                ],
+                "floating_ips": [],
+                "ipv4": {
+                  "blocked": false,
+                  "dns_ptr": "static.94.200.156.178.clients.your-server.de",
+                  "id": 144333672,
+                  "ip": "178.156.200.94"
+                },
+                "ipv6": {
+                  "blocked": false,
+                  "dns_ptr": [],
+                  "id": 144333673,
+                  "ip": "2a01:4ff:f0:549b::/64"
+                }
+              },
+              "rescue_enabled": false,
+              "server_type": {
+                "architecture": "x86",
+                "category": "regular_purpose",
+                "cores": 2,
+                "cpu_type": "shared",
+                "deprecated": false,
+                "deprecation": null,
+                "description": "CPX 11",
+                "disk": 40,
+                "id": 22,
+                "locations": [
+                  {
+                    "available": false,
+                    "deprecation": {
+                      "announced": "2025-10-16T06:00:00Z",
+                      "unavailable_after": "2025-12-31T23:59:59Z"
+                    },
+                    "id": 1,
+                    "name": "fsn1",
+                    "recommended": false
+                  },
+                  {
+                    "available": false,
+                    "deprecation": {
+                      "announced": "2025-10-16T06:00:00Z",
+                      "unavailable_after": "2025-12-31T23:59:59Z"
+                    },
+                    "id": 2,
+                    "name": "nbg1",
+                    "recommended": false
+                  },
+                  {
+                    "available": false,
+                    "deprecation": {
+                      "announced": "2025-10-16T06:00:00Z",
+                      "unavailable_after": "2025-12-31T23:59:59Z"
+                    },
+                    "id": 3,
+                    "name": "hel1",
+                    "recommended": false
+                  },
+                  {
+                    "available": true,
+                    "deprecation": null,
+                    "id": 4,
+                    "name": "ash",
+                    "recommended": false
+                  },
+                  {
+                    "available": true,
+                    "deprecation": null,
+                    "id": 5,
+                    "name": "hil",
+                    "recommended": false
+                  },
+                  {
+                    "available": false,
+                    "deprecation": {
+                      "announced": "2025-10-16T06:00:00Z",
+                      "unavailable_after": "2025-12-31T23:59:59Z"
+                    },
+                    "id": 6,
+                    "name": "sin",
+                    "recommended": false
+                  }
+                ],
+                "memory": 2,
+                "name": "cpx11",
+                "prices": [
+                  {
+                    "included_traffic": 1099511627776,
+                    "location": "ash",
+                    "price_hourly": {
+                      "gross": "0.0328000000000000",
+                      "net": "0.0328000000"
+                    },
+                    "price_monthly": {
+                      "gross": "20.4900000000000000",
+                      "net": "20.4900000000"
+                    },
+                    "price_per_tb_traffic": {
+                      "gross": "1.2000000000000000",
+                      "net": "1.2000000000"
+                    }
+                  },
+                  {
+                    "included_traffic": 21990232555520,
+                    "location": "fsn1",
+                    "price_hourly": {
+                      "gross": "0.0096000000000000",
+                      "net": "0.0096000000"
+                    },
+                    "price_monthly": {
+                      "gross": "5.9900000000000000",
+                      "net": "5.9900000000"
+                    },
+                    "price_per_tb_traffic": {
+                      "gross": "1.2000000000000000",
+                      "net": "1.2000000000"
+                    }
+                  },
+                  {
+                    "included_traffic": 21990232555520,
+                    "location": "hel1",
+                    "price_hourly": {
+                      "gross": "0.0096000000000000",
+                      "net": "0.0096000000"
+                    },
+                    "price_monthly": {
+                      "gross": "5.9900000000000000",
+                      "net": "5.9900000000"
+                    },
+                    "price_per_tb_traffic": {
+                      "gross": "1.2000000000000000",
+                      "net": "1.2000000000"
+                    }
+                  },
+                  {
+                    "included_traffic": 1099511627776,
+                    "location": "hil",
+                    "price_hourly": {
+                      "gross": "0.0328000000000000",
+                      "net": "0.0328000000"
+                    },
+                    "price_monthly": {
+                      "gross": "20.4900000000000000",
+                      "net": "20.4900000000"
+                    },
+                    "price_per_tb_traffic": {
+                      "gross": "1.2000000000000000",
+                      "net": "1.2000000000"
+                    }
+                  },
+                  {
+                    "included_traffic": 21990232555520,
+                    "location": "nbg1",
+                    "price_hourly": {
+                      "gross": "0.0096000000000000",
+                      "net": "0.0096000000"
+                    },
+                    "price_monthly": {
+                      "gross": "5.9900000000000000",
+                      "net": "5.9900000000"
+                    },
+                    "price_per_tb_traffic": {
+                      "gross": "1.2000000000000000",
+                      "net": "1.2000000000"
+                    }
+                  },
+                  {
+                    "included_traffic": 1099511627776,
+                    "location": "sin",
+                    "price_hourly": {
+                      "gross": "0.0184000000000000",
+                      "net": "0.0184000000"
+                    },
+                    "price_monthly": {
+                      "gross": "11.4900000000000000",
+                      "net": "11.4900000000"
+                    },
+                    "price_per_tb_traffic": {
+                      "gross": "8.3000000000000000",
+                      "net": "8.3000000000"
+                    }
+                  }
+                ],
+                "storage_type": "local"
+              },
+              "status": "running",
+              "volumes": []
+            },
+            {
+              "backup_window": null,
+              "created": "2026-08-11T04:12:49Z",
+              "id": 161342322,
+              "image": {
+                "architecture": "x86",
+                "bound_to": null,
+                "created": "2021-06-08T06:22:47Z",
+                "created_from": null,
+                "deleted": null,
+                "deprecated": null,
+                "description": "docker-ce",
+                "disk_size": 40,
+                "id": 40093247,
+                "image_size": null,
+                "labels": {},
+                "name": "docker-ce",
+                "os_flavor": "ubuntu",
+                "os_version": "unknown",
+                "protection": {
+                  "delete": false
+                },
+                "rapid_deploy": true,
+                "status": "available",
+                "type": "app"
+              },
+              "included_traffic": 0,
+              "ingoing_traffic": 0,
+              "iso": null,
+              "labels": {},
+              "load_balancers": [],
+              "location": {
+                "city": "Ashburn, VA",
+                "country": "US",
+                "description": "Ashburn, VA",
+                "id": 4,
+                "latitude": 39.045821,
+                "longitude": -77.487073,
+                "name": "ash",
+                "network_zone": "us-east"
+              },
+              "locked": false,
+              "name": "spex-story966-criterion8156-prod",
+              "outgoing_traffic": 0,
+              "placement_group": null,
+              "primary_disk_size": 40,
+              "private_net": [
+                {
+                  "alias_ips": [],
+                  "ip": "10.0.0.3",
+                  "mac_address": "86:00:00:3b:12:30",
+                  "network": 12535690
+                }
+              ],
+              "protection": {
+                "delete": false,
+                "rebuild": false
+              },
+              "public_net": {
+                "firewalls": [
+                  {
+                    "id": 11447381,
+                    "status": "pending"
+                  }
+                ],
+                "floating_ips": [],
+                "ipv4": {
+                  "blocked": false,
+                  "dns_ptr": "static.165.216.156.178.clients.your-server.de",
+                  "id": 144333756,
+                  "ip": "178.156.216.165"
+                },
+                "ipv6": {
+                  "blocked": false,
+                  "dns_ptr": [],
+                  "id": 144333757,
+                  "ip": "2a01:4ff:f0:af2d::/64"
+                }
+              },
+              "rescue_enabled": false,
+              "server_type": {
+                "architecture": "x86",
+                "category": "regular_purpose",
+                "cores": 2,
+                "cpu_type": "shared",
+                "deprecated": false,
+                "deprecation": null,
+                "description": "CPX 11",
+                "disk": 40,
+                "id": 22,
+                "locations": [
+                  {
+                    "available": false,
+                    "deprecation": {
+                      "announced": "2025-10-16T06:00:00Z",
+                      "unavailable_after": "2025-12-31T23:59:59Z"
+                    },
+                    "id": 1,
+                    "name": "fsn1",
+                    "recommended": false
+                  },
+                  {
+                    "available": false,
+                    "deprecation": {
+                      "announced": "2025-10-16T06:00:00Z",
+                      "unavailable_after": "2025-12-31T23:59:59Z"
+                    },
+                    "id": 2,
+                    "name": "nbg1",
+                    "recommended": false
+                  },
+                  {
+                    "available": false,
+                    "deprecation": {
+                      "announced": "2025-10-16T06:00:00Z",
+                      "unavailable_after": "2025-12-31T23:59:59Z"
+                    },
+                    "id": 3,
+                    "name": "hel1",
+                    "recommended": false
+                  },
+                  {
+                    "available": true,
+                    "deprecation": null,
+                    "id": 4,
+                    "name": "ash",
+                    "recommended": false
+                  },
+                  {
+                    "available": true,
+                    "deprecation": null,
+                    "id": 5,
+                    "name": "hil",
+                    "recommended": false
+                  },
+                  {
+                    "available": false,
+                    "deprecation": {
+                      "announced": "2025-10-16T06:00:00Z",
+                      "unavailable_after": "2025-12-31T23:59:59Z"
+                    },
+                    "id": 6,
+                    "name": "sin",
+                    "recommended": false
+                  }
+                ],
+                "memory": 2,
+                "name": "cpx11",
+                "prices": [
+                  {
+                    "included_traffic": 1099511627776,
+                    "location": "ash",
+                    "price_hourly": {
+                      "gross": "0.0328000000000000",
+                      "net": "0.0328000000"
+                    },
+                    "price_monthly": {
+                      "gross": "20.4900000000000000",
+                      "net": "20.4900000000"
+                    },
+                    "price_per_tb_traffic": {
+                      "gross": "1.2000000000000000",
+                      "net": "1.2000000000"
+                    }
+                  },
+                  {
+                    "included_traffic": 21990232555520,
+                    "location": "fsn1",
+                    "price_hourly": {
+                      "gross": "0.0096000000000000",
+                      "net": "0.0096000000"
+                    },
+                    "price_monthly": {
+                      "gross": "5.9900000000000000",
+                      "net": "5.9900000000"
+                    },
+                    "price_per_tb_traffic": {
+                      "gross": "1.2000000000000000",
+                      "net": "1.2000000000"
+                    }
+                  },
+                  {
+                    "included_traffic": 21990232555520,
+                    "location": "hel1",
+                    "price_hourly": {
+                      "gross": "0.0096000000000000",
+                      "net": "0.0096000000"
+                    },
+                    "price_monthly": {
+                      "gross": "5.9900000000000000",
+                      "net": "5.9900000000"
+                    },
+                    "price_per_tb_traffic": {
+                      "gross": "1.2000000000000000",
+                      "net": "1.2000000000"
+                    }
+                  },
+                  {
+                    "included_traffic": 1099511627776,
+                    "location": "hil",
+                    "price_hourly": {
+                      "gross": "0.0328000000000000",
+                      "net": "0.0328000000"
+                    },
+                    "price_monthly": {
+                      "gross": "20.4900000000000000",
+                      "net": "20.4900000000"
+                    },
+                    "price_per_tb_traffic": {
+                      "gross": "1.2000000000000000",
+                      "net": "1.2000000000"
+                    }
+                  },
+                  {
+                    "included_traffic": 21990232555520,
+                    "location": "nbg1",
+                    "price_hourly": {
+                      "gross": "0.0096000000000000",
+                      "net": "0.0096000000"
+                    },
+                    "price_monthly": {
+                      "gross": "5.9900000000000000",
+                      "net": "5.9900000000"
+                    },
+                    "price_per_tb_traffic": {
+                      "gross": "1.2000000000000000",
+                      "net": "1.2000000000"
+                    }
+                  },
+                  {
+                    "included_traffic": 1099511627776,
+                    "location": "sin",
+                    "price_hourly": {
+                      "gross": "0.0184000000000000",
+                      "net": "0.0184000000"
+                    },
+                    "price_monthly": {
+                      "gross": "11.4900000000000000",
+                      "net": "11.4900000000"
+                    },
+                    "price_per_tb_traffic": {
+                      "gross": "8.3000000000000000",
+                      "net": "8.3000000000"
+                    }
+                  }
+                ],
+                "storage_type": "local"
+              },
+              "status": "initializing",
+              "volumes": []
+            }
+          ]
+        },
+        "body_type": "json",
+        "headers": {
+          "access-control-allow-headers": [
+            "X-Requested-With,Authorization,Content-Type"
+          ],
+          "access-control-allow-methods": [
+            "OPTIONS,GET,POST,PUT,PATCH,DELETE"
+          ],
+          "access-control-allow-origin": [
+            "*"
+          ],
+          "access-control-expose-headers": [
+            "Link,X-Correlation-ID"
+          ],
+          "access-control-max-age": [
+            "86400"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "date": [
+            "Tue, 11 Aug 2026 04:12:50 GMT"
+          ],
+          "link": [
+            "<https://api.hetzner.cloud/v1/servers?page=1>; rel=\"last\""
+          ],
+          "ratelimit-limit": [
+            "3600"
+          ],
+          "ratelimit-remaining": [
+            "3588"
+          ],
+          "ratelimit-reset": [
+            "1786421582"
+          ],
+          "strict-transport-security": [
+            "max-age=31536000; includeSubDomains"
+          ],
+          "transfer-encoding": [
+            "chunked"
+          ],
+          "vary": [
+            "Accept-Encoding"
+          ],
+          "x-correlation-id": [
+            "692183b5babbfdcbd36ccd674961cf32"
+          ]
+        },
+        "status": 200
+      }
+    },
+    {
+      "recorded_at": "2026-08-11T04:12:51.465580Z",
+      "request": {
+        "body": "<CreateBucketConfiguration xmlns=\"http://s3.amazonaws.com/doc/2006-03-01/\">\n  <LocationConstraint>fsn1</LocationConstraint>\n</CreateBucketConfiguration>\n",
+        "body_type": "text",
+        "headers": {
+          "accept-encoding": [
+            "gzip"
+          ],
+          "content-length": [
+            "153"
+          ],
+          "host": [
+            "fsn1.your-objectstorage.com"
+          ],
+          "user-agent": [
+            "req/0.5.17"
+          ],
+          "x-amz-content-sha256": [
+            "d0247a684612d2f8a0dfd054cfbb39cf3098c94a37844aed8fbe62d39e583230"
+          ],
+          "x-amz-date": [
+            "20260811T041250Z"
+          ]
+        },
+        "method": "PUT",
+        "query_string": "",
+        "uri": "https://fsn1.your-objectstorage.com/spex-story966-criterion8156-registry-uat/"
+      },
+      "response": {
+        "body": "<Error><Code>BucketAlreadyExists</Code><Message>The requested bucket name is not available.</Message><Resource>spex-story966-criterion8156-registry-uat</Resource><RequestId>95647326382f9b68666cdc2ae96296a5</RequestId></Error>",
+        "body_type": "text",
+        "headers": {
+          "content-type": [
+            "application/xml"
+          ],
+          "date": [
+            "Tue, 11 Aug 2026 04:12:51 GMT"
+          ],
+          "strict-transport-security": [
+            "max-age=63072000"
+          ],
+          "x-debug-backend": [
+            "hcbm"
+          ],
+          "x-debug-bucket": [
+            "spex-story966-criterion8156-registry-uat"
+          ]
+        },
+        "status": 409
+      }
+    },
+    {
+      "recorded_at": "2026-08-11T04:12:51.723540Z",
+      "request": {
+        "body": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<LifecycleConfiguration xmlns=\"http://s3.amazonaws.com/doc/2006-03-01/\">\n  <Rule>\n    <ID>cms-dump-retention</ID>\n    <Filter><Prefix>docker/registry/v2/blobs/</Prefix></Filter>\n    <Status>Enabled</Status>\n    <Expiration><Days>30</Days></Expiration>\n  </Rule>\n</LifecycleConfiguration>\n",
+        "body_type": "text",
+        "headers": {
+          "accept-encoding": [
+            "gzip"
+          ],
+          "content-length": [
+            "327"
+          ],
+          "content-md5": [
+            "hpZaPNoTzIyAiNQvUw89tg=="
+          ],
+          "host": [
+            "fsn1.your-objectstorage.com"
+          ],
+          "user-agent": [
+            "req/0.5.17"
+          ],
+          "x-amz-content-sha256": [
+            "c949634e4b059c306e151329f6194243c78b2c6d90e90e79122a83535d131328"
+          ],
+          "x-amz-date": [
+            "20260811T041251Z"
+          ]
+        },
+        "method": "PUT",
+        "query_string": "lifecycle=1",
+        "uri": "https://fsn1.your-objectstorage.com/spex-story966-criterion8156-registry-uat/"
+      },
+      "response": {
+        "body": "",
+        "body_type": "text",
+        "headers": {
+          "content-length": [
+            "0"
+          ],
+          "content-type": [
+            "application/xml"
+          ],
+          "date": [
+            "Tue, 11 Aug 2026 04:12:51 GMT"
+          ],
+          "strict-transport-security": [
+            "max-age=63072000"
+          ],
+          "x-amz-request-id": [
+            "tx00000e67e8c0ee243a640-006a7aa143-3510d1fe-fsn1-prod1-ceph5"
+          ],
+          "x-debug-bucket": [
+            "spex-story966-criterion8156-registry-uat"
+          ]
+        },
+        "status": 200
       }
     }
   ],
