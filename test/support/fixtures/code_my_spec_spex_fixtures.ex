@@ -841,10 +841,8 @@ defmodule CodeMySpecSpex.Fixtures do
   def deliver_manifest(%Scope{} = scope, opts \\ []) do
     read_model = Keyword.get(opts, :read_model, %Scanner.ReadModel{})
 
-    observations =
-      scope.environment
-      |> Scanner.observe(read_model)
-      |> Enum.map(&serialize_observation/1)
+    {:ok, entries} = Scanner.observe(scope.environment, read_model)
+    observations = Enum.map(entries, &serialize_observation/1)
 
     socket = %Phoenix.Socket{assigns: %{scope: scope}}
 

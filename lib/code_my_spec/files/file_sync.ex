@@ -96,8 +96,34 @@ defmodule CodeMySpec.Files.FileSync do
     # separately; scanning now states what it needs and gets it once.
     read_model = Files.read_model(scope)
 
-    observations = Scanner.observe(env, read_model)
+    with {:ok, observations} <- observe(scope, env, read_model) do
+      finish_sync(scope, env, observations, start, embed?)
+    end
+  end
 
+  # An environment that does not scan is not an empty working copy, and this is
+  # where the two used to become the same thing. `Scanner.observe/2` answers
+  # with the refusal now; carrying it out of here means every caller that
+  # already writes `with {:ok, _} <- FileSync.sync(...)` gets it for free, and
+  # the two that bang-match crash naming the environment rather than silently
+  # deleting the projection.
+  defp observe(%Scope{} = scope, env, read_model) do
+    case Scanner.observe(env, read_model) do
+      {:ok, observations} ->
+        {:ok, observations}
+
+      {:error, reason} ->
+        Logger.error(
+          "[FileSync] refusing to sync #{scope.active_project_id}: this environment " <>
+            "cannot walk a working copy (#{inspect(reason)}). Nothing was scanned, so " <>
+            "nothing is authoritative — the rows already recorded stand."
+        )
+
+        {:error, {:cannot_scan, reason}}
+    end
+  end
+
+  defp finish_sync(scope, env, observations, start, embed?) do
     scan_ms = System.monotonic_time(:millisecond) - start
 
     %{
@@ -116,9 +142,12 @@ defmodule CodeMySpec.Files.FileSync do
 
     changed_paths = Enum.map(changed_entries, & &1.path)
 
+    # Named by working copy. Ten of these went by for two different checkouts
+    # while one of them was being emptied, and the line said which counts but
+    # never which tree, so they read as one healthy sync repeating.
     Logger.info(
-      "[FileSync] #{length(file_entries)} files scanned in #{scan_ms}ms, " <>
-        "validated in #{validate_ms}ms, " <>
+      "[FileSync] #{working_copy(scope)}: #{length(file_entries)} files scanned in " <>
+        "#{scan_ms}ms, validated in #{validate_ms}ms, " <>
         "#{upserted} upserted, #{length(changed_paths)} changed, " <>
         "#{removed} removed, total #{total_ms}ms"
     )
@@ -216,6 +245,13 @@ defmodule CodeMySpec.Files.FileSync do
       removed_records: removed_records
     }
   end
+
+  # Which checkout a line is about. Every row this module writes is keyed on the
+  # harness, so every line it logs should say which one — `cwd` when the scope
+  # has it, the harness id otherwise, since a server-side scope has no path.
+  defp working_copy(%Scope{cwd: cwd}) when is_binary(cwd), do: cwd
+  defp working_copy(%Scope{active_harness_id: id}) when is_binary(id), do: "harness #{id}"
+  defp working_copy(_scope), do: "an unnamed working copy"
 
   # Entries whose fingerprint differs from the existing DB row (or that
   # have no row yet) — i.e., files whose content actually changed since

@@ -414,8 +414,12 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   def handle_info({ref, counts}, %{assigns: %{reconciling: %Task{ref: ref}}} = socket) do
     Process.demonitor(ref, [:flush])
 
+    # Named by working copy. This line carried counts and no identity, so ten
+    # reconciles alternating between two checkouts read as one healthy sync
+    # repeating — while one of those checkouts was being emptied on every pass.
     Logger.info(
-      "[HarnessProject] reconciled: #{counts.upserted} upserted, #{counts.removed} removed, " <>
+      "[HarnessProject] reconciled #{socket.assigns.harness.root || socket.assigns.harness.id}: " <>
+        "#{counts.upserted} upserted, #{counts.removed} removed, " <>
         "#{counts.changed} changed, #{counts.components} components"
     )
 

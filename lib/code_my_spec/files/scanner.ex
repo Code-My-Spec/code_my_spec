@@ -87,15 +87,37 @@ defmodule CodeMySpec.Files.Scanner do
 
   Ownership is resolved before validation because `validate_entry/4` dispatches
   on `component_id` for `:test` files.
+
+  Returns `{:error, reason}` when the environment does not scan. It used to
+  return `[]` there, which is the same value a genuinely empty working copy
+  produces — and a caller cannot tell those apart, so it deletes.
+
+  `FileSync.sync/2` did exactly that. Running on the server, whose environment
+  is a `Harness` with no tree to walk, it took the empty list as a snapshot and
+  `Files.delete_removed/2` removed all 3936 rows for the working copy plus 452
+  of its Problems. The harness re-sent its manifest, the rows came back, and the
+  next `get_next_requirement` deleted them again — so asking what to work on
+  next destroyed the projection it had just answered from, and the answer was
+  `implementation_file` for `CodeMySpec.Authorization`, a module committed
+  months ago with eleven call sites.
   """
-  @spec observe(Environments.Environment.t(), ReadModel.t()) :: [map()]
+  @spec observe(Environments.Environment.t(), ReadModel.t()) :: {:ok, [map()]} | {:error, term()}
   def observe(env, %ReadModel{} = read_model) do
-    env
-    |> stream_files()
-    |> Enum.to_list()
-    |> then(&fingerprint_entries(env, &1))
-    |> resolve_owners(read_model)
-    |> Enum.map(&validate_entry(&1, env, read_model.component_by_id, read_model.strict?))
+    case Environments.stream_files(env, @sync_roots) do
+      {:error, reason} ->
+        {:error, reason}
+
+      stream ->
+        entries =
+          stream
+          |> classified(env)
+          |> Enum.to_list()
+          |> then(&fingerprint_entries(env, &1))
+          |> resolve_owners(read_model)
+          |> Enum.map(&validate_entry(&1, env, read_model.component_by_id, read_model.strict?))
+
+        {:ok, entries}
+    end
   end
 
   @doc """
@@ -168,6 +190,13 @@ defmodule CodeMySpec.Files.Scanner do
     env
     |> Environments.stream_files(@sync_roots)
     |> scannable()
+    |> classified(env)
+  end
+
+  # The half of the walk that turns paths into entries. Shared with `observe/2`,
+  # which needs the refusal before this point rather than folded into it.
+  defp classified(stream, env) do
+    stream
     |> Stream.map(&classify/1)
     |> Stream.reject(&is_nil/1)
     |> Stream.map(fn {path, role} -> stat_file(env, path, role) end)
