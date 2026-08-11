@@ -1315,9 +1315,10 @@ defmodule CodeMySpecSpex.Fixtures do
   - `:starting` — booting, and the fake never answers, so the spec observes the
     starting state deliberately rather than racing the boot watcher's clock.
   - `:running` — running, with a port, so there is an address to frame.
-  - `:running_without_url` — running and portless. Not a contrivance:
-    `Workspace.url/1` answers nil for a running workspace whose port is not an
-    integer, which is exactly the state criterion 2323 refuses to frame.
+  There is deliberately no "running without an address" state here.
+  `booting_changeset/2` requires a port, so a workspace row cannot be in one —
+  criterion 2323 hands the component that input directly, because the pane's
+  contract has to hold for hosts beyond the one that exists today.
   - `:down` — the container has gone away.
   """
   @spec workspace_in(Scope.t(), String.t(), atom()) :: :ok
@@ -1339,7 +1340,6 @@ defmodule CodeMySpecSpex.Fixtures do
   defp runner_opts(:down), do: [healthy?: false, alive?: false, serving: :down]
   defp runner_opts(_running), do: [healthy?: true, alive?: true, serving: :serving]
 
-  defp port_for(:running_without_url), do: nil
   defp port_for(_state), do: 4599
 
   defp settle(_workspace, :starting), do: :ok

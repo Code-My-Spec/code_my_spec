@@ -62,9 +62,12 @@ defmodule CodeMySpecSpex.Story885.Criterion2319Spex do
       end
 
       then_ "and the address of the page Sam is on has not changed", context do
-        # The host's own view is unaffected by anything the target does: it
-        # never learns about the target's navigation, which is the point.
-        assert_patch(context.view, 0)
+        # The host is still the page it was. Nothing the target does reaches
+        # this LiveView at all — it has no channel to it — which is the
+        # property the frame buys and the reason there is nothing louder to
+        # assert here.
+        assert render(context.view) =~ "data-test=\"preview-pane\"",
+               "the host navigated away from the page holding the pane"
 
         {:ok, context}
       end
