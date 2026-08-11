@@ -59,7 +59,25 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.RegisterSession do
     Session registered: #{session_id}
 
     Project: #{session.project_id}
-    Task tools on this server will now resolve against it.
+    Task tools on this server will now resolve against it.#{build_line()}
     """
+  end
+
+  # Which commit this server is running.
+  #
+  # A dev server runs the checkout it was started from, so a fix that is
+  # committed, pushed and green can be absent from every response an agent sees.
+  # The responses that matter here are messages about correctness — a stale
+  # stop-hook sentence, a missing reproduce line — and an agent reading one does
+  # not conclude "the server is behind", it concludes the fix does not work and
+  # re-investigates something already closed (5e59a29d).
+  #
+  # Said once, at registration, rather than on every response: it is a fact about
+  # the session, and repeating it would be noise until the moment it is not.
+  defp build_line do
+    case CodeMySpec.BootVersion.booted() do
+      nil -> ""
+      sha -> "\n\nServer build: #{sha}"
+    end
   end
 end

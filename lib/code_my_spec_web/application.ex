@@ -5,12 +5,23 @@ defmodule CodeMySpecWeb.Application do
 
   use Application
 
+  require Logger
+
   alias CodeMySpec.Analytics.GoogleAnalytics
 
   @impl true
   def start(_type, _args) do
     env = Application.get_env(:code_my_spec, :env, :prod)
     maybe_install_file_logger()
+
+    # Which commit is answering. A dev server runs the checkout it was started
+    # from, so a fix committed, pushed and green can still be absent from every
+    # response an agent sees — and because the responses in question are messages
+    # about correctness, a stale one reads as the fix not working rather than as
+    # the build being old. Three of those cost a diversion in one session
+    # (5e59a29d). Logged once at boot and reported by `register_session`.
+    CodeMySpec.BootVersion.capture()
+    log_boot_version()
 
     children =
       [
@@ -65,6 +76,13 @@ defmodule CodeMySpecWeb.Application do
   # Without this the dev server's only log was that terminal's scrollback, which
   # nobody but its owner can reach — so questions about :4000 got answered from
   # server.log, a different process on a different port, and answered wrongly.
+  defp log_boot_version do
+    case CodeMySpec.BootVersion.booted() do
+      nil -> :ok
+      sha -> Logger.info("[Boot] serving #{sha}")
+    end
+  end
+
   defp maybe_install_file_logger do
     if Application.get_env(:code_my_spec, :install_file_logger, false) do
       CodeMySpec.Logging.install_file_handler!(

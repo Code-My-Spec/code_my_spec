@@ -265,7 +265,7 @@ defmodule CmsHarness.HookDecision do
   # session and most commits do not touch the harness, so saying it proactively
   # would fire constantly and be ignored.
   defp boot_drift do
-    case CmsHarness.BootVersion.drift() do
+    case CodeMySpec.BootVersion.drift() do
       {:drifted, booted, current} ->
         "\n\n    This harness booted from #{booted} and its checkout is now at " <>
           "#{current}. If that range touched the harness or the channel " <>

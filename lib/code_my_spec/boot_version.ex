@@ -1,8 +1,8 @@
-defmodule CmsHarness.BootVersion do
+defmodule CodeMySpec.BootVersion do
   @moduledoc """
-  The commit this harness's code was loaded from, so a stale one can say so.
+  The commit a running process's code was loaded from, so a stale one can say so.
 
-  A harness runs the code it booted with. When the checkout it runs from moves —
+  A long-running process runs the code it booted with. When the checkout it runs from moves —
   a merge, a rebase, a branch switch — its code and the server's can disagree
   about the channel contract, and every stop afterwards fails with something
   that names neither the merge nor the harness. Reported in `7e8fd1c6`: 137
@@ -16,12 +16,36 @@ defmodule CmsHarness.BootVersion do
   reporting it beside an error the reader is already holding turns a guess about
   version skew into a fact they can act on.
 
-  The harness's *own* checkout, not the working copy a hook named. One harness
-  can serve several projects, and the question here is whether this process's
-  code is stale — which is about where it was started, and nowhere else.
+  The *process's own* checkout, not any working copy it was asked about. One
+  process can serve several projects, and the question here is whether this
+  process's code is stale — which is about where it was started, and nowhere
+  else.
+
+  Two callers, for two different questions. `CmsHarness.Supervisor` asks whether
+  the checkout moved under it, and reports drift beside an error the reader is
+  already holding. `CodeMySpec.Application` asks only *which* commit is
+  answering, because a server behind `main` serves messages about correctness
+  that read as the fix not working rather than as the build being old
+  (`5e59a29d`).
   """
 
   @key {__MODULE__, :boot}
+
+  @doc """
+  The commit recorded at boot, or nil.
+
+  Distinct from `drift/0`: this answers "which code is this?" rather than "has
+  the checkout moved since?". A response naming it lets a reader tell a fix that
+  is not deployed from one that does not work, which are otherwise the same
+  observation.
+  """
+  @spec booted() :: String.t() | nil
+  def booted do
+    case :persistent_term.get(@key, nil) do
+      {_root, sha} when is_binary(sha) -> sha
+      _ -> nil
+    end
+  end
 
   @doc """
   Record where this harness booted from. Called once, at start.

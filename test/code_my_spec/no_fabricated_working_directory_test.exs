@@ -54,12 +54,17 @@ defmodule CodeMySpec.NoFabricatedWorkingDirectoryTest do
 
     # Records where the harness's *own* code came from, once, at boot — the
     # same case as `working_copies.ex` one line up. It is not resolving a
-    # caller's project: `capture/1` runs from `Supervisor.init/1`, and the
-    # question it answers ("has this process outlived its checkout") is about
-    # the directory the harness was started in and nowhere else. `drift/0`,
-    # which *is* reachable from a request, reads the root recorded at boot and
-    # never consults cwd.
-    "lib/cms_harness/boot_version.ex" => "harness records the checkout it booted from",
+    # caller's project: `capture/1` runs from a supervisor's `init/1`, and the
+    # question it answers — which checkout is this process running — is about the
+    # directory the process was started in and nowhere else. `drift/0` and
+    # `booted/0`, which *are* reachable from a request, read what was recorded at
+    # boot and never consult cwd.
+    #
+    # Moved out of `CmsHarness` because the server needs the same answer for a
+    # different reason, and the boundary runs `CmsHarness -> CodeMySpec` so it
+    # could not be reused where it was. The allowlist is keyed by path, so the
+    # move is what surfaced this entry rather than any change in what it does.
+    "lib/code_my_spec/boot_version.ex" => "records the checkout this process booted from",
 
     # The local desktop app: one machine, one project, cwd is it.
     "lib/code_my_spec_local_web/live/projects/form.ex" => "local desktop UI",

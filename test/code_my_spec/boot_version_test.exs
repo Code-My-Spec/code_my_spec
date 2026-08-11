@@ -1,4 +1,4 @@
-defmodule CmsHarness.BootVersionTest do
+defmodule CodeMySpec.BootVersionTest do
   @moduledoc """
   A harness that has outlived its checkout can say so.
 
@@ -17,7 +17,7 @@ defmodule CmsHarness.BootVersionTest do
 
   use ExUnit.Case, async: false
 
-  alias CmsHarness.BootVersion
+  alias CodeMySpec.BootVersion
 
   setup do
     on_exit(fn -> :persistent_term.erase({BootVersion, :boot}) end)
@@ -84,6 +84,30 @@ defmodule CmsHarness.BootVersionTest do
       assert BootVersion.drift() == :none,
              "a `:cd` into a missing directory raises; this decorates an error " <>
                "path and must not be able to take it down"
+    end
+  end
+
+  # `drift/0` answers "has the checkout moved since boot", which is a different
+  # question from "which code is this". A server behind main is not drifting —
+  # its own checkout has not moved — and yet it is exactly the case an agent
+  # needs named, because a stale message about correctness reads as the fix not
+  # working rather than as the build being old (5e59a29d).
+  describe "booted/0" do
+    test "reports the recorded commit" do
+      BootVersion.capture(File.cwd!())
+
+      assert is_binary(BootVersion.booted())
+      assert String.length(BootVersion.booted()) >= 7
+    end
+
+    # The short form, which is what `head/1` records — asserted against git
+    # rather than against a length, so the two cannot drift apart silently.
+    test "it is the commit HEAD names" do
+      BootVersion.capture(File.cwd!())
+
+      {head, 0} = System.cmd("git", ["rev-parse", "--short", "HEAD"], cd: File.cwd!())
+
+      assert BootVersion.booted() == String.trim(head)
     end
   end
 end

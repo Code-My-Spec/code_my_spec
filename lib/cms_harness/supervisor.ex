@@ -42,8 +42,8 @@ defmodule CmsHarness.Supervisor do
     # harness runs what it booted with, and when its checkout moves underneath
     # it the two can disagree about the channel contract — which surfaces as an
     # error naming neither the merge nor the harness (7e8fd1c6). Read only on a
-    # failure path; see `CmsHarness.BootVersion`.
-    CmsHarness.BootVersion.capture()
+    # failure path; see `CodeMySpec.BootVersion`.
+    CodeMySpec.BootVersion.capture()
 
     children = [
       # A hook arrives as an HTTP request carrying a working directory, and
