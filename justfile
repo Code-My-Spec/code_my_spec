@@ -101,6 +101,61 @@ refresh port="4000":
     echo "✗ {{port}} did not come up in 180s — see $log" >&2
     exit 1
 
+# Restart the harness on :4004, from any worktree.
+refresh-harness port="4004":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    # The other half of `just refresh`. A server and a harness on different
+    # commits speak different channel contracts, and the symptom is
+    # `{:error, %{"reason" => "unmatched topic"}}` on every stop — which reads
+    # as a connection problem and is not one. `BootVersion.drift/0` names it in
+    # the stop message; this is how it gets fixed.
+    #
+    # One harness serves every working copy: `Projects.ensure_started/1` picks
+    # each one up from its first hook request, so restarting from any worktree
+    # is safe and the others re-register on their next stop. Verified before
+    # relying on it — the alternative, a harness that only served the directory
+    # it started in, would strand every other agent.
+    #
+    # It does cost the other agents their in-flight sweeps, the same way a
+    # server restart does (406f85db). Say so rather than doing it quietly.
+    pid="$(lsof -nP -iTCP:{{port}} -sTCP:LISTEN -t || true)"
+
+    if [ -n "$pid" ]; then
+        echo "→ stopping harness $pid on {{port}}"
+        echo "  in-flight analysis for every working copy dies with it"
+        kill "$pid"
+        for _ in $(seq 1 30); do
+            lsof -nP -iTCP:{{port}} -sTCP:LISTEN -t >/dev/null 2>&1 || break
+            sleep 1
+        done
+    else
+        echo "→ nothing listening on {{port}}"
+    fi
+
+    log="$HOME/.codemyspec/harness_{{port}}.restart.log"
+
+    # `exec </dev/null >>"$log" 2>&1` in the subshell, not just on the child.
+    # Starting a beam leaves `epmd` behind, daemonized, holding whatever
+    # descriptors it inherited — so a caller waiting for its pipe to close waits
+    # forever on a recipe that has already exited. Redirecting the child alone
+    # is not enough; the descendant already has copies.
+    ( exec </dev/null >>"$log" 2>&1; nohup just harness & )
+    echo "→ starting, logging to $log"
+
+    for _ in $(seq 1 90); do
+        if lsof -nP -iTCP:{{port}} -sTCP:LISTEN -t >/dev/null 2>&1; then
+            echo "✓ harness is listening on {{port}}"
+            echo "  working copies re-register on their next hook"
+            exit 0
+        fi
+        sleep 2
+    done
+
+    echo "✗ harness did not come up in 180s — see $log" >&2
+    exit 1
+
 cli *args:
     MIX_ENV=dev_cli iex -S mix run --no-halt {{args}}
 
