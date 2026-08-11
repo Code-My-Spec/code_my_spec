@@ -107,13 +107,7 @@ defmodule CodeMySpec.Analysis do
     latest = RunsRepository.latest_full_runs(scope)
     only_failed = Keyword.get(opts, :only_failed, false)
 
-    {stale, memoized} =
-      requests
-      |> Enum.map(&normalize_request/1)
-      |> order_compile_first()
-      |> Enum.split_with(fn {source, args} ->
-        needs_run?(source, args, fingerprints, latest, only_failed)
-      end)
+    {stale, memoized} = plan_runs(requests, fingerprints, latest, only_failed)
 
     Enum.each(stale, fn {source, args} ->
       job = build_job(source, args, fingerprints[source], opts)
@@ -130,6 +124,22 @@ defmodule CodeMySpec.Analysis do
       do: Logger.info("[Analysis] skipped (current): #{Enum.join(memoized_sources, ", ")}")
 
     %{enqueued: stale_sources, memoized: memoized_sources}
+  end
+
+  @doc false
+  # Which of `requests` need running, split from those that do not.
+  #
+  # Public so the property that matters can be asserted without dispatching:
+  # what this decides must agree with `fresh_sources/2`. They did not, and the
+  # disagreement was a livelock — see `needs_run?/5`.
+  @spec plan_runs([term()], map(), map(), boolean()) :: {list(), list()}
+  def plan_runs(requests, fingerprints, latest, only_failed) do
+    requests
+    |> Enum.map(&normalize_request/1)
+    |> order_compile_first()
+    |> Enum.split_with(fn {source, args} ->
+      needs_run?(source, args, fingerprints, latest, only_failed)
+    end)
   end
 
   defp normalize_request({source, args}) when is_list(args), do: {source, args}
@@ -169,14 +179,33 @@ defmodule CodeMySpec.Analysis do
   # qa_complete, which emptied next_actionable, which told an unattended agent
   # there was nothing left to do while ten stories sat unQA'd. `stale?/3`
   # already got this right with its `_ -> true`.
-  defp needs_run?("compiler", _args, _fingerprints, latest, true) do
-    is_nil(latest["compiler"]) or
-      match?(%Run{status: :failed}, latest["compiler"]) or
+  # `only_failed` meant "the latest run completed, so there is nothing to redo".
+  # Status is not evidence about the tree. A run can have completed perfectly
+  # against a tree that has since moved, which is exactly the state after the
+  # agent fixes the finding it was blocked on — and `fresh_sources/2`, which the
+  # stop hook uses, reads the fingerprint and calls that stale.
+  #
+  # So both were reachable at once and contradicted each other:
+  #
+  #     [Analysis] skipped (current): compiler, credo, exunit, spex
+  #     credo (1) — stale, last ran 19m ago … A rerun is in flight now (credo)
+  #
+  # Nothing was in flight, the timestamp never moved, and the hook's advice —
+  # stop again and let the rerun replace these — could not succeed. Following it
+  # loops; the alternative is re-editing code that is already correct
+  # (`1f60a145`).
+  #
+  # `stale?/3` is what `status/1` already uses, so the two answers now come from
+  # one comparison. `only_failed` keeps its meaning — do not redo work for an
+  # unchanged tree — and loses the part that was never true, that an unchanged
+  # status implies an unchanged tree.
+  defp needs_run?("compiler", _args, fingerprints, latest, true) do
+    stale?("compiler", fingerprints, latest) or
       Enum.any?(latest, fn {_source, run} -> skipped_for_compile_errors?(run) end)
   end
 
-  defp needs_run?(source, _args, _fingerprints, latest, true),
-    do: is_nil(latest[source]) or match?(%Run{status: :failed}, latest[source])
+  defp needs_run?(source, _args, fingerprints, latest, true),
+    do: stale?(source, fingerprints, latest)
 
   defp needs_run?(_source, _args, _fingerprints, _latest, _only_failed), do: true
 
