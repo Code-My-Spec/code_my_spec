@@ -20,9 +20,6 @@ defmodule CodeMySpec.Workspaces.PreviewAddress do
   for; this writes one on ours, pointing at us. Same API call, different thing.
   """
 
-  alias CodeMySpec.Provisioning.Cloudflare
-  alias CodeMySpec.Users.Scope
-
   require Logger
 
   @prefix "preview-"
@@ -34,24 +31,24 @@ defmodule CodeMySpec.Workspaces.PreviewAddress do
   just been written. `{:error, reason}` is for the caller to show as "not yet",
   never as "your app is broken": nothing about this says anything about the app.
   """
-  @spec ensure(Scope.t(), String.t()) :: {:ok, String.t()} | {:error, term()}
-  def ensure(%Scope{} = scope, project_id) do
+  @spec ensure(String.t()) :: {:ok, String.t()} | {:error, term()}
+  def ensure(project_id) do
     host = host(project_id)
 
-    ensure_record(manage_dns?(), scope, host)
+    ensure_record(manage_dns?(), host)
   end
 
-  # Where the address already resolves without us — dev, where every label under
-  # `.localhost` is 127.0.0.1 — there is no record to write and asking
-  # Cloudflare for a zone named "localhost" would fail once per preview, loudly
-  # and pointlessly. The contract is that the address resolves, and it does.
-  defp ensure_record(false, _scope, host), do: {:ok, host}
+  # Where the address already resolves without us — dev on `.localhost`, where
+  # every label is 127.0.0.1 — there is no record to write and asking for a zone
+  # named "localhost" would fail once per preview, loudly and pointlessly. The
+  # contract is that the address resolves, and it does.
+  defp ensure_record(false, host), do: {:ok, host}
 
-  defp ensure_record(true, scope, host) do
-    with {:ok, zone} <- zone(scope),
-         {:ok, _record} <- write(scope, zone, host) do
-      {:ok, host}
-    else
+  defp ensure_record(true, host) do
+    case put_record(host) do
+      {:ok, _} ->
+        {:ok, host}
+
       {:error, reason} ->
         Logger.warning(
           "[PreviewAddress] #{host} could not be pointed anywhere: #{inspect(reason)}"
@@ -117,22 +114,74 @@ defmodule CodeMySpec.Workspaces.PreviewAddress do
     end
   end
 
-  defp zone(scope) do
-    case Cloudflare.find_zone(scope, base_domain()) do
-      {:ok, %{"id" => id}} -> {:ok, id}
-      other -> other
-    end
-  end
-
+  # Our own credential, not the visitor's. `Provisioning.Cloudflare` speaks for
+  # the customer — it resolves their integration and writes on domains they own.
+  # This record is on *our* zone, pointing at *our* tunnel, and a visitor who
+  # has never connected Cloudflare must still get a preview address. Taking a
+  # scope here was the bug: it authenticated as whoever happened to be looking,
+  # and failed with :cloudflare_not_connected for everyone who had not linked an
+  # account they have no reason to have.
+  #
   # A CNAME to the tunnel rather than an address record: the thing serving a
   # preview moves — a laptop today, the shared host later — and a name that
   # follows it survives that move without a zone edit per project.
-  defp write(scope, zone_id, host) do
-    Cloudflare.ensure_dns_record(scope, zone_id, host, target(),
-      type: "CNAME",
-      proxied: true
-    )
+  defp put_record(host) do
+    with {:ok, token} <- token(),
+         {:ok, zone_id} <- zone_id() do
+      Req.post(
+        "https://api.cloudflare.com/client/v4/zones/#{zone_id}/dns_records",
+        headers: [{"authorization", "Bearer " <> token}],
+        json: %{type: "CNAME", name: host, content: target(), proxied: true, ttl: 1},
+        retry: false,
+        receive_timeout: 10_000
+      )
+      |> interpret()
+    end
   end
+
+  # An existing record is success, not failure: the whole point is that the
+  # address is stable across every container, so the second preview finds what
+  # the first one wrote.
+  defp interpret({:ok, %Req.Response{status: status}}) when status in 200..299,
+    do: {:ok, :written}
+
+  # 81053 is "a record with that host already exists", which is the ordinary
+  # case from the second preview onward and is exactly what we want — the
+  # address is stable across every container, so finding it already written is
+  # success. Guessed 81057 first and watched every repeat call log a warning
+  # for having worked.
+  defp interpret({:ok, %Req.Response{body: %{"errors" => errors}}}) when is_list(errors) do
+    if Enum.any?(errors, &(&1["code"] in [81_053, 81_057])) do
+      {:ok, :already_there}
+    else
+      {:error, {:cloudflare, errors}}
+    end
+  end
+
+  defp interpret({:ok, %Req.Response{status: status, body: body}}),
+    do: {:error, {:cloudflare, status, body}}
+
+  defp interpret({:error, reason}), do: {:error, reason}
+
+  # The account credential already exists and is already configured for this
+  # zone — `Content.CloudflareClient` uses it to purge cache on publish. One
+  # Cloudflare account, one token, one place it is read from. Reaching for
+  # `System.get_env` here returned nil and looked like a missing secret: the
+  # envs/ files are Dotenvy, loaded into config, never into the process
+  # environment.
+  defp token do
+    present(config()[:token] || app_cloudflare()[:api_token], :no_cloudflare_token)
+  end
+
+  defp zone_id do
+    present(config()[:zone_id] || app_cloudflare()[:zone_id], :no_zone_id)
+  end
+
+  defp present(value, reason) when value in [nil, ""], do: {:error, reason}
+  defp present(value, _reason), do: {:ok, value}
+
+  defp app_cloudflare,
+    do: Application.get_env(:code_my_spec, CodeMySpec.Content.CloudflareClient, [])
 
   defp target do
     config()[:target] ||

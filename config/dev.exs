@@ -137,7 +137,8 @@ config :code_my_spec, :cloudflare_tunnel,
   hostname: "dev.codemyspec.com",
   tunnel_id: "12a798a4-81a3-4242-8b59-ac171c0a01a1",
   account_tag: "6477547f586ec90db2c2a0081dcd98bd",
-  origin_url: "http://127.0.0.1:4000"
+  origin_url: "http://127.0.0.1:4000",
+  additional_hostnames: [{"*.codemyspec.com", "http://127.0.0.1:4010"}]
 
 # Previews resolve through the same tunnel that serves dev.codemyspec.com, so
 # a preview address works from a phone or a colleague's browser rather than
@@ -152,13 +153,13 @@ config :code_my_spec, :cloudflare_tunnel,
 # `target` stays as it is: it is only read by `ensure/2`, which writes a
 # Cloudflare record and has no business running against a dev machine.
 config :code_my_spec, CodeMySpec.Workspaces.PreviewAddress,
-  base_domain: "localhost",
+  base_domain: "codemyspec.com",
   target: "12a798a4-81a3-4242-8b59-ac171c0a01a1.cfargotunnel.com",
-  scheme: "http",
-  port: 4010,
-  # No records to write: `.localhost` resolves without a zone, and asking
-  # Cloudflare for one named "localhost" would fail once per preview.
-  manage_dns: false
+  scheme: "https",
+  # Real records now: the tunnel routes *.codemyspec.com to the preview
+  # listener, so a per-project CNAME is what makes an address arrive.
+  manage_dns: true,
+  zone_id: "ba45c3c2010cb275de73f91f4f05edab"
 
 # The pane is served from the dev endpoint, so that is who has to be allowed to
 # frame a preview. Without this the proxy names the production origin, the

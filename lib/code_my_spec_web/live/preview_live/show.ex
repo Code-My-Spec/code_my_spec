@@ -58,10 +58,9 @@ defmodule CodeMySpecWeb.PreviewLive.Show do
   defp ensure_address(%{assigns: %{src: nil}} = socket, _connected), do: socket
 
   defp ensure_address(socket, true) do
-    scope = socket.assigns.current_scope
     project_id = socket.assigns.workspace.project_id
 
-    start_async(socket, :preview_address, fn -> PreviewAddress.ensure(scope, project_id) end)
+    start_async(socket, :preview_address, fn -> PreviewAddress.ensure(project_id) end)
   end
 
   @impl true
