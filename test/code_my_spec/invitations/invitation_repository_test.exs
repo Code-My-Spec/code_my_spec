@@ -71,6 +71,25 @@ defmodule CodeMySpec.Invitations.InvitationRepositoryTest do
       scope = %Scope{user: user_fixture(), active_account_id: nil}
       assert InvitationRepository.get_invitation(scope, 1) == nil
     end
+
+    # The two tests above passed for a year without the repository looking at
+    # the scope at all: one asks for an id that does not exist, and the other
+    # asked for id 1, which only happens to be absent once the sequence has
+    # moved past it. On a fresh database the setup above draws id 1 itself,
+    # whichever describe block wins the race, and then "no active account"
+    # returned an invitation. That is the intermittent failure.
+    #
+    # This one cannot pass without the scoping, on any database. It is also the
+    # behaviour that matters: `cancel_invitation/3` checks that you may manage
+    # the account you name, then trusts this function to confirm the invitation
+    # is that account's.
+    test "does not return another account's invitation", %{invitation: invitation} do
+      other_user = user_fixture()
+      other_account = account_with_owner_fixture(other_user)
+      other_scope = %Scope{user: other_user, active_account_id: other_account.id}
+
+      assert InvitationRepository.get_invitation(other_scope, invitation.id) == nil
+    end
   end
 
   describe "get_invitation!/2" do
