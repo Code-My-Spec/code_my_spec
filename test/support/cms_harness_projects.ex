@@ -7,6 +7,43 @@ defmodule CmsHarnessTest.Projects do
   """
 
   @doc """
+  Run a command in `root`, failing with its output rather than a `MatchError`.
+
+  `{_, 0} = System.cmd("mix", ["deps.get"], …)` raises
+
+      ** (MatchError) no match of right hand side value: {"…", 1}
+
+  with the reason truncated inside a value nobody reads, in a `setup` whose
+  failure is then reported against whichever test ran first. These shell out
+  while three worktrees' suites and the harness's analyzers share the box, so
+  they do fail — `0bc611c9` is four such tests, each of which "presents as a
+  specific failure in a named file and reads as a real defect in code nobody
+  touched", costing an investigation apiece.
+
+  This does not make them pass. It makes the failure say what happened, which
+  is the cost that issue is actually about.
+  """
+  def cmd!(root, command, args) do
+    case System.cmd(command, args, cd: root, stderr_to_stdout: true) do
+      {_output, 0} ->
+        :ok
+
+      {output, status} ->
+        raise """
+        #{command} #{Enum.join(args, " ")} exited #{status} in #{root}.
+
+        This is the test's setup, not its subject. These commands share a
+        machine with other suites and the harness's analyzers, so a failure
+        here is often contention (a dependency cache, a build lock) rather
+        than a defect — check whether it reproduces on an idle box before
+        treating it as one.
+
+        #{output}
+        """
+    end
+  end
+
+  @doc """
   A directory that looks enough like a CodeMySpec project to be served: a
   `config.yml` naming an id, a `lib/` and a `test/`.
   """

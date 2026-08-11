@@ -17,6 +17,8 @@ defmodule CmsHarness.AnalysisTest do
 
   use ExUnit.Case, async: true
 
+  import CmsHarnessTest.Projects, only: [cmd!: 3]
+
   alias CmsHarness.Analysis
 
   # Nothing here fetches from the network beyond `client_utils`'s two small hex
@@ -53,7 +55,7 @@ defmodule CmsHarness.AnalysisTest do
   # match is the assertion: a fixture whose deps did not resolve would fail
   # later as a compile error and read as the thing under test.
   defp fetch_deps(root, true) do
-    {_, 0} = System.cmd("mix", ["deps.get"], cd: root, stderr_to_stdout: true)
+    cmd!(root, "mix", ["deps.get"])
     :ok
   end
 
