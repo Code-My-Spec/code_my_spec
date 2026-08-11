@@ -22,6 +22,7 @@ defmodule CodeMySpec.Chat.McpToolRegistry do
   alias Anubis.Server.Frame
   alias CodeMySpec.Conversations.Conversation
   alias CodeMySpec.Projects
+  alias CodeMySpec.Stories
   alias CodeMySpec.Users.Scope
 
   # The story interview's surface. Deliberately narrow: an interview that can
@@ -65,13 +66,50 @@ defmodule CodeMySpec.Chat.McpToolRegistry do
   end
 
   defp dispatch(module, args, conversation) do
-    frame = %Frame{assigns: %{current_scope: scope(conversation)}}
+    scope = scope(conversation)
 
-    case module.execute(atomize(args), frame) do
-      {:reply, response, _frame} -> {:ok, normalize(response)}
-      {:error, reason} -> {:error, to_message(reason)}
+    case refusal(module, scope) do
+      nil ->
+        frame = %Frame{assigns: %{current_scope: scope}}
+
+        case module.execute(atomize(args), frame) do
+          {:reply, response, _frame} -> {:ok, normalize(response)}
+          {:error, reason} -> {:error, to_message(reason)}
+        end
+
+      message ->
+        {:ok, message}
     end
   end
+
+  # The interview produces one story. Nothing used to say so, and the rule
+  # appeared to hold only because two stories with the same title trip a unique
+  # index — so a model that named its second story differently, which is the
+  # likely case since it would be describing something else, made one silently.
+  #
+  # This is the conversation's own question, not the tool's: `create_story` is
+  # correct to keep working everywhere else. The conversation is one per project
+  # (`story-interview:<project_id>`) and this is the *first* story, shaped at
+  # signup before any code — so "has this project got a story yet" is the same
+  # question as "has this interview already produced one", without a link to
+  # keep in step.
+  #
+  # Returned as the tool result rather than an error, so the model reads it,
+  # knows the story exists and can go on to update it. An error would end the
+  # turn with nothing said.
+  defp refusal(CodeMySpec.McpServers.Stories.Tools.CreateStory, scope) do
+    case Stories.list_project_stories(scope) do
+      {:ok, [story | _]} ->
+        "This conversation has already produced a story: #{story.title} (id: #{story.id}). " <>
+          "An interview shapes one story. Use `update_story` to change it rather than " <>
+          "creating another."
+
+      _ ->
+        nil
+    end
+  end
+
+  defp refusal(_module, _scope), do: nil
 
   # Account *and* project, with the project loaded — not just its id.
   #
