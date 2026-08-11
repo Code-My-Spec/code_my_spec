@@ -69,6 +69,7 @@ defmodule CodeMySpec.Requirements.Predicates do
 
   import Ecto.Query
 
+  alias CodeMySpec.Deploys.Deploy
   alias CodeMySpec.Files.File
   alias CodeMySpec.Requirements.Node
   alias CodeMySpec.Stories.Story
@@ -133,7 +134,13 @@ defmodule CodeMySpec.Requirements.Predicates do
   """
   @spec satisfied(
           Ecto.Query.t(),
-          :file_exists | :file_valid | :path_exists | :field_present | :field_true,
+          :file_exists
+          | :file_valid
+          | :path_exists
+          | :field_present
+          | :field_true
+          | :deployed
+          | :all_deployed,
           map(),
           Ecto.UUID.t() | nil
         ) :: Ecto.Query.t()
@@ -249,6 +256,93 @@ defmodule CodeMySpec.Requirements.Predicates do
         )
       )
     )
+  end
+
+  # Satisfied when this story is live on `environment` and answered there.
+  #
+  # Read from `deploys` rather than a flag on the story, so there is nothing to
+  # keep in step and nothing to drift. `health_verified_at` is the whole point:
+  # the deploy step writes a row only on its success branch, after its own
+  # probe passed, so a deploy that shipped and never answered does not satisfy
+  # anything (criterion 1964).
+  def satisfied(query, :deployed, config, _harness_id) do
+    environment = environment_name(config)
+
+    where(
+      query,
+      [node: n],
+      exists(
+        from(d in Deploy,
+          where: d.story_id == parent_as(:node).story_id,
+          where: d.environment == ^environment,
+          where: not is_nil(d.health_verified_at),
+          select: 1
+        )
+      )
+    )
+  end
+
+  # Satisfied when *every* story on the project is live on `environment`.
+  #
+  # Project-scoped, because "the whole graph is out" is a claim about the
+  # project rather than about any one story. Written as "no story is missing a
+  # verified deploy" so a story added later un-satisfies it again, which is the
+  # behaviour you want from a release gate.
+  #
+  # A project with no stories reads unsatisfied rather than vacuously true —
+  # `exists` on the inner query means there has to be at least one story that
+  # *is* deployed. Releasing nothing is not a release.
+  def satisfied(query, :all_deployed, config, _harness_id) do
+    environment = environment_name(config)
+
+    where(
+      query,
+      [node: n],
+      exists(
+        from(s in Story,
+          as: :story,
+          where: s.project_id == parent_as(:node).project_id,
+          where: ^deployed_story(environment),
+          select: 1
+        )
+      ) and
+        not exists(
+          from(s in Story,
+            as: :story,
+            where: s.project_id == parent_as(:node).project_id,
+            where: ^undeployed_story(environment),
+            select: 1
+          )
+        )
+    )
+  end
+
+  # Correlated on `parent_as(:story)`, not on the node: inside these the parent
+  # is the story being tested, and reading the node's id here would ask whether
+  # a *requirement* had been deployed.
+  defp deployed_story(environment) do
+    dynamic(
+      [story: s],
+      exists(
+        from(d in Deploy,
+          where: d.story_id == parent_as(:story).id,
+          where: d.environment == ^environment,
+          where: not is_nil(d.health_verified_at),
+          select: 1
+        )
+      )
+    )
+  end
+
+  defp undeployed_story(environment) do
+    dynamic([story: s], not (^deployed_story(environment)))
+  end
+
+  defp environment_name(config) do
+    case config_value(config, :environment) do
+      name when is_binary(name) -> name
+      name when is_atom(name) and not is_nil(name) -> Atom.to_string(name)
+    end
   end
 
   defp field_name(config) do

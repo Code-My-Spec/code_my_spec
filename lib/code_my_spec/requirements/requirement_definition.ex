@@ -78,7 +78,11 @@ defmodule CodeMySpec.Requirements.RequirementDefinition do
     :field_true,
     :no_problems,
     :tests_passing,
-    :delegate
+    :delegate,
+    # Read from the deploys table, which only records a deploy after its own
+    # health probe answered.
+    :deployed,
+    :all_deployed
   ]
 
   @primary_key false
