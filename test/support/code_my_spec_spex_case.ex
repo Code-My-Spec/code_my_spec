@@ -2875,6 +2875,26 @@ defmodule CodeMySpecSpex.Case do
       # in the first place. The body is what tells two resources apart, and
       # `filter_sensitive_data` scrubs it before it is written.
       |> Keyword.put_new(:match_requests_on, [:method, :uri, :body])
+      # …but a body that carries a freshly generated key can never match one.
+      #
+      # `generate_access_key/2` shells out to `ssh-keygen`, so every run mints a
+      # different public half and `POST /v1/ssh_keys` arrives with a body no
+      # recording can hold. Adding `:body` to the match — which was right, and
+      # is what stopped a UAT create being handed production's response — made
+      # that fatal rather than harmless.
+      #
+      # It is worth being precise about the blast radius, because it looked for
+      # a while like the 412 placement fallback: every criterion that creates a
+      # server creates a key first, so this one mismatch is the first request to
+      # miss, and everything after it in the run never happens. The step reports
+      # a cassette miss and the criterion reports nothing provisioned.
+      #
+      # Normalised on both sides. `filter_request` runs against the incoming
+      # request before matching on replay and before writing on record, so the
+      # stored body and the live one agree — while `:body` keeps telling a UAT
+      # create apart from a production one, which is the whole reason it is in
+      # the list.
+      |> Keyword.put_new(:filter_request, &normalize_volatile_request/1)
       # Sequential, because several steps poll: bucket readiness, Resend's
       # domain verification, server boot. Matching only on method and URI
       # makes every poll iteration the same request, so the cassette answers
@@ -2954,6 +2974,30 @@ defmodule CodeMySpecSpex.Case do
       CodeMySpec.Content.S3Client
     ]
   end
+
+  # An SSH public key is the one part of a recorded body that cannot be the same
+  # twice: `generate_access_key/2` runs `ssh-keygen` per run.
+  #
+  # Replaced rather than dropped, so the field still has to be *present* and
+  # still has to be a key — a request that stopped sending one would no longer
+  # match, which is the point of matching on the body at all.
+  #
+  # The comment is the value, so a cassette that has been through here says so
+  # to whoever reads it next.
+  @normalized_public_key "ssh-ed25519 AAAA-normalized-by-spex-cassette-filter spex"
+
+  @doc false
+  @spec normalize_volatile_request(map()) :: map()
+  def normalize_volatile_request(%{"body_json" => body} = request) when is_map(body) do
+    %{request | "body_json" => normalize_body(body)}
+  end
+
+  def normalize_volatile_request(request), do: request
+
+  defp normalize_body(%{"public_key" => key} = body) when is_binary(key),
+    do: %{body | "public_key" => @normalized_public_key}
+
+  defp normalize_body(body), do: body
 
   def cassette_mode do
     case System.get_env("SPEX_CASSETTE_MODE") do

@@ -1814,7 +1814,7 @@
       "request": {
         "body_json": {
           "name": "spex-story963-criterion7973",
-          "public_key": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIA5glPrQWzkJKdeSPQsKtXCr6zwGa9+gTC4APyu+fqKM spex-story963-criterion7973"
+          "public_key": "ssh-ed25519 AAAA-normalized-by-spex-cassette-filter spex"
         },
         "body_type": "json",
         "headers": {

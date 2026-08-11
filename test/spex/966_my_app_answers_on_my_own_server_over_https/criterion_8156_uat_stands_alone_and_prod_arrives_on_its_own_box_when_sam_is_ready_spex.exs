@@ -153,7 +153,11 @@ defmodule CodeMySpecSpex.Story966.Criterion8156Spex do
         state = s |> Floki.attribute("data-state") |> List.first()
 
         if state in ["errored", "paused"] do
-          detail = s |> Floki.text() |> String.replace(~r/\s+/, " ") |> String.slice(0, 160)
+          # Wide enough to carry a cassette miss, which is the failure this
+          # criterion actually produces. At 160 it cut off inside the cassette's
+          # own filename — so the diagnostic named neither which request missed
+          # nor which cassette, which is the entire question.
+          detail = s |> Floki.text() |> String.replace(~r/\s+/, " ") |> String.slice(0, 900)
           "#{name}=#{state} (#{detail})"
         else
           "#{name}=#{state}"
