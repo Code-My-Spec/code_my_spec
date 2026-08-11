@@ -1647,6 +1647,30 @@ defmodule CodeMySpecSpex.Case do
   def publishable_project(scope, project, attrs \\ %{}),
     do: Fixtures.publishable_project(scope, project, attrs)
 
+  @doc """
+  Configure the project so a publish can actually run.
+
+      setup :publishing_configured
+
+  `ContentPublishing.publish/1` refuses without `content_bucket`,
+  `client_api_url` and `deploy_key` — "Publishing is not configured. Sync is
+  trigger-only, so a publish without a reachable client would never reach the
+  site." That refusal happens before anything is written, so a criterion about
+  *storage* reads it as nothing having been published.
+
+  A setup rather than a call in the `given_`, because the LiveView reads the
+  project into its assigns when it mounts and every step it runs reads that
+  copy — configuring the row after the mount updates the database and not the
+  page, which is the trap story 965 was stuck behind.
+  """
+  def publishing_configured(%{scope: scope, project: project} = context) do
+    project = publishable_project(scope, project)
+
+    context
+    |> Map.put(:project, project)
+    |> Map.put(:scope, %{scope | active_project: project})
+  end
+
   def verified_sending_domains(scope, project, environments \\ ["prod", "uat"], opts \\ []) do
     for environment <- environments do
       sending = Fixtures.sending_domain(project.domain, environment)
@@ -3103,7 +3127,17 @@ defmodule CodeMySpecSpex.Case do
       # the record it asserted on has been torn down.
       CodeMySpec.Provisioning.Dns,
       CodeMySpec.GitHub,
-      CodeMySpec.Content.S3Client
+      CodeMySpec.Content.S3Client,
+      # The publish trigger is an ordinary HTTP POST to the deployed site, and
+      # it was the one provider call escaping the cassette — so a replay sent it
+      # to the real network, got nothing, and `trigger_client/2` failed the whole
+      # publish. The criteria then reported that no objects were written, which
+      # is true and says nothing about storage: the objects were never attempted
+      # because the step gives up before them.
+      #
+      # It already reads a `:plug` from its own app env, exactly like the others.
+      # It was only missing from this list.
+      CodeMySpec.Content.TriggerClient
     ]
   end
 

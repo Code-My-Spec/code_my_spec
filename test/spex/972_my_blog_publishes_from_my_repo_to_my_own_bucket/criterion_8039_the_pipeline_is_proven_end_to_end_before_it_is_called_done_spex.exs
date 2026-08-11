@@ -36,6 +36,10 @@ defmodule CodeMySpecSpex.Story972.Criterion8039Spex do
   # the project's cwd and the stub directory has no such script.
   setup :drill_working_directory
   setup :connect_providers
+  # A publish refuses outright without content_bucket, client_api_url and
+  # deploy_key — "Publishing is not configured" — so the step never reaches
+  # storage and the criterion reads that as nothing having been written.
+  setup :publishing_configured
 
   spex "The pipeline is proven end to end before it is called done" do
     scenario "the step confirms a rendered post before reporting done" do
@@ -79,7 +83,12 @@ defmodule CodeMySpecSpex.Story972.Criterion8039Spex do
         # between dns and storage. There is no site afterwards, so the render
         # proof this criterion is about has nothing to fetch.
         previous = Application.get_env(:code_my_spec, :provisioning_step_opts, [])
-        Application.put_env(:code_my_spec, :provisioning_step_opts, Keyword.put(previous, :build, true))
+
+        Application.put_env(
+          :code_my_spec,
+          :provisioning_step_opts,
+          Keyword.put(previous, :build, true)
+        )
 
         ExUnit.Callbacks.on_exit(fn ->
           Application.put_env(:code_my_spec, :provisioning_step_opts, previous)
@@ -105,7 +114,9 @@ defmodule CodeMySpecSpex.Story972.Criterion8039Spex do
               {"DATABASE_URL", "ecto://postgres:postgres@127.0.0.1/drill_uat"}
             ] do
           view
-          |> form("[data-test='secret-form']", secret: %{environment: "uat", key: key, value: value})
+          |> form("[data-test='secret-form']",
+            secret: %{environment: "uat", key: key, value: value}
+          )
           |> render_submit()
         end
 

@@ -24,6 +24,10 @@ defmodule CodeMySpecSpex.Story972.Criterion8035Spex do
   setup :setup_active_project
   setup :devops_on
   setup :connect_providers
+  # A publish refuses outright without content_bucket, client_api_url and
+  # deploy_key — "Publishing is not configured" — so the step never reaches
+  # storage and the criterion reads that as nothing having been written.
+  setup :publishing_configured
 
   spex "The published files are in Sam's storage" do
     scenario "the published objects are recorded in Sam's own bucket" do
