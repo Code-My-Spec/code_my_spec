@@ -469,6 +469,35 @@ defmodule CodeMySpec.Analysis do
   end
 
   @doc """
+  Ask a harness to perform a filesystem operation on its own working copy.
+
+  The transport behind `Environments.Harness`. Reads and writes both: the server
+  holds no checkout, so a spec stub has to be written on the machine that does.
+
+  Addressed by harness id, resolved through the same registry
+  `remote_executor/1` uses — the entry is the channel process, so "is this
+  harness alive" and "where do I send this" are one fact rather than two that
+  can disagree.
+
+  `{:error, :harness_unreachable}` when no harness is serving that working copy.
+  Deliberately not `:no_environment`: one means there is no working copy, this
+  means there is one and it cannot be reached. Anything that prunes or reports
+  absence has to tell them apart.
+  """
+  @spec harness_fs_request(String.t(), String.t(), map(), timeout()) ::
+          {:ok, term()} | :ok | {:error, term()}
+  def harness_fs_request(harness_id, op, payload, timeout) do
+    case Registry.lookup(HarnessRegistry, to_string(harness_id)) do
+      [{pid, _}] -> GenServer.call(pid, {:fs_request, op, payload}, timeout + 5_000)
+      [] -> {:error, :harness_unreachable}
+    end
+  rescue
+    ArgumentError -> {:error, :harness_unreachable}
+  catch
+    :exit, _ -> {:error, :harness_unreachable}
+  end
+
+  @doc """
   Register the calling process as the executor for `project_id`.
 
   Called from the harness channel at join. The registration dies with the

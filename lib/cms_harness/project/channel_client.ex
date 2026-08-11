@@ -674,6 +674,24 @@ defmodule CmsHarness.Project.ChannelClient do
   # An event this harness does not implement is version skew, and it is named.
   # The server's own catch-all was made to reply for exactly this reason: a
   # message silently ignored on one side reads as latency on the other.
+  # A filesystem operation the server cannot perform, because the working copy
+  # is here and not there.
+  #
+  # The whole of the remote environment on this side: decode the op, apply it
+  # with the same `Environments` API everything else uses, send the outcome
+  # back. Nothing about it is harness-specific — the server is simply borrowing
+  # this machine's disk.
+  def handle_message(_topic, "fs_request", %{"ref" => ref, "op" => op} = msg, socket) do
+    payload = msg["payload"] || %{}
+    env = CodeMySpec.Environments.Environment.new(:local, socket.assigns.project.root)
+
+    result = apply_fs(env, op, payload)
+
+    push(socket, socket.assigns.topic, "fs_result", Map.put(encode_fs_result(result), "ref", ref))
+
+    {:ok, socket}
+  end
+
   def handle_message(_topic, event, _payload, socket) do
     Logger.warning(
       "[CmsHarness] the server sent #{inspect(event)}, which this harness does not " <>
@@ -682,6 +700,25 @@ defmodule CmsHarness.Project.ChannelClient do
 
     {:ok, socket}
   end
+
+  defp apply_fs(env, "read_file", %{"path" => p}), do: CodeMySpec.Environments.read_file(env, p)
+  defp apply_fs(env, "write_file", %{"path" => p, "content" => c}),
+    do: CodeMySpec.Environments.write_file(env, p, c)
+
+  defp apply_fs(env, "delete_file", %{"path" => p}), do: CodeMySpec.Environments.delete_file(env, p)
+  defp apply_fs(env, "list_directory", %{"path" => p}), do: CodeMySpec.Environments.list_directory(env, p)
+  defp apply_fs(env, "ensure_dir", %{"path" => p}), do: CodeMySpec.Environments.ensure_dir(env, p)
+  defp apply_fs(env, "stat", %{"path" => p}), do: CodeMySpec.Environments.stat(env, p)
+  defp apply_fs(env, "glob", %{"pattern" => p}), do: {:ok, CodeMySpec.Environments.glob(env, p)}
+
+  # An op this harness does not know is an error, not a silent nothing — the
+  # server is waiting on a reply and would otherwise sit out its full timeout.
+  # Same reason the unknown-event clause above logs rather than dropping.
+  defp apply_fs(_env, op, _payload), do: {:error, :"unsupported_fs_op_#{op}"}
+
+  defp encode_fs_result(:ok), do: %{"ok" => true}
+  defp encode_fs_result({:ok, result}), do: %{"ok" => true, "result" => result}
+  defp encode_fs_result({:error, reason}), do: %{"error" => to_string(reason)}
 
   @impl Slipstream
   def handle_disconnect(reason, socket) do

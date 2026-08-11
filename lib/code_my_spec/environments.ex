@@ -268,6 +268,11 @@ defmodule CodeMySpec.Environments do
 
   defp impl(:memory), do: CodeMySpec.Support.InMemoryEnvironment
 
+  # A working copy on another machine, reached over its harness channel. Not
+  # configurable like the others: there is no alternative implementation of
+  # "ask the harness", and swapping it would mean swapping the transport.
+  defp impl(:harness), do: CodeMySpec.Environments.Harness
+
   # No `:server` clause and no catch-all on purpose. `Environment.type` is
   # `Ecto.Enum, values: [:cli, :local, :vscode]`, so neither was reachable —
   # and both returned an `{:error, _}` tuple where every caller immediately

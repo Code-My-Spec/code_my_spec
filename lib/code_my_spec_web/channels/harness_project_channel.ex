@@ -325,6 +325,13 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
     {:noreply, socket}
   end
 
+  # The harness's answer to a filesystem request. See `handle_call/3` below.
+  def handle_in("fs_result", %{"ref" => ref} = msg, socket) do
+    {from, pending} = Map.pop(socket.assigns[:pending_fs] || %{}, ref)
+    if from, do: GenServer.reply(from, decode_fs_result(msg))
+    {:noreply, assign(socket, :pending_fs, pending)}
+  end
+
   # An unknown event is answered, not dropped.
   #
   # This clause used to be `{:noreply, socket}`, and that silence was a real
@@ -339,6 +346,37 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
     Logger.warning("[HarnessProject] unknown event #{inspect(event)}")
     {:reply, {:error, %{"reason" => "unknown_event", "event" => event}}, socket}
   end
+
+  # A filesystem operation for the working copy this channel serves.
+  #
+  # The transport half of `Environments.Harness`: this side only carries the
+  # message, the harness applies it with its own `Environments` implementation
+  # against the disk that actually holds the checkout. Writes as well as reads —
+  # a spec stub has to be written where the working copy is.
+  #
+  # Replied out of band. The caller's `from` is parked against a ref and
+  # answered by `handle_in("fs_result", …)`, so the channel process is not
+  # blocked while the far side does disk work.
+  @impl true
+  def handle_call({:fs_request, op, payload}, from, socket) do
+    ref = Integer.to_string(System.unique_integer([:positive]))
+
+    push(socket, "fs_request", %{"ref" => ref, "op" => op, "payload" => payload})
+
+    {:noreply, assign(socket, :pending_fs, Map.put(pending_fs(socket), ref, from))}
+  end
+
+  defp pending_fs(socket), do: socket.assigns[:pending_fs] || %{}
+
+  # The harness reports outcomes the way the behaviour states them, so this only
+  # has to put the shape back together. An `error` is kept as an atom because
+  # callers match on `:enoent` and friends.
+  defp decode_fs_result(%{"error" => reason}) when is_binary(reason),
+    do: {:error, String.to_atom(reason)}
+
+  defp decode_fs_result(%{"ok" => true, "result" => result}), do: {:ok, result}
+  defp decode_fs_result(%{"ok" => true}), do: :ok
+  defp decode_fs_result(other), do: {:error, {:unreadable_fs_result, other}}
 
   defp wait_summary(scope) do
     counts =
