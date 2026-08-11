@@ -15,17 +15,34 @@ STDIN_DATA=$(cat)
 # plugin. CODEMYSPEC_PORT overrides for ad-hoc setups.
 PORT="${CODEMYSPEC_PORT:-4004}"
 
-EVENT=$(echo "$STDIN_DATA" | grep -o '"hook_event_name":"[^"]*"' | cut -d'"' -f4)
+# The endpoint, named by the caller when it knows it.
+#
+# Sniffing `hook_event_name` cannot express what `hooks.json` needs, because two
+# of its entries are the *same* event: `ask-user-question` is a PreToolUse with
+# `matcher: AskUserQuestion`, so both arrive here identical except for a
+# `tool_name` deep in the payload. A router that dispatches on the event name
+# would send both to `/api/hooks/pre-tool-use` and the question surface would
+# never be reached.
+#
+# `hooks.json` already knows which endpoint each of its eight entries wants —
+# that is what its matchers *are* — so it passes it. The sniffing below stays
+# for callers that have no way to say, which is how the Codex router is invoked.
+ENDPOINT="$1"
 
-case "$EVENT" in
-  SessionStart)   ENDPOINT="/api/hooks/session-start" ;;
-  PreToolUse)     ENDPOINT="/api/hooks/pre-tool-use" ;;
-  PostToolUse)    ENDPOINT="/api/hooks/post-tool-use" ;;
-  Stop)           ENDPOINT="/api/hooks/stop" ;;
-  SubagentStart)  ENDPOINT="/api/hooks/subagent-start" ;;
-  SubagentStop)   ENDPOINT="/api/hooks/subagent-stop" ;;
-  *)              exit 0 ;;
-esac
+if [ -z "$ENDPOINT" ]; then
+  EVENT=$(echo "$STDIN_DATA" | grep -o '"hook_event_name":"[^"]*"' | cut -d'"' -f4)
+
+  case "$EVENT" in
+    SessionStart)      ENDPOINT="/api/hooks/session-start" ;;
+    PreToolUse)        ENDPOINT="/api/hooks/pre-tool-use" ;;
+    PostToolUse)       ENDPOINT="/api/hooks/post-tool-use" ;;
+    Stop)              ENDPOINT="/api/hooks/stop" ;;
+    SubagentStart)     ENDPOINT="/api/hooks/subagent-start" ;;
+    SubagentStop)      ENDPOINT="/api/hooks/subagent-stop" ;;
+    PermissionRequest) ENDPOINT="/api/permissions/request" ;;
+    *)                 exit 0 ;;
+  esac
+fi
 
 # Which working copy this is, read at request time.
 #
