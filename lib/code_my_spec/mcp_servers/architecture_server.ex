@@ -27,8 +27,4 @@ defmodule CodeMySpec.McpServers.ArchitectureServer do
 
   # Patch-mode proposal execution
   component(CodeMySpec.McpServers.Architecture.Tools.ExecuteProposal)
-
-  # And the other direction. `ProposalProjector` has always been able to write
-  # the document from the database; nothing could reach it.
-  component(CodeMySpec.McpServers.Architecture.Tools.RegenerateProposal)
 end

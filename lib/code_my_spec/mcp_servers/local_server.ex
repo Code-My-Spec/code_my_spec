@@ -65,6 +65,7 @@ defmodule CodeMySpec.McpServers.LocalServer do
   component(CodeMySpec.McpServers.Architecture.Tools.AnalyzeStories)
   component(CodeMySpec.McpServers.Architecture.Tools.ExecuteProposal)
   component(CodeMySpec.McpServers.Architecture.Tools.ShowArchitectureOverview)
+  component(CodeMySpec.McpServers.Architecture.Tools.RegenerateProposal)
 
   # Components — incremental architecture mutations (patch mode).
   # Deletion is intentionally not a tool: the architect deletes the
