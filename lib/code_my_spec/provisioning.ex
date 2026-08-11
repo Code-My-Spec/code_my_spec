@@ -346,11 +346,37 @@ defmodule CodeMySpec.Provisioning do
   """
   @spec run_step_async(Scope.t(), atom(), keyword()) :: :ok
   def run_step_async(%Scope{} = scope, key, opts \\ []) do
+    # The same `:provisioning_run_async` flag `run_async/3` reads, for the same
+    # reason — and it was missed here when the single-step button stopped
+    # awaiting.
+    #
+    # A detached task under test outlives the test that started it. Every
+    # criterion that clicks one step and asserts on the html `render_click`
+    # returns was reading a page where the step was still `not_started`, and
+    # recording one was worse: the task outlived the cassette session and the
+    # run died with `shared session Agent is not alive`, leaving a truncated
+    # cassette behind. 966's went from 135KB to 36KB that way.
+    #
+    # Synchronous under test shares the ExUnit sandbox connection instead of
+    # racing the test's lifetime. Transitions are still broadcast either way,
+    # so a spex that polls the page still sees each state.
+    case Application.get_env(:code_my_spec, :provisioning_run_async, true) do
+      true -> spawn_step(scope, key, opts)
+      _ -> run_step_sync(scope, key, opts)
+    end
+  end
+
+  defp spawn_step(scope, key, opts) do
     {:ok, _pid} =
       Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
         run_step(scope, key, opts)
       end)
 
+    :ok
+  end
+
+  defp run_step_sync(scope, key, opts) do
+    _result = run_step(scope, key, opts)
     :ok
   end
 
