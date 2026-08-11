@@ -110,4 +110,30 @@ defmodule CodeMySpec.BootVersionTest do
       assert BootVersion.booted() == String.trim(head)
     end
   end
+
+  # A packaged server has no checkout of its own, and `capture/1` must not run
+  # there: it defaults to `File.cwd!()`, which for a released binary is wherever
+  # the user invoked it — usually *a* project, whose HEAD says nothing about the
+  # code running. A confidently wrong sha is worse than no sha, so the fallback
+  # is the release version, which `just publish` moves with the build.
+  describe "describe/0" do
+    test "is the commit when one was captured" do
+      BootVersion.capture(File.cwd!())
+
+      assert BootVersion.describe() == BootVersion.booted()
+    end
+
+    test "falls back to the release version when nothing was captured" do
+      BootVersion.capture("/nonexistent-so-nothing-is-recorded")
+
+      assert BootVersion.describe() == "v#{Application.spec(:code_my_spec, :vsn)}"
+    end
+
+    test "always answers something, so a caller never has to branch" do
+      BootVersion.capture("/nonexistent-so-nothing-is-recorded")
+
+      refute BootVersion.describe() == ""
+      assert is_binary(BootVersion.describe())
+    end
+  end
 end

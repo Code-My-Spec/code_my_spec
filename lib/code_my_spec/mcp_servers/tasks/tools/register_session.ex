@@ -74,10 +74,11 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.RegisterSession do
   #
   # Said once, at registration, rather than on every response: it is a fact about
   # the session, and repeating it would be noise until the moment it is not.
+  # `describe/0` rather than `booted/0`, so a packaged server answers too. It has
+  # no checkout and deliberately does not capture one — `capture/1` would read
+  # whatever directory the binary was invoked from — so it reports its release
+  # version instead, which `just publish` moves in lockstep with the build.
   defp build_line do
-    case CodeMySpec.BootVersion.booted() do
-      nil -> ""
-      sha -> "\n\nServer build: #{sha}"
-    end
+    "\n\nServer build: #{CodeMySpec.BootVersion.describe()}"
   end
 end

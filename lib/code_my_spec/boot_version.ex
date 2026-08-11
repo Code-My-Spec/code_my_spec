@@ -48,6 +48,27 @@ defmodule CodeMySpec.BootVersion do
   end
 
   @doc """
+  What to call this build, in one string.
+
+  The commit where there is one, the release version otherwise. A packaged
+  server has no checkout of its own, and `capture/1` must not be called there:
+  it defaults to `File.cwd!()`, which for a released binary is wherever the user
+  invoked it — usually *a* project, whose HEAD has nothing to do with the code
+  running. A confidently wrong sha is worse than no sha, and this is the answer
+  that is right for both shapes.
+
+  `just publish` moves the version in lockstep with the release, so it
+  identifies a packaged build as well as a sha identifies a checkout.
+  """
+  @spec describe() :: String.t()
+  def describe do
+    case booted() do
+      nil -> "v#{Application.spec(:code_my_spec, :vsn)}"
+      sha -> sha
+    end
+  end
+
+  @doc """
   Record where this harness booted from. Called once, at start.
 
   Silent when there is no git — a sprite runs from an unpacked release with no

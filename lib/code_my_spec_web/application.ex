@@ -77,10 +77,7 @@ defmodule CodeMySpecWeb.Application do
   # nobody but its owner can reach — so questions about :4000 got answered from
   # server.log, a different process on a different port, and answered wrongly.
   defp log_boot_version do
-    case CodeMySpec.BootVersion.booted() do
-      nil -> :ok
-      sha -> Logger.info("[Boot] serving #{sha}")
-    end
+    Logger.info("[Boot] serving #{CodeMySpec.BootVersion.describe()}")
   end
 
   defp maybe_install_file_logger do
