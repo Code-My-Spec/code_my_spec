@@ -62,8 +62,14 @@ defmodule CodeMySpecWeb.Plugs.ProjectScopeOverride do
 
   defp adopt(scope, id, project) do
     case Harnesses.fetch(id) do
+      # `put_scope/2` rather than setting the id alone. Naming the working copy
+      # and being able to reach it are two different things, and this set only
+      # the first — so a tool over `/mcp/harness` knew exactly which checkout it
+      # was talking about and could not read or write a byte of it. The channel
+      # had always set all three; this had not, and the two drifted because
+      # nothing made them the same call.
       {:ok, %{project_id: pid} = harness} when pid == project.id ->
-        %{scope | active_harness_id: harness.id}
+        Harnesses.put_scope(scope, harness)
 
       _ ->
         scope

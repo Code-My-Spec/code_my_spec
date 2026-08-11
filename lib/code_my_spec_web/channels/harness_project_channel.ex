@@ -40,7 +40,6 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   alias CodeMySpec.Accounts
   alias CodeMySpec.AgentHarness.ConversationRecorder
   alias CodeMySpec.Analysis
-  alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Files
   alias CodeMySpec.Files.ComponentSync
   alias CodeMySpec.Files.File, as: FileRecord
@@ -827,15 +826,9 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   # Only the reads that have no manifest answer go over the wire — the scanner
   # parses on the device and ships the verdict, so this is the 25 that fell
   # through, not the 1,519 that did not.
-  defp put_harness_scope(scope, harness) do
-    %{
-      scope
-      | active_harness_id: harness.id,
-        cwd: harness.root || scope.cwd,
-        environment:
-          Environment.new(:harness, harness.root, ref: %{"harness_id" => harness.id})
-    }
-  end
+  # Shared with `ProjectScopeOverride`, which set only `active_harness_id` and
+  # left MCP tools able to name a working copy they could not read.
+  defp put_harness_scope(scope, harness), do: Harnesses.put_scope(scope, harness)
 
   defp harness_label(%{"label" => label}) when is_binary(label) and label != "", do: label
   defp harness_label(_payload), do: "a harness that did not say where it is"
