@@ -60,13 +60,40 @@ defmodule CodeMySpec.Problems.StaleOnArrivalTest do
       assert out =~ "2m20s", "the run's own duration is what makes the age legible"
     end
 
-    test "it does not advise stopping again, because that lands in the same state" do
+    test "it does not give the ordinary wait advice" do
       out = render("exunit", 8, run_duration: %{"exunit" => 140})
 
       refute out =~ "Stopping again enqueues one",
-             "a rerun will be overtaken by the next edit exactly as this one was"
+             "the ordinary reading — stop, a rerun replaces this — is what loops " <>
+               "here, because the next edit overtakes the rerun as it overtook this"
 
       assert out =~ "will finish stale as well"
+    end
+
+    test "it names stopping as what starts a sweep, not a passive wait" do
+      # "Pause edits until a sweep completes" was the first wording, and with no
+      # rerun in flight it describes a wait for something nothing will start —
+      # a stop is what enqueues one. An agent following it edits nothing and
+      # waits forever, which is the loop this exists to break wearing new words.
+      out = render("exunit", 8, run_duration: %{"exunit" => 140}, in_flight: [])
+
+      assert out =~ "Stopping again enqueues a sweep"
+
+      assert out =~ "without editing",
+             "the instruction that makes the next run land current is to stop " <>
+               "*and not edit during it*; a stop alone repeats this state"
+    end
+
+    test "with a rerun already in flight it says so and gives the same instruction" do
+      out = render("exunit", 8, run_duration: %{"exunit" => 140}, in_flight: ["exunit"])
+
+      assert out =~ "in flight",
+             "a sweep already running is the one fact that changes what waiting costs"
+
+      assert out =~ "without editing"
+
+      refute out =~ "Stopping again enqueues a sweep",
+             "one is already running; enqueueing is not the instruction"
     end
 
     test "it is not reported as an analyzer failure" do

@@ -378,18 +378,25 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
     # what cannot work here — the next edit overtakes the rerun exactly as it
     # overtook this one.
     if overtaken != [] do
-      overtaken_sentence(overtaken, run_duration)
+      overtaken_sentence(overtaken, run_duration, rerunning)
     else
       wait_or_report(age, rerunning)
     end
   end
 
-  # Names the remedy, because the two that exist are not obvious and neither is
-  # "fix it": stop editing long enough for a sweep to land, or act on findings
-  # that are one edit behind. They are real results from a run that succeeded —
-  # this is a coverage gap, not a wrong answer, and nothing here opens an
+  # Names the remedy, because neither of the two that exist is obvious and
+  # neither is "fix it": get a sweep to land with no edit inside it, or act on
+  # findings that are one edit behind. They are real results from a run that
+  # succeeded — a coverage gap, not a wrong answer — and nothing here opens an
   # escape from them.
-  defp overtaken_sentence(sources, run_duration) do
+  #
+  # "Pause edits until a sweep completes" was the first wording and it is wrong
+  # with nothing in flight: it describes waiting for something that will not
+  # start, because a stop is what enqueues a run. An agent following it edits
+  # nothing and waits, which is the loop this exists to break wearing new words.
+  # So the instruction is what the reader does — stop, and do not edit while it
+  # runs — and the in-flight fact only changes whether that also enqueues one.
+  defp overtaken_sentence(sources, run_duration, rerunning) do
     longest =
       sources
       |> Enum.map(&Map.get(run_duration, &1))
@@ -399,8 +406,21 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
     " #{Enum.join(Enum.sort(sources), ", ")} #{verb(sources)} a run time of " <>
       "#{duration_text(longest)} and your edits landed inside it, so a rerun " <>
       "will finish stale as well. The analyzer is working — it answered about " <>
-      "the tree it was given. Either pause edits until a sweep completes, or " <>
-      "act on these as they stand: one edit behind is not the same as wrong."
+      "the tree it was given." <>
+      next_sweep_sentence(sources, rerunning) <>
+      " Or act on these as they stand: one edit behind is not the same as wrong."
+  end
+
+  defp next_sweep_sentence(sources, rerunning) do
+    case Enum.filter(sources, &(&1 in rerunning)) do
+      [] ->
+        " Stopping again enqueues a sweep; let that one finish without editing " <>
+          "during it and its result will be current."
+
+      running ->
+        " A sweep is in flight now (#{Enum.join(Enum.sort(running), ", ")}) — " <>
+          "stop again without editing during it and its result will be current."
+    end
   end
 
   defp wait_or_report(age, rerunning) do
