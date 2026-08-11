@@ -96,13 +96,24 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
   # Distinct from :field_present because `false` is a legitimate value that
   # must read as unsatisfied — :field_present only rejects nil, so a latch
   # sitting at `false` would report satisfied.
-  defp check(%{check_type: :field_true, config: config}, _scope, entity, _files, _ctx) do
+  #
+  # The reason names what sets the latch, because a latch is the one check type
+  # where doing the work is not enough and nothing else says so. `specs_ready`
+  # is set only by `FixBddSpecs.evaluate/2` reaching its empty-problems branch;
+  # a completed spex sweep does not touch it. So three full sweeps went green —
+  # 213s, one killed at twelve minutes, 393s — and each re-check of the
+  # requirement still said "specs_ready is not set", which reads as a broken
+  # gate rather than a pending step. Three wrong theories came out of that, one
+  # of them filed as an issue that had to be withdrawn. `evaluate_task` was
+  # called once afterwards and it flipped immediately, on evidence that had
+  # been in the database the whole time.
+  defp check(%{check_type: :field_true, config: config} = definition, _scope, entity, _, _ctx) do
     field = config_field(config)
 
     if Map.get(entity, field) == true do
       {true, %{status: "#{field} is set"}}
     else
-      {false, %{reason: "#{field} is not set"}}
+      {false, %{reason: "#{field} is not set — #{latch_hint(definition)}"}}
     end
   end
 
@@ -251,6 +262,16 @@ defmodule CodeMySpec.Requirements.RequirementCalculator do
   defp config_field(config) do
     config[:field] || config["field"] || raise "field_present check missing :field in config"
   end
+
+  # Names the module, because "evaluate the task" is not actionable to a reader
+  # who does not know which task owns the latch.
+  defp latch_hint(%{satisfied_by: module}) when not is_nil(module) do
+    "it is set by evaluating #{inspect(module)}, not by doing the work. " <>
+      "If the work is done, call `evaluate_task` — re-running the analysis will " <>
+      "not set it however many times it passes."
+  end
+
+  defp latch_hint(_definition), do: "nothing has recorded it yet."
 
   # -- Entity helpers --
 

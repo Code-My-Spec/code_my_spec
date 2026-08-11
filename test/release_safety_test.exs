@@ -10,6 +10,8 @@ defmodule CodeMySpec.ReleaseSafetyTest do
 
   use ExUnit.Case, async: true
 
+  alias CodeMySpecTest.ReleaseScan
+
   @lib_root Path.expand("../lib", __DIR__)
 
   # Files where a `Mix.env` reference is intentional and safe — typically
@@ -62,7 +64,7 @@ defmodule CodeMySpec.ReleaseSafetyTest do
       |> Application.app_dir("ebin")
       |> Path.join("*.beam")
       |> Path.wildcard()
-      |> Enum.flat_map(&modules_referencing_mix/1)
+      |> Enum.flat_map(&ReleaseScan.modules_referencing_mix/1)
       |> Enum.reject(fn mod ->
         Enum.any?(@allowed_modules, &Regex.match?(&1, Atom.to_string(mod)))
       end)
@@ -80,16 +82,6 @@ defmodule CodeMySpec.ReleaseSafetyTest do
 
            #{Enum.map_join(offenders, "\n", &"  #{inspect(&1)}")}
            """
-  end
-
-  defp modules_referencing_mix(path) do
-    case :beam_lib.chunks(String.to_charlist(path), [:atoms]) do
-      {:ok, {mod, [atoms: atoms]}} ->
-        if Enum.any?(atoms, fn {_, atom} -> atom == :"Elixir.Mix" end), do: [mod], else: []
-
-      _ ->
-        []
-    end
   end
 
   defp scan_file(path) do

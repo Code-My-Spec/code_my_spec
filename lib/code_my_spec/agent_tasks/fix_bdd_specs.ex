@@ -38,9 +38,40 @@ defmodule CodeMySpec.AgentTasks.FixBddSpecs do
 
   Returns `{:ok, prompt_text}`.
   """
-  def command(scope, _task) do
-    problems = Problems.list_project_problems(scope, source: "spex")
+  def command(scope, task) do
+    case story_for(scope, task) do
+      nil -> project_command(scope)
+      story -> story_command(scope, story)
+    end
+  end
 
+  # The gate is per story and so is the prompt.
+  #
+  # It used to ignore `task` entirely and list every spex failure in the
+  # project. Asked for story 885 it returned twenty failures across 841, 851,
+  # 852, 858, 859, 871 and 883 — not one of them 885's — under the heading "the
+  # following BDD specs are failing" and the instructions "fix the
+  # implementation code" and "read the implementation code". An agent that
+  # follows its task prompt, which is the first rule in CLAUDE.md, goes and
+  # edits eight components it was never asked to touch. In the reported case
+  # that meant another agent's devops territory, which it had been told
+  # explicitly to stay out of.
+  #
+  # `evaluate/2` was filtering correctly the whole time, through
+  # `story_spex_problems/2`, and passed instantly on the same task. So the
+  # evaluator knew the failures were irrelevant and the prompt did not.
+  defp story_command(scope, story) do
+    case story_spex_problems(scope, story) do
+      [] -> {:ok, green_message(story)}
+      problems -> prompt_for(scope, problems)
+    end
+  end
+
+  defp project_command(scope) do
+    prompt_for(scope, Problems.list_project_problems(scope, source: "spex"))
+  end
+
+  defp prompt_for(scope, problems) do
     if Enum.empty?(problems) do
       {:ok, no_failures_message()}
     else
@@ -49,8 +80,7 @@ defmodule CodeMySpec.AgentTasks.FixBddSpecs do
       if Enum.empty?(relevant) do
         {:ok, unimplemented_message()}
       else
-        prompt = build_prompt(scope, relevant)
-        {:ok, prompt}
+        {:ok, build_prompt(scope, relevant)}
       end
     end
   end
@@ -186,6 +216,40 @@ defmodule CodeMySpec.AgentTasks.FixBddSpecs do
     # Fix BDD Specs
 
     All BDD specs are passing. Nothing to fix.
+    """
+  end
+
+  # The state that cost the reporter most of a session: specs green, latch not
+  # set, and the old prompt answering with other stories' failures.
+  #
+  # `bdd_specs_passing` reads `story.specs_ready`, and the only thing that sets
+  # it is `evaluate/2` reaching its empty-problems branch. A completed sweep
+  # does not set it. So three full spex runs — 213s, one killed at 12 minutes,
+  # 393s — all landed green and the requirement stayed unsatisfied, with nothing
+  # anywhere saying that an evaluation was the missing step. Three wrong
+  # theories were built to explain it and one was filed as an issue that had to
+  # be withdrawn.
+  #
+  # Saying so is the cheap half of that fix. Making a completed sweep flip the
+  # latch is the real one and is not done here.
+  defp green_message(story) do
+    """
+    # Specs Passing — evaluate to latch it
+
+    Story #{story.id} (#{story.title}) has no failing spex problems recorded. The
+    work looks done; what is missing is the evaluation that records it.
+
+    `bdd_specs_passing` reads the story's `specs_ready` latch, and only
+    evaluating this task sets it. A green spex run does **not** set it on its
+    own, so re-running the sweep will not change this requirement no matter how
+    many times it passes.
+
+    Call `evaluate_task` on this task. If the latest spex run does not yet cover
+    the current code the evaluation will say so and ask you to wait — that is a
+    pending answer, not a failure.
+
+    Other stories may have failing specs. They are not yours and they do not
+    gate this requirement.
     """
   end
 

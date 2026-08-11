@@ -6,6 +6,221 @@ default:
 server:
     iex -S mix phx.server
 
+# Pull main and restart the dev server, from any worktree.
+refresh port="4000":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    # 
+    # The :4000 server runs the *main* checkout, not the worktree an agent works in,
+    # so a fix that is committed, pushed and green can be absent from every response
+    # an agent sees — and the responses that matter are messages about correctness,
+    # where a stale one reads as "the fix does not work" rather than "the build is
+    # old". Three of those cost a diversion each in one session before
+    # `[Boot] serving <sha>` existed to answer it in one line.
+    # 
+    # Doing it by hand needs a directory an agent in a worktree cannot cd to, so
+    # this exists to be run from anywhere in the repo. `--git-common-dir` resolves
+    # to the main checkout's `.git` from inside any worktree, which is what makes
+    # that possible.
+    # 
+    # It refuses on a dirty checkout rather than pulling over someone's uncommitted
+    # work: several agents share that directory, and a rebase on top of a
+    # half-finished change is the one outcome nobody can undo from here.
+
+
+    main="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")"
+    echo "→ main checkout: $main"
+
+    # Tracked, non-submodule changes only. Untracked files are not disturbed by
+    # a fast-forward, and `.code_my_spec` is a submodule whose pointer moves
+    # whenever an agent commits a spec — refusing on either makes this refuse
+    # essentially always, which is the same as not having it. What it is for is
+    # the case that actually turned up: seven modified files under `config/` and
+    # `lib/`, mid-change, belonging to someone else.
+    dirty="$(git -C "$main" status --porcelain --untracked-files=no --ignore-submodules=all)"
+    if [ -n "$dirty" ]; then
+        echo "✗ refusing: the main checkout has uncommitted work." >&2
+        echo "$dirty" >&2
+        echo "" >&2
+        echo "  Another agent is probably mid-change there. Commit or stash it," >&2
+        echo "  or restart by hand once it is clear." >&2
+        exit 1
+    fi
+
+    before="$(git -C "$main" rev-parse --short HEAD)"
+    git -C "$main" pull --ff-only
+    after="$(git -C "$main" rev-parse --short HEAD)"
+    echo "→ $before → $after"
+
+    # Only when the lock actually moved. `deps.get` plus the compile it triggers
+    # is most of this recipe's wall time — the first real run took over ten
+    # minutes — and the lock is unchanged on the majority of refreshes.
+    #
+    # Not skippable in general, though: a lock that moved and is not fetched
+    # turns into "Unchecked dependencies" on the next mix invocation, which
+    # several analyzers report as findings rather than as an environment
+    # problem. That is what 6d9523a9 and 3430012e were about.
+    if [ -n "$(git -C "$main" diff --name-only "$before".."$after" -- mix.lock)" ]; then
+        echo "→ mix.lock moved, fetching deps"
+        ( cd "$main" && mix deps.get )
+    else
+        echo "→ mix.lock unchanged, skipping deps.get"
+    fi
+
+    # By port, not by name: several beams run on this machine and only one of
+    # them is serving {{port}}.
+    pid="$(lsof -nP -iTCP:{{port}} -sTCP:LISTEN -t || true)"
+    if [ -n "$pid" ]; then
+        echo "→ stopping $pid on {{port}}"
+        kill "$pid"
+        for _ in $(seq 1 30); do
+            lsof -nP -iTCP:{{port}} -sTCP:LISTEN -t >/dev/null 2>&1 || break
+            sleep 1
+        done
+    fi
+
+    log="$HOME/.codemyspec/phx_{{port}}.restart.log"
+    # `</dev/null` matters as much as the output redirect. Without it the server
+    # inherits the caller's stdin, and a caller that waits for every writer to
+    # close — a CI step, an agent's shell tool — hangs for its whole timeout on
+    # a recipe that has already exited. Measured: the recipe takes 3s, and
+    # invoking it without this looked like ten minutes and an empty log.
+    ( cd "$main" && exec </dev/null >>"$log" 2>&1; nohup mix phx.server & )
+    echo "→ starting, logging to $log"
+
+    for _ in $(seq 1 90); do
+        if curl -sS -o /dev/null --max-time 2 "http://localhost:{{port}}/" 2>/dev/null; then
+            echo "✓ {{port}} is answering on $after"
+            echo "  confirm with: grep '\[Boot\] serving' ~/.codemyspec/web.log | tail -1"
+            exit 0
+        fi
+        sleep 2
+    done
+
+    echo "✗ {{port}} did not come up in 180s — see $log" >&2
+    exit 1
+
+# Restart the harness on :4004, from any worktree.
+refresh-harness port="4004":
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    # The other half of `just refresh`. A server and a harness on different
+    # commits speak different channel contracts, and the symptom is
+    # `{:error, %{"reason" => "unmatched topic"}}` on every stop — which reads
+    # as a connection problem and is not one. `BootVersion.drift/0` names it in
+    # the stop message; this is how it gets fixed.
+    #
+    # One harness serves every working copy: `Projects.ensure_started/1` picks
+    # each one up from its first hook request, so restarting from any worktree
+    # is safe and the others re-register on their next stop. Verified before
+    # relying on it — the alternative, a harness that only served the directory
+    # it started in, would strand every other agent.
+    #
+    # It does cost the other agents their in-flight sweeps, the same way a
+    # server restart does (406f85db). Say so rather than doing it quietly.
+    #
+    # Launched from the main checkout, whatever directory you run this in.
+    #
+    # Two trees travel separately here and only one of them was ever in doubt.
+    # *Analysis* follows the target: the harness shells into each working copy
+    # and builds into that copy's `_build/analyzer`, so a worktree is always
+    # analyzed by its own code. The harness's *own* code — `lib/cms_harness`,
+    # the channel client, hook decisions — came from whichever checkout happened
+    # to launch the process, and that is the whole of `c8a7f11d`.
+    #
+    # It matters because we edit `lib/cms_harness` while it is running. A
+    # worktree that drifts past a channel-contract change takes every other
+    # agent's hooks down with it — `{:error, %{"reason" => "unmatched topic"}}`
+    # on every stop, across all three working copies at once — and the agent who
+    # notices is left restarting a process rooted in somebody else's tree, whose
+    # compile state they do not control. Measured on this machine: the harness
+    # answering for three worktrees had its cwd in one of them.
+    #
+    # Pinned here, "is the harness stale" becomes "has main moved", which is one
+    # question with one answer instead of one per checkout.
+    #
+    # Including while the harness itself is being changed. The workflow is push
+    # to main, then restart — not run your worktree's copy and let everyone else
+    # inherit it. Running it from a worktree is what makes this frothy: the
+    # server has to be restarted for its own changes anyway, and a harness on a
+    # third tree turns one restart into a three-way version negotiation nobody
+    # is tracking. Merges are the only thing that should move the code that
+    # serves everybody.
+    main="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")"
+
+    # And pulls it, because otherwise the workflow above does not close. "Push
+    # to main, restart, main serves it" needs the restart to actually fetch what
+    # was pushed; without this the harness relaunches on whatever main happened
+    # to be sitting at, which is a *quieter* version of the same staleness — the
+    # drift check compares boot to checkout, and both would be equally old.
+    #
+    # Same refusal as `just refresh`, for the same reason: pulling over another
+    # agent's uncommitted work in the shared checkout is worse than not
+    # restarting.
+    dirty="$(git -C "$main" status --porcelain --untracked-files=no --ignore-submodules=all)"
+    if [ -n "$dirty" ]; then
+        echo "✗ refusing: the main checkout has uncommitted work." >&2
+        echo "$dirty" >&2
+        echo "" >&2
+        echo "  Another agent is probably mid-change there. Commit or stash it," >&2
+        echo "  or restart by hand once it is clear." >&2
+        exit 1
+    fi
+
+    before="$(git -C "$main" rev-parse --short HEAD)"
+    git -C "$main" pull --ff-only
+    after="$(git -C "$main" rev-parse --short HEAD)"
+    echo "→ $before → $after"
+
+    if [ -n "$(git -C "$main" diff --name-only "$before".."$after" -- mix.lock)" ]; then
+        echo "→ mix.lock moved, fetching deps"
+        ( cd "$main" && mix deps.get )
+    else
+        echo "→ mix.lock unchanged, skipping deps.get"
+    fi
+
+    pid="$(lsof -nP -iTCP:{{port}} -sTCP:LISTEN -t || true)"
+
+    if [ -n "$pid" ]; then
+        echo "→ stopping harness $pid on {{port}}"
+        echo "  in-flight analysis for every working copy dies with it"
+        kill "$pid"
+        for _ in $(seq 1 30); do
+            lsof -nP -iTCP:{{port}} -sTCP:LISTEN -t >/dev/null 2>&1 || break
+            sleep 1
+        done
+    else
+        echo "→ nothing listening on {{port}}"
+    fi
+
+    log="$HOME/.codemyspec/harness_{{port}}.restart.log"
+
+    # `exec </dev/null >>"$log" 2>&1` in the subshell, not just on the child.
+    # Starting a beam leaves `epmd` behind, daemonized, holding whatever
+    # descriptors it inherited — so a caller waiting for its pipe to close waits
+    # forever on a recipe that has already exited. Redirecting the child alone
+    # is not enough; the descendant already has copies.
+    # `cd` on its own line, not `cd && exec`: with `&&` a failed cd skips only
+    # the redirect, and `nohup just harness &` after the `;` would still launch —
+    # from the wrong tree, which is the exact thing this recipe now exists to
+    # prevent. Bare, `set -e` aborts the subshell instead.
+    ( cd "$main"; exec </dev/null >>"$log" 2>&1; nohup just harness & )
+    echo "→ starting from $main, logging to $log"
+
+    for _ in $(seq 1 90); do
+        if lsof -nP -iTCP:{{port}} -sTCP:LISTEN -t >/dev/null 2>&1; then
+            echo "✓ harness is listening on {{port}}"
+            echo "  working copies re-register on their next hook"
+            exit 0
+        fi
+        sleep 2
+    done
+
+    echo "✗ harness did not come up in 180s — see $log" >&2
+    exit 1
+
 cli *args:
     MIX_ENV=dev_cli iex -S mix run --no-halt {{args}}
 

@@ -173,8 +173,26 @@ defmodule CmsHarness.Web.McpController do
     ]
   end
 
+  # Path first, then the query, then the header.
+  #
+  # The path is the address: `/api/harnesses/<id>/mcp`, which is how the hooks
+  # have always been addressed and what makes two checkouts of one project two
+  # sessions. Identity in the path cannot be dropped by a proxy that strips
+  # unknown headers, survives a redirect, and shows up in every access log — a
+  # query string does the first two and a header does none of them.
+  #
+  # The other two remain because the released marketplace plugin sends
+  # `?harness=<id>` and nothing can change that until it ships again; refusing
+  # them would take MCP down on every machine running the release. They are
+  # older spellings of one address, not alternatives to it.
+  defp harness_id(conn) do
+    conn.path_params["harness_id"] ||
+      conn.query_params["harness"] ||
+      List.first(get_req_header(conn, "x-harness-id"))
+  end
+
   defp harness_header(conn) do
-    case conn.query_params["harness"] || List.first(get_req_header(conn, "x-harness-id")) do
+    case harness_id(conn) do
       id when is_binary(id) and id != "" -> [{"x-harness-id", id}]
       _ -> []
     end
@@ -250,7 +268,7 @@ defmodule CmsHarness.Web.McpController do
   # host that cannot template a URL. Nothing else — a directory is not an
   # answer to "which working copy is this", which is why it is not consulted.
   defp project(conn) do
-    case conn.query_params["harness"] || List.first(get_req_header(conn, "x-harness-id")) do
+    case harness_id(conn) do
       id when is_binary(id) and id != "" -> by_harness(id)
       _ -> {:error, :no_harness}
     end
@@ -263,6 +281,7 @@ defmodule CmsHarness.Web.McpController do
     case WorkingCopies.root(id) do
       {:ok, root} -> ProjectIdentity.resolve(root)
       :unknown -> {:error, {:unknown_harness, id}}
+      {:unreachable, reason} -> {:error, {:server_unreachable, id, reason}}
     end
   end
 
@@ -301,6 +320,14 @@ defmodule CmsHarness.Web.McpController do
       "This harness is not serving the working copy #{id}. Either it serves a " <>
         "different set of copies, or this checkout's plugin was generated against " <>
         "an id that has since been reissued — re-run `mix cms.harness.onboard`."
+
+  # Distinct from the clause above, where the server answered and said no. Here
+  # nobody got to ask, so the id is not implicated and onboarding is not the fix.
+  defp message({:server_unreachable, id, reason}),
+    do:
+      "The harness could not reach #{Config.server_url()} to find out where #{id} " <>
+        "is: #{inspect(reason, limit: 5)}. Nothing is wrong with the id and " <>
+        "re-onboarding will not help — the server is down or unreachable from here."
 
   defp message(:no_harness),
     do:

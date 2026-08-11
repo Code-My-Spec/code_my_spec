@@ -18,9 +18,9 @@ defmodule CodeMySpec.AgentTasks.Evaluator do
 
   alias CodeMySpec.AgentTasks.ProblemFeedback
   alias CodeMySpec.Components
-  alias CodeMySpec.Requirements.Registry, as: RequirementsRegistry
   alias CodeMySpec.Files.ComponentSync, as: FileComponentSync
   alias CodeMySpec.Files.FileSync
+  alias CodeMySpec.Requirements.Registry, as: RequirementsRegistry
   alias CodeMySpec.Requirements.RequirementCalculator
   alias CodeMySpec.Requirements.RequirementDefinitionData
   alias CodeMySpec.Requirements.RequirementsFormatter
@@ -104,14 +104,23 @@ defmodule CodeMySpec.AgentTasks.Evaluator do
     # + mix.lock-poll keep the embedding store fresh during a session;
     # the explicit `sync_project` MCP tool is the manual-full-sync
     # surface that opts back into the embed pre-pass.
-    {:ok, file_result} = FileSync.sync(scope, base_dir: cwd, embed: false)
+    case FileSync.sync(scope, base_dir: cwd, embed: false) do
+      {:ok, file_result} ->
+        FileComponentSync.sync_from_files(scope,
+          base_dir: cwd,
+          changed_paths: file_result.changed_paths
+        )
 
-    FileComponentSync.sync_from_files(scope,
-      base_dir: cwd,
-      changed_paths: file_result.changed_paths
-    )
+        :ok
 
-    :ok
+      # Nothing was scanned, so nothing changed, so there is nothing to project
+      # into components. `FileSync` has already said why at `:error`. Evaluation
+      # continues against the rows already recorded — which is the point: they
+      # are the last thing that was actually observed, and the alternative that
+      # used to happen here was deleting them.
+      {:error, _reason} ->
+        :ok
+    end
   end
 
   # -- Before Evaluate --

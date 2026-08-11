@@ -40,7 +40,6 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   alias CodeMySpec.Accounts
   alias CodeMySpec.AgentHarness.ConversationRecorder
   alias CodeMySpec.Analysis
-  alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Files
   alias CodeMySpec.Files.ComponentSync
   alias CodeMySpec.Files.File, as: FileRecord
@@ -414,8 +413,12 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   def handle_info({ref, counts}, %{assigns: %{reconciling: %Task{ref: ref}}} = socket) do
     Process.demonitor(ref, [:flush])
 
+    # Named by working copy. This line carried counts and no identity, so ten
+    # reconciles alternating between two checkouts read as one healthy sync
+    # repeating — while one of those checkouts was being emptied on every pass.
     Logger.info(
-      "[HarnessProject] reconciled: #{counts.upserted} upserted, #{counts.removed} removed, " <>
+      "[HarnessProject] reconciled #{socket.assigns.harness.root || socket.assigns.harness.id}: " <>
+        "#{counts.upserted} upserted, #{counts.removed} removed, " <>
         "#{counts.changed} changed, #{counts.components} components"
     )
 
@@ -561,7 +564,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
     case socket.assigns[:scope] do
       %Scope{active_project_id: id} when not is_nil(id) ->
         log_disconnect(reason, socket)
-        Analysis.fail_in_flight(socket.assigns.scope, :harness_disconnected)
+        Analysis.fail_in_flight(socket.assigns.scope, failure_reason(reason))
 
       _ ->
         :ok
@@ -569,6 +572,29 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
 
     :ok
   end
+
+  # Say which of the two things happened, because they read identically and
+  # only one of them is about the working copy.
+  #
+  # Phoenix drains its channels on shutdown, so `{:shutdown, :draining}` means
+  # the *server* went away — someone restarted :4000 — and every in-flight run
+  # for every working copy dies with it, since one harness serves them all.
+  # Recording that as `:harness_disconnected` sent agents looking for a harness
+  # problem they did not have: a 12-minute spex sweep returning
+  # `:not_connected`, a completed sweep whose latch did not flip, three hours
+  # read as analyzer-queue starvation. Three separate wrong theories, each
+  # ending at "somebody else restarted the server" (406f85db).
+  #
+  # The timestamp is the part that ends the investigation. An agent that can see
+  # its sweep died at the moment of a restart stops looking at its own code.
+  defp failure_reason({:shutdown, :draining}) do
+    "the shared dev server was restarted at " <>
+      DateTime.to_iso8601(DateTime.utc_now()) <>
+      " — this run was killed by that restart, not by anything in your working " <>
+      "copy or its analyzers"
+  end
+
+  defp failure_reason(_reason), do: :harness_disconnected
 
   # The harness leaving on purpose — a restart, a shutdown. Worth a line,
   # because it still strands whatever was running, but not an alarm.
@@ -579,12 +605,37 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
 
   defp log_disconnect(reason, socket) do
     Logger.error(
-      "[HarnessProject] channel DIED topic=#{socket.topic} reason=#{inspect(reason, limit: 12)}" <>
+      "[HarnessProject] channel DIED topic=#{socket.topic} reason=#{death_reason(reason)}" <>
         " — every in-flight run for this working copy is about to be failed as" <>
         " :harness_disconnected. The analyzers keep running on the harness and" <>
         " their results will be refused as unknown_run. Fix the crash, not the sweep."
     )
   end
+
+  # The reason, legibly. This is the one line that says why the channel died,
+  # and `inspect(reason, limit: 12)` truncated it before it got to the point:
+  #
+  #     reason={%Protoc
+  #
+  # A real crash cost an hour behind that. The cause was
+  # `{:error, :not_supported_on_harness}` handed to `Enum.filter/2`, and finding
+  # it meant grepping the raw logfmt for the sibling `gen_server terminate`
+  # report — which is exactly the work this line exists to save.
+  #
+  # A crash arrives as `{exception, stacktrace}`, so it is formatted as one:
+  # the banner names what broke and the first frames name where. Bounded at
+  # five frames rather than unbounded, because a channel that dies in a loop
+  # would otherwise fill the log with the same trace.
+  defp death_reason({exception, stacktrace}) when is_list(stacktrace) do
+    Exception.format_banner(:error, exception) <>
+      "\n" <> Exception.format_stacktrace(Enum.take(stacktrace, 5))
+  rescue
+    # Not every two-tuple with a list in it is a crash. Anything this cannot
+    # format is still worth printing whole.
+    _ -> inspect({exception, stacktrace}, limit: :infinity, printable_limit: 2048)
+  end
+
+  defp death_reason(reason), do: inspect(reason, limit: :infinity, printable_limit: 2048)
 
   # `port` is the harness's own — the analysis curl that `pre-tool-use` rewrites
   # points at `http://localhost:<port>/api/analysis/run`, which only means
@@ -775,15 +826,9 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   # Only the reads that have no manifest answer go over the wire — the scanner
   # parses on the device and ships the verdict, so this is the 25 that fell
   # through, not the 1,519 that did not.
-  defp put_harness_scope(scope, harness) do
-    %{
-      scope
-      | active_harness_id: harness.id,
-        cwd: harness.root || scope.cwd,
-        environment:
-          Environment.new(:harness, harness.root, ref: %{"harness_id" => harness.id})
-    }
-  end
+  # Shared with `ProjectScopeOverride`, which set only `active_harness_id` and
+  # left MCP tools able to name a working copy they could not read.
+  defp put_harness_scope(scope, harness), do: Harnesses.put_scope(scope, harness)
 
   defp harness_label(%{"label" => label}) when is_binary(label) and label != "", do: label
   defp harness_label(_payload), do: "a harness that did not say where it is"

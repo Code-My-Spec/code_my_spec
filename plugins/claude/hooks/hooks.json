@@ -5,20 +5,10 @@
         "hooks": [
           {
             "type": "command",
-            "command": "curl",
+            "command": "bash",
             "args": [
-              "-sS",
-              "--max-time",
-              "30",
-              "-X",
-              "POST",
-              "http://localhost:4004/api/hooks/session-start",
-              "-H",
-              "Content-Type: application/json",
-              "-H",
-              "X-Harness-Id: ${CMS_HARNESS_ID}",
-              "--data-binary",
-              "@-"
+              "${CLAUDE_PLUGIN_ROOT}/.claude-plugin/bin/hook",
+              "/api/hooks/session-start"
             ]
           }
         ]
@@ -29,20 +19,10 @@
         "hooks": [
           {
             "type": "command",
-            "command": "curl",
+            "command": "bash",
             "args": [
-              "-sS",
-              "--max-time",
-              "30",
-              "-X",
-              "POST",
-              "http://localhost:4004/api/hooks/pre-tool-use",
-              "-H",
-              "Content-Type: application/json",
-              "-H",
-              "X-Harness-Id: ${CMS_HARNESS_ID}",
-              "--data-binary",
-              "@-"
+              "${CLAUDE_PLUGIN_ROOT}/.claude-plugin/bin/hook",
+              "/api/hooks/pre-tool-use"
             ]
           }
         ]
@@ -52,18 +32,10 @@
         "hooks": [
           {
             "type": "command",
-            "command": "curl",
+            "command": "bash",
             "args": [
-              "-sS",
-              "-X",
-              "POST",
-              "http://localhost:4004/api/hooks/ask-user-question",
-              "-H",
-              "Content-Type: application/json",
-              "-H",
-              "X-Harness-Id: ${CMS_HARNESS_ID}",
-              "--data-binary",
-              "@-"
+              "${CLAUDE_PLUGIN_ROOT}/.claude-plugin/bin/hook",
+              "/api/hooks/ask-user-question"
             ]
           }
         ]
@@ -74,20 +46,10 @@
         "hooks": [
           {
             "type": "command",
-            "command": "curl",
+            "command": "bash",
             "args": [
-              "-sS",
-              "--max-time",
-              "30",
-              "-X",
-              "POST",
-              "http://localhost:4004/api/hooks/post-tool-use",
-              "-H",
-              "Content-Type: application/json",
-              "-H",
-              "X-Harness-Id: ${CMS_HARNESS_ID}",
-              "--data-binary",
-              "@-"
+              "${CLAUDE_PLUGIN_ROOT}/.claude-plugin/bin/hook",
+              "/api/hooks/post-tool-use"
             ]
           }
         ]
@@ -98,20 +60,10 @@
         "hooks": [
           {
             "type": "command",
-            "command": "curl",
+            "command": "bash",
             "args": [
-              "-sS",
-              "--max-time",
-              "30",
-              "-X",
-              "POST",
-              "http://localhost:4004/api/hooks/stop",
-              "-H",
-              "Content-Type: application/json",
-              "-H",
-              "X-Harness-Id: ${CMS_HARNESS_ID}",
-              "--data-binary",
-              "@-"
+              "${CLAUDE_PLUGIN_ROOT}/.claude-plugin/bin/hook",
+              "/api/hooks/stop"
             ]
           }
         ]
@@ -122,20 +74,10 @@
         "hooks": [
           {
             "type": "command",
-            "command": "curl",
+            "command": "bash",
             "args": [
-              "-sS",
-              "--max-time",
-              "30",
-              "-X",
-              "POST",
-              "http://localhost:4004/api/hooks/subagent-start",
-              "-H",
-              "Content-Type: application/json",
-              "-H",
-              "X-Harness-Id: ${CMS_HARNESS_ID}",
-              "--data-binary",
-              "@-"
+              "${CLAUDE_PLUGIN_ROOT}/.claude-plugin/bin/hook",
+              "/api/hooks/subagent-start"
             ]
           }
         ]
@@ -146,20 +88,10 @@
         "hooks": [
           {
             "type": "command",
-            "command": "curl",
+            "command": "bash",
             "args": [
-              "-sS",
-              "--max-time",
-              "30",
-              "-X",
-              "POST",
-              "http://localhost:4004/api/hooks/subagent-stop",
-              "-H",
-              "Content-Type: application/json",
-              "-H",
-              "X-Harness-Id: ${CMS_HARNESS_ID}",
-              "--data-binary",
-              "@-"
+              "${CLAUDE_PLUGIN_ROOT}/.claude-plugin/bin/hook",
+              "/api/hooks/subagent-stop"
             ]
           }
         ]
@@ -170,18 +102,10 @@
         "hooks": [
           {
             "type": "command",
-            "command": "curl",
+            "command": "bash",
             "args": [
-              "-sS",
-              "-X",
-              "POST",
-              "http://localhost:4004/api/permissions/request",
-              "-H",
-              "Content-Type: application/json",
-              "-H",
-              "X-Harness-Id: ${CMS_HARNESS_ID}",
-              "--data-binary",
-              "@-"
+              "${CLAUDE_PLUGIN_ROOT}/.claude-plugin/bin/hook",
+              "/api/permissions/request"
             ]
           }
         ]

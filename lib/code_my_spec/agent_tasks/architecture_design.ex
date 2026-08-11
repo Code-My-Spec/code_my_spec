@@ -8,6 +8,8 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
   alias CodeMySpec.Architecture.Proposal
   alias CodeMySpec.{Components, Paths, Stories}
   alias CodeMySpec.Documents.DocumentSpecProjector
+  require Logger
+
   alias CodeMySpec.Environments
   alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Requirements.ArchitectureChecker
@@ -47,7 +49,41 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
     # The caller's environment or none. Inventing one at this server's
     # directory made `proposal_exists?` answer about *this* repository.
     env = scope.environment || cli_env(working_dir)
-    proposal_exists? = Environments.file_exists?(env, @proposal_path)
+
+    proposal_exists? =
+      case proposal_status(env) do
+        :present ->
+          true
+
+        :absent ->
+          false
+
+        # Could not look. Reported as *present*, because the two answers are not
+        # symmetric: treating an unreadable environment as "no proposal" selects
+        # initial mode, which tells the agent to design a 910-component
+        # architecture end-to-end and has the evaluator execute the result as one
+        # transaction. Treating it as "proposal present" selects revision mode,
+        # whose worst case is an agent making no incremental edits.
+        #
+        # This is exactly what `Environments`' own moduledoc warns about: "no
+        # disk" and "not there" are the same reply from `file_exists?/2`, "which
+        # is fine for rendering a prompt and is *not* fine for deciding a
+        # requirement is unmet". Choosing the mode is deciding.
+        #
+        # Observed: `proposal.md` was on disk, 8KB, and the prompt said "Mode —
+        # initial. No proposal exists yet." The harness was unreachable at that
+        # moment, `request/3` answered `{:error, :harness_unreachable}`, and
+        # `match?({:ok, _}, ...)` turned it into `false`.
+        :unobservable ->
+          Logger.warning(
+            "[ArchitectureDesign] could not read #{@proposal_path} in this environment. " <>
+              "Assuming a proposal exists and staying in revision mode — an unreadable " <>
+              "environment must not be read as an undesigned architecture."
+          )
+
+          true
+      end
+
     record_session_start_state(env, proposal_exists?)
 
     # Generate fresh architecture views
@@ -70,7 +106,28 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
   defp record_session_start_state(env, false),
     do: Environments.delete_file(env, @patch_mode_marker)
 
-  defp patch_mode?(env), do: Environments.file_exists?(env, @patch_mode_marker)
+  # Same asymmetry as `proposal_status/1`, and the same resolution. The guard on
+  # `evaluate/2` below catches a nil environment because that decided *initial*
+  # — the branch that rewrites the proposal end-to-end — but an environment that
+  # exists and cannot be read reaches here and decides the same way.
+  defp patch_mode?(env) do
+    case Environments.stat(env, @patch_mode_marker) do
+      {:ok, _} ->
+        true
+
+      {:error, :enoent} ->
+        false
+
+      {:error, reason} ->
+        Logger.warning(
+          "[ArchitectureDesign] could not read the patch-mode marker (#{inspect(reason)}). " <>
+            "Staying in patch mode — an unreadable environment must not promote this to a " <>
+            "full proposal execution."
+        )
+
+        true
+    end
+  end
 
   @doc """
   Evaluate the architecture design session output.
@@ -231,6 +288,24 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
   # no working copy for the project, which every caller below handles.
   defp cli_env(nil), do: nil
   defp cli_env(working_dir), do: Environment.new(:cli, working_dir)
+
+  # `file_exists?/2` cannot answer this, by documented design: it returns
+  # `false` both for "not there" and for "no disk to look at". `stat` can, and
+  # the same `Environments` moduledoc points at `Setup.Context.dir_status/2` as
+  # the pattern for a caller that must tell them apart.
+  #
+  # `nil` env is genuinely absent rather than unobservable: it means this server
+  # holds no working copy for the project, which is a known state, not a failed
+  # read.
+  defp proposal_status(nil), do: :absent
+
+  defp proposal_status(env) do
+    case Environments.stat(env, @proposal_path) do
+      {:ok, _} -> :present
+      {:error, :enoent} -> :absent
+      {:error, _reason} -> :unobservable
+    end
+  end
 
   defp get_app_name(%{module_name: module_name}) when is_binary(module_name), do: module_name
 

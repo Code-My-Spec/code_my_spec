@@ -220,3 +220,7 @@ config :code_my_spec,
 config :code_my_spec, CodeMySpec.Workspaces.PreviewAddress,
   base_domain: "codemyspec.com",
   target: "test-tunnel.cfargotunnel.com"
+
+# The pane re-checks a workspace that is still coming up. Short here so a spec
+# observes the transition instead of waiting out the interval a visitor gets.
+config :code_my_spec, CodeMySpecWeb.PreviewLive.Show, recheck_ms: 50

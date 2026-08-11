@@ -24,6 +24,7 @@ defmodule CodeMySpec.Harnesses do
 
   import Ecto.Query, warn: false
 
+  alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Harnesses.Harness
   alias CodeMySpec.Repo
   alias CodeMySpec.Users.Scope
@@ -134,6 +135,31 @@ defmodule CodeMySpec.Harnesses do
   end
 
   def fetch(_), do: {:error, :invalid_id}
+
+  @doc """
+  Point a scope at a harness: which checkout, where it is, and how to reach it.
+
+  All three, together, because the third is the one that gets forgotten.
+  `HarnessProjectChannel` set every field and MCP requests set only
+  `active_harness_id` — so a tool invoked over `/mcp/harness` knew exactly which
+  working copy it was talking about and had no way to read or write a byte of
+  it. `regenerate_proposal` surfaced it by trying: the transport is fine, the
+  harness implements every op, and the call failed with `:no_environment`
+  because the scope carried none.
+
+  `cwd` is the harness's own recorded root rather than anything the request
+  said. A request that could name its own directory would be back to resolving
+  a working copy by path, which is what addressing by id replaced.
+  """
+  @spec put_scope(Scope.t(), Harness.t()) :: Scope.t()
+  def put_scope(%Scope{} = scope, %Harness{} = harness) do
+    %{
+      scope
+      | active_harness_id: harness.id,
+        cwd: harness.root || scope.cwd,
+        environment: Environment.new(:harness, harness.root, ref: %{"harness_id" => harness.id})
+    }
+  end
 
   @doc """
   Record where a harness says its working copy is.

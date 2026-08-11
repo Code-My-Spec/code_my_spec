@@ -77,14 +77,44 @@ defmodule CmsHarness.HookDecisionTest do
       assert reason =~ "never connected"
     end
 
-    # The one case where the connection is fine and the *server* is the
-    # suspect. Reading this as a harness problem would send someone to restart
-    # the wrong thing.
-    test "no reply on a joined channel points away from the harness's connection" do
+    # "The channel is joined" was asserted as evidence the connection was fine,
+    # and it is not evidence of anything: a channel that dies mid-request is
+    # rebuilt in about a second, so by the time anyone reads the message it is
+    # joined again and the request it carried is gone. That reading sent three
+    # agents after a network problem while the server crashed on every stop,
+    # reconnected, and did it again.
+    #
+    # So the age decides which of three things it says.
+    test "a long-lived channel points away from the harness's connection" do
+      note = HookDecision.channel_age_note(3_600)
+
+      assert note =~ "joined for 3600s"
+      assert note =~ "server or the network"
+    end
+
+    test "a channel that just joined points at itself" do
+      note = HookDecision.channel_age_note(2)
+
+      assert note =~ "joined 2s ago"
+      assert note =~ "rebuilt after dying"
+      assert note =~ "channel DIED"
+    end
+
+    test "a channel that is not joined says the harness could not ask" do
+      note = HookDecision.channel_age_note(nil)
+
+      assert note =~ "not joined"
+      refute note =~ "server or the network"
+    end
+
+    # And the whole message still carries whichever of those applies. Without a
+    # channel registered for this directory the answer is `nil`, which is the
+    # honest one for a test process.
+    test "the reason carries the channel's state" do
       %{"reason" => reason} = HookDecision.unreachable("stop", :no_reply, @dir)
 
-      assert reason =~ "channel is joined"
-      assert reason =~ "server or the network"
+      assert reason =~ "no answer back in time"
+      assert reason =~ "not joined"
     end
   end
 

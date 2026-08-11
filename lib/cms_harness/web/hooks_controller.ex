@@ -37,6 +37,11 @@ defmodule CmsHarness.Web.HooksController do
         |> put_status(200)
         |> json(unknown_harness(hook, id, params))
 
+      {:server_unreachable, id, reason} ->
+        conn
+        |> put_status(200)
+        |> json(server_unreachable(hook, id, reason, params))
+
       :no_harness ->
         conn
         |> put_status(200)
@@ -51,9 +56,20 @@ defmodule CmsHarness.Web.HooksController do
   # could not tell two copies at the same path on different machines apart at
   # all.
   #
-  # The id comes from the URL, which onboarding wrote. The header is accepted
-  # too because it costs nothing and a host that cannot template a URL can
-  # still send one.
+  # The id comes from the URL, which onboarding wrote by reading
+  # `.cms_harness.json` — a file, per working copy, that the harness owns.
+  #
+  # The header is still accepted, because a host that cannot template a URL can
+  # send one and the proxy forwards a real id to the server on every MCP call.
+  # What is gone is the *environment variable* that used to populate it in the
+  # plugin template: `X-Harness-Id: ${CMS_HARNESS_ID}` on eight hooks, with
+  # nothing anywhere setting `CMS_HARNESS_ID`. It arrived unexpanded on every
+  # request — 76 of them measured in one run (f32c4a4a) — and was discarded
+  # here, which is the whole of "plugin hooks send no X-Harness-Id".
+  #
+  # Not replaced with something that sets the variable. Identity lives in the
+  # config file the harness already writes; asking an operator to also export
+  # it is a second source of truth that can disagree with the first.
   defp locate(conn, params) do
     case params["harness_id"] || header_id(conn) do
       id when is_binary(id) and id != "" -> from_id(id)
@@ -78,6 +94,7 @@ defmodule CmsHarness.Web.HooksController do
     case WorkingCopies.root(id) do
       {:ok, root} -> {:ok, root}
       :unknown -> {:unknown_harness, id}
+      {:unreachable, reason} -> {:server_unreachable, id, reason}
     end
   end
 
@@ -88,6 +105,19 @@ defmodule CmsHarness.Web.HooksController do
     Logger.warning("[CmsHarness] #{hook} names harness #{id}, which this machine does not serve")
 
     HookDecision.unreachable(hook, {:unknown_harness, id}, "(addressed by id)", params)
+  end
+
+  # Separate from `unknown_harness/3` because the fix is different. There the
+  # server answered and did not recognise the id, so onboarding is the answer.
+  # Here the server could not be asked, and telling the reader to onboard sends
+  # them to rewrite a config that was never wrong.
+  defp server_unreachable(hook, id, reason, params) do
+    Logger.warning(
+      "[CmsHarness] #{hook} could not resolve harness #{id}: the server is unreachable " <>
+        "(#{inspect(reason, limit: 5)})"
+    )
+
+    HookDecision.unreachable(hook, {:server_unreachable, id, reason}, "(addressed by id)", params)
   end
 
   # A hook that names nothing. Not resolvable by any means this harness is

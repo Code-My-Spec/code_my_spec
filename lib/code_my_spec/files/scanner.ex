@@ -87,15 +87,36 @@ defmodule CodeMySpec.Files.Scanner do
 
   Ownership is resolved before validation because `validate_entry/4` dispatches
   on `component_id` for `:test` files.
+
+  Returns `{:error, reason}` when the environment does not scan. It used to
+  return `[]` there, which is the same value a genuinely empty working copy
+  produces — and a caller cannot tell those apart, so it deletes.
+
+  `FileSync.sync/2` did exactly that. Running on the server, whose environment
+  is a `Harness` with no tree to walk, it took the empty list as a snapshot and
+  `Files.delete_removed/2` removed all 3936 rows for the working copy plus 452
+  of its Problems. The harness re-sent its manifest, the rows came back, and the
+  next `get_next_requirement` deleted them again — so asking what to work on
+  next destroyed the projection it had just answered from, and the answer was
+  `implementation_file` for `CodeMySpec.Authorization`, a module committed
+  months ago with eleven call sites.
   """
-  @spec observe(Environments.Environment.t(), ReadModel.t()) :: [map()]
+  @spec observe(Environments.Environment.t(), ReadModel.t()) :: {:ok, [map()]} | {:error, term()}
   def observe(env, %ReadModel{} = read_model) do
-    env
-    |> stream_files()
-    |> Enum.to_list()
-    |> then(&fingerprint_entries(env, &1))
-    |> resolve_owners(read_model)
-    |> Enum.map(&validate_entry(&1, env, read_model.component_by_id, read_model.strict?))
+    case stream_files(env) do
+      {:error, reason} ->
+        {:error, reason}
+
+      {:ok, stream} ->
+        entries =
+          stream
+          |> Enum.to_list()
+          |> then(&fingerprint_entries(env, &1))
+          |> resolve_owners(read_model)
+          |> Enum.map(&validate_entry(&1, env, read_model.component_by_id, read_model.strict?))
+
+        {:ok, entries}
+    end
   end
 
   @doc """
@@ -160,39 +181,35 @@ defmodule CodeMySpec.Files.Scanner do
   @doc """
   Stream and classify all trackable files under the sync whitelist roots.
 
-  Returns a stream of maps with `:path`, `:role`, `:mtime`, `:size`. Paths are
-  relative to `env.cwd`.
+  `{:ok, stream}` of maps with `:path`, `:role`, `:mtime`, `:size`, paths
+  relative to `env.cwd` — or `{:error, reason}` from an environment that does
+  not walk a working copy. Same contract as `observe/2` and for the same
+  reason: the refusal has to stay distinguishable from an empty tree, because
+  the caller's next move is to delete everything the walk did not mention.
   """
-  @spec stream_files(Environments.Environment.t()) :: Enumerable.t()
+  @spec stream_files(Environments.Environment.t()) :: {:ok, Enumerable.t()} | {:error, term()}
   def stream_files(env) do
-    env
-    |> Environments.stream_files(@sync_roots)
-    |> scannable()
+    case Environments.stream_files(env, @sync_roots) do
+      {:error, reason} -> {:error, reason}
+      stream -> {:ok, classified(stream, env)}
+    end
+  end
+
+  # The half of the walk that turns paths into entries. Shared with `observe/2`.
+  #
+  # A `scannable/1` clause used to sit ahead of this, folding
+  # `{:error, :not_supported_on_harness}` into `[]` so the stream stayed a
+  # stream. Its own comment closed with "turning the second into an empty
+  # working copy is how a sync deletes everything it could not see", which is
+  # what it then did — twice, 3936 rows and 452 Problems each time. Both
+  # entry points return the refusal now, so there is nothing left to fold.
+  defp classified(stream, env) do
+    stream
     |> Stream.map(&classify/1)
     |> Stream.reject(&is_nil/1)
     |> Stream.map(fn {path, role} -> stat_file(env, path, role) end)
     |> Stream.reject(&is_nil/1)
   end
-
-  # A harness has no filesystem here to walk and says so —
-  # `Environments.Harness.stream_files/3` answers
-  # `{:error, :not_supported_on_harness}` because scanning is the harness's own
-  # job: it sends a manifest up, and the server has nothing local to compare.
-  #
-  # The tuple used to go straight into `Stream.map/2`, which accepts it without
-  # complaint and builds a lazy stream around it. Nothing failed until something
-  # enumerated it, and by then the caller was `FileSync.sync_changed/2` inside
-  # the stop-hook handler: `Protocol.UndefinedError` on `Enumerable`, handler
-  # dead, no reply. The harness reported "the server did not answer in time", so
-  # it read as a network problem — the thing that would have said otherwise was
-  # the handler that died.
-  #
-  # Matched on that atom alone. Any other error still reaches the caller,
-  # because "this environment does not do scanning" and "the scan failed" want
-  # opposite responses, and turning the second into an empty working copy is how
-  # a sync deletes everything it could not see.
-  defp scannable({:error, :not_supported_on_harness}), do: []
-  defp scannable(stream), do: stream
 
   @doc """
   Validate a file entry based on its role.

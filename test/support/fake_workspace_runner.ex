@@ -13,16 +13,34 @@ defmodule CodeMySpecTest.FakeWorkspaceRunner do
 
   @doc "Starts the fake with the outcomes this test wants."
   def start_link(opts) do
-    state = %{
+    Agent.start_link(fn -> Map.put(outcomes(opts), :calls, []) end, name: __MODULE__)
+  end
+
+  @doc """
+  Point an already-running fake at a new set of outcomes.
+
+  For a second `install_workspace_runner/1` in one test process. Scenarios
+  inside a single `spex` block share that process, so a fixture that installed
+  a runner in scenario one meets `{:already_started, #PID<...>}` in scenario
+  two — an error naming a child spec and a pid, which reads as a supervision
+  bug in the code under test rather than as a second call to a fixture.
+
+  `calls` survives, deliberately. Reconfiguring says what the workspace does
+  next; it does not say the context never called `start/3`, and an assertion
+  about earlier calls is a reasonable thing for a later scenario to make.
+  """
+  def configure(opts) do
+    Agent.update(__MODULE__, &Map.merge(&1, outcomes(opts)))
+  end
+
+  defp outcomes(opts) do
+    %{
       start_result: Keyword.get(opts, :start_result, :ok),
       healthy?: Keyword.get(opts, :healthy?, true),
       serving: Keyword.get(opts, :serving, :serving),
       alive?: Keyword.get(opts, :alive?, true),
-      logs: Keyword.get(opts, :logs, ""),
-      calls: []
+      logs: Keyword.get(opts, :logs, "")
     }
-
-    Agent.start_link(fn -> state end, name: __MODULE__)
   end
 
   @doc "Replaces what the container has announced so far."

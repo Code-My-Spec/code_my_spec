@@ -3,15 +3,18 @@ defmodule CodeMySpec.Requirements.RequirementCalculatorTest do
 
   import CodeMySpec.UsersFixtures
 
+  alias CodeMySpec.AgentTasks.FixBddSpecs
   alias CodeMySpec.Components
   alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Files
+  alias CodeMySpec.Files.ComponentSync
   alias CodeMySpec.Files.FileSync
-  alias CodeMySpec.Requirements.RequirementCalculator
   alias CodeMySpec.Projects
+  alias CodeMySpec.Requirements.RequirementCalculator
+  alias Ecto.Adapters.SQL.Sandbox
 
   setup do
-    :ok = Ecto.Adapters.SQL.Sandbox.checkout(CodeMySpec.Repo)
+    :ok = Sandbox.checkout(CodeMySpec.Repo)
   end
 
   describe "compute_component/2 — file existence" do
@@ -146,6 +149,53 @@ defmodule CodeMySpec.Requirements.RequirementCalculatorTest do
     end
   end
 
+  # A latch is the one check type where doing the work is not enough, and until
+  # now nothing said so. `specs_ready` is set only by `FixBddSpecs.evaluate/2`;
+  # a completed spex sweep does not touch it. Three sweeps went green — 213s,
+  # one killed at twelve minutes, 393s — and every re-check still answered
+  # "specs_ready is not set", which reads as a broken gate rather than a step
+  # not yet taken. Three wrong theories came out of that and one was filed as an
+  # issue that had to be withdrawn.
+  #
+  # The message is the whole feature here, so it is what gets asserted.
+  describe "a latch that has not been recorded" do
+    test "says what sets it, by name, and that re-running analysis will not" do
+      scope = full_scope_fixture()
+
+      definition = %{
+        name: "bdd_specs_passing",
+        check_type: :field_true,
+        config: %{field: :specs_ready},
+        satisfied_by: FixBddSpecs
+      }
+
+      result =
+        RequirementCalculator.compute_one(scope, %{id: 1, specs_ready: false}, definition, [])
+
+      refute result.satisfied
+      assert result.details.reason =~ "specs_ready is not set"
+      assert result.details.reason =~ "FixBddSpecs"
+      assert result.details.reason =~ "evaluate_task"
+      assert result.details.reason =~ "re-running the analysis will"
+    end
+
+    test "a recorded latch just says so" do
+      scope = full_scope_fixture()
+
+      definition = %{
+        name: "bdd_specs_passing",
+        check_type: :field_true,
+        config: %{field: :specs_ready},
+        satisfied_by: FixBddSpecs
+      }
+
+      result =
+        RequirementCalculator.compute_one(scope, %{id: 1, specs_ready: true}, definition, [])
+
+      assert result.satisfied
+    end
+  end
+
   # -- Helpers --
 
   defp setup_project do
@@ -186,7 +236,7 @@ defmodule CodeMySpec.Requirements.RequirementCalculatorTest do
     {:ok, _} = FileSync.sync(scope, base_dir: tmp_dir)
 
     # Backfill component ownership
-    CodeMySpec.Files.ComponentSync.sync_from_files(scope, base_dir: tmp_dir)
+    ComponentSync.sync_from_files(scope, base_dir: tmp_dir)
   end
 
   defp reload(scope, component) do

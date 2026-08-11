@@ -6,6 +6,8 @@ defmodule CmsHarness.Web.HooksControllerTest do
 
   use CmsHarnessTest.ConnCase, async: false
 
+  alias CmsHarness.Project.ChannelClient
+  alias CmsHarness.Projects
   alias CmsHarnessTest.FakeServer
 
   setup do
@@ -71,10 +73,20 @@ defmodule CmsHarness.Web.HooksControllerTest do
 
       assert body["decision"] == "block"
 
-      assert body["reason"] =~ "not serving the working copy",
-             "an id nobody onboarded resolves to nothing — the alternative was " <>
-               "walking up from the request's directory until a mix.exs turned up, " <>
-               "which adopted whichever project sat above an unonboarded checkout"
+      # The guarantee is that an unresolvable id is refused rather than guessed
+      # at — the alternative was walking up from the request's directory until a
+      # mix.exs turned up, which adopted whichever project sat above an
+      # unonboarded checkout.
+      #
+      # Which refusal it gets depends on why the id did not resolve, and this
+      # test env has no credential, so the harness cannot ask the server and
+      # correctly says so rather than blaming the id. Both are refusals; only
+      # one of them tells the reader to re-onboard, and telling somebody to
+      # re-onboard a good id while the server is down is the thing that made
+      # this distinction worth having.
+      assert body["reason"] =~ "not serving the working copy" or
+               body["reason"] =~ "could not reach the CodeMySpec server",
+             "an unresolvable id must be refused, not guessed at — got: #{body["reason"]}"
     end
 
     test "a hook with no working directory at all is refused", %{conn: conn} do
@@ -121,7 +133,7 @@ defmodule CmsHarness.Web.HooksControllerTest do
     end
 
     test "means nothing to say, not something unreadable", %{conn: conn, project: project} do
-      {:ok, _} = CmsHarness.Projects.ensure_started(project.root)
+      {:ok, _} = Projects.ensure_started(project.root)
       assert await_connected(project.root)
 
       body = conn |> post_hook("stop", project.root) |> json_response(200)
@@ -134,7 +146,7 @@ defmodule CmsHarness.Web.HooksControllerTest do
     end
 
     test "post-tool-use is not refused on every tool call", %{conn: conn, project: project} do
-      {:ok, _} = CmsHarness.Projects.ensure_started(project.root)
+      {:ok, _} = Projects.ensure_started(project.root)
       assert await_connected(project.root)
 
       body = conn |> post_hook("post-tool-use", project.root) |> json_response(200)
@@ -146,7 +158,7 @@ defmodule CmsHarness.Web.HooksControllerTest do
 
   defp await_connected(root, attempts \\ 100) do
     Enum.reduce_while(1..attempts, false, fn _, _ ->
-      halt_when_connected(CmsHarness.Project.ChannelClient.connected?(root))
+      halt_when_connected(ChannelClient.connected?(root))
     end)
   end
 
@@ -165,7 +177,7 @@ defmodule CmsHarness.Web.HooksControllerTest do
       conn: conn,
       project: project
     } do
-      assert project.root in CmsHarness.Projects.list()
+      assert project.root in Projects.list()
 
       body = conn |> post_hook("stop", project.root) |> json_response(200)
 

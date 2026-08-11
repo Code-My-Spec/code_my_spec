@@ -50,16 +50,42 @@ defmodule CmsHarness.Sync do
     started = System.monotonic_time(:millisecond)
     env = Environment.new(:local, project.root)
 
-    observations = Scanner.observe(env, read_model)
+    case Scanner.observe(env, read_model) do
+      {:error, reason} ->
+        Logger.error(
+          "[CmsHarness] could not scan #{project.root}: #{inspect(reason)}. Sending " <>
+            "nothing — a manifest is the whole truth about a working copy, so an empty " <>
+            "one tells the server every file here was deleted."
+        )
 
-    Logger.info(
-      "[CmsHarness] scanned #{length(observations)} files in #{project.root} " <>
-        "in #{System.monotonic_time(:millisecond) - started}ms"
-    )
+        :ok
 
-    log_unclassified(env, project.root)
+      # Sent, not refused. A tree that walks clean and yields nothing is a real
+      # state — delete a project's last tracked file and this is what it looks
+      # like — and refusing here would leave the server holding rows for files
+      # that are gone, which is the defect this manifest design exists to
+      # prevent. Said at `:error` because for an established project it is
+      # almost always a wrong or unreadable root, and it is about to remove
+      # every row.
+      {:ok, []} ->
+        Logger.error(
+          "[CmsHarness] scanned #{project.root} and found no trackable files. Sending " <>
+            "the empty manifest, which will remove every row the server holds for this " <>
+            "working copy. If that is not what you expect, check the root and the sync roots."
+        )
 
-    ChannelClient.deliver_observations(project.root, observations)
+        ChannelClient.deliver_observations(project.root, [])
+
+      {:ok, observations} ->
+        Logger.info(
+          "[CmsHarness] scanned #{length(observations)} files in #{project.root} " <>
+            "in #{System.monotonic_time(:millisecond) - started}ms"
+        )
+
+        log_unclassified(env, project.root)
+
+        ChannelClient.deliver_observations(project.root, observations)
+    end
   end
 
   # What the scan walked past.

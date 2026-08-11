@@ -573,14 +573,58 @@ defmodule CodeMySpec.Analysis do
   @spec harness_fs_request(String.t(), String.t(), map(), timeout()) ::
           {:ok, term()} | :ok | {:error, term()}
   def harness_fs_request(harness_id, op, payload, timeout) do
-    case Registry.lookup(HarnessRegistry, to_string(harness_id)) do
-      [{pid, _}] -> GenServer.call(pid, {:fs_request, op, payload}, timeout + 5_000)
-      [] -> {:error, :harness_unreachable}
+    started = System.monotonic_time(:millisecond)
+
+    # Explicit `try`, so the catch clauses can see `started`. A function-level
+    # `catch` cannot — the elapsed time is the whole point of the timeout branch.
+    try do
+      case Registry.lookup(HarnessRegistry, to_string(harness_id)) do
+        [{pid, _}] ->
+          GenServer.call(pid, {:fs_request, op, payload}, timeout + 5_000)
+
+        [] ->
+          # Which of the two this is decides what the reader should do, and the
+          # atom cannot say — `[]` and a timed-out call both answer
+          # `:harness_unreachable`. The docstring above insists on telling absent
+          # from unreachable one level up; the same reasoning applies here and
+          # was not carried down.
+          #
+          # Cost, measured: a harness that had joined 57 seconds earlier — its
+          # `JOINED harness_project:…` in web.log, the server alive, `/health`
+          # answering `serving 3, degraded false` — still produced a bare
+          # `Error: :harness_unreachable` at the agent, which reads as "no
+          # harness" and sends the reader after a registration problem that is
+          # not there.
+          Logger.warning(
+            "[Analysis] #{op} for harness #{harness_id}: nothing registered under that id. " <>
+              "The harness has not joined the channel since this server started — its own " <>
+              "/health will still say connected, because that is about its socket rather " <>
+              "than about whether the server can address it. Restarting the harness rejoins."
+          )
+
+          {:error, :harness_unreachable}
+      end
+    rescue
+      ArgumentError ->
+        Logger.warning(
+          "[Analysis] #{op} for harness #{harness_id}: HarnessRegistry is not running"
+        )
+
+        {:error, :harness_unreachable}
+    catch
+      :exit, reason ->
+        # Distinguished in the log even though the atom cannot be: a timeout
+        # means the harness is registered and not answering, which is a
+        # different fix from a harness that never joined.
+        Logger.warning(
+          "[Analysis] #{op} for harness #{harness_id} did not complete after " <>
+            "#{System.monotonic_time(:millisecond) - started}ms (limit #{timeout + 5_000}ms): " <>
+            "#{inspect(reason, limit: 5)}. The harness is registered, so this is not a " <>
+            "connection problem — it accepted the request and did not answer."
+        )
+
+        {:error, :harness_unreachable}
     end
-  rescue
-    ArgumentError -> {:error, :harness_unreachable}
-  catch
-    :exit, _ -> {:error, :harness_unreachable}
   end
 
   @doc """

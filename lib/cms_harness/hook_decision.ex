@@ -28,6 +28,8 @@ defmodule CmsHarness.HookDecision do
   is the property that matters. Allowed-and-silent would not be.
   """
 
+  alias CmsHarness.Project.ChannelClient
+
   @deciding_hooks ~w(stop subagent-stop)
 
   @type reason ::
@@ -173,6 +175,24 @@ defmodule CmsHarness.HookDecision do
     |> String.trim()
   end
 
+  # The id may be perfectly good — nobody got to check. Says so, because the
+  # clause above used to answer this case too, and "the server does not
+  # recognise your id" sends the reader to re-onboard a config that was never
+  # wrong. Measured: `:4000` was down, the token exchange returned
+  # `econnrefused`, and the refusal blamed the id.
+  defp explain({:server_unreachable, harness_id, reason}, _working_dir) do
+    """
+    The harness could not reach the CodeMySpec server to find out where \
+    #{harness_id} is: #{inspect(reason, limit: 5)}
+
+    Nothing is wrong with the id, and re-onboarding will not help. The server \
+    is down or unreachable from here — check that it is listening, then stop \
+    again. `GET /health` on the harness reports `server_url`, which is the \
+    address it tried.
+    """
+    |> String.trim()
+  end
+
   defp explain(:no_project, working_dir) do
     """
     The harness is not serving this directory. It has no project id for it — set `project_id` in `#{Path.join(working_dir, ".code_my_spec/config.yml")}`, or set CMS_PROJECT_ID, and restart the harness.
@@ -194,22 +214,21 @@ defmodule CmsHarness.HookDecision do
     |> String.trim()
   end
 
+  # "The channel is joined" was asserted as evidence the connection was fine. It
+  # is not: a channel that died mid-request is rebuilt in about a second, so by
+  # the time anyone reads this it is joined again — and the request it was
+  # carrying is gone. That reading sent three agents after a network problem
+  # while the server was crashing on every stop, reconnecting, and doing it
+  # again. So say how long the channel has been up, and let a fresh one point at
+  # itself.
   defp explain(:no_reply, working_dir) do
     """
-    The harness asked the CodeMySpec server and got no answer back in time. The channel is joined, so this is the server or the network rather than the harness's connection state.
+    The harness asked the CodeMySpec server and got no answer back in time.#{channel_age_note(ChannelClient.joined_ago(working_dir))}
     Working directory: #{working_dir}
     """
     |> String.trim()
   end
 
-  # The server answered — it just did not answer with a decision. Rendering this
-  # as `:no_reply` sent a reader looking at the network for an hour while the
-  # server was replying promptly and saying exactly what was wrong. A refusal
-  # and a silence are different failures with different fixes, and this module
-  # exists to keep failures that read alike from *being* alike.
-  #
-  # The server's own words are quoted rather than summarised, because the shape
-  # that arrives here is by definition one this harness did not anticipate.
   defp explain({:refused, detail}, working_dir) do
     """
     The harness asked the CodeMySpec server and the server answered with an error rather than a decision. This is not a timeout and not a connection problem — the reply came back. The server said:
@@ -220,6 +239,43 @@ defmodule CmsHarness.HookDecision do
     """
     |> String.trim()
   end
+
+  # Under a minute is the tell. A channel that has been up for hours really does
+  # point at the server or the network; one that joined seconds ago was almost
+  # certainly rebuilt after dying, which is a server-side crash and is logged as
+  # `[HarnessProject] channel DIED` with the reason.
+  @recent_join_seconds 60
+
+  @doc false
+  # Public so the three readings can be asserted without standing up a channel,
+  # the same reason `McpController.error_page_summary/3` is. The message is the
+  # whole of the fix here — the previous one was a correct sentence drawing the
+  # wrong conclusion.
+  def channel_age_note(joined_ago) do
+    case joined_ago do
+      nil ->
+        " The channel is not joined, so the harness could not ask at all."
+
+      ago when ago <= @recent_join_seconds ->
+        " The channel is joined, but it only joined #{ago}s ago — it was very likely" <>
+          " rebuilt after dying, which would have taken this request with it." <>
+          " Look for `[HarnessProject] channel DIED` in the server's log; the reason" <>
+          " is on that line."
+
+      ago ->
+        " The channel has been joined for #{ago}s, so this is the server or the" <>
+          " network rather than the harness's connection state."
+    end
+  end
+
+  # The server answered — it just did not answer with a decision. Rendering this
+  # as `:no_reply` sent a reader looking at the network for an hour while the
+  # server was replying promptly and saying exactly what was wrong. A refusal
+  # and a silence are different failures with different fixes, and this module
+  # exists to keep failures that read alike from *being* alike.
+  #
+  # The server's own words are quoted rather than summarised, because the shape
+  # that arrives here is by definition one this harness did not anticipate.
 
   # Naming a cause is worth doing and worth being right about. "A version skew
   # is the usual cause" was asserted for every refusal, and an `unmatched topic`
@@ -240,7 +296,7 @@ defmodule CmsHarness.HookDecision do
     on seeing this, so stopping again is normally enough. If it repeats, check
     `GET /health` on the harness: the topic is keyed on the project, so several
     working copies of one project share it and the error cannot say which one is
-    failing.
+    failing.#{boot_drift()}
     """
   end
 
@@ -264,15 +320,48 @@ defmodule CmsHarness.HookDecision do
   # Only here, on the failure path. Drift is the normal state of an active
   # session and most commits do not touch the harness, so saying it proactively
   # would fire constantly and be ignored.
+  #
+  # Said on the `unmatched topic` clause as well as the generic one, because
+  # drift is the only thing that separates its two causes. A reconnect race
+  # clears itself on the next stop; a harness older than the running server
+  # never does, and both arrive as the same string. Reported across all three
+  # worktrees at once after a server restart, which is the skew case — the
+  # advice to "stop again" was wrong for every one of them.
+  #
+  # Names the command, because the session that notices is the one least able to
+  # act: a harness's command line is only `-S mix run --no-halt`, so its port,
+  # server URL and launch directory are invisible to a peer process, and killing
+  # it without a correct relaunch takes hooks down for every working copy.
   defp boot_drift do
     case CodeMySpec.BootVersion.drift() do
       {:drifted, booted, current} ->
         "\n\n    This harness booted from #{booted} and its checkout is now at " <>
-          "#{current}. If that range touched the harness or the channel " <>
-          "contract, restart the harness — it is still running the older code."
+          "#{current}." <>
+          contract_verdict(CodeMySpec.BootVersion.contract_changed?(booted, current))
 
       :none ->
         ""
     end
+  end
+
+  # The condition answered, rather than handed to the reader. It used to say "if
+  # that range touched the harness or the channel contract" — and the reader who
+  # acted on it ran the `git diff --stat` themselves before believing it.
+  defp contract_verdict(true) do
+    " That range changed `lib/cms_harness` or the channel modules, so this " <>
+      "harness is running an older contract than the server and reconnecting " <>
+      "will not help. Restart it with `just refresh-harness`, which rediscovers " <>
+      "the port and credential rather than needing them passed."
+  end
+
+  defp contract_verdict(false) do
+    " That range did not touch `lib/cms_harness` or the channel modules, so " <>
+      "skew is not the cause here — look elsewhere before restarting."
+  end
+
+  defp contract_verdict(:unknown) do
+    " Whether that range touched the harness or the channel modules could not " <>
+      "be read (a rebase can leave the booted commit unreachable). If in doubt, " <>
+      "restart with `just refresh-harness`."
   end
 end

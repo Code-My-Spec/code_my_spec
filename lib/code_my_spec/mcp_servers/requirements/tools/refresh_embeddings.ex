@@ -52,20 +52,36 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.RefreshEmbeddings do
     {:reply, Response.tool() |> Response.text(text), frame}
   end
 
-  # `FileSync.sync/2` answers `{:ok, _}` or raises; there is no error tuple to
-  # match, so pretending otherwise would only add an unreachable branch.
   defp refresh(scope, true, frame) do
-    {:ok, result} = FileSync.sync(scope, base_dir: scope.cwd, embed: true)
+    case FileSync.sync(scope, base_dir: scope.cwd, embed: true) do
+      {:ok, result} ->
+        text = """
+        # Embeddings Refreshed
 
-    text = """
-    # Embeddings Refreshed
+        - Files: #{result.total_files} (#{length(result.changed_paths)} re-embedded)
 
-    - Files: #{result.total_files} (#{length(result.changed_paths)} re-embedded)
+        `semantic_search` is current.
+        """
 
-    `semantic_search` is current.
-    """
+        {:reply, Response.tool() |> Response.text(text), frame}
 
-    {:reply, Response.tool() |> Response.text(text), frame}
+      # This used to be a bang match on the stated grounds that sync "answers
+      # `{:ok, _}` or raises". It does neither now: an environment that cannot
+      # walk a working copy says so, because the alternative it used to take was
+      # treating "I saw nothing" as "there is nothing" and deleting the lot.
+      {:error, reason} ->
+        text = """
+        # Nothing Refreshed
+
+        This scope has no working copy to walk (#{inspect(reason)}), so nothing was \
+        scanned and no embeddings changed. `semantic_search` still answers from what \
+        was last recorded.
+
+        The harness owns the files. Run this where the working copy is.
+        """
+
+        {:reply, Response.tool() |> Response.text(text), frame}
+    end
   end
 
   defp refresh(scope, _wait, frame) do

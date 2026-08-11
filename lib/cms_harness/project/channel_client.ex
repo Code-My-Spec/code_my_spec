@@ -139,6 +139,52 @@ defmodule CmsHarness.Project.ChannelClient do
   end
 
   @doc """
+  Seconds since this project's channel joined, or `nil` if it is not joined.
+
+  `connected?/1` answers "can I ask the server", which is the right question
+  before sending. This answers a different one, asked *after* a request came
+  back empty: how long has this channel been up?
+
+  A channel that joined moments ago has usually just been rebuilt after dying,
+  and a request in flight when it died is simply gone. Reporting that as "the
+  channel is joined, so this is the server or the network" sent three agents
+  after a connection that was fine — the server had crashed, dropped the
+  channel, and the harness had reconnected before anyone looked. `1dc29224`.
+  """
+  @spec joined_ago(String.t()) :: non_neg_integer() | nil
+  def joined_ago(root) do
+    case Registry.lookup(CmsHarness.Registry, {:channel, root}) do
+      [{pid, _}] -> GenServer.call(pid, :joined_ago, 5_000)
+      [] -> nil
+    end
+  catch
+    :exit, _ -> nil
+  end
+
+  @doc """
+  Seconds since the server last answered this project's channel, or `nil`.
+
+  The question `connected?/1` cannot answer. That one reports this process's
+  belief about its own socket, set at join — it cannot be wrong from where it
+  stands, and it read `true` throughout an incident where the server's registry
+  held no entry for this harness and every request came back
+  `:harness_unreachable`. Both ends reported healthy because neither had done a
+  round trip.
+
+  A reply is evidence, because the server is what sent it. Recorded on replies
+  that already happen, so this costs nothing to ask and cannot hang.
+  """
+  @spec server_replied_ago(String.t()) :: non_neg_integer() | nil
+  def server_replied_ago(root) do
+    case Registry.lookup(CmsHarness.Registry, {:channel, root}) do
+      [{pid, _}] -> GenServer.call(pid, :server_replied_ago, 5_000)
+      [] -> nil
+    end
+  catch
+    :exit, _ -> nil
+  end
+
+  @doc """
   Send a completed model turn to the server to be recorded.
 
   Fire and forget, and deliberately so. Recording is evidence for whoever is
@@ -374,6 +420,7 @@ defmodule CmsHarness.Project.ChannelClient do
       socket
       |> persist_issued_identity(reply)
       |> assign(:joined, true)
+      |> assign(:joined_at, System.monotonic_time(:second))
       |> assign(:attempts, 0)
       |> assign(:refusals, 0)
       |> assign(:refused, nil)
@@ -507,6 +554,8 @@ defmodule CmsHarness.Project.ChannelClient do
 
   @impl Slipstream
   def handle_reply(ref, reply, %{assigns: %{read_model_ref: ref}} = socket) do
+    socket = stamp_server_reply(socket)
+
     case reply do
       {:ok, payload} ->
         previous = Map.get(socket.assigns, :read_model)
@@ -530,7 +579,7 @@ defmodule CmsHarness.Project.ChannelClient do
   end
 
   def handle_reply(ref, reply, %{assigns: %{observations_ref: ref}} = socket) do
-    socket = assign(socket, :observations_ref, nil)
+    socket = socket |> stamp_server_reply() |> assign(:observations_ref, nil)
 
     case reply do
       # The server takes the manifest and reconciles it after replying, so the
@@ -573,6 +622,8 @@ defmodule CmsHarness.Project.ChannelClient do
   end
 
   def handle_reply(ref, reply, socket) do
+    socket = stamp_server_reply(socket)
+
     case pop_in(socket.assigns.analysis_refs, [ref]) do
       {nil, _} ->
         handle_pending_reply(ref, reply, socket)
@@ -838,6 +889,39 @@ defmodule CmsHarness.Project.ChannelClient do
     {:reply, socket.assigns.joined, socket}
   end
 
+  # Seconds since the server last answered anything, or nil if it never has.
+  #
+  # `connected?/1` reports `socket.assigns.joined`, which is this process's own
+  # belief about its socket and is set at join. It cannot be wrong from where it
+  # stands, and it is exactly what was reported as `connected: true` while the
+  # server's registry held no entry for this harness and every request it sent
+  # answered `:harness_unreachable`. Both ends said healthy; nothing did a round
+  # trip.
+  #
+  # This is evidence rather than belief: a reply is proof the server addressed
+  # us, because it is the server that sent it. Recorded passively on replies
+  # that already happen, so asking costs nothing and cannot hang — a health
+  # check that blocks on the network is its own outage.
+  def handle_call(:server_replied_ago, _from, socket) do
+    ago =
+      case socket.assigns[:last_server_reply_at] do
+        at when is_integer(at) -> System.monotonic_time(:second) - at
+        _ -> nil
+      end
+
+    {:reply, ago, socket}
+  end
+
+  def handle_call(:joined_ago, _from, socket) do
+    ago =
+      case {socket.assigns.joined, socket.assigns[:joined_at]} do
+        {true, at} when is_integer(at) -> System.monotonic_time(:second) - at
+        _ -> nil
+      end
+
+    {:reply, ago, socket}
+  end
+
   def handle_call(:read_model, _from, socket) do
     {:reply, socket.assigns.read_model, socket}
   end
@@ -1026,6 +1110,8 @@ defmodule CmsHarness.Project.ChannelClient do
   end
 
   # --- Private ---
+
+  defp stamp_server_reply(socket), do: assign(socket, :last_server_reply_at, System.monotonic_time(:second))
 
   defp resume_watcher(socket) do
     Watcher.resume(socket.assigns.project.root)

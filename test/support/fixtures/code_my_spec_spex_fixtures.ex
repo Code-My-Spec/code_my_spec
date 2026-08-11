@@ -846,10 +846,8 @@ defmodule CodeMySpecSpex.Fixtures do
   def deliver_manifest(%Scope{} = scope, opts \\ []) do
     read_model = Keyword.get(opts, :read_model, %Scanner.ReadModel{})
 
-    observations =
-      scope.environment
-      |> Scanner.observe(read_model)
-      |> Enum.map(&serialize_observation/1)
+    {:ok, entries} = Scanner.observe(scope.environment, read_model)
+    observations = Enum.map(entries, &serialize_observation/1)
 
     socket = %Phoenix.Socket{assigns: %{scope: scope}}
 
@@ -1324,7 +1322,23 @@ defmodule CodeMySpecSpex.Fixtures do
       Application.delete_env(:code_my_spec, CodeMySpec.Workspaces)
     end)
 
-    ExUnit.Callbacks.start_supervised!({FakeWorkspaceRunner, opts})
+    # Idempotent, because a caller means "the workspace behaves like this now"
+    # rather than "start a second one". Scenarios inside one `spex` block share
+    # a test process — they read as sibling blocks and are not — so adding a
+    # scenario to an existing criterion met
+    #
+    #   ** (RuntimeError) failed to start child with the spec
+    #      {CodeMySpecTest.FakeWorkspaceRunner, [...]}.
+    #      Reason: bad child specification, got: {:already_started, #PID<...>}
+    #
+    # which names a child spec and a pid and reads as a supervision bug in the
+    # code under test. It took a stacktrace read to find that the second
+    # installer was the caller's own fixture call.
+    case Process.whereis(FakeWorkspaceRunner) do
+      nil -> ExUnit.Callbacks.start_supervised!({FakeWorkspaceRunner, opts})
+      _already_running -> FakeWorkspaceRunner.configure(opts)
+    end
+
     :ok
   end
 

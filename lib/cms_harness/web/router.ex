@@ -76,7 +76,8 @@ defmodule CmsHarness.Web.Router do
   end
 
   # The MCP surface, forwarded to the server — see `McpController`. Addressed
-  # the same way the hooks are, as `/mcp?harness=<id>`: two checkouts of one
+  # the same way the hooks are, now literally: `/api/harnesses/<id>/mcp`. Two
+  # checkouts of one
   # project are two working copies, and sharing an MCP session between them
   # while their hooks stayed apart would be a mismatch nobody could see.
   #
@@ -86,6 +87,16 @@ defmodule CmsHarness.Web.Router do
     plug(:accepts, ["json", "sse"])
   end
 
+  scope "/api/harnesses/:harness_id", CmsHarness.Web do
+    pipe_through(:mcp)
+
+    match(:*, "/mcp", McpController, :proxy)
+  end
+
+  # The query form, kept because the released marketplace plugin sends it and
+  # removing it would refuse MCP on every machine running that release. It is
+  # the older spelling of the same address, not a second mechanism — both land
+  # in the same controller and resolve the same id.
   scope "/", CmsHarness.Web do
     pipe_through(:mcp)
 

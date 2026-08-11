@@ -35,16 +35,15 @@ defmodule CodeMySpecSpex.Story886.Criterion2325Spex do
   @endpoint CodeMySpecWeb.Endpoint
 
   setup :register_log_in_setup_account
-
-  setup do
-    # Not answering yet, but the container is up: an app on its way, which is
-    # the state under test.
-    Fixtures.install_workspace_runner(healthy?: false, alive?: true, serving: :down)
-  end
+  setup :setup_active_project
 
   spex "A pane that is still coming up says so, and keeps up on its own" do
     scenario "An app still coming up says so, and changes over on its own" do
       given_ "a visitor whose workspace is still starting", context do
+        # Not answering yet, but the container is up: an app on its way, which
+        # is the state under test.
+        Fixtures.install_workspace_runner(healthy?: false, alive?: true, serving: :down)
+
         conn = get(context.conn, "/build")
         {:ok, view, _html} = live(conn)
 
@@ -93,6 +92,54 @@ defmodule CodeMySpecSpex.Story886.Criterion2325Spex do
 
       then_ "and it offers him the app rather than leaving him to find it", context do
         assert context.settled =~ "Open your application"
+
+        {:ok, context}
+      end
+    end
+  end
+
+  spex "A pane keeps up with a container nobody is watching" do
+    scenario "The pane changes over even when no watcher is announcing it" do
+      given_ "Sam is watching a pane whose container has stopped answering", context do
+        :ok = Fixtures.workspace_in(context.scope, context.project.id, :running)
+
+        # A workspace that was up and is not answering now: the row still says
+        # running, the container does not respond. That is what a restarted
+        # container looks like, and it is reached without a boot — so nothing
+        # is watching it and no broadcast is coming.
+        Fixtures.put_workspace_serving(:down)
+
+        {:ok, view, html} = live(context.conn, "/build/preview")
+
+        {:ok, Map.merge(context, %{view: view, html: html})}
+      end
+
+      then_ "the pane says it is coming up rather than framing a dead address", context do
+        assert context.html =~ "preview-starting",
+               "expected the pane to say the app is still coming up, got: #{context.html}"
+
+        refute context.html =~ "preview-frame",
+               "the pane framed an address nothing is serving, which renders blank " <>
+                 "and reads to Sam as his app being broken"
+
+        {:ok, context}
+      end
+
+      when_ "the container starts answering again, with nobody to announce it", context do
+        Fixtures.put_workspace_serving(:serving)
+
+        {:ok, Map.put(context, :settled, await(context.view, "preview-frame"))}
+      end
+
+      then_ "the page he already had open frames the app by itself", context do
+        assert context.settled =~ "preview-frame",
+               "the pane sat on \"Starting your app…\" while the app served. Broadcasts " <>
+                 "only come from the watcher a boot starts, so a container that came " <>
+                 "back any other way left this page wrong until Sam reloaded — and he " <>
+                 "has no reason to think a reload is what he needs"
+
+        refute context.settled =~ "preview-starting",
+               "the pane framed the app and went on claiming it was still starting"
 
         {:ok, context}
       end

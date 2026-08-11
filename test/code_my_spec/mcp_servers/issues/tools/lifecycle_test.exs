@@ -3,12 +3,17 @@ defmodule CodeMySpec.McpServers.Issues.Tools.LifecycleTest do
   import CodeMySpec.UsersFixtures
   import CodeMySpec.IssuesFixtures
 
-  alias CodeMySpec.McpServers.Issues.Tools.{AcceptIssue, DismissIssue, ResolveIssue}
   alias Anubis.Server.Frame
   alias Anubis.Server.Response
+  alias CodeMySpec.Issues
+  alias CodeMySpec.McpServers.Issues.Tools.AcceptIssue
+  alias CodeMySpec.McpServers.Issues.Tools.DismissIssue
+  alias CodeMySpec.McpServers.Issues.Tools.ResolveIssue
+  alias CodeMySpec.McpServers.Issues.Tools.UpdateIssue
+  alias Ecto.Adapters.SQL.Sandbox
 
   setup do
-    :ok = Ecto.Adapters.SQL.Sandbox.checkout(CodeMySpec.Repo)
+    :ok = Sandbox.checkout(CodeMySpec.Repo)
   end
 
   describe "AcceptIssue" do
@@ -57,7 +62,7 @@ defmodule CodeMySpec.McpServers.Issues.Tools.LifecycleTest do
     test "resolves an accepted issue with resolution" do
       scope = full_scope_fixture()
       issue = issue_fixture(scope)
-      {:ok, accepted} = CodeMySpec.Issues.accept_issue(scope, issue)
+      {:ok, accepted} = Issues.accept_issue(scope, issue)
 
       frame = %Frame{assigns: %{current_scope: scope}}
 
@@ -105,6 +110,68 @@ defmodule CodeMySpec.McpServers.Issues.Tools.LifecycleTest do
                )
 
       assert resolve_resp.isError == false
+    end
+  end
+
+  # An agent files when it has the evidence, which is usually before it
+  # understands the defect — so reports go stale, and the only remedy used to be
+  # a second issue. `1f60a145` cited the wrong log file and `b0486568` had to be
+  # filed to say so, leaving two reports of one defect with the first still
+  # sending its reader to a process that was not involved.
+  describe "UpdateIssue append" do
+    test "adds the correction and keeps the original text" do
+      scope = full_scope_fixture()
+      issue = issue_fixture(scope, %{description: "Cited server.log, which is the :4003 server."})
+      frame = %Frame{assigns: %{current_scope: scope}}
+
+      assert {:reply, response, ^frame} =
+               UpdateIssue.execute(
+                 %{issue_id: issue.id, append: "Wrong log — the stop hook logs to web.log."},
+                 frame
+               )
+
+      assert response.isError == false
+
+      updated = Issues.get_issue(scope, issue.id)
+      assert updated.description =~ "Cited server.log, which is the :4003 server."
+      assert updated.description =~ "Wrong log — the stop hook logs to web.log."
+      assert updated.description =~ "Correction / later evidence"
+    end
+
+    test "appends again without losing the first correction" do
+      scope = full_scope_fixture()
+      issue = issue_fixture(scope, %{description: "First account."})
+      frame = %Frame{assigns: %{current_scope: scope}}
+
+      {:reply, _, ^frame} = UpdateIssue.execute(%{issue_id: issue.id, append: "Second."}, frame)
+      issue = Issues.get_issue(scope, issue.id)
+      {:reply, _, ^frame} = UpdateIssue.execute(%{issue_id: issue.id, append: "Third."}, frame)
+
+      updated = Issues.get_issue(scope, issue.id)
+      assert updated.description =~ "First account."
+      assert updated.description =~ "Second."
+      assert updated.description =~ "Third."
+    end
+
+    test "an append alone is enough — no other field required" do
+      scope = full_scope_fixture()
+      issue = issue_fixture(scope)
+      frame = %Frame{assigns: %{current_scope: scope}}
+
+      assert {:reply, response, ^frame} =
+               UpdateIssue.execute(%{issue_id: issue.id, append: "More evidence."}, frame)
+
+      assert response.isError == false
+    end
+
+    test "still refuses an update that says nothing" do
+      scope = full_scope_fixture()
+      issue = issue_fixture(scope)
+      frame = %Frame{assigns: %{current_scope: scope}}
+
+      assert {:reply, response, ^frame} = UpdateIssue.execute(%{issue_id: issue.id}, frame)
+      assert response.isError == true
+      assert response_text(response) =~ "append"
     end
   end
 

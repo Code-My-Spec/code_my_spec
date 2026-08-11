@@ -26,6 +26,10 @@ defmodule CodeMySpecWeb.PreviewLive.Show do
 
   @viewports ~w(full tablet phone)
 
+  # States that are still on their way somewhere, and so are worth asking about
+  # again. `:running`, `:broken` and `:absent` are answers; these are waits.
+  @unsettled [:starting]
+
   @impl true
   def mount(_params, _session, socket) do
     workspace = Workspaces.get_workspace(socket.assigns.current_scope)
@@ -37,6 +41,7 @@ defmodule CodeMySpecWeb.PreviewLive.Show do
       |> assign(page_title: "Your app")
       |> assign(viewport: "full")
       |> assign(crash: nil)
+      |> assign(recheck_ref: nil)
       |> assign_workspace(workspace)
 
     {:ok, ensure_address(socket, connected?(socket))}
@@ -132,32 +137,71 @@ defmodule CodeMySpecWeb.PreviewLive.Show do
     {:noreply, assign_workspace(socket, workspace)}
   end
 
+  # Re-read the row rather than trusting the one we hold: a container that came
+  # back without a watcher moved on without telling anybody.
+  def handle_info(:recheck, socket) do
+    {:noreply, assign_workspace(socket, Workspaces.reload(socket.assigns.workspace))}
+  end
+
   defp assign_workspace(socket, nil) do
     socket
     |> assign(:workspace, nil)
     |> assign(:app_state, :absent)
     |> assign(:src, nil)
+    |> schedule_recheck()
   end
 
   defp assign_workspace(socket, workspace) do
+    # Once, not twice: `state/1` probes the app over HTTP, and asking again for
+    # the address doubled every poll into two round trips.
+    state = Workspaces.state(workspace)
+
     socket
     |> assign(:workspace, workspace)
-    |> assign(:app_state, Workspaces.state(workspace))
+    |> assign(:app_state, state)
     # The preview address, not `Workspaces.url/1`. The container's own address
     # refuses to be framed — a generated app sends `frame-ancestors 'self'` —
     # and the refusal is silent: the iframe element looks perfectly healthy
     # while rendering nothing. `PreviewProxy` replaces that header, and it only
     # sees requests that arrive at the preview address.
-    |> assign(:src, preview_src(workspace))
+    |> assign(:src, preview_src(workspace, state))
+    |> schedule_recheck()
   end
 
   # A preview address is worth pointing at only when there is something behind
   # it; a workspace that is not running has nothing to serve.
-  defp preview_src(workspace) do
-    case Workspaces.state(workspace) do
-      state when state in [:running, :broken] -> PreviewAddress.url(workspace.project_id)
-      _ -> nil
-    end
+  defp preview_src(workspace, state) when state in [:running, :broken],
+    do: PreviewAddress.url(workspace.project_id)
+
+  defp preview_src(_workspace, _state), do: nil
+
+  # Broadcasts are the fast path; this is the floor under them. They are only
+  # sent by the watcher `Workspaces.start_instance/2` spawns, so an app that
+  # comes back any other way — `docker start`, a host reboot, a restart policy —
+  # left an open pane saying "Starting your app…" forever while the app served.
+  defp schedule_recheck(socket) do
+    socket
+    |> cancel_recheck()
+    |> arm_recheck(connected?(socket) and socket.assigns.app_state in @unsettled)
+  end
+
+  defp cancel_recheck(%{assigns: %{recheck_ref: ref}} = socket) when is_reference(ref) do
+    Process.cancel_timer(ref)
+    assign(socket, :recheck_ref, nil)
+  end
+
+  defp cancel_recheck(socket), do: socket
+
+  defp arm_recheck(socket, false), do: socket
+
+  defp arm_recheck(socket, true),
+    do: assign(socket, :recheck_ref, Process.send_after(self(), :recheck, recheck_ms()))
+
+  # Short enough that a visitor does not sit in front of a stale spinner,
+  # configurable so a spex can drive the transition instead of waiting it out.
+  defp recheck_ms do
+    Application.get_env(:code_my_spec, __MODULE__, [])
+    |> Keyword.get(:recheck_ms, 2_000)
   end
 
   @impl true

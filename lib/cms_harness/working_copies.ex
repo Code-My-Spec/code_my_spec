@@ -34,13 +34,17 @@ defmodule CmsHarness.WorkingCopies do
   alias CmsHarness.Token
 
   @doc """
-  The directory this id names, or `:unknown`.
+  The directory this id names.
 
   Copies already being served answer first — that is every hook after the
   first. Otherwise the harness's own working copy is consulted, which is what
   answers the first one.
+
+  Three answers, not two. `:unknown` means the server was asked and did not
+  recognise the id — re-onboarding fixes that. `{:unreachable, reason}` means
+  the server could not be asked at all, and re-onboarding fixes nothing.
   """
-  @spec root(String.t()) :: {:ok, String.t()} | :unknown
+  @spec root(String.t()) :: {:ok, String.t()} | :unknown | {:unreachable, term()}
   def root(harness_id) when is_binary(harness_id) and harness_id != "" do
     case Enum.find(known(), fn {id, _root} -> id == harness_id end) do
       {_id, root} -> {:ok, root}
@@ -63,12 +67,21 @@ defmodule CmsHarness.WorkingCopies do
         Logger.warning("[CmsHarness] the server does not know harness #{harness_id}")
         :unknown
 
+      # Not `:unknown`. "The server said no" and "I could not ask the server"
+      # have different fixes, and collapsing them sent the refusal's reader to
+      # re-run `mix cms.harness.onboard` on a correct id, which rewrites a
+      # working config and still does not work.
+      #
+      # Measured: `:4000` was down, `Token.access_token/0` answered
+      # `econnrefused`, and the hook came back "the hooks are addressed to a
+      # harness id the server does not recognise". The right line was already in
+      # harness.log directly above it.
       other ->
         Logger.warning(
           "[CmsHarness] could not ask where harness #{harness_id} is: #{inspect(other)}"
         )
 
-        :unknown
+        {:unreachable, other}
     end
   end
 

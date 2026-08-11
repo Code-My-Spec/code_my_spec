@@ -16,4 +16,15 @@ defmodule CodeMySpecTest.EnvRestore do
   @spec restore(String.t(), String.t() | nil) :: :ok
   def restore(name, nil), do: System.delete_env(name)
   def restore(name, value), do: System.put_env(name, value)
+
+  @doc """
+  Put an application env key back, deleting it when it was never set.
+
+  Same distinction as `restore/2` and the same reason it lives out here: `nil`
+  and unset are different to `Application.get_env/2`, and a branch in an
+  `on_exit` is still a branch in a test file.
+  """
+  @spec restore_app_env(atom(), term()) :: :ok
+  def restore_app_env(key, nil), do: Application.delete_env(:code_my_spec, key)
+  def restore_app_env(key, value), do: Application.put_env(:code_my_spec, key, value)
 end
