@@ -84,7 +84,7 @@ defmodule CodeMySpec.MixProject do
        compile: false,
        depth: 1},
       {:swoosh, "~> 1.21"},
-      {:req, "~> 0.5.15"},
+      {:req, "~> 0.7"},
       {:req_llm, "~> 1.0"},
       # req_llm 1.18 matches on `%Finch.Pool{}` and `Finch.Request`'s
       # `:pool_tag`, which only exist from finch 0.22. `req` asks for `~> 0.17`,
@@ -118,7 +118,7 @@ defmodule CodeMySpec.MixProject do
       # Only here because ex_cli_vcr needs it to patch System.cmd/3; nothing in
       # this app calls :meck directly. Tracks ex_cli_vcr's requirement.
       {:meck, "~> 1.2", only: [:test]},
-      {:req_cassette, "~> 0.6.0", only: :test},
+      {:req_cassette, "~> 0.6.2", only: :test},
       # `mix bench.graph`. Test-only on purpose: the dev server runs from a
       # working copy, and a new application in :dev is not hot-reloadable — it
       # takes the running server down until someone restarts it.

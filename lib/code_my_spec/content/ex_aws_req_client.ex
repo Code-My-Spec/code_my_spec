@@ -23,12 +23,12 @@ defmodule CodeMySpec.Content.ExAwsReqClient do
       [
         method: method,
         url: url,
-        body: body,
         headers: headers,
         decode_body: false,
         retry: false,
         receive_timeout: receive_timeout(http_opts)
       ]
+      |> maybe_body(body)
       |> maybe_plug()
 
     case Req.request(opts) do
@@ -39,6 +39,18 @@ defmodule CodeMySpec.Content.ExAwsReqClient do
         {:error, %{reason: reason}}
     end
   end
+
+  # ExAws hands `""` as the body of a GET, and from req 0.7 a GET carrying a
+  # body is promoted to POST on the wire — `Req.new/1` still reports `:get`, so
+  # only a packet capture shows it. MinIO answered our reads with
+  #
+  #     400 BadRequest — An error occurred when parsing the HTTP request POST
+  #     at '/bucket/key'
+  #
+  # which named the method it actually received. Omitting the key entirely
+  # leaves the GET a GET; PUT and DELETE are unaffected either way.
+  defp maybe_body(opts, body) when body in ["", nil], do: opts
+  defp maybe_body(opts, body), do: Keyword.put(opts, :body, body)
 
   # ExAws speaks hackney's `:recv_timeout`; Req calls it `:receive_timeout`.
   # Either is honoured so a caller does not have to know which library is
