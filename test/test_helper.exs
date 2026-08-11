@@ -108,6 +108,53 @@ case pending_migrations do
     )
 end
 
+# Say when the database starts dirty.
+#
+# The sandbox rolls each test back, so these tables are empty at the start of a
+# run — unless something escaped it and committed, and then the row is permanent,
+# because the test database is created once and reused forever.
+#
+# What that looks like is not a database error. It is a handful of unrelated
+# tests going red: anything reading an unscoped query answers about the stranger
+# instead of the row it just made. Four did here — `Repo.all(query) |> hd()` in
+# the accounts repositories — and they read as broken preloads. Those four now
+# scope to their own row, but the next unscoped read will not.
+#
+# `CmsHarness.TestDatabase.reset_data/2` truncates the *analyzer's* partition
+# before every sweep for exactly this reason, and reports the count it removed
+# because "a silent repair that runs every sweep is how a defect stops being
+# visible". Nothing owns the database an agent's own `mix test` uses, so this
+# reports rather than repairs: truncating a developer's database from a test
+# helper is a bigger liberty than the problem warrants.
+dirty_counts =
+  case Ecto.Adapters.SQL.query(
+         CodeMySpec.Repo,
+         """
+         SELECT 'users', count(*) FROM users
+         UNION ALL SELECT 'accounts', count(*) FROM accounts
+         UNION ALL SELECT 'projects', count(*) FROM projects
+         UNION ALL SELECT 'stories', count(*) FROM stories
+         UNION ALL SELECT 'components', count(*) FROM components
+         """,
+         []
+       ) do
+    {:ok, %{rows: rows}} -> Enum.filter(rows, fn [_table, count] -> count > 0 end)
+    {:error, _reason} -> []
+  end
+
+if dirty_counts != [] do
+  summary = Enum.map_join(dirty_counts, ", ", fn [table, count] -> "#{table}=#{count}" end)
+
+  IO.puts(
+    :stderr,
+    "[test_helper] the test database is not empty before this run (#{summary}). " <>
+      "Rows that escaped the ExUnit sandbox and committed are permanent, and they " <>
+      "surface as unrelated tests failing on unscoped reads. Clear with " <>
+      "`MIX_ENV=test mix ecto.drop && MIX_ENV=test mix ecto.create && " <>
+      "MIX_ENV=test mix ecto.migrate`."
+  )
+end
+
 Ecto.Adapters.SQL.Sandbox.mode(CodeMySpec.Repo, :manual)
 
 # The light harness tree. Its tests drive real processes — a watcher on a real
