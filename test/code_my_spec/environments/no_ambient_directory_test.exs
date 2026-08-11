@@ -50,6 +50,17 @@ defmodule CodeMySpec.Environments.NoAmbientDirectoryTest do
     end
   end
 
+  # `Cli` is a second implementation of the same behaviour and carried the same
+  # fallback. 9770cea7 fixed `Local` and left this one, which is how a fix goes
+  # stale across implementations: the hazard just moves to whichever the next
+  # caller picks. Asserted per implementation rather than once, because that is
+  # the failure this pins.
+  test "the CLI environment refuses it too" do
+    assert_raise ArgumentError, ~r/no working directory/, fn ->
+      Environments.Cli.stream_files(%Environment{type: :cli, cwd: nil}, ["lib"], [])
+    end
+  end
+
   # The point is refusing the *absent* directory, not refusing ambient work: a
   # caller that means "here" says "here" and still gets it.
   test "an explicit directory still runs" do
