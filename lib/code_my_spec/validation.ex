@@ -572,6 +572,11 @@ defmodule CodeMySpec.Validation do
       # result is. The message used to assert the first from the second and got
       # it wrong in both directions.
       in_flight: Analysis.in_flight(scope),
+      # And how long it has been running. "A rerun is in flight" is the same
+      # sentence on every stop inside one run's window, so taking the advice
+      # promptly returns a byte-identical block — which is what a livelock looks
+      # like from the outside, and the opposite response is correct for each.
+      in_flight_since: Analysis.in_flight_since(scope),
       # And whether anyone is watching at all. "No rerun is in flight, stopping
       # again enqueues one" is a claim about the world, and an untracked project
       # cannot support it — nothing would report a run either way.

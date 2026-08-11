@@ -113,7 +113,21 @@ defmodule CodeMySpec.Analysis.RunsRepository do
 
   @doc "Sources with a `:running` run for the project."
   @spec running_sources(Scope.t()) :: [String.t()]
-  def running_sources(%Scope{active_project_id: project_id} = scope) do
+  def running_sources(%Scope{} = scope), do: scope |> running_since() |> Map.keys()
+
+  @doc """
+  When each still-`:running` source started, for this working copy.
+
+  The start time rather than only the source name, because "a rerun is in
+  flight" is the same sentence on every stop inside one run's window, and two
+  identical blocks in a row is the signature of a livelock. How long it has been
+  running is what tells those apart (`020f573e`).
+
+  Earliest start per source: duplicates should not happen, and if they do, the
+  one that has been running longest is the one about to land.
+  """
+  @spec running_since(Scope.t()) :: %{String.t() => DateTime.t()}
+  def running_since(%Scope{active_project_id: project_id} = scope) do
     Run
     |> where([r], r.project_id == ^project_id and r.status == :running)
     # This working copy's runs. The only query here that was not scoped, and
@@ -123,10 +137,14 @@ defmodule CodeMySpec.Analysis.RunsRepository do
     # result that could never arrive, three stops running, while its own last
     # run sat 96 minutes back and its requested rerun had been dropped.
     |> scope_to_harness(scope)
-    |> select([r], r.source)
-    |> distinct(true)
+    |> select([r], {r.source, r.started_at})
     |> Repo.all()
+    |> Enum.reduce(%{}, fn {source, started_at}, acc ->
+      Map.update(acc, source, started_at, &earliest(&1, started_at))
+    end)
   end
+
+  defp earliest(a, b), do: if(DateTime.compare(a, b) == :lt, do: a, else: b)
 
   @doc """
   Fetch one still-`:running` run of this project by id.

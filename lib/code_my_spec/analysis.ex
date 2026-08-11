@@ -464,6 +464,25 @@ defmodule CodeMySpec.Analysis do
   end
 
   @doc """
+  When each in-flight source started, where that is knowable.
+
+  Only the ledger records a start time, so this answers `%{}` for a locally
+  executed project — `ProjectServer.in_flight/1` reports names alone. Callers
+  treat a missing entry as "running, for an unknown length of time" rather than
+  as not running; `in_flight/1` remains the answer to *whether*.
+
+  The light harness is the case this exists for, and there the ledger is the
+  record by definition.
+  """
+  @spec in_flight_since(Scope.t()) :: %{String.t() => DateTime.t()}
+  def in_flight_since(%Scope{} = scope) do
+    case remote_executor(scope) do
+      {:ok, _pid} -> RunsRepository.running_since(scope)
+      :none -> %{}
+    end
+  end
+
+  @doc """
   Whether anything is running, nothing is, or nobody is watching.
 
   `in_flight/1` answered `[]` for the last two alike, which renders absent

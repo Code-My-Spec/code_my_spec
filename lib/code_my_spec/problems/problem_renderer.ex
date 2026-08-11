@@ -180,10 +180,20 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
     run_duration = Keyword.get(opts, :run_duration, %{})
     reproduce = Keyword.get(opts, :reproduce_commands, %{})
     session_paths = Keyword.get(opts, :session_paths)
-    in_flight = Keyword.get(opts, :in_flight, [])
-    # Defaults true: every existing caller was making the "no rerun" claim
-    # already, and only a caller that knows otherwise should soften it.
-    tracked? = Keyword.get(opts, :tracked?, true)
+    # One value rather than three positional arguments threaded four levels
+    # down: they are only ever read together, and every question the footer asks
+    # is about the same thing — what analysis is doing right now.
+    #
+    # `since` may be missing a source that is in `sources`. Locally executed
+    # projects report names without start times, so "running, length unknown" is
+    # a real state and not a bug.
+    flight = %{
+      sources: Keyword.get(opts, :in_flight, []),
+      since: Keyword.get(opts, :in_flight_since, %{}),
+      # Defaults true: every existing caller was making the "no rerun" claim
+      # already, and only a caller that knows otherwise should soften it.
+      tracked?: Keyword.get(opts, :tracked?, true)
+    }
 
     header = "Fix these problems before stopping:\n\n"
     advisory_section = render_advisory_section(advisory, Keyword.get(opts, :unattributed_count, 0))
@@ -195,7 +205,7 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
       header <>
         blocking_section <>
         advisory_section <>
-        stale_footer(blocking, stale, last_ran, run_duration, in_flight, tracked?)
+        stale_footer(blocking, stale, last_ran, run_duration, flight)
 
     enforce_total_cap(raw, blocking, advisory)
   end
@@ -302,7 +312,7 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
     end
   end
 
-  defp stale_footer(blocking, stale, last_ran, run_duration, in_flight, tracked?) do
+  defp stale_footer(blocking, stale, last_ran, run_duration, flight) do
     blocking
     |> Enum.map(& &1.source)
     |> Enum.uniq()
@@ -317,7 +327,7 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
         stale_sentence(ran) <>
           never_sentence(never) <>
           " Do not re-fix anything you have already corrected." <>
-          escalation(sources, last_ran, run_duration, in_flight, tracked?)
+          escalation(sources, last_ran, run_duration, flight)
     end
   end
 
@@ -366,14 +376,14 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
   # So say the age, and say separately whether a rerun is actually in flight —
   # because that is what decides the advice. Waiting works when something is
   # running and never works when nothing is.
-  defp escalation(sources, last_ran, run_duration, in_flight, tracked?) do
+  defp escalation(sources, last_ran, run_duration, flight) do
     age =
       sources
       |> Enum.map(&Map.get(last_ran, &1))
       |> Enum.map(&staleness_seconds/1)
       |> Enum.max(fn -> 0 end)
 
-    rerunning = Enum.filter(sources, &(&1 in in_flight))
+    rerunning = Enum.filter(sources, &(&1 in flight.sources))
     overtaken = Enum.filter(sources, &overtaken?(&1, Map.get(last_ran, &1), run_duration))
 
     # Checked before the others because it is the most specific condition and
@@ -384,7 +394,7 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
     if overtaken != [] do
       overtaken_sentence(overtaken, run_duration, rerunning)
     else
-      wait_or_report(age, rerunning, tracked?)
+      wait_or_report(age, rerunning, run_duration, flight)
     end
   end
 
@@ -427,11 +437,11 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
     end
   end
 
-  defp wait_or_report(age, rerunning, tracked?) do
-    case {age, rerunning, tracked?} do
+  defp wait_or_report(age, rerunning, run_duration, flight) do
+    case {age, rerunning, flight.tracked?} do
       {_age, [_ | _] = running, _} ->
-        " A rerun is in flight now (#{Enum.join(Enum.sort(running), ", ")}) — stop " <>
-          "again and let it replace these."
+        " A rerun is in flight now (#{running_detail(running, run_duration, flight.since)}) — " <>
+          "stop again and let it replace these."
 
       # Nothing is watching, so "no rerun is in flight" is not something this
       # can know — `in_flight/1` answers the same empty list for idle and for
@@ -454,6 +464,44 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
           "report that rather than editing around it."
     end
   end
+
+  # "credo, running 13s of a typical 18s" rather than "credo".
+  #
+  # The elapsed figure is the whole point: it is the only part of this footer
+  # that changes between two stops inside one run's window, and without it
+  # taking the advice — stop again, promptly — returns a byte-identical block.
+  # Two identical blocks in a row is the signature of the livelock 1f60a145 was
+  # about, where the promised rerun never came, and the correct response to that
+  # is the opposite of the correct response here. Measured on the incident that
+  # produced this: stops 13 seconds apart, both answered from the run before,
+  # while the run they were told about finished clean 5 seconds later (020f573e).
+  #
+  # The typical duration comes from the last completed run of that source, so it
+  # is absent on a source that has never finished one — say the elapsed alone
+  # rather than guess a total.
+  defp running_detail(running, run_duration, since) do
+    running
+    |> Enum.sort()
+    |> Enum.map_join(", ", fn source ->
+      source <> elapsed_clause(Map.get(since, source), Map.get(run_duration, source))
+    end)
+  end
+
+  defp elapsed_clause(%DateTime{} = started_at, typical) do
+    elapsed = max(DateTime.diff(DateTime.utc_now(), started_at, :second), 0)
+
+    case typical do
+      seconds when is_integer(seconds) and seconds > 0 ->
+        ", running #{duration_text(elapsed)} of a typical #{duration_text(seconds)}"
+
+      _ ->
+        ", running #{duration_text(elapsed)}"
+    end
+  end
+
+  # Locally executed projects report which sources are running but not since
+  # when, so there is nothing to say and the sentence stays as it was.
+  defp elapsed_clause(_started_at, _typical), do: ""
 
   defp staleness_seconds(%DateTime{} = at), do: DateTime.diff(DateTime.utc_now(), at, :second)
   defp staleness_seconds(_), do: 0
