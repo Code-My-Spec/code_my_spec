@@ -181,6 +181,9 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
     reproduce = Keyword.get(opts, :reproduce_commands, %{})
     session_paths = Keyword.get(opts, :session_paths)
     in_flight = Keyword.get(opts, :in_flight, [])
+    # Defaults true: every existing caller was making the "no rerun" claim
+    # already, and only a caller that knows otherwise should soften it.
+    tracked? = Keyword.get(opts, :tracked?, true)
 
     header = "Fix these problems before stopping:\n\n"
     advisory_section = render_advisory_section(advisory, Keyword.get(opts, :unattributed_count, 0))
@@ -191,7 +194,8 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
     raw =
       header <>
         blocking_section <>
-        advisory_section <> stale_footer(blocking, stale, last_ran, run_duration, in_flight)
+        advisory_section <>
+        stale_footer(blocking, stale, last_ran, run_duration, in_flight, tracked?)
 
     enforce_total_cap(raw, blocking, advisory)
   end
@@ -298,7 +302,7 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
     end
   end
 
-  defp stale_footer(blocking, stale, last_ran, run_duration, in_flight) do
+  defp stale_footer(blocking, stale, last_ran, run_duration, in_flight, tracked?) do
     blocking
     |> Enum.map(& &1.source)
     |> Enum.uniq()
@@ -313,7 +317,7 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
         stale_sentence(ran) <>
           never_sentence(never) <>
           " Do not re-fix anything you have already corrected." <>
-          escalation(sources, last_ran, run_duration, in_flight)
+          escalation(sources, last_ran, run_duration, in_flight, tracked?)
     end
   end
 
@@ -362,7 +366,7 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
   # So say the age, and say separately whether a rerun is actually in flight —
   # because that is what decides the advice. Waiting works when something is
   # running and never works when nothing is.
-  defp escalation(sources, last_ran, run_duration, in_flight) do
+  defp escalation(sources, last_ran, run_duration, in_flight, tracked?) do
     age =
       sources
       |> Enum.map(&Map.get(last_ran, &1))
@@ -380,7 +384,7 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
     if overtaken != [] do
       overtaken_sentence(overtaken, run_duration, rerunning)
     else
-      wait_or_report(age, rerunning)
+      wait_or_report(age, rerunning, tracked?)
     end
   end
 
@@ -423,18 +427,28 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
     end
   end
 
-  defp wait_or_report(age, rerunning) do
-    case {age, rerunning} do
-      {_age, [_ | _] = running} ->
+  defp wait_or_report(age, rerunning, tracked?) do
+    case {age, rerunning, tracked?} do
+      {_age, [_ | _] = running, _} ->
         " A rerun is in flight now (#{Enum.join(Enum.sort(running), ", ")}) — stop " <>
           "again and let it replace these."
 
-      {age, []} when age > 900 ->
+      # Nothing is watching, so "no rerun is in flight" is not something this
+      # can know — `in_flight/1` answers the same empty list for idle and for
+      # untracked. Saying the analyzer is failing on that basis sends the reader
+      # after a component that may never have been started for this project.
+      {_age, [], false} ->
+        " Nothing is tracking analysis runs for this project, so whether one is " <>
+          "in flight is unknown — not \"none\". Check that the analyzer is " <>
+          "running for this working copy before concluding anything from these " <>
+          "results' age."
+
+      {age, [], true} when age > 900 ->
         " The newest of these results is #{div(age, 60)} minutes old and no rerun " <>
           "is running, so nothing is going to replace it on its own: treat the " <>
           "analyzer as failing and report it rather than editing around it."
 
-      {_age, []} ->
+      {_age, [], true} ->
         " No rerun is in flight. Stopping again enqueues one; if these persist " <>
           "across several stops with no change, the analyzer itself is failing — " <>
           "report that rather than editing around it."

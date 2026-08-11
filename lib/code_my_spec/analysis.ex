@@ -428,22 +428,54 @@ defmodule CodeMySpec.Analysis do
   """
   @spec in_flight(Scope.t()) :: [String.t()]
   def in_flight(%Scope{} = scope) do
-    case remote_executor(scope) do
-      {:ok, _pid} -> RunsRepository.running_sources(scope)
-      :none -> local_in_flight(scope)
+    case in_flight_state(scope) do
+      {:running, sources} -> sources
+      _ -> []
     end
   end
 
-  defp local_in_flight(%Scope{} = scope) do
+  @doc """
+  Whether anything is running, nothing is, or nobody is watching.
+
+  `in_flight/1` answered `[]` for the last two alike, which renders absent
+  information as good news. A project with no entry in `Analysis.Registry` —
+  no server started for it, or a build without the Analysis subtree — is
+  *untracked*: nothing would know if a run were in flight.
+
+  That cost a diagnosis in `998f4d93`. A test waited on `runs_in_flight?/1` to
+  settle the pipeline before comparing two stop decisions; the project was
+  untracked, so the wait returned instantly, settled nothing, and the flake
+  stayed at the same rate while looking addressed.
+
+  It decides real behaviour too. `Hooks.Stop.pending_analysis?/1` allows a stop
+  as "analysis pending" on this answer, and the stale footer prints "No rerun
+  is in flight. Stopping again enqueues one" — a claim about the world that
+  untracked cannot support.
+
+  A harness-served project is tracked by definition: the ledger is the record,
+  and no `:running` rows genuinely means idle.
+  """
+  @spec in_flight_state(Scope.t()) :: {:running, [String.t()]} | :idle | :untracked
+  def in_flight_state(%Scope{} = scope) do
+    case remote_executor(scope) do
+      {:ok, _pid} -> sources_or_idle(RunsRepository.running_sources(scope))
+      :none -> local_in_flight_state(scope)
+    end
+  end
+
+  defp local_in_flight_state(%Scope{} = scope) do
     case Registry.lookup(CodeMySpec.Analysis.Registry, server_key(scope)) do
-      [{pid, _}] -> ProjectServer.in_flight(pid)
-      [] -> []
+      [{pid, _}] -> pid |> ProjectServer.in_flight() |> sources_or_idle()
+      [] -> :untracked
     end
   rescue
     # Registry not started — web build or a test app without the Analysis
-    # subtree. No registry, no in-flight runs.
-    ArgumentError -> []
+    # subtree. Nobody is watching, which is not the same as nothing running.
+    ArgumentError -> :untracked
   end
+
+  defp sources_or_idle([]), do: :idle
+  defp sources_or_idle(sources), do: {:running, sources}
 
   @doc """
   The light harness holding this project, or `:none`.

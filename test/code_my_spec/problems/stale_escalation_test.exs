@@ -40,7 +40,7 @@ defmodule CodeMySpec.Problems.StaleEscalationTest do
   defp minutes_ago(n), do: DateTime.add(DateTime.utc_now(), -n * 60, :second)
 
   test "an old result with nothing running says so, and does not call it incomplete" do
-    text = footer(last_ran: %{"exunit" => minutes_ago(38)}, in_flight: [])
+    text = footer(last_ran: %{"exunit" => minutes_ago(38)}, in_flight: [], tracked?: true)
 
     assert text =~ "38 minutes old"
     assert text =~ "no rerun is running"
@@ -111,5 +111,29 @@ defmodule CodeMySpec.Problems.StaleEscalationTest do
     text = footer(last_ran: %{"exunit" => minutes_ago(2)}, in_flight: ["exunit", "credo"])
 
     assert text =~ "exunit"
+  end
+
+  describe "when nothing is tracking runs for this project" do
+    test "it says the answer is unknown rather than 'none'" do
+      # `in_flight/1` returns the same empty list for idle and for untracked, so
+      # the old wording asserted "no rerun is in flight" on the strength of an
+      # absence it could not distinguish. An untracked project sent the reader
+      # after a failing analyzer that may never have been started for it.
+      text = footer(last_ran: %{"exunit" => minutes_ago(38)}, in_flight: [], tracked?: false)
+
+      assert text =~ "Nothing is tracking analysis runs"
+
+      refute text =~ "treat the analyzer as failing",
+             "38 minutes old only means a wedged analyzer if something was watching"
+
+      refute text =~ "No rerun is in flight"
+    end
+
+    test "a tracked project keeps the claim it can support" do
+      text = footer(last_ran: %{"exunit" => minutes_ago(1)}, in_flight: [], tracked?: true)
+
+      assert text =~ "No rerun is in flight"
+      refute text =~ "Nothing is tracking"
+    end
   end
 end

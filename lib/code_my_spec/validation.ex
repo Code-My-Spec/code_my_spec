@@ -571,7 +571,11 @@ defmodule CodeMySpec.Validation do
       # Whether a rerun is actually running, as opposed to how old the newest
       # result is. The message used to assert the first from the second and got
       # it wrong in both directions.
-      in_flight: Analysis.in_flight(scope)
+      in_flight: Analysis.in_flight(scope),
+      # And whether anyone is watching at all. "No rerun is in flight, stopping
+      # again enqueues one" is a claim about the world, and an untracked project
+      # cannot support it — nothing would report a run either way.
+      tracked?: Analysis.in_flight_state(scope) != :untracked
     )
   end
 
