@@ -414,7 +414,8 @@ defmodule CodeMySpec.Validation do
         |> Enum.reject(&is_nil/1)
         |> Enum.uniq(),
       specs_ready_story_ids: specs_ready_story_ids(scope),
-      criterion_story_ids: AcceptanceCriteria.spec_path_story_ids(scope)
+      criterion_story_ids: AcceptanceCriteria.spec_path_story_ids(scope),
+      story_ids_by_number: Stories.list_story_ids_by_number(scope)
     }
 
     # One pass over the file ledger for every source, rather than one per
@@ -526,11 +527,21 @@ defmodule CodeMySpec.Validation do
   # The filename parse stays as the fallback for a spex no criterion claims.
   # There is no right answer for an orphan, and changing what happens to those
   # is a separate decision from fixing the ones that do have an answer.
+  #
+  # That fallback now resolves what it parses. The directory name is the story's
+  # durable **number**, and it used to be handed straight to a set of primary
+  # keys — the comparison above, made from the wrong end. Going through
+  # `story_ids_by_number` means an unmatched number answers `nil` and lands in
+  # the loud branch instead of quietly naming whichever story holds that id.
   defp split_by_story_enforcement("spex", problems, ctx) do
-    %{specs_ready_story_ids: ready_ids, criterion_story_ids: by_path} = ctx
+    %{
+      specs_ready_story_ids: ready_ids,
+      criterion_story_ids: by_path,
+      story_ids_by_number: by_number
+    } = ctx
 
     Enum.split_with(problems, fn problem ->
-      case Map.get(by_path, problem.file_path) || Parser.derive_story_id(problem.file_path) do
+      case Map.get(by_path, problem.file_path) || story_id_from_path(problem.file_path, by_number) do
         nil -> true
         story_id -> MapSet.member?(ready_ids, story_id)
       end
@@ -538,6 +549,13 @@ defmodule CodeMySpec.Validation do
   end
 
   defp split_by_story_enforcement(_source, problems, _ctx), do: {problems, []}
+
+  defp story_id_from_path(file_path, by_number) do
+    case Parser.derive_story_number(file_path) do
+      nil -> nil
+      number -> Map.get(by_number, number)
+    end
+  end
 
   defp specs_ready_story_ids(scope) do
     scope

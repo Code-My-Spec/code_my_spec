@@ -120,10 +120,13 @@ defmodule CodeMySpec.AgentTasks.FixBddSpecs do
   # single red spex anywhere in the project would hold every story short
   # of ready — the exact symptom the deleted per-story checker guarded
   # against.
+  # Matched on `story.number`, because that is what the directory is named
+  # from. Comparing the parsed number to `story.id` matched nothing once the
+  # two diverged, so every story looked like it had no failing spex.
   defp story_spex_problems(scope, story) do
     scope
     |> Problems.list_project_problems(source: "spex")
-    |> Enum.filter(&(Parser.derive_story_id(&1.file_path) == story.id))
+    |> Enum.filter(&(Parser.derive_story_number(&1.file_path) == story.number))
   end
 
   defp has_bdd_specs?(scope, story) do
@@ -137,9 +140,11 @@ defmodule CodeMySpec.AgentTasks.FixBddSpecs do
   # ============================================================================
 
   defp filter_relevant_problems(scope, problems) do
+    by_number = Stories.list_story_ids_by_number(scope)
+
     problems
     |> Enum.map(fn problem ->
-      story_id = Parser.derive_story_id(problem.file_path)
+      story_id = Map.get(by_number, Parser.derive_story_number(problem.file_path))
       {problem, story_id}
     end)
     |> Enum.reject(fn {_problem, story_id} -> is_nil(story_id) end)

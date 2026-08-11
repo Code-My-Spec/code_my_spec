@@ -35,6 +35,11 @@ defmodule CodeMySpec.Analysis do
   moment its channel closes, not at the moment somebody notices.
   """
 
+  # The transport `Environments.Harness` reaches a working copy over. Declared
+  # there and wired here, because `Environments` is a leaf that everything
+  # depends on and cannot name this module without closing a cycle.
+  @behaviour CodeMySpec.Environments.HarnessTransport
+
   require Logger
 
   alias CodeMySpec.Analysis.{
@@ -484,6 +489,7 @@ defmodule CodeMySpec.Analysis do
   means there is one and it cannot be reached. Anything that prunes or reports
   absence has to tell them apart.
   """
+  @impl CodeMySpec.Environments.HarnessTransport
   @spec harness_fs_request(String.t(), String.t(), map(), timeout()) ::
           {:ok, term()} | :ok | {:error, term()}
   def harness_fs_request(harness_id, op, payload, timeout) do

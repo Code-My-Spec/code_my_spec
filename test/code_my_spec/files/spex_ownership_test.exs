@@ -58,14 +58,17 @@ defmodule CodeMySpec.Files.SpexOwnershipTest do
   end
 
   describe "a spex file nothing has recorded" do
-    test "still resolves from its path" do
+    test "still resolves from its path, through the number the directory names" do
       path = "test/spex/42_user_auth/criterion_7_valid_credentials_spex.exs"
 
-      read_model = %ReadModel{story_ids: MapSet.new([42]), story_by_spec_path: %{}}
+      # 42 is the story's durable *number*; 875 is its primary key. The
+      # directory has never named the key, and resolving through the map is
+      # what keeps those two facts from being confused for one another.
+      read_model = %ReadModel{story_ids_by_number: %{42 => 875}, story_by_spec_path: %{}}
 
       [resolved] = Scanner.resolve_owners([entry(path)], read_model)
 
-      assert resolved.story_id == 42,
+      assert resolved.story_id == 875,
              "a spex written moments ago has no recorded path yet, and the parse " <>
                "is the only thing that can place it"
     end
@@ -73,11 +76,29 @@ defmodule CodeMySpec.Files.SpexOwnershipTest do
     test "a path naming no story here stays unowned" do
       path = "test/spex/9999_gone/criterion_1_whatever_spex.exs"
 
-      read_model = %ReadModel{story_ids: MapSet.new([42]), story_by_spec_path: %{}}
+      read_model = %ReadModel{story_ids_by_number: %{42 => 875}, story_by_spec_path: %{}}
 
       [resolved] = Scanner.resolve_owners([entry(path)], read_model)
 
       assert is_nil(resolved.story_id)
+    end
+
+    test "a directory number that happens to equal some story's id owns nothing" do
+      # The whole reason this goes through a map. 875 is a real primary key
+      # here, and it used to be enough for the parse to succeed: the file was
+      # bound to whichever story held that id, silently and wrongly.
+      path = "test/spex/875_coincidence/criterion_1_whatever_spex.exs"
+
+      read_model = %ReadModel{
+        story_ids: MapSet.new([875]),
+        story_ids_by_number: %{42 => 875},
+        story_by_spec_path: %{}
+      }
+
+      [resolved] = Scanner.resolve_owners([entry(path)], read_model)
+
+      assert is_nil(resolved.story_id),
+             "no story is numbered 875, so nothing here owns this file"
     end
   end
 

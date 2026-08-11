@@ -73,6 +73,7 @@ defmodule CodeMySpecSpex.Fixtures do
   alias CodeMySpec.Provisioning.Dns
   alias CodeMySpec.Provisioning.Hetzner
   alias CodeMySpec.Provisioning.Repository
+  alias CodeMySpec.Repo
   alias CodeMySpec.Provisioning.Resend
   alias CodeMySpec.Provisioning.Resend
   alias CodeMySpec.Provisioning.Sequence
@@ -1724,7 +1725,36 @@ defmodule CodeMySpecSpex.Fixtures do
   defdelegate component_fixture(scope, attrs), to: ArchitectureFixtures
 
   # -- BDD Specs --
-  defdelegate spec_file_path(story, criterion), to: BddSpecs
+
+  @doc """
+  Where the harness will look for a criterion's spex.
+
+  Resolves the story and criterion from the database before deriving,
+  rather than deriving from whatever the spex is holding. Spex reach
+  this with a story parsed out of `GetStory`'s text — `:id`, `:title`,
+  `:criteria` and nothing else — and the path is built from the
+  story's durable `:number`, which that projection does not carry.
+  Deriving from it produced `test/spex/<id>_<slug>/`, the spex wrote
+  its fixture there, and the evaluator looked under `<number>_<slug>`
+  and reported the file missing. Seven spex in story 460 failed that
+  way and all of them read as evaluator bugs.
+
+  Resolving also picks up a recorded `spec_path`, which is what the
+  evaluator uses when one exists, so this answers the question a spex
+  is actually asking: where will the harness look?
+  """
+  @spec spec_file_path(map(), map()) :: String.t()
+  def spec_file_path(%{id: story_id}, %{id: criterion_id}) do
+    story = Repo.get!(Story, story_id) |> Repo.preload(:criteria)
+    criterion = Enum.find(story.criteria, &(&1.id == criterion_id))
+
+    unless criterion do
+      raise ArgumentError,
+            "criterion #{inspect(criterion_id)} does not belong to story #{inspect(story_id)}"
+    end
+
+    BddSpecs.spec_file_path(story, criterion)
+  end
 
   # -- Problems --
   defdelegate problem_fixture(scope, attrs \\ %{}), to: ProblemsFixtures

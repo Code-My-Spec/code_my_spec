@@ -16,18 +16,21 @@ defmodule CodeMySpec.BddSpecs.Spec do
           name: String.t() | nil,
           description: String.t() | nil,
           file_path: String.t() | nil,
-          story_id: integer() | nil,
+          # The story's durable number, read out of the directory name — not a
+          # primary key. It was called `story_id` and matched against `story.id`,
+          # which held only while paths were named from the id.
+          story_number: integer() | nil,
           criterion_id: integer() | nil,
           tags: list(atom()),
           scenarios: list(Scenario.t())
         }
 
   @derive {Jason.Encoder,
-           only: [:name, :description, :file_path, :story_id, :criterion_id, :tags, :scenarios]}
+           only: [:name, :description, :file_path, :story_number, :criterion_id, :tags, :scenarios]}
   defstruct name: nil,
             description: nil,
             file_path: nil,
-            story_id: nil,
+            story_number: nil,
             criterion_id: nil,
             tags: [],
             scenarios: []
@@ -49,14 +52,14 @@ defmodule CodeMySpec.BddSpecs.Spec do
       name: :string,
       description: :string,
       file_path: :string,
-      story_id: :integer,
+      story_number: :integer,
       criterion_id: :integer,
       tags: {:array, :any},
       scenarios: {:array, :any}
     }
 
     {spec, types}
-    |> cast(attrs, [:name, :description, :file_path, :story_id, :criterion_id, :tags])
+    |> cast(attrs, [:name, :description, :file_path, :story_number, :criterion_id, :tags])
     |> cast_scenarios(attrs)
     |> validate_required([:name, :file_path])
   end

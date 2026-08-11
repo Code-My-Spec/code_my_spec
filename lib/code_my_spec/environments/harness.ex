@@ -131,7 +131,18 @@ defmodule CodeMySpec.Environments.Harness do
   def test_environment_teardown_command(_env, _attrs), do: ""
 
   defp request(%Environment{ref: %{"harness_id" => id}}, op, payload) when is_binary(id) do
-    CodeMySpec.Analysis.harness_fs_request(id, op, payload, @timeout)
+    case Application.get_env(:code_my_spec, :harness_fs_transport) do
+      nil ->
+        # No transport configured is the harness binary's own case: it links
+        # `Environments` and has no channel to reach anything over. Nothing
+        # there should be building a `:harness` environment, so this is a wiring
+        # bug rather than a state, and it says so rather than crashing.
+        Logger.warning("[Environments.Harness] #{op} with no :harness_fs_transport configured")
+        {:error, :harness_unreachable}
+
+      transport ->
+        transport.harness_fs_request(id, op, payload, @timeout)
+    end
   end
 
   defp request(%Environment{ref: ref}, op, _payload) do

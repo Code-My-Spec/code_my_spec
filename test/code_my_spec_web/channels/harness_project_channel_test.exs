@@ -326,7 +326,9 @@ defmodule CodeMySpecWeb.HarnessProjectChannelTest do
     # supply it.
     test "the server decides ownership, not the harness", %{channel: channel, scope: scope} do
       story = CodeMySpec.StoriesFixtures.story_fixture(scope)
-      dir = "test/spex/#{story.id}_some_title"
+      # The story's durable number, which is what a spex directory is named
+      # from — the harness writes the path and the server resolves it back.
+      dir = "test/spex/#{story.number}_some_title"
 
       ref =
         push(channel, "observations", %{

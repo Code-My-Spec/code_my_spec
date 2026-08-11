@@ -31,6 +31,7 @@ defmodule CodeMySpec.Files do
       component_by_module: Map.new(components, &{&1.module_name, &1.id}),
       component_by_id: Map.new(components, &{&1.id, &1}),
       story_ids: project_story_ids(scope),
+      story_ids_by_number: project_story_ids_by_number(scope),
       story_by_spec_path: story_by_spec_path(scope),
       strict?: Configurations.require_specs?(scope)
     }
@@ -62,6 +63,18 @@ defmodule CodeMySpec.Files do
     |> select([s], s.id)
     |> Repo.all()
     |> MapSet.new()
+  end
+
+  # `test/spex/<number>_<slug>/` names a story by its durable number; every
+  # File row keys on the primary key. This is the join between them.
+  defp project_story_ids_by_number(%Scope{active_project_id: nil}), do: %{}
+
+  defp project_story_ids_by_number(%Scope{} = scope) do
+    CodeMySpec.Stories.Story
+    |> where([s], s.project_id == ^scope.active_project_id and not is_nil(s.number))
+    |> select([s], {s.number, s.id})
+    |> Repo.all()
+    |> Map.new()
   end
 
   @doc "List all files for the project."

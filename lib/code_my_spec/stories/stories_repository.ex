@@ -42,6 +42,23 @@ defmodule CodeMySpec.Stories.StoriesRepository do
     |> Repo.all()
   end
 
+  @doc """
+  `%{number => id}` for the project's stories.
+
+  Resolves a spex directory name back to a story. `test/spex/<n>_<slug>/`
+  is named from the durable number, and everything downstream keys on the
+  primary key, so without this map the number was compared against ids
+  directly — a comparison that silently succeeds against the wrong story
+  whenever some other story happens to hold that id.
+  """
+  def list_story_ids_by_number(%Scope{active_project_id: project_id}) do
+    Story
+    |> where([s], s.project_id == ^project_id and not is_nil(s.number))
+    |> select([s], {s.number, s.id})
+    |> Repo.all()
+    |> Map.new()
+  end
+
   def list_project_stories(%Scope{} = scope) do
     stories =
       Story

@@ -763,7 +763,7 @@ defmodule CodeMySpec.Requirements.RequirementGraphEdgesTest do
     # Re-fetch the story so criteria (created during three amigos) are available.
     story = StoryHelpers.fetch(scope, story.id)
     [criterion | _] = story.criteria
-    bdd_path = CodeMySpec.BddSpecs.spec_file_path(story, criterion)
+    bdd_path = CodeMySpecSpex.Fixtures.spec_file_path(story, criterion)
     write_file(tmp_dir, bdd_path, bdd_spec_stub(story, criterion))
 
     # Insert a DB-backed QA pass attempt. The requirement graph now checks

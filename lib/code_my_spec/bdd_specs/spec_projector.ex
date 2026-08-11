@@ -35,13 +35,14 @@ defmodule CodeMySpec.BddSpecs.SpecProjector do
       if Enum.empty?(stories) do
         "No stories found.\n"
       else
-        # Group specs by story_id
-        specs_by_story = Enum.group_by(specs, & &1.story_id)
+        # Grouped by story number, matched against `story.number` — the directory
+        # name is the durable number, not the primary key.
+        specs_by_story = Enum.group_by(specs, & &1.story_number)
 
         # Generate coverage report for each story
         story_sections =
           Enum.map_join(stories, "\n\n", fn story ->
-            story_specs = Map.get(specs_by_story, story.id, [])
+            story_specs = Map.get(specs_by_story, story.number, [])
             format_story_with_criteria(story, story_specs)
           end)
 
@@ -50,7 +51,7 @@ defmodule CodeMySpec.BddSpecs.SpecProjector do
 
         stories_with_specs =
           Enum.count(stories, fn story ->
-            Map.get(specs_by_story, story.id, []) != []
+            Map.get(specs_by_story, story.number, []) != []
           end)
 
         summary = """
@@ -115,7 +116,7 @@ defmodule CodeMySpec.BddSpecs.SpecProjector do
 
   ## Examples
 
-      iex> spec = %Spec{name: "Auth", file_path: "/path/spec.ex", story_id: 1}
+      iex> spec = %Spec{name: "Auth", file_path: "/path/spec.ex", story_number: 1}
       iex> project_full(spec)
       "# Auth\\n\\n**File**: /path/spec.ex\\n..."
 
@@ -150,13 +151,14 @@ defmodule CodeMySpec.BddSpecs.SpecProjector do
   end
 
   def project_coverage_by_story(specs, stories) when is_list(specs) and is_list(stories) do
-    # Group specs by story_id
-    specs_by_story = Enum.group_by(specs, & &1.story_id)
+    # Grouped by story number, matched against `story.number` — the directory
+    # name is the durable number, not the primary key.
+    specs_by_story = Enum.group_by(specs, & &1.story_number)
 
     story_sections =
       stories
       |> Enum.map(fn story ->
-        story_specs = Map.get(specs_by_story, story.id, [])
+        story_specs = Map.get(specs_by_story, story.number, [])
         format_story_coverage(story, story_specs)
       end)
 
@@ -361,8 +363,8 @@ defmodule CodeMySpec.BddSpecs.SpecProjector do
     parts = ["**File**: #{spec.file_path}"]
 
     parts =
-      if spec.story_id do
-        parts ++ ["**Story ID**: #{spec.story_id}"]
+      if spec.story_number do
+        parts ++ ["**Story**: #{spec.story_number}"]
       else
         parts
       end

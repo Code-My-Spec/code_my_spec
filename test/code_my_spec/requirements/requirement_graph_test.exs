@@ -602,7 +602,7 @@ defmodule CodeMySpec.Requirements.RequirementGraphTest do
     # Re-fetch the story so criteria (created during three amigos) are available.
     story = CodeMySpecSpex.StoryHelpers.fetch(scope, story.id)
     [criterion | _] = story.criteria
-    bdd_path = CodeMySpec.BddSpecs.spec_file_path(story, criterion)
+    bdd_path = CodeMySpecSpex.Fixtures.spec_file_path(story, criterion)
 
     bdd_content = """
     defmodule CodeMySpecSpex.Story#{story.id}.Criterion#{criterion.id}Spex do

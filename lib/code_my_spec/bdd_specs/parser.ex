@@ -14,7 +14,7 @@ defmodule CodeMySpec.BddSpecs.Parser do
   @doc """
   Parse Spex DSL content into a Spec struct.
 
-  Takes the file content (string) and the file path (for story_id/criterion_id derivation).
+  Takes the file content (string) and the file path (for story_number/criterion_id derivation).
   Callers are responsible for reading the file (via Environment or otherwise).
   """
   @spec parse(String.t(), String.t()) :: {:ok, Spec.t()} | {:error, term()}
@@ -119,40 +119,48 @@ defmodule CodeMySpec.BddSpecs.Parser do
   end
 
   @doc """
-  Extract story ID from file path using naming convention.
+  Extract the story's durable number from a file path.
 
-  Expects directory names in format: `<story_id>_<description>` or `test_<unique>_<story_id>_<description>`.
+  Expects directory names in format: `<story_number>_<description>` or
+  `test_<unique>_<story_number>_<description>`.
+
+  A **number**, not a primary key. The two are different — on this project
+  they differ by 51 — and this function used to be called `derive_story_id`
+  and its result matched against `story.id`. That worked only while paths
+  were named from the id, and it broke silently the moment they stopped:
+  a number that resolves to *a* story looks exactly like one that resolves
+  to the right story. Callers must match `story.number`.
 
   Uses anchored patterns to avoid false matches on numbers embedded in the slug
   (e.g. "509_sync_google_analytics_4_data" correctly returns 509, not 4).
 
   ## Examples
 
-      iex> derive_story_id("/path/to/123_user_auth/spec.exs")
+      iex> derive_story_number("/path/to/123_user_auth/spec.exs")
       123
 
-      iex> derive_story_id("/path/to/test_999_123_user_auth/spec.exs")
+      iex> derive_story_number("/path/to/test_999_123_user_auth/spec.exs")
       123
 
-      iex> derive_story_id("/path/to/509_sync_google_analytics_4_data/spec.exs")
+      iex> derive_story_number("/path/to/509_sync_google_analytics_4_data/spec.exs")
       509
 
-      iex> derive_story_id("/path/to/regular_dir/spec.exs")
+      iex> derive_story_number("/path/to/regular_dir/spec.exs")
       nil
   """
-  @spec derive_story_id(String.t()) :: integer() | nil
-  def derive_story_id(file_path) do
+  @spec derive_story_number(String.t()) :: integer() | nil
+  def derive_story_number(file_path) do
     dirname = file_path |> Path.dirname() |> Path.basename()
 
-    # First try "test_<unique>_<story_id>_<description>" pattern
+    # First try "test_<unique>_<story_number>_<description>" pattern
     case Regex.run(~r/^test_\d+_(\d+)_/, dirname) do
-      [_, id] ->
-        String.to_integer(id)
+      [_, number] ->
+        String.to_integer(number)
 
       nil ->
-        # Then try "<story_id>_<description>" pattern (ID at start of dirname)
+        # Then try "<story_number>_<description>" (number at start of dirname)
         case Regex.run(~r/^(\d+)_/, dirname) do
-          [_, id] -> String.to_integer(id)
+          [_, number] -> String.to_integer(number)
           nil -> nil
         end
     end
@@ -184,7 +192,7 @@ defmodule CodeMySpec.BddSpecs.Parser do
   # ============================================================================
 
   defp build_spec(metadata, file_path) do
-    story_id = derive_story_id(file_path)
+    story_number = derive_story_number(file_path)
     criterion_id = derive_criterion_id(file_path)
 
     scenario_maps =
@@ -205,7 +213,7 @@ defmodule CodeMySpec.BddSpecs.Parser do
         description: metadata.description,
         tags: metadata.tags,
         file_path: file_path,
-        story_id: story_id,
+        story_number: story_number,
         criterion_id: criterion_id,
         scenarios: scenario_maps
       })

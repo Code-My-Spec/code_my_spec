@@ -19,8 +19,8 @@ defmodule CodeMySpec.BddSpecsTest do
     File.mkdir_p!(spex_dir)
 
     # Create spec files based on the provided list
-    for {story_id, criterion_id, content} <- specs do
-      story_dir = Path.join(spex_dir, "#{story_id}_user_story")
+    for {story_number, criterion_id, content} <- specs do
+      story_dir = Path.join(spex_dir, "#{story_number}_user_story")
       File.mkdir_p!(story_dir)
       file_path = Path.join(story_dir, "criterion_#{criterion_id}_spex.exs")
       File.write!(file_path, content)
@@ -261,8 +261,8 @@ defmodule CodeMySpec.BddSpecsTest do
       story = story_fixture(scope)
 
       specs = [
-        {story.id, 1, valid_spex_content("story criterion 1")},
-        {story.id, 2, valid_spex_content("story criterion 2")},
+        {story.number, 1, valid_spex_content("story criterion 1")},
+        {story.number, 2, valid_spex_content("story criterion 2")},
         {999, 3, valid_spex_content("other story spec")}
       ]
 
@@ -271,7 +271,7 @@ defmodule CodeMySpec.BddSpecsTest do
 
       on_exit(fn -> cleanup_test_directory(scope) end)
 
-      result = BddSpecs.list_specs_for_story(env, story.id)
+      result = BddSpecs.list_specs_for_story(env, story.number)
       assert length(result) == 2
 
       spec_names = Enum.map(result, & &1.name)
@@ -291,11 +291,11 @@ defmodule CodeMySpec.BddSpecsTest do
 
       on_exit(fn -> cleanup_test_directory(scope) end)
 
-      result = BddSpecs.list_specs_for_story(env, story.id)
+      result = BddSpecs.list_specs_for_story(env, story.number)
       assert result == []
     end
 
-    test "extracts story_id from directory naming convention" do
+    test "extracts the story number from the directory naming convention" do
       scope = full_scope_fixture()
 
       specs = [
@@ -310,7 +310,7 @@ defmodule CodeMySpec.BddSpecsTest do
 
       result = BddSpecs.list_specs_for_story(env, 42)
       assert length(result) == 2
-      assert Enum.all?(result, &(&1.story_id == 42))
+      assert Enum.all?(result, &(&1.story_number == 42))
     end
 
     test "handles multiple specs for same story" do
@@ -330,7 +330,7 @@ defmodule CodeMySpec.BddSpecsTest do
 
       result = BddSpecs.list_specs_for_story(env, 100)
       assert length(result) == 4
-      assert Enum.all?(result, &(&1.story_id == 100))
+      assert Enum.all?(result, &(&1.story_number == 100))
 
       criterion_ids = Enum.map(result, & &1.criterion_id)
       assert 1 in criterion_ids
@@ -427,7 +427,7 @@ defmodule CodeMySpec.BddSpecsTest do
       # Embed criteria in story for coverage check
       story = %{story | criteria: [criterion]}
 
-      specs = [{story.id, criterion.id, valid_spex_content("coverage spec")}]
+      specs = [{story.number, criterion.id, valid_spex_content("coverage spec")}]
       scope = create_test_project_with_specs(scope, specs)
       env = create_environment(scope)
 
@@ -451,8 +451,8 @@ defmodule CodeMySpec.BddSpecsTest do
       story2 = %{story2 | criteria: [criterion2]}
 
       specs = [
-        {story1.id, criterion1.id, valid_spex_content("story1 spec")},
-        {story2.id, criterion2.id, valid_spex_content("story2 spec")}
+        {story1.number, criterion1.id, valid_spex_content("story1 spec")},
+        {story2.number, criterion2.id, valid_spex_content("story2 spec")}
       ]
 
       scope = create_test_project_with_specs(scope, specs)
@@ -475,7 +475,7 @@ defmodule CodeMySpec.BddSpecsTest do
       # Embed criteria in story
       story = %{story | criteria: [criterion1, criterion2]}
 
-      specs = [{story.id, criterion1.id, valid_spex_content("covered criterion")}]
+      specs = [{story.number, criterion1.id, valid_spex_content("covered criterion")}]
       scope = create_test_project_with_specs(scope, specs)
       env = create_environment(scope)
 
@@ -516,7 +516,7 @@ defmodule CodeMySpec.BddSpecsTest do
       criterion2 = criterion_fixture(scope, story)
       story = %{story | criteria: [criterion1, criterion2]}
 
-      specs = [{story.id, criterion1.id, valid_spex_content("spec")}]
+      specs = [{story.number, criterion1.id, valid_spex_content("spec")}]
       scope = create_test_project_with_specs(scope, specs)
       env = create_environment(scope)
 
@@ -542,8 +542,8 @@ defmodule CodeMySpec.BddSpecsTest do
       story = %{story | criteria: [criterion1, criterion2]}
 
       specs = [
-        {story.id, criterion1.id, valid_spex_content("covered 1")},
-        {story.id, criterion2.id, valid_spex_content("covered 2")}
+        {story.number, criterion1.id, valid_spex_content("covered 1")},
+        {story.number, criterion2.id, valid_spex_content("covered 2")}
       ]
 
       scope = create_test_project_with_specs(scope, specs)
@@ -569,7 +569,7 @@ defmodule CodeMySpec.BddSpecsTest do
       story = %{story | criteria: [criterion1, criterion2]}
 
       # Only create spec for criterion1
-      specs = [{story.id, criterion1.id, valid_spex_content("only one")}]
+      specs = [{story.number, criterion1.id, valid_spex_content("only one")}]
       scope = create_test_project_with_specs(scope, specs)
       env = create_environment(scope)
 
@@ -589,8 +589,8 @@ defmodule CodeMySpec.BddSpecsTest do
       story = %{story | criteria: [criterion1, criterion2]}
 
       specs = [
-        {story.id, criterion1.id, valid_spex_content("spec 1")},
-        {story.id, criterion2.id, valid_spex_content("spec 2")}
+        {story.number, criterion1.id, valid_spex_content("spec 1")},
+        {story.number, criterion2.id, valid_spex_content("spec 2")}
       ]
 
       scope = create_test_project_with_specs(scope, specs)
@@ -796,7 +796,7 @@ defmodule CodeMySpec.BddSpecsTest do
       criterion = criterion_fixture(scope, story)
 
       # Create project WITH spec for the criterion
-      specs = [{story.id, criterion.id, valid_spex_content("complete spec")}]
+      specs = [{story.number, criterion.id, valid_spex_content("complete spec")}]
       scope = create_test_project_with_specs(scope, specs)
       env = create_environment(scope)
 
@@ -818,7 +818,7 @@ defmodule CodeMySpec.BddSpecsTest do
       _criterion2 = criterion_fixture(scope, story2)
 
       # Create spec only for story1
-      specs = [{story1.id, criterion1.id, valid_spex_content("story1 spec")}]
+      specs = [{story1.number, criterion1.id, valid_spex_content("story1 spec")}]
       scope = create_test_project_with_specs(scope, specs)
       env = create_environment(scope)
 
