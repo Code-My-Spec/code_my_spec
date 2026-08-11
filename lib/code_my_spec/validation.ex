@@ -547,7 +547,7 @@ defmodule CodeMySpec.Validation do
     advisory = advisory ++ unattributed
     log_demotions(unattributed, opts)
 
-    {last_ran, run_duration} = run_timing(scope, stale_sources)
+    {last_ran, run_duration, overtaken} = run_timing(scope, stale_sources)
 
     decide(blocking, advisory, stale_sources,
       last_ran: last_ran,
@@ -555,6 +555,8 @@ defmodule CodeMySpec.Validation do
       # "your edit predates this result" from "your edit landed while it was
       # running" — and only the first is fixed by waiting.
       run_duration: run_duration,
+      # Read off the two fingerprints rather than inferred from the duration.
+      overtaken: overtaken,
       # How to see these findings without stopping again. Only credo has one:
       # its plain invocation hides the low-priority band that `block_changed`
       # promotes, so `mix credo` answers "found no issues" on the very findings
@@ -621,15 +623,37 @@ defmodule CodeMySpec.Validation do
   # Public so the property can be asserted directly, the same reason
   # `blocking_key/1` and `split_unattributed/2` are.
   @doc false
-  def run_timing(_scope, []), do: {%{}, %{}}
+  def run_timing(_scope, []), do: {%{}, %{}, %{}}
 
   def run_timing(scope, sources) do
-    Enum.reduce(sources, {%{}, %{}}, fn source, {ages, durations} ->
+    Enum.reduce(sources, {%{}, %{}, %{}}, fn source, {ages, durations, overtaken} ->
       run = Analysis.latest_answer(scope, source)
 
-      {Map.put(ages, source, finished_at(run)), Map.put(durations, source, duration(run))}
+      {Map.put(ages, source, finished_at(run)), Map.put(durations, source, duration(run)),
+       Map.put(overtaken, source, overtaken?(run))}
     end)
   end
+
+  # Did an edit land while this run was in flight?
+  #
+  # `input_fingerprint` is stamped at enqueue and `completed_fingerprint` at
+  # reconcile, so the two differ exactly when the tree moved underneath it. That
+  # is the difference between a result waiting will refresh and one no amount of
+  # waiting can, and the two take opposite advice.
+  #
+  # The renderer inferred this from the run's duration — a result younger than
+  # the run took must have been overtaken — which is sound only if nothing was
+  # edited after the run finished. A stop that follows a long run closely breaks
+  # that: the edit came afterwards, a rerun would be clean, and the message said
+  # not to bother waiting for one.
+  #
+  # `nil` for a run predating the column, which is what sends the renderer back
+  # to the duration inference rather than asserting either answer.
+  defp overtaken?(%{input_fingerprint: input, completed_fingerprint: done})
+       when is_binary(input) and is_binary(done),
+       do: input != done
+
+  defp overtaken?(_run), do: nil
 
   defp finished_at(%{finished_at: %DateTime{} = at}), do: at
   defp finished_at(_), do: nil

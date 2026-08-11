@@ -31,6 +31,7 @@ defmodule CodeMySpec.Analysis.Run do
           kind: :full | :partial,
           status: :running | :completed | :failed,
           input_fingerprint: String.t() | nil,
+          completed_fingerprint: String.t() | nil,
           args: map() | nil,
           stats: map() | nil,
           output: String.t() | nil,
@@ -55,6 +56,7 @@ defmodule CodeMySpec.Analysis.Run do
     # half an hour on one harness.
     field :status, Ecto.Enum, values: [:running, :completed, :failed, :superseded]
     field :input_fingerprint, :string
+    field :completed_fingerprint, :string
     field :args, :map
     field :stats, :map
     field :output, :string
@@ -85,6 +87,7 @@ defmodule CodeMySpec.Analysis.Run do
       :kind,
       :status,
       :input_fingerprint,
+      :completed_fingerprint,
       :args,
       :stats,
       :output,

@@ -51,7 +51,7 @@ defmodule CodeMySpec.Analysis.LastRanAnswersTest do
     finished_run(scope, "spex", :completed, 3_600)
     finished_run(scope, "spex", :failed, 120)
 
-    {last_ran, _duration} = Validation.run_timing(scope, ["spex"])
+    {last_ran, _duration, _overtaken} = Validation.run_timing(scope, ["spex"])
 
     age = DateTime.diff(DateTime.utc_now(), Map.fetch!(last_ran, "spex"), :second)
 
@@ -64,7 +64,7 @@ defmodule CodeMySpec.Analysis.LastRanAnswersTest do
     finished_run(scope, "spex", :failed, 3_600)
     finished_run(scope, "spex", :completed, 120)
 
-    {last_ran, _duration} = Validation.run_timing(scope, ["spex"])
+    {last_ran, _duration, _overtaken} = Validation.run_timing(scope, ["spex"])
     age = DateTime.diff(DateTime.utc_now(), Map.fetch!(last_ran, "spex"), :second)
 
     assert age < 600
@@ -77,7 +77,7 @@ defmodule CodeMySpec.Analysis.LastRanAnswersTest do
     finished_run(scope, "spex", :completed, 3_600)
     finished_run(scope, "spex", :failed, 120)
 
-    {_last_ran, duration} = Validation.run_timing(scope, ["spex"])
+    {_last_ran, duration, _overtaken} = Validation.run_timing(scope, ["spex"])
 
     assert Map.fetch!(duration, "spex") == 30
   end
@@ -85,7 +85,7 @@ defmodule CodeMySpec.Analysis.LastRanAnswersTest do
   test "a source that has never completed reports no age", %{scope: scope} do
     finished_run(scope, "spex", :failed, 120)
 
-    {last_ran, _duration} = Validation.run_timing(scope, ["spex"])
+    {last_ran, _duration, _overtaken} = Validation.run_timing(scope, ["spex"])
 
     assert Map.fetch!(last_ran, "spex") == nil,
            "never answered is a different condition from answered a while ago, " <>

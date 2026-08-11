@@ -178,6 +178,7 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
     stale = opts |> Keyword.get(:stale_sources, []) |> MapSet.new()
     last_ran = Keyword.get(opts, :last_ran, %{})
     run_duration = Keyword.get(opts, :run_duration, %{})
+    overtaken = Keyword.get(opts, :overtaken, %{})
     reproduce = Keyword.get(opts, :reproduce_commands, %{})
     session_paths = Keyword.get(opts, :session_paths)
     # One value rather than three positional arguments threaded four levels
@@ -199,25 +200,33 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
     advisory_section = render_advisory_section(advisory, Keyword.get(opts, :unattributed_count, 0))
 
     blocking_section =
-      render_blocking_section(blocking, stale, last_ran, run_duration, reproduce, session_paths)
+      render_blocking_section(
+        blocking,
+        stale,
+        last_ran,
+        run_duration,
+        reproduce,
+        session_paths,
+        overtaken
+      )
 
     raw =
       header <>
         blocking_section <>
         advisory_section <>
-        stale_footer(blocking, stale, last_ran, run_duration, flight) <>
+        stale_footer(blocking, stale, last_ran, run_duration, flight, overtaken) <>
         attribution_note(session_paths)
 
     enforce_total_cap(raw, blocking, advisory)
   end
 
-  defp render_blocking_section(blocking, stale, last_ran, run_duration, reproduce, session_paths) do
+  defp render_blocking_section(blocking, stale, last_ran, run_duration, reproduce, session_paths, overtaken) do
     blocking
     |> Enum.group_by(& &1.source)
     |> Enum.sort_by(fn {source, _} -> source end)
     |> Enum.map_join(
       "\n",
-      &render_blocking_group(&1, stale, last_ran, run_duration, reproduce, session_paths)
+      &render_blocking_group(&1, stale, last_ran, run_duration, reproduce, session_paths, overtaken)
     )
   end
 
@@ -227,7 +236,8 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
          last_ran,
          run_duration,
          reproduce,
-         session_paths
+         session_paths,
+         overtaken
        ) do
     count = length(items)
     visible = Enum.take(items, @per_source_list_cap)
@@ -240,7 +250,7 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
         n -> "\n  ... #{n} more #{source} problems (use get_issue to inspect)"
       end
 
-    marker = stale_marker(source, stale, last_ran, run_duration)
+    marker = stale_marker(source, stale, last_ran, run_duration, overtaken)
 
     "#{source} (#{count})#{marker}:\n#{details}#{overflow}#{reproduce_line(source, reproduce)}"
   end
@@ -280,13 +290,13 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
   # forty minutes ago has not been coming back, and the right response is to
   # report the analyzer rather than stop again. Those need opposite actions and
   # the message could not tell them apart.
-  defp stale_marker(source, stale, last_ran, run_duration) do
+  defp stale_marker(source, stale, last_ran, run_duration, overtaken) do
     case {MapSet.member?(stale, source), Map.get(last_ran, source)} do
       {false, _} ->
         ""
 
       {true, %DateTime{} = at} ->
-        " — stale, last ran #{ago(at)}#{run_window(source, at, run_duration)}"
+        " — stale, last ran #{ago(at)}#{run_window(source, at, run_duration, overtaken)}"
 
       {true, _} ->
         " — stale, has never completed"
@@ -296,8 +306,8 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
   # Only when the run is slower than the age, which is the case the age alone
   # renders absurd: "stale, last ran 0s ago" on a run that had just succeeded.
   # It had not gone stale since finishing — the edit landed while it ran.
-  defp run_window(source, at, run_duration) do
-    if overtaken?(source, at, run_duration),
+  defp run_window(source, at, run_duration, overtaken) do
+    if overtaken?(source, at, run_duration, overtaken),
       do: " (run takes #{duration_text(Map.get(run_duration, source))})",
       else: ""
   end
@@ -308,14 +318,30 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
   # an edit inside its window makes it stale on completion. Comparing the age to
   # the duration is what separates that from an ordinary lag, and they take
   # opposite advice: one is fixed by waiting and one cannot be.
-  defp overtaken?(source, %DateTime{} = at, run_duration) do
+  # The ledger answers it where it can. `input_fingerprint` is stamped at
+  # enqueue and `completed_fingerprint` at reconcile, so the two differ exactly
+  # when the tree moved while the run was in flight — no inference involved.
+  defp overtaken?(source, at, run_duration, overtaken) do
+    case Map.get(overtaken, source) do
+      answer when is_boolean(answer) -> answer
+      nil -> overtaken_by_duration?(source, at, run_duration)
+    end
+  end
+
+  # The fallback, for a run that finished before `completed_fingerprint` existed.
+  # A result younger than the run took must have been overtaken — sound only if
+  # nothing was edited after it finished, which a stop closely following a long
+  # run breaks. Kept because guessing "not overtaken" for those rows would send
+  # an agent to wait out a rerun that cannot come back fresh, and that is the
+  # loop this whole branch exists to break.
+  defp overtaken_by_duration?(source, %DateTime{} = at, run_duration) do
     case Map.get(run_duration, source) do
       seconds when is_integer(seconds) and seconds > 0 -> staleness_seconds(at) < seconds
       _ -> false
     end
   end
 
-  defp overtaken?(_source, _at, _run_duration), do: false
+  defp overtaken_by_duration?(_source, _at, _run_duration), do: false
 
   defp duration_text(seconds) when seconds < 60, do: "#{seconds}s"
   defp duration_text(seconds) when rem(seconds, 60) == 0, do: "#{div(seconds, 60)}m"
@@ -329,7 +355,7 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
     end
   end
 
-  defp stale_footer(blocking, stale, last_ran, run_duration, flight) do
+  defp stale_footer(blocking, stale, last_ran, run_duration, flight, overtaken) do
     blocking
     |> Enum.map(& &1.source)
     |> Enum.uniq()
@@ -344,7 +370,7 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
         stale_sentence(ran) <>
           never_sentence(never) <>
           " Do not re-fix anything you have already corrected." <>
-          escalation(sources, last_ran, run_duration, flight)
+          escalation(sources, last_ran, run_duration, flight, overtaken)
     end
   end
 
@@ -393,7 +419,7 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
   # So say the age, and say separately whether a rerun is actually in flight —
   # because that is what decides the advice. Waiting works when something is
   # running and never works when nothing is.
-  defp escalation(sources, last_ran, run_duration, flight) do
+  defp escalation(sources, last_ran, run_duration, flight, overtaken) do
     age =
       sources
       |> Enum.map(&Map.get(last_ran, &1))
@@ -401,15 +427,15 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
       |> Enum.max(fn -> 0 end)
 
     rerunning = Enum.filter(sources, &(&1 in flight.sources))
-    overtaken = Enum.filter(sources, &overtaken?(&1, Map.get(last_ran, &1), run_duration))
+    overtaken_sources = Enum.filter(sources, &overtaken?(&1, Map.get(last_ran, &1), run_duration, overtaken))
 
     # Checked before the others because it is the most specific condition and
     # the only one none of them describes. "A rerun is in flight, stop again"
     # and "stopping again enqueues one" are both advice to wait, and waiting is
     # what cannot work here — the next edit overtakes the rerun exactly as it
     # overtook this one.
-    if overtaken != [] do
-      overtaken_sentence(overtaken, run_duration, rerunning)
+    if overtaken_sources != [] do
+      overtaken_sentence(overtaken_sources, run_duration, rerunning)
     else
       wait_or_report(age, rerunning, run_duration, flight)
     end
