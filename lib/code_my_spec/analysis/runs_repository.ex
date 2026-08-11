@@ -113,9 +113,16 @@ defmodule CodeMySpec.Analysis.RunsRepository do
 
   @doc "Sources with a `:running` run for the project."
   @spec running_sources(Scope.t()) :: [String.t()]
-  def running_sources(%Scope{active_project_id: project_id}) do
+  def running_sources(%Scope{active_project_id: project_id} = scope) do
     Run
     |> where([r], r.project_id == ^project_id and r.status == :running)
+    # This working copy's runs. The only query here that was not scoped, and
+    # the stop hook turns its answer straight into advice: "a rerun is in
+    # flight now — stop again and let it replace these". Another checkout's
+    # sweep produces nothing for this one, so that told an agent to wait for a
+    # result that could never arrive, three stops running, while its own last
+    # run sat 96 minutes back and its requested rerun had been dropped.
+    |> scope_to_harness(scope)
     |> select([r], r.source)
     |> distinct(true)
     |> Repo.all()
