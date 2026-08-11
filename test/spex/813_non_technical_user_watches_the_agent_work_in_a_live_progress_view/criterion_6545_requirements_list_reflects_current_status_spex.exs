@@ -33,7 +33,11 @@ defmodule CodeMySpecSpex.Story813.Criterion6545Spex do
 
       then_ "the requirements rail renders project milestones with status", context do
         # The rail loads asynchronously off the LiveView process; await it.
-        html = render_async(context.view)
+        # 5s, not the 100ms default. The rail's async work is a full requirement
+        # graph build — `cached_graph_with_actionable/1` over every node in the
+        # project — which is not a 100ms operation on a machine also running an
+        # analyzer sweep. At the default this failed 3 runs in 5.
+        html = render_async(context.view, 5_000)
 
         assert has_element?(context.view, "[data-test='requirements-list']"),
                "expected the progress view to render a requirements rail"
