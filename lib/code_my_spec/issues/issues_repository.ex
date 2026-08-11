@@ -159,7 +159,7 @@ defmodule CodeMySpec.Issues.IssuesRepository do
     safe_attrs =
       attrs
       |> Map.new(fn {k, v} -> {to_string(k), v} end)
-      |> Map.take(["severity", "story_id", "category", "source_path"])
+      |> Map.take(["severity", "story_id", "category", "source_path", "description"])
 
     issue
     |> Issue.changeset(safe_attrs)
