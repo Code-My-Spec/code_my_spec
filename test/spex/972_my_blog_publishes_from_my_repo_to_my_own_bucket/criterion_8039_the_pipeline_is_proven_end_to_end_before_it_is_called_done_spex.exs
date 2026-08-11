@@ -39,7 +39,7 @@ defmodule CodeMySpecSpex.Story972.Criterion8039Spex do
   # A publish refuses outright without content_bucket, client_api_url and
   # deploy_key — "Publishing is not configured" — so the step never reaches
   # storage and the criterion reads that as nothing having been written.
-  setup :publishing_configured
+  setup :publishing_to_the_fleet
 
   spex "The pipeline is proven end to end before it is called done" do
     scenario "the step confirms a rendered post before reporting done" do

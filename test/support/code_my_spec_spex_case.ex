@@ -1690,7 +1690,15 @@ defmodule CodeMySpecSpex.Case do
     Application.put_env(
       :code_my_spec,
       :provisioning_step_opts,
-      Keyword.merge(previous, site_url: "http://127.0.0.1:4100")
+      Keyword.merge(previous,
+        site_url: "http://127.0.0.1:4100",
+        # What the step fetches back and what proves it rendered. The
+        # LiveView supplies these for the standalone publish button; the
+        # step reads them from here and `Keyword.fetch!/2`s them, so their
+        # absence is a `key :path not found` rather than a default.
+        path: "/",
+        expect: "<html"
+      )
     )
 
     ExUnit.Callbacks.on_exit(fn ->

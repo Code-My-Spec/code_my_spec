@@ -28,7 +28,7 @@ defmodule CodeMySpecSpex.Story972.Criterion8038Spex do
   # A publish refuses outright without content_bucket, client_api_url and
   # deploy_key — "Publishing is not configured" — so the step never reaches
   # storage and the criterion reads that as nothing having been written.
-  setup :publishing_configured
+  setup :publishing_to_the_fleet
 
   spex "Content that does not verify is left unserved" do
     scenario "a failing verification leaves the previous version serving" do

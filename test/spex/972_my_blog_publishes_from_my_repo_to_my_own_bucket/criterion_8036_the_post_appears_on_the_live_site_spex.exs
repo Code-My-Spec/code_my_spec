@@ -17,8 +17,6 @@ defmodule CodeMySpecSpex.Story972.Criterion8036Spex do
 
   @endpoint CodeMySpecWeb.Endpoint
 
-  @cassette "972_8036_content_publish_then_render_on_site"
-
   setup :register_log_in_setup_account
   setup :setup_active_project
   setup :devops_on
@@ -26,7 +24,7 @@ defmodule CodeMySpecSpex.Story972.Criterion8036Spex do
   # A publish refuses outright without content_bucket, client_api_url and
   # deploy_key — "Publishing is not configured" — so the step never reaches
   # storage and the criterion reads that as nothing having been written.
-  setup :publishing_configured
+  setup :publishing_to_the_fleet
 
   spex "The post appears on the live site" do
     scenario "the published post renders at its address on the deployed site" do
@@ -49,12 +47,16 @@ defmodule CodeMySpecSpex.Story972.Criterion8036Spex do
       end
 
       when_ "he publishes, and the pipeline fetches its address on the deployed site", context do
-        html =
-          with_provider_cassette(@cassette, fn ->
-            context.view
-            |> element("[data-test='content-publish']")
-            |> render_click()
-          end)
+        # The step, run against the fleet: MinIO for storage, the generated site
+        # on loopback for the trigger and the render check. No cassette — the
+        # claims here are that objects landed in a bucket and a post came back
+        # from a site, and a recording answers both from a file whatever the code
+        # did.
+        context.view
+        |> element("[data-test='setup-step'][data-step='content'] [data-test='run-step']")
+        |> render_click()
+
+        html = render(context.view)
 
         {:ok, Map.put(context, :html, html)}
       end

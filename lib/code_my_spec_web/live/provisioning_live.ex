@@ -1982,7 +1982,15 @@ defmodule CodeMySpecWeb.ProvisioningLive do
   defp publish_opts(socket) do
     [
       path: socket.assigns[:content_publish_path] || "/",
-      expect: socket.assigns[:content_publish_expect] || "<html"
+      expect: socket.assigns[:content_publish_expect] || "<html",
+      # The site to fetch the post back from. Without it `verify_render/2` falls
+      # through to `published[:site_url]`, which the publish does not set, and
+      # builds a URL of "/" — dying inside Finch with `scheme is required for
+      # url: /`, an error naming neither the site nor the step that wanted one.
+      #
+      # The publish's whole claim is that the post rendered somewhere a reader
+      # can reach, so the address to check is not optional.
+      site_url: site_url(socket.assigns.project.domain)
     ]
   end
 

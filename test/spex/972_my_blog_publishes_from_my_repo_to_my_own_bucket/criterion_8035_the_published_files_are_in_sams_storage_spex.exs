@@ -18,7 +18,6 @@ defmodule CodeMySpecSpex.Story972.Criterion8035Spex do
 
   @endpoint CodeMySpecWeb.Endpoint
 
-
   setup :register_log_in_setup_account
   setup :setup_active_project
   setup :devops_on
@@ -45,10 +44,15 @@ defmodule CodeMySpecSpex.Story972.Criterion8035Spex do
         # both of which are real and local — and both are what this criterion is
         # actually about, so replaying them would answer from a file regardless
         # of what the code did.
-        html =
-          view
-          |> element("[data-test='content-publish']")
-          |> render_click()
+        # The step, not the standalone publish button. Both run the same
+        # `ContentPublishing.run/2` — the button is the step on demand — but only
+        # the step records what it wrote as resources, and "the files are in
+        # Sam's own bucket" is a claim about those records.
+        view
+        |> element("[data-test='setup-step'][data-step='content'] [data-test='run-step']")
+        |> render_click()
+
+        html = render(view)
 
         {:ok, context |> Map.put(:view, view) |> Map.put(:html, html)}
       end
