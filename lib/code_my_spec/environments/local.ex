@@ -85,7 +85,10 @@ defmodule CodeMySpec.Environments.Local do
 
   @impl true
   def stream_files(env, roots, _opts \\ []) do
-    base = env.cwd || File.cwd!()
+    # Same rule as `cmd/4`, and never reached without a cwd in the suite either
+    # — globbing the caller's tree would answer about a different project's
+    # files, which is worse than answering nothing.
+    base = env.cwd || raise(ArgumentError, "this environment has no working directory to scan")
 
     existing =
       roots
@@ -161,6 +164,27 @@ defmodule CodeMySpec.Environments.Local do
   def exec_file_exists?(env, path), do: file_exists?(env, path)
 
   @impl true
+  # An environment that does not know its directory must not borrow the
+  # caller's. Without a cwd this left `:cd` unset, so `mix compile` ran wherever
+  # the OS process happened to be — the developer's own checkout — and its
+  # warnings were reconciled into whichever project the scope named. That is the
+  # unexplained half of c8264c1f: a fixture whose cwd was a temp directory saw
+  # 28 problems carrying absolute paths under the worktree, which a correctly
+  # isolated run cannot produce.
+  #
+  # Measured before changing it: across 4,156 tests exactly one call reaches
+  # here without a cwd, and it is `echo` in a test of the recorder. Nothing
+  # relies on the fallback; it only waits.
+  #
+  # A caller that genuinely wants the ambient directory says so by building the
+  # environment with it, which is one word longer and cannot happen by accident.
+  def cmd(%Environment{cwd: nil}, command, _args, _opts) do
+    raise ArgumentError,
+          "cannot run #{inspect(command)}: this environment has no working directory, " <>
+            "and running it wherever the caller happens to be would analyse the wrong " <>
+            "project. Build the environment with an explicit cwd."
+  end
+
   def cmd(%Environment{cwd: cwd}, command, args, opts) do
     # The environment's cwd is the default working directory — that is what
     # makes this the environment's command rather than an ambient one. An

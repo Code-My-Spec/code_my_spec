@@ -2,11 +2,15 @@ defmodule CodeMySpec.EnvironmentsTest do
   use ExUnit.Case
   import CodeMySpec.Support.CLIRecorder
 
-  # nil cwd: these commands are deliberately ambient (`echo`, `pwd`) — the
-  # point is the recorder, not the working directory. Local.cmd/4 leaves :cd
-  # unset when the environment has no cwd, so behaviour matches what this test
-  # asserted when it passed a bare `:local` type atom.
-  @env %CodeMySpec.Environments.Environment{type: :local, cwd: nil}
+  alias CodeMySpecTest.EnvRestore
+
+  # These commands are deliberately ambient (`echo`, `pwd`) — the point is the
+  # recorder, not the working directory. Said explicitly rather than by leaving
+  # cwd nil: `Local.cmd/4` used to fill a missing cwd from the OS process, which
+  # meant an environment that did not know its project silently analysed
+  # whichever one the caller was sitting in (c8264c1f). It now refuses, so a
+  # caller that really wants the ambient directory names it.
+  @env %CodeMySpec.Environments.Environment{type: :local, cwd: File.cwd!()}
 
   test "cmd with CLI recorder using cassette" do
     use_cassette "test_multiple_commands" do
@@ -44,8 +48,8 @@ defmodule CodeMySpec.EnvironmentsTest do
       prev_path = System.get_env("PATH")
 
       on_exit(fn ->
-        if prev_root, do: System.put_env("RELEASE_ROOT", prev_root), else: System.delete_env("RELEASE_ROOT")
-        if prev_path, do: System.put_env("PATH", prev_path)
+        EnvRestore.restore("RELEASE_ROOT", prev_root)
+        EnvRestore.restore("PATH", prev_path)
       end)
 
       :ok
