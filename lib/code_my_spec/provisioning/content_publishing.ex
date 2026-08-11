@@ -118,8 +118,12 @@ defmodule CodeMySpec.Provisioning.ContentPublishing do
           "missing. Sync is trigger-only, so a publish without a reachable client would " <>
           "never reach the site.")
 
-      {:error, %{message: message}} ->
-        failure(publish_failure_state(message), message)
+      {:error, %{message: message} = err} ->
+        # A failed trigger leaves the objects in the bucket, and the publish
+        # carries them out with the error now. Reporting `published: nil` here
+        # said nothing had been written, so a re-trigger looked like a
+        # re-upload — the distinction 8058 exists to make.
+        failure(publish_failure_state(message), message, uploaded(err))
 
       {:error, reason} ->
         failure(:publish_failed, inspect(reason))
@@ -136,9 +140,12 @@ defmodule CodeMySpec.Provisioning.ContentPublishing do
     end
   end
 
-  defp failure(state, reason) do
-    %{state: state, published: nil, render: nil, proven_at: nil, reason: reason}
+  defp failure(state, reason, published \\ nil) do
+    %{state: state, published: published, render: nil, proven_at: nil, reason: reason}
   end
+
+  defp uploaded(%{objects: objects}) when objects not in [nil, []], do: %{objects: objects}
+  defp uploaded(_err), do: nil
 
   defp render_failure_reason(%{status: status, body_contains: false}, opts) do
     "The site answered #{status} but the page did not contain " <>

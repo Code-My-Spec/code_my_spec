@@ -41,8 +41,33 @@ defmodule CodeMySpecSpex.Story972.Criterion8058Spex do
             "---\ntitle: Hello\n---\n\nFirst post.\n"
           )
 
+        # The unreachable site is the whole premise, and nothing here was
+        # establishing it — the fleet site the other criteria publish to is up,
+        # so the trigger landed and the publish reported "published". Storage
+        # stays on the fleet; only the client the trigger POSTs to moves to a
+        # closed port, which is the failure this criterion is about.
+        # Storage has to stay on the fleet explicitly: these attrs are merged
+        # over the helper's own defaults, which point at real object storage,
+        # so overriding the client alone put the bucket back on Hetzner and the
+        # publish failed in S3 with a 403 before it ever reached a trigger.
+        project =
+          publishable_project(context.scope, context.project, %{
+            content_bucket: "cms-spex-content",
+            s3_endpoint: "http://127.0.0.1:9000",
+            aws_access_key_id: "cms-fleet",
+            aws_secret_access_key: "cms-fleet-secret",
+            aws_region: "us-east-1",
+            deploy_key: "dk_fleet_spex",
+            client_api_url: "http://127.0.0.1:9"
+          })
+
+        context =
+          context
+          |> Map.put(:project, project)
+          |> Map.put(:scope, %{context.scope | active_project: project})
+
         {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/provisioning")
+          live(context.conn, "/app/projects/#{project.id}/provisioning")
 
         {:ok, Map.put(context, :view, view)}
       end
@@ -53,8 +78,11 @@ defmodule CodeMySpecSpex.Story972.Criterion8058Spex do
         # claims here are that objects landed in a bucket and a post came back
         # from a site, and a recording answers both from a file whatever the code
         # did.
+        # The publish command itself. The setup step's run button wires the
+        # pipeline up and leaves the publish result unset, so the reported
+        # failure this criterion is about was never rendered to read.
         context.view
-        |> element("[data-test='setup-step'][data-step='content'] [data-test='run-step']")
+        |> element("[data-test='content-publish']")
         |> render_click()
 
         html = render(context.view)

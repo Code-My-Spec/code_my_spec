@@ -22,6 +22,7 @@ defmodule CodeMySpecSpex.Story972.Criterion8034Spex do
   setup :setup_active_project
   setup :devops_on
   setup :connect_providers
+  setup :publishing_to_the_fleet
 
   spex "Publishing is one command, not a checklist" do
     scenario "one publish action takes the post all the way out" do
@@ -33,17 +34,14 @@ defmodule CodeMySpecSpex.Story972.Criterion8034Spex do
             "---\ntitle: Hello\n---\n\nFirst post.\n"
           )
 
-        # "A post ready to publish" includes somewhere to publish it to. Sync
-        # is trigger-only, so without a bucket and a reachable client the
-        # publish refuses to start and the criterion fails on its premise.
-        publishable_project(context.scope, context.project)
-
-        # The publish below creates this bucket for real when recording, and
-        # nothing was removing it afterwards — one orphan per recording, named
-        # `spex-content-<n>` and owned by nobody. `publishable_project/2` now
-        # records the bucket as a `:storage` resource, which is what this finds.
-        tear_down_after(context.scope, [:storage])
-
+        # Somewhere to publish to is part of the premise — sync is trigger-only,
+        # so without a bucket and a reachable client the publish refuses to
+        # start and this fails on its setup rather than its claim. That is
+        # `publishing_to_the_fleet` above, as it is for every other criterion in
+        # this story; this one alone pointed at real object storage and got
+        # `403 InvalidAccessKeyId` back from Hetzner. The fleet bucket is
+        # standing infrastructure shared with those siblings, so it is not torn
+        # down here.
         {:ok, view, _html} =
           live(context.conn, "/app/projects/#{context.project.id}/provisioning")
 
@@ -56,8 +54,12 @@ defmodule CodeMySpecSpex.Story972.Criterion8034Spex do
         # claims here are that objects landed in a bucket and a post came back
         # from a site, and a recording answers both from a file whatever the code
         # did.
+        # The publish command, not the setup step that wires the pipeline up.
+        # Clicking the step's run button provisions the bucket and leaves
+        # `@content_publish` unset, so the result this criterion reads on was
+        # never rendered and the failure read as "no publish happened".
         context.view
-        |> element("[data-test='setup-step'][data-step='content'] [data-test='run-step']")
+        |> element("[data-test='content-publish']")
         |> render_click()
 
         html = render(context.view)
@@ -76,8 +78,12 @@ defmodule CodeMySpecSpex.Story972.Criterion8034Spex do
 
         state = publish |> Floki.attribute("data-state") |> List.first()
 
+        # The page renders why a publish failed; reading it back means the
+        # failure names its cause instead of just its state.
+        reason = publish |> Floki.text() |> String.trim()
+
         assert state == "published",
-               "expected the post to end up published, got #{inspect(state)}"
+               "expected the post to end up published, got #{inspect(state)}: #{reason}"
 
         {:ok, Map.put(context, :publish, publish)}
       end

@@ -114,8 +114,7 @@ defmodule CodeMySpec.ContentPublishing do
            S3Client.put_object(bucket, "manifest.json", Jason.encode!(manifest),
              content_type: "application/json",
              credentials: creds
-           ),
-         {:ok, result} <- trigger_client(project, manifest_url) do
+           ) do
       # What was written and where. Criterion 8035 is that the published files
       # are in *Sam's* storage, and that was unanswerable from here: the return
       # carried the trigger result and counts, so the objects and the bucket —
@@ -124,7 +123,20 @@ defmodule CodeMySpec.ContentPublishing do
       objects =
         Enum.map(["content.json", "manifest.json"], &%{key: &1, bucket: bucket, owner: "user"})
 
-      {:ok, Map.merge(result, %{counts: counts, total: length(success_rows), objects: objects})}
+      # The trigger is handled here rather than as another `with` clause so
+      # `objects` is still in scope when it fails. Both objects are in the
+      # bucket by this point, and folding the failure into the `else` below
+      # reported the publish as though nothing had been written — losing the
+      # one distinction 8058 turns on, that a lost trigger needs re-triggering
+      # and not re-uploading.
+      case trigger_client(project, manifest_url) do
+        {:ok, result} ->
+          {:ok,
+           Map.merge(result, %{counts: counts, total: length(success_rows), objects: objects})}
+
+        {:error, err} ->
+          {:error, Map.put(err, :objects, objects)}
+      end
     else
       {:error, %{message: _} = err} -> {:error, err}
       {:error, reason} -> {:error, %{message: "S3 write failed: #{inspect(reason)}"}}
