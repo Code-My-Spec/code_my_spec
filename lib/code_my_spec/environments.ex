@@ -52,6 +52,19 @@ defmodule CodeMySpec.Environments do
     {Registry, keys: :unique, name: @registry}
   end
 
+  @doc """
+  Whether an error means "could not look" rather than "not there".
+
+  The distinction the moduledoc above draws, as something callers can ask
+  instead of each keeping its own list. A checker that flattens these into a
+  requirement failure tells an agent to redo work that is very likely already
+  done, and no amount of redoing it will clear the gate.
+  """
+  @spec unobservable?(term()) :: boolean()
+  def unobservable?(:no_environment), do: true
+  def unobservable?({:error, reason}), do: unobservable?(reason)
+  def unobservable?(_), do: false
+
   # OTP/release env vars that, if inherited by a child process, point its
   # `erl` at the parent release's ERTS. The cms CLI ships as a Burrito binary
   # (a self-extracting OTP release) whose `erl` exports these into the OS

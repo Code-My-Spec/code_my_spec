@@ -9,6 +9,7 @@ defmodule CodeMySpec.Validation.TaskEvaluator do
   require Logger
 
   alias CodeMySpec.AgentTasks.Evaluator
+  alias CodeMySpec.Environments
   alias CodeMySpec.Sessions
   alias CodeMySpec.Sessions.Session
   alias CodeMySpec.Users.Scope
@@ -18,7 +19,10 @@ defmodule CodeMySpec.Validation.TaskEvaluator do
   # every file operation when `scope.environment` is nil, which under a light
   # harness is the steady state rather than an edge case: the server has no
   # disk by construction, and the harness is what watches the files.
-  @unobservable [:no_environment]
+  # `Environments.unobservable?/1` is the list now, because it is what produces
+  # these — so a checker deciding whether to flatten one into a verdict asks the
+  # same question this does. A second copy would drift, and the drift is silent:
+  # the branch below just stops being reached (074b7c83).
 
   @doc """
   Look up session by external conversation ID, evaluate the active task.
@@ -156,22 +160,23 @@ defmodule CodeMySpec.Validation.TaskEvaluator do
   # What was missing is everything the agent needed to route around it.
   # `Error: :no_environment` names no task, no requirement, no working copy, and
   # no action.
-  defp handle_result({:error, reason}, scope, _session, task, type_name, _opts)
-       when reason in @unobservable do
-    Logger.error(
-      "[TaskEvaluator] task #{task.id} (#{type_name}) could not be evaluated: " <>
-        "#{inspect(reason)} — this server holds no working copy"
-    )
-
-    {:error, unobservable_feedback(task, type_name, scope, reason)}
-  end
-
-  # Named, rather than an atom on its own. Which task, which type, and which
-  # working copy is the difference between a bug report and a dead end.
+  #
+  # Otherwise: named, rather than an atom on its own. Which task, which type,
+  # and which working copy is the difference between a bug report and a dead
+  # end.
   defp handle_result({:error, reason}, scope, _session, task, type_name, _opts) do
-    {:error,
-     "Error evaluating #{type_name} (task #{task.id}, working copy " <>
-       "#{harness_label(scope)}): #{inspect(reason)}"}
+    if Environments.unobservable?(reason) do
+      Logger.error(
+        "[TaskEvaluator] task #{task.id} (#{type_name}) could not be evaluated: " <>
+          "#{inspect(reason)} — this server holds no working copy"
+      )
+
+      {:error, unobservable_feedback(task, type_name, scope, reason)}
+    else
+      {:error,
+       "Error evaluating #{type_name} (task #{task.id}, working copy " <>
+         "#{harness_label(scope)}): #{inspect(reason)}"}
+    end
   end
 
   @doc false

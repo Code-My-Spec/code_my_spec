@@ -80,6 +80,13 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
   - {:ok, :valid} if proposal is valid and execution succeeds
   - {:ok, :invalid, feedback} if proposal has errors or execution fails
   """
+  # No disk, no answer. `patch_mode?/1` is a `file_exists?/2` call, and that
+  # returns `false` for "no environment" exactly as it does for "not there" —
+  # the asymmetry `Environments`' moduledoc warns about. So a nil environment
+  # did not merely fail to decide the mode, it decided *initial*, which is the
+  # branch that rewrites the proposal end-to-end. Refuse before the guess.
+  def evaluate(%{environment: nil}, _task), do: {:error, :no_environment}
+
   def evaluate(scope, _task) do
     working_dir = scope.environment && scope.environment.cwd
     env = scope.environment
@@ -147,8 +154,17 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
       {:error, validation_errors} when is_list(validation_errors) ->
         {:ok, :invalid, format_validation_errors(validation_errors)}
 
+      # "Could not look" is not "unmet". Flattened into `:invalid` it became the
+      # gate's whole answer — `Blocking: Error: :no_environment`, naming no task,
+      # no working copy and no way out — and it bypassed the branch built for
+      # precisely this in `TaskEvaluator`, because that branch matches
+      # `{:error, reason}` and this had already turned it into a verdict (074b7c83).
       {:error, reason} ->
-        {:ok, :invalid, "Error: #{inspect(reason)}"}
+        if Environments.unobservable?(reason) do
+          {:error, reason}
+        else
+          {:ok, :invalid, "Error: #{inspect(reason)}"}
+        end
     end
   end
 
