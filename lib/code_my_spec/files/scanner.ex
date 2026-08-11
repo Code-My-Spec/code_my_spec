@@ -167,11 +167,32 @@ defmodule CodeMySpec.Files.Scanner do
   def stream_files(env) do
     env
     |> Environments.stream_files(@sync_roots)
+    |> scannable()
     |> Stream.map(&classify/1)
     |> Stream.reject(&is_nil/1)
     |> Stream.map(fn {path, role} -> stat_file(env, path, role) end)
     |> Stream.reject(&is_nil/1)
   end
+
+  # A harness has no filesystem here to walk and says so —
+  # `Environments.Harness.stream_files/3` answers
+  # `{:error, :not_supported_on_harness}` because scanning is the harness's own
+  # job: it sends a manifest up, and the server has nothing local to compare.
+  #
+  # The tuple used to go straight into `Stream.map/2`, which accepts it without
+  # complaint and builds a lazy stream around it. Nothing failed until something
+  # enumerated it, and by then the caller was `FileSync.sync_changed/2` inside
+  # the stop-hook handler: `Protocol.UndefinedError` on `Enumerable`, handler
+  # dead, no reply. The harness reported "the server did not answer in time", so
+  # it read as a network problem — the thing that would have said otherwise was
+  # the handler that died.
+  #
+  # Matched on that atom alone. Any other error still reaches the caller,
+  # because "this environment does not do scanning" and "the scan failed" want
+  # opposite responses, and turning the second into an empty working copy is how
+  # a sync deletes everything it could not see.
+  defp scannable({:error, :not_supported_on_harness}), do: []
+  defp scannable(stream), do: stream
 
   @doc """
   Validate a file entry based on its role.
