@@ -15,8 +15,6 @@ defmodule CodeMySpecSpex.Case do
   """
   use ExUnit.CaseTemplate
 
-  require Logger
-
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -87,30 +85,6 @@ defmodule CodeMySpecSpex.Case do
   def workspace_runner, do: CodeMySpecTest.FakeWorkspaceRunner
 
   setup tags do
-    # Drain the logger before SexySpex clears its error table.
-    #
-    # `fail_on_error_logs` reads a `:public` ETS table that the spex macro
-    # clears at the start of each test and checks at the end. The errors it
-    # catches do not all arrive during the test that caused them: 8034's
-    # cassette miss is raised inside a `render_click`, so the LiveView process
-    # crashes and *that* process reports it, asynchronously. ExUnit does not
-    # wait for a test's LiveView processes or their log output to drain before
-    # starting the next one, so the crash report lands after a later spex has
-    # already cleared the table — and that later spex fails carrying an error
-    # from a spex no longer running. Three of them did, with an identical
-    # message, none of which any edit to those files could clear (860ab122).
-    #
-    # `setup` runs before the macro's `clear()`, so flushing here puts the
-    # previous test's late reports in the table while they can still be wiped
-    # by the clear that is about to happen. Serial execution does not help on
-    # its own: `async: false` orders the *tests*, not their dying processes.
-    #
-    # This fixes the misattribution only. A spex still cannot be failed by its
-    # own late-arriving error, because the macro checks `has_errors?()` before
-    # this test's processes have drained — that needs a `Logger.flush/0` inside
-    # `SexySpex.DSL`, which is a git dependency on a shared branch.
-    Logger.flush()
-
     # `ownership_timeout` has to outlast the work, not the request. Recording a
     # spex waits on a provider verifying DNS — minutes, not milliseconds — and
     # the default reclaimed the connection mid-poll, so the LiveView came back
