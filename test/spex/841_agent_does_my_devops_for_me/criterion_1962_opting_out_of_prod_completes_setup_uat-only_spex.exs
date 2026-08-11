@@ -21,6 +21,7 @@ defmodule CodeMySpecSpex.Story841.Criterion1962Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
   setup :devops_uat_only
+  setup :provider_credentials_on_file
   setup :connect_providers
 
   spex "Opting out of prod completes setup UAT-only" do

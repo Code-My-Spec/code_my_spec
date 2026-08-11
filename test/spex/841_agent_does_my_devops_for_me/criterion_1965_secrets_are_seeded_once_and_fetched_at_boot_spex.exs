@@ -32,7 +32,10 @@ defmodule CodeMySpecSpex.Story841.Criterion1965Spex do
       when_ "he sets a secret once", context do
         html =
           context.view
-          |> form("[data-test='secret-form']", secret: %{name: "API_KEY", value: "spex-secret"})
+          # `key`, which is what the form is named — `name` matched no input at
+          # all, so this never submitted anything and failed with "could not
+          # find non-disabled input ... with name secret[name]".
+          |> form("[data-test='secret-form']", secret: %{key: "API_KEY", value: "spex-secret"})
           |> render_submit()
 
         {:ok, Map.put(context, :html, html)}

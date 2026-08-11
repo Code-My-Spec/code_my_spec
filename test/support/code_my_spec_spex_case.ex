@@ -3004,6 +3004,30 @@ defmodule CodeMySpecSpex.Case do
   end
 
   @doc """
+  Sam's provider credentials are on file.
+
+      setup :provider_credentials_on_file
+
+  Separate from `devops_on` on purpose: "devops is enabled" and "the tokens are
+  pasted in" are different premises, and a criterion about one must not pass by
+  accident on the other.
+
+  Without this, anything that runs setup stops at
+  `hetzner: :hetzner_not_configured` before it reaches a provider — so the
+  criterion fails on its own premise, and a recording of it captures nothing
+  because no request was ever made.
+
+  Real values when recording, placeholders otherwise; `store_provider_secrets/1`
+  reads the environment for each. Proving a credential against a real provider
+  is story 964's claim, not anyone else's.
+  """
+  def provider_credentials_on_file(%{scope: scope} = context) do
+    Fixtures.store_provider_secrets(scope)
+
+    context
+  end
+
+  @doc """
   Production is off; UAT is the whole plan (`devops: :uat`).
 
   Separate from `devops_on` because "Sam opted out of prod" is a different

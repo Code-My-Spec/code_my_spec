@@ -22,6 +22,7 @@ defmodule CodeMySpecSpex.Story841.Criterion1961Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
   setup :devops_on
+  setup :provider_credentials_on_file
   setup :connect_providers
 
   spex "Default setup ends with UAT and prod live" do

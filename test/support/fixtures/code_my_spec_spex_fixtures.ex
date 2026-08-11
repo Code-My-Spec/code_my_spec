@@ -1901,6 +1901,20 @@ defmodule CodeMySpecSpex.Fixtures do
   end
 
   @doc """
+  The project's environments, as rows.
+
+  A criterion that fetches "every environment's host" has to know what was
+  provisioned, and `CodeMySpecSpex` may not reach into `CodeMySpec` for it —
+  that is what this bridge is for.
+  """
+  @spec environments(Scope.t()) :: [map()]
+  def environments(%Scope{} = scope) do
+    alias CodeMySpec.Provisioning.EnvironmentRepository
+
+    EnvironmentRepository.list(scope)
+  end
+
+  @doc """
   Give a project exactly these environments, and no others.
 
   Environments are rows, so "production is turned off" means the project does

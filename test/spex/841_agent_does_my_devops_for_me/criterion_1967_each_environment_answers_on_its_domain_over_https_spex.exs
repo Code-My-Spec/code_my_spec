@@ -22,6 +22,7 @@ defmodule CodeMySpecSpex.Story841.Criterion1967Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
   setup :devops_on
+  setup :provider_credentials_on_file
   setup :connect_providers
 
   spex "Each environment answers on its domain over HTTPS" do
@@ -37,7 +38,12 @@ defmodule CodeMySpecSpex.Story841.Criterion1967Spex do
             RunDevopsSetup.execute(%{project_id: to_string(context.project.id)}, frame)
         end)
 
-        {:ok, context}
+        # What setup actually provisioned, carried into the scenario.
+        # `environment_hosts/1` read `context[:environments]` and nothing ever
+        # put it there, so every run had nothing to fetch and failed on its own
+        # premise — "expected at least one provisioned environment to check" —
+        # without ever making a request.
+        {:ok, Map.put(context, :environments, CodeMySpecSpex.Fixtures.environments(context.scope))}
       end
 
       when_ "each environment's host is fetched over HTTPS", context do

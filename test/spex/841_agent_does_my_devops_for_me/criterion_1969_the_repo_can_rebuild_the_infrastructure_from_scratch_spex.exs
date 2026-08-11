@@ -23,6 +23,7 @@ defmodule CodeMySpecSpex.Story841.Criterion1969Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
   setup :devops_on
+  setup :provider_credentials_on_file
   setup :connect_providers
 
   spex "The repo can rebuild the infrastructure from scratch" do
