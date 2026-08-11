@@ -25,6 +25,7 @@ defmodule CodeMySpec.Hooks.Stop do
 
   alias CodeMySpec.Analysis
   alias CodeMySpec.Configurations
+  alias CodeMySpec.FileEdits
   alias CodeMySpec.McpServers.Requirements.RequirementsMapper
   alias CodeMySpec.Notifications.NotificationClient
   alias CodeMySpec.Problems
@@ -67,8 +68,59 @@ defmodule CodeMySpec.Hooks.Stop do
     # for the R5b decision.
     idle_sub = session && idle_subagent_for(scope, session)
 
-    do_decide(scope, session_id, session, active_task, idle_sub, validation_opts, req_id)
+    scope
+    |> do_decide(session_id, session, active_task, idle_sub, validation_opts, req_id)
+    |> note_config_edits(session_id)
   end
+
+  # Phoenix cannot hot-reload `config/*.exs`, by design. A commit that touches
+  # one leaves every running dev server answering
+  #
+  #     ** (RuntimeError) could not compile application: code_my_spec.
+  #     You must restart your server after changing configuration files
+  #
+  # to every request — but not here, and not now. It surfaces in a different
+  # checkout, minutes later, to whoever touches it next, and nothing in that
+  # error names the commit. Two servers went down at once from two unrelated
+  # sessions, neither of whom did anything wrong (5fb011f4, 6ecb257a).
+  #
+  # On allow only. An allow is the agent walking away, which is exactly when the
+  # wedge starts costing somebody else; a block already tells it to come back,
+  # and repeating this on every one of those would train it to skip the footer.
+  defp note_config_edits(%{"decision" => "block"} = response, _session_id), do: response
+
+  defp note_config_edits(response, session_id) when is_binary(session_id) do
+    case session_id |> FileEdits.get_edited_files() |> Enum.filter(&config_file?/1) do
+      [] ->
+        response
+
+      paths ->
+        note =
+          "You edited #{Enum.join(Enum.sort(paths), ", ")}. Phoenix cannot " <>
+            "hot-reload config, so every running dev server — including ones in " <>
+            "other checkouts, once this reaches them — will answer every request " <>
+            "with a CompileError until it is restarted. Restarting alone does not " <>
+            "always clear it: kill the BEAM, `rm -rf _build/<env>/lib/<app>` to " <>
+            "drop the stale compile.lock, then relaunch."
+
+        Map.update(response, "systemMessage", note, &(&1 <> "\n\n" <> note))
+    end
+  end
+
+  defp note_config_edits(response, _session_id), do: response
+
+  # `config/<name>.exs` at the project root, whether the recorded path is
+  # relative or absolute — PostToolUse stores whatever Claude passed, and both
+  # shapes occur.
+  defp config_file?(path) when is_binary(path) do
+    segments = Path.split(path)
+
+    String.ends_with?(path, ".exs") and
+      Path.basename(Path.dirname(path)) == "config" and
+      "deps" not in segments and "_build" not in segments
+  end
+
+  defp config_file?(_path), do: false
 
   # Allow stays the default — a stop hook that fails closed on its own
   # plumbing would wedge every agent on this machine. But allowing silently
