@@ -127,11 +127,13 @@ end
 # Cloudflare at all. Outside the CLI guard above because this runs on the
 # server: the CLI publishes content, the server serves previews.
 #
-# Same token and zone the content client uses. One Cloudflare account, read from
-# one place, so a rotated token cannot half-apply.
+# Same account as the content client, different zone. Previews live on
+# astralbi.com so a wildcard does not sit across the production domain, and so a
+# malformed hostname in a generated tunnel config cannot take
+# dev.codemyspec.com down with it — which is exactly what happened here once.
 config :code_my_spec, CodeMySpec.Workspaces.PreviewAddress,
   token: env!("CLOUDFLARE_TOKEN", :string, ""),
-  zone_id: env!("CLOUDFLARE_ZONE_ID", :string, "ba45c3c2010cb275de73f91f4f05edab")
+  zone_id: env!("CLOUDFLARE_PREVIEW_ZONE_ID", :string, "0287fe8206425a2aac660a57a62f65bc")
 
 # Sprite mode — the harness on centralized data.
 #
