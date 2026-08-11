@@ -14,7 +14,7 @@ defmodule CodeMySpec.Analysis.Reconciler do
 
   require Logger
 
-  alias CodeMySpec.Analysis.{Run, RunsRepository}
+  alias CodeMySpec.Analysis.{Fingerprint, Run, RunsRepository}
   alias CodeMySpec.Files
   alias CodeMySpec.Notifications.NotificationClient
   alias CodeMySpec.Problems
@@ -67,7 +67,13 @@ defmodule CodeMySpec.Analysis.Reconciler do
           RunsRepository.finish_run(run, :completed, %{
             output: result.output,
             exit_status: result.exit_status,
-            stats: result.stats
+            stats: result.stats,
+            # The tree this answered about, as opposed to the one it was asked
+            # about. `input_fingerprint` is stamped at enqueue, so the two differ
+            # exactly when an edit landed while the run was in flight — which is
+            # the difference between a result that waiting will refresh and one
+            # that no amount of waiting can (7a7eed33).
+            completed_fingerprint: Fingerprint.current(scope, run.source)
           })
 
         RunsRepository.prune(scope, run.source)

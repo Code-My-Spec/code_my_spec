@@ -44,9 +44,62 @@ defmodule CodeMySpecLocalWeb.Hooks.StopControllerTest do
     # nil}` clause, and these tests would pass without reaching the
     # session-resolution path they are about.
     {:ok, tmp} = Briefly.create(directory: true)
+
+    # A real Mix project, because the pipeline compiles this directory inline
+    # (`analysis_mode: :inline`) and an empty one is not a stable thing to
+    # compile. Against a bare temp dir mix answers
+    #
+    #     ** (Mix) Could not find a Mix.Project, please ensure you are running
+    #        Mix in a directory with a mix.exs file
+    #
+    # which `[Compile]` records as "no diagnostics file and no compiler error
+    # markers in output — treating as transient". Whether that transient outcome
+    # reaches the decision depends on run-ledger state, and the ledger is not the
+    # same for the two calls below: the first creates the run the second finds.
+    # So the comparison could differ on a variable it does not name (cbe216dd,
+    # ~1 failure in 15-30 iterations).
+    #
+    # A project that compiles cleanly gives both calls the same analyzer outcome,
+    # which leaves session resolution as the only thing that varies — the point
+    # of the file. Fixing the environment rather than relaxing the assertion,
+    # which is what the report asks for and is right: the assertion is the file.
+    File.write!(Path.join(tmp, "mix.exs"), """
+    defmodule StopHookFixture.MixProject do
+      use Mix.Project
+
+      def project, do: [app: :stop_hook_fixture, version: "0.1.0", elixir: "~> 1.14"]
+      def application, do: []
+    end
+    """)
+
+    File.mkdir_p!(Path.join(tmp, "lib"))
+    File.write!(Path.join(tmp, "lib/fixture.ex"), "defmodule StopHookFixture do\nend\n")
+
     %{scope: %{full_scope_fixture() | cwd: tmp}}
   end
 
+  # `998f4d93` reports the comparison below failing about 1 run in 10, and
+  # diagnoses it as a confound: the two calls are sequential, analysis is
+  # asynchronous, and a run landing between them makes the second decide with
+  # problems the first did not have.
+  #
+  # It does not reproduce. 61 consecutive runs of the issue's own command —
+  # `--repeat-until-failure 30 --seed 7`, twice — zero failures.
+  #
+  # The mechanism that would explain both the report and the silence is
+  # `analysis_mode: :inline`, which `config/test.exs` has set since 469530bb
+  # (2026-07-09, before the report). Inline runs execute in the calling process,
+  # so each `post_stop` finishes its analysis before returning and there is no
+  # window between the calls to lose. Whatever the reporter hit, it was not
+  # simply "async run lands mid-test" in this configuration.
+  #
+  # The confound is still real as *design* — the variable this claims to isolate
+  # does sit on top of call order — so if it returns, fix the shape rather than
+  # re-diagnosing it. What the report also noticed and is worth more attention:
+  # the 28 problems it saw were the real project's compiler warnings, absolute
+  # paths under the worktree, against a fixture whose cwd is a temp dir. A
+  # correctly isolated test cannot see those at all, and that part has no
+  # explanation yet.
   describe "payloads that name no resolvable session" do
     for {label, params} <- @degenerate do
       test "#{label} decides the same as a resolvable session", %{scope: scope} do

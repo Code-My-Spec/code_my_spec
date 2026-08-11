@@ -43,7 +43,8 @@ defmodule CodeMySpecSpex.Story987.Criterion8192Spex do
         :ok =
           Environments.write_file(
             context.environment,
-            "test/spex/#{story.id}_capture_a_task/criterion_1_a_task_is_captured_spex.exs",
+            # `number`, not `id` — see the note in criterion_8186.
+            "test/spex/#{story.number}_capture_a_task/criterion_1_a_task_is_captured_spex.exs",
             "defmodule Sample do\nend\n"
           )
 

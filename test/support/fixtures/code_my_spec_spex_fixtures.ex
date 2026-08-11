@@ -81,6 +81,7 @@ defmodule CodeMySpecSpex.Fixtures do
   alias CodeMySpec.Provisioning.Storage
   alias CodeMySpec.Provisioning.Teardown
   alias CodeMySpec.Provisioning.Wait
+  alias CodeMySpec.Repo
   alias CodeMySpec.Requirements.RequirementGraph
   alias CodeMySpec.Sessions.Session
   alias CodeMySpec.SetupFixtures.ErroringStep
@@ -1349,9 +1350,10 @@ defmodule CodeMySpecSpex.Fixtures do
   - `:starting` — booting, and the fake never answers, so the spec observes the
     starting state deliberately rather than racing the boot watcher's clock.
   - `:running` — running, with a port, so there is an address to frame.
-  - `:running_without_url` — running and portless. Not a contrivance:
-    `Workspace.url/1` answers nil for a running workspace whose port is not an
-    integer, which is exactly the state criterion 2323 refuses to frame.
+  There is deliberately no "running without an address" state here.
+  `booting_changeset/2` requires a port, so a workspace row cannot be in one —
+  criterion 2323 hands the component that input directly, because the pane's
+  contract has to hold for hosts beyond the one that exists today.
   - `:down` — the container has gone away.
   """
   @spec workspace_in(Scope.t(), String.t(), atom()) :: :ok
@@ -1373,7 +1375,6 @@ defmodule CodeMySpecSpex.Fixtures do
   defp runner_opts(:down), do: [healthy?: false, alive?: false, serving: :down]
   defp runner_opts(_running), do: [healthy?: true, alive?: true, serving: :serving]
 
-  defp port_for(:running_without_url), do: nil
   defp port_for(_state), do: 4599
 
   defp settle(_workspace, :starting), do: :ok
@@ -1758,7 +1759,36 @@ defmodule CodeMySpecSpex.Fixtures do
   defdelegate component_fixture(scope, attrs), to: ArchitectureFixtures
 
   # -- BDD Specs --
-  defdelegate spec_file_path(story, criterion), to: BddSpecs
+
+  @doc """
+  Where the harness will look for a criterion's spex.
+
+  Resolves the story and criterion from the database before deriving,
+  rather than deriving from whatever the spex is holding. Spex reach
+  this with a story parsed out of `GetStory`'s text — `:id`, `:title`,
+  `:criteria` and nothing else — and the path is built from the
+  story's durable `:number`, which that projection does not carry.
+  Deriving from it produced `test/spex/<id>_<slug>/`, the spex wrote
+  its fixture there, and the evaluator looked under `<number>_<slug>`
+  and reported the file missing. Seven spex in story 460 failed that
+  way and all of them read as evaluator bugs.
+
+  Resolving also picks up a recorded `spec_path`, which is what the
+  evaluator uses when one exists, so this answers the question a spex
+  is actually asking: where will the harness look?
+  """
+  @spec spec_file_path(map(), map()) :: String.t()
+  def spec_file_path(%{id: story_id}, %{id: criterion_id}) do
+    story = Repo.get!(Story, story_id) |> Repo.preload(:criteria)
+    criterion = Enum.find(story.criteria, &(&1.id == criterion_id))
+
+    unless criterion do
+      raise ArgumentError,
+            "criterion #{inspect(criterion_id)} does not belong to story #{inspect(story_id)}"
+    end
+
+    BddSpecs.spec_file_path(story, criterion)
+  end
 
   # -- Problems --
   defdelegate problem_fixture(scope, attrs \\ %{}), to: ProblemsFixtures

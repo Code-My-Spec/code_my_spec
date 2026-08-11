@@ -40,6 +40,7 @@ defmodule CmsHarness.Web.PermissionController do
 
   alias CmsHarness.Config
   alias CmsHarness.Token
+  alias CmsHarness.Web.UpstreamError
   alias CodeMySpec.Permissions.PermissionSocket
 
   @default_timeout_s 120
@@ -86,11 +87,24 @@ defmodule CmsHarness.Web.PermissionController do
 
       case Req.request(request) do
         {:ok, %{status: status, body: %{"id" => id}}} when status in [200, 201] -> {:ok, id}
-        {:ok, %{status: status, body: body}} -> {:error, {:http, status, body}}
+        {:ok, %{status: status, body: body}} -> {:error, {:http, status, readable(body, status)}}
         {:error, reason} -> {:error, reason}
       end
     end
   end
+
+  # The caller of this logs the reason, so an unread body is a 30KB HTML page in
+  # one log line. Same wedged dev server, same document, different reader — and
+  # here it lands in `harness.log`, where the metadata truncation does not apply
+  # because this is the message rather than metadata (6ecb257a).
+  #
+  # Only a binary can be a page. Req decodes JSON to a map, and a map is already
+  # as short as the server made it.
+  defp readable(body, status) when is_binary(body) do
+    UpstreamError.summary(body, status, nil) || String.slice(body, 0, 300)
+  end
+
+  defp readable(body, _status), do: body
 
   # Blocks until the person decides or the timeout fires. Monitored, so a socket
   # that dies is answered rather than waited out — the agent is holding a hook

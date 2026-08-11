@@ -6,8 +6,8 @@ defmodule CodeMySpecSpex.Story460.Criterion5530Spex do
 
   When `start_task` runs for `bdd_specs_exist` on a story with three
   acceptance criteria, the prompt the agent receives names exactly
-  three distinct spec file paths — one per criterion, all under
-  `test/spex/<story_id>_<story_slug>/`. Mirrors the prompt-content
+  three distinct spec file paths — one per criterion, all in a single
+  story directory under `test/spex/`. Mirrors the prompt-content
   pattern in `559_three_amigos/criterion_5893_*`.
 
   Setup goes through the surface: `:synced_context_component` writes a
@@ -64,12 +64,23 @@ defmodule CodeMySpecSpex.Story460.Criterion5530Spex do
                  "expected prompt to mention `#{path}`, got prompt:\n#{prompt}"
         end
 
-        story_dir_prefix = "test/spex/#{context.story.id}_"
+        # One directory, three files. This used to assert the directory was
+        # named `test/spex/<story.id>_`, which stopped being true when the
+        # story's durable number replaced its primary key in the path — the id
+        # renumbers on migration and the directories named from it stopped
+        # pointing at the stories they were written for. The criterion is about
+        # the paths being per-criterion and co-located, not about which
+        # identifier names the directory, so it no longer says.
+        dirs = expected_paths |> Enum.map(&Path.dirname/1) |> Enum.uniq()
 
-        for path <- expected_paths do
-          assert String.starts_with?(path, story_dir_prefix),
-                 "expected `#{path}` to start with `#{story_dir_prefix}`"
-        end
+        assert [dir] = dirs,
+               "expected all three specs in one story directory, got: #{inspect(dirs)}"
+
+        assert Path.dirname(dir) == "test/spex",
+               "expected the story directory directly under test/spex, got `#{dir}`"
+
+        assert length(Enum.uniq(expected_paths)) == 3,
+               "expected three distinct paths, got: #{inspect(expected_paths)}"
 
         {:ok, context}
       end

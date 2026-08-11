@@ -1,9 +1,9 @@
 defmodule CodeMySpec.BddSpecs.SpecProjectorTest do
   use ExUnit.Case, async: true
 
-  alias CodeMySpec.BddSpecs.{Spec, Scenario, Step, SpecProjector}
-  alias CodeMySpec.Stories.Story
   alias CodeMySpec.AcceptanceCriteria.Criterion
+  alias CodeMySpec.BddSpecs.{Scenario, Spec, SpecProjector, Step}
+  alias CodeMySpec.Stories.Story
 
   # ============================================================================
   # Fixtures
@@ -14,7 +14,7 @@ defmodule CodeMySpec.BddSpecs.SpecProjectorTest do
       name: "User Authentication",
       file_path: "/path/to/spec/user_auth_spec.exs",
       description: "Authentication spec",
-      story_id: 1,
+      story_number: 1,
       criterion_id: 10,
       tags: [:integration],
       scenarios: [
@@ -50,6 +50,13 @@ defmodule CodeMySpec.BddSpecs.SpecProjectorTest do
   end
 
   defp story_fixture(attrs) do
+    # `number` mirrors `id` unless a test says otherwise: coverage groups specs
+    # by the number in their directory name, and these fixtures set `id` to say
+    # "story 1". Defaulting it to `id` keeps that reading true without every
+    # call site naming both, and a test that cares about the two diverging
+    # passes them separately.
+    attrs = Map.put_new(attrs, :number, Map.get(attrs, :id, 1))
+
     defaults = %{
       id: 1,
       title: "User authentication feature",
@@ -69,7 +76,7 @@ defmodule CodeMySpec.BddSpecs.SpecProjectorTest do
       id: 10,
       description: "User can log in with valid credentials",
       verified: false,
-      story_id: 1,
+      story_number: 1,
       project_id: Ecto.UUID.generate(),
       account_id: Ecto.UUID.generate()
     }
@@ -216,8 +223,8 @@ defmodule CodeMySpec.BddSpecs.SpecProjectorTest do
       assert result =~ "/path/to/full_spec.exs"
     end
 
-    test "includes story_id when present" do
-      spec = spec_fixture(%{story_id: 42})
+    test "includes story_number when present" do
+      spec = spec_fixture(%{story_number: 42})
 
       result = SpecProjector.project_full(spec)
 
@@ -290,9 +297,9 @@ defmodule CodeMySpec.BddSpecs.SpecProjectorTest do
 
   describe "project_coverage_by_story/2" do
     test "groups specs by story correctly" do
-      spec1 = spec_fixture(%{name: "Spec 1", story_id: 1})
-      spec2 = spec_fixture(%{name: "Spec 2", story_id: 1})
-      spec3 = spec_fixture(%{name: "Spec 3", story_id: 2})
+      spec1 = spec_fixture(%{name: "Spec 1", story_number: 1})
+      spec2 = spec_fixture(%{name: "Spec 2", story_number: 1})
+      spec3 = spec_fixture(%{name: "Spec 3", story_number: 2})
 
       story1 = story_fixture(%{id: 1, title: "Story One"})
       story2 = story_fixture(%{id: 2, title: "Story Two"})
@@ -307,8 +314,8 @@ defmodule CodeMySpec.BddSpecs.SpecProjectorTest do
     end
 
     test "shows stories with full coverage" do
-      spec1 = spec_fixture(%{story_id: 1})
-      spec2 = spec_fixture(%{story_id: 1})
+      spec1 = spec_fixture(%{story_number: 1})
+      spec2 = spec_fixture(%{story_number: 1})
       story = story_fixture(%{id: 1, title: "Fully covered"})
 
       result = SpecProjector.project_coverage_by_story([spec1, spec2], [story])
@@ -319,7 +326,7 @@ defmodule CodeMySpec.BddSpecs.SpecProjectorTest do
     end
 
     test "highlights stories with partial coverage" do
-      spec = spec_fixture(%{story_id: 1})
+      spec = spec_fixture(%{story_number: 1})
 
       story =
         story_fixture(%{
@@ -349,7 +356,7 @@ defmodule CodeMySpec.BddSpecs.SpecProjectorTest do
     end
 
     test "includes coverage indicators or percentages" do
-      spec = spec_fixture(%{story_id: 1})
+      spec = spec_fixture(%{story_number: 1})
       story = story_fixture(%{id: 1, title: "Story with metrics"})
 
       result = SpecProjector.project_coverage_by_story([spec], [story])

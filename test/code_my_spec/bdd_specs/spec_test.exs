@@ -33,11 +33,11 @@ defmodule CodeMySpec.BddSpecs.SpecTest do
       assert %{file_path: ["can't be blank"]} = errors_on(changeset)
     end
 
-    test "allows nil for description, story_id, criterion_id" do
+    test "allows nil for description, story_number, criterion_id" do
       attrs =
         valid_attrs()
         |> Map.put(:description, nil)
-        |> Map.put(:story_id, nil)
+        |> Map.put(:story_number, nil)
         |> Map.put(:criterion_id, nil)
 
       changeset = Spec.changeset(%Spec{}, attrs)
@@ -101,7 +101,7 @@ defmodule CodeMySpec.BddSpecs.SpecTest do
       attrs =
         valid_attrs()
         |> Map.put(:description, "Authentication spec")
-        |> Map.put(:story_id, 123)
+        |> Map.put(:story_number, 123)
         |> Map.put(:criterion_id, 456)
         |> Map.put(:tags, [:integration, :auth])
         |> Map.put(:scenarios, [
@@ -118,7 +118,7 @@ defmodule CodeMySpec.BddSpecs.SpecTest do
       assert spec.name == "User authentication"
       assert spec.file_path == "/path/to/spec.exs"
       assert spec.description == "Authentication spec"
-      assert spec.story_id == 123
+      assert spec.story_number == 123
       assert spec.criterion_id == 456
       assert spec.tags == [:integration, :auth]
       assert length(spec.scenarios) == 1

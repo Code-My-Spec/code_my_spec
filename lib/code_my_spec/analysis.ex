@@ -35,6 +35,11 @@ defmodule CodeMySpec.Analysis do
   moment its channel closes, not at the moment somebody notices.
   """
 
+  # The transport `Environments.Harness` reaches a working copy over. Declared
+  # there and wired here, because `Environments` is a leaf that everything
+  # depends on and cannot name this module without closing a cycle.
+  @behaviour CodeMySpec.Environments.HarnessTransport
+
   require Logger
 
   alias CodeMySpec.Analysis.{
@@ -102,13 +107,7 @@ defmodule CodeMySpec.Analysis do
     latest = RunsRepository.latest_full_runs(scope)
     only_failed = Keyword.get(opts, :only_failed, false)
 
-    {stale, memoized} =
-      requests
-      |> Enum.map(&normalize_request/1)
-      |> order_compile_first()
-      |> Enum.split_with(fn {source, args} ->
-        needs_run?(source, args, fingerprints, latest, only_failed)
-      end)
+    {stale, memoized} = plan_runs(requests, fingerprints, latest, only_failed)
 
     Enum.each(stale, fn {source, args} ->
       job = build_job(source, args, fingerprints[source], opts)
@@ -125,6 +124,22 @@ defmodule CodeMySpec.Analysis do
       do: Logger.info("[Analysis] skipped (current): #{Enum.join(memoized_sources, ", ")}")
 
     %{enqueued: stale_sources, memoized: memoized_sources}
+  end
+
+  @doc false
+  # Which of `requests` need running, split from those that do not.
+  #
+  # Public so the property that matters can be asserted without dispatching:
+  # what this decides must agree with `fresh_sources/2`. They did not, and the
+  # disagreement was a livelock — see `needs_run?/5`.
+  @spec plan_runs([term()], map(), map(), boolean()) :: {list(), list()}
+  def plan_runs(requests, fingerprints, latest, only_failed) do
+    requests
+    |> Enum.map(&normalize_request/1)
+    |> order_compile_first()
+    |> Enum.split_with(fn {source, args} ->
+      needs_run?(source, args, fingerprints, latest, only_failed)
+    end)
   end
 
   defp normalize_request({source, args}) when is_list(args), do: {source, args}
@@ -164,14 +179,33 @@ defmodule CodeMySpec.Analysis do
   # qa_complete, which emptied next_actionable, which told an unattended agent
   # there was nothing left to do while ten stories sat unQA'd. `stale?/3`
   # already got this right with its `_ -> true`.
-  defp needs_run?("compiler", _args, _fingerprints, latest, true) do
-    is_nil(latest["compiler"]) or
-      match?(%Run{status: :failed}, latest["compiler"]) or
+  # `only_failed` meant "the latest run completed, so there is nothing to redo".
+  # Status is not evidence about the tree. A run can have completed perfectly
+  # against a tree that has since moved, which is exactly the state after the
+  # agent fixes the finding it was blocked on — and `fresh_sources/2`, which the
+  # stop hook uses, reads the fingerprint and calls that stale.
+  #
+  # So both were reachable at once and contradicted each other:
+  #
+  #     [Analysis] skipped (current): compiler, credo, exunit, spex
+  #     credo (1) — stale, last ran 19m ago … A rerun is in flight now (credo)
+  #
+  # Nothing was in flight, the timestamp never moved, and the hook's advice —
+  # stop again and let the rerun replace these — could not succeed. Following it
+  # loops; the alternative is re-editing code that is already correct
+  # (`1f60a145`).
+  #
+  # `stale?/3` is what `status/1` already uses, so the two answers now come from
+  # one comparison. `only_failed` keeps its meaning — do not redo work for an
+  # unchanged tree — and loses the part that was never true, that an unchanged
+  # status implies an unchanged tree.
+  defp needs_run?("compiler", _args, fingerprints, latest, true) do
+    stale?("compiler", fingerprints, latest) or
       Enum.any?(latest, fn {_source, run} -> skipped_for_compile_errors?(run) end)
   end
 
-  defp needs_run?(source, _args, _fingerprints, latest, true),
-    do: is_nil(latest[source]) or match?(%Run{status: :failed}, latest[source])
+  defp needs_run?(source, _args, fingerprints, latest, true),
+    do: stale?(source, fingerprints, latest)
 
   defp needs_run?(_source, _args, _fingerprints, _latest, _only_failed), do: true
 
@@ -423,22 +457,73 @@ defmodule CodeMySpec.Analysis do
   """
   @spec in_flight(Scope.t()) :: [String.t()]
   def in_flight(%Scope{} = scope) do
-    case remote_executor(scope) do
-      {:ok, _pid} -> RunsRepository.running_sources(scope)
-      :none -> local_in_flight(scope)
+    case in_flight_state(scope) do
+      {:running, sources} -> sources
+      _ -> []
     end
   end
 
-  defp local_in_flight(%Scope{} = scope) do
+  @doc """
+  When each in-flight source started, where that is knowable.
+
+  Only the ledger records a start time, so this answers `%{}` for a locally
+  executed project — `ProjectServer.in_flight/1` reports names alone. Callers
+  treat a missing entry as "running, for an unknown length of time" rather than
+  as not running; `in_flight/1` remains the answer to *whether*.
+
+  The light harness is the case this exists for, and there the ledger is the
+  record by definition.
+  """
+  @spec in_flight_since(Scope.t()) :: %{String.t() => DateTime.t()}
+  def in_flight_since(%Scope{} = scope) do
+    case remote_executor(scope) do
+      {:ok, _pid} -> RunsRepository.running_since(scope)
+      :none -> %{}
+    end
+  end
+
+  @doc """
+  Whether anything is running, nothing is, or nobody is watching.
+
+  `in_flight/1` answered `[]` for the last two alike, which renders absent
+  information as good news. A project with no entry in `Analysis.Registry` —
+  no server started for it, or a build without the Analysis subtree — is
+  *untracked*: nothing would know if a run were in flight.
+
+  That cost a diagnosis in `998f4d93`. A test waited on `runs_in_flight?/1` to
+  settle the pipeline before comparing two stop decisions; the project was
+  untracked, so the wait returned instantly, settled nothing, and the flake
+  stayed at the same rate while looking addressed.
+
+  It decides real behaviour too. `Hooks.Stop.pending_analysis?/1` allows a stop
+  as "analysis pending" on this answer, and the stale footer prints "No rerun
+  is in flight. Stopping again enqueues one" — a claim about the world that
+  untracked cannot support.
+
+  A harness-served project is tracked by definition: the ledger is the record,
+  and no `:running` rows genuinely means idle.
+  """
+  @spec in_flight_state(Scope.t()) :: {:running, [String.t()]} | :idle | :untracked
+  def in_flight_state(%Scope{} = scope) do
+    case remote_executor(scope) do
+      {:ok, _pid} -> sources_or_idle(RunsRepository.running_sources(scope))
+      :none -> local_in_flight_state(scope)
+    end
+  end
+
+  defp local_in_flight_state(%Scope{} = scope) do
     case Registry.lookup(CodeMySpec.Analysis.Registry, server_key(scope)) do
-      [{pid, _}] -> ProjectServer.in_flight(pid)
-      [] -> []
+      [{pid, _}] -> pid |> ProjectServer.in_flight() |> sources_or_idle()
+      [] -> :untracked
     end
   rescue
     # Registry not started — web build or a test app without the Analysis
-    # subtree. No registry, no in-flight runs.
-    ArgumentError -> []
+    # subtree. Nobody is watching, which is not the same as nothing running.
+    ArgumentError -> :untracked
   end
+
+  defp sources_or_idle([]), do: :idle
+  defp sources_or_idle(sources), do: {:running, sources}
 
   @doc """
   The light harness holding this project, or `:none`.
@@ -466,6 +551,36 @@ defmodule CodeMySpec.Analysis do
     # No registry — an application build that does not mount the harness
     # channel. Nothing is serving this project remotely.
     ArgumentError -> :none
+  end
+
+  @doc """
+  Ask a harness to perform a filesystem operation on its own working copy.
+
+  The transport behind `Environments.Harness`. Reads and writes both: the server
+  holds no checkout, so a spec stub has to be written on the machine that does.
+
+  Addressed by harness id, resolved through the same registry
+  `remote_executor/1` uses — the entry is the channel process, so "is this
+  harness alive" and "where do I send this" are one fact rather than two that
+  can disagree.
+
+  `{:error, :harness_unreachable}` when no harness is serving that working copy.
+  Deliberately not `:no_environment`: one means there is no working copy, this
+  means there is one and it cannot be reached. Anything that prunes or reports
+  absence has to tell them apart.
+  """
+  @impl CodeMySpec.Environments.HarnessTransport
+  @spec harness_fs_request(String.t(), String.t(), map(), timeout()) ::
+          {:ok, term()} | :ok | {:error, term()}
+  def harness_fs_request(harness_id, op, payload, timeout) do
+    case Registry.lookup(HarnessRegistry, to_string(harness_id)) do
+      [{pid, _}] -> GenServer.call(pid, {:fs_request, op, payload}, timeout + 5_000)
+      [] -> {:error, :harness_unreachable}
+    end
+  rescue
+    ArgumentError -> {:error, :harness_unreachable}
+  catch
+    :exit, _ -> {:error, :harness_unreachable}
   end
 
   @doc """
@@ -658,6 +773,19 @@ defmodule CodeMySpec.Analysis do
         false
     end
   end
+
+  @doc """
+  The latest run of `source` that produced an answer, or nil.
+
+  The same run `fresh?/2` judges staleness from, exposed because anything
+  reporting *about* that staleness — how old it is, how long it took — has to
+  describe the same run. Reading the age off `status/1` instead meant the label
+  and the number came from different rows whenever the newest run had failed,
+  which is the common case: a failure lands sooner than the retry that succeeds.
+  """
+  @spec latest_answer(Scope.t(), String.t()) :: Run.t() | nil
+  def latest_answer(%Scope{} = scope, source),
+    do: RunsRepository.latest_completed_run(scope, source)
 
   # -- Internals --
 

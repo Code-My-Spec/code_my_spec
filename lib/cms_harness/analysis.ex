@@ -78,7 +78,7 @@ defmodule CmsHarness.Analysis do
   end
 
   defp execute("compiler", env, _args) do
-    result = Compile.execute(environment: env, extra_env: AnalyzerEnv.extra_env(env))
+    result = Compile.execute(environment: env, extra_env: AnalyzerEnv.extra_env(env, "compiler"))
 
     {:ok,
      %{
@@ -97,7 +97,7 @@ defmodule CmsHarness.Analysis do
   defp execute("credo", env, args) do
     files = if args == [], do: nil, else: args
 
-    case CredoRun.run(env, files: files, extra_env: AnalyzerEnv.extra_env(env)) do
+    case CredoRun.run(env, files: files, extra_env: AnalyzerEnv.extra_env(env, "credo")) do
       {:ok, issues} ->
         {:ok,
          %{
@@ -117,7 +117,7 @@ defmodule CmsHarness.Analysis do
   end
 
   defp execute("exunit", env, args) do
-    extra_env = AnalyzerEnv.extra_env(env)
+    extra_env = AnalyzerEnv.extra_env(env, "exunit")
 
     # Only exunit. Its failures are the ones residue disguises itself as, and
     # a suite that starts dirty reports a break that is not there. credo and
@@ -151,7 +151,7 @@ defmodule CmsHarness.Analysis do
   end
 
   defp execute("spex", env, args) do
-    case Spex.execute(args, environment: env, extra_env: AnalyzerEnv.extra_env(env)) do
+    case Spex.execute(args, environment: env, extra_env: AnalyzerEnv.extra_env(env, "spex")) do
       {:ok, failures, exit_code} ->
         {:ok,
          %{

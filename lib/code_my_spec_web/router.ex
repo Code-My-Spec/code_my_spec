@@ -57,6 +57,7 @@ defmodule CodeMySpecWeb.Router do
         {CodeMySpecWeb.UserAuth, :require_authenticated}
       ] do
       live "/build/workspace", IntakeLive.Workspace, :workspace
+      live "/build/preview", PreviewLive.Show, :show
     end
   end
 

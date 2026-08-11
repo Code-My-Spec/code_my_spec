@@ -155,6 +155,24 @@ defmodule CodeMySpec.Qa.QaAttempts do
   end
 
   @doc """
+  One attempt by id, only if it belongs to the scope's project.
+
+  `nil` for an attempt that exists in another project, which is the same answer
+  as one that does not exist — the caller has no business telling those apart.
+
+  Lives here rather than in `Invalidations` because `by_project/2` does, and a
+  second copy of the join is a second place for the fail-closed `active_project:
+  nil` clause to be forgotten.
+  """
+  @spec get_in_project(Scope.t(), Ecto.UUID.t()) :: QaAttempt.t() | nil
+  def get_in_project(%Scope{} = scope, attempt_id) do
+    QaAttempt
+    |> where([a], a.id == ^attempt_id)
+    |> by_project(scope)
+    |> Repo.one()
+  end
+
+  @doc """
   Is `qa_complete` satisfied for the story?
 
   True iff the **most-recent attempt on the story** (regardless of

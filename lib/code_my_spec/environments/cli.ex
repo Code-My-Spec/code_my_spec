@@ -180,7 +180,15 @@ defmodule CodeMySpec.Environments.Cli do
   @spec stream_files(env :: Environment.t(), roots :: [String.t()], opts :: keyword()) ::
           Enumerable.t()
   def stream_files(env, roots, _opts \\ []) do
-    base = env.cwd || File.cwd!()
+    # Same rule as `Local.stream_files/3`, and for the same reason: globbing the
+    # caller's tree answers about a different project's files. 9770cea7 closed
+    # this in `Local` and left the identical fallback here, which is how a fix
+    # applied to one implementation of a behaviour goes stale — the hazard moves
+    # to whichever one the next caller happens to use.
+    #
+    # Measured the same way before changing it: no call in the suite reaches here
+    # without a cwd.
+    base = env.cwd || raise(ArgumentError, "this environment has no working directory to scan")
 
     existing =
       roots

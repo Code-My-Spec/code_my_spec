@@ -99,16 +99,47 @@ defmodule CodeMySpec.StaticAnalysis.CredoRun do
       {:error, "credo crashed: #{Exception.message(exception)}"}
   end
 
+  # Split so the reproduce hint cannot drift from what actually runs. The first
+  # list decides *which findings exist*; the second only decides how they are
+  # printed for a parser.
+  @selection_args ["credo", "suggest", "--all", "--all-priorities"]
+  @output_args ["--format", "json", "--no-color"]
+
+  @doc """
+  The command a human can run to see what this analyzer saw.
+
+  `mix credo` prints "Showing priority issues: ↑ ↗ →" and suppresses the ↓ ↘
+  band. This runs `--all --all-priorities`, so a low-priority finding here is
+  invisible to the obvious local check — and `block_changed` promotes exactly
+  those to blocking once they sit in a file the session touched. Five of them
+  blocked a stop against files whose `mix credo` said "found no issues".
+
+  Read off `@selection_args` rather than retyped, because a hint that has
+  drifted from the run is worse than none: it would be confidently wrong.
+  Output flags are left out — they change the shape, not the findings, and
+  handing someone `--format json` is not a reproduction.
+  """
+  @spec reproduce_command() :: String.t()
+  def reproduce_command, do: Enum.join(["mix" | @selection_args], " ")
+
+  @doc """
+  Why the obvious command disagrees, to print beside the one above.
+
+  Without it the longer command reads as pedantry. The agent has usually just
+  run `mix credo`, seen "found no issues", and has no reason to think its own
+  check was the thing that was wrong — so it suspects a stale result and stops
+  again rather than looking. That is the loop `14f141c1` describes: edit, verify
+  green, stop, get blocked, with no way to confirm a fix except stopping again.
+  """
+  @spec reproduce_note() :: String.t()
+  def reproduce_note do
+    "plain `mix credo` shows only the ↑ ↗ → band and will call these files " <>
+      "clean; these findings are promoted from ↓ ↘ because your session edited " <>
+      "the file"
+  end
+
   defp build_args(opts, cwd) do
-    base = [
-      "credo",
-      "suggest",
-      "--format",
-      "json",
-      "--all",
-      "--all-priorities",
-      "--no-color"
-    ]
+    base = @selection_args ++ @output_args
 
     args =
       case Keyword.get(opts, :config_file) do

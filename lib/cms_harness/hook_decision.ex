@@ -123,9 +123,22 @@ defmodule CmsHarness.HookDecision do
     |> String.trim()
   end
 
+  # "Start it" was the whole of this, and starting it is not always enough.
+  #
+  # A build that is stale against the tree takes the server down again on its
+  # first code-reload, with a message that reads as absurd on a server you have
+  # just restarted: "You must restart your server after changing configuration
+  # files". Phoenix treats a changed config as fatal to the reloader and can
+  # never pick up a dependency that was added, so the restart boots, serves one
+  # request, and dies (7e8fd1c6). Seen twice more since that report.
+  #
+  # The order matters and is the part nobody guesses: fetch and compile *before*
+  # `phx.server`, because the failure is the build rather than the boot.
   defp explain({:not_connected, {:error, reason}}, working_dir) do
     """
     The harness's channel to the CodeMySpec server is down, and the server is not answering at all: #{inspect(reason)}. Start it, or point CMS_SERVER_URL somewhere that is running.
+
+    If it has already been restarted and went down again, the build is stale against the tree rather than the boot being wrong: run `mix deps.get && mix compile` before `mix phx.server`. Phoenix cannot hot-reload a changed config or a new dependency, so a plain restart boots, serves one request, and dies on its first reload — saying you must restart a server you just restarted.
     Working directory: #{working_dir}
     """
     |> String.trim()
@@ -235,7 +248,31 @@ defmodule CmsHarness.HookDecision do
     """
 
     A version skew is one cause: a server that does not know an event this
-    harness sends replies with an error rather than a decision.
+    harness sends replies with an error rather than a decision.#{boot_drift()}
     """
+  end
+
+  # Turns that skew hypothesis into a fact where there is one.
+  #
+  # A harness runs the code it booted with, so a checkout that has moved
+  # underneath it — a merge, a rebase, a branch switch — can leave its idea of
+  # the channel contract behind the server's. `7e8fd1c6`: 137 commits merged
+  # mid-session, and every stop afterwards failed with `unmatched topic` until
+  # the harness was restarted. Nothing in the error connected the two, and the
+  # skew line above was the closest thing to a lead.
+  #
+  # Only here, on the failure path. Drift is the normal state of an active
+  # session and most commits do not touch the harness, so saying it proactively
+  # would fire constantly and be ignored.
+  defp boot_drift do
+    case CodeMySpec.BootVersion.drift() do
+      {:drifted, booted, current} ->
+        "\n\n    This harness booted from #{booted} and its checkout is now at " <>
+          "#{current}. If that range touched the harness or the channel " <>
+          "contract, restart the harness — it is still running the older code."
+
+      :none ->
+        ""
+    end
   end
 end

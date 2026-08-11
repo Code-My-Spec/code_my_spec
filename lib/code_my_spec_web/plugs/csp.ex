@@ -14,6 +14,8 @@ defmodule CodeMySpecWeb.Plugs.CSP do
   """
   import Plug.Conn
 
+  alias CodeMySpec.Workspaces.PreviewAddress
+
   @spec init(keyword()) :: keyword()
   def init(opts), do: opts
 
@@ -34,7 +36,12 @@ defmodule CodeMySpecWeb.Plugs.CSP do
       # Without these the form silently never mounts — the page renders, the
       # element does not, and nothing in the server logs says why.
       "script-src 'self' 'nonce-#{nonce}' https://www.googletagmanager.com https://static.cloudflareinsights.com https://js.stripe.com",
-      "frame-src 'self' https://js.stripe.com https://hooks.stripe.com",
+      # Previews are framed from a subdomain of our own domain, which is not
+      # `'self'` — a different host is a different origin however closely
+      # related. Without this the app is willing to be framed and we refuse to
+      # frame it, which looks identical to the app refusing: a blank pane, no
+      # server-side error, and an iframe element that inspects perfectly.
+      "frame-src 'self' #{PreviewAddress.csp_origin()} https://js.stripe.com https://hooks.stripe.com",
       "connect-src 'self' https://www.googletagmanager.com https://www.google-analytics.com https://region1.google-analytics.com https://cloudflareinsights.com https://api.stripe.com",
       "img-src 'self' data: https://images.codemyspec.com https://www.google-analytics.com https://www.googletagmanager.com https://img.shields.io",
       # Video is served from the same bucket as the images, but media-src does

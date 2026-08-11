@@ -41,9 +41,16 @@ defmodule CodeMySpec.Files.Scanner do
 
     `component_by_module` resolves a file path to its owning component;
     `component_by_id` gives `validate_test_alignment/3` the module name it
-    needs to find the matching spec; `story_ids` is an existence check for
-    ids parsed out of qa and spex paths; `strict?` is the project's
+    needs to find the matching spec; `strict?` is the project's
     require-specs setting.
+
+    The two path families name a story with two different identifiers, so
+    they get two lookups. `.code_my_spec/qa/<id>/` is the primary key —
+    `story_ids` is its existence check. `test/spex/<number>_<slug>/` is the
+    durable number — `story_ids_by_number` resolves it to an id. One map
+    served both while the two identifiers were the same value; once they
+    diverged, every spex directory resolved to nothing and the files it held
+    were owned by no story, so `bdd_specs_passing` could never be satisfied.
 
     `story_by_spec_path` is the one that does not guess. A criterion records
     which file is its spex, so a spex file's story is a lookup rather than a
@@ -60,6 +67,7 @@ defmodule CodeMySpec.Files.Scanner do
     defstruct component_by_module: %{},
               component_by_id: %{},
               story_ids: MapSet.new(),
+              story_ids_by_number: %{},
               story_by_spec_path: %{},
               strict?: true
 
@@ -67,6 +75,7 @@ defmodule CodeMySpec.Files.Scanner do
             component_by_module: %{String.t() => Ecto.UUID.t()},
             component_by_id: %{Ecto.UUID.t() => struct()},
             story_ids: MapSet.t(integer()),
+            story_ids_by_number: %{integer() => integer()},
             story_by_spec_path: %{String.t() => integer()},
             strict?: boolean()
           }
@@ -926,19 +935,22 @@ defmodule CodeMySpec.Files.Scanner do
   def resolve_owners(entries, %ReadModel{} = read_model) do
     component_by_module = read_model.component_by_module
 
-    # Ids parsed out of qa/spex paths are only trusted if the project actually
-    # has such a story — a stale directory name must not link a file to it.
+    # Ids parsed out of qa paths are only trusted if the project actually has
+    # such a story — a stale directory name must not link a file to it.
     story_by_id =
       entries
-      |> extract_story_ids()
+      |> extract_qa_story_ids()
       |> Enum.filter(&MapSet.member?(read_model.story_ids, &1))
       |> Map.new(&{&1, &1})
 
     Enum.map(entries, fn entry ->
       {component_id, story_id} =
         case recorded_story(entry, read_model.story_by_spec_path) do
-          nil -> owner_for(entry, component_by_module, story_by_id)
-          story_id -> {nil, story_id}
+          nil ->
+            owner_for(entry, component_by_module, story_by_id, read_model.story_ids_by_number)
+
+          story_id ->
+            {nil, story_id}
         end
 
       # `:declared_module` is scratch for this decision and not a File field —
@@ -967,27 +979,33 @@ defmodule CodeMySpec.Files.Scanner do
   # because the server re-resolves ownership on every manifest
   # (`FileSync.reconcile/2`) where it is present, and the path remains the
   # fallback for a spec or test that declares nothing.
-  defp owner_for(entry, component_by_module, _story_by_id)
+  defp owner_for(entry, component_by_module, _story_by_id, _by_number)
        when is_map_key(entry, :role) and
               entry.role in [:implementation, :test, :spec] do
     module_name = declared_module(entry) || path_to_module_name(entry.path, entry.role)
     {Map.get(component_by_module, module_name), nil}
   end
 
-  defp owner_for(%{path: path, role: :bdd_spec}, _component_by_module, story_by_id) do
-    # test/spex/{story_id_and_title}/criterion_*_spex.exs → story
-    story_id = extract_story_id_from_spex_path(path)
-    {nil, story_by_id[story_id]}
+  # test/spex/{story_number_and_title}/criterion_*_spex.exs → story
+  #
+  # Through `story_ids_by_number`, because the directory is named from the
+  # durable number and every File row keys on the primary key. Handing the
+  # number to a map of ids matched whichever story held that id, or nothing —
+  # and nothing is what it does now on any project where the two differ.
+  defp owner_for(%{path: path, role: :bdd_spec}, _component_by_module, _story_by_id, by_number) do
+    story_number = extract_story_number_from_spex_path(path)
+    {nil, Map.get(by_number, story_number)}
   end
 
-  defp owner_for(%{path: path, role: role}, _component_by_module, story_by_id)
+  defp owner_for(%{path: path, role: role}, _component_by_module, story_by_id, _by_number)
        when role in [:qa_brief, :qa_result] do
-    # .code_my_spec/qa/{story_id}/brief.md → story
+    # .code_my_spec/qa/{story_id}/brief.md → story. The primary key here, not
+    # the number: `QaStory` builds these paths from `story.id`.
     story_id = extract_story_id_from_qa_path(path)
     {nil, story_by_id[story_id]}
   end
 
-  defp owner_for(%{path: path, role: :review}, component_by_module, _story_by_id) do
+  defp owner_for(%{path: path, role: :review}, component_by_module, _story_by_id, _by_number) do
     # .code_my_spec/spec/metric_flow/integrations/design_review.md → MetricFlow.Integrations
     module_name =
       path
@@ -998,7 +1016,7 @@ defmodule CodeMySpec.Files.Scanner do
     {Map.get(component_by_module, module_name), nil}
   end
 
-  defp owner_for(_entry, _component_by_module, _story_by_id), do: {nil, nil}
+  defp owner_for(_entry, _component_by_module, _story_by_id, _by_number), do: {nil, nil}
 
   # The `defmodule` the scan read out of the file, when it has been validated.
   # String keys because this arrives from the harness as JSON.
@@ -1021,8 +1039,9 @@ defmodule CodeMySpec.Files.Scanner do
     |> parse_integer()
   end
 
-  # test/spex/424_user_registration.../criterion_*_spex.exs → 424
-  defp extract_story_id_from_spex_path(path) do
+  # test/spex/424_user_registration.../criterion_*_spex.exs → 424, the story's
+  # durable number rather than its id.
+  defp extract_story_number_from_spex_path(path) do
     path
     |> String.replace_prefix("test/spex/", "")
     |> String.split("/")
@@ -1056,11 +1075,12 @@ defmodule CodeMySpec.Files.Scanner do
 
   defp recorded_story(_entry, _story_by_spec_path), do: nil
 
-  defp extract_story_ids(entries) do
+  # Only qa paths. Spex directories carry a number, which is resolved through
+  # `story_ids_by_number` rather than checked for existence as an id.
+  defp extract_qa_story_ids(entries) do
     entries
     |> Enum.flat_map(fn entry ->
       case entry.role do
-        :bdd_spec -> [extract_story_id_from_spex_path(entry.path)]
         role when role in [:qa_brief, :qa_result] -> [extract_story_id_from_qa_path(entry.path)]
         _ -> []
       end

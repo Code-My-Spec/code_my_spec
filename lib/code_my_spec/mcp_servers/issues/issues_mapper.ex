@@ -91,10 +91,18 @@ defmodule CodeMySpec.McpServers.Issues.IssuesMapper do
     end
   end
 
+  # Both branches warn, because the hazard is symmetric and only one side said
+  # so. An agent reading the server's store saw "Store: the CodeMySpec server."
+  # and nothing suggesting a second one exists — which is the silent case this
+  # whole note is for. The report that prompted it was written from the server
+  # side, about six filings and three resolutions sitting on the other.
   defp store_note do
     case store() do
       :server ->
-        "\n\nStore: the CodeMySpec server."
+        "\n\nStore: the CodeMySpec server. " <>
+          "A packaged CLI harness keeps its own database; issues filed or " <>
+          "resolved there are not listed here, and a harness swap changes " <>
+          "which store answers."
 
       :local ->
         "\n\nStore: this machine's local database, not the server. " <>

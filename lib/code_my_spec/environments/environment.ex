@@ -44,7 +44,7 @@ defmodule CodeMySpec.Environments.Environment do
   import Ecto.Changeset
 
   @type t :: %__MODULE__{
-          type: :cli | :local | :vscode | :container | :memory | nil,
+          type: :cli | :local | :vscode | :container | :memory | :harness | nil,
           ref: map(),
           cwd: String.t() | nil,
           metadata: map()

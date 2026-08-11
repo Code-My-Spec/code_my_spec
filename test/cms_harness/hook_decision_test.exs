@@ -135,6 +135,26 @@ defmodule CmsHarness.HookDecisionTest do
       assert reason =~ "not answering at all"
     end
 
+    test "and says how to start it, because starting it is not always enough" do
+      # A build stale against the tree takes the server down again on its first
+      # code-reload, with a message that reads as absurd on a server you have
+      # just restarted: "You must restart your server after changing
+      # configuration files". Phoenix cannot hot-reload a changed config or a
+      # new dependency, so the restart boots, serves one request, and dies
+      # (7e8fd1c6, seen twice more since).
+      reason =
+        HookDecision.unreachable("stop", {:not_connected, {:error, :econnrefused}}, @dir)[
+          "reason"
+        ]
+
+      assert reason =~ "mix deps.get && mix compile",
+             "the remedy nobody guesses is that the build is stale, not the boot"
+
+      assert reason =~ "before",
+             "the order is the whole point — compiling after `phx.server` is the " <>
+               "loop this is trying to break"
+    end
+
     test "all three still block — none of them is permission to stop" do
       for probe <- [{:http, 500}, {:http, 200}, {:error, :econnrefused}] do
         assert %{"decision" => "block"} =

@@ -52,7 +52,12 @@ defmodule CodeMySpecSpex.Story987.Criterion8186Spex do
       when_ "the agent writes a spex file under that story's directory and the harness delivers its manifest",
             context do
         path =
-          "test/spex/#{context.story.id}_capture_a_task/criterion_1_a_task_is_captured_spex.exs"
+          # The durable `number`, not the primary key. Spex directories are
+          # named `<number>_<slug>` and ownership resolves through
+          # `story_ids_by_number`, so a path built from `id` links to nothing
+          # and the requirement stays unsatisfied — which is the very symptom
+          # this scenario exists to catch, arriving for the wrong reason.
+          "test/spex/#{context.story.number}_capture_a_task/criterion_1_a_task_is_captured_spex.exs"
 
         :ok =
           Environments.write_file(

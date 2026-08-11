@@ -39,6 +39,7 @@ defmodule CodeMySpec.Validation do
   alias CodeMySpec.Files.FileSync
   alias CodeMySpec.Problems
   alias CodeMySpec.StaticAnalysis
+  alias CodeMySpec.StaticAnalysis.CredoRun
   alias CodeMySpec.Stories
   alias CodeMySpec.Users.Scope
 
@@ -142,7 +143,7 @@ defmodule CodeMySpec.Validation do
 
     if Keyword.get(opts, :await, false), do: Analysis.await_all(scope)
 
-    with :ok <- check_blocking_problems(scope, changed_files, config) do
+    with :ok <- check_blocking_problems(scope, changed_files, config, opts) do
       {:ok, %{changed_files: changed_files, analysis: analysis}}
     end
   end
@@ -169,7 +170,7 @@ defmodule CodeMySpec.Validation do
 
     if Keyword.get(opts, :await, false), do: Analysis.await_all(scope)
 
-    with :ok <- check_blocking_problems(scope, changed_files, config) do
+    with :ok <- check_blocking_problems(scope, changed_files, config, opts) do
       {:ok, %{changed_files: changed_files, analysis: analysis}}
     end
   end
@@ -321,6 +322,122 @@ defmodule CodeMySpec.Validation do
 
   defp relativize(path, _cwd), do: path
 
+  @doc """
+  Split blocking findings into this session's and everyone else's.
+
+  A finding in a file this session never edited does not block. Several agents
+  share this repo and rebase onto main, so a warning one pushes became a hard
+  block on every other's stop — and the obvious repair on someone else's
+  in-flight file can be actively wrong, which leaves editing code you do not
+  own or staying blocked as the only two responses.
+
+  Two things refuse to demote, both because the failure mode points the same
+  way — a gate that quietly stops blocking is worse than one that blocks too
+  much, and it is invisible:
+
+    * An empty or `nil` attribution set. "The session wrote nothing" and
+      "attribution broke" — a restart, a path shape that did not normalize —
+      are indistinguishable from here, and only one makes the demotion true.
+    * A finding with no `file_path`. A spex that died in `setup_all` has
+      nothing to attribute; unattributable is not the same as somebody else's,
+      and collapsing them drops the finding nobody can place.
+
+  Public so the property that decides whether the gate still works can be
+  asserted directly, the same reason `blocking_key/1` is.
+  """
+  @spec split_unattributed([Problems.Problem.t()], MapSet.t(String.t()) | nil) ::
+          {[Problems.Problem.t()], [Problems.Problem.t()]}
+  def split_unattributed(blocking, %MapSet{} = session_paths) do
+    if MapSet.size(session_paths) == 0 do
+      {blocking, []}
+    else
+      Enum.split_with(blocking, fn problem ->
+        not is_binary(problem.file_path) or MapSet.member?(session_paths, problem.file_path)
+      end)
+    end
+  end
+
+  def split_unattributed(blocking, _session_paths), do: {blocking, []}
+
+  # Loudly, because this is the gate declining to block. A demotion that is
+  # right is uninteresting and a demotion that is wrong is invisible in the
+  # response — the log is the only place the difference shows up.
+  defp log_demotions([], _opts), do: :ok
+
+  defp log_demotions(unattributed, opts) do
+    paths = unattributed |> Enum.map(& &1.file_path) |> Enum.uniq() |> Enum.take(5)
+
+    Logger.info(
+      "[Validation] session #{inspect(Keyword.get(opts, :session_id))} — demoted " <>
+        "#{length(unattributed)} blocking finding(s) to advisory: files it never " <>
+        "edited (#{Enum.join(paths, ", ")})"
+    )
+  end
+
+  # This session's edits, normalized the same way `filter_by_session_attribution`
+  # normalizes them — PostToolUse stores whatever Claude passed, typically
+  # absolute, while `Problem.file_path` is project-relative.
+  #
+  # `nil` rather than an empty set when there is no session or no cwd. Both mean
+  # the comparison cannot be trusted: without a cwd the relativize is a no-op
+  # and nothing would ever match, which would mark every finding as somebody
+  # else's. An empty set from a session that genuinely wrote nothing is
+  # different, and the renderer treats it as "no evidence" rather than "all
+  # foreign" for the same reason.
+  defp session_paths(%Scope{cwd: cwd} = scope, opts) when is_binary(cwd) do
+    case Keyword.get(opts, :session_id) do
+      session_id when is_binary(session_id) ->
+        session_id
+        |> attributed_paths(Keyword.get(opts, :agent_id))
+        |> Enum.map(&relativize(&1, cwd))
+        |> MapSet.new()
+        |> verify_against_ledger(scope, session_id)
+
+      _ ->
+        nil
+    end
+  end
+
+  defp session_paths(_scope, _opts), do: nil
+
+  # Does the attribution actually correspond to this project's files?
+  #
+  # The demotion turns on comparing recorded paths to `Problem.file_path`, and
+  # a set that matches nothing looks exactly like a set that matches nothing
+  # *because the session touched none of it* — one of which is a broken
+  # recording and the other is a fact. Measured on this project: a healthy
+  # session's 368 recorded paths join 988 File rows, and both shapes reach here
+  # (the harness sends repo paths project-relative; only paths outside the
+  # working copy, like a scratchpad, stay absolute). So a nonzero join is
+  # evidence the comparison works, and zero is evidence of nothing.
+  #
+  # `nil` on zero, which disables demotion and blocks on everything — the same
+  # direction every other guard here fails, because a gate that quietly stops
+  # blocking is invisible and one that blocks too much is not.
+  #
+  # `get_by_paths/2` rather than listing the ledger: this runs on every stop,
+  # and the full list is 4,544 rows here against an indexed lookup of the
+  # session's own.
+  defp verify_against_ledger(paths, scope, session_id) do
+    cond do
+      MapSet.size(paths) == 0 ->
+        paths
+
+      Files.get_by_paths(scope, MapSet.to_list(paths)) != [] ->
+        paths
+
+      true ->
+        Logger.warning(
+          "[Validation] session #{session_id} recorded #{MapSet.size(paths)} edited " <>
+            "path(s), none of which name a file in this project. Attribution is not " <>
+            "usable, so nothing will be demoted and every finding blocks. Check that " <>
+            "PostToolUse paths normalize against #{inspect(scope.cwd)}."
+        )
+
+        nil
+    end
+  end
+
   defp attributed_paths(session_id, nil), do: FileEdits.get_edited_files(session_id)
 
   defp attributed_paths(session_id, agent_id) when is_binary(agent_id),
@@ -396,7 +513,7 @@ defmodule CodeMySpec.Validation do
     end
   end
 
-  defp check_blocking_problems(scope, changed_files, config) do
+  defp check_blocking_problems(scope, changed_files, config, opts) do
     sources = active_blocking_sources(config)
 
     # Problems are an eventually consistent projection: block on what is
@@ -414,7 +531,8 @@ defmodule CodeMySpec.Validation do
         |> Enum.reject(&is_nil/1)
         |> Enum.uniq(),
       specs_ready_story_ids: specs_ready_story_ids(scope),
-      criterion_story_ids: AcceptanceCriteria.spec_path_story_ids(scope)
+      criterion_story_ids: AcceptanceCriteria.spec_path_story_ids(scope),
+      story_ids_by_number: Stories.list_story_ids_by_number(scope)
     }
 
     # One pass over the file ledger for every source, rather than one per
@@ -424,33 +542,129 @@ defmodule CodeMySpec.Validation do
     stale_sources = Enum.reject(sources_with_problems, &MapSet.member?(fresh, &1))
 
     {blocking, advisory} = partition_problems(problems_by_source, config, scope_context)
+    session_paths = session_paths(scope, opts)
+    {blocking, unattributed} = split_unattributed(blocking, session_paths)
+    advisory = advisory ++ unattributed
+    log_demotions(unattributed, opts)
+
+    {last_ran, run_duration, overtaken} = run_timing(scope, stale_sources)
 
     decide(blocking, advisory, stale_sources,
-      last_ran: last_ran(scope, stale_sources),
+      last_ran: last_ran,
+      # How long the run itself took. Read together with the age, this separates
+      # "your edit predates this result" from "your edit landed while it was
+      # running" — and only the first is fixed by waiting.
+      run_duration: run_duration,
+      # Read off the two fingerprints rather than inferred from the duration.
+      overtaken: overtaken,
+      # How to see these findings without stopping again. Only credo has one:
+      # its plain invocation hides the low-priority band that `block_changed`
+      # promotes, so `mix credo` answers "found no issues" on the very findings
+      # that block. `mix test` and `mix spex` reproduce themselves.
+      reproduce_commands: %{
+        "credo" => {CredoRun.reproduce_command(), CredoRun.reproduce_note()}
+      },
+      # Which files this session actually wrote. Blocking findings outside that
+      # set have already been demoted above, so this only labels what survives
+      # — it is the safety net for the case where the set is unknown and
+      # nothing was demoted.
+      session_paths: session_paths(scope, opts),
+      # How many moved to advisory, and why, so the advisory pile does not
+      # absorb them silently. A gate that stops blocking has to say so.
+      unattributed_count: length(unattributed),
       # Whether a rerun is actually running, as opposed to how old the newest
       # result is. The message used to assert the first from the second and got
       # it wrong in both directions.
-      in_flight: Analysis.in_flight(scope)
+      in_flight: Analysis.in_flight(scope),
+      # And how long it has been running. "A rerun is in flight" is the same
+      # sentence on every stop inside one run's window, so taking the advice
+      # promptly returns a byte-identical block — which is what a livelock looks
+      # like from the outside, and the opposite response is correct for each.
+      in_flight_since: Analysis.in_flight_since(scope),
+      # And whether anyone is watching at all. "No rerun is in flight, stopping
+      # again enqueues one" is a claim about the world, and an untracked project
+      # cannot support it — nothing would report a run either way.
+      tracked?: Analysis.in_flight_state(scope) != :untracked
     )
   end
 
-  # When each stale source last finished. "Stale" alone cannot tell "a rerun is
-  # coming" from "no rerun can land", and those need opposite responses: wait,
-  # or stop editing and report the analyzer. A source that last ran two minutes
-  # ago is mid-cycle; one that last ran forty minutes ago, across several
-  # stops, is not coming back on its own.
-  defp last_ran(_scope, []), do: %{}
+  # When each stale source last finished, and how long it took to get there.
+  #
+  # "Stale" alone cannot tell "a rerun is coming" from "no rerun can land", and
+  # those need opposite responses: wait, or stop editing and report the
+  # analyzer. A source that last ran two minutes ago is mid-cycle; one that last
+  # ran forty minutes ago, across several stops, is not coming back on its own.
+  #
+  # The duration adds a third condition the age alone cannot express. A run is
+  # fingerprinted when it is enqueued and judged against the tree when it is
+  # read, so an edit landing inside its window makes the result stale the
+  # instant it arrives. For exunit and spex here — measured at 2m20s and 2m35s
+  # against compiler's 9s — that is the normal working rhythm, not an anomaly,
+  # and it produced "stale, last ran 0s ago" on a run that had just succeeded.
+  # Waiting cannot fix it, so the message must not advise it.
+  #
+  # Both read the latest run that *answered*, which is the run staleness is
+  # computed from. This used `Analysis.status/1`, whose `latest_full_runs/1`
+  # includes `:failed` — so the age described one run while "stale" described
+  # another, and the failure is usually the newer of the two.
+  #
+  # Measured on the live ledger: spex last completed at 03:59:05 and last failed
+  # at 04:02:52, so a source whose real answer was four minutes stale reported
+  # the failure's age instead. Everything keyed to that age then inverts —
+  # mid-cycle rather than wedged, wait rather than escalate — and `83cde34f`
+  # read the resulting "last ran 5m ago" against a 96-minute-old answer as
+  # another working copy's run leaking in. It needs no second checkout.
+  #
+  # Per-source rather than one pass, which is also cheaper here:
+  # `latest_completed_run/2` is an indexed lookup, where `status/1` computes
+  # `Fingerprint` over every file row in the working copy — 4,544 on this
+  # project — for an answer this does not use.
+  #
+  # Public so the property can be asserted directly, the same reason
+  # `blocking_key/1` and `split_unattributed/2` are.
+  @doc false
+  def run_timing(_scope, []), do: {%{}, %{}, %{}}
 
-  defp last_ran(scope, sources) do
-    status = Analysis.status(scope)
+  def run_timing(scope, sources) do
+    Enum.reduce(sources, {%{}, %{}, %{}}, fn source, {ages, durations, overtaken} ->
+      run = Analysis.latest_answer(scope, source)
 
-    Map.new(sources, fn source ->
-      {source, get_in(status, [source, :run]) |> finished_at()}
+      {Map.put(ages, source, finished_at(run)), Map.put(durations, source, duration(run)),
+       Map.put(overtaken, source, overtaken?(run))}
     end)
   end
 
+  # Did an edit land while this run was in flight?
+  #
+  # `input_fingerprint` is stamped at enqueue and `completed_fingerprint` at
+  # reconcile, so the two differ exactly when the tree moved underneath it. That
+  # is the difference between a result waiting will refresh and one no amount of
+  # waiting can, and the two take opposite advice.
+  #
+  # The renderer inferred this from the run's duration — a result younger than
+  # the run took must have been overtaken — which is sound only if nothing was
+  # edited after the run finished. A stop that follows a long run closely breaks
+  # that: the edit came afterwards, a rerun would be clean, and the message said
+  # not to bother waiting for one.
+  #
+  # `nil` for a run predating the column, which is what sends the renderer back
+  # to the duration inference rather than asserting either answer.
+  defp overtaken?(%{input_fingerprint: input, completed_fingerprint: done})
+       when is_binary(input) and is_binary(done),
+       do: input != done
+
+  defp overtaken?(_run), do: nil
+
   defp finished_at(%{finished_at: %DateTime{} = at}), do: at
   defp finished_at(_), do: nil
+
+  # Nil rather than zero when either end is missing: zero would read as an
+  # instant run and send the message down the "your edit predates this" branch,
+  # which is the wrong half of the very distinction this exists to draw.
+  defp duration(%{started_at: %DateTime{} = from, finished_at: %DateTime{} = to}),
+    do: DateTime.diff(to, from, :second)
+
+  defp duration(_), do: nil
 
   defp active_blocking_sources(config) do
     configurable =
@@ -526,11 +740,21 @@ defmodule CodeMySpec.Validation do
   # The filename parse stays as the fallback for a spex no criterion claims.
   # There is no right answer for an orphan, and changing what happens to those
   # is a separate decision from fixing the ones that do have an answer.
+  #
+  # That fallback now resolves what it parses. The directory name is the story's
+  # durable **number**, and it used to be handed straight to a set of primary
+  # keys — the comparison above, made from the wrong end. Going through
+  # `story_ids_by_number` means an unmatched number answers `nil` and lands in
+  # the loud branch instead of quietly naming whichever story holds that id.
   defp split_by_story_enforcement("spex", problems, ctx) do
-    %{specs_ready_story_ids: ready_ids, criterion_story_ids: by_path} = ctx
+    %{
+      specs_ready_story_ids: ready_ids,
+      criterion_story_ids: by_path,
+      story_ids_by_number: by_number
+    } = ctx
 
     Enum.split_with(problems, fn problem ->
-      case Map.get(by_path, problem.file_path) || Parser.derive_story_id(problem.file_path) do
+      case Map.get(by_path, problem.file_path) || story_id_from_path(problem.file_path, by_number) do
         nil -> true
         story_id -> MapSet.member?(ready_ids, story_id)
       end
@@ -538,6 +762,13 @@ defmodule CodeMySpec.Validation do
   end
 
   defp split_by_story_enforcement(_source, problems, _ctx), do: {problems, []}
+
+  defp story_id_from_path(file_path, by_number) do
+    case Parser.derive_story_number(file_path) do
+      nil -> nil
+      number -> Map.get(by_number, number)
+    end
+  end
 
   defp specs_ready_story_ids(scope) do
     scope

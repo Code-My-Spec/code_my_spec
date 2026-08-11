@@ -75,11 +75,16 @@ defmodule CodeMySpec.AgentTasks.FixAllBddSpecs do
   # real spex failure stops reaching the agent that should fix it.
   defp filter_relevant_problems(scope, problems) do
     by_path = AcceptanceCriteria.spec_path_story_ids(scope)
+    # The directory name is the story's durable number, not its id. Resolving it
+    # here rather than comparing it to ids is what makes "belongs to no story"
+    # answer nil instead of naming whichever story happens to hold that id.
+    by_number = Stories.list_story_ids_by_number(scope)
 
     problems
     |> Enum.map(fn problem ->
       story_id =
-        Map.get(by_path, problem.file_path) || Parser.derive_story_id(problem.file_path)
+        Map.get(by_path, problem.file_path) ||
+          Map.get(by_number, Parser.derive_story_number(problem.file_path))
 
       {problem, story_id}
     end)

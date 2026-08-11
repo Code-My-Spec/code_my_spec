@@ -57,7 +57,7 @@ defmodule CmsHarness.AnalysisPathTest do
     """)
 
     write(root, "lib/thing.ex", thing_source(Keyword.get(opts, :broken, false)))
-    {_, 0} = System.cmd("mix", ["deps.get"], cd: root, stderr_to_stdout: true)
+    cmd!(root, "mix", ["deps.get"])
     :ok
   end
 

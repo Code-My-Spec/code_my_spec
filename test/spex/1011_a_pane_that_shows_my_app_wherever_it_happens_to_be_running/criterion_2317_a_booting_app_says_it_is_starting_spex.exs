@@ -49,8 +49,17 @@ defmodule CodeMySpecSpex.Story885.Criterion2317Spex do
       end
 
       then_ "and it does not look like a failure", context do
-        refute context.html =~ ~r/down|failed|error|crashed/i,
-               "an app on its way up was reported as a failure"
+        # Scoped to the pane. The surrounding page carries flash markup and
+        # error styling of its own, so matching the whole document would fail
+        # on chrome that has nothing to do with the app's state.
+        pane =
+          context.html
+          |> Floki.parse_document!()
+          |> Floki.find("[data-test='preview-pane']")
+          |> Floki.text()
+
+        refute pane =~ ~r/down|failed|crashed|erroring/i,
+               "an app on its way up was reported as a failure: #{pane}"
 
         {:ok, context}
       end

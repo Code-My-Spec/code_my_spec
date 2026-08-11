@@ -104,7 +104,16 @@ defmodule CodeMySpec.Stories.Story do
     field :project_id, :binary_id
     field :account_id, :binary_id
 
-    has_many :criteria, CodeMySpec.AcceptanceCriteria.Criterion, on_replace: :delete
+    # Ordered, because "the story's first criterion" is a thing callers say and
+    # an unordered preload does not answer it the same way twice. Postgres
+    # returns heap order, and an UPDATE moves a row to the end of it — so
+    # recording a criterion's `spec_path` silently reorders the list, and a
+    # fixture that wrote a spec for criterion A was followed by a test that
+    # deleted "the first criterion"'s spec and got criterion B. Nothing errored;
+    # the file simply stayed and the requirement stayed satisfied.
+    has_many :criteria, CodeMySpec.AcceptanceCriteria.Criterion,
+      on_replace: :delete,
+      preload_order: [asc: :id]
 
     many_to_many :tags, CodeMySpec.Tags.Tag,
       join_through: CodeMySpec.Tags.StoryTag,

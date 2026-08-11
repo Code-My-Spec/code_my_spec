@@ -137,15 +137,36 @@ config :code_my_spec, :cloudflare_tunnel,
   hostname: "dev.codemyspec.com",
   tunnel_id: "12a798a4-81a3-4242-8b59-ac171c0a01a1",
   account_tag: "6477547f586ec90db2c2a0081dcd98bd",
-  origin_url: "http://127.0.0.1:4000"
+  origin_url: "http://127.0.0.1:4000",
+  additional_hostnames: [{"*.astralbi.com", "http://127.0.0.1:4010"}]
 
 # Previews resolve through the same tunnel that serves dev.codemyspec.com, so
 # a preview address works from a phone or a colleague's browser rather than
 # only from this machine. The record is a CNAME to the tunnel, written once
 # per project the first time its preview is asked for.
+# `preview-<id>.localhost` rather than the real domain, because every label
+# under `.localhost` resolves to 127.0.0.1 without a hosts entry, a tunnel or a
+# DNS record — so a preview works on a laptop today rather than after the edge
+# routing in c84edde5 lands. Production keeps the real domain, where the
+# same-site property is the point.
+#
+# `target` stays as it is: it is only read by `ensure/2`, which writes a
+# Cloudflare record and has no business running against a dev machine.
 config :code_my_spec, CodeMySpec.Workspaces.PreviewAddress,
-  base_domain: "codemyspec.com",
-  target: "12a798a4-81a3-4242-8b59-ac171c0a01a1.cfargotunnel.com"
+  base_domain: "astralbi.com",
+  target: "12a798a4-81a3-4242-8b59-ac171c0a01a1.cfargotunnel.com",
+  scheme: "https",
+  # Real records now: the tunnel routes *.codemyspec.com to the preview
+  # listener, so a per-project CNAME is what makes an address arrive.
+  manage_dns: true,
+  zone_id: "0287fe8206425a2aac660a57a62f65bc"
+
+# The pane is served from the dev endpoint, so that is who has to be allowed to
+# frame a preview. Without this the proxy names the production origin, the
+# browser refuses, and the frame renders blank in exactly the way it does when
+# the app refuses on its own.
+config :code_my_spec, CodeMySpecWeb.Plugs.PreviewProxy,
+  frame_ancestors: "http://localhost:4000 https://dev.codemyspec.com"
 
 # Previews get a listener of their own because the main endpoint cannot serve
 # them: it claims /live/websocket for its own LiveView socket before any plug

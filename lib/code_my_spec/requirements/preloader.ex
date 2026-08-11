@@ -211,7 +211,26 @@ defmodule CodeMySpec.Requirements.Preloader do
   # bulk-upserted — they are written one at a time through their contexts — so
   # here a timestamp is both stable across no-ops and strictly more sensitive
   # than hashing chosen columns, which is the failure mode that would matter.
-  @delegated_tables ~w(bdd_rules criteria questions personas issues)
+  # `deploys` is the sixth and it arrived late, because it is the only one the
+  # preloader was already loading — `uat_deploy_by_story` — while the
+  # fingerprint hashed none of it. `deploy` asks `Deploys.uat_check/3`, which
+  # reads that collection, so a deploy landing moved the graph and not the hash
+  # and `cached_graph/1` served the pre-deploy projection as current. That is
+  # the failure `16a24105` names: "a cached graph can tell an agent work is
+  # finished that a deploy has just reopened".
+  #
+  # Loading a collection is not covering it. The other five were found by asking
+  # what the checkers read; this one hid because the preloader's answer looked
+  # like coverage.
+  # `stories` is the seventh, and it is here for a reason worth stating: the
+  # context already carries stories, and that is not the same set. `ctx.stories`
+  # is filtered to `ready_for_dev == true` — only released stories project into
+  # the graph — while `StoriesChecker` asks `Stories.project_has_stories?/1`,
+  # which counts every one. A project whose only story is parked therefore read
+  # as having none, and creating one did not move the hash. Onboarding is
+  # exactly when that bites: the first story exists before anyone marks it
+  # ready, and the graph is what the agent is following.
+  @delegated_tables ~w(bdd_rules criteria questions personas issues deploys stories)
 
   # The four collections `BddRulesChecker` reads, batched.
   #

@@ -16,6 +16,7 @@ defmodule CodeMySpec.McpServers.Architecture.Tools.ExecuteProposal do
 
   alias Anubis.Server.Response
   alias CodeMySpec.AgentTasks.ArchitectureDesign
+  alias CodeMySpec.Environments
   alias CodeMySpec.McpServers.Architecture.ArchitectureMapper
   alias CodeMySpec.McpServers.Validators
 
@@ -43,6 +44,26 @@ defmodule CodeMySpec.McpServers.Architecture.Tools.ExecuteProposal do
 
   defp handle_evaluate({:ok, :invalid, feedback}, frame) do
     {:reply, ArchitectureMapper.error(feedback), frame}
+  end
+
+  # Distinct from `:invalid`, which says the proposal is wrong. This says nobody
+  # read it. Answering "unexpected evaluator result" would send the architect
+  # looking for a defect in a proposal the server never opened (074b7c83).
+  defp handle_evaluate({:error, reason}, frame) do
+    if Environments.unobservable?(reason) do
+      {:reply,
+       ArchitectureMapper.error("""
+       The proposal could not be read: this server holds no working copy, so \
+       every file operation answers #{inspect(reason)}.
+
+       Under a light harness that is normal — the harness watches the files. \
+       Nothing is wrong with the proposal, and rewriting it will not help. \
+       Report it with `create_issue` (scope: framework) and ask the user how to \
+       proceed.
+       """), frame}
+    else
+      {:reply, ArchitectureMapper.error("Failed to execute proposal: #{inspect(reason)}"), frame}
+    end
   end
 
   defp handle_evaluate(other, frame) do

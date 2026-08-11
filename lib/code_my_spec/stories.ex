@@ -58,6 +58,12 @@ defmodule CodeMySpec.Stories do
   decide which spex failures are allowed to block.
   """
   def list_specs_ready_story_ids(scope), do: impl().list_specs_ready_story_ids(scope)
+
+  @doc """
+  `%{number => id}` for the project's stories — resolves a spex
+  directory name back to the story that owns it.
+  """
+  def list_story_ids_by_number(scope), do: impl().list_story_ids_by_number(scope)
   def project_has_stories?(scope), do: impl().project_has_stories?(scope)
 
   @doc """

@@ -1,15 +1,16 @@
 defmodule CodeMySpec.McpServers.Architecture.Tools.ValidateDependencyGraphTest do
   use ExUnit.Case, async: false
 
-  alias CodeMySpec.McpServers.Architecture.Tools.ValidateDependencyGraph
   alias Anubis.Server.Frame
+  alias CodeMySpec.McpServers.Architecture.Tools.ValidateDependencyGraph
+  alias Ecto.Adapters.SQL.Sandbox
 
   import CodeMySpec.UsersFixtures
   import CodeMySpec.ComponentsFixtures
   import CodeMySpec.DependencyFixtures
 
   setup do
-    :ok = Ecto.Adapters.SQL.Sandbox.checkout(CodeMySpec.Repo)
+    :ok = Sandbox.checkout(CodeMySpec.Repo)
   end
 
   describe "execute/2" do
@@ -92,7 +93,9 @@ defmodule CodeMySpec.McpServers.Architecture.Tools.ValidateDependencyGraphTest d
       assert data["valid"] == false
       assert data["message"] == "Circular dependencies detected"
       assert is_list(data["cycles"])
-      assert length(data["cycles"]) == 2
+      assert length(data["cycles"]) == 1
+      # One ring, reported once. The self-join matched it in both
+      # directions and counted it twice.
     end
 
     test "includes component information in cycles" do
@@ -144,7 +147,9 @@ defmodule CodeMySpec.McpServers.Architecture.Tools.ValidateDependencyGraphTest d
 
       assert data["valid"] == false
       # Should detect 4 cycles (2 bidirectional dependencies = 4 edges in cycles)
-      assert length(data["cycles"]) == 4
+      assert length(data["cycles"]) == 2
+      # Two rings, not four. Each used to arrive twice, once per direction of
+      # the self-join that found them.
     end
 
     test "handles complex dependency graph with one cycle" do
@@ -172,7 +177,9 @@ defmodule CodeMySpec.McpServers.Architecture.Tools.ValidateDependencyGraphTest d
       data = Jason.decode!(json_text)
 
       assert data["valid"] == false
-      assert length(data["cycles"]) == 2
+      assert length(data["cycles"]) == 1
+      # One ring, reported once. The self-join matched it in both
+      # directions and counted it twice.
     end
 
     test "returns error for invalid scope" do

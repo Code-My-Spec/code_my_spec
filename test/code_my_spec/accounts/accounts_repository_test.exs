@@ -211,13 +211,22 @@ defmodule CodeMySpec.Accounts.AccountsRepositoryTest do
     end
   end
 
+  # These read whatever the unscoped query returns, so they assert against the
+  # row they made rather than the first one back. A single row that escaped the
+  # ExUnit sandbox and committed is permanent — the test database is created
+  # once and reused — and this database holds exactly that: one account, one
+  # user, one member with no test to own them. `[fetched] = Repo.all(query)`
+  # then fails on arity, and `hd()` silently answers about a stranger.
+  #
+  # Same shape as bcad622d, which is about the analyzer's partition; nothing
+  # truncates the one an agent's own `mix test` uses.
   describe "with_preloads/1" do
     test "returns query with specified preloads" do
       user = user_fixture()
-      _account = account_with_owner_fixture(user)
+      account = account_with_owner_fixture(user)
 
       query = AccountsRepository.with_preloads([:members])
-      [fetched_account] = Repo.all(query)
+      fetched_account = query |> Repo.all() |> Enum.find(&(&1.id == account.id))
 
       assert Ecto.assoc_loaded?(fetched_account.members)
       assert length(fetched_account.members) == 1
@@ -225,10 +234,10 @@ defmodule CodeMySpec.Accounts.AccountsRepositoryTest do
 
     test "handles multiple preloads" do
       user = user_fixture()
-      _account = account_with_owner_fixture(user)
+      account = account_with_owner_fixture(user)
 
       query = AccountsRepository.with_preloads([:members, :users])
-      [fetched_account] = Repo.all(query)
+      fetched_account = query |> Repo.all() |> Enum.find(&(&1.id == account.id))
 
       assert Ecto.assoc_loaded?(fetched_account.members)
       assert Ecto.assoc_loaded?(fetched_account.users)

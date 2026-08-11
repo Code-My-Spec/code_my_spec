@@ -42,19 +42,24 @@ defmodule CodeMySpec.BddSpecs do
   end
 
   @doc """
-  Returns specs linked to a specific story.
+  Returns specs linked to a story, by its durable number.
+
+  The **number**, not the primary key: a spec's story comes from its
+  directory name, and directories are `<number>_<slug>`. This took an
+  id until the two diverged, at which point it matched nothing and
+  every story read as having no specs.
 
   ## Examples
 
-      iex> list_specs_for_story(env, story_id)
+      iex> list_specs_for_story(env, story.number)
       [%Spec{}, ...]
 
   """
   @spec list_specs_for_story(Environment.t(), integer()) :: [Spec.t()]
-  def list_specs_for_story(%Environment{} = env, story_id) when is_integer(story_id) do
+  def list_specs_for_story(%Environment{} = env, story_number) when is_integer(story_number) do
     env
     |> list_specs()
-    |> Enum.filter(&(&1.story_id == story_id))
+    |> Enum.filter(&(&1.story_number == story_number))
   end
 
   @doc """
@@ -106,7 +111,7 @@ defmodule CodeMySpec.BddSpecs do
     criteria = story.criteria || []
     all_criterion_ids = Enum.map(criteria, & &1.id)
 
-    specs = list_specs_for_story(env, story.id)
+    specs = list_specs_for_story(env, story.number)
 
     covered_criterion_ids =
       specs
@@ -173,11 +178,11 @@ defmodule CodeMySpec.BddSpecs do
   @doc """
   Returns the conventional file path for a story/criterion spec.
 
-  Accepts either `%Story{}`/`%Criterion{}` structs (the production
-  caller's shape) or plain maps with `:id` plus the relevant text
-  field — `:title` for the story, `:description` for the criterion.
-  Specs that drive the surface MCP tools (`CreateStory`, `GetStory`)
-  parse the response into a map and pass it directly here.
+  The story must carry its durable `:number`, not just its `:id` — the
+  directory is named from the number, and a story projection that has
+  lost the field cannot produce a correct path. Callers holding a
+  parsed MCP response rather than a struct should resolve the story
+  first; deriving from `:id` names a different story's directory.
 
   ## Examples
 
@@ -186,7 +191,7 @@ defmodule CodeMySpec.BddSpecs do
 
   """
   @spec spec_file_path(
-          Story.t() | %{id: term(), title: String.t()},
+          Story.t() | %{id: term(), number: integer(), title: String.t()},
           Criterion.t() | %{id: term(), description: String.t()}
         ) :: String.t()
   # A recorded path wins. Deriving one pins a file on disk to the criterion's id
@@ -198,24 +203,41 @@ defmodule CodeMySpec.BddSpecs do
   # recorded, which is where a file's name still comes from when it is created.
   def spec_file_path(_story, %{spec_path: path}) when is_binary(path) and path != "", do: path
 
-  def spec_file_path(%{id: _, title: _} = story, %{id: _, description: _} = criterion) do
-    story_slug = slugify(story.title)
-    # The story's durable number, not its primary key. `id` is a per-deployment
-    # sequence that renumbers on migration — this comment's own warning above —
-    # and the directories named from it stopped pointing at the stories they
-    # were written for. Drift measured here was a uniform 51:
-    # `test/spex/811_user_sees_the_agents_task_queue…` named a real but
-    # unrelated story 811 while the story owning those spex was 862.
-    #
-    # `Map.get`, not `story.number`: this head accepts any map carrying an id
-    # and a title, and the graph tests pass bare maps that have neither the
-    # struct nor the field. Falls back to `id` for those and for a story
-    # predating the column, so a path is still produced rather than raising.
-    story_dir = "#{Map.get(story, :number) || story.id}_#{story_slug}"
+  # The story's durable number, not its primary key. `id` is a per-deployment
+  # sequence that renumbers on migration — this comment's own warning above —
+  # and the directories named from it stopped pointing at the stories they were
+  # written for. Drift measured here was a uniform 51:
+  # `test/spex/811_user_sees_the_agents_task_queue…` named a real but unrelated
+  # story 811 while the story owning those spex was 862.
+  def spec_file_path(%{number: number, title: title}, %{id: _, description: _} = criterion)
+      when is_integer(number) do
+    story_dir = "#{number}_#{slugify(title)}"
     criterion_slug = slugify(criterion.description)
     filename = "criterion_#{criterion.id}_#{criterion_slug}_spex.exs"
 
     Path.join(["test/spex", story_dir, filename])
+  end
+
+  # No number, so no path. Falling back to `id` here is what this function used
+  # to do, and it is the failure the number exists to end: `id` and `number`
+  # differ by 51 on this project, so the derived path named a real but unrelated
+  # story's directory, the file was written there, and the evaluator looked
+  # where the number said and reported it missing. Nothing errored — that is the
+  # whole problem, and it cost seven spex before anyone noticed.
+  #
+  # Reached by callers holding a projection of a story rather than a story:
+  # `StoryHelpers.fetch/2` parses `GetStory`'s text, which carries the id and
+  # not the number. They should resolve the row.
+  def spec_file_path(%{id: id, title: title}, %{id: _, description: _}) do
+    raise ArgumentError, """
+    cannot derive a spex path for story #{inspect(id)} (#{inspect(title)}): it carries no durable :number.
+
+    The directory is `<number>_<slug>`, and the number is not the primary key —
+    deriving from the id names a different story's directory and nothing about
+    the result looks wrong. Resolve the story (`Stories.get_story!/2`, or
+    `CodeMySpecSpex.Fixtures.spec_file_path/2` from a spex) rather than passing
+    a parsed MCP response.
+    """
   end
 
   @doc """

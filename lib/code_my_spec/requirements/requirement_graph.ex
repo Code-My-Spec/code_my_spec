@@ -70,11 +70,19 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   # spex caught it the first time, when the cache was wired read-through with a
   # fingerprint that watched none of the above.
   #
-  # That spex is gone — no `criterion_7321`, no story 859 directory, and no spex
-  # anywhere referencing `cached_graph` or `GraphCache`. Most likely lost to the
-  # story-id migration that renumbered spex directories. This comment named it
-  # as "the test to run before trusting any change here" long after it stopped
-  # existing, which is worse than naming nothing: it reads as protection.
+  # That spex is gone — no `criterion_7321` and no spex anywhere referencing
+  # `cached_graph` or `GraphCache`. This comment named it as "the test to run
+  # before trusting any change here" long after it stopped existing, which is
+  # worse than naming nothing: it reads as protection.
+  #
+  # Not lost to the renumbering, which this used to guess at. 859 is a primary
+  # key; that story's durable number is 973 ("My app has a working feedback
+  # widget") and `test/spex/973_…` is on disk — the directory was looked up by
+  # the wrong identifier, which is the id-versus-number confusion `f17113fc`
+  # exists to end. Criterion 7321 has no row at all, so it went when that
+  # story's criteria were rewritten. Measured across the project: 855 of 860
+  # recorded `spec_path`s resolve, and the five that do not are deletions in
+  # three unrelated stories. Nothing systematic ate the spex.
   #
   # What actually guards this is `graph_cache_test.exs`, "the fingerprint covers
   # what the delegate checkers read" — one test per input, which is the property

@@ -17,6 +17,8 @@ defmodule CmsHarness.AnalysisTest do
 
   use ExUnit.Case, async: true
 
+  import CmsHarnessTest.Projects, only: [cmd!: 3]
+
   alias CmsHarness.Analysis
 
   # Nothing here fetches from the network beyond `client_utils`'s two small hex
@@ -53,7 +55,7 @@ defmodule CmsHarness.AnalysisTest do
   # match is the assertion: a fixture whose deps did not resolve would fail
   # later as a compile error and read as the thing under test.
   defp fetch_deps(root, true) do
-    {_, 0} = System.cmd("mix", ["deps.get"], cd: root, stderr_to_stdout: true)
+    cmd!(root, "mix", ["deps.get"])
     :ok
   end
 
@@ -185,6 +187,18 @@ defmodule CmsHarness.AnalysisTest do
              """
              Diagnostics came back for a project with no :diagnostics compiler.
 
+             What came back:
+
+             #{inspect(result["diagnostics"], pretty: true, limit: 5, printable_limit: 400)}
+
+             exit_status=#{inspect(result["exit_status"])}
+             diagnostics_available=#{inspect(result["diagnostics_available"])}
+
+             `diagnostics_available` is the one to read first: it says whether
+             `Compile` found a JSONL file at all. True here means a file existed
+             for a project that cannot write one, which points at the file rather
+             than at the analyzer.
+
              That is what a fix looks like — `CodeMySpec.Compile` reading the raw
              output regardless of exit code — and if that is what happened, delete
              this test.
@@ -199,6 +213,22 @@ defmodule CmsHarness.AnalysisTest do
              So: confirm `extract_compiler_errors/1` is actually reached on a zero
              exit before deleting anything. A self-deleting test that can fire by
              accident deletes itself by accident.
+
+             Already eliminated, so nobody spends the hour again:
+
+               * A shared diagnostics file. `Compile` takes its path from
+                 `TempFile.path/2` through `Keyword.get_lazy/3` — per call, and
+                 the token carries OS pid, a unique integer and random bytes.
+               * A leaked `PATH`. `CodeMySpec.EnvironmentsTest` does rewrite
+                 `PATH` and `RELEASE_ROOT` globally, but it is `use ExUnit.Case`
+                 with no `async: true`, so it runs in the serial phase and
+                 cannot overlap anything.
+               * A path computed once at compile time. `create_temp_file_path/0`
+                 is a function, not a module attribute.
+
+             If it fires again, the diagnostics above are the evidence that was
+             missing every previous time — they should name a file, and that file
+             says whose compile produced them.
              """
     end
   end

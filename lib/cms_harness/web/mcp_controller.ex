@@ -49,6 +49,7 @@ defmodule CmsHarness.Web.McpController do
   alias CmsHarness.Config
   alias CmsHarness.ProjectIdentity
   alias CmsHarness.Token
+  alias CmsHarness.Web.UpstreamError
   alias CmsHarness.WorkingCopies
 
   # Everything the MCP transport puts on a request that means something to the
@@ -131,45 +132,8 @@ defmodule CmsHarness.Web.McpController do
     end
   end
 
-  defp html_summary(response) do
-    body = to_string(response.body || "")
-
-    if error_page?(response, body) do
-      "the CodeMySpec server answered with an error page (HTTP #{response.status}) " <>
-        "instead of a tool result: #{first_meaningful_line(body)}. " <>
-        "Common causes: a pending migration, or a dev server that has loaded a " <>
-        "changed config/*.exs and cannot hot-reload it. Both persist until the " <>
-        "server is dealt with, so every request fails the same way."
-    end
-  end
-
-  # Not only HTML. Phoenix renders its debug page in whatever the request
-  # accepts, and the MCP client sends `application/json, text/event-stream` — so
-  # a `Phoenix.Ecto.PendingMigrationError` came back as markdown, sailed past an
-  # HTML-only check, and reached the agent as a raw stack trace. Recognising the
-  # page by its exception marker as well as its markup catches both renderings.
-  defp error_page?(response, body) do
-    trimmed = String.trim_leading(body)
-
-    content_type(response) == "text/html" or
-      String.starts_with?(trimmed, ["<!DOCTYPE", "<!doctype", "<html"]) or
-      (response.status >= 400 and String.contains?(body, "** ("))
-  end
-
-  # Phoenix's error page carries the exception text in the markup. Anything
-  # recognisable beats "an HTML page arrived", and the whole document is what
-  # this exists to avoid.
-  defp first_meaningful_line(body) do
-    body
-    |> String.replace(~r{<[^>]*>}, " ")
-    |> String.replace(~r/\s+/, " ")
-    |> String.trim()
-    |> String.slice(0, 300)
-    |> case do
-      "" -> "no readable text in the response"
-      text -> text
-    end
-  end
+  defp html_summary(response),
+    do: UpstreamError.summary(to_string(response.body || ""), response.status, content_type(response))
 
   defp request(conn, project, token, method, body, receive_timeout) do
     Req.new(

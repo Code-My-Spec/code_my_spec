@@ -156,9 +156,9 @@ defmodule CodeMySpec.BddSpecs.ParserTest do
     path
   end
 
-  defp temp_story_criterion_file(content, story_id, criterion_id) do
+  defp temp_story_criterion_file(content, story_number, criterion_id) do
     unique_id = System.unique_integer([:positive])
-    dir = Path.join(System.tmp_dir!(), "test_#{unique_id}_#{story_id}_user_authentication")
+    dir = Path.join(System.tmp_dir!(), "test_#{unique_id}_#{story_number}_user_authentication")
     File.mkdir_p!(dir)
     path = Path.join(dir, "criterion_#{criterion_id}_spex.exs")
     File.write!(path, content)
@@ -251,12 +251,12 @@ defmodule CodeMySpec.BddSpecs.ParserTest do
     # Non-existent file test removed — parser takes content, not paths.
     # File existence is the caller's responsibility via Environment.
 
-    test "extracts story_id from directory pattern {story_id}_*" do
+    test "extracts story number from directory pattern {story_number}_*" do
       path = temp_story_criterion_file(valid_minimal_spex(), 123, 1)
       on_exit(fn -> cleanup_file(path) end)
 
       assert {:ok, spec} = Parser.parse(File.read!(path), path)
-      assert spec.story_id == 123
+      assert spec.story_number == 123
     end
 
     test "extracts criterion_id from filename pattern criterion_{id}_spex.exs" do
@@ -272,7 +272,7 @@ defmodule CodeMySpec.BddSpecs.ParserTest do
       on_exit(fn -> cleanup_file(path) end)
 
       assert {:ok, spec} = Parser.parse(File.read!(path), path)
-      assert is_nil(spec.story_id)
+      assert is_nil(spec.story_number)
       assert is_nil(spec.criterion_id)
     end
 
@@ -651,33 +651,33 @@ defmodule CodeMySpec.BddSpecs.ParserTest do
   end
 
   # ============================================================================
-  # derive_story_id/1 - Story ID Extraction
+  # derive_story_number/1 - Story number extraction
   # ============================================================================
 
-  describe "derive_story_id/1" do
-    test "extracts story_id from directory name like '123_user_authentication'" do
+  describe "derive_story_number/1" do
+    test "extracts story number from directory name like '123_user_authentication'" do
       path = "/path/to/specs/123_user_authentication/criterion_1_spex.exs"
-      assert Parser.derive_story_id(path) == 123
+      assert Parser.derive_story_number(path) == 123
     end
 
-    test "extracts story_id from directory name like '456_dashboard'" do
+    test "extracts story number from directory name like '456_dashboard'" do
       path = "/app/projects/456_dashboard/spec.ex"
-      assert Parser.derive_story_id(path) == 456
+      assert Parser.derive_story_number(path) == 456
     end
 
     test "returns nil for files not in story directory pattern" do
       path = "/path/to/specs/regular_directory/spec.ex"
-      assert is_nil(Parser.derive_story_id(path))
+      assert is_nil(Parser.derive_story_number(path))
     end
 
     test "returns nil for malformed directory names" do
       path = "/path/to/specs/abc_invalid/spec.ex"
-      assert is_nil(Parser.derive_story_id(path))
+      assert is_nil(Parser.derive_story_number(path))
     end
 
     test "handles numeric IDs correctly as integers" do
       path = "/specs/999_feature/test.ex"
-      result = Parser.derive_story_id(path)
+      result = Parser.derive_story_number(path)
       assert is_integer(result)
       assert result == 999
     end
@@ -732,7 +732,7 @@ defmodule CodeMySpec.BddSpecs.ParserTest do
       assert spec.description == "A complete spec with all metadata fields"
       assert :integration in spec.tags
       assert :authentication in spec.tags
-      assert spec.story_id == 100
+      assert spec.story_number == 100
       assert spec.criterion_id == 200
       assert spec.file_path == path
 
@@ -761,7 +761,7 @@ defmodule CodeMySpec.BddSpecs.ParserTest do
       assert spec.name == "minimal spec"
       assert is_nil(spec.description) or spec.description == ""
       assert spec.tags == [] or is_list(spec.tags)
-      assert is_nil(spec.story_id)
+      assert is_nil(spec.story_number)
       assert is_nil(spec.criterion_id)
     end
 

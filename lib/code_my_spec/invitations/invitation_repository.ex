@@ -5,8 +5,8 @@ defmodule CodeMySpec.Invitations.InvitationRepository do
   """
 
   import Ecto.Query, warn: false
-  alias CodeMySpec.Repo
   alias CodeMySpec.Invitations.Invitation
+  alias CodeMySpec.Repo
   alias CodeMySpec.Users.Scope
 
   @type invitation_attrs :: %{
@@ -51,17 +51,29 @@ defmodule CodeMySpec.Invitations.InvitationRepository do
     |> Repo.all()
   end
 
+  # Scoped to the account, which is what both the tests and the only caller have
+  # always assumed. `Invitations.cancel_invitation/3` checks that you may manage
+  # `account_id`, then calls `get_invitation_for_account/2` — a name that states
+  # the guarantee — and mapped a hit to `{:ok, invitation}`. Unscoped, the id was
+  # the only thing that had to be right, so managing any one account let you
+  # cancel any other account's invitation.
+  #
+  # A scope with no active account matches nothing, rather than everything.
   @spec get_invitation(scope :: Scope.t(), id :: integer()) :: Invitation.t() | nil
-  def get_invitation(_scope, id) do
-    from(i in Invitation, preload: [:account])
-    |> Repo.get(id)
+  def get_invitation(scope, id) do
+    scope |> scoped_invitation(id) |> Repo.one()
   end
 
   @spec get_invitation!(scope :: Scope.t(), id :: integer()) :: Invitation.t()
-  def get_invitation!(_scope, id) do
-    from(i in Invitation, preload: [:account])
-    |> Repo.get!(id)
+  def get_invitation!(scope, id) do
+    scope |> scoped_invitation(id) |> Repo.one!()
   end
+
+  defp scoped_invitation(%Scope{active_account_id: nil}, _id),
+    do: from(i in Invitation, where: false, preload: [:account])
+
+  defp scoped_invitation(%Scope{active_account_id: account_id}, id),
+    do: from(i in Invitation, where: i.id == ^id and i.account_id == ^account_id, preload: [:account])
 
   @spec update_invitation(scope :: Scope.t(), Invitation.t(), attrs :: map()) ::
           {:ok, Invitation.t()} | {:error, Ecto.Changeset.t()}

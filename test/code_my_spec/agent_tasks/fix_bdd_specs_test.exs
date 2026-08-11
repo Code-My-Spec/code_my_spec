@@ -85,8 +85,9 @@ defmodule CodeMySpec.AgentTasks.FixBddSpecsTest do
   end
 
   defp spex_file_path(story) do
-    # Match the convention used by Parser.derive_story_id
-    "test/spex/#{story.id}_test_story/criterion_1_test_criterion_spex.exs"
+    # Match the convention `Parser.derive_story_number/1` reads: the directory
+    # is named from the story's durable number, not its primary key.
+    "test/spex/#{story.number}_test_story/criterion_1_test_criterion_spex.exs"
   end
 
   defp create_spex_problem(scope, story) do

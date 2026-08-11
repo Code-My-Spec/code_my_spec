@@ -40,6 +40,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   alias CodeMySpec.Accounts
   alias CodeMySpec.AgentHarness.ConversationRecorder
   alias CodeMySpec.Analysis
+  alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Files
   alias CodeMySpec.Files.ComponentSync
   alias CodeMySpec.Files.File, as: FileRecord
@@ -66,8 +67,8 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
          {:ok, harness} <- Harnesses.issue(scope, payload["harness_id"], label: label),
          {:ok, harness} <- report_root(harness, payload["root"]),
          # Everything below is per working copy, so the scope carries the
-         # harness before any of it runs.
-         scope = %{scope | active_harness_id: harness.id},
+         # harness — and the working copy itself — before any of it runs.
+         scope = put_harness_scope(scope, harness),
          :ok <- Analysis.register_executor(harness.id, payload["instance"]) do
       # Anything still `:running` belongs to a previous connection. Its queue
       # was on a harness that has gone, so nothing will ever finish it — and an
@@ -325,6 +326,13 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
     {:noreply, socket}
   end
 
+  # The harness's answer to a filesystem request. See `handle_call/3` below.
+  def handle_in("fs_result", %{"ref" => ref} = msg, socket) do
+    {from, pending} = Map.pop(socket.assigns[:pending_fs] || %{}, ref)
+    if from, do: GenServer.reply(from, decode_fs_result(msg))
+    {:noreply, assign(socket, :pending_fs, pending)}
+  end
+
   # An unknown event is answered, not dropped.
   #
   # This clause used to be `{:noreply, socket}`, and that silence was a real
@@ -339,6 +347,37 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
     Logger.warning("[HarnessProject] unknown event #{inspect(event)}")
     {:reply, {:error, %{"reason" => "unknown_event", "event" => event}}, socket}
   end
+
+  # A filesystem operation for the working copy this channel serves.
+  #
+  # The transport half of `Environments.Harness`: this side only carries the
+  # message, the harness applies it with its own `Environments` implementation
+  # against the disk that actually holds the checkout. Writes as well as reads —
+  # a spec stub has to be written where the working copy is.
+  #
+  # Replied out of band. The caller's `from` is parked against a ref and
+  # answered by `handle_in("fs_result", …)`, so the channel process is not
+  # blocked while the far side does disk work.
+  @impl true
+  def handle_call({:fs_request, op, payload}, from, socket) do
+    ref = Integer.to_string(System.unique_integer([:positive]))
+
+    push(socket, "fs_request", %{"ref" => ref, "op" => op, "payload" => payload})
+
+    {:noreply, assign(socket, :pending_fs, Map.put(pending_fs(socket), ref, from))}
+  end
+
+  defp pending_fs(socket), do: socket.assigns[:pending_fs] || %{}
+
+  # The harness reports outcomes the way the behaviour states them, so this only
+  # has to put the shape back together. An `error` is kept as an atom because
+  # callers match on `:enoent` and friends.
+  defp decode_fs_result(%{"error" => reason}) when is_binary(reason),
+    do: {:error, String.to_atom(reason)}
+
+  defp decode_fs_result(%{"ok" => true, "result" => result}), do: {:ok, result}
+  defp decode_fs_result(%{"ok" => true}), do: :ok
+  defp decode_fs_result(other), do: {:error, {:unreadable_fs_result, other}}
 
   defp wait_summary(scope) do
     counts =
@@ -717,6 +756,35 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   # read `socket.assigns[:harness_label]`, which nothing ever assigned — so every
   # refusal said "a harness on an unknown host" while claiming to identify one.
   # The channel test passed only because it injected the assign by hand.
+  # The working copy this channel speaks for, as something the server can read
+  # and write rather than a fact it merely knows.
+  #
+  # `scope.environment` was nil on every path that starts here, so anything
+  # reaching for a file got `{:error, :no_environment}` — "there is no working
+  # copy", which is false. There is one; it is on the other end of this socket.
+  # Measured on one reconcile: 25 spec files unreadable, 75 read failures, and
+  # `ComponentSync` skipping its cleanup because a sync that cannot read cannot
+  # safely prune (684f072e). `a78036b2` built the environment that fixes it and
+  # deliberately wired nothing; this is that wiring.
+  #
+  # Addressed by harness id, not by `root`: the path is a string on the
+  # device's filesystem, which the server may not share, and two checkouts of
+  # one project are two working copies. `cwd` is carried for the callers that
+  # relativize paths against it, never to open anything with.
+  #
+  # Only the reads that have no manifest answer go over the wire — the scanner
+  # parses on the device and ships the verdict, so this is the 25 that fell
+  # through, not the 1,519 that did not.
+  defp put_harness_scope(scope, harness) do
+    %{
+      scope
+      | active_harness_id: harness.id,
+        cwd: harness.root || scope.cwd,
+        environment:
+          Environment.new(:harness, harness.root, ref: %{"harness_id" => harness.id})
+    }
+  end
+
   defp harness_label(%{"label" => label}) when is_binary(label) and label != "", do: label
   defp harness_label(_payload), do: "a harness that did not say where it is"
 
