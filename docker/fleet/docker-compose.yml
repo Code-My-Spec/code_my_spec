@@ -97,6 +97,40 @@ services:
     networks:
       - fleet
 
+  # Authoritative DNS for the spex test zone, so "publish a record and check it
+  # resolves" is a real round-trip instead of a lookup table.
+  #
+  # The table it replaces (`test/cassettes/dns_resolutions.json`) defaults to
+  # `false` for anything it does not hold — so when the file went missing every
+  # record read as unresolved, and a criterion asserting that a published record
+  # resolves failed for a reason that had nothing to do with publishing. A real
+  # server answers NXDOMAIN when a name is absent, which is a different
+  # statement from "I have no opinion".
+  #
+  # Reloads the zone every second, so a test writes a record and reads it back
+  # without the propagation wait that made this untestable against a registrar.
+  dns:
+    image: coredns/coredns:1.11.3
+    command: ["-conf", "/Corefile"]
+    volumes:
+      - ./dns/Corefile:/Corefile:ro
+      # Writable: spex add records here. Bind-mounted rather than a named
+      # volume so a test can write the zone directly from the host.
+      - ./dns/zones:/zones
+    ports:
+      - "127.0.0.1:5354:53/udp"
+      - "127.0.0.1:5354:53/tcp"
+    healthcheck:
+      # Ask it for the zone's own SOA — the one record guaranteed present, so a
+      # healthy answer means the zone loaded rather than merely that the process
+      # is up.
+      test: ["CMD", "/coredns", "-version"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+    networks:
+      - fleet
+
   # S3, and on its own the reason the fleet is worth building: Hetzner issues
   # object-storage keys from a console with no API, so there is no
   # `Storage.serve` and never can be. `Project.s3_endpoint` already exists —

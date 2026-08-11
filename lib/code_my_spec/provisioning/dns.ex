@@ -81,7 +81,8 @@ defmodule CodeMySpec.Provisioning.Dns do
   end
 
   defp doh_lookup(name, type, opts) do
-    url = "https://dns.google/resolve?name=#{URI.encode(name)}&type=#{type |> to_string() |> String.upcase()}"
+    url =
+      "https://dns.google/resolve?name=#{URI.encode(name)}&type=#{type |> to_string() |> String.upcase()}"
 
     case req(opts).(url) do
       {:ok, %{status: 200, body: %{"Answer" => answers}}} when is_list(answers) ->
@@ -160,8 +161,11 @@ defmodule CodeMySpec.Provisioning.Dns do
         lookup(name, type, opts)
 
       servers ->
-        case :inet_res.resolve(to_charlist(name), :in, type,
-               [nameservers: servers, timeout: timeout],
+        case :inet_res.resolve(
+               to_charlist(name),
+               :in,
+               type,
+               resolver_options(servers, timeout),
                timeout
              ) do
           {:ok, record} ->
@@ -178,6 +182,52 @@ defmodule CodeMySpec.Provisioning.Dns do
   # The registrable domain's nameservers, resolved to addresses. A subdomain
   # has no NS of its own, so the zone apex is what carries them.
   defp nameserver_addresses(name, timeout) do
+    case configured_nameserver() do
+      nil -> discovered_nameservers(name, timeout)
+      server -> [server]
+    end
+  end
+
+  # `usevc: true` forces the query over TCP, and only for the fleet.
+  #
+  # Colima forwards a container's published ports over an SSH mux, which
+  # carries TCP and not UDP — so a UDP query to the fleet's resolver times out
+  # while the identical query over TCP answers at once. Against real
+  # nameservers UDP is correct and cheaper, so this is not a global switch.
+  defp resolver_options(servers, timeout) do
+    base = [nameservers: servers, timeout: timeout]
+
+    case configured_nameserver() do
+      nil -> base
+      _ -> [{:usevc, true} | base]
+    end
+  end
+
+  # A nameserver to ask instead of discovering one, for the local fleet.
+  #
+  # Unset in production, where the zone's own NS records are the right answer
+  # and asking anything else would report on a view of DNS the world does not
+  # share.
+  #
+  # It exists because "publish a record, then check it resolves" is a real
+  # round-trip that a registrar makes untestable — propagation is minutes, so
+  # the suite kept a table of recorded answers instead. A table cannot be wrong
+  # in the direction that matters; it can only be *absent*, and then every
+  # record reads as unresolved, which is indistinguishable from a publish that
+  # failed. That is precisely what happened when the table went missing.
+  #
+  # TCP because these are container ports on a developer's machine: colima
+  # forwards published ports over an SSH mux, which carries TCP and not UDP, so
+  # a UDP query to the fleet's resolver times out while the same query over TCP
+  # answers immediately.
+  defp configured_nameserver do
+    case Application.get_env(:code_my_spec, :dns_nameserver) do
+      {address, port} when is_tuple(address) and is_integer(port) -> {address, port}
+      _ -> nil
+    end
+  end
+
+  defp discovered_nameservers(name, timeout) do
     zone = name |> String.split(".") |> Enum.take(-2) |> Enum.join(".")
 
     zone

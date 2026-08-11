@@ -1,0 +1,22 @@
+; The zone the fleet serves, and the one spex write into.
+;
+; `.test` deliberately, not `.com`. RFC 6761 reserves it for exactly this and
+; guarantees it will never be delegated, so a record left here cannot collide
+; with a real name and a lookup that escapes the fleet fails instead of
+; reaching somebody's live domain.
+;
+; The serial is not maintained by hand: CoreDNS's `reload` watches the file's
+; mtime and content, so writing the file is enough.
+$ORIGIN astralbi.test.
+$TTL 1
+
+@       IN  SOA ns.astralbi.test. hostmaster.astralbi.test. (
+            1786465759          ; serial
+            60         ; refresh
+            60         ; retry
+            600        ; expire
+            1 )        ; minimum
+
+@       IN  NS  ns.astralbi.test.
+ns      IN  A   127.0.0.1
+probe   IN  TXT "hello-from-the-fleet"

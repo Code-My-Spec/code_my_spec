@@ -1,0 +1,22 @@
+# Authoritative for the spex test domain, forwarding for everything else.
+#
+# `reload 1s` is the whole point: a test writes a record into the zone file and
+# it resolves a second later. Against a real registrar the same round-trip is a
+# propagation wait measured in minutes, which is why it was never done for real
+# — the suite instead kept a table of answers, and a table cannot be wrong in
+# the direction that matters. It can only be absent, which reads as "nothing
+# resolves" and is indistinguishable from a broken publish.
+astralbi.test:53 {
+    file /zones/astralbi.test.zone {
+        reload 1s
+    }
+    errors
+}
+
+# Anything not ours goes upstream, so a lookup for a real name still works and
+# a test that accidentally asks about one fails the way it would in production
+# rather than silently resolving.
+.:53 {
+    forward . 1.1.1.1 8.8.8.8
+    errors
+}
