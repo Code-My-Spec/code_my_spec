@@ -69,6 +69,15 @@ defmodule CodeMySpecWeb.PreviewLive.Show do
      assign(socket, :crash, Map.get(payload, "message", "Something failed in your app."))}
   end
 
+  # Anything else the bridge says — it already sends `pong`. The script lives in
+  # the generated app rather than here, so it will grow message types on its own
+  # schedule, and a pane that dies on an unrecognised one takes the preview down
+  # with it. Found exactly that way: the LiveView crashed with a
+  # FunctionClauseError on `pong` and the crash banner never rendered, so the
+  # symptom was "the receiver does not work" and the cause was one missing
+  # clause. An unknown message is not news; a dead LiveView is.
+  def handle_event("preview_bridge", _params, socket), do: {:noreply, socket}
+
   # Transitions arrive by broadcast, so the page keeps up without Sam
   # reloading — a visitor who has to reload during a boot sees a spinner and
   # concludes it hung.
@@ -126,8 +135,30 @@ defmodule CodeMySpecWeb.PreviewLive.Show do
               this.pushEvent("preview_bridge", { type: d.type, payload: d.payload || {} });
             };
             window.addEventListener("message", this.onMessage);
+
+            // Announce, rather than wait to be spoken to. This hook mounts when
+            // the LiveView connects, which is after the frame has loaded and
+            // possibly already crashed — and postMessage has no replay, so a
+            // first-paint failure would be lost. The bridge buffers until it
+            // hears from us, so saying hello is what releases it.
+            //
+            // Twice, because either order is possible: the frame may already be
+            // loaded when we mount, or still be loading and arrive after.
+            this.frame = document.querySelector("[data-test=preview-frame]");
+            this.greet = () => {
+              if (!this.frame || !this.frame.contentWindow) return;
+              this.frame.contentWindow.postMessage(
+                { source: "cms-preview-host", type: "ping" },
+                this.expected
+              );
+            };
+            this.greet();
+            this.frame && this.frame.addEventListener("load", this.greet);
           },
-          destroyed() { window.removeEventListener("message", this.onMessage); }
+          destroyed() {
+            window.removeEventListener("message", this.onMessage);
+            this.frame && this.frame.removeEventListener("load", this.greet);
+          }
         }
       </script>
 
