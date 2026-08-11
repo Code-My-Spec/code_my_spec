@@ -22,8 +22,9 @@ defmodule CodeMySpec.Validation.DemotionWiringTest do
   """
   use CodeMySpecTest.DataCase, async: true
 
-  import CodeMySpec.{AnalysisFixtures, ProblemsFixtures, UsersFixtures}
+  import CodeMySpec.{AnalysisFixtures, ProblemsFixtures, StoriesFixtures, UsersFixtures}
 
+  alias CodeMySpec.AcceptanceCriteria
   alias CodeMySpec.Configurations
   alias CodeMySpec.Environments.Environment
   alias CodeMySpec.FileEdits
@@ -32,6 +33,7 @@ defmodule CodeMySpec.Validation.DemotionWiringTest do
 
   @mine "lib/my_app/mine.ex"
   @theirs "lib/my_app/theirs.ex"
+  @spex_path "test/spex/811_provisioning/criterion_6493_a_step_reports_its_provider_spex.exs"
 
   setup do
     {:ok, tmp} = Briefly.create(directory: true)
@@ -49,6 +51,62 @@ defmodule CodeMySpec.Validation.DemotionWiringTest do
   end
 
   defp stop(scope, session), do: Validation.validate_stop(scope, nil, session_id: session)
+
+  # Spex is the source `d3fa4dc1` is about, and it does not reach the demotion
+  # the way credo does. `split_by_story_enforcement/3` runs first and answers
+  # from the owning story's `specs_ready` latch, so a spex failure is already
+  # advisory while its story is mid-build — which is what makes enabling spex
+  # project-wide survivable, and also what hides the demotion from every test
+  # above: with the latch unset nothing reaches `split_unattributed/2` at all.
+  #
+  # The reported case is the other one. Two LiveView spex last touched eight
+  # days before the session, on released stories, blocking a stop twice with no
+  # supported way out: "an agent that inherits a red suite is blocked
+  # indefinitely by work it did not touch and has no mandate to fix".
+  describe "a spex failure on a story whose specs are ready" do
+    setup ctx do
+      :ok = FileEdits.track_edit(ctx.session, @mine)
+      {:ok, _} = Configurations.update(ctx.scope, %{spex: :block_all})
+
+      # Bound by a criterion's `spec_path`, which is how a spex path actually
+      # resolves to a story: `spec_path_story_ids/1` is consulted before the
+      # directory number, and the number in the directory is not a story id.
+      File.mkdir_p!(Path.join(ctx.tmp, Path.dirname(@spex_path)))
+      File.write!(Path.join(ctx.tmp, @spex_path), "defmodule S do\nend\n")
+      {:ok, _} = FileSync.sync(ctx.scope, base_dir: ctx.tmp)
+
+      story = story_fixture(ctx.scope, %{specs_ready: true})
+
+      {:ok, _criterion} =
+        AcceptanceCriteria.create_criterion(ctx.scope, story, %{
+          description: "a step reports its provider",
+          spec_path: @spex_path
+        })
+
+      Map.put(ctx, :story, story)
+    end
+
+    test "still blocks when the session edited the spex file", ctx do
+      path = @spex_path
+      :ok = FileEdits.track_edit(ctx.session, path)
+      problem_fixture(ctx.scope, %{source: "spex", severity: :error, file_path: path})
+      fresh_analysis_runs_fixture(ctx.scope, ["spex"])
+
+      assert {:error, reason, _key} = stop(ctx.scope, ctx.session)
+      assert reason =~ "criterion_6493"
+    end
+
+    test "does not block when it did not", ctx do
+      path = @spex_path
+      problem_fixture(ctx.scope, %{source: "spex", severity: :error, file_path: path})
+      fresh_analysis_runs_fixture(ctx.scope, ["spex"])
+
+      assert {:ok, _} = stop(ctx.scope, ctx.session),
+             "a spex file the session never opened is someone else's red, and the " <>
+               "only escapes from blocking on it are fixing a parked feature or " <>
+               "stubbing the test out"
+    end
+  end
 
   describe "with the session's edits recorded project-relative" do
     setup ctx do
