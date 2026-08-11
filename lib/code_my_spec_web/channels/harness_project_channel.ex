@@ -579,12 +579,37 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
 
   defp log_disconnect(reason, socket) do
     Logger.error(
-      "[HarnessProject] channel DIED topic=#{socket.topic} reason=#{inspect(reason, limit: 12)}" <>
+      "[HarnessProject] channel DIED topic=#{socket.topic} reason=#{death_reason(reason)}" <>
         " — every in-flight run for this working copy is about to be failed as" <>
         " :harness_disconnected. The analyzers keep running on the harness and" <>
         " their results will be refused as unknown_run. Fix the crash, not the sweep."
     )
   end
+
+  # The reason, legibly. This is the one line that says why the channel died,
+  # and `inspect(reason, limit: 12)` truncated it before it got to the point:
+  #
+  #     reason={%Protoc
+  #
+  # A real crash cost an hour behind that. The cause was
+  # `{:error, :not_supported_on_harness}` handed to `Enum.filter/2`, and finding
+  # it meant grepping the raw logfmt for the sibling `gen_server terminate`
+  # report — which is exactly the work this line exists to save.
+  #
+  # A crash arrives as `{exception, stacktrace}`, so it is formatted as one:
+  # the banner names what broke and the first frames name where. Bounded at
+  # five frames rather than unbounded, because a channel that dies in a loop
+  # would otherwise fill the log with the same trace.
+  defp death_reason({exception, stacktrace}) when is_list(stacktrace) do
+    Exception.format_banner(:error, exception) <>
+      "\n" <> Exception.format_stacktrace(Enum.take(stacktrace, 5))
+  rescue
+    # Not every two-tuple with a list in it is a crash. Anything this cannot
+    # format is still worth printing whole.
+    _ -> inspect({exception, stacktrace}, limit: :infinity, printable_limit: 2048)
+  end
+
+  defp death_reason(reason), do: inspect(reason, limit: :infinity, printable_limit: 2048)
 
   # `port` is the harness's own — the analysis curl that `pre-tool-use` rewrites
   # points at `http://localhost:<port>/api/analysis/run`, which only means

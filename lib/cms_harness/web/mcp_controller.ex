@@ -173,8 +173,26 @@ defmodule CmsHarness.Web.McpController do
     ]
   end
 
+  # Path first, then the query, then the header.
+  #
+  # The path is the address: `/api/harnesses/<id>/mcp`, which is how the hooks
+  # have always been addressed and what makes two checkouts of one project two
+  # sessions. Identity in the path cannot be dropped by a proxy that strips
+  # unknown headers, survives a redirect, and shows up in every access log — a
+  # query string does the first two and a header does none of them.
+  #
+  # The other two remain because the released marketplace plugin sends
+  # `?harness=<id>` and nothing can change that until it ships again; refusing
+  # them would take MCP down on every machine running the release. They are
+  # older spellings of one address, not alternatives to it.
+  defp harness_id(conn) do
+    conn.path_params["harness_id"] ||
+      conn.query_params["harness"] ||
+      List.first(get_req_header(conn, "x-harness-id"))
+  end
+
   defp harness_header(conn) do
-    case conn.query_params["harness"] || List.first(get_req_header(conn, "x-harness-id")) do
+    case harness_id(conn) do
       id when is_binary(id) and id != "" -> [{"x-harness-id", id}]
       _ -> []
     end
@@ -250,7 +268,7 @@ defmodule CmsHarness.Web.McpController do
   # host that cannot template a URL. Nothing else — a directory is not an
   # answer to "which working copy is this", which is why it is not consulted.
   defp project(conn) do
-    case conn.query_params["harness"] || List.first(get_req_header(conn, "x-harness-id")) do
+    case harness_id(conn) do
       id when is_binary(id) and id != "" -> by_harness(id)
       _ -> {:error, :no_harness}
     end

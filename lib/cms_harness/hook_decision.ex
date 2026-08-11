@@ -28,6 +28,8 @@ defmodule CmsHarness.HookDecision do
   is the property that matters. Allowed-and-silent would not be.
   """
 
+  alias CmsHarness.Project.ChannelClient
+
   @deciding_hooks ~w(stop subagent-stop)
 
   @type reason ::
@@ -194,22 +196,21 @@ defmodule CmsHarness.HookDecision do
     |> String.trim()
   end
 
+  # "The channel is joined" was asserted as evidence the connection was fine. It
+  # is not: a channel that died mid-request is rebuilt in about a second, so by
+  # the time anyone reads this it is joined again — and the request it was
+  # carrying is gone. That reading sent three agents after a network problem
+  # while the server was crashing on every stop, reconnecting, and doing it
+  # again. So say how long the channel has been up, and let a fresh one point at
+  # itself.
   defp explain(:no_reply, working_dir) do
     """
-    The harness asked the CodeMySpec server and got no answer back in time. The channel is joined, so this is the server or the network rather than the harness's connection state.
+    The harness asked the CodeMySpec server and got no answer back in time.#{channel_age_note(ChannelClient.joined_ago(working_dir))}
     Working directory: #{working_dir}
     """
     |> String.trim()
   end
 
-  # The server answered — it just did not answer with a decision. Rendering this
-  # as `:no_reply` sent a reader looking at the network for an hour while the
-  # server was replying promptly and saying exactly what was wrong. A refusal
-  # and a silence are different failures with different fixes, and this module
-  # exists to keep failures that read alike from *being* alike.
-  #
-  # The server's own words are quoted rather than summarised, because the shape
-  # that arrives here is by definition one this harness did not anticipate.
   defp explain({:refused, detail}, working_dir) do
     """
     The harness asked the CodeMySpec server and the server answered with an error rather than a decision. This is not a timeout and not a connection problem — the reply came back. The server said:
@@ -220,6 +221,43 @@ defmodule CmsHarness.HookDecision do
     """
     |> String.trim()
   end
+
+  # Under a minute is the tell. A channel that has been up for hours really does
+  # point at the server or the network; one that joined seconds ago was almost
+  # certainly rebuilt after dying, which is a server-side crash and is logged as
+  # `[HarnessProject] channel DIED` with the reason.
+  @recent_join_seconds 60
+
+  @doc false
+  # Public so the three readings can be asserted without standing up a channel,
+  # the same reason `McpController.error_page_summary/3` is. The message is the
+  # whole of the fix here — the previous one was a correct sentence drawing the
+  # wrong conclusion.
+  def channel_age_note(joined_ago) do
+    case joined_ago do
+      nil ->
+        " The channel is not joined, so the harness could not ask at all."
+
+      ago when ago <= @recent_join_seconds ->
+        " The channel is joined, but it only joined #{ago}s ago — it was very likely" <>
+          " rebuilt after dying, which would have taken this request with it." <>
+          " Look for `[HarnessProject] channel DIED` in the server's log; the reason" <>
+          " is on that line."
+
+      ago ->
+        " The channel has been joined for #{ago}s, so this is the server or the" <>
+          " network rather than the harness's connection state."
+    end
+  end
+
+  # The server answered — it just did not answer with a decision. Rendering this
+  # as `:no_reply` sent a reader looking at the network for an hour while the
+  # server was replying promptly and saying exactly what was wrong. A refusal
+  # and a silence are different failures with different fixes, and this module
+  # exists to keep failures that read alike from *being* alike.
+  #
+  # The server's own words are quoted rather than summarised, because the shape
+  # that arrives here is by definition one this harness did not anticipate.
 
   # Naming a cause is worth doing and worth being right about. "A version skew
   # is the usual cause" was asserted for every refusal, and an `unmatched topic`

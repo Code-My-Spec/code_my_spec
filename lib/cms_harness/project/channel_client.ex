@@ -139,6 +139,29 @@ defmodule CmsHarness.Project.ChannelClient do
   end
 
   @doc """
+  Seconds since this project's channel joined, or `nil` if it is not joined.
+
+  `connected?/1` answers "can I ask the server", which is the right question
+  before sending. This answers a different one, asked *after* a request came
+  back empty: how long has this channel been up?
+
+  A channel that joined moments ago has usually just been rebuilt after dying,
+  and a request in flight when it died is simply gone. Reporting that as "the
+  channel is joined, so this is the server or the network" sent three agents
+  after a connection that was fine — the server had crashed, dropped the
+  channel, and the harness had reconnected before anyone looked. `1dc29224`.
+  """
+  @spec joined_ago(String.t()) :: non_neg_integer() | nil
+  def joined_ago(root) do
+    case Registry.lookup(CmsHarness.Registry, {:channel, root}) do
+      [{pid, _}] -> GenServer.call(pid, :joined_ago, 5_000)
+      [] -> nil
+    end
+  catch
+    :exit, _ -> nil
+  end
+
+  @doc """
   Send a completed model turn to the server to be recorded.
 
   Fire and forget, and deliberately so. Recording is evidence for whoever is
@@ -374,6 +397,7 @@ defmodule CmsHarness.Project.ChannelClient do
       socket
       |> persist_issued_identity(reply)
       |> assign(:joined, true)
+      |> assign(:joined_at, System.monotonic_time(:second))
       |> assign(:attempts, 0)
       |> assign(:refusals, 0)
       |> assign(:refused, nil)
@@ -836,6 +860,16 @@ defmodule CmsHarness.Project.ChannelClient do
   @impl Slipstream
   def handle_call(:connected?, _from, socket) do
     {:reply, socket.assigns.joined, socket}
+  end
+
+  def handle_call(:joined_ago, _from, socket) do
+    ago =
+      case {socket.assigns.joined, socket.assigns[:joined_at]} do
+        {true, at} when is_integer(at) -> System.monotonic_time(:second) - at
+        _ -> nil
+      end
+
+    {:reply, ago, socket}
   end
 
   def handle_call(:read_model, _from, socket) do

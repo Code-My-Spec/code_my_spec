@@ -10,12 +10,12 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignment do
 
   @behaviour CodeMySpec.StaticAnalysis.AnalyzerBehaviour
 
-  alias CodeMySpec.StaticAnalysis
-  alias CodeMySpec.Environments
   alias CodeMySpec.Code.ElixirAst
   alias CodeMySpec.Documents.MarkdownParser
+  alias CodeMySpec.Environments
   alias CodeMySpec.Paths
   alias CodeMySpec.Problems.Problem
+  alias CodeMySpec.StaticAnalysis
   alias CodeMySpec.Users.Scope
 
   require Logger
@@ -78,18 +78,42 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignment do
         # answers — the first means the project is not set up, and the analyzer
         # reported it as an error before this went through the environment.
         if Environments.file_exists?(env, Paths.spec_dir()) do
-          files =
-            env
-            |> Environments.stream_files([Paths.spec_dir()])
-            |> Enum.filter(&String.ends_with?(&1, ".spec.md"))
-
-          {:ok, files}
+          spec_files(env)
         else
           {:error, "Spec directory does not exist: #{Paths.spec_dir()}"}
         end
 
       paths when is_list(paths) ->
         {:ok, Enum.filter(paths, &Environments.file_exists?(env, &1))}
+    end
+  end
+
+  # `stream_files/3` does not always return something enumerable.
+  #
+  # `Environments.Harness` answers `{:error, :not_supported_on_harness}` — the
+  # server holds no disk, and streaming a remote working copy's files is not
+  # something the channel offers. Piped straight into `Enum.filter/2` that
+  # raised `Protocol.UndefinedError`, and because this runs inside
+  # `HarnessProjectChannel`, the crash took the channel down. Every stop then
+  # timed out with "the harness never got to ask", the harness reconnected, and
+  # the next stop did it again — on every worktree at once, since they share the
+  # server.
+  #
+  # The environment behaviour is right to refuse rather than invent an answer;
+  # this is the caller not having been swept when `Environments.Harness` was
+  # added. An error here is reported as an analyzer that could not look, which
+  # is what it is — the same distinction `Environments.unobservable?/1` draws,
+  # and the opposite of returning `[]`, which would say the project has no specs
+  # and delete every spec-alignment Problem it has.
+  defp spec_files(env) do
+    case Environments.stream_files(env, [Paths.spec_dir()]) do
+      {:error, reason} ->
+        {:error,
+         "cannot list spec files in this environment (#{inspect(reason)}) — " <>
+           "the analyzer needs a working copy it can read"}
+
+      stream ->
+        {:ok, Enum.filter(stream, &String.ends_with?(&1, ".spec.md"))}
     end
   end
 
