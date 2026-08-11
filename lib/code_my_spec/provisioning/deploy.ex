@@ -157,7 +157,8 @@ defmodule CodeMySpec.Provisioning.Deploy do
            result
            | live_version: :previous,
              failed_phase: :health,
-             reason: "Health check failed for #{host}: #{reason}. The previous version is still serving."
+             reason:
+               "Health check failed for #{host}: #{reason}. The previous version is still serving."
          }}
     end
   end
@@ -244,12 +245,25 @@ defmodule CodeMySpec.Provisioning.Deploy do
           # and a box with the default `MaxAuthTries 6` disconnects before
           # reaching the right one — the same failure the builder's SSH had,
           # and the same fix.
-          {"CMS_SSH_KEY_PATH", Keyword.get(opts, :ssh_key_path)}
+          {"CMS_SSH_KEY_PATH", Keyword.get(opts, :ssh_key_path)},
+          # Unset everywhere a real box is involved, because a real box is on
+          # 22. It exists so the local fleet can be deployed to over a
+          # published loopback port, and the reason that matters is that the
+          # fleet is only worth having if it runs this deploy rather than an
+          # imitation of it — the moment it needs its own path, it stops
+          # answering the question it was built to answer.
+          {"CMS_SSH_PORT", port_option(Keyword.get(opts, :ssh_port))}
         ],
         is_binary(value) and value != "" do
       {name, value}
     end
   end
+
+  # `script_env/1` keeps only binaries, which is what stops an unset value from
+  # reaching the script as "" — a distinction it cannot otherwise make. A port
+  # arrives as an integer, so it has to become one here or be silently dropped.
+  defp port_option(nil), do: nil
+  defp port_option(port), do: to_string(port)
 
   @doc """
   Probe a host over HTTPS.
@@ -329,6 +343,7 @@ defmodule CodeMySpec.Provisioning.Deploy do
       plug -> [plug: plug]
     end
   end
+
   # Relative to the *project*, not to whatever directory the caller happens to
   # be in. `System.cmd/3` resolves a relative command against the running
   # process's cwd, not the environment's, so `bin/backup` was looked for beside

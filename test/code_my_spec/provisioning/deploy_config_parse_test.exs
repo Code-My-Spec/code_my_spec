@@ -38,6 +38,9 @@ defmodule CodeMySpec.Provisioning.DeployConfigParseTest do
   <% if ENV["CMS_SSH_KEY_PATH"] %>  keys_only: true
     keys: [ "<%= ENV["CMS_SSH_KEY_PATH"] %>" ]
   <% end %>
+  <% if ENV["CMS_SSH_PORT"] %>  # a comment inside the conditional
+    port: <%= ENV["CMS_SSH_PORT"] %>
+  <% end %>
   """
 
   test "a generated config parses, and its service is readable" do
@@ -60,6 +63,18 @@ defmodule CodeMySpec.Provisioning.DeployConfigParseTest do
 
     assert config["ssh"]["keys_only"] == true,
            "the key after the ERB conditional was thrown away with the tag"
+  end
+
+  # The SSH port block is the same shape as the key block but with a comment
+  # where the first block has a key, which is the case that would have snuck
+  # past: stripping the tag leaves a bare comment line, and a stripper that
+  # mishandled it would take the `port:` line with it — or fail the whole parse,
+  # which `config_targets_this_project/2` answers with `:ok`. That is how the
+  # host-ownership check came to have never run on a real config.
+  test "the ssh port block parses, tag stripped and value kept" do
+    {:ok, config} = Steps.parse_deploy_config(@generated)
+
+    assert config["ssh"]["port"] =~ "CMS_SSH_PORT"
   end
 
   # Plain YAML still has to work — most of the file is not ERB at all.
