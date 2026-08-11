@@ -694,6 +694,19 @@ defmodule CodeMySpec.Analysis do
     end
   end
 
+  @doc """
+  The latest run of `source` that produced an answer, or nil.
+
+  The same run `fresh?/2` judges staleness from, exposed because anything
+  reporting *about* that staleness — how old it is, how long it took — has to
+  describe the same run. Reading the age off `status/1` instead meant the label
+  and the number came from different rows whenever the newest run had failed,
+  which is the common case: a failure lands sooner than the retry that succeeds.
+  """
+  @spec latest_answer(Scope.t(), String.t()) :: Run.t() | nil
+  def latest_answer(%Scope{} = scope, source),
+    do: RunsRepository.latest_completed_run(scope, source)
+
   # -- Internals --
 
   defp stale?(source, fingerprints, latest) do

@@ -590,16 +590,31 @@ defmodule CodeMySpec.Validation do
   # and it produced "stale, last ran 0s ago" on a run that had just succeeded.
   # Waiting cannot fix it, so the message must not advise it.
   #
-  # Both come from one `Analysis.status/1` call: it computes `Fingerprint`
-  # over every file row in the working copy — 4,544 on this project — and
-  # asking twice would double that for one arithmetic result.
-  defp run_timing(_scope, []), do: {%{}, %{}}
+  # Both read the latest run that *answered*, which is the run staleness is
+  # computed from. This used `Analysis.status/1`, whose `latest_full_runs/1`
+  # includes `:failed` — so the age described one run while "stale" described
+  # another, and the failure is usually the newer of the two.
+  #
+  # Measured on the live ledger: spex last completed at 03:59:05 and last failed
+  # at 04:02:52, so a source whose real answer was four minutes stale reported
+  # the failure's age instead. Everything keyed to that age then inverts —
+  # mid-cycle rather than wedged, wait rather than escalate — and `83cde34f`
+  # read the resulting "last ran 5m ago" against a 96-minute-old answer as
+  # another working copy's run leaking in. It needs no second checkout.
+  #
+  # Per-source rather than one pass, which is also cheaper here:
+  # `latest_completed_run/2` is an indexed lookup, where `status/1` computes
+  # `Fingerprint` over every file row in the working copy — 4,544 on this
+  # project — for an answer this does not use.
+  #
+  # Public so the property can be asserted directly, the same reason
+  # `blocking_key/1` and `split_unattributed/2` are.
+  @doc false
+  def run_timing(_scope, []), do: {%{}, %{}}
 
-  defp run_timing(scope, sources) do
-    status = Analysis.status(scope)
-
+  def run_timing(scope, sources) do
     Enum.reduce(sources, {%{}, %{}}, fn source, {ages, durations} ->
-      run = get_in(status, [source, :run])
+      run = Analysis.latest_answer(scope, source)
 
       {Map.put(ages, source, finished_at(run)), Map.put(durations, source, duration(run))}
     end)
