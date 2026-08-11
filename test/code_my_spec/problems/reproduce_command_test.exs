@@ -64,6 +64,41 @@ defmodule CodeMySpec.Problems.ReproduceCommandTest do
              "pasting json at a human is not a reproduction"
   end
 
+  # The command alone reads as pedantry to an agent that has just run `mix
+  # credo` and seen "found no issues": it has no reason to think its own check
+  # was the thing that was wrong, so it suspects a stale result and stops again
+  # rather than looking. That is the loop 14f141c1 describes.
+  test "the credo group says why the obvious command disagreed" do
+    out =
+      render("credo",
+        reproduce_commands: %{"credo" => {CredoRun.reproduce_command(), CredoRun.reproduce_note()}}
+      )
+
+    assert out =~ "mix credo suggest"
+    assert out =~ "plain `mix credo`"
+    assert out =~ "your session edited the file"
+  end
+
+  # The pair is what `Validation` actually passes, so the shape is asserted
+  # here rather than assumed: a note that never reaches the message is worse
+  # than no note, because nothing fails.
+  test "the note travels in the shape validation sends" do
+    {command, why} = {CredoRun.reproduce_command(), CredoRun.reproduce_note()}
+
+    assert is_binary(command) and command != ""
+    assert is_binary(why) and why != ""
+    assert render("credo", reproduce_commands: %{"credo" => {command, why}}) =~ why
+  end
+
+  # A bare string still works, so a caller that has nothing to explain is not
+  # forced to invent one.
+  test "a command with no note renders the command alone" do
+    out = render("credo", reproduce_commands: %{"credo" => "mix credo suggest --all"})
+
+    assert out =~ "reproduce: mix credo suggest --all"
+    refute out =~ "plain `mix credo`"
+  end
+
   test "a source with no command renders exactly as before" do
     assert render("exunit", reproduce_commands: %{"credo" => "x"}) ==
              render("exunit")

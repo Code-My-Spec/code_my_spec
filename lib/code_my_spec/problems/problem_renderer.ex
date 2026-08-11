@@ -249,12 +249,28 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
   # one disagree — credo, whose plain invocation hides the low-priority band
   # these are promoted from — so this stays a fact worth reading rather than
   # noise appended to every group.
+  # The `{command, why}` form also says why the obvious command was wrong.
+  # Handing an agent a longer command it did not ask for reads as pedantry
+  # unless it knows its own green was false: `mix credo` prints "Showing
+  # priority issues: ↑ ↗ →" and suppresses the band these are promoted from, so
+  # it says the file is clean while the gate blocks on it. Measured on
+  # `context_design_review.ex:20` — 0 findings plain, 1 with the gate's args, no
+  # config difference (14f141c1).
   defp reproduce_line(source, reproduce) do
     case Map.get(reproduce, source) do
-      command when is_binary(command) and command != "" -> "\n  reproduce: #{command}"
-      _ -> ""
+      {command, why} when is_binary(command) and command != "" ->
+        "\n  reproduce: #{command}" <> why_line(why)
+
+      command when is_binary(command) and command != "" ->
+        "\n  reproduce: #{command}"
+
+      _ ->
+        ""
     end
   end
+
+  defp why_line(why) when is_binary(why) and why != "", do: "\n  (#{why})"
+  defp why_line(_why), do: ""
 
   # Marked, not dropped: dropping opens an escape at the last stop of a run
   # and hides an analyzer that fails every time.

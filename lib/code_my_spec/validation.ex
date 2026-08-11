@@ -559,7 +559,9 @@ defmodule CodeMySpec.Validation do
       # its plain invocation hides the low-priority band that `block_changed`
       # promotes, so `mix credo` answers "found no issues" on the very findings
       # that block. `mix test` and `mix spex` reproduce themselves.
-      reproduce_commands: %{"credo" => CredoRun.reproduce_command()},
+      reproduce_commands: %{
+        "credo" => {CredoRun.reproduce_command(), CredoRun.reproduce_note()}
+      },
       # Which files this session actually wrote. Blocking findings outside that
       # set have already been demoted above, so this only labels what survives
       # — it is the safety net for the case where the set is unknown and

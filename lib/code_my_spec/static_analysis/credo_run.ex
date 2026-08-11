@@ -122,6 +122,22 @@ defmodule CodeMySpec.StaticAnalysis.CredoRun do
   @spec reproduce_command() :: String.t()
   def reproduce_command, do: Enum.join(["mix" | @selection_args], " ")
 
+  @doc """
+  Why the obvious command disagrees, to print beside the one above.
+
+  Without it the longer command reads as pedantry. The agent has usually just
+  run `mix credo`, seen "found no issues", and has no reason to think its own
+  check was the thing that was wrong — so it suspects a stale result and stops
+  again rather than looking. That is the loop `14f141c1` describes: edit, verify
+  green, stop, get blocked, with no way to confirm a fix except stopping again.
+  """
+  @spec reproduce_note() :: String.t()
+  def reproduce_note do
+    "plain `mix credo` shows only the ↑ ↗ → band and will call these files " <>
+      "clean; these findings are promoted from ↓ ↘ because your session edited " <>
+      "the file"
+  end
+
   defp build_args(opts, cwd) do
     base = @selection_args ++ @output_args
 
