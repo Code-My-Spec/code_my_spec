@@ -110,7 +110,13 @@ defmodule CodeMySpec.MixProject do
       {:credo, "~> 1.7.13"},
       {:sobelow, "~> 0.14.1"},
       {:boundary, "~> 0.10.4"},
-      {:code_my_spec_generators, "~> 0.1.0", only: :dev},
+      # `code_my_spec_generators` is deliberately NOT a dependency here. Every
+      # `cms_gen.*` reference in this repo is a string — prompt text in
+      # `AgentTasks.CodeGeneration`, the scaffold script, docs — and the one
+      # place that shells a generator (`Provisioning.Widget`) runs it through
+      # `Environments.cmd/4` in the *provisioned* project, which carries its
+      # own copy. Depending on it here bought nothing and dragged the whole
+      # web stack forward on every resolve.
 
       # Normal deps
       {:file_system, "~> 1.0"},
