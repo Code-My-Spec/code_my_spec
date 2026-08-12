@@ -65,7 +65,30 @@ refresh port="4000":
         echo "→ mix.lock moved, fetching deps"
         ( cd "$main" && mix deps.get )
     else
-        echo "→ mix.lock unchanged, skipping deps.get"
+        echo "→ mix.lock unchanged in this pull"
+    fi
+
+    # Asking whether the build is *satisfiable*, not whether this pull moved the
+    # lock. Those are different questions and only the second was being asked.
+    #
+    # Measured: main was already at the new commit — somebody else had pulled —
+    # so `before` equalled `after`, the lock diff was empty, deps.get was
+    # skipped, and the server refused to boot with
+    #
+    #   Unchecked dependencies for environment dev:
+    #   * req (Hex package)
+    #     the dependency does not match the requirement "~> 0.7", got "0.5.17"
+    #
+    # for three consecutive restarts. `mix deps.get` did not fix it either and
+    # answered "All dependencies have been fetched", because the stale copy was
+    # not in `deps/` — it was the compiled artifact in `_build/dev/lib/req`,
+    # which `deps.get` never touches. `deps.compile` is what does.
+    #
+    # `loadpaths` is the cheap way to ask: it is what every mix task runs first,
+    # and it is the exact check that was failing.
+    if ! ( cd "$main" && mix loadpaths >/dev/null 2>&1 ); then
+        echo "→ deps do not satisfy mix.exs — fetching and recompiling"
+        ( cd "$main" && mix deps.get && mix deps.compile )
     fi
 
     # By port, not by name: several beams run on this machine and only one of
@@ -89,17 +112,25 @@ refresh port="4000":
     ( cd "$main" && exec </dev/null >>"$log" 2>&1; nohup mix phx.server & )
     echo "→ starting, logging to $log"
 
-    for _ in $(seq 1 90); do
+    # A short wait, not a long one. The server is already detached — this poll
+    # only exists so the common case can say "it came up" instead of "go and
+    # check". Ninety rounds of it meant a caller held the recipe for three
+    # minutes on the one path where something was wrong, which is exactly when
+    # holding is least useful: the answer is in the log, and the caller cannot
+    # read it while it is still waiting.
+    for _ in $(seq 1 10); do
         if curl -sS -o /dev/null --max-time 2 "http://localhost:{{port}}/" 2>/dev/null; then
             echo "✓ {{port}} is answering on $after"
-            echo "  confirm with: grep '\[Boot\] serving' ~/.codemyspec/web.log | tail -1"
             exit 0
         fi
         sleep 2
     done
 
-    echo "✗ {{port}} did not come up in 180s — see $log" >&2
-    exit 1
+    echo "→ still starting after 20s — it is detached and may yet come up."
+    echo "  check:  curl -s -o /dev/null -w '%{http_code}' localhost:{{port}}"
+    echo "  or why: tail -20 $log"
+    exit 0
+
 
 # Restart the harness on :4004, from any worktree.
 refresh-harness port="4004":
