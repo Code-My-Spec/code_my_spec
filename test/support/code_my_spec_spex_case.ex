@@ -832,7 +832,12 @@ defmodule CodeMySpecSpex.Case do
 
   `CMS_DRILL_APP` names a checkout produced by `mix cms.new` — one carrying
   `bin/deploy`, `bin/backup`, `config/deploy.yml` and a Dockerfile. Defaults to
-  `code_my_spec_test_repos/devops_drill`, which is exactly that.
+  `code_my_spec_test_repos/devops_drill_v2`.
+
+  Not `devops_drill`: that one is a skeleton whose Dockerfile copies `assets`,
+  `priv` and `mix.lock` that were never committed, so every drill using it
+  refused at `refuse_unbuildable_drill/1`. It is also the general harness test
+  repo, carrying hundreds of fixture stories and personas from other suites.
 
   Only for criteria that genuinely deploy. Everything else is better off with
   the stub, which costs nothing and cannot be dirtied by a run.
@@ -840,7 +845,7 @@ defmodule CodeMySpecSpex.Case do
   def drill_working_directory(%{scope: scope, project: project} = context) do
     path =
       System.get_env("CMS_DRILL_APP") ||
-        Path.expand("code_my_spec_test_repos/devops_drill", File.cwd!())
+        Path.expand("code_my_spec_test_repos/devops_drill_v2", File.cwd!())
 
     File.exists?(Path.join(path, "bin/deploy")) ||
       raise """

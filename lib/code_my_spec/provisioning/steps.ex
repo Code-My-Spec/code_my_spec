@@ -181,7 +181,13 @@ defmodule CodeMySpec.Provisioning.Steps do
     # `generate_keys`, which is what would have rewritten `.sops.yaml` from
     # fresh keys. The step read done, the button did nothing, and the failure
     # surfaced two steps away in deploy.
-    case Enum.all?(environments, &key_opens_its_own_file?(scope, &1)) do
+    # And the boot secret this step mints, or the step reports done having
+    # produced nothing. A working directory that is fresh while the key is
+    # still in the database has no file to disagree with, so the key check
+    # alone said satisfied, `run_step/3` skipped `generate_keys`, and the
+    # deploy failed two steps later on "uat is missing SECRET_KEY_BASE" — the
+    # exact shape this verify already documents for the key itself.
+    case Enum.all?(environments, &secrets_ready?(scope, &1)) do
       true ->
         {:ok, :satisfied, Enum.map(environments, &%{kind: "age_key", location: "secrets/#{&1}"})}
 
@@ -417,8 +423,12 @@ defmodule CodeMySpec.Provisioning.Steps do
 
     with {:ok, delivery} <- check_secrets(scope, environment),
          :ok <- config_targets_this_project(scope, environment),
-         {:ok, image} <- image_for(scope, environment, opts),
          :ok <- require_script(scope, "bin/deploy"),
+         # Before the build, not after: the builder is sent `git archive HEAD`
+         # and `bin/deploy` versions the image by `git rev-parse HEAD`, so
+         # committing afterwards built one SHA and deployed another.
+         :ok <- commit_generated_configuration(scope),
+         {:ok, image} <- image_for(scope, environment, opts),
          deploy_opts =
            opts
            |> deploy_opts(host, image)
@@ -792,6 +802,11 @@ defmodule CodeMySpec.Provisioning.Steps do
   # A file that does not exist yet is not drift — there is nothing to be out of
   # step with — so the key's presence is the answer in that case, which keeps a
   # first run from reporting absent forever.
+  defp secrets_ready?(scope, environment) do
+    key_opens_its_own_file?(scope, environment) and
+      match?({:ok, false}, secret_key_base_missing?(scope, env(scope), environment))
+  end
+
   defp key_opens_its_own_file?(scope, environment) do
     with {:ok, private} <- ProjectSecrets.fetch_value(scope, age_key_name(environment)),
          true <- is_binary(private) and private != "" do
@@ -1142,12 +1157,20 @@ defmodule CodeMySpec.Provisioning.Steps do
     end
   end
 
+  # Building is the default, because setup has just provisioned a registry and
+  # a builder for exactly this and `bin/deploy` is written expecting it: given
+  # no `CMS_IMAGE` it falls through to the CI path, pushes, and fails with
+  # "could not find a CI run for main". Every drill ended there, and 8039 had
+  # to set `build: true` through application env to get a site at all.
+  #
+  # `build: false` still opts out, for a caller that means to deploy an image
+  # someone else published.
   defp image_for(scope, environment, opts) do
     case {Keyword.get(opts, :image), Keyword.get(opts, :build)} do
       {reference, _} when is_binary(reference) ->
         {:ok, %{reference: reference, built: false}}
 
-      {nil, nil} ->
+      {nil, false} ->
         {:ok, :not_built}
 
       {nil, _build} ->
@@ -2874,6 +2897,63 @@ defmodule CodeMySpec.Provisioning.Steps do
     end
   end
 
+  # `bin/deploy` refuses a dirty tree — correctly, since the image it ships is
+  # versioned by commit SHA — and setup is what dirties it: the secrets step
+  # writes `.sops.yaml` and `envs/<env>.enc.env`, encrypted precisely so they
+  # can be committed. So every first run failed on files setup had just
+  # written, naming them as if the user had left them lying around.
+  #
+  # Only setup's own paths are staged. Whatever else is in flight belongs to
+  # whoever is working in that checkout, and a deploy that swept it into a
+  # commit would be a worse failure than the one it is fixing — they stay
+  # uncommitted, and `bin/deploy` still refuses, now naming files setup did
+  # not write.
+  defp commit_generated_configuration(scope) do
+    environment = env(scope)
+
+    paths =
+      [".sops.yaml", "envs"]
+      |> Enum.concat(Enum.map(CodeMySpec.Generators.DeployBoilerplate.manifest(), & &1.path))
+      |> Enum.filter(&Environments.file_exists?(environment, &1))
+
+    with {_, 0} <- git(environment, ["add", "--"] ++ paths),
+         false <- nothing_staged?(environment) do
+      commit_staged(environment)
+    else
+      # Nothing of ours changed. The ordinary case on a re-run, and not
+      # something to report as a failure.
+      true -> :ok
+      {output, status} -> {:error, "could not stage setup's files (#{status}): #{output}"}
+    end
+  end
+
+  defp nothing_staged?(environment) do
+    match?({_, 0}, git(environment, ["diff", "--cached", "--quiet"]))
+  end
+
+  # `-c user.*` because the box setup runs on need not have a git identity, and
+  # "Please tell me who you are" is not a deploy failure anybody can act on.
+  defp commit_staged(environment) do
+    args = [
+      "-c",
+      "user.email=setup@codemyspec.com",
+      "-c",
+      "user.name=CodeMySpec Setup",
+      "commit",
+      "-q",
+      "-m",
+      "Setup-generated configuration"
+    ]
+
+    case git(environment, args) do
+      {_, 0} -> :ok
+      {output, status} -> {:error, "could not commit setup's files (#{status}): #{output}"}
+    end
+  end
+
+  defp git(environment, args),
+    do: Environments.cmd(environment, "git", args, stderr_to_stdout: true)
+
   # The keypair is generated here and the private half never leaves
   # ProjectSecrets — same argument as the age keys, and for the same reason:
   # whatever has to reach this box later reads it from there rather than from
@@ -3061,22 +3141,68 @@ defmodule CodeMySpec.Provisioning.Steps do
   defp generate_keys(scope, env, environments) do
     keys =
       Enum.reduce_while(environments, {:ok, %{}}, fn environment, {:ok, acc} ->
-        case key_for(scope, environment) do
+        case key_for(scope, env, environment) do
           {:ok, public} -> {:cont, {:ok, Map.put(acc, environment, public)}}
           {:error, reason} -> {:halt, {:error, reason}}
         end
       end)
 
     with {:ok, recipients} <- keys,
-         :ok <- Sops.write_config(env, recipients) do
+         :ok <- Sops.write_config(env, recipients),
+         {:ok, seeded} <- seed_secret_key_base(scope, env, recipients) do
       {:ok,
        Enum.map(recipients, fn {environment, public} ->
          %{kind: "age_key", location: "secrets/#{environment}", identifier: public}
-       end)}
+       end) ++ seeded}
     else
       {:error, reason} -> {:error, format(reason)}
     end
   end
+
+  # SECRET_KEY_BASE is entropy, not a decision, so setup mints it here rather
+  # than halting the deploy to ask for a value nobody chooses. DATABASE_URL,
+  # the other required secret, is genuinely knowable only once a database
+  # exists, and `serve_database/4` writes it there.
+  #
+  # Only when absent. Rotating on a re-run would invalidate every signed
+  # cookie and session the deployed app had issued — the same trap `key_for/2`
+  # documents above, and `secrets_verify_test.exs` holds this to it.
+  defp seed_secret_key_base(scope, env, recipients) do
+    Enum.reduce_while(recipients, {:ok, []}, fn {environment, _public}, {:ok, acc} ->
+      case secret_key_base_missing?(scope, env, environment) do
+        {:ok, false} -> {:cont, {:ok, acc}}
+        {:ok, true} -> mint_secret_key_base(scope, environment, acc)
+        {:error, reason} -> {:halt, {:error, reason}}
+      end
+    end)
+  end
+
+  defp secret_key_base_missing?(scope, env, environment) do
+    with {:ok, private} <- fetch_age_key(scope, environment),
+         {:ok, missing} <- Sops.missing_secrets(env, environment, private, ["SECRET_KEY_BASE"]) do
+      {:ok, "SECRET_KEY_BASE" in missing}
+    end
+  end
+
+  defp mint_secret_key_base(scope, environment, acc) do
+    case put_secret(scope, environment, "SECRET_KEY_BASE", phoenix_secret()) do
+      {:ok, _} ->
+        resource = %{
+          kind: "secret",
+          location: "#{environment}/SECRET_KEY_BASE",
+          identifier: "generated=true"
+        }
+
+        {:cont, {:ok, [resource | acc]}}
+
+      {:error, reason} ->
+        {:halt, {:error, reason}}
+    end
+  end
+
+  # Phoenix refuses a `secret_key_base` shorter than 64 bytes, so this is sized
+  # like `mix phx.gen.secret` rather than like `random_secret/0`.
+  defp phoenix_secret, do: 64 |> :crypto.strong_rand_bytes() |> Base.encode64(padding: false)
 
   # An environment's key is only replaced when the one on record cannot read
   # what it encrypted. Minting unconditionally made the secrets step destroy
@@ -3098,20 +3224,49 @@ defmodule CodeMySpec.Provisioning.Steps do
   # Genuine drift still mints — a key that no longer opens its file cannot
   # recover the contents, so replacing it is the only way forward and is what
   # makes the repair path in `verify(:secrets, ...)` work.
-  defp key_for(scope, environment) do
+  defp key_for(scope, env, environment) do
     with true <- key_opens_its_own_file?(scope, environment),
          {:ok, private} <- ProjectSecrets.fetch_value(scope, age_key_name(environment)),
          {:ok, public} <- Sops.public_key(private) do
       {:ok, public}
     else
-      _ -> mint_key(scope, environment)
+      _ -> mint_key(scope, env, environment)
     end
   end
 
-  defp mint_key(scope, environment) do
+  # Minting a fresh key leaves the old `.enc.env` encrypted to a recipient
+  # whose private half no longer exists anywhere, so the file is unreadable by
+  # anyone forever — and leaving it in place made the repair never converge:
+  # `key_opens_its_own_file?/2` stayed false against it, `verify/3` kept
+  # reporting absent, and every re-run minted another key over the same dead
+  # file.
+  #
+  # Discarding it is not a choice to lose data. The data is already lost; this
+  # only stops the project from being permanently undeployable because of it.
+  # The next `put_secret/4` recreates the file against the new recipient, and
+  # `seed_secret_key_base/3` puts a working boot secret back into it.
+  defp mint_key(scope, env, environment) do
     with {:ok, {public, private}} <- Sops.generate_key(),
          {:ok, _} <- ProjectSecrets.put_value(scope, age_key_name(environment), private) do
+      discard_unreadable_env(env, environment)
       {:ok, public}
+    end
+  end
+
+  defp discard_unreadable_env(env, environment) do
+    path = Sops.env_file(environment)
+
+    case Environments.file_exists?(env, path) do
+      true ->
+        Logger.warning(
+          "[Secrets] #{environment}'s encrypted env was written to a key that no longer " <>
+            "exists — discarding #{path}, its contents cannot be decrypted by anyone."
+        )
+
+        Environments.delete_file(env, path)
+
+      _ ->
+        :ok
     end
   end
 

@@ -175,17 +175,8 @@ defmodule CodeMySpec.Provisioning.Teardown do
 
     with {:ok, credentials} <- stage(:credentials, bucket, storage_credentials(scope, opts)),
          :ok <- stage(:empty, bucket, empty_bucket(bucket, credentials, opts)),
-         :ok <- stage(:delete, bucket, Storage.delete_bucket(bucket, credentials, opts)),
-         {:ok, remaining} <- stage(:list, bucket, Storage.list_buckets(credentials, opts)) do
-      gone? = bucket not in remaining
-
-      gone? ||
-        Logger.warning(
-          "[Teardown] deleted #{bucket} and it is still listed — the delete was accepted and " <>
-            "did not take effect"
-        )
-
-      confirm(r, gone?)
+         :ok <- stage(:delete, bucket, Storage.delete_bucket(bucket, credentials, opts)) do
+      confirm(r, await_gone(bucket, credentials, opts))
     else
       _ -> {:error, r}
     end
@@ -457,6 +448,35 @@ defmodule CodeMySpec.Provisioning.Teardown do
       other ->
         Logger.warning("[Teardown] #{name} failed for bucket #{bucket}: #{inspect(other)}")
         other
+    end
+  end
+
+  # Ceph keeps listing a deleted bucket for a moment, so reading the listing
+  # once reported FAILED for deletes that had in fact worked — the leak audit
+  # said the same buckets were gone seconds later.
+  defp await_gone(bucket, credentials, opts, attempts \\ 10) do
+    case Storage.list_buckets(credentials, opts) do
+      {:ok, remaining} ->
+        cond do
+          bucket not in remaining ->
+            true
+
+          attempts > 1 ->
+            Wait.sleep(Keyword.get(opts, :readiness_interval_ms, 500))
+            await_gone(bucket, credentials, opts, attempts - 1)
+
+          true ->
+            Logger.warning(
+              "[Teardown] deleted #{bucket} and it is still listed — the delete was accepted " <>
+                "and did not take effect"
+            )
+
+            false
+        end
+
+      other ->
+        stage(:list, bucket, other)
+        false
     end
   end
 

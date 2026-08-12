@@ -45,13 +45,34 @@ defmodule CodeMySpec.Provisioning.SecretsVerifyTest do
   end
 
   describe "a key that matches its file" do
-    test "is satisfied", ctx do
+    test "is satisfied once the boot secret is in it", ctx do
+      unless ctx[:skip] do
+        {public, _} = key_for(ctx.scope, "prod")
+        :ok = Sops.write_config(ctx.scope.environment, %{"prod" => public})
+
+        :ok =
+          Sops.put_secret(
+            ctx.scope.environment,
+            "prod",
+            "SECRET_KEY_BASE",
+            "v",
+            stored(ctx.scope, "prod")
+          )
+
+        assert {:ok, :satisfied, _} = Steps.verify(:secrets, ctx.scope, environments: ["prod"])
+      end
+    end
+
+    # The key is half of what this step produces. Reporting satisfied on it
+    # alone skipped `generate_keys`, so nothing ever minted SECRET_KEY_BASE and
+    # the deploy refused two steps later by name.
+    test "is absent while the boot secret is missing", ctx do
       unless ctx[:skip] do
         {public, _} = key_for(ctx.scope, "prod")
         :ok = Sops.write_config(ctx.scope.environment, %{"prod" => public})
         :ok = Sops.put_secret(ctx.scope.environment, "prod", "K", "v", stored(ctx.scope, "prod"))
 
-        assert {:ok, :satisfied, _} = Steps.verify(:secrets, ctx.scope, environments: ["prod"])
+        assert {:ok, :absent} = Steps.verify(:secrets, ctx.scope, environments: ["prod"])
       end
     end
   end
@@ -87,14 +108,22 @@ defmodule CodeMySpec.Provisioning.SecretsVerifyTest do
   end
 
   describe "a key with no file yet" do
-    # A first run has a key and nothing encrypted. That is not drift — there is
-    # nothing to be out of step with — and reporting absent would leave the
-    # step unable to ever finish.
-    test "is satisfied on the key alone", ctx do
+    # A working directory checked out fresh while the key stayed in the
+    # database. Not drift — there is nothing to be out of step with — but not
+    # done either: nothing is encrypted, so the environment has no boot secret.
+    #
+    # Reporting satisfied here is what let setup skip straight past this step
+    # with an empty environment behind it.
+    test "is absent, and running the step settles it", ctx do
       unless ctx[:skip] do
         key_for(ctx.scope, "prod")
 
-        assert {:ok, :satisfied, _} = Steps.verify(:secrets, ctx.scope, environments: ["prod"])
+        assert {:ok, :absent} = Steps.verify(:secrets, ctx.scope, environments: ["prod"])
+
+        {:ok, _} = Steps.run(:secrets, ctx.scope, environments: ["prod"])
+
+        assert {:ok, :satisfied, _} = Steps.verify(:secrets, ctx.scope, environments: ["prod"]),
+               "the step must produce what verify asks for, or setup can never finish"
       end
     end
   end

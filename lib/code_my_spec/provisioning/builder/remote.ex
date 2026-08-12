@@ -46,11 +46,33 @@ defmodule CodeMySpec.Provisioning.Builder.Remote do
     dir = Keyword.get(opts, :build_dir, "/build")
 
     with :ok <- await_ssh(run, Keyword.get(opts, :ssh_attempts, @ssh_attempts), opts),
-         :ok <- deliver.(ref, dir),
+         :ok <- deliver_source(deliver, ref, dir, opts),
          :ok <- docker_build(run, reference, ref, dir, opts),
          :ok <- maybe_push(run, reference, opts),
          {:ok, architecture} <- built_architecture(run, reference) do
       {:ok, %{reference: reference, architecture: architecture}}
+    end
+  end
+
+  # Answering once is not staying up. A fresh box accepts SSH, then cloud-init
+  # finishes and restarts sshd, and the next connection — this one, seconds
+  # later — times out. The drill saw exactly that: `await_ssh/5` returned and
+  # the archive died on "connect to host ...: Operation timed out".
+  #
+  # Exit 255 is ssh's own failure and nothing else's; any other status is the
+  # remote `tar` or `rm` reporting, which must stay an immediate error rather
+  # than being retried into a long silence.
+  defp deliver_source(deliver, ref, dir, opts, attempts \\ 10) do
+    case deliver.(ref, dir) do
+      :ok ->
+        :ok
+
+      {:error, {:source_delivery_failed, 255, _}} when attempts > 1 ->
+        Wait.sleep(Keyword.get(opts, :ssh_interval_ms, @ssh_interval_ms))
+        deliver_source(deliver, ref, dir, opts, attempts - 1)
+
+      other ->
+        other
     end
   end
 

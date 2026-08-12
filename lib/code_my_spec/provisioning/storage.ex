@@ -187,9 +187,25 @@ defmodule CodeMySpec.Provisioning.Storage do
       parser: & &1
     }
 
+    put_lifecycle_rule(operation, bucket, credentials, location, opts)
+  end
+
+  # A fresh bucket HEADs 200 before it will accept a lifecycle rule, so
+  # `await_bucket/6` returning is not a promise this call will land — same Ceph
+  # lag `get_object/6` already retries, caught by the drill as a 404
+  # NoSuchBucket one interaction after the bucket HEADed 200.
+  defp put_lifecycle_rule(operation, bucket, credentials, location, opts, attempts \\ 20) do
     case run(operation, credentials, location) do
-      {:ok, _} -> :ok
-      {:error, reason} -> {:error, reason}
+      {:ok, _} ->
+        :ok
+
+      {:error, reason} ->
+        if attempts > 1 and no_such_bucket?(reason) do
+          Wait.sleep(Keyword.get(opts, :readiness_interval_ms, 500))
+          put_lifecycle_rule(operation, bucket, credentials, location, opts, attempts - 1)
+        else
+          {:error, reason}
+        end
     end
   end
 

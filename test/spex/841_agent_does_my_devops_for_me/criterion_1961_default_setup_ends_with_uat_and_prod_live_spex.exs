@@ -28,7 +28,12 @@ defmodule CodeMySpecSpex.Story841.Criterion1961Spex do
   # memory environment is invisible to them, so the server step's write of
   # DATABASE_URL into envs/<env>.enc.env landed nowhere sops could see and it
   # exited 100 with "cannot operate on non-existent file".
-  setup :real_working_directory
+  #
+  # The drill checkout rather than `real_working_directory`, because the whole
+  # plan includes the deploy: against the stub — a directory holding only a
+  # `mix.exs` — it refused with "not deploy-ready: missing Dockerfile, missing
+  # CI build workflow", and the ten steps behind it reported nothing.
+  setup :drill_working_directory
   # The registry and database steps run for real against the fleet's app
   # box. Without this they SSH to the server address in the cassette, which
   # was released weeks ago — and `serve_registries/5` halts on that, so
