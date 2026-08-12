@@ -12,6 +12,18 @@ defmodule CodeMySpec.Files.ReconcileRegistryTest do
 
   alias CodeMySpec.Files.ReconcileRegistry
 
+  # Waits for the marker to go rather than assuming how long that takes.
+  defp cleared?(harness_id, attempts \\ 200) do
+    Enum.reduce_while(1..attempts, false, fn _, _ ->
+      if ReconcileRegistry.in_flight(harness_id) == nil do
+        {:halt, true}
+      else
+        Process.sleep(10)
+        {:cont, false}
+      end
+    end)
+  end
+
   test "a harness with nothing in flight reports nothing" do
     assert ReconcileRegistry.in_flight(Ecto.UUID.generate()) == nil
   end
@@ -33,7 +45,7 @@ defmodule CodeMySpec.Files.ReconcileRegistryTest do
         receive do: (:release -> :ok)
       end)
 
-    assert_receive :marked
+    assert_receive :marked, 2_000
 
     assert %{count: 3937, started_at: %DateTime{}} = ReconcileRegistry.in_flight(harness_id)
 
@@ -56,17 +68,18 @@ defmodule CodeMySpec.Files.ReconcileRegistryTest do
         receive do: (:boom -> exit(:crashed))
       end)
 
-    assert_receive :marked
+    assert_receive :marked, 2_000
     assert ReconcileRegistry.in_flight(harness_id)
 
     ref = Process.monitor(pid)
     send(pid, :boom)
-    assert_receive {:DOWN, ^ref, :process, ^pid, _reason}
+    assert_receive {:DOWN, ^ref, :process, ^pid, _reason}, 2_000
 
-    # Registry unregisters on process exit; give it the scheduler turn to do so.
-    Process.sleep(20)
-
-    refute ReconcileRegistry.in_flight(harness_id),
+    # Polled, not slept. Registry unregisters asynchronously with respect to the
+    # DOWN message, so a fixed sleep is a guess about scheduling that a loaded
+    # machine wins — which is how this flaked in a full suite run while passing
+    # forty times alone.
+    assert cleared?(harness_id),
            "a crashed reconcile must not leave a marker claiming one is running"
   end
 end
