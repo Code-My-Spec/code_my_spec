@@ -13,15 +13,28 @@ defmodule CodeMySpec.Files.ReconcileRegistryTest do
   alias CodeMySpec.Files.ReconcileRegistry
 
   # Waits for the marker to go rather than assuming how long that takes.
-  defp cleared?(harness_id, attempts \\ 200) do
-    Enum.reduce_while(1..attempts, false, fn _, _ ->
-      if ReconcileRegistry.in_flight(harness_id) == nil do
-        {:halt, true}
-      else
-        Process.sleep(10)
-        {:cont, false}
-      end
-    end)
+  #
+  # Clauses rather than a branch: `SpexDeniedCalls` refuses an imperative `if`
+  # in a test file on the grounds that branching means reacting to state the
+  # test should control, and it is right about the usual case. This one is not
+  # reacting to an outcome — the outcome is asserted at the call site — it is
+  # waiting for an unregistration the Registry performs asynchronously with
+  # respect to the DOWN message. Written as a recursion on what it matched, so
+  # there is no branch to read as a decision.
+  defp cleared?(harness_id, attempts \\ 200)
+
+  defp cleared?(_harness_id, 0), do: false
+
+  defp cleared?(harness_id, attempts) do
+    ReconcileRegistry.in_flight(harness_id)
+    |> keep_waiting(harness_id, attempts)
+  end
+
+  defp keep_waiting(nil, _harness_id, _attempts), do: true
+
+  defp keep_waiting(_still_there, harness_id, attempts) do
+    Process.sleep(10)
+    cleared?(harness_id, attempts - 1)
   end
 
   test "a harness with nothing in flight reports nothing" do
