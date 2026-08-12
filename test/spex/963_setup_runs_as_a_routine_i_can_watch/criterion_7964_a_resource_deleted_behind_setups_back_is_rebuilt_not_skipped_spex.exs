@@ -48,7 +48,13 @@ defmodule CodeMySpecSpex.Story963.Criterion7964Spex do
         # Everything the server step needs before it can reach Hetzner, and
         # a teardown registered before anything is made — a recording that
         # fails partway must still not leave a box running.
-        tear_down_after(context.scope, [:server])
+        # `:storage` as well as `:server`. The server step also provisions the
+        # registry's buckets, and only the box was being torn down — so every
+        # run left `spex-story963-criterion7964-registry-{prod,uat}` behind,
+        # and the residue guard then refused to start the *next* run. A
+        # criterion that cannot be recorded twice in a row is one whose
+        # teardown is short.
+        tear_down_after(context.scope, [:server, :storage])
 
         # The repository too, so the next recording starts from one that does not
         # exist — a repository carrying an earlier run's commits rejects a fresh
@@ -65,8 +71,11 @@ defmodule CodeMySpecSpex.Story963.Criterion7964Spex do
           |> render_click()
         end)
 
-        assert render(view) =~ ~r/data-step="server"[^>]*data-state="done"/,
-               "expected the server step to be done before the resource is deleted"
+        html = render(view)
+
+        assert html =~ ~r/data-step="server"[^>]*data-state="done"/,
+               "expected the server step to be done before the resource is deleted. " <>
+                 step_detail(html, "server")
 
         {:ok, Map.put(context, :view, view)}
       end
