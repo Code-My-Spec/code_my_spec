@@ -249,7 +249,16 @@ defmodule CodeMySpec.MixProject do
 
   defp aliases do
     [
-      spex: ["spex --quiet"],
+      # The migration check first, because `mix spex` loads no test helper and
+      # therefore never ran it. A stale worktree database surfaced as
+      # `ERROR 42703 (undefined_column)` inside a `given_` step, naming no
+      # migration, and cost a full diagnosis twice in one night (40b6424d).
+      #
+      # An alias step rather than teaching the `../spex` fork to load a helper:
+      # that changes how every spex run boots, in a fork shared by two repos,
+      # and the ordering against its own `ExUnit.start/1` wants care. This is
+      # one query in front of a task that was already an alias.
+      spex: ["cms.check_test_migrations", "spex --quiet"],
       setup: ["deps.get", "ecto.setup", "assets.setup", "assets.build"],
       "ecto.setup": ["ecto.create", "ecto.migrate", "run priv/repo/seeds.exs"],
       "ecto.reset": ["ecto.drop", "ecto.setup"],
