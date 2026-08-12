@@ -149,7 +149,7 @@ defmodule CodeMySpecSpex.Story972.Criterion8039Spex do
 
       when_ "it verifies itself", context do
         html =
-          with_provider_cassette(@cassette, fn ->
+          with_provider_cassette(@cassette, [match_requests_on: [:method, :uri]], fn ->
             context.view
             |> element("[data-test='setup-step'][data-step='content'] [data-test='run-step']")
             |> render_click()
