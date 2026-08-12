@@ -72,7 +72,7 @@ defmodule CodeMySpecSpex.Story598.Criterion5294Spex do
         for cmd <- [
               "mix cms_gen.accounts",
               "mix cms_gen.integrations",
-              "mix cms_gen.feedback_widget"
+              "mix cms_gen.support_widget"
             ] do
           assert context.prompt =~ "[ ] `#{cmd}`",
                  "expected #{cmd} to remain pending"

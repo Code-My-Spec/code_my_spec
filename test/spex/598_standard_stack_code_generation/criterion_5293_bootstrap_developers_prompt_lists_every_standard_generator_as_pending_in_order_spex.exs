@@ -5,7 +5,7 @@ defmodule CodeMySpecSpex.Story598.Criterion5293Spex do
 
   With no detection files on disk, the prompt lists every standard
   generator (phx.gen.auth, cms_gen.accounts, cms_gen.integrations,
-  cms_gen.feedback_widget) as pending, in dependency order.
+  cms_gen.support_widget) as pending, in dependency order.
 
   Surface: `start_task` MCP tool against `code_generation`.
   """
@@ -68,7 +68,7 @@ defmodule CodeMySpecSpex.Story598.Criterion5293Spex do
               "mix phx.gen.auth Users User users --live",
               "mix cms_gen.accounts",
               "mix cms_gen.integrations",
-              "mix cms_gen.feedback_widget"
+              "mix cms_gen.support_widget"
             ] do
           assert context.prompt =~ "`#{cmd}`",
                  "expected #{cmd} to appear in the pending generator list"
@@ -79,7 +79,7 @@ defmodule CodeMySpecSpex.Story598.Criterion5293Spex do
 
       and_ "generators appear in dependency order", context do
         assert context.prompt =~
-                 ~r/mix phx\.gen\.auth.*mix cms_gen\.accounts.*mix cms_gen\.integrations.*mix cms_gen\.feedback_widget/s,
+                 ~r/mix phx\.gen\.auth.*mix cms_gen\.accounts.*mix cms_gen\.integrations.*mix cms_gen\.support_widget/s,
                "expected the prompt to list generators in dependency order"
 
         {:ok, context}
