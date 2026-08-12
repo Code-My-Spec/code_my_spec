@@ -191,10 +191,35 @@ defmodule CodeMySpec.Chat.Runner do
     [ReqLLM.Context.tool_result(id, Message.text(message))]
   end
 
+  # An assistant turn that made tool calls has to go back carrying them. Without
+  # this it returns as text alone — and a tool-call row has no text, so it
+  # vanishes entirely and the `tool_result` after it names a call the provider
+  # has no record of making. Anthropic rejects the whole request:
+  #
+  #     unexpected `tool_use_id` found in `tool_result` blocks: toolu_…
+  #     Each `tool_result` block must have a corresponding `tool_use` block
+  #
+  # Only from the second message onward, which is why it survived every test:
+  # inside one turn `continue/5` appends the live `response.message`, tool calls
+  # intact. History is rebuilt from these rows, and only a follow-up rebuilds it.
+  defp to_provider_message(%{role: :assistant, tool_calls: calls} = message)
+       when is_list(calls) and calls != [] do
+    [ReqLLM.Context.assistant(assistant_content(message), tool_calls: calls)]
+  end
+
   defp to_provider_message(%{role: :assistant} = message) do
     case Message.text(message) do
       "" -> []
       text -> [ReqLLM.Context.assistant(text)]
+    end
+  end
+
+  # Empty content as a list, not `""`: a blank text part alongside a tool call
+  # is a block with nothing in it, which providers reject in their own dialects.
+  defp assistant_content(message) do
+    case Message.text(message) do
+      "" -> []
+      text -> text
     end
   end
 
