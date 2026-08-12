@@ -203,15 +203,37 @@ refresh port="4000":
     for _ in $(seq 1 10); do
         if curl -sS -o /dev/null --max-time 2 "http://localhost:{{port}}/" 2>/dev/null; then
             echo "✓ {{port}} is answering on $after"
-            exit 0
+            up=1
+            break
         fi
         sleep 2
     done
 
-    echo "→ still starting after 20s — it is detached and may yet come up."
-    echo "  check:  curl -s -o /dev/null -w '%{http_code}' localhost:{{port}}"
-    echo "  or why: tail -20 $log"
-    exit 0
+    if [ "${up:-0}" != "1" ]; then
+        echo "→ still starting after 20s — it is detached and may yet come up."
+        echo "  check:  curl -s -o /dev/null -w '%{http_code}' localhost:{{port}}"
+        echo "  or why: tail -20 $log"
+    fi
+
+    # And the harness, because moving one without the other *is* the skew.
+    #
+    # A server and a harness on different commits speak different channel
+    # contracts, and the symptom is `{:error, %{"reason" => "unmatched topic"}}`
+    # on every stop — which reads as a connection problem and is not one.
+    # Refreshing only the server does not risk that state, it creates it.
+    #
+    # Measured: this recipe moved :4000 to e34b11ca while the harness stayed on
+    # 7d8cdfcd, and the next agent to write a file got its pre-tool-use hook
+    # refused with exactly that error. The refusal named the commit range and
+    # said to run `refresh-harness` — good diagnosis of a state that should not
+    # have been reachable by running the documented command.
+    #
+    # Not `&&`: the harness is restarted whether or not the server came up
+    # inside the poll window, because the server is detached and usually
+    # arrives moments later. Skipping the harness on a slow boot would leave
+    # exactly the mismatch this exists to prevent.
+    echo
+    just refresh-harness
 
 
 # Restart the harness on :4004, from any worktree.
@@ -292,6 +314,28 @@ refresh-harness port="4004":
         ( cd "$main" && mix deps.get )
     else
         echo "→ mix.lock unchanged, skipping deps.get"
+    fi
+
+    # The same satisfiability check `refresh` carries, in dev_cli — the env the
+    # harness actually boots in, and a different `_build` tree from dev.
+    #
+    # Without it this recipe killed the harness and could not start it again:
+    #
+    #     Unchecked dependencies for environment dev_cli:
+    #     * req (Hex package)
+    #       the dependency does not match the requirement "~> 0.7", got "0.5.17"
+    #
+    # mix.lock had not moved, so deps.get was skipped — and deps.get would not
+    # have helped anyway. The stale copy is the compiled artifact under
+    # `_build/dev_cli/lib/req`, which `deps.get` never touches and reports "all
+    # dependencies have been fetched" over. `deps.compile` is what fixes it.
+    #
+    # The cost of not checking is not a failed recipe. It is every agent's hooks
+    # down until somebody notices, because the harness is already dead by this
+    # point.
+    if ! ( cd "$main" && MIX_ENV=dev_cli mix loadpaths >/dev/null 2>&1 ); then
+        echo "→ dev_cli deps do not satisfy mix.exs — fetching and recompiling"
+        ( cd "$main" && MIX_ENV=dev_cli mix deps.get && MIX_ENV=dev_cli mix deps.compile )
     fi
 
     pid="$(lsof -nP -iTCP:{{port}} -sTCP:LISTEN -t || true)"

@@ -1434,7 +1434,20 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   # ("Simplify actionable sorting to story priority only") collapsed into a
   # single dead-last project tier — burying architecture_designed and
   # issues_triaged beneath every tethered component requirement.
+  # `issues_resolved` belongs here, with the journey it now gates.
+  #
+  # This set is hardcoded rather than derived from the edges, so moving a
+  # requirement's dependencies moves what it *blocks* and leaves where it
+  # *sorts* untouched. When `issues_resolved` stopped gating `qa_setup` and
+  # started gating `qa_journey_plan`, it kept tier 0 — so it still rendered at
+  # the front of the project band and was still offered ahead of every story and
+  # component, which is the exact complaint that prompted moving it.
+  #
+  # Its prerequisite is still `issues_triaged`, and that is correct: you cannot
+  # resolve what has not been triaged. Prerequisite position and sort tier are
+  # different questions, and only the first is answered by the edges.
   @late_project_reqs MapSet.new([
+                       "issues_resolved",
                        "qa_journey_plan",
                        "qa_journey_execute",
                        "qa_journey_wallaby"
