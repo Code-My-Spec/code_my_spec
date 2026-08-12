@@ -73,14 +73,19 @@ defmodule CodeMySpecSpex.Story972.Criterion8058Spex do
       end
 
       when_ "the trigger fails to land", context do
-        # The step, run against the fleet: MinIO for storage, the generated site
-        # on loopback for the trigger and the render check. No cassette — the
-        # claims here are that objects landed in a bucket and a post came back
-        # from a site, and a recording answers both from a file whatever the code
-        # did.
         # The publish command itself. The setup step's run button wires the
         # pipeline up and leaves the publish result unset, so the reported
         # failure this criterion is about was never rendered to read.
+        #
+        # The only criterion in 972 still running live, and for a reason that
+        # is not laziness: its subject is a trigger that never lands, and a
+        # recorder has nowhere to put "connection refused". Recording it raises
+        # `ReqCassette: Network request failed` before anything is written.
+        #
+        # It needs no infrastructure for the half that matters — 127.0.0.1:9
+        # refuses on every machine — so the trigger failure is portable. The
+        # upload half still wants the fleet's MinIO, which is the part worth
+        # revisiting if this ever needs to run on a bare checkout.
         context.view
         |> element("[data-test='content-publish']")
         |> render_click()

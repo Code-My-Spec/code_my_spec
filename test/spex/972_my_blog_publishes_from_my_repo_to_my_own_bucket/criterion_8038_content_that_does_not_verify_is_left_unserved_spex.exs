@@ -18,6 +18,8 @@ defmodule CodeMySpecSpex.Story972.Criterion8038Spex do
 
   @endpoint CodeMySpecWeb.Endpoint
 
+  @cassette "content_unverified_left_unserved"
+
   setup :register_log_in_setup_account
   setup :setup_active_project
   setup :devops_on
@@ -46,9 +48,11 @@ defmodule CodeMySpecSpex.Story972.Criterion8038Spex do
         # is what records the proof — the publish button reports a result but
         # leaves no resource for the page to keep.
         before =
-          view
-          |> element("[data-test='setup-step'][data-step='content'] [data-test='run-step']")
-          |> render_click()
+          with_provider_cassette(@cassette, [match_requests_on: [:method, :uri]], fn ->
+            view
+            |> element("[data-test='setup-step'][data-step='content'] [data-test='run-step']")
+            |> render_click()
+          end)
 
         # Anchor: something good was serving before the bad publish.
         assert before =~ ~r/data-test="content-render-check"[^>]*data-status="200"/,
@@ -76,9 +80,11 @@ defmodule CodeMySpecSpex.Story972.Criterion8038Spex do
         end)
 
         html =
-          context.view
-          |> element("[data-test='setup-step'][data-step='content'] [data-test='run-step']")
-          |> render_click()
+          with_provider_cassette(@cassette, [match_requests_on: [:method, :uri]], fn ->
+            context.view
+            |> element("[data-test='setup-step'][data-step='content'] [data-test='run-step']")
+            |> render_click()
+          end)
 
         {:ok, Map.put(context, :html, html)}
       end

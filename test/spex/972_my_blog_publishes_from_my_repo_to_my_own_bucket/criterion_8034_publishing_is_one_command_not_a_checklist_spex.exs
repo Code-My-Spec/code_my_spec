@@ -18,6 +18,8 @@ defmodule CodeMySpecSpex.Story972.Criterion8034Spex do
 
   @endpoint CodeMySpecWeb.Endpoint
 
+  @cassette "content_publish_is_one_command"
+
   setup :register_log_in_setup_account
   setup :setup_active_project
   setup :devops_on
@@ -49,18 +51,15 @@ defmodule CodeMySpecSpex.Story972.Criterion8034Spex do
       end
 
       when_ "he runs the publish command", context do
-        # The step, run against the fleet: MinIO for storage, the generated site
-        # on loopback for the trigger and the render check. No cassette — the
-        # claims here are that objects landed in a bucket and a post came back
-        # from a site, and a recording answers both from a file whatever the code
-        # did.
         # The publish command, not the setup step that wires the pipeline up.
         # Clicking the step's run button provisions the bucket and leaves
         # `@content_publish` unset, so the result this criterion reads on was
         # never rendered and the failure read as "no publish happened".
-        context.view
-        |> element("[data-test='content-publish']")
-        |> render_click()
+        with_provider_cassette(@cassette, [match_requests_on: [:method, :uri]], fn ->
+          context.view
+          |> element("[data-test='content-publish']")
+          |> render_click()
+        end)
 
         html = render(context.view)
 

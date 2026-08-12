@@ -1729,20 +1729,23 @@ defmodule CodeMySpecSpex.Case do
       setup :publishing_to_the_fleet
 
   A publish is two real things — objects written to S3, and a trigger POSTed to
-  the deployed site — and both have a local counterpart now, so neither needs
-  recording.
+  the deployed site — and both have a local counterpart here, so both can be
+  exercised for real rather than against a stranger's Hetzner bucket.
 
-  That matters more than the cost. These criteria's cassettes were lost to the
-  cassette-deletion bug, and re-recording them would have meant a Hetzner bucket
-  and a deployed site per run. Worse, a recorded publish cannot fail the way a
-  real one does: the assertions here are that the objects are *in the bucket*
-  and that the site *accepted the trigger*, and a cassette answers both from a
-  file no matter what the code did.
+  This used to argue that they should therefore not be recorded at all: "a
+  cassette answers from a file no matter what the code did". That is true of a
+  *hand-written* cassette and false of one recorded against a real MinIO and a
+  real site. The recording is the real run; replay is the regression check.
+  Skipping the recording did not make the criteria more honest, it made them
+  green only on whichever machine happened to have the fleet up — and for
+  months that machine's site lived in a session scratchpad with no commits, so
+  nobody else could run them at all.
 
-  Needs the fleet up and the site running:
+  Recording needs the fleet up and the site serving. Replay needs neither:
 
       docker/fleet/fleet.sh up
-      scratchpad/restart_site.sh   # the generated app on :4100
+      docker/fleet/site.sh          # the generated app on :4100
+      SPEX_CASSETTE_MODE=record mix spex --pattern "test/spex/972*/*_spex.exs"
   """
   def publishing_to_the_fleet(%{scope: scope, project: project} = context) do
     project =
@@ -3284,7 +3287,14 @@ defmodule CodeMySpecSpex.Case do
       # request in story 973 leaving the cassette. The criteria passed while a
       # site happened to be running on this machine and failed everywhere else,
       # which is indistinguishable from a widget that does not install.
-      CodeMySpec.Provisioning.Widget
+      CodeMySpec.Provisioning.Widget,
+      # Three modules have now had this exact bug: each reads a `:plug` out of
+      # its own app env, ready to be recorded, and was never handed one because
+      # nobody added it to this list. The publish's render check is the third —
+      # it fetches the post back from the deployed site, and that GET went to
+      # the real network on every replay, so 972's criteria only passed where a
+      # site was running. If a module reads a plug, it goes here.
+      CodeMySpec.Provisioning.ContentPublishing
     ]
   end
 

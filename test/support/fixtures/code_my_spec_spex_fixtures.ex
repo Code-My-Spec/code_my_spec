@@ -222,9 +222,9 @@ defmodule CodeMySpecSpex.Fixtures do
   defp record_content_bucket(_scope, %{content_bucket: nil}), do: :ok
 
   defp record_content_bucket(scope, project) do
-    location = "fsn1.your-objectstorage.com/#{project.content_bucket}"
+    location = "#{endpoint_host(project.s3_endpoint)}/#{project.content_bucket}"
 
-    maybe_create_bucket(scope, project.content_bucket)
+    maybe_create_bucket(scope, project)
 
     StepRepository.upsert(scope, :storage, %{
       state: :done,
@@ -246,14 +246,45 @@ defmodule CodeMySpecSpex.Fixtures do
   # recorded as a resource in the same breath, so teardown removes exactly what
   # this made — the pairing is the point, and doing one without the other is
   # how the account collected orphans in the first place.
-  defp maybe_create_bucket(scope, bucket) do
-    if System.get_env("SPEX_CASSETTE_MODE") == "record" do
-      seed_storage_secrets!(scope)
-      create_bucket!(scope, bucket)
-    end
+  defp maybe_create_bucket(scope, project) do
+    cond do
+      System.get_env("SPEX_CASSETTE_MODE") != "record" ->
+        :ok
 
-    :ok
+      # Storage that is not Hetzner's has its own bucket and its own keys, and
+      # provisioning them is not this fixture's job. `publishing_to_the_fleet/1`
+      # points at the local MinIO, and this reached for Hetzner regardless — so
+      # recording a purely local publish refused for want of an account it never
+      # touches, and would have created the bucket in the wrong place if it had
+      # one.
+      not hetzner_storage?(project.s3_endpoint) ->
+        :ok
+
+      true ->
+        seed_storage_secrets!(scope)
+        create_bucket!(scope, project.content_bucket)
+    end
   end
+
+  defp hetzner_storage?(endpoint) when is_binary(endpoint),
+    do: String.contains?(endpoint, "your-objectstorage.com")
+
+  defp hetzner_storage?(_endpoint), do: true
+
+  defp endpoint_host(endpoint) when is_binary(endpoint) do
+    case URI.parse(endpoint) do
+      %URI{host: host, port: port} when is_binary(host) and is_integer(port) ->
+        "#{host}:#{port}"
+
+      %URI{host: host} when is_binary(host) ->
+        host
+
+      _ ->
+        endpoint
+    end
+  end
+
+  defp endpoint_host(_endpoint), do: "fsn1.your-objectstorage.com"
 
   # `Storage.credentials/2` reads project secrets, not the environment — Hetzner
   # issues object-storage keys only in its console, so the project is where they

@@ -18,6 +18,8 @@ defmodule CodeMySpecSpex.Story972.Criterion8035Spex do
 
   @endpoint CodeMySpecWeb.Endpoint
 
+  @cassette "content_objects_in_own_bucket"
+
   setup :register_log_in_setup_account
   setup :setup_active_project
   setup :devops_on
@@ -40,17 +42,15 @@ defmodule CodeMySpecSpex.Story972.Criterion8035Spex do
         {:ok, view, _html} =
           live(context.conn, "/app/projects/#{context.project.id}/provisioning")
 
-        # No cassette. The publish writes to MinIO and triggers the fleet site,
-        # both of which are real and local — and both are what this criterion is
-        # actually about, so replaying them would answer from a file regardless
-        # of what the code did.
         # The step, not the standalone publish button. Both run the same
         # `ContentPublishing.run/2` — the button is the step on demand — but only
         # the step records what it wrote as resources, and "the files are in
         # Sam's own bucket" is a claim about those records.
-        view
-        |> element("[data-test='setup-step'][data-step='content'] [data-test='run-step']")
-        |> render_click()
+        with_provider_cassette(@cassette, [match_requests_on: [:method, :uri]], fn ->
+          view
+          |> element("[data-test='setup-step'][data-step='content'] [data-test='run-step']")
+          |> render_click()
+        end)
 
         html = render(view)
 
