@@ -78,23 +78,6 @@ if config_env() in [:dev_cli, :prod_cli, :cli_demo] do
       http: [ip: {127, 0, 0, 1}, port: String.to_integer(demo_port)]
   end
 
-  # `CMS_HARNESS_PORT` decides where the light harness's hooks land.
-  #
-  # The plugin's `hooks.json` posts to a URL fixed at install time, so the port
-  # is the thing to configure rather than the plugin: editing hooks.json would
-  # repoint *every* Claude Code session on the machine, including ones working
-  # against the heavy local application.
-  #
-  # Default 4005 (config.exs) so a laptop can run both. A sprite sets 4004,
-  # because there the light harness *is* what serves hooks.
-  #
-  # Not applied in test — `config/test.exs` picks a port of its own and
-  # `server: false`, and runtime config is evaluated last and would undo both.
-  if port = System.get_env("CMS_HARNESS_PORT") do
-    config :code_my_spec, CmsHarness.Web.Endpoint,
-      http: [ip: {127, 0, 0, 1}, port: String.to_integer(port)]
-  end
-
   # CMS_API_BASE_URL repoints sync/auth at a local demo server instead of
   # dev.codemyspec.com, so a replay never touches real dev/prod data.
   if api = System.get_env("CMS_API_BASE_URL") do
@@ -142,6 +125,38 @@ config :code_my_spec, CodeMySpec.Workspaces.PreviewAddress,
 # Connection details come from the environment so one image can be pointed at
 # a different database without a rebuild — which is what makes a sprite
 # disposable.
+# `CMS_HARNESS_PORT` decides where the light harness's hooks land.
+#
+# The plugin's `hooks.json` posts to a URL fixed at install time, so the port
+# is the thing to configure rather than the plugin: editing hooks.json would
+# repoint *every* Claude Code session on the machine, including ones working
+# against the heavy local application.
+#
+# Default 4005 (config.exs) so a laptop can run both. A sprite sets 4004,
+# because there the light harness *is* what serves hooks.
+#
+# Hoisted out of the `[:dev_cli, :prod_cli, :cli_demo]` block above, which is
+# about the CLI's SQLite database and had no business owning this. `:dev_sprite`
+# was missing from that list, so a sprite could not set its harness port at all
+# — it silently kept config.exs's 4005 while `sprite.sh` logged "Starting the
+# light harness on 4003". Measured in a container: `CMS_HARNESS_PORT=4003` and
+# the endpoint came up on 4005 anyway. Nothing noticed because a sprite runs the
+# *standalone* cms_harness release today, which reads its own config (bddb1ac1).
+#
+# Deliberately not adding :dev_sprite to that block instead: it maps each env to
+# a `.db` filename in a `case` with no :dev_sprite clause, so a sprite would
+# have crashed on a CaseClauseError to gain a port it does not need a database
+# for.
+#
+# Still not applied in test — `config/test.exs` picks a port of its own and
+# `server: false`, and runtime config is evaluated last and would undo both.
+if config_env() in [:dev_cli, :prod_cli, :cli_demo, :dev_sprite] do
+  if port = System.get_env("CMS_HARNESS_PORT") do
+    config :code_my_spec, CmsHarness.Web.Endpoint,
+      http: [ip: {127, 0, 0, 1}, port: String.to_integer(port)]
+  end
+end
+
 if config_env() == :dev_sprite do
   repo_config =
     case System.get_env("CMS_DATABASE_URL") do
