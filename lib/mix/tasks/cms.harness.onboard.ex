@@ -73,7 +73,8 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
     with {:ok, id} <- identity(root),
          :ok <- copy_plugin(root, dest),
          {:ok, count} <- address_hooks(dest, id),
-         :ok <- address_mcp(dest, id) do
+         :ok <- address_mcp(dest, id),
+         :ok <- address_model_turns(root, id) do
       report(id, dest, count, args)
     else
       {:error, message} -> Mix.raise(message)
@@ -167,6 +168,61 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
 
       {:error, reason} ->
         {:error, "Could not read #{file}: #{inspect(reason)}"}
+    end
+  end
+
+  # The model turns, same question again.
+  #
+  # This one cannot be addressed in the plugin: a Claude Code plugin has no way
+  # to set an environment variable for the session, and `ANTHROPIC_BASE_URL` is
+  # read by the agent process itself. `.claude/settings.json` is where a
+  # checkout says what its sessions run with, so that is where the address goes.
+  #
+  # Merged, never replaced. This is a file the operator owns and checks in —
+  # unlike the generated plugin copy — so it keeps every key already there and
+  # rewrites exactly one.
+  #
+  # Without it the turn arrives unaddressed, and an unaddressed turn is only
+  # recordable when the harness serves exactly one working copy. A sprite is
+  # that shape; a developer's machine never is, which is why local Claude Code
+  # has never appeared in the conversations UI.
+  # Public only so it can be tested directly. It is the one thing here that
+  # writes a file the operator owns, so "keeps what was already there" has to be
+  # checkable rather than asserted in a comment.
+  @doc false
+  def address_model_turns(root, id, base_url \\ nil) do
+    file = Path.join([root, ".claude", "settings.json"])
+    url = "#{String.trim_trailing(base_url || Config.server_url(), "/")}/api/harnesses/#{id}"
+
+    with {:ok, settings} <- read_settings(file),
+         env <- settings |> Map.get("env", %{}) |> Map.put("ANTHROPIC_BASE_URL", url),
+         merged <- Map.put(settings, "env", env),
+         :ok <- File.mkdir_p(Path.dirname(file)),
+         :ok <- File.write(file, Jason.encode_to_iodata!(merged, pretty: true)) do
+      :ok
+    else
+      {:error, reason} -> {:error, "Could not write #{file}: #{inspect(reason)}"}
+    end
+  end
+
+  # A missing file is an empty one. A malformed file is not — overwriting it
+  # would throw away settings the operator wrote, so it stops and says so.
+  defp read_settings(file) do
+    case File.read(file) do
+      {:ok, ""} ->
+        {:ok, %{}}
+
+      {:ok, contents} ->
+        case Jason.decode(contents) do
+          {:ok, settings} when is_map(settings) -> {:ok, settings}
+          _ -> {:error, :not_valid_json}
+        end
+
+      {:error, :enoent} ->
+        {:ok, %{}}
+
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 
