@@ -46,15 +46,31 @@ account =
 # against whatever preference the user happens to carry.
 scope = %Scope{scope | active_account: account, active_account_id: account.id}
 
+# By name, not by taking the head of the list.
+#
+# `[project | _]` picked the first project the query happened to return, and the
+# e2e database has more than one — `e2e-todo` and a `Migrated Code My Spec` that
+# arrived with an import. Row order is not stable, so the deploy key landed on
+# whichever came back first: the same seed script minted a key for e2e-todo one
+# minute and for the other project the next.
+#
+# The failure is silent and lands somewhere else entirely. `drill.sh` hardcodes
+# CMS_PROJECT_ID for e2e-todo, so when the key belonged to the other project,
+# `POST /api/sprite/token` answered 200 with `app_name: null` — the key is
+# valid, it just identifies a project with no module_name — and `sprite.sh`
+# exited with "could not resolve module_name for dfb8779b…". Two drills died
+# there before the cause was the seed rather than the sprite.
+e2e_project_name = "e2e-todo"
+
 project =
-  case Projects.list_projects(scope) do
-    [project | _] ->
+  case Enum.find(Projects.list_projects(scope), &(&1.name == e2e_project_name)) do
+    nil ->
+      {:ok, project} =
+        Projects.create_project(scope, %{name: e2e_project_name, module_name: "E2eTodo"})
+
       project
 
-    [] ->
-      {:ok, project} =
-        Projects.create_project(scope, %{name: "e2e-todo", module_name: "E2eTodo"})
-
+    project ->
       project
   end
 
