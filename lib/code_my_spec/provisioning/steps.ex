@@ -2472,6 +2472,18 @@ defmodule CodeMySpec.Provisioning.Steps do
            location: "#{ip}:#{served.port}",
            identifier: "environment=#{environment} bucket=#{served.bucket}"
          },
+         # The bucket, as a bucket. It was named only inside the registry
+         # resource's identifier, and teardown matches on `kind`, so nothing
+         # ever removed it — a run that halted between here and the storage
+         # step left `<project>-registry-<env>` behind with no record that this
+         # step had made it. Recorded here rather than relied on downstream,
+         # because the step that creates a resource is the one that knows it
+         # exists.
+         %{
+           kind: "bucket",
+           location: served.bucket,
+           identifier: "registry"
+         },
          database
        ]}
     else
