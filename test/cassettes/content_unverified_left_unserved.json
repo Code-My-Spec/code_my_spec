@@ -1,7 +1,7 @@
 {
   "interactions": [
     {
-      "recorded_at": "2026-08-12T00:34:05.844169Z",
+      "recorded_at": "2026-08-12T00:43:20.670938Z",
       "request": {
         "body_json": [
           {
@@ -39,7 +39,7 @@
             "ad0ab8f08f2a51d2af0aa6b1bef2233a6efa06ae0cc6e216cc64e0b05a5c230b"
           ],
           "x-amz-date": [
-            "20260812T003405Z"
+            "20260812T004320Z"
           ]
         },
         "method": "PUT",
@@ -57,7 +57,7 @@
             "0"
           ],
           "date": [
-            "Wed, 12 Aug 2026 00:34:05 GMT"
+            "Wed, 12 Aug 2026 00:43:20 GMT"
           ],
           "etag": [
             "\"a3a9caddf37b143605829a7770fd1272\""
@@ -76,7 +76,7 @@
             "dd9025bab4ad464b049177c95eb6ebf374d3b3fd1af9251148b658df7ac2e3e8"
           ],
           "x-amz-request-id": [
-            "18CAE798D7CC0169"
+            "18CAE81A065B8559"
           ],
           "x-content-type-options": [
             "nosniff"
@@ -95,7 +95,7 @@
       }
     },
     {
-      "recorded_at": "2026-08-12T00:34:05.848638Z",
+      "recorded_at": "2026-08-12T00:43:20.682639Z",
       "request": {
         "body_json": {
           "content_blob_hash": "sha256:ad0ab8f08f2a51d2af0aa6b1bef2233a6efa06ae0cc6e216cc64e0b05a5c230b",
@@ -103,7 +103,7 @@
           "counts": {
             "blog": 1
           },
-          "generated_at": "2026-08-12T00:34:05.833354Z",
+          "generated_at": "2026-08-12T00:43:20.661114Z",
           "version": "1.0"
         },
         "body_type": "json",
@@ -121,10 +121,10 @@
             "req/0.7.2"
           ],
           "x-amz-content-sha256": [
-            "211b6c846e73fb7e78a3e58256b10316de985d9b122cbb3107dac39c1e1e1eae"
+            "d7f41ac4b778419db2ee321ebf0d176556fdd57413a4dc9a508d2820b4168534"
           ],
           "x-amz-date": [
-            "20260812T003405Z"
+            "20260812T004320Z"
           ]
         },
         "method": "PUT",
@@ -142,10 +142,10 @@
             "0"
           ],
           "date": [
-            "Wed, 12 Aug 2026 00:34:05 GMT"
+            "Wed, 12 Aug 2026 00:43:20 GMT"
           ],
           "etag": [
-            "\"5d38bfc4c315213d75fbfb8f49eea10b\""
+            "\"20e4249afd075d77f714e3cc45f94e7f\""
           ],
           "server": [
             "MinIO"
@@ -161,7 +161,7 @@
             "dd9025bab4ad464b049177c95eb6ebf374d3b3fd1af9251148b658df7ac2e3e8"
           ],
           "x-amz-request-id": [
-            "18CAE798D87549BD"
+            "18CAE81A070192F1"
           ],
           "x-content-type-options": [
             "nosniff"
@@ -180,7 +180,7 @@
       }
     },
     {
-      "recorded_at": "2026-08-12T00:34:05.862117Z",
+      "recorded_at": "2026-08-12T00:43:20.751359Z",
       "request": {
         "body_json": {
           "manifest_url": "http://127.0.0.1:9000/cms-spex-content/manifest.json"
@@ -204,7 +204,7 @@
       "response": {
         "body_json": {
           "status": "accepted",
-          "sync_id": "f50d3222-be44-47ca-a830-08b9c4aa0c09"
+          "sync_id": "8c47e77e-8db5-410e-8831-9d69319fc88a"
         },
         "body_type": "json",
         "headers": {
@@ -218,72 +218,20 @@
             "application/json; charset=utf-8"
           ],
           "date": [
-            "Wed, 12 Aug 2026 00:34:05 GMT"
+            "Wed, 12 Aug 2026 00:43:20 GMT"
           ],
           "vary": [
             "accept-encoding"
           ],
           "x-request-id": [
-            "GMrnmNiohrk5HroAAAEi"
+            "GMroGgqZX44AalQAAAMB"
           ]
         },
         "status": 202
       }
     },
     {
-      "recorded_at": "2026-08-12T00:34:05.876796Z",
-      "request": {
-        "body": "",
-        "body_type": "text",
-        "headers": {
-          "user-agent": [
-            "req/0.7.2"
-          ]
-        },
-        "method": "GET",
-        "query_string": "",
-        "uri": "http://127.0.0.1:4100/blog/hello"
-      },
-      "response": {
-        "body": "<!-- <Site2Web.Layouts.root> lib/site2_web/components/layouts/root.html.heex:1 (site2) --><!DOCTYPE html>\n<html data-phx-loc=\"2\" phx-r lang=\"en\">\n  <head data-phx-loc=\"3\">\n    <meta data-phx-loc=\"4\" charset=\"utf-8\">\n    <meta data-phx-loc=\"5\" name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n    <meta data-phx-loc=\"6\" name=\"csrf-token\" content=\"HyhcAEdAX2InWxcqYHc6cE83fQEtC39hMY3Mwyh3ChZu2BYDyeKhKF6Q\">\n    <!-- @caller lib/site2_web/components/layouts/root.html.heex:7 (site2) --><!-- <Phoenix.Component.live_title> lib/phoenix_component.ex:2259 (phoenix_live_view) --><title data-phx-loc=\"2260\" phx-r data-default=\"Site2\" data-suffix=\" · Phoenix Framework\">Site2 · Phoenix Framework</title><!-- </Phoenix.Component.live_title> -->\n    <link data-phx-loc=\"8\" phx-track-static rel=\"stylesheet\" href=\"/assets/css/app.css\">\n    <script data-phx-loc=\"9\">\n      // Preview bridge. Ships in every build and does nothing at all unless\n      // this page is inside a frame opened by a CodeMySpec preview — checked\n      // against who framed it, not merely whether it is framed.\n      //\n      // Not deferred, and ahead of app.js, so an error thrown while the app\n      // boots is still caught. A render that fails on first paint is exactly\n      // the one worth reporting.\n      (() => {\n        const ORIGINS = [\n          \"https://codemyspec.com\",\n          \"https://dev.codemyspec.com\",\n          \"http://localhost:4000\"\n        ];\n\n        // Not framed: the ordinary case, in production, forever.\n        if (window.parent === window) return;\n\n        // A framed page cannot read its parent's origin, so the referrer is\n        // what there is. Absent or unrecognised means somebody else framed\n        // this app, and the bridge stays shut — it neither reports nor listens.\n        let framer;\n        try {\n          framer = new URL(document.referrer).origin;\n        } catch (_) {\n          return;\n        }\n        if (!ORIGINS.includes(framer)) return;\n\n        // Buffered until the host proves it is listening. The host's hook\n        // mounts when its LiveView connects, which is after this page has\n        // loaded and possibly already thrown — and postMessage has no replay,\n        // so anything sent before then is simply gone. That is exactly the\n        // first-paint failure this script is not deferred in order to catch,\n        // so losing it would defeat the point of catching it.\n        let listening = false;\n        const pending = [];\n\n        const post = (type, payload) =>\n          window.parent.postMessage({ source: \"cms-preview\", type, payload }, framer);\n\n        const send = (type, payload) =>\n          listening ? post(type, payload) : pending.push([type, payload]);\n\n        window.addEventListener(\"error\", (e) =>\n          send(\"error\", {\n            message: e.message,\n            source: e.filename,\n            line: e.lineno,\n            column: e.colno,\n            stack: e.error && e.error.stack\n          })\n        );\n\n        window.addEventListener(\"unhandledrejection\", (e) =>\n          send(\"error\", { message: String(e.reason), stack: e.reason && e.reason.stack })\n        );\n\n        // LiveView reports its own death, which a window error does not catch:\n        // the crash happened on the server and arrives here as a reload.\n        window.addEventListener(\"phx:error\", (e) =>\n          send(\"error\", { message: \"LiveView error\", detail: e.detail })\n        );\n\n        // Any recognised message from the host means someone is on the other\n        // end. Flush what happened before they got there, in order, then run\n        // live from here.\n        window.addEventListener(\"message\", (e) => {\n          if (e.origin !== framer) return;\n          if (!e.data || e.data.source !== \"cms-preview-host\") return;\n\n          if (!listening) {\n            listening = true;\n            pending.splice(0).forEach(([type, payload]) => post(type, payload));\n          }\n\n          if (e.data.type === \"ping\") post(\"pong\", {});\n        });\n\n        send(\"ready\", { url: window.location.href });\n      })();\n    </script>\n    <script data-phx-loc=\"91\" defer phx-track-static type=\"text/javascript\" src=\"/assets/js/app.js\">\n    </script>\n    <script data-phx-loc=\"93\">\n      (() => {\n        const systemTheme = () => matchMedia(\"(prefers-color-scheme: dark)\").matches ? \"dark\" : \"light\";\n\n        const setTheme = (theme) => {\n          if (theme === \"system\") {\n            localStorage.removeItem(\"phx:theme\");\n            document.documentElement.setAttribute(\"data-theme\", systemTheme());\n            document.documentElement.setAttribute(\"data-theme-source\", \"system\");\n          } else {\n            localStorage.setItem(\"phx:theme\", theme);\n            document.documentElement.setAttribute(\"data-theme\", theme);\n            document.documentElement.setAttribute(\"data-theme-source\", \"user\");\n          }\n        };\n        if (!document.documentElement.hasAttribute(\"data-theme\")) {\n          setTheme(localStorage.getItem(\"phx:theme\") || \"system\");\n        }\n        window.addEventListener(\"storage\", (e) => e.key === \"phx:theme\" && setTheme(e.newValue || \"system\"));\n        \n        window.addEventListener(\"phx:set-theme\", (e) => setTheme(e.target.dataset.phxTheme));\n\n        matchMedia(\"(prefers-color-scheme: dark)\").addEventListener(\"change\", (e) => {\n          if (document.documentElement.getAttribute(\"data-theme-source\") === \"system\") {\n            document.documentElement.setAttribute(\"data-theme\", systemTheme());\n          }\n        });\n      })();\n    </script>\n  </head>\n  <body data-phx-loc=\"123\">\n    <ul data-phx-loc=\"124\" class=\"menu menu-horizontal w-full relative z-10 flex items-center gap-4 px-4 sm:px-6 lg:px-8 justify-end\">\n\n        <li data-phx-loc=\"136\">\n          <!-- @caller lib/site2_web/components/layouts/root.html.heex:137 (site2) --><!-- <Phoenix.Component.link> lib/phoenix_component.ex:3138 (phoenix_live_view) --><a data-phx-loc=\"3139\" phx-r href=\"/users/register\">Register</a><!-- </Phoenix.Component.link> -->\n        </li>\n        <li data-phx-loc=\"139\">\n          <!-- @caller lib/site2_web/components/layouts/root.html.heex:140 (site2) --><!-- <Phoenix.Component.link> lib/phoenix_component.ex:3138 (phoenix_live_view) --><a data-phx-loc=\"3139\" phx-r href=\"/users/log-in\">Log in</a><!-- </Phoenix.Component.link> -->\n        </li>\n\n    </ul>\n    <!-- <Site2Web.BlogHTML.show> lib/site2_web/controllers/blog_html/show.html.heex:1 (site2) --><article data-phx-loc=\"1\" phx-r>\n  <h1 data-phx-loc=\"2\">Hello</h1>\n\n  <p>Good version.</p>\n</article><!-- </Site2Web.BlogHTML.show> -->\n    <div id=\"phx-GMrnmNmITvkeug9h\" data-phx-session=\"SFMyNTY.g2gDaAJhBnQAAAAIdwJpZG0AAAAUcGh4LUdNcm5tTm1JVHZrZXVnOWh3B3Nlc3Npb250AAAAAHcKcGFyZW50X3BpZHcDbmlsdwZyb3V0ZXJ3A25pbHcEdmlld3chRWxpeGlyLlNpdGUyV2ViLlN1cHBvcnRXaWRnZXRMaXZldwhyb290X3BpZHcDbmlsdwlyb290X3ZpZXd3IUVsaXhpci5TaXRlMldlYi5TdXBwb3J0V2lkZ2V0TGl2ZXcRbGl2ZV9zZXNzaW9uX25hbWV3A25pbG4GALQDZPOfAWIAAVGA.CmmzSrVxOCwt0uwTCjGcW5I-HvSOOH8EhLShCNwWshk\" data-phx-static=\"SFMyNTY.g2gDaAJhBnQAAAADdwJpZG0AAAAUcGh4LUdNcm5tTm1JVHZrZXVnOWh3BWZsYXNodAAAAAB3CmFzc2lnbl9uZXdsAAAAAXcNY3VycmVudF9zY29wZWpuBgC0A2TznwFiAAFRgA.8l0CHQk_FFXiCNmO_wE2WIx4pbTUdZaui_Me4AYNeGM\"><!-- <Site2Web.SupportWidgetLive.render> lib/site2_web/live/support_widget_live.ex:277 (site2) --><div data-phx-loc=\"279\" phx-r id=\"codemyspec-support-widget\" data-cms-widget data-cms-widget-state=\"pending\" phx-hook=\"Site2Web.SupportWidgetLive.CmsScreenshot\" class=\"fixed bottom-4 right-4 z-50\">\n  <button data-phx-loc=\"370\" type=\"button\" phx-click=\"toggle\" data-cms-widget-toggle data-test=\"widget-toggle\" class=\"btn btn-primary btn-circle shadow-lg\" aria-label=\"Support\">\n    <!-- @caller lib/site2_web/live/support_widget_live.ex:378 (site2) --><!-- <Site2Web.CoreComponents.icon> lib/site2_web/components/core_components.ex:450 (site2) --><span data-phx-loc=\"451\" phx-r class=\"hero-chat-bubble-oval-left size-6\"></span><!-- </Site2Web.CoreComponents.icon> -->\n    \n  </button>\n\n  \n</div><!-- </Site2Web.SupportWidgetLive.render> --></div>\n  <iframe hidden height=\"0\" width=\"0\" src=\"/phoenix/live_reload/frame\"></iframe></body>\n</html><!-- </Site2Web.Layouts.root> -->",
-        "body_type": "text",
-        "headers": {
-          "cache-control": [
-            "max-age=0, private, must-revalidate"
-          ],
-          "content-length": [
-            "8201"
-          ],
-          "content-security-policy": [
-            "base-uri 'self'; frame-ancestors 'self';"
-          ],
-          "content-type": [
-            "text/html; charset=utf-8"
-          ],
-          "date": [
-            "Wed, 12 Aug 2026 00:34:05 GMT"
-          ],
-          "referrer-policy": [
-            "strict-origin-when-cross-origin"
-          ],
-          "vary": [
-            "accept-encoding"
-          ],
-          "x-content-type-options": [
-            "nosniff"
-          ],
-          "x-permitted-cross-domain-policies": [
-            "none"
-          ],
-          "x-request-id": [
-            "GMrnmNld2S45HroAAAFC"
-          ]
-        },
-        "status": 200
-      }
-    },
-    {
-      "recorded_at": "2026-08-12T00:34:05.892268Z",
+      "recorded_at": "2026-08-12T00:43:20.755047Z",
       "request": {
         "body": "",
         "body_type": "text",
@@ -297,7 +245,7 @@
         "uri": "http://127.0.0.1:9000/blog/hello"
       },
       "response": {
-        "body": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Error><Code>AccessDenied</Code><Message>Access Denied.</Message><Key>hello</Key><BucketName>blog</BucketName><Resource>/blog/hello</Resource><RequestId>18CAE798DB3B5581</RequestId><HostId>dd9025bab4ad464b049177c95eb6ebf374d3b3fd1af9251148b658df7ac2e3e8</HostId></Error>",
+        "body": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Error><Code>AccessDenied</Code><Message>Access Denied.</Message><Key>hello</Key><BucketName>blog</BucketName><Resource>/blog/hello</Resource><RequestId>18CAE81A0BCE31A3</RequestId><HostId>dd9025bab4ad464b049177c95eb6ebf374d3b3fd1af9251148b658df7ac2e3e8</HostId></Error>",
         "body_type": "text",
         "headers": {
           "accept-ranges": [
@@ -310,7 +258,7 @@
             "application/xml"
           ],
           "date": [
-            "Wed, 12 Aug 2026 00:34:05 GMT"
+            "Wed, 12 Aug 2026 00:43:20 GMT"
           ],
           "server": [
             "MinIO"
@@ -326,7 +274,7 @@
             "dd9025bab4ad464b049177c95eb6ebf374d3b3fd1af9251148b658df7ac2e3e8"
           ],
           "x-amz-request-id": [
-            "18CAE798DB3B5581"
+            "18CAE81A0BCE31A3"
           ],
           "x-content-type-options": [
             "nosniff"

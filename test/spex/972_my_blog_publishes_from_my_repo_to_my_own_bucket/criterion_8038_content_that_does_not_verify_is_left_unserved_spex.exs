@@ -18,7 +18,8 @@ defmodule CodeMySpecSpex.Story972.Criterion8038Spex do
 
   @endpoint CodeMySpecWeb.Endpoint
 
-  @cassette "content_unverified_left_unserved"
+  @cassette "content_unverified_good_version_first"
+  @failing_cassette "content_unverified_left_unserved"
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -79,8 +80,14 @@ defmodule CodeMySpecSpex.Story972.Criterion8038Spex do
           Application.put_env(:code_my_spec, :provisioning_step_opts, previous)
         end)
 
+        # Its own cassette, not the good publish's. Both blocks share a
+        # sequential cursor when they share a name, and in `:record` mode the
+        # second publish's uploads matched the first's and replayed instead of
+        # being written — so the file held one run's requests and a stray
+        # trailing GET, and replaying the second block ran off the end of it.
+        # Two publishes, two recordings.
         html =
-          with_provider_cassette(@cassette, [match_requests_on: [:method, :uri]], fn ->
+          with_provider_cassette(@failing_cassette, [match_requests_on: [:method, :uri]], fn ->
             context.view
             |> element("[data-test='setup-step'][data-step='content'] [data-test='run-step']")
             |> render_click()
@@ -95,7 +102,8 @@ defmodule CodeMySpecSpex.Story972.Criterion8038Spex do
         verification =
           parsed |> Floki.find("[data-test='content-verification']")
 
-        assert verification != [], "expected the verification result to be recorded"
+        assert verification != [],
+               "expected the verification result to be recorded. " <> diagnose(context.html)
 
         state = verification |> Floki.attribute("data-state") |> List.first()
 
@@ -120,6 +128,20 @@ defmodule CodeMySpecSpex.Story972.Criterion8038Spex do
         {:ok, context}
       end
     end
+  end
+
+  # What the content step reported, for when the verification span is missing
+  # and the interesting question is what it did instead.
+  defp diagnose(html) do
+    step =
+      html
+      |> Floki.parse_document!()
+      |> Floki.find("[data-test='setup-step'][data-step='content']")
+
+    state = step |> Floki.attribute("data-state") |> List.first()
+    detail = step |> Floki.text() |> String.replace(~r/\s+/, " ") |> String.slice(0, 300)
+
+    "content step state=#{inspect(state)} detail=#{inspect(detail)}"
   end
 
   defp served_version(html) do
