@@ -70,7 +70,8 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
     root = target_root(args)
     dest = Path.join(root, @plugin_dest)
 
-    with {:ok, id} <- identity(root),
+    with :ok <- check_relay(),
+         {:ok, id} <- identity(root),
          :ok <- copy_plugin(root, dest),
          {:ok, count} <- address_hooks(dest, id),
          :ok <- address_mcp(dest, id),
@@ -78,6 +79,78 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
       report(id, dest, count, args)
     else
       {:error, message} -> Mix.raise(message)
+    end
+  end
+
+  @relay "cms-mcp-relay"
+  @capability "hooks=1"
+
+  # Refuse before writing anything, because the thing being written depends on
+  # a binary this does not ship.
+  #
+  # The hooks it installs are `cms-mcp-relay hook --port … /api/hooks/<name>`.
+  # A relay from before that subcommand existed does not reject the argument —
+  # `hook` is not a flag it knows, so it falls through to the MCP path, posts
+  # the hook payload to /mcp?dir=, takes the JSON-RPC parse error it gets back
+  # and exits 0. Claude Code reads 0 as a hook that ran. All eight go silently
+  # dead, and the only symptom is that everything the harness was supposed to
+  # decide quietly stops happening — no error anywhere, on either side.
+  #
+  # So the marker is the gate. An old binary cannot print it: it has no
+  # `capabilities` branch either and relays stdin instead, which with stdin
+  # closed is an immediate EOF and an empty stdout. Absence is the answer.
+  defp check_relay do
+    case System.find_executable(@relay) do
+      nil ->
+        {:error,
+         """
+         No #{@relay} on PATH.
+
+         The hooks this installs are run by it. Without it every hook is a
+         command that does not exist, which Claude Code reports per turn.
+         """}
+
+      path ->
+        if capable?(path) do
+          :ok
+        else
+          {:error,
+           """
+           #{path} is too old for the hooks this would install.
+
+           It has no `hook` subcommand, and it does not fail when given one:
+           it treats the payload as MCP traffic, and exits 0. Claude Code
+           reads that as a hook that ran, so onboarding this working copy
+           would leave every hook silently dead rather than visibly broken.
+
+           Upgrade it, then run this again:
+
+               brew upgrade codemyspec
+
+           Nothing has been written — this refused before touching the plugin
+           config or .claude/settings.json.
+           """}
+        end
+    end
+  end
+
+  # Stdin closed on purpose: a relay that does not know the argument reads
+  # stdin, and a probe that inherits a terminal would sit there. The timeout is
+  # the backstop for anything that manages to block anyway — a probe that hangs
+  # must not become an onboarding that hangs.
+  @doc false
+  def capable?(path) do
+    task =
+      Task.async(fn ->
+        case System.cmd(path, ["capabilities"], stderr_to_stdout: true) do
+          {out, 0} -> String.contains?(out, @capability)
+          _ -> false
+        end
+      end)
+
+    case Task.yield(task, to_timeout(second: 10)) || Task.shutdown(task, :brutal_kill) do
+      {:ok, result} -> result
+      _ -> false
     end
   end
 
