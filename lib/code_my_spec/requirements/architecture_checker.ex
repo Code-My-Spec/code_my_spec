@@ -24,8 +24,8 @@ defmodule CodeMySpec.Requirements.ArchitectureChecker do
 
   alias CodeMySpec.Components
   alias CodeMySpec.Files
-  alias CodeMySpec.Requirements.Registry, as: RequirementsRegistry
   alias CodeMySpec.Paths
+  alias CodeMySpec.Requirements.Registry, as: RequirementsRegistry
   alias CodeMySpec.Stories
   alias CodeMySpec.Users.Scope
 
@@ -95,10 +95,29 @@ defmodule CodeMySpec.Requirements.ArchitectureChecker do
     components = Components.list_components_with_dependencies(scope)
     covered = covered_set(components)
 
+    # Only components this working copy actually has files for.
+    #
+    # Components are project-level and their ids are stable — stories and
+    # requirements link to them, so they must be. Presence is the per-checkout
+    # half, and `files` already carries it: `component_id` and `harness_id` on
+    # the same row.
+    #
+    # Without this, a checkout that has not pulled re-projects components
+    # another checkout deleted, and every agent is told to resolve the result.
+    # `CodeMySpecLocalWeb.EpicsLive` was removed from the spec tree on
+    # 2026-08-10 by `ad775a1`; three stale checkouts kept it alive, and the
+    # working copies where the file was correctly gone were the ones asked to
+    # fix it — with four resolutions that all act on a file they do not have.
+    #
+    # An unscoped read (the web UI, which names no harness) is unchanged: it
+    # sees every checkout's files, which is what it should.
+    present = Files.component_ids_present(scope)
+
     components
     |> Enum.filter(&context_shaped?/1)
     |> Enum.reject(fn c ->
-      c.type == "infrastructure" or MapSet.member?(covered, c.id)
+      c.type == "infrastructure" or MapSet.member?(covered, c.id) or
+        not MapSet.member?(present, c.id)
     end)
     |> Enum.sort_by(& &1.module_name)
   end

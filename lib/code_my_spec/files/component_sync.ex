@@ -90,6 +90,25 @@ defmodule CodeMySpec.Files.ComponentSync do
     }
   end
 
+  # Project-wide, deliberately — every checkout's files, not this one's.
+  #
+  # `Files.list_files/1` and the requirement preloader are both harness-scoped,
+  # so this reads like one that was missed. It is not, and scoping it would be a
+  # data-loss bug: `cleanup_removed/3` deletes a component whose module name is
+  # absent from what this query returned, so a per-harness read would have every
+  # sync delete every component whose spec lives only in another checkout.
+  # Three working copies syncing in turn would take turns deleting each other's
+  # architecture.
+  #
+  # The two questions are different and both are answered correctly today.
+  # *Identity* — does this project have a component called `X` — is project-wide,
+  # because a component id is stable and 112 stories and 4048 requirements link
+  # to one. *Presence* — does this checkout have a spec for it — is per harness,
+  # and `ArchitectureChecker.orphans/1` asks `Files.component_ids_present/1` for
+  # exactly that.
+  #
+  # So a component survives while any checkout still carries its spec, and is
+  # only somebody's orphan in the checkout that has the file to resolve it with.
   defp query_files(%Scope{active_project_id: project_id}, _changed_paths) do
     {
       File |> where([f], f.project_id == ^project_id and f.role == :spec) |> Repo.all(),
