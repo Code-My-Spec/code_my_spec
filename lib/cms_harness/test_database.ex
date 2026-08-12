@@ -189,7 +189,17 @@ defmodule CmsHarness.TestDatabase do
   # `CredoRun.reproduce_command/0` is. The failure this guards against is a
   # refusal, logged at info and otherwise invisible — nothing downstream would
   # fail if a flag were dropped, which is what makes it worth pinning.
-  def reset_args, do: ["run", "--no-compile", "--no-deps-check"]
+  # `--no-start` because emptying a database needs a connection to it and
+  # nothing else. Without it `mix run` boots the whole application, and this
+  # project's tree includes a web endpoint — so on any machine where the dev
+  # server is already up, the reset died on "port 4010 already in use" and the
+  # analyzer ran against whatever the last sweep left. Observed on every sweep
+  # here: the repair that exists to stop residue accumulating was itself
+  # switched off by a listener it has no interest in.
+  #
+  # The repos are started by the script instead, which is what `mix ecto.*`
+  # does for the same reason.
+  def reset_args, do: ["run", "--no-compile", "--no-deps-check", "--no-start"]
 
   defp do_reset(environment, partition, build_env) do
     args = reset_args() ++ ["-e", truncate_script()]
@@ -250,7 +260,19 @@ defmodule CmsHarness.TestDatabase do
     ~S"""
     app = Mix.Project.config()[:app]
 
+    # Under `--no-start` nothing is running, so the repo has to be brought up
+    # here. `Application.load/1` first because `:ecto_repos` is read from the
+    # app's config and an unloaded app has none.
+    _ = Application.load(app)
+    {:ok, _} = Application.ensure_all_started(:ecto_sql)
+    _ = Application.ensure_all_started(:postgrex)
+
     for repo <- Application.get_env(app, :ecto_repos, []) do
+      # Small pool: this issues three statements and exits. `start_link/1`
+      # merges over the app config, so the partition database the caller set
+      # through MIX_TEST_PARTITION is still the one reached.
+      {:ok, _} = repo.start_link(pool_size: 2, log: false)
+
       {:ok, %{rows: rows}} =
         Ecto.Adapters.SQL.query(
           repo,
