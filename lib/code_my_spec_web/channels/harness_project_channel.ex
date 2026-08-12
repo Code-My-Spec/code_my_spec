@@ -41,7 +41,6 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   alias CodeMySpec.AgentHarness.ConversationRecorder
   alias CodeMySpec.Analysis
   alias CodeMySpec.Files
-  alias CodeMySpec.Files.ComponentSync
   alias CodeMySpec.Files.File, as: FileRecord
   alias CodeMySpec.Files.FileSync
   alias CodeMySpec.Files.ReconcileRegistry
@@ -57,7 +56,6 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   alias CodeMySpec.Hooks.SubagentStop
   alias CodeMySpec.Projects
   alias CodeMySpec.Projects.Project
-  alias CodeMySpec.Repo
   alias CodeMySpec.Users.Scope
 
   @impl true
@@ -506,68 +504,28 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
     end)
   end
 
-  # One transaction over both halves, so a reader never catches the middle.
+  # Both halves, in one transaction, in the context that owns the database.
   #
-  # The marker (`ReconcileRegistry`) already lets a reader tell "a reconcile is
-  # running" from "the work was not done". This closes the other half: between
-  # `FileSync.reconcile/2` and `ComponentSync.sync_from_files/1` the File rows
-  # are current and the components derived from them are not, and a requirement
-  # check landing there reads a real, committed, wrong answer rather than a
-  # partial one it can detect.
+  # Reconciling files is only half of a sync. The other half turns those files
+  # into components and — the part that matters here — writes `component_id`
+  # back onto each File row. Without it every `implementation_file` requirement
+  # stays unsatisfied forever: the check is scoped to a component's own files,
+  # and a file nothing owns is invisible to it. Drill 11 finished the entire
+  # project chain, wrote every module, passed 157 tests, and still showed 15
+  # implementation requirements open with all 66 implementation files synced and
+  # not one of them linked.
   #
-  # Measured before choosing the scope: median 2.76s, p90 7.08s. Postgres
-  # readers do not block on writers under MVCC, so the cost of the wider scope
-  # is a held connection rather than a stalled reader — which is why it is
-  # affordable on a database three worktrees share.
+  # The local path has always run both (see `Tools.SyncProject`). This one ran
+  # only the first, and could not have run the second until `ComponentSync`
+  # stopped needing to read the files itself — the component identity now
+  # travels in the File record, which is what makes it possible at all.
   #
-  # The timeout is explicit and generous because the default 15s sits between
-  # the p90 and the tail, which is the worst place for it: it would abort
-  # exactly the slow reconciles this exists to keep consistent.
-  #
-  # Caveat, deliberately written down rather than discovered later:
-  # `ComponentSync` prefers component data stored on the File row and only
-  # reads a spec over the wire when that is missing. Measured on this project,
-  # 300 of 305 spec files carry it — so five still round-trip to the harness
-  # *inside* this transaction, and a harness that stalls holds the connection
-  # for the fs timeout on each. The fix is to make the manifest carry data for
-  # every spec, not to widen the timeout further.
-  @reconcile_timeout_ms 60_000
-
-  defp reconcile(scope, entries) do
-    {:ok, result} =
-      Repo.transaction(fn -> do_reconcile(scope, entries) end, timeout: @reconcile_timeout_ms)
-
-    result
-  end
-
-  defp do_reconcile(scope, entries) do
-    summary = FileSync.reconcile(scope, entries)
-
-    # Reconciling files is only half of a sync. The other half turns those
-    # files into components and — the part that matters here — writes
-    # `component_id` back onto each File row.
-    #
-    # Without it every `implementation_file` requirement stays unsatisfied
-    # forever: the check is scoped to a component's own files, and a file
-    # nothing owns is invisible to it. Drill 11 finished the entire project
-    # chain, wrote every module, passed 157 tests, and still showed 15
-    # implementation requirements open with all 66 implementation files
-    # synced and not one of them linked.
-    #
-    # The local path has always run both (see `Tools.SyncProject`). This one
-    # ran only the first, and could not have run the second until
-    # `ComponentSync` stopped needing to read the files itself — the
-    # component identity now travels in the File record, which is what makes
-    # this line possible at all.
-    {:ok, components} = ComponentSync.sync_from_files(scope)
-
-    %{
-      upserted: summary.upserted,
-      removed: summary.removed,
-      changed: length(summary.changed_entries),
-      components: length(components.all_components)
-    }
-  end
+  # The transaction lives in `FileSync`, not here: `CodeMySpecWeb` may not
+  # reference `CodeMySpec.Repo`, and Boundary is right about that — a channel
+  # opening a database transaction is the wrong shape regardless of whether the
+  # compiler catches it. See `reconcile_and_project/2` for the timeout and for
+  # the harness-read caveat.
+  defp reconcile(scope, entries), do: FileSync.reconcile_and_project(scope, entries)
 
   defp next_manifest(%{assigns: %{pending_manifest: nil}} = socket) do
     assign(socket, :reconciling, nil)
