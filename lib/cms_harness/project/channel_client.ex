@@ -69,6 +69,26 @@ defmodule CmsHarness.Project.ChannelClient do
 
   @backoff [1_000, 2_000, 5_000, 10_000, 30_000]
 
+  # The channel contract this harness speaks. Kept in step with
+  # `CodeMySpecWeb.HarnessProjectChannel`'s copy of the same number — the two
+  # are the contract, so they are the two places that have to agree.
+  #
+  # Bump on a change to the join payload, the `handle_in` set, or the shapes
+  # those carry. Not for ordinary changes on either side: a version that moves
+  # for everything means a refusal on every deploy, which trains people to
+  # ignore it.
+  @contract_version 1
+
+  @doc """
+  The channel contract version this harness speaks.
+
+  Public so a test can compare it against
+  `CodeMySpecWeb.HarnessProjectChannel`'s copy — see that function for why the
+  comparison, rather than either value, is the thing worth asserting.
+  """
+  @spec contract_version() :: pos_integer()
+  def contract_version, do: @contract_version
+
   # How many refusals are reported quietly before one loud explanation. Not a
   # give-up count — nothing gives up any more.
   #
@@ -401,7 +421,26 @@ defmodule CmsHarness.Project.ChannelClient do
        # Declaring them lets the sweep close only what goes unclaimed. An older
        # server ignores the field and sweeps everything, which is what it does
        # today.
-       "active_runs" => AnalysisServer.in_flight(project.root)
+       "active_runs" => AnalysisServer.in_flight(project.root),
+       # What this harness believes the channel contract is.
+       #
+       # Skew between the two ends surfaces today as `{:error, %{"reason" =>
+       # "unmatched topic"}}` on every stop — a message about topics, for a
+       # problem about versions. It was diagnosable only because the refusal
+       # wrapper appends the harness's boot commit and its checkout's current
+       # one, so a reader can `git diff --stat <range> -- lib/cms_harness
+       # lib/code_my_spec_web/channels` and see the contract move. That works and
+       # it should not be the mechanism (c8a7f11d).
+       #
+       # Stated outright, the server can name the mismatch instead of leaving it
+       # to be inferred from a commit range. Bump this when the join payload, the
+       # `handle_in` set, or the shapes they carry change — not for ordinary
+       # changes to either side.
+       #
+       # An older server ignores the field, and the server treats its absence as
+       # "a harness that predates this", so the rollout order does not matter —
+       # the same reasoning `active_runs` above is built on.
+       "contract_version" => @contract_version
      })}
   end
 

@@ -62,7 +62,8 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   def join("harness_project:" <> project_id, payload, socket) do
     label = harness_label(payload)
 
-    with {:ok, scope} <- authorize(socket, project_id),
+    with :ok <- check_contract(payload, project_id),
+         {:ok, scope} <- authorize(socket, project_id),
          {:ok, harness} <- Harnesses.issue(scope, payload["harness_id"], label: label),
          {:ok, harness} <- report_root(harness, payload["root"]),
          # Everything below is per working copy, so the scope carries the
@@ -113,12 +114,87 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
         {:error,
          %{reason: "working_copy_in_use", held_by: "another harness on this working copy"}}
 
+      # A refusal that already built its own payload passes through. The clause
+      # below calls `to_string/1`, which raises on a map — so a well-formed
+      # refusal would arrive at the agent as "join crashed", which is both wrong
+      # and the most alarming thing it could say. Caught by the contract test
+      # before it ever ran for real.
+      {:error, %{} = refusal} ->
+        {:error, refusal}
+
       {:error, reason} ->
         {:error, %{reason: to_string(reason)}}
     end
   end
 
   def join(_topic, _payload, _socket), do: {:error, %{reason: "invalid topic"}}
+
+  # The channel contract this server speaks. Kept in step with
+  # `CmsHarness.Project.ChannelClient`'s copy — the two *are* the contract, so
+  # they are the two places that have to agree. Bump on a change to the join
+  # payload, the `handle_in` set, or the shapes those carry.
+  @contract_version 1
+
+  @doc """
+  The channel contract version this server speaks.
+
+  Public so a test can compare it against `CmsHarness.Project.ChannelClient`'s
+  copy. Hardcoding either number in a test would assert `1 == 1` and keep
+  passing after somebody bumped one side and forgot the other — which is
+  precisely the skew this whole mechanism exists to catch.
+  """
+  @spec contract_version() :: pos_integer()
+  def contract_version, do: @contract_version
+
+  # Say "these two disagree about the contract" outright.
+  #
+  # Skew surfaced as `{:error, %{"reason" => "unmatched topic"}}` on every stop
+  # — a message about topics for a problem about versions — and was diagnosable
+  # only because the refusal wrapper appends the harness's boot commit and its
+  # checkout's current one, leaving the reader to run `git diff --stat <range>
+  # -- lib/cms_harness lib/code_my_spec_web/channels` and notice the contract
+  # had moved. That worked, and it is too much to ask of a message that fires on
+  # every stop (c8a7f11d).
+  #
+  # It refuses rather than warns because a harness on the wrong contract cannot
+  # do its job: every hook it forwards is refused anyway, and the refusal it
+  # gets today names the wrong thing. Better to fail at the join, once, with the
+  # two numbers in the message.
+  defp check_contract(%{"contract_version" => version}, _project_id)
+       when version == @contract_version,
+       do: :ok
+
+  defp check_contract(%{"contract_version" => version}, project_id) when is_integer(version) do
+    Logger.warning(
+      "[HarnessProject] refused a harness on contract v#{version} for #{project_id}; " <>
+        "this server speaks v#{@contract_version}"
+    )
+
+    {:error,
+     %{
+       reason: "contract_version_mismatch",
+       harness_contract: version,
+       server_contract: @contract_version,
+       detail:
+         "This harness speaks channel contract v#{version} and the server speaks " <>
+           "v#{@contract_version}. Restart the harness from a checkout level with the " <>
+           "server — `just refresh-harness` — rather than looking at the network."
+     }}
+  end
+
+  # A harness that predates the field. Allowed, because refusing it would make
+  # this change require a coordinated rollout, and the same reasoning already
+  # governs `active_runs` and `harness_id` in the same payload. It is logged
+  # once per join rather than silently accepted: if skew is what is wrong, the
+  # absence is itself the clue, and `unmatched topic` will be along shortly.
+  defp check_contract(_payload, project_id) do
+    Logger.info(
+      "[HarnessProject] a harness joined #{project_id} without a contract version; " <>
+        "it predates the field. Server speaks v#{@contract_version}."
+    )
+
+    :ok
+  end
 
   # Runs the joining harness says it is still executing.
   #
