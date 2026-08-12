@@ -924,6 +924,26 @@ defmodule CodeMySpecSpex.Case do
   end
 
   @doc """
+  What a setup step reported, for a failure message that would otherwise name
+  only the expectation.
+
+  "expected the server step to be done" says what was wanted and nothing about
+  what happened, which has cost several rounds of guessing on this suite.
+  """
+  @spec step_detail(String.t(), String.t() | atom()) :: String.t()
+  def step_detail(html, key) do
+    step =
+      html
+      |> Floki.parse_document!()
+      |> Floki.find("[data-test='setup-step'][data-step='#{key}']")
+
+    state = step |> Floki.attribute("data-state") |> List.first()
+    detail = step |> Floki.text() |> String.replace(~r/\s+/, " ") |> String.slice(0, 300)
+
+    "#{key} step state=#{inspect(state)} detail=#{inspect(detail)}"
+  end
+
+  @doc """
   The address an inbound probe should be sent to, or `nil` for the default.
 
   Resend delivers only to addresses configured for a domain and drops anything

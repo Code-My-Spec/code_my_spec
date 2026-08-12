@@ -364,11 +364,24 @@ defmodule Mix.Tasks.Cms.ProvisioningLeaks do
     end
   end
 
+  # Named like a spex resource and deliberately permanent: the inbound
+  # criteria send to a verified receiving domain that nothing tears down, so
+  # they pay a send and a poll instead of creating a domain and waiting for a
+  # third party to see its MX. It matches `@spex_prefix` by design — it belongs
+  # to the suite — and `--delete` would remove it along with its DNS records,
+  # which reads afterwards as mail that mysteriously stopped arriving.
+  @kept ~w(spex-inbound.astralbi.com)
+
   @doc false
   @spec leaked?(term()) :: boolean()
   def leaked?(name) do
     name = to_string(name)
-    String.starts_with?(name, @spex_prefix) or name =~ @spex_marker
+
+    cond do
+      Enum.any?(@kept, &(name == &1 or String.ends_with?(name, "." <> &1))) -> false
+      String.starts_with?(name, @spex_prefix) -> true
+      true -> name =~ @spex_marker
+    end
   end
 
   # Providers are inconsistent about this: servers come back as maps with
