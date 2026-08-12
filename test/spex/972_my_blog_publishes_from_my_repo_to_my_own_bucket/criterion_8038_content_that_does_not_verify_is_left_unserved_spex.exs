@@ -73,7 +73,13 @@ defmodule CodeMySpecSpex.Story972.Criterion8038Spex do
         Application.put_env(
           :code_my_spec,
           :provisioning_step_opts,
-          Keyword.put(previous, :site_url, "http://127.0.0.1:9000")
+          # One attempt. The render check now retries, because the trigger is
+          # async and a single fetch races it — but this host answers and will
+          # never serve the post, so waiting is thirty seconds spent proving
+          # something already known.
+          previous
+          |> Keyword.put(:site_url, "http://127.0.0.1:9000")
+          |> Keyword.put(:render_attempts, 1)
         )
 
         on_exit(fn ->

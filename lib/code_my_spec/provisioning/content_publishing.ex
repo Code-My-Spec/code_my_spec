@@ -41,6 +41,7 @@ defmodule CodeMySpec.Provisioning.ContentPublishing do
   catch-all route or a styled 404.
   """
 
+  alias CodeMySpec.Provisioning.Wait
   alias CodeMySpec.Users.Scope
 
   @type result :: %{
@@ -101,7 +102,7 @@ defmodule CodeMySpec.Provisioning.ContentPublishing do
     with :ok <- ensure_publishable(scope),
          :ok <- snapshot(sync, scope),
          {:ok, published} <- publish.(scope) do
-      case verify_render(published, opts) do
+      case await_render(published, opts) do
         {:ok, render} ->
           %{state: :rendered, published: published, render: render, proven_at: now.(), reason: nil}
 
@@ -172,6 +173,33 @@ defmodule CodeMySpec.Provisioning.ContentPublishing do
 
   defp render_failure_reason(%{status: status}, _opts),
     do: "The site answered #{status} for the published path — published but not served."
+
+  # The trigger answers `202 accepted`, which means the site has taken the job
+  # and not that it has finished it. Fetching the post once, immediately, is a
+  # race the pipeline cannot win — and it loses quietly, reporting `not_rendered`
+  # for content that appears a second later. Against the fleet the post is
+  # served about eight seconds after the trigger; a single fetch found 404 every
+  # time while a hand-run `curl` moments afterwards found 200.
+  #
+  # Retried rather than slept: a publish to a warm site should still be fast.
+  defp await_render(published, opts) do
+    attempts = Keyword.get(opts, :render_attempts, 15)
+    interval = Keyword.get(opts, :render_interval_ms, 2_000)
+
+    Enum.reduce_while(1..attempts, nil, fn attempt, _acc ->
+      case verify_render(published, opts) do
+        {:ok, render} ->
+          {:halt, {:ok, render}}
+
+        {:error, {:not_rendered, _}} = error when attempt == attempts ->
+          {:halt, error}
+
+        {:error, {:not_rendered, _}} = error ->
+          Wait.sleep(interval)
+          {:cont, error}
+      end
+    end)
+  end
 
   @doc """
   Fetch a published path back from the live site.

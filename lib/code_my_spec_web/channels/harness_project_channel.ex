@@ -57,6 +57,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   alias CodeMySpec.Hooks.SubagentStop
   alias CodeMySpec.Projects
   alias CodeMySpec.Projects.Project
+  alias CodeMySpec.Repo
   alias CodeMySpec.Users.Scope
 
   @impl true
@@ -505,7 +506,41 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
     end)
   end
 
+  # One transaction over both halves, so a reader never catches the middle.
+  #
+  # The marker (`ReconcileRegistry`) already lets a reader tell "a reconcile is
+  # running" from "the work was not done". This closes the other half: between
+  # `FileSync.reconcile/2` and `ComponentSync.sync_from_files/1` the File rows
+  # are current and the components derived from them are not, and a requirement
+  # check landing there reads a real, committed, wrong answer rather than a
+  # partial one it can detect.
+  #
+  # Measured before choosing the scope: median 2.76s, p90 7.08s. Postgres
+  # readers do not block on writers under MVCC, so the cost of the wider scope
+  # is a held connection rather than a stalled reader — which is why it is
+  # affordable on a database three worktrees share.
+  #
+  # The timeout is explicit and generous because the default 15s sits between
+  # the p90 and the tail, which is the worst place for it: it would abort
+  # exactly the slow reconciles this exists to keep consistent.
+  #
+  # Caveat, deliberately written down rather than discovered later:
+  # `ComponentSync` prefers component data stored on the File row and only
+  # reads a spec over the wire when that is missing. Measured on this project,
+  # 300 of 305 spec files carry it — so five still round-trip to the harness
+  # *inside* this transaction, and a harness that stalls holds the connection
+  # for the fs timeout on each. The fix is to make the manifest carry data for
+  # every spec, not to widen the timeout further.
+  @reconcile_timeout_ms 60_000
+
   defp reconcile(scope, entries) do
+    {:ok, result} =
+      Repo.transaction(fn -> do_reconcile(scope, entries) end, timeout: @reconcile_timeout_ms)
+
+    result
+  end
+
+  defp do_reconcile(scope, entries) do
     summary = FileSync.reconcile(scope, entries)
 
     # Reconciling files is only half of a sync. The other half turns those
