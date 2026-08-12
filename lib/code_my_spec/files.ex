@@ -156,6 +156,33 @@ defmodule CodeMySpec.Files do
     |> Repo.all()
   end
 
+  @doc """
+  The components this working copy actually has files for.
+
+  Components are project-level on purpose — a component id is stable, and 112
+  stories and 4048 requirements link to one. Whether a *checkout* has a spec for
+  it is a different question, and this is the side that answers it: `files`
+  carries both `component_id` and `harness_id`, so presence is already per
+  working copy without anything moving.
+
+  The distinction has teeth. `CodeMySpecLocalWeb.EpicsLive` was deleted from the
+  spec tree on 2026-08-10 (`ad775a1`, "Move the EpicsLive specs to where the
+  code actually is"). Three checkouts had not pulled, their stale spec files
+  kept re-projecting the component, and every agent was told it had an orphan
+  context — including the checkouts where the file was correctly gone, which
+  could not resolve it because all four resolutions act on a file they do not
+  have.
+  """
+  @spec component_ids_present(Scope.t()) :: MapSet.t(Ecto.UUID.t())
+  def component_ids_present(%Scope{active_project_id: project_id} = scope) do
+    File
+    |> where([f], f.project_id == ^project_id and not is_nil(f.component_id))
+    |> scope_to_harness(scope)
+    |> select([f], f.component_id)
+    |> Repo.all()
+    |> MapSet.new()
+  end
+
   @doc "List files for a specific story."
   @spec list_story_files(Scope.t(), integer()) :: [File.t()]
   def list_story_files(%Scope{active_project_id: project_id} = scope, story_id) do

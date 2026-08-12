@@ -55,6 +55,11 @@ defmodule CodeMySpecTest.PreviewApp do
     conn
     |> put_resp_cookie("_preview_app_session", "sam", http_only: true, same_site: "Lax")
     |> put_resp_content_type("text/html")
+    # What the app was actually asked, as opposed to what the proxy believed it
+    # asked. This stand-in answers every method 200, where a real Phoenix app
+    # 404s a POST to `/` — so without saying so, a GET relayed as a POST looks
+    # identical to a working proxy.
+    |> put_resp_header("x-preview-app-method", conn.method)
     |> send_resp(200, body)
   end
 end

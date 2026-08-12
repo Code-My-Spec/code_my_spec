@@ -5,9 +5,11 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash",
+            "command": "cms-mcp-relay",
             "args": [
-              "${CLAUDE_PLUGIN_ROOT}/.claude-plugin/bin/hook",
+              "hook",
+              "--port",
+              "4004",
               "/api/hooks/session-start"
             ]
           }
@@ -19,9 +21,11 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash",
+            "command": "cms-mcp-relay",
             "args": [
-              "${CLAUDE_PLUGIN_ROOT}/.claude-plugin/bin/hook",
+              "hook",
+              "--port",
+              "4004",
               "/api/hooks/pre-tool-use"
             ]
           }
@@ -32,9 +36,11 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash",
+            "command": "cms-mcp-relay",
             "args": [
-              "${CLAUDE_PLUGIN_ROOT}/.claude-plugin/bin/hook",
+              "hook",
+              "--port",
+              "4004",
               "/api/hooks/ask-user-question"
             ]
           }
@@ -46,9 +52,11 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash",
+            "command": "cms-mcp-relay",
             "args": [
-              "${CLAUDE_PLUGIN_ROOT}/.claude-plugin/bin/hook",
+              "hook",
+              "--port",
+              "4004",
               "/api/hooks/post-tool-use"
             ]
           }
@@ -60,9 +68,11 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash",
+            "command": "cms-mcp-relay",
             "args": [
-              "${CLAUDE_PLUGIN_ROOT}/.claude-plugin/bin/hook",
+              "hook",
+              "--port",
+              "4004",
               "/api/hooks/stop"
             ]
           }
@@ -74,9 +84,11 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash",
+            "command": "cms-mcp-relay",
             "args": [
-              "${CLAUDE_PLUGIN_ROOT}/.claude-plugin/bin/hook",
+              "hook",
+              "--port",
+              "4004",
               "/api/hooks/subagent-start"
             ]
           }
@@ -88,9 +100,11 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash",
+            "command": "cms-mcp-relay",
             "args": [
-              "${CLAUDE_PLUGIN_ROOT}/.claude-plugin/bin/hook",
+              "hook",
+              "--port",
+              "4004",
               "/api/hooks/subagent-stop"
             ]
           }
@@ -102,9 +116,11 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash",
+            "command": "cms-mcp-relay",
             "args": [
-              "${CLAUDE_PLUGIN_ROOT}/.claude-plugin/bin/hook",
+              "hook",
+              "--port",
+              "4004",
               "/api/permissions/request"
             ]
           }

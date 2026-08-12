@@ -37,6 +37,11 @@ defmodule CodeMySpecWeb.Application do
         # subtree only starts where analyzers run locally, and this table is
         # about the projects where they do not.
         CodeMySpec.Analysis.HarnessRegistry,
+        # Which working copies are mid-reconcile. Same reasoning as the table
+        # above — it is about state the server holds on behalf of harnesses that
+        # run elsewhere, so it belongs to the web app rather than to the
+        # analysis subtree.
+        CodeMySpec.Files.ReconcileRegistry,
         CodeMySpecWeb.Presence,
         # The harness tools. Same server module the local process runs — the
         # only difference is where scope comes from, and the tools never had to

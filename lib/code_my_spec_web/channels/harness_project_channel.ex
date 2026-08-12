@@ -44,6 +44,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   alias CodeMySpec.Files.ComponentSync
   alias CodeMySpec.Files.File, as: FileRecord
   alias CodeMySpec.Files.FileSync
+  alias CodeMySpec.Files.ReconcileRegistry
   alias CodeMySpec.Files.Scanner
   alias CodeMySpec.Harnesses
   alias CodeMySpec.Hooks.AskUserQuestion
@@ -496,6 +497,10 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
 
   defp start_reconcile(scope, entries) do
     Task.Supervisor.async_nolink(CodeMySpec.TaskSupervisor, fn ->
+      # Marked by the task, not by this function, so the entry lives exactly as
+      # long as the work and needs no cleanup — when the task exits, registered
+      # or crashed, the marker goes with it.
+      ReconcileRegistry.mark(scope.active_harness_id, length(entries))
       reconcile(scope, entries)
     end)
   end

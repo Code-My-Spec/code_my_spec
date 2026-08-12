@@ -19,9 +19,15 @@ defmodule CodeMySpec.Analysis.FsRequestSelfCallTest do
   other unreachable harness gets.
 
   So the property under test is ours, not OTP's: the `catch` is what makes a
-  self-call answer `{:error, :harness_unreachable}` instead of propagating an
-  exit through a reconcile. Narrowing that rescue would reintroduce a crash
-  here, and nothing else would notice.
+  self-call answer with a refusal instead of propagating an exit through a
+  reconcile. Narrowing that rescue would reintroduce a crash here, and nothing
+  else would notice.
+
+  It answers `:harness_self_call`, not `:harness_timeout`. The prose above had
+  the discrimination — "0ms, not the 30s timeout" — while the atom collapsed
+  both into `:harness_unreachable`, which reads as "no harness" and sends the
+  reader to check a registration that is fine. The two failures have opposite
+  fixes: this one is our own wiring, a timeout is the harness not answering.
   """
 
   use ExUnit.Case, async: false
@@ -45,11 +51,34 @@ defmodule CodeMySpec.Analysis.FsRequestSelfCallTest do
         Analysis.harness_fs_request(ctx.harness_id <> "-inner", "read_file", %{}, 1_000)
       end)
 
-    assert {:error, :harness_unreachable} = Task.await(task, 2_000)
+    assert {:error, {:harness_self_call, details}} = Task.await(task, 2_000)
+    assert details.op == "read_file"
+
+    assert details.harness_id =~ "-inner",
+           "the refusal names the working copy it was for — the whole complaint " <>
+             "against the old atom was that it arrived bare"
   end
 
-  test "an unregistered harness is still unreachable" do
-    assert {:error, :harness_unreachable} =
+  test "an unregistered harness says so, rather than blaming the connection" do
+    assert {:error, {:harness_not_registered, details}} =
              Analysis.harness_fs_request("nobody-serves-this", "read_file", %{}, 1_000)
+
+    assert details == %{harness_id: "nobody-serves-this", op: "read_file"}
+  end
+
+  # The two arrive at the same `catch` and used to leave it as the same atom.
+  # A reader who cannot tell them apart checks the harness for a fault that is
+  # in this server, or restarts a harness that was never the problem.
+  test "a self-call and an absent harness are not the same failure" do
+    task =
+      Task.async(fn ->
+        Registry.register(HarnessRegistry, "distinct-inner", :test)
+        Analysis.harness_fs_request("distinct-inner", "read_file", %{}, 1_000)
+      end)
+
+    assert {:error, {self_tag, _}} = Task.await(task, 2_000)
+    assert {:error, {absent_tag, _}} = Analysis.harness_fs_request("nobody", "read_file", %{}, 1_000)
+
+    refute self_tag == absent_tag
   end
 end

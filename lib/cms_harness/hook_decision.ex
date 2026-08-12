@@ -32,13 +32,21 @@ defmodule CmsHarness.HookDecision do
 
   @deciding_hooks ~w(stop subagent-stop)
 
+  # Every shape `explain/2` and `summarize/1` handle. It listed six and six were
+  # already being passed — `{:not_connected, probe}`, `{:unknown_harness, id}`,
+  # `{:server_unreachable, id, reason}` and `:no_harness` all arrive here from
+  # `HooksController` and none of them were declared.
   @type reason ::
           :not_connected
+          | {:not_connected, {:http, pos_integer()} | {:error, term()}}
           | :no_project
           | :no_credential
           | :no_reply
+          | :no_harness
           | :invalid_config
           | {:refused, term()}
+          | {:unknown_harness, String.t()}
+          | {:server_unreachable, String.t(), term()}
 
   @doc """
   The response for a hook the harness could not get an answer for.
@@ -62,6 +70,65 @@ defmodule CmsHarness.HookDecision do
   @doc "Whether a hook is one whose answer decides something."
   @spec deciding?(String.t()) :: boolean()
   def deciding?(hook), do: hook in @deciding_hooks
+
+  @doc """
+  One line naming what went wrong, for the log.
+
+  `explain/2` already tells the agent which end is broken. The log did not:
+  every refusal was written with `inspect/1` on the raw reason, so
+  `harness.log` carried 284 lines of
+
+      [CmsHarness] pre-tool-use refused for <dir>: {:not_connected, {:http, 200}}
+
+  which reads as a contradiction — the server answered, and answered 200, and
+  the line calls it not-connected. Both halves are true and the pairing is the
+  useful part (the channel is down *and* the server is up, so restart the
+  harness), but a tuple does not say that, and whoever is reading the log is by
+  definition the person who cannot see the agent's copy.
+
+  So the discriminator that `explain/2` already computes gets rendered here
+  too, short enough for one line. Same clauses, same order; the two must not be
+  able to disagree about which end is broken.
+  """
+  @spec summarize(reason()) :: String.t()
+  def summarize({:not_connected, {:http, status}}) when status >= 500 do
+    "channel down, server answering #{status} — server-side; the channel rejoins on its own"
+  end
+
+  def summarize({:not_connected, {:http, status}}) do
+    "channel down, server answering #{status} — this harness cannot hold a socket; " <>
+      "check the credential and the reconnect attempts, not the server"
+  end
+
+  def summarize({:not_connected, {:error, reason}}) do
+    "channel down, server not answering at all: #{inspect(reason, limit: 3)}"
+  end
+
+  def summarize(:not_connected), do: "channel to the server is down"
+
+  def summarize(:no_reply), do: "server was asked and did not answer in time"
+
+  def summarize({:refused, detail}) do
+    "server answered with an error rather than a decision: #{inspect(detail, limit: 5)}"
+  end
+
+  def summarize(:no_credential), do: "no credential — the harness never connected"
+
+  def summarize(:no_project), do: "no project id for this directory"
+
+  def summarize(:invalid_config), do: "config.yml found but no project id could be read from it"
+
+  def summarize({:unknown_harness, id}) do
+    "the server does not recognise harness #{id}, or has no location recorded for it"
+  end
+
+  def summarize({:server_unreachable, id, reason}) do
+    "could not ask the server where #{id} is: #{inspect(reason, limit: 3)}"
+  end
+
+  def summarize(:no_harness), do: "the hook named no working copy"
+
+  def summarize(other), do: inspect(other)
 
   defp already_blocked?(%{"stop_hook_active" => true}), do: true
   defp already_blocked?(_), do: false

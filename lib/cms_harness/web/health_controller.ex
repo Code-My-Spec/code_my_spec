@@ -38,7 +38,8 @@ defmodule CmsHarness.Web.HealthController do
           # and cannot hang: a health check that blocks on the network is its
           # own outage. `nil` means the server has never answered this channel,
           # which is a different fact from `connected: false`.
-          server_replied_ago_s: ChannelClient.server_replied_ago(root)
+          server_replied_ago_s: ChannelClient.server_replied_ago(root),
+          joined_ago_s: ChannelClient.joined_ago(root)
         }
       end)
 
@@ -65,9 +66,40 @@ defmodule CmsHarness.Web.HealthController do
       # Said explicitly so that "serving nothing" cannot be read off a 200 as
       # "everything is fine".
       serving: length(projects),
-      degraded: projects == [] or Enum.any?(projects, &(not &1.connected))
+      degraded: projects == [] or Enum.any?(projects, &degraded?/1)
     })
   end
+
+  # `connected` alone was the whole verdict, and it is belief: the harness's own
+  # view of its socket, which cannot be wrong from where it stands. Through the
+  # incident this endpoint exists to catch, it read `true` while the server's
+  # registry held no entry for this harness and every request came back
+  # unreachable — `serving 3, degraded false` the entire time.
+  #
+  # The evidence to correct that was already being *reported* and never
+  # consulted. Now it is.
+  @doc false
+  # Public for the same reason `HookDecision.channel_age_note/1` is: the
+  # readings can then be asserted without standing up a channel and a server to
+  # not answer it.
+  def degraded?(project), do: not project.connected or never_answered?(project)
+
+  # Deliberately narrow. "Has not replied lately" is not evidence of anything —
+  # a harness nobody is working in legitimately goes hours without a reply, and
+  # calling that degraded would trade a false green for a false red, which is
+  # the same mistake wearing the other colour.
+  #
+  # Never answered *at all*, well after joining, is the one reading that cannot
+  # be innocent: the join succeeded locally and the server has not once
+  # addressed us. A channel that has ever been answered stays healthy however
+  # quiet it goes.
+  @unanswered_grace_seconds 60
+
+  defp never_answered?(%{connected: true, server_replied_ago_s: nil, joined_ago_s: joined})
+       when is_integer(joined) and joined > @unanswered_grace_seconds,
+       do: true
+
+  defp never_answered?(_project), do: false
 
   # Rendered rather than raw, because the caller is usually a human or an agent
   # reading JSON, and `{:drifted, "abc123", "def456"}` does not survive that.

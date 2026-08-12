@@ -167,8 +167,14 @@ defmodule CmsHarness.Web.HooksController do
     end
   end
 
+  # Logged through `summarize/1` rather than `inspect/1`. The refusal the agent
+  # gets has named which end is broken for a while; the log line did not, so
+  # `harness.log` carried the raw tuple and whoever was reading it — the one
+  # person who cannot see the agent's copy — got `{:not_connected, {:http, 200}}`
+  # and went looking at the network while the server was up and answering.
   defp refuse(hook, reason, working_dir, params) do
-    Logger.warning("[CmsHarness] #{hook} refused for #{working_dir}: #{inspect(reason)}")
+    Logger.warning("[CmsHarness] #{hook} refused for #{working_dir}: #{HookDecision.summarize(reason)}")
+
     HookDecision.unreachable(hook, reason, working_dir, params)
   end
 
