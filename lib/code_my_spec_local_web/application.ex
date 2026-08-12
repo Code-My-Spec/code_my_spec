@@ -65,6 +65,15 @@ defmodule CodeMySpecLocalWeb.Application do
            name: CodeMySpec.Supervisor
          ) do
       {:ok, pid} ->
+        # After the supervisor, because it starts a subtree under it; before the
+        # banner, so "serving project X at Y" is above the line announcing the
+        # harness is up rather than after it.
+        #
+        # A no-op unless `CMS_PROJECT_DIR` is set, which is the sprite's case.
+        # A laptop leaves it unset and picks working copies up from hooks, which
+        # is what every other line of this module assumes.
+        CmsHarness.Projects.start_configured()
+
         print_harness_banner(harness_log)
         {:ok, pid}
 

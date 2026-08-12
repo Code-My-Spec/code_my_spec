@@ -554,8 +554,25 @@ RESET
 
   log "Starting the light harness on ${CMS_HARNESS_PORT} against ${CMS_SERVER_URL}"
 
+  # The in-repo harness, not the standalone release.
+  #
+  # `/opt/cms_harness` is built from the separate `cms_harness` repo, which
+  # stopped moving on 2026-08-02 while `lib/cms_harness` kept going — 748 lines
+  # against 1320 in channel_client alone, 22 modules against 30. So a drill
+  # tested a harness nobody develops, and a fix landing in this repo could not
+  # reach a sprite at all (bddb1ac1).
+  #
+  # What that looked like: drill 17, on an image rebuilt from this repo with the
+  # manifest reply-shape fix verifiably in the release, still logged "the server
+  # REJECTED the manifest ... status => accepted" four times. The fix was in the
+  # image; the running process came from the other repo.
+  #
+  # `CMS_HARNESS=1` rather than a `harness` subcommand: the release launcher
+  # validates subcommands against a fixed list and never threads an unknown one
+  # through, which is why `application.ex` carries the env-var fallback in the
+  # first place.
   exec setpriv --reuid=agent --regid=agent --init-groups \
-    /opt/cms_harness/bin/cms_harness start
+    env CMS_HARNESS=1 /opt/cms/bin/code_my_spec_cli start
 fi
 
 exec setpriv --reuid=agent --regid=agent --init-groups \
