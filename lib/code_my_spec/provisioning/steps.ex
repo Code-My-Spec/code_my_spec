@@ -2486,6 +2486,18 @@ defmodule CodeMySpec.Provisioning.Steps do
            # commands against something that exists instead of against a
            # server address that was released weeks ago.
            |> Keyword.put_new(:bind, ip),
+         # Before any command runs on it. Hetzner returns a server the moment
+         # it is scheduled, `status: initializing`, and SSH comes up somewhere
+         # in the following minute — so this step used to reach the box about
+         # thirty seconds after asking for it and fail with
+         # `{:registry_start_failed, 255, "ssh: connect to host … timed out"}`.
+         # `serve_registries/5` halts on that, so the whole run stopped at
+         # `server` with the thirteen steps behind it reporting nothing.
+         #
+         # The builder has waited like this all along; this path never learned
+         # to, which is why a drill's outcome depended on how quickly Hetzner
+         # happened to boot that day.
+         :ok <- await_box(run, opts),
          {:ok, _bucket} <- Registry.ensure(scope, registry_opts),
          {:ok, served} <- Registry.serve(scope, registry_opts),
          {:ok, database} <- serve_database(scope, environment, run, opts) do
@@ -2548,6 +2560,14 @@ defmodule CodeMySpec.Provisioning.Steps do
       {:ok, _} -> :ok
       {:error, reason} -> {:error, reason}
     end
+  end
+
+  # The same wait the builder does, with the same knobs, so a caller that
+  # already tunes `:ssh_attempts` or `:ssh_interval_ms` for one tunes both.
+  # A fixture that injects its own `:run` — a local box, already up — passes
+  # this on the first attempt and pays nothing.
+  defp await_box(run, opts) do
+    Remote.await_ssh(run, Keyword.get(opts, :ssh_attempts, 90), opts)
   end
 
   # Which environment a box belongs to, from the name the server step gave it.
