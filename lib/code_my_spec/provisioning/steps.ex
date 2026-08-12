@@ -2479,10 +2479,14 @@ defmodule CodeMySpec.Provisioning.Steps do
          # step had made it. Recorded here rather than relied on downstream,
          # because the step that creates a resource is the one that knows it
          # exists.
+         # `origin` explicitly, because its default is "adopted" and teardown's
+         # first clause returns adopted resources untouched — so a resource
+         # recorded without one is reported as torn down and never deleted.
          %{
            kind: "bucket",
            location: served.bucket,
-           identifier: "registry"
+           identifier: "registry",
+           origin: "created"
          },
          database
        ]}
