@@ -61,6 +61,14 @@ import (
 const defaultBaseURL = "http://localhost:4003"
 
 func main() {
+	// `hook <endpoint>` forwards a Claude Code hook instead of relaying MCP.
+	// Same binary because the same binary is what every packager already puts
+	// on PATH, with a .exe on Windows — which is the whole reason the hooks
+	// need it. See hook.go.
+	if len(os.Args) > 1 && os.Args[1] == "hook" {
+		os.Exit(runHook(os.Args[2:]))
+	}
+
 	base := getenv("CMS_MCP_BASE_URL", defaultBaseURL)
 	dir := resolveDir()
 	endpoint := strings.TrimRight(base, "/") + "/mcp?dir=" + url.QueryEscape(dir)
