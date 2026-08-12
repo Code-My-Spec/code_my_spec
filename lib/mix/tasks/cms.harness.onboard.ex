@@ -85,6 +85,12 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   @relay "cms-mcp-relay"
   @capability "hooks=1"
 
+  # Named in the refusal so the operator knows what to wait for, not used to
+  # decide anything. The check is the capability, because "which version" is
+  # never the question — a checkout build carries the subcommand with no
+  # release number at all, and pinning a number would reject it.
+  @min_release "codemyspec 2.0"
+
   # Refuse before writing anything, because the thing being written depends on
   # a binary this does not ship.
   #
@@ -123,9 +129,18 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
            reads that as a hook that ran, so onboarding this working copy
            would leave every hook silently dead rather than visibly broken.
 
-           Upgrade it, then run this again:
+           The hook subcommand ships in #{@min_release}. Upgrade, then run
+           this again:
 
                brew upgrade codemyspec
+
+           Working from a checkout instead — which is how to get it before
+           that release exists:
+
+               (cd relay && go build -o cms-mcp-relay .)
+               mkdir -p ~/.codemyspec/bin
+               cp relay/cms-mcp-relay ~/.codemyspec/bin/
+               export PATH="$HOME/.codemyspec/bin:$PATH"
 
            Nothing has been written — this refused before touching the plugin
            config or .claude/settings.json.

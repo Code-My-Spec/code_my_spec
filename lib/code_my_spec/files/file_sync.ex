@@ -21,9 +21,11 @@ defmodule CodeMySpec.Files.FileSync do
   alias CodeMySpec.Embeddings.HexDocProjector
   alias CodeMySpec.Environments
   alias CodeMySpec.Files
+  alias CodeMySpec.Files.ComponentSync
   alias CodeMySpec.Files.Scanner
   alias CodeMySpec.Paths
   alias CodeMySpec.Problems
+  alias CodeMySpec.Repo
   alias CodeMySpec.Stories
   alias CodeMySpec.Users.Scope
 
@@ -177,6 +179,67 @@ defmodule CodeMySpec.Files.FileSync do
   what lets it tell a deletion from an omission — a stream of per-file updates
   cannot, and would silently retain rows for files that had gone.
   """
+  @doc """
+  `reconcile/2` and the component projection, committed together or not at all.
+
+  Reconciling files is only half of a sync: the other half turns those files
+  into components and writes `component_id` back onto each File row. Between the
+  two, the File rows are current and the components derived from them are not —
+  and a requirement check landing in that gap reads a *committed, wrong* answer
+  rather than a partial one it has any way to detect. The in-flight marker
+  (`ReconcileRegistry`) cannot help, because nothing about that state looks
+  in-flight.
+
+  Scope chosen on measurement: median 2.76s, p90 7.08s for the window. Postgres
+  readers do not block on writers under MVCC, so including the projection costs
+  a held connection rather than a stalled reader, which is what makes it
+  affordable on a database several worktrees share.
+
+  The timeout is explicit because Ecto's default 15s sits between that p90 and
+  the tail — the worst possible place for it, since it would abort exactly the
+  slow reconciles this exists to keep consistent.
+
+  Caveat, written down rather than left to be discovered: `ComponentSync`
+  prefers component data stored on the File row and only reads a spec over the
+  wire when it is missing. Measured at 300 of 305 spec files carrying it, so a
+  few still round-trip to the harness *inside* this transaction, and a stalled
+  harness holds the connection for the fs timeout on each. The fix is to make
+  the manifest carry data for every spec; widening the timeout again only buys
+  a longer hold.
+
+  Lives here rather than at the channel that calls it: `CodeMySpecWeb` may not
+  reference `CodeMySpec.Repo`, and Boundary is right about that — a channel
+  opening a database transaction is the wrong shape regardless of whether the
+  compiler catches it.
+  """
+  @reconcile_timeout_ms 60_000
+
+  @spec reconcile_and_project(Scope.t(), [map()]) :: %{
+          upserted: non_neg_integer(),
+          removed: non_neg_integer(),
+          changed: non_neg_integer(),
+          components: non_neg_integer()
+        }
+  def reconcile_and_project(%Scope{} = scope, observations) when is_list(observations) do
+    {:ok, result} =
+      Repo.transaction(
+        fn ->
+          summary = reconcile(scope, observations)
+          {:ok, components} = ComponentSync.sync_from_files(scope)
+
+          %{
+            upserted: summary.upserted,
+            removed: summary.removed,
+            changed: length(summary.changed_entries),
+            components: length(components.all_components)
+          }
+        end,
+        timeout: @reconcile_timeout_ms
+      )
+
+    result
+  end
+
   @spec reconcile(Scope.t(), [map()]) :: map()
   def reconcile(%Scope{} = scope, observations) when is_list(observations) do
     # Snapshot existing rows up front so we can compute fingerprint diffs
