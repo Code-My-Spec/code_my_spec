@@ -43,7 +43,11 @@ defmodule CodeMySpec.Hooks.SubagentStop do
     # pair — so every sub-agent stop that had something to block on raised
     # `CaseClauseError` instead. The key is `Stop`'s to count; nothing here
     # needs it, but the arity is not optional.
-    case Validation.validate_stop(scope, task) do
+    # And the opts, which are what `session_paths/2` reads the session id out of.
+    # Omitted, `opts` defaulted to `[]` and every sub-agent stop answered "attribution
+    # unavailable" and blocked on every finding in the project — never once demoting,
+    # for any sub-agent. `Stop` forwards them (stop.ex:233); this did not.
+    case Validation.validate_stop(scope, task, session_id: session_id, agent_id: agent_id) do
       {:error, reason, _blocking_key} ->
         Logger.info("[SubagentStopHook] [#{req_id}] Blocking: #{String.slice(reason, 0, 100)}",
           cms_decision: "block",
