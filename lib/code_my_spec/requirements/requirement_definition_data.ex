@@ -922,7 +922,27 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
       }),
 
       # QA chain — gated on qa_setup so all QA work has a plan, and run after
-      # issues are resolved so per-story work begins from a clean slate.
+      # issues are *triaged*, not resolved.
+      #
+      # `qa_setup` is the seam the graph doc calls "the whole-project gate that
+      # opens story-level work", so anything it waits on gates every story and
+      # every component in the project. It used to wait on `issues_resolved`,
+      # and the effect was that one open medium issue anywhere — in another
+      # agent's territory, in a package awaiting a release, in something
+      # instrumented and waiting to fire — held up designing and building
+      # everything.
+      #
+      # Worse, it was unsatisfiable in the ordinary case: on a project several
+      # agents share, no single agent can resolve every accepted issue, so the
+      # gate had no passing state. Measured on this project: 19 accepted at
+      # medium+, of which 7 belonged to other owners, 4 wanted an operator
+      # publish and 3 were waiting for a failure to recur.
+      #
+      # Triage is the right gate here because triage is always satisfiable —
+      # every issue can be accepted, dismissed or routed by whoever is looking
+      # at it. A gate an agent cannot pass is not a gate, it is a wall.
+      #
+      # Resolution still gates, but at the end: see `qa_journey_plan`.
       new!(%{
         id: 14,
         name: "qa_setup",
@@ -932,8 +952,18 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         satisfied_by: AgentTasks.QaSetup,
         artifact_type: :review,
         description: "QA plan exists with App Overview, Tools Registry, and Seed Strategy",
-        prerequisites: [7]
+        prerequisites: [6]
       }),
+      # Where `issues_resolved` gates instead.
+      #
+      # The journey is the last thing before a release: it exercises the whole
+      # app end to end, and running it against known-open defects tests a build
+      # nobody intends to ship. So resolution belongs here, at the end, rather
+      # than in front of the work that produces the thing being tested.
+      #
+      # This is also a fan-in — every story's `qa_complete` feeds it — so it is
+      # already the node that means "the project is done except for the final
+      # pass". Adding the issue queue to that is the same statement.
       new!(%{
         id: 10,
         name: "qa_journey_plan",
@@ -943,7 +973,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         satisfied_by: AgentTasks.QaJourney,
         artifact_type: :review,
         description: "QA journey plan exists and valid",
-        prerequisites: [14]
+        prerequisites: [14, 7]
       }),
       new!(%{
         id: 11,
