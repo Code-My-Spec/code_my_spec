@@ -53,6 +53,18 @@ defmodule CodeMySpecSpex.Story841.Criterion1961Spex do
         tear_down_after(context.scope, [:server, :storage, :dns])
         tear_down_repository(context.project)
 
+        # A domain, before the plan runs. Nothing in story 841 has ever set
+        # one, so the domain step refused with "no domain set on the project"
+        # and the twelve steps after it reported nothing behind them — which
+        # reads as a setup that failed everywhere rather than one that stopped
+        # at its second step.
+        #
+        # Its own subdomain, the way every other criterion that needs a domain
+        # does it: the plan brings up `uat.` and the apex of whatever it is
+        # given, and pointing that at `astralbi.com` itself would have teardown
+        # removing records the zone actually uses.
+        own_domain(context.project, "c1961.astralbi.com")
+
         # The default plan is the subject, so it is set rather than inherited.
         # Nothing is provisioned because nothing has run yet — the `when_` is
         # the first thing in this scenario to touch a provider.
