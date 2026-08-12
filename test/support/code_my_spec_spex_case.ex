@@ -803,7 +803,14 @@ defmodule CodeMySpecSpex.Case do
       or generate it with `mix cms.new`.
       """
 
-    refuse_unbuildable_drill(path)
+    # Only while recording. The refusal exists to stop a recording spending ten
+    # minutes and real money provisioning a repository, two servers, DNS and a
+    # builder box before dying on `COPY assets assets: not found`. On replay
+    # nothing is built — the cassette answers the whole deploy — so enforcing it
+    # there turns a completed recording into a permanent failure whenever the
+    # checkout it was made from is later trimmed. That is 8039: it has clean
+    # cassettes and has been red for want of an application it never runs.
+    recording?() && refuse_unbuildable_drill(path)
 
     reset_drill_checkout(path)
 
@@ -2390,11 +2397,11 @@ defmodule CodeMySpecSpex.Case do
   # as well as calling providers, and a cassette holding only the HTTP half
   # passes while recording then fails on replay — naming the subprocess, which
   # was not the thing that changed.
-  defmacro run_steps(view, keys, cassette_name) do
+  defmacro run_steps(view, keys, cassette_name, opts \\ []) do
     quote do
       view = unquote(view)
 
-      with_full_cassette unquote(cassette_name) do
+      with_full_cassette unquote(cassette_name), unquote(opts) do
         for key <- unquote(keys) do
           view
           |> Phoenix.LiveViewTest.element(

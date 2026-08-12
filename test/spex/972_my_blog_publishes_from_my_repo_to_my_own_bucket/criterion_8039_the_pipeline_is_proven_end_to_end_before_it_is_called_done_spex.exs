@@ -126,7 +126,21 @@ defmodule CodeMySpecSpex.Story972.Criterion8039Spex do
         # setup run.
         commit_generated_files(context.project.local_path)
 
-        run_steps(view, [:domain, :dns, :deploy, :storage], @deploy_cassette)
+        # Method and URI, and not sequentially. The storage step polls
+        # `list_buckets` until every bucket is present, and the recording holds
+        # one `GET /` because by then they were — so the second poll found the
+        # single interaction already consumed and the run died against a
+        # cassette that plainly contains its request. The error even said so:
+        # method matched, URI matched, no interaction left.
+        #
+        # Safe here because this cassette's requests are already-converged
+        # reads. It is not safe in general: a cassette holding a 404,404,200
+        # readiness sequence needs `sequential` or the first answer is replayed
+        # forever and the step never sees the resource appear.
+        run_steps(view, [:domain, :dns, :deploy, :storage], @deploy_cassette,
+          match_requests_on: [:method, :uri],
+          sequential: false
+        )
 
         trace_steps(view, [:repository, :server, :secrets, :domain, :dns, :deploy, :storage])
 
