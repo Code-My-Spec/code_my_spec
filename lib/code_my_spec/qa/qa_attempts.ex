@@ -9,6 +9,7 @@ defmodule CodeMySpec.Qa.QaAttempts do
 
   import Ecto.Query, warn: false
 
+  alias CodeMySpec.Issues
   alias CodeMySpec.Qa.QaAttempt
   alias CodeMySpec.Repo
   alias CodeMySpec.Sessions.Session
@@ -38,6 +39,14 @@ defmodule CodeMySpec.Qa.QaAttempts do
              parent_attempt_id <- find_latest_attempt_id(story_id),
              attrs <- build_attrs(params, story_id, agent_id, task_id, parent_attempt_id),
              {:ok, attempt} <- insert_attempt(attrs) do
+          # The submission is the moment attribution is knowable: the agent has
+          # just declared that these issues are the findings of a pass over
+          # this story. `story_issues_resolved` gates the story's release on
+          # them, and asking the agent to remember `story_id` on every
+          # `create_issue` call did not work — every accepted issue on this
+          # project reached triage with none. Only `:app` findings are
+          # attributed; see `Issues.attribute_to_story/3`.
+          Issues.attribute_to_story(scope, attempt.issue_ids || [], story_id)
           attempt
         else
           {:error, reason} -> Repo.rollback(reason)

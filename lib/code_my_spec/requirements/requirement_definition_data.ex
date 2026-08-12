@@ -763,6 +763,31 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         execution_type: :sub_agent,
         subagent_role: :qa
       }),
+      # Issues QA raised against *this* story, resolved before it is released.
+      #
+      # The project-level `issues_resolved` runs once, at the end, over the
+      # whole queue — the right place for issues nobody attributed to a story,
+      # and the wrong place for a blocker that this story's own QA pass just
+      # found. Waiting until then means the story ships, or the whole cycle
+      # stalls behind a defect that belongs to one story.
+      #
+      # Reads only issues carrying this `story_id`, so an issue in another
+      # agent's territory cannot gate here. That is the same argument that
+      # moved `issues_resolved` off `qa_setup`, applied one level down: a gate
+      # whose passing state depends on work outside the gated unit is a wall.
+      new!(%{
+        id: 6,
+        name: "story_issues_resolved",
+        node_scope: :self,
+        check_type: :delegate,
+        config: %{module: CodeMySpec.Requirements.IssuesChecker, function: :story_resolved?},
+        satisfied_by: AgentTasks.FixStoryIssues,
+        artifact_type: :review,
+        description:
+          "Accepted issues QA filed against this story are resolved at the project's blocking severity",
+        prerequisites: [4],
+        execution_type: :main_agent
+      }),
       # Criterion 1963: the loop's next work after QA clears is the UAT deploy.
       #
       # This node was removed in d207ad38 along with `devops_setup` and
@@ -778,8 +803,16 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
       # Filtered out entirely when the project's `devops` setting is `:off`,
       # which is the default — see `maybe_filter_devops/2`. A project that does
       # not do infrastructure through this tool never sees the node.
+      #
+      # id 7, not 5. It shipped as 5, which `three_amigos_complete` already
+      # held, and template ids are the only thing prerequisites resolve
+      # through: `Map.new(template, &{&1.id, ...})` keeps the last writer, so
+      # with devops on, `bdd_specs_exist`'s prerequisite [5] resolved to
+      # `deploy` and closed a cycle through the whole story chain. Invisible
+      # on the default `devops: :off`, where the filter drops `deploy` before
+      # the map is built and 5 means what it reads as.
       new!(%{
-        id: 5,
+        id: 7,
         name: "deploy",
         node_scope: :self,
         # The environment is config, not a function name. `uat_check/2` could
@@ -791,7 +824,7 @@ defmodule CodeMySpec.Requirements.RequirementDefinitionData do
         satisfied_by: AgentTasks.Deploy,
         artifact_type: :deployment,
         description: "Story is deployed to UAT and its health check passed",
-        prerequisites: [4],
+        prerequisites: [6],
         execution_type: :main_agent
       })
     ]

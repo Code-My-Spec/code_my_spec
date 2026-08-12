@@ -477,6 +477,13 @@ defmodule CodeMySpec.AgentTasks.QaStory do
       live. File the issues first, then submit.
     - The bare `submit_qa_result` (without the `mcp__plugin_codemyspec_local__`
       prefix) does NOT resolve — use the fully-qualified name.
+    - Attribution follows automatically: on submit, every `scope: app` issue
+      you listed is attached to this story, and `story_issues_resolved` holds
+      the story's release until they're fixed. `framework`, `qa` and `docs`
+      findings are about the tooling rather than the story, so they queue at
+      the project level instead. If an issue belongs to a *different* story,
+      pass that `story_id` on the `create_issue` call — an explicit
+      attribution is never overwritten.
     - Don't write findings into a result.md file. The harness doesn't read it.
       Screenshots and other evidence still belong on disk, but the canonical
       record is the DB attempt + linked issues.\

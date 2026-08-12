@@ -25,6 +25,7 @@ defmodule CodeMySpec.Sessions.SessionType do
     AgentTasks.FixAllBddSpecs,
     AgentTasks.FixBddSpecs,
     AgentTasks.FixIssues,
+    AgentTasks.FixStoryIssues,
     AgentTasks.LinkStoryComponent,
     AgentTasks.LiveContextSpec,
     AgentTasks.LiveViewSpec,

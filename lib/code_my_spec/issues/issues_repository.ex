@@ -41,6 +41,48 @@ defmodule CodeMySpec.Issues.IssuesRepository do
     |> Repo.all()
   end
 
+  def list_by_story_status_and_min_severity(%Scope{} = scope, story_id, status, min_severity) do
+    Issue
+    |> by_project(scope.active_project.id)
+    |> by_story(story_id)
+    |> by_status(status)
+    |> by_min_severity(min_severity)
+    |> ordered_by_severity()
+    |> Repo.all()
+  end
+
+  @doc """
+  Attribute unattributed `:app` issues to a story. Returns the count updated.
+
+  Deliberately narrow on both axes. `story_id is nil` so an explicit
+  attribution is never overwritten, and `scope == :app` so only findings
+  about the application under development can gate a story — a `:framework`,
+  `:qa` or `:docs` finding raised during a story's QA pass is about the
+  tooling around the work, not the work, and queues at the project level.
+  """
+  def attribute_to_story(%Scope{} = scope, issue_ids, story_id) do
+    uuids = Enum.flat_map(issue_ids, &cast_uuid/1)
+
+    if uuids == [] do
+      0
+    else
+      {count, _} =
+        Issue
+        |> by_project(scope.active_project.id)
+        |> where([i], i.id in ^uuids and is_nil(i.story_id) and i.scope == :app)
+        |> Repo.update_all(set: [story_id: story_id])
+
+      count
+    end
+  end
+
+  defp cast_uuid(id) do
+    case Ecto.UUID.cast(id) do
+      {:ok, uuid} -> [uuid]
+      :error -> []
+    end
+  end
+
   def get_issue!(%Scope{} = scope, id) do
     Repo.get_by!(Issue, id: id, project_id: scope.active_project.id)
   end

@@ -37,6 +37,32 @@ defmodule CodeMySpec.Issues do
     IssuesRepository.list_by_story(scope, story_id)
   end
 
+  @doc """
+  Issues attributed to one story, at a status, at or above a severity.
+
+  What gates a single story's release, as opposed to
+  `list_by_status_and_min_severity/3`, which answers for the whole project.
+  """
+  def list_by_story_status_and_min_severity(%Scope{} = scope, story_id, status, min_severity) do
+    IssuesRepository.list_by_story_status_and_min_severity(scope, story_id, status, min_severity)
+  end
+
+  @doc """
+  Attribute unattributed `:app` issues to a story. Returns the count updated.
+
+  Called when a QA attempt is submitted: the agent has just named these
+  issues as the findings of a pass over one story, and `story_issues_resolved`
+  reads `story_id` to decide what blocks that story's release. Leaving it to
+  the agent to pass `story_id` on every `create_issue` call did not work —
+  every accepted issue on this project reached triage unattributed.
+  """
+  def attribute_to_story(%Scope{} = scope, issue_ids, story_id)
+      when is_list(issue_ids) and not is_nil(story_id) do
+    IssuesRepository.attribute_to_story(scope, issue_ids, story_id)
+  end
+
+  def attribute_to_story(_scope, _issue_ids, _story_id), do: 0
+
   def get_issue(%Scope{} = scope, id) do
     IssuesRepository.get_issue(scope, id)
   end
