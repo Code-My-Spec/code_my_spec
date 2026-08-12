@@ -1,22 +1,34 @@
 # :live hits real provider APIs and creates real resources. Never in the
 # normal suite — run it deliberately with `mix test --only live`.
+# :sops drives the real `sops` and `age` binaries, because the claim those
+# tests make is whether a keypair actually corresponds — which only the real
+# tools can answer. On a machine without them there is nothing to run.
+#
+# Decided here rather than inside the tests. The alternative was a `setup` that
+# returned `skip: true` and eight test bodies wrapped in `unless ctx[:skip]`,
+# which is a test branching on state it should control: it reads as a test that
+# ran and passed, and would go on reading that way if `available?/0` started
+# answering false for a reason nobody intended.
+sops_exclusions = if CodeMySpec.Provisioning.Sops.available?(), do: [], else: [:sops]
+
 ExUnit.start(
   # :docker builds a real image on this machine — seconds, and it needs a
   # working daemon. Run it with `mix test --include docker` when the build
   # sequence changes.
   # :fleet needs the local fleet up (`docker/fleet/fleet.sh up`) — real boxes
   # over real SSH, on this machine. Run it with `mix test --only fleet`.
-  exclude: [
-    :scenario,
-    :e2e,
-    :pending,
-    :live,
-    :docker,
-    :fleet,
-    :registry,
-    :record_google_login_shape,
-    :record_github_login_shape
-  ]
+  exclude:
+    [
+      :scenario,
+      :e2e,
+      :pending,
+      :live,
+      :docker,
+      :fleet,
+      :registry,
+      :record_google_login_shape,
+      :record_github_login_shape
+    ] ++ sops_exclusions
 )
 
 # Refuse to run against a schema this working copy has outgrown.

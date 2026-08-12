@@ -26,16 +26,13 @@ defmodule CodeMySpec.Provisioning.SecretsVerifyTest do
 
   @moduletag :sops
 
+  # No check that sops is installed: `test_helper.exs` excludes `:sops`
+  # entirely on a machine without the binaries, so reaching here means they are
+  # there.
   setup do
-    case Sops.available?() do
-      false ->
-        {:ok, skip: true}
-
-      true ->
-        {:ok, tmp} = Briefly.create(directory: true)
-        scope = %{full_scope_fixture() | environment: Environment.new(:local, tmp)}
-        {:ok, scope: scope, tmp: tmp}
-    end
+    {:ok, tmp} = Briefly.create(directory: true)
+    scope = %{full_scope_fixture() | environment: Environment.new(:local, tmp)}
+    {:ok, scope: scope, tmp: tmp}
   end
 
   defp key_for(scope, environment) do
@@ -46,34 +43,30 @@ defmodule CodeMySpec.Provisioning.SecretsVerifyTest do
 
   describe "a key that matches its file" do
     test "is satisfied once the boot secret is in it", ctx do
-      unless ctx[:skip] do
-        {public, _} = key_for(ctx.scope, "prod")
-        :ok = Sops.write_config(ctx.scope.environment, %{"prod" => public})
+      {public, _} = key_for(ctx.scope, "prod")
+      :ok = Sops.write_config(ctx.scope.environment, %{"prod" => public})
 
-        :ok =
-          Sops.put_secret(
-            ctx.scope.environment,
-            "prod",
-            "SECRET_KEY_BASE",
-            "v",
-            stored(ctx.scope, "prod")
-          )
+      :ok =
+        Sops.put_secret(
+          ctx.scope.environment,
+          "prod",
+          "SECRET_KEY_BASE",
+          "v",
+          stored(ctx.scope, "prod")
+        )
 
-        assert {:ok, :satisfied, _} = Steps.verify(:secrets, ctx.scope, environments: ["prod"])
-      end
+      assert {:ok, :satisfied, _} = Steps.verify(:secrets, ctx.scope, environments: ["prod"])
     end
 
     # The key is half of what this step produces. Reporting satisfied on it
     # alone skipped `generate_keys`, so nothing ever minted SECRET_KEY_BASE and
     # the deploy refused two steps later by name.
     test "is absent while the boot secret is missing", ctx do
-      unless ctx[:skip] do
-        {public, _} = key_for(ctx.scope, "prod")
-        :ok = Sops.write_config(ctx.scope.environment, %{"prod" => public})
-        :ok = Sops.put_secret(ctx.scope.environment, "prod", "K", "v", stored(ctx.scope, "prod"))
+      {public, _} = key_for(ctx.scope, "prod")
+      :ok = Sops.write_config(ctx.scope.environment, %{"prod" => public})
+      :ok = Sops.put_secret(ctx.scope.environment, "prod", "K", "v", stored(ctx.scope, "prod"))
 
-        assert {:ok, :absent} = Steps.verify(:secrets, ctx.scope, environments: ["prod"])
-      end
+      assert {:ok, :absent} = Steps.verify(:secrets, ctx.scope, environments: ["prod"])
     end
   end
 
@@ -82,28 +75,24 @@ defmodule CodeMySpec.Provisioning.SecretsVerifyTest do
     # the database kept the key a previous run generated. One ordinary command,
     # aimed at an unrelated problem.
     test "reports absent, so re-running the step repairs it", ctx do
-      unless ctx[:skip] do
-        {public, _} = key_for(ctx.scope, "prod")
-        :ok = Sops.write_config(ctx.scope.environment, %{"prod" => public})
-        :ok = Sops.put_secret(ctx.scope.environment, "prod", "K", "v", stored(ctx.scope, "prod"))
+      {public, _} = key_for(ctx.scope, "prod")
+      :ok = Sops.write_config(ctx.scope.environment, %{"prod" => public})
+      :ok = Sops.put_secret(ctx.scope.environment, "prod", "K", "v", stored(ctx.scope, "prod"))
 
-        # Someone else's recipient arrives, and the file is re-encrypted to it.
-        {:ok, {other_public, other_private}} = Sops.generate_key()
-        :ok = Sops.write_config(ctx.scope.environment, %{"prod" => other_public})
-        File.rm!(Path.join(ctx.tmp, "envs/prod.enc.env"))
-        :ok = Sops.put_secret(ctx.scope.environment, "prod", "K", "v", other_private)
+      # Someone else's recipient arrives, and the file is re-encrypted to it.
+      {:ok, {other_public, other_private}} = Sops.generate_key()
+      :ok = Sops.write_config(ctx.scope.environment, %{"prod" => other_public})
+      File.rm!(Path.join(ctx.tmp, "envs/prod.enc.env"))
+      :ok = Sops.put_secret(ctx.scope.environment, "prod", "K", "v", other_private)
 
-        assert {:ok, :absent} = Steps.verify(:secrets, ctx.scope, environments: ["prod"]),
-               "expected drift to report absent — reporting satisfied is what made it unrecoverable"
-      end
+      assert {:ok, :absent} = Steps.verify(:secrets, ctx.scope, environments: ["prod"]),
+             "expected drift to report absent — reporting satisfied is what made it unrecoverable"
     end
   end
 
   describe "an environment with no key at all" do
     test "is absent", ctx do
-      unless ctx[:skip] do
-        assert {:ok, :absent} = Steps.verify(:secrets, ctx.scope, environments: ["prod"])
-      end
+      assert {:ok, :absent} = Steps.verify(:secrets, ctx.scope, environments: ["prod"])
     end
   end
 
@@ -115,16 +104,14 @@ defmodule CodeMySpec.Provisioning.SecretsVerifyTest do
     # Reporting satisfied here is what let setup skip straight past this step
     # with an empty environment behind it.
     test "is absent, and running the step settles it", ctx do
-      unless ctx[:skip] do
-        key_for(ctx.scope, "prod")
+      key_for(ctx.scope, "prod")
 
-        assert {:ok, :absent} = Steps.verify(:secrets, ctx.scope, environments: ["prod"])
+      assert {:ok, :absent} = Steps.verify(:secrets, ctx.scope, environments: ["prod"])
 
-        {:ok, _} = Steps.run(:secrets, ctx.scope, environments: ["prod"])
+      {:ok, _} = Steps.run(:secrets, ctx.scope, environments: ["prod"])
 
-        assert {:ok, :satisfied, _} = Steps.verify(:secrets, ctx.scope, environments: ["prod"]),
-               "the step must produce what verify asks for, or setup can never finish"
-      end
+      assert {:ok, :satisfied, _} = Steps.verify(:secrets, ctx.scope, environments: ["prod"]),
+             "the step must produce what verify asks for, or setup can never finish"
     end
   end
 
@@ -139,45 +126,41 @@ defmodule CodeMySpec.Provisioning.SecretsVerifyTest do
     # 2 rewrote the config, and the deploy failed with "no identity matched any
     # of the recipients".
     test "keeps the existing key, so secrets stay readable", ctx do
-      unless ctx[:skip] do
-        {:ok, _} = Steps.run(:secrets, ctx.scope, environments: ["uat"])
-        first = stored(ctx.scope, "uat")
+      {:ok, _} = Steps.run(:secrets, ctx.scope, environments: ["uat"])
+      first = stored(ctx.scope, "uat")
 
-        :ok = Sops.put_secret(ctx.scope.environment, "uat", "SECRET_KEY_BASE", "s3kr1t", first)
+      :ok = Sops.put_secret(ctx.scope.environment, "uat", "SECRET_KEY_BASE", "s3kr1t", first)
 
-        # A second environment arrives. uat is untouched and working.
-        {:ok, _} = Steps.run(:secrets, ctx.scope, environments: ["uat", "prod"])
+      # A second environment arrives. uat is untouched and working.
+      {:ok, _} = Steps.run(:secrets, ctx.scope, environments: ["uat", "prod"])
 
-        assert stored(ctx.scope, "uat") == first,
-               "uat's key was replaced while it was still opening its own file"
+      assert stored(ctx.scope, "uat") == first,
+             "uat's key was replaced while it was still opening its own file"
 
-        assert {:ok, %{"SECRET_KEY_BASE" => "s3kr1t"}} =
-                 Sops.decrypt(ctx.scope.environment, "uat", stored(ctx.scope, "uat")),
-               "the secret set before the re-run must still be readable afterwards"
-      end
+      assert {:ok, %{"SECRET_KEY_BASE" => "s3kr1t"}} =
+               Sops.decrypt(ctx.scope.environment, "uat", stored(ctx.scope, "uat")),
+             "the secret set before the re-run must still be readable afterwards"
     end
 
     # The other half: a key that genuinely cannot open its file must still be
     # replaced, or the repair path in `verify(:secrets, ...)` has nothing to
     # repair with. The contents are already unrecoverable at that point.
     test "still replaces a key that no longer opens its file", ctx do
-      unless ctx[:skip] do
-        {public, _} = key_for(ctx.scope, "prod")
-        :ok = Sops.write_config(ctx.scope.environment, %{"prod" => public})
-        :ok = Sops.put_secret(ctx.scope.environment, "prod", "K", "v", stored(ctx.scope, "prod"))
+      {public, _} = key_for(ctx.scope, "prod")
+      :ok = Sops.write_config(ctx.scope.environment, %{"prod" => public})
+      :ok = Sops.put_secret(ctx.scope.environment, "prod", "K", "v", stored(ctx.scope, "prod"))
 
-        # Someone else's recipient arrives; the stored key no longer matches.
-        {:ok, {other_public, other_private}} = Sops.generate_key()
-        :ok = Sops.write_config(ctx.scope.environment, %{"prod" => other_public})
-        File.rm!(Path.join(ctx.tmp, "envs/prod.enc.env"))
-        :ok = Sops.put_secret(ctx.scope.environment, "prod", "K", "v", other_private)
+      # Someone else's recipient arrives; the stored key no longer matches.
+      {:ok, {other_public, other_private}} = Sops.generate_key()
+      :ok = Sops.write_config(ctx.scope.environment, %{"prod" => other_public})
+      File.rm!(Path.join(ctx.tmp, "envs/prod.enc.env"))
+      :ok = Sops.put_secret(ctx.scope.environment, "prod", "K", "v", other_private)
 
-        before = stored(ctx.scope, "prod")
-        {:ok, _} = Steps.run(:secrets, ctx.scope, environments: ["prod"])
+      before = stored(ctx.scope, "prod")
+      {:ok, _} = Steps.run(:secrets, ctx.scope, environments: ["prod"])
 
-        refute stored(ctx.scope, "prod") == before,
-               "drift is the case where minting a fresh key is the only way forward"
-      end
+      refute stored(ctx.scope, "prod") == before,
+             "drift is the case where minting a fresh key is the only way forward"
     end
   end
 

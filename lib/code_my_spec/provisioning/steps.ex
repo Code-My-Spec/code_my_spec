@@ -38,6 +38,7 @@ defmodule CodeMySpec.Provisioning.Steps do
   require Logger
 
   alias CodeMySpec.{AccountSecrets, Conversations, Deploys, Environments, Projects, ProjectSecrets}
+  alias CodeMySpec.Generators.DeployBoilerplate
   alias CodeMySpec.TempFile
 
   alias CodeMySpec.Provisioning.{
@@ -2913,7 +2914,7 @@ defmodule CodeMySpec.Provisioning.Steps do
 
     paths =
       [".sops.yaml", "envs"]
-      |> Enum.concat(Enum.map(CodeMySpec.Generators.DeployBoilerplate.manifest(), & &1.path))
+      |> Enum.concat(Enum.map(DeployBoilerplate.manifest(), & &1.path))
       |> Enum.filter(&Environments.file_exists?(environment, &1))
 
     with true <- work_tree?(environment),
