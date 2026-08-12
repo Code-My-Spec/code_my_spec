@@ -32,18 +32,19 @@
 // Dockerfile and release-extension.yml all come out together.
 //
 // Config (env):
-//   CMS_MCP_BASE_URL   base URL of the running server (default http://localhost:4003)
-//   CMS_MCP_TOKEN      bearer token, when the endpoint is the CodeMySpec server
-//                      rather than a local `cms server`. The server's harness
-//                      mount takes an OAuth token; a sprite trades its deploy
-//                      key for one (POST /api/sprite/token) and passes it here.
-//   CMS_PROJECT_ID     the project to act on, when there is no local server to
-//                      resolve one from a directory. The server has no disk and
-//                      cannot look a path up, so it is told the id outright.
-//   CLAUDE_PROJECT_DIR the project directory the server resolves scope from
-//                      (default: the process cwd). Passed as ?dir= on every
-//                      request — Anubis only honors custom headers on POSTs, not
-//                      its SSE GET, so the query param is what rides everywhere.
+//
+//	CMS_MCP_BASE_URL   base URL of the running server (default http://localhost:4003)
+//	CMS_MCP_TOKEN      bearer token, when the endpoint is the CodeMySpec server
+//	                   rather than a local `cms server`. The server's harness
+//	                   mount takes an OAuth token; a sprite trades its deploy
+//	                   key for one (POST /api/sprite/token) and passes it here.
+//	CMS_PROJECT_ID     the project to act on, when there is no local server to
+//	                   resolve one from a directory. The server has no disk and
+//	                   cannot look a path up, so it is told the id outright.
+//	CLAUDE_PROJECT_DIR the project directory the server resolves scope from
+//	                   (default: the process cwd). Passed as ?dir= on every
+//	                   request — Anubis only honors custom headers on POSTs, not
+//	                   its SSE GET, so the query param is what rides everywhere.
 package main
 
 import (
@@ -60,6 +61,21 @@ import (
 
 const defaultBaseURL = "http://localhost:4003"
 
+// capabilities is what `cms-mcp-relay capabilities` prints, and the only way
+// to tell this binary from one that predates the hook subcommand.
+//
+// A relay without `hook` does not reject `hook /api/hooks/stop` — argv[1] is
+// not a flag it knows, so it falls through to the MCP path, posts the hook
+// payload to /mcp?dir=, gets a JSON-RPC parse error back and exits 0. Claude
+// Code reads 0 as a hook that ran. Eight hooks, all silently dead, and the
+// only symptom is that nothing the harness should have decided ever happens.
+//
+// The probe is a marker rather than a version number because the question is
+// never "which version" but "can it do this", and an old binary answering the
+// probe at all is the thing that cannot happen: it has no `capabilities`
+// branch either, so it relays stdin instead and prints nothing.
+const capabilities = "cms-mcp-relay hooks=1"
+
 func main() {
 	// `hook <endpoint>` forwards a Claude Code hook instead of relaying MCP.
 	// Same binary because the same binary is what every packager already puts
@@ -67,6 +83,13 @@ func main() {
 	// need it. See hook.go.
 	if len(os.Args) > 1 && os.Args[1] == "hook" {
 		os.Exit(runHook(os.Args[2:]))
+	}
+
+	// Asked by `mix cms.harness.onboard` before it writes a hooks.json that
+	// depends on the branch above.
+	if len(os.Args) > 1 && os.Args[1] == "capabilities" {
+		fmt.Println(capabilities)
+		os.Exit(0)
 	}
 
 	base := getenv("CMS_MCP_BASE_URL", defaultBaseURL)
