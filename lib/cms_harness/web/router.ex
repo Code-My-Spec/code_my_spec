@@ -103,8 +103,26 @@ defmodule CmsHarness.Web.Router do
     match(:*, "/mcp", McpController, :proxy)
   end
 
-  # Where a sprite's agent points ANTHROPIC_BASE_URL. Anthropic-shaped on
-  # purpose: the agent is an ordinary client that happens to be observed.
+  # Where an agent points ANTHROPIC_BASE_URL. Anthropic-shaped on purpose: the
+  # agent is an ordinary client that happens to be observed.
+  #
+  # Addressed like the hooks and the MCP surface, and for the same reason. A
+  # model turn has exactly their question — which working copy is this? — and
+  # was the last surface with no way to answer it. It guessed instead, by
+  # counting projects and taking the answer only when there was one, which on
+  # any machine serving more than one working copy is never. Every turn was
+  # forwarded correctly and then dropped on the floor with a warning nobody
+  # reads, which looks identical to an agent that never ran.
+  scope "/api/harnesses/:harness_id/v1", CmsHarness.Web do
+    pipe_through(:hook)
+
+    post("/messages", MessagesController, :create)
+  end
+
+  # The unaddressed spelling, kept because sprites in the field point at it and
+  # removing it would stop their turns reaching Anthropic at all. It still
+  # records when the harness serves exactly one working copy, which is a
+  # sprite's whole shape — see `MessagesController.served_root/0`.
   scope "/v1", CmsHarness.Web do
     pipe_through(:hook)
 

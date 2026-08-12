@@ -43,9 +43,36 @@ HANG_TIMEOUT="${AGENT_HANG_TIMEOUT:-420}"
 # the proxy exists and nothing points at it — the conversation view stays empty
 # while the sprite works, which is the whole thing story 984 set out to fix.
 #
+# Addressed by working copy, the way the hooks and the MCP surface are. The
+# bare URL still reaches the proxy and still forwards, but the harness can only
+# attribute an unaddressed turn when it serves exactly one working copy. That
+# is a sprite's shape and nothing else's, so the same base URL that records
+# here records nothing on a developer's machine — silently, per turn.
+#
+# The id comes from `.cms_harness.json`, which onboarding wrote into this
+# working copy and which the relay already reads for hooks. Falls back to the
+# bare URL when there is no id, so a copy that was never onboarded behaves
+# exactly as before rather than losing its model calls.
+#
 # Overridable: an operator pointing somewhere else has a reason, and a drill
 # that silently rewrote it would be hiding the one variable under test.
-export ANTHROPIC_BASE_URL="${ANTHROPIC_BASE_URL:-http://127.0.0.1:4003}"
+cms_harness_base() {
+  local base="http://127.0.0.1:4003"
+  local config="${APP_DIR:-$PWD}/.cms_harness.json"
+  local id=""
+
+  if [ -r "$config" ]; then
+    id=$(sed -n 's/.*"harness_id"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$config" | head -1)
+  fi
+
+  if [ -n "$id" ]; then
+    printf '%s/api/harnesses/%s' "$base" "$id"
+  else
+    printf '%s' "$base"
+  fi
+}
+
+export ANTHROPIC_BASE_URL="${ANTHROPIC_BASE_URL:-$(cms_harness_base)}"
 
 # Let the MCP client give up on a tool that never returns, so the agent gets an
 # error instead of the run getting a wall. Only set if the operator has not.

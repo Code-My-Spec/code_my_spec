@@ -17,6 +17,7 @@ defmodule CmsHarness.Web.MessagesController do
 
   alias CmsHarness.Project.ChannelClient
   alias CmsHarness.Projects
+  alias CmsHarness.WorkingCopies
 
   @upstream "https://api.anthropic.com"
 
@@ -64,9 +65,14 @@ defmodule CmsHarness.Web.MessagesController do
   # ChannelClient.record_turn/2. A turn that reached the agent has succeeded
   # whatever the server later does with the record of it.
   defp record(conn, request, response) do
-    case served_root() do
+    case working_copy(conn) do
       nil ->
-        Logger.warning("[CmsHarness] no project configured — turn not recorded")
+        Logger.warning(
+          "[CmsHarness] turn not recorded: this request did not name a working copy and " <>
+            "this harness serves #{length(Projects.list())} of them, so there is nothing " <>
+            "to attribute it to. Point ANTHROPIC_BASE_URL at " <>
+            "/api/harnesses/<harness_id> — `mix cms.harness.onboard` writes it."
+        )
 
       root ->
         ChannelClient.record_turn(root, %{
@@ -80,8 +86,56 @@ defmodule CmsHarness.Web.MessagesController do
     :ok
   end
 
-  # A sprite serves exactly one project and is told which at boot, so the
-  # record needs no header to say where it belongs.
+  # The address first, the count second.
+  #
+  # `served_root/0` was the only rule, and it is right for exactly one shape: a
+  # sprite, one container, one working copy, told which at boot. A developer's
+  # harness serves every checkout it has a subtree for, so the count is never
+  # one and every turn went unrecorded — the surface that exists to watch
+  # agents was blind on the machine that runs the most of them.
+  #
+  # Resolved exactly as `HooksController.locate/2` does, down to the header
+  # fallback and the unexpanded-variable guard: same question, same answer, and
+  # a second way to resolve an id is a second way for them to disagree.
+  defp working_copy(conn) do
+    case conn.params["harness_id"] || header_id(conn) do
+      id when is_binary(id) and id != "" -> from_id(id)
+      _ -> served_root()
+    end
+  end
+
+  defp from_id(id) do
+    case WorkingCopies.root(id) do
+      {:ok, root} ->
+        root
+
+      :unknown ->
+        Logger.warning("[CmsHarness] turn not recorded: no working copy #{id}")
+        nil
+
+      {:unreachable, reason} ->
+        # Not fatal and not silent. The turn already reached the agent; what is
+        # lost is the record of it, and saying which is the difference between
+        # "the server is down" and "this harness is misconfigured".
+        Logger.warning(
+          "[CmsHarness] turn not recorded: could not resolve #{id} (#{inspect(reason)})"
+        )
+
+        nil
+    end
+  end
+
+  defp header_id(conn) do
+    case conn |> Plug.Conn.get_req_header("x-harness-id") |> List.first() do
+      "$" <> _ -> nil
+      "" -> nil
+      value when is_binary(value) -> String.trim(value)
+      _ -> nil
+    end
+  end
+
+  # Still the answer when nothing names a working copy and there is only one to
+  # mean. Kept so sprites already in the field record exactly as they did.
   defp served_root do
     case Projects.list() do
       [root] -> root

@@ -50,66 +50,14 @@ ExUnit.start(
 # exactly that shape.
 #
 # Cannot-answer is reported, not treated as clean.
-migration_versions = fn files ->
-  files
-  |> Enum.filter(&String.ends_with?(&1, ".exs"))
-  |> Enum.flat_map(fn file ->
-    case Integer.parse(file) do
-      {version, "_" <> rest} -> [{version, Path.rootname(rest)}]
-      _ -> []
-    end
-  end)
-end
-
-pending_migrations =
-  case File.ls(Path.join(["priv", "repo", "migrations"])) do
-    {:ok, files} ->
-      case Ecto.Adapters.SQL.query(CodeMySpec.Repo, "SELECT version FROM schema_migrations", []) do
-        {:ok, %{rows: rows}} ->
-          applied = MapSet.new(rows, fn [version] -> version end)
-
-          {:ok,
-           files
-           |> migration_versions.()
-           |> Enum.reject(fn {version, _name} -> MapSet.member?(applied, version) end)
-           |> Enum.sort()}
-
-        {:error, reason} ->
-          {:error, reason}
-      end
-
-    {:error, reason} ->
-      {:error, reason}
-  end
-
-case pending_migrations do
-  {:ok, []} ->
-    :ok
-
-  {:ok, pending} ->
-    names = pending |> Enum.take(3) |> Enum.map_join(", ", fn {v, n} -> "#{v}_#{n}" end)
-    more = if length(pending) > 3, do: ", and #{length(pending) - 3} more", else: ""
-
-    raise """
-    This working copy's test database is #{length(pending)} migration(s) behind.
-
-    Pending: #{names}#{more}
-
-    Run `MIX_ENV=test mix ecto.migrate` and try again.
-
-    Refusing rather than running: the suite would fail in bulk, across contexts
-    you have not touched, with nothing naming a migration — which reads as
-    broken code and costs a bisect of the wrong thing.
-    """
-
-  {:error, reason} ->
-    IO.puts(
-      :stderr,
-      "[test_helper] could not check for pending migrations (#{inspect(reason)}); " <>
-        "proceeding. If the suite fails in bulk across untouched contexts, try " <>
-        "`MIX_ENV=test mix ecto.migrate` first."
-    )
-end
+#
+# The check itself now lives in `Mix.Tasks.Cms.CheckTestMigrations`, because
+# `mix spex` needed it too and had no way to get it: it loads no helper at all,
+# so the one command an agent is told to run for BDD work was the one that
+# skipped this — and the symptom arrived as `ERROR 42703 (undefined_column)`
+# from inside a `given_` step, naming no migration (40b6424d). The `spex` alias
+# runs that task before booting; this line is the same check for `mix test`.
+Mix.Tasks.Cms.CheckTestMigrations.refuse_if_behind!()
 
 # Say when the database starts dirty.
 #
