@@ -60,11 +60,13 @@ defmodule CodeMySpecSpex.Story974.Criterion8048Spex do
       end
 
       when_ "someone sends a message to an address the app owns", context do
+        # Addressed to a mailbox that exists when RESEND_SPEX_INBOX names one.
+        # The default address comes from the fixture user's email, whose local
+        # part is random, so on a domain created moments ago it is delivered
+        # nowhere — Resend accepts the send, returns an id, and drops it.
         html =
           with_provider_cassette(@cassette, fn ->
-            context.view
-            |> element("[data-test='mail-inbound-probe']")
-            |> render_click()
+            click_inbound_probe(context.view)
           end)
 
         {:ok, Map.put(context, :html, html)}
@@ -82,7 +84,9 @@ defmodule CodeMySpecSpex.Story974.Criterion8048Spex do
         target = delivery |> Floki.attribute("data-delivered-to") |> List.first()
 
         assert target == "app",
-               "expected the message to reach the app rather than only a mailbox, got #{inspect(target)}"
+               "expected the message to reach the app rather than only a mailbox, got " <>
+                 "#{inspect(target)}. state=#{inspect(Floki.attribute(delivery, "data-state"))} " <>
+                 "#{Floki.text(delivery) |> String.replace(~r/\s+/, " ") |> String.slice(0, 300)}"
 
         body_available = delivery |> Floki.attribute("data-body-available") |> List.first()
 

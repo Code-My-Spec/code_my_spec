@@ -924,6 +924,43 @@ defmodule CodeMySpecSpex.Case do
   end
 
   @doc """
+  The address an inbound probe should be sent to, or `nil` for the default.
+
+  Resend delivers only to addresses configured for a domain and drops anything
+  else in silence, which is why `steps.ex` insists the address is given rather
+  than invented. The fixture user's email has a random local part, so on a
+  freshly created domain the probe is always sent somewhere that does not
+  exist — 8048 sends, gets a message id, and waits out sixty polls for mail
+  that was discarded on arrival.
+
+  `RESEND_SPEX_INBOX` names a permanently verified receiving domain with a
+  catch-all (e.g. `probe@spex-inbound.astralbi.com`). Unset, criteria keep
+  today's behaviour, so nothing changes until the domain exists.
+  """
+  @spec probe_inbox() :: String.t() | nil
+  def probe_inbox do
+    case System.get_env("RESEND_SPEX_INBOX") do
+      address when is_binary(address) and address != "" -> address
+      _ -> nil
+    end
+  end
+
+  @doc """
+  Click the inbound probe, addressed to `probe_inbox/0` when one is configured.
+
+  The form already accepts a `to`, so this needs nothing from the product.
+  """
+  @spec click_inbound_probe(term()) :: String.t()
+  def click_inbound_probe(view) do
+    element = Phoenix.LiveViewTest.element(view, "[data-test='mail-inbound-probe']")
+
+    case probe_inbox() do
+      nil -> Phoenix.LiveViewTest.render_click(element)
+      address -> Phoenix.LiveViewTest.render_click(element, %{"to" => address})
+    end
+  end
+
+  @doc """
   Point the widget step at a real application and at the fleet's site.
 
       setup :widget_on_the_fleet
