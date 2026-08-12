@@ -34,12 +34,21 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesignModeTest do
     %{scope: scope, tmp: tmp}
   end
 
+  # A lookup, not a branch: `SpexDeniedCalls` refuses imperative branching in a
+  # test file because it usually means the test is reacting to state it should
+  # control. This one only reads a rendered prompt, but a table says the same
+  # thing without the shape that hides the other kind.
+  #
+  # `:neither` is a real answer rather than a fallback — a prompt carrying no
+  # mode header at all is a distinct failure from carrying the wrong one, and
+  # collapsing them would let a template that stopped rendering the header pass
+  # as "not the mode I asserted".
+  @mode_headers [{"## Mode — revision", :revision}, {"## Mode — initial", :initial}]
+
   defp mode(prompt) do
-    cond do
-      String.contains?(prompt, "## Mode — revision") -> :revision
-      String.contains?(prompt, "## Mode — initial") -> :initial
-      true -> :neither
-    end
+    @mode_headers
+    |> Enum.find({nil, :neither}, fn {header, _mode} -> String.contains?(prompt, header) end)
+    |> elem(1)
   end
 
   describe "a project that already has an architecture" do
