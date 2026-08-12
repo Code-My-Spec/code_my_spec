@@ -29,8 +29,34 @@ docker context use colima-devbox >/dev/null 2>&1 || true
 IMAGE="${IMAGE:-codemyspec/sprite:latest}"
 APP="${APP:-e2e_todo}"
 CMS_SERVER_URL="${CMS_SERVER_URL:-http://host.docker.internal:4102}"
-CMS_PROJECT_ID="${CMS_PROJECT_ID:-dfb8779b-8bda-4cc7-bea8-5e13a990448b}"
 AGENT_HOME_VOLUME="${AGENT_HOME_VOLUME:-cms-agent-home-v2}"
+
+# The drill project, and where the value came from.
+#
+# `${CMS_PROJECT_ID:-…}` looks like a default and is not one here. This script
+# runs from a CodeMySpec checkout, and every checkout's `.claude/settings.json`
+# exports `CMS_PROJECT_ID` for its agent session — so inside an agent the
+# default never applies, and the drill silently addresses *this repo's* project
+# instead of the e2e one.
+#
+# Measured: drill 16 came up serving 708492f9 (code_my_spec) against a deploy
+# key minted for dfb8779b (e2e-todo), so every join was refused `unauthorized`,
+# forever, and the preflight timed out waiting for a manifest that could never
+# arrive. Nothing in the output named the project until after the container had
+# started.
+#
+# The inherited value still wins — overriding by environment is the documented
+# way to point a drill somewhere else, and taking that away would break it. What
+# changes is that an inherited value says so, before anything starts.
+DRILL_PROJECT_DEFAULT="dfb8779b-8bda-4cc7-bea8-5e13a990448b"
+
+if [ -n "${CMS_PROJECT_ID:-}" ] && [ "${CMS_PROJECT_ID}" != "$DRILL_PROJECT_DEFAULT" ]; then
+  PROJECT_SOURCE="inherited from the environment"
+else
+  PROJECT_SOURCE="drill default"
+fi
+
+CMS_PROJECT_ID="${CMS_PROJECT_ID:-$DRILL_PROJECT_DEFAULT}"
 
 LABEL=""
 SEED=""
@@ -72,6 +98,26 @@ curl -sS -o /dev/null --max-time 5 "$server_probe" \
   || die "no server answering at $server_probe — start it before drilling"
 
 [ -n "${CMS_DEPLOY_KEY:-}" ] || die "CMS_DEPLOY_KEY is required (project deploy key for $CMS_PROJECT_ID)"
+
+# Said out loud, and early. A deploy key belongs to one project, so a project id
+# from somewhere unexpected produces `unauthorized` on every join — which reads
+# as a credential problem and is not one.
+log "Project ${CMS_PROJECT_ID} (${PROJECT_SOURCE})"
+
+if [ "$PROJECT_SOURCE" != "drill default" ]; then
+  cat >&2 <<EOF
+
+  Note: CMS_PROJECT_ID came from the environment, not from this script's
+  default (${DRILL_PROJECT_DEFAULT}).
+
+  That is how you point a drill at another project, so this is only a warning —
+  but if you did not mean it, you are probably running inside an agent session
+  in a CodeMySpec checkout: .claude/settings.json exports CMS_PROJECT_ID, and it
+  will win over the default every time. Unset it, or export the drill project
+  explicitly.
+
+EOF
+fi
 
 # A second sprite on the same project fights the first for the lease.
 running="$(docker ps --filter "ancestor=$IMAGE" --format '{{.Names}}')"
@@ -181,7 +227,7 @@ cat <<EOF
   volume   ${VOLUME}
   label    ${LABEL}
   server   ${CMS_SERVER_URL}
-  project  ${CMS_PROJECT_ID}
+  project  ${CMS_PROJECT_ID} (${PROJECT_SOURCE})
   agent    $([ "$WITH_AGENT" = "1" ] && echo "running" || echo "not started (--no-agent)")
 
   follow   docker logs -f ${NAME}
