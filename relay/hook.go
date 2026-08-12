@@ -26,6 +26,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 )
@@ -55,13 +56,30 @@ func runHook(args []string) int {
 		return 0
 	}
 
+	// Anchored on the payload's own `cwd`, not the process's.
+	//
+	// Every Claude Code hook payload carries one — it is in the base object
+	// every hook_event_name spreads over — and it is the directory the *session*
+	// is in. `os.Getwd()` is whatever the hook subprocess happened to inherit,
+	// which is usually the same and is not the same thing. Resolving a harness
+	// by walking up from an inherited directory is a guess that reads as a fact,
+	// and which checkout a hook belongs to is the question this binary exists to
+	// answer.
+	//
+	// Falls back to the process directory, so a payload without one behaves
+	// exactly as before rather than losing its id.
+	dir := payloadCwd(payload)
+	if dir == "" {
+		dir = cwd()
+	}
+
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Working-Dir", cwd())
+	req.Header.Set("X-Working-Dir", dir)
 
 	// Only when found. The server reads an empty value as absent anyway, and a
 	// header present-but-blank invites the reader to conclude an id was sent
 	// and rejected.
-	if id := harnessID(cwd()); id != "" {
+	if id := harnessID(dir); id != "" {
 		req.Header.Set("X-Harness-Id", id)
 	}
 
@@ -82,9 +100,61 @@ func runHook(args []string) int {
 		return 0
 	}
 
+	// A refusal that names a missing field says nothing about what did arrive,
+	// and this is the only place that sees the payload before anything parses
+	// it. `subagent-start` has been answering `{"error":"agent_id is required"}`
+	// for days with no way to tell whether Claude Code omitted the field or
+	// something between here and the server dropped it — the relay forwards
+	// stdin verbatim, so it can settle that in one line.
+	//
+	// Keys only, never values: hook payloads carry prompts, transcripts and
+	// file contents, and none of that belongs in a log to answer "which fields
+	// were present".
+	if resp.StatusCode >= 400 {
+		logf("%s: %d %s — payload carried %s", endpoint, resp.StatusCode,
+			strings.TrimSpace(string(body)), payloadKeys(payload))
+	}
+
 	os.Stdout.Write(body)
 
 	return 0
+}
+
+// payloadCwd reads the working directory Claude Code says the session is in.
+//
+// Returns "" for a payload that carries none or does not parse, so the caller
+// falls back rather than resolving against an empty path — which would walk up
+// from the filesystem root and find whatever is nearest to it.
+func payloadCwd(payload []byte) string {
+	var fields struct {
+		Cwd string `json:"cwd"`
+	}
+
+	if err := json.Unmarshal(payload, &fields); err != nil {
+		return ""
+	}
+
+	return strings.TrimSpace(fields.Cwd)
+}
+
+// payloadKeys lists the payload's top-level field names, sorted.
+func payloadKeys(payload []byte) string {
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(payload, &fields); err != nil {
+		return "an unparseable body"
+	}
+
+	if len(fields) == 0 {
+		return "no fields"
+	}
+
+	keys := make([]string, 0, len(fields))
+	for key := range fields {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+
+	return strings.Join(keys, ", ")
 }
 
 // harnessID reads the id this working copy was issued, walking up from dir.
