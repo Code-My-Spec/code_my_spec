@@ -22,13 +22,16 @@ defmodule CodeMySpec.Chat.Runner do
   everything except the network.
   """
 
-  alias CodeMySpec.Chat.{McpToolRegistry, ToolRegistry}
+  alias CodeMySpec.Chat.{McpToolRegistry, Provider, ToolRegistry}
   alias CodeMySpec.Conversations
+  alias CodeMySpec.Conversations.Message
 
   # Rounds of tool-calling per reply, not total calls — one round may carry
   # several. High enough for an interview that lists then creates, low enough
   # that a model which will not conclude stops costing money.
   @max_tool_rounds 12
+
+  @default_model "anthropic:claude-sonnet-5"
 
   @doc "Runs a turn to completion. Returns `:ok` — progress is observed on the conversation."
   @spec run(Conversations.Conversation.t(), String.t()) :: :ok
@@ -94,12 +97,167 @@ defmodule CodeMySpec.Chat.Runner do
 
   # --- live -----------------------------------------------------------------
 
-  # Not wired to a provider yet: the story's spex drive the scripted path, and
-  # a half-built live path that silently does nothing is worse than one that
-  # says so.
+  # This used to be a stub that failed every send with "no model configured for
+  # this conversation", so the feature only ever worked inside `mix spex` —
+  # QA found nine of the story's thirteen criteria unexercisable against the
+  # running app (issue 1d82eeea). The stub was honest about being unbuilt, which
+  # is why it says so rather than silently doing nothing; it still meant the
+  # scripted path was the only path.
+  #
+  # Rounds go through `execute_rounds/4`'s persistence, so a spex and a live
+  # conversation write the same rows in the same order — the moduledoc's claim
+  # that the provider is the only thing faked is only true if this is the only
+  # thing that differs.
   defp run_live(conversation) do
-    {:ok, _} = Conversations.fail(conversation, "no model configured for this conversation")
+    if Provider.impl().ready?() do
+      converse(conversation, history(conversation), tools(conversation), 0)
+    else
+      {:ok, _} = Conversations.fail(conversation, "no model configured for this conversation")
+      :ok
+    end
+  end
+
+  # The cap counts provider round-trips, matching the scripted path's rounds.
+  # Halting rather than failing: everything already written stays, which is the
+  # promise "a failure mid-conversation keeps what Sam already said" makes.
+  defp converse(conversation, _messages, _tools, round) when round >= @max_tool_rounds do
+    {:ok, _} = Conversations.halt(conversation, "stopped after #{@max_tool_rounds} rounds")
     :ok
+  end
+
+  defp converse(conversation, messages, tools, round) do
+    case Provider.impl().generate_text(model(), messages,
+           tools: tools,
+           system_prompt: system_prompt(),
+           temperature: 0.3
+         ) do
+      {:ok, response} ->
+        continue(conversation, messages, tools, round, response)
+
+      {:error, reason} ->
+        {:ok, _} = Conversations.fail(conversation, describe(reason))
+        :ok
+    end
+  end
+
+  # No tool calls means the model is talking, which is how a turn ends.
+  defp continue(conversation, messages, tools, round, response) do
+    case ReqLLM.Response.tool_calls(response) do
+      [] ->
+        emit_text(conversation, ReqLLM.Response.text(response))
+        :ok
+
+      calls ->
+        # Text the model emitted alongside its calls is part of the transcript;
+        # dropping it loses the "here is what I am about to do" half of a turn.
+        emit_text(conversation, ReqLLM.Response.text(response))
+
+        results = Enum.map(calls, &execute_live_call(conversation, tools, &1))
+
+        # The assistant turn must go back carrying its tool_calls, and each
+        # result must name the call it answers, or the provider sees answers to
+        # questions it has no record of asking.
+        messages =
+          messages ++
+            [response.message] ++
+            Enum.map(results, fn {id, text} -> ReqLLM.Context.tool_result(id, text) end)
+
+        converse(conversation, messages, tools, round + 1)
+    end
+  end
+
+  defp execute_live_call(conversation, tools, call) do
+    name = call.function.name
+    args = decode_args(call.function.arguments)
+
+    {:ok, _} = Conversations.add_tool_call(conversation, call.id, name, args)
+    text = invoke(tools, %{name: name, arguments: args})
+    {:ok, _} = Conversations.add_tool_result(conversation, call.id, name, text)
+
+    {call.id, text}
+  end
+
+  # What the provider is given as context: the conversation so far, in order.
+  # Read from the database rather than accumulated in memory so a turn resumed
+  # after a failure sees everything already written — "Sam steps away and picks
+  # up where he left off" is the same read.
+  defp history(conversation) do
+    conversation
+    |> Conversations.list_messages()
+    |> Enum.flat_map(&to_provider_message/1)
+  end
+
+  defp to_provider_message(%{role: :tool, tool_call_id: id} = message) when is_binary(id) do
+    [ReqLLM.Context.tool_result(id, Message.text(message))]
+  end
+
+  defp to_provider_message(%{role: :assistant} = message) do
+    case Message.text(message) do
+      "" -> []
+      text -> [ReqLLM.Context.assistant(text)]
+    end
+  end
+
+  # `:operator` is a human on the other side of the widget, which to the model
+  # is the same speaking position as `:user`.
+  defp to_provider_message(%{role: role} = message) when role in [:user, :operator] do
+    case Message.text(message) do
+      "" -> []
+      text -> [ReqLLM.Context.user(text)]
+    end
+  end
+
+  defp to_provider_message(_message), do: []
+
+  defp emit_text(_conversation, text) when text in [nil, ""], do: :ok
+
+  defp emit_text(conversation, text) do
+    {:ok, _} = Conversations.add_agent_message(conversation, nil, "assistant", text)
+    :ok
+  end
+
+  # Arguments arrive as a JSON string on the wire. A model that emits malformed
+  # JSON is a tool call we cannot honour, not a crash — `invoke/2` will report
+  # the empty-argument failure through the same path as any other tool error.
+  defp decode_args(arguments) when is_binary(arguments) do
+    case Jason.decode(arguments) do
+      {:ok, map} when is_map(map) -> map
+      _ -> %{}
+    end
+  end
+
+  defp decode_args(arguments) when is_map(arguments), do: arguments
+  defp decode_args(_), do: %{}
+
+  defp describe(reason) when is_binary(reason), do: reason
+  defp describe(%{__exception__: true} = error), do: Exception.message(error)
+  defp describe(reason), do: inspect(reason)
+
+  defp model do
+    :code_my_spec
+    |> Application.get_env(CodeMySpec.Chat, [])
+    |> Keyword.get(:model, @default_model)
+  end
+
+  defp system_prompt do
+    """
+    You are interviewing someone who has just signed up and has no code yet.
+    Your job is to turn what they tell you into exactly one user story.
+
+    Ask one short question at a time, in their words, about what the
+    application should do — never about frameworks, hosting or technology.
+    After about four answers you will know enough.
+
+    Then call `create_story` once, with a `title` that reads as an outcome and
+    a `story` in the form "As a <role>, I want <capability>, so that <reason>."
+
+    Exactly one story. If one already exists on this project, do not create
+    another — call `update_story` to correct it, or say plainly that the story
+    is already captured and ask whether they want it changed. A second story is
+    refused, not silently added.
+
+    When the story is captured, say so briefly and stop.
+    """
   end
 
   # --- tools ----------------------------------------------------------------
