@@ -112,8 +112,28 @@ defmodule CodeMySpecWeb.ChatLive do
   # the affordance that says the story can be changed.
   def handle_event("open_story", _params, socket), do: {:noreply, assign(socket, :editing?, true)}
 
+  # Opens the review on the story the card is showing.
+  #
+  # This set an assign nothing rendered, so the button was a dead click: no
+  # navigation, no marker, no change to the DOM at all (issue `1366f527`).
+  # `StoryLive.ThreeAmigos` already exists and is already routed — the button
+  # simply never went there.
+  #
+  # `story_card/1` is the only caller and it requires a story, so there is
+  # always one to review. Guarded anyway rather than matching on it: a nil here
+  # would raise inside the route helper, and a dead button that crashes is
+  # worse than the dead button this replaces.
   def handle_event("start_three_amigos", _params, socket) do
-    {:noreply, assign(socket, :three_amigos_started?, true)}
+    case socket.assigns.story do
+      nil ->
+        {:noreply, socket}
+
+      story ->
+        {:noreply,
+         push_navigate(socket,
+           to: ~p"/app/projects/#{story.project_id}/stories/#{story.id}/three-amigos"
+         )}
+    end
   end
 
   @impl true
