@@ -2916,15 +2916,31 @@ defmodule CodeMySpec.Provisioning.Steps do
       |> Enum.concat(Enum.map(CodeMySpec.Generators.DeployBoilerplate.manifest(), & &1.path))
       |> Enum.filter(&Environments.file_exists?(environment, &1))
 
-    with {_, 0} <- git(environment, ["add", "--"] ++ paths),
+    with true <- work_tree?(environment),
+         {_, 0} <- git(environment, ["add", "--"] ++ paths),
          false <- nothing_staged?(environment) do
       commit_staged(environment)
     else
-      # Nothing of ours changed. The ordinary case on a re-run, and not
-      # something to report as a failure.
+      # Nothing of ours changed, or there is no repository to change. Both are
+      # ordinary, and neither is a failure.
+      #
+      # The no-repository case is not hypothetical: this runs before the build
+      # so that `git archive HEAD` and `bin/deploy`'s `git rev-parse HEAD`
+      # agree, and a deploy whose build is injected has no tree to archive at
+      # all. Reporting `not a git repository` as a deploy failure took out all
+      # seven criteria in story 992, none of which are about committing
+      # anything.
+      false -> :ok
       true -> :ok
       {output, status} -> {:error, "could not stage setup's files (#{status}): #{output}"}
     end
+  end
+
+  # `git add` in a non-repository fails the same way a real staging error does,
+  # so the two have to be told apart before the exit status is read. The
+  # repository step asks this same question the same way.
+  defp work_tree?(environment) do
+    match?({_, 0}, git(environment, ["rev-parse", "--is-inside-work-tree"]))
   end
 
   defp nothing_staged?(environment) do

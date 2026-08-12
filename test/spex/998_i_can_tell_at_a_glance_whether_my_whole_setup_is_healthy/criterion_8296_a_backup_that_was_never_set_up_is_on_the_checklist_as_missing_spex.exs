@@ -44,7 +44,13 @@ defmodule CodeMySpecSpex.Story998.Criterion8296Spex do
         {:ok, context}
       end
 
-      given_ "whose server and certificate exist", context do
+      # The server, and not also the certificate: `Sequence` puts `tls` after
+      # `deploy`, and a failing step halts the run rather than pressing on
+      # (7961). Scripting a `tls` that the run can never reach made this
+      # criterion assert that an unreachable step had run — the scripted
+      # function was never called, and "tls was made and the checklist does not
+      # say so" was the page telling the truth.
+      given_ "whose server exists", context do
         context =
           scripted_run(context, %{
             server: fn ->
@@ -54,16 +60,6 @@ defmodule CodeMySpecSpex.Story998.Criterion8296Spex do
                    kind: "server",
                    location: "hetzner/uat-box",
                    identifier: "environment=uat ip=203.0.113.10"
-                 }
-               ]}
-            end,
-            tls: fn ->
-              {:ok,
-               [
-                 %{
-                   kind: "certificate",
-                   location: "https://uat.example.com",
-                   identifier: "environment=uat"
                  }
                ]}
             end,
@@ -113,13 +109,13 @@ defmodule CodeMySpecSpex.Story998.Criterion8296Spex do
         {:ok, context}
       end
 
-      then_ "and the certificate and server appear as present", context do
-        for key <- ~w(server tls) do
-          item = Floki.find(context.document, "[data-test='checklist-item'][data-key='#{key}']")
+      # The control on the two above: without something reading `present`, a
+      # checklist that marked everything `missing` would satisfy them both.
+      then_ "and the server appears as present", context do
+        item = Floki.find(context.document, "[data-test='checklist-item'][data-key='server']")
 
-          assert Floki.attribute(item, "data-state") == ["present"],
-                 "#{key} was made and the checklist does not say so"
-        end
+        assert Floki.attribute(item, "data-state") == ["present"],
+               "the server was made and the checklist does not say so"
 
         {:ok, context}
       end

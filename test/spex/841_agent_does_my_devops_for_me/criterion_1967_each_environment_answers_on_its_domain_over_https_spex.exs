@@ -52,10 +52,10 @@ defmodule CodeMySpecSpex.Story841.Criterion1967Spex do
         # run before the request in `when_`.
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        with_provider_cassette(@cassette <> "_setup", fn ->
+        with_full_cassette @cassette <> "_setup" do
           {:reply, _response, _frame} =
             RunDevopsSetup.execute(%{project_id: to_string(context.project.id)}, frame)
-        end)
+        end
 
         # What setup actually provisioned, carried into the scenario.
         # `environment_hosts/1` read `context[:environments]` and nothing ever

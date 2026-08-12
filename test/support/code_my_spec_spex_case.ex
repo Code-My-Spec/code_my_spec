@@ -2089,7 +2089,15 @@ defmodule CodeMySpecSpex.Case do
           commit: commit,
           image: "registry.example.com/app:#{commit}",
           source: "registry"
-        }
+        },
+        # Said, not left to the default. `image_for/3` reads an absent `:build`
+        # as "build" — a real deploy with no image to run has nothing to ship
+        # otherwise, which is what let a drill take the CI path and deploy
+        # nothing. This fixture is the opposite case: the version above is
+        # already in the registry, and there is no builder staged to make
+        # another. Unsaid, the deploy tried to build one and recorded nothing,
+        # which is every failure in 966 and 8001.
+        build: false
       )
     )
 

@@ -62,13 +62,13 @@ defmodule CodeMySpecSpex.Story841.Criterion1969Spex do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
         report =
-          with_provider_cassette(@cassette, fn ->
+          with_full_cassette @cassette do
             {:reply, _run, _frame} =
               RunDevopsSetup.execute(%{project_id: to_string(context.project.id)}, frame)
 
             {:reply, status, _frame} = DevopsStatus.execute(%{}, frame)
             response_text(status)
-          end)
+          end
 
         {:ok, Map.put(context, :report, report)}
       end

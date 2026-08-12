@@ -51,10 +51,10 @@ defmodule CodeMySpecSpex.Story841.Criterion1962Spex do
         # something has to make it true.
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        with_provider_cassette(@cassette <> "_setup", fn ->
+        with_full_cassette @cassette <> "_setup" do
           {:reply, _response, _frame} =
             RunDevopsSetup.execute(%{project_id: to_string(context.project.id)}, frame)
-        end)
+        end
 
         {:ok, Map.put(context, :frame, frame)}
       end
