@@ -193,6 +193,89 @@ defmodule CmsHarness.HookDecisionTest do
     end
   end
 
+  describe "the log line says what the agent's copy says" do
+    # `harness.log` carried 284 lines of `{:not_connected, {:http, 200}}` — the
+    # raw reason, inspected. It reads as a contradiction (the server answered,
+    # and answered 200, and the line calls it not-connected) and sends the
+    # reader to the network while the server is up. The refusal above had named
+    # the right end the whole time; only the log had not, and the log is what
+    # the person debugging has.
+    test "a server that answers is not logged as not-connected" do
+      line = HookDecision.summarize({:not_connected, {:http, 200}})
+
+      assert line =~ "server answering 200"
+      assert line =~ "cannot hold a socket"
+
+      refute line == inspect({:not_connected, {:http, 200}}),
+             "the raw tuple is the defect, not a fallback"
+    end
+
+    test "a 5xx is logged as the server's problem" do
+      assert HookDecision.summarize({:not_connected, {:http, 503}}) =~ "server-side"
+    end
+
+    test "nothing answering is logged as nothing answering" do
+      line = HookDecision.summarize({:not_connected, {:error, :econnrefused}})
+
+      assert line =~ "not answering at all"
+      assert line =~ "econnrefused"
+    end
+
+    # Two renderings of one failure, for two readers. They must not be able to
+    # disagree about which end is broken — that disagreement *is* the defect,
+    # just split across a log and a refusal.
+    test "log and refusal agree on which end is broken, for every probe" do
+      for {probe, server_side?} <- [
+            {{:http, 500}, true},
+            {{:http, 200}, false},
+            {{:error, :econnrefused}, true}
+          ] do
+        line = HookDecision.summarize({:not_connected, probe})
+        refusal = HookDecision.unreachable("stop", {:not_connected, probe}, @dir)["reason"]
+
+        assert blames_harness?(line) != server_side?,
+               "log line for #{inspect(probe)} blames the wrong end: #{line}"
+
+        assert blames_harness?(refusal) != server_side?,
+               "refusal for #{inspect(probe)} disagrees with the log line"
+      end
+    end
+
+    # Every shape `HooksController` can pass. A new reason that reaches the
+    # catch-all logs a bare tuple, which is exactly what this fixed.
+    test "every reason the controller can raise has a line of its own" do
+      reasons = [
+        :not_connected,
+        {:not_connected, {:http, 200}},
+        {:not_connected, {:error, :econnrefused}},
+        :no_project,
+        :no_credential,
+        :no_reply,
+        :no_harness,
+        :invalid_config,
+        {:refused, %{"error" => "agent_id is required"}},
+        {:unknown_harness, "6bc4851f"},
+        {:server_unreachable, "6bc4851f", :econnrefused}
+      ]
+
+      for reason <- reasons do
+        line = HookDecision.summarize(reason)
+
+        refute line == inspect(reason),
+               "#{inspect(reason)} fell through to the catch-all and logs as a tuple"
+
+        assert String.length(line) > 0
+        refute line =~ "\n", "a log line is one line"
+      end
+    end
+  end
+
+  # The harness end is at fault when the server answered fine and the socket
+  # still is not up — the one case where re-reading the server's logs is wasted.
+  defp blames_harness?(text) do
+    text =~ "cannot hold a socket" or text =~ "the server is up"
+  end
+
   describe "the second pass" do
     # Blocking forever is its own outage: the agent can neither stop nor do
     # anything useful, and an unattended run burns its whole budget on it.

@@ -41,9 +41,12 @@ defmodule CodeMySpec.Environments.Harness do
   instead. Prefer the manifest where one exists; use this where the server
   genuinely has to touch a file.
 
-  A harness that is not connected returns `{:error, :harness_unreachable}` —
-  distinct from `:no_environment` on purpose. One means "there is no working
-  copy"; this one means "there is, and I cannot reach it right now". Callers
+  A harness that is not connected returns `{:error, {tag, details}}` — distinct
+  from `:no_environment` on purpose. That means "there is no working copy";
+  these mean "there is, and I cannot reach it right now", with the tag saying
+  why (see `Analysis.harness_fs_request/4` for the transport's tags; this
+  module adds `:harness_not_configured` and `:harness_no_id`, both of which are
+  wiring bugs rather than states). Callers
   that prune, delete or report absence must treat them differently.
   """
 
@@ -138,7 +141,7 @@ defmodule CodeMySpec.Environments.Harness do
         # there should be building a `:harness` environment, so this is a wiring
         # bug rather than a state, and it says so rather than crashing.
         Logger.warning("[Environments.Harness] #{op} with no :harness_fs_transport configured")
-        {:error, :harness_unreachable}
+        {:error, {:harness_not_configured, %{op: op}}}
 
       transport ->
         transport.harness_fs_request(id, op, payload, @timeout)
@@ -150,6 +153,6 @@ defmodule CodeMySpec.Environments.Harness do
       "[Environments.Harness] #{op} on an environment with no harness id (ref: #{inspect(ref)})"
     )
 
-    {:error, :harness_unreachable}
+    {:error, {:harness_no_id, %{op: op, ref: ref}}}
   end
 end

@@ -564,10 +564,27 @@ defmodule CodeMySpec.Analysis do
   harness alive" and "where do I send this" are one fact rather than two that
   can disagree.
 
-  `{:error, :harness_unreachable}` when no harness is serving that working copy.
-  Deliberately not `:no_environment`: one means there is no working copy, this
-  means there is one and it cannot be reached. Anything that prunes or reports
-  absence has to tell them apart.
+  Errors are `{:error, {tag, details}}`, never a bare atom. Deliberately not
+  `:no_environment`: that means there is no working copy, these mean there is
+  one and it could not be reached. Anything that prunes or reports absence has
+  to tell them apart.
+
+  The tag says which, because the fixes are different and the reader cannot
+  guess:
+
+    * `:harness_not_registered` — nothing is registered under that id. The
+      harness has not joined since this server started; restarting it rejoins.
+    * `:harness_timeout` — it *is* registered, accepted the request, and did
+      not answer. Not a connection problem. Carries `elapsed_ms` and `limit_ms`.
+    * `:harness_self_call` — the caller *is* the channel process. A wiring bug
+      in this server; the harness is fine.
+    * `:harness_registry_down` — the registry itself is not running, which is
+      this server's problem rather than any harness's.
+
+  All three used to be `:harness_unreachable`. That reads as "no harness", so a
+  timeout sent a reader after a registration problem that was not there, and
+  the details — working copy, op, elapsed — existed at the point of failure and
+  were dropped on the floor.
   """
   @impl CodeMySpec.Environments.HarnessTransport
   @spec harness_fs_request(String.t(), String.t(), map(), timeout()) ::
@@ -583,12 +600,6 @@ defmodule CodeMySpec.Analysis do
           GenServer.call(pid, {:fs_request, op, payload}, timeout + 5_000)
 
         [] ->
-          # Which of the two this is decides what the reader should do, and the
-          # atom cannot say — `[]` and a timed-out call both answer
-          # `:harness_unreachable`. The docstring above insists on telling absent
-          # from unreachable one level up; the same reasoning applies here and
-          # was not carried down.
-          #
           # Cost, measured: a harness that had joined 57 seconds earlier — its
           # `JOINED harness_project:…` in web.log, the server alive, `/health`
           # answering `serving 3, degraded false` — still produced a bare
@@ -602,7 +613,7 @@ defmodule CodeMySpec.Analysis do
               "than about whether the server can address it. Restarting the harness rejoins."
           )
 
-          {:error, :harness_unreachable}
+          {:error, {:harness_not_registered, %{harness_id: harness_id, op: op}}}
       end
     rescue
       ArgumentError ->
@@ -610,20 +621,37 @@ defmodule CodeMySpec.Analysis do
           "[Analysis] #{op} for harness #{harness_id}: HarnessRegistry is not running"
         )
 
-        {:error, :harness_unreachable}
+        {:error, {:harness_registry_down, %{harness_id: harness_id, op: op}}}
     catch
-      :exit, reason ->
-        # Distinguished in the log even though the atom cannot be: a timeout
-        # means the harness is registered and not answering, which is a
-        # different fix from a harness that never joined.
+      # A self-call is not a timeout and must not be labelled one. OTP detects
+      # it and exits at once with `{:calling_self, …}` — 0ms, not the limit —
+      # and `FsRequestSelfCallTest` has said so in prose the whole time while
+      # the atom said otherwise. It is a wiring bug (a reconcile running inline
+      # in the channel process reached for a file), so the fix is in our code,
+      # not in the harness that is answering perfectly well.
+      :exit, {:calling_self, _} = reason ->
         Logger.warning(
-          "[Analysis] #{op} for harness #{harness_id} did not complete after " <>
-            "#{System.monotonic_time(:millisecond) - started}ms (limit #{timeout + 5_000}ms): " <>
-            "#{inspect(reason, limit: 5)}. The harness is registered, so this is not a " <>
-            "connection problem — it accepted the request and did not answer."
+          "[Analysis] #{op} for harness #{harness_id} was called from the channel process " <>
+            "itself: #{inspect(reason, limit: 3)}. Nothing is wrong with the harness — this " <>
+            "is a reconcile reaching for a file from inside the process that would serve it."
         )
 
-        {:error, :harness_unreachable}
+        {:error, {:harness_self_call, %{harness_id: harness_id, op: op}}}
+
+      :exit, reason ->
+        elapsed = System.monotonic_time(:millisecond) - started
+        limit = timeout + 5_000
+
+        Logger.warning(
+          "[Analysis] #{op} for harness #{harness_id} did not complete after " <>
+            "#{elapsed}ms (limit #{limit}ms): #{inspect(reason, limit: 5)}. The harness is " <>
+            "registered, so this is not a connection problem — it accepted the request and " <>
+            "did not answer."
+        )
+
+        {:error,
+         {:harness_timeout,
+          %{harness_id: harness_id, op: op, elapsed_ms: elapsed, limit_ms: limit}}}
     end
   end
 
