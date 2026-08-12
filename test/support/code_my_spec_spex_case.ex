@@ -3324,10 +3324,33 @@ defmodule CodeMySpecSpex.Case do
 
   def normalize_volatile_request(request), do: request
 
+  # Same problem: the inbound probe mints a fresh subject and recipient per run,
+  # so its `POST /emails` body never matches. The domain survives, so `:body`
+  # still tells one domain's probe from another's.
+  @normalized_probe_subject "cms-inbound-normalized-by-spex-cassette-filter"
+  @normalized_probe_user "user-normalized-by-spex-cassette-filter"
+
   defp normalize_body(%{"public_key" => key} = body) when is_binary(key),
     do: %{body | "public_key" => @normalized_public_key}
 
+  defp normalize_body(%{"subject" => "cms-inbound-" <> _} = body) do
+    body
+    |> Map.put("subject", @normalized_probe_subject)
+    |> Map.replace_lazy("to", &normalize_probe_recipients/1)
+  end
+
   defp normalize_body(body), do: body
+
+  defp normalize_probe_recipients(to) when is_list(to),
+    do: Enum.map(to, &normalize_probe_recipient/1)
+
+  defp normalize_probe_recipients(to), do: normalize_probe_recipient(to)
+
+  defp normalize_probe_recipient(address) when is_binary(address) do
+    String.replace(address, ~r/^user-\d+@/, @normalized_probe_user <> "@")
+  end
+
+  defp normalize_probe_recipient(address), do: address
 
   def cassette_mode do
     case System.get_env("SPEX_CASSETTE_MODE") do
