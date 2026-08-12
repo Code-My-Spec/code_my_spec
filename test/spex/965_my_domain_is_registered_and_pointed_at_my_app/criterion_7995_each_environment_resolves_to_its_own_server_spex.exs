@@ -103,7 +103,9 @@ defmodule CodeMySpecSpex.Story965.Criterion7995Spex do
           |> Floki.find("[data-test='dns-record']")
 
         # Anchor: records were created at all.
-        assert records != [], "expected the DNS step to record what it created"
+        assert records != [],
+               "expected the DNS step to record what it created. " <>
+                 step_detail(context.html, "dns")
 
         by_env =
           Map.new(records, fn el ->
