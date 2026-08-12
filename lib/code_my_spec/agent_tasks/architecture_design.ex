@@ -50,39 +50,7 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
     # directory made `proposal_exists?` answer about *this* repository.
     env = scope.environment || cli_env(working_dir)
 
-    proposal_exists? =
-      case proposal_status(env) do
-        :present ->
-          true
-
-        :absent ->
-          false
-
-        # Could not look. Reported as *present*, because the two answers are not
-        # symmetric: treating an unreadable environment as "no proposal" selects
-        # initial mode, which tells the agent to design a 910-component
-        # architecture end-to-end and has the evaluator execute the result as one
-        # transaction. Treating it as "proposal present" selects revision mode,
-        # whose worst case is an agent making no incremental edits.
-        #
-        # This is exactly what `Environments`' own moduledoc warns about: "no
-        # disk" and "not there" are the same reply from `file_exists?/2`, "which
-        # is fine for rendering a prompt and is *not* fine for deciding a
-        # requirement is unmet". Choosing the mode is deciding.
-        #
-        # Observed: `proposal.md` was on disk, 8KB, and the prompt said "Mode —
-        # initial. No proposal exists yet." The harness was unreachable at that
-        # moment, `request/3` answered `{:error, :harness_unreachable}`, and
-        # `match?({:ok, _}, ...)` turned it into `false`.
-        :unobservable ->
-          Logger.warning(
-            "[ArchitectureDesign] could not read #{@proposal_path} in this environment. " <>
-              "Assuming a proposal exists and staying in revision mode — an unreadable " <>
-              "environment must not be read as an undesigned architecture."
-          )
-
-          true
-      end
+    proposal_exists? = revision_mode?(env, component_count)
 
     record_session_start_state(env, proposal_exists?)
 
@@ -98,6 +66,65 @@ defmodule CodeMySpec.AgentTasks.ArchitectureDesign do
       build_prompt(project, stories, orphans, component_count, output_dir, proposal_exists?)
 
     {:ok, prompt}
+  end
+
+  # Revision when there is an architecture to revise, whatever became of the
+  # file that first described it.
+  #
+  # `proposal.md`'s presence used to be the entire decision, and that file is an
+  # artifact of how the architecture was *first* produced rather than a
+  # description of its current state. A project with 912 components has been
+  # designed; whether anyone kept — or ever wrote, or has since deleted — the
+  # proposal that designed it is a different question. Answering the first with
+  # the second is what put "The project has 910 existing components" eleven
+  # lines above "Mode — initial. No proposal exists yet."
+  #
+  # Component count alone, not "components *and* every story linked" as the
+  # report suggested: unlinked stories on an existing architecture still want
+  # revision's tools — `set_story_component` against what is already there —
+  # and initial mode would answer them by redesigning the project.
+  #
+  # The file still means something when there are no components: "there is no
+  # proposal to patch". It just never again means "there is no architecture".
+  #
+  # Note the stat is skipped entirely once components exist, which is both the
+  # common case and the one where the environment is most likely to be a harness
+  # on the far end of a channel.
+  defp revision_mode?(_env, component_count) when component_count > 0, do: true
+
+  defp revision_mode?(env, _component_count) do
+    case proposal_status(env) do
+      :present ->
+        true
+
+      :absent ->
+        false
+
+      # Could not look. Reported as *present*, because the two answers are not
+      # symmetric: treating an unreadable environment as "no proposal" selects
+      # initial mode, which tells the agent to design the architecture end-to-end
+      # and has the evaluator execute the result as one transaction. Treating it
+      # as "proposal present" selects revision mode, whose worst case is an agent
+      # making no incremental edits.
+      #
+      # This is exactly what `Environments`' own moduledoc warns about: "no disk"
+      # and "not there" are the same reply from `file_exists?/2`, "which is fine
+      # for rendering a prompt and is *not* fine for deciding a requirement is
+      # unmet". Choosing the mode is deciding.
+      #
+      # Observed: `proposal.md` was on disk, 8KB, and the prompt said "Mode —
+      # initial. No proposal exists yet." The harness was unreachable at that
+      # moment, `request/3` answered `{:error, :harness_unreachable}`, and
+      # `match?({:ok, _}, ...)` turned it into `false`.
+      :unobservable ->
+        Logger.warning(
+          "[ArchitectureDesign] could not read #{@proposal_path} in this environment. " <>
+            "Assuming a proposal exists and staying in revision mode — an unreadable " <>
+            "environment must not be read as an undesigned architecture."
+        )
+
+        true
+    end
   end
 
   defp record_session_start_state(env, true),
