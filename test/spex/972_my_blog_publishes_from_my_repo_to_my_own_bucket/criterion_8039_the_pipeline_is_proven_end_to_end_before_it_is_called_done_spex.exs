@@ -63,6 +63,18 @@ defmodule CodeMySpecSpex.Story972.Criterion8039Spex do
         # nothing at all, silently, between dns and storage.
         own_domain(context.project, "drill.astralbi.com")
 
+        # A post to publish. Without one the step uploads an empty content set
+        # and then waits for `/blog/hello` to appear, which it never can — the
+        # criterion was asserting that a pipeline proves a render while giving
+        # it nothing to render. `type: blog` is load-bearing: without it the
+        # row has no content type and parses as an error rather than a post.
+        :ok =
+          CodeMySpec.Environments.write_file(
+            context.environment,
+            "content/posts/hello.md",
+            "---\ntitle: Hello\ntype: blog\n---\n\nProven end to end.\n"
+          )
+
         # Registered before the run, so it happens even when the sequence
         # halts partway. This spex creates a real server and real buckets and
         # was tearing down neither: the first drill left two servers running
