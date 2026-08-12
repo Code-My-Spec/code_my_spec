@@ -349,6 +349,54 @@ defmodule CodeMySpecSpex.Case do
     end
   end
 
+  # A credential a *recording* actually needs, or a refusal that arrives before
+  # the first provider call.
+  #
+  # `System.get_env(var, "spex-placeholder-…")` is exactly right on replay and
+  # catastrophic on record: the recording proceeds with the literal placeholder,
+  # every provider answers 401, and the cassette is poisoned. `refuse_poisoned_cassette/1`
+  # does catch that — afterwards, keeping a `.rejected` file — but for the mail and
+  # setup criteria "afterwards" is minutes to tens of minutes of real calls, and the
+  # cause is only visible to someone who knows to read the rejected cassette
+  # (deac6edf).
+  #
+  # Checked here rather than up front with `GITHUB_SPEX_OWNER`, deliberately.
+  # A single pre-flight demanding every provider's credentials would refuse a
+  # GitHub-only recording for the want of a Hetzner key it never uses. This
+  # fires only where a credential is genuinely about to be spent, so it cannot
+  # turn a valid recording away.
+  #
+  # The export incantation is repeated rather than referenced because this is
+  # the failure where knowing *that* envs/.env exists does not help: Dotenvy
+  # loads it into config for `env!/2` and never into the process environment,
+  # so the file can be correct and the child still sees nothing.
+  defp recording_credential(var, placeholder) do
+    value = System.get_env(var)
+
+    cond do
+      not recording?() ->
+        value || placeholder
+
+      value in [nil, ""] ->
+        raise """
+        Refusing to record: #{var} is not set.
+
+        This recording is about to spend real provider calls, and without this
+        it would send "#{placeholder}" — so every request answers 401 and the
+        cassette is poisoned. You would find out after the recording, from the
+        .rejected file.
+
+        It is in envs/.env, which Dotenvy loads into config rather than the
+        process environment, so it has to be exported:
+
+            set -a; source envs/.env; set +a
+        """
+
+      true ->
+        value
+    end
+  end
+
   defp refuse_recording_into_a_personal_account do
     if recording?() and System.get_env("GITHUB_SPEX_OWNER") in [nil, ""] do
       raise """
@@ -1386,11 +1434,11 @@ defmodule CodeMySpecSpex.Case do
     view
     |> Phoenix.LiveViewTest.form("form[phx-submit='save_credentials']", %{
       "credentials" => %{
-        "hetzner_api_token" => System.get_env("HETZNER_API_TOKEN", "spex-placeholder-token"),
+        "hetzner_api_token" => recording_credential("HETZNER_API_TOKEN", "spex-placeholder-token"),
         "hetzner_s3_access_key_id" =>
-          System.get_env("HETZNER_S3_ACCESS_KEY_ID", "spex-placeholder-id"),
+          recording_credential("HETZNER_S3_ACCESS_KEY_ID", "spex-placeholder-id"),
         "hetzner_s3_secret_access_key" =>
-          System.get_env("HETZNER_S3_SECRET_ACCESS_KEY", "spex-placeholder-secret")
+          recording_credential("HETZNER_S3_SECRET_ACCESS_KEY", "spex-placeholder-secret")
       }
     })
     |> Phoenix.LiveViewTest.render_submit()
@@ -1455,9 +1503,9 @@ defmodule CodeMySpecSpex.Case do
     |> Phoenix.LiveViewTest.form("form[phx-submit='save_credentials']", %{
       "credentials" => %{
         "hetzner_s3_access_key_id" =>
-          System.get_env("HETZNER_S3_ACCESS_KEY_ID", "spex-placeholder-id"),
+          recording_credential("HETZNER_S3_ACCESS_KEY_ID", "spex-placeholder-id"),
         "hetzner_s3_secret_access_key" =>
-          System.get_env("HETZNER_S3_SECRET_ACCESS_KEY", "spex-placeholder-secret")
+          recording_credential("HETZNER_S3_SECRET_ACCESS_KEY", "spex-placeholder-secret")
       }
     })
     |> Phoenix.LiveViewTest.render_submit()
