@@ -164,13 +164,28 @@ defmodule CodeMySpec.Provisioning.Teardown do
   # adopted too.
   def resource(_scope, %{origin: "adopted"} = r, _opts), do: {:ok, r}
 
+  # Four operations behind one catch-all, which is three too few to debug.
+  # Registry buckets survived teardown twice and the only evidence was
+  # `{:error, r}` — indistinguishable between credentials that would not
+  # resolve, a bucket that would not empty, a delete that was refused, and a
+  # delete that succeeded but did not show up in the confirming list. Each
+  # stage now says which it was; the outcome is unchanged.
   def resource(%Scope{} = scope, %{kind: "bucket", location: location} = r, opts) do
-    with {:ok, credentials} <- storage_credentials(scope, opts),
-         bucket <- bucket_from(location),
-         :ok <- empty_bucket(bucket, credentials, opts),
-         :ok <- Storage.delete_bucket(bucket, credentials, opts),
-         {:ok, remaining} <- Storage.list_buckets(credentials, opts) do
-      confirm(r, bucket not in remaining)
+    bucket = bucket_from(location)
+
+    with {:ok, credentials} <- stage(:credentials, bucket, storage_credentials(scope, opts)),
+         :ok <- stage(:empty, bucket, empty_bucket(bucket, credentials, opts)),
+         :ok <- stage(:delete, bucket, Storage.delete_bucket(bucket, credentials, opts)),
+         {:ok, remaining} <- stage(:list, bucket, Storage.list_buckets(credentials, opts)) do
+      gone? = bucket not in remaining
+
+      gone? ||
+        Logger.warning(
+          "[Teardown] deleted #{bucket} and it is still listed — the delete was accepted and " <>
+            "did not take effect"
+        )
+
+      confirm(r, gone?)
     else
       _ -> {:error, r}
     end
@@ -428,6 +443,20 @@ defmodule CodeMySpec.Provisioning.Teardown do
       :none -> {:error, :no_credentials}
       {:ok, credentials} -> {:ok, credentials}
       credentials when is_list(credentials) -> {:ok, credentials}
+    end
+  end
+
+  defp stage(name, bucket, result) do
+    case result do
+      {:ok, _} = ok ->
+        ok
+
+      :ok ->
+        :ok
+
+      other ->
+        Logger.warning("[Teardown] #{name} failed for bucket #{bucket}: #{inspect(other)}")
+        other
     end
   end
 
