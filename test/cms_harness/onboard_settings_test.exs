@@ -91,4 +91,39 @@ defmodule CmsHarness.OnboardSettingsTest do
     assert :ok = Onboard.address_model_turns(root, "abc-123", @base)
     assert read!(file)["env"]["ANTHROPIC_BASE_URL"] == "#{@base}/api/harnesses/abc-123"
   end
+
+  # Every test above injects `@base`, which is the whole reason the default went
+  # unnoticed: it used to be `Config.server_url()` — the CodeMySpec server —
+  # and `/api/harnesses/:id/v1/messages` exists only in `CmsHarness.Web.Router`.
+  # An agent pointed at the cloud posts every turn to a route that is not there,
+  # so the feature could not have worked as shipped.
+  #
+  # The parameter that exists "only so it can be tested directly" was exactly
+  # what kept the real path untested. So these exercise the default.
+  describe "the address it picks when nobody passes one" do
+    test "is a local harness, not the CodeMySpec server", %{root: root, settings_file: file} do
+      assert :ok = Onboard.address_model_turns(root, "abc-123")
+
+      url = read!(file)["env"]["ANTHROPIC_BASE_URL"]
+
+      assert url =~ ~r{^http://localhost:\d+/api/harnesses/abc-123$},
+             "got #{url} — the proxy route only exists on the harness"
+
+      refute url =~ "codemyspec.com",
+             "the cloud has no /v1/messages; pointing an agent there breaks every turn"
+    end
+
+    test "follows CMS_HARNESS_PORT, which is what a sprite sets", %{
+      root: root,
+      settings_file: file
+    } do
+      System.put_env("CMS_HARNESS_PORT", "4321")
+      on_exit(fn -> System.delete_env("CMS_HARNESS_PORT") end)
+
+      assert :ok = Onboard.address_model_turns(root, "abc-123")
+
+      assert read!(file)["env"]["ANTHROPIC_BASE_URL"] ==
+               "http://localhost:4321/api/harnesses/abc-123"
+    end
+  end
 end

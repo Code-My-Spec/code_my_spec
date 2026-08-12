@@ -75,7 +75,7 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
          :ok <- copy_plugin(root, dest),
          {:ok, count} <- address_hooks(dest, id),
          :ok <- address_mcp(dest, id),
-         :ok <- address_model_turns(root, id) do
+         :ok <- address_model_turns(root, id, hook_base_url(dest)) do
       report(id, dest, count, args)
     else
       {:error, message} -> Mix.raise(message)
@@ -280,7 +280,7 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   @doc false
   def address_model_turns(root, id, base_url \\ nil) do
     file = Path.join([root, ".claude", "settings.json"])
-    url = "#{String.trim_trailing(base_url || Config.server_url(), "/")}/api/harnesses/#{id}"
+    url = "#{String.trim_trailing(base_url || default_hook_base_url(), "/")}/api/harnesses/#{id}"
 
     with {:ok, settings} <- read_settings(file),
          env <- settings |> Map.get("env", %{}) |> Map.put("ANTHROPIC_BASE_URL", url),
@@ -291,6 +291,54 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
     else
       {:error, reason} -> {:error, "Could not write #{file}: #{inspect(reason)}"}
     end
+  end
+
+  # The harness the hooks were just addressed to, so a model turn goes to the
+  # same place they do.
+  #
+  # This used to default to `Config.server_url()` — the CodeMySpec server. That
+  # is the wrong host entirely: `/api/harnesses/:harness_id/v1/messages` exists
+  # only in `CmsHarness.Web.Router`, never in `CodeMySpecWeb.Router`, so an
+  # agent pointed there posts every turn to a route that does not exist. The
+  # feature could not have worked as written.
+  #
+  # The tests did not catch it because every one of them passes an explicit
+  # `@base "http://localhost:4003"`. The parameter that exists "only so it can
+  # be tested directly" is exactly what kept the default off the tested path —
+  # so the default now has a test of its own below.
+  #
+  # Read out of the generated `hooks.json` rather than from config: that file is
+  # what the hooks will actually post to, and deriving both from one source is
+  # what stops them addressing different harnesses. Config would be a second
+  # opinion that can disagree — `config.exs` says 4005 and the shipped plugin
+  # says 4004, and they are both right about different deployments.
+  defp hook_base_url(dest) do
+    dest
+    |> Path.join("hooks/hooks.json")
+    |> File.read()
+    |> case do
+      {:ok, contents} -> contents |> hook_port() |> local_url()
+      {:error, _reason} -> default_hook_base_url()
+    end
+  end
+
+  # The value after `--port` in the first hook that names one. Deliberately not
+  # a JSON walk: the shape is an array of args and the position of the flag is
+  # the contract, so matching on the flag is both simpler and harder to break.
+  defp hook_port(contents) do
+    case Regex.run(~r/"--port"\s*,\s*"(\d+)"/, contents) do
+      [_match, port] -> port
+      nil -> nil
+    end
+  end
+
+  defp local_url(nil), do: default_hook_base_url()
+  defp local_url(port), do: "http://localhost:#{port}"
+
+  # Matches the shipped plugin's hooks. `CMS_HARNESS_PORT` wins, because a
+  # sprite sets it and its harness is the thing serving hooks.
+  defp default_hook_base_url do
+    local_url(System.get_env("CMS_HARNESS_PORT") || "4004")
   end
 
   # A missing file is an empty one. A malformed file is not — overwriting it
