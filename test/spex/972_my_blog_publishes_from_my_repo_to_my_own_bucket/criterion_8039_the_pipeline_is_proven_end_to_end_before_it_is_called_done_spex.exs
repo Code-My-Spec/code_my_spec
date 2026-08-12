@@ -126,23 +126,22 @@ defmodule CodeMySpecSpex.Story972.Criterion8039Spex do
         # setup run.
         commit_generated_files(context.project.local_path)
 
-        # Method and URI, and not sequentially. The storage step polls
-        # `list_buckets` until every bucket is present, and the recording holds
-        # one `GET /` because by then they were — so the second poll found the
-        # single interaction already consumed and the run died against a
-        # cassette that plainly contains its request. The error even said so:
-        # method matched, URI matched, no interaction left.
+        # No `:storage`. That step provisions object storage on Hetzner, which
+        # is a different story's claim — this one is about the content pipeline
+        # proving a render before reporting done, and it publishes to the
+        # fleet's MinIO bucket that `publishing_to_the_fleet` configures. Running
+        # both left the criterion with two halves disagreeing about whose
+        # storage it was using: the deploy made Hetzner buckets and the content
+        # step read one back, against a cassette recorded for neither.
         #
-        # Safe here because this cassette's requests are already-converged
-        # reads. It is not safe in general: a cassette holding a 404,404,200
-        # readiness sequence needs `sequential` or the first answer is replayed
-        # forever and the step never sees the resource appear.
-        run_steps(view, [:domain, :dns, :deploy, :storage], @deploy_cassette,
-          match_requests_on: [:method, :uri],
-          sequential: false
+        # Method and URI rather than the default: the S3 puts carry bodies the
+        # recorder does not capture, so a body-inclusive match cannot find them
+        # again.
+        run_steps(view, [:domain, :dns, :deploy], @deploy_cassette,
+          match_requests_on: [:method, :uri]
         )
 
-        trace_steps(view, [:repository, :server, :secrets, :domain, :dns, :deploy, :storage])
+        trace_steps(view, [:repository, :server, :secrets, :domain, :dns, :deploy])
 
         {:ok, Map.put(context, :view, view)}
       end

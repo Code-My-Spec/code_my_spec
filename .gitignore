@@ -40,6 +40,9 @@ npm-debug.log
 
 /test_repos/
 /envs
+# Symlinked into worktrees alongside /envs — the drill and fleet applications
+# the devops spex run against, which live in their own repository.
+/code_my_spec_test_repos
 vpn.conf
 
 /priv/plts/*.plt
