@@ -644,9 +644,44 @@ defmodule CmsHarness.Project.ChannelClient do
 
         {:ok, socket}
 
+      # A reply this harness cannot read, that says it succeeded anyway.
+      #
+      # Not a refusal, and it must not be reported as one. Measured on drill 16:
+      # a sprite built 2026-08-02 met a server carrying `6e389c29` from
+      # 2026-08-09, which changed the reply from counts to `%{"status" =>
+      # "accepted", "observations" => n}`. The old harness had no clause for the
+      # new shape, fell to the catch-all, and logged
+      #
+      #     the server REJECTED the manifest: {:ok, %{"observations" => 51,
+      #     "status" => "accepted"}}
+      #
+      # — the word REJECTED directly above the server saying "accepted". The
+      # closing line of that message guessed version skew correctly while its
+      # headline asserted the opposite, and `drill.sh` waits for the string
+      # "accepted the manifest", so a drill whose manifest landed fine timed out
+      # at the preflight.
+      #
+      # Matched before the catch-all rather than by parsing: any reply that says
+      # it was accepted was accepted, whatever else it carries. This is the same
+      # kindness the clause above extends to an *older* server, in the other
+      # direction — a newer one.
+      {:ok, %{"status" => "accepted"} = reply} ->
+        Logger.warning(
+          "[CmsHarness] server accepted the manifest for #{socket.assigns.project.root}, " <>
+            "in a shape this harness does not recognise: #{inspect(reply)}. The sync is " <>
+            "fine; this harness is older than the server. Rebuild it to stop guessing at " <>
+            "replies."
+        )
+
+        {:ok, socket}
+
       other ->
         # Loud, and says what it means: the working copy and the server's
         # picture of it are now different, and nothing downstream can tell.
+        #
+        # "Could not read the reply" now has its own clause above, so this is
+        # reserved for a reply that does not claim success — which is the only
+        # kind that deserves the word REJECTED.
         Logger.error("""
         [CmsHarness] the server REJECTED the manifest for #{socket.assigns.project.root}: #{inspect(other)}
 
