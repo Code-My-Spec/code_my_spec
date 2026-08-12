@@ -17,7 +17,6 @@ defmodule CodeMySpecSpex.Story963.Criterion7966Spex do
 
   @endpoint CodeMySpecWeb.Endpoint
 
-
   setup :register_log_in_setup_account
   setup :setup_active_project
   setup :devops_on
@@ -44,7 +43,8 @@ defmodule CodeMySpecSpex.Story963.Criterion7966Spex do
                    "This TLD cannot be bought through the Registrar API. Register it in the Cloudflare dashboard, then run this step again."}
 
                 _ ->
-                  {:ok, [%{kind: "domain", location: "cloudflare/his-app.dev", origin: "adopted"}]}
+                  {:ok,
+                   [%{kind: "domain", location: "cloudflare/his-app.dev", origin: "adopted"}]}
               end
             end
           })

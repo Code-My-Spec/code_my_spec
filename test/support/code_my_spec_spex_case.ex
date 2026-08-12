@@ -917,6 +917,81 @@ defmodule CodeMySpecSpex.Case do
   end
 
   @doc """
+  Point the widget step at a real application and at the fleet's site.
+
+      setup :widget_on_the_fleet
+
+  The widget step's first act is to run a mix generator in the project's
+  working directory, and the default stub holds a one-line `mix.exs` that is a
+  marker for the working-dir plug and nothing else. Mix answered with both
+  "the task could not be found" *and* "no mix.exs was found in the current
+  directory", which reads as a missing generator and is really a missing
+  application.
+
+  Only the recording needs any of this. `ExCliVcr` matches on command and
+  args, not on the directory the command ran in, so on replay the cassette
+  answers and no application, no fleet and no site are required. That is the
+  point: the criteria were green only on the machine that happened to have a
+  site running, which is not a test.
+
+  `CMS_FLEET_SITE` names the application. It defaults to
+  `code_my_spec_test_repos/fleet_site`, which is a committed `mix cms.new`
+  checkout — deliberately pristine, so the generator writes rather than
+  prompting to overwrite, which would hang the run waiting on stdin.
+
+  Recording needs the fleet up and the site serving:
+
+      docker/fleet/fleet.sh up
+      docker/fleet/site.sh          # the wired app on :4100
+  """
+  def widget_on_the_fleet(%{scope: scope, project: project} = context) do
+    path =
+      System.get_env("CMS_FLEET_SITE") ||
+        Path.expand("code_my_spec_test_repos/fleet_site", File.cwd!())
+
+    recording? = recording?()
+
+    (not recording? or File.exists?(Path.join(path, "mix.exs"))) ||
+      raise """
+      No application at #{path} to install the widget into.
+
+      The widget step runs `mix cms_gen.support_widget`, which needs a real
+      generated application. Point CMS_FLEET_SITE at one, or generate it with
+      `mix cms.new`.
+      """
+
+    # The generator writes into the checkout. Recording leaves it dirty, and
+    # the next recording would then hit the overwrite prompt and hang on
+    # stdin — which looks like the suite freezing, not like residue.
+    recording? && ExUnit.Callbacks.on_exit(fn -> reset_site_checkout(path) end)
+
+    {:ok, project} = Fixtures.set_project_local_path(project, path)
+
+    previous = Application.get_env(:code_my_spec, :provisioning_step_opts, [])
+
+    Application.put_env(
+      :code_my_spec,
+      :provisioning_step_opts,
+      Keyword.merge(previous, site_url: "http://127.0.0.1:4100", deploy_key: "dk_fleet_spex")
+    )
+
+    ExUnit.Callbacks.on_exit(fn ->
+      Application.put_env(:code_my_spec, :provisioning_step_opts, previous)
+    end)
+
+    context
+    |> Map.put(:project, project)
+    |> Map.put(:scope, %{scope | active_project: project})
+    |> real_working_directory()
+  end
+
+  defp reset_site_checkout(path) do
+    System.cmd("git", ["checkout", "--", "."], cd: path, stderr_to_stdout: true)
+    System.cmd("git", ["clean", "-fd"], cd: path, stderr_to_stdout: true)
+    :ok
+  end
+
+  @doc """
   Swap the project's environment for a real one on disk.
 
       setup :setup_active_project
@@ -3203,7 +3278,13 @@ defmodule CodeMySpecSpex.Case do
       #
       # It already reads a `:plug` from its own app env, exactly like the others.
       # It was only missing from this list.
-      CodeMySpec.Content.TriggerClient
+      CodeMySpec.Content.TriggerClient,
+      # And the same again, for the same reason. The widget step fetches the
+      # deployed site to see whether the widget is on it; that GET was the only
+      # request in story 973 leaving the cassette. The criteria passed while a
+      # site happened to be running on this machine and failed everywhere else,
+      # which is indistinguishable from a widget that does not install.
+      CodeMySpec.Provisioning.Widget
     ]
   end
 

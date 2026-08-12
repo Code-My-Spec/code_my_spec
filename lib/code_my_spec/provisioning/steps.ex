@@ -37,7 +37,7 @@ defmodule CodeMySpec.Provisioning.Steps do
 
   require Logger
 
-  alias CodeMySpec.{AccountSecrets, Deploys, Environments, Projects, ProjectSecrets}
+  alias CodeMySpec.{AccountSecrets, Conversations, Deploys, Environments, Projects, ProjectSecrets}
   alias CodeMySpec.TempFile
 
   alias CodeMySpec.Provisioning.{
@@ -511,7 +511,15 @@ defmodule CodeMySpec.Provisioning.Steps do
              Keyword.get(opts, :deploy_key) || Map.get(project, :deploy_key),
              "a deploy key"
            ) do
-      opts = opts |> Keyword.put(:site_url, site) |> Keyword.put(:deploy_key, key)
+      opts =
+        opts
+        |> Keyword.put(:site_url, site)
+        |> Keyword.put(:deploy_key, key)
+        # `Widget.message_proof/2` reads this with `fetch!` — correctly, since
+        # it can prove nothing without it — and nothing supplied it, so the
+        # first run that got past install and presence would have died on a
+        # KeyError rather than reporting an unproven widget.
+        |> Keyword.put_new(:lookup, &widget_messages(&1, site))
 
       # Same as the content step: `Widget.run/3` computes the render check and
       # the message proof — status, present, openable, origin, when — and all
@@ -1501,6 +1509,35 @@ defmodule CodeMySpec.Provisioning.Steps do
   # is always a map. A clause for the impossible case is one the compiler
   # reports as unreachable, and an unreachable clause is a compiler warning —
   # which makes the analyzer skip exunit, credo and spex entirely.
+  # Inbound widget messages for the project, each tagged with where it came
+  # from relative to the site provisioning just deployed.
+  #
+  # Compared by host rather than by string: the app reports the base URL it
+  # computed for itself, and that differs from what the operator typed in
+  # scheme, port and trailing slash without meaning a different site. A
+  # message with no origin at all predates the widget reporting one, and is
+  # `unknown` rather than trusted — an untagged message proving the widget
+  # works is exactly the false pass this step exists to prevent.
+  defp widget_messages(scope, site_url) do
+    host = uri_host(site_url)
+
+    scope
+    |> Conversations.list_widget_messages()
+    |> Enum.map(&%{origin: origin_of(&1.origin, host), id: &1.id, at: &1.inserted_at})
+  end
+
+  defp origin_of(origin, host) when is_binary(origin) and is_binary(host) do
+    case uri_host(origin) == host do
+      true -> "deployed_site"
+      false -> "elsewhere"
+    end
+  end
+
+  defp origin_of(_origin, _host), do: "unknown"
+
+  defp uri_host(url) when is_binary(url), do: URI.parse(url).host
+  defp uri_host(_url), do: nil
+
   defp widget_proof(%{proof: %{} = proof, proven_at: proven_at}) do
     %{
       kind: "widget_proof",

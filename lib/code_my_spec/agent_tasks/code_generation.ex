@@ -20,9 +20,15 @@ defmodule CodeMySpec.AgentTasks.CodeGeneration do
     {"cms_gen_integrations", "mix cms_gen.integrations",
      "OAuth integration scaffolding with encrypted token storage",
      "phx_gen_auth", "lib/APP/integrations/integration.ex"},
-    {"cms_gen_feedback_widget", "mix cms_gen.feedback_widget",
-     "CodeMySpec feedback widget with screenshot capture",
-     "cms_gen_integrations", "lib/APP_web/live/feedback_widget.ex"}
+    # Not `cms_gen.feedback_widget`, which is deprecated in the generators
+    # package in favour of this one and is a different thing besides: it talks
+    # OAuth/REST and needs `cms_gen.integrations` first, while the support
+    # widget rides the project's deploy key. Provisioning's widget step proves
+    # a deploy-key widget, so scaffolding the OAuth one meant the step verified
+    # something no new project had.
+    {"cms_gen_support_widget", "mix cms_gen.support_widget",
+     "CodeMySpec support widget — chat and report-a-problem over the deploy key",
+     "cms_gen_accounts", "lib/APP_web/live/support_widget_live.ex"}
   ]
 
   @doc "Returns the ordered list of generators."
@@ -34,7 +40,7 @@ defmodule CodeMySpec.AgentTasks.CodeGeneration do
   """
   def dispatch(_node) do
     "Run CodeMySpec generators (phx.gen.auth, cms_gen.*) to scaffold auth, " <>
-      "multi-tenancy, OAuth integrations, and the feedback widget for this " <>
+      "multi-tenancy, OAuth integrations, and the support widget for this " <>
       "project. Produces an idempotent bash script at " <>
       "`.code_my_spec/tasks/code_generation.sh`. Use when ADRs reference " <>
       "generated code and generators haven't been run yet."
@@ -146,7 +152,7 @@ defmodule CodeMySpec.AgentTasks.CodeGeneration do
       existing_artifact_section(existing_artifact),
       playbook_section(),
       pending_section(already_run),
-      feedback_widget_secrets_section(scope, already_run),
+      support_widget_secrets_section(scope, already_run),
       done_signal_section()
     ]
     |> Enum.reject(&is_nil/1)
@@ -158,7 +164,7 @@ defmodule CodeMySpec.AgentTasks.CodeGeneration do
     # Code Generation Session
 
     You are running CodeMySpec generators to scaffold auth, multi-tenancy,
-    OAuth integrations, and the feedback widget for this project. Order matters
+    OAuth integrations, and the support widget for this project. Order matters
     — each generator depends on the previous one's output.\
     """
   end
@@ -245,7 +251,7 @@ defmodule CodeMySpec.AgentTasks.CodeGeneration do
 
     - `cms_generators/workflow.md` — generator order, post-generation steps
       (deps/migrate/compile/test), integration provider command pattern,
-      and the feedback widget multi-step setup procedure.
+      and the support widget multi-step setup procedure.
     - `cms_generators/script-format.md` — reproducible bash script format
       and rules.
 
@@ -284,34 +290,34 @@ defmodule CodeMySpec.AgentTasks.CodeGeneration do
     """
   end
 
-  # Surface this whenever the task runs — the feedback widget is part of the
+  # Surface this whenever the task runs — the support widget is part of the
   # standard scaffold, so the engineer will need credentials regardless of
   # whether the widget generator has already run or is still pending.
-  defp feedback_widget_secrets_section(scope, _already_run) do
+  defp support_widget_secrets_section(scope, _already_run) do
     project_url = project_url(scope)
 
     """
-    ## Feedback widget — credentials (relay to engineer)
+    ## Support widget — credentials (relay to engineer)
 
-    The feedback widget needs CodeMySpec client credentials at runtime.
-    The agent can apply the generator's post-gen config edits (config.exs,
-    runtime.exs, root.html.heex, npm install) automatically — see the
-    playbook. But the credentials themselves are generated on the CodeMySpec
-    server.
+    The support widget connects server-side with the project's **deploy key**
+    — the same key content sync uses. There is no OAuth client id or secret;
+    the key is self-identifying, and it never reaches the browser.
+
+    The agent can apply the generator's post-gen edits (deps, supervision
+    tree, root.html.heex, runtime config) automatically — see the playbook.
 
     Tell the engineer:
 
     1. Open #{project_url}
-    2. Click **Generate Credentials** on the project page.
-    3. Set the resulting client ID and client secret as runtime env vars
-       before deploying. The exact env var names are in
-       `config/runtime.exs` after you wire it up (typically
-       `CODEMYSPEC_CLIENT_ID` and `CODEMYSPEC_CLIENT_SECRET`, but read
-       runtime.exs to be sure).
+    2. Copy the project's deploy key.
+    3. Set it as `DEPLOY_KEY` in the deployed environment, alongside
+       `CODEMYSPEC_WIDGET_URL`. Read `config/runtime.exs` after wiring to
+       confirm the names.
 
-    Without these in env, the widget compiles cleanly but authentication
-    fails at runtime. Surface this in your summary message — don't bury
-    it in script comments.\
+    Without the key in env the widget compiles cleanly, renders, and connects
+    to nothing — every message a visitor sends is dropped, and the page gives
+    no sign of it. Surface this in your summary message; don't bury it in
+    script comments.\
     """
   end
 

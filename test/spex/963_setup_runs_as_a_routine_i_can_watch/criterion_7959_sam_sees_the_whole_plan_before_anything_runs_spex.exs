@@ -57,7 +57,7 @@ defmodule CodeMySpecSpex.Story963.Criterion7959Spex do
         # ordering assertion below would pass on an empty document.
         assert steps != [], "expected the status page to render setup steps"
 
-        rendered_order = Enum.map(steps, &Floki.attribute(&1, "data-step") |> List.first())
+        rendered_order = Enum.map(steps, &(Floki.attribute(&1, "data-step") |> List.first()))
 
         # Every step the routine will run is listed, in the order the
         # routine will run them.

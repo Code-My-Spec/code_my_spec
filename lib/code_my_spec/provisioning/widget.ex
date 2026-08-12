@@ -1,8 +1,8 @@
 defmodule CodeMySpec.Provisioning.Widget do
   @moduledoc """
-  Installs the feedback widget on the deployed site and proves it works.
+  Installs the support widget on the deployed site and proves it works.
 
-  Installation runs the existing generator (`cms_gen.feedback_widget`) through
+  Installation runs the existing generator (`cms_gen.support_widget`) through
   `CodeMySpec.Environments.cmd/4`. This module does not reimplement the widget.
 
   ## The generator has to be one the project actually ships
@@ -13,6 +13,26 @@ defmodule CodeMySpec.Provisioning.Widget do
   installs (`CodeMySpec.AgentTasks.CodeGeneration`) and the widget this step
   proves have to be the same generator, or provisioning verifies something no
   new project has.
+
+  It then happened a second time. `cms_gen.feedback_widget` carries its own
+  deprecation notice pointing at `cms_gen.support_widget`, and the two are not
+  interchangeable: the feedback widget talks OAuth/REST and requires
+  `cms_gen.integrations` to have run first, while this step's stated
+  precondition is a *deploy key*, which only the support widget uses. Every
+  criterion in story 973 that exercises the CodeMySpec side goes through
+  `WidgetSocket` and `ConversationChannel` — the support widget's transport.
+  So the story had already chosen; the step was naming the other one.
+
+  ## Presence is a published contract, not a guessed selector
+
+  `verify_present/2` looked for `data-cms-widget` and `widget.js`, neither of
+  which any template has ever emitted — so a correct install reported
+  `present: false` and the step could not pass on a real application. Rather
+  than chase the widget's DaisyUI classes from out here, the generated widget
+  publishes stable markers for exactly this purpose (`data-cms-widget`,
+  `data-cms-widget-toggle`, `data-cms-widget-state`). An external prober is a
+  legitimate consumer; giving it a contract is cheaper than reverse-engineering
+  the markup on every restyle.
 
   ## Anonymous by design
 
@@ -47,7 +67,14 @@ defmodule CodeMySpec.Provisioning.Widget do
   alias CodeMySpec.Environments
   alias CodeMySpec.Users.Scope
 
-  @generator "cms_gen.feedback_widget"
+  @generator "cms_gen.support_widget"
+
+  # What the generated widget publishes for an outside prober. Kept here as
+  # named defaults so the contract is one place rather than three string
+  # literals scattered through the probes.
+  @present_marker "data-cms-widget"
+  @toggle_marker "data-cms-widget-toggle"
+  @unavailable_marker ~s(data-cms-widget-state="unavailable")
 
   @type result :: %{
           state: :proven | :install_failed | :absent | :not_proven,
@@ -95,14 +122,14 @@ defmodule CodeMySpec.Provisioning.Widget do
   @spec verify_present(String.t(), keyword()) :: {:ok, map()} | {:error, map()}
   def verify_present(site_url, opts \\ []) do
     fetch = Keyword.get(opts, :fetch, &fetch/1)
-    marker = Keyword.get(opts, :marker, "data-cms-widget")
+    marker = Keyword.get(opts, :marker, @present_marker)
 
     case fetch.(site_url) do
       {:ok, %{status: 200, body: body}} ->
         present = String.contains?(body, marker)
 
         openable =
-          present and String.contains?(body, Keyword.get(opts, :bundle_marker, "widget.js"))
+          present and String.contains?(body, Keyword.get(opts, :bundle_marker, @toggle_marker))
 
         presence = %{status: 200, present: present, openable: openable}
 
@@ -137,7 +164,7 @@ defmodule CodeMySpec.Provisioning.Widget do
           not String.contains?(body, Keyword.get(opts, :broken_marker, "Application error"))
 
         unavailable =
-          String.contains?(body, Keyword.get(opts, :unavailable_marker, "widget-unavailable"))
+          String.contains?(body, Keyword.get(opts, :unavailable_marker, @unavailable_marker))
 
         probe = %{page_status: 200, page_usable: usable, widget_state: widget_state(unavailable)}
 
@@ -188,57 +215,70 @@ defmodule CodeMySpec.Provisioning.Widget do
   Returns a result whose `proven_at` is set only when a real message arrived.
   As with the deploy and content steps, there is no field that says "done"
   independently of the proof.
+
+  Each stage keeps what the ones before it learned. Written as a single `with`,
+  every failure clause rebuilt the result from nothing, so a widget that was
+  installed and verified present and then had no message to show reported
+  `presence: nil` — and criterion 8040, which is only about presence, had
+  nothing to read. The one thing the step had proved was the thing it threw
+  away.
   """
   @spec run(Scope.t(), Environments.Environment.t(), keyword()) :: result()
   def run(%Scope{} = scope, env, opts \\ []) do
-    now = Keyword.get(opts, :now, &DateTime.utc_now/0)
     site_url = Keyword.fetch!(opts, :site_url)
     deploy_key = Keyword.fetch!(opts, :deploy_key)
 
-    with {:ok, install} <- install(env, deploy_key, opts),
-         {:ok, presence} <- verify_present(site_url, opts),
-         {:ok, proof} <- message_proof(scope, opts) do
-      %{
-        state: :proven,
-        install: install,
-        presence: presence,
-        proof: proof,
-        proven_at: now.(),
-        reason: nil
-      }
-    else
-      {:error, reason} when is_binary(reason) ->
+    case install(env, deploy_key, opts) do
+      {:ok, install} -> check_presence(scope, install, site_url, opts)
+      {:error, reason} -> %{blank() | state: :install_failed, reason: reason}
+    end
+  end
+
+  defp check_presence(scope, install, site_url, opts) do
+    case verify_present(site_url, opts) do
+      {:ok, presence} ->
+        check_proof(scope, install, presence, opts)
+
+      {:error, presence} ->
         %{
-          state: :install_failed,
-          install: nil,
-          presence: nil,
-          proof: nil,
-          proven_at: nil,
-          reason: reason
+          blank()
+          | state: :absent,
+            install: install,
+            presence: presence,
+            reason: "The widget is not usable on #{site_url} (#{inspect(presence)})."
+        }
+    end
+  end
+
+  defp check_proof(scope, install, presence, opts) do
+    now = Keyword.get(opts, :now, &DateTime.utc_now/0)
+
+    case message_proof(scope, opts) do
+      {:ok, proof} ->
+        %{
+          blank()
+          | state: :proven,
+            install: install,
+            presence: presence,
+            proof: proof,
+            proven_at: now.()
         }
 
       {:error, :no_message} ->
         %{
-          state: :not_proven,
-          install: nil,
-          presence: nil,
-          proof: nil,
-          proven_at: nil,
-          reason:
-            "The widget is installed and openable, but no message has travelled from the " <>
-              "deployed site yet. Markup can be right while the socket, credential or CORS is not."
-        }
-
-      {:error, %{present: _} = presence} ->
-        %{
-          state: :absent,
-          install: nil,
-          presence: presence,
-          proof: nil,
-          proven_at: nil,
-          reason: "The widget is not usable on #{site_url} (#{inspect(presence)})."
+          blank()
+          | state: :not_proven,
+            install: install,
+            presence: presence,
+            reason:
+              "The widget is installed and openable, but no message has travelled from the " <>
+                "deployed site yet. Markup can be right while the socket, credential or CORS is not."
         }
     end
+  end
+
+  defp blank do
+    %{state: nil, install: nil, presence: nil, proof: nil, proven_at: nil, reason: nil}
   end
 
   defp fetch(url) do

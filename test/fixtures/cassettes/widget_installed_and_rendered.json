@@ -1,0 +1,60 @@
+{
+  "commands": [
+    {
+      "args": [
+        "cms_gen.support_widget"
+      ],
+      "command": "mix",
+      "exit_code": 0,
+      "opts": {
+        "cd": "/Users/johndavenport/Documents/github/code_my_spec/.claude/worktrees/devops-qa/code_my_spec_test_repos/fleet_site",
+        "env": {
+          "SCRIPT_PATH": null,
+          "RELEASE_ROOT": null,
+          "ERTS_BIN": null,
+          "RELEASE_DISTRIBUTION_FLAG": null,
+          "RELEASE_DISTRIBUTION": null,
+          "EMU": null,
+          "RELEASE_COMMAND": null,
+          "MIX_HOME": null,
+          "PROGNAME": null,
+          "ELIXIR_VERSION": null,
+          "MIX_ARCHIVES": null,
+          "RELEASE_MODE": null,
+          "beforeExtra": null,
+          "REL_EXEC": null,
+          "RELEASE_PROG": null,
+          "ERL_LIBS": null,
+          "RELEASE_NODE": null,
+          "MIX_DEPS_PATH": null,
+          "REL_EXTRA": null,
+          "RELEASE_BOOT_SCRIPT_CLEAN": null,
+          "RELEASE_NAME": null,
+          "MIX_TARGET": null,
+          "RELEASE_VM_ARGS": null,
+          "ERLEXEC_DIR": null,
+          "ERTS_VSN": null,
+          "RELEASE_SYS_CONFIG": null,
+          "ROOTDIR": null,
+          "ERL_CONSOLE_MODE": null,
+          "parsErlang": null,
+          "RELEASE_TMP": null,
+          "REL_VSN_DIR": null,
+          "RELEASE_VSN": null,
+          "RELEASE_BOOT_SCRIPT": null,
+          "RELEASE_REMOTE_VM_ARGS": null,
+          "BINDIR": null,
+          "REL_GOTO": null,
+          "MIX_ENV": null,
+          "MIX_BUILD_PATH": null,
+          "endLoop": null,
+          "RELEASE_COOKIE": null
+        },
+        "stderr_to_stdout": true
+      },
+      "output": "* creating lib/site2/code_my_spec/widget_client.ex\n* creating lib/site2/code_my_spec/widget.ex\n* creating lib/site2_web/live/support_widget_live.ex\n\nSupport widget generated (chat + report a problem)!\n\n## Setup\n\n1. Add slipstream to your deps in mix.exs:\n\n    {:slipstream, \"~> 1.1\"},\n\n2. Add the registry + supervisor to your supervision tree\n   (lib/site2/application.ex), before the Endpoint:\n\n    {Registry, keys: :unique, name: Site2.CodeMySpec.WidgetRegistry},\n    {DynamicSupervisor, strategy: :one_for_one, name: Site2.CodeMySpec.WidgetSupervisor},\n\n3. Render the widget in\n   lib/site2_web/components/layouts/root.html.heex, before </body>.\n   Unconditionally — visitors who never signed up are who the most useful\n   feedback comes from, and the widget gives them a session-derived\n   identity of their own:\n\n    {live_render(@conn, Site2Web.SupportWidgetLive, id: \"codemyspec-support\", sticky: true)}\n\n4. Configure the widget socket URL (reuses your existing :deploy_key),\n   e.g. in runtime.exs:\n\n    config :site2,\n      codemyspec_widget_url:\n        System.get_env(\"CODEMYSPEC_WIDGET_URL\") || \"wss://codemyspec.com/widget\"\n\n    config :site2, :deploy_key, System.get_env(\"DEPLOY_KEY\")\n\n5. (Optional) Enable \"Report a problem\" screenshots — the capture button\n   dynamically imports html-to-image:\n\n    cd assets && npm install html-to-image --prefix .\n\n   Without it, reports still submit; only screenshot capture is a no-op.\n\n6. Run `mix deps.get`, then restart the server.\n\n\n",
+      "recorded_at": "2026-08-12T00:03:07.205853Z"
+    }
+  ],
+  "ports": []
+}

@@ -83,6 +83,20 @@ defmodule CodeMySpec.Environments do
     beforeExtra parsErlang endLoop
   )
 
+  # Our Mix environment is ours. It leaks into a child `mix` run against the
+  # user's project and silently changes which of *their* dependencies exist:
+  # provisioning's widget step shelled `mix cms_gen.support_widget` from a
+  # suite running under MIX_ENV=test, the generator package is a `:dev`
+  # dependency of the target app, and mix reported "the task could not be
+  # found" — which reads as a missing generator and is really our own
+  # environment deciding the answer.
+  #
+  # Separate from the release vars because a caller may legitimately choose the
+  # child's Mix environment (the analyzer runs the project's tests, which needs
+  # `test`). An explicit `:env` entry wins; silence means the child picks its
+  # own default rather than inheriting ours.
+  @mix_env_vars ~w(MIX_ENV MIX_TARGET MIX_BUILD_PATH MIX_DEPS_PATH MIX_HOME MIX_ARCHIVES)
+
   @doc """
   Env entries (`{var, nil}`) that clear the inherited BEAM/release variables,
   for the `:env` option of `System.cmd/3` when shelling out to host tools
@@ -92,7 +106,23 @@ defmodule CodeMySpec.Environments do
   """
   @spec clean_otp_env() :: [{String.t(), String.t() | nil}]
   def clean_otp_env do
-    Enum.map(@otp_release_vars, fn var -> {var, nil} end) ++ path_without_release_dirs()
+    Enum.map(@otp_release_vars ++ @mix_env_vars, fn var -> {var, nil} end) ++
+      path_without_release_dirs()
+  end
+
+  @doc """
+  `clean_otp_env/0` with the caller's own `:env` entries left standing.
+
+  The scrub is appended last so it wins, which is right for the release
+  variables — no caller sets those, and a child that inherits them cannot
+  boot. It is wrong for `MIX_ENV`: a caller that named one meant it.
+  """
+  @spec merge_clean_env(keyword()) :: keyword()
+  def merge_clean_env(opts) do
+    chosen = opts |> Keyword.get(:env, []) |> Enum.map(&elem(&1, 0)) |> MapSet.new()
+    scrub = Enum.reject(clean_otp_env(), &MapSet.member?(chosen, elem(&1, 0)))
+
+    Keyword.update(opts, :env, scrub, &(&1 ++ scrub))
   end
 
   # Clearing ROOTDIR is necessary but not sufficient: the release's own

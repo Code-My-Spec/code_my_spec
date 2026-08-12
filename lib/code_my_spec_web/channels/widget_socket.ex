@@ -15,6 +15,13 @@ defmodule CodeMySpecWeb.WidgetSocket do
 
   The end-user's identity travels as connect params, not a credential.
   Topic-level authorization happens in `ConversationChannel`.
+
+  `origin` is the same kind of thing — a claim by the host app about where it
+  is running, stamped onto the messages that arrive over the connection. It is
+  not a credential and is not trusted for authorization; provisioning's widget
+  step reads it to tell "a message came from the deployed site" apart from "a
+  message came from a laptop", which is the whole difference between a widget
+  that works for visitors and one that only ever worked for its author.
   """
 
   use Phoenix.Socket
@@ -36,7 +43,8 @@ defmodule CodeMySpecWeb.WidgetSocket do
          |> assign(:project_id, project.id)
          |> assign(:account_id, account_id)
          |> assign(:end_user_id, params["user_id"])
-         |> assign(:end_user_email, params["user_email"])}
+         |> assign(:end_user_email, params["user_email"])
+         |> assign(:origin, params["origin"])}
 
       nil ->
         Logger.warning("[WidgetSocket] connect refused — unknown deploy key")
@@ -52,7 +60,8 @@ defmodule CodeMySpecWeb.WidgetSocket do
          |> assign(:project_id, project.id)
          |> assign(:account_id, project.account_id)
          |> assign(:end_user_id, params["user_id"])
-         |> assign(:end_user_email, params["user_email"])}
+         |> assign(:end_user_email, params["user_email"])
+         |> assign(:origin, params["origin"])}
 
       {:error, reason} ->
         Logger.warning("[WidgetSocket] connect refused — socket token #{reason}")

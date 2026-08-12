@@ -15,7 +15,7 @@ defmodule CodeMySpec.Provisioning.WidgetTest do
 
   defp installed_page,
     do:
-      ~s(<html><body><div data-cms-widget></div><script src="/widget.js"></script></body></html>)
+      ~s(<html><body><div data-cms-widget><button data-cms-widget-toggle></button></div></body></html>)
 
   defp from_site, do: fn _scope -> [%{origin: "deployed_site", body: "the widget works"}] end
   defp no_messages, do: fn _scope -> [] end
@@ -61,7 +61,7 @@ defmodule CodeMySpec.Provisioning.WidgetTest do
     # than no widget: it breaks the thing it was added to improve.
     test "passes when the page still serves and the widget says unavailable" do
       body =
-        ~s(<html><body><h1>Sam's site</h1><div class="widget-unavailable"></div></body></html>)
+        ~s(<html><body><h1>Sam's site</h1><div data-cms-widget data-cms-widget-state="unavailable"></div></body></html>)
 
       assert {:ok, %{page_status: 200, page_usable: true, widget_state: "unavailable"}} =
                Widget.probe_degraded("https://sams-site.com", fetch: page(body))
@@ -77,7 +77,7 @@ defmodule CodeMySpec.Provisioning.WidgetTest do
     end
 
     test "a page broken by the outage fails even if the widget marks itself unavailable" do
-      body = ~s(<html><body>Application error<div class="widget-unavailable"></div></body></html>)
+      body = ~s(<html><body>Application error<div data-cms-widget data-cms-widget-state="unavailable"></div></body></html>)
 
       assert {:error, %{page_usable: false}} =
                Widget.probe_degraded("https://sams-site.com", fetch: page(body))

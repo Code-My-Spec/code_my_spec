@@ -118,7 +118,12 @@ defmodule CodeMySpec.MixProject do
       # Only here because ex_cli_vcr needs it to patch System.cmd/3; nothing in
       # this app calls :meck directly. Tracks ex_cli_vcr's requirement.
       {:meck, "~> 1.2", only: [:test]},
-      {:req_cassette, "~> 0.6.2", only: :test},
+      # Fork, until lostbean/req_cassette#7 lands. 0.6.2 records by building a
+      # passthrough with `adapter: &Req.Steps.run_finch/1`, which Req 0.7
+      # replaced with the `Req.Finch` module — so recording raises and replay
+      # does not, and the whole devops suite went on replaying happily while no
+      # new cassette could be written.
+      {:req_cassette, github: "johns10/req_cassette", branch: "req-0.7-adapter", only: :test},
       # `mix bench.graph`. Test-only on purpose: the dev server runs from a
       # working copy, and a new application in :dev is not hot-reloadable — it
       # takes the running server down until someone restarts it.

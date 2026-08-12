@@ -20,7 +20,6 @@ defmodule CodeMySpecSpex.Story963.Criterion7961Spex do
 
   @endpoint CodeMySpecWeb.Endpoint
 
-
   setup :register_log_in_setup_account
   setup :setup_active_project
   setup :devops_on

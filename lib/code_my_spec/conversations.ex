@@ -247,11 +247,19 @@ defmodule CodeMySpec.Conversations do
   Appends a message to a conversation and broadcasts it on the per-conversation
   topic (for connected widgets) and the account inbox topic (for the operator).
   """
-  def add_message(%Conversation{} = conversation, role, body, sender_id \\ nil, attachments \\ []) do
+  def add_message(
+        %Conversation{} = conversation,
+        role,
+        body,
+        sender_id \\ nil,
+        attachments \\ [],
+        opts \\ []
+      ) do
     %Message{}
     |> Message.changeset(%{
       conversation_id: conversation.id,
       role: role,
+      origin: Keyword.get(opts, :origin),
       # Text and files are both parts now. Callers still pass them separately
       # because that is how the widget and the operator form send them; the
       # split stops at this boundary.
@@ -340,6 +348,32 @@ defmodule CodeMySpec.Conversations do
     from m in Message,
       where: m.id in subquery(recent_ids),
       order_by: [asc: m.inserted_at, asc: m.id]
+  end
+
+  @doc """
+  End-user messages that reached the scope's active project through a widget,
+  newest first.
+
+  Support threads only, and `:user` turns only: the operator's replies travel
+  the other way, and an agent transcript never came through a widget at all.
+  Provisioning's widget step reads this to answer "has anything actually
+  arrived", which is a question about inbound traffic — counting our own
+  outbound replies would let a project prove its widget works by us talking to
+  it.
+  """
+  @spec list_widget_messages(Scope.t(), keyword()) :: [Message.t()]
+  def list_widget_messages(%Scope{} = scope, opts \\ []) do
+    from(m in Message,
+      join: c in Conversation,
+      on: c.id == m.conversation_id,
+      where: c.account_id == ^scope.active_account_id,
+      where: c.project_id == ^scope.active_project_id,
+      where: c.type == :support,
+      where: m.role == :user,
+      order_by: [desc: m.inserted_at, desc: m.id],
+      limit: ^Keyword.get(opts, :limit, @default_page_size)
+    )
+    |> Repo.all()
   end
 
   @doc "Fetches a conversation by id within the scope's active account."

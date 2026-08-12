@@ -42,6 +42,12 @@ defmodule CodeMySpec.Conversations.Message do
     field :tool_calls, {:array, :map}
     # The call a :tool turn is answering.
     field :tool_call_id, :string
+    # Where the widget that sent this was running, as its host app reported at
+    # connect time. Provisioning's widget step gates on it: markup can be right
+    # while the socket, credential or CORS is not, so "a message arrived" only
+    # proves the widget works if it arrived from the deployed site rather than
+    # from someone's laptop.
+    field :origin, :string
 
     belongs_to :conversation, Conversation
 
@@ -76,7 +82,7 @@ defmodule CodeMySpec.Conversations.Message do
   @doc false
   def changeset(message, attrs) do
     message
-    |> cast(attrs, [:content, :role, :sender_id, :conversation_id])
+    |> cast(attrs, [:content, :role, :sender_id, :conversation_id, :origin])
     |> validate_required([:role, :conversation_id])
     |> validate_parts()
     |> validate_carries_something()

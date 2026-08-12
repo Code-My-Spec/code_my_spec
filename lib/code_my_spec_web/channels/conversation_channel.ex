@@ -143,7 +143,8 @@ defmodule CodeMySpecWeb.ConversationChannel do
            :user,
            body,
            socket.assigns.end_user_id,
-           attachments
+           attachments,
+           origin: socket.assigns[:origin]
          ) do
       {:ok, _message} -> {:reply, :ok, socket}
       {:error, _changeset} -> {:reply, {:error, %{reason: "message rejected"}}, socket}

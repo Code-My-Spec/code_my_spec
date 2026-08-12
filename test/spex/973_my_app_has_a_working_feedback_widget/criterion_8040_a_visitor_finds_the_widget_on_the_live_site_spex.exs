@@ -21,15 +21,21 @@ defmodule CodeMySpecSpex.Story973.Criterion8040Spex do
   setup :setup_active_project
   setup :devops_on
   setup :connect_providers
+  # The step runs a mix generator in the project's working directory and then
+  # fetches the site it was installed on. Both are real here while recording:
+  # a committed application to install into, and the fleet's site to fetch.
+  setup :widget_on_the_fleet
 
   spex "A visitor finds the widget on the live site" do
     scenario "the widget renders and can be opened on the deployed site" do
       given_ "Sam is on the setup status page", context do
         # The widget step needs somewhere to install it and a credential to
         # wire — `require_value/2` refuses without either, so the step never
-        # reaches the live site and the criterion fails on its premise.
+        # reaches the live site and the criterion fails on its premise. Both
+        # come from `widget_on_the_fleet`; this was reaching for
+        # `publishable_project/2`, which buys a real object-storage bucket to
+        # supply one string a widget criterion has no other use for.
         own_domain(context.project, "c8040.astralbi.com")
-        publishable_project(context.scope, context.project)
 
         {:ok, view, _html} =
           live(context.conn, "/app/projects/#{context.project.id}/provisioning")
@@ -38,12 +44,16 @@ defmodule CodeMySpecSpex.Story973.Criterion8040Spex do
       end
 
       when_ "the widget step has run", context do
+        # `with_full_cassette` rather than the HTTP one alone: this step is
+        # half subprocess and half HTTP — the generator runs through
+        # `System.cmd`, the presence check through Req — and recording only
+        # the HTTP half leaves the generator running for real on every replay.
         html =
-          with_provider_cassette(@cassette, fn ->
+          with_full_cassette @cassette do
             context.view
             |> element("[data-test='setup-step'][data-step='widget'] [data-test='run-step']")
             |> render_click()
-          end)
+          end
 
         {:ok, Map.put(context, :html, html)}
       end
