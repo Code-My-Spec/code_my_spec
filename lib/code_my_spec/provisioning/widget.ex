@@ -74,7 +74,6 @@ defmodule CodeMySpec.Provisioning.Widget do
   # literals scattered through the probes.
   @present_marker "data-cms-widget"
   @toggle_marker "data-cms-widget-toggle"
-  @unavailable_marker ~s(data-cms-widget-state="unavailable")
 
   @type result :: %{
           state: :proven | :install_failed | :absent | :not_proven,
@@ -149,10 +148,26 @@ defmodule CodeMySpec.Provisioning.Widget do
   @doc """
   Verify the page survives an unreachable backend.
 
-  Passes only when the page still answers 200 AND remains usable AND the
-  widget reports itself unavailable. A page that 500s, or one where the widget
-  silently pretends to work, both fail — the first breaks the site, the second
-  swallows feedback (criterion 8043).
+  Passes when the page still answers 200, still renders its own content, and
+  does not claim a widget connection it does not have. A page that 500s breaks
+  the site the widget was added to improve; a page reporting the widget as
+  connected while the backend is gone swallows feedback, and the visitor
+  believes they were heard (criterion 8043).
+
+  ## What an HTTP probe can and cannot see
+
+  This asked whether the widget "reports itself unavailable", which over HTTP
+  it never can. The served document is a dead render: no socket has been
+  attempted yet, so the widget's state marker reads the same whether
+  CodeMySpec is reachable or not. The old check therefore passed on any page
+  carrying the marker and proved nothing about degradation.
+
+  What is observable from outside is the negative — the page renders, and it
+  does not assert `connected`. That is the claim this makes. Watching the
+  widget actually fail over (connect, fail, mark itself unavailable, throw
+  nothing at the visitor) needs a browser, and belongs in the generated
+  application's own tests rather than in a probe that has to work against a
+  customer's production site from here.
   """
   @spec probe_degraded(String.t(), keyword()) :: {:ok, map()} | {:error, map()}
   def probe_degraded(site_url, opts \\ []) do
@@ -163,12 +178,13 @@ defmodule CodeMySpec.Provisioning.Widget do
         usable =
           not String.contains?(body, Keyword.get(opts, :broken_marker, "Application error"))
 
-        unavailable =
-          String.contains?(body, Keyword.get(opts, :unavailable_marker, @unavailable_marker))
+        state = served_widget_state(body)
+        probe = %{page_status: 200, page_usable: usable, widget_state: state}
 
-        probe = %{page_status: 200, page_usable: usable, widget_state: widget_state(unavailable)}
-
-        case usable and unavailable do
+        # "absent" fails too. A page with no widget on it degrades perfectly
+        # and proves nothing, so a site where the install had silently done
+        # nothing was reported as resilient.
+        case usable and state not in ["connected", "absent"] do
           true -> {:ok, probe}
           false -> {:error, probe}
         end
@@ -181,8 +197,16 @@ defmodule CodeMySpec.Provisioning.Widget do
     end
   end
 
-  defp widget_state(true), do: "unavailable"
-  defp widget_state(false), do: "unknown"
+  # The value the page published, rather than whether one particular value was
+  # present. "absent" and "unavailable" are different answers and the caller
+  # should be able to tell them apart — a page carrying no widget at all was
+  # being reported as degrading correctly.
+  defp served_widget_state(body) do
+    case Regex.run(~r/data-cms-widget-state="([^"]*)"/, body) do
+      [_, state] -> state
+      nil -> "absent"
+    end
+  end
 
   @doc """
   Whether a real message has arrived from the deployed site.

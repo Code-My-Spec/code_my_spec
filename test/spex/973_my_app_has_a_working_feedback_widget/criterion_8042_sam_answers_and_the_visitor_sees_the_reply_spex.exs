@@ -47,7 +47,7 @@ defmodule CodeMySpecSpex.Story973.Criterion8042Spex do
               "user_id" => visitor,
               "user_email" => "#{visitor}@example.com"
             },
-            %{}
+            connect_info: %{}
           )
 
         {:ok, _reply, channel} = subscribe_and_join(socket, "conversation:#{visitor}", %{})

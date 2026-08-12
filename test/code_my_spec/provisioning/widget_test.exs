@@ -69,10 +69,21 @@ defmodule CodeMySpec.Provisioning.WidgetTest do
 
     # The widget silently pretending to work is its own failure — it swallows
     # feedback the visitor believes was sent.
-    test "a page that looks fine but never marks the widget unavailable fails" do
-      body = ~s(<html><body><h1>Sam's site</h1><div data-cms-widget></div></body></html>)
+    test "a page claiming a live widget connection fails" do
+      body =
+        ~s(<html><body><h1>Sam's site</h1><div data-cms-widget data-cms-widget-state="connected"></div></body></html>)
 
-      assert {:error, %{widget_state: "unknown"}} =
+      assert {:error, %{widget_state: "connected"}} =
+               Widget.probe_degraded("https://sams-site.com", fetch: page(body))
+    end
+
+    # A page with no widget on it degrades perfectly and proves nothing, so
+    # this used to report a site where the install had silently done nothing
+    # as resilient.
+    test "a page with no widget at all fails rather than degrading cleanly" do
+      body = ~s(<html><body><h1>Sam's site</h1></body></html>)
+
+      assert {:error, %{widget_state: "absent"}} =
                Widget.probe_degraded("https://sams-site.com", fetch: page(body))
     end
 

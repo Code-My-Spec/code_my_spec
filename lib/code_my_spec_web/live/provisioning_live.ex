@@ -1106,7 +1106,6 @@ defmodule CodeMySpecWeb.ProvisioningLive do
         data-page-status={@widget_degradation.page_status}
         data-page-usable={to_string(@widget_degradation.page_usable)}
         data-widget-state={@widget_degradation.widget_state}
-        data-console-errors={@widget_degradation.console_errors}
       >
         {@widget_degradation.summary}
       </div>
@@ -2391,13 +2390,17 @@ defmodule CodeMySpecWeb.ProvisioningLive do
   # read as `probe[:key] || probe["key"]`, and eight of those in one body is
   # eight branches — the handler measured at complexity 13 for what is really
   # three outcomes.
+  # `console_errors: "0"` used to sit in the first of these. Nothing counted
+  # anything — an HTTP GET cannot see a console — so the page reported zero
+  # errors on every successful probe, and a criterion asserting on it was
+  # reading a constant. Removed rather than made nil: a field that can only
+  # ever be empty invites someone to assert on it again.
   defp widget_degradation({:ok, probe}) do
     %{
       page_status: to_string(probe_field(probe, :page_status)),
       page_usable: probe_field(probe, :page_usable),
       widget_state: probe_field(probe, :widget_state),
-      console_errors: "0",
-      summary: "the page served without the widget"
+      summary: "the page served, and claimed no widget connection"
     }
   end
 
@@ -2406,7 +2409,6 @@ defmodule CodeMySpecWeb.ProvisioningLive do
       page_status: to_string(probe_field(probe, :page_status)),
       page_usable: false,
       widget_state: probe_field(probe, :widget_state) || "unknown",
-      console_errors: nil,
       summary: "the page did not serve"
     }
   end
@@ -2416,7 +2418,6 @@ defmodule CodeMySpecWeb.ProvisioningLive do
       page_status: nil,
       page_usable: false,
       widget_state: "unknown",
-      console_errors: nil,
       summary: "no domain set on the project — nothing to probe"
     }
   end
