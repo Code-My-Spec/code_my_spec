@@ -6,6 +6,69 @@ default:
 server:
     iex -S mix phx.server
 
+# Make a fresh worktree runnable. Idempotent; safe to re-run.
+#
+# A new worktree looks complete and is not. Three things are missing and each
+# one fails later than it should:
+#
+#   envs/                     — config/runtime.exs loads it with Dotenvy. Absent,
+#                               the harness boots and refuses every hook with
+#                               "no credential", which reads as a broken harness.
+#   code_my_spec_test_repos/  — the drill and devops spex fixtures resolve
+#                               against it by relative path.
+#   the test database         — config/test.exs gives every worktree its own
+#                               (code_my_spec_test_<name>), deliberately, so
+#                               agents cannot re-schema each other. Nothing
+#                               creates it, and the first `mix test` fails in
+#                               bulk with an undefined column.
+#
+# 2fb10199 reports all three as round trips a subagent had to work out for
+# itself, one at a time, and it is the third that is expensive: a stale or
+# missing database presents as broken code across contexts nobody touched.
+#
+# Symlinks rather than copies. `envs` holds secrets that must not be duplicated
+# per worktree, and the test repos are a fixture several worktrees share; a copy
+# would drift and the drift is silent.
+worktree-setup:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    main="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")"
+    here="$(git rev-parse --show-toplevel)"
+
+    if [ "$main" = "$here" ]; then
+      echo "This is the main checkout, not a worktree — nothing to link." >&2
+      exit 0
+    fi
+
+    echo "→ worktree: $here"
+    echo "→ main:     $main"
+
+    # -n so a re-run replaces the symlink rather than creating one inside the
+    # directory it already points at, which is what `ln -sf` does to a link that
+    # resolves to a directory and is a genuinely confusing mess to unpick.
+    ln -sfn "$main/envs" "$here/envs"
+    echo "  envs -> $main/envs"
+
+    repos="$(dirname "$main")/code_my_spec_test_repos"
+    if [ -d "$repos" ]; then
+      ln -sfn "$repos" "$here/code_my_spec_test_repos"
+      echo "  code_my_spec_test_repos -> $repos"
+    else
+      echo "  (no $repos — skipping; drill and devops spex will not run here)"
+    fi
+
+    # `elixir -S mix`, not `mix`: a bare `mix` in a worktree resolves against the
+    # main checkout and would create the wrong tree's database.
+    echo "→ test database"
+    MIX_ENV=test elixir -S mix ecto.create --quiet
+    MIX_ENV=test elixir -S mix ecto.migrate
+
+    echo
+    # Single quotes: backticks inside a double-quoted bash string are command
+    # substitution, so the friendly closing message would have *run* the suite.
+    echo 'Ready. `mix test` and `mix spex` should both work from here now.'
+
 # Pull main and restart the dev server, from any worktree.
 refresh port="4000":
     #!/usr/bin/env bash

@@ -397,7 +397,37 @@ defmodule CodeMySpec.Validation do
   # else's. An empty set from a session that genuinely wrote nothing is
   # different, and the renderer treats it as "no evidence" rather than "all
   # foreign" for the same reason.
-  defp session_paths(%Scope{cwd: cwd} = scope, opts) when is_binary(cwd) do
+  @doc false
+  # Public so the cwd-less case can be asserted directly, the same reason
+  # `HookDecision.channel_age_note/1` and `HealthController.degraded?/1` are.
+  # The bug this guards against was a `nil` that reads as "attribution
+  # unavailable", and the only way to catch that regressing is to look at the
+  # value rather than at the sentence built from it.
+  @spec session_paths_for_test(Scope.t(), keyword()) :: MapSet.t() | nil
+  def session_paths_for_test(scope, opts), do: session_paths(scope, opts)
+
+  # No `when is_binary(cwd)`. A scope without one is the *normal* shape on the
+  # light harness — the server holds no working copy — and requiring it threw
+  # away attribution the session had.
+  #
+  # Measured on this session: 595 recorded edits, 363 of them already
+  # project-relative, 269 joining File rows for this harness. Every one of those
+  # was discarded, and every finding blocked, under the message "Attribution is
+  # unavailable for this session" — which is a statement about `cwd` wearing the
+  # costume of a statement about the session's work (9a623a13).
+  #
+  # Safe because the cwd was only ever needed to relativize *absolute* paths,
+  # and `relativize/2` already returns the path unchanged when there is no cwd
+  # to relativize against — as it does for a path that is relative already,
+  # which is the shape the harness sends.
+  #
+  # And because the check that actually protects this is downstream:
+  # `verify_against_ledger/3` still requires the recorded paths to join real
+  # File rows, and still answers `nil` on zero. A set that means nothing cannot
+  # demote anything whether or not a cwd was present, so dropping the guard
+  # cannot manufacture a bogus demotion — it can only stop discarding a good
+  # one.
+  defp session_paths(%Scope{cwd: cwd} = scope, opts) do
     case Keyword.get(opts, :session_id) do
       session_id when is_binary(session_id) ->
         session_id
