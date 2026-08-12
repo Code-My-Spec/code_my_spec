@@ -66,6 +66,62 @@ defmodule CmsHarness.Projects do
     end
   end
 
+  @doc """
+  Start the working copy named by the environment, if there is one.
+
+  The sprite's path, and the one thing this module deliberately did not do.
+
+  Everything else here starts on demand: a hook names a harness id, and the
+  subtree comes up to answer it. That is right on a laptop, where an agent
+  session fires a hook within seconds of starting, and it is why the moduledoc
+  above says nothing is configured.
+
+  A sprite is the opposite shape. Its agent has not started yet — `drill.sh`
+  waits for "accepted the manifest" *before* running `devbox-agent` — so a
+  harness that waits for a hook waits forever, scans nothing, pushes no
+  manifest, and looks healthy the whole time. Measured: the in-repo harness
+  booted clean in a drill container against a real workspace and wrote two
+  lines to harness.log, the endpoint starting and its URL (bddb1ac1, 92cffa52).
+
+  `CMS_PROJECT_DIR` is already the name for this — `sprite.sh` exports it in the
+  light-harness branch, and the standalone harness has read it since it was
+  extracted. Adopting the same variable rather than inventing one is what lets
+  the sprite switch over without touching how it is launched.
+
+  Errors are logged and swallowed. A working copy that cannot be served at boot
+  is worth saying loudly, but it must not take the harness down: a hook naming
+  a *different* copy can still be answered, and a harness that refuses to start
+  answers nothing at all.
+  """
+  @spec start_configured() :: :ok
+  def start_configured do
+    case System.get_env("CMS_PROJECT_DIR") do
+      dir when is_binary(dir) and dir != "" ->
+        serve_configured(dir)
+
+      _ ->
+        :ok
+    end
+  end
+
+  defp serve_configured(dir) do
+    case ensure_started(dir) do
+      {:ok, _project} ->
+        :ok
+
+      {:error, reason} ->
+        Logger.error("""
+        [CmsHarness] CMS_PROJECT_DIR is #{dir} but the harness could not serve it: #{inspect(reason)}.
+
+        Nothing is being watched there and every hook for that directory will
+        refuse. On a sprite this is fatal in practice: the agent waits for a
+        manifest that will never be sent.
+        """)
+
+        :ok
+    end
+  end
+
   @doc "Every working-copy root this harness currently has a subtree for."
   @spec list() :: [String.t()]
   def list do
