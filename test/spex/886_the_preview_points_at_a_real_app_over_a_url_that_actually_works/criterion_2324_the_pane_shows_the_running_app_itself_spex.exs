@@ -65,6 +65,21 @@ defmodule CodeMySpecSpex.Story886.Criterion2324Spex do
         {:ok, context}
       end
 
+      then_ "and the app was asked what the browser asked, not something else", context do
+        # Provenance again, one layer down: the bytes can only be the app's if
+        # the app was asked the same question the visitor asked. From req 0.7 a
+        # GET carrying a body goes out as a POST while `Req.new/1` still reports
+        # `:get`, and `read_body/1` hands `""` for every GET — so every preview
+        # page load reached the app as a POST and came back as its "no route
+        # found for POST /" page. Invisible from here until the app said which
+        # method it got, because this stand-in answers them all alike.
+        assert Plug.Conn.get_resp_header(context.response, "x-preview-app-method") == ["GET"],
+               "the app was asked with the wrong method — a visitor's GET reached it as " <>
+                 "something else, which a real Phoenix app answers with a 404"
+
+        {:ok, context}
+      end
+
       then_ "and the response describes the body we actually forwarded", context do
         # A relayed content-length from upstream describes the app's body, not
         # ours, and the two differ the moment anything is rewritten. A browser

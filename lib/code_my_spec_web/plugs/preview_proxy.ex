@@ -136,17 +136,25 @@ defmodule CodeMySpecWeb.Plugs.PreviewProxy do
   end
 
   defp request(conn, url, body) do
-    Req.request(
+    [
       method: conn.method |> String.downcase() |> String.to_existing_atom(),
       url: url,
       headers: Enum.reject(conn.req_headers, fn {k, _} -> k in @strip_request end),
-      body: body,
       decode_body: false,
       redirect: false,
       retry: false,
       receive_timeout: 30_000
-    )
+    ]
+    |> Keyword.merge(body_option(body))
+    |> Req.request()
   end
+
+  # From req 0.7 a GET carrying a body goes out as a POST, while `Req.new/1`
+  # still reports `:get` — so every preview page load reached the app as a POST
+  # and came back as its "no route found for POST /" page. Same defect ce16236d
+  # fixed for ExAws, which hands `""` the same way `read_body/1` does.
+  defp body_option(""), do: []
+  defp body_option(body), do: [body: body]
 
   defp query(%Plug.Conn{query_string: ""}), do: ""
   defp query(%Plug.Conn{query_string: q}), do: "?" <> q
