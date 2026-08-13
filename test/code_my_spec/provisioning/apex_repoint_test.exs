@@ -46,6 +46,14 @@ defmodule CodeMySpec.Provisioning.ApexRepointTest do
         write_dns_record: fn _s, _z, name, ip, _o ->
           send(self(), {:wrote, name, ip})
           {:ok, %{"result" => %{}}}
+        end,
+        # The step now fails a record that no public resolver returns, so it
+        # performs a real DNS-over-HTTPS lookup. `example.com` resolves, so
+        # these passed either way — on the network, to decide something that
+        # has nothing to do with repointing an apex. Stubbed, or a dns.google
+        # outage fails a test about Cloudflare.
+        resolver: fn _url ->
+          {:ok, %{status: 200, body: %{"Answer" => [%{"data" => @new_ip}]}}}
         end
       ],
       extra
@@ -100,6 +108,28 @@ defmodule CodeMySpec.Provisioning.ApexRepointTest do
       existing = [%{"name" => "uat.#{@apex}", "type" => "A", "content" => @live_ip}]
 
       refute match?({:paused, _}, Steps.run(:dns, scope, opts(existing)))
+    end
+  end
+
+  describe "a record that does not resolve" do
+    # The step checked this and threw the answer away: `dns_verification/2`
+    # returned an empty resource list and the step reported done, with no
+    # `verify(:dns, …)` clause to catch it either. The failure then surfaced
+    # ten minutes later at `tls`, as a certificate problem, on a host teardown
+    # was about to destroy.
+    test "fails this step instead of the one ten minutes later", %{scope: scope} do
+      silent = [resolver: fn _url -> {:ok, %{status: 200, body: %{}}} end]
+
+      assert {:error, message} = Steps.run(:dns, scope, opts([], silent))
+      assert message =~ @apex
+      assert message =~ "no public resolver returns it"
+    end
+
+    test "the address it wrote is named, so there is something to check", %{scope: scope} do
+      silent = [resolver: fn _url -> {:ok, %{status: 200, body: %{}}} end]
+
+      assert {:error, message} = Steps.run(:dns, scope, opts([], silent))
+      assert message =~ @new_ip
     end
   end
 end

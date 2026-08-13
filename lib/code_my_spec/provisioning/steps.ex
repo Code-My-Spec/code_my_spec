@@ -3014,11 +3014,35 @@ defmodule CodeMySpec.Provisioning.Steps do
     case write.(scope, zone["id"], environment.host, ip, records: existing) do
       {:ok, response} ->
         record = dns_resource(environment.host, ip, response, environment.name)
-        {:cont, {:ok, acc ++ [record] ++ dns_verification(environment, opts)}}
+        confirm_dns_record(environment, ip, record, acc, opts)
 
       {:error, reason} ->
         {:halt, {:error, reason}}
     end
+  end
+
+  # A record that does not resolve fails this step, rather than passing it.
+  #
+  # `dns_verification/2` returned `[]` when the lookup found nothing and the
+  # step reported done anyway — and there is no `verify(:dns, …)` clause, so
+  # nothing downstream noticed either. The comment on that check already says a
+  # record which exists in the dashboard and does not resolve is the classic
+  # DNS failure; it was checked and then discarded.
+  #
+  # What that cost: the failure surfaced ten minutes later at `tls`, as a
+  # certificate problem, on a host teardown was about to destroy. This step
+  # states what it did, so it should be the one to say it did not work.
+  defp confirm_dns_record(environment, ip, record, acc, opts) do
+    case dns_verification(environment, opts) do
+      [] -> {:halt, {:error, unresolved_record_message(environment, ip)}}
+      verification -> {:cont, {:ok, acc ++ [record] ++ verification}}
+    end
+  end
+
+  defp unresolved_record_message(environment, ip) do
+    "#{environment.host} was written as an A record for #{ip}, but no public " <>
+      "resolver returns it. Everything after this step reaches the name rather " <>
+      "than the address, so none of it can work until the record resolves."
   end
 
   # Confirmed against a public resolver, not against our own write. A record

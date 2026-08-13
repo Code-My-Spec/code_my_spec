@@ -105,6 +105,7 @@ defmodule Mix.Tasks.Cms.ProvisioningLeaks do
 
     report("Hetzner servers", server_names(%Scope{}), delete?, &delete_server(&1, recent))
     report("Hetzner SSH keys", ssh_key_names(%Scope{}), delete?, &delete_ssh_key/1)
+    report("Hetzner firewalls", firewall_names(%Scope{}), delete?, &delete_firewall/1)
     report("Hetzner buckets", bucket_names(credentials), delete?, &delete_bucket(&1, credentials))
 
     # Cloudflare and Resend were missing here, and they are the two that
@@ -350,6 +351,36 @@ defmodule Mix.Tasks.Cms.ProvisioningLeaks do
     case Hetzner.list_ssh_keys(scope) do
       {:ok, keys} -> Enum.map(keys, &name_of/1)
       _ -> []
+    end
+  end
+
+  # Firewalls were not swept at all, and eleven had accumulated — `spex-story841
+  # -criterion1962`, `-1967`, `-1968`, `-1969`, `spex-story96{5,6,8}-…`,
+  # `spex-story972-…` — every one applied to nothing, while this task reported
+  # the account clean. Free, so nothing complains, and invisible for exactly
+  # that reason: the same shape as the SSH keys above and as `builder-<ref>`.
+  #
+  # Only the ones applied to nothing. A firewall still attached to a server
+  # belongs to a run that has not finished, and the server sweep's own recency
+  # window is what protects that case — this must not race it by removing the
+  # rule set off a box mid-drill.
+  defp firewall_names(scope) do
+    case Hetzner.list_firewalls(scope) do
+      {:ok, firewalls} -> firewalls |> Enum.filter(&unattached?/1) |> Enum.map(&name_of/1)
+      _ -> []
+    end
+  end
+
+  defp unattached?(firewall) do
+    (firewall["applied_to"] || firewall[:applied_to] || []) == []
+  end
+
+  defp delete_firewall(name) do
+    with {:ok, %{"id" => id}} <- Hetzner.find_firewall(%Scope{}, name),
+         {:ok, _} <- Hetzner.delete_firewall(%Scope{}, id) do
+      :ok
+    else
+      _ -> {:error, name}
     end
   end
 
