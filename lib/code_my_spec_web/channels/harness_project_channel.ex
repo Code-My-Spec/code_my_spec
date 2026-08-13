@@ -39,7 +39,6 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
 
   alias CodeMySpec.Accounts
   alias CodeMySpec.AgentHarness.ConversationRecorder
-  alias CodeMySpec.Sessions
   alias CodeMySpec.Analysis
   alias CodeMySpec.Files
   alias CodeMySpec.Files.File, as: FileRecord
@@ -57,6 +56,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   alias CodeMySpec.Hooks.SubagentStop
   alias CodeMySpec.Projects
   alias CodeMySpec.Projects.Project
+  alias CodeMySpec.Sessions
   alias CodeMySpec.Users.Scope
 
   @impl true
