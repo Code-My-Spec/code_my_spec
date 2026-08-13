@@ -73,15 +73,21 @@ defmodule CodeMySpecSpex.Story1013.Criterion2355Spex do
       end
 
       then_ "each is named in the command that acts on it", context do
+        app = Mix.Project.config()[:app]
+
         assert Enum.all?(context.report.databases, fn database ->
-                 String.ends_with?(database.name, database.partition) and
+                 database.name == "#{app}_test#{database.partition}" and
                    String.contains?(database.migrate, database.partition)
                end),
-               "a migrate command and the database it claims to act on are tied " <>
-                 "together by nothing. That is the defect verbatim: the guard printed " <>
-                 "a command for a database it was not checking, and following it " <>
-                 "correctly changed nothing. The report has to state the partition " <>
-                 "that connects the two, or the reader is left inferring it. Got: " <>
+               "a reported database name is not the one `config/test.exs` composes " <>
+                 "for its partition — that file builds `\#{app}_test\#{partition}` " <>
+                 "with no separator, and it is what actually resolves " <>
+                 "MIX_TEST_PARTITION into a database. A name that differs from it, " <>
+                 "even by one character, means the command creates one database " <>
+                 "while the line above it announces another. That is the defect " <>
+                 "twice over: first a hardcoded `code_my_spec` prefix (772aff03), " <>
+                 "then a stray underscore that survived the fix because the output " <>
+                 "was only ever compared to itself (c4a2acae). Got: " <>
                  inspect(context.report.databases)
 
         {:ok, context}
