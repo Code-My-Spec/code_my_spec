@@ -223,6 +223,31 @@ defmodule CodeMySpec.Provisioning.DeployTest do
       assert {:error, reason} = Deploy.probe(nil, [])
       assert reason =~ "hostname"
     end
+
+    # The gap that let four drills print `%Req.TransportError{reason: :timeout}`
+    # onto the setup page: the tls step's formatter was only ever exercised
+    # through an injected probe returning a raw struct, while the real probe
+    # inspected the struct into a binary first — and binaries pass through the
+    # formatter untouched. So this asserts on the production function.
+    #
+    # `.invalid` is reserved by RFC 2606 and cannot resolve, which makes a
+    # transport failure the guaranteed outcome without depending on anything
+    # being up or down.
+    test "a transport failure comes back as words, not a struct" do
+      assert {:error, reason} = Deploy.probe("nothing.invalid", timeout_ms: 2_000)
+
+      refute reason =~ "TransportError",
+             "the struct reached the caller, which interpolates it into a sentence"
+
+      refute reason =~ "reason:"
+      assert is_binary(reason)
+    end
+
+    test "the scheme is selectable so a caller can tell 443 from 80" do
+      # Same unresolvable host, so this asserts the option is threaded rather
+      # than that any particular port behaves — the URL is what changes.
+      assert {:error, _} = Deploy.probe("nothing.invalid", scheme: :http, timeout_ms: 2_000)
+    end
   end
 
   describe "ensure_monitors/2" do

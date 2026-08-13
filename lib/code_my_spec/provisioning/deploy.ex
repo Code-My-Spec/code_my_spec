@@ -37,6 +37,7 @@ defmodule CodeMySpec.Provisioning.Deploy do
 
   alias CodeMySpec.Environments
   alias CodeMySpec.Provisioning.Deploy.UptimeRobot
+  alias CodeMySpec.Provisioning.Transport
   alias CodeMySpec.Provisioning.Wait
 
   @type phase :: :build | :migrate | :health | :swap
@@ -163,8 +164,12 @@ defmodule CodeMySpec.Provisioning.Deploy do
     end
   end
 
-  # `bin/deploy` prints this when it finds no env files on the host, which is
-  # the one condition that means nothing has ever booted there.
+  # Two places print this, and it took a regression to learn why one is not
+  # enough. `bin/deploy` prints it when it finds no env files on the host —
+  # which stopped happening once migrate began decrypting secrets baked into
+  # the image, so a first deploy started *succeeding* and saying nothing.
+  # `Release.migrate/0` now prints it on a database with no migrations
+  # applied: the positive form of the same fact, observable when migrate works.
   defp first_deploy?(migrate_output) when is_binary(migrate_output),
     do: String.contains?(migrate_output, "first_deploy=1")
 
@@ -271,17 +276,22 @@ defmodule CodeMySpec.Provisioning.Deploy do
   Redirects are NOT followed. A 301 to HTTPS is the redirect answering, not
   the app — following it would let a misconfigured `force_ssl` pass a health
   check that the proxy's own plain-HTTP probe fails.
+
+  `:scheme` probes plain HTTP instead, which is not a health check: it is how
+  a caller tells "the proxy is up and issuance failed" apart from "nothing is
+  listening", since those are the same timeout over TLS.
   """
   @spec probe(String.t() | nil, keyword()) :: :ok | {:error, String.t()}
   def probe(nil, _opts), do: {:error, "no hostname given"}
 
   def probe(host, opts) do
     path = Keyword.get(opts, :health_path, "/health")
+    scheme = Keyword.get(opts, :scheme, :https)
 
     req_opts =
       [
         method: :get,
-        url: "https://#{host}#{path}",
+        url: "#{scheme}://#{host}#{path}",
         redirect: false,
         retry: false,
         receive_timeout: Keyword.get(opts, :timeout_ms, 10_000)
@@ -290,7 +300,12 @@ defmodule CodeMySpec.Provisioning.Deploy do
     case Req.request(req_opts) do
       {:ok, %Req.Response{status: status}} when status in 200..299 -> :ok
       {:ok, %Req.Response{status: status}} -> {:error, "responded #{status}"}
-      {:error, reason} -> {:error, inspect(reason)}
+      # Words, not `inspect/1`. Every caller interpolates this into a sentence a
+      # human reads, and a struct cannot survive that: four drills reported
+      # `%Req.TransportError{reason: :timeout}` on the setup page while the
+      # formatter that exists to prevent exactly this never saw it, because
+      # what reached it was already a binary.
+      {:error, reason} -> {:error, Transport.describe(reason)}
     end
   end
 

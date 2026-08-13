@@ -35,6 +35,69 @@ defmodule CodeMySpec.Provisioning.TlsMessageTest do
     Steps.run(:tls, scope, probe: fn _host, _opts -> {:error, reason} end)
   end
 
+  describe "issuance is waited for rather than caught mid-flight" do
+    # kamal-proxy asks Let's Encrypt for the certificate when the service comes
+    # up and stalls the handshake until it arrives, so one timed-out probe means
+    # "not yet". This step used to make exactly one attempt and was the only
+    # asynchronous thing in provisioning that did not poll.
+    test "a certificate that arrives late still passes", ctx do
+      # Per host, because the step fans out over environments and a shared
+      # counter would mix one host's retries into the next host's tally.
+      {:ok, calls} = Agent.start_link(fn -> %{} end)
+
+      probe = fn host, _opts ->
+        n = Agent.get_and_update(calls, &{Map.get(&1, host, 0) + 1, Map.update(&1, host, 1, fn c -> c + 1 end)})
+        if n < 3, do: {:error, %Finch.TransportError{reason: :timeout}}, else: :ok
+      end
+
+      assert {:ok, resources} = Steps.run(:tls, ctx.scope, probe: probe)
+      assert Enum.any?(resources, &(&1.kind == "certificate"))
+
+      for {host, n} <- Agent.get(calls, & &1) do
+        assert n == 3, "#{host} kept probing after it answered"
+      end
+    end
+
+    test "it gives up rather than polling forever", ctx do
+      counter = :counters.new(1, [])
+
+      probe = fn _host, _opts ->
+        :counters.add(counter, 1, 1)
+        {:error, %Finch.TransportError{reason: :timeout}}
+      end
+
+      assert {:error, _message, _resources} =
+               Steps.run(:tls, ctx.scope, probe: probe, tls_attempts: 4)
+
+      # Four attempts, plus the single plain-HTTP observation the failure adds.
+      assert :counters.get(counter, 1) == 5
+    end
+  end
+
+  describe "a failure says which prerequisite is missing" do
+    # The advice names DNS and port 80, and every drill so far had to guess
+    # which one from a host teardown had already destroyed.
+    test "port 80 answering points at issuance", ctx do
+      probe = fn _host, opts ->
+        if Keyword.get(opts, :scheme) == :http,
+          do: :ok,
+          else: {:error, %Finch.TransportError{reason: :timeout}}
+      end
+
+      assert {:error, message, _} = Steps.run(:tls, ctx.scope, probe: probe, tls_attempts: 1)
+      assert message =~ "Port 80 does answer"
+      assert message =~ "issuance itself"
+    end
+
+    test "port 80 silent points at reachability", ctx do
+      probe = fn _host, _opts -> {:error, %Finch.TransportError{reason: :econnrefused}} end
+
+      assert {:error, message, _} = Steps.run(:tls, ctx.scope, probe: probe, tls_attempts: 1)
+      assert message =~ "Port 80 does not answer either"
+      assert message =~ "reachability rather than issuance"
+    end
+  end
+
   describe "a transport failure is reported in words" do
     test "a refused connection says nothing is listening", ctx do
       assert {:error, message, _resources} =

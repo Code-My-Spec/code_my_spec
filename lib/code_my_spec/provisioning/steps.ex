@@ -58,6 +58,8 @@ defmodule CodeMySpec.Provisioning.Steps do
     Sops,
     StepRepository,
     Storage,
+    Transport,
+    Wait,
     Widget
   }
 
@@ -852,15 +854,40 @@ defmodule CodeMySpec.Provisioning.Steps do
   # fails on the second environment still records the first.
   defp verify_certificates(targets, probe, opts) do
     Enum.reduce_while(targets, {:ok, []}, fn target, {:ok, verified} ->
-      case probe.(target.host, opts) do
+      case await_certificate(probe, target.host, opts, tls_attempts(opts)) do
         :ok ->
           {:cont, {:ok, verified ++ certificate_resources(target)}}
 
         {:error, reason} ->
-          {:halt, {:error, certificate_error(target, reason), verified}}
+          {:halt, {:error, certificate_error(target, reason, probe, opts), verified}}
       end
     end)
   end
+
+  # Issuance is asynchronous. kamal-proxy asks Let's Encrypt for a certificate
+  # when the service comes up, and the handshake stalls until it arrives, so
+  # the honest reading of a single timed-out probe is "not yet" rather than
+  # "never". This step used to make exactly one 10-second attempt and was the
+  # only asynchronous thing in provisioning that did not poll — every sibling
+  # here waits for the world to catch up, and the deploy step polls this very
+  # probe thirty times.
+  defp await_certificate(probe, host, opts, attempts) do
+    case probe.(host, opts) do
+      :ok ->
+        :ok
+
+      {:error, _reason} when attempts > 1 ->
+        Wait.sleep(Keyword.get(opts, :tls_interval_ms, 5_000))
+        await_certificate(probe, host, opts, attempts - 1)
+
+      # The last reason, not a bare "gave up" — what the host was doing on the
+      # final attempt is the whole diagnosis.
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  defp tls_attempts(opts), do: Keyword.get(opts, :tls_attempts, 20)
 
   # A successful probe is a 200 over HTTPS with `redirect: false` and a valid
   # chain — so scheme, status and cert validity are all implied by it
@@ -876,9 +903,28 @@ defmodule CodeMySpec.Provisioning.Steps do
     ]
   end
 
-  defp certificate_error(target, reason) do
+  # The advice names two prerequisites — DNS and port 80 — and every drill so
+  # far had to guess which one was missing, from a host that teardown had
+  # already destroyed. So ask, once, while the host still exists: a proxy that
+  # answers on 80 but not on 443 has failed *issuance*, which is a different
+  # problem from a proxy nothing can reach, and the sentence should not make a
+  # human run a drill to tell them apart.
+  defp certificate_error(target, reason, probe, opts) do
     "#{target.host} did not answer over HTTPS with a valid certificate (#{format(reason)}). " <>
-      "Issuance needs DNS resolving to the server and the proxy reachable on 80."
+      "Issuance needs DNS resolving to the server and the proxy reachable on 80. " <>
+      plain_http_observation(target.host, probe, opts)
+  end
+
+  defp plain_http_observation(host, probe, opts) do
+    case probe.(host, Keyword.merge(opts, scheme: :http, tls_attempts: 1)) do
+      :ok ->
+        "Port 80 does answer, so the proxy is reachable and issuance itself " <>
+          "is what failed — check the proxy's certificate log on the host."
+
+      {:error, reason} ->
+        "Port 80 does not answer either (#{format(reason)}), so this is " <>
+          "reachability rather than issuance."
+    end
   end
 
   defp tls_tag(%{name: name}) when is_binary(name), do: " environment=#{name}"
@@ -3471,15 +3517,5 @@ defmodule CodeMySpec.Provisioning.Steps do
   # a tuple, and the default also truncates the container's elements.
   defp format(reason), do: inspect(reason, printable_limit: :infinity, limit: :infinity)
 
-  defp format_transport(:econnrefused), do: "nothing is listening on that port"
-  defp format_transport(:nxdomain), do: "the name does not resolve yet"
-  defp format_transport(:timeout), do: "the host did not answer in time"
-  defp format_transport(:ehostunreach), do: "the host is unreachable"
-  defp format_transport(:econnreset), do: "the host closed the connection"
-  defp format_transport(:closed), do: "the connection closed before an answer"
-
-  # Still a word rather than a struct. An atom nobody has a sentence for reads
-  # better as `econnaborted` than as `:econnaborted`, and the ones that matter
-  # are named above.
-  defp format_transport(other), do: other |> Atom.to_string() |> String.replace("_", " ")
+  defp format_transport(reason), do: Transport.describe(reason)
 end
