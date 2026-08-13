@@ -2350,7 +2350,29 @@ defmodule CodeMySpecSpex.Fixtures do
   # This only started biting once the account was genuinely clean: recordings
   # used to finish inside fifteen minutes because the previous run's sending
   # domains were still there and verified instantly.
-  @grant_margin_seconds 300
+  #
+  # The margin has to be how long a criterion may *run*, not a comfortable
+  # buffer, because the snapshot is taken once in `connect_providers/1` and
+  # then has to last until the criterion ends. At 300s it did not: a grant with
+  # six minutes left passed this check, was copied onto the spex's scope
+  # without a refresh token, and expired inside a 1961 recording that takes
+  # 568s. The copy then reported `:reauthorize_required` — about a grant that
+  # exists only for the test, while the real row sat healthy and refreshed.
+  # That reads as a revoked Cloudflare connection and is nothing of the kind,
+  # which cost this session two wrong diagnoses before the arithmetic.
+  #
+  # `CodeMySpecSpex.Case.spex_timeout/0` is the ceiling — 20 minutes while
+  # recording — so that is what a snapshot must survive. Not read from there:
+  # `CodeMySpecSpex.Fixtures` is its own boundary and may not reach into the
+  # Case.
+  #
+  # For a provider whose token is shorter-lived than a recording this makes
+  # `usable?/1` always false, so every criterion re-reads from dev. That is the
+  # right answer — it is the single owner, and it refreshes — but it does not
+  # save Resend, whose ~15 minute token cannot outlast a 20 minute recording
+  # however fresh the copy is. That one needs the snapshot to renew through the
+  # dev row mid-run, which is a larger change than this.
+  @grant_margin_seconds 1200
 
   defp usable?(%{expires_at: %DateTime{} = expires_at}) do
     DateTime.diff(expires_at, DateTime.utc_now()) > @grant_margin_seconds

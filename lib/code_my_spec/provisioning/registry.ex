@@ -408,7 +408,24 @@ defmodule CodeMySpec.Provisioning.Registry do
       {"REGISTRY_STORAGE_S3_FORCEPATHSTYLE", "true"},
       {"REGISTRY_STORAGE_S3_BUCKET", bucket},
       {"REGISTRY_STORAGE_S3_ACCESSKEY", Keyword.fetch!(credentials, :access_key_id)},
-      {"REGISTRY_STORAGE_S3_SECRETKEY", Keyword.fetch!(credentials, :secret_access_key)}
+      {"REGISTRY_STORAGE_S3_SECRETKEY", Keyword.fetch!(credentials, :secret_access_key)},
+      # Hetzner's object storage is eventually consistent, and a push reads
+      # back what it has just written: the registry writes a layer, immediately
+      # asks whether the blob exists, and gets told it does not. Docker reports
+      # that as `unknown blob` after retrying each layer for a minute — some
+      # layers pushed, others never did, and nothing in the message names
+      # storage.
+      #
+      # The descriptor cache answers those reads from memory instead of going
+      # back to the bucket, which is what the upstream registry recommends for
+      # any S3-compatible backend that is not S3. It is a cache of what this
+      # container itself just wrote, so it cannot serve a stale answer about
+      # somebody else's push.
+      #
+      # Same family as the lifecycle-rule retry in `Storage.put_lifecycle/4`
+      # and the bucket-gone poll in teardown: with this provider, "written" and
+      # "readable" are separate moments.
+      {"REGISTRY_STORAGE_CACHE_BLOBDESCRIPTOR", "inmemory"}
     ]
   end
 
