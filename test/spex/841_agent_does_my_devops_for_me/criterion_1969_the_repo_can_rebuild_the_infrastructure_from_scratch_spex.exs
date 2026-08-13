@@ -47,7 +47,7 @@ defmodule CodeMySpecSpex.Story841.Criterion1969Spex do
         # reports nothing — the gap 1961 had. Its own *name* as well, because
         # Let's Encrypt allows five certificates a week per exact identifier
         # set and criteria sharing a hostname spend each other's quota.
-        own_domain(context.project, "c1969.astralbi.com")
+        own_domain(context.project, "c1969.legwork.ca")
 
         # "From scratch" is the premise, so nothing is provisioned — this
         # scenario never runs setup before the `when_`. What has to be

@@ -55,7 +55,7 @@ defmodule CodeMySpecSpex.Story841.Criterion1962Spex do
         # week for an exact set of identifiers, and criteria sharing a hostname
         # spend each other's quota — which is what stopped 1961 after eight
         # drills in a day.
-        own_domain(context.project, "c1962.astralbi.com")
+        own_domain(context.project, "c1962.legwork.ca")
 
         # Production is off from `setup :devops_uat_only`. UAT is provisioned by
         # running setup — the criterion is about what is true afterwards, so
