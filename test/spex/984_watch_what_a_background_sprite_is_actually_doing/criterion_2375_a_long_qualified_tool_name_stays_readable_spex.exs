@@ -50,6 +50,20 @@ defmodule CodeMySpecSpex.Story984.Criterion2375Spex do
         assert html =~ "add_scenario",
                "the distinguishing part of the name has to survive on screen"
 
+        {:ok, Map.put(context, :view, view)}
+      end
+
+      then_ "the name is allowed to wrap rather than run off the card", context do
+        # Present on screen and readable are not the same claim, and the first
+        # one held while the second did not: at 375px the name measured 353px
+        # inside a 325px card and was clipped mid-word. A LiveView test cannot
+        # measure that, so it asserts the mechanism — a flex item that may
+        # shrink, and a token that may break — which is what the browser
+        # confirmed fixes it.
+        assert has_element?(context.view, "[data-test='tool-call'] span.break-all.min-w-0"),
+               "an unbreakable 45-character token in a flex row overflows its card " <>
+                 "and the reader loses the end of the name"
+
         {:ok, context}
       end
     end

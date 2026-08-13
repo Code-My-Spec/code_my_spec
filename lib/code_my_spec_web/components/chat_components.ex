@@ -246,10 +246,13 @@ defmodule CodeMySpecWeb.ChatComponents do
       data-state="done"
       class="rounded-box border border-base-300 bg-base-200/60 p-3"
     >
+      <%!-- `mcp__plugin_codemyspec_local__add_scenario` is one unbreakable token
+            wider than a phone, and a flex item will not shrink below its content
+            unless told to — so the name overflowed the card and was clipped. --%>
       <div class="flex items-center gap-2">
         <.icon name="hero-wrench-screwdriver" class="size-4 shrink-0 opacity-60" />
-        <span class="font-mono text-sm font-medium">{@tool}</span>
-        <span :if={@agent_role} class="text-xs uppercase opacity-60">{@agent_role}</span>
+        <span class="min-w-0 break-all font-mono text-sm font-medium">{@tool}</span>
+        <span :if={@agent_role} class="shrink-0 text-xs uppercase opacity-60">{@agent_role}</span>
       </div>
 
       <details :if={@args != ""} class="mt-2">
