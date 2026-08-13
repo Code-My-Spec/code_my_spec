@@ -214,15 +214,6 @@ defmodule CodeMySpec.Chat.Runner do
     end
   end
 
-  # Empty content as a list, not `""`: a blank text part alongside a tool call
-  # is a block with nothing in it, which providers reject in their own dialects.
-  defp assistant_content(message) do
-    case Message.text(message) do
-      "" -> []
-      text -> text
-    end
-  end
-
   # `:operator` is a human on the other side of the widget, which to the model
   # is the same speaking position as `:user`.
   defp to_provider_message(%{role: role} = message) when role in [:user, :operator] do
@@ -233,6 +224,15 @@ defmodule CodeMySpec.Chat.Runner do
   end
 
   defp to_provider_message(_message), do: []
+
+  # Empty content as a list, not `""`: a blank text part alongside a tool call
+  # is a block with nothing in it, which providers reject in their own dialects.
+  defp assistant_content(message) do
+    case Message.text(message) do
+      "" -> []
+      text -> text
+    end
+  end
 
   defp emit_text(_conversation, text) when text in [nil, ""], do: :ok
 

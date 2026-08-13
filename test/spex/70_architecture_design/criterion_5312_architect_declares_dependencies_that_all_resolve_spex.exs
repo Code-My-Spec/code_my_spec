@@ -7,11 +7,20 @@ defmodule CodeMySpecSpex.Story70.Criterion5312Spex do
   in the database already or is defined in the proposal, the validator
   accepts the proposal and execution persists the dependency edges.
 
-  Surface: `start_task` then `evaluate_task`.
+  Surface: `start_task`, `execute_proposal`, then `evaluate_task`.
+
+  `execute_proposal` is in the middle because this criterion needs a component
+  already in the database — that is the half of "resolves" that is not satisfied
+  by the proposal itself. A project with components is being *revised*, and a
+  revision session will not auto-execute a proposal that may predate the
+  architect's incremental edits. Applying a rewrite there is what
+  `execute_proposal` is for, and it is what the gate's own feedback tells the
+  architect to call.
   """
 
   use CodeMySpecSpex.Case
   alias Anubis.Server.Frame
+  alias CodeMySpec.McpServers.Architecture.Tools.ExecuteProposal
   alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpecSpex.ComponentHelpers
@@ -105,7 +114,10 @@ defmodule CodeMySpecSpex.Story70.Criterion5312Spex do
         :ok =
           CodeMySpec.Environments.write_file(context.environment, Fixtures.proposal_path(), proposal)
 
-        {:ok, context}
+        {:reply, executed, _frame} =
+          ExecuteProposal.execute(%{}, %Frame{assigns: %{current_scope: context.scope}})
+
+        {:ok, Map.put(context, :execute_response, executed)}
       end
 
       when_ "the architect calls evaluate_task", context do
@@ -121,7 +133,11 @@ defmodule CodeMySpecSpex.Story70.Criterion5312Spex do
       end
 
       then_ "the validator resolves every declared dependency to a known component", context do
-        body = response_text(context.evaluate_response)
+        body = response_text(context.execute_response)
+
+        refute context.execute_response.isError,
+               "the proposal was refused, so no dependency was resolved either way: " <>
+                 inspect(body)
 
         refute body =~ ~r/dangling|unresolved|not found/i,
                "expected all dependencies to resolve, got: #{inspect(body)}"
