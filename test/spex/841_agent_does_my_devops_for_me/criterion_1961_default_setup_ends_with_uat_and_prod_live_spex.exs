@@ -90,21 +90,29 @@ defmodule CodeMySpecSpex.Story841.Criterion1961Spex do
       when_ "the agent runs setup and then asks what exists", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        report =
+        {run, report} =
           with_full_cassette @cassette do
-            {:reply, _run, _frame} =
+            {:reply, run, _frame} =
               RunDevopsSetup.execute(%{project_id: to_string(context.project.id)}, frame)
 
             {:reply, status, _frame} = DevopsStatus.execute(%{}, frame)
-            response_text(status)
+            {response_text(run), response_text(status)}
           end
 
-        {:ok, Map.put(context, :report, report)}
+        # The run's own answer, kept rather than discarded. `RunDevopsSetup`
+        # distinguishes complete from *paused* — a run waiting on a person,
+        # which reports the instructions it is waiting on — and from halted at
+        # a named step. Throwing that away left the status report as the only
+        # evidence, and a paused run looks identical there to a finished one
+        # that failed: a tail of steps with nothing behind them and no error
+        # against any of them.
+        {:ok, context |> Map.put(:report, report) |> Map.put(:run, run)}
       end
 
       then_ "setup reports complete", context do
         assert context.report =~ "Setup is complete",
-               "expected the default plan to finish, got: #{context.report}"
+               "expected the default plan to finish.\n\nThe run said: #{context.run}\n\n" <>
+                 "The status says: #{context.report}"
 
         {:ok, context}
       end
