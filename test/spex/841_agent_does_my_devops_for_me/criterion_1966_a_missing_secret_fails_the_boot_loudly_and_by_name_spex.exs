@@ -26,6 +26,17 @@ defmodule CodeMySpecSpex.Story841.Criterion1966Spex do
   spex "A missing secret fails the boot loudly and by name" do
     scenario "the environment is short a required secret" do
       given_ "Sam is on the setup page and UAT is missing a required secret", context do
+        # One environment. The deploy step fans out over every environment the
+        # project has, so with production present this stopped being about a
+        # missing *secret*: the run reached prod, which has no age key at all,
+        # and reported "prod has no age key yet" — the very refusal the comment
+        # below is careful to get past for UAT.
+        #
+        # `only_environments/2` rather than `devops: :uat`: environments are
+        # rows, and `EnvironmentRepository.list/1` seeds both from a fixed list
+        # on first read whatever the devops level says.
+        only_environments(context.scope, ["uat"])
+
         {:ok, view, _html} =
           live(context.conn, "/app/projects/#{context.project.id}/provisioning")
 
