@@ -47,6 +47,12 @@ defmodule CodeMySpecSpex.Story841.Criterion1967Spex do
         tear_down_after(context.scope, [:server, :storage, :dns])
         tear_down_repository(context.project)
 
+        # Its own domain, or the domain step refuses and every step behind it
+        # reports nothing — the gap 1961 had. Its own *name* as well, because
+        # Let's Encrypt allows five certificates a week per exact identifier
+        # set and criteria sharing a hostname spend each other's quota.
+        own_domain(context.project, "c1967.astralbi.com")
+
         # Provisioned by running setup. A visitor gets an answer only if
         # something is serving, so the thing that makes something serve has to
         # run before the request in `when_`.

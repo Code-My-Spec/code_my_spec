@@ -46,6 +46,17 @@ defmodule CodeMySpecSpex.Story841.Criterion1962Spex do
         tear_down_after(context.scope, [:server, :storage, :dns])
         tear_down_repository(context.project)
 
+        # A domain, before the plan runs — the same gap 1961 had. Without one
+        # the domain step refuses with "no domain set on the project" and every
+        # step behind it reports nothing, which reads as a setup broken
+        # everywhere rather than one stopped at its fourth step.
+        #
+        # Its own name, not 1961's. Let's Encrypt allows five certificates a
+        # week for an exact set of identifiers, and criteria sharing a hostname
+        # spend each other's quota — which is what stopped 1961 after eight
+        # drills in a day.
+        own_domain(context.project, "c1962.astralbi.com")
+
         # Production is off from `setup :devops_uat_only`. UAT is provisioned by
         # running setup — the criterion is about what is true afterwards, so
         # something has to make it true.
