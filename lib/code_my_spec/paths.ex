@@ -50,17 +50,12 @@ defmodule CodeMySpec.Paths do
   @doc "Design assets directory (`.code_my_spec/design`)."
   def design_dir, do: Path.join(@base_dir, "design")
 
-  @doc "Issues directory (`.code_my_spec/issues`)."
+  @doc """
+  Braindump directory (`.code_my_spec/issues`). Hand-written notes, read by
+  `Issues.create_from_braindump/3`. Not a projection — triaged issues live only
+  in the database and are reached through the MCP tools.
+  """
   def issues_dir, do: Path.join(@base_dir, "issues")
-
-  @doc "Incoming (untriaged) issues directory (`.code_my_spec/issues/incoming`)."
-  def issues_incoming_dir, do: Path.join(issues_dir(), "incoming")
-
-  @doc "Accepted issues directory (`.code_my_spec/issues/accepted`)."
-  def issues_accepted_dir, do: Path.join(issues_dir(), "accepted")
-
-  @doc "Dismissed issues directory (`.code_my_spec/issues/dismissed`)."
-  def issues_dismissed_dir, do: Path.join(issues_dir(), "dismissed")
 
   @doc "QA results directory (`.code_my_spec/qa`)."
   def qa_dir, do: Path.join(@base_dir, "qa")

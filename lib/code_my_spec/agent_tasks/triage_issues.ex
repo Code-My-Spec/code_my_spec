@@ -2,9 +2,17 @@ defmodule CodeMySpec.AgentTasks.TriageIssues do
   @moduledoc """
   Agent task for triaging incoming QA issues.
 
-  Reviews all incoming issues from the database, decides dispositions
-  (accept, dismiss, merge), and edits the `## Status` field in projected
-  issue files from `incoming` to `accepted` or `dismissed`.
+  Reviews all incoming issues from the database and decides dispositions
+  (accept, dismiss, merge), each executed through the `accept_issue` /
+  `dismiss_issue` MCP tools.
+
+  Issues are **not** projected to files. There was once a projector writing
+  `.code_my_spec/issues/{incoming,accepted,dismissed}/` for the agent to edit a
+  `## Status` field in, and this moduledoc went on describing that flow long
+  after the tools replaced it — `evaluate/2` was documented as reconciling file
+  edits back to the DB when it has only ever counted rows. The projector and
+  those directories are gone; `.code_my_spec/issues/` now holds hand-written
+  braindumps only.
 
   Accepts an optional minimum severity via `task.state["topic"]` (default: :medium).
   Only issues at or above the specified severity are included in the triage.
@@ -12,7 +20,7 @@ defmodule CodeMySpec.AgentTasks.TriageIssues do
   Two main functions:
   - `command/2` — Pulls server-side incoming issues into the local DB, then
     declares the threshold; agent discovers issues via `list_issues`
-  - `evaluate/2` — Reconciles status field changes to DB, checks that no incoming issues remain
+  - `evaluate/2` — Checks that no incoming issues remain at the threshold
   """
 
   alias CodeMySpec.Issues
@@ -42,11 +50,11 @@ defmodule CodeMySpec.AgentTasks.TriageIssues do
   end
 
   @doc """
-  Reconcile status field edits and check that no incoming issues remain.
+  Check that no incoming issues remain at the minimum severity.
 
-  Reads the `## Status` field from each projected issue file in incoming/
-  and syncs the value back to the database. Then checks whether untriaged
-  issues remain at the minimum severity.
+  Reads the database directly — the dispositions were already written there by
+  the `accept_issue` / `dismiss_issue` tool calls, so there is nothing to
+  reconcile.
 
   Returns:
   - `{:ok, :valid}` when no incoming issues at min severity remain
