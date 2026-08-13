@@ -33,8 +33,6 @@ defmodule CodeMySpecSpex.Story1013.Criterion2352Spex do
     scenario "The harness address lands in the untracked settings file" do
       given_ "a working copy whose tracked settings file already has content", context do
         :ok = Environments.register(context.project.id, context.environment)
-        System.put_env("CMS_PROJECT_ID", context.project.id)
-        on_exit(fn -> System.delete_env("CMS_PROJECT_ID") end)
 
         tracked = ~s({\n  "permissions": {\n    "allow": []\n  }\n}\n)
         :ok = Environments.write_file(context.environment, @tracked, tracked)
@@ -48,7 +46,7 @@ defmodule CodeMySpecSpex.Story1013.Criterion2352Spex do
         # calling the task directly is a boundary violation. Running it the way an
         # engineer does is both legal and the more faithful surface.
         Mix.Task.reenable("cms.onboard_harness")
-        Mix.Task.run("cms.onboard_harness", [])
+        Mix.Task.run("cms.onboard_harness", ["--project", context.project.id])
 
         {:ok, context}
       end

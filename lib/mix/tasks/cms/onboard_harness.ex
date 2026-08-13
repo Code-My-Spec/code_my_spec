@@ -45,34 +45,44 @@ defmodule Mix.Tasks.Cms.OnboardHarness do
 
   @impl Mix.Task
   def run(args) do
-    {opts, _rest, _invalid} = OptionParser.parse(args, strict: [root: :string])
+    {opts, _rest, _invalid} =
+      OptionParser.parse(args, strict: [root: :string, project: :string])
 
-    args
-    |> environment(opts)
+    opts
+    |> environment()
     |> onboard()
   end
 
-  # A registered environment wins over `--root`. That is the seam the spex use:
-  # `CodeMySpecSpex` may reference `CodeMySpec.Environments` and nothing else of
-  # ours, so a spec registers the in-memory environment and drives this task by
-  # name — the way an engineer runs it — rather than calling into it across a
-  # boundary that forbids exactly that.
-  defp environment(_args, opts) do
-    case Environments.lookup_registered(active_project_id()) do
-      {:ok, environment} ->
-        environment
-
-      _ ->
-        root = Keyword.get(opts, :root) || File.cwd!()
-
-        case Environments.create(:local, working_dir: root) do
-          {:ok, environment} -> environment
-          {:error, reason} -> Mix.raise("could not open #{root}: #{inspect(reason)}")
-        end
+  # `--project` names an already-registered environment and wins over `--root`.
+  # That is the seam the spex use: `CodeMySpecSpex` may reference
+  # `CodeMySpec.Environments` and nothing else of ours, so a spec registers the
+  # in-memory environment and names it here, driving this task the way an engineer
+  # does rather than calling into it across a boundary that forbids exactly that.
+  #
+  # A flag rather than an environment variable because the project's own Credo
+  # check denies `System.put_env` inside `_spex.exs` — "specs must act through the
+  # public surfaces". It was right to: a spec that has to mutate global process
+  # state to be observable is describing a surface with no way in.
+  defp environment(opts) do
+    case Keyword.fetch(opts, :project) do
+      {:ok, project_id} -> registered!(project_id)
+      :error -> local!(Keyword.get(opts, :root) || File.cwd!())
     end
   end
 
-  defp active_project_id, do: System.get_env("CMS_PROJECT_ID")
+  defp registered!(project_id) do
+    case Environments.lookup_registered(project_id) do
+      {:ok, environment} -> environment
+      _ -> Mix.raise("no environment is registered for project #{project_id}")
+    end
+  end
+
+  defp local!(root) do
+    case Environments.create(:local, working_dir: root) do
+      {:ok, environment} -> environment
+      {:error, reason} -> Mix.raise("could not open #{root}: #{inspect(reason)}")
+    end
+  end
 
   @doc """
   Onboard the working copy `environment` points at.
