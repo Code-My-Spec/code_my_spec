@@ -16,7 +16,7 @@ defmodule CodeMySpecWeb.AgentConversationLive do
   use CodeMySpecWeb, :live_view
 
   alias CodeMySpec.Conversations
-  alias CodeMySpec.Conversations.Message
+  alias CodeMySpecWeb.ChatComponents
 
   @impl true
   def mount(_params, _session, socket), do: {:ok, socket}
@@ -116,88 +116,16 @@ defmodule CodeMySpecWeb.AgentConversationLive do
           </p>
 
           <div id="agent-turns" phx-update="stream" class="space-y-3">
-            <.turn :for={{dom_id, message} <- @streams.messages} id={dom_id} message={message} />
+            <ChatComponents.turn
+              :for={{dom_id, message} <- @streams.messages}
+              id={dom_id}
+              message={message}
+              tool_role={:call}
+            />
           </div>
         </div>
       </div>
     </Layouts.app>
     """
   end
-
-  attr :id, :string, required: true
-  attr :message, :any, required: true
-
-  # A turn whose evidence is the calls it made. This used to match on
-  # `body: ""` and hide the turn entirely, because a flattened message had
-  # nowhere to put a call. The model carries `tool_calls` now, so there is
-  # something to show — and that pattern silently stopped matching when `body`
-  # was dropped, which turned every tool call into an empty bubble. Map
-  # patterns do not complain about keys that no longer exist.
-  defp turn(%{message: %{tool_calls: calls}} = assigns) when is_list(calls) and calls != [] do
-    ~H"""
-    <div id={@id} class="space-y-2">
-      <div
-        :for={call <- @message.tool_calls}
-        data-test="tool-call"
-        data-tool={call["name"]}
-        data-tool-call-id={call["id"]}
-        data-agent-role={@message.agent_role}
-        class="rounded-box bg-base-200 p-3 font-mono text-xs"
-      >
-        <div :if={@message.agent_role} class="mb-1 uppercase opacity-60">{@message.agent_role}</div>
-        {call["name"]}
-      </div>
-    </div>
-    """
-  end
-
-  # Genuinely nothing to show — no text, no calls. Still hidden rather than
-  # rendered as an empty bubble.
-  defp turn(%{message: %{content: [], tool_calls: nil}} = assigns) do
-    ~H"""
-    <div id={@id} class="hidden"></div>
-    """
-  end
-
-  defp turn(%{message: %{role: :tool}} = assigns) do
-    ~H"""
-    <div
-      id={@id}
-      data-test="tool-call"
-      data-tool-call-id={@message.tool_call_id}
-      data-agent-role={@message.agent_role}
-      class="rounded-box bg-base-200 p-3"
-    >
-      <div :if={@message.agent_role} class="mb-1 text-xs uppercase opacity-60">
-        {@message.agent_role}
-      </div>
-      <pre class="whitespace-pre-wrap break-words font-mono text-sm">{Message.text(@message)}</pre>
-    </div>
-    """
-  end
-
-  defp turn(assigns) do
-    ~H"""
-    <div
-      id={@id}
-      data-test="message"
-      data-role={@message.role}
-      data-agent-role={@message.agent_role}
-      class={["chat", chat_side(@message.role)]}
-    >
-      <div :if={@message.agent_role} class="chat-header text-xs opacity-60">
-        {@message.agent_role}
-      </div>
-      <div class={["chat-bubble whitespace-pre-wrap break-words", chat_bubble(@message.role)]}>
-        {Message.text(@message)}
-      </div>
-    </div>
-    """
-  end
-
-  defp chat_side(:assistant), do: "chat-end"
-  defp chat_side(_role), do: "chat-start"
-
-  defp chat_bubble(:assistant), do: "chat-bubble-primary"
-  defp chat_bubble(_role), do: "bg-base-200 text-base-content"
 end

@@ -14,6 +14,7 @@ defmodule CodeMySpecWeb.InboxLive do
 
   alias CodeMySpec.Conversations
   alias CodeMySpec.Conversations.Message
+  alias CodeMySpecWeb.ChatComponents
   alias CodeMySpecWeb.Presence
 
   @impl true
@@ -374,18 +375,16 @@ defmodule CodeMySpecWeb.InboxLive do
               </button>
             </div>
 
-            <div
+            <ChatComponents.chat_message
               :for={message <- @messages}
-              data-test="message"
-              data-role={message.role}
-              data-sender-id={message.sender_id}
-              class={["chat", chat_side(message.role)]}
+              id={"message-#{message.id}"}
+              role={message.role}
+              own_role={:operator}
+              label={sender_label(message.role)}
+              sender_id={message.sender_id}
+              text={Message.text(message)}
             >
-              <div class="chat-header text-xs opacity-60">{sender_label(message.role)}</div>
-              <div class={["chat-bubble break-words", chat_bubble(message.role)]}>
-                <p :if={Message.text(message) != ""} class="whitespace-pre-wrap">
-                  {Message.text(message)}
-                </p>
+              <:extra>
                 <div :for={{att, idx} <- Enum.with_index(Message.files(message))} class="mt-1">
                   <a
                     :if={image_attachment?(att)}
@@ -409,8 +408,8 @@ defmodule CodeMySpecWeb.InboxLive do
                     <.icon name="hero-paper-clip" class="size-4" /> {att["filename"]}
                   </a>
                 </div>
-              </div>
-            </div>
+              </:extra>
+            </ChatComponents.chat_message>
           </div>
         </div>
 
@@ -461,12 +460,6 @@ defmodule CodeMySpecWeb.InboxLive do
     do: String.starts_with?(ct, "image/")
 
   defp image_attachment?(_attachment), do: false
-
-  defp chat_side(:operator), do: "chat-end"
-  defp chat_side(_role), do: "chat-start"
-
-  defp chat_bubble(:operator), do: "chat-bubble-primary"
-  defp chat_bubble(_role), do: "bg-base-200 text-base-content"
 
   defp sender_label(:operator), do: "You"
   defp sender_label(:assistant), do: "Assistant"

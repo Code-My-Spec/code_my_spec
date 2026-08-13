@@ -19,7 +19,7 @@ defmodule CodeMySpecWeb.ChatLive do
 
   alias CodeMySpec.Chat.Runner
   alias CodeMySpec.Conversations
-  alias CodeMySpec.Conversations.Message
+  alias CodeMySpecWeb.ChatComponents
   alias CodeMySpec.Stories
 
   @impl true
@@ -163,7 +163,11 @@ defmodule CodeMySpecWeb.ChatLive do
       >
         <div class="min-h-0 flex-1 overflow-y-auto py-4">
           <div id="chat-turns" phx-update="stream" class="space-y-3">
-            <.turn :for={{dom_id, message} <- @streams.messages} id={dom_id} message={message} />
+            <ChatComponents.turn
+              :for={{dom_id, message} <- @streams.messages}
+              id={dom_id}
+              message={message}
+            />
           </div>
 
           <div :if={@thinking?} data-test="chat-thinking" class="py-2 opacity-60">Working…</div>
@@ -213,76 +217,4 @@ defmodule CodeMySpecWeb.ChatLive do
     </section>
     """
   end
-
-  attr :id, :string, required: true
-  attr :message, :any, required: true
-
-  # A halted or failed conversation is a turn you can see, not a flag only the
-  # server knows about.
-  # A model that would not stop and a provider that fell over are different
-  # events, and reading the same is how one gets mistaken for the other.
-  defp turn(%{message: %{agent_role: role}} = assigns) when role in ["halted", "failed"] do
-    assigns = assign(assigns, :marker, "chat-#{role}")
-
-    ~H"""
-    <div
-      id={@id}
-      data-test={@marker}
-      class="rounded-box border border-warning/40 bg-warning/10 p-3 text-sm"
-    >
-      {Message.text(@message)}
-    </div>
-    """
-  end
-
-  defp turn(%{message: %{role: :assistant, tool_calls: calls}} = assigns) when is_list(calls) do
-    ~H"""
-    <div id={@id} class="space-y-2">
-      <div
-        :for={call <- @message.tool_calls}
-        data-test="tool-call"
-        data-tool={call["name"]}
-        data-tool-call-id={call["id"]}
-        data-state="done"
-        class="rounded-box bg-base-200 p-3 font-mono text-xs"
-      >
-        {call["name"]}
-      </div>
-    </div>
-    """
-  end
-
-  defp turn(%{message: %{role: :tool}} = assigns) do
-    ~H"""
-    <div
-      id={@id}
-      data-test="tool-result"
-      data-tool-call-id={@message.tool_call_id}
-      class="rounded-box bg-base-200 p-3"
-    >
-      <pre class="whitespace-pre-wrap break-words font-mono text-xs">{Message.text(@message)}</pre>
-    </div>
-    """
-  end
-
-  defp turn(assigns) do
-    ~H"""
-    <div
-      id={@id}
-      data-test="message"
-      data-role={@message.role}
-      class={["chat", chat_side(@message.role)]}
-    >
-      <div class={["chat-bubble whitespace-pre-wrap break-words", chat_bubble(@message.role)]}>
-        {Message.text(@message)}
-      </div>
-    </div>
-    """
-  end
-
-  defp chat_side(:assistant), do: "chat-end"
-  defp chat_side(_role), do: "chat-start"
-
-  defp chat_bubble(:assistant), do: "chat-bubble-primary"
-  defp chat_bubble(_role), do: "bg-base-200 text-base-content"
 end
