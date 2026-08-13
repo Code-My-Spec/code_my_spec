@@ -822,7 +822,7 @@ defmodule CodeMySpecSpex.Case do
   end
 
   @doc """
-  Point the project at a real generated application on disk.
+  Generate a fresh application with `mix cms.new` and point the project at it.
 
   `setup_active_project` makes a stub directory holding a `mix.exs`, which is
   enough for the working-dir plug and nothing else. The deploy step runs
@@ -830,42 +830,41 @@ defmodule CodeMySpecSpex.Case do
   stub there is no script to run and the step fails for a reason that has
   nothing to do with deploying.
 
-  `CMS_DRILL_APP` names a checkout produced by `mix cms.new` — one carrying
-  `bin/deploy`, `bin/backup`, `config/deploy.yml` and a Dockerfile. Defaults to
-  `code_my_spec_test_repos/devops_drill_v2`.
+  ## Generated, not kept
 
-  Not `devops_drill`: that one is a skeleton whose Dockerfile copies `assets`,
-  `priv` and `mix.lock` that were never committed, so every drill using it
-  refused at `refuse_unbuildable_drill/1`. It is also the general harness test
-  repo, carrying hundreds of fixture stories and personas from other suites.
+  This used to point at `code_my_spec_test_repos/devops_drill_v2`, one checkout
+  reused by every run. That deployed a months-old snapshot of the generator's
+  output rather than exercising the generator, so the first two thirds of what
+  these criteria claim — that `cms.new` produces a deployable application, and
+  that the other generators leave it deployable — was never run at all.
 
-  Only for criteria that genuinely deploy. Everything else is better off with
-  the stub, which costs nothing and cannot be dirtied by a run.
+  It also manufactured failures that only existed because the checkout
+  persisted. The deploy step commits the run's own `.sops.yaml` and
+  `envs/*.enc.env`, because the builder is sent `git archive HEAD` and cannot
+  see anything uncommitted; six such commits accumulated, each carrying secrets
+  encrypted to an age key held by a project row the next run did not have, and
+  a later run met `no identity matched any of the recipients` at the server
+  step. A whole reset mechanism existed to undo that. Generating fresh deletes
+  the class outright.
+
+  Generation costs 0.4s. There was never a reason to reuse one.
+
+  ## What gets generated
+
+  Recording runs the whole chain — `cms.new`, then `mix deps.get`, then the
+  `cms_gen.*` generators a real project gets — because that chain is the
+  subject. Replay generates the skeleton only: the cassette answers every
+  command, so the dependencies would be fetched to satisfy nobody, and the
+  minute-plus it costs would be paid by every sweep in every checkout.
+
+  ## Where the generator lives
+
+  `CMS_NEW` names the `cms_new` checkout. Without it the usual sibling
+  locations are tried, and a clear refusal beats generating something subtly
+  different from what a customer gets.
   """
   def drill_working_directory(%{scope: scope, project: project} = context) do
-    path =
-      System.get_env("CMS_DRILL_APP") ||
-        Path.expand("code_my_spec_test_repos/devops_drill_v2", File.cwd!())
-
-    File.exists?(Path.join(path, "bin/deploy")) ||
-      raise """
-      No deployable application at #{path}.
-
-      The deploy step shells out to `bin/deploy`, so this criterion needs a real
-      generated app rather than the stub directory. Point CMS_DRILL_APP at one,
-      or generate it with `mix cms.new`.
-      """
-
-    # Only while recording. The refusal exists to stop a recording spending ten
-    # minutes and real money provisioning a repository, two servers, DNS and a
-    # builder box before dying on `COPY assets assets: not found`. On replay
-    # nothing is built — the cassette answers the whole deploy — so enforcing it
-    # there turns a completed recording into a permanent failure whenever the
-    # checkout it was made from is later trimmed. That is 8039: it has clean
-    # cassettes and has been red for want of an application it never runs.
-    recording?() && refuse_unbuildable_drill(path)
-
-    reset_drill_checkout(path)
+    path = generate_application(project)
 
     {:ok, project} = Fixtures.set_project_local_path(project, path)
 
@@ -875,143 +874,201 @@ defmodule CodeMySpecSpex.Case do
     |> real_working_directory()
   end
 
-  # One checkout, a new project row every run. Whatever the last run encrypted
-  # is still on disk, keyed to an age key held by a project that no longer
-  # exists — so `key_opens_its_own_file?/2` finds no key for *this* project,
-  # mints a fresh one, rewrites `.sops.yaml`, and the deploy dies on "no
-  # identity matched any of the recipients". Not a product defect: a real
-  # project keeps its key in `ProjectSecrets` and re-runs fine. It is the
-  # drill's own residue, and it made two consecutive runs fail differently for
-  # the same reason.
-  #
-  # The remote is reset for the same reason — `git remote add origin` answers
-  # "already exists" and the repository step then pushes to whatever the last
-  # run pointed at.
-  # `bin/deploy` exists is too weak a question. The drill checkout had it and
-  # was still a skeleton — no `assets`, no `priv`, no `mix.lock` — so every
-  # drill provisioned a repository, two servers, DNS, buckets and a builder
-  # box, ran `docker build` to step 10 of 12, and only then failed on
-  # `COPY assets assets: "/assets": not found`. Ten minutes and real money to
-  # discover something knowable before the first API call.
-  #
-  # What the build actually needs is what its own Dockerfile copies, so that is
-  # what gets checked, against the committed tree rather than the working one:
-  # the builder is sent `git archive <ref>`, which ships tracked files only. A
-  # file present on disk and never committed is exactly the case that would
-  # otherwise pass here and fail on the box.
-  defp refuse_unbuildable_drill(path) do
-    missing =
-      path
-      |> dockerfile_copy_sources()
-      |> Enum.reject(&committed?(path, &1))
-
-    missing == [] ||
-      raise """
-      The drill application at #{path} cannot build.
-
-      Its Dockerfile copies these, and they are not in the committed tree:
-
-      #{Enum.map_join(missing, "\n", &("  " <> &1))}
-
-      The builder is sent `git archive HEAD`, so untracked files do not travel
-      even when they are on disk. Commit them, or generate a complete
-      application with `mix cms.new` and point CMS_DRILL_APP at it.
-      """
+  # A name the generator accepts and the provider resources can carry: lowercase
+  # letters, digits and underscores, starting with a letter.
+  defp generated_app_name(project) do
+    "cms_drill_" <> (project.id |> to_string() |> String.replace(~r/[^0-9a-z]/, ""))
   end
 
-  # Sources are every argument but the last, which is the destination. `--from`
-  # stages copy out of an earlier image rather than out of the context, so they
-  # are not ours to check.
-  defp dockerfile_copy_sources(path) do
-    case File.read(Path.join(path, "Dockerfile")) do
-      {:ok, contents} ->
-        contents
-        |> String.split("\n")
-        |> Enum.map(&String.trim/1)
-        |> Enum.filter(&String.match?(&1, ~r/^COPY\s/i))
-        |> Enum.reject(&String.contains?(&1, "--from"))
-        |> Enum.flat_map(&copy_sources/1)
-        |> Enum.uniq()
+  # The generators a real project gets, in the order a project gets them.
+  # `cms.new` emits the application; these emit what it is *for*.
+  #
+  # `phx.gen.auth` first, and not optional: `cms_gen.accounts` builds on the
+  # scope module it writes and refuses without it —
+  #
+  #   ** (Mix) It looks like mix phx.gen.auth has not been run yet.
+  #   The following expected files are missing:
+  #     * lib/<app>/users/scope.ex
+  #
+  # `--live` rather than leaving it to the prompt, because a generator asking a
+  # question of a process with no terminal is a hang, not a default.
+  @project_generators [
+    # `Users`, not `Accounts`: `cms_gen.accounts` looks for
+    # `lib/<app>/users/scope.ex` and phx.gen.auth writes the scope under the
+    # context it is given, so the wrong context leaves it reporting that
+    # phx.gen.auth "has not been run yet" after a run that succeeded.
+    ["phx.gen.auth", "Users", "User", "users", "--live"],
+    # `phx.gen.auth` adds `bcrypt_elixir` to mix.exs and offers to fetch it
+    # behind a prompt, which a process with no terminal never answers — so the
+    # next generator met "the dependency is not available, run mix deps.get".
+    ["deps.get"],
+    ["cms_gen.accounts"],
+    ["cms_gen.content"],
+    ["cms_gen.support_widget"]
+  ]
 
-      _ ->
-        []
+  defp generate_application(project) do
+    {:ok, parent} = Briefly.create(directory: true)
+    name = generated_app_name(project)
+    path = Path.join(parent, name)
+
+    cms_new = cms_new_path()
+    generate(cms_new, path, name)
+    pin_toolchain(cms_new, path)
+
+    # Only while recording. The generators need the dependencies, and the
+    # dependencies are minutes that replay has no use for.
+    if recording?() do
+      mix_in(path, ["deps.get"])
+      for args <- @project_generators, do: mix_in(path, args)
+    end
+
+    commit_generated_application(path)
+
+    path
+  end
+
+  # What a child `mix` must not inherit from the one running this suite.
+  #
+  # `nil` removes the variable. MIX_ENV is the obvious one — the suite runs
+  # under `test` and the generator would inherit it — but MIX_BUILD_PATH is the
+  # dangerous one: the analyzer sets it to its own tree, and a generated
+  # application compiling into `_build/analyzer` corrupts the suite the
+  # analyzer is running. MIX_TEST_PARTITION for the same reason one directory
+  # over.
+  #
+  # Written out rather than borrowed from `CodeMySpec.Environments`, which
+  # `CodeMySpecSpex` may not reach into.
+  @child_mix_env [
+    {"MIX_ENV", "dev"},
+    {"MIX_BUILD_PATH", nil},
+    {"MIX_BUILD_ROOT", nil},
+    {"MIX_DEPS_PATH", nil},
+    {"MIX_TARGET", nil},
+    {"MIX_TEST_PARTITION", nil},
+    {"ERL_LIBS", nil}
+  ]
+
+  # Let the child pick its own Elixir, rather than inheriting this suite's.
+  #
+  # asdf's shim resolves a version from the working directory and then puts
+  # *that version's* bin directory on PATH for what it runs. Everything the
+  # suite spawns therefore inherits a PATH naming Elixir 1.19.4 outright, with
+  # the shims behind it — so a child `mix` in `cms_new`, which pins 1.20.2,
+  # still ran on 1.19.4 and the generator refused itself:
+  #
+  #   ** (Mix) You're trying to run :cms_new on Elixir v1.19.4 but it has
+  #   declared in its mix.exs file it supports only Elixir ~> 1.20
+  #
+  # Which reads as a constraint someone should relax and is really two
+  # checkouts on two Elixirs with the shim bypassed. Putting the shims back in
+  # front restores per-directory resolution. Measured, same call, same `cd`:
+  # inherited PATH gives Mix 1.19.4, shims-first gives Mix 1.20.2.
+  #
+  # `PWD` too, since `cd:` moves the process and not the variable, and some
+  # resolvers read the variable.
+  defp child_mix_env(dir) do
+    shims = Path.expand("~/.asdf/shims")
+
+    path =
+      case File.dir?(shims) do
+        true -> [{"PATH", shims <> ":" <> (System.get_env("PATH") || "")}]
+        false -> []
+      end
+
+    path ++ [{"PWD", dir} | @child_mix_env]
+  end
+
+  # Build the generated application on the toolchain its generator targets.
+  #
+  # `cms.new` emits a `mix.exs` requiring `elixir: "~> 1.20"` and no toolchain
+  # pin, so on a machine whose global asdf version is older — this one's is
+  # 1.19.4 — a freshly generated application cannot run its own `mix deps.get`.
+  # Copying the generator's pin is what a drill wants: the application is built
+  # the way the generator was built for.
+  #
+  # Whether `cms.new` should emit this itself is a real question and not one to
+  # answer here. Pinning users to this machine's exact Erlang would be wrong;
+  # shipping no pin at all with a `~> 1.20` requirement is what produced this.
+  defp pin_toolchain(cms_new, path) do
+    source = Path.join(cms_new, ".tool-versions")
+    if File.exists?(source), do: File.cp!(source, Path.join(path, ".tool-versions"))
+    :ok
+  end
+
+  defp generate(cms_new, path, name) do
+    case System.cmd("mix", ["cms.new", path, "--app", name, "--no-install"],
+           cd: cms_new,
+           stderr_to_stdout: true,
+           env: child_mix_env(cms_new)
+         ) do
+      {_, 0} ->
+        :ok
+
+      {output, status} ->
+        raise "mix cms.new failed (#{status}) in #{cms_new}:\n\n#{output}"
     end
   end
 
-  defp copy_sources(line) do
-    line
-    |> String.split(~r/\s+/)
-    |> Enum.drop(1)
-    |> Enum.reject(&String.starts_with?(&1, "-"))
-    |> Enum.drop(-1)
-    |> Enum.reject(&unresolvable?/1)
+  defp mix_in(path, args) do
+    case System.cmd("mix", args,
+           cd: path,
+           stderr_to_stdout: true,
+           env: child_mix_env(path)
+         ) do
+      {_, 0} ->
+        :ok
+
+      {output, status} ->
+        raise "mix #{Enum.join(args, " ")} failed (#{status}) in #{path}:\n\n#{output}"
+    end
   end
 
-  # `COPY config/${MIX_ENV}.exs` names a path that only exists once Docker has
-  # substituted a build argument, and a glob names several. Neither can be
-  # looked up statically, and the generated app's Dockerfile uses the first —
-  # so a guard that treated them as literals refused a perfectly good fixture.
-  # Skipped rather than guessed at: this check exists to catch the file nobody
-  # committed, and inventing an expansion would trade that for false alarms.
-  defp unresolvable?(source), do: String.contains?(source, ["$", "*", "?"])
+  # The builder is sent `git archive HEAD`, so an application that is generated
+  # and not committed ships nothing at all.
+  #
+  # `add -A` is right here and nowhere else in this repository: the tree was
+  # made seconds ago by a generator and every file in it is intended.
+  defp commit_generated_application(path) do
+    git = fn args -> System.cmd("git", args, cd: path, stderr_to_stdout: true) end
 
-  # `git cat-file -e` answers for a blob and a tree alike, so one call covers
-  # `mix.exs` and `assets` without caring which is which.
-  defp committed?(path, source) do
-    {_out, status} =
-      System.cmd("git", ["cat-file", "-e", "HEAD:#{source}"],
-        cd: path,
-        stderr_to_stdout: true
-      )
+    git.(["init", "-q", "-b", "main"])
+    git.(["add", "-A"])
 
-    status == 0
-  end
-
-  defp reset_drill_checkout(path) do
-    reset_to_baseline(path)
-
-    for f <- Path.wildcard(Path.join(path, "envs/*.enc.env")), do: File.rm(f)
-    File.rm(Path.join(path, ".sops.yaml"))
-
-    System.cmd("git", ["remote", "remove", "origin"], cd: path, stderr_to_stdout: true)
+    git.([
+      "-c",
+      "user.email=setup@codemyspec.com",
+      "-c",
+      "user.name=CodeMySpec Setup",
+      "commit",
+      "-q",
+      "-m",
+      "Generated by mix cms.new"
+    ])
 
     :ok
   end
 
-  # The message `Steps.commit_staged/1` uses. Matched rather than shared,
-  # because `CodeMySpecSpex` may not reach into `CodeMySpec`.
-  @setup_commit_subject "Setup-generated configuration"
+  defp cms_new_path do
+    candidates =
+      [System.get_env("CMS_NEW")] ++
+        Enum.map(
+          ["../cms_new", "../../cms_new", "../../../cms_new", "../../../../cms_new"],
+          &Path.expand(&1, File.cwd!())
+        )
 
-  # Drop the commits previous drills left behind.
-  #
-  # The deploy step commits the run's own `.sops.yaml` and `envs/*.enc.env` —
-  # it has to, because the builder is sent `git archive HEAD` and cannot see
-  # anything uncommitted. So one commit per drill accumulates here, each
-  # carrying secrets encrypted to an age key held by a project row that the
-  # next run will not have. Deleting the working-tree copies is not enough:
-  # the ciphertext is still in HEAD, and the run after meets
-  # `{:sops_failed, 128, "no identity matched any of the recipients"}` at the
-  # server step — before secrets, so nothing gets the chance to re-mint.
-  #
-  # The newest commit that is not one of those, rather than a tag: a genuine
-  # change to the drill application becomes the baseline the moment it is
-  # committed, and nothing has to remember to move anything.
-  defp reset_to_baseline(path) do
-    with {log, 0} <- System.cmd("git", ["log", "--format=%H %s", "-50"], cd: path),
-         line when is_binary(line) <-
-           log
-           |> String.split("\n", trim: true)
-           |> Enum.find(&(not String.contains?(&1, @setup_commit_subject))),
-         [sha | _] <- String.split(line, " ") do
-      System.cmd("git", ["reset", "--hard", sha], cd: path, stderr_to_stdout: true)
-      :ok
-    else
-      # A checkout with no such commit is one where every commit is a drill's,
-      # which a fresh `mix cms.new` never produces. Left alone rather than
-      # guessed at.
-      _ -> :ok
-    end
+    Enum.find(candidates, &(is_binary(&1) and File.exists?(Path.join(&1 || "", "mix.exs")))) ||
+      raise """
+      Cannot find the `cms_new` checkout, so there is nothing to generate with.
+
+      These criteria deploy an application produced by `mix cms.new` — that is
+      the subject, not a fixture. Set CMS_NEW to the checkout.
+
+      Tried:
+      #{Enum.map_join(Enum.reject(candidates, &is_nil/1), "\n", &("  " <> &1))}
+      """
   end
+
 
   @doc """
   What a setup step reported, for a failure message that would otherwise name
