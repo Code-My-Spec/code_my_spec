@@ -987,8 +987,7 @@ defmodule CodeMySpec.Provisioning.Steps do
     |> to_string()
     |> String.split("\n", trim: true)
     |> Enum.take(-40)
-    |> Enum.map(&compress_log_line/1)
-    |> Enum.join(" | ")
+    |> Enum.map_join(" | ", &compress_log_line/1)
     |> String.slice(0, 4000)
   end
 
