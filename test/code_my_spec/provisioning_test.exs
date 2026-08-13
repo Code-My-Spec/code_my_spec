@@ -4,7 +4,7 @@ defmodule CodeMySpec.ProvisioningTest do
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.Provisioning
-  alias CodeMySpec.Provisioning.{Sequence, StepRepository}
+  alias CodeMySpec.Provisioning.{Sequence, StepRepository, Steps, Teardown}
 
   doctest Sequence, only: [for_options: 1]
 
@@ -91,7 +91,7 @@ defmodule CodeMySpec.ProvisioningTest do
     test "shows every included step with a state, before anything has run", %{scope: scope} do
       plan = Provisioning.plan(scope, [])
 
-      assert length(plan) > 0
+      assert plan != []
       assert Enum.all?(plan, &(&1.state == :not_started))
       assert Enum.all?(plan, &is_binary(&1.why))
     end
@@ -109,12 +109,9 @@ defmodule CodeMySpec.ProvisioningTest do
   describe "run/3 halts rather than pressing on" do
     # Criterion 7961: pressing on builds later steps on a broken foundation.
     test "a failing step stops the run and leaves the rest not started", %{scope: scope} do
-      execute = fn _scope, key, _opts ->
-        case key do
-          :repository -> {:ok, []}
-          :server -> {:error, "no capacity"}
-          _ -> {:ok, []}
-        end
+      execute = fn
+        _scope, :server, _opts -> {:error, "no capacity"}
+        _scope, _key, _opts -> {:ok, []}
       end
 
       result = Provisioning.run(scope, [], verify: always_absent(), execute: execute)
@@ -132,11 +129,9 @@ defmodule CodeMySpec.ProvisioningTest do
     # Pausing is not failure, but it is not progress either, and what follows
     # still depends on it.
     test "a paused step halts the run the same way", %{scope: scope} do
-      execute = fn _scope, key, _opts ->
-        case key do
-          :repository -> {:paused, "Register the domain in the dashboard, then resume."}
-          _ -> {:ok, []}
-        end
+      execute = fn
+        _scope, :repository, _opts -> {:paused, "Register the domain in the dashboard, then resume."}
+        _scope, _key, _opts -> {:ok, []}
       end
 
       result = Provisioning.run(scope, [], verify: always_absent(), execute: execute)
@@ -176,11 +171,9 @@ defmodule CodeMySpec.ProvisioningTest do
 
     # Criterion 7965: running a step twice leaves one of everything.
     test "a step whose resource still exists is not run again", %{scope: scope} do
-      verify = fn _scope, key ->
-        case key do
-          :repository -> {:ok, :satisfied, [%{kind: "repository", location: "github/sam/thing"}]}
-          _ -> {:ok, :absent}
-        end
+      verify = fn
+        _scope, :repository -> {:ok, :satisfied, [%{kind: "repository", location: "github/sam/thing"}]}
+        _scope, _key -> {:ok, :absent}
       end
 
       execute = fn _scope, key, _opts ->
@@ -307,7 +300,7 @@ defmodule CodeMySpec.ProvisioningTest do
       {:halt, _row, _} = Provisioning.run_step(scope, :storage, execute: execute)
 
       assert {:error, {:left_behind, [%{location: "provider/thing"}]}} =
-               CodeMySpec.Provisioning.Teardown.step(scope, :storage)
+               Teardown.step(scope, :storage)
     end
 
     test "a plain error without partial resources still works", %{scope: scope} do
@@ -362,7 +355,7 @@ defmodule CodeMySpec.ProvisioningTest do
     # step left in the sequence, so this asks Steps directly.
     test "a step with no provider names itself rather than reporting done" do
       assert {:error, {:not_implemented, :nonexistent}} =
-               CodeMySpec.Provisioning.Steps.run(:nonexistent, full_scope_fixture(), [])
+               Steps.run(:nonexistent, full_scope_fixture(), [])
     end
 
     # Every key in the sequence, so a step added later is covered without
@@ -375,18 +368,13 @@ defmodule CodeMySpec.ProvisioningTest do
     # show for it. Done with no resources recorded is the signature of a stub,
     # and it is what the executor did for every step before this suite.
     test "a step that reports done has resources to show for it", %{scope: scope} do
-      for key <- Sequence.keys() do
-        row =
-          case Provisioning.run_step(scope, key, []) do
-            {:ok, row} -> row
-            {:halt, row, _} -> row
-          end
-
-        if row.state == :done do
-          refute row.resources == [],
-                 "#{key} reported done but recorded nothing it did — that is what a stub looks like"
-        end
-      end
+      Sequence.keys()
+      |> Enum.map(&{&1, step_row(Provisioning.run_step(scope, &1, []))})
+      |> Enum.filter(fn {_key, row} -> row.state == :done end)
+      |> Enum.each(fn {key, row} ->
+        refute row.resources == [],
+               "#{key} reported done but recorded nothing it did — that is what a stub looks like"
+      end)
     end
 
     # `Environments.cmd/4` answers a nil environment with a FunctionClauseError
@@ -429,16 +417,21 @@ defmodule CodeMySpec.ProvisioningTest do
          %{scope: scope} do
       scope = %{scope | environment: nil}
 
-      for key <- [:repository, :deploy, :backups] do
-        assert {:halt, row, reason} = Provisioning.run_step(scope, key, [])
+      halted =
+        for key <- [:repository, :deploy, :backups] do
+          assert {:halt, row, reason} = Provisioning.run_step(scope, key, [])
 
-        assert row.state in [:errored, :paused],
-               "#{key} neither finished nor halted with a reason"
+          assert row.state in [:errored, :paused],
+                 "#{key} neither finished nor halted with a reason"
 
-        if row.state == :errored do
-          assert reason =~ "working environment" or reason =~ "deploy-ready",
-                 "#{key} failed without naming what is missing: #{reason}"
+          {key, row, reason}
         end
+
+      # A paused step is waiting on a person and says so in its instructions;
+      # only the errored ones owe an explanation of what is missing.
+      for {key, _row, reason} <- Enum.filter(halted, fn {_k, row, _r} -> row.state == :errored end) do
+        assert reason =~ "working environment" or reason =~ "deploy-ready",
+               "#{key} failed without naming what is missing: #{reason}"
       end
     end
 
@@ -462,4 +455,11 @@ defmodule CodeMySpec.ProvisioningTest do
       assert reason =~ "GitHub" or reason =~ "github"
     end
   end
+
+  # `run_step/3` answers with the row either way — done or halted — and which it
+  # was is a separate question from what the row says. Two clauses rather than a
+  # `case` at the call site, so the destructuring is not mistaken for the test
+  # branching on state it should control.
+  defp step_row({:ok, row}), do: row
+  defp step_row({:halt, row, _reason}), do: row
 end
