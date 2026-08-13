@@ -65,6 +65,43 @@ defmodule CodeMySpec.Problems.HarnessIsolationTest do
     assert paths(b) == ["lib/b.ex"]
   end
 
+  # The re-onboard, named as itself rather than left to the general property
+  # above, because that is the shape it arrived in and the shape someone will
+  # grep for (50060d31).
+  #
+  # A working copy that loses its stored id is issued a new one and is a new
+  # harness — criterion 736 requires exactly that, so it must not adopt the old
+  # id's findings. What made the incident expensive was the other direction:
+  # the old rows kept gating requirements while nothing could clear them,
+  # because clearing goes through a harness nobody was running. Three-day-old
+  # findings held `bdd_specs_passing` shut on stories whose specs were green,
+  # and it read as a spec failure rather than as bookkeeping.
+  #
+  # Both directions are asserted here. Neither inherits, and neither gates.
+  test "a re-onboarded copy neither inherits nor is gated by its old id's findings",
+       %{scope: scope, a: old} do
+    {:ok, _} = reconcile(old, [problem("lib/found_before_the_reonboard.ex")])
+
+    # Losing the stored id and registering again. `issue/3` with nil is the
+    # whole of a re-onboard from the server's side.
+    {:ok, reissued} = Harnesses.issue(scope, nil, label: "copy A, after re-onboarding")
+    refute reissued.id == old.active_harness_id
+    reonboarded = %{scope | active_harness_id: reissued.id}
+
+    assert paths(reonboarded) == [],
+           "the re-onboarded copy is reading findings recorded under an id it no longer " <>
+             "holds. Nothing can clear those — clearing goes through the harness that " <>
+             "owns them — so they would gate its requirements permanently."
+
+    {:ok, _} = reconcile(reonboarded, [problem("lib/found_after.ex")])
+
+    assert paths(reonboarded) == ["lib/found_after.ex"]
+
+    assert paths(old) == ["lib/found_before_the_reonboard.ex"],
+           "the new identity rewrote the old one's rows, which is the adoption " <>
+             "criterion 736 forbids"
+  end
+
   # The defect, stated as the thing that must not happen. A reconcile is
   # "replace this source's findings for this working copy", and a scope that
   # cannot name one must not be read as licence to replace everybody's.
