@@ -115,21 +115,66 @@ defmodule CodeMySpec.AgentHarness.ConversationRecorder do
         agent_role \\ "main",
         opts \\ []
       ) do
-    with {:ok, conversation} <-
-           Conversations.find_or_create_agent_conversation(
-             account_id,
-             project_id,
-             session_external_id
-           ),
-         :ok <- store_available(opts),
-         :ok <- write_request(conversation, agent_role, request_text(request)),
-         :ok <- write_response(conversation, agent_role, response_text(response)),
-         :ok <- write_tool_calls(conversation, agent_role, tool_calls(response)) do
+    if client_side_call?(request) do
       :ok
     else
-      {:error, reason} = error ->
-        Logger.warning("[ConversationRecorder] recording failed: #{inspect(reason)}")
-        error
+      with {:ok, conversation} <-
+             Conversations.find_or_create_agent_conversation(
+               account_id,
+               project_id,
+               session_external_id
+             ),
+           :ok <- store_available(opts),
+           :ok <- write_request(conversation, agent_role, request_text(request)),
+           :ok <- write_response(conversation, agent_role, response_text(response)),
+           :ok <- write_tool_calls(conversation, agent_role, tool_calls(response)) do
+        :ok
+      else
+        {:error, reason} = error ->
+          Logger.warning("[ConversationRecorder] recording failed: #{inspect(reason)}")
+          error
+      end
+    end
+  end
+
+  # An agent's client calls the model for its own housekeeping, and those calls
+  # arrive here as ordinary `/v1/messages` requests because that is exactly what
+  # they are. Recording them buries the conversation: measured on one real
+  # session, 2,595 kB of housekeeping around 66 kB of actual turns.
+  #
+  # The worst is a classifier that posts the entire transcript and reads back
+  # `<severity>8` — ~313 kB per turn, growing as the session grows, ten of them
+  # in that sample. It then renders in the conversation view as though the agent
+  # had said it, which is how this was noticed.
+  #
+  # It also explains the duplicates. These calls carry the same message history,
+  # so `request_text/1` takes the same last message again and writes it a second
+  # time — every tool result appeared twice. Dropping the call fixes both.
+  #
+  # A deny-list of literal prefixes rather than a heuristic. Each is a wrapper
+  # its client emits verbatim and nothing a person types, anchored at the start,
+  # so an agent quoting one mid-turn is still recorded. Matching on the model or
+  # the system prompt would be the structural answer; neither reaches this
+  # function, and guessing from length or shape would drop real turns for being
+  # long.
+  #
+  # Returns `:ok`, and before the conversation is found: a skipped call is not a
+  # failed recording, and unlike an unwritable store there is no gap to leave a
+  # trace of. It was never this conversation's turn to hold.
+  @client_wrappers [
+    # Posts the whole transcript, reads back a severity score.
+    "<transcript>",
+    # Asks what the user might type next.
+    "[SUGGESTION MODE:",
+    # Asks for a one-line status of what the agent is doing.
+    "Current state: "
+  ]
+
+  @doc false
+  def client_side_call?(request) do
+    case request_text(request) do
+      text when is_binary(text) -> Enum.any?(@client_wrappers, &String.starts_with?(text, &1))
+      _ -> false
     end
   end
 
