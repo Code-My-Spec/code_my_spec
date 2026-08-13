@@ -1034,15 +1034,17 @@ defmodule CodeMySpecSpex.Case do
 
   # Build the generated application on the toolchain its generator targets.
   #
-  # `cms.new` emits a `mix.exs` requiring `elixir: "~> 1.20"` and no toolchain
-  # pin, so on a machine whose global asdf version is older — this one's is
-  # 1.19.4 — a freshly generated application cannot run its own `mix deps.get`.
-  # Copying the generator's pin is what a drill wants: the application is built
-  # the way the generator was built for.
+  # Redundant against a current `cms.new`, which emits its own `.tool-versions`
+  # (`templates/phx_single/tool_versions.eex`, added 284350c). Retained only so a
+  # drill run against an older generator checkout still builds; against a current
+  # one it overwrites the file with identical content.
   #
-  # Whether `cms.new` should emit this itself is a real question and not one to
-  # answer here. Pinning users to this machine's exact Erlang would be wrong;
-  # shipping no pin at all with a `~> 1.20` requirement is what produced this.
+  # Kept deliberately rather than deleted, because it is cheap and a drill that
+  # silently builds on the wrong Elixir fails somewhere far from the cause. Do not
+  # read it as evidence that generated apps need our help to pin — they no longer
+  # do, and an earlier version of this comment saying otherwise outlived the fix
+  # by long enough to send two agents to opposite wrong conclusions about
+  # issue 166decc3.
   defp pin_toolchain(cms_new, path) do
     source = Path.join(cms_new, ".tool-versions")
     if File.exists?(source), do: File.cp!(source, Path.join(path, ".tool-versions"))
