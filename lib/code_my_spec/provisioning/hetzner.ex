@@ -166,24 +166,48 @@ defmodule CodeMySpec.Provisioning.Hetzner do
     arch = Keyword.get(opts, :arch, :arm)
 
     case create_in(scope, name, defaults_for(arch), opts) do
-      {:error, {:hetzner_error, 412, _}} = unavailable ->
-        # 412 `resource_unavailable` means Hetzner has none of that type in
-        # that location right now — a capacity fact about the region, not
-        # anything wrong with the request. Hetzner's own message is "error
-        # during placement", which tells Sam nothing he can act on.
-        #
-        # The other architecture is a real answer rather than a workaround:
-        # the image is built to match the box (criterion 7975), so the choice
-        # is ours to make as long as we record which one we made.
-        case fallback_for(arch, opts) do
-          nil -> capacity_error(defaults_for(arch), opts)
-          other -> retry_elsewhere(scope, name, arch, other, opts, unavailable)
-        end
+      {:error, reason} = unavailable ->
+        try_other_architecture(scope, name, arch, opts, unavailable, this_box_is_not_on_offer?(reason))
 
       result ->
         result
     end
   end
+
+  # Anything else is the caller's answer, unchanged.
+  defp try_other_architecture(_scope, _name, _arch, _opts, error, false), do: error
+
+  defp try_other_architecture(scope, name, arch, opts, unavailable, true) do
+    # The other architecture is a real answer rather than a workaround: the
+    # image is built to match the box (criterion 7975), so the choice is ours
+    # to make as long as we record which one we made.
+    case fallback_for(arch, opts) do
+      nil -> capacity_error(defaults_for(arch), opts)
+      other -> retry_elsewhere(scope, name, arch, other, opts, unavailable)
+    end
+  end
+
+  # Hetzner says "this box cannot be had here" in two different shapes, and
+  # only one of them was being read.
+  #
+  # 412 `resource_unavailable` is capacity: it has none of that type in that
+  # location *right now*. Its message is "error during placement", which tells
+  # Sam nothing he can act on.
+  #
+  # 422 `invalid_input` "unsupported location for server type" is the standing
+  # version of the same fact — that pairing does not exist at all, today or
+  # ever. Hetzner started answering it for `cax11`/`fsn1`, and because the
+  # fallback only matched 412 the run died at the server step with a 422 that
+  # reads like a malformed request. Matched on the message rather than the
+  # status, because 422 is also what a genuinely bad request gets and that one
+  # must not be retried into a different box.
+  defp this_box_is_not_on_offer?({:hetzner_error, 412, _}), do: true
+
+  defp this_box_is_not_on_offer?({:hetzner_error, 422, %{"error" => %{"message" => message}}})
+       when is_binary(message),
+       do: String.contains?(message, "unsupported location for server type")
+
+  defp this_box_is_not_on_offer?(_), do: false
 
   # What was actually asked for, which is not the same as the defaults: a
   # caller can pin either field. Reporting the default when an override was in
