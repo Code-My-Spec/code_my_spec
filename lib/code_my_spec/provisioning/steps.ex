@@ -914,7 +914,7 @@ defmodule CodeMySpec.Provisioning.Steps do
       "Issuance needs DNS resolving to the server and the proxy reachable on 80. " <>
       plain_http_observation(target.host, probe, opts) <>
       " " <> acme_path_observation(target.host, probe, opts) <>
-      " " <> dns_observation(target.host, opts)
+      " " <> dns_observation(target.host, reason, opts)
   end
 
   # Whether HTTP-01 can even complete, asked of the one path it uses.
@@ -965,13 +965,31 @@ defmodule CodeMySpec.Provisioning.Steps do
   # started inside that negative TTL reads `nxdomain` for a record the dns step
   # just watched appear — which is a stale cache on this machine, not a
   # deployment that failed, and the two deserve different sentences.
-  defp dns_observation(host, opts) do
-    if Dns.resolves_publicly?(host, :a, Keyword.put(opts, :attempts, 1)) do
-      "A public resolver does return an A record for it, so the record exists " <>
-        "and this machine's resolver is holding a stale negative answer."
-    else
-      "No public resolver returns an A record for it either, so the record is missing."
-    end
+  defp dns_observation(host, reason, opts) do
+    resolves? = Dns.resolves_publicly?(host, :a, Keyword.put(opts, :attempts, 1))
+    dns_sentence(resolves?, resolution_failure?(reason))
+  end
+
+  # Only a failure that named resolution says anything about a resolver. A
+  # timeout means the name resolved and the host did not answer, so blaming a
+  # stale cache there invents a second fault to explain the first — which this
+  # sentence did on drill 45, asserting the local resolver was stale in a run
+  # whose probe never failed to resolve anything.
+  defp resolution_failure?(reason) do
+    String.contains?(format(reason), "does not resolve")
+  end
+
+  defp dns_sentence(true, true) do
+    "A public resolver does return an A record for it, so the record exists " <>
+      "and this machine's resolver is holding a stale negative answer."
+  end
+
+  defp dns_sentence(true, false) do
+    "A public resolver does return an A record for it, so the name is published."
+  end
+
+  defp dns_sentence(false, _resolution_failure?) do
+    "No public resolver returns an A record for it, so the record is missing."
   end
 
   defp plain_http_observation(host, probe, opts) do
