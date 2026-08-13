@@ -217,7 +217,7 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   # command never touches.
   defp outstanding(_env, root, id, git, hooks) do
     partition = Onboarding.partition_name(root)
-    databases = Onboarding.databases(partition)
+    databases = Onboarding.databases(partition, Mix.Project.config()[:app])
 
     # Everything the report knows, the terminal says. The report is the callable
     # answer and the print is the readable one, and they carry the same facts —
@@ -489,7 +489,13 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   # checkable rather than asserted in a comment.
   @doc false
   def address_model_turns(env, root, id, base_url \\ nil) do
-    url = "#{String.trim_trailing(base_url || default_hook_base_url(), "/")}/api/harnesses/#{id}"
+    # Rendered by the shared function, not here. This string existed twice and the
+    # two disagreed — `/api/harnesses/<id>` against `/harnesses/<id>/anthropic`,
+    # only one of which is a real route (3498d841). Two derivations of one value is
+    # the defect this story removes, and the refactor meant to fix it reintroduced
+    # it in the split. CodeMySpec still decides the *base*, because only it knows
+    # the port the generated plugin was addressed to.
+    url = Onboarding.anthropic_url(base_url || default_hook_base_url(), id)
 
     with {:ok, settings} <- read_settings(env) do
       env_block =
