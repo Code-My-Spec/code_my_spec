@@ -1015,8 +1015,19 @@ defmodule CodeMySpecSpex.Case do
     # next generator met "the dependency is not available, run mix deps.get".
     ["deps.get"],
     ["cms_gen.accounts"],
+    # `cms_gen.content` adds `ex_aws` and `ex_aws_s3` rather than printing
+    # "add these to mix.exs" — its generated S3Client calls them, and an
+    # undefined module is a warning rather than an error, so the old printed
+    # version shipped an app that compiled and died at runtime. The cost of
+    # adding them for real is that the *next* mix task refuses until they are
+    # fetched, exactly as `phx.gen.auth` does with bcrypt above. The generator
+    # says so; this is the chain following its own instructions.
     ["cms_gen.content"],
-    ["cms_gen.support_widget"]
+    ["deps.get"],
+    ["cms_gen.support_widget"],
+    # `cms_gen.support_widget` adds `slipstream` for the same reason, so the
+    # release build behind the deploy needs it fetched too.
+    ["deps.get"]
   ]
 
   defp generate_application(project) do
