@@ -3215,7 +3215,25 @@ defmodule CodeMySpecSpex.Case do
   # 412 `resource_unavailable` is deliberately NOT here: Hetzner answers that
   # for every create before the architecture fallback succeeds, so it is a
   # normal part of a healthy recording.
-  @poison ~w(resource_limit_exceeded InvalidAccessKeyId NoSuchBucket unauthorized)
+  #
+  # `NoSuchBucket` was here and is not any more, for the same reason. Hetzner's
+  # object storage is eventually consistent, and `Storage.put_lifecycle/4`
+  # retries on exactly this — its own comment says a bucket HEADs 200 before it
+  # accepts a lifecycle rule. A recording of that working looks like:
+  #
+  #   PUT  /<bucket>/  -> 200   created
+  #   HEAD /<bucket>/  -> 200   exists
+  #   PUT  /<bucket>/  -> 404   NoSuchBucket
+  #   PUT  /<bucket>/  -> 200   retried, accepted
+  #
+  # which is the retry doing its job, and this check was throwing the recording
+  # away for containing the evidence.
+  #
+  # The case it was added for — signing against the wrong provider — is still
+  # caught, just not here: every bucket request fails, so the storage step
+  # errors and the criterion goes red. A worse message than this one gave, and
+  # the price of not rejecting healthy recordings.
+  @poison ~w(resource_limit_exceeded InvalidAccessKeyId unauthorized)
 
   @doc """
   Refuse a recording that captured a refusal about our own account.
