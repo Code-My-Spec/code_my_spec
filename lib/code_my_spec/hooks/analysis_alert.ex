@@ -34,6 +34,7 @@ defmodule CodeMySpec.Hooks.AnalysisAlert do
 
   alias CodeMySpec.Problems
   alias CodeMySpec.Users.Scope
+  alias CodeMySpec.Validation
 
   @doc """
   A one-line alert for this session, or `nil` when there is nothing new to say.
@@ -100,10 +101,27 @@ defmodule CodeMySpec.Hooks.AnalysisAlert do
   # Sources named, counts only, no file paths. The detail is one `list_problems`
   # away, and a finding list on every tool call is noise the model learns to
   # skip — which costs the signal a second time and more permanently.
+  # Counts what the gate would actually enforce, not everything recorded.
+  #
+  # A spex failure on a story whose specs have never gone green is *supposed* to
+  # be red — it is the red bar driving an implementation nobody has written yet
+  # — and `Validation` already demotes those to advisory. Counting them here put
+  # a number in the alert that no agent could ever act on, and one that never
+  # changes: every agent on this project saw `spex: 6` on its first tool call
+  # and would keep seeing it until an unrelated team finished a devops story.
+  #
+  # That is the wallpaper failure arriving by a different door. R4 keeps the
+  # alert quiet by saying it once; a permanent, unactionable number defeats that
+  # from inside the message.
+  #
+  # Not a conflict with surfacing for the whole working copy. That rule forbids
+  # narrowing by agent or by file — deciding whose a finding is. This declines to
+  # report a fact that is red by design, which is a different thing, and the
+  # blocking gate already draws exactly this line.
   defp message(scope, latest) do
     sources =
       scope
-      |> Problems.list_project_problems([])
+      |> enforceable_problems()
       |> Enum.frequencies_by(& &1.source)
       |> Enum.sort_by(fn {_source, n} -> -n end)
       |> Enum.map_join(", ", fn {source, n} -> "#{source}: #{n}" end)
@@ -139,4 +157,8 @@ defmodule CodeMySpec.Hooks.AnalysisAlert do
 
   defp age(%NaiveDateTime{} = at),
     do: at |> DateTime.from_naive!("Etc/UTC") |> age()
+
+  defp enforceable_problems(scope) do
+    Validation.enforceable(scope, Problems.list_project_problems(scope, []))
+  end
 end
