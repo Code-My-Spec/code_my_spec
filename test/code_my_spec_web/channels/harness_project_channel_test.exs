@@ -483,6 +483,61 @@ defmodule CodeMySpecWeb.HarnessProjectChannelTest do
       assert CodeMySpec.Files.list_files(scope) == [],
              "a manifest the server cannot understand must not be half-applied"
     end
+
+    test "a whole-second mtime is refused rather than killing the channel",
+         %{channel: channel, scope: scope} do
+      ref =
+        push(channel, "observations", %{
+          "observations" => [
+            %{
+              "path" => "lib/todo.ex",
+              "role" => "implementation",
+              # No fractional part. Parses to a valid DateTime, and used to reach
+              # `Files.upsert_files/2` and raise against a :utc_datetime_usec
+              # column — inside the channel process, so the harness saw a dropped
+              # connection and re-sent the same manifest forever.
+              "mtime" => "2026-07-28T10:00:00Z",
+              "size" => 10,
+              "fingerprint" => "abc",
+              "valid" => true,
+              "validation_errors" => %{}
+            }
+          ]
+        })
+
+      assert_reply ref, :error, %{"reason" => "invalid_manifest", "problems" => problems}, 2_000
+      assert Enum.any?(problems, &String.contains?(&1, "precision"))
+
+      assert CodeMySpec.Files.list_files(scope) == [],
+             "a refused manifest must not be half-applied"
+
+      # The point of the fix. A reply is only the visible half — what mattered
+      # was that the process answering it is still there, because a dead channel
+      # is indistinguishable from a network drop and is what made this a loop.
+      assert Process.alive?(channel.channel_pid),
+             "the channel died refusing a manifest, so the harness will read this as a " <>
+               "dropped connection, reconnect, re-send, and die again"
+
+      ref =
+        push(channel, "observations", %{
+          "observations" => [
+            %{
+              "path" => "lib/todo.ex",
+              "role" => "implementation",
+              "mtime" => "2026-07-28T10:00:00.000000Z",
+              "size" => 10,
+              "fingerprint" => "abc",
+              "valid" => true,
+              "validation_errors" => %{}
+            }
+          ]
+        })
+
+      assert_reply ref, :ok, _summary, 2_000
+
+      assert length(CodeMySpec.Files.list_files(scope)) == 1,
+             "the same harness must be able to correct itself on the same connection"
+    end
   end
 
   describe "hook decisions" do
