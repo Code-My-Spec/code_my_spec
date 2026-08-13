@@ -49,10 +49,10 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   # misclassified line holds back every other check.
   use Boundary, classify_to: CmsHarness
 
+  alias ClientUtils.Harness.Onboarding
   alias CmsHarness.Config
   alias CmsHarness.HarnessConfig
   alias CmsHarness.ProjectIdentity
-  alias ClientUtils.Harness.Onboarding
   alias CmsHarness.Token
 
   @plugin_source "plugins/claude"
