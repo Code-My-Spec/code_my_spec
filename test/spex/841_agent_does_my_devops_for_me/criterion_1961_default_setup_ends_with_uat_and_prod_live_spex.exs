@@ -90,13 +90,37 @@ defmodule CodeMySpecSpex.Story841.Criterion1961Spex do
       when_ "the agent runs setup and then asks what exists", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
+        # Twice, with the borrowed grants refreshed in between.
+        #
+        # The whole sequence takes about fourteen minutes — two container
+        # builds and two deploys — and Resend issues a token good for about
+        # fifteen. The spex's copy cannot renew itself (see
+        # `refresh_provider_grants/1`), so a single pass lost Resend partway
+        # and halted with `:reauthorize_required` at email, leaving the seven
+        # steps behind it with nothing behind them and no error against any.
+        #
+        # A second run is not a workaround: `RunDevopsSetup` resumes from where
+        # it stopped, which is criterion 7963's subject and exactly what a
+        # person does after a run is interrupted. Recording it in two segments
+        # also keeps each cassette inside the token's life, which is how the
+        # long recordings in this epic were split before.
+        first =
+          with_full_cassette @cassette <> "_first" do
+            {:reply, run, _frame} =
+              RunDevopsSetup.execute(%{project_id: to_string(context.project.id)}, frame)
+
+            response_text(run)
+          end
+
+        refresh_provider_grants(context.scope)
+
         {run, report} =
           with_full_cassette @cassette do
             {:reply, run, _frame} =
               RunDevopsSetup.execute(%{project_id: to_string(context.project.id)}, frame)
 
             {:reply, status, _frame} = DevopsStatus.execute(%{}, frame)
-            {response_text(run), response_text(status)}
+            {first <> "\n\nthen, resumed: " <> response_text(run), response_text(status)}
           end
 
         # The run's own answer, kept rather than discarded. `RunDevopsSetup`

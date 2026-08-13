@@ -242,6 +242,39 @@ defmodule CodeMySpecSpex.Case do
 
     refuse_recording_into_a_personal_account()
 
+    refresh_provider_grants(scope)
+
+    context
+  end
+
+  @doc """
+  Re-copy the current grants from the dev rows onto this spex's scope.
+
+  The borrowed copy carries no refresh token — deliberate, so a rotating
+  credential has exactly one owner — which means it cannot renew itself and
+  simply dies when the provider's token expires. Resend's lasts about fifteen
+  minutes, and a full 1961 recording runs for fourteen, so a run that started
+  with a fresh token still lost it partway and reported
+
+      Resend is connected but its authorization is no longer usable
+      (:reauthorize_required). Reconnect Resend for this account, then run this
+      step again.
+
+  Reconnecting cannot fix that: the token expires mid-run however fresh it was
+  at the start.
+
+  The application is not what is wrong here. `Resend.request/4` calls
+  `Integrations.fetch_access_token/2` on *every* request, and that refreshes
+  under a row lock two minutes before expiry — so a real project, whose
+  integration keeps its refresh token, renews continuously and a long run is
+  fine. Only the borrowed copy is stranded.
+
+  So the spex refreshes it the same way it obtained it: by reading the dev row
+  again, where `fetch_access_token/2` has meanwhile refreshed and persisted the
+  rotation. One owner, still. Call this between segments of a long run.
+  """
+  @spec refresh_provider_grants(Scope.t()) :: :ok
+  def refresh_provider_grants(scope) do
     for provider <- [:github, :cloudflare, :resend] do
       grant = live_grant(provider)
 
@@ -252,7 +285,7 @@ defmodule CodeMySpecSpex.Case do
       )
     end
 
-    context
+    :ok
   end
 
   # Real when recording, placeholder otherwise. A placeholder is correct for
