@@ -34,8 +34,8 @@ defmodule CodeMySpecSpex.Story1013.Criterion2356Spex do
       given_ "a working copy already onboarded, since edited by hand", context do
         :ok = Environments.register(context.project.id, context.environment)
 
-        Mix.Task.reenable("cms.onboard_harness")
-        first = Mix.Task.run("cms.onboard_harness", ["--project", context.project.id])
+        Mix.Task.reenable("cms.harness.onboard")
+        first = Mix.Task.run("cms.harness.onboard", ["--project", context.project.id])
 
         {:ok, after_first} = Environments.read_file(context.environment, @settings)
 
@@ -54,8 +54,8 @@ defmodule CodeMySpecSpex.Story1013.Criterion2356Spex do
       end
 
       when_ "the engineer runs the onboarding task again", context do
-        Mix.Task.reenable("cms.onboard_harness")
-        second = Mix.Task.run("cms.onboard_harness", ["--project", context.project.id])
+        Mix.Task.reenable("cms.harness.onboard")
+        second = Mix.Task.run("cms.harness.onboard", ["--project", context.project.id])
 
         {:ok, Map.put(context, :second, second)}
       end

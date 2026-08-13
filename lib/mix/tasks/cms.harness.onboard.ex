@@ -52,6 +52,7 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   alias CmsHarness.Config
   alias CmsHarness.HarnessConfig
   alias CmsHarness.ProjectIdentity
+  alias ClientUtils.Harness.Onboarding
   alias CmsHarness.Token
 
   @plugin_source "plugins/claude"
@@ -70,16 +71,61 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
     root = target_root(args)
     dest = Path.join(root, @plugin_dest)
 
+    case Enum.member?(args, "--check") do
+      true -> check(root)
+      false -> onboard(root, dest, args)
+    end
+  end
+
+  # Absence has to report itself. Every incident behind story 1013 was a missing
+  # thing that produced no error where it was missing and surfaced somewhere far
+  # away wearing another failure's costume — a stale analyzer database arriving as
+  # `undefined_column` from inside a `given_`, a submodule losing writes in
+  # silence, `0/0 satisfied` meaning three different things. An agent that can ask
+  # a working copy whether it is onboarded never has to infer it from the wreckage.
+  defp check(root) do
+    %{
+      onboarded: File.exists?(Path.join([root, ".claude", "settings.local.json"])),
+      remedy: "mix cms.harness.onboard"
+    }
+  end
+
+  defp onboard(root, dest, args) do
     with {:ok, relay} <- check_relay(),
          {:ok, id} <- identity(root),
          :ok <- copy_plugin(root, dest),
          {:ok, count} <- address_hooks(dest, id, relay),
          :ok <- address_mcp(dest, id),
-         :ok <- address_model_turns(root, id, hook_base_url(dest)) do
+         :ok <- address_model_turns(root, id, hook_base_url(dest)),
+         :ok <- configure_git(root) do
       report(id, dest, count, args)
+      outstanding(root)
     else
       {:error, message} -> Mix.raise(message)
     end
+  end
+
+  # Named, never run. Onboarding does not create, migrate or drop a database, and
+  # the rule is not stylistic: the version of this that did shelled out to `mix`
+  # with an environment that had `MIX_ENV` scrubbed out of it, so it resolved to
+  # **dev** — the database every agent shares — and a sibling truncate emptied it
+  # three times on 2026-08-13, reporting the rows it destroyed as escaped test
+  # data while it did so.
+  #
+  # Each command carries its own partition, because a command that does not say
+  # which database it acts on is the defect this replaces: the migration guard
+  # printed `MIX_ENV=test mix ecto.migrate` while checking a partition that
+  # command never touches.
+  defp outstanding(root) do
+    databases = root |> Onboarding.partition_name() |> Onboarding.databases()
+
+    Mix.shell().info("\nDatabases this working copy needs (create and migrate them yourself):")
+
+    Enum.each(databases, fn database ->
+      Mix.shell().info("  #{database.name}\n    #{database.create}\n    #{database.migrate}")
+    end)
+
+    %{databases: databases, issued_ddl: false}
   end
 
   @relay "cms-mcp-relay"
@@ -310,6 +356,7 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
 
     with {:ok, settings} <- read_settings(file),
          env <- settings |> Map.get("env", %{}) |> Map.put("ANTHROPIC_BASE_URL", url),
+         env <- Map.put_new(env, "MIX_TEST_PARTITION", Onboarding.partition_name(root)),
          merged <- Map.put(settings, "env", env),
          :ok <- File.mkdir_p(Path.dirname(file)),
          :ok <- File.write(file, Jason.encode_to_iodata!(merged, pretty: true)) do
@@ -317,6 +364,37 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
     else
       {:error, reason} -> {:error, "Could not write #{file}: #{inspect(reason)}"}
     end
+  end
+
+  # `put_new`, unlike the URL beside it. The address has to be corrected when the
+  # harness id changes; the partition must not move once anything has been built
+  # against it, and a second onboarding re-deriving it from the path would rename
+  # a database that already has migrations in it.
+  #
+  # Recorded here, in the file the agent's session reads as environment, because
+  # that is what makes it *the* name rather than one of several. Two mechanisms
+  # derive this today — `config/test.exs` from the worktree path and
+  # `TestDatabase` from a digest of the cwd — and `analyzer_env.ex` says what
+  # follows in its own words: "different databases, by accident of two mechanisms
+  # rather than by design". An agent hit exactly that on 2026-08-13, was told to
+  # run a migrate against a database the command did not touch, and stayed blocked
+  # for three days across 50 rejected runs.
+
+  # Git settings a working copy needs, applied to the copy itself.
+  #
+  # `submodule.recurse` because a submodule sits in detached HEAD by design and so
+  # accepts writes with no branch to carry them. Four QA briefs — including the
+  # evidence behind a story shipped with QA recorded complete — existed in exactly
+  # one working copy for a day because of it, and nothing reported a problem: the
+  # superproject's dirty-pointer line is suppressed project-wide, for unrelated
+  # and well-reasoned purposes.
+  defp configure_git(root) do
+    Enum.reduce_while(Onboarding.git_config(), :ok, fn {key, value}, :ok ->
+      case System.cmd("git", ["config", key, value], cd: root, stderr_to_stdout: true) do
+        {_out, 0} -> {:cont, :ok}
+        {out, _} -> {:halt, {:error, "Could not set git #{key} in #{root}: #{out}"}}
+      end
+    end)
   end
 
   # The harness the hooks were just addressed to, so a model turn goes to the

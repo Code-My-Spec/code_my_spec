@@ -36,8 +36,8 @@ defmodule CodeMySpecSpex.Story1013.Criterion2358Spex do
       end
 
       when_ "the engineer runs the onboarding task", context do
-        Mix.Task.reenable("cms.onboard_harness")
-        report = Mix.Task.run("cms.onboard_harness", ["--project", context.project.id])
+        Mix.Task.reenable("cms.harness.onboard")
+        report = Mix.Task.run("cms.harness.onboard", ["--project", context.project.id])
 
         {:ok, Map.put(context, :report, report)}
       end

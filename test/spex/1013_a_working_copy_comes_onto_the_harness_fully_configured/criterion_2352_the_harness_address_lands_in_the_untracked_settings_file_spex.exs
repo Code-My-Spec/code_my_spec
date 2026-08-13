@@ -45,8 +45,8 @@ defmodule CodeMySpecSpex.Story1013.Criterion2352Spex do
         # `Environments`, `McpServers`, `Fixtures` and the two web boundaries — so
         # calling the task directly is a boundary violation. Running it the way an
         # engineer does is both legal and the more faithful surface.
-        Mix.Task.reenable("cms.onboard_harness")
-        Mix.Task.run("cms.onboard_harness", ["--project", context.project.id])
+        Mix.Task.reenable("cms.harness.onboard")
+        Mix.Task.run("cms.harness.onboard", ["--project", context.project.id])
 
         {:ok, context}
       end

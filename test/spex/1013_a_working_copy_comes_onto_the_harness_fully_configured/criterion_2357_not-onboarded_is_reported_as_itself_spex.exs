@@ -38,10 +38,10 @@ defmodule CodeMySpecSpex.Story1013.Criterion2357Spex do
       end
 
       when_ "something asks whether it is onboarded", context do
-        Mix.Task.reenable("cms.onboard_harness")
+        Mix.Task.reenable("cms.harness.onboard")
 
         status =
-          Mix.Task.run("cms.onboard_harness", [
+          Mix.Task.run("cms.harness.onboard", [
             "--project",
             context.project.id,
             "--check"

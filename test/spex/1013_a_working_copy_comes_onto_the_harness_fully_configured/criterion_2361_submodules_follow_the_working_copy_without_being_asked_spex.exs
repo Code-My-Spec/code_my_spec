@@ -30,14 +30,24 @@ defmodule CodeMySpecSpex.Story1013.Criterion2361Spex do
 
   spex "Submodules follow the working copy" do
     scenario "Submodules follow the working copy without being asked" do
-      given_ "a working copy whose git config does not recurse submodules", context do
+      given_ "a git working copy whose config does not recurse submodules", context do
         :ok = Environments.register(context.project.id, context.environment)
+
+        # Through the environment, not `System.cmd` — the spex boundary check
+        # denies shell execution in a spec, and rightly: a spec that shells out
+        # is testing the shell's arrangement of the world rather than the
+        # product's. The environment delegates commands to the real shell, so
+        # this is a genuine repository.
+        assert {_out, 0} = Environments.cmd(context.environment, "git", ["init"]),
+               "the premise failed: could not make this working copy a git " <>
+                 "repository, so nothing here would be testing submodule recursion"
+
         {:ok, context}
       end
 
       when_ "the engineer runs the onboarding task in it", context do
-        Mix.Task.reenable("cms.onboard_harness")
-        report = Mix.Task.run("cms.onboard_harness", ["--project", context.project.id])
+        Mix.Task.reenable("cms.harness.onboard")
+        report = Mix.Task.run("cms.harness.onboard", ["--project", context.project.id])
 
         {:ok, Map.put(context, :report, report)}
       end
