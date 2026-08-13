@@ -70,10 +70,12 @@ defmodule Mix.Tasks.Cms.OnboardHarness do
     end
   end
 
+  # `lookup_registered/1` returns the environment or nil — not an ok-tuple, unlike
+  # `create/2` beside it.
   defp registered!(project_id) do
     case Environments.lookup_registered(project_id) do
-      {:ok, environment} -> environment
-      _ -> Mix.raise("no environment is registered for project #{project_id}")
+      nil -> Mix.raise("no environment is registered for project #{project_id}")
+      environment -> environment
     end
   end
 
