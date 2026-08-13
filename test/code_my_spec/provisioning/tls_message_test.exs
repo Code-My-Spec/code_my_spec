@@ -70,6 +70,20 @@ defmodule CodeMySpec.Provisioning.TlsMessageTest do
   defp answer_by_scheme(:http), do: :ok
   defp answer_by_scheme(_https), do: {:error, @timeout}
 
+  # A healthy kamal-proxy with `ssl: true`: 301 on ordinary paths, and the
+  # challenge path served rather than bounced.
+  defp redirecting_proxy(challenge_status) do
+    fn _host, opts ->
+      redirecting_answer(Keyword.get(opts, :scheme), Keyword.get(opts, :health_path), challenge_status)
+    end
+  end
+
+  defp redirecting_answer(:http, "/.well-known/acme-challenge/" <> _, status),
+    do: {:error, "responded #{status}"}
+
+  defp redirecting_answer(:http, _path, _status), do: {:error, "responded 301"}
+  defp redirecting_answer(_https, _path, _status), do: {:error, @timeout}
+
   describe "issuance is waited for rather than caught mid-flight" do
     # kamal-proxy asks Let's Encrypt for the certificate when the service comes
     # up and stalls the handshake until it arrives, so one timed-out probe means
@@ -105,8 +119,9 @@ defmodule CodeMySpec.Provisioning.TlsMessageTest do
                  [probe: probe, tls_attempts: 4] ++ unresolvable()
                )
 
-      # Four attempts, plus the single plain-HTTP observation the failure adds.
-      assert :counters.get(counter, 1) == 5
+      # Four attempts, plus the two observations the failure adds: port 80, and
+      # the ACME challenge path.
+      assert :counters.get(counter, 1) == 6
     end
   end
 
@@ -131,6 +146,54 @@ defmodule CodeMySpec.Provisioning.TlsMessageTest do
 
       assert message =~ "Port 80 does not answer either"
       assert message =~ "reachability rather than issuance"
+    end
+  end
+
+  describe "a redirect on port 80 is an answer" do
+    # Drill 44 reported "Port 80 does not answer either (responded 301)" — a
+    # sentence contradicting itself, because `probe/2` is a health check and
+    # calls a 301 a failure, while a 301 is exactly what a healthy kamal-proxy
+    # serves on 80. It sent the next drill looking at reachability while the
+    # proxy was plainly up.
+    test "a 301 reads as the proxy being up, not silent", ctx do
+      assert {:error, message, _} =
+               Steps.run(
+                 :tls,
+                 ctx.scope,
+                 [probe: redirecting_proxy(404), tls_attempts: 1] ++ unresolvable()
+               )
+
+      assert message =~ "Port 80 does answer (responded 301)"
+      assert message =~ "issuance itself is what failed"
+      refute message =~ "does not answer either"
+    end
+  end
+
+  describe "whether HTTP-01 can complete at all" do
+    # The one path Let's Encrypt fetches over port 80. A proxy that redirects it
+    # to a host with no certificate yet has made issuance impossible.
+    test "a served challenge path clears HTTP-01", ctx do
+      assert {:error, message, _} =
+               Steps.run(
+                 :tls,
+                 ctx.scope,
+                 [probe: redirecting_proxy(404), tls_attempts: 1] ++ unresolvable()
+               )
+
+      assert message =~ "serves the ACME challenge path directly"
+      assert message =~ "HTTP-01 validation can reach it"
+    end
+
+    test "a redirected challenge path names issuance as impossible", ctx do
+      assert {:error, message, _} =
+               Steps.run(
+                 :tls,
+                 ctx.scope,
+                 [probe: redirecting_proxy(301), tls_attempts: 1] ++ unresolvable()
+               )
+
+      assert message =~ "redirects the ACME challenge path to HTTPS"
+      assert message =~ "no certificate will ever be issued"
     end
   end
 
