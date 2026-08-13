@@ -141,7 +141,7 @@ defmodule CodeMySpecSpex.Case do
     # caches the absence of a just-published record for the zone's negative
     # TTL. Recording writes the real answer down; replaying reads it back, so a
     # spex stops asking the world about records it has already torn down.
-    Application.put_env(:code_my_spec, :dns_resolver, Fixtures.dns_resolver(cassette_mode()))
+    Application.put_env(:code_my_spec, :dns_resolver, Fixtures.dns_resolver(resolver_mode()))
     on_exit(fn -> Application.delete_env(:code_my_spec, :dns_resolver) end)
 
     # Repositories go to the throwaway organisation when one is configured, so
@@ -218,7 +218,7 @@ defmodule CodeMySpecSpex.Case do
     Application.put_env(
       :code_my_spec,
       :provisioning_waits,
-      if(recording?(), do: :real, else: :none)
+      if(live_providers?(), do: :real, else: :none)
     )
 
     # Recording waits longer before its first read of the inbox.
@@ -235,7 +235,7 @@ defmodule CodeMySpecSpex.Case do
     # one costs only the wait. Replay is unaffected — `:provisioning_waits` is
     # `:none` there, so `Wait.sleep/1` is a no-op and the request count is
     # identical either way.
-    if recording?() do
+    if live_providers?() do
       previous = Application.get_env(:code_my_spec, :provisioning_step_opts, [])
 
       Application.put_env(
@@ -278,7 +278,7 @@ defmodule CodeMySpecSpex.Case do
   @grant_refresh_interval_ms :timer.minutes(5)
 
   defp keep_provider_grants_alive(scope) do
-    if recording?(), do: start_grant_refresher(scope), else: :ok
+    if live_providers?(), do: start_grant_refresher(scope), else: :ok
   end
 
   defp start_grant_refresher(scope) do
@@ -463,7 +463,14 @@ defmodule CodeMySpecSpex.Case do
   # of a replay from depending on a shell.
   @spex_owner "codemy-my-spec-test"
 
-  defp spex_owner do
+  @doc """
+  The throwaway organisation every spex repository belongs in.
+
+  Public because the drill composes remote URLs from it, and a second copy of
+  the default would be a second thing to keep in step.
+  """
+  @spec spex_owner() :: String.t()
+  def spex_owner do
     case System.get_env("GITHUB_SPEX_OWNER") do
       owner when is_binary(owner) and owner != "" -> owner
       _ -> @spex_owner
@@ -519,7 +526,7 @@ defmodule CodeMySpecSpex.Case do
   end
 
   defp refuse_recording_into_a_personal_account do
-    if recording?() and System.get_env("GITHUB_SPEX_OWNER") in [nil, ""] do
+    if live_providers?() and System.get_env("GITHUB_SPEX_OWNER") in [nil, ""] do
       raise """
       Refusing to record: GITHUB_SPEX_OWNER is not set.
 
@@ -535,8 +542,29 @@ defmodule CodeMySpecSpex.Case do
     end
   end
 
+  @doc """
+  Whether this run reaches real providers.
+
+  Recording does. So does the manual drill, which cassettes nothing and calls
+  every provider directly — and which was silently handed placeholder grants,
+  because until it existed the only run that talked to the world was a
+  recording, and "are we recording" answered both questions at once.
+
+  They are different questions, and the drill is where they come apart. It
+  showed up as `GitHub is not connected for this project` on the first step of
+  the first walk: a placeholder token is exactly right for a replay, where the
+  HTTP never leaves the box, and wrong everywhere else.
+
+  Everything gated on this is a place where a placeholder would be either
+  correct or catastrophic with nothing in between — the borrowed grants and
+  the refresher that keeps them alive, the refusal to create repositories in a
+  personal account, the DNS resolver, and whether pollers actually sleep.
+  """
+  @spec live_providers?() :: boolean()
+  def live_providers?, do: recording?() or System.get_env("SPEX_LIVE") == "1"
+
   defp live_grant(provider) do
-    if recording?() do
+    if live_providers?() do
       fetch_live_grant(provider)
     else
       %{
@@ -1040,17 +1068,42 @@ defmodule CodeMySpecSpex.Case do
   ]
 
   defp generate_application(project) do
-    {:ok, parent} = Briefly.create(directory: true)
-    name = generated_app_name(project)
-    path = Path.join(parent, name)
+    case persistent_application_dir() do
+      nil ->
+        {:ok, parent} = Briefly.create(directory: true)
+        build_application(Path.join(parent, generated_app_name(project)))
 
+      dir ->
+        if File.exists?(Path.join(dir, "mix.exs")), do: dir, else: build_application(dir)
+    end
+  end
+
+  # A generated checkout that outlives the run, for the manual drill.
+  #
+  # Producing one is `cms.new`, four generators and three `deps.get` — minutes,
+  # and byte-identical every time. The drill walks the sequence repeatedly
+  # against infrastructure it deliberately keeps, so regenerating the tree was
+  # the largest fixed cost in a loop whose whole point is being cheap to repeat.
+  #
+  # Unset for the spex, and deliberately so: a criterion about what setup does
+  # to a repository must not read what the previous run left in it. Opting in by
+  # environment variable keeps the default — a fresh tree per run — untouched.
+  defp persistent_application_dir do
+    case System.get_env("CMS_DRILL_APP") do
+      dir when is_binary(dir) and dir != "" -> dir
+      _ -> nil
+    end
+  end
+
+  defp build_application(path) do
     cms_new = cms_new_path()
-    generate(cms_new, path, name)
+    generate(cms_new, path, Path.basename(path))
     pin_toolchain(cms_new, path)
 
-    # Only while recording. The generators need the dependencies, and the
-    # dependencies are minutes that replay has no use for.
-    if recording?() do
+    # The generators need the dependencies, and the dependencies are minutes
+    # that replay has no use for. A drill checkout always wants the whole
+    # application — it is going to be built and deployed for real.
+    if recording?() or persistent_application_dir() do
       mix_in(path, ["deps.get"])
       for args <- @project_generators, do: mix_in(path, args)
     end
@@ -3735,6 +3788,16 @@ defmodule CodeMySpecSpex.Case do
       _ -> :replay
     end
   end
+
+  # Resolution is a syscall, not a cassette, so what decides this is whether
+  # anything real is being asked about — not whether HTTP is being written down.
+  #
+  # `:replay` answers `false` for every name absent from the recorded table,
+  # which is right when the names were torn down weeks ago and wrong for a live
+  # drill: the DNS step now treats a record no resolver returns as fatal, so a
+  # replay resolver would halt every walk at step five over a record that had
+  # just been published correctly.
+  defp resolver_mode, do: if(live_providers?(), do: :record, else: :replay)
 
   @doc """
   Register teardown of everything the named steps provisioned.

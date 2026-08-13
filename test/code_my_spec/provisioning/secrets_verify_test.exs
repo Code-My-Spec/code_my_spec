@@ -41,21 +41,34 @@ defmodule CodeMySpec.Provisioning.SecretsVerifyTest do
     {public, private}
   end
 
+  # Every secret the step mints, not just the one the test happens to name.
+  defp put_secret(scope, environment, key, value) do
+    :ok = Sops.put_secret(scope.environment, environment, key, value, stored(scope, environment))
+  end
+
   describe "a key that matches its file" do
-    test "is satisfied once the boot secret is in it", ctx do
+    test "is satisfied once the boot secret and the deploy key are in it", ctx do
       {public, _} = key_for(ctx.scope, "prod")
       :ok = Sops.write_config(ctx.scope.environment, %{"prod" => public})
 
-      :ok =
-        Sops.put_secret(
-          ctx.scope.environment,
-          "prod",
-          "SECRET_KEY_BASE",
-          "v",
-          stored(ctx.scope, "prod")
-        )
+      put_secret(ctx.scope, "prod", "SECRET_KEY_BASE", "v")
+      put_secret(ctx.scope, "prod", "DEPLOY_KEY", "dk_v")
 
       assert {:ok, :satisfied, _} = Steps.verify(:secrets, ctx.scope, environments: ["prod"])
+    end
+
+    # The same argument as the boot secret above, for the credential the content
+    # and widget steps refuse without. Reporting satisfied while it is missing
+    # skips `generate_keys`, so nothing mints it, and the failure surfaces seven
+    # steps later as "the widget step needs a deploy key" — pointing at the step
+    # that reads the value rather than the one that never wrote it.
+    test "is absent while the deploy key is missing", ctx do
+      {public, _} = key_for(ctx.scope, "prod")
+      :ok = Sops.write_config(ctx.scope.environment, %{"prod" => public})
+
+      put_secret(ctx.scope, "prod", "SECRET_KEY_BASE", "v")
+
+      assert {:ok, :absent} = Steps.verify(:secrets, ctx.scope, environments: ["prod"])
     end
 
     # The key is half of what this step produces. Reporting satisfied on it

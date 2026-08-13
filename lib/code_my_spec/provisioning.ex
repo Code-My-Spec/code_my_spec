@@ -307,6 +307,7 @@ defmodule CodeMySpec.Provisioning do
           {:ok, Step.t()} | {:halt, Step.t(), String.t()}
   def run_step(%Scope{} = scope, key, opts \\ []) do
     execute = Keyword.get(opts, :execute, &execute_step/3)
+    scope = reread_project(scope)
 
     case verify(scope, key, opts) do
       {:ok, :satisfied, resources} ->
@@ -650,6 +651,33 @@ defmodule CodeMySpec.Provisioning do
   ## Internals
 
   defp execute_step(scope, key, opts), do: Steps.run(key, scope, opts)
+
+  # The project as it is now, not as it was when the run started.
+  #
+  # Steps read the project through `scope.active_project`, and the scope is
+  # built once for the whole run (`Resources.fix/2`, `ProvisioningLive`). So a
+  # field one step writes is invisible to every step after it — the write lands
+  # in the database and the run goes on reading a struct from before it.
+  #
+  # That is not hypothetical, and it is not only a drill artifact: the secrets
+  # step mints `deploy_key` at position three and the widget step reads it at
+  # thirteen, so a single run minted a key, stored it, and then failed with "the
+  # widget step needs a deploy key, and this project has none set". `dns` writes
+  # `client_api_url` at five and `content` reads it at twelve, with the same
+  # result. Both looked like the writes were not happening.
+  #
+  # Re-read per step rather than threaded through the reduce, because `resume/3`
+  # and the single-step retry button both call this directly and would each need
+  # their own copy of the threading. One query per step, against a row the step
+  # is about to act on.
+  defp reread_project(%Scope{active_project: %{id: id}} = scope) when not is_nil(id) do
+    case Projects.get_project(scope, id) do
+      {:ok, project} -> %{scope | active_project: project}
+      {:error, :not_found} -> scope
+    end
+  end
+
+  defp reread_project(scope), do: scope
 
   defp error_attrs(key, reason) do
     %{

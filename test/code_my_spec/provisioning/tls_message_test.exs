@@ -250,14 +250,22 @@ defmodule CodeMySpec.Provisioning.TlsMessageTest do
       assert message =~ "stale negative answer"
     end
 
-    test "a record nobody can see is a missing record", ctx do
+    # Both resolvers, and it still does not claim to know which it was.
+    #
+    # This asserted "the record is missing" on the strength of one answer from
+    # `dns.google`, and said so on a walk where the record was published and
+    # `1.1.1.1` returned it — Google was holding a cached negative from before
+    # it was written. Two independent resolvers make a silence worth reporting;
+    # propagation still explains it, so the sentence names both possibilities
+    # rather than picking one.
+    test "a record neither resolver can see is reported without guessing why", ctx do
       probe = fn _host, _opts -> {:error, %Finch.TransportError{reason: :nxdomain}} end
 
       assert {:error, message, _} =
                Steps.run(:tls, ctx.scope, [probe: probe, tls_attempts: 1] ++ unresolvable())
 
-      assert message =~ "No public resolver returns an A record"
-      assert message =~ "the record is missing"
+      assert message =~ "Neither public resolver returns an A record"
+      assert message =~ "missing or was written too recently to have propagated"
     end
   end
 

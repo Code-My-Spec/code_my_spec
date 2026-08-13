@@ -113,13 +113,35 @@ defmodule CodeMySpec.Provisioning.Steps do
 
     found =
       for environment <- environments,
-          {:ok, server} <- [Hetzner.find_server(scope, server_name(scope, opts, environment))],
-          do: server_resource(server, environment)
+          server_name = server_name(scope, opts, environment),
+          {:ok, server} <- [Hetzner.find_server(scope, server_name)],
+          do: reconcile_environment_server(scope, environment, server_name, server)
 
-    # Satisfied only when EVERY environment has its box. One environment
-    # missing is not "done" — it is a project that cannot deploy that
-    # environment, and reporting done hides it until the deploy fails.
-    if length(found) == length(environments) and found != [] do
+    # Satisfied only when EVERY environment has its box **and** the connection
+    # string to the database on it.
+    #
+    # One environment missing a box is not "done" — it is a project that cannot
+    # deploy that environment, and reporting done hides it until the deploy
+    # fails. `DATABASE_URL` is the same claim about the same step: this step
+    # serves the database and writes the URL (`serve_database/4`), so this step
+    # is the only one that can notice it has gone.
+    #
+    # Asking only about the box made that unrecoverable rather than merely
+    # broken, which is the shape `verify(:secrets, …)` already documents for
+    # `SECRET_KEY_BASE`. The encrypted env is a file in the working tree, so it
+    # goes missing the ordinary ways files do — a fresh checkout, a revert, a
+    # rotated age key discarding what it can no longer open. Both steps then
+    # verified satisfied against boxes that really were there, neither re-wrote
+    # anything, and the deploy failed two steps later on "uat is missing
+    # DATABASE_URL" — a secret its two predecessors had just certified.
+    #
+    # This is checked here rather than added to `secrets_ready?/2` deliberately.
+    # That step's `run/3` mints keys and `SECRET_KEY_BASE`; it does not know a
+    # database exists. Marking it unsatisfied would have run it, produced no
+    # `DATABASE_URL`, and left it unsatisfied — a step that reruns forever
+    # instead of one that reports done wrongly, which is not an improvement.
+    if length(found) == length(environments) and found != [] and
+         Enum.all?(environments, &database_url_present?(scope, &1)) do
       # The step also makes a firewall and an ssh_key, shared across
       # environments. A second run takes this satisfied path instead of
       # `run/3`; returning only the servers would drop those two from the
@@ -272,6 +294,7 @@ defmodule CodeMySpec.Provisioning.Steps do
         environments
         |> Enum.map(&Storage.bucket_name(project, &1))
         |> every_bucket_present(credentials, opts)
+        |> record_content_bucket(scope, opts)
     end
   end
 
@@ -383,6 +406,7 @@ defmodule CodeMySpec.Provisioning.Steps do
          {:ok, zone} <- find_dns_zone(scope, name, opts),
          environments <- EnvironmentRepository.assign_hosts(scope, name),
          {:ok, resources} <- dns_records_for(scope, zone, environments, opts) do
+      record_client_api_url(scope, environments, opts)
       {:ok, resources}
     else
       nil ->
@@ -699,11 +723,9 @@ defmodule CodeMySpec.Provisioning.Steps do
         {:paused, Storage.credentials_instructions()}
 
       {:ok, credentials} ->
-        Enum.reduce_while(
-          environments,
-          {:ok, []},
-          &ensure_bucket_for(&1, &2, project, credentials, opts)
-        )
+        environments
+        |> Enum.reduce_while({:ok, []}, &ensure_bucket_for(&1, &2, project, credentials, opts))
+        |> record_content_bucket(scope, opts)
     end
   end
 
@@ -768,6 +790,100 @@ defmodule CodeMySpec.Provisioning.Steps do
   # Named rather than silently succeeding — see the moduledoc.
   def run(key, _scope, _opts), do: {:error, {:not_implemented, key}}
 
+  ## Client-facing configuration
+  #
+  # Three fields on the project — `content_bucket`, `client_api_url` and
+  # `deploy_key` — that the content and widget steps refuse without, and that
+  # nothing in the sequence used to write. They were left to somebody typing
+  # into the content settings form, so a project that had never opened it could
+  # not finish setup: `content` reported "Publishing is not configured" and
+  # `widget` reported "needs a deploy key, and this project has none set".
+  #
+  # Since a project that has never chosen options gets *every* option, that was
+  # the default plan — and criterion 1961 asserts the default plan finishes.
+  # None of the three is a decision anybody makes; setup already knows all of
+  # them by the time they are read. `deploy_key` is minted at the secrets step
+  # (`seed_deploy_key/3`), which has to be before the deploy that carries it.
+
+  # The bucket the content step publishes into, recorded by the step that owns
+  # it. `content` ran two positions later and failed for want of a name this
+  # step already had.
+  #
+  # On both paths, which is the whole point. A bucket that already exists takes
+  # the satisfied branch of `verify/3` and never reaches `run/3`, so recording
+  # it only there meant the very first walk wrote the name and every walk after
+  # it — the ones with the infrastructure already standing — did not. The name
+  # is derived from the project and the environment, so it is equally knowable
+  # whichever branch got here.
+  #
+  # Only when unset: a project that names a bucket of its own has chosen it, and
+  # a re-run must not point publishing somewhere else.
+  defp record_content_bucket({:ok, :satisfied, _resources} = outcome, scope, opts) do
+    write_content_bucket(scope, opts)
+    outcome
+  end
+
+  defp record_content_bucket({:ok, _resources} = outcome, scope, opts) do
+    write_content_bucket(scope, opts)
+    outcome
+  end
+
+  defp record_content_bucket(other, _scope, _opts), do: other
+
+  defp write_content_bucket(scope, opts) do
+    project = project(scope)
+
+    with true <- blank?(Map.get(project, :content_bucket)),
+         environment when is_binary(environment) <- primary_environment(scope, opts) do
+      Projects.update_project(scope, project, %{
+        content_bucket: Storage.bucket_name(project, environment)
+      })
+    end
+
+    :ok
+  end
+
+  # The address the content step fetches a published post back from, written as
+  # the hosts are decided.
+  #
+  # At the DNS step rather than the deploy, because the URL is a fact about the
+  # name and this is the step that assigns names. Nothing serves it yet at
+  # position five; the content step that reads it runs at twelve, six after the
+  # deploy.
+  defp record_client_api_url(scope, environments, opts) do
+    project = project(scope)
+    primary = primary_environment(scope, opts)
+
+    with true <- blank?(Map.get(project, :client_api_url)),
+         %{host: host} when is_binary(host) and host != "" <-
+           Enum.find(environments, &(&1.name == primary)) do
+      Projects.update_project(scope, project, %{client_api_url: "https://#{host}"})
+    end
+
+    :ok
+  end
+
+  # The environment the project's client-facing configuration describes.
+  #
+  # `content_bucket` and `client_api_url` are single fields while buckets and
+  # hosts are per-environment, so both have to name the *same* environment —
+  # otherwise the content step proves a render on one site against objects in
+  # another site's bucket, and its two distinguishable failures stop being
+  # distinguishable.
+  #
+  # Production when there is one, because that is the site a reader visits.
+  # Otherwise the first environment the project has, so a UAT-only project gets
+  # a working pair rather than a pair of nils.
+  defp primary_environment(scope, opts) do
+    environments = environments(scope, opts)
+
+    if "prod" in environments, do: "prod", else: List.first(environments)
+  end
+
+  defp blank?(nil), do: true
+  defp blank?(""), do: true
+  defp blank?(_), do: false
+
   # The image a deploy runs, built now rather than when the project was made.
   #
   # Three ways in, and the order matters. An explicit `:image` wins, because a
@@ -784,9 +900,27 @@ defmodule CodeMySpec.Provisioning.Steps do
   # A file that does not exist yet is not drift — there is nothing to be out of
   # step with — so the key's presence is the answer in that case, which keeps a
   # first run from reporting absent forever.
+  # Every secret this step is responsible for minting, not just the key that
+  # encrypts them. `DEPLOY_KEY` joins `SECRET_KEY_BASE` for the reason that
+  # comment already gives: `run_step/3` verifies before it executes, so a step
+  # that reports satisfied never reaches the code that would put the missing
+  # value back, and the failure surfaces somewhere else entirely.
   defp secrets_ready?(scope, environment) do
     key_opens_its_own_file?(scope, environment) and
-      match?({:ok, false}, secret_key_base_missing?(scope, env(scope), environment))
+      match?({:ok, false}, secret_key_base_missing?(scope, env(scope), environment)) and
+      not deploy_key_missing?(scope, environment)
+  end
+
+  # Absent only when the file opens and the value is not in it. Anything this
+  # cannot read — no age key, no sops — is somebody else's error to report, and
+  # `key_opens_its_own_file?/2` above reports it in its own words.
+  defp deploy_key_missing?(scope, environment) do
+    with {:ok, private} <- fetch_age_key(scope, environment),
+         {:ok, missing} <- Sops.missing_secrets(env(scope), environment, private, ["DEPLOY_KEY"]) do
+      "DEPLOY_KEY" in missing
+    else
+      _ -> false
+    end
   end
 
   defp key_opens_its_own_file?(scope, environment) do
@@ -1080,8 +1214,17 @@ defmodule CodeMySpec.Provisioning.Steps do
     "A public resolver does return an A record for it, so the name is published."
   end
 
+  # Two independent resolvers, because one is not a public opinion.
+  #
+  # This said "so the record is missing" on the strength of a single answer from
+  # `dns.google`, on a run where the record was published and `1.1.1.1` returned
+  # it — Google was holding a negative answer cached from before it was written.
+  # `Dns.doh_lookup/3` now asks Cloudflare too when Google has nothing, so a
+  # silence from both is worth something; propagation still explains it, and
+  # this no longer decides which it was.
   defp dns_sentence(false, _resolution_failure?) do
-    "No public resolver returns an A record for it, so the record is missing."
+    "Neither public resolver returns an A record for it, so the record is " <>
+      "missing or was written too recently to have propagated."
   end
 
   defp plain_http_observation(host, probe, opts) do
@@ -2904,6 +3047,35 @@ defmodule CodeMySpec.Provisioning.Steps do
     end
   end
 
+  # The address, written back from what the provider just said.
+  #
+  # `run/3` records `server_name` and `ip` against the environment
+  # (`record_environment_server/5`) and `verify/3` did not, so an adopted server
+  # left the row holding whatever it held before — a stale address after a
+  # rebuild, or none at all. Everything downstream reads that row: DNS points
+  # the A record at it, the deploy SSHes to it, the TLS diagnostic reads the
+  # proxy log over it. So the step reported done while the row it exists to
+  # populate disagreed with the provider.
+  #
+  # Seen as "No address is recorded for this environment, so its proxy log could
+  # not be read" on a walk whose server was up, adopted, and answering — the
+  # observation was right and pointed at nothing, because the row was empty.
+  #
+  # A read from the provider is the one answer entitled to overrule what was
+  # recorded before; `Provisioning.reverify/3` says so about resources and this
+  # is the same claim about the address. Written only when it differs, since
+  # every page load verifies.
+  defp reconcile_environment_server(scope, environment, name, server) do
+    ip = get_in(server, ["public_net", "ipv4", "ip"])
+    recorded = EnvironmentRepository.get(scope, environment)
+
+    if is_binary(ip) and (recorded == nil or recorded.ip != ip or recorded.server_name != name) do
+      EnvironmentRepository.put(scope, environment, %{server_name: name, ip: ip})
+    end
+
+    server_resource(server, environment)
+  end
+
   # Halting on a failed write-back rather than discarding it. The box exists at
   # this point; if the row does not record it, nothing can find it again — the
   # page cannot show it and teardown cannot remove it, so it leaks and the step
@@ -3162,6 +3334,16 @@ defmodule CodeMySpec.Provisioning.Steps do
   # Providers mark what they reused. Absent the mark a resource reads as
   # created — these are the `ensure_*` paths, and the only way to reach one
   # without the mark is to have made the thing.
+  #
+  # `verify/3`'s `find_*` calls carry no mark either, so everything the verify
+  # path reports reads `created` even though finding a thing is the opposite of
+  # making it. That is deliberately left alone. `run_step/3` replaces the
+  # recorded list from a satisfied verify — it is the answer read back from the
+  # provider, so it overrules — and teardown skips anything marked `adopted`.
+  # Stamping the verify path `adopted` would therefore relabel a server setup
+  # genuinely created on the next page load that verified it, and teardown would
+  # walk past a box it was responsible for. A mislabel costs a wrong word on a
+  # page; the tidier-looking version costs a running server nobody removes.
   defp origin(%{"__adopted__" => true}), do: "adopted"
   defp origin(_), do: "created"
 
@@ -3479,14 +3661,70 @@ defmodule CodeMySpec.Provisioning.Steps do
 
     with {:ok, recipients} <- keys,
          :ok <- Sops.write_config(env, recipients),
-         {:ok, seeded} <- seed_secret_key_base(scope, env, recipients) do
+         {:ok, seeded} <- seed_secret_key_base(scope, env, recipients),
+         {:ok, issued} <- seed_deploy_key(scope, recipients) do
       {:ok,
        Enum.map(recipients, fn {environment, public} ->
          %{kind: "age_key", location: "secrets/#{environment}", identifier: public}
-       end) ++ seeded}
+       end) ++ seeded ++ issued}
     else
       {:error, reason} -> {:error, format(reason)}
     end
+  end
+
+  # The key the deployed app authenticates back with, minted here and written
+  # into every environment's encrypted env as `DEPLOY_KEY`.
+  #
+  # Nothing in the sequence used to write it, and three steps read it: `content`
+  # and `widget` both refuse without it, and `content` also wants
+  # `content_bucket` and `client_api_url`. A project that had never opened the
+  # content settings form therefore could not finish setup at all — and since a
+  # project that has never chosen options gets every option, that was the
+  # default. The run reported `the widget step needs a deploy key, and this
+  # project has none set` on a plan nobody had customised.
+  #
+  # Minted at the secrets step rather than at `callback_credential`, which is
+  # the other step that places a shared secret in the encrypted env, for two
+  # reasons. It sits at position 14, after both steps that need the value; and
+  # the client reads `DEPLOY_KEY` from its own environment at boot, so a key
+  # minted after the deploy would not reach the running app until the next one.
+  #
+  # Only when absent, like `SECRET_KEY_BASE` above: rotating on a re-run would
+  # break a deployed app that is already authenticating with the old one.
+  defp seed_deploy_key(scope, recipients) do
+    project = project(scope)
+
+    case Map.get(project, :deploy_key) do
+      key when is_binary(key) and key != "" -> place_deploy_key(scope, recipients, key)
+      _ -> mint_deploy_key(scope, recipients, project)
+    end
+  end
+
+  defp mint_deploy_key(scope, recipients, project) do
+    key = "dk_" <> random_secret()
+
+    case Projects.update_project(scope, project, %{deploy_key: key}) do
+      {:ok, _project} -> place_deploy_key(scope, recipients, key)
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp place_deploy_key(scope, recipients, key) do
+    Enum.reduce_while(recipients, {:ok, []}, fn {environment, _public}, {:ok, acc} ->
+      case put_secret(scope, environment, "DEPLOY_KEY", key) do
+        {:ok, _} ->
+          resource = %{
+            kind: "secret",
+            location: "#{environment}/DEPLOY_KEY",
+            identifier: "generated=true"
+          }
+
+          {:cont, {:ok, acc ++ [resource]}}
+
+        {:error, reason} ->
+          {:halt, {:error, reason}}
+      end
+    end)
   end
 
   # SECRET_KEY_BASE is entropy, not a decision, so setup mints it here rather
@@ -3505,6 +3743,24 @@ defmodule CodeMySpec.Provisioning.Steps do
         {:error, reason} -> {:halt, {:error, reason}}
       end
     end)
+  end
+
+  # Present, as far as this can honestly tell.
+  #
+  # Anything that is not a clear "the file opens and the key is not in it" reads
+  # as present. A missing age key, sops unavailable, an unreadable file — none of
+  # those are evidence the database went away, and treating them as such would
+  # re-serve a database and rewrite a connection string on the strength of a
+  # local tooling failure. The secrets step is what reports a key that cannot
+  # open its own file, and it says so in its own words.
+  defp database_url_present?(scope, environment) do
+    with {:ok, private} <- fetch_age_key(scope, environment),
+         {:ok, missing} <-
+           Sops.missing_secrets(env(scope), environment, private, ["DATABASE_URL"]) do
+      "DATABASE_URL" not in missing
+    else
+      _ -> true
+    end
   end
 
   defp secret_key_base_missing?(scope, env, environment) do

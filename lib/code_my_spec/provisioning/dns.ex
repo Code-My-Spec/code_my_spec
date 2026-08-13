@@ -80,11 +80,49 @@ defmodule CodeMySpec.Provisioning.Dns do
     end)
   end
 
-  defp doh_lookup(name, type, opts) do
-    url =
-      "https://dns.google/resolve?name=#{URI.encode(name)}&type=#{type |> to_string() |> String.upcase()}"
+  # Google first, then Cloudflare, and only if Google had nothing to say.
+  #
+  # One resolver's answer is enough to prove a record resolves for somebody who
+  # is not us — that is the whole claim, and a positive is a positive. One
+  # resolver's *silence* proves nothing of the kind, and treating it as proof is
+  # what this used to do.
+  #
+  # Measured, on a record that had just been written: `dig @1.1.1.1` and the
+  # system resolver both returned the address while `dig @8.8.8.8` returned
+  # nothing — a negative answer cached from before the record existed. The
+  # record was published, correct, and visible to most of the internet.
+  #
+  # That matters more than it used to. `dns_verification/2` is now fatal when
+  # nothing resolves, so a single stale cache at one provider could halt a run
+  # whose DNS was right, and the message would name the record as missing. It
+  # also produced the fourth wrong sentence in the TLS diagnostic in a week,
+  # all of the same family: a conclusion drawn from one probe that could not
+  # distinguish the cases it was deciding between.
+  #
+  # Asking the second only after the first comes up empty keeps the request set
+  # byte-identical on the path that already worked, so recorded cassettes replay
+  # unchanged.
+  # Cloudflare answers JSON only when asked for it — without the header the
+  # same URL is a 400, which would have read as "no answer" and made the second
+  # opinion worthless in exactly the case it exists for.
+  @doh_resolvers [
+    {"https://dns.google/resolve", []},
+    {"https://cloudflare-dns.com/dns-query", [accept: "application/dns-json"]}
+  ]
 
-    case req(opts).(url) do
+  defp doh_lookup(name, type, opts) do
+    Enum.reduce_while(@doh_resolvers, [], fn {endpoint, headers}, _acc ->
+      case doh_query(endpoint, headers, name, type, opts) do
+        [] -> {:cont, []}
+        answers -> {:halt, answers}
+      end
+    end)
+  end
+
+  defp doh_query(endpoint, headers, name, type, opts) do
+    url = "#{endpoint}?name=#{URI.encode(name)}&type=#{type |> to_string() |> String.upcase()}"
+
+    case req(opts).(url, headers) do
       {:ok, %{status: 200, body: %{"Answer" => answers}}} when is_list(answers) ->
         Enum.map(answers, & &1["data"])
 
@@ -94,10 +132,23 @@ defmodule CodeMySpec.Provisioning.Dns do
   end
 
   # Injectable so a spex can drive it through its cassette plug.
+  #
+  # A stub written before there was a second resolver takes a url and nothing
+  # else, and there is no reason for those to change: what they are standing in
+  # for is "what does a public resolver say", which the headers do not affect.
+  # So a one-argument stub is adapted rather than rejected.
   defp req(opts) do
-    Keyword.get(opts, :resolver, fn url ->
-      Req.get(url, Application.get_env(:code_my_spec, __MODULE__, []))
-    end)
+    case Keyword.get(opts, :resolver) do
+      nil -> &default_resolver/2
+      fun when is_function(fun, 2) -> fun
+      fun when is_function(fun, 1) -> fn url, _headers -> fun.(url) end
+    end
+  end
+
+  defp default_resolver(url, headers) do
+    config = Application.get_env(:code_my_spec, __MODULE__, [])
+
+    Req.get(url, Keyword.update(config, :headers, headers, &Keyword.merge(&1, headers)))
   end
 
   @doc """

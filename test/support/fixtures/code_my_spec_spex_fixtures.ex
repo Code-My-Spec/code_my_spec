@@ -1957,6 +1957,19 @@ defmodule CodeMySpecSpex.Fixtures do
      |> CodeMySpec.Repo.update!()}
   end
 
+  @doc """
+  Point a project at the remote it already owns.
+
+  For the drill, whose database is rolled back between walks: the repository
+  step adopts a repository at setup's own name only when the project already
+  points at it, so without this every walk met its own remote as a stranger's.
+  """
+  def set_project_code_repo(project, url) do
+    project
+    |> Ecto.Changeset.change(code_repo: url)
+    |> CodeMySpec.Repo.update!()
+  end
+
   @doc "Set and verify a project's sending domain."
   def verify_project_domain(project, domain) do
     now = DateTime.utc_now() |> DateTime.truncate(:second)
