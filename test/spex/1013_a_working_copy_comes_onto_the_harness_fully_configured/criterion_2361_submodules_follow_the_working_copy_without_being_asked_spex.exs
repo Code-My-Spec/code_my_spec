@@ -33,6 +33,13 @@ defmodule CodeMySpecSpex.Story1013.Criterion2361Spex do
       given_ "a git working copy whose config does not recurse submodules", context do
         :ok = Environments.register(context.project.id, context.environment)
 
+        :ok =
+          Environments.write_file(
+            context.environment,
+            ".cms_harness.json",
+            Jason.encode!(%{harness_id: "spex-harness-2361"}, pretty: true)
+          )
+
         # Through the environment, not `System.cmd` — the spex boundary check
         # denies shell execution in a spec, and rightly: a spec that shells out
         # is testing the shell's arrangement of the world rather than the

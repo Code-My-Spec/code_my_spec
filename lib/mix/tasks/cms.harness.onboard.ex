@@ -54,7 +54,10 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   alias CmsHarness.HarnessConfig
   alias CmsHarness.ProjectIdentity
   alias CmsHarness.Token
+  alias CodeMySpec.Environments
 
+  @settings_file ".claude/settings.local.json"
+  @harness_config_file ".cms_harness.json"
   @plugin_source "plugins/claude"
   @plugin_dest ".claude/plugin-dev"
 
@@ -70,11 +73,47 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
 
     root = target_root(args)
     dest = Path.join(root, @plugin_dest)
+    env = environment(root, args)
 
     case Enum.member?(args, "--check") do
-      true -> check(root)
-      false -> onboard(root, dest, args)
+      true -> check(env)
+      false -> onboard(env, root, dest, args)
     end
+  end
+
+  # Every file this writes goes through `Environments`, and the environment is
+  # resolved once here. `--project` names one already registered, which is how a
+  # spec drives this: it registers the in-memory environment and the task writes
+  # into it, so onboarding is observable on the filesystem surface rather than
+  # through a directory a spec had to build.
+  #
+  # That mattered more than it looks. Written against `File.write!/2` this task
+  # could only be exercised by constructing a working copy on disk — a temp
+  # directory, a git repo, a plugin tree, a hand-written harness config — and
+  # every one of those is a fixture standing in for a surface. The boundary said
+  # so first: `CodeMySpecSpex` may not reference `CmsHarness`, and the way past
+  # that is not to write the bytes yourself.
+  defp environment(root, args) do
+    case project_flag(args) do
+      nil ->
+        {:ok, env} = Environments.create(:local, working_dir: root)
+        env
+
+      project_id ->
+        case Environments.lookup_registered(project_id) do
+          nil -> Mix.raise("no environment is registered for project #{project_id}")
+          env -> env
+        end
+    end
+  end
+
+  defp project_flag(args) do
+    args
+    |> Enum.chunk_every(2, 1, :discard)
+    |> Enum.find_value(fn
+      ["--project", id] -> id
+      _ -> nil
+    end)
   end
 
   # Absence has to report itself. Every incident behind story 1013 was a missing
@@ -83,27 +122,76 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   # `undefined_column` from inside a `given_`, a submodule losing writes in
   # silence, `0/0 satisfied` meaning three different things. An agent that can ask
   # a working copy whether it is onboarded never has to infer it from the wreckage.
-  defp check(root) do
+  defp check(env) do
     %{
-      onboarded: File.exists?(Path.join([root, ".claude", "settings.local.json"])),
+      onboarded: Environments.file_exists?(env, @settings_file),
       remedy: "mix cms.harness.onboard"
     }
   end
 
-  defp onboard(root, dest, args) do
-    with {:ok, relay} <- check_relay(),
-         {:ok, id} <- identity(root),
-         :ok <- copy_plugin(root, dest),
-         {:ok, count} <- address_hooks(dest, id, relay),
-         :ok <- address_mcp(dest, id),
-         :ok <- address_model_turns(root, id, hook_base_url(dest)),
-         :ok <- configure_git(root) do
-      report(id, dest, count, args)
-      outstanding(root)
+  defp onboard(env, root, dest, args) do
+    with {:ok, id} <- identity(env, root),
+         :ok <- address_model_turns(env, root, id, hook_base_url(dest)) do
+      git = configure_git(env)
+      hooks = install_hooks(env, root, dest, id, args)
+      outstanding(env, root, id, git, hooks)
     else
       {:error, message} -> Mix.raise(message)
     end
   end
+
+  # Reported, not raised — the same shape as the hooks above and for the same
+  # reason. A working copy that is not a git repository still wants its identity,
+  # its partition and its address; aborting all of that because one `git config`
+  # could not run would report the absence of a repository as a failure to
+  # onboard, which is this story's whole complaint.
+  defp configure_git(env) do
+    Enum.reduce_while(Onboarding.git_config(), true, fn {key, value}, true ->
+      case Environments.cmd(env, "git", ["config", key, value]) do
+        {_out, 0} ->
+          {:cont, true}
+
+        {out, _} ->
+          Mix.shell().info("\nGit not configured (#{key}): #{inspect(out)}")
+          {:halt, false}
+      end
+    end)
+  end
+
+  # The relay gates the hooks, not the command.
+  #
+  # It used to gate everything: no usable relay and nothing was written at all.
+  # The reasoning was sound for what it guarded — the hooks it installs are run
+  # by that binary, and installing hooks that cannot run is worse than installing
+  # none. It does not extend to the rest. A working copy's identity, its
+  # partition, its git config and its Anthropic address have nothing to do with
+  # the relay, and refusing them because one of six steps is unavailable leaves
+  # the copy unonboarded for a reason that explains none of its symptoms.
+  #
+  # That is this story's own anti-pattern arriving from inside: a missing thing
+  # reported as something else. Now the copy is onboarded, the hooks are reported
+  # as skipped, and the reason is on screen.
+  defp install_hooks(%{type: :local}, root, dest, id, args) do
+    with {:ok, relay} <- check_relay(),
+         :ok <- copy_plugin(root, dest),
+         {:ok, count} <- address_hooks(dest, id, relay),
+         :ok <- address_mcp(dest, id) do
+      report(id, dest, count, args)
+      {:ok, count}
+    else
+      {:error, message} ->
+        Mix.shell().info("\nHooks not addressed:\n#{message}")
+        {:skipped, message}
+    end
+  end
+
+  # Hooks are a directory Claude Code is started against, so they only mean
+  # anything for an environment backed by a real one. Against any other, this
+  # skips rather than writing a plugin tree nobody can point at — and skipping is
+  # also what keeps a spec off the 10-second relay probe, which blocks on stdin
+  # and times out in full every time.
+  defp install_hooks(_env, _root, _dest, _id, _args),
+    do: {:skipped, "hooks are only installed for a working copy on disk"}
 
   # Named, never run. Onboarding does not create, migrate or drop a database, and
   # the rule is not stylistic: the version of this that did shelled out to `mix`
@@ -116,8 +204,9 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   # which database it acts on is the defect this replaces: the migration guard
   # printed `MIX_ENV=test mix ecto.migrate` while checking a partition that
   # command never touches.
-  defp outstanding(root) do
-    databases = root |> Onboarding.partition_name() |> Onboarding.databases()
+  defp outstanding(_env, root, id, git, hooks) do
+    partition = Onboarding.partition_name(root)
+    databases = Onboarding.databases(partition)
 
     Mix.shell().info("\nDatabases this working copy needs (create and migrate them yourself):")
 
@@ -125,7 +214,14 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
       Mix.shell().info("  #{database.name}\n    #{database.create}\n    #{database.migrate}")
     end)
 
-    %{databases: databases, issued_ddl: false}
+    %{
+      harness_id: id,
+      partition: partition,
+      databases: databases,
+      git: %{submodule_recurse: git},
+      hooks: hooks,
+      issued_ddl: false
+    }
   end
 
   @relay "cms-mcp-relay"
@@ -222,16 +318,27 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   defp target_root([path | _]) when is_binary(path), do: Path.expand(path)
   defp target_root(_), do: File.cwd!()
 
-  defp identity(root) do
-    case HarnessConfig.read(root) do
-      {:ok, %{harness_id: id}} ->
-        {:ok, id}
+  # Read through the environment, so a working copy that already has an id is a
+  # file the spec wrote through the same surface — not a fixture reaching past it.
+  defp identity(env, root) do
+    case Environments.read_file(env, @harness_config_file) do
+      {:ok, contents} -> existing_id(contents, env, root)
+      _ -> mint(root)
+    end
+  end
 
-      :none ->
-        mint(root)
+  defp existing_id(contents, env, root) do
+    case Jason.decode(contents) do
+      {:ok, %{"harness_id" => id}} when is_binary(id) and id != "" -> {:ok, id}
+      _ -> mint_and_record(env, root)
+    end
+  end
 
-      {:error, reason} ->
-        {:error, "Could not read #{HarnessConfig.path(root)}: #{inspect(reason)}"}
+  defp mint_and_record(env, root) do
+    with {:ok, id} <- mint(root) do
+      body = Jason.encode!(%{harness_id: id, root: root}, pretty: true)
+      Environments.write_file(env, @harness_config_file, body)
+      {:ok, id}
     end
   end
 
@@ -350,19 +457,49 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   # writes a file the operator owns, so "keeps what was already there" has to be
   # checkable rather than asserted in a comment.
   @doc false
-  def address_model_turns(root, id, base_url \\ nil) do
-    file = Path.join([root, ".claude", "settings.local.json"])
+  def address_model_turns(env, root, id, base_url \\ nil) do
     url = "#{String.trim_trailing(base_url || default_hook_base_url(), "/")}/api/harnesses/#{id}"
 
-    with {:ok, settings} <- read_settings(file),
-         env <- settings |> Map.get("env", %{}) |> Map.put("ANTHROPIC_BASE_URL", url),
-         env <- Map.put_new(env, "MIX_TEST_PARTITION", Onboarding.partition_name(root)),
-         merged <- Map.put(settings, "env", env),
-         :ok <- File.mkdir_p(Path.dirname(file)),
-         :ok <- File.write(file, Jason.encode_to_iodata!(merged, pretty: true)) do
-      :ok
-    else
-      {:error, reason} -> {:error, "Could not write #{file}: #{inspect(reason)}"}
+    with {:ok, settings} <- read_settings(env) do
+      env_block =
+        settings
+        |> Map.get("env", %{})
+        |> Map.put("ANTHROPIC_BASE_URL", url)
+        |> Map.put_new("MIX_TEST_PARTITION", Onboarding.partition_name(root))
+
+      merged = Map.put(settings, "env", env_block)
+
+      case Environments.write_file(env, @settings_file, Jason.encode!(merged, pretty: true)) do
+        :ok -> :ok
+        {:error, reason} -> {:error, "Could not write #{@settings_file}: #{inspect(reason)}"}
+      end
+    end
+  end
+
+  # Absent is an empty object; empty is an empty object; unparseable is a refusal.
+  #
+  # The distinction is the operator's file. Treating malformed JSON as "no
+  # settings" would rewrite it from scratch and destroy whatever they were
+  # halfway through editing — and a half-edited settings file is exactly the
+  # state someone is in when they run this to fix it.
+  defp read_settings(env) do
+    case Environments.read_file(env, @settings_file) do
+      {:ok, ""} ->
+        {:ok, %{}}
+
+      {:ok, contents} ->
+        case Jason.decode(contents) do
+          {:ok, %{} = settings} ->
+            {:ok, settings}
+
+          _ ->
+            {:error,
+             "#{@settings_file} is not valid JSON. Refusing to overwrite it — fix or " <>
+               "move it and run this again."}
+        end
+
+      _ ->
+        {:ok, %{}}
     end
   end
 
@@ -388,14 +525,6 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   # one working copy for a day because of it, and nothing reported a problem: the
   # superproject's dirty-pointer line is suppressed project-wide, for unrelated
   # and well-reasoned purposes.
-  defp configure_git(root) do
-    Enum.reduce_while(Onboarding.git_config(), :ok, fn {key, value}, :ok ->
-      case System.cmd("git", ["config", key, value], cd: root, stderr_to_stdout: true) do
-        {_out, 0} -> {:cont, :ok}
-        {out, _} -> {:halt, {:error, "Could not set git #{key} in #{root}: #{out}"}}
-      end
-    end)
-  end
 
   # The harness the hooks were just addressed to, so a model turn goes to the
   # same place they do.
@@ -447,24 +576,6 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
 
   # A missing file is an empty one. A malformed file is not — overwriting it
   # would throw away settings the operator wrote, so it stops and says so.
-  defp read_settings(file) do
-    case File.read(file) do
-      {:ok, ""} ->
-        {:ok, %{}}
-
-      {:ok, contents} ->
-        case Jason.decode(contents) do
-          {:ok, settings} when is_map(settings) -> {:ok, settings}
-          _ -> {:error, :not_valid_json}
-        end
-
-      {:error, :enoent} ->
-        {:ok, %{}}
-
-      {:error, reason} ->
-        {:error, reason}
-    end
-  end
 
   # The MCP surface has the same question to answer as the hooks — which
   # working copy is this? — so it gets the same answer. Left on `?dir=` it

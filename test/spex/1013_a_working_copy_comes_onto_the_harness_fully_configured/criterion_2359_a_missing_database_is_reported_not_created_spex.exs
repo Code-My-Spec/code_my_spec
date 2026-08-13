@@ -29,6 +29,14 @@ defmodule CodeMySpecSpex.Story1013.Criterion2359Spex do
     scenario "A missing database is reported, not created" do
       given_ "a working copy whose test databases do not exist", context do
         :ok = Environments.register(context.project.id, context.environment)
+
+        :ok =
+          Environments.write_file(
+            context.environment,
+            ".cms_harness.json",
+            Jason.encode!(%{harness_id: "spex-harness-2359"}, pretty: true)
+          )
+
         {:ok, context}
       end
 

@@ -34,6 +34,14 @@ defmodule CodeMySpecSpex.Story1013.Criterion2357Spex do
     scenario "Not-onboarded is reported as itself" do
       given_ "a working copy that was never onboarded", context do
         :ok = Environments.register(context.project.id, context.environment)
+
+        :ok =
+          Environments.write_file(
+            context.environment,
+            ".cms_harness.json",
+            Jason.encode!(%{harness_id: "spex-harness-2357"}, pretty: true)
+          )
+
         {:ok, context}
       end
 

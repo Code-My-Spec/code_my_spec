@@ -32,6 +32,13 @@ defmodule CodeMySpecSpex.Story1013.Criterion2350Spex do
       given_ "a worktree with no harness configuration", context do
         :ok = Environments.register(context.project.id, context.environment)
 
+        :ok =
+          Environments.write_file(
+            context.environment,
+            ".cms_harness.json",
+            Jason.encode!(%{harness_id: "spex-harness-2350"}, pretty: true)
+          )
+
         refute Environments.file_exists?(context.environment, @settings),
                "the premise failed: this working copy is already configured"
 

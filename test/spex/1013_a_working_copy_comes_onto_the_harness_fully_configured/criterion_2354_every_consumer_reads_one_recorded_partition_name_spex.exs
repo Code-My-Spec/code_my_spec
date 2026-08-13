@@ -33,6 +33,14 @@ defmodule CodeMySpecSpex.Story1013.Criterion2354Spex do
     scenario "Every consumer reads one recorded partition name" do
       given_ "a working copy with no partition recorded", context do
         :ok = Environments.register(context.project.id, context.environment)
+
+        :ok =
+          Environments.write_file(
+            context.environment,
+            ".cms_harness.json",
+            Jason.encode!(%{harness_id: "spex-harness-2354"}, pretty: true)
+          )
+
         {:ok, context}
       end
 

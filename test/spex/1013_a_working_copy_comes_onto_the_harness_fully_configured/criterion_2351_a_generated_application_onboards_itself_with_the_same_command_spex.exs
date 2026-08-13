@@ -37,6 +37,13 @@ defmodule CodeMySpecSpex.Story1013.Criterion2351Spex do
       given_ "a working copy with nothing CodeMySpec-specific in it", context do
         :ok = Environments.register(context.project.id, context.environment)
 
+        :ok =
+          Environments.write_file(
+            context.environment,
+            ".cms_harness.json",
+            Jason.encode!(%{harness_id: "spex-harness-2351"}, pretty: true)
+          )
+
         refute Environments.file_exists?(context.environment, ".code_my_spec/config.yml"),
                "the premise failed: this working copy carries CodeMySpec's own " <>
                  "configuration, so onboarding it proves nothing about a generated app"

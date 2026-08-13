@@ -15,6 +15,7 @@ defmodule CmsHarness.OnboardSettingsTest do
   """
   use ExUnit.Case, async: true
 
+  alias CodeMySpec.Environments
   alias Mix.Tasks.Cms.Harness.Onboard
 
   @base "http://localhost:4003"
@@ -23,22 +24,32 @@ defmodule CmsHarness.OnboardSettingsTest do
     root = Path.join(System.tmp_dir!(), "onboard-settings-#{System.unique_integer([:positive])}")
     File.mkdir_p!(root)
     on_exit(fn -> File.rm_rf(root) end)
-    {:ok, root: root, settings_file: Path.join([root, ".claude", "settings.local.json"])}
+
+    # A local environment over the same directory. Onboarding writes through
+    # `Environments` so a spec can drive it against the in-memory one; a real
+    # directory is still what these assert on, because the file is the point.
+    {:ok, env} = Environments.create(:local, working_dir: root)
+
+    {:ok,
+     root: root,
+     env: env,
+     settings_file: Path.join([root, ".claude", "settings.local.json"])}
   end
 
   defp read!(file), do: file |> File.read!() |> Jason.decode!()
 
   test "writes the addressed URL when there is no settings file", %{
     root: root,
+    env: env,
     settings_file: file
   } do
-    assert :ok = Onboard.address_model_turns(root, "abc-123", @base)
+    assert :ok = Onboard.address_model_turns(env, root, "abc-123", @base)
 
     assert read!(file)["env"]["ANTHROPIC_BASE_URL"] ==
              "#{@base}/api/harnesses/abc-123"
   end
 
-  test "keeps every other setting the operator wrote", %{root: root, settings_file: file} do
+  test "keeps every other setting the operator wrote", %{root: root, env: env, settings_file: file} do
     File.mkdir_p!(Path.dirname(file))
 
     File.write!(
@@ -49,7 +60,7 @@ defmodule CmsHarness.OnboardSettingsTest do
       })
     )
 
-    assert :ok = Onboard.address_model_turns(root, "abc-123", @base)
+    assert :ok = Onboard.address_model_turns(env, root, "abc-123", @base)
 
     settings = read!(file)
 
@@ -62,9 +73,9 @@ defmodule CmsHarness.OnboardSettingsTest do
     assert settings["env"]["ANTHROPIC_BASE_URL"] == "#{@base}/api/harnesses/abc-123"
   end
 
-  test "re-onboarding to a new id rewrites only the address", %{root: root, settings_file: file} do
-    assert :ok = Onboard.address_model_turns(root, "first", @base)
-    assert :ok = Onboard.address_model_turns(root, "second", @base)
+  test "re-onboarding to a new id rewrites only the address", %{root: root, env: env, settings_file: file} do
+    assert :ok = Onboard.address_model_turns(env, root, "first", @base)
+    assert :ok = Onboard.address_model_turns(env, root, "second", @base)
 
     env = read!(file)["env"]
 
@@ -74,23 +85,24 @@ defmodule CmsHarness.OnboardSettingsTest do
 
   test "refuses a malformed settings file rather than overwriting it", %{
     root: root,
+    env: env,
     settings_file: file
   } do
     File.mkdir_p!(Path.dirname(file))
     File.write!(file, "{ this is not json")
 
-    assert {:error, message} = Onboard.address_model_turns(root, "abc-123", @base)
+    assert {:error, message} = Onboard.address_model_turns(env, root, "abc-123", @base)
     assert message =~ "settings.local.json"
 
     assert File.read!(file) == "{ this is not json",
            "a file we could not parse is a file we must not replace"
   end
 
-  test "treats an empty file as an empty settings object", %{root: root, settings_file: file} do
+  test "treats an empty file as an empty settings object", %{root: root, env: env, settings_file: file} do
     File.mkdir_p!(Path.dirname(file))
     File.write!(file, "")
 
-    assert :ok = Onboard.address_model_turns(root, "abc-123", @base)
+    assert :ok = Onboard.address_model_turns(env, root, "abc-123", @base)
     assert read!(file)["env"]["ANTHROPIC_BASE_URL"] == "#{@base}/api/harnesses/abc-123"
   end
 
@@ -103,8 +115,8 @@ defmodule CmsHarness.OnboardSettingsTest do
   # The parameter that exists "only so it can be tested directly" was exactly
   # what kept the real path untested. So these exercise the default.
   describe "the address it picks when nobody passes one" do
-    test "is a local harness, not the CodeMySpec server", %{root: root, settings_file: file} do
-      assert :ok = Onboard.address_model_turns(root, "abc-123")
+    test "is a local harness, not the CodeMySpec server", %{root: root, env: env, settings_file: file} do
+      assert :ok = Onboard.address_model_turns(env, root, "abc-123")
 
       url = read!(file)["env"]["ANTHROPIC_BASE_URL"]
 
@@ -117,12 +129,13 @@ defmodule CmsHarness.OnboardSettingsTest do
 
     test "follows CMS_HARNESS_PORT, which is what a sprite sets", %{
       root: root,
+      env: env,
       settings_file: file
     } do
       System.put_env("CMS_HARNESS_PORT", "4321")
       on_exit(fn -> System.delete_env("CMS_HARNESS_PORT") end)
 
-      assert :ok = Onboard.address_model_turns(root, "abc-123")
+      assert :ok = Onboard.address_model_turns(env, root, "abc-123")
 
       assert read!(file)["env"]["ANTHROPIC_BASE_URL"] ==
                "http://localhost:4321/api/harnesses/abc-123"

@@ -32,6 +32,14 @@ defmodule CodeMySpecSpex.Story1013.Criterion2358Spex do
     scenario "The commands are handed over, not run" do
       given_ "a working copy being onboarded", context do
         :ok = Environments.register(context.project.id, context.environment)
+
+        :ok =
+          Environments.write_file(
+            context.environment,
+            ".cms_harness.json",
+            Jason.encode!(%{harness_id: "spex-harness-2358"}, pretty: true)
+          )
+
         {:ok, context}
       end
 

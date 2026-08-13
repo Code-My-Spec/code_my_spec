@@ -34,6 +34,14 @@ defmodule CodeMySpecSpex.Story1013.Criterion2353Spex do
     scenario "A clone does not inherit the identity of the copy it was cloned from" do
       given_ "a working copy onboarded on this machine", context do
         :ok = Environments.register(context.project.id, context.environment)
+
+        :ok =
+          Environments.write_file(
+            context.environment,
+            ".cms_harness.json",
+            Jason.encode!(%{harness_id: "spex-harness-2353"}, pretty: true)
+          )
+
         :ok = Environments.write_file(context.environment, @tracked, "{}\n")
 
         Mix.Task.reenable("cms.harness.onboard")

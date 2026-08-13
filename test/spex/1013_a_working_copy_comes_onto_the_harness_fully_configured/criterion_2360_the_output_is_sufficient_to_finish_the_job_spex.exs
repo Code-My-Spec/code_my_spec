@@ -32,6 +32,13 @@ defmodule CodeMySpecSpex.Story1013.Criterion2360Spex do
       given_ "a working copy that has just been onboarded", context do
         :ok = Environments.register(context.project.id, context.environment)
 
+        :ok =
+          Environments.write_file(
+            context.environment,
+            ".cms_harness.json",
+            Jason.encode!(%{harness_id: "spex-harness-2360"}, pretty: true)
+          )
+
         Mix.Task.reenable("cms.harness.onboard")
         report = Mix.Task.run("cms.harness.onboard", ["--project", context.project.id])
 
