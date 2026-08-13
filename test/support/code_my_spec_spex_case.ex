@@ -3254,12 +3254,25 @@ defmodule CodeMySpecSpex.Case do
       # long enough that the client timed out and took the sandbox connection
       # down with it — which surfaces as a DBConnection error and says nothing
       # about the sleeping.
+      #
+      # SSH is the same argument with a sharper edge. The registry step waits
+      # for a freshly created box to answer — 90 attempts, 2s apart — which is
+      # right when a box is genuinely booting and pure loss on replay, where
+      # the address is a fiction the cassette supplied and nothing will ever
+      # answer at it. Left alone it spent exactly 180s and ExUnit killed the
+      # test on its timeout, which is how 8003 and 7965 started failing for a
+      # wait rather than for anything they assert.
+      #
+      # One attempt, not zero: the step should still find out that nothing is
+      # there, and say so, rather than proceed as though the box answered.
       Application.put_env(
         :code_my_spec,
         :provisioning_step_opts,
         Keyword.merge(
           Application.get_env(:code_my_spec, :provisioning_step_opts, []),
-          interval_ms: 0
+          interval_ms: 0,
+          ssh_attempts: 1,
+          ssh_interval_ms: 0
         )
       )
     end
