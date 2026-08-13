@@ -913,7 +913,49 @@ defmodule CodeMySpec.Provisioning.Steps do
     "#{target.host} did not answer over HTTPS with a valid certificate (#{format(reason)}). " <>
       "Issuance needs DNS resolving to the server and the proxy reachable on 80. " <>
       plain_http_observation(target.host, probe, opts) <>
+      " " <> acme_path_observation(target.host, probe, opts) <>
       " " <> dns_observation(target.host, opts)
+  end
+
+  # Whether HTTP-01 can even complete, asked of the one path it uses.
+  #
+  # A proxy with `ssl: true` redirects http to https, and the challenge path is
+  # the exception it has to make — Let's Encrypt fetches
+  # `/.well-known/acme-challenge/<token>` over port 80, and a proxy that
+  # redirects that to a host with no certificate yet has made issuance
+  # impossible by trying to be secure. An unknown token answering 404 is the
+  # healthy shape: the proxy served it rather than bouncing it.
+  #
+  # No SSH, so this costs one HTTP request and works from here. The message it
+  # replaces told the reader to go and read the proxy's certificate log on a
+  # host that teardown destroys minutes later, which nobody has ever been able
+  # to do.
+  defp acme_path_observation(host, probe, opts) do
+    opts =
+      Keyword.merge(opts,
+        scheme: :http,
+        tls_attempts: 1,
+        health_path: "/.well-known/acme-challenge/cms-setup-probe"
+      )
+
+    case probe.(host, opts) do
+      {:error, "responded 30" <> _} ->
+        "The proxy redirects the ACME challenge path to HTTPS instead of " <>
+          "serving it, so HTTP-01 validation cannot complete and no " <>
+          "certificate will ever be issued."
+
+      {:error, "responded " <> status} ->
+        "The proxy serves the ACME challenge path directly (responded " <>
+          "#{status}), so HTTP-01 validation can reach it."
+
+      :ok ->
+        "The proxy serves the ACME challenge path directly, so HTTP-01 " <>
+          "validation can reach it."
+
+      {:error, reason} ->
+        "The ACME challenge path could not be reached at all " <>
+          "(#{format(reason)})."
+    end
   end
 
   # Which resolver disagreed, because two of them are in play and they can
@@ -933,15 +975,28 @@ defmodule CodeMySpec.Provisioning.Steps do
   end
 
   defp plain_http_observation(host, probe, opts) do
+    # Any HTTP status counts as answering, including the ones `probe/2` reports
+    # as errors. It is a health check, so it calls a 301 a failure — and a 301
+    # is exactly what a healthy kamal-proxy serves on 80 while it redirects to
+    # HTTPS. Reading that as silence made this sentence contradict itself:
+    # "Port 80 does not answer either (responded 301)", which sent a drill
+    # looking at reachability when the proxy was plainly up and issuance was
+    # the thing that had failed.
     case probe.(host, Keyword.merge(opts, scheme: :http, tls_attempts: 1)) do
-      :ok ->
-        "Port 80 does answer, so the proxy is reachable and issuance itself " <>
-          "is what failed — check the proxy's certificate log on the host."
-
-      {:error, reason} ->
-        "Port 80 does not answer either (#{format(reason)}), so this is " <>
-          "reachability rather than issuance."
+      {:error, "responded " <> status} -> port_80_answered("responded #{status}")
+      :ok -> port_80_answered("responded 200")
+      {:error, reason} -> port_80_silent(reason)
     end
+  end
+
+  defp port_80_answered(what) do
+    "Port 80 does answer (#{what}), so the proxy is reachable and issuance " <>
+      "itself is what failed — check the proxy's certificate log on the host."
+  end
+
+  defp port_80_silent(reason) do
+    "Port 80 does not answer either (#{format(reason)}), so this is " <>
+      "reachability rather than issuance."
   end
 
   defp tls_tag(%{name: name}) when is_binary(name), do: " environment=#{name}"
