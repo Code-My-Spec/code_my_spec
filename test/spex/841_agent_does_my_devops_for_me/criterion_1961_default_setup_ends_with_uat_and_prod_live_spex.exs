@@ -77,7 +77,15 @@ defmodule CodeMySpecSpex.Story841.Criterion1961Spex do
         # does it: the plan brings up `uat.` and the apex of whatever it is
         # given, and pointing that at `astralbi.com` itself would have teardown
         # removing records the zone actually uses.
-        own_domain(context.project, "c1961.astralbi.com")
+        # `legwork.ca`, not `astralbi.com`. Let's Encrypt allows five
+        # certificates a week for an exact set of identifiers, and eight drills
+        # against `c1961.astralbi.com` in one day spent all five — after which
+        # kamal-proxy got a 429 at every handshake and it presented as TLS
+        # timing out, which cost several drills chasing DNS and ACME.
+        #
+        # A trashable domain moves the quota rather than rationing it. The name
+        # is what the limit counts, so a different one starts at zero.
+        own_domain(context.project, "c1961.legwork.ca")
 
         # The default plan is the subject, so it is set rather than inherited.
         # Nothing is provisioned because nothing has run yet — the `when_` is
