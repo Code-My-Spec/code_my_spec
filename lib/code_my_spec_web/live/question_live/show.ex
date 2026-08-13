@@ -9,6 +9,7 @@ defmodule CodeMySpecWeb.QuestionLive.Show do
   use CodeMySpecWeb, :live_view
 
   alias CodeMySpec.Notifications
+  alias CodeMySpecWeb.ChatComponents
 
   @impl true
   def mount(%{"id" => id}, _session, socket) do
@@ -51,7 +52,8 @@ defmodule CodeMySpecWeb.QuestionLive.Show do
 
   @impl true
   def handle_info({:question_answered, _}, socket) do
-    {:noreply, assign(socket, request: Notifications.get_question_request(socket.assigns.request.id))}
+    {:noreply,
+     assign(socket, request: Notifications.get_question_request(socket.assigns.request.id))}
   end
 
   # Build %{question_text => answer} from the form params. A choice of "Other"
@@ -76,78 +78,15 @@ defmodule CodeMySpecWeb.QuestionLive.Show do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_scope={@current_scope} pending_notifications={@pending_notifications}
+    <Layouts.app
+      flash={@flash}
+      current_scope={@current_scope}
+      pending_notifications={@pending_notifications}
       project={assigns[:project]}
       projects={assigns[:projects] || []}
     >
       <div class="mx-auto max-w-lg">
-        <div :if={@request} class="card bg-base-200 shadow-xl">
-          <div class="card-body">
-            <h2 class="card-title text-2xl">
-              <.icon name="hero-chat-bubble-left-right" class="size-6 text-primary" />
-              {@request.title || "Claude Code has a question"}
-            </h2>
-
-            <div :if={@request.status == "answered"} class="mt-4">
-              <div class="alert alert-success">
-                <.icon name="hero-check-circle" class="size-5" /> Answer sent — you can close this.
-              </div>
-              <dl class="mt-4 space-y-2">
-                <div :for={{q, a} <- @request.answers} class="text-sm">
-                  <dt class="font-semibold opacity-70">{q}</dt>
-                  <dd>{format_answer(a)}</dd>
-                </div>
-              </dl>
-            </div>
-
-            <form :if={@request.status == "pending"} phx-submit="submit" class="mt-4 space-y-6">
-              <fieldset :for={{question, i} <- Enum.with_index(@request.questions)} class="space-y-2">
-                <div>
-                  <span :if={question["header"]} class="badge badge-primary badge-sm">{question["header"]}</span>
-                  <p class="mt-1 font-medium">{question["question"]}</p>
-                </div>
-
-                <textarea
-                  :if={free_form?(question)}
-                  name={"q_#{i}"}
-                  rows="4"
-                  placeholder="Type your answer…"
-                  class="textarea textarea-bordered w-full"
-                ></textarea>
-
-                <div :if={not free_form?(question)} class="space-y-2">
-                  <label
-                    :for={opt <- question["options"] || []}
-                    class="flex cursor-pointer items-start gap-3 rounded-box border border-base-300 p-3 hover:bg-base-300/40"
-                  >
-                    <input
-                      type={input_type(question)}
-                      name={field_name(question, i)}
-                      value={opt["label"]}
-                      class={choice_class(question)}
-                    />
-                    <span class="flex flex-col">
-                      <span class="font-medium">{opt["label"]}</span>
-                      <span :if={opt["description"]} class="text-xs opacity-60">{opt["description"]}</span>
-                    </span>
-                  </label>
-
-                  <label class="flex cursor-pointer items-center gap-3 rounded-box border border-dashed border-base-300 p-3">
-                    <input type={input_type(question)} name={field_name(question, i)} value="__other__" class={choice_class(question)} />
-                    <input
-                      type="text"
-                      name={"q_#{i}_other"}
-                      placeholder="Other…"
-                      class="input input-bordered input-sm flex-1"
-                    />
-                  </label>
-                </div>
-              </fieldset>
-
-              <button type="submit" class="btn btn-primary btn-lg w-full">Send answer</button>
-            </form>
-          </div>
-        </div>
+        <ChatComponents.question :if={@request} request={@request} />
 
         <div :if={!@request} class="py-12 text-center opacity-70">
           Question not found or not authorized.
@@ -156,19 +95,4 @@ defmodule CodeMySpecWeb.QuestionLive.Show do
     </Layouts.app>
     """
   end
-
-  # A question with no options is answered as free text (a textarea).
-  defp free_form?(question), do: (question["options"] || []) == []
-
-  defp input_type(%{"multiSelect" => true}), do: "checkbox"
-  defp input_type(_question), do: "radio"
-
-  defp field_name(%{"multiSelect" => true}, i), do: "q_#{i}[]"
-  defp field_name(_question, i), do: "q_#{i}"
-
-  defp choice_class(%{"multiSelect" => true}), do: "checkbox checkbox-primary mt-0.5"
-  defp choice_class(_question), do: "radio radio-primary mt-0.5"
-
-  defp format_answer(a) when is_list(a), do: Enum.join(a, ", ")
-  defp format_answer(a), do: to_string(a)
 end

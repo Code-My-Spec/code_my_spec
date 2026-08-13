@@ -27,6 +27,8 @@ defmodule CodeMySpecWeb.ChatComponents do
   """
   use Phoenix.Component
 
+  import CodeMySpecWeb.CoreComponents, only: [icon: 1]
+
   alias CodeMySpec.Conversations.Message
 
   @doc """
@@ -117,7 +119,8 @@ defmodule CodeMySpecWeb.ChatComponents do
   attr :text, :string, required: true
 
   slot :extra,
-    doc: "rendered inside the bubble, under the text — attachments, cards, anything the tool returned"
+    doc:
+      "rendered inside the bubble, under the text — attachments, cards, anything the tool returned"
 
   def chat_message(assigns) do
     ~H"""
@@ -204,6 +207,122 @@ defmodule CodeMySpecWeb.ChatComponents do
     </div>
     """
   end
+
+  @doc """
+  A question the agent asked, answerable where it is shown.
+
+  Lifted out of `QuestionLive.Show` unchanged — it was already the right thing
+  and had been working; what it lacked was a second place to appear. The plan
+  is that a notification takes you to the conversation the question came from,
+  so you answer it with the surrounding work visible rather than on a page that
+  shows the question and nothing else.
+
+  Answered questions keep rendering, showing what was asked and what was said.
+  In a transcript that is the whole point: the answer is part of the record,
+  not a modal that closes.
+
+  `on_submit` names the event because the two hosts handle it differently — a
+  page that has one question, and a transcript that may have several.
+  """
+  attr :id, :string, default: nil
+  attr :request, :any, required: true, doc: "a %Notifications.QuestionRequest{}"
+  attr :on_submit, :string, default: "submit"
+
+  def question(assigns) do
+    ~H"""
+    <div id={@id} data-test="question-request" data-status={@request.status} class="card bg-base-200">
+      <div class="card-body">
+        <h2 class="card-title text-lg">
+          <.icon name="hero-chat-bubble-left-right" class="size-5 text-primary" />
+          {@request.title || "Claude Code has a question"}
+        </h2>
+
+        <div :if={@request.status == "answered"} data-test="question-answered" class="mt-2">
+          <div class="alert alert-success">
+            <.icon name="hero-check-circle" class="size-5" /> Answer sent.
+          </div>
+          <dl class="mt-4 space-y-2">
+            <div :for={{q, a} <- @request.answers} class="text-sm">
+              <dt class="font-semibold opacity-70">{q}</dt>
+              <dd>{format_answer(a)}</dd>
+            </div>
+          </dl>
+        </div>
+
+        <form :if={@request.status == "pending"} phx-submit={@on_submit} class="mt-2 space-y-6">
+          <fieldset :for={{question, i} <- Enum.with_index(@request.questions)} class="space-y-2">
+            <div>
+              <span :if={question["header"]} class="badge badge-primary badge-sm">
+                {question["header"]}
+              </span>
+              <p class="mt-1 font-medium">{question["question"]}</p>
+            </div>
+
+            <textarea
+              :if={free_form?(question)}
+              name={"q_#{i}"}
+              rows="4"
+              placeholder="Type your answer…"
+              class="textarea textarea-bordered w-full"
+            ></textarea>
+
+            <div :if={not free_form?(question)} class="space-y-2">
+              <label
+                :for={opt <- question["options"] || []}
+                class="flex cursor-pointer items-start gap-3 rounded-box border border-base-300 p-3 hover:bg-base-300/40"
+              >
+                <input
+                  type={input_type(question)}
+                  name={field_name(question, i)}
+                  value={opt["label"]}
+                  class={choice_class(question)}
+                />
+                <span class="flex flex-col">
+                  <span class="font-medium">{opt["label"]}</span>
+                  <span :if={opt["description"]} class="text-xs opacity-60">
+                    {opt["description"]}
+                  </span>
+                </span>
+              </label>
+
+              <label class="flex cursor-pointer items-center gap-3 rounded-box border border-dashed border-base-300 p-3">
+                <input
+                  type={input_type(question)}
+                  name={field_name(question, i)}
+                  value="__other__"
+                  class={choice_class(question)}
+                />
+                <input
+                  type="text"
+                  name={"q_#{i}_other"}
+                  placeholder="Other…"
+                  class="input input-bordered input-sm flex-1"
+                />
+              </label>
+            </div>
+          </fieldset>
+
+          <button type="submit" class="btn btn-primary w-full">Send answer</button>
+        </form>
+      </div>
+    </div>
+    """
+  end
+
+  # A question with no options is answered as free text (a textarea).
+  defp free_form?(question), do: (question["options"] || []) == []
+
+  defp input_type(%{"multiSelect" => true}), do: "checkbox"
+  defp input_type(_question), do: "radio"
+
+  defp field_name(%{"multiSelect" => true}, i), do: "q_#{i}[]"
+  defp field_name(_question, i), do: "q_#{i}"
+
+  defp choice_class(%{"multiSelect" => true}), do: "checkbox checkbox-primary mt-0.5"
+  defp choice_class(_question), do: "radio radio-primary mt-0.5"
+
+  defp format_answer(a) when is_list(a), do: Enum.join(a, ", ")
+  defp format_answer(a), do: to_string(a)
 
   # Right is whoever the reader is speaking as, which differs per surface.
   defp side(role, role), do: "chat-end"
