@@ -123,7 +123,7 @@ defmodule CodeMySpec.ProvisioningTest do
       assert result.reason =~ "no capacity"
 
       # Only the steps up to and including the failure ran.
-      assert Enum.map(result.steps, & &1.key) == [:repository, :server]
+      assert Enum.map(result.steps, & &1.key) == [:repository, :secrets, :server]
 
       # And the deploy — which comes after — was never recorded.
       assert StepRepository.get(scope, :deploy) == nil
@@ -199,8 +199,12 @@ defmodule CodeMySpec.ProvisioningTest do
     # re-running from the top would re-provision servers and re-charge for
     # domains.
     test "picks up after the steps already done", %{scope: scope} do
+      # The first two steps, whatever they are. `resume/3` continues from the
+      # first step that is not done, so this has to mark a contiguous run from
+      # the top — marking the first and third would correctly re-run the second
+      # and read as a failure to skip.
       StepRepository.upsert(scope, :repository, %{state: :done, position: 0})
-      StepRepository.upsert(scope, :server, %{state: :done, position: 1})
+      StepRepository.upsert(scope, :secrets, %{state: :done, position: 1})
 
       {:ok, ran} = Agent.start_link(fn -> [] end)
 
@@ -213,7 +217,8 @@ defmodule CodeMySpec.ProvisioningTest do
 
       already_done = Agent.get(ran, & &1)
       refute :repository in already_done
-      refute :server in already_done
+      refute :secrets in already_done
+      assert :server in already_done
       assert :deploy in already_done
     end
 

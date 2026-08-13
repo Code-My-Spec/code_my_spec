@@ -14,6 +14,17 @@ defmodule CodeMySpec.Provisioning.Sequence do
   precedes `content` and `widget` because both are proven against the running
   site.
 
+  `secrets` precedes `server` because the server step *writes* one. It serves
+  the database and puts `DATABASE_URL` into the environment's encrypted env
+  (`serve_database/4`), so the age key that opens that file has to exist first.
+  With `server` ahead of it, a project whose encrypted env could not be opened —
+  a fresh checkout, a rotated key, a file committed by somebody whose key is
+  elsewhere — died in the server step on a raw sops dump, one position before
+  the step that knows how to handle exactly that and says so in words
+  ("written to a key that no longer exists — discarding"). Nothing in `secrets`
+  needs a box: it mints keys, writes `.sops.yaml`, and seeds the two secrets the
+  app boots with.
+
   `tls` follows *both* `dns` and `deploy`, because issuance has two
   preconditions and naming only one of them deadlocked cold setup. The name
   must resolve to the server, which is `dns`; and kamal-proxy must be
@@ -50,13 +61,13 @@ defmodule CodeMySpec.Provisioning.Sequence do
       option: nil,
       why: "the remote CI publishes from and the harness pushes to"
     },
-    %{key: :server, label: "Server", option: nil, why: "the box both environments start on"},
     %{
       key: :secrets,
       label: "Secrets",
       option: nil,
       why: "one age key per environment, so UAT's key cannot open production's"
     },
+    %{key: :server, label: "Server", option: nil, why: "the box both environments start on"},
     %{
       key: :domain,
       label: "Domain",
@@ -134,7 +145,7 @@ defmodule CodeMySpec.Provisioning.Sequence do
   ## Examples
 
       iex> CodeMySpec.Provisioning.Sequence.for_options([]) |> Enum.map(& &1.key)
-      [:repository, :server, :secrets, :deploy, :callback_credential]
+      [:repository, :secrets, :server, :deploy, :callback_credential]
   """
   @spec for_options([atom()] | MapSet.t()) :: [step()]
   def for_options(enabled) do

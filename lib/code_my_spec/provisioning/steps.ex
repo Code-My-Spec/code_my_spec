@@ -830,13 +830,28 @@ defmodule CodeMySpec.Provisioning.Steps do
 
   defp record_content_bucket(other, _scope, _opts), do: other
 
+  # The bucket, and where it is.
+  #
+  # `s3_endpoint` and `aws_region` travel with it because publishing signs a
+  # request against a host, and ExAws with no endpoint configured defaults to
+  # Amazon — `ContentPublishing.client_config/1` says so outright. So a project
+  # whose bucket this step had just created on Hetzner published to AWS and got
+  # `NoSuchBucket` for a bucket that existed, with `server: AmazonS3` in the
+  # response as the only clue that it had gone to the wrong provider entirely.
+  #
+  # Written together, never separately: a bucket name pointed at the wrong
+  # endpoint is worse than no bucket name, because the failure names the bucket
+  # rather than the host.
   defp write_content_bucket(scope, opts) do
     project = project(scope)
+    location = Keyword.get(opts, :location, "fsn1")
 
     with true <- blank?(Map.get(project, :content_bucket)),
          environment when is_binary(environment) <- primary_environment(scope, opts) do
       Projects.update_project(scope, project, %{
-        content_bucket: Storage.bucket_name(project, environment)
+        content_bucket: Storage.bucket_name(project, environment),
+        s3_endpoint: "https://#{location}.your-objectstorage.com",
+        aws_region: location
       })
     end
 
@@ -3754,12 +3769,29 @@ defmodule CodeMySpec.Provisioning.Steps do
   # local tooling failure. The secrets step is what reports a key that cannot
   # open its own file, and it says so in its own words.
   defp database_url_present?(scope, environment) do
-    with {:ok, private} <- fetch_age_key(scope, environment),
-         {:ok, missing} <-
-           Sops.missing_secrets(env(scope), environment, private, ["DATABASE_URL"]) do
-      "DATABASE_URL" not in missing
+    # Nothing here can tell without sops, and without sops nothing works
+    # anyway — the deploy cannot read the file either. Re-running the server
+    # step on every page load of a machine that lacks the binaries would be a
+    # rebuild triggered by a missing tool.
+    if Sops.available?() do
+      with {:ok, private} <- fetch_age_key(scope, environment),
+           {:ok, missing} <-
+             Sops.missing_secrets(env(scope), environment, private, ["DATABASE_URL"]) do
+        "DATABASE_URL" not in missing
+      else
+        # Anything short of proof that the value is there counts as absent.
+        #
+        # This read the other way first — a file that would not open was
+        # "present", on the reasoning that a local failure is not evidence the
+        # database went away. True, and beside the point: the consequence of an
+        # unopenable file is identical to an absent value, because the app
+        # cannot read `DATABASE_URL` out of it either. The charitable reading
+        # made the step report done and the deploy fail two steps later, which
+        # is the failure this check was added to prevent.
+        _ -> false
+      end
     else
-      _ -> true
+      true
     end
   end
 

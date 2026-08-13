@@ -211,10 +211,13 @@ defmodule CodeMySpecSpex.Drill do
     for environment <- environments() do
       path = Path.join(drill_state_dir(), "age_#{environment}.key")
 
-      unless File.exists?(path) do
-        {out, 0} = System.cmd("age-keygen", [], stderr_to_stdout: true)
-        File.write!(path, out)
-      end
+      # `-o`, and emphatically not `stderr_to_stdout: true`. age-keygen prints
+      # the key to stdout and "Public key: …" to *stderr*, so merging the two
+      # put a line sops cannot parse at the top of the file — "unknown identity
+      # type". The app then could not use the stored key, minted its own on
+      # every walk, and the encrypted env rotated each time. Which is exactly
+      # what this setup exists to stop.
+      unless File.exists?(path), do: {_out, 0} = System.cmd("age-keygen", ["-o", path])
 
       {:ok, _} =
         ProjectSecrets.put_value(scope, "age_private_key_#{environment}", File.read!(path))
