@@ -28,8 +28,8 @@ defmodule CodeMySpec.Hooks.PostToolUse do
 
   require Logger
 
-  alias CodeMySpec.Hooks.AnalysisAlert
   alias CodeMySpec.FileEdits
+  alias CodeMySpec.Hooks.AnalysisAlert
   alias CodeMySpec.Sessions
   alias CodeMySpec.Users.Scope
 
