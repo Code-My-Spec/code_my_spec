@@ -10,12 +10,20 @@ defmodule CodeMySpecWeb.QuestionController do
   use CodeMySpecWeb, :controller
 
   alias CodeMySpec.Notifications
+  alias CodeMySpec.Sessions
 
   @doc "POST /api/questions/ask — create a question request and push it."
   def ask(conn, %{"questions" => questions} = params) when is_list(questions) do
     scope = conn.assigns.current_scope
 
-    attrs = %{"questions" => questions, "title" => Map.get(params, "title")}
+    # The caller sends the working copy it is running in; the session running
+    # there is what a conversation is keyed by. Resolved here rather than by the
+    # agent, which has a harness on its scope and no session on it.
+    attrs = %{
+      "questions" => questions,
+      "title" => Map.get(params, "title"),
+      "session_external_id" => Sessions.external_id_for_harness(params["harness_id"])
+    }
 
     case Notifications.create_question_request(scope.user.id, attrs) do
       {:ok, request} -> conn |> put_status(:created) |> json(%{id: request.id})
@@ -24,7 +32,9 @@ defmodule CodeMySpecWeb.QuestionController do
   end
 
   def ask(conn, _params) do
-    conn |> put_status(:bad_request) |> json(%{error: "Missing required field: questions (a list)"})
+    conn
+    |> put_status(:bad_request)
+    |> json(%{error: "Missing required field: questions (a list)"})
   end
 
   @doc "POST /api/questions/:id/answer — record the user's answers."
@@ -32,9 +42,14 @@ defmodule CodeMySpecWeb.QuestionController do
     with %{user_id: uid} = _req <- authorized(conn, id),
          true <- uid == conn.assigns.current_scope.user.id do
       case Notifications.answer_question_request(id, answers) do
-        {:ok, _} -> json(conn, %{status: "ok"})
-        {:error, {:already_resolved, status}} -> conn |> put_status(:conflict) |> json(%{error: "Already #{status}"})
-        {:error, reason} -> conn |> put_status(422) |> json(%{error: inspect(reason)})
+        {:ok, _} ->
+          json(conn, %{status: "ok"})
+
+        {:error, {:already_resolved, status}} ->
+          conn |> put_status(:conflict) |> json(%{error: "Already #{status}"})
+
+        {:error, reason} ->
+          conn |> put_status(422) |> json(%{error: inspect(reason)})
       end
     else
       nil -> conn |> put_status(:not_found) |> json(%{error: "Not found"})
@@ -43,7 +58,9 @@ defmodule CodeMySpecWeb.QuestionController do
   end
 
   def answer(conn, _params) do
-    conn |> put_status(:bad_request) |> json(%{error: "Missing required fields: id, answers (a map)"})
+    conn
+    |> put_status(:bad_request)
+    |> json(%{error: "Missing required fields: id, answers (a map)"})
   end
 
   @doc "GET /api/questions/:id/status — poll for the answer."

@@ -120,14 +120,14 @@ defmodule CodeMySpec.Notifications do
   end
 
   defp pending_notifications(user_id) do
-    (pending_query(QuestionRequest, user_id) |> Repo.all()) ++
-      (pending_query(PermissionRequest, user_id) |> Repo.all())
+    ((pending_query(QuestionRequest, user_id) |> Repo.all()) ++
+       (pending_query(PermissionRequest, user_id) |> Repo.all()))
     |> Enum.sort_by(& &1.inserted_at, {:desc, DateTime})
   end
 
   defp resolved_notifications(user_id) do
-    (resolved_query(QuestionRequest, user_id) |> Repo.all()) ++
-      (resolved_query(PermissionRequest, user_id) |> Repo.all())
+    ((resolved_query(QuestionRequest, user_id) |> Repo.all()) ++
+       (resolved_query(PermissionRequest, user_id) |> Repo.all()))
     |> Enum.sort_by(& &1.inserted_at, {:desc, DateTime})
     |> Enum.take(@resolved_limit)
   end
@@ -200,7 +200,10 @@ defmodule CodeMySpec.Notifications do
 
       %{status: "pending"} = request ->
         request
-        |> PermissionRequest.changeset(%{status: decision_to_status(decision), decision: decision})
+        |> PermissionRequest.changeset(%{
+          status: decision_to_status(decision),
+          decision: decision
+        })
         |> Repo.update()
         |> case do
           {:ok, updated} ->
@@ -291,6 +294,47 @@ defmodule CodeMySpec.Notifications do
   @doc "Get a question request by ID."
   def get_question_request(id), do: Repo.get(QuestionRequest, id)
 
+  @doc """
+  Every question asked during one Claude session, oldest first.
+
+  What a transcript needs: the questions belong in the conversation they came
+  out of, so the reader answers with the work that prompted them in view.
+  """
+  @spec list_question_requests_for_session(String.t() | nil) :: [QuestionRequest.t()]
+  def list_question_requests_for_session(nil), do: []
+
+  def list_question_requests_for_session(session_external_id) do
+    QuestionRequest
+    |> where([q], q.session_external_id == ^session_external_id)
+    |> order_by([q], asc: q.inserted_at)
+    |> Repo.all()
+  end
+
+  @doc """
+  Turn a submitted form into `%{question text => answer}`.
+
+  Lives here rather than in a LiveView because two of them submit this shape
+  now — the question's own page and the conversation it was asked in — and the
+  "__other__" convention is a property of the form the component renders, not
+  of either host.
+  """
+  @spec collect_answers([map()], map()) :: map()
+  def collect_answers(questions, params) do
+    questions
+    |> Enum.with_index()
+    |> Enum.reduce(%{}, fn {question, i}, acc ->
+      Map.put(acc, question["question"], resolve_answer(params["q_#{i}"], params["q_#{i}_other"]))
+    end)
+  end
+
+  defp resolve_answer(choices, other) when is_list(choices) do
+    Enum.map(choices, fn c -> if c == "__other__", do: other || "", else: c end)
+  end
+
+  defp resolve_answer("__other__", other), do: other || ""
+  defp resolve_answer(choice, _other) when is_binary(choice), do: choice
+  defp resolve_answer(_choice, _other), do: ""
+
   defp first_question_text([%{"question" => q} | _]) when is_binary(q), do: q
   defp first_question_text(_), do: "Tap to answer"
 
@@ -318,9 +362,7 @@ defmodule CodeMySpec.Notifications do
         :ok
 
       {:error, :expired} ->
-        Logger.info(
-          "[Notifications] Subscription expired, removing: #{subscription.endpoint}"
-        )
+        Logger.info("[Notifications] Subscription expired, removing: #{subscription.endpoint}")
 
         Repo.delete(subscription)
 

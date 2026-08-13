@@ -16,6 +16,7 @@ defmodule CodeMySpecWeb.AgentConversationLive do
   use CodeMySpecWeb, :live_view
 
   alias CodeMySpec.Conversations
+  alias CodeMySpec.Notifications
   alias CodeMySpecWeb.ChatComponents
 
   @impl true
@@ -55,6 +56,7 @@ defmodule CodeMySpecWeb.AgentConversationLive do
     |> assign(:conversation, conversation)
     |> assign(:page_title, "#{project.name} · Agent conversation")
     |> assign(:recording_gap, conversation != nil and messages_for(conversation) == [])
+    |> assign(:questions, questions_for(conversation))
     |> stream(:messages, messages_for(conversation), reset: true)
   end
 
@@ -63,6 +65,31 @@ defmodule CodeMySpecWeb.AgentConversationLive do
   # could read another project's turns off a stale `active_project_id`.
   defp with_active_project(scope, project),
     do: %{scope | active_project: project, active_project_id: project.id}
+
+  # The questions this session asked. They belong here rather than only on a
+  # page of their own: a question read without the work that prompted it is a
+  # question you cannot answer well.
+  @impl true
+  def handle_event("answer_question", params, socket) do
+    # The submitted form does not name which question it was; a conversation can
+    # hold several, and only one is ever pending, so that is the one being
+    # answered. Answered ones render without a form.
+    case Enum.find(socket.assigns.questions, &(&1.status == "pending")) do
+      nil ->
+        {:noreply, socket}
+
+      request ->
+        answers = Notifications.collect_answers(request.questions, params)
+        _ = Notifications.answer_question_request(request.id, answers)
+
+        {:noreply, assign(socket, :questions, questions_for(socket.assigns.conversation))}
+    end
+  end
+
+  defp questions_for(nil), do: []
+
+  defp questions_for(conversation),
+    do: Notifications.list_question_requests_for_session(conversation.session_external_id)
 
   defp messages_for(nil), do: []
   defp messages_for(conversation), do: Conversations.list_messages(conversation)
@@ -114,6 +141,15 @@ defmodule CodeMySpecWeb.AgentConversationLive do
             Turns were taken but not recorded. What follows is incomplete —
             treat gaps as missing evidence, not as an idle sprite.
           </p>
+
+          <div :if={@questions != []} data-test="conversation-questions" class="mb-4 space-y-3">
+            <ChatComponents.question
+              :for={request <- @questions}
+              id={"question-#{request.id}"}
+              request={request}
+              on_submit="answer_question"
+            />
+          </div>
 
           <div id="agent-turns" phx-update="stream" class="space-y-3">
             <ChatComponents.turn

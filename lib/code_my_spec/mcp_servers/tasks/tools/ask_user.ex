@@ -45,7 +45,7 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.AskUser do
       "options" => []
     }
 
-    case QuestionClient.ask([question], "Claude has a message") do
+    case QuestionClient.ask([question], "Claude has a message", harness_id(frame)) do
       {:ok, id} ->
         {:reply,
          Response.tool()
@@ -74,4 +74,13 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.AskUser do
   def execute(_params, frame) do
     {:reply, Response.tool() |> Response.error("message is required"), frame}
   end
+
+  # The working copy this agent is in, when there is one. `HarnessScope` puts it
+  # on the scope from the id in the MCP URL; a caller reaching this from
+  # somewhere unaddressed has none, and the question is still asked — it simply
+  # has no conversation to be shown in.
+  defp harness_id(%{assigns: %{current_scope: %{active_harness_id: id}}}) when is_binary(id),
+    do: id
+
+  defp harness_id(_frame), do: nil
 end

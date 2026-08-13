@@ -27,6 +27,10 @@ defmodule CodeMySpec.Notifications.QuestionRequest do
     field :status, :string, default: "pending"
     field :answers, :map, default: %{}
 
+    # Claude's session id, so a question can be shown in the conversation it
+    # was asked in. Nil when it was asked outside a harness.
+    field :session_external_id, :string
+
     belongs_to :user, CodeMySpec.Users.User, type: :id
 
     timestamps(type: :utc_datetime)
@@ -34,7 +38,7 @@ defmodule CodeMySpec.Notifications.QuestionRequest do
 
   def changeset(request, attrs) do
     request
-    |> cast(attrs, [:user_id, :title, :questions, :status, :answers])
+    |> cast(attrs, [:user_id, :title, :questions, :status, :answers, :session_external_id])
     |> validate_required([:user_id])
     |> validate_nonempty_questions()
     |> validate_inclusion(:status, @statuses)

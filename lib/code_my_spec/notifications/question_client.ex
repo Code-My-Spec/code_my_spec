@@ -23,16 +23,18 @@ defmodule CodeMySpec.Notifications.QuestionClient do
 
   alias CodeMySpec.Auth.OAuthClient
 
-
   @poll_interval_ms 1_500
   @default_timeout_ms 10 * 60 * 1_000
 
   @doc "Create a remote question request. Returns `{:ok, id}` or `{:error, reason}`."
   @spec ask([map()], String.t() | nil) :: {:ok, String.t()} | {:error, term()}
-  def ask(questions, title \\ nil) when is_list(questions) do
+  def ask(questions, title \\ nil, harness_id \\ nil) when is_list(questions) do
     with {:ok, token} <- credential() do
       url = "#{OAuthClient.get_server_url()}/api/questions/ask"
-      body = %{questions: questions, title: title}
+      # The harness, not the session. The asking agent has a scope carrying a
+      # working copy; the server turns that into the session running there,
+      # the same way it does for a recorded model turn.
+      body = %{questions: questions, title: title, harness_id: harness_id}
 
       case Req.post(url, headers: [{"authorization", "Bearer #{token}"}], json: body) do
         {:ok, %{status: status, body: %{"id" => id}}} when status in [200, 201] ->
