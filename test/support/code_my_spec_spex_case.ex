@@ -988,12 +988,49 @@ defmodule CodeMySpecSpex.Case do
   end
 
   defp reset_drill_checkout(path) do
+    reset_to_baseline(path)
+
     for f <- Path.wildcard(Path.join(path, "envs/*.enc.env")), do: File.rm(f)
     File.rm(Path.join(path, ".sops.yaml"))
 
     System.cmd("git", ["remote", "remove", "origin"], cd: path, stderr_to_stdout: true)
 
     :ok
+  end
+
+  # The message `Steps.commit_staged/1` uses. Matched rather than shared,
+  # because `CodeMySpecSpex` may not reach into `CodeMySpec`.
+  @setup_commit_subject "Setup-generated configuration"
+
+  # Drop the commits previous drills left behind.
+  #
+  # The deploy step commits the run's own `.sops.yaml` and `envs/*.enc.env` —
+  # it has to, because the builder is sent `git archive HEAD` and cannot see
+  # anything uncommitted. So one commit per drill accumulates here, each
+  # carrying secrets encrypted to an age key held by a project row that the
+  # next run will not have. Deleting the working-tree copies is not enough:
+  # the ciphertext is still in HEAD, and the run after meets
+  # `{:sops_failed, 128, "no identity matched any of the recipients"}` at the
+  # server step — before secrets, so nothing gets the chance to re-mint.
+  #
+  # The newest commit that is not one of those, rather than a tag: a genuine
+  # change to the drill application becomes the baseline the moment it is
+  # committed, and nothing has to remember to move anything.
+  defp reset_to_baseline(path) do
+    with {log, 0} <- System.cmd("git", ["log", "--format=%H %s", "-50"], cd: path),
+         line when is_binary(line) <-
+           log
+           |> String.split("\n", trim: true)
+           |> Enum.find(&(not String.contains?(&1, @setup_commit_subject))),
+         [sha | _] <- String.split(line, " ") do
+      System.cmd("git", ["reset", "--hard", sha], cd: path, stderr_to_stdout: true)
+      :ok
+    else
+      # A checkout with no such commit is one where every commit is a drill's,
+      # which a fresh `mix cms.new` never produces. Left alone rather than
+      # guessed at.
+      _ -> :ok
+    end
   end
 
   @doc """
