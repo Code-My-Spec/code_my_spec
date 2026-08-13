@@ -17,7 +17,9 @@ defmodule CodeMySpecSpex.Story1000.Criterion742Spex do
   one project are either handed identical work (so they duplicate or collide) or
   handed unrelated work (so they are not collaborating on anything).
 
-  Surface: the MCP tool an agent actually calls to find its next task.
+  Surfaces: the MCP tool an agent calls to find its work, and the channel — a
+  second working copy has to *be* one, joining and reporting a tree of its own,
+  before there is anything for the graph to differ about.
   """
 
   use CodeMySpecSpex.Case
@@ -25,38 +27,86 @@ defmodule CodeMySpecSpex.Story1000.Criterion742Spex do
   import CodeMySpecSpex.SharedGivens
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.Environments
-  alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
+  alias CodeMySpec.McpServers.Requirements.Tools.ListRequirements
+  alias CodeMySpecWeb.{HarnessProjectChannel, UserSocket}
+  alias Ecto.Adapters.SQL.Sandbox
 
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
+
+  @endpoint CodeMySpecWeb.Endpoint
+  @contract_version 1
 
   setup :register_log_in_setup_account
   setup :setup_active_project
 
+  setup do
+    Sandbox.mode(CodeMySpec.Repo, {:shared, self()})
+    :ok
+  end
+
   spex "One project, two file states, two answers" do
     scenario "Two agents on one project are offered different next work" do
-      given_ :synced_context_component
+      # A satisfied project, deliberately. With the project chain outstanding
+      # both agents are correctly offered the *same* project-level work — a real
+      # answer, and one that never reaches the component requirements this
+      # criterion is about. The asymmetry only becomes visible once the graph has
+      # got as far down as the files.
+      given_ :synced_context_in_satisfied_project
 
       given_ "two agents are serving the same project from different working copies",
              context do
-        {:ok, second_dir} = Briefly.create(directory: true)
+        # The second is a real working copy: it joins and reports a tree of its
+        # own. Synthesising a scope with a made-up harness id would name a
+        # checkout that has never described itself, and an empty file state would
+        # then be indistinguishable from one nobody has ever scanned.
+        {:ok, reply, socket} =
+          UserSocket
+          |> socket("harness_without_the_spec", %{scope: context.scope})
+          |> subscribe_and_join(
+            HarnessProjectChannel,
+            "harness_project:#{context.project.id}",
+            %{
+              "contract_version" => @contract_version,
+              "harness_id" => nil,
+              "root" => "/workspace/without-the-spec",
+              "label" => "the checkout that has not written the spec"
+            }
+          )
 
-        second = %{
-          context.scope
-          | active_harness_id: Ecto.UUID.generate(),
-            cwd: second_dir,
-            environment: Environments.Environment.new(:local, second_dir)
-        }
+        other_id = reply["harness_id"] || reply[:harness_id]
 
-        {:ok, context |> Map.put(:writer, context.scope) |> Map.put(:other, second)}
+        ref =
+          Phoenix.ChannelTest.push(socket, "observations", %{
+            "observations" => [
+              %{
+                "path" => "lib/unrelated.ex",
+                "role" => "implementation",
+                "fingerprint" => "unrelated",
+                "mtime" => "2026-08-12T00:00:00.000000Z"
+              }
+            ]
+          })
+
+        Phoenix.ChannelTest.assert_reply(ref, :ok, _summary)
+
+        {:ok,
+         context
+         |> Map.put(:writer, context.scope)
+         |> Map.put(:other, %{context.scope | active_harness_id: other_id})}
       end
 
       given_ "one has written the spec a requirement asks for and the other has not", context do
-        # `:synced_context_component` already wrote and synced the spec into the
-        # first agent's working copy. The second's copy is empty, which is the
-        # asymmetry under test — not a difference in what either was asked to do.
-        assert Environments.file_exists?(context.writer.environment, ".code_my_spec/spec")
-               |> is_boolean()
+        # given: already true — `:synced_context_in_satisfied_project` wrote and
+        # synced the spec into the first agent's working copy, and the given
+        # above had the second report a tree without it. That is the only
+        # difference between them: same project, same stories, same architecture.
+        #
+        # What this checks is that the difference is *visible to the graph*,
+        # which is the premise the rest of the scenario rests on and the one
+        # thing neither of those two steps proves on its own.
+        assert component_work(context.writer) != "",
+               "the first agent's graph has no component work at all, so there is no spec " <>
+                 "requirement for either agent to differ about"
 
         {:ok, context}
       end
@@ -64,44 +114,89 @@ defmodule CodeMySpecSpex.Story1000.Criterion742Spex do
       when_ "each asks for its next requirement", context do
         {:ok,
          context
-         |> Map.put(:writer_next, next_requirement(context.writer))
-         |> Map.put(:other_next, next_requirement(context.other))}
+         |> Map.put(:writer_view, component_work(context.writer))
+         |> Map.put(:other_view, component_work(context.other))}
       end
 
       then_ "the agent that wrote the spec is offered the following requirement", context do
-        refute context.writer_next =~ "spec_file",
+        refute context.writer_view =~ "spec_file",
                "the agent that already wrote the spec was offered it again, so its own files " <>
-                 "are not reaching its graph. Got: #{context.writer_next}"
+                 "are not reaching its graph. Got: #{context.writer_view}"
 
         {:ok, context}
       end
 
       then_ "the other is still offered the spec", context do
-        assert context.other_next =~ "spec_file",
-               "the agent with an empty working copy was not offered the spec, so it is " <>
-                 "being credited with work done in a checkout it cannot see. Got: " <>
-                 context.other_next
+        assert context.other_view =~ "spec_file",
+               "the agent with a checkout that has no spec was not offered one, so it is " <>
+                 "being credited with work done in a tree it cannot see — and will be sent " <>
+                 "to write tests against a file that is not there. Got: #{context.other_view}"
 
         {:ok, context}
       end
 
       then_ "both are working the same authored stories", context do
-        # The asymmetry must be in the files only. If the two agents were offered
-        # work on different stories, the graph has partitioned the authored work
-        # as well, which criterion 734 forbids.
-        assert context.writer_next =~ "story" or context.other_next =~ "story",
-               "neither agent was offered story-scoped work, so this scenario is not " <>
-                 "exercising a shared story at all"
+        # The asymmetry must be in the files and nowhere else. Architecture is
+        # authored work, so both agents must be looking at the same components —
+        # if the graph partitioned those too, the two agents would be building
+        # different applications, which criterion 734 forbids.
+        assert components_offered(context.writer) == components_offered(context.other),
+               "the two agents were offered work on different components. The asymmetry " <>
+                 "here is supposed to be the files; the architecture is the project's.\n\n" <>
+                 "wrote it:  #{inspect(components_offered(context.writer))}\n" <>
+                 "the other: #{inspect(components_offered(context.other))}"
 
         {:ok, context}
       end
     end
   end
 
-  defp next_requirement(scope) do
+  # The work outstanding on the one component whose spec the two checkouts
+  # disagree about.
+  #
+  # Narrowed twice, and both narrowings are load-bearing.
+  #
+  # To component requirements rather than `get_next_requirement`, because the
+  # single next thing is one row off the top of a list ordered project-first: two
+  # agents differing three rows down are both correctly told the same thing, and
+  # the criterion then reads as failing when nothing is wrong.
+  #
+  # To `ExampleContext` rather than the whole list, because a real project has
+  # other components that legitimately still need specs — `MyAppWeb.Application`
+  # does, in both checkouts. Asking whether the string "spec_file" appears
+  # anywhere answers a question about the project's backlog, not about whether
+  # this agent's own files reached its graph.
+  @component "ExampleContext"
+
+  defp component_work(scope), do: scope |> outstanding() |> section_for(@component)
+
+  # Which components either agent has work on at all. The architecture is the
+  # project's, so this set is the half that must *not* differ — and comparing it
+  # is what stops "they were offered different work" from passing because one
+  # agent was offered nothing.
+  defp components_offered(scope) do
+    ~r/^## Component: (.+)$/m
+    |> Regex.scan(outstanding(scope))
+    |> Enum.map(fn [_, module] -> module end)
+    |> Enum.sort()
+  end
+
+  defp outstanding(scope) do
     {:reply, response, _frame} =
-      GetNextRequirement.execute(%{}, %Frame{assigns: %{current_scope: scope}})
+      ListRequirements.execute(
+        %{entity_type: "component", status: "unsatisfied", summary: false},
+        %Frame{assigns: %{current_scope: scope}}
+      )
 
     response_text(response)
+  end
+
+  # The mapper groups rows under `## Component: <module>`, so a section runs to
+  # the next heading. A component with nothing outstanding has no heading at all,
+  # which is itself an answer — "" means every requirement on it is satisfied.
+  defp section_for(text, module) do
+    text
+    |> String.split(~r/^## /m)
+    |> Enum.find("", &String.starts_with?(&1, "Component: #{module}\n"))
   end
 end

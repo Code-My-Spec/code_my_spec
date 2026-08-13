@@ -20,7 +20,7 @@ defmodule CodeMySpecSpex.Story1000.Criterion734Spex do
   use CodeMySpecSpex.Case
 
   alias Anubis.Server.Frame
-  alias CodeMySpec.McpServers.Stories.Tools.{CreateStory, ListStories}
+  alias CodeMySpec.McpServers.Stories.Tools.{CreateStory, ListStories, UpdateStory}
 
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
@@ -53,7 +53,24 @@ defmodule CodeMySpecSpex.Story1000.Criterion734Spex do
         refute response.isError,
                "the first agent could not author a story: #{response_text(response)}"
 
-        {:ok, Map.put(context, :create_response, response)}
+        text = response_text(response)
+        [_, story_id] = Regex.run(~r/\(ID: (\d+)\)/, text)
+
+        # Released into the backlog by the same agent, because only a
+        # `ready_for_dev` story projects into the requirement graph — a draft is
+        # authored but not yet work, and offering it would surface a story its
+        # author is still writing. Marking it ready is part of authoring it, so
+        # it belongs in this `when_` rather than in a fixture.
+        {:reply, released, _frame} =
+          UpdateStory.execute(
+            %{story_id: story_id, ready_for_dev: true},
+            %Frame{assigns: %{current_scope: context.first_agent}}
+          )
+
+        refute released.isError,
+               "the first agent could not release its own story: #{response_text(released)}"
+
+        {:ok, context |> Map.put(:create_response, response) |> Map.put(:story_id, story_id)}
       end
 
       then_ "the other agent sees that story and its criteria", context do

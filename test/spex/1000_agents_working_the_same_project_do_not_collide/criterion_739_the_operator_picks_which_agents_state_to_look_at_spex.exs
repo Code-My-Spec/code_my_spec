@@ -70,7 +70,7 @@ defmodule CodeMySpecSpex.Story1000.Criterion739Spex do
             context do
         html =
           context.files_live
-          |> element("[data-test='harness-picker'] [phx-value-harness-id='#{context.older_id}']")
+          |> element("[data-test='harness-picker'] [data-test='harness-#{context.older_id}']")
           |> render_click()
 
         assert html =~ "only_in_older.ex",

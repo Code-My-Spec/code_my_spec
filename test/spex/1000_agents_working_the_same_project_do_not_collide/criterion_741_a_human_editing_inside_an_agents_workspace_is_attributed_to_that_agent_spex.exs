@@ -16,53 +16,88 @@ defmodule CodeMySpecSpex.Story1000.Criterion741Spex do
   agent's file state describing a tree that no longer exists, and its analyzers
   reporting on code that is not there.
 
-  Surface: the hook endpoint. `x-harness-id` names the working copy; the edit
-  arrives through the same PostToolUse path an agent's own edit does, which is
-  the point — there is no separate channel for a human.
+  Surfaces, both of them, because "by hand" is what makes this criterion
+  different from every other one about file state.
+
+  A hand edit fires **no hook**. Nobody called Write, so no PostToolUse records
+  it, and any spec that posts one to stand in for the operator is asserting
+  against an agent's edit wearing an operator's name. The only thing that sees a
+  hand edit is the harness watching the working copy — so the channel is the
+  `when_`, and the stop hook is where the consequence has to show up.
+
+  Which is exactly where the risk lives: attribution narrows a stop's blocking
+  set to files the session recorded through PostToolUse, and a hand edit has no
+  such record. If that narrowing were the only rule, the operator's change would
+  be invisible to the gate.
   """
 
   use CodeMySpecSpex.Case
 
   alias CodeMySpec.Environments
+  alias CodeMySpecWeb.{HarnessProjectChannel, UserSocket}
+  alias Ecto.Adapters.SQL.Sandbox
+
+  @endpoint CodeMySpecWeb.Endpoint
+  @contract_version 1
+  @path "lib/typo_fixed_by_hand.ex"
 
   setup :register_log_in_setup_account
   setup :setup_active_project
 
+  setup do
+    Sandbox.mode(CodeMySpec.Repo, {:shared, self()})
+    :ok
+  end
+
   spex "The working copy is the unit, not the author" do
     scenario "A human editing inside an agent's workspace is attributed to that agent" do
       given_ "an agent is serving a working copy", context do
-        # `setup_active_project` plants a stub checkout and issues this scope its
-        # own harness — that is the agent whose workspace this is.
-        assert is_binary(context.scope.active_harness_id)
+        # Joining with the scope's own harness id, so the agent serving this
+        # checkout and the agent the assertions read back are the same one.
+        {:ok, _reply, socket} =
+          UserSocket
+          |> socket("harness_served", %{scope: context.scope})
+          |> subscribe_and_join(
+            HarnessProjectChannel,
+            "harness_project:#{context.project.id}",
+            %{
+              "contract_version" => @contract_version,
+              "harness_id" => context.scope.active_harness_id,
+              "root" => context.scope.cwd,
+              "label" => "the harness serving #{context.scope.cwd}"
+            }
+          )
 
-        {:ok, context}
+        {:ok, Map.put(context, :agent, socket)}
       end
 
       when_ "the operator edits a file in it by hand", context do
-        # By hand: written straight into the working copy, not through any tool
-        # the agent owns. The hook is how the harness reports what changed on
-        # disk, and it does not care who typed it.
+        # Straight into the working copy. No tool call, so no PostToolUse — that
+        # absence is the premise, not an omission.
         :ok =
           Environments.write_file(
             context.environment,
-            "lib/typo_fixed_by_hand.ex",
+            @path,
             "defmodule TypoFixedByHand do\n  @moduledoc false\nend\n"
           )
 
-        response =
-          Phoenix.ConnTest.build_conn()
-          |> Plug.Conn.put_req_header("x-working-dir", context.scope.cwd)
-          |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_harness_id)
-          |> Plug.Conn.put_req_header("content-type", "application/json")
-          |> post(~p"/api/hooks/post-tool-use", %{
-            "session_id" => "spex-operator-edit",
-            "tool_name" => "Edit",
-            "tool_input" => %{
-              "file_path" => Path.join(context.scope.cwd, "lib/typo_fixed_by_hand.ex")
-            }
+        # What a hand edit does produce: the harness notices the tree changed and
+        # says so. This is the only report the operator's edit generates.
+        ref =
+          Phoenix.ChannelTest.push(context.agent, "observations", %{
+            "observations" => [
+              %{
+                "path" => @path,
+                "role" => "implementation",
+                "fingerprint" => "edited-by-hand",
+                "mtime" => DateTime.utc_now() |> DateTime.to_iso8601()
+              }
+            ]
           })
 
-        {:ok, Map.put(context, :hook_status, response.status)}
+        Phoenix.ChannelTest.assert_reply(ref, :ok, _summary)
+
+        {:ok, context}
       end
 
       then_ "the change is recorded against that agent", context do
@@ -80,17 +115,28 @@ defmodule CodeMySpecSpex.Story1000.Criterion741Spex do
       then_ "that agent's stop hook evaluates it like any other change", context do
         stop =
           Phoenix.ConnTest.build_conn()
-          |> Plug.Conn.put_req_header("x-working-dir", context.scope.cwd)
           |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_harness_id)
           |> Plug.Conn.put_req_header("content-type", "application/json")
-          |> post(~p"/api/hooks/stop", %{"session_id" => "spex-operator-edit"})
+          |> Phoenix.ConnTest.dispatch(
+            CodeMySpecLocalWeb.Endpoint,
+            :post,
+            "/api/hooks/stop",
+            %{"session_id" => "spex-operator-edit"}
+          )
           |> Phoenix.ConnTest.json_response(200)
 
-        # Not asserting a decision: whether this particular edit blocks depends on
-        # what the analyzers find. What must be true is that the stop hook engaged
-        # with the change at all rather than treating the copy as unchanged.
-        assert is_map(stop) and stop != %{},
-               "the stop hook returned nothing for a working copy that had just changed"
+        # "Like any other change" means the analyzers were pointed at it. The
+        # stop hook says so by name when it enqueues, and says nothing about
+        # analysis when it decided the tree was unchanged — which is the outcome
+        # this criterion forbids, and the one a session-only attribution rule
+        # would produce, since this session recorded no edits at all.
+        rendered = inspect(stop)
+
+        assert rendered =~ "analysis",
+               "the stop hook ran no analysis over a working copy the operator had just " <>
+                 "changed. An edit nobody's tool made is still that checkout's, and a gate " <>
+                 "that only sees its own writes passes an agent over a tree it has not " <>
+                 "looked at. Got: #{rendered}"
 
         {:ok, context}
       end

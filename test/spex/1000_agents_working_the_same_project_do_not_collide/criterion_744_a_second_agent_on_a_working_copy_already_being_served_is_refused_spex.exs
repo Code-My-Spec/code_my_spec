@@ -47,10 +47,19 @@ defmodule CodeMySpecSpex.Story1000.Criterion744Spex do
       end
 
       when_ "a second agent starts against that same working copy", context do
+        # Presenting the holder's id, because that is what a second process in
+        # this checkout does: the id lives in a gitignored file *inside* the
+        # working copy, so anything starting there reads the same one. Joining
+        # with nil would model a fresh clone — a different working copy, which
+        # is expressly allowed — and would pass while proving nothing.
         result =
           UserSocket
           |> socket("harness_intruder", %{scope: context.scope})
-          |> subscribe_and_join(HarnessProjectChannel, topic(context), join_payload(nil))
+          |> subscribe_and_join(
+            HarnessProjectChannel,
+            topic(context),
+            join_payload(context.holder_id)
+          )
 
         {:ok, Map.put(context, :second_join, result)}
       end

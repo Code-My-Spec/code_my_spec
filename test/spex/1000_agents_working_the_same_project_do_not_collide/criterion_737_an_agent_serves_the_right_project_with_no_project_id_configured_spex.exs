@@ -27,14 +27,33 @@ defmodule CodeMySpecSpex.Story1000.Criterion737Spex do
   spex "Identity names the project" do
     scenario "An agent serves the right project with no project id configured" do
       given_ "an agent has registered against a project", context do
+        # given: already true — `setup :setup_active_project` issues this scope a
+        # harness, which is what registering against a project produces. Joining
+        # a channel here would register a *second* agent and change what the
+        # scenario is about.
         assert is_binary(context.scope.active_harness_id)
 
         {:ok, context}
       end
 
       given_ "no project id is set in its environment or its working copy", context do
-        # Nothing is planted and nothing is exported. The absence is the premise:
-        # if the agent needed either, this scenario could not run at all.
+        # Cleared, not assumed. This VM runs under a CodeMySpec harness, so
+        # `CMS_PROJECT_ID` really is exported here — naming a different project
+        # than the one under test. That is not test pollution to be tolerated,
+        # it is precisely the situation the rule exists for, and leaving it set
+        # would make the premise false while the scenario claimed it held.
+        #
+        # Restored on exit, including to "unset", so a spec that runs after this
+        # one sees whatever the machine actually has.
+        previous = System.get_env("CMS_PROJECT_ID")
+        System.delete_env("CMS_PROJECT_ID")
+
+        ExUnit.Callbacks.on_exit(fn ->
+          if previous, do: System.put_env("CMS_PROJECT_ID", previous)
+        end)
+
+        refute System.get_env("CMS_PROJECT_ID")
+
         {:ok, context}
       end
 
