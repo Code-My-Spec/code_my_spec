@@ -2372,7 +2372,20 @@ defmodule CodeMySpecSpex.Fixtures do
   # save Resend, whose ~15 minute token cannot outlast a 20 minute recording
   # however fresh the copy is. That one needs the snapshot to renew through the
   # dev row mid-run, which is a larger change than this.
-  @grant_margin_seconds 1200
+  # Long enough for the run *and its teardown*, which is the part 1200s missed.
+  # A criterion may take 20 minutes, and tearing down two servers, their DNS
+  # and their buckets takes minutes more — so a snapshot taken with 21 minutes
+  # left expired while teardown was still using it. What that looks like is not
+  # an expired token: Cloudflare goes unreadable, the status report says
+  # "Cannot say. One or more providers could not be read", and teardown leaves
+  # eight DNS records behind with a warning nobody sees until the next audit.
+  #
+  # At 45 minutes against Cloudflare's hour, nearly every criterion re-reads
+  # from the dev row rather than reusing a snapshot. That is the intent: the
+  # row is the single owner, `fetch_access_token/2` refreshes it under a lock,
+  # and borrowing the freshest thing it has is strictly better than nursing a
+  # copy.
+  @grant_margin_seconds 2700
 
   defp usable?(%{expires_at: %DateTime{} = expires_at}) do
     DateTime.diff(expires_at, DateTime.utc_now()) > @grant_margin_seconds
