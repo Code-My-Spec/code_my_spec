@@ -912,7 +912,24 @@ defmodule CodeMySpec.Provisioning.Steps do
   defp certificate_error(target, reason, probe, opts) do
     "#{target.host} did not answer over HTTPS with a valid certificate (#{format(reason)}). " <>
       "Issuance needs DNS resolving to the server and the proxy reachable on 80. " <>
-      plain_http_observation(target.host, probe, opts)
+      plain_http_observation(target.host, probe, opts) <>
+      " " <> dns_observation(target.host, opts)
+  end
+
+  # Which resolver disagreed, because two of them are in play and they can
+  # answer differently for the same name. The dns step above verifies over
+  # DNS-over-HTTPS; this step's probe goes through the system resolver. A
+  # recursive resolver caches the *absence* of a name (see `Dns`), so a drill
+  # started inside that negative TTL reads `nxdomain` for a record the dns step
+  # just watched appear — which is a stale cache on this machine, not a
+  # deployment that failed, and the two deserve different sentences.
+  defp dns_observation(host, opts) do
+    if Dns.resolves_publicly?(host, :a, Keyword.put(opts, :attempts, 1)) do
+      "A public resolver does return an A record for it, so the record exists " <>
+        "and this machine's resolver is holding a stale negative answer."
+    else
+      "No public resolver returns an A record for it either, so the record is missing."
+    end
   end
 
   defp plain_http_observation(host, probe, opts) do

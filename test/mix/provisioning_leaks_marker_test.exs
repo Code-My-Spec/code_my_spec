@@ -48,6 +48,24 @@ defmodule Mix.Tasks.Cms.ProvisioningLeaksMarkerTest do
     end
   end
 
+  describe "build servers, which are named after a commit and not a project" do
+    # `builder-24b93652c4ab` outlived a deploy that died mid-build and the sweep
+    # reported the account clean, because nothing in the marker describes a name
+    # made from a git ref. Every path in `Builder` destroys its server, so one
+    # that is still here is leaked by definition.
+    test "a builder is a leak" do
+      assert ProvisioningLeaks.leaked?("builder-24b93652c4ab")
+      assert ProvisioningLeaks.leaked?("builder-a2942f0ce5b3")
+    end
+
+    # The prefix is anchored, or a real host that happens to build things would
+    # be swept.
+    test "a name that merely contains the word is not" do
+      refute ProvisioningLeaks.leaked?("our-builder-box")
+      refute ProvisioningLeaks.leaked?("buildermatic.example.com")
+    end
+  end
+
   describe "names the sweep must never claim" do
     # These are John's. Sweeping one would delete a live server.
     test "the protected servers" do

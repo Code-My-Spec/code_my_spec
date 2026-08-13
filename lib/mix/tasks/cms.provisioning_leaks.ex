@@ -372,6 +372,17 @@ defmodule Mix.Tasks.Cms.ProvisioningLeaks do
   # which reads afterwards as mail that mysteriously stopped arriving.
   @kept ~w(spex-inbound.astralbi.com)
 
+  # A build server is named after the commit it builds (`builder-24b93652c4ab`),
+  # never after the project, so nothing above can see one — and a sweep that
+  # reports "no leaks" while a builder is running is worse than no sweep, which
+  # is how `builder-24b93652c4ab` survived a deploy that died mid-build.
+  #
+  # Every path in `Builder` destroys the server it made, so a builder that is
+  # still here outlived the run that owned it and is leaked by definition. The
+  # in-flight case is not this function's problem: `--delete` already refuses
+  # anything created inside `@live_run_window_minutes`.
+  @builder_prefix "builder-"
+
   @doc false
   @spec leaked?(term()) :: boolean()
   def leaked?(name) do
@@ -380,6 +391,7 @@ defmodule Mix.Tasks.Cms.ProvisioningLeaks do
     cond do
       Enum.any?(@kept, &(name == &1 or String.ends_with?(name, "." <> &1))) -> false
       String.starts_with?(name, @spex_prefix) -> true
+      String.starts_with?(name, @builder_prefix) -> true
       true -> name =~ @spex_marker
     end
   end

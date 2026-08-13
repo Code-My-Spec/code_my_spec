@@ -32,8 +32,43 @@ defmodule CodeMySpec.Provisioning.TlsMessageTest do
   end
 
   defp run_tls(scope, reason) do
-    Steps.run(:tls, scope, probe: fn _host, _opts -> {:error, reason} end)
+    Steps.run(
+      :tls,
+      scope,
+      [probe: fn _host, _opts -> {:error, reason} end] ++ unresolvable()
+    )
   end
+
+  @timeout %Finch.TransportError{reason: :timeout}
+
+  # The failure path asks a public resolver whether the record exists, which is
+  # a real DNS-over-HTTPS request. Stubbed here, or this file would reach the
+  # network to decide what a test asserts — the exact instrument problem that
+  # let the transport-formatter bug survive.
+  defp unresolvable, do: [resolver: fn _url -> {:error, :stubbed} end]
+
+  defp resolvable do
+    [resolver: fn _url -> {:ok, %{status: 200, body: %{"Answer" => [%{"data" => "1.2.3.4"}]}}} end]
+  end
+
+  # Counted per host, because the step fans out over environments and a shared
+  # tally would mix one host's retries into the next host's.
+  defp count_call(calls, host) do
+    Agent.get_and_update(calls, fn seen ->
+      n = Map.get(seen, host, 0) + 1
+      {n, Map.put(seen, host, n)}
+    end)
+  end
+
+  # A certificate that shows up on the third ask, which is the whole point:
+  # issuance is asynchronous and the first answers are "not yet".
+  defp answer_on_third(3), do: :ok
+  defp answer_on_third(n) when n < 3, do: {:error, @timeout}
+
+  # A proxy that is reachable on 80 and has no certificate on 443 — the state
+  # that means issuance failed rather than that nothing is listening.
+  defp answer_by_scheme(:http), do: :ok
+  defp answer_by_scheme(_https), do: {:error, @timeout}
 
   describe "issuance is waited for rather than caught mid-flight" do
     # kamal-proxy asks Let's Encrypt for the certificate when the service comes
@@ -45,10 +80,7 @@ defmodule CodeMySpec.Provisioning.TlsMessageTest do
       # counter would mix one host's retries into the next host's tally.
       {:ok, calls} = Agent.start_link(fn -> %{} end)
 
-      probe = fn host, _opts ->
-        n = Agent.get_and_update(calls, &{Map.get(&1, host, 0) + 1, Map.update(&1, host, 1, fn c -> c + 1 end)})
-        if n < 3, do: {:error, %Finch.TransportError{reason: :timeout}}, else: :ok
-      end
+      probe = fn host, _opts -> calls |> count_call(host) |> answer_on_third() end
 
       assert {:ok, resources} = Steps.run(:tls, ctx.scope, probe: probe)
       assert Enum.any?(resources, &(&1.kind == "certificate"))
@@ -67,7 +99,11 @@ defmodule CodeMySpec.Provisioning.TlsMessageTest do
       end
 
       assert {:error, _message, _resources} =
-               Steps.run(:tls, ctx.scope, probe: probe, tls_attempts: 4)
+               Steps.run(
+                 :tls,
+                 ctx.scope,
+                 [probe: probe, tls_attempts: 4] ++ unresolvable()
+               )
 
       # Four attempts, plus the single plain-HTTP observation the failure adds.
       assert :counters.get(counter, 1) == 5
@@ -78,13 +114,11 @@ defmodule CodeMySpec.Provisioning.TlsMessageTest do
     # The advice names DNS and port 80, and every drill so far had to guess
     # which one from a host teardown had already destroyed.
     test "port 80 answering points at issuance", ctx do
-      probe = fn _host, opts ->
-        if Keyword.get(opts, :scheme) == :http,
-          do: :ok,
-          else: {:error, %Finch.TransportError{reason: :timeout}}
-      end
+      probe = fn _host, opts -> opts |> Keyword.get(:scheme) |> answer_by_scheme() end
 
-      assert {:error, message, _} = Steps.run(:tls, ctx.scope, probe: probe, tls_attempts: 1)
+      assert {:error, message, _} =
+               Steps.run(:tls, ctx.scope, [probe: probe, tls_attempts: 1] ++ unresolvable())
+
       assert message =~ "Port 80 does answer"
       assert message =~ "issuance itself"
     end
@@ -92,9 +126,38 @@ defmodule CodeMySpec.Provisioning.TlsMessageTest do
     test "port 80 silent points at reachability", ctx do
       probe = fn _host, _opts -> {:error, %Finch.TransportError{reason: :econnrefused}} end
 
-      assert {:error, message, _} = Steps.run(:tls, ctx.scope, probe: probe, tls_attempts: 1)
+      assert {:error, message, _} =
+               Steps.run(:tls, ctx.scope, [probe: probe, tls_attempts: 1] ++ unresolvable())
+
       assert message =~ "Port 80 does not answer either"
       assert message =~ "reachability rather than issuance"
+    end
+  end
+
+  describe "a failure says which resolver disagreed" do
+    # Two resolvers are in play: the dns step verifies over DNS-over-HTTPS, this
+    # step's probe goes through the system resolver. They answer differently for
+    # the same name whenever a recursive resolver is still holding the negative
+    # answer it cached before the record was written — which reads as a broken
+    # deployment and is a stale cache on this machine.
+    test "a record a public resolver can see blames this machine's cache", ctx do
+      probe = fn _host, _opts -> {:error, %Finch.TransportError{reason: :nxdomain}} end
+
+      assert {:error, message, _} =
+               Steps.run(:tls, ctx.scope, [probe: probe, tls_attempts: 1] ++ resolvable())
+
+      assert message =~ "A public resolver does return an A record"
+      assert message =~ "stale negative answer"
+    end
+
+    test "a record nobody can see is a missing record", ctx do
+      probe = fn _host, _opts -> {:error, %Finch.TransportError{reason: :nxdomain}} end
+
+      assert {:error, message, _} =
+               Steps.run(:tls, ctx.scope, [probe: probe, tls_attempts: 1] ++ unresolvable())
+
+      assert message =~ "No public resolver returns an A record"
+      assert message =~ "the record is missing"
     end
   end
 
