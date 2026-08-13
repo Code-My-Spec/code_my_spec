@@ -90,15 +90,23 @@ defmodule CodeMySpecSpex.Story1012.Criterion2349Spex do
       end
 
       then_ "the failure it can still see is marked as older than its fix", context do
-        after_fix = hook("/api/hooks/post-tool-use", context, tool_call(context.session))
-        message = after_fix["systemMessage"] || ""
+        # Asked from a session that has not been told yet, so the alert is
+        # guaranteed to be spoken rather than deduplicated. The agent that made
+        # the fix is silent by design (criterion 2345), and branching on whether
+        # it happened to speak would make this assert whatever the run did.
+        fresh = "spex-fresh-#{System.unique_integer([:positive])}"
+        message = hook("/api/hooks/post-tool-use", context, tool_call(fresh))["systemMessage"]
 
-        if message =~ "exunit" do
-          assert message =~ ~r/ago|stale|older|before|predates/i,
-                 "the outstanding failure was reported with no indication that it " <>
-                   "predates the fix. That is what sends an agent to re-fix finished " <>
-                   "work, which happened twice on 2026-08-13. Got: #{message}"
-        end
+        assert message =~ "exunit",
+               "the outstanding failure vanished from the alert without a run having " <>
+                 "replaced it. Nothing has re-analysed the tree, so it is still the " <>
+                 "current answer. Got: #{inspect(message)}"
+
+        assert message =~ ~r/ago/,
+               "the outstanding failure was reported with no indication of when it was " <>
+                 "computed. An agent that has just fixed the cause reads that as a " <>
+                 "verdict on the fix and either re-fixes finished work or distrusts a " <>
+                 "correct result — both happened on 2026-08-13. Got: #{message}"
 
         {:ok, context}
       end
