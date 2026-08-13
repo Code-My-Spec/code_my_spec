@@ -940,10 +940,16 @@ defmodule CodeMySpec.Provisioning.Steps do
     end
   end
 
-  # No `tail` here. The shell was discarding lines before `tidy_log/1` could
-  # pick between them, so the selection below only ever saw the last 25 — and
-  # a certificate line older than that was gone before anything looked.
-  @proxy_log_command "docker logs --tail 200 kamal-proxy 2>&1"
+  # The log says what happened; `kamal-proxy list` says what the proxy believes
+  # its state to be, which is the question drill 47 left open — it deployed
+  # with tls true and then never ordered a certificate, and a log cannot
+  # distinguish "tried and failed silently" from "never considered it".
+  #
+  # `|| true` on the state command so a proxy without that subcommand still
+  # yields its log rather than an empty capture.
+  @proxy_log_command "docker logs --tail 200 kamal-proxy 2>&1; " <>
+                       "echo '--- proxy state ---'; " <>
+                       "docker exec kamal-proxy kamal-proxy list 2>&1 || true"
 
   defp read_proxy_log(scope, ip, opts) do
     case with_builder_ssh(scope, opts) do
@@ -961,35 +967,48 @@ defmodule CodeMySpec.Provisioning.Steps do
     end
   end
 
-  # Certificate lines first, then the tail.
+  # Compress every line rather than selecting some.
   #
-  # Drill 46 captured the log and cut the one line that mattered. Eight lines
-  # ending at 1200 characters spent its whole budget on the deploy — server
-  # started, target healthy, deployed — and truncated mid-timestamp on the
-  # single entry written in the six minutes afterwards, which is the only
-  # window issuance could have happened in. A tail is the wrong selection when
-  # what you are looking for is rare and last.
-  @log_keywords ~w(cert acme tls challenge rate limit error unable failed)
+  # Three times now this capture has hidden the thing it was fetching. First a
+  # `tail` in the shell, then eight lines sliced at 1200 characters, then a
+  # keyword filter that dropped "Server started" and left absence to be
+  # inferred from a view that had already thrown lines away. Each was tuned for
+  # what I expected to find, which is exactly the wrong instinct when the
+  # finding is that something never happened.
+  #
+  # kamal-proxy logs one JSON object per line and most of it is ballast —
+  # request ids, content types, durations. Keeping five fields turns a
+  # 600-character line into about eighty, so the whole sequence fits and
+  # nothing has to be chosen between.
+  @log_fields ~w(time level msg error host path status service)
 
   defp tidy_log(output) do
-    lines = output |> to_string() |> String.split("\n", trim: true)
-
-    lines
-    |> Enum.filter(&interesting_log_line?/1)
-    |> log_selection(lines)
+    output
+    |> to_string()
+    |> String.split("\n", trim: true)
+    |> Enum.take(-40)
+    |> Enum.map(&compress_log_line/1)
     |> Enum.join(" | ")
     |> String.slice(0, 4000)
   end
 
-  # Nothing matched, so the tail is all there is to say — and a proxy that
-  # never mentioned a certificate is itself the finding.
-  defp log_selection([], lines), do: Enum.take(lines, -12)
-  defp log_selection(matched, _lines), do: Enum.take(matched, -16)
-
-  defp interesting_log_line?(line) do
-    downcased = String.downcase(line)
-    Enum.any?(@log_keywords, &String.contains?(downcased, &1))
+  defp compress_log_line(line) do
+    case Jason.decode(line) do
+      {:ok, %{} = entry} -> summarise_entry(entry)
+      # Not JSON — a plain line is already as short as it is going to get.
+      _ -> String.slice(line, 0, 200)
+    end
   end
+
+  defp summarise_entry(entry) do
+    @log_fields
+    |> Enum.flat_map(fn key -> field_pair(key, Map.get(entry, key)) end)
+    |> Enum.join(" ")
+  end
+
+  defp field_pair(_key, nil), do: []
+  defp field_pair(_key, ""), do: []
+  defp field_pair(key, value), do: ["#{key}=#{inspect(value)}"]
 
   # Whether HTTP-01 can even complete, asked of the one path it uses.
   #
