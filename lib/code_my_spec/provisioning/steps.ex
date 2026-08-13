@@ -551,7 +551,7 @@ defmodule CodeMySpec.Provisioning.Steps do
 
     case tls_targets(scope, opts) do
       [] -> {:error, "no domain set on the project — nothing to issue a certificate for"}
-      targets -> verify_certificates(targets, probe, opts)
+      targets -> verify_certificates(scope, targets, probe, opts)
     end
   end
 
@@ -852,14 +852,14 @@ defmodule CodeMySpec.Provisioning.Steps do
   # Halts on the first environment without a certificate, carrying what was
   # already verified — the same shape the storage step uses, so a run that
   # fails on the second environment still records the first.
-  defp verify_certificates(targets, probe, opts) do
+  defp verify_certificates(scope, targets, probe, opts) do
     Enum.reduce_while(targets, {:ok, []}, fn target, {:ok, verified} ->
       case await_certificate(probe, target.host, opts, tls_attempts(opts)) do
         :ok ->
           {:cont, {:ok, verified ++ certificate_resources(target)}}
 
         {:error, reason} ->
-          {:halt, {:error, certificate_error(target, reason, probe, opts), verified}}
+          {:halt, {:error, certificate_error(scope, target, reason, probe, opts), verified}}
       end
     end)
   end
@@ -909,12 +909,64 @@ defmodule CodeMySpec.Provisioning.Steps do
   # answers on 80 but not on 443 has failed *issuance*, which is a different
   # problem from a proxy nothing can reach, and the sentence should not make a
   # human run a drill to tell them apart.
-  defp certificate_error(target, reason, probe, opts) do
+  defp certificate_error(scope, target, reason, probe, opts) do
     "#{target.host} did not answer over HTTPS with a valid certificate (#{format(reason)}). " <>
       "Issuance needs DNS resolving to the server and the proxy reachable on 80. " <>
       plain_http_observation(target.host, probe, opts) <>
       " " <> acme_path_observation(target.host, probe, opts) <>
-      " " <> dns_observation(target.host, reason, opts)
+      " " <> dns_observation(target.host, reason, opts) <>
+      " " <> proxy_log_observation(scope, target, opts)
+  end
+
+  # The evidence this message has been asking for since it was written.
+  #
+  # "Check the proxy's certificate log on the host" names something nobody can
+  # do: teardown destroys the box minutes after the step fails, and six drills
+  # reported this without anyone ever seeing why issuance did not complete.
+  # Every check that can be made from outside now passes — DNS resolves, port
+  # 80 answers, the challenge path is served — and 443 still times out, so
+  # what is left is only visible from inside.
+  #
+  # Read while the host still exists, and folded into the failure rather than
+  # left for a human to go and fetch. Injectable so a test can drive it, and
+  # the whole thing is best-effort: this is diagnosis, and a diagnosis that can
+  # fail the step it is explaining would be worse than no diagnosis.
+  defp proxy_log_observation(scope, target, opts) do
+    reader = Keyword.get(opts, :proxy_log, &read_proxy_log/3)
+
+    case Map.get(target, :ip) do
+      ip when is_binary(ip) and ip != "" -> reader.(scope, ip, opts)
+      _ -> "No address is recorded for this environment, so its proxy log could not be read."
+    end
+  end
+
+  @proxy_log_command "docker logs --tail 80 kamal-proxy 2>&1 | tail -n 25"
+
+  defp read_proxy_log(scope, ip, opts) do
+    case with_builder_ssh(scope, opts) do
+      {:ok, ssh_opts} -> run_proxy_log(ip, ssh_opts)
+      {:error, reason} -> "The proxy log could not be read (#{format(reason)})."
+    end
+  end
+
+  defp run_proxy_log(ip, ssh_opts) do
+    runner = Remote.ssh_runner(%{"ip" => ip}, ssh_opts)
+
+    case runner.([@proxy_log_command]) do
+      {output, 0} -> "kamal-proxy on #{ip} last said: #{tidy_log(output)}"
+      {output, status} -> "Reading the proxy log on #{ip} exited #{status}: #{tidy_log(output)}"
+    end
+  end
+
+  # One line, because this lands in a sentence on a setup page. The tail is
+  # what matters — a proxy that failed issuance says so last.
+  defp tidy_log(output) do
+    output
+    |> to_string()
+    |> String.split("\n", trim: true)
+    |> Enum.take(-8)
+    |> Enum.join(" | ")
+    |> String.slice(0, 1200)
   end
 
   # Whether HTTP-01 can even complete, asked of the one path it uses.

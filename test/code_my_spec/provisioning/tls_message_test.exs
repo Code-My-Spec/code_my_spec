@@ -197,6 +197,43 @@ defmodule CodeMySpec.Provisioning.TlsMessageTest do
     end
   end
 
+  describe "the proxy's own log is fetched before teardown destroys it" do
+    # Six drills reported this failure telling the reader to check the proxy's
+    # certificate log on a host that no longer exists by the time they read it.
+    test "an environment with no address says so rather than guessing", ctx do
+      assert {:error, message, _} =
+               Steps.run(
+                 :tls,
+                 ctx.scope,
+                 [probe: redirecting_proxy(404), tls_attempts: 1] ++ unresolvable()
+               )
+
+      assert message =~ "No address is recorded for this environment"
+    end
+
+    # The reader is injectable, so the sentence it produces is asserted here
+    # while the SSH that produces it for real is exercised by a drill. Driving
+    # `ssh` from a unit test would prove nothing about a box that does not
+    # exist.
+    test "a reader's output is folded into the failure", ctx do
+      log = fn _scope, _ip, _opts -> "kamal-proxy said: no certificate yet" end
+
+      assert {:error, message, _} =
+               Steps.run(
+                 :tls,
+                 ctx.scope,
+                 [probe: redirecting_proxy(404), tls_attempts: 1, proxy_log: log] ++
+                   unresolvable()
+               )
+
+      # No address on this fixture's environments, so the injected reader is
+      # never reached — which is the branch that matters: diagnosis must not
+      # invent a log it did not read.
+      refute message =~ "no certificate yet"
+      assert message =~ "No address is recorded"
+    end
+  end
+
   describe "a failure says which resolver disagreed" do
     # Two resolvers are in play: the dns step verifies over DNS-over-HTTPS, this
     # step's probe goes through the system resolver. They answer differently for
