@@ -1,15 +1,17 @@
 defmodule CmsHarness.OnboardSettingsTest do
   @moduledoc """
   Onboarding writes `ANTHROPIC_BASE_URL` into a working copy's
-  `.claude/settings.json`, because a Claude Code plugin cannot set an
+  `.claude/settings.local.json`, because a Claude Code plugin cannot set an
   environment variable for the session and the agent process is what reads that
   one. Without it a model turn arrives unaddressed, and an unaddressed turn is
   only attributable when the harness serves exactly one working copy — a
   sprite's shape, never a developer's.
 
-  Unlike the generated plugin copy, this file belongs to the operator and is
-  checked in. So the thing worth pinning is not that the URL lands but that
-  nothing else moves when it does.
+  It goes in `settings.local.json` rather than the tracked `settings.json`,
+  because the URL carries this working copy's harness id and committing that
+  would hand one machine's identity to every checkout. The operator may still
+  have written in it, so the thing worth pinning is not that the URL lands but
+  that nothing else moves when it does.
   """
   use ExUnit.Case, async: true
 
@@ -21,7 +23,7 @@ defmodule CmsHarness.OnboardSettingsTest do
     root = Path.join(System.tmp_dir!(), "onboard-settings-#{System.unique_integer([:positive])}")
     File.mkdir_p!(root)
     on_exit(fn -> File.rm_rf(root) end)
-    {:ok, root: root, settings_file: Path.join([root, ".claude", "settings.json"])}
+    {:ok, root: root, settings_file: Path.join([root, ".claude", "settings.local.json"])}
   end
 
   defp read!(file), do: file |> File.read!() |> Jason.decode!()
@@ -78,7 +80,7 @@ defmodule CmsHarness.OnboardSettingsTest do
     File.write!(file, "{ this is not json")
 
     assert {:error, message} = Onboard.address_model_turns(root, "abc-123", @base)
-    assert message =~ "settings.json"
+    assert message =~ "settings.local.json"
 
     assert File.read!(file) == "{ this is not json",
            "a file we could not parse is a file we must not replace"

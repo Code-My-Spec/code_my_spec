@@ -143,7 +143,7 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
                export PATH="$HOME/.codemyspec/bin:$PATH"
 
            Nothing has been written — this refused before touching the plugin
-           config or .claude/settings.json.
+           config or .claude/settings.local.json.
            """}
         end
     end
@@ -283,12 +283,18 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   #
   # This one cannot be addressed in the plugin: a Claude Code plugin has no way
   # to set an environment variable for the session, and `ANTHROPIC_BASE_URL` is
-  # read by the agent process itself. `.claude/settings.json` is where a
+  # read by the agent process itself. Claude Code's settings are where a
   # checkout says what its sessions run with, so that is where the address goes.
   #
-  # Merged, never replaced. This is a file the operator owns and checks in —
-  # unlike the generated plugin copy — so it keeps every key already there and
-  # rewrites exactly one.
+  # `settings.local.json`, not `settings.json`. The URL carries this working
+  # copy's harness id, and `settings.json` is tracked — writing it there would
+  # commit one machine's identity into every checkout that clones the repo,
+  # which is the corruption the id exists to prevent and the same reason the
+  # plugin is generated rather than edited in place. The `.local` file is
+  # gitignored by convention and Claude Code merges it over the tracked one.
+  #
+  # Merged, never replaced, because it is still a file the operator may have
+  # written in: it keeps every key already there and rewrites exactly one.
   #
   # Without it the turn arrives unaddressed, and an unaddressed turn is only
   # recordable when the harness serves exactly one working copy. A sprite is
@@ -299,7 +305,7 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   # checkable rather than asserted in a comment.
   @doc false
   def address_model_turns(root, id, base_url \\ nil) do
-    file = Path.join([root, ".claude", "settings.json"])
+    file = Path.join([root, ".claude", "settings.local.json"])
     url = "#{String.trim_trailing(base_url || default_hook_base_url(), "/")}/api/harnesses/#{id}"
 
     with {:ok, settings} <- read_settings(file),
