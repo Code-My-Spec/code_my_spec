@@ -122,12 +122,6 @@ defmodule CodeMySpecWeb.StoryLive.Form do
               </button>
             </div>
           </div>
-          <.input
-            field={@form[:status]}
-            type="select"
-            label="Status"
-            options={Ecto.Enum.values(CodeMySpec.Stories.Story, :status)}
-          />
           <footer class="flex items-center gap-3">
             <.button phx-disable-with="Saving...">
               <span>▸</span> Save Story
@@ -181,11 +175,9 @@ defmodule CodeMySpecWeb.StoryLive.Form do
 
   defp apply_action(socket, :new, _params, scope) do
     # Pre-render one empty criterion so the BDD shape (`Given … when … then …`)
-    # is visible as a placeholder, and set a sane default status so the user
-    # doesn't have to make a meaningless "Choose a value" decision.
+    # is visible as a placeholder.
     story = %Story{
       account_id: scope.active_account_id,
-      status: :in_progress,
       criteria: [%Criterion{description: "", verified: false}]
     }
 

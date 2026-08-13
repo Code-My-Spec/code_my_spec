@@ -129,8 +129,7 @@ defmodule CodeMySpec.McpServers.Stories.Tools.TriageIssues do
   defp format_stories(stories) do
     stories
     |> Enum.map_join("\n", fn story ->
-      status = if story.status, do: " [#{story.status}]", else: ""
-      "- `#{story.id}` — #{story.title}#{status}"
+      "- `#{story.id}` — #{story.title}"
     end)
   end
 

@@ -131,18 +131,22 @@ defmodule CodeMySpec.UtilsTest do
   end
 
   describe "changeset_error_to_string/1" do
+    # Any Ecto.Enum will do — the property is about how the *error* is
+    # rendered, not about which schema raised it. This used `Story.status`
+    # until that column was dropped for never agreeing with the requirement
+    # graph; `Issue.severity` is the nearest equivalent still standing.
     test "handles Ecto.Enum type errors without crashing" do
-      alias CodeMySpec.Stories.Story
+      alias CodeMySpec.Issues.Issue
 
-      # Create a changeset with an invalid type that will trigger an Ecto.Enum validation error
+      # A value outside the enum, which is what produces the type error whose
+      # rendering used to raise Protocol.UndefinedError.
       changeset =
-        Story.changeset(
-          %Story{},
+        Issue.changeset(
+          %Issue{},
           %{
             title: "Finalize",
             description: "Test step",
-            acceptance_criteria: ["ProjectSetupSessions.Steps.Finalize"],
-            status: "fuck"
+            severity: "not-a-severity"
           }
         )
 
@@ -150,7 +154,7 @@ defmodule CodeMySpec.UtilsTest do
       error_string = Utils.changeset_error_to_string(changeset)
 
       # Should contain the field name and indicate it's invalid
-      assert error_string =~ "status"
+      assert error_string =~ "severity"
       assert error_string =~ "is invalid"
     end
   end

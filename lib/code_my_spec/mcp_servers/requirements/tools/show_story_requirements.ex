@@ -101,7 +101,6 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.ShowStoryRequirements do
     text = """
     # #{story.title}
 
-    **Status:** #{story.status}
     **Requirements:** #{satisfied}/#{total} satisfied#{reconciling_note(scope)}
 
     #{lines}
