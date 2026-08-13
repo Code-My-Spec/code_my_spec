@@ -243,8 +243,67 @@ defmodule CodeMySpecSpex.Case do
     refuse_recording_into_a_personal_account()
 
     refresh_provider_grants(scope)
+    keep_provider_grants_alive(scope)
 
     context
+  end
+
+  # Refreshing once above is not enough for a run that outlives a token.
+  #
+  # Resend's access token lasts about fifteen minutes; a full 1961 recording
+  # runs longer than that, so a criterion that started with a brand new token
+  # still lost it partway and reported `:reauthorize_required` — which reads
+  # like a revoked grant and is nothing of the kind. No margin fixes that; the
+  # token simply expires mid-run however fresh the copy was.
+  #
+  # So renew on a timer for as long as the criterion runs. Each renewal goes
+  # back to the dev row, where `fetch_access_token/2` refreshes under the row
+  # lock and persists the rotation, so the rotating credential still has
+  # exactly one owner and the borrowed copy still carries no refresh token.
+  #
+  # This is invisible to the cassette: ReqCassette intercepts through a `plug:`
+  # passed at each call site, and the refresh goes out through Assent's own
+  # HTTP adapter, so nothing here is recorded and replay is unaffected.
+  #
+  # Recording only — a replay uses placeholder grants that never expire.
+  @grant_refresh_interval_ms :timer.minutes(5)
+
+  defp keep_provider_grants_alive(scope) do
+    if recording?(), do: start_grant_refresher(scope), else: :ok
+  end
+
+  defp start_grant_refresher(scope) do
+    owner = self()
+
+    refresher =
+      spawn(fn ->
+        # Spex run sync, so the sandbox is shared and a spawned process can
+        # reach the repo. Tied to the test process rather than linked: a
+        # refresh that fails must not take the recording down with it.
+        Process.monitor(owner)
+        refresh_grants_until_done(scope)
+      end)
+
+    on_exit(fn -> Process.exit(refresher, :kill) end)
+
+    :ok
+  end
+
+  defp refresh_grants_until_done(scope) do
+    receive do
+      {:DOWN, _ref, :process, _pid, _reason} -> :ok
+    after
+      @grant_refresh_interval_ms ->
+        # Dying at minute twelve of fourteen costs far more than a stale token.
+        try do
+          refresh_provider_grants(scope)
+        rescue
+          error ->
+            IO.warn("mid-run grant refresh failed: #{Exception.message(error)}")
+        end
+
+        refresh_grants_until_done(scope)
+    end
   end
 
   @doc """
