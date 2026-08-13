@@ -90,8 +90,17 @@ defmodule CodeMySpecSpex.Case do
     # helper it was entitled to call — a failure about the clock, reported as
     # if the criterion were hung. Three minutes clears every helper's own
     # window and still catches something genuinely stuck.
+    #
+    # Recording gets 40, not 20. A full 841/1961 drill provisions two servers,
+    # deploys, and polls for a certificate; measured runs went 840s, 1030s,
+    # 880s, 855s, 988s and then 1209s, which overran the 20-minute ceiling and
+    # reported as a timeout inside whatever call happened to be open — a
+    # failure about the clock again, wearing the stacktrace of an innocent
+    # bystander. Kept under `recording_ownership_timeout/0`'s 45 minutes so an
+    # overrun still surfaces as an ExUnit timeout naming the criterion, rather
+    # than as a database ownership error naming nothing.
     if System.get_env("SPEX_CASSETTE_MODE") == "record",
-      do: :timer.minutes(20),
+      do: :timer.minutes(40),
       else: :timer.minutes(3)
   end
 
