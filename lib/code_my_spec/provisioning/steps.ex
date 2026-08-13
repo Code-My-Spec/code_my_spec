@@ -294,7 +294,7 @@ defmodule CodeMySpec.Provisioning.Steps do
         environments
         |> Enum.map(&Storage.bucket_name(project, &1))
         |> every_bucket_present(credentials, opts)
-        |> record_content_bucket(scope, opts)
+        |> record_content_bucket(scope, credentials, opts)
     end
   end
 
@@ -725,7 +725,7 @@ defmodule CodeMySpec.Provisioning.Steps do
       {:ok, credentials} ->
         environments
         |> Enum.reduce_while({:ok, []}, &ensure_bucket_for(&1, &2, project, credentials, opts))
-        |> record_content_bucket(scope, opts)
+        |> record_content_bucket(scope, credentials, opts)
     end
   end
 
@@ -818,17 +818,17 @@ defmodule CodeMySpec.Provisioning.Steps do
   #
   # Only when unset: a project that names a bucket of its own has chosen it, and
   # a re-run must not point publishing somewhere else.
-  defp record_content_bucket({:ok, :satisfied, _resources} = outcome, scope, opts) do
-    write_content_bucket(scope, opts)
+  defp record_content_bucket({:ok, :satisfied, _resources} = outcome, scope, credentials, opts) do
+    write_content_bucket(scope, credentials, opts)
     outcome
   end
 
-  defp record_content_bucket({:ok, _resources} = outcome, scope, opts) do
-    write_content_bucket(scope, opts)
+  defp record_content_bucket({:ok, _resources} = outcome, scope, credentials, opts) do
+    write_content_bucket(scope, credentials, opts)
     outcome
   end
 
-  defp record_content_bucket(other, _scope, _opts), do: other
+  defp record_content_bucket(other, _scope, _credentials, _opts), do: other
 
   # The bucket, and where it is.
   #
@@ -842,16 +842,30 @@ defmodule CodeMySpec.Provisioning.Steps do
   # Written together, never separately: a bucket name pointed at the wrong
   # endpoint is worse than no bucket name, because the failure names the bucket
   # rather than the host.
-  defp write_content_bucket(scope, opts) do
+  defp write_content_bucket(scope, credentials, opts) do
     project = project(scope)
-    location = Keyword.get(opts, :location, "fsn1")
+    location = Keyword.get(credentials, :region) || Keyword.get(opts, :location, "fsn1")
 
     with true <- blank?(Map.get(project, :content_bucket)),
          environment when is_binary(environment) <- primary_environment(scope, opts) do
       Projects.update_project(scope, project, %{
         content_bucket: Storage.bucket_name(project, environment),
         s3_endpoint: "https://#{location}.your-objectstorage.com",
-        aws_region: location
+        aws_region: location,
+        # The same keys this step just used to make the bucket.
+        #
+        # They live in two places for two readers: `ProjectSecrets` holds
+        # `hetzner_s3_*` for provisioning, and the project row holds `aws_*` for
+        # publishing, which signs per-request without a global :ex_aws config.
+        # Nothing copied one to the other, so publishing presented no key at all
+        # and Hetzner answered `InvalidAccessKeyId` — a 403 about credentials,
+        # for a bucket this step had made with credentials that worked.
+        #
+        # Named `aws_*` and not AWS-specific; the comment on
+        # `ContentPublishing.aws_credentials/1` says so and had already fixed
+        # the endpoint half of this exact problem.
+        aws_access_key_id: Keyword.get(credentials, :access_key_id),
+        aws_secret_access_key: Keyword.get(credentials, :secret_access_key)
       })
     end
 

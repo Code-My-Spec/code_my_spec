@@ -357,6 +357,24 @@ defmodule CodeMySpec.Generators.DeployArtifacts do
     APP=#{app}
     ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
+    # ecto:// is the app's scheme, not libpq's. Ecto reads DATABASE_URL as
+    # ecto://user:pass@host/db and that is what setup writes, but pg_dump and
+    # psql do not know the scheme — and rather than refusing it, pg_dump reads
+    # the whole string as a database name over a local socket:
+    #
+    #   pg_dump: error: connection to server on socket "/tmp/.s.PGSQL.5432"
+    #   failed: FATAL: database "ecto://app:...@cms-post" does not exist
+    #
+    # naming a socket nobody configured and a database nobody asked for. The
+    # app's variable stays canonical; the tools that need libpq's spelling get
+    # it. Restoring needs this as much as dumping, which is what proves a dump.
+    libpq_url() {
+      case "$1" in
+        ecto://*) echo "postgresql://${1#ecto://}" ;;
+        *) echo "$1" ;;
+      esac
+    }
+
     # Under systemd these are already in the environment. Run by hand they are
     # not, and a backup script that only works inside its unit file is no use
     # in the incident where you need it.
@@ -381,7 +399,7 @@ defmodule CodeMySpec.Generators.DeployArtifacts do
       key="dumps/$environment/$APP-$stamp.sql.gz"
       dump="$(mktemp -t "$APP-XXXXXX").sql.gz"
 
-      pg_dump "${DATABASE_URL:?DATABASE_URL must be set}" | gzip > "$dump"
+      pg_dump "$(libpq_url "${DATABASE_URL:?DATABASE_URL must be set}")" | gzip > "$dump"
       aws s3 cp "$dump" "s3://${BACKUP_BUCKET:?BACKUP_BUCKET must be set}/$key" \\
         --endpoint-url "${BACKUP_ENDPOINT:?BACKUP_ENDPOINT must be set}" >&2
       rm -f "$dump"
@@ -402,7 +420,8 @@ defmodule CodeMySpec.Generators.DeployArtifacts do
 
       # A scratch database, dropped first: restoring over a database that
       # already has rows would count those rows and pass on a broken dump.
-      local admin="${DATABASE_URL%/*}"
+      local admin
+      admin="$(libpq_url "${DATABASE_URL%/*}")"
       psql "$admin/postgres" -c "DROP DATABASE IF EXISTS \\"$target\\"" >&2
       psql "$admin/postgres" -c "CREATE DATABASE \\"$target\\"" >&2
       gunzip -c "$dump" | psql "$admin/$target" >&2

@@ -18,26 +18,17 @@ defmodule CodeMySpec.Provisioning.PublicResolverTest do
   # `dns.google` returned NXDOMAIN for a record that was published, correct and
   # visible to the rest of the internet. Asking it alone, the setup reported the
   # record as missing.
+  @google "dns.google"
+  @cloudflare "cloudflare-dns.com"
+
   describe "resolves_publicly?/3" do
-    # One-argument stubs on purpose: every one written before there was a second
-    # resolver takes a url and nothing else, and adapting them rather than
-    # rewriting them is what `req/1` promises.
     test "asks a second resolver when the first has nothing" do
-      test_process = self()
+      assert Dns.resolves_publicly?("published.example.com", :a,
+               resolver: resolver(%{@google => silent(), @cloudflare => answering("1.2.3.4")})
+             )
 
-      asked = fn url ->
-        send(test_process, {:asked, URI.parse(url).host})
-
-        case URI.parse(url).host do
-          "dns.google" -> {:ok, %{status: 200, body: %{"Status" => 3}}}
-          _ -> {:ok, %{status: 200, body: %{"Answer" => [%{"data" => "1.2.3.4"}]}}}
-        end
-      end
-
-      assert Dns.resolves_publicly?("published.example.com", :a, resolver: asked)
-
-      assert_received {:asked, "dns.google"}
-      assert_received {:asked, "cloudflare-dns.com"}
+      assert_received {:asked, @google}
+      assert_received {:asked, @cloudflare}
     end
 
     # This is now load-bearing rather than cosmetic: a record no resolver
@@ -45,55 +36,74 @@ defmodule CodeMySpec.Provisioning.PublicResolverTest do
     # negative could stop a setup whose DNS was right and name the record as
     # missing while doing it.
     test "one resolver's silence does not decide it" do
-      google_is_behind = fn url ->
-        case URI.parse(url).host do
-          "dns.google" -> {:ok, %{status: 200, body: %{"Status" => 3}}}
-          _ -> {:ok, %{status: 200, body: %{"Answer" => [%{"data" => "178.156.185.52"}]}}}
-        end
-      end
-
-      assert Dns.resolves_publicly?("uat.example.com", :a, resolver: google_is_behind),
+      assert Dns.resolves_publicly?("uat.example.com", :a,
+               resolver:
+                 resolver(%{@google => silent(), @cloudflare => answering("178.156.185.52")})
+             ),
              "a record one resolver has not caught up with still resolves"
     end
 
     # The path every existing cassette recorded. Asking the second resolver only
-    # after the first comes up empty is what keeps those replaying unchanged —
-    # a second request on the happy path would have missed in every one of them.
+    # after the first comes up empty is what keeps those replaying unchanged — a
+    # second request on the happy path would have missed in every one of them.
+    #
+    # The table names only Google, so asking Cloudflare raises rather than
+    # quietly returning a default. The `refute_received` states the claim; the
+    # missing entry is what enforces it.
     test "does not ask the second when the first answers" do
-      test_process = self()
+      assert Dns.resolves_publicly?("published.example.com", :a,
+               resolver: resolver(%{@google => answering("1.2.3.4")})
+             )
 
-      answered = fn url ->
-        send(test_process, {:asked, URI.parse(url).host})
-        {:ok, %{status: 200, body: %{"Answer" => [%{"data" => "1.2.3.4"}]}}}
-      end
-
-      assert Dns.resolves_publicly?("published.example.com", :a, resolver: answered)
-
-      assert_received {:asked, "dns.google"}
-      refute_received {:asked, "cloudflare-dns.com"}
+      assert_received {:asked, @google}
+      refute_received {:asked, @cloudflare}
     end
 
     test "false only when both are silent" do
-      silent = fn _url -> {:ok, %{status: 200, body: %{"Status" => 3}}} end
-
-      refute Dns.resolves_publicly?("nowhere.example.com", :a, resolver: silent)
+      refute Dns.resolves_publicly?("nowhere.example.com", :a,
+               resolver: resolver(%{@google => silent(), @cloudflare => silent()})
+             )
     end
 
     # A 400 reads as no answer, and Cloudflare returns exactly that for the JSON
     # endpoint when nothing asks for JSON. Without the header the second opinion
     # would be silent in every case it exists to speak up for.
     test "asks Cloudflare for the format it will actually answer in" do
-      test_process = self()
+      refute Dns.resolves_publicly?("nowhere.example.com", :a,
+               resolver:
+                 recording_headers(%{@google => silent(), @cloudflare => silent()})
+             )
 
-      capture = fn url, headers ->
-        send(test_process, {:headers, URI.parse(url).host, headers})
-        {:ok, %{status: 200, body: %{"Status" => 3}}}
-      end
-
-      refute Dns.resolves_publicly?("nowhere.example.com", :a, resolver: capture)
-
-      assert_received {:headers, "cloudflare-dns.com", headers}
+      assert_received {:headers, @cloudflare, headers}
       assert headers[:accept] == "application/dns-json"
     end
   end
+
+  # Answers from a fixed table and reports what it was asked.
+  #
+  # `Map.fetch!` rather than a default: a resolver the test did not plan for
+  # should fail loudly, not quietly receive whatever the fallback happens to be.
+  # The stub runs inside the test process, so `self()` is the test.
+  defp resolver(bodies) do
+    fn url -> answer(bodies, url, {:asked, host(url)}) end
+  end
+
+  # One-argument stubs are the ones written before there was a second resolver;
+  # `req/1` adapts them rather than rejecting them, and this is the two-argument
+  # form for the one claim that is about the headers.
+  defp recording_headers(bodies) do
+    fn url, headers -> answer(bodies, url, {:headers, host(url), headers}) end
+  end
+
+  defp answer(bodies, url, message) do
+    send(self(), message)
+    {:ok, %{status: 200, body: Map.fetch!(bodies, host(url))}}
+  end
+
+  defp host(url), do: URI.parse(url).host
+
+  # NXDOMAIN: a well-formed answer that carries no records.
+  defp silent, do: %{"Status" => 3}
+
+  defp answering(data), do: %{"Answer" => [%{"data" => data}]}
 end
