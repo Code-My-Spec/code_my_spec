@@ -47,6 +47,26 @@ defmodule CodeMySpecSpex.Case do
       import Plug.Conn
       import Phoenix.ConnTest
       import Phoenix.LiveViewTest
+      # The harness's surface. A working copy reaches the server over
+      # `HarnessProjectChannel` — join is where identity is issued and where the
+      # lease is taken — and no HTTP endpoint carries that exchange, so a spec
+      # about it had nowhere to go and reached for hook posts instead.
+      #
+      # Already inside the boundary: the channel and `UserSocket` both live in
+      # `CodeMySpecWeb`. Only the import was missing.
+      #
+      # A channel spec must also set `@endpoint CodeMySpecWeb.Endpoint` and run
+      # `Sandbox.mode(Repo, {:shared, self()})` — the channel is another process
+      # and cannot see an owner-only connection. Note the endpoint that makes
+      # channels work is the one that makes `~p` hook posts wrong; a spec that
+      # needs both dispatches one of them explicitly.
+      #
+      # `push/3` collides with `Plug.Conn`'s (deprecated HTTP/2 server push) and
+      # `assert_reply/3` with `Phoenix.LiveViewTest`'s. Excluded rather than
+      # displacing either, so nothing already written changes meaning; channel
+      # specs qualify both at the call site. `960_shared_inbox` found this first
+      # and solved it the same way.
+      import Phoenix.ChannelTest, except: [push: 3, assert_reply: 3]
       import CodeMySpecSpex.Case
     end
   end

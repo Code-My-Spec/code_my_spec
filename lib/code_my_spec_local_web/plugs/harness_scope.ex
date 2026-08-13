@@ -80,16 +80,33 @@ defmodule CodeMySpecLocalWeb.Plugs.HarnessScope do
   # The harness's own root wins over anything the request said about where it
   # is. A hook fires from whatever directory the agent happened to be in; the
   # root is what the working copy reported about itself.
+  #
+  # `working_dir` comes off the resolved scope rather than off `root`, and the
+  # difference is the whole of criterion 737. A harness issued before it ever
+  # joined has no root recorded, so `root` is nil — and assigning nil left
+  # `Plugs.WorkingDir` looking for the header again, which answered "X-Working-Dir
+  # header or ?dir= param required" to a request that had just successfully named
+  # its project. Identity resolved, and the pipeline behind it asked for the
+  # environment anyway.
+  #
+  # `for_local_project/2` already falls back to the project's `local_path` when
+  # no root is passed, so the scope knows where the working copy is even when the
+  # harness has not said. Taking the answer from there keeps this a fact the
+  # server looked up rather than one the request supplied.
   defp assign_scope(conn, harness) do
     root = harness.root || announced_root(conn)
 
     case Scope.for_local_project(harness.project, root) do
       {:ok, scope} ->
         conn
-        |> assign(:working_dir, root)
+        |> assign(:working_dir, root || scope.cwd)
         |> assign(:harness, harness)
         |> assign(:current_scope, %{scope | active_harness_id: harness.id})
 
+      # Named as a fact about the harness, because that is what the caller can
+      # act on. The alternative — falling through to the working-directory chain
+      # — asks a harness to send a header it has no reason to have, and reports
+      # the omission as if the request were malformed.
       {:error, reason} ->
         error(conn, 400, """
         Harness #{harness.id} names project #{harness.project_id}, which could \

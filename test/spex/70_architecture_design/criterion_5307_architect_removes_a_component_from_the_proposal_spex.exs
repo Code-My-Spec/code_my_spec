@@ -9,11 +9,19 @@ defmodule CodeMySpecSpex.Story70.Criterion5307Spex do
   component was removed from the proposal but preserved in the DB, with
   instructions to delete it manually if intended.
 
-  Surface: `start_task` then `evaluate_task`.
+  Surface: `start_task`, `execute_proposal`, then `evaluate_task`.
+
+  `execute_proposal` is unavoidable here rather than incidental. The scenario
+  begins with a component already persisted — that is what there is to omit —
+  and a project with components is being *revised*, so the session will not
+  auto-execute a proposal that may predate the architect's incremental edits.
+  Rewriting proposal.md and applying it is the other path the gate offers by
+  name, and it is the one an architect removing a component actually takes.
   """
 
   use CodeMySpecSpex.Case
   alias Anubis.Server.Frame
+  alias CodeMySpec.McpServers.Architecture.Tools.ExecuteProposal
   alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask
   alias CodeMySpec.McpServers.Tasks.Tools.StartTask
   alias CodeMySpecSpex.ComponentHelpers
@@ -110,7 +118,10 @@ defmodule CodeMySpecSpex.Story70.Criterion5307Spex do
         :ok =
           CodeMySpec.Environments.write_file(context.environment, Fixtures.proposal_path(), proposal)
 
-        {:ok, context}
+        {:reply, executed, _frame} =
+          ExecuteProposal.execute(%{}, %Frame{assigns: %{current_scope: context.scope}})
+
+        {:ok, Map.put(context, :execute_response, executed)}
       end
 
       when_ "the architect calls evaluate_task", context do
@@ -126,20 +137,28 @@ defmodule CodeMySpecSpex.Story70.Criterion5307Spex do
       end
 
       then_ "execution does not delete the existing component", context do
-        # Observable at the surface: the evaluate response should pass (no crash/failure
-        # from attempting to delete a component that has downstream references), and the
-        # warning note names the preserved component.
-        body = response_text(context.evaluate_response)
+        # Observable at the surface twice over: the proposal applied without a
+        # deletion error, and the gate that runs afterwards is satisfied. A
+        # component quietly deleted would take its story links with it and the
+        # evaluate below would be reporting on a different architecture.
+        body = response_text(context.execute_response)
 
-        # A deletion failure or crash would surface as an error or needs-work response
+        refute context.execute_response.isError,
+               "applying a proposal that omits a persisted component was refused: " <>
+                 inspect(body)
+
         refute body =~ ~r/error.*Stories\.RemoteClient|Stories\.RemoteClient.*error/i,
                "expected no deletion error for Stories.RemoteClient, got: #{inspect(body)}"
+
+        refute response_text(context.evaluate_response) =~ ~r/needs work/i,
+               "the gate rejected the architecture after the proposal applied cleanly: " <>
+                 inspect(response_text(context.evaluate_response))
 
         {:ok, context}
       end
 
       then_ "the evaluation feedback warns about the removed component", context do
-        body = response_text(context.evaluate_response)
+        body = response_text(context.execute_response)
 
         assert body =~ ~r/warning|preserved|removed from proposal/i,
                "expected a warning about the component removed from the proposal, got: #{inspect(body)}"

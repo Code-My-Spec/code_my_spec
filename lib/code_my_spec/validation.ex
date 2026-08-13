@@ -344,7 +344,7 @@ defmodule CodeMySpec.Validation do
   in-flight file can be actively wrong, which leaves editing code you do not
   own or staying blocked as the only two responses.
 
-  Two things refuse to demote, both because the failure mode points the same
+  Three things refuse to demote. Two because the failure mode points the same
   way — a gate that quietly stops blocking is worse than one that blocks too
   much, and it is invisible:
 
@@ -355,9 +355,30 @@ defmodule CodeMySpec.Validation do
       nothing to attribute; unattributable is not the same as somebody else's,
       and collapsing them drops the finding nobody can place.
 
+  The third is **spex**, and it is the only source with a mandate test of its
+  own. `split_by_story_enforcement/3` has already asked the question this
+  demotion approximates — is this red the agent's to fix — and answered it from
+  the owning story's `specs_ready` latch rather than from which files happened
+  to be written this turn. A spex that reaches here is red on a story that was
+  green once, which is a regression in this working copy, not somebody else's
+  in-flight work.
+
+  Stacking attribution on top of that turned `spex: :block_all` into a setting
+  with no effect. Measured across one evening on this project: every agent,
+  every stop, `demoted N blocking finding(s) to advisory`, N never zero, while
+  the mode had read `:block_all` for months.
+
+  Every other source keeps demoting. They have no per-story latch, so
+  attribution is the only thing standing between an agent and a rebase's worth
+  of findings it has no mandate to fix.
+
   Public so the property that decides whether the gate still works can be
   asserted directly, the same reason `blocking_key/1` is.
   """
+  # Sources whose mandate is decided before this point, so attribution must not
+  # decide it again.
+  @attribution_exempt_sources ~w(spex)
+
   @spec split_unattributed([Problems.Problem.t()], MapSet.t(String.t()) | nil) ::
           {[Problems.Problem.t()], [Problems.Problem.t()]}
   def split_unattributed(blocking, %MapSet{} = session_paths) do
@@ -365,7 +386,9 @@ defmodule CodeMySpec.Validation do
       {blocking, []}
     else
       Enum.split_with(blocking, fn problem ->
-        not is_binary(problem.file_path) or MapSet.member?(session_paths, problem.file_path)
+        problem.source in @attribution_exempt_sources or
+          not is_binary(problem.file_path) or
+          MapSet.member?(session_paths, problem.file_path)
       end)
     end
   end

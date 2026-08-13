@@ -693,6 +693,28 @@ defmodule CodeMySpec.Analysis do
     end
   end
 
+  @doc """
+  Who is holding this working copy's executor slot, if anyone.
+
+  Exists for the refusal message. "A second agent is refused" is only half of
+  criterion 744; the half that matters to whoever hit it is *which* agent holds
+  it, because the operator is looking at two processes and has to know which one
+  to stop. The registry is the only place that knows, and the entry is live by
+  construction — Registry drops it when the channel dies — so a hit here names a
+  process that is really there.
+
+  `instance` is what the harness called itself at join, typically its OS pid. It
+  can be nil for a harness that predates the field, in which case the pid is all
+  there is to say and is still better than "another harness".
+  """
+  @spec executor_holder(String.t()) :: {:ok, pid(), String.t() | nil} | :error
+  def executor_holder(harness_id) do
+    case Registry.lookup(HarnessRegistry, to_string(harness_id)) do
+      [{pid, instance} | _] -> {:ok, pid, instance}
+      [] -> :error
+    end
+  end
+
   # Only from the same instance, and only when we know both — an unknown
   # instance on either side is not evidence of sameness, and guessing wrong
   # here is the `_build` corruption the lock exists to prevent.

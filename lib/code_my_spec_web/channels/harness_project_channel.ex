@@ -69,7 +69,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
          # Everything below is per working copy, so the scope carries the
          # harness — and the working copy itself — before any of it runs.
          scope = put_harness_scope(scope, harness),
-         :ok <- Analysis.register_executor(harness.id, payload["instance"]) do
+         :ok <- take_working_copy(harness, payload) do
       # Anything still `:running` belongs to a previous connection. Its queue
       # was on a harness that has gone, so nothing will ever finish it — and an
       # open run makes every later stop report analysis pending, which allows
@@ -102,18 +102,6 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
       # That is the whole of what still needs single ownership, and it is a
       # registry entry rather than a lease: no table, no expiry, no advisory
       # lock, and it goes when the channel does.
-      # Only a *different* OS process gets here now. The same harness coming
-      # back takes its own registration, because otherwise it waits behind its
-      # own orphaned channel forever — see `Analysis.register_executor/2`.
-      {:error, {:already_registered, _pid}} ->
-        Logger.warning(
-          "[HarnessProject] refused a second harness on this working copy of #{project_id} " <>
-            "(joining instance #{inspect(payload["instance"])})"
-        )
-
-        {:error,
-         %{reason: "working_copy_in_use", held_by: "another harness on this working copy"}}
-
       # A refusal that already built its own payload passes through. The clause
       # below calls `to_string/1`, which raises on a map — so a well-formed
       # refusal would arrive at the agent as "join crashed", which is both wrong
@@ -903,6 +891,53 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   # Shared with `ProjectScopeOverride`, which set only `active_harness_id` and
   # left MCP tools able to name a working copy they could not read.
   defp put_harness_scope(scope, harness), do: Harnesses.put_scope(scope, harness)
+
+  # One harness serves a working copy at a time — and the refusal says which one.
+  #
+  # Only a *different* OS process gets here. The same harness coming back takes
+  # its own registration, because otherwise it waits behind its own orphaned
+  # channel forever — see `Analysis.register_executor/2`.
+  #
+  # The naming is the point, and it is criterion 744's second half. The refusal
+  # used to read `held_by: "another harness on this working copy"`, which is
+  # true, useless, and indistinguishable from not knowing: an operator looking at
+  # two processes still cannot tell which to stop. The holder's instance and the
+  # checkout's root are both things this server has, so it says them.
+  defp take_working_copy(harness, payload) do
+    case Analysis.register_executor(harness.id, payload["instance"]) do
+      :ok ->
+        :ok
+
+      {:error, {:already_registered, pid}} ->
+        Logger.warning(
+          "[HarnessProject] refused a second harness on working copy #{harness.root || harness.id} " <>
+            "of project #{harness.project_id} (joining instance #{inspect(payload["instance"])}, " <>
+            "held by #{inspect(pid)})"
+        )
+
+        {:error, working_copy_in_use(harness, pid)}
+    end
+  end
+
+  defp working_copy_in_use(harness, pid) do
+    holder =
+      case Analysis.executor_holder(harness.id) do
+        {:ok, _pid, instance} when is_binary(instance) -> instance
+        _ -> inspect(pid)
+      end
+
+    %{
+      reason: "working_copy_in_use",
+      harness_id: harness.id,
+      root: harness.root,
+      held_by: holder,
+      detail:
+        "The working copy at #{harness.root || harness.id} is already being served by " <>
+          "#{holder}. Two harnesses on one checkout share a single `_build`, and two " <>
+          "`mix test` runs in it report failures that are not in the code. Stop that " <>
+          "process, or serve a different checkout."
+    }
+  end
 
   defp harness_label(%{"label" => label}) when is_binary(label) and label != "", do: label
   defp harness_label(_payload), do: "a harness that did not say where it is"

@@ -36,6 +36,14 @@ defmodule CodeMySpec.SpexGivensTest do
   # pushing to it IS driving the app. `join_widget` is listed by the same
   # precedent as `stage_`: a helper whose whole body is the drive.
   #
+  # `System.put_env`/`delete_env` join `System.cmd` and `File.write` by the same
+  # reasoning the list already applies to those: they make a fact about the
+  # machine true rather than merely asserting it. The case that needed it is a
+  # given whose precondition is an *absence* — "no project id is set in its
+  # environment" — where this VM really does export one, because it runs under a
+  # harness. Clearing it is the only way to establish that premise, and reading
+  # it and hoping is exactly what this check exists to stop.
+  #
   # Nothing may be commented *inside* the sigil — ~w has no comments, so a `#`
   # line becomes literal words like "a" and "is", which match every body and
   # silently disable the whole check.
@@ -47,7 +55,7 @@ defmodule CodeMySpec.SpexGivensTest do
     existing_apex_mx paste_storage_credentials verified_sending_domains
     stuck_sending_domain unverifiable_domain app_holds_refresh_secret
     connect_providers tear_down_after Environments. File.write File.mkdir
-    System.cmd assign put_session
+    System.cmd System.put_env System.delete_env assign put_session
     stage_ scripted_run built_deploy_run devops_on
     subscribe_and_join ChannelTest. join_widget
   )
