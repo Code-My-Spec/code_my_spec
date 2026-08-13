@@ -44,7 +44,10 @@ defmodule CodeMySpec.GeneratorsTest do
 
     if config_env() == :prod do
       config :my_app, MyAppWeb.Endpoint,
-        force_ssl: [rewrite_on: [:x_forwarded_proto], exclude: ["/health", "localhost"]]
+        force_ssl: [
+          rewrite_on: [:x_forwarded_proto],
+          exclude: [paths: ["/health"], hosts: ["localhost", "127.0.0.1"]]
+        ]
     end
     """
   end
@@ -141,6 +144,27 @@ defmodule CodeMySpec.GeneratorsTest do
       import Config
       config :my_app, MyAppWeb.Endpoint,
         force_ssl: [rewrite_on: [:x_forwarded_proto]]
+      """)
+
+      findings = Generators.audit_environment(env, @router)
+
+      assert {:force_ssl_without_health_exclusion, "config/runtime.exs"} in findings
+    end
+
+    # The form that reads as an exclusion and is not one. Plug.SSL's `:exclude`
+    # must be `[hosts: ...]`, `[paths: ...]` or `[conn: ...]`; a bare list of
+    # strings matches none of those and excludes nothing. This check used to
+    # accept it, so a generated project passed the audit, deployed, and the
+    # proxy's plain-HTTP probe of /health still got a 301 — which fails as
+    # "target failed to become healthy within configured timeout (30s)" and
+    # names neither the config nor the redirect.
+    test "a flat exclude list is not a health exclusion", %{env: env, dir: dir} do
+      deployable_project(dir)
+
+      write(dir, "config/runtime.exs", """
+      import Config
+      config :my_app, MyAppWeb.Endpoint,
+        force_ssl: [rewrite_on: [:x_forwarded_proto], exclude: ["/health", "localhost"]]
       """)
 
       findings = Generators.audit_environment(env, @router)
