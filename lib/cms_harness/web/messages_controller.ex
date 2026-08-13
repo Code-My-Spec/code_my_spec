@@ -76,7 +76,11 @@ defmodule CmsHarness.Web.MessagesController do
 
       root ->
         ChannelClient.record_turn(root, %{
-          "session_id" => header(conn, "x-cms-session-id", "sprite"),
+          # nil, not "sprite". A sprite sets this header and means it; Claude
+          # Code sends nothing, and inventing a label here is what put every
+          # session into one conversation. Absent means "you work it out" — the
+          # server can, from the working copy this turn was addressed to.
+          "session_id" => header(conn, "x-cms-session-id", nil),
           "agent_role" => header(conn, "x-agent-role", "main"),
           "request" => request,
           "response" => response
