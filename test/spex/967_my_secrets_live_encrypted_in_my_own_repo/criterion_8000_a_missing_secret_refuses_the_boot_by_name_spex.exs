@@ -28,6 +28,18 @@ defmodule CodeMySpecSpex.Story967.Criterion8000Spex do
   spex "A missing secret refuses the boot by name" do
     scenario "the boot fails naming the absent key rather than starting anyway" do
       given_ "a required secret is absent from the environment's file", context do
+        # One environment, because the secret below is set for `uat` and the
+        # deploy step fans out over every environment the project has. With
+        # production present the run reached it first and reported "prod has no
+        # age key yet" — a missing *key*, not the missing *secret* this
+        # criterion is about.
+        #
+        # `only_environments/2` rather than `devops: :uat`: environments are
+        # rows, and `EnvironmentRepository.list/1` seeds both from a fixed list
+        # on first read regardless of the devops level. Removing the row is
+        # what turning production off actually means.
+        only_environments(context.scope, ["uat"])
+
         {:ok, view, _html} =
           live(context.conn, "/app/projects/#{context.project.id}/provisioning")
 

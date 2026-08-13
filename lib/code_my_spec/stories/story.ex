@@ -18,7 +18,6 @@ defmodule CodeMySpec.Stories.Story do
           acceptance_criteria: [String.t()],
           criteria: [CodeMySpec.AcceptanceCriteria.Criterion.t()],
           tags: [CodeMySpec.Tags.Tag.t()] | Ecto.Association.NotLoaded.t(),
-          status: :active | :in_progress | :completed | :dirty,
           priority: integer() | nil,
           locked_at: DateTime.t() | nil,
           lock_expires_at: DateTime.t() | nil,
@@ -50,7 +49,6 @@ defmodule CodeMySpec.Stories.Story do
       epic_id: "Epic this story belongs to (a story belongs to at most one)",
       acceptance_criteria: "List of acceptance criteria strings",
       priority: "Priority order (1 = highest). Lower numbers are higher priority",
-      status: "Story status: in_progress, completed, or dirty",
       component_id: "Linked component ID"
     }
   end
@@ -92,11 +90,18 @@ defmodule CodeMySpec.Stories.Story do
     # Unique per project, not globally.
     field :number, :integer
     field :acceptance_criteria, {:array, :string}
-    # `:active` is a legacy status that predates the narrowed enum
-    # (`:in_progress | :completed | :dirty`). Accepted on read to
-    # tolerate stale rows on remote servers; new writes use the
-    # narrowed values.
-    field :status, Ecto.Enum, values: [:active, :in_progress, :completed, :dirty]
+    # No `status`. It was a cached projection of the requirement graph that
+    # nothing ever advanced: `:completed` had no writer anywhere, so all 124
+    # stories on this project read `in_progress` including the ones sitting at
+    # 6/6 satisfied. A finished story and an untouched one held the same value,
+    # which is worse than a null — `in_progress` is a positive claim that work
+    # remains, made about work that is done.
+    #
+    # Adding the missing writer would only have created the need for a reverse
+    # edge the first time a spec changed. The requirement graph answers this per
+    # story and is recomputed rather than remembered; `specs_ready` below is the
+    # one latch worth storing, and it is stored precisely because it must *not*
+    # follow the computation back down.
     field :priority, :integer
     field :locked_at, :utc_datetime
     field :lock_expires_at, :utc_datetime
@@ -137,7 +142,6 @@ defmodule CodeMySpec.Stories.Story do
       :notes,
       :ready_for_dev,
       :specs_ready,
-      :status,
       :priority,
       :locked_at,
       :lock_expires_at,

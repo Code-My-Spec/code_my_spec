@@ -15,7 +15,6 @@ defmodule CodeMySpec.StoriesFixtures do
         lock_expires_at: ~U[2025-07-17 12:48:00Z],
         locked_at: ~U[2025-07-17 12:48:00Z],
         priority: 42,
-        status: :in_progress,
         # A fixture story represents work already in flight, so it is released
         # for development. New stories created through the app start parked —
         # pass `ready_for_dev: false` explicitly to exercise the pace gate.

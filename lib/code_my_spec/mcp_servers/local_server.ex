@@ -157,6 +157,7 @@ defmodule CodeMySpec.McpServers.LocalServer do
   # Problems — clear stale persisted problems that block the Stop hook
   # after the underlying file is fixed but a later run didn't re-check it.
   component(CodeMySpec.McpServers.Problems.Tools.ClearProblems)
+  component(CodeMySpec.McpServers.Problems.Tools.ListProblems)
 
   # Devops on the graph. The agent could see `devops_setup` as a requirement
   # and had no way to answer whether it was done, or to do it.

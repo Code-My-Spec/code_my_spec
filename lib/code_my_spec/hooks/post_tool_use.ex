@@ -29,6 +29,7 @@ defmodule CodeMySpec.Hooks.PostToolUse do
   require Logger
 
   alias CodeMySpec.FileEdits
+  alias CodeMySpec.Hooks.AnalysisAlert
   alias CodeMySpec.Sessions
   alias CodeMySpec.Users.Scope
 
@@ -45,7 +46,18 @@ defmodule CodeMySpec.Hooks.PostToolUse do
   def handle(scope, params) do
     track_edit(params)
     mark_active(scope, params)
-    {200, %{}}
+
+    # The delivery point. Analyzer results used to reach an agent only at its
+    # next stop, which is one turn late and free if the agent never stops —
+    # see `AnalysisAlert` for the incident that cost a database.
+    #
+    # Every tool call carries it, not only the ones that write: scoping to edits
+    # would reintroduce a "which tools count" judgement, and whichever tool is
+    # the exception becomes the blind spot.
+    case AnalysisAlert.check(scope, params["session_id"]) do
+      nil -> {200, %{}}
+      alert -> {200, %{"systemMessage" => alert}}
+    end
   end
 
   # Every tool call means this session is doing work: touch its updated_at

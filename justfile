@@ -338,6 +338,27 @@ refresh-harness port="4004":
         ( cd "$main" && MIX_ENV=dev_cli mix deps.get && MIX_ENV=dev_cli mix deps.compile )
     fi
 
+    # And the app's own modules, which the deps check above does not cover.
+    #
+    # `_build/dev_cli` is a different tree from `_build/dev`, and only `dev`
+    # refreshes on its own here — so the harness booted whatever dev_cli was
+    # compiled the last time somebody thought to do it by hand. Measured
+    # 2026-08-13: `_build/dev_cli/.../PostToolUse.beam` was two days stale while
+    # `_build/dev` matched the source from that morning.
+    #
+    # The failure has no error in it, which is what makes it expensive. The hook
+    # endpoints live on `CodeMySpecLocalWeb` — the app this env boots — so a new
+    # hook or MCP tool simply is not there: `{}` from a hook that should answer,
+    # "No such tool available" from a tool that is registered in source. QA
+    # spent a pass concluding the feature did not exist, correctly, because on
+    # that server it did not.
+    #
+    # Before the kill, deliberately: compiling while the harness is live risks
+    # the lock, and compiling after it would delay every agent's hooks by the
+    # length of a cold build.
+    echo "→ compiling dev_cli (the env the harness boots; _build/dev_cli is its own tree)"
+    ( cd "$main" && MIX_ENV=dev_cli mix compile )
+
     pid="$(lsof -nP -iTCP:{{port}} -sTCP:LISTEN -t || true)"
 
     if [ -n "$pid" ]; then

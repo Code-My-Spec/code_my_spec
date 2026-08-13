@@ -139,10 +139,21 @@ defmodule CodeMySpec.Generators.DeployBoilerplate do
     end
   end
 
+  # A `paths:` entry naming the health route, which is the only thing that
+  # actually excludes it.
+  #
+  # This used to accept any `exclude:` list mentioning health, which passed a
+  # flat `exclude: ["/health", "localhost", "127.0.0.1"]` — a form Plug.SSL
+  # does not read at all. Its `:exclude` must be `[hosts: ...]`,
+  # `[paths: ...]` or `[conn: ...]`; a bare list of strings excludes nothing.
+  # So the check said yes, the probe still got a 301, and the deploy failed
+  # with "target failed to become healthy" while this reported the config fine.
+  @health_exclusion ~r/paths:\s*\[[^\]]*(health|up)/
+
   defp check_force_ssl(body, path) do
     cond do
       not String.contains?(body, "force_ssl") -> :ok
-      Regex.match?(~r/exclude:\s*\[[^\]]*(health|up)/, body) -> :ok
+      Regex.match?(@health_exclusion, body) -> :ok
       true -> {:error, {:force_ssl_without_health_exclusion, path}}
     end
   end

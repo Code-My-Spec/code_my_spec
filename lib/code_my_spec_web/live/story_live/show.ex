@@ -113,7 +113,6 @@ defmodule CodeMySpecWeb.StoryLive.Show do
               </form>
             </div>
           </:item>
-          <:item title="Status">{@story.status}</:item>
           <:item title="Locked at">{@story.locked_at}</:item>
           <:item title="Lock expires at">{@story.lock_expires_at}</:item>
         </.list>

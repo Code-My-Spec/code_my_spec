@@ -417,46 +417,25 @@ defmodule CodeMySpec.Provisioning.Steps do
   # gives is not the name of the thing that was missing.
   @required_secrets ~w(SECRET_KEY_BASE DATABASE_URL)
 
+  # Every environment the project has, not one of them.
+  #
+  # This step took a singular `:environment` defaulting to "uat", and the
+  # sequence runs each step once — so a default run deployed UAT, reported
+  # `deploy` done, and left production with two boxes, DNS, secrets and an
+  # image and nothing serving. The whole run's shell cassette held exactly two
+  # invocations, `bin/deploy migrate uat` and `bin/deploy swap uat`. Criterion
+  # 1961 is "UAT and prod live"; it went green on the deploy step while half of
+  # that was untrue, and the failure surfaced two steps later as TLS being
+  # refused by an address nothing was listening on.
+  #
+  # Every other step in this module already fans out over `environments/2`.
+  # A caller naming one environment still gets one, which is what the
+  # per-environment criteria (1963's ride-to-UAT, 1964's failing health check)
+  # drive.
   def run(:deploy, %Scope{} = scope, opts) do
-    environment = Keyword.get(opts, :environment, "uat")
-    host = Keyword.get(opts, :host) || environment_host(scope, environment) || domain(scope)
-    version = Keyword.get(opts, :deployed_version)
-
-    with {:ok, delivery} <- check_secrets(scope, environment),
-         :ok <- config_targets_this_project(scope, environment),
-         :ok <- require_script(scope, "bin/deploy"),
-         # Before the build, not after: the builder is sent `git archive HEAD`
-         # and `bin/deploy` versions the image by `git rev-parse HEAD`, so
-         # committing afterwards built one SHA and deployed another.
-         :ok <- commit_generated_configuration(scope),
-         {:ok, image} <- image_for(scope, environment, opts),
-         deploy_opts =
-           opts
-           |> deploy_opts(host, image)
-           |> with_host_ip(scope, environment)
-           |> with_age_key(scope, environment)
-           |> with_registry_credential_for_deploy(scope)
-           |> with_deploy_ssh(scope),
-         :ok <- forget_stale_host_key(deploy_opts),
-         result <- run_deploy(scope, environment, deploy_opts) do
-      case deploy_outcome(result, environment, host) do
-        {:ok, resources} ->
-          # Recorded only here, on the success branch, because `deploy_outcome`
-          # returns `{:ok, _}` only after the health probe passed. A deploy that
-          # shipped and never answered must not read as done — criterion 1964 —
-          # and writing the row anywhere earlier would make it exactly that.
-          {:ok, _deploys} =
-            Deploys.record_environment_deploy(
-              scope,
-              environment,
-              deploy_record_attrs(image, version)
-            )
-
-          {:ok, [delivery | version_resources(version) ++ image_resources(image) ++ resources]}
-
-        {:error, reason, resources} ->
-          {:error, reason, [delivery | resources]}
-      end
+    case Keyword.fetch(opts, :environment) do
+      {:ok, environment} -> deploy_environment(scope, environment, opts)
+      :error -> deploy_environments(scope, environments(scope, opts), opts)
     end
   end
 
@@ -2343,6 +2322,63 @@ defmodule CodeMySpec.Provisioning.Steps do
   # caller can narrow the fan-out, but the default now comes from the project
   # rather than from a literal — which is what lets a project have a `qa`
   # environment, or one per story, without a code change here.
+
+  # Halts on the first failure rather than pressing on, for the reason
+  # `serve_registries/5` does: a production deploy that runs after UAT failed
+  # is a production deploy nobody has evidence for. Resources from the
+  # environments that did land are kept, so a partial run is still recorded.
+  defp deploy_environments(scope, environments, opts) do
+    Enum.reduce_while(environments, {:ok, []}, fn environment, {:ok, acc} ->
+      case deploy_environment(scope, environment, opts) do
+        {:ok, resources} -> {:cont, {:ok, acc ++ resources}}
+        {:error, reason} -> {:halt, {:error, reason, acc}}
+        {:error, reason, resources} -> {:halt, {:error, reason, acc ++ resources}}
+      end
+    end)
+  end
+
+  defp deploy_environment(%Scope{} = scope, environment, opts) do
+    host = Keyword.get(opts, :host) || environment_host(scope, environment) || domain(scope)
+    version = Keyword.get(opts, :deployed_version)
+
+    with {:ok, delivery} <- check_secrets(scope, environment),
+         :ok <- config_targets_this_project(scope, environment),
+         :ok <- require_script(scope, "bin/deploy"),
+         # Before the build, not after: the builder is sent `git archive HEAD`
+         # and `bin/deploy` versions the image by `git rev-parse HEAD`, so
+         # committing afterwards built one SHA and deployed another.
+         :ok <- commit_generated_configuration(scope),
+         {:ok, image} <- image_for(scope, environment, opts),
+         deploy_opts =
+           opts
+           |> deploy_opts(host, image)
+           |> with_host_ip(scope, environment)
+           |> with_age_key(scope, environment)
+           |> with_registry_credential_for_deploy(scope)
+           |> with_deploy_ssh(scope),
+         :ok <- forget_stale_host_key(deploy_opts),
+         result <- run_deploy(scope, environment, deploy_opts) do
+      case deploy_outcome(result, environment, host) do
+        {:ok, resources} ->
+          # Recorded only here, on the success branch, because `deploy_outcome`
+          # returns `{:ok, _}` only after the health probe passed. A deploy that
+          # shipped and never answered must not read as done — criterion 1964 —
+          # and writing the row anywhere earlier would make it exactly that.
+          {:ok, _deploys} =
+            Deploys.record_environment_deploy(
+              scope,
+              environment,
+              deploy_record_attrs(image, version)
+            )
+
+          {:ok, [delivery | version_resources(version) ++ image_resources(image) ++ resources]}
+
+        {:error, reason, resources} ->
+          {:error, reason, [delivery | resources]}
+      end
+    end
+  end
+
   defp environments(scope, opts) do
     Keyword.get(opts, :environments) || EnvironmentRepository.names(scope)
   end
@@ -2498,7 +2534,7 @@ defmodule CodeMySpec.Provisioning.Steps do
          # to, which is why a drill's outcome depended on how quickly Hetzner
          # happened to boot that day.
          :ok <- await_box(run, opts),
-         {:ok, _bucket} <- Registry.ensure(scope, registry_opts),
+         {:ok, registry_bucket} <- Registry.ensure(scope, registry_opts),
          {:ok, served} <- Registry.serve(scope, registry_opts),
          {:ok, database} <- serve_database(scope, environment, run, opts) do
       {:ok,
@@ -2508,24 +2544,8 @@ defmodule CodeMySpec.Provisioning.Steps do
            location: "#{ip}:#{served.port}",
            identifier: "environment=#{environment} bucket=#{served.bucket}"
          },
-         # The bucket, as a bucket. It was named only inside the registry
-         # resource's identifier, and teardown matches on `kind`, so nothing
-         # ever removed it — a run that halted between here and the storage
-         # step left `<project>-registry-<env>` behind with no record that this
-         # step had made it. Recorded here rather than relied on downstream,
-         # because the step that creates a resource is the one that knows it
-         # exists.
-         # `origin` explicitly, because its default is "adopted" and teardown's
-         # first clause returns adopted resources untouched — so a resource
-         # recorded without one is reported as torn down and never deleted.
-         %{
-           kind: "bucket",
-           location: served.bucket,
-           identifier: "registry",
-           origin: "created"
-         },
          database
-       ]}
+       ] ++ registry_bucket_resource(registry_bucket)}
     else
       {:error, reason} -> {:error, format(reason)}
       _ -> {:error, "the #{environment} server has no address yet"}
@@ -2561,6 +2581,27 @@ defmodule CodeMySpec.Provisioning.Steps do
       {:error, reason} -> {:error, reason}
     end
   end
+
+  # The bucket, as a bucket, when there is one.
+  #
+  # It used to be named only inside the registry resource's identifier, and
+  # teardown matches on `kind`, so nothing ever removed it — a run that halted
+  # between here and the storage step left `<project>-registry-<env>` behind
+  # with no record that this step had made it. Recorded here rather than relied
+  # on downstream, because the step that creates a resource is the one that
+  # knows it exists.
+  #
+  # `origin` explicitly, because its default is "adopted" and teardown's first
+  # clause returns adopted resources untouched — so a resource recorded without
+  # one is reported as torn down and never deleted.
+  #
+  # Nothing at all under the default filesystem storage: recording a bucket
+  # that was never created makes teardown report deleting something that does
+  # not exist, which is the same lie pointing the other way.
+  defp registry_bucket_resource(:none), do: []
+
+  defp registry_bucket_resource(bucket) when is_binary(bucket),
+    do: [%{kind: "bucket", location: bucket, identifier: "registry", origin: "created"}]
 
   # The same wait the builder does, with the same knobs, so a caller that
   # already tunes `:ssh_attempts` or `:ssh_interval_ms` for one tunes both.

@@ -812,6 +812,34 @@ defmodule CodeMySpec.Validation do
   # keys — the comparison above, made from the wrong end. Going through
   # `story_ids_by_number` means an unmatched number answers `nil` and lands in
   # the loud branch instead of quietly naming whichever story holds that id.
+  @doc """
+  The subset of `problems` this gate would actually enforce.
+
+  Public so `Hooks.AnalysisAlert` can count the same population the gate blocks
+  on rather than everything recorded. Reused rather than reimplemented, because
+  two copies of "what counts as enforceable" drift, and the drift is silent —
+  the alert would report a number the gate disagrees with and nobody would see
+  which was wrong.
+
+  Costs three reads, so it is only worth calling once something has landed. The
+  alert's silent path never reaches here.
+  """
+  @spec enforceable(Scope.t(), [Problems.Problem.t()]) :: [Problems.Problem.t()]
+  def enforceable(%Scope{} = scope, problems) do
+    ctx = %{
+      specs_ready_story_ids: specs_ready_story_ids(scope),
+      criterion_story_ids: AcceptanceCriteria.spec_path_story_ids(scope),
+      story_ids_by_number: Stories.list_story_ids_by_number(scope)
+    }
+
+    problems
+    |> Enum.group_by(& &1.source)
+    |> Enum.flat_map(fn {source, of_source} ->
+      {enforced, _advisory} = split_by_story_enforcement(source, of_source, ctx)
+      enforced
+    end)
+  end
+
   defp split_by_story_enforcement("spex", problems, ctx) do
     %{
       specs_ready_story_ids: ready_ids,

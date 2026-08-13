@@ -49,7 +49,8 @@ defmodule CodeMySpec.SpexGivensTest do
   # silently disable the whole check.
   @establishes ~w(
     Fixtures. live( render_click render_submit render_change element(
-    post( put( patch( delete( with_provider_cassette mount_provisioning
+    post( put( patch( delete( dispatch( with_provider_cassette use_cmd_cassette
+    mount_provisioning
     run_steps choose_setup_options all_setup_options own_domain built_deploy_run
     stage_servers
     existing_apex_mx paste_storage_credentials verified_sending_domains

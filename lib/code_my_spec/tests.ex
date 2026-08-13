@@ -49,11 +49,20 @@ defmodule CodeMySpec.Tests do
     # extracted ERTS ("cannot get bootfile"). Appended last so it wins.
     extra_env = Keyword.get(opts, :extra_env, [])
 
+    # `merge_clean_env/1`, never `++ clean_otp_env()`. The scrub sets MIX_ENV to
+    # nil, so appending it last unsets the "test" set two lines above.
+    #
+    # `mix test` happens to survive that — Mix forces test env for its own task —
+    # which is exactly what made it survivable here for so long. The ecto tasks
+    # that used to run alongside it did not, and migrated `code_my_spec_dev`.
+    # They are gone now, and this stays correct so the next thing added here
+    # inherits a working environment rather than the trap.
     cmd_env =
-      [{"MIX_ENV", "test"}, {"EXUNIT_JSON_OUTPUT_FILE", temp_file}] ++
-        partition_env(env, extra_env) ++
-        extra_env ++
-        CodeMySpec.Environments.clean_otp_env()
+      Environments.merge_clean_env(
+        env:
+          [{"MIX_ENV", "test"}, {"EXUNIT_JSON_OUTPUT_FILE", temp_file}] ++
+            partition_env(env, extra_env) ++ extra_env
+      )[:env]
 
     Logger.info("[Tests] Running: #{command}")
 
@@ -98,11 +107,11 @@ defmodule CodeMySpec.Tests do
   # Yield to a caller that already isolated the database.
   #
   # The harness path does: `CmsHarness.AnalyzerEnv.extra_env/1` includes
-  # `CmsHarness.TestDatabase.env/1`, which derives a partition from the
-  # absolute path and ensures the database exists — the
-  # `code_my_spec_testh<hash>` databases. Setting a second value here and
-  # relying on `System.cmd`'s duplicate-key ordering to pick the right one
-  # would be a coin flip dressed as a fix.
+  # `CmsHarness.TestDatabase.env/1`, which derives a partition from the absolute
+  # path — the `code_my_spec_testh<hash>` databases. It names them and no longer
+  # creates them; a missing one fails the run by name. Setting a second value
+  # here and relying on `System.cmd`'s duplicate-key ordering to pick the right
+  # one would be a coin flip dressed as a fix.
   #
   # What is left uncovered is the server-side path, which calls this with no
   # `extra_env` at all and therefore inherits the working copy's own test
@@ -134,55 +143,24 @@ defmodule CodeMySpec.Tests do
     end
   end
 
-  # Create the analyzer's database only if a run says it is missing.
+  # No creating, no migrating. This used to notice "database does not exist",
+  # shell out to `ecto.create` and `ecto.migrate`, and retry.
   #
-  # This repo has no `test:` alias, so `mix test` neither creates nor migrates
-  # its database and a fresh partition fails on first use. Creating it up front
-  # would be simpler and would add two `mix` invocations to *every* analyzer
-  # run — which every shell cassette would then have to carry, so the first
-  # thing it broke was `runners_test` with "No recording found for: mix
-  # ecto.create --quiet".
+  # `Environments.clean_otp_env/0` scrubbed MIX_ENV out of `cmd_env`, and unlike
+  # `mix test` — which forces test env for itself — the ecto tasks inherit
+  # whatever they are given. So they ran in **dev** and migrated
+  # `code_my_spec_dev`, the database every agent shares. That is how a
+  # DropStatusFromStories migration reached dev at 03:34 on 2026-08-13 with
+  # nobody having run one there.
   #
-  # Doing it on demand costs nothing in the normal case and nothing in a
-  # replayed one: the retry is only reached when the child actually reports a
-  # missing database, which a cassette never does.
+  # Removed rather than repaired. Nothing in this project may migrate a
+  # database from code — `Mix.Tasks.Cms.CheckTestMigrations` already holds that
+  # line, "a refusal rather than an alias that migrates", and this was the
+  # exception. A missing database now surfaces as the child's own "database
+  # does not exist", which names itself and is answered by a human with
+  # `MIX_ENV=test mix ecto.create`.
   defp run_with_database(env, test_args, cmd_env) do
-    case Environments.cmd(env, "mix", test_args, stderr_to_stdout: true, env: cmd_env) do
-      {output, _code} = result ->
-        if missing_database?(output) do
-          create_database(env, cmd_env)
-          Environments.cmd(env, "mix", test_args, stderr_to_stdout: true, env: cmd_env)
-        else
-          result
-        end
-    end
-  end
-
-  # Postgres says this three ways depending on who is asking — the adapter, the
-  # Mix task, or the raw error — so all three are matched rather than the one
-  # that happened to show up first.
-  defp missing_database?(output) do
-    text = to_string(output)
-
-    String.contains?(text, "does not exist") and
-      (String.contains?(text, "database") or String.contains?(text, "Database"))
-  end
-
-  defp create_database(env, cmd_env) do
-    Logger.info("[Tests] analyzer database missing — creating and migrating it")
-
-    for task <- [["ecto.create", "--quiet"], ["ecto.migrate", "--quiet"]] do
-      case Environments.cmd(env, "mix", task, stderr_to_stdout: true, env: cmd_env) do
-        {_output, 0} ->
-          :ok
-
-        {output, code} ->
-          Logger.warning(
-            "[Tests] #{Enum.join(task, " ")} for the analyzer database exited #{code}: " <>
-              String.slice(to_string(output), 0, 200)
-          )
-      end
-    end
+    Environments.cmd(env, "mix", test_args, stderr_to_stdout: true, env: cmd_env)
   end
 
   # A generated temp path is handed to the child as `EXUNIT_JSON_OUTPUT_FILE`,
