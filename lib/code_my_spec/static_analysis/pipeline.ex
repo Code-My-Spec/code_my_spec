@@ -503,7 +503,21 @@ defmodule CodeMySpec.StaticAnalysis.Pipeline do
     |> Enum.uniq_by(&elem(&1, 0))
   end
 
-  defp scope_for_source(:credo, _file_paths, %{credo: :block_all}), do: :all
+  # Credo always examines the whole project, so its result is always authoritative
+  # for the whole project. The command the harness runs is
+  # `mix credo suggest --all --all-priorities --format json --no-color` — no path
+  # filter, in every mode.
+  #
+  # This used to be `:all` only under `block_all` and the edited files otherwise,
+  # which made a clean run unable to say so. Clearing is keyed on the files a
+  # result names, and a run that finds nothing names nothing — so it cleared
+  # nothing, and a finding survived every subsequent clean run. The stop hook then
+  # blocked on a fixed file indefinitely while advising "stop again and let the
+  # rerun replace these", which was the one action that could not work. Measured
+  # on 2026-08-13: three identical blocks against `a7086249`, with
+  # `[CmsHarness] credo [] ... sent the credo result (ok)` in harness.log between
+  # each. See 6b3351cb.
+  defp scope_for_source(:credo, _file_paths, _config), do: :all
   defp scope_for_source(_atom, file_paths, _config), do: file_paths
 
   # -- Problem persistence --
