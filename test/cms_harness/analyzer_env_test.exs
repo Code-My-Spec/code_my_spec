@@ -20,8 +20,25 @@ defmodule CmsHarness.AnalyzerEnvTest do
 
   defp env_for(cwd), do: Environment.new(:local, cwd)
 
-  test "the analyzer's build path is not the agent's" do
+  # A working copy is onboarded; the analyzer only runs against one that is.
+  # `TestDatabase.partition_for/1` reads the recorded partition and refuses a copy
+  # with none, so a fixture standing in for a checkout records one too.
+  defp onboarded_copy do
     {:ok, cwd} = Briefly.create(directory: true)
+    File.mkdir_p!(Path.join(cwd, ".claude"))
+
+    File.write!(
+      Path.join([cwd, ".claude", "settings.local.json"]),
+      Jason.encode!(%{
+        "env" => %{"MIX_TEST_PARTITION" => "fixture#{System.unique_integer([:positive])}"}
+      })
+    )
+
+    cwd
+  end
+
+  test "the analyzer's build path is not the agent's" do
+    cwd = onboarded_copy()
 
     assert {"MIX_BUILD_PATH", build} =
              cwd |> env_for() |> AnalyzerEnv.extra_env() |> List.keyfind("MIX_BUILD_PATH", 0)
@@ -32,7 +49,7 @@ defmodule CmsHarness.AnalyzerEnvTest do
   end
 
   test "it lives under _build, so it inherits the gitignore" do
-    {:ok, cwd} = Briefly.create(directory: true)
+    cwd = onboarded_copy()
 
     assert AnalyzerEnv.build_path(cwd) == Path.join(cwd, "_build/analyzer"),
            "a sibling directory would need its own ignore entry, and would be " <>
@@ -40,7 +57,7 @@ defmodule CmsHarness.AnalyzerEnvTest do
   end
 
   test "every source gets the same build path" do
-    {:ok, cwd} = Briefly.create(directory: true)
+    cwd = onboarded_copy()
     env = AnalyzerEnv.extra_env(env_for(cwd))
 
     assert {"MIX_BUILD_PATH", path} = List.keyfind(env, "MIX_BUILD_PATH", 0)

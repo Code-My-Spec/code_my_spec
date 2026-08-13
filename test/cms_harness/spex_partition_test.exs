@@ -27,8 +27,8 @@ defmodule CmsHarness.SpexPartitionTest do
 
   use ExUnit.Case, async: true
 
+  alias ClientUtils.Harness.Onboarding
   alias CmsHarness.AnalyzerEnv
-  alias CmsHarness.TestDatabase
 
   @cwd "/src/app"
 
@@ -36,23 +36,23 @@ defmodule CmsHarness.SpexPartitionTest do
 
   describe "partition_for/2" do
     test "spex does not share exunit's database" do
-      refute TestDatabase.partition_for(@cwd, "spex") ==
-               TestDatabase.partition_for(@cwd, "exunit")
+      refute Onboarding.partition_name(@cwd) <> "s" ==
+               Onboarding.partition_name(@cwd)
     end
 
     test "exunit keeps the partition it already had" do
-      assert TestDatabase.partition_for(@cwd, "exunit") == TestDatabase.partition_for(@cwd)
+      assert Onboarding.partition_name(@cwd) == Onboarding.partition_name(@cwd)
 
-      assert TestDatabase.partition_for(@cwd, "compiler") == TestDatabase.partition_for(@cwd),
+      assert Onboarding.partition_name(@cwd) == Onboarding.partition_name(@cwd),
              "only spex moves; anything else changing would orphan a migrated database"
     end
 
     test "each is still stable across calls and per working copy" do
-      assert TestDatabase.partition_for(@cwd, "spex") ==
-               TestDatabase.partition_for(@cwd, "spex")
+      assert Onboarding.partition_name(@cwd) <> "s" ==
+               Onboarding.partition_name(@cwd) <> "s"
 
-      refute TestDatabase.partition_for(@cwd, "spex") ==
-               TestDatabase.partition_for("/src/other", "spex")
+      refute Onboarding.partition_name(@cwd) <> "s" ==
+               Onboarding.partition_name("/src/other") <> "s"
     end
   end
 

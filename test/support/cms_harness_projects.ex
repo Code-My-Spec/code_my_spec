@@ -57,6 +57,19 @@ defmodule CmsHarnessTest.Projects do
     File.mkdir_p!(Path.join(root, "lib"))
     File.mkdir_p!(Path.join(root, "test"))
 
+    # A working copy is onboarded; the analyzer only runs against one that is.
+    # `TestDatabase.partition_for/1` reads the recorded partition and refuses a
+    # copy with none — there is no derive-on-miss path, deliberately — so a
+    # fixture standing in for a checkout records one too.
+    File.mkdir_p!(Path.join(root, ".claude"))
+
+    File.write!(
+      Path.join([root, ".claude", "settings.local.json"]),
+      Jason.encode!(%{
+        "env" => %{"MIX_TEST_PARTITION" => "fixture#{System.unique_integer([:positive])}"}
+      })
+    )
+
     if id do
       File.write!(
         Path.join(root, ".code_my_spec/config.yml"),
