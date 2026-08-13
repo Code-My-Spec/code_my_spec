@@ -151,8 +151,35 @@ defmodule CodeMySpec.Provisioning.RegistryTest do
       )
     end
 
+    # The default, and the reason is the provider rather than the design.
+    # Backed by a Hetzner bucket, `docker push` failed with `unknown blob`:
+    # the registry writes a layer to an eventually consistent store, asks
+    # immediately whether the blob is there, and is told it is not. A volume on
+    # the box has none of that, and what it gives up — the registry surviving
+    # the box — costs nothing, because images are rebuildable from a commit.
+    test "keeps blobs in a volume on the box" do
+      assert {:ok, _} = serve()
+
+      assert_received {:ran, _trust}
+      assert_received {:ran, command}
+      assert command =~ "REGISTRY_STORAGE='filesystem'"
+      assert command =~ "REGISTRY_STORAGE_FILESYSTEM_ROOTDIRECTORY='/var/lib/registry'"
+      refute command =~ "REGISTRY_STORAGE_S3"
+    end
+
+    # `docker rm -f` replaces the registry on every run, so without a named
+    # volume every replacement threw away everything it held — including the
+    # image the box is running, which is the one a rollback needs.
+    test "the volume outlives the container" do
+      assert {:ok, _} = serve()
+
+      assert_received {:ran, _trust}
+      assert_received {:ran, command}
+      assert command =~ "-v cms-registry-data:/var/lib/registry"
+    end
+
     test "points the registry at this project's bucket" do
-      assert {:ok, %{bucket: "sam-s-app-registry"}} = serve()
+      assert {:ok, %{bucket: "sam-s-app-registry"}} = serve(storage: :s3)
 
       assert_received {:ran, _trust}
       assert_received {:ran, command}
@@ -163,7 +190,7 @@ defmodule CodeMySpec.Provisioning.RegistryTest do
     # style request reaches a bucket that does not exist rather than failing
     # usefully, which is the failure mode this flag exists to avoid.
     test "addresses the bucket path-style, which Hetzner requires" do
-      assert {:ok, _} = serve()
+      assert {:ok, _} = serve(storage: :s3)
 
       assert_received {:ran, _trust}
       assert_received {:ran, command}

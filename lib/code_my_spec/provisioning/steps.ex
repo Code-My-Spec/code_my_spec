@@ -2498,7 +2498,7 @@ defmodule CodeMySpec.Provisioning.Steps do
          # to, which is why a drill's outcome depended on how quickly Hetzner
          # happened to boot that day.
          :ok <- await_box(run, opts),
-         {:ok, _bucket} <- Registry.ensure(scope, registry_opts),
+         {:ok, registry_bucket} <- Registry.ensure(scope, registry_opts),
          {:ok, served} <- Registry.serve(scope, registry_opts),
          {:ok, database} <- serve_database(scope, environment, run, opts) do
       {:ok,
@@ -2508,24 +2508,8 @@ defmodule CodeMySpec.Provisioning.Steps do
            location: "#{ip}:#{served.port}",
            identifier: "environment=#{environment} bucket=#{served.bucket}"
          },
-         # The bucket, as a bucket. It was named only inside the registry
-         # resource's identifier, and teardown matches on `kind`, so nothing
-         # ever removed it — a run that halted between here and the storage
-         # step left `<project>-registry-<env>` behind with no record that this
-         # step had made it. Recorded here rather than relied on downstream,
-         # because the step that creates a resource is the one that knows it
-         # exists.
-         # `origin` explicitly, because its default is "adopted" and teardown's
-         # first clause returns adopted resources untouched — so a resource
-         # recorded without one is reported as torn down and never deleted.
-         %{
-           kind: "bucket",
-           location: served.bucket,
-           identifier: "registry",
-           origin: "created"
-         },
          database
-       ]}
+       ] ++ registry_bucket_resource(registry_bucket)}
     else
       {:error, reason} -> {:error, format(reason)}
       _ -> {:error, "the #{environment} server has no address yet"}
@@ -2561,6 +2545,27 @@ defmodule CodeMySpec.Provisioning.Steps do
       {:error, reason} -> {:error, reason}
     end
   end
+
+  # The bucket, as a bucket, when there is one.
+  #
+  # It used to be named only inside the registry resource's identifier, and
+  # teardown matches on `kind`, so nothing ever removed it — a run that halted
+  # between here and the storage step left `<project>-registry-<env>` behind
+  # with no record that this step had made it. Recorded here rather than relied
+  # on downstream, because the step that creates a resource is the one that
+  # knows it exists.
+  #
+  # `origin` explicitly, because its default is "adopted" and teardown's first
+  # clause returns adopted resources untouched — so a resource recorded without
+  # one is reported as torn down and never deleted.
+  #
+  # Nothing at all under the default filesystem storage: recording a bucket
+  # that was never created makes teardown report deleting something that does
+  # not exist, which is the same lie pointing the other way.
+  defp registry_bucket_resource(:none), do: []
+
+  defp registry_bucket_resource(bucket) when is_binary(bucket),
+    do: [%{kind: "bucket", location: bucket, identifier: "registry", origin: "created"}]
 
   # The same wait the builder does, with the same knobs, so a caller that
   # already tunes `:ssh_attempts` or `:ssh_interval_ms` for one tunes both.

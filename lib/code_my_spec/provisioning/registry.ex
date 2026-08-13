@@ -71,6 +71,20 @@ defmodule CodeMySpec.Provisioning.Registry do
   """
   @spec ensure(Scope.t(), keyword()) :: {:ok, String.t()} | {:error, term()}
   def ensure(%Scope{} = scope, opts \\ []) do
+    ensure_storage(Keyword.get(opts, :storage, :filesystem), scope, opts)
+  end
+
+  # Nothing to provision: the registry keeps its blobs in a volume on the box.
+  # Returns `:none` rather than the name, so a caller cannot record a bucket
+  # resource for a bucket that was never made — teardown would then report
+  # deleting something that does not exist, which is the same lie in the other
+  # direction.
+  #
+  # The name is still meaningful and still used, as the label that tells one
+  # project's registry from another's.
+  defp ensure_storage(:filesystem, _scope, _opts), do: {:ok, :none}
+
+  defp ensure_storage(:s3, scope, opts) do
     with {:ok, credentials} <- credentials(scope, opts),
          bucket <- bucket_name(scope, opts),
          {:ok, _} <- Storage.ensure_bucket(bucket, credentials, opts),
@@ -217,6 +231,7 @@ defmodule CodeMySpec.Provisioning.Registry do
   def default_host, do: @default_host
 
   @container "cms-registry"
+  @volume "cms-registry-data"
   @username "cms"
   @password_secret "registry_password"
 
@@ -345,7 +360,7 @@ defmodule CodeMySpec.Provisioning.Registry do
 
     env =
       opts
-      |> Keyword.get(:storage, :s3)
+      |> Keyword.get(:storage, :filesystem)
       |> storage_env(bucket, credentials, location)
       |> Enum.map_join(" ", fn {name, value} -> "-e #{name}=#{shell_escape(value)}" end)
 
@@ -358,6 +373,11 @@ defmodule CodeMySpec.Provisioning.Registry do
       "docker rm -f #{@container} >/dev/null 2>&1; " <>
       "docker run -d --name #{@container} --restart always " <>
       "-v /etc/cms-registry/htpasswd:/auth/htpasswd:ro " <>
+      # A named volume, so images outlive the container. `docker rm -f` above
+      # replaces the registry on every run, and without this every replacement
+      # threw away everything it held — including the image the box is running,
+      # which is the one a rollback needs.
+      "-v #{@volume}:/var/lib/registry " <>
       "-e REGISTRY_AUTH=htpasswd " <>
       "-e REGISTRY_AUTH_HTPASSWD_REALM=cms " <>
       "-e REGISTRY_AUTH_HTPASSWD_PATH=/auth/htpasswd " <>
@@ -429,8 +449,23 @@ defmodule CodeMySpec.Provisioning.Registry do
     ]
   end
 
+  # The default, and the reason is the provider rather than the design.
+  #
+  # Backed by the project's Hetzner bucket, `docker push` failed with `unknown
+  # blob` after retrying individual layers for a minute: the registry writes a
+  # layer to an eventually consistent store, immediately asks whether the blob
+  # exists, and is told it does not. Some layers land, others never do. A
+  # descriptor cache is not enough — it caches what the registry knows, not
+  # what the bucket will admit to.
+  #
+  # A volume on the box has none of that. What it gives up is the registry
+  # surviving the box, and images are rebuildable from a commit — an old build
+  # is not worth an unreliable push.
   defp storage_env(:filesystem, _bucket, _credentials, _location) do
-    [{"REGISTRY_STORAGE", "filesystem"}, {"REGISTRY_STORAGE_FILESYSTEM_ROOTDIRECTORY", "/var/lib/registry"}]
+    [
+      {"REGISTRY_STORAGE", "filesystem"},
+      {"REGISTRY_STORAGE_FILESYSTEM_ROOTDIRECTORY", "/var/lib/registry"}
+    ]
   end
 
   defp shell_escape(value), do: "'" <> String.replace(value, "'", "'\\''") <> "'"
