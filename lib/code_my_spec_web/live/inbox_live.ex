@@ -242,6 +242,7 @@ defmodule CodeMySpecWeb.InboxLive do
               <tr
                 :for={conversation <- @conversations}
                 data-test="conversation"
+                data-kind={conversation.type}
                 data-unread={to_string(!conversation.read)}
                 phx-click="open_conversation"
                 phx-value-id={conversation.id}

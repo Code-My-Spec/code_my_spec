@@ -321,8 +321,15 @@ defmodule CodeMySpec.Conversations do
   for rendering). Older messages load on demand.
   """
   def list_conversations(scope) do
+    # Support only. An inbox is for "someone needs you", and a machine's
+    # conversation in it costs the surface the only meaning it has — story 870's
+    # rule, which said so and was not enforced anywhere: this filtered on the
+    # account and nothing else, so every agent conversation was listed.
+    #
+    # Agent conversations are reachable from their own project surface. This is
+    # the query the support inbox reads, so it is where the separation belongs.
     Conversation
-    |> where([c], c.account_id == ^scope.active_account_id)
+    |> where([c], c.account_id == ^scope.active_account_id and c.type == :support)
     |> order_by([c], asc: c.inserted_at)
     |> preload([c], messages: ^recent_messages_query())
     |> Repo.all()
