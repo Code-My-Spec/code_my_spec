@@ -47,7 +47,6 @@ defmodule CmsHarness.TestDatabaseTest do
     end
   end
 
-
   describe "env/1" do
     # An analyzer that refused to run because it could not manage a database
     # would be a worse failure than the one this exists to fix.

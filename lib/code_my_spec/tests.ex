@@ -107,11 +107,11 @@ defmodule CodeMySpec.Tests do
   # Yield to a caller that already isolated the database.
   #
   # The harness path does: `CmsHarness.AnalyzerEnv.extra_env/1` includes
-  # `CmsHarness.TestDatabase.env/1`, which derives a partition from the
-  # absolute path and ensures the database exists — the
-  # `code_my_spec_testh<hash>` databases. Setting a second value here and
-  # relying on `System.cmd`'s duplicate-key ordering to pick the right one
-  # would be a coin flip dressed as a fix.
+  # `CmsHarness.TestDatabase.env/1`, which derives a partition from the absolute
+  # path — the `code_my_spec_testh<hash>` databases. It names them and no longer
+  # creates them; a missing one fails the run by name. Setting a second value
+  # here and relying on `System.cmd`'s duplicate-key ordering to pick the right
+  # one would be a coin flip dressed as a fix.
   #
   # What is left uncovered is the server-side path, which calls this with no
   # `extra_env` at all and therefore inherits the working copy's own test
@@ -162,8 +162,6 @@ defmodule CodeMySpec.Tests do
   defp run_with_database(env, test_args, cmd_env) do
     Environments.cmd(env, "mix", test_args, stderr_to_stdout: true, env: cmd_env)
   end
-
-
 
   # A generated temp path is handed to the child as `EXUNIT_JSON_OUTPUT_FILE`,
   # so the child writes it wherever it is running — inside the environment.

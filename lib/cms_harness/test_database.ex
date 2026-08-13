@@ -27,50 +27,36 @@ defmodule CmsHarness.TestDatabase do
   name would deny them. So the partition is derived from the absolute path of the
   working copy.
 
-  ## Degrading rather than guessing
+  ## It names the database and does not manage it
 
-  Setting `MIX_TEST_PARTITION` only isolates a project whose `config/test.exs`
-  reads it. Where it does (the Phoenix default, and this repo), the database has
-  to exist, so this creates and migrates it first. Where it does not, the name is
-  unchanged and this is a no-op.
+  This used to create and migrate the partition too, and both of those shelled
+  out to `mix` with an environment `Environments.clean_otp_env/0` had scrubbed
+  `MIX_ENV` out of — so they ran against **dev**, the database every agent
+  shares. A sibling truncate emptied it three times on 2026-08-13.
 
-  If either step fails — no Ecto, no database server, a project that does not
-  work this way — no partition is set and the run proceeds exactly as it did
-  before. An analyzer that refused to run because it could not manage a database
-  would be a worse failure than the one this fixes.
+  Now it computes a name and nothing else. Nothing in this project migrates or
+  truncates a database from code; `Mix.Tasks.Cms.CheckTestMigrations` already
+  held that line — "a refusal rather than an alias that migrates" — and this
+  module was the exception to it.
 
-  ## Staying migrated
-
-  Isolation alone is not enough: a database of one's own that is a schema behind
-  produces the same indistinguishable failures as a shared one. The migrate is
-  therefore keyed on the set of migration files, not on the harness's lifetime,
-  so a tree that gains migrations while the harness is running picks them up.
+  A database that does not exist fails the run with the child's own "database
+  does not exist", which names itself and is answered by a human with
+  `MIX_ENV=test mix ecto.create`. That is a worse first run and a much better
+  failure mode than a background process with DDL rights on a shared server.
   """
-
-  require Logger
-
-  alias CodeMySpec.Environments
 
   @doc """
-  Environment for a `mix test` in `env`, isolating its database when it can.
+  Environment for a `mix test` in `env` — the partition name, and nothing else.
 
-  Returns `[]` when isolation is not available, which is the signal to run
-  against whatever the project already uses.
+  Returns `[]` for an environment with no working directory, which is the signal
+  to run against whatever the project already uses.
 
-  `build_env` is the caller's `MIX_BUILD_PATH`, passed on to the `mix`
-  invocations this makes. Without it they take the default path — `_build/test`,
-  the tree the agent's own `mix test` writes — and `ecto.create`/`ecto.migrate`
-  compile the project before running, so provisioning the analyzer's database
-  compiled into the agent's tree. That is the collision `AnalyzerEnv` exists to
-  prevent, described in its own moduledoc: modules vanish from under a running
-  suite and return as "module X is not available" for a module that plainly
-  exists.
-
-  It is rare — `ensure_once/3` memoises per partition per migration set — but it
-  fires on a fresh working copy and after a rebase that brings migrations, which
-  is exactly when the agent is likely to be compiling too.
+  `build_env` is accepted and ignored. It mattered when this shelled out to
+  `mix`; it is kept so callers do not have to change, and because a two-arity
+  version of this would be the only difference between the harness's call site
+  and a future one that needs it back.
   """
-  @spec env(Environments.Environment.t(), [{String.t(), String.t()}], String.t() | nil) ::
+  @spec env(CodeMySpec.Environments.Environment.t(), [{String.t(), String.t()}], String.t() | nil) ::
           [{String.t(), String.t()}]
   def env(environment, build_env \\ [], source \\ nil)
 
@@ -81,37 +67,6 @@ defmodule CmsHarness.TestDatabase do
   end
 
   def env(_environment, _build_env, _source), do: []
-
-  # No provisioning, and no truncation. Both used to live here and both shelled
-  # out to `mix` — `ecto.create`, `ecto.migrate`, and a script that truncated
-  # every table in whichever repo it reached.
-  #
-  # `MIX_ENV` was scrubbed out of the child environment by
-  # `Environments.clean_otp_env/0`, so all three ran against **dev**: the
-  # migrate applied a migration nobody ran there, and the truncate emptied
-  # `code_my_spec_dev` three times on 2026-08-13.
-  #
-  # Fixing the env would have made them safe. Removing them makes them
-  # impossible, which is the property worth having: no code path in this
-  # project may migrate or truncate a database. `Mix.Tasks.Cms.CheckTestMigrations`
-  # already set that precedent — "a refusal rather than an alias that migrates" —
-  # and this module was the thing violating it.
-  #
-  # What survives is the partition NAME, which is pure string computation and
-  # touches nothing. `config/test.exs` already derives a per-worktree database
-  # on its own; this only adds the spex suffix so exunit and spex do not share
-  # one. A database that does not exist now fails the run loudly with
-  # "database does not exist", which a human answers with
-  # `MIX_ENV=test mix ecto.create`.
-
-  # The pre-run truncate lived here and is gone. See `CmsHarness.Analysis`
-  # for why: it cleaned up a sandbox escape that the evidence does not support,
-  # and what it actually did was empty `code_my_spec_dev` three times on
-  # 2026-08-13 because `MIX_ENV` was scrubbed out of its child environment.
-  #
-  # Provisioning below still shells out to mix, and still needs that env to
-  # survive — `cmd_opts/2` is what makes sure it does.
-
 
   @doc """
   The partition name for a working copy.
