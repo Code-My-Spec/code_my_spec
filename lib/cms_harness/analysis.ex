@@ -41,7 +41,6 @@ defmodule CmsHarness.Analysis do
   require Logger
 
   alias CmsHarness.AnalyzerEnv
-  alias CmsHarness.TestDatabase
   alias CodeMySpec.Analysis.Runners
   alias CodeMySpec.BddSpecs.Spex
   alias CodeMySpec.Compile
@@ -119,11 +118,22 @@ defmodule CmsHarness.Analysis do
   defp execute("exunit", env, args) do
     extra_env = AnalyzerEnv.extra_env(env, "exunit")
 
-    # Only exunit. Its failures are the ones residue disguises itself as, and
-    # a suite that starts dirty reports a break that is not there. credo and
-    # the compiler never read the database, and spex are cleared by the same
-    # call on the run that follows them.
-    TestDatabase.reset_data(env, extra_env)
+    # No pre-run truncate. There used to be one here, clearing rows that had
+    # "escaped the ExUnit sandbox" — and the escape it cleaned up does not
+    # exist. Its own detector only spoke when it removed something, ran from
+    # 2026-08-10, and stayed silent until the day it started truncating the
+    # wrong database. Both analyzer partitions are empty after real runs.
+    #
+    # What it did instead: `MIX_ENV` was scrubbed out of its child environment,
+    # so `mix` defaulted to dev and it truncated `code_my_spec_dev` — the
+    # database every agent shares — reporting the row count as escaped test
+    # rows. It emptied it three times on 2026-08-13.
+    #
+    # Removed rather than guarded. A routine that truncates every table in
+    # whichever database it happens to reach is worth having only against a
+    # defect that is actually occurring, and this one was inventing its own
+    # evidence. If residue returns it announces itself as phantom exunit
+    # failures, which is a diagnosable symptom; a silent sweeper is not.
 
     case CodeMySpec.Tests.execute(args, environment: env, extra_env: extra_env) do
       {:ok, test_run} ->
