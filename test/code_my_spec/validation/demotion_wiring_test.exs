@@ -59,10 +59,20 @@ defmodule CodeMySpec.Validation.DemotionWiringTest do
   # project-wide survivable, and also what hides the demotion from every test
   # above: with the latch unset nothing reaches `split_unattributed/2` at all.
   #
-  # The reported case is the other one. Two LiveView spex last touched eight
-  # days before the session, on released stories, blocking a stop twice with no
-  # supported way out: "an agent that inherits a red suite is blocked
-  # indefinitely by work it did not touch and has no mandate to fix".
+  # The reported case was the other one — two LiveView spex last touched eight
+  # days before the session, on released stories, blocking a stop twice — and
+  # attribution was extended to spex to answer it. That was wrong, and the cost
+  # was that `spex: :block_all` did nothing at all: the latch already demotes
+  # every story mid-build, so the only findings reaching attribution were
+  # regressions on green stories, and attribution demoted those too. Measured
+  # across one evening: every agent, every stop, findings demoted, mode reading
+  # `:block_all` for months.
+  #
+  # The latch is the mandate test. A story that went green and is now red is a
+  # regression in this working copy, and "I did not open that file this turn" is
+  # not a reason to pass it — the escape is to fix the regression or unlatch the
+  # story, both of which are honest. Attribution still governs every other
+  # source, which is where the inherited-rebase case actually lives.
   describe "a spex failure on a story whose specs are ready" do
     setup ctx do
       :ok = FileEdits.track_edit(ctx.session, @mine)
@@ -96,15 +106,20 @@ defmodule CodeMySpec.Validation.DemotionWiringTest do
       assert reason =~ "criterion_6493"
     end
 
-    test "does not block when it did not", ctx do
+    test "still blocks when the session never opened the spex file", ctx do
       path = @spex_path
       problem_fixture(ctx.scope, %{source: "spex", severity: :error, file_path: path})
       fresh_analysis_runs_fixture(ctx.scope, ["spex"])
 
-      assert {:ok, _} = stop(ctx.scope, ctx.session),
-             "a spex file the session never opened is someone else's red, and the " <>
-               "only escapes from blocking on it are fixing a parked feature or " <>
-               "stubbing the test out"
+      assert {:error, reason, _key} = stop(ctx.scope, ctx.session),
+             "a latched story is red and the stop was allowed. Which files this turn " <>
+               "wrote is not what decides whether a spex regression is the agent's to " <>
+               "fix — the story's `specs_ready` latch already decided that, and this " <>
+               "one is set. Demoting here is what made `spex: :block_all` a setting " <>
+               "with no effect."
+
+      assert reason =~ "criterion_6493",
+             "the block has to name the failing spex, or the agent cannot act on it"
     end
   end
 
