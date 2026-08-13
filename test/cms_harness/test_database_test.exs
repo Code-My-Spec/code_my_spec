@@ -56,6 +56,45 @@ defmodule CmsHarness.TestDatabaseTest do
       assert "--no-deps-check" in CmsHarness.TestDatabase.reset_args()
     end
 
+    # The most expensive defect this file has held, and it was invisible.
+    #
+    # `Environments.clean_otp_env/0` sets MIX_ENV to nil alongside the release
+    # variables, and the caller appended it AFTER `{"MIX_ENV", "test"}` — so the
+    # scrub won and the child got no MIX_ENV at all. `mix` then defaulted to
+    # dev, and `truncate_script/0` — which truncates every table in whichever
+    # repo it finds — ran against `code_my_spec_dev`, the database every agent
+    # on the machine shares. It emptied it twice on 2026-08-13.
+    #
+    # Nothing in the log said so: `report_rows_removed/2` names the partition it
+    # was asked for rather than the database it reached, so it reported
+    # "removed 101972 committed row(s) from the analyzer database h789652af"
+    # while dev was the one going empty.
+    #
+    # Asserted on the env rather than on the call site, because the way back to
+    # the bug is someone re-hand-rolling the concatenation. `merge_clean_env/1`
+    # already documents the rule — "it is wrong for MIX_ENV: a caller that named
+    # one meant it" — and this is what makes ignoring it fail loudly.
+    test "MIX_ENV survives the OTP scrub, so the truncate cannot reach dev" do
+      env = CmsHarness.TestDatabase.cmd_opts("h789652af")[:env]
+
+      assert {"MIX_ENV", "test"} in env,
+             "MIX_ENV was scrubbed out of the reset's environment. The child mix will " <>
+               "default to dev and the truncate will empty the shared development " <>
+               "database instead of the analyzer partition."
+
+      refute {"MIX_ENV", nil} in env,
+             "the scrub is still unsetting MIX_ENV after the caller set it"
+
+      assert {"MIX_TEST_PARTITION", "h789652af"} in env,
+             "without the partition the reset targets the unpartitioned test database, " <>
+               "which every other checkout is also using"
+
+      # The scrub still has to do its own job — this is not a licence to skip it.
+      assert {"RELEASE_ROOT", nil} in env,
+             "release variables must still be cleared, or a child mix launched from a " <>
+               "Burrito binary cannot boot at all"
+    end
+
     # Nothing is built here, so a tree that has never been compiled must not be
     # compiled by the reset — that is the collision AnalyzerEnv exists to
     # prevent, modules vanishing from under a running suite.

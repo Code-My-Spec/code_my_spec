@@ -410,14 +410,40 @@ defmodule CmsHarness.TestDatabase do
 
   # Same invocation, but hands back stdout — the reset reads a row count out of
   # it, and `ecto.create`/`ecto.migrate` have nothing to say on success.
-  defp run_mix_capturing(environment, partition, args, extra) do
-    cmd_env =
-      [
-        {"MIX_ENV", "test"},
-        {"MIX_TEST_PARTITION", partition}
-      ] ++ extra ++ Environments.clean_otp_env()
+  # `merge_clean_env/1`, never `++ clean_otp_env()`.
+  #
+  # The scrub sets MIX_ENV to nil along with the release variables, and appending
+  # it last means it wins — so `{"MIX_ENV", "test"}` two lines above was unset
+  # before the child ever saw it. `mix` then defaulted to **dev**, and
+  # `truncate_script/0` — which truncates every table in the repo it finds —
+  # ran against `code_my_spec_dev`, the database every agent on the machine
+  # shares.
+  #
+  # It destroyed that database twice on 2026-08-13 before anyone caught it, and
+  # it was invisible from the log because `report_rows_removed/2` names the
+  # partition it was *asked* for rather than the database it *reached*: it
+  # cheerfully reported "removed 101972 committed row(s) from the analyzer
+  # database h789652af" while emptying dev.
+  #
+  # `merge_clean_env/1` exists for exactly this and says so in its own doc — "it
+  # is wrong for MIX_ENV: a caller that named one meant it". It drops any scrub
+  # entry whose key the caller already chose, so the release variables are still
+  # cleared and MIX_ENV survives.
+  @doc false
+  # Public so the env can be asserted without shelling out — the same reason
+  # `reset_args/0` is, and for a much better one: the failure this guards
+  # against emptied a shared database twice and produced a log line saying it
+  # had emptied a different one.
+  @spec cmd_opts(String.t(), keyword()) :: keyword()
+  def cmd_opts(partition, extra \\ []) do
+    Environments.merge_clean_env(
+      stderr_to_stdout: true,
+      env: [{"MIX_ENV", "test"}, {"MIX_TEST_PARTITION", partition}] ++ extra
+    )
+  end
 
-    case Environments.cmd(environment, "mix", args, stderr_to_stdout: true, env: cmd_env) do
+  defp run_mix_capturing(environment, partition, args, extra) do
+    case Environments.cmd(environment, "mix", args, cmd_opts(partition, extra)) do
       {output, 0} -> {:ok, output}
       {output, status} -> {:error, "mix #{hd(args)} exited #{status}: #{excerpt(output)}"}
     end
