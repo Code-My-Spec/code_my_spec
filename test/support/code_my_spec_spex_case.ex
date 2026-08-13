@@ -1089,7 +1089,6 @@ defmodule CodeMySpecSpex.Case do
       """
   end
 
-
   @doc """
   What a setup step reported, for a failure message that would otherwise name
   only the expectation.
