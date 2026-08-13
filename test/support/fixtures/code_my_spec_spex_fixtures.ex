@@ -1717,8 +1717,7 @@ defmodule CodeMySpecSpex.Fixtures do
     attrs =
       Enum.into(attrs, %{
         title: "QA Story #{System.unique_integer([:positive])}",
-        description: "A story for QA spex testing",
-        status: :in_progress
+        description: "A story for QA spex testing"
       })
 
     {:ok, story} = Stories.create_story(scope, attrs)
@@ -1768,8 +1767,7 @@ defmodule CodeMySpecSpex.Fixtures do
         :error ->
           story_fixture(scope, %{
             title: Keyword.get(opts, :title, "QA Story #{System.unique_integer([:positive])}"),
-            description: Keyword.get(opts, :description, "Story for QA testing"),
-            status: :in_progress
+            description: Keyword.get(opts, :description, "Story for QA testing")
           })
       end
 

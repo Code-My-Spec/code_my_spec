@@ -1,15 +1,16 @@
 defmodule CodeMySpec.McpServers.Stories.Tools.SetStoryComponentTest do
   use ExUnit.Case, async: true
 
-  alias CodeMySpec.McpServers.Stories.Tools.SetStoryComponent
   alias Anubis.Server.Frame
+  alias CodeMySpec.McpServers.Stories.Tools.SetStoryComponent
+  alias Ecto.Adapters.SQL.Sandbox
   import CodeMySpec.StoriesFixtures
   import CodeMySpec.UsersFixtures
   import CodeMySpec.ComponentsFixtures
   import Plug.Conn
 
   setup do
-    :ok = Ecto.Adapters.SQL.Sandbox.checkout(CodeMySpec.Repo)
+    :ok = Sandbox.checkout(CodeMySpec.Repo)
   end
 
   describe "SetStoryComponent tool" do
@@ -95,7 +96,6 @@ defmodule CodeMySpec.McpServers.Stories.Tools.SetStoryComponentTest do
         id: story.id,
         title: story.title,
         component_id: component.id,
-        status: "#{story.status}",
         priority: story.priority,
         project_id: story.project_id,
         account_id: story.account_id

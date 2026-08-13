@@ -316,10 +316,6 @@ defmodule CodeMySpec.Stories.StoriesRepository do
     from(s in query, where: s.project_id == ^project_id)
   end
 
-  def by_status(query \\ Story, status) do
-    from(s in query, where: s.status == ^status)
-  end
-
   def by_priority(query \\ Story, min_priority) do
     from(s in query,
       where: s.priority >= ^min_priority
@@ -350,10 +346,6 @@ defmodule CodeMySpec.Stories.StoriesRepository do
 
   def ordered_by_name(query \\ Story) do
     from(s in query, order_by: [asc: s.title])
-  end
-
-  def ordered_by_status(query \\ Story) do
-    from(s in query, order_by: [asc: s.status, asc: s.inserted_at])
   end
 
   def paginate(query, page, per_page) do

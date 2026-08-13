@@ -10,7 +10,6 @@ defmodule CodeMySpec.Stories.StoriesRepositoryTest do
     import CodeMySpec.StoriesFixtures
 
     @invalid_attrs %{
-      status: nil,
       description: nil,
       title: nil,
       acceptance_criteria: nil,
@@ -80,7 +79,6 @@ defmodule CodeMySpec.Stories.StoriesRepositoryTest do
 
     test "create_story/2 with valid data creates a story" do
       valid_attrs = %{
-        status: :in_progress,
         description: "some description",
         title: title = random_word(),
         criteria: [%{description: "option1"}, %{description: "option2"}],
@@ -91,7 +89,6 @@ defmodule CodeMySpec.Stories.StoriesRepositoryTest do
       scope = full_scope_fixture()
 
       assert {:ok, %Story{} = story} = StoriesRepository.create_story(scope, valid_attrs)
-      assert story.status == :in_progress
       assert story.description == "some description"
       assert story.title == title
       assert [%{description: "option1"}, %{description: "option2"}] = story.criteria
@@ -111,7 +108,6 @@ defmodule CodeMySpec.Stories.StoriesRepositoryTest do
       title = random_word()
 
       update_attrs = %{
-        status: :completed,
         description: "some updated description",
         title: title,
         criteria: [%{description: "option1"}],
@@ -120,7 +116,6 @@ defmodule CodeMySpec.Stories.StoriesRepositoryTest do
       }
 
       assert {:ok, %Story{} = story} = StoriesRepository.update_story(scope, story, update_attrs)
-      assert story.status == :completed
       assert story.description == "some updated description"
       assert story.title == title
       assert [%{description: "option1"}] = story.criteria
@@ -168,21 +163,6 @@ defmodule CodeMySpec.Stories.StoriesRepositoryTest do
 
       assert length(results) == 1
       assert Enum.any?(results, fn s -> s.id == story1.id end)
-    end
-
-    test "by_status/2 filters stories by status" do
-      scope = full_scope_fixture()
-
-      story1 = story_fixture(scope, %{status: :in_progress})
-      _story2 = story_fixture(scope, %{status: :completed})
-
-      results =
-        StoriesRepository.by_status(:in_progress)
-        |> where([s], s.account_id == ^scope.active_account.id)
-        |> Repo.all()
-
-      assert length(results) == 1
-      assert hd(results).id == story1.id
     end
 
     test "by_priority/2 filters stories by priority" do
@@ -267,24 +247,6 @@ defmodule CodeMySpec.Stories.StoriesRepositoryTest do
       assert Enum.at(results, 0).title == "Alpha Story"
       assert Enum.at(results, 1).title == "Beta Story"
       assert Enum.at(results, 2).title == "Zoo Story"
-    end
-
-    test "ordered_by_status/1 orders by status asc then inserted_at asc" do
-      scope = full_scope_fixture()
-
-      _story1 = story_fixture(scope, %{status: :completed})
-      _story2 = story_fixture(scope, %{status: :in_progress})
-      _story3 = story_fixture(scope, %{status: :dirty})
-
-      results =
-        StoriesRepository.ordered_by_status()
-        |> where([s], s.account_id == ^scope.active_account.id)
-        |> Repo.all()
-
-      assert length(results) == 3
-      assert Enum.at(results, 0).status == :completed
-      assert Enum.at(results, 1).status == :dirty
-      assert Enum.at(results, 2).status == :in_progress
     end
 
     test "paginate/3 limits and offsets results" do

@@ -195,8 +195,7 @@ defmodule CodeMySpec.Migration do
       "title" => story.title,
       "story" => story.story,
       "description" => story.description,
-      "status" => story.status && to_string(story.status),
-      # Authored state, all of it. Carrying only title/story/description/status
+      # Authored state, all of it. Carrying only title/story/description
       # left every migrated story parked: `ready_for_dev` is what releases a
       # story into the requirement graph, so a project arrived with 91 stories
       # marked ready at the source and 0 here, and the graph saw almost nothing
