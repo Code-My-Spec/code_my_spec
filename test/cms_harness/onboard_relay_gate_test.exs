@@ -66,4 +66,40 @@ defmodule CmsHarness.OnboardRelayGateTest do
     assert us < 30_000_000,
            "the probe has to give up — a check that hangs becomes an onboarding that hangs"
   end
+
+  describe "the pinned relay path" do
+    setup %{dir: dir} do
+      # The real shipped hooks, so this breaks if the plugin stops naming the
+      # relay the way the gate assumes.
+      src = Path.join([File.cwd!(), "plugins", "claude", "hooks", "hooks.json"])
+      dest = Path.join(dir, "plugin")
+      File.mkdir_p!(Path.join(dest, "hooks"))
+      File.cp!(src, Path.join([dest, "hooks", "hooks.json"]))
+      {:ok, dest: dest}
+    end
+
+    test "writes the verified binary's absolute path, not a bare command", %{dest: dest} do
+      relay = "/opt/somewhere/cms-mcp-relay"
+
+      assert {:ok, count} = Onboard.address_hooks(dest, "harness-1", relay)
+      assert count > 0, "the fixture should contain hook endpoints to address"
+
+      hooks = File.read!(Path.join([dest, "hooks", "hooks.json"]))
+
+      assert hooks =~ ~s|"command": "#{relay}"|,
+             "run time resolves this command on Claude Code's PATH, not ours"
+
+      refute hooks =~ ~s|"command": "cms-mcp-relay"|,
+             "a bare command can resolve to a different binary than the one checked"
+    end
+
+    test "still addresses the hook endpoints to the harness", %{dest: dest} do
+      assert {:ok, _} = Onboard.address_hooks(dest, "harness-1", "/bin/relay")
+
+      hooks = File.read!(Path.join([dest, "hooks", "hooks.json"]))
+
+      assert hooks =~ "/api/harnesses/harness-1/hooks/"
+      refute hooks =~ ~s|"/api/hooks/|
+    end
+  end
 end

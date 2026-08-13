@@ -70,10 +70,10 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
     root = target_root(args)
     dest = Path.join(root, @plugin_dest)
 
-    with :ok <- check_relay(),
+    with {:ok, relay} <- check_relay(),
          {:ok, id} <- identity(root),
          :ok <- copy_plugin(root, dest),
-         {:ok, count} <- address_hooks(dest, id),
+         {:ok, count} <- address_hooks(dest, id, relay),
          :ok <- address_mcp(dest, id),
          :ok <- address_model_turns(root, id, hook_base_url(dest)) do
       report(id, dest, count, args)
@@ -118,7 +118,7 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
 
       path ->
         if capable?(path) do
-          :ok
+          {:ok, path}
         else
           {:error,
            """
@@ -245,12 +245,32 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   # Only the hook paths move. The port, the headers and the payload are the
   # shipped plugin's and stay as they are, so the generated copy differs from
   # what users run in exactly one respect.
-  defp address_hooks(dest, id) do
+  # The relay is pinned by absolute path, not left as a bare command.
+  #
+  # `check_relay/0` resolves it on *this* PATH; Claude Code resolves the hook
+  # command on *its* PATH, minutes or days later, from a login shell this never
+  # saw. Those are only the same binary by luck, and the way to have the hook
+  # subcommand before 2.0 ships is a checkout build on a prepended PATH — which
+  # is precisely the case where they differ. Onboarding would then verify a
+  # capable relay, write a bare command, and every session would run the old
+  # one: hooks silently dead, with the check having passed.
+  #
+  # Writing the path the check actually verified makes run time and check time
+  # the same binary by construction. Safe here for the same reason the harness
+  # id is: this directory is generated per working copy and gitignored, so a
+  # machine-specific path in it is never shared and never committed.
+  @doc false
+  def address_hooks(dest, id, relay) do
     file = Path.join([dest, "hooks", "hooks.json"])
 
     case File.read(file) do
       {:ok, contents} ->
-        File.write!(file, String.replace(contents, "/api/hooks/", "/api/harnesses/#{id}/hooks/"))
+        addressed =
+          contents
+          |> String.replace("/api/hooks/", "/api/harnesses/#{id}/hooks/")
+          |> String.replace(~s|"command": "#{@relay}"|, ~s|"command": #{Jason.encode!(relay)}|)
+
+        File.write!(file, addressed)
 
         {:ok, contents |> String.split("/api/hooks/") |> length() |> Kernel.-(1)}
 
