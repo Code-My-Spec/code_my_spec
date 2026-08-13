@@ -80,11 +80,22 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
       # A turn made entirely of tool calls records an empty assistant line
       # alongside the tool call — the empty line must not render as anything.
       {:ok, _} = Conversations.add_agent_message(conversation, nil, "assistant", "")
-      {:ok, _} = Conversations.add_agent_message(conversation, nil, "tool", "Bash(mix spex)")
+      # The shape the recorder actually writes: the tool, a newline, its arguments.
+      # This said `"Bash(mix spex)"`, which no recorded message has ever been —
+      # across this project's history the stored shapes are "Tool\njson" (933),
+      # a bare name (6), and output misfiled under this role (14). Nothing inline.
+      {:ok, _} =
+        Conversations.add_agent_message(
+          conversation,
+          nil,
+          "tool",
+          "Bash\n{\"command\": \"mix spex\"}"
+        )
 
       {:ok, view, html} = live(conn, path(project))
 
-      assert html =~ "Bash(mix spex)"
+      assert html =~ "Bash"
+      assert html =~ "mix spex"
       assert has_element?(view, "[data-test='tool-call']")
       refute has_element?(view, "[data-test='empty-turn']")
     end

@@ -75,15 +75,21 @@ defmodule CodeMySpecWeb.ChatComponents do
     """
   end
 
+  # A surface can say its `role: :tool` messages are calls, and be wrong about a
+  # given one — `ConversationRecorder` writes calls that way and
+  # `Conversations.add_tool_result/4` writes results the same way, into the same
+  # conversation. Rendered as a call, a result has its first line offered as the
+  # tool the agent used: "Showing 1-1 of 1 stories:" appeared as a tool name
+  # twelve times in this project, naming a tool that never ran.
+  #
+  # A tool name is one token. Output is not. That is the whole test, and it is
+  # the view compensating for a disagreement that belongs in the data.
   def turn(%{message: %{role: :tool}, tool_role: :call} = assigns) do
-    ~H"""
-    <.tool_call
-      id={@id}
-      name={Message.text(@message)}
-      call_id={@message.tool_call_id}
-      agent_role={@message.agent_role}
-    />
-    """
+    if tool_name?(Message.text(assigns.message)) do
+      tool_call_turn(assigns)
+    else
+      tool_result_turn(assigns, Message.text(assigns.message), false)
+    end
   end
 
   def turn(%{message: %{role: :tool}} = assigns) do
@@ -115,6 +121,24 @@ defmodule CodeMySpecWeb.ChatComponents do
   end
 
   def turn(assigns), do: plain_turn(assigns)
+
+  defp tool_call_turn(assigns) do
+    ~H"""
+    <.tool_call
+      id={@id}
+      name={Message.text(@message)}
+      call_id={@message.tool_call_id}
+      agent_role={@message.agent_role}
+    />
+    """
+  end
+
+  defp tool_name?(text) do
+    case String.split(text, "\n", parts: 2) do
+      [first | _] -> first != "" and not String.contains?(String.trim(first), " ")
+      _ -> false
+    end
+  end
 
   defp tool_result_turn(assigns, text, failed?) do
     assigns = assigns |> assign(:text, text) |> assign(:failed, failed?)
@@ -432,6 +456,78 @@ defmodule CodeMySpecWeb.ChatComponents do
   end
 
   defp call_text(call), do: inspect(call)
+
+  @doc """
+  Fold a message list into the items a transcript renders.
+
+  A turn that calls five tools writes five messages, and five blocks in a column
+  is most of a phone screen spent on one turn. What the reader needs first is
+  that five calls happened; which five is the follow-up.
+
+  Only runs of two or more consecutive calls fold. Most calls are alone — 848 of
+  them against 20 runs on this project — so wrapping every call in a group of
+  one would make the common case worse to save the rare one.
+
+  Returns items carrying an `:id`, so the caller can stream them.
+  """
+  @spec group_turns([struct()], atom()) :: [map()]
+  def group_turns(messages, tool_role \\ :result) do
+    messages
+    |> Enum.chunk_by(&call?(&1, tool_role))
+    |> Enum.flat_map(fn
+      [_, _ | _] = run -> if call?(hd(run), tool_role), do: [group(run)], else: singles(run)
+      run -> singles(run)
+    end)
+  end
+
+  defp singles(messages), do: Enum.map(messages, &%{id: &1.id, messages: [&1]})
+  defp group(run), do: %{id: hd(run).id, messages: run}
+
+  # A call by this surface's reckoning, and by its own text — the same check the
+  # renderer makes, so a run never folds something that will not render as a call.
+  defp call?(%{role: :tool} = message, :call), do: tool_name?(Message.text(message))
+  defp call?(%{tool_calls: calls}, _tool_role) when is_list(calls) and calls != [], do: true
+  defp call?(_message, _tool_role), do: false
+
+  @doc "One item from `group_turns/2` — a lone turn, or a run folded into a group."
+  attr :id, :string, required: true
+  attr :item, :any, required: true
+  attr :own_role, :atom, default: :assistant
+  attr :tool_role, :atom, values: [:call, :result], default: :result
+
+  def turn_item(%{item: %{messages: [message]}} = assigns) do
+    assigns = assign(assigns, :message, message)
+
+    ~H"""
+    <.turn id={@id} message={@message} own_role={@own_role} tool_role={@tool_role} />
+    """
+  end
+
+  def turn_item(assigns) do
+    ~H"""
+    <details
+      id={@id}
+      data-test="tool-call-group"
+      data-count={length(@item.messages)}
+      class="rounded-box border border-base-300 bg-base-200/40 p-3"
+    >
+      <summary class="flex cursor-pointer items-center gap-2 text-sm">
+        <.icon name="hero-wrench-screwdriver" class="size-4 shrink-0 opacity-60" />
+        <span>used {length(@item.messages)} tools</span>
+      </summary>
+
+      <div class="mt-2 space-y-2">
+        <.turn
+          :for={message <- @item.messages}
+          id={"#{@id}-#{message.id}"}
+          message={message}
+          own_role={@own_role}
+          tool_role={@tool_role}
+        />
+      </div>
+    </details>
+    """
+  end
 
   # Right is whoever the reader is speaking as, which differs per surface.
   defp side(role, role), do: "chat-end"

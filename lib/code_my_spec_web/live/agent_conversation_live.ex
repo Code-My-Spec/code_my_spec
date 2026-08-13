@@ -57,7 +57,7 @@ defmodule CodeMySpecWeb.AgentConversationLive do
     |> assign(:page_title, "#{project.name} · Agent conversation")
     |> assign(:recording_gap, conversation != nil and messages_for(conversation) == [])
     |> assign(:questions, questions_for(conversation))
-    |> stream(:messages, messages_for(conversation), reset: true)
+    |> stream(:messages, items_for(conversation), reset: true)
   end
 
   # `active_project_id` is what `Conversations.get_agent_conversation/2` scopes
@@ -94,9 +94,16 @@ defmodule CodeMySpecWeb.AgentConversationLive do
   defp messages_for(nil), do: []
   defp messages_for(conversation), do: Conversations.list_messages(conversation)
 
+  # Items, not messages. A run of calls folds into one, and folding needs to see
+  # a message's neighbours — which a stream of messages cannot. Streaming the
+  # folded items instead keeps live append working: a call arriving on its own
+  # appears on its own, rather than retroactively joining the run above it.
+  defp items_for(conversation),
+    do: conversation |> messages_for() |> ChatComponents.group_turns(:call)
+
   @impl true
   def handle_info({:new_message, message}, socket) do
-    {:noreply, stream_insert(socket, :messages, message)}
+    {:noreply, stream_insert(socket, :messages, %{id: message.id, messages: [message]})}
   end
 
   def handle_info(_message, socket), do: {:noreply, socket}
@@ -152,10 +159,10 @@ defmodule CodeMySpecWeb.AgentConversationLive do
           </div>
 
           <div id="agent-turns" phx-update="stream" class="space-y-3">
-            <ChatComponents.turn
-              :for={{dom_id, message} <- @streams.messages}
+            <ChatComponents.turn_item
+              :for={{dom_id, item} <- @streams.messages}
               id={dom_id}
-              message={message}
+              item={item}
               tool_role={:call}
             />
           </div>

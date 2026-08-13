@@ -64,7 +64,10 @@ defmodule CodeMySpecSpex.Story984.Criterion2363Spex do
       end
 
       then_ "the successful one is not", context do
-        refute has_element?(context.view, "[data-test='tool-result'][data-failed='true'][data-tool-call-id='toolu_ok']"),
+        refute has_element?(
+                 context.view,
+                 "[data-test='tool-result'][data-failed='true'][data-tool-call-id='toolu_ok']"
+               ),
                "marking every result failed would be the same blindness in reverse"
 
         {:ok, context}

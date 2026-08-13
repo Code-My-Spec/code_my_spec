@@ -17,7 +17,6 @@ defmodule CodeMySpecSpex.Story984.Criterion2365Spex do
 
   use CodeMySpecSpex.Case
 
-  alias CodeMySpec.Conversations
   alias CodeMySpecSpex.Fixtures
 
   @endpoint CodeMySpecWeb.Endpoint
@@ -35,15 +34,8 @@ defmodule CodeMySpecSpex.Story984.Criterion2365Spex do
           Fixtures.model_response([Fixtures.tool_block("list_stories", %{"limit" => 5})])
         )
 
-        {:ok, conversation} =
-          Conversations.find_or_create_agent_conversation(
-            context.scope.active_account_id,
-            context.project.id,
-            "sprite"
-          )
-
-        {:ok, _} =
-          Conversations.add_tool_call(conversation, "call_0", "create_story", %{
+        :ok =
+          Fixtures.chat_tool_call(context.scope, "call_0", "create_story", %{
             "title" => "A story"
           })
 

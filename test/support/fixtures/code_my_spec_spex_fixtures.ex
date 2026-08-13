@@ -86,6 +86,7 @@ defmodule CodeMySpecSpex.Fixtures do
   alias CodeMySpec.Sessions.Session
   alias CodeMySpec.SetupFixtures.ErroringStep
   alias CodeMySpec.Stories.Story
+  alias CodeMySpec.Conversations
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.Users.User
   alias CodeMySpec.Workspaces.PreviewAddress
@@ -916,6 +917,44 @@ defmodule CodeMySpecSpex.Fixtures do
       )
 
     :ok
+  end
+
+  @doc """
+  Store a tool call the way the in-app chat does, rather than the way the
+  recorder does.
+
+  Two writers put a call in a conversation and disagree about its shape: the
+  recorder writes a `role: :tool` message whose text is the tool and its
+  arguments; the chat path writes an assistant message with a `tool_calls`
+  array. A spex about both has to produce both, and reaching the domain
+  directly from a spex crosses a boundary the analyzer forbids — so the bridge
+  does it.
+  """
+  @spec chat_tool_call(Scope.t(), String.t(), String.t(), map()) :: :ok
+  def chat_tool_call(%Scope{} = scope, call_id, name, arguments) do
+    {:ok, conversation} = spex_agent_conversation(scope)
+    {:ok, _} = Conversations.add_tool_call(conversation, call_id, name, arguments)
+    :ok
+  end
+
+  @doc """
+  Store a tool result the way the chat path does — `role: :tool`, the same role
+  the recorder uses for a *call*. That collision is what criterion 2374 is
+  about, so a spex has to be able to create it.
+  """
+  @spec chat_tool_result(Scope.t(), String.t(), String.t(), String.t()) :: :ok
+  def chat_tool_result(%Scope{} = scope, call_id, name, text) do
+    {:ok, conversation} = spex_agent_conversation(scope)
+    {:ok, _} = Conversations.add_tool_result(conversation, call_id, name, text)
+    :ok
+  end
+
+  defp spex_agent_conversation(%Scope{} = scope) do
+    Conversations.find_or_create_agent_conversation(
+      scope.active_account_id,
+      scope.active_project_id,
+      "sprite"
+    )
   end
 
   @doc """
