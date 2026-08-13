@@ -76,7 +76,7 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
     env = environment(root, args)
 
     case Enum.member?(args, "--check") do
-      true -> check(env)
+      true -> check(env, root)
       false -> onboard(env, root, dest, args)
     end
   end
@@ -122,11 +122,27 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   # `undefined_column` from inside a `given_`, a submodule losing writes in
   # silence, `0/0 satisfied` meaning three different things. An agent that can ask
   # a working copy whether it is onboarded never has to infer it from the wreckage.
-  defp check(env) do
-    %{
-      onboarded: Environments.file_exists?(env, @settings_file),
-      remedy: "mix cms.harness.onboard"
-    }
+  #
+  # It prints as well as returns, and the print is not decoration. The first
+  # version only returned, which is what the spex assert — correctly, since a
+  # structured return is what makes this callable. But a mix task's return value
+  # goes to whoever called it, and at a terminal that is nobody: `--check` gave
+  # identical empty output for opposite states, which is worse than unhelpful. QA
+  # caught it where the spex structurally could not (d053bac5), and it was this
+  # story's own defect wearing the costume of its own fix.
+  defp check(env, root) do
+    onboarded = Environments.file_exists?(env, @settings_file)
+    announce_check(onboarded, root)
+
+    %{onboarded: onboarded, remedy: "mix cms.harness.onboard"}
+  end
+
+  defp announce_check(true, root) do
+    Mix.shell().info("onboarded: #{root}")
+  end
+
+  defp announce_check(false, root) do
+    Mix.shell().info("not onboarded: #{root}\nrun: mix cms.harness.onboard")
   end
 
   defp onboard(env, root, dest, args) do
@@ -171,7 +187,10 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   # That is this story's own anti-pattern arriving from inside: a missing thing
   # reported as something else. Now the copy is onboarded, the hooks are reported
   # as skipped, and the reason is on screen.
-  defp install_hooks(%{type: :local}, root, dest, id, args) do
+  defp install_hooks(%{type: :memory}, _root, _dest, _id, _args),
+    do: {:skipped, "no directory to install into"}
+
+  defp install_hooks(_env, root, dest, id, args) do
     with {:ok, relay} <- check_relay(),
          :ok <- copy_plugin(root, dest),
          {:ok, count} <- address_hooks(dest, id, relay),
@@ -184,14 +203,6 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
         {:skipped, message}
     end
   end
-
-  # Hooks are a directory Claude Code is started against, so they only mean
-  # anything for an environment backed by a real one. Against any other, this
-  # skips rather than writing a plugin tree nobody can point at — and skipping is
-  # also what keeps a spec off the 10-second relay probe, which blocks on stdin
-  # and times out in full every time.
-  defp install_hooks(_env, _root, _dest, _id, _args),
-    do: {:skipped, "hooks are only installed for a working copy on disk"}
 
   # Named, never run. Onboarding does not create, migrate or drop a database, and
   # the rule is not stylistic: the version of this that did shelled out to `mix`
@@ -208,7 +219,20 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
     partition = Onboarding.partition_name(root)
     databases = Onboarding.databases(partition)
 
-    Mix.shell().info("\nDatabases this working copy needs (create and migrate them yourself):")
+    # Everything the report knows, the terminal says. The report is the callable
+    # answer and the print is the readable one, and they carry the same facts —
+    # anything present in one and absent from the other is the `--check` defect
+    # waiting to happen again.
+    Mix.shell().info("""
+
+    onboarded: #{root}
+      harness id: #{id}
+      partition:  #{partition}
+      submodules: #{if git, do: "recursing", else: "not configured"}
+      hooks:      #{describe_hooks(hooks)}
+    """)
+
+    Mix.shell().info("Databases this working copy needs (create and migrate them yourself):")
 
     Enum.each(databases, fn database ->
       Mix.shell().info("  #{database.name}\n    #{database.create}\n    #{database.migrate}")
@@ -222,6 +246,13 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
       hooks: hooks,
       issued_ddl: false
     }
+  end
+
+  defp describe_hooks({:ok, count}), do: "addressed (#{count})"
+  defp describe_hooks({:skipped, reason}), do: "skipped — #{first_line(reason)}"
+
+  defp first_line(text) do
+    text |> String.split("\n", parts: 2) |> hd() |> String.trim()
   end
 
   @relay "cms-mcp-relay"
