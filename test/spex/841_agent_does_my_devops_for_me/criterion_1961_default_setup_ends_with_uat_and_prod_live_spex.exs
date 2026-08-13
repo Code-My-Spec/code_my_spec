@@ -90,21 +90,53 @@ defmodule CodeMySpecSpex.Story841.Criterion1961Spex do
       when_ "the agent runs setup and then asks what exists", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        report =
+        # Twice, with the borrowed grants refreshed in between.
+        #
+        # The whole sequence takes about fourteen minutes — two container
+        # builds and two deploys — and Resend issues a token good for about
+        # fifteen. The spex's copy cannot renew itself (see
+        # `refresh_provider_grants/1`), so a single pass lost Resend partway
+        # and halted with `:reauthorize_required` at email, leaving the seven
+        # steps behind it with nothing behind them and no error against any.
+        #
+        # A second run is not a workaround: `RunDevopsSetup` resumes from where
+        # it stopped, which is criterion 7963's subject and exactly what a
+        # person does after a run is interrupted. Recording it in two segments
+        # also keeps each cassette inside the token's life, which is how the
+        # long recordings in this epic were split before.
+        first =
+          with_full_cassette @cassette <> "_first" do
+            {:reply, run, _frame} =
+              RunDevopsSetup.execute(%{project_id: to_string(context.project.id)}, frame)
+
+            response_text(run)
+          end
+
+        refresh_provider_grants(context.scope)
+
+        {run, report} =
           with_full_cassette @cassette do
-            {:reply, _run, _frame} =
+            {:reply, run, _frame} =
               RunDevopsSetup.execute(%{project_id: to_string(context.project.id)}, frame)
 
             {:reply, status, _frame} = DevopsStatus.execute(%{}, frame)
-            response_text(status)
+            {first <> "\n\nthen, resumed: " <> response_text(run), response_text(status)}
           end
 
-        {:ok, Map.put(context, :report, report)}
+        # The run's own answer, kept rather than discarded. `RunDevopsSetup`
+        # distinguishes complete from *paused* — a run waiting on a person,
+        # which reports the instructions it is waiting on — and from halted at
+        # a named step. Throwing that away left the status report as the only
+        # evidence, and a paused run looks identical there to a finished one
+        # that failed: a tail of steps with nothing behind them and no error
+        # against any of them.
+        {:ok, context |> Map.put(:report, report) |> Map.put(:run, run)}
       end
 
       then_ "setup reports complete", context do
         assert context.report =~ "Setup is complete",
-               "expected the default plan to finish, got: #{context.report}"
+               "expected the default plan to finish.\n\nThe run said: #{context.run}\n\n" <>
+                 "The status says: #{context.report}"
 
         {:ok, context}
       end
