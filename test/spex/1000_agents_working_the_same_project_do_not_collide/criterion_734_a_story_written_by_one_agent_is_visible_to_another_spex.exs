@@ -91,23 +91,31 @@ defmodule CodeMySpecSpex.Story1000.Criterion734Spex do
         first_view = story_requirements(context.first_agent)
         second_view = story_requirements(context.second_agent)
 
-        # Anchor: the graph answered about story work at all, so the equality
-        # below is comparing something rather than two empty strings.
-        assert first_view =~ "story" or first_view =~ "Story",
+        # Anchor: the graph answered about this story at all, so the comparison
+        # below is comparing something rather than two empty lists.
+        assert "component_linked" in first_view,
                "the graph returned no story-scoped work for the agent that authored one: " <>
-                 first_view
+                 inspect(first_view)
 
         assert first_view == second_view,
                "the graph offered different authored work to two agents on one project. " <>
                  "Neither has any files here, so the only thing that could differ is the " <>
                  "authored work — which belongs to the project, not the working copy.\n\n" <>
-                 "wrote it:  #{first_view}\n\nthe other: #{second_view}"
+                 "wrote it:  #{inspect(first_view)}\n\nthe other: #{inspect(second_view)}"
 
         {:ok, context}
       end
     end
   end
 
+  # The requirement names, sorted — not the rendered page.
+  #
+  # Comparing the rendered text asserted the *order* the two views happened to
+  # render in as well as their content, and those two agents' graphs are
+  # computed independently. Under the full suite they came back with the same
+  # six requirements in different orders and the criterion read as a partitioned
+  # backlog, which is the one thing it is meant to detect. Ordering is a
+  # rendering decision; "the same authored work" is a claim about the set.
   defp story_requirements(scope) do
     alias CodeMySpec.McpServers.Requirements.Tools.ListRequirements
 
@@ -116,6 +124,9 @@ defmodule CodeMySpecSpex.Story1000.Criterion734Spex do
         assigns: %{current_scope: scope}
       })
 
-    response_text(response)
+    ~r/\*\*(\w+)\*\*/
+    |> Regex.scan(response_text(response))
+    |> Enum.map(fn [_, name] -> name end)
+    |> Enum.sort()
   end
 end
