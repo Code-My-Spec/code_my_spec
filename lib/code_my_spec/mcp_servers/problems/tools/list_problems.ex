@@ -1,0 +1,125 @@
+defmodule CodeMySpec.McpServers.Problems.Tools.ListProblems do
+  @moduledoc """
+  The findings behind the alert, for the agent that wants them.
+
+  `Hooks.AnalysisAlert` puts a count and an age on every tool call and stops
+  there — a finding list on every call is noise the model learns to skip, which
+  costs the signal a second time and more permanently than never sending it. So
+  the alert pushes the fact and this pulls the detail, and the split only works
+  because asking is one tool call.
+
+  ## Paginated, and not optionally
+
+  This working copy holds over 400 credo findings. An unpaginated list would
+  overflow the tool-response window for the same reason the alert is counts-only
+  — and a tool that dies on a large project is one nobody can rely on when a
+  project gets large, which is exactly when they need it.
+
+  Defaults to the first page and to `error` severity, because the common case is
+  "what is blocking me" rather than "everything anyone has ever noticed".
+
+  Scoped to the working copy, like everything else keyed on the harness: these
+  are the findings from *this* checkout's analyzers, not the project's.
+  """
+
+  use Anubis.Server.Component, type: :tool
+
+  alias Anubis.Server.Response
+  alias CodeMySpec.McpServers.Validators
+  alias CodeMySpec.Problems
+
+  @default_per_page 25
+  @max_per_page 100
+
+  schema do
+    field :source, :string,
+      doc: "Filter to one analyzer — `compiler`, `credo`, `exunit`, `spex`, `spec_validation` or `qa_validation`."
+
+    field :severity, :string,
+      doc: "Filter by severity — `error`, `warning` or `info`. Omit for all."
+
+    field :page, :integer, doc: "1-based page number. Default: 1."
+
+    field :per_page, :integer,
+      doc: "Findings per page. Default: #{@default_per_page}, max #{@max_per_page}."
+  end
+
+  @impl true
+  def execute(params, frame) do
+    case Validators.validate_local_scope(frame, params) do
+      {:ok, scope} ->
+        opts = [
+          page: page(params),
+          per_page: per_page(params),
+          filter: Map.get(params, :source) || :all
+        ]
+
+        %{problems: problems, total_count: total, page: page, total_pages: pages} =
+          Problems.list_problems_paginated(scope, opts)
+
+        {:reply, ok(render(problems, total, page, pages, params)), frame}
+
+      {:error, reason} ->
+        {:reply, error(reason), frame}
+    end
+  end
+
+  defp page(params), do: max(Map.get(params, :page) || 1, 1)
+
+  defp per_page(params) do
+    (Map.get(params, :per_page) || @default_per_page)
+    |> max(1)
+    |> min(@max_per_page)
+  end
+
+  defp render([], total, _page, _pages, _params) when total == 0,
+    do: "No problems recorded for this working copy."
+
+  defp render(problems, total, page, pages, params) do
+    header =
+      "# Problems (#{length(problems)} of #{total}) — page #{page}/#{max(pages, 1)}" <>
+        severity_note(params)
+
+    body = Enum.map_join(problems, "\n", &line/1)
+
+    # Says how to get the rest rather than leaving the reader to guess the
+    # parameter — a truncated list that does not say it is truncated reads as a
+    # complete one, which is the failure this whole story is about.
+    footer =
+      if page < pages,
+        do: "\n\nPage #{page + 1} of #{pages}: call again with `page: #{page + 1}`.",
+        else: ""
+
+    header <> "\n\n" <> body <> footer
+  end
+
+  defp severity_note(params) do
+    case Map.get(params, :severity) do
+      nil -> ""
+      severity -> " · severity: #{severity}"
+    end
+  end
+
+  defp line(problem) do
+    location =
+      case problem.line do
+        nil -> problem.file_path
+        line -> "#{problem.file_path}:#{line}"
+      end
+
+    "- [#{problem.source}] #{location} — #{first_line(problem.message)}"
+  end
+
+  # One line per finding. A credo message runs to a paragraph and 25 of those is
+  # the window this tool exists to stay inside.
+  defp first_line(message) do
+    message
+    |> to_string()
+    |> String.split("\n", parts: 2)
+    |> hd()
+    |> String.slice(0, 160)
+  end
+
+  defp ok(text), do: Response.tool() |> Response.text(text)
+  defp error(reason), do: Response.tool() |> Response.error(inspect(reason))
+end
