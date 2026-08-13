@@ -746,6 +746,32 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
 
   defp problems(%{role: nil, raw_role: raw}), do: ["unknown role: #{inspect(raw)}"]
   defp problems(%{mtime: nil, path: path}), do: ["unparseable mtime on #{path}"]
+
+  # Parseable is not the same as storable, and the gap between them killed the
+  # channel rather than answering.
+  #
+  # `2026-08-12T00:00:00Z` is a perfectly good DateTime and passed every check
+  # here, then failed four frames later in `Files.upsert_files/2` against a
+  # `:utc_datetime_usec` column — as an ArgumentError from `Ecto.Type.check_usec!`
+  # inside the channel process. So the harness saw a dropped connection, not a
+  # rejected manifest: it would reconnect, re-send the same manifest, and die
+  # again, with nothing on its side naming the cause. A reconnect loop that
+  # reads as a network problem.
+  #
+  # Refused rather than truncated on the way in. A harness sending a timestamp
+  # this server cannot store should be told so — silently adjusting it would
+  # make `Files.stale_paths/2` compare a value the working copy never reported.
+  # Whether a real filesystem reports whole seconds was never established;
+  # `File.stat` granularity varies, and a container bind mount is exactly where
+  # it would differ.
+  defp problems(%{mtime: %DateTime{microsecond: {_value, precision}}, path: path})
+       when precision != 6 do
+    [
+      "mtime on #{path} has #{precision}-digit sub-second precision; " <>
+        "microsecond precision (6 digits, e.g. 2026-08-12T00:00:00.000000Z) is required"
+    ]
+  end
+
   defp problems(_entry), do: []
 
   # Keys are mapped one at a time and roles are matched against the schema's
