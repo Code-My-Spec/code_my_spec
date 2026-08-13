@@ -497,6 +497,19 @@ defmodule CodeMySpec.Provisioning.Cloudflare do
         |> Req.request()
         |> handle_response()
 
+      # Passed through, not crashed. `access_token/1` returns this deliberately
+      # — a connected-but-unusable grant must not fall back to the environment
+      # and quietly use another account's credential — and this had no clause
+      # for it, so a token needing reauthorization arrived as
+      #
+      #   (CaseClauseError) no case clause matching:
+      #     {:error, {:cloudflare_token_unusable, :reauthorize_required}}
+      #
+      # raised from inside `devops_status`, naming the case statement rather
+      # than the credential. Every caller here already handles `{:error, _}`.
+      {:error, reason} ->
+        {:error, reason}
+
       :error ->
         {:error, :cloudflare_not_connected}
     end
