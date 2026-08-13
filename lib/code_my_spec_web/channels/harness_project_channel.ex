@@ -39,6 +39,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
 
   alias CodeMySpec.Accounts
   alias CodeMySpec.AgentHarness.ConversationRecorder
+  alias CodeMySpec.Sessions
   alias CodeMySpec.Analysis
   alias CodeMySpec.Files
   alias CodeMySpec.Files.File, as: FileRecord
@@ -245,7 +246,7 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
       ConversationRecorder.record_turn(
         scope.active_account_id,
         scope.active_project_id,
-        payload["session_id"] || "sprite",
+        session_external_id(scope, payload),
         payload["request"] || %{},
         payload["response"] || %{},
         payload["agent_role"] || "main"
@@ -383,7 +384,11 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
 
     Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
       result = CodeMySpec.Analysis.await_all(scope, timeout: :timer.minutes(20))
-      Phoenix.Channel.reply(ref, {:ok, %{"state" => to_string(result), "summary" => wait_summary(scope)}})
+
+      Phoenix.Channel.reply(
+        ref,
+        {:ok, %{"state" => to_string(result), "summary" => wait_summary(scope)}}
+      )
     end)
 
     {:noreply, socket}
@@ -980,4 +985,22 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   # Linked, deliberately. This process dying is what releases the lock, so the
   # holder must not outlive the channel — and a holder that cannot start must
   # fail the join rather than silently leave the project unguarded.
+
+  # Which conversation a recorded turn belongs to.
+  #
+  # The harness says so when it can — a sprite sets `x-cms-session-id` and means
+  # it. Claude Code sends nothing on `/v1/messages`, because the Anthropic API
+  # has no session and nothing sits between the two to add one, so the turn
+  # arrives knowing only its working copy. The session running in that copy is
+  # the answer, and `session_start` recorded it there.
+  #
+  # "sprite" stays as the last resort rather than the default it used to be.
+  # Reached now only when a harness names no working copy and sends no id, it is
+  # a real fallback instead of the label every Claude Code session got.
+  defp session_external_id(scope, payload) do
+    case payload["session_id"] do
+      id when is_binary(id) and id != "" -> id
+      _ -> Sessions.external_id_for_harness(scope.active_harness_id) || "sprite"
+    end
+  end
 end

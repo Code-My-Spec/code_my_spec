@@ -103,7 +103,8 @@ defmodule CodeMySpec.Sessions do
   @doc "Find an active session by external conversation ID (Claude session ID)."
   def get_by_external_id(%Scope{} = scope, external_id) when is_binary(external_id) do
     Session
-    |> where([s],
+    |> where(
+      [s],
       s.external_conversation_id == ^external_id and
         s.project_id == ^scope.active_project_id and
         s.status == :active
@@ -395,8 +396,42 @@ defmodule CodeMySpec.Sessions do
 
       nil ->
         warn_on_concurrent_agent(scope, external_id)
-        create_session(scope, Map.put(attrs, :external_conversation_id, external_id))
+
+        # The working copy comes off the scope, which the harness's own
+        # `X-Harness-Id` put there. A recorded model turn arrives knowing only
+        # its harness, so without this there is no way back to the session and
+        # every agent on the machine lands in one conversation.
+        attrs =
+          attrs
+          |> Map.put(:external_conversation_id, external_id)
+          |> Map.put(:harness_id, scope.active_harness_id)
+
+        create_session(scope, attrs)
     end
+  end
+
+  @doc """
+  Claude's own session id for the session running in a working copy, or nil.
+
+  What a recorded model turn needs. The turn arrives addressed to a harness —
+  that is all `/v1/messages` can carry, since nothing sits between Claude Code
+  and the proxy to add more — and a conversation is keyed on Claude's session
+  id. This is the join between the two.
+
+  Newest wins. A working copy can have had several sessions over its life and
+  only the current one is taking turns; ordering by insertion is what makes
+  "the session in this checkout" mean the one running now.
+  """
+  @spec external_id_for_harness(Ecto.UUID.t() | nil) :: String.t() | nil
+  def external_id_for_harness(nil), do: nil
+
+  def external_id_for_harness(harness_id) when is_binary(harness_id) do
+    Session
+    |> where([s], s.harness_id == ^harness_id and not is_nil(s.external_conversation_id))
+    |> order_by([s], desc: s.inserted_at)
+    |> limit(1)
+    |> select([s], s.external_conversation_id)
+    |> Repo.one()
   end
 
   @doc """
