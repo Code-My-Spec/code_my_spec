@@ -76,20 +76,34 @@ defmodule CodeMySpec.Provisioning.Builder.Remote do
     end
   end
 
-  # Reachability, not readiness of anything in particular: if `true` runs, the
-  # box is up and the key works, which is the whole precondition.
-  #
-  # The give-up carries how long it waited and what SSH last said. A bare
-  # `:builder_unreachable` describes a broken box equally well as a caller who
-  # did not wait long enough, and those want opposite responses — the first
-  # needs looking at, the second needs patience.
-  defp await_ssh(run, attempts, opts, waited \\ 0, last \\ "")
+  @doc """
+  Block until the box answers SSH, or give up saying how long it waited.
 
-  defp await_ssh(_run, 0, _opts, waited, last) do
+  Reachability, not readiness of anything in particular: if `true` runs, the
+  box is up and the key works, which is the whole precondition.
+
+  The give-up carries how long it waited and what SSH last said. A bare
+  `:builder_unreachable` describes a broken box equally well as a caller who
+  did not wait long enough, and those want opposite responses — the first
+  needs looking at, the second needs patience.
+
+  Public because the builder is not the only caller that needs it. A server
+  Hetzner has just created answers `status: initializing` for a minute or so,
+  and the registry step went straight from `POST /v1/servers` to running docker
+  over SSH on the box — reaching it about thirty seconds in, timing out, and
+  halting the whole run at `server` with every step behind it reporting
+  nothing. That read as an address that had stopped being ours; it was our own
+  box, still booting.
+  """
+  @spec await_ssh((list() -> {String.t(), non_neg_integer()}), non_neg_integer(), keyword()) ::
+          :ok | {:error, {:builder_unreachable, non_neg_integer(), String.t()}}
+  def await_ssh(run, attempts, opts, waited \\ 0, last \\ "")
+
+  def await_ssh(_run, 0, _opts, waited, last) do
     {:error, {:builder_unreachable, div(waited, 1000), last}}
   end
 
-  defp await_ssh(run, attempts, opts, waited, _last) do
+  def await_ssh(run, attempts, opts, waited, _last) do
     case run.(["true"]) do
       {_, 0} ->
         :ok

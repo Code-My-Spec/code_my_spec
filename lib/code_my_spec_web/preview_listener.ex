@@ -63,11 +63,40 @@ defmodule CodeMySpecWeb.PreviewListener do
   """
   @spec child_spec_for_config() :: [Supervisor.child_spec()]
   def child_spec_for_config do
+    listener(port())
+  end
+
+  # `CMS_PREVIEW_PORT` wins over config, because config is per-checkout and the
+  # collision is per-machine: every worktree reads the same `config/dev.exs` and
+  # so picks the same port, which means a second dev server cannot boot beside
+  # :4000 at all — it dies on :eaddrinuse before serving anything. That blocked
+  # an agent from testing a live path in a browser, which is not a cost this
+  # listener should be imposing on anyone. `0` asks the OS for a free port.
+  #
+  # Read from the process environment rather than `envs/.env`: Dotenvy loads
+  # that file into config, never into `System.get_env`, so it has to be exported
+  # on the command line — `CMS_PREVIEW_PORT=4011 mix phx.server`.
+  defp port do
+    case System.get_env("CMS_PREVIEW_PORT") do
+      nil -> configured_port()
+      "" -> configured_port()
+      value -> parsed_port(Integer.parse(value), value)
+    end
+  end
+
+  defp configured_port do
     :code_my_spec
     |> Application.get_env(__MODULE__, [])
     |> Keyword.get(:port)
-    |> listener()
   end
+
+  defp parsed_port({port, ""}, _value), do: port
+
+  # Loudly, rather than silently falling back to the port it collides with —
+  # a typo'd override that quietly serves on 4010 is the failure this exists to
+  # prevent, wearing a different hat.
+  defp parsed_port(_, value),
+    do: raise(ArgumentError, "CMS_PREVIEW_PORT must be a port number, got: #{inspect(value)}")
 
   defp listener(nil), do: []
 

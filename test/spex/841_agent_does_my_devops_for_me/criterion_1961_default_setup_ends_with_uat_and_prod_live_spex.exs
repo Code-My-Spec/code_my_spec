@@ -34,12 +34,21 @@ defmodule CodeMySpecSpex.Story841.Criterion1961Spex do
   # `mix.exs` — it refused with "not deploy-ready: missing Dockerfile, missing
   # CI build workflow", and the ten steps behind it reported nothing.
   setup :drill_working_directory
-  # The registry and database steps run for real against the fleet's app
-  # box. Without this they SSH to the server address in the cassette, which
-  # was released weeks ago — and `serve_registries/5` halts on that, so
-  # nothing downstream records a resource and setup reports every step from
-  # `server` onward as having nothing behind it.
-  setup :fleet_box
+
+  # No `fleet_box`. It existed because the registry and database steps SSH to
+  # the server address in the cassette, which was released weeks ago — but that
+  # is a problem only while the shell half of this criterion goes unrecorded.
+  # `with_full_cassette` records it, so replay reaches no box at all and
+  # recording reaches the box it just made.
+  #
+  # Keeping it actively broke the build. `fleet_box` sets
+  # `provisioning_step_opts[:run]` and nothing else, and `Remote.build/4` reads
+  # both `:run` and `:deliver` — so `git archive | ssh` went to the real
+  # builder while `cd /build` ran on the fleet's *app* container. The tree
+  # landed on one machine and the build ran on another, which arrived as
+  # `sh: cd: can't cd to /build: No such file or directory` after a delivery
+  # that reported success. The fleet has a builder box of its own on :2222;
+  # one `:run` key cannot name two different machines.
 
   spex "Default setup ends with UAT and prod live" do
     scenario "the default plan leaves both environments serving" do
