@@ -940,7 +940,10 @@ defmodule CodeMySpec.Provisioning.Steps do
     end
   end
 
-  @proxy_log_command "docker logs --tail 80 kamal-proxy 2>&1 | tail -n 25"
+  # No `tail` here. The shell was discarding lines before `tidy_log/1` could
+  # pick between them, so the selection below only ever saw the last 25 — and
+  # a certificate line older than that was gone before anything looked.
+  @proxy_log_command "docker logs --tail 200 kamal-proxy 2>&1"
 
   defp read_proxy_log(scope, ip, opts) do
     case with_builder_ssh(scope, opts) do
@@ -958,15 +961,34 @@ defmodule CodeMySpec.Provisioning.Steps do
     end
   end
 
-  # One line, because this lands in a sentence on a setup page. The tail is
-  # what matters — a proxy that failed issuance says so last.
+  # Certificate lines first, then the tail.
+  #
+  # Drill 46 captured the log and cut the one line that mattered. Eight lines
+  # ending at 1200 characters spent its whole budget on the deploy — server
+  # started, target healthy, deployed — and truncated mid-timestamp on the
+  # single entry written in the six minutes afterwards, which is the only
+  # window issuance could have happened in. A tail is the wrong selection when
+  # what you are looking for is rare and last.
+  @log_keywords ~w(cert acme tls challenge rate limit error unable failed)
+
   defp tidy_log(output) do
-    output
-    |> to_string()
-    |> String.split("\n", trim: true)
-    |> Enum.take(-8)
+    lines = output |> to_string() |> String.split("\n", trim: true)
+
+    lines
+    |> Enum.filter(&interesting_log_line?/1)
+    |> log_selection(lines)
     |> Enum.join(" | ")
-    |> String.slice(0, 1200)
+    |> String.slice(0, 4000)
+  end
+
+  # Nothing matched, so the tail is all there is to say — and a proxy that
+  # never mentioned a certificate is itself the finding.
+  defp log_selection([], lines), do: Enum.take(lines, -12)
+  defp log_selection(matched, _lines), do: Enum.take(matched, -16)
+
+  defp interesting_log_line?(line) do
+    downcased = String.downcase(line)
+    Enum.any?(@log_keywords, &String.contains?(downcased, &1))
   end
 
   # Whether HTTP-01 can even complete, asked of the one path it uses.
