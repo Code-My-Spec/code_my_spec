@@ -97,7 +97,40 @@ defmodule CodeMySpecWeb.ChatComponents do
     """
   end
 
-  def turn(assigns) do
+  # The recorder writes a tool result as the *request* half of the next turn,
+  # because that is where the model put it — an Anthropic turn carries results
+  # as user-role content blocks. So `role: :user` means "what the model was
+  # sent", which is a person's typing sometimes and a tool's output the rest of
+  # the time, and the prefix is the only thing that says which.
+  #
+  # Taking the role at face value attributed 604 tool results to the operator
+  # in this project alone: the largest category in the transcript, every one
+  # shown as something a person typed.
+  def turn(%{message: %{role: :user}} = assigns) do
+    case Message.text(assigns.message) do
+      "← failed: " <> rest -> tool_result_turn(assigns, rest, true)
+      "← result: " <> rest -> tool_result_turn(assigns, rest, false)
+      _ -> plain_turn(assigns)
+    end
+  end
+
+  def turn(assigns), do: plain_turn(assigns)
+
+  defp tool_result_turn(assigns, text, failed?) do
+    assigns = assigns |> assign(:text, text) |> assign(:failed, failed?)
+
+    ~H"""
+    <.tool_result
+      id={@id}
+      call_id={@message.tool_call_id}
+      agent_role={@message.agent_role}
+      failed={@failed}
+      text={@text}
+    />
+    """
+  end
+
+  defp plain_turn(assigns) do
     ~H"""
     <.chat_message
       id={@id}
@@ -143,33 +176,81 @@ defmodule CodeMySpecWeb.ChatComponents do
     """
   end
 
-  @doc "A call the agent made. The name is the point; arguments are not shown yet."
+  @doc """
+  A call the agent made: which tool, and what it was given.
+
+  The recorder stores these as `"<tool>\\n<json arguments>"` in one text field,
+  and rendering that whole is how a `Write` of a source file became several
+  thousand characters of escaped JSON with the turns either side pushed off the
+  screen.
+
+  The name is read every time and the arguments occasionally, so the name is
+  always on screen and the arguments sit behind a disclosure. A payload past
+  the limit is cut — and says it was cut, because a transcript that looks
+  complete and is not is a record you cannot trust.
+  """
   attr :id, :string, default: nil
   attr :name, :string, required: true
   attr :call_id, :string, default: nil
   attr :agent_role, :string, default: nil
 
+  @args_limit 600
+
   def tool_call(assigns) do
+    {tool, args} =
+      case String.split(assigns.name, "\n", parts: 2) do
+        [tool, args] -> {tool, String.trim(args)}
+        [tool] -> {String.trim(tool), ""}
+      end
+
+    cut? = byte_size(args) > @args_limit
+
+    assigns =
+      assigns
+      |> assign(:tool, tool)
+      |> assign(:args, if(cut?, do: binary_part(args, 0, @args_limit) <> "…", else: args))
+      |> assign(:cut, cut?)
+
     ~H"""
     <div
       id={@id}
       data-test="tool-call"
-      data-tool={@name}
+      data-tool={@tool}
       data-tool-call-id={@call_id}
       data-agent-role={@agent_role}
+      data-truncated={to_string(@cut)}
       data-state="done"
-      class="rounded-box bg-base-200 p-3 font-mono text-xs"
+      class="rounded-box border border-base-300 bg-base-200/60 p-3"
     >
-      <div :if={@agent_role} class="mb-1 uppercase opacity-60">{@agent_role}</div>
-      {@name}
+      <div class="flex items-center gap-2">
+        <.icon name="hero-wrench-screwdriver" class="size-4 shrink-0 opacity-60" />
+        <span class="font-mono text-sm font-medium">{@tool}</span>
+        <span :if={@agent_role} class="text-xs uppercase opacity-60">{@agent_role}</span>
+      </div>
+
+      <details :if={@args != ""} class="mt-2">
+        <summary class="cursor-pointer text-xs opacity-60">arguments</summary>
+        <pre class="mt-1 overflow-x-auto whitespace-pre-wrap break-all font-mono text-xs opacity-80">{@args}</pre>
+        <p :if={@cut} class="mt-1 text-xs italic opacity-50">
+          truncated — the transcript shows what was called, not the whole payload
+        </p>
+      </details>
     </div>
     """
   end
 
-  @doc "What a call came back with."
+  @doc """
+  What a call came back with.
+
+  A failure is marked rather than left to the text. It is where a run starts
+  going wrong, usually several turns before the agent says anything about it,
+  and an operator scanning for that moment should not have to read every result
+  to find the one that matters.
+  """
   attr :id, :string, default: nil
   attr :call_id, :string, default: nil
   attr :agent_role, :string, default: nil
+  attr :failed, :boolean, default: false
   attr :text, :string, required: true
 
   def tool_result(assigns) do
@@ -179,10 +260,22 @@ defmodule CodeMySpecWeb.ChatComponents do
       data-test="tool-result"
       data-tool-call-id={@call_id}
       data-agent-role={@agent_role}
-      class="rounded-box bg-base-200 p-3"
+      data-failed={to_string(@failed)}
+      class={[
+        "rounded-box border p-3",
+        @failed && "border-error/40 bg-error/10",
+        !@failed && "border-base-300 bg-base-200/60"
+      ]}
     >
-      <div :if={@agent_role} class="mb-1 text-xs uppercase opacity-60">{@agent_role}</div>
-      <pre class="whitespace-pre-wrap break-words font-mono text-xs">{@text}</pre>
+      <div class="mb-1 flex items-center gap-2 text-xs opacity-60">
+        <.icon
+          name={if @failed, do: "hero-x-circle", else: "hero-arrow-uturn-left"}
+          class="size-4 shrink-0"
+        />
+        <span>{if @failed, do: "failed", else: "result"}</span>
+        <span :if={@agent_role} class="uppercase">{@agent_role}</span>
+      </div>
+      <pre class="overflow-x-auto whitespace-pre-wrap break-words font-mono text-xs">{@text}</pre>
     </div>
     """
   end
