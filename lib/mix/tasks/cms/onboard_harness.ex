@@ -41,16 +41,20 @@ defmodule Mix.Tasks.Cms.OnboardHarness do
   use Mix.Task
   use Boundary, classify_to: CodeMySpec
 
+  alias ClientUtils.Harness.Onboarding
   alias CodeMySpec.Environments
 
   @impl Mix.Task
   def run(args) do
     {opts, _rest, _invalid} =
-      OptionParser.parse(args, strict: [root: :string, project: :string])
+      OptionParser.parse(args, strict: [root: :string, project: :string, check: :boolean])
 
-    opts
-    |> environment()
-    |> onboard()
+    environment = environment(opts)
+
+    case Keyword.get(opts, :check, false) do
+      true -> check(environment)
+      false -> onboard(environment)
+    end
   end
 
   # `--project` names an already-registered environment and wins over `--root`.
@@ -92,14 +96,72 @@ defmodule Mix.Tasks.Cms.OnboardHarness do
   Takes the environment so this is drivable against the in-memory one. Writes
   nothing outside it, and issues no DDL.
   """
-  @spec onboard(CodeMySpec.Environments.Environment.t()) :: :ok
-  def onboard(_environment) do
-    Mix.raise("""
-    cms.onboard_harness is not implemented yet.
+  @spec onboard(CodeMySpec.Environments.Environment.t()) :: map()
+  def onboard(environment) do
+    partition = Onboarding.partition_name(environment.cwd || ".")
+    harness_id = existing_harness_id(environment) || generate_harness_id()
 
-    Story 1013 ("A working copy comes onto the harness fully configured") holds
-    the contract, in test/spex/1013_*/. Those spex are red by design and are what
-    this task gets built to satisfy.
-    """)
+    write_settings(environment, harness_id, partition)
+
+    %{
+      harness_id: harness_id,
+      partition: partition,
+      databases: Onboarding.databases(partition),
+      git: %{submodule_recurse: apply_git_config(environment)},
+      issued_ddl: false
+    }
+  end
+
+  @doc """
+  Whether this working copy has been onboarded, and what to run if not.
+
+  Exists because absence has to report itself. Every incident behind story 1013
+  was a missing thing that produced no error where it was missing and surfaced far
+  away wearing another failure's costume.
+  """
+  @spec check(CodeMySpec.Environments.Environment.t()) :: map()
+  def check(environment) do
+    %{
+      onboarded: existing_harness_id(environment) != nil,
+      remedy: "mix cms.onboard_harness"
+    }
+  end
+
+  # Reuse before generate, which is what makes a second run a no-op. A fresh id
+  # would orphan everything recorded under the first — problems, files and the
+  # lease are all keyed on it — while the working copy carried on as though
+  # nothing had happened.
+  defp existing_harness_id(environment) do
+    with {:ok, contents} <- Environments.read_file(environment, Onboarding.settings_path()),
+         {:ok, %{"env" => %{"CMS_HARNESS_ID" => id}}} <- Jason.decode(contents) do
+      id
+    else
+      _ -> nil
+    end
+  end
+
+  defp generate_harness_id do
+    16 |> :crypto.strong_rand_bytes() |> Base.encode16(case: :lower)
+  end
+
+  # Written once. A second run leaves the file exactly as it found it, including
+  # any hand edits — an onboarding that stamps its template over local changes
+  # cannot safely be re-run, which means an agent unsure whether a copy is
+  # onboarded has to reason about it instead of just asking.
+  defp write_settings(environment, harness_id, partition) do
+    case Environments.file_exists?(environment, Onboarding.settings_path()) do
+      true ->
+        :ok
+
+      false ->
+        contents = harness_id |> Onboarding.settings(partition) |> Jason.encode!(pretty: true)
+        Environments.write_file(environment, Onboarding.settings_path(), contents <> "\n")
+    end
+  end
+
+  defp apply_git_config(environment) do
+    Enum.all?(Onboarding.git_config(), fn {key, value} ->
+      match?({_out, 0}, Environments.cmd(environment, "git", ["config", key, value]))
+    end)
   end
 end

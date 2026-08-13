@@ -46,8 +46,9 @@ defmodule CodeMySpecSpex.Story1013.Criterion2358Spex do
         assert %{databases: [_ | _] = databases} = context.report
 
         assert Enum.all?(databases, fn database ->
-                 String.contains?(database.create, database.name) and
-                   String.contains?(database.migrate, database.name)
+                 String.ends_with?(database.name, database.partition) and
+                   String.contains?(database.create, database.partition) and
+                   String.contains?(database.migrate, database.partition)
                end),
                "a command was handed over that does not name the database it acts " <>
                  "on. That is precisely the failure of the migration guard, which " <>

@@ -38,7 +38,16 @@ defmodule CodeMySpecSpex.Story1013.Criterion2356Spex do
         first = Mix.Task.run("cms.onboard_harness", ["--project", context.project.id])
 
         {:ok, after_first} = Environments.read_file(context.environment, @settings)
-        edited = after_first <> "\n// an engineer left a note here\n"
+
+        # A realistic hand edit: still valid JSON. An engineer adding their own
+        # key is the case this criterion is about. Corrupting the file is a
+        # different scenario with a different right answer — see the note below.
+        edited =
+          after_first
+          |> Jason.decode!()
+          |> put_in(["env", "EDITOR"], "vim")
+          |> Jason.encode!(pretty: true)
+
         :ok = Environments.write_file(context.environment, @settings, edited)
 
         {:ok, Map.merge(context, %{first: first, edited: edited})}

@@ -67,11 +67,14 @@ defmodule CodeMySpecSpex.Story1013.Criterion2355Spex do
 
       then_ "each is named in the command that acts on it", context do
         assert Enum.all?(context.report.databases, fn database ->
-                 String.contains?(database.migrate, database.name)
+                 String.ends_with?(database.name, database.partition) and
+                   String.contains?(database.migrate, database.partition)
                end),
-               "a migrate command does not name its own database, which is the " <>
-                 "defect verbatim: the guard printed a command for a database it was " <>
-                 "not checking, and following it correctly changed nothing. Got: " <>
+               "a migrate command and the database it claims to act on are tied " <>
+                 "together by nothing. That is the defect verbatim: the guard printed " <>
+                 "a command for a database it was not checking, and following it " <>
+                 "correctly changed nothing. The report has to state the partition " <>
+                 "that connects the two, or the reader is left inferring it. Got: " <>
                  inspect(context.report.databases)
 
         {:ok, context}

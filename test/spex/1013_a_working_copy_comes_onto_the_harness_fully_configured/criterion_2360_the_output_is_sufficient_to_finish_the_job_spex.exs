@@ -64,8 +64,8 @@ defmodule CodeMySpecSpex.Story1013.Criterion2360Spex do
         %{databases: databases} = context.report
 
         assert Enum.all?(databases, fn database ->
-                 String.contains?(database.create, database.name) and
-                   String.contains?(database.migrate, database.name)
+                 String.ends_with?(database.name, database.partition) and
+                   String.contains?(database.migrate, database.partition)
                end),
                "a command depends on a value the report never named, so running it " <>
                  "means first working out which database is meant — by reading the " <>
