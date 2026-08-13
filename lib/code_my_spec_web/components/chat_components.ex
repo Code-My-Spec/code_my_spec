@@ -59,7 +59,7 @@ defmodule CodeMySpecWeb.ChatComponents do
     <div id={@id} class="space-y-2">
       <.tool_call
         :for={call <- @message.tool_calls}
-        name={call["name"]}
+        name={call_text(call)}
         call_id={call["id"]}
         agent_role={@message.agent_role}
       />
@@ -416,6 +416,22 @@ defmodule CodeMySpecWeb.ChatComponents do
 
   defp format_answer(a) when is_list(a), do: Enum.join(a, ", ")
   defp format_answer(a), do: to_string(a)
+
+  # The same string the recorder stores, built from the array shape instead.
+  #
+  # `tool_call/1` reads "<tool>\\n<arguments>", which is how the recorder writes
+  # one. A call stored as a `tool_calls` entry holds those two parts in fields,
+  # and passing only the name threw the arguments away — so the recorder's calls
+  # showed what they were given and the chat's did not, from data that had it
+  # either way. Two writers, one rendering, which is what the rule asks for.
+  defp call_text(%{"name" => name} = call) do
+    case call["arguments"] do
+      args when is_map(args) and args != %{} -> name <> "\n" <> Jason.encode!(args, pretty: true)
+      _ -> name
+    end
+  end
+
+  defp call_text(call), do: inspect(call)
 
   # Right is whoever the reader is speaking as, which differs per surface.
   defp side(role, role), do: "chat-end"
