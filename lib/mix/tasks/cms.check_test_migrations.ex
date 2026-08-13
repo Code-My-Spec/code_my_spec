@@ -33,10 +33,26 @@ defmodule Mix.Tasks.Cms.CheckTestMigrations do
   by two repos, and the ordering against its `ExUnit.start/1` wants care.
 
   A refusal rather than an alias that migrates: measured, migrating on every
-  invocation costs ~14s, and it is pure waste for the analyzer, whose partition
-  `CmsHarness.TestDatabase` already keeps current by keying its migrate on the
-  migration filename set. This is one query, and it only ever speaks when
+  invocation costs ~14s, and this is one query that only ever speaks when
   something is actually wrong.
+
+  ## The analyzer's partition is nobody's job, and that is deliberate
+
+  This used to add "pure waste for the analyzer, whose partition
+  `CmsHarness.TestDatabase` already keeps current by keying its migrate on the
+  migration filename set". That stopped being true on 2026-08-13, when
+  `TestDatabase` lost its create and migrate: both shelled out to `mix` with an
+  environment that had `MIX_ENV` scrubbed out of it, so they ran against **dev**,
+  and a sibling truncate emptied the shared development database three times.
+  Nothing in this project migrates a database from code any more.
+
+  So the analyzer's partitions — `h<sha8>` for exunit, `h<sha8>s` for spex — are
+  now migrated by a human or not at all, and the refusal below is the only thing
+  that says so. That makes naming the *right* database load-bearing rather than
+  cosmetic: the analyzer runs under a partition the interactive session never
+  touches, so "run `MIX_ENV=test mix ecto.migrate`" migrates the wrong database
+  and changes nothing. One agent followed that advice, migrated its own
+  partition, and stayed blocked for three days across 50 rejected runs (6f89b278).
   """
 
   use Mix.Task
@@ -72,14 +88,27 @@ defmodule Mix.Tasks.Cms.CheckTestMigrations do
         raise behind_message(pending)
 
       {:error, reason} ->
-        IO.puts(
-          :stderr,
-          "[check_test_migrations] could not check for pending migrations " <>
-            "(#{inspect(reason)}); proceeding. If the suite fails in bulk across " <>
-            "untouched contexts, try `MIX_ENV=test mix ecto.migrate` first."
-        )
+        IO.puts(:stderr, cannot_answer_message(reason))
 
         :ok
+    end
+  end
+
+  # Names the database and the partition-correct commands. Since `TestDatabase`
+  # stopped creating databases, "does not exist" is the ordinary first run for an
+  # analyzer partition rather than an anomaly — and it arrives here, because a
+  # missing database cannot answer what it has applied.
+  defp cannot_answer_message(reason) do
+    """
+    [check_test_migrations] could not check #{database_label()} (#{inspect(reason)}); proceeding.
+    If it does not exist: #{create_command()}, then #{migrate_command()}\
+    """
+  end
+
+  defp create_command do
+    case partition() do
+      nil -> "MIX_ENV=test mix ecto.create"
+      partition -> "MIX_TEST_PARTITION=#{partition} MIX_ENV=test mix ecto.create"
     end
   end
 
@@ -124,16 +153,51 @@ defmodule Mix.Tasks.Cms.CheckTestMigrations do
     more = trailing_count(length(pending) - 3)
 
     """
-    This working copy's test database is #{length(pending)} migration(s) behind.
+    #{database_label()} is #{length(pending)} migration(s) behind.
 
     Pending: #{names}#{more}
 
-    Run `MIX_ENV=test mix ecto.migrate` and try again.
+    Run `#{migrate_command()}` and try again.
 
     Refusing rather than running: the suite would fail in bulk, across contexts
     you have not touched, with nothing naming a migration — which reads as
     broken code and costs a bisect of the wrong thing.
     """
+  end
+
+  # Name the database, not "your test database". The analyzer runs under its own
+  # partition, so the database this checked is very often not the one the reader
+  # would think to migrate.
+  defp database_label do
+    case database_name() do
+      nil -> "This working copy's test database"
+      name -> "The test database `#{name}`"
+    end
+  end
+
+  # The command for *this* partition. A bare `MIX_ENV=test mix ecto.migrate`
+  # resolves to the interactive per-worktree database from `config/test.exs`, so
+  # printing it to an analyzer run tells the reader to migrate a database that is
+  # not the one refusing — advice that cannot work and reads as if it should.
+  defp migrate_command do
+    case partition() do
+      nil -> "MIX_ENV=test mix ecto.migrate"
+      partition -> "MIX_TEST_PARTITION=#{partition} MIX_ENV=test mix ecto.migrate"
+    end
+  end
+
+  defp partition do
+    case System.get_env("MIX_TEST_PARTITION") do
+      nil -> nil
+      "" -> nil
+      partition -> partition
+    end
+  end
+
+  defp database_name do
+    CodeMySpec.Repo.config()[:database]
+  rescue
+    _ -> nil
   end
 
   defp trailing_count(remaining) when remaining > 0, do: ", and #{remaining} more"
