@@ -111,10 +111,26 @@ defmodule CodeMySpec.AgentTasks.TriageIssues do
     2. **Read each issue** using `get_issue` with the issue `id`
     3. **Identify duplicates** — issues describing the same underlying problem
     4. **Decide a disposition** for each issue:
-       - **Accept** — real issue, call `accept_issue` with the issue `id`
+       - **Accept** — real issue, call `accept_issue` with the issue `id` **and a `story_id`**
        - **Dismiss** — not a real bug (test artifact, expected behavior, duplicate), call `dismiss_issue` with the issue `id` and `reason`
        - **Merge** — accept the best issue, dismiss the others with a reason noting the duplicate
     5. **Execute** each disposition using the tools above
+
+    ## Accepting puts it on the graph — so link it
+
+    `story_issues_resolved` is per-story. An unlinked issue gates nothing and
+    reaches no agent. There are currently 21 accepted issues in that state.
+
+    Ask which story's promise the defect breaks, and pass `story_id` **on the
+    `accept_issue` call** — `accepted → accepted` is rejected, so a missed link
+    needs repairing with `update_issue` afterwards.
+
+    `story_id` is the **id, not the story number**, and the mistake is silent:
+    story 983 has id 869, and passing 983 links to nothing with no error. Get it
+    from `list_story_titles` (`ID:`).
+
+    Genuinely project-level issues (tooling, harness) stay unlinked — but say so,
+    or it reads as an oversight.
 
     Stop the session when all issues have been triaged.
     """
