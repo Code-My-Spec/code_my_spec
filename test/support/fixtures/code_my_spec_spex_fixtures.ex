@@ -1970,6 +1970,19 @@ defmodule CodeMySpecSpex.Fixtures do
     |> CodeMySpec.Repo.update!()
   end
 
+  @doc """
+  Give a project the deploy key it already had.
+
+  Through the real changeset rather than `Ecto.Changeset.change/2`, because
+  `put_deploy_key_hash/1` is what makes the key findable — the API looks a
+  project up by the hash, so a key written around the changeset authenticates
+  nothing.
+  """
+  def set_project_deploy_key(scope, project, key) do
+    {:ok, project} = CodeMySpec.Projects.update_project(scope, project, %{deploy_key: key})
+    project
+  end
+
   @doc "Set and verify a project's sending domain."
   def verify_project_domain(project, domain) do
     now = DateTime.utc_now() |> DateTime.truncate(:second)

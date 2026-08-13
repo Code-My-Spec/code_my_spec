@@ -56,6 +56,7 @@ defmodule CodeMySpecSpex.Drill do
   alias CodeMySpec.AccountSecrets
   alias CodeMySpec.Provisioning
   alias CodeMySpec.Provisioning.Sequence
+  alias CodeMySpec.Provisioning.Sops
   alias CodeMySpec.ProjectSecrets
   alias CodeMySpecSpex.Fixtures
 
@@ -73,8 +74,9 @@ defmodule CodeMySpecSpex.Drill do
   setup :provider_credentials_on_file
   setup :connect_providers
   setup :persistent_access_key
-  setup :persistent_age_keys
+  setup :persistent_registry_password
   setup :drill_working_directory
+  setup :persistent_age_keys
   setup :the_project_under_drill
 
   test "walk the provisioning sequence", context do
@@ -195,7 +197,30 @@ defmodule CodeMySpecSpex.Drill do
     context
   end
 
-  # The age keys, for the same reason and with a worse failure.
+  # The registry password, which is baked into a running container.
+  #
+  # `Registry.credential/1` mints one when the project has none, and the
+  # registry's htpasswd is written when the container starts — so a rolled-back
+  # database meant a new password every walk against a registry still holding
+  # the first one. The builder then failed its `docker login` with
+  # `401 Unauthorized` against a registry that was up and healthy, three
+  # minutes into a deploy.
+  #
+  # Fourth member of the same family here, after the SSH key, the age keys and
+  # the deploy key: a credential the provider keeps and the database does not.
+  defp persistent_registry_password(%{scope: scope} = context) do
+    path = Path.join(drill_state_dir(), "registry_password")
+
+    unless File.exists?(path) do
+      File.write!(path, 32 |> :crypto.strong_rand_bytes() |> Base.url_encode64(padding: false))
+    end
+
+    {:ok, _} = ProjectSecrets.put_value(scope, "registry_password", String.trim(File.read!(path)))
+
+    context
+  end
+
+  # The age keys, for the same reason as the SSH key and with a worse failure.
   #
   # The encrypted env lives in the checkout, which this drill keeps; the key
   # that opens it lives in the database, which the sandbox rolls back. So every
@@ -203,34 +228,84 @@ defmodule CodeMySpecSpex.Drill do
   # discarded it — taking `DATABASE_URL` with it, which nothing then rewrote
   # because the server that serves the database was adopted rather than run.
   #
-  # In production the key persists, so this is the drill matching the world
-  # rather than papering over it. The gap it exposed — a step verifying
-  # satisfied while the secret it wrote is gone — is fixed in
-  # `verify(:server, …)`, and this stops every walk paying for it.
+  # **Both halves, or this does not converge.** Seeding only the private key
+  # leaves `.sops.yaml` in the checkout naming whatever recipient the app minted
+  # last time, and `key_for/3` checks that they agree *before* it will use a
+  # stored key — so it mints another, rewrites `.sops.yaml`, and the database
+  # rolls back to mine again. Two persistent stores disagreeing forever, one
+  # rotation per walk. Writing the config here makes them agree on the first
+  # check.
+  #
+  # After `drill_working_directory`, because `.sops.yaml` is written through the
+  # project's environment and that is the setup which points it at the checkout.
   defp persistent_age_keys(%{scope: scope} = context) do
-    for environment <- environments() do
-      path = Path.join(drill_state_dir(), "age_#{environment}.key")
+    recipients =
+      Map.new(environments(), fn environment ->
+        path = Path.join(drill_state_dir(), "age_#{environment}.key")
 
-      # `-o`, and emphatically not `stderr_to_stdout: true`. age-keygen prints
-      # the key to stdout and "Public key: …" to *stderr*, so merging the two
-      # put a line sops cannot parse at the top of the file — "unknown identity
-      # type". The app then could not use the stored key, minted its own on
-      # every walk, and the encrypted env rotated each time. Which is exactly
-      # what this setup exists to stop.
-      unless File.exists?(path), do: {_out, 0} = System.cmd("age-keygen", ["-o", path])
+        # `-o`, and emphatically not `stderr_to_stdout: true`. age-keygen prints
+        # the key to stdout and "Public key: …" to *stderr*, so merging the two
+        # put a line sops cannot parse at the top of the file — "unknown
+        # identity type". The app then could not read the stored key at all.
+        unless File.exists?(path), do: {_out, 0} = System.cmd("age-keygen", ["-o", path])
 
-      {:ok, _} =
-        ProjectSecrets.put_value(scope, "age_private_key_#{environment}", File.read!(path))
-    end
+        # The bare key, not the file. `age-keygen -o` writes two comment lines
+        # above it, and `Sops.parse_key/1` stores only the key itself — so a
+        # multi-line value here is a shape the app never produces. It travels to
+        # the container as `SOPS_AGE_KEY`, an environment variable, where the
+        # extra lines do not survive: the deploy shipped a key the container
+        # could not use and kamal reported `docker exit status: 128` with sops
+        # saying "no identity matched any of the recipients" about a file whose
+        # recipient was correct.
+        private = File.read!(path) |> then(&Regex.run(~r/AGE-SECRET-KEY-[A-Z0-9]+/, &1)) |> hd()
+        {:ok, _} = ProjectSecrets.put_value(scope, "age_private_key_#{environment}", private)
+        {:ok, public} = Sops.public_key(private)
+
+        discard_env_encrypted_to_another_key(scope.environment, environment, public)
+
+        {environment, public}
+      end)
+
+    :ok = Sops.write_config(scope.environment, recipients)
 
     context
+  end
+
+  # The encrypted env is what decides, not `.sops.yaml`.
+  #
+  # `key_for/3` will only use a stored key when it opens its own file, and
+  # `Sops.recipients/2` reads that from `envs/<env>.enc.env` — so a file left
+  # over from a walk whose minted key has since been rolled out of the database
+  # makes the check fail, mints another key, and rewrites the file to it. The
+  # database rolls back to the persistent key and the next walk does it again:
+  # two stores disagreeing forever, one rotation per walk, and a deploy whose
+  # container cannot decrypt what it was shipped.
+  #
+  # Removing it once ends that. `Sops.missing_secrets/4` treats an absent file
+  # as "everything is missing", which is the ordinary fresh-project path, so the
+  # secrets step mints nothing and `put_secret/4` recreates the file against the
+  # key that is actually here. `DATABASE_URL` goes with it and the server step
+  # writes it back — which `verify(:server, …)` now insists on.
+  defp discard_env_encrypted_to_another_key(env, environment, public) do
+    case Sops.recipients(env, environment) do
+      {:ok, recipients} -> unless public in recipients, do: remove_env_file(env, environment)
+      _ -> :ok
+    end
+  end
+
+  defp remove_env_file(env, environment) do
+    CodeMySpec.Environments.delete_file(env, "envs/#{environment}.enc.env")
   end
 
   # The domain, the environments and the devops level — the three facts the plan
   # is derived from. Set after the working directory, because that swaps the
   # project row and the scope has to carry the one holding the domain.
   defp the_project_under_drill(%{scope: scope, project: project} = context) do
-    project = project |> own_domain(domain()) |> already_ours()
+    project =
+      project
+      |> own_domain(domain())
+      |> already_ours()
+      |> then(&Fixtures.set_project_deploy_key(scope, &1, persistent_deploy_key()))
 
     Fixtures.set_devops(scope, devops_level())
     only_environments(scope, environments())
@@ -256,6 +331,23 @@ defmodule CodeMySpecSpex.Drill do
   # remote — not the check disabled.
   defp already_ours(project) do
     Fixtures.set_project_code_repo(project, "https://github.com/#{spex_owner()}/spex-drill")
+  end
+
+  # The deploy key the running app is already authenticating with.
+  #
+  # `seed_deploy_key/2` mints one only when the project has none, which is
+  # stable in production and rotates here every walk — so the content step
+  # presented this walk's key to an app deployed with the last one and got
+  # `401 Invalid deployment key`. The value has to outlive the database for the
+  # same reason the age key does.
+  defp persistent_deploy_key do
+    path = Path.join(drill_state_dir(), "deploy_key")
+
+    unless File.exists?(path) do
+      File.write!(path, "dk_drill_" <> (24 |> :crypto.strong_rand_bytes() |> Base.url_encode64()))
+    end
+
+    File.read!(path) |> String.trim()
   end
 
   ## Configuration
