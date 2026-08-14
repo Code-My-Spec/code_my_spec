@@ -311,7 +311,7 @@ defmodule CodeMySpec.Provisioning do
 
     case verify(scope, key, opts) do
       {:ok, :satisfied, resources} ->
-        {:ok, mark(scope, key, :done, %{resources: resources})}
+        {:ok, mark(scope, key, :done, %{resources: still_ours(scope, key, resources)})}
 
       {:ok, :absent} ->
         run_and_record(scope, key, execute, opts)
@@ -751,6 +751,45 @@ defmodule CodeMySpec.Provisioning do
     earlier
     |> Enum.map(&Map.from_struct/1)
     |> Enum.concat(Enum.reject(partial, &MapSet.member?(seen, {&1[:kind], &1[:location]})))
+  end
+
+  # Verify's list is the provider's answer about what exists, and it overrules —
+  # that is why the satisfied path replaces rather than merges. Ownership is the
+  # one exception, because `origin` answers a different question than teardown
+  # asks of it.
+  #
+  # `ensure_*` marks a resource `adopted` when it finds one already there, which
+  # is right for "did I make this on *this* run" and wrong for "did this exist
+  # before setup ever ran". So a DNS record setup created on the first walk came
+  # back `adopted` on the second, and `Teardown.resource/3` spares adopted
+  # resources — it released the server and left the record pointing at the
+  # released address. Hetzner recycles those, so the name went on resolving to a
+  # machine somebody else would be given: the subdomain takeover
+  # `Teardown.environment/3` is written to prevent, arriving through the origin
+  # field rather than through the ordering it guards.
+  #
+  # Once setup created a thing, it owns it. Adoption cannot take that back.
+  #
+  # The same rule `keeping_earlier/3` already applies on the run path — earlier
+  # ownership wins — extended to the satisfied path, which had no merge at all.
+  # It does not license the opposite: a *later* claim of `created` over an
+  # earlier `adopted` stays refused, because that is a step restating something
+  # Sam had before setup ran, and believing it would license destroying it.
+  defp still_ours(scope, key, resources) do
+    ours =
+      case StepRepository.get(scope, key) do
+        %{resources: earlier} when is_list(earlier) ->
+          for r <- earlier, r.origin == "created", into: MapSet.new(), do: {r.kind, r.location}
+
+        _ ->
+          MapSet.new()
+      end
+
+    Enum.map(resources, fn resource ->
+      if MapSet.member?(ours, {resource[:kind], resource[:location]}),
+        do: Map.put(resource, :origin, "created"),
+        else: resource
+    end)
   end
 
   defp mark(scope, key, state, attrs) do

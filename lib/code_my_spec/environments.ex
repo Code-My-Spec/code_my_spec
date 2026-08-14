@@ -107,7 +107,7 @@ defmodule CodeMySpec.Environments do
   @spec clean_otp_env() :: [{String.t(), String.t() | nil}]
   def clean_otp_env do
     Enum.map(@otp_release_vars ++ @mix_env_vars, fn var -> {var, nil} end) ++
-      path_for_children()
+      path_without_release_dirs()
   end
 
   # The shims first, so a child resolves the toolchain its *own* directory pins.
@@ -128,6 +128,14 @@ defmodule CodeMySpec.Environments do
   # Putting the shims back in front restores the per-directory resolution the
   # user installed them for. A machine without a version manager is unaffected;
   # the directory simply does not exist and PATH is untouched.
+  #
+  # Deliberately *not* part of `clean_otp_env/0`, which is a scrub: it removes
+  # the release's own directories from PATH and adds nothing, and says nothing
+  # about PATH at all when there is nothing to remove. Folding this into it
+  # made it emit a PATH it had no business setting, which is three of its own
+  # tests. This belongs to `merge_clean_env/1` instead — the path taken by the
+  # two callers that run a child `mix` inside *another project's* directory,
+  # which is the only situation where whose toolchain resolves is a question.
   defp path_for_children do
     case path_without_release_dirs() do
       [{"PATH", path}] -> [{"PATH", prepend_shims(path)}]
@@ -171,7 +179,14 @@ defmodule CodeMySpec.Environments do
   @spec merge_clean_env(keyword()) :: keyword()
   def merge_clean_env(opts) do
     chosen = opts |> Keyword.get(:env, []) |> Enum.map(&elem(&1, 0)) |> MapSet.new()
-    scrub = Enum.reject(clean_otp_env(), &MapSet.member?(chosen, elem(&1, 0)))
+
+    # String keys, so not a keyword list despite the shape — `Keyword.delete/2`
+    # raises on one.
+    scrub =
+      clean_otp_env()
+      |> Enum.reject(&(elem(&1, 0) == "PATH"))
+      |> Kernel.++(path_for_children())
+      |> Enum.reject(&MapSet.member?(chosen, elem(&1, 0)))
 
     Keyword.update(opts, :env, scrub, &(&1 ++ scrub))
   end

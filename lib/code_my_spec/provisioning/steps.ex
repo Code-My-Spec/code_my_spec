@@ -189,17 +189,10 @@ defmodule CodeMySpec.Provisioning.Steps do
   end
 
   def verify(:email, %Scope{} = scope, opts) do
-    environments = environments(scope, opts)
-
-    case domain(scope) do
-      nil ->
-        {:ok, :absent}
-
-      base ->
-        # Satisfied only when every environment has a verified sending domain.
-        # Reporting done with production verified and UAT missing hides the
-        # exact gap that lets a test message go out looking like a real one.
-        verify_sending_domains(scope, base, environments)
+    case {domain(scope), mail_environments(scope, opts)} do
+      {nil, _} -> {:ok, :absent}
+      {_base, []} -> {:ok, :satisfied, []}
+      {base, environments} -> verify_sending_domains(scope, base, environments)
     end
   end
 
@@ -263,7 +256,8 @@ defmodule CodeMySpec.Provisioning.Steps do
   end
 
   def verify(:inbound, %Scope{} = scope, opts) do
-    with name when is_binary(name) <- receiving_domain(scope, opts),
+    with [_ | _] <- mail_environments(scope, opts),
+         name when is_binary(name) <- receiving_domain(scope, opts),
          {:ok, domain} <- Resend.find_domain(scope, name),
          true <- Resend.receiving?(domain),
          {:ok, webhooks} <- Resend.list_webhooks(scope),
@@ -294,10 +288,17 @@ defmodule CodeMySpec.Provisioning.Steps do
            ]}
       end
     else
+      # Nothing owed without a production environment — see
+      # `mail_environments/2`. Satisfied rather than absent, so the step is not
+      # run to discover it has nothing to do.
+      [] ->
+        {:ok, :satisfied, []}
+
       # Anything short of "receiving domain plus an ENABLED webhook" is absent.
       # A disabled webhook is the case worth being strict about: it looks
       # configured from every angle except the one that counts.
-      _ -> {:ok, :absent}
+      _ ->
+        {:ok, :absent}
     end
   end
 
@@ -444,15 +445,14 @@ defmodule CodeMySpec.Provisioning.Steps do
   end
 
   def run(:email, %Scope{} = scope, opts) do
-    environments = environments(scope, opts)
-
     # `base_domain/2` rather than `domain/1`, so this reads the same value its
     # neighbours do. Reading the project directly meant a caller that narrowed
     # every other step to one domain had this one still working from the
     # project's — two domains in one run, each believing it was the only one.
-    case base_domain(scope, opts) do
-      nil -> {:error, "no domain set on the project"}
-      base -> register_sending_domains(scope, base, environments, opts)
+    case {base_domain(scope, opts), mail_environments(scope, opts)} do
+      {nil, _} -> {:error, "no domain set on the project"}
+      {_base, []} -> {:ok, []}
+      {base, environments} -> register_sending_domains(scope, base, environments, opts)
     end
   end
 
@@ -632,7 +632,8 @@ defmodule CodeMySpec.Provisioning.Steps do
   def run(:inbound, %Scope{} = scope, opts) do
     endpoint = webhook_endpoint(scope, opts)
 
-    with name when is_binary(name) <- receiving_domain(scope, opts),
+    with [_ | _] <- mail_environments(scope, opts),
+         name when is_binary(name) <- receiving_domain(scope, opts),
          # Before any provider call. An address on another domain can never
          # prove this one's inbox, so the run cannot succeed — and the rule the
          # deploy step states applies here too: something that cannot succeed
@@ -664,6 +665,13 @@ defmodule CodeMySpec.Provisioning.Steps do
          %{kind: "webhook", location: endpoint, identifier: webhook["id"]}
        ] ++ mx ++ [proof]}
     else
+      # No production environment, so nothing sends mail here and nothing
+      # receives it. See `mail_environments/2`: the apex only becomes verified
+      # through production's sending records, and Resend bounces mail to a
+      # domain that is not.
+      [] ->
+        {:ok, []}
+
       nil ->
         {:error, "no domain set on the project — nothing to receive mail at"}
 
@@ -991,6 +999,29 @@ defmodule CodeMySpec.Provisioning.Steps do
     environments = environments(scope, opts)
 
     if "prod" in environments, do: "prod", else: List.first(environments)
+  end
+
+  # Production sends mail. Nothing else does.
+  #
+  # Every environment used to get its own verified sending domain, on the
+  # reasoning that reporting done with production verified and UAT missing hides
+  # the gap that lets a test message go out looking like a real one. The
+  # stronger form of that argument is that UAT should not be able to send mail
+  # at all: the failure worth preventing is a staging box mailing real
+  # customers, and a verified `uat.<domain>` is what makes that possible.
+  #
+  # It also unblocks inbound. `Resend.sending_domain/2` maps production to the
+  # apex, so production's sending records are the apex's — which is the domain
+  # the inbound step receives on. Without them the apex carries only a Receiving
+  # MX, sits at `pending`, and Resend bounces mail to it however verified that
+  # one record is. Measured: a probe to a pending domain bounced while the same
+  # probe to a fully verified one was delivered.
+  #
+  # A plan with no production has nothing to do here rather than something to
+  # fail at, which is what lets a UAT-only project (criterion 1962) still
+  # complete.
+  defp mail_environments(scope, opts) do
+    Enum.filter(environments(scope, opts), &(&1 in ["prod", "production"]))
   end
 
   defp blank?(nil), do: true
