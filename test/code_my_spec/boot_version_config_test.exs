@@ -12,7 +12,8 @@ defmodule CodeMySpec.BootVersionConfigTest do
 
   No database, so nothing here shares a sandbox with anything. `async: false`
   only because `capture/1` writes node-global `:persistent_term`, which is
-  restored on exit.
+  erased on exit — this test defines that state rather than reading and
+  restoring whatever it found.
   """
   use ExUnit.Case, async: false
 
@@ -21,9 +22,7 @@ defmodule CodeMySpec.BootVersionConfigTest do
   @key {CodeMySpec.BootVersion, :boot}
 
   setup do
-    previous = :persistent_term.get(@key, :none)
-
-    on_exit(fn -> restore(previous) end)
+    on_exit(fn -> :persistent_term.erase(@key) end)
 
     root = Path.join(System.tmp_dir!(), "boot-version-#{System.unique_integer([:positive])}")
     File.mkdir_p!(Path.join(root, "config"))
@@ -75,9 +74,6 @@ defmodule CodeMySpec.BootVersionConfigTest do
              "confident `false` here sends someone whose server is genuinely " <>
              "wedged off to look at their network."
   end
-
-  defp restore(:none), do: :persistent_term.erase(@key)
-  defp restore(value), do: :persistent_term.put(@key, value)
 
   defp git!(root, args) do
     {_, 0} = System.cmd("git", args, cd: root, stderr_to_stdout: true)
