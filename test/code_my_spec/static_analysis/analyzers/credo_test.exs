@@ -2,6 +2,12 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.CredoTest do
   use CodeMySpecTest.DataCase
 
   use ExCliVcr
+
+  # Out of the default suite. This file rsyncs a copy of a real Phoenix project
+  # out of `../code_my_spec_test_repos` and runs credo inside it — a directory
+  # every worktree reaches through a symlink to one shared copy, so two agents
+  # running suites collided there. `just test-analyzer` runs it.
+  @moduletag :analyzer
   import ExUnit.CaptureLog
   import CodeMySpec.{UsersFixtures, AccountsFixtures, ProjectsFixtures}
 

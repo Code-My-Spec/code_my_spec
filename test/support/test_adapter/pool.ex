@@ -184,6 +184,24 @@ defmodule CodeMySpec.Support.TestAdapter.Pool do
 
     File.mkdir_p!(dest_path)
 
+    # The fixture repositories are no longer cloned at test boot — that pull ran
+    # on every `mix test`, in a directory every worktree shares by symlink. So
+    # the first test to want a real project is where a missing one surfaces, and
+    # it has to say what to run rather than fail as an rsync error naming a path.
+    if not File.exists?(fixture_path) do
+      raise """
+      No fixture repository at #{fixture_path}.
+
+      Only the analyzer tests need a real project on disk, so it is not cloned
+      at test boot any more. Run:
+
+          mix cms.test_fixtures
+
+      That clones both fixture repositories and regenerates the recorded
+      analyzer output in test/fixtures/analyzer_output/.
+      """
+    end
+
     # Copy everything (deps, build, git) - only exclude .DS_Store
     args = ["-a", "--exclude", ".DS_Store", "#{fixture_path}/", "#{dest_path}/"]
 

@@ -1,5 +1,5 @@
 defmodule CodeMySpec.Analysis.RunnersTest do
-  use CodeMySpecTest.DataCase, async: true
+  use CodeMySpecTest.DataCase, async: false
   use ExCliVcr
 
   import CodeMySpec.UsersFixtures

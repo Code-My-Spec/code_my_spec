@@ -17,6 +17,14 @@ ExUnit.start(
   # sequence changes.
   # :fleet needs the local fleet up (`docker/fleet/fleet.sh up`) — real boxes
   # over real SSH, on this machine. Run it with `mix test --only fleet`.
+  # :analyzer rsyncs a copy of a real Phoenix project out of
+  # `../code_my_spec_test_repos` and runs `mix`, `credo` and `sobelow` inside
+  # it. Four files, and they are the last thing in the default suite that
+  # touched that directory — which every worktree reaches through a symlink to
+  # one shared copy, so two agents running suites collided there. Everything
+  # else now reads the committed recordings in `test/fixtures/analyzer_output/`.
+  # Run it with `just test-analyzer` (or `mix test --only analyzer`) when
+  # changing an analyzer, and after `mix cms.test_fixtures`.
   exclude:
     [
       :scenario,
@@ -26,6 +34,7 @@ ExUnit.start(
       :docker,
       :fleet,
       :registry,
+      :analyzer,
       :record_google_login_shape,
       :record_github_login_shape
     ] ++ sops_exclusions
@@ -169,8 +178,18 @@ Mox.defmock(CodeMySpec.MockEnvironment, for: CodeMySpec.Environments.Environment
 # Define mock for Git operations in tests
 Mox.defmock(CodeMySpec.MockGit, for: CodeMySpec.Git.Behaviour)
 
-# Initialize test fixture repositories
-CodeMySpec.Support.TestAdapter.ensure_fixture_fresh()
+# Fixture repositories are NOT refreshed here. `ensure_fixture_fresh/0` ran
+# `git pull` in both of them on every `mix test` — and they live under
+# `../code_my_spec_test_repos`, which every worktree reaches through a symlink
+# to one shared directory. Two agents starting suites near each other were two
+# pulls racing in one repository before a single test ran.
+#
+# The recorded analyzer output those repos used to generate is now committed
+# under `test/fixtures/analyzer_output/` — 60KB of JSON, read by the tests that
+# want it. Regenerate deliberately with `mix cms.test_fixtures`.
+#
+# The pool below creates copies lazily, so a checkout without the fixture
+# repository costs nothing until one of the five analyzer tests asks for one.
 
 # Start the test repo pool for fast directory reuse
 {:ok, _} = CodeMySpec.Support.TestAdapter.Pool.start_link()

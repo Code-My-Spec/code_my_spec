@@ -528,6 +528,25 @@ test *args:
 test-file file:
     mix test {{file}} --trace
 
+# Run the analyzer tests — the four that need a real Phoenix project on disk.
+#
+# Excluded from `just test` because they rsync a copy out of
+# `../code_my_spec_test_repos` and run mix, credo and sobelow inside it. That
+# directory is one shared copy every worktree reaches by symlink, so two agents
+# running suites collided there — which is where the `** (EXIT …) killed`
+# findings came from. Everything else reads the committed recordings in
+# `test/fixtures/analyzer_output/`.
+#
+# Run this when you change an analyzer, and after `mix cms.test_fixtures`.
+# Needs the fixture repos; `mix cms.test_fixtures` clones them.
+test-analyzer *args:
+    MIX_ENV=test mix test --only analyzer {{args}}
+
+# Record the analyzer fixtures the suite reads. Clones the fixture repos if
+# they are missing. Commit what it changes.
+test-fixtures:
+    MIX_ENV=test mix cms.test_fixtures
+
 # Setup: deps + db
 setup:
     mix deps.get && mix ecto.setup

@@ -2,13 +2,20 @@ defmodule CodeMySpec.StaticAnalysis.RunnerTest do
   use CodeMySpecTest.DataCase, async: false
   use ExCliVcr
 
+  # Out of the default suite. This file rsyncs a copy of a real Phoenix project
+  # out of `../code_my_spec_test_repos` and runs real tools inside it — a
+  # directory every worktree reaches through a symlink to one shared copy, so
+  # two agents running suites collided there. `just test-analyzer` runs it.
+  @moduletag :analyzer
+
   import ExUnit.CaptureLog
   import CodeMySpec.UsersFixtures
   import CodeMySpec.AccountsFixtures
   import CodeMySpec.ProjectsFixtures
 
-  alias CodeMySpec.StaticAnalysis.Runner
   alias CodeMySpec.Problems.Problem
+  alias CodeMySpec.StaticAnalysis.Runner
+  alias CodeMySpec.Support.TestAdapter
 
   @test_repo_url "https://github.com/Code-My-Spec/test_phoenix_project.git"
 
@@ -21,7 +28,7 @@ defmodule CodeMySpec.StaticAnalysis.RunnerTest do
 
     # Clone from pool
     {:ok, project_dir} =
-      CodeMySpec.Support.TestAdapter.clone(scope, @test_repo_url)
+      TestAdapter.clone(scope, @test_repo_url)
 
     # Update project with cloned repo path
     {:ok, updated_project} =
@@ -34,7 +41,7 @@ defmodule CodeMySpec.StaticAnalysis.RunnerTest do
       spec_file = Path.join(project_dir, ".code_my_spec/spec/my_module.spec.md")
       File.rm(spec_file)
 
-      CodeMySpec.Support.TestAdapter.checkin(project_dir)
+      TestAdapter.checkin(project_dir)
     end)
 
     %{scope: scope, project: updated_project, project_dir: project_dir}
