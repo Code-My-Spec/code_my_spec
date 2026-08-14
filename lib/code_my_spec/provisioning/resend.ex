@@ -151,7 +151,29 @@ defmodule CodeMySpec.Provisioning.Resend do
         {:ok, Map.put(domain, "__adopted__", true)}
 
       {:error, :not_found} ->
-        create_domain(scope, name, opts)
+        # Created able to receive as well as send, even though this step only
+        # needs sending.
+        #
+        # Resend fixes capabilities at creation and offers no API to add one
+        # later — which the adopt branch above already relies on, refusing to
+        # delete and recreate because that would silently drop inbound mail. The
+        # same fact cuts the other way here: `Resend.sending_domain/2` maps
+        # production to the apex, so this call creates the very domain the
+        # inbound step later receives on. Sending-only meant `inbound` found it
+        # disabled and could never enable it, and whichever of the two steps
+        # reached a fresh domain first decided the question permanently. `email`
+        # runs first, so on a genuinely new domain the answer was always no
+        # inbox.
+        #
+        # Costs nothing when inbound is never set up: receiving needs an MX this
+        # does not publish, so an unconfigured domain simply receives no mail.
+        # And it does not touch anything Sam already had — a domain that already
+        # exists takes the adopt branch, which is what criterion 8029 is about.
+        create_domain(
+          scope,
+          name,
+          Keyword.put_new(opts, :capabilities, %{sending: "enabled", receiving: "enabled"})
+        )
 
       {:error, _} = error ->
         error
@@ -527,24 +549,35 @@ defmodule CodeMySpec.Provisioning.Resend do
     end
 
     Enum.reduce_while(1..attempts, {:error, :never_arrived}, fn attempt, acc ->
-      case list_received(scope, limit: 100) do
-        {:ok, messages} ->
-          case Enum.find(messages, match?) do
-            nil ->
-              if attempt < attempts, do: Wait.sleep(interval)
-              {:cont, acc}
-
-            message ->
-              {:halt, {:ok, message}}
-          end
-
-        # A read that fails is not a delivery that failed. Keep waiting; the
-        # caller learns from the final answer rather than from one bad request.
-        _ ->
-          if attempt < attempts, do: Wait.sleep(interval)
-          {:cont, acc}
-      end
+      keep_waiting_unless_found(scope, match?, attempt, attempts, interval, acc)
     end)
+  end
+
+  # One poll: read, and either halt on the message or wait and continue.
+  #
+  # Extracted only to flatten `await_received/3`, which nested four deep. It
+  # issues exactly the requests it did inline, in the same order — which is the
+  # property that matters here, since a cassette is matched sequentially and a
+  # poll that changes its request count puts every later request on the wrong
+  # interaction.
+  defp keep_waiting_unless_found(scope, match?, attempt, attempts, interval, acc) do
+    case list_received(scope, limit: 100) do
+      {:ok, messages} ->
+        case Enum.find(messages, match?) do
+          nil -> wait_and_continue(attempt, attempts, interval, acc)
+          message -> {:halt, {:ok, message}}
+        end
+
+      # A read that fails is not a delivery that failed. Keep waiting; the
+      # caller learns from the final answer rather than from one bad request.
+      _ ->
+        wait_and_continue(attempt, attempts, interval, acc)
+    end
+  end
+
+  defp wait_and_continue(attempt, attempts, interval, acc) do
+    if attempt < attempts, do: Wait.sleep(interval)
+    {:cont, acc}
   end
 
   @doc "Delete a domain. Teardown only — setup never destroys."
