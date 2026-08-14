@@ -24,7 +24,16 @@ defmodule CodeMySpec.TempFile do
   So the token carries the OS pid as well, which is unique across processes by
   definition, plus random bytes so a pid recycled after a crash cannot collide
   with its predecessor's leftovers.
+
+  A leaf boundary of its own, like `Environments` and `Repo`, because the
+  callers that most need it are outside `CodeMySpec`: the spex suite and the
+  harness's test support both build temp paths, and both are top-level
+  boundaries that cannot reach in here. The alternative was each of them
+  keeping its own copy of the token — which is how there came to be three
+  instances of the bug in the first place.
   """
+
+  use Boundary, top_level?: true, deps: [], exports: :all
 
   @doc """
   A temp file path: `<tmp>/<prefix>_<token><suffix>`.

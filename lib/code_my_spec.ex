@@ -7,5 +7,8 @@ defmodule CodeMySpec do
   if it comes from the database, an external API or others.
   """
 
-  use Boundary, top_level?: true, deps: [CodeMySpec.Environments, CodeMySpec.Repo], exports: :all
+  use Boundary,
+    top_level?: true,
+    deps: [CodeMySpec.Environments, CodeMySpec.Repo, CodeMySpec.TempFile],
+    exports: :all
 end

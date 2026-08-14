@@ -21,6 +21,7 @@ defmodule CodeMySpecSpex.Fixtures do
       CodeMySpec.AgentHarness,
       CodeMySpec.Environments,
       CodeMySpec.Repo,
+      CodeMySpec.TempFile,
       CodeMySpecTest,
       CodeMySpecWeb
     ]
