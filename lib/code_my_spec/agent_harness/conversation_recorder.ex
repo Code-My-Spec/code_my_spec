@@ -346,12 +346,11 @@ defmodule CodeMySpec.AgentHarness.ConversationRecorder do
 
   defp tool_result_content(content) when is_list(content) do
     content
-    |> Enum.map(fn
+    |> Enum.map_join("\n", fn
       %{"type" => "text", "text" => text} -> text
       %{"type" => type} -> "[#{type}]"
       other -> inspect(other)
     end)
-    |> Enum.join("\n")
   end
 
   defp tool_result_content(nil), do: ""
