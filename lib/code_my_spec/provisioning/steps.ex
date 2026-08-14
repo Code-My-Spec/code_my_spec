@@ -272,9 +272,9 @@ defmodule CodeMySpec.Provisioning.Steps do
       # by configuration". The step was written to prove it and the verifier
       # was excusing it from doing so.
       #
-      # So a proof a previous run recorded is what satisfies this. Absent one,
-      # the step runs and proves it.
-      case delivery_proof(scope) do
+      # So a proof a previous run recorded **for this domain** is what satisfies
+      # this. Absent one, the step runs and proves it.
+      case delivery_proof(scope, name) do
         nil ->
           {:ok, :absent}
 
@@ -1090,24 +1090,40 @@ defmodule CodeMySpec.Provisioning.Steps do
   # The delivery this step last proved, if it proved one. Read from what the
   # step recorded rather than re-sent — a verifier that mails somebody every
   # time the page loads would be its own bug.
-  # The proof a previous run recorded, as a plain map.
+  # The proof a previous run recorded **for this domain**, as a plain map.
   #
-  # `Step` embeds resources, so what comes back out is a `%Resource{}` struct —
-  # and handing one straight back to `verify/3` puts it on the path to
-  # `cast_embed(:resources)`, which wants params rather than a struct and raises
-  # `expected params to be a :map`. The satisfied branch builds its other two
-  # entries as maps; this makes the third match.
-  defp delivery_proof(scope) do
+  # Filtered on the address, because a proof is about one inbox and the step row
+  # outlives the domain. Pointed at a new domain, the row still held
+  # `inbound_proof inbox@spex-drill.legwork.ca` from a torn-down one, and
+  # `verify/3` reported satisfied in 0.2s — earwitness's receiving domain and
+  # webhook listed beside legwork's proof, with nothing having been proven about
+  # the inbox that was actually being set up. That is proof by residue, which is
+  # what `send_and_await/4` identifies the arriving message by id to avoid.
+  #
+  # `Step` embeds its resources, so what comes back is a `%Resource{}` struct,
+  # and handing one to `verify/3` puts it on the path to
+  # `cast_embed(:resources)` — which wants params and raises `expected params to
+  # be a :map`.
+  defp delivery_proof(scope, domain) when is_binary(domain) do
     case StepRepository.get(scope, :inbound) do
       %{resources: resources} when is_list(resources) ->
         resources
-        |> Enum.find(&(&1.kind == "inbound_proof"))
+        |> Enum.find(&(&1.kind == "inbound_proof" and proof_on_domain?(&1, domain)))
         |> plain_resource()
 
       _ ->
         nil
     end
   end
+
+  defp delivery_proof(_scope, _domain), do: nil
+
+  # Anchored on `@`, for the same reason `probe_address_on_domain/2` is: a bare
+  # suffix would accept `inbox@evil-<domain>`.
+  defp proof_on_domain?(%{location: location}, domain) when is_binary(location),
+    do: String.ends_with?(location, "@" <> domain)
+
+  defp proof_on_domain?(_resource, _domain), do: false
 
   defp plain_resource(nil), do: nil
 
