@@ -110,19 +110,21 @@ defmodule CodeMySpecSpex.Drill do
 
   # Before each step, not once at setup. Resend hands out fifteen-minute access
   # tokens and the borrowed copy cannot renew itself — it travels without its
-  # refresh token on purpose — so a token taken at setup is spent by the time a
-  # walk reaches the ninth step. The inbound step waits eleven minutes on its
-  # own; starting it with four left is how it ran to completion and then
-  # reported `API key is invalid`.
+  # refresh token on purpose.
   #
-  # This is the "call it between segments of a long run" the Case documents,
-  # and a step is the right segment: it is the largest unit the walk can
-  # refresh between without interrupting a provider call in flight.
+  # Except it is not worth what it costs. It was added believing an expired
+  # token was behind the inbound step's `400 "API key is invalid"`; that turned
+  # out to be a stale `provider_error` on the step row, written hours earlier
+  # and printed in preference to the pause message. So this fixes a problem
+  # that was never happening, and it opens a connection to code_my_spec_dev per
+  # step to do it — which, against a Postgres already serving the dev server
+  # and other worktrees, reached `too_many_connections`, dropped the grant
+  # fetch, and handed every provider a placeholder. Setup-time refresh is
+  # enough: `connect_providers` does it, and `usable?/1` re-fetches when the
+  # cached grant actually is close to expiry.
   defp run_and_report(scope, key) do
     IO.puts("\n─── #{key} " <> String.duplicate("─", max(0, 60 - String.length(to_string(key)))))
     started = System.monotonic_time(:millisecond)
-
-    refresh_provider_grants(scope)
 
     outcome = Provisioning.run_step(scope, key, step_opts())
 
@@ -143,8 +145,6 @@ defmodule CodeMySpecSpex.Drill do
   defp tear_down_and_report(scope, key) do
     IO.puts("\n─── #{key} " <> String.duplicate("─", max(0, 60 - String.length(to_string(key)))))
     started = System.monotonic_time(:millisecond)
-
-    refresh_provider_grants(scope)
 
     outcome = Teardown.step(scope, key, step_opts())
 
@@ -174,9 +174,6 @@ defmodule CodeMySpecSpex.Drill do
     %{key: key, state: :done, elapsed: elapsed, reason: nil}
   end
 
-  defp origin_of(resource),
-    do: Map.get(resource, :origin) || Map.get(resource, "origin") || "adopted"
-
   defp report_teardown(key, {:error, {:left_behind, remaining}}, elapsed) do
     IO.puts("  left behind #{length(remaining)} in #{seconds(elapsed)}")
     for resource <- remaining, do: IO.puts("    · #{resource_line(resource)}")
@@ -188,6 +185,9 @@ defmodule CodeMySpecSpex.Drill do
       reason: "still there: " <> Enum.map_join(remaining, ", ", &to_string(&1.location))
     }
   end
+
+  defp origin_of(resource),
+    do: Map.get(resource, :origin) || Map.get(resource, "origin") || "adopted"
 
   defp report(key, {:ok, step}, elapsed) do
     IO.puts("  #{step.state} in #{seconds(elapsed)}")
@@ -486,6 +486,24 @@ defmodule CodeMySpecSpex.Drill do
       |> then(&Fixtures.set_project_deploy_key(scope, &1, persistent_deploy_key()))
 
     Fixtures.set_devops(scope, devops_level())
+
+    # Dropped and recreated, not reused. `set_environments/2` puts with empty
+    # attrs, so a row that already exists keeps whatever it was last given —
+    # and what it was last given is the previous walk's server IP and the
+    # previous walk's hostname.
+    #
+    # Both are actively wrong after a teardown or a domain change. Pointed at a
+    # new domain, the rows still said `uat.spex-drill.legwork.ca`; after the
+    # teardown they still held `178.156.185.52`, an address Hetzner had already
+    # taken back. The server step created two fresh boxes and then SSHed to the
+    # released one, because `environment_ip/3` prefers the recorded IP over
+    # asking the provider — and reported `database_password_not_set`, which
+    # names the step that failed rather than the address it dialled.
+    #
+    # Recreating empty makes that fallback the only path: no recorded IP means
+    # `Hetzner.find_server/2` answers, and the answer is about the box that
+    # exists now.
+    only_environments(scope, [])
     only_environments(scope, environments())
 
     scope = %{scope | active_project: project}
