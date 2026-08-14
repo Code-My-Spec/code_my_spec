@@ -68,7 +68,7 @@ defmodule CodeMySpec.Provisioning.BackupsTest do
   end
 
   defp assert_decrypts(ctx) do
-    assert {:ok, key} =
+    assert {:ok, key, _source_rows} =
              Backups.take_dump(ctx.env, "prod",
                credentials: credentials(),
                bucket: "b",
@@ -96,7 +96,7 @@ defmodule CodeMySpec.Provisioning.BackupsTest do
   # `script_env/1` therefore only reaches a box that has no encrypted file —
   # which is not the box backups run on.
   defp assert_file_wins(ctx) do
-    assert {:ok, key} =
+    assert {:ok, key, _source_rows} =
              Backups.take_dump(ctx.env, "prod",
                credentials: credentials(),
                bucket: "b",

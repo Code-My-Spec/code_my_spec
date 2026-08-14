@@ -71,9 +71,19 @@ defmodule CodeMySpec.Provisioning.Backups do
 
     defstruct key: nil, target: "scratch", rows: 0, proven_at: nil, reason: nil
 
-    @doc "A proof counts only when a restore ran and found data."
+    @doc """
+    A proof counts when a restore actually ran.
+
+    `proven_at` is set only by the path that restored the dump *and* found what
+    went into it — `restore_proof/3` compares the restored count with the source
+    count and returns an error otherwise. So the timestamp is the evidence, and
+    `rows > 0` alongside it was not a second check but a wrong one: a freshly
+    provisioned database has migrations and no rows, and a correct backup of it
+    restores zero. Requiring more than zero called that a file rather than a
+    backup.
+    """
     @spec verified?(t()) :: boolean()
-    def verified?(%__MODULE__{rows: rows, proven_at: at}), do: rows > 0 and not is_nil(at)
+    def verified?(%__MODULE__{proven_at: at}), do: not is_nil(at)
   end
 
   @doc """
@@ -90,8 +100,9 @@ defmodule CodeMySpec.Provisioning.Backups do
          # Retention first: the rule has to be in force before the first dump
          # lands, or that dump is the one object nothing ever expires.
          :ok <- Storage.put_lifecycle(bucket, retention_days(opts), credentials, opts),
-         {:ok, key} <- take_dump(env, environment, opts),
-         {:ok, proof} <- restore_proof(env, key, opts),
+         {:ok, key, source_rows} <- take_dump(env, environment, opts),
+         {:ok, proof} <-
+           restore_proof(env, key, Keyword.put(opts, :expected_rows, source_rows)),
          :ok <- install_schedule(env, environment, opts) do
       {:ok, %{key: key, proof: proof, bucket: bucket, retention_days: retention_days(opts)}}
     end
@@ -108,7 +119,7 @@ defmodule CodeMySpec.Provisioning.Backups do
   which an opaque name cannot answer.
   """
   @spec take_dump(Environments.Environment.t(), String.t(), keyword()) ::
-          {:ok, String.t()} | {:error, String.t()}
+          {:ok, String.t(), non_neg_integer() | nil} | {:error, String.t()}
   def take_dump(env, environment, opts \\ []) do
     script = resolve_script(env, Keyword.get(opts, :backup_script, "bin/backup"))
 
@@ -120,7 +131,10 @@ defmodule CodeMySpec.Provisioning.Backups do
              "the backup script did not report the key it wrote: #{String.trim(to_string(output))}"}
 
           key ->
-            {:ok, key}
+            # The source count travels with the key, so the restore is compared
+            # with what went in rather than with zero. `nil` when the script is
+            # an older one that does not print it.
+            {:ok, key, rows_or_nil(output)}
         end
 
       {output, status} ->
@@ -143,13 +157,34 @@ defmodule CodeMySpec.Provisioning.Backups do
     script = resolve_script(env, Keyword.get(opts, :backup_script, "bin/backup"))
     target = Keyword.get(opts, :scratch_database, "scratch")
 
+    # Against what went in, not against zero.
+    #
+    # `> 0` cannot tell a broken backup from a legitimately empty database, and
+    # that is the whole distinction this check exists to draw. A freshly
+    # provisioned application has migrations and no rows, so its first backup is
+    # correct and reported "that is a file, not a backup" — which is how a cold
+    # rebuild failed on a dump that was fine.
+    #
+    # `expected` is the source count, printed by `dump`. Equal means everything
+    # that was there came back, including when nothing was there. An older
+    # script that does not print it falls back to the previous rule, so a
+    # project whose `bin/backup` predates this is no worse off than before.
+    expected = Keyword.get(opts, :expected_rows)
+
     case run_script(env, script, ["restore", key, target], opts) do
       {output, 0} ->
-        case rows(output) do
-          n when n > 0 ->
-            {:ok, %Proof{key: key, target: target, rows: n, proven_at: now.()}}
+        restored = rows(output)
 
-          _ ->
+        case restore_verdict(restored, expected) do
+          :ok ->
+            {:ok, %Proof{key: key, target: target, rows: restored, proven_at: now.()}}
+
+          {:short, missing} ->
+            {:error,
+             "the dump restored into #{target} with #{restored} row(s), but #{missing} " <>
+               "went in — a restore that loses data is not a backup"}
+
+          :empty ->
             {:error,
              "the dump restored into #{target} but the database came back empty — " <>
                "that is a file, not a backup"}
@@ -223,7 +258,29 @@ defmodule CodeMySpec.Provisioning.Backups do
   # The scripts report `name=value` on stdout. One line-oriented convention
   # keeps the contract between here and the server small enough to hold in
   # your head, and greppable from a shell when a run goes wrong.
+  # Equal to what went in is the proof, whatever that number is — zero included,
+  # for a database that genuinely has no rows yet.
+  defp restore_verdict(restored, expected) when is_integer(expected) and restored == expected,
+    do: :ok
+
+  defp restore_verdict(_restored, expected) when is_integer(expected),
+    do: {:short, expected}
+
+  # No source count: an older `bin/backup` that does not print one. Keep the
+  # rule it was written against rather than inventing a verdict from nothing.
+  defp restore_verdict(restored, _expected) when restored > 0, do: :ok
+  defp restore_verdict(_restored, _expected), do: :empty
+
   defp rows(output), do: output |> capture("rows") |> to_integer()
+
+  # Absent rather than zero when the script did not print it: zero is a real
+  # answer for an empty database, so it must not double as "unknown".
+  defp rows_or_nil(output) do
+    case capture(output, "rows") do
+      nil -> nil
+      value -> to_integer(value)
+    end
+  end
 
   defp capture(output, name) do
     case Regex.run(~r/^#{name}=(\S+)$/m, to_string(output)) do
