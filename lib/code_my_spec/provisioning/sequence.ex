@@ -118,14 +118,27 @@ defmodule CodeMySpec.Provisioning.Sequence do
       label: "Callback credential",
       option: nil,
       why: "how the deployed app talks back without a long-lived key"
-    },
-    %{
-      key: :monitoring,
-      label: "Uptime monitoring",
-      option: :monitoring,
-      why: "notices when the site stops answering"
     }
   ]
+
+  # Uptime monitoring is not a step, because setup does not do it.
+  #
+  # It was `UptimeRobot.ensure_monitors/3`, which needs an account, an API key
+  # and a notification target that only a person can supply — so the step
+  # paused on every run and setup could never report complete. The choice was
+  # between carrying a third-party dependency in the path of "did my site go
+  # down" or building the monitoring ourselves, and neither is worth it right
+  # now.
+  #
+  # Removed rather than left pausing. A step that cannot finish is worse than
+  # an absent one: it makes every completed setup look unfinished, and it
+  # claims a capability nothing delivers. Criterion 1968 is narrowed to backups
+  # to match — the honest position is that setup does not leave a monitor
+  # watching, not that it does and cannot prove it.
+  #
+  # `cms_new` still generates `/_cms/verify/always-failing`, which is down by
+  # construction, so whatever monitoring is eventually pointed at these
+  # applications can be proven to notice something.
 
   @doc "Every step, in order, regardless of options."
   @spec all() :: [step()]

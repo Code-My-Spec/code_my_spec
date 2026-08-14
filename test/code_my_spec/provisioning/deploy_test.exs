@@ -250,19 +250,6 @@ defmodule CodeMySpec.Provisioning.DeployTest do
     end
   end
 
-  describe "ensure_monitors/2" do
-    # Criterion 8010 wants a monitor AND somewhere for it to shout. A monitor
-    # with no notification target is a monitor nobody hears, so this is
-    # required rather than defaulted.
-    test "refuses to install a monitor with nowhere to alert" do
-      assert {:error, :no_notification_target} =
-               Deploy.ensure_monitors(["app.example.com"], [])
-
-      assert {:error, :no_notification_target} =
-               Deploy.ensure_monitors(["app.example.com"], notify: "")
-    end
-  end
-
   # The generated `bin/deploy` waits for GitHub Actions and pulls from ghcr.io
   # with `gh auth token`. Setup has already built the image on its own builder
   # and pushed it to the project's own registry, so it has to be able to say

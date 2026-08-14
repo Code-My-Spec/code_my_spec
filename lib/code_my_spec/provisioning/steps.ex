@@ -476,31 +476,6 @@ defmodule CodeMySpec.Provisioning.Steps do
     end
   end
 
-  def run(:monitoring, %Scope{} = scope, opts) do
-    hosts = Keyword.get(opts, :hosts) || List.wrap(domain(scope))
-
-    # A spex can inject the monitor outcome (host + notify target) without a
-    # real UptimeRobot account — the criterion is that a monitor exists per
-    # host and has somewhere to shout, not UptimeRobot's API.
-    case Keyword.get(opts, :monitors) || Deploy.ensure_monitors(hosts, opts) do
-      {:ok, monitors} ->
-        {:ok, Enum.map(monitors, &%{kind: "monitor", location: &1["friendly_name"] || "monitor"})}
-
-      monitors when is_list(monitors) ->
-        {:ok,
-         Enum.map(monitors, fn m ->
-           %{kind: "monitor", location: m.host, identifier: "notify=#{m.notify}"}
-         end)}
-
-      {:error, :no_notification_target} ->
-        {:paused,
-         "Add a notification target before installing monitors — a monitor nobody hears is not monitoring."}
-
-      {:error, reason} ->
-        {:error, format(reason)}
-    end
-  end
-
   def run(:content, %Scope{} = scope, opts) do
     # `ContentPublishing.run/2` already computes everything story 972 asks
     # about — which objects landed in whose bucket, what the live site returned
@@ -556,9 +531,9 @@ defmodule CodeMySpec.Provisioning.Steps do
         # site nobody has used yet this errored forever and took the run with
         # it.
         #
-        # Paused rather than errored, the same shape as the monitoring step
-        # waiting for a notification target and the storage step waiting for
-        # console-only keys. It still does not report done — the widget is not
+        # Paused rather than errored, the same shape as the storage step
+        # waiting for console-only keys. It still does not report done — the
+        # widget is not
         # proven until a message arrives, and resuming re-checks (7967) — but a
         # run stops calling a working install a failure.
         %{state: :not_proven} = result ->

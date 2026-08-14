@@ -36,7 +36,6 @@ defmodule CodeMySpec.Provisioning.Deploy do
   """
 
   alias CodeMySpec.Environments
-  alias CodeMySpec.Provisioning.Deploy.UptimeRobot
   alias CodeMySpec.Provisioning.Transport
   alias CodeMySpec.Provisioning.Wait
 
@@ -330,25 +329,6 @@ defmodule CodeMySpec.Provisioning.Deploy do
     case failures do
       [] -> {:ok, hosts}
       failures -> {:error, {:unhealthy, failures}}
-    end
-  end
-
-  @doc """
-  Install an uptime monitor for every public host.
-
-  Criterion 8010 wants a monitor per host AND somewhere for it to shout — a
-  monitor with no notification target is a monitor nobody hears, so
-  `:notify` is required rather than optional.
-  """
-  @spec ensure_monitors([String.t()], keyword()) ::
-          {:ok, [map()]} | {:error, :no_notification_target} | {:error, term()}
-  def ensure_monitors(hosts, opts \\ []) do
-    case Keyword.get(opts, :notify) do
-      target when is_binary(target) and target != "" ->
-        UptimeRobot.ensure_monitors(hosts, target, opts)
-
-      _ ->
-        {:error, :no_notification_target}
     end
   end
 
