@@ -151,7 +151,7 @@ defmodule CodeMySpecWeb.ChatComponents do
         <div
           :if={@text != ""}
           class={[
-            "prose prose-sm max-w-none prose-p:my-1 prose-ul:my-1 prose-ol:my-1 prose-pre:my-1",
+            "chat-prose prose prose-sm max-w-none prose-p:my-1 prose-ul:my-1 prose-ol:my-1 prose-pre:my-1",
             side(@role, @own_role) == "chat-end" && "prose-invert"
           ]}
         >
@@ -229,7 +229,7 @@ defmodule CodeMySpecWeb.ChatComponents do
       <div class="space-y-3 border-t border-base-300 px-3 pb-3 pt-2">
         <div :if={@json != "{}"}>
           <h4 class="mb-1 text-xs uppercase tracking-wide opacity-50">Parameters</h4>
-          <pre class="overflow-x-auto whitespace-pre-wrap break-all rounded-box bg-base-300/40 p-2 font-mono text-xs opacity-80">{@json}</pre>
+          <pre class="overflow-x-hidden whitespace-pre-wrap break-all rounded-box bg-base-300/40 p-2 font-mono text-xs opacity-80">{@json}</pre>
           <p :if={@cut} class="mt-1 text-xs italic opacity-50">
             truncated — the transcript shows what was called, not the whole payload
           </p>
@@ -240,7 +240,7 @@ defmodule CodeMySpecWeb.ChatComponents do
             {if @failed, do: "Error", else: "Result"}
           </h4>
           <pre class={[
-            "overflow-x-auto whitespace-pre-wrap break-words rounded-box p-2 font-mono text-xs",
+            "overflow-x-hidden whitespace-pre-wrap break-all rounded-box p-2 font-mono text-xs",
             @failed && "bg-error/10 text-error",
             !@failed && "bg-base-300/40 opacity-80"
           ]}>{Message.text(@result)}</pre>

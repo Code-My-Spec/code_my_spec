@@ -202,3 +202,35 @@ body {
         color: var(--color-warning);
     }
 }
+
+/* A transcript is read on a phone, and nothing in it may pan sideways.
+ *
+ * The typography plugin gives `pre` `white-space: pre` and `overflow-x: auto`,
+ * which is right for a docs page and wrong here: an agent's reply is mostly
+ * code, so every fenced block became a horizontal scroller inside a column
+ * that cannot scroll, and dragging one pans the page under your thumb.
+ *
+ * A long URL is the same failure without the code: a bare link has no break
+ * opportunity, so it pushes the bubble wider than the screen.
+ *
+ * Wrapping loses the original line breaks of wide code. That is the trade:
+ * a line you can read across two rows beats a line you have to drag to see. */
+.chat-prose :where(pre) {
+    white-space: pre-wrap;
+    overflow-x: hidden;
+    word-break: break-word;
+}
+
+.chat-prose :where(code) {
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.chat-prose :where(a) {
+    word-break: break-all;
+}
+
+.chat-prose :where(table) {
+    display: block;
+    overflow-x: auto;
+}
