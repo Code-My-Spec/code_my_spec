@@ -12,7 +12,7 @@ defmodule CodeMySpec.LiveStorageTest do
   came apart already on this story (a 409 for a bucket you own reads as
   failure until you see one).
   """
-  use ExUnit.Case, async: false
+  use ExUnit.Case, async: true
 
   @moduletag :live
   @moduletag timeout: 300_000

@@ -9,6 +9,17 @@ defmodule CmsHarness.SyncPathTest do
   can genuinely be cut, which is what the disconnection tests need.
   """
 
+  # Sync, because the thing under test registers globally.
+  #
+  # `Projects.ensure_started/1` puts the project in `CmsHarness.Registry`, which
+  # is one registry for the node, and the assertions here are `assert_receive
+  # {:joined, project_id, _}`. Run async, a second test's join arrives first and
+  # the id does not match — which is what happened when this was flipped:
+  # `assert project_id == project.id` failed in the suite while passing alone.
+  #
+  # Not a sandbox or filesystem problem, so none of the usual remedies apply.
+  # The registry is process-global by design; the only isolation available is
+  # not running two of these at once.
   use ExUnit.Case, async: false
 
   import CmsHarnessTest.Projects

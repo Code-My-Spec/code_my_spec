@@ -14,7 +14,7 @@ defmodule CmsHarness.WorkingCopiesTest do
   which is every hook after a copy's first.
   """
 
-  use ExUnit.Case, async: false
+  use ExUnit.Case, async: true
 
   import CmsHarnessTest.Projects
 

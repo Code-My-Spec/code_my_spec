@@ -1,5 +1,5 @@
 defmodule CodeMySpec.Intake.FunnelTest do
-  use CodeMySpecTest.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: true
 
   alias CodeMySpec.Events
   alias CodeMySpec.Intake.Funnel

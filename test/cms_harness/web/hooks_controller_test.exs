@@ -4,7 +4,7 @@ defmodule CmsHarness.Web.HooksControllerTest do
   matters, because it is the one where a wrong answer is invisible.
   """
 
-  use CmsHarnessTest.ConnCase, async: false
+  use CmsHarnessTest.ConnCase, async: true
 
   alias CmsHarness.Project.ChannelClient
   alias CmsHarness.Projects

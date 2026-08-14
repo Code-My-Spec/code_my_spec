@@ -15,7 +15,7 @@ defmodule CmsHarness.Web.HealthControllerTest do
   this puts the same fact somewhere you can ask for it before stopping.
   """
 
-  use CmsHarnessTest.ConnCase, async: false
+  use CmsHarnessTest.ConnCase, async: true
 
   test "it names the commit the harness booted from", %{conn: conn} do
     body = conn |> get("/health") |> json_response(200)

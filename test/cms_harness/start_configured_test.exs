@@ -19,7 +19,7 @@ defmodule CmsHarness.StartConfiguredTest do
   over without changing how it is launched.
   """
 
-  use ExUnit.Case, async: false
+  use ExUnit.Case, async: true
 
   import ExUnit.CaptureLog
 

@@ -18,7 +18,7 @@ defmodule CodeMySpec.Hooks.SubagentStopAttributionTest do
   minutes apart.
   """
 
-  use CodeMySpecTest.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.UsersFixtures
 

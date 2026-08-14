@@ -8,7 +8,7 @@ defmodule CmsHarness.ProjectIdentityTest do
   another project's rows.
   """
 
-  use ExUnit.Case, async: false
+  use ExUnit.Case, async: true
 
   import CmsHarnessTest.Projects
 

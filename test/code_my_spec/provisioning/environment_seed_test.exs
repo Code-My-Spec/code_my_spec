@@ -13,7 +13,7 @@ defmodule CodeMySpec.Provisioning.EnvironmentSeedTest do
   The cost of that shape is measured in ten-minute cloud cycles, so it is
   worth a test that runs in milliseconds.
   """
-  use CodeMySpecTest.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.UsersFixtures
 

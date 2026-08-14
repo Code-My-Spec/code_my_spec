@@ -7,7 +7,7 @@ defmodule CodeMySpecLocalWeb.HarnessSocketTest do
   `external_id = "pi:<local_path>"`.
   """
 
-  use CodeMySpecTest.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: true
 
   import Phoenix.ChannelTest
   import CodeMySpec.UsersFixtures
