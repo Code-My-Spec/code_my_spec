@@ -151,32 +151,34 @@ defmodule CodeMySpecLocalWeb.Router do
     get "/projects", BootstrapController, :list_projects
   end
 
-  # ── LLM API (Controllers, markdown) ─────────────────────────────
-
-  pipeline :api do
-    plug CodeMySpecLocalWeb.Plugs.LocalOnly
-    plug CodeMySpecLocalWeb.Plugs.WorkingDir
-  end
-
-  # Hook endpoints — resolve scope from the X-Harness-Id header, falling back
-  # to X-Working-Dir until the released plugin sends the id. HarnessScope runs
-  # first and assigns both working_dir and current_scope when it answers, which
-  # is what makes the two plugs after it no-op.
+  # Hook endpoints — scope comes from the X-Harness-Id header and nothing else.
+  #
+  # The fallback that used to sit here read a directory off the wire and walked
+  # up to the nearest mix.exs. That resolved one session differently depending
+  # on which subdirectory it fired from, resolved a nested checkout to the outer
+  # one, and could not tell two checkouts at the same path on different machines
+  # apart at all. Worse, a wrong path did not fail — it succeeded against the
+  # wrong disk, which is how eight spec stubs ended up in the server's own
+  # repository and `install_agents_md` reported success into a checkout nobody
+  # asked it to touch.
+  #
+  # The working copy still knows where it is: `.cms_harness.json` holds
+  # `{harness_id, project_id, root}` at its root, and `harnesses.root` mirrors
+  # it. So the directory travels in config, next to the id that authorises it,
+  # and never on the wire. An unknown id fails closed.
   pipeline :hook do
     plug CodeMySpecLocalWeb.Plugs.LocalOnly
     plug CodeMySpecLocalWeb.Plugs.HarnessScope
-    plug CodeMySpecLocalWeb.Plugs.WorkingDir
-    plug CodeMySpecLocalWeb.Plugs.WorkingDirScope
   end
 
-  # Antigravity hook endpoints — same scope chain, but the workspace
-  # arrives as `workspacePaths` in the JSON body instead of a header
+  # Antigravity hooks route by id like every other hook. `AntigravityWorkspace`
+  # dug a workspace path out of the JSON body, which was the same
+  # directory-on-the-wire in a different shape — and the cost the identity
+  # decision names by name: every transport parsing identity out of its own
+  # payload format.
   pipeline :antigravity_hook do
     plug CodeMySpecLocalWeb.Plugs.LocalOnly
     plug CodeMySpecLocalWeb.Plugs.HarnessScope
-    plug CodeMySpecLocalWeb.Plugs.AntigravityWorkspace
-    plug CodeMySpecLocalWeb.Plugs.WorkingDir
-    plug CodeMySpecLocalWeb.Plugs.WorkingDirScope
   end
 
   # Nothing but the localhost check — for routes that name what they mean
@@ -185,11 +187,13 @@ defmodule CodeMySpecLocalWeb.Router do
     plug CodeMySpecLocalWeb.Plugs.LocalOnly
   end
 
-  # Bootstrap endpoints — cwd-only scope, runnable before a project is linked
+  # Init, and only init. It runs before anything has been onboarded, so there is
+  # no harness id to route on — issuing one is downstream of what init does. It
+  # is told its directory outright and refuses without, which is the one thing
+  # the old chain never did: that one guessed, by walking up to a mix.exs.
   pipeline :init do
     plug CodeMySpecLocalWeb.Plugs.LocalOnly
-    plug CodeMySpecLocalWeb.Plugs.WorkingDir
-    plug CodeMySpecLocalWeb.Plugs.WorkingDirCwdScope
+    plug CodeMySpecLocalWeb.Plugs.InitCwd
   end
 
   # Onboarding. Names its project and root explicitly, so it is the one route
@@ -307,15 +311,16 @@ defmodule CodeMySpecLocalWeb.Router do
   # harness rather than a missing plug.
   #
   # `HarnessScope` resolves the working copy from the id the checkout wrote down
-  # (`.cms_harness.json`, mirrored on `harnesses.root`), and `WorkingDirScope`
-  # falls back to the request's directory. Both build the scope through
-  # `Scope.for_local_project/2`, which is what attaches the environment — so
-  # either path now yields one, where before neither did.
+  # (`.cms_harness.json`, mirrored on `harnesses.root`) and builds the scope
+  # through `Scope.for_local_project/2`, which is what attaches the environment.
+  #
+  # The `?dir=` query parameter this used to accept is gone with the rest of
+  # working-directory resolution: a path on the wire is a client-supplied
+  # filesystem location the server then writes to, and a wrong one succeeds
+  # against the wrong disk rather than failing.
   pipeline :mcp do
     plug CodeMySpecLocalWeb.Plugs.LocalOnly
     plug CodeMySpecLocalWeb.Plugs.HarnessScope
-    plug CodeMySpecLocalWeb.Plugs.WorkingDir
-    plug CodeMySpecLocalWeb.Plugs.WorkingDirScope
   end
 
   scope "/mcp", CodeMySpecLocalWeb do

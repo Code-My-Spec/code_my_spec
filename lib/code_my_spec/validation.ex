@@ -141,8 +141,8 @@ defmodule CodeMySpec.Validation do
     end
   end
 
-  # `cwd` is not the same claim as "there is a working copy here". It comes off
-  # the hook's `x-working-dir` header, so the clause above matches on the
+  # `cwd` is not the same claim as "there is a working copy here". It is set for
+  # any resolved scope, so the clause above matches on the
   # server too, where `scope.environment` is a `Harness` that walks nothing —
   # and the sync it ran deleted every row for the checkout it was named after.
   #

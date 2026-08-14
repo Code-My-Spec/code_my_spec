@@ -9,9 +9,16 @@ defmodule CodeMySpec.Transcripts.Replayer do
       are applied to `target_dir`, with absolute paths rewritten from the
       recorded working directory.
     * **Harness DB / UI** — `mcp__plugin_codemyspec_local__*` calls are re-issued
-      to the harness MCP endpoint (`:mcp_url`) scoped to `target_dir` via the
-      `X-Working-Dir` header. When `:mcp_url` is nil these are skipped (pure
-      filesystem replay, the original behaviour).
+      to the harness MCP endpoint (`:mcp_url`), naming the target working copy by
+      the harness id in its `.cms_harness.json`. When `:mcp_url` is nil these are
+      skipped (pure filesystem replay, the original behaviour).
+
+      The id is read once at replay start, so a `target_dir` that was never
+      onboarded fails on the first MCP call with the server's own refusal rather
+      than replaying half a transcript into nowhere. It used to send
+      `X-Working-Dir: target_dir` and let the server walk up to a `mix.exs`,
+      which is exactly the resolution that made a wrong answer succeed against
+      the wrong checkout.
 
   Everything else (Read, Task, WebFetch, marketing MCP, vibium, networked Bash)
   is skipped. Operations never halt the run: failures are caught, tallied, and
@@ -72,6 +79,7 @@ defmodule CodeMySpec.Transcripts.Replayer do
     ctx = %{
       source_cwd: source_cwd,
       target_dir: target_dir,
+      harness_id: harness_id(target_dir),
       mcp_url: Keyword.get(opts, :mcp_url),
       log: Keyword.get(opts, :log, :errors),
       delay_ms: Keyword.get(opts, :delay_ms, 0)
@@ -202,6 +210,20 @@ defmodule CodeMySpec.Transcripts.Replayer do
     end
   end
 
+  # The working copy's own record of which harness it is. Read rather than
+  # derived: a directory is not an identity, and treating it as one is what let
+  # a replay land in a neighbouring checkout.
+  @spec harness_id(String.t()) :: String.t() | nil
+  def harness_id(dir) do
+    with {:ok, raw} <- File.read(Path.join(dir, ".cms_harness.json")),
+         {:ok, %{"harness_id" => id}} <- Jason.decode(raw),
+         true <- is_binary(id) and id != "" do
+      id
+    else
+      _ -> nil
+    end
+  end
+
   # -- MCP dispatch ---------------------------------------------------------
 
   defp dispatch_mcp(tool, arguments, ctx) do
@@ -213,7 +235,7 @@ defmodule CodeMySpec.Transcripts.Replayer do
     }
 
     headers = [
-      {"x-working-dir", ctx.target_dir},
+      {"x-harness-id", ctx[:harness_id] || harness_id(ctx.target_dir) || ""},
       {"accept", "application/json, text/event-stream"}
     ]
 

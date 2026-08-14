@@ -168,7 +168,16 @@ defmodule CodeMySpecLocalWeb.SkillController do
   end
 
   defp validate_cwd(%{cwd: cwd}) when is_binary(cwd), do: {:ok, cwd}
-  defp validate_cwd(_), do: {:error, "No working directory set. Send X-Working-Dir header."}
+  # The scope came from a harness id, so a missing cwd means the harness has no
+  # root recorded and its project has no `local_path` — not that a header was
+  # left off. Naming the header sent readers to fix the caller, which was
+  # already correct.
+  defp validate_cwd(_) do
+    {:error,
+     "This harness has no working copy on this machine. Its record carries no root " <>
+       "and its project no local_path, so there is nowhere to run. Reconnect the " <>
+       "harness from the checkout, or set the project's local path."}
+  end
 
   # ── /next ───────────────────────────────────────────────────────
   # Single-step "do the next requirement" gesture. Resolves the next

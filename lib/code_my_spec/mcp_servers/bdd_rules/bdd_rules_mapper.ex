@@ -148,16 +148,12 @@ defmodule CodeMySpec.McpServers.BddRules.BddRulesMapper do
 
   def error(:no_attrs) do
     Response.tool()
-    |> Response.error(
-      "Nothing to update — pass at least one of `title`, `body`, or `kind`."
-    )
+    |> Response.error("Nothing to update — pass at least one of `title`, `body`, or `kind`.")
   end
 
   def error(:invalid_kind) do
     Response.tool()
-    |> Response.error(
-      "Invalid scenario kind. Must be `happy_path` or `failure_path`."
-    )
+    |> Response.error("Invalid scenario kind. Must be `happy_path` or `failure_path`.")
   end
 
   def error(:cross_account) do
@@ -177,7 +173,9 @@ defmodule CodeMySpec.McpServers.BddRules.BddRulesMapper do
   def error(:no_working_dir) do
     Response.tool()
     |> Response.error(
-      "Working directory not provided. The MCP client must send the `x-working-dir` header for local tools."
+      "This tool needs the project's working copy, and this request did not name one. " <>
+        "The MCP client must send an `X-Harness-Id` header; the id is in .cms_harness.json " <>
+        "at the working copy's root, written by `mix cms.harness.onboard`."
     )
   end
 

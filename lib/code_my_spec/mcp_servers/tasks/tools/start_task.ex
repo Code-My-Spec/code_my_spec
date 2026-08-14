@@ -106,9 +106,9 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.StartTask do
         # start, so a session opened before the plugin's hooks were enabled
         # never gets its session row, and the agent would dead-end here until
         # a full /clear + restart. Rather than error, create the row under the
-        # same working-dir scope the hook would have used (the /mcp pipeline
-        # and the hook pipeline both resolve scope from X-Working-Dir), so the
-        # flow self-heals in place.
+        # same scope the hook would have used (the /mcp pipeline and the hook
+        # pipeline both resolve it from the harness id), so the flow self-heals
+        # in place.
         case safe_get_session(scope, session_id) do
           nil -> lazily_register_session(scope, session_id)
           session -> {:ok, session}

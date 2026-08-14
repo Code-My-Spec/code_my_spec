@@ -124,7 +124,9 @@ defmodule CodeMySpec.McpServers.Personas.PersonasMapper do
   def error(:no_working_dir) do
     Response.tool()
     |> Response.error(
-      "Working directory not provided. The MCP client must send the `x-working-dir` header for local tools."
+      "This tool needs the project's working copy, and this request did not name one. " <>
+        "The MCP client must send an `X-Harness-Id` header; the id is in .cms_harness.json " <>
+        "at the working copy's root, written by `mix cms.harness.onboard`."
     )
   end
 

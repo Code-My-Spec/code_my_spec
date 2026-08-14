@@ -37,7 +37,7 @@ defmodule CodeMySpecSpex.Story669.Criterion5565Spex do
         session_id = "spex-#{System.unique_integer([:positive])}"
 
         Phoenix.ConnTest.build_conn()
-        |> Plug.Conn.put_req_header("x-working-dir", context.scope.cwd)
+        |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_harness_id)
         |> Plug.Conn.put_req_header("content-type", "application/json")
         |> post("/api/hooks/session-start", %{"session_id" => session_id})
         |> Phoenix.ConnTest.json_response(200)
@@ -77,7 +77,7 @@ defmodule CodeMySpecSpex.Story669.Criterion5565Spex do
         response =
           use_cmd_cassette "pipeline_compile_error", record: :none do
             Phoenix.ConnTest.build_conn()
-            |> Plug.Conn.put_req_header("x-working-dir", context.scope.cwd)
+            |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_harness_id)
             |> Plug.Conn.put_req_header("content-type", "application/json")
             |> post(~p"/api/hooks/stop", %{
               "session_id" => context.session_id,

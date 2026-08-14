@@ -1588,7 +1588,7 @@ defmodule CodeMySpecSpex.Fixtures do
   def start_continuous_mode(scope, external_id) when is_binary(external_id) do
     response =
       Phoenix.ConnTest.build_conn()
-      |> Plug.Conn.put_req_header("x-working-dir", scope.cwd)
+      |> Plug.Conn.put_req_header("x-harness-id", scope.active_harness_id)
       |> Plug.Conn.put_req_header("content-type", "application/json")
       |> Phoenix.ConnTest.dispatch(
         CodeMySpecLocalWeb.Endpoint,

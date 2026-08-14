@@ -29,7 +29,7 @@ defmodule CodeMySpecSpex.Story704.Criterion6098Spex do
         session_id = "spex-6098-#{System.unique_integer([:positive])}"
 
         Phoenix.ConnTest.build_conn()
-        |> Plug.Conn.put_req_header("x-working-dir", context.scope.cwd)
+        |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_harness_id)
         |> Plug.Conn.put_req_header("content-type", "application/json")
         |> post(~p"/api/hooks/session-start", %{"session_id" => session_id})
         |> Phoenix.ConnTest.json_response(200)

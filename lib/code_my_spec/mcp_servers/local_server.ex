@@ -37,7 +37,8 @@ defmodule CodeMySpec.McpServers.LocalServer do
     version: "1.0.0",
     capabilities: [:tools]
 
-  # Scope resolved from x-working-dir header via merge_transport_assigns.
+  # Scope resolved from the X-Harness-Id header by `Plugs.HarnessScope`, which
+  # reaches a tool's frame through the transport's assigns.
 
   # Bootstrap — project linking, resource installation
   component(CodeMySpec.McpServers.Bootstrap.Tools.ListProjects)

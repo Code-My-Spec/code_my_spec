@@ -211,8 +211,11 @@ defmodule CodeMySpec.Projects do
   end
 
   @doc """
-  Gets a project by its local filesystem path. For hook endpoints that
-  resolve project from X-Working-Dir instead of a project name in the URL.
+  Gets a project by its local filesystem path.
+
+  Not for resolving a request: hooks and MCP name a harness, and its record says
+  which project. This answers the reverse question — which project claims a path
+  — for startup config and the harness's own identity check.
   """
   def get_project_by_local_path(path) when is_binary(path) do
     query =

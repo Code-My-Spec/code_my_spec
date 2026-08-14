@@ -39,7 +39,6 @@ defmodule CodeMySpecLocalWeb.Antigravity.HooksController do
   # in toolCall.args.
   @edit_tools ~w(write_to_file replace_file_content multi_replace_file_content)
 
-
   # ── PreInvocation ──────────────────────────────────────────────────
   # Fires before every model call; the first invocation of a conversation
   # (`invocationNum` 0) is the closest analog to Claude's SessionStart, so
@@ -139,9 +138,7 @@ defmodule CodeMySpecLocalWeb.Antigravity.HooksController do
        when tool in @edit_tools and is_binary(file_path) and is_binary(conversation_id) do
     FileEdits.track_edit(conversation_id, file_path)
 
-    Logger.info(
-      "[AntigravityHooks] tracked #{tool} session=#{conversation_id} path=#{file_path}"
-    )
+    Logger.info("[AntigravityHooks] tracked #{tool} session=#{conversation_id} path=#{file_path}")
   end
 
   defp track_edit(_tool, _args, _conversation_id), do: :ok
@@ -165,11 +162,11 @@ defmodule CodeMySpecLocalWeb.Antigravity.HooksController do
     # PreToolUseController. This module used to keep its own copy of the regex
     # and its own arg parsing, which meant the pipe-swallowing bug had to be
     # found and fixed twice.
-    with %{active_project_id: project_id, cwd: cwd}
-         when not is_nil(project_id) and is_binary(cwd) <- scope,
+    with %{active_project_id: project_id, cwd: cwd, active_harness_id: harness_id}
+         when not is_nil(project_id) and is_binary(cwd) and is_binary(harness_id) <- scope,
          {:ok, task, source, args} <-
            CodeMySpec.Hooks.PreToolUse.classify_test_command(command) do
-      curl = build_curl(conn, cwd, source, args)
+      curl = build_curl(conn, harness_id, source, args)
 
       {:deny,
        "CodeMySpec routes `mix #{task}` through its analysis service so runs share " <>
@@ -182,12 +179,16 @@ defmodule CodeMySpecLocalWeb.Antigravity.HooksController do
 
   defp redirect_test_command(_conn, _tool, _args), do: :pass
 
-  defp build_curl(conn, cwd, source, args) do
+  # `cwd` decides there is a disk to run on; the id says which checkout. It used
+  # to be `X-Working-Dir: #{cwd}`, which is a path the agent then pastes into a
+  # shell command that the server writes results against — wrong once means the
+  # wrong disk, silently.
+  defp build_curl(conn, harness_id, source, args) do
     payload = Jason.encode!(%{source: source, args: args})
 
     "curl -sS -X POST http://localhost:#{conn.port}/api/analysis/run " <>
       "-H 'Content-Type: application/json' " <>
-      "-H 'X-Working-Dir: #{cwd}' " <>
+      "-H 'X-Harness-Id: #{harness_id}' " <>
       "--data #{shell_quote(payload)}"
   end
 

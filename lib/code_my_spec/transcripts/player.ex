@@ -278,7 +278,9 @@ defmodule CodeMySpec.Transcripts.Player do
   end
 
   # -- action labels (Claude Code-ish) --------------------------------------
-  defp action_label(%ToolCall{name: "Bash", input: i}), do: "Bash(#{first_line(i["command"] || "")})"
+  defp action_label(%ToolCall{name: "Bash", input: i}),
+    do: "Bash(#{first_line(i["command"] || "")})"
+
   defp action_label(%ToolCall{name: "Write", input: i}), do: "Write(#{rel(i["file_path"])})"
   defp action_label(%ToolCall{name: "Edit", input: i}), do: "Edit(#{rel(i["file_path"])})"
   defp action_label(%ToolCall{name: "Read", input: i}), do: "Read(#{rel(i["file_path"])})"
@@ -286,12 +288,22 @@ defmodule CodeMySpec.Transcripts.Player do
   defp action_label(%ToolCall{name: @harness_prefix <> tool, input: i}),
     do: "#{tool}(#{args(i)})"
 
-  defp action_label(%ToolCall{name: "mcp__" <> rest}), do: rest |> String.split("__") |> List.last()
+  defp action_label(%ToolCall{name: "mcp__" <> rest}),
+    do: rest |> String.split("__") |> List.last()
+
   defp action_label(%ToolCall{name: name}), do: name
 
   defp args(input) when is_map(input) do
     input
-    |> Map.take(["story_id", "title", "statement", "requirement_name", "path", "name", "component_name"])
+    |> Map.take([
+      "story_id",
+      "title",
+      "statement",
+      "requirement_name",
+      "path",
+      "name",
+      "component_name"
+    ])
     |> Enum.map_join(", ", fn {k, v} -> "#{k}: #{cap(to_string(v), 48)}" end)
   end
 
@@ -299,7 +311,11 @@ defmodule CodeMySpec.Transcripts.Player do
 
   # -- helpers --------------------------------------------------------------
   defp result_text(%{"content" => content}) when is_list(content),
-    do: content |> Enum.map(fn b -> is_map(b) && b["text"] end) |> Enum.filter(& &1) |> Enum.join(" ")
+    do:
+      content
+      |> Enum.map(fn b -> is_map(b) && b["text"] end)
+      |> Enum.filter(& &1)
+      |> Enum.join(" ")
 
   defp result_text(%{"content" => content}) when is_binary(content), do: content
   defp result_text(_), do: ""
@@ -361,8 +377,12 @@ defmodule CodeMySpec.Transcripts.Player do
       url = base <> "/api/hooks/session-start"
       target = opts[:target_dir] || "/tmp/cms_demo_mms"
 
+      # The target's own harness id, from `.cms_harness.json`. Sending the
+      # directory instead had the server walk up to a `mix.exs` to find a
+      # checkout, which is how a demo replay could seed a session against a
+      # neighbouring one.
       headers = [
-        {"x-working-dir", target},
+        {"x-harness-id", Replayer.harness_id(target) || ""},
         {"content-type", "application/json"}
       ]
 

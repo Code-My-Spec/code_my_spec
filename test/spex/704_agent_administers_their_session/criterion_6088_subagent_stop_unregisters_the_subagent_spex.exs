@@ -25,13 +25,13 @@ defmodule CodeMySpecSpex.Story704.Criterion6088Spex do
         agent_id = "test-writer-#{System.unique_integer([:positive])}"
 
         Phoenix.ConnTest.build_conn()
-        |> Plug.Conn.put_req_header("x-working-dir", context.scope.cwd)
+        |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_harness_id)
         |> Plug.Conn.put_req_header("content-type", "application/json")
         |> post(~p"/api/hooks/session-start", %{"session_id" => session_id})
         |> Phoenix.ConnTest.json_response(200)
 
         Phoenix.ConnTest.build_conn()
-        |> Plug.Conn.put_req_header("x-working-dir", context.scope.cwd)
+        |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_harness_id)
         |> Plug.Conn.put_req_header("content-type", "application/json")
         |> post(~p"/api/hooks/subagent-start", %{
           "session_id" => session_id,
@@ -57,7 +57,7 @@ defmodule CodeMySpecSpex.Story704.Criterion6088Spex do
 
       when_ "the main agent fires POST /subagent-stop with that agent_id", context do
         Phoenix.ConnTest.build_conn()
-        |> Plug.Conn.put_req_header("x-working-dir", context.scope.cwd)
+        |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_harness_id)
         |> Plug.Conn.put_req_header("content-type", "application/json")
         |> post(~p"/api/hooks/subagent-stop", %{
           "session_id" => context.session_id,

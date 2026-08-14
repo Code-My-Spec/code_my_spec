@@ -125,23 +125,44 @@ defmodule CodeMySpecLocalWeb.Plugs.HarnessScopeTest do
   end
 
   describe "no usable id" do
-    test "falls through untouched so the working-dir chain can answer" do
+    test "is refused, and the refusal carries the fix" do
       for headers <- [[], [{"x-harness-id", ""}], [{"x-harness-id", "   "}]] do
         conn = call(headers)
 
-        refute conn.halted
+        assert conn.halted
+        assert conn.status == 400
         refute Map.has_key?(conn.assigns, :current_scope)
+
+        error = Jason.decode!(conn.resp_body)["error"]
+
+        assert error =~ ".cms_harness.json",
+               "the request that hits this comes from a hook nobody is watching — " <>
+                 "the agent sees the body and the operator sees nothing, so the body " <>
+                 "has to say where the id lives"
       end
     end
 
-    test "an unexpanded shell variable is absent, not malformed" do
+    test "a directory is not a second way to answer" do
+      conn = call([{"x-harness-id", ""}, {"x-working-dir", File.cwd!()}])
+
+      assert conn.halted,
+             "resolving this from the path would not fail when wrong — it would " <>
+               "succeed against the wrong checkout, which is how eight spec stubs " <>
+               "landed in the server's own repository"
+    end
+
+    test "an unexpanded shell variable names onboarding, not the header" do
       conn = call([{"x-harness-id", "${CMS_HARNESS_ID}"}])
 
-      refute conn.halted,
-             "every checkout has an unset variable until it is onboarded; " <>
-               "refusing would take down all its hooks at once"
-
+      assert conn.halted
+      assert conn.status == 400
       refute Map.has_key?(conn.assigns, :current_scope)
+
+      error = Jason.decode!(conn.resp_body)["error"]
+
+      assert error =~ "cms.harness.onboard",
+             "the hook is configured correctly and the checkout is not; saying " <>
+               "the header is missing sends the reader to the wrong file"
     end
   end
 end

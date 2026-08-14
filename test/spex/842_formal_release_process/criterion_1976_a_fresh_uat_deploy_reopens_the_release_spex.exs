@@ -91,7 +91,7 @@ defmodule CodeMySpecSpex.Story842.Criterion1976Spex do
       when_ "the agent asks what release work is outstanding", context do
         response =
           Phoenix.ConnTest.build_conn()
-          |> Plug.Conn.put_req_header("x-working-dir", context.scope.cwd)
+          |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_harness_id)
           |> Plug.Conn.put_req_header("content-type", "application/json")
           |> post("/api/agent-tasks/start", %{
             "session_type" => @release_type,

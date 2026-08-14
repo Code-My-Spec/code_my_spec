@@ -272,11 +272,10 @@ defmodule CodeMySpec.Hooks.PreToolUse do
   # Which working copy the run is about, and how that is said.
   #
   # **`cwd` is checked first and the order is the whole correctness argument.**
-  # A heavy harness carries *both*: its `:hook` pipeline runs `HarnessScope`,
-  # which sets `active_harness_id`, and then `WorkingDirScope`, which sets `cwd`.
-  # Matching the id first would have pointed it at the light harness's
-  # id-addressed route, which its own router does not serve — a 404 on every
-  # `mix test` an agent runs against the heavy harness.
+  # A heavy harness carries *both*: `HarnessScope` resolves the id and then
+  # builds a scope with a `cwd` on it. Matching the id first would have pointed
+  # it at the light harness's id-addressed route, which the heavy harness's own
+  # router does not serve — a 404 on every `mix test` an agent runs against it.
   #
   # The real question is "can whoever answers this reach the disk", and `cwd` is
   # what answers it. A light harness has none and must not be given one: `cwd`
@@ -284,7 +283,15 @@ defmodule CodeMySpec.Hooks.PreToolUse do
   # the hex-doc projector all take it at its word. On a diskless server that is a
   # path to another machine; on a developer box where both are the same machine
   # it would read a real tree, the wrong one, convincingly.
-  defp analysis_endpoint(%{cwd: cwd}) when is_binary(cwd), do: {:ok, {:cwd, cwd}}
+  #
+  # So `cwd` picks the endpoint and the id is what identifies the working copy to
+  # it. Those used to be the same answer — the heavy route took an
+  # `X-Working-Dir` header — and separating them is the point: a path on the wire
+  # is a filesystem location supplied by the caller, which the server then writes
+  # to, and a wrong one succeeds against the wrong disk rather than failing.
+  defp analysis_endpoint(%{cwd: cwd, active_harness_id: id})
+       when is_binary(cwd) and is_binary(id),
+       do: {:ok, {:local, id}}
 
   defp analysis_endpoint(%{active_harness_id: id}) when is_binary(id),
     do: {:ok, {:harness, id}}
@@ -301,10 +308,12 @@ defmodule CodeMySpec.Hooks.PreToolUse do
   end
 
   defp path({:harness, id}), do: "/api/harnesses/#{id}/analysis/run"
-  defp path({:cwd, _cwd}), do: "/api/analysis/run"
+  defp path({:local, _id}), do: "/api/analysis/run"
 
+  # The id-addressed route carries it in the path already; repeating it in a
+  # header would be two places to disagree.
   defp header({:harness, _id}), do: ""
-  defp header({:cwd, cwd}), do: "-H 'X-Working-Dir: #{cwd}' "
+  defp header({:local, id}), do: "-H 'X-Harness-Id: #{id}' "
 
   # Single-quote for sh, escaping embedded single quotes ('\'' dance).
   defp shell_quote(string), do: "'" <> String.replace(string, "'", "'\\''") <> "'"
