@@ -128,31 +128,53 @@ defmodule CodeMySpec.McpServers.Issues.IssuesMapper do
   #
   # Naming it is not the cure — that is one store, and `list_issues` should not
   # have two answers. It is what makes the wrong one visible in the meantime.
-  defp store do
-    case CodeMySpec.Repo.__adapter__() do
-      Ecto.Adapters.Postgres -> :server
-      _ -> :local
-    end
-  end
+  # Branched at compile time, on the same `:adapter` key `Events` uses, rather
+  # than by asking `Repo.__adapter__()` at runtime.
+  #
+  # The adapter is fixed per build — SQLite in the CLI envs, Postgres on the
+  # server — so a runtime `case` over both answers has a clause the compiler
+  # proves dead, and the release is built with `--warnings-as-errors`. That
+  # failed there and only there: every other environment compiles this file
+  # without complaint, so the break lands in CI on a tag rather than in front of
+  # whoever wrote it. Comparing with `==` does not help; the checker folds that
+  # too, and so does splitting the note into its own function clauses — the
+  # deadness just moves.
+  #
+  # Both functions in one branch, because there is no build where both answers
+  # are reachable. This asks which application it was compiled into, and that is
+  # settled before it runs.
+  #
+  # The note itself exists because the two stores are indistinguishable from an
+  # agent's side: `register_session` reports the same project id for both, so
+  # swapping harness mid-session silently changes which database every issue
+  # tool talks to. Issues resolved earlier come back as `accepted` under
+  # different ids and filings from the other store are simply absent, and the
+  # list looks entirely plausible. Two issues that reappeared as open had
+  # already been fixed and pushed. Naming the store is not the cure — one store
+  # would be — it is what makes the wrong one visible meanwhile.
+  #
+  # Both branches say it, because the hazard is symmetric and only one side used
+  # to. An agent reading the server's store saw nothing suggesting a second
+  # existed, which is the silent case this whole note is for.
+  case Application.compile_env(:code_my_spec, :adapter, Ecto.Adapters.Postgres) do
+    Ecto.Adapters.SQLite3 ->
+      defp store, do: :local
 
-  # Both branches warn, because the hazard is symmetric and only one side said
-  # so. An agent reading the server's store saw "Store: the CodeMySpec server."
-  # and nothing suggesting a second one exists — which is the silent case this
-  # whole note is for. The report that prompted it was written from the server
-  # side, about six filings and three resolutions sitting on the other.
-  defp store_note do
-    case store() do
-      :server ->
+      defp store_note do
+        "\n\nStore: this machine's local database, not the server. " <>
+          "Issues filed or resolved against the server are not listed here, " <>
+          "and a harness swap changes which store answers."
+      end
+
+    _ ->
+      defp store, do: :server
+
+      defp store_note do
         "\n\nStore: the CodeMySpec server. " <>
           "A packaged CLI harness keeps its own database; issues filed or " <>
           "resolved there are not listed here, and a harness swap changes " <>
           "which store answers."
-
-      :local ->
-        "\n\nStore: this machine's local database, not the server. " <>
-          "Issues filed or resolved against the server are not listed here, " <>
-          "and a harness swap changes which store answers."
-    end
+      end
   end
 
   def not_found_error do
