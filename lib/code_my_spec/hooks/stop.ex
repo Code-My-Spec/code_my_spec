@@ -24,6 +24,7 @@ defmodule CodeMySpec.Hooks.Stop do
   require Logger
 
   alias CodeMySpec.Analysis
+  alias CodeMySpec.BootVersion
   alias CodeMySpec.Configurations
   alias CodeMySpec.FileEdits
   alias CodeMySpec.McpServers.Requirements.RequirementsMapper
@@ -71,6 +72,43 @@ defmodule CodeMySpec.Hooks.Stop do
     scope
     |> do_decide(session_id, session, active_task, idle_sub, validation_opts, req_id)
     |> note_config_edits(session_id)
+    |> note_stale_config()
+  end
+
+  # The other half of the same defect, from the other end. `note_config_edits/2`
+  # warns the agent that edited config; this warns everyone else, which is the
+  # population that actually gets hurt — the wedge surfaces in a different
+  # checkout, minutes later, to whoever touches it next.
+  #
+  # Asked of the process that breaks rather than of the one that committed,
+  # because that process can answer it as a fact: it knows the commit it booted
+  # from and the commit on disk now, so "this server is wedged" is a lookup
+  # rather than a prediction about somebody else's machine. It also covers the
+  # case a commit-time warning structurally cannot — a config change that
+  # arrives by `git pull`, which nobody's session edited and which is how this
+  # keeps landing.
+  #
+  # Self-clearing: true from the moment the checkout moves over config until the
+  # process restarts, and false immediately after. Nothing to reset, and no way
+  # for it to go on nagging about a server somebody already fixed.
+  defp note_stale_config(%{"decision" => "block"} = response), do: response
+
+  defp note_stale_config(response) do
+    with {:drifted, booted, current} <- BootVersion.drift(),
+         true <- BootVersion.config_changed?(booted, current) do
+      note =
+        "This server booted at #{booted}; its checkout is now at #{current}, and " <>
+          "that range touches config/. Phoenix cannot hot-reload config, so it " <>
+          "will answer `could not compile application` to every request from its " <>
+          "next reload onwards — including this hook. Nobody here did anything " <>
+          "wrong; the commit was made somewhere else. Kill the BEAM, " <>
+          "`rm -rf _build/<env>/lib/code_my_spec` to drop the stale compile.lock, " <>
+          "then relaunch — a plain restart does not always clear it."
+
+      Map.update(response, "systemMessage", note, &(&1 <> "\n\n" <> note))
+    else
+      _ -> response
+    end
   end
 
   # Phoenix cannot hot-reload `config/*.exs`, by design. A commit that touches
@@ -291,8 +329,7 @@ defmodule CodeMySpec.Hooks.Stop do
 
       %{
         "decision" => "block",
-        "reason" =>
-          "Background analysis is still running: #{sources}. " <> wait_directive(scope)
+        "reason" => "Background analysis is still running: #{sources}. " <> wait_directive(scope)
       }
     else
       Logger.info("[StopHook] [#{req_id}] Analysis pending (#{sources}) — allowing stop")

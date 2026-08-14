@@ -124,18 +124,42 @@ defmodule CodeMySpec.BootVersion do
   @contract_paths ["lib/cms_harness", "lib/code_my_spec_web/channels"]
 
   @spec contract_changed?(String.t(), String.t()) :: boolean() | :unknown
-  def contract_changed?(booted, current) do
+  def contract_changed?(booted, current), do: changed?(booted, current, @contract_paths)
+
+  @doc """
+  Whether the drifted range touched config, which means this process is wedged.
+
+  A different question from `contract_changed?/2` and a worse answer, because
+  the process asking is the one that breaks. Phoenix cannot hot-reload
+  `config/*.exs`; a running server whose checkout has moved over one answers
+  every request with `could not compile application` from its next reload
+  onwards. It is already too late by the time anyone sees that, and the error
+  names neither the commit nor the checkout it came from.
+
+  The condition is exactly "booted before a config change that is now on disk",
+  which is what this asks. It stays true until the process restarts and stops
+  being true the moment it does, so it needs no clearing.
+
+  Detached in time and space from the act that caused it — a config edit in one
+  worktree takes out a server the editor never touched, minutes later, for
+  whoever arrives next (5fb011f4, 6ecb257a). Which is why the process that will
+  break is the one that should say so, rather than the one that committed.
+  """
+  @spec config_changed?(String.t(), String.t()) :: boolean() | :unknown
+  def config_changed?(booted, current), do: changed?(booted, current, ["config"])
+
+  defp changed?(booted, current, paths) do
     case :persistent_term.get(@key, nil) do
-      {root, _} -> changed_paths(root, booted, current)
+      {root, _} -> changed_paths(root, booted, current, paths)
       _ -> :unknown
     end
   end
 
-  defp changed_paths(root, booted, current) do
+  defp changed_paths(root, booted, current, paths) do
     with true <- is_binary(root) and File.dir?(root),
          git when is_binary(git) <- System.find_executable("git"),
          {output, 0} <-
-           System.cmd(git, ["diff", "--name-only", "#{booted}..#{current}", "--" | @contract_paths],
+           System.cmd(git, ["diff", "--name-only", "#{booted}..#{current}", "--" | paths],
              cd: root,
              stderr_to_stdout: true
            ) do
