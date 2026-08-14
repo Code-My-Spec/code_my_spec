@@ -59,6 +59,21 @@ defmodule CodeMySpecSpex.Story1004.Criterion1982Spex do
                "a form that submits into a run nobody is waiting on takes an answer and " <>
                  "does nothing with it"
 
+        {:ok, Map.put(context, :answer_view, answer_view)}
+      end
+
+      then_ "its own page says why, rather than going blank", context do
+        # The criterion's first clause, which this spex used to skip. Browser QA
+        # found the page rendering its title and nothing else: no question, no
+        # status, no reason there was nothing to do. That is the same dead end
+        # as dropping it from the inbox, moved one click later — and "no submit
+        # button" is satisfied by a blank page, so the refute above cannot see it.
+        assert has_element?(context.answer_view, "[data-test='question-closed']"),
+               "a page that only shows the title reads as broken, not as timed out"
+
+        assert render(context.answer_view) =~ "Which storage backend?",
+               "what was asked is the point of keeping the record at all"
+
         {:ok, context}
       end
     end

@@ -357,6 +357,30 @@ defmodule CodeMySpecWeb.ChatComponents do
           {@request.title || "Claude Code has a question"}
         </h2>
 
+        <%!-- Neither answered nor pending: the run stopped waiting. Without a
+              branch here the card rendered its title and an empty body, which
+              reads as a broken page rather than as a question that timed out —
+              the same dead end as dropping it from the inbox, moved one click
+              later. The question is still shown, because what was asked is the
+              point of keeping the record at all. --%>
+        <div
+          :if={@request.status not in ["answered", "pending"]}
+          data-test="question-closed"
+          class="mt-2"
+        >
+          <div class="alert alert-warning">
+            <.icon name="hero-clock" class="size-5" />
+            <span>
+              This question {@request.status} — the run stopped waiting, so it can no longer be answered.
+            </span>
+          </div>
+          <dl class="mt-4 space-y-2">
+            <div :for={question <- @request.questions} class="text-sm">
+              <dt class="font-semibold opacity-70">{question["question"]}</dt>
+            </div>
+          </dl>
+        </div>
+
         <div :if={@request.status == "answered"} data-test="question-answered" class="mt-2">
           <div class="alert alert-success">
             <.icon name="hero-check-circle" class="size-5" /> Answer sent.
