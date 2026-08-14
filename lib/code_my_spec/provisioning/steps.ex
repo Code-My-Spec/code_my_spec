@@ -37,7 +37,15 @@ defmodule CodeMySpec.Provisioning.Steps do
 
   require Logger
 
-  alias CodeMySpec.{AccountSecrets, Conversations, Deploys, Environments, Projects, ProjectSecrets}
+  alias CodeMySpec.{
+    AccountSecrets,
+    Conversations,
+    Deploys,
+    Environments,
+    Mail,
+    Projects,
+    ProjectSecrets
+  }
   alias CodeMySpec.Generators.DeployBoilerplate
   alias CodeMySpec.TempFile
 
@@ -1013,21 +1021,34 @@ defmodule CodeMySpec.Provisioning.Steps do
   defp secrets_ready?(scope, environment) do
     key_opens_its_own_file?(scope, environment) and
       match?({:ok, false}, secret_key_base_missing?(scope, env(scope), environment)) and
-      not deploy_key_missing?(scope, environment)
+      Enum.all?(minted_secrets(), &present?(scope, environment, &1))
+  end
+
+  # Everything `generate_keys/3` puts in the encrypted env, listed once.
+  #
+  # Third time this has bitten. `run_step/3` verifies before it executes, so a
+  # value the check does not know about is a value nothing ever writes: the step
+  # reports done and the failure surfaces steps away. `DATABASE_URL` did it,
+  # then `DEPLOY_KEY`, then `CODEMYSPEC_WIDGET_URL` — which verified satisfied
+  # in 0.0s and left the deployed application pointed at nothing while setup
+  # said the secrets were in place.
+  #
+  # A list, so adding a secret to the step adds it to the check by construction
+  # rather than by anyone remembering to.
+  defp minted_secrets, do: ["DEPLOY_KEY", "CODEMYSPEC_WIDGET_URL"]
+
+  defp present?(scope, environment, name) do
+    with {:ok, private} <- fetch_age_key(scope, environment),
+         {:ok, missing} <- Sops.missing_secrets(env(scope), environment, private, [name]) do
+      name not in missing
+    else
+      _ -> true
+    end
   end
 
   # Absent only when the file opens and the value is not in it. Anything this
   # cannot read — no age key, no sops — is somebody else's error to report, and
   # `key_opens_its_own_file?/2` above reports it in its own words.
-  defp deploy_key_missing?(scope, environment) do
-    with {:ok, private} <- fetch_age_key(scope, environment),
-         {:ok, missing} <- Sops.missing_secrets(env(scope), environment, private, ["DEPLOY_KEY"]) do
-      "DEPLOY_KEY" in missing
-    else
-      _ -> false
-    end
-  end
-
   defp key_opens_its_own_file?(scope, environment) do
     with {:ok, private} <- ProjectSecrets.fetch_value(scope, age_key_name(environment)),
          true <- is_binary(private) and private != "" do
@@ -1417,7 +1438,49 @@ defmodule CodeMySpec.Provisioning.Steps do
   # Still a guess, so when it does not arrive the error says to check the
   # address first — that being the likeliest cause and the one that reads as a
   # broken inbox.
-  defp owner_address(%Scope{user: %{email: email}}, domain)
+  # The address the project receives at, made rather than guessed.
+  #
+  # This derived a local part from Sam's own email and hoped somebody had
+  # configured it — "still a guess", as the comment above admitted, and wrong on
+  # every freshly provisioned domain: mail to an address nothing routes is
+  # discarded, the poll runs to exhaustion, and the step reports the inbox
+  # broken.
+  #
+  # `Mail` owns routing, so it does not have to be guessed. `catch_all_mailbox/1`
+  # is the one that takes delivery for anything at the domain, and when a project
+  # has none this makes one — which is what setting an inbox up *means*, and is
+  # this step's job rather than a precondition for it.
+  defp owner_address(%Scope{} = scope, domain) when is_binary(domain) do
+    case ensure_catch_all(scope, domain) do
+      {:ok, address} -> address
+      _ -> derived_address(scope, domain)
+    end
+  end
+
+  defp owner_address(_scope, _domain), do: nil
+
+  defp ensure_catch_all(%Scope{active_project_id: id} = scope, domain) when not is_nil(id) do
+    case Mail.catch_all_mailbox(id) do
+      %{address: address} when is_binary(address) and address != "" ->
+        {:ok, address}
+
+      _ ->
+        # `inbox@` because it has to be called something and that is what a
+        # person expects to find. `catch_all: true` is the load-bearing part —
+        # it is what makes mail to any local part at this domain route somewhere
+        # rather than be dropped.
+        case Mail.create_mailbox(scope, %{address: "inbox@#{domain}", catch_all: true}) do
+          {:ok, %{address: address}} -> {:ok, address}
+          other -> other
+        end
+    end
+  end
+
+  defp ensure_catch_all(_scope, _domain), do: :error
+
+  # Kept as the fallback for a project whose mailboxes cannot be reached —
+  # better than inventing a name nobody has configured.
+  defp derived_address(%Scope{user: %{email: email}}, domain)
        when is_binary(email) and is_binary(domain) do
     case String.split(email, "@") do
       [local | _] when local != "" -> "#{local}@#{domain}"
@@ -1425,7 +1488,7 @@ defmodule CodeMySpec.Provisioning.Steps do
     end
   end
 
-  defp owner_address(_scope, _domain), do: nil
+  defp derived_address(_scope, _domain), do: nil
 
   # On *this* domain, or the proof is about somebody else's inbox: a message to
   # an address elsewhere arrives just as happily and says nothing about whether

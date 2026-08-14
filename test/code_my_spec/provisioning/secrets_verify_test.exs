@@ -47,14 +47,29 @@ defmodule CodeMySpec.Provisioning.SecretsVerifyTest do
   end
 
   describe "a key that matches its file" do
-    test "is satisfied once the boot secret and the deploy key are in it", ctx do
+    test "is satisfied once every secret the step mints is in it", ctx do
+      {public, _} = key_for(ctx.scope, "prod")
+      :ok = Sops.write_config(ctx.scope.environment, %{"prod" => public})
+
+      put_secret(ctx.scope, "prod", "SECRET_KEY_BASE", "v")
+      put_secret(ctx.scope, "prod", "DEPLOY_KEY", "dk_v")
+      put_secret(ctx.scope, "prod", "CODEMYSPEC_WIDGET_URL", "wss://example.test/widget")
+
+      assert {:ok, :satisfied, _} = Steps.verify(:secrets, ctx.scope, environments: ["prod"])
+    end
+
+    # The third value to be added to this step and missed by its check. Verify
+    # runs before execute, so a secret the check does not know about is one
+    # nothing ever writes — the step reports done and the deployed application
+    # boots pointed at nothing.
+    test "is absent while the widget url is missing", ctx do
       {public, _} = key_for(ctx.scope, "prod")
       :ok = Sops.write_config(ctx.scope.environment, %{"prod" => public})
 
       put_secret(ctx.scope, "prod", "SECRET_KEY_BASE", "v")
       put_secret(ctx.scope, "prod", "DEPLOY_KEY", "dk_v")
 
-      assert {:ok, :satisfied, _} = Steps.verify(:secrets, ctx.scope, environments: ["prod"])
+      assert {:ok, :absent} = Steps.verify(:secrets, ctx.scope, environments: ["prod"])
     end
 
     # The same argument as the boot secret above, for the credential the content

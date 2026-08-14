@@ -68,6 +68,7 @@ defmodule CodeMySpecSpex.Drill do
 
   @default_domain "spex-drill.legwork.ca"
 
+  setup :never_point_the_app_at_production
   setup :keep_what_the_last_walk_left
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -163,6 +164,37 @@ defmodule CodeMySpecSpex.Drill do
   # Flagged rather than skipped-by-configuration, so the refusal keeps working
   # for every spex in the same VM. The flag is the same one the check sets after
   # its first pass.
+  # Where the deployed application talks back to, which must not be the hosted
+  # service.
+  #
+  # Generated apps default `CODEMYSPEC_WIDGET_URL` to `wss://codemyspec.com/widget`,
+  # and the drill's own CodeMySpec is a rolled-back test database that nothing
+  # on the internet can reach. So a drill-deployed app with no explicit value
+  # opens a widget socket against production and retries it every ten seconds
+  # with a deploy key production has never issued — observed doing exactly that,
+  # 403 at the edge, on a loop.
+  #
+  # `.invalid` is reserved by RFC 2606 and guaranteed never to resolve, which is
+  # the honest destination for a socket whose real endpoint does not exist: the
+  # app fails to connect to a name that cannot exist, rather than to somebody's
+  # production server. `setup :never_point_the_app_at_production` runs first so
+  # this is true before any step can write a secret.
+  defp never_point_the_app_at_production(context) do
+    previous = Application.get_env(:code_my_spec, :base_url)
+    Application.put_env(:code_my_spec, :base_url, drill_base_url())
+    on_exit(fn -> Application.put_env(:code_my_spec, :base_url, previous) end)
+
+    context
+  end
+
+  # `dev.codemyspec.com`, which is reachable through the Cloudflare tunnel, and
+  # never `codemyspec.com`. Overridable so a drill can be pointed somewhere else
+  # without editing this, and `.invalid` — reserved by RFC 2606 and guaranteed
+  # never to resolve — is the fallback rather than the hosted service.
+  defp drill_base_url do
+    System.get_env("CMS_DRILL_BASE_URL", "https://dev.codemyspec.com")
+  end
+
   defp keep_what_the_last_walk_left(context) do
     :persistent_term.put({CodeMySpecSpex.Case, :residue_checked}, true)
     context
