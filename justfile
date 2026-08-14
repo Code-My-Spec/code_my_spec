@@ -603,9 +603,28 @@ publish VERSION:
       echo "plugin.json or mix.exs already has uncommitted changes — commit or reset first" >&2
       exit 1
     fi
+
+    # Releases go from main, and this has to say so before it writes anything.
+    #
+    # `git push origin HEAD` pushes to a remote branch of the *same name*, so
+    # run from a worktree on `light-harness` it created `origin/light-harness`
+    # and left main without the version bump. `release` then refused, naming
+    # origin/main — which was true and unrelated to what had just gone wrong.
+    # Two steps disagreeing about which branch a release lives on.
+    git fetch origin main --quiet
+    if [ "$(git rev-parse HEAD)" != "$(git rev-parse origin/main)" ]; then
+      echo "✗ HEAD is not at origin/main — a release is a commit on main." >&2
+      echo >&2
+      git log --oneline --left-right HEAD...origin/main >&2
+      echo >&2
+      echo "  From a worktree: rebase onto origin/main first, or run this from" >&2
+      echo "  the main checkout. The tag has to point at a commit main has." >&2
+      exit 1
+    fi
+
     just bump {{VERSION}}
     git commit -m "Release v{{VERSION}}"
-    git push origin HEAD
+    git push origin HEAD:main
     just release
 
 # Tag HEAD with vN.N.N from plugin.json and push the tag — triggers the marketplace release CI
@@ -633,9 +652,16 @@ release:
       exit 1
     fi
 
-    if [ "$(git rev-parse HEAD)" != "$(git rev-parse @{u})" ]; then
+    # `origin/main` by name, not `@{u}`. The upstream of the current branch is
+    # whatever that branch tracks — on a worktree branch that is often itself —
+    # so the check could pass against a branch main has never seen while the
+    # message claimed it had compared against main. A tag is permanent and
+    # points at one commit; the check that guards it should name the same ref
+    # the message does.
+    git fetch origin main --quiet
+    if [ "$(git rev-parse HEAD)" != "$(git rev-parse origin/main)" ]; then
       echo "HEAD is not at origin/main. Push first:" >&2
-      git log --oneline --left-right HEAD...@{u} >&2
+      git log --oneline --left-right HEAD...origin/main >&2
       exit 1
     fi
 
