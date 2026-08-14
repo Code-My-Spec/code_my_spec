@@ -96,6 +96,8 @@ defmodule CodeMySpecSpex.Fixtures do
   alias CodeMySpecTest.PreviewApp
   alias CodeMySpecTest.PreviewWsClient
 
+  import Ecto.Query, only: [from: 2]
+
   @doc """
   Register a sending domain and publish everything except its DKIM record.
 
@@ -1329,8 +1331,41 @@ defmodule CodeMySpecSpex.Fixtures do
   defdelegate account_with_owner_fixture(user, attrs \\ %{}), to: AccountsFixtures
   defdelegate member_fixture(user, account, role \\ :member), to: AccountsFixtures
 
+  @doc "The user with this email, or `nil`. See `account_owned_by/1`."
+  def user_with_email(email), do: Repo.get_by(User, email: email)
+
+  @doc """
+  The first account `user` owns, or `nil`.
+
+  A lookup rather than a fixture. Setup helpers create against a sandbox that
+  rolls back, so "already there" never happens and asking is pointless — until
+  the run points at a database that keeps its rows, when creating a second one
+  is the wrong answer.
+
+  Oldest first, and by ownership rather than by name: the accounts a persistent
+  database is already holding were created by earlier runs under generated
+  slugs, so anything keyed on a name invented later finds none of them and
+  makes a fourth.
+  """
+  def account_owned_by(user) do
+    Repo.one(
+      from(a in CodeMySpec.Accounts.Account,
+        join: m in CodeMySpec.Accounts.Member,
+        on: m.account_id == a.id,
+        where: m.user_id == ^user.id and m.role == :owner,
+        order_by: [asc: a.inserted_at, asc: a.id],
+        limit: 1
+      )
+    )
+  end
+
   # -- Projects --
   defdelegate project_fixture(scope, attrs \\ %{}), to: ProjectsFixtures
+
+  @doc "The account's project with this name, or `nil`. See `account_owned_by/1`."
+  def project_named(account_id, name) do
+    Repo.get_by(Project, account_id: account_id, name: name)
+  end
 
   # -- Workspaces --
 
@@ -2451,6 +2486,11 @@ defmodule CodeMySpecSpex.Fixtures do
     }
   end
 
+  # `connect_provider/3` stamps every grant a spex writes, which is what makes
+  # one distinguishable from a grant a person connected in the app.
+  defp spex_copy?(%Integration{provider_metadata: %{"provider_user_id" => "spex"}}), do: true
+  defp spex_copy?(_), do: false
+
   # Refreshes **in the dev database** — through a dynamic repo, so the app's own
   # `fetch_access_token/2` runs: same row lock, same rotation, same persistence.
   # The rotated refresh token lands back where it came from, which is the whole
@@ -2475,10 +2515,20 @@ defmodule CodeMySpecSpex.Fixtures do
     try do
       # Most recently updated wins: a provider reconnected in the app leaves the
       # older row behind, and the newer one is the live grant.
+      #
+      # Except the rows a spex wrote itself. `connect_provider/3` copies the
+      # grant onto the spex user, and a run pointed at code_my_spec_dev copies
+      # it into the database this is reading — so its own copy, being the
+      # newest, became the grant it borrowed the next time. When the copy was
+      # `placeholder_grant()` — one failed refresh is enough — the placeholder
+      # became the source of truth and every later run read it back with an
+      # unexpired `expires_at` and no warning, while Cloudflare answered
+      # "Invalid format for Authorization header" to a token reading
+      # `spex-placeholder-token`.
       integration =
         Integration
         |> CodeMySpec.Repo.all()
-        |> Enum.filter(&(&1.provider == provider))
+        |> Enum.filter(&(&1.provider == provider and not spex_copy?(&1)))
         |> Enum.max_by(& &1.updated_at, DateTime, fn -> nil end)
 
       unless integration do

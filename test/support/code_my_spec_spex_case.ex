@@ -3898,10 +3898,7 @@ defmodule CodeMySpecSpex.Case do
   # Reusing it is what stable identity means. A sandbox never finds one, so
   # nothing changes there.
   defp existing_or_registered_user(email) do
-    case CodeMySpec.Users.get_user_by_email(email) do
-      %{} = user -> user
-      _ -> Fixtures.user_fixture(%{email: email})
-    end
+    Fixtures.user_with_email(email) || Fixtures.user_fixture(%{email: email})
   end
 
   # Stable per spex file, because the inbound probe sends to an address built
@@ -3935,12 +3932,27 @@ defmodule CodeMySpecSpex.Case do
       setup :setup_active_account
   """
   def setup_active_account(%{user: user} = context) do
-    account = Fixtures.account_with_owner_fixture(user)
+    account = existing_or_created_account(user)
     updated_scope = Fixtures.user_scope_fixture(user, account)
 
     Fixtures.select_active_account(updated_scope, account.id)
 
     Map.merge(context, %{account: account, scope: updated_scope})
+  end
+
+  # A sandbox rolls back, so every run is the first one and a fresh account is
+  # right. A run against a database that keeps its rows is a second visit, and
+  # creating another account there orphans everything the last one owns — the
+  # project, and with it the deploy key the deployed app authenticates with.
+  # That orphaning is not quiet: the key is globally unique, so the new project
+  # cannot take it and the run stops before the first step.
+  #
+  # The user is already stable per spex module, so the accounts they own are
+  # this module's accounts and the first one is the one the earlier runs built
+  # on. Nothing here needs a name to match.
+  defp existing_or_created_account(user) do
+    (real_pool?() && Fixtures.account_owned_by(user)) ||
+      Fixtures.account_with_owner_fixture(user)
   end
 
   # Setup helper that sets up an active project for the user.
@@ -4038,13 +4050,7 @@ defmodule CodeMySpecSpex.Case do
     #
     # Stable, because those names end up in recorded URLs. A counter made
     # every replay ask for a bucket the cassette had never heard of.
-    project =
-      Fixtures.project_fixture(scope,
-        name: project_name_for(context),
-        account_id: account.id,
-        local_path: stub_dir,
-        client_user_id: user.id
-      )
+    project = existing_or_created_project(scope, context, account, user, stub_dir)
 
     # Register the env so Scope.for_local_project (called by LiveViews that
     # rebuild scope from project) returns THIS env instead of a default
@@ -4075,6 +4081,32 @@ defmodule CodeMySpecSpex.Case do
     Fixtures.require_all!(updated_scope)
 
     Map.merge(context, %{project: project, scope: updated_scope, environment: env})
+  end
+
+  # The other half of `existing_or_created_account/1`. The name is already
+  # stable per spex module, so against a persistent database it names the same
+  # project every run — the one holding the deploy key, the code repo and the
+  # environments the last run provisioned.
+  #
+  # The working directory is the exception: the stub dir is minted per run and
+  # deleted on exit, so a reused row points at a path that no longer exists
+  # until it is moved to this run's.
+  defp existing_or_created_project(scope, context, account, user, stub_dir) do
+    name = project_name_for(context)
+
+    case real_pool?() && Fixtures.project_named(account.id, name) do
+      %{} = project ->
+        {:ok, project} = Fixtures.set_project_local_path(project, stub_dir)
+        project
+
+      _ ->
+        Fixtures.project_fixture(scope,
+          name: name,
+          account_id: account.id,
+          local_path: stub_dir,
+          client_user_id: user.id
+        )
+    end
   end
 
   @doc """
