@@ -30,6 +30,8 @@ defmodule CodeMySpec.Validation do
 
   alias CodeMySpec.AcceptanceCriteria
   alias CodeMySpec.Analysis
+  alias CodeMySpec.Analysis.Run
+  alias CodeMySpec.Analysis.RunsRepository
   alias CodeMySpec.BddSpecs.Parser
   alias CodeMySpec.Configurations
   alias CodeMySpec.Configurations.ProjectConfiguration
@@ -625,6 +627,10 @@ defmodule CodeMySpec.Validation do
 
     decide(blocking, advisory, stale_sources,
       last_ran: last_ran,
+      # Why a source that has never answered could not run. The analyzer's own
+      # words are in `Run.output` and nothing read them back — `6f89b278` is
+      # three days of blocked stops with the fix sitting in that column.
+      run_failures: run_failures(scope, stale_sources),
       # How long the run itself took. Read together with the age, this separates
       # "your edit predates this result" from "your edit landed while it was
       # running" — and only the first is fixed by waiting.
@@ -707,6 +713,55 @@ defmodule CodeMySpec.Validation do
        Map.put(overtaken, source, overtaken?(run))}
     end)
   end
+
+  @doc """
+  Why a source that has never produced an answer could not run.
+
+  Only for sources with no completed run at all. A source with an older answer
+  is behind, which is a different condition and already described; this one has
+  nothing, and the footer said so as "stale, has never completed" — true, and
+  silent about the cause.
+
+  The cause is already in the ledger. `Reconciler.fail/2` writes the analyzer's
+  own words to `Run.output`, and nothing read them back. `6f89b278` is three
+  days of blocked stops where the answer sat in that column the whole time:
+
+      This working copy's test database is 2 migration(s) behind.
+      Pending: 20260811120000_conversation_messages_record_origin, …
+      Run `MIX_TEST_PARTITION=had8804a9s MIX_ENV=test mix ecto.migrate`
+
+  The agent instead saw 22 stale spex findings from stories it had never
+  touched, and advice to stop again — which re-entered the same block. It read
+  another team's provisioning specs looking for a defect that was a missing
+  database.
+
+  Truncated because an analyzer that dies mid-suite can write a great deal, and
+  this rides in a stop response with a byte cap. The first lines are where these
+  tools put the sentence that matters.
+  """
+  @spec run_failures(Scope.t(), [String.t()]) :: %{String.t() => String.t()}
+  def run_failures(_scope, []), do: %{}
+
+  def run_failures(scope, sources) do
+    for source <- sources,
+        is_nil(Analysis.latest_answer(scope, source)),
+        run = RunsRepository.latest_full_run(scope, source),
+        reason = failure_reason(run),
+        into: %{},
+        do: {source, reason}
+  end
+
+  defp failure_reason(%Run{status: :failed, output: output}) when is_binary(output) do
+    case String.trim(output) do
+      "" -> nil
+      text -> text |> String.split("\n") |> Enum.take(6) |> Enum.join("\n") |> truncate(600)
+    end
+  end
+
+  defp failure_reason(_run), do: nil
+
+  defp truncate(text, cap) when byte_size(text) <= cap, do: text
+  defp truncate(text, cap), do: binary_part(text, 0, cap) <> "…"
 
   # Did an edit land while this run was in flight?
   #

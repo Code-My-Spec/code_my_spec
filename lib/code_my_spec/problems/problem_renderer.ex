@@ -201,16 +201,14 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
     advisory_section =
       render_advisory_section(advisory, Keyword.get(opts, :unattributed_count, 0))
 
-    blocking_section =
-      render_blocking_section(
-        blocking,
-        stale,
-        last_ran,
-        run_duration,
-        reproduce,
-        session_paths,
-        overtaken
-      )
+    runs = %{
+      last_ran: last_ran,
+      duration: run_duration,
+      overtaken: overtaken,
+      failures: Keyword.get(opts, :run_failures, %{})
+    }
+
+    blocking_section = render_blocking_section(blocking, stale, runs, reproduce, session_paths)
 
     raw =
       header <>
@@ -222,41 +220,20 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
     enforce_total_cap(raw, blocking, advisory)
   end
 
-  defp render_blocking_section(
-         blocking,
-         stale,
-         last_ran,
-         run_duration,
-         reproduce,
-         session_paths,
-         overtaken
-       ) do
+  # `runs` carries what the ledger says about each source — age, duration,
+  # whether an edit landed inside the window, and why it never completed. One
+  # value rather than four positional arguments threaded two levels down, for
+  # the same reason `flight` is one: they are only ever read together, and the
+  # list was already seven long.
+  defp render_blocking_section(blocking, stale, runs, reproduce, session_paths) do
     blocking
     |> Enum.group_by(& &1.source)
     |> Enum.sort_by(fn {source, _} -> source end)
-    |> Enum.map_join(
-      "\n",
-      &render_blocking_group(
-        &1,
-        stale,
-        last_ran,
-        run_duration,
-        reproduce,
-        session_paths,
-        overtaken
-      )
-    )
+    |> Enum.map_join("\n", &render_blocking_group(&1, stale, runs, reproduce, session_paths))
   end
 
-  defp render_blocking_group(
-         {source, items},
-         stale,
-         last_ran,
-         run_duration,
-         reproduce,
-         session_paths,
-         overtaken
-       ) do
+  defp render_blocking_group({source, items}, stale, runs, reproduce, session_paths) do
+    %{last_ran: last_ran, duration: run_duration, overtaken: overtaken, failures: failures} = runs
     count = length(items)
     visible = Enum.take(items, @per_source_list_cap)
 
@@ -268,7 +245,7 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
         n -> "\n  ... #{n} more #{source} problems (use get_issue to inspect)"
       end
 
-    marker = stale_marker(source, stale, last_ran, run_duration, overtaken)
+    marker = stale_marker(source, stale, last_ran, run_duration, overtaken, failures)
 
     "#{source} (#{count})#{marker}:\n#{details}#{overflow}" <>
       reproduce_line(source, reproduce) <> killed_note(items)
@@ -356,7 +333,7 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
   # forty minutes ago has not been coming back, and the right response is to
   # report the analyzer rather than stop again. Those need opposite actions and
   # the message could not tell them apart.
-  defp stale_marker(source, stale, last_ran, run_duration, overtaken) do
+  defp stale_marker(source, stale, last_ran, run_duration, overtaken, failures) do
     case {MapSet.member?(stale, source), Map.get(last_ran, source)} do
       {false, _} ->
         ""
@@ -365,8 +342,28 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
         " — stale, last ran #{ago(at)}#{run_window(source, at, run_duration, overtaken)}"
 
       {true, _} ->
-        " — stale, has never completed"
+        " — stale, has never completed" <> failure_clause(Map.get(failures, source))
     end
+  end
+
+  # Why it never completed, in the analyzer's own words.
+  #
+  # "has never completed" is true and says nothing about the cause, and the
+  # cause is already in `Run.output` — `Reconciler.fail/2` writes it there and
+  # nothing read it back. `6f89b278` is three days of blocked stops where the
+  # answer sat in that column: a test database two migrations behind, and the
+  # exact command for the right partition. What the agent saw instead was 22
+  # stale spex findings from stories it had never touched, and advice to stop
+  # again, which re-entered the same block.
+  #
+  # Indented under the group rather than folded into the marker: this is
+  # somebody else's output, often multi-line, and running it into our sentence
+  # is how a stack trace ends up reading like our own prose.
+  defp failure_clause(nil), do: ""
+
+  defp failure_clause(reason) do
+    body = reason |> String.split("\n") |> Enum.map_join("\n", &("      " <> &1))
+    "\n\n    The analyzer could not run. It said:\n\n" <> body <> "\n"
   end
 
   # Only when the run is slower than the age, which is the case the age alone
