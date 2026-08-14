@@ -15,16 +15,10 @@ defmodule CodeMySpec.WorkspacesTest do
       poll_interval: 20
     )
 
-    # Kill every watcher before clearing the config, in that order. A watcher
-    # that outlives its test falls back to the default runner — which is the
-    # real Docker one — and polls it for the default fifteen minutes.
-    on_exit(fn ->
-      CodeMySpec.TaskSupervisor
-      |> Task.Supervisor.children()
-      |> Enum.each(&Process.exit(&1, :kill))
-
-      Application.delete_env(:code_my_spec, CodeMySpec.Workspaces)
-    end)
+    # Kills this test's watchers before clearing the config, in that order.
+    # A watcher that outlives its test falls back to the default runner —
+    # which is the real Docker one — and polls it for fifteen minutes.
+    CodeMySpecTest.WorkspaceWatchers.reset_on_exit()
 
     :ok
   end
