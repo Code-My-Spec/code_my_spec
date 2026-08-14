@@ -3,7 +3,7 @@ defmodule CodeMySpec.EmbeddingsTest do
   # `Application.get_env(:code_my_spec, :framework_knowledge_dir)` —
   # tests put a per-test value via `Application.put_env` and
   # concurrent tests would race on the global.
-  use ExUnit.Case, async: false
+  use ExUnit.Case, async: true
 
   import CodeMySpec.UsersFixtures
 

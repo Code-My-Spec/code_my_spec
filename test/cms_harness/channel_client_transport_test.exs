@@ -14,7 +14,7 @@ defmodule CmsHarness.ChannelClientTransportTest do
   operations wide.
   """
 
-  use ExUnit.Case, async: false
+  use ExUnit.Case, async: true
 
   import ExUnit.CaptureLog
 

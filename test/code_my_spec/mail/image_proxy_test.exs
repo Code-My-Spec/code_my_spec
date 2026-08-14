@@ -1,5 +1,5 @@
 defmodule CodeMySpec.Mail.ImageProxyTest do
-  use ExUnit.Case, async: false
+  use ExUnit.Case, async: true
 
   alias CodeMySpec.Mail.ImageProxy
 

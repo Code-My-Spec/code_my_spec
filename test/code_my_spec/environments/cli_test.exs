@@ -1,5 +1,5 @@
 defmodule CodeMySpec.Environments.CliTest do
-  use ExUnit.Case
+  use ExUnit.Case, async: true
   doctest CodeMySpec.Environments.Cli
 
   alias CodeMySpec.Environments.Cli

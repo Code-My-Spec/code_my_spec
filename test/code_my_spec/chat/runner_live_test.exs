@@ -14,7 +14,7 @@ defmodule CodeMySpec.Chat.RunnerLiveTest do
   call, feeding the result back, the round cap, and error handling.
   """
 
-  use CodeMySpecTest.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.UsersFixtures
 

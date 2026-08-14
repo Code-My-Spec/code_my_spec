@@ -6,7 +6,7 @@ defmodule CodeMySpec.Provisioning.ResendTest do
   Resend never asks for an apex record, and a hand-written fixture would have
   agreed with the assumption instead of contradicting it.
   """
-  use ExUnit.Case, async: false
+  use ExUnit.Case, async: true
 
   alias CodeMySpec.Provisioning.Resend
   alias CodeMySpec.Users.Scope

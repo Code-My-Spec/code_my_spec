@@ -19,7 +19,7 @@ defmodule CodeMySpec.Integration.GatedArtifactsSyncTest do
   scanning every forty-five seconds and having every manifest accepted.
   """
 
-  use CodeMySpecTest.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.UsersFixtures
 

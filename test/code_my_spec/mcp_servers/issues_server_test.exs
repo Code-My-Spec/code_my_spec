@@ -1,5 +1,5 @@
 defmodule CodeMySpec.McpServers.IssuesServerTest do
-  use ExUnit.Case
+  use ExUnit.Case, async: true
   alias CodeMySpec.McpServers.IssuesServer
 
   describe "server capabilities" do

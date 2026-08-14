@@ -12,7 +12,7 @@ defmodule CodeMySpec.Google.AdsTest do
   not issue real mutations against a live account.
   """
 
-  use ExUnit.Case, async: false
+  use ExUnit.Case, async: true
 
   import ReqCassette
   import CodeMySpec.GoogleCassetteHelpers

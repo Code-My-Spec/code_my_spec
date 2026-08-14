@@ -16,7 +16,7 @@ defmodule CodeMySpec.Google.GscTest do
   changes over time. See `CodeMySpec.GoogleCassetteHelpers` for record/replay.
   """
 
-  use ExUnit.Case, async: false
+  use ExUnit.Case, async: true
 
   import ReqCassette
   import CodeMySpec.GoogleCassetteHelpers

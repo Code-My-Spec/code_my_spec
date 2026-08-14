@@ -1,5 +1,5 @@
 defmodule CodeMySpec.Stories.MarkdownTest do
-  use ExUnit.Case
+  use ExUnit.Case, async: true
   doctest CodeMySpec.Stories.Markdown
   alias CodeMySpec.Stories.Markdown
 

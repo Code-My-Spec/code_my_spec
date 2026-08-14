@@ -1,6 +1,6 @@
 defmodule CodeMySpec.TaskHelpTest do
   # async: false — these tests set the global :task_help_dir app env.
-  use ExUnit.Case, async: false
+  use ExUnit.Case, async: true
 
   import CodeMySpec.EnvironmentFixtures
 

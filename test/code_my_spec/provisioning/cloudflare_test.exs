@@ -5,7 +5,7 @@ defmodule CodeMySpec.Provisioning.CloudflareTest do
   paths are stubbed here because exercising them for real means buying a
   domain.
   """
-  use ExUnit.Case, async: false
+  use ExUnit.Case, async: true
 
   alias CodeMySpec.Provisioning.Cloudflare
   alias CodeMySpec.Users.Scope

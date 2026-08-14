@@ -26,7 +26,7 @@ defmodule CodeMySpec.Requirements.GraphProjectorTest do
   first.
   """
 
-  use CodeMySpecTest.ConnCase, async: false
+  use CodeMySpecTest.ConnCase, async: true
 
   import Phoenix.LiveViewTest
 

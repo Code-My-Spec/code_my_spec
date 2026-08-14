@@ -22,7 +22,7 @@ defmodule CodeMySpecLocalWeb.Hooks.StopControllerTest do
   make to "handle" a malformed payload, and it would turn every hook-payload
   glitch into an unvalidated stop. That is what this file exists to prevent.
   """
-  use CodeMySpecTest.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.SessionsFixtures
   import CodeMySpec.UsersFixtures

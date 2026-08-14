@@ -13,7 +13,7 @@ defmodule CodeMySpec.Analytics.GoogleAnalyticsTest do
   The api_secret is stripped from the cassette before write.
   """
 
-  use ExUnit.Case, async: false
+  use ExUnit.Case, async: true
 
   import ReqCassette
 
