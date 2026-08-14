@@ -197,7 +197,9 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
     }
 
     header = "Fix these problems before stopping:\n\n"
-    advisory_section = render_advisory_section(advisory, Keyword.get(opts, :unattributed_count, 0))
+
+    advisory_section =
+      render_advisory_section(advisory, Keyword.get(opts, :unattributed_count, 0))
 
     blocking_section =
       render_blocking_section(
@@ -220,13 +222,29 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
     enforce_total_cap(raw, blocking, advisory)
   end
 
-  defp render_blocking_section(blocking, stale, last_ran, run_duration, reproduce, session_paths, overtaken) do
+  defp render_blocking_section(
+         blocking,
+         stale,
+         last_ran,
+         run_duration,
+         reproduce,
+         session_paths,
+         overtaken
+       ) do
     blocking
     |> Enum.group_by(& &1.source)
     |> Enum.sort_by(fn {source, _} -> source end)
     |> Enum.map_join(
       "\n",
-      &render_blocking_group(&1, stale, last_ran, run_duration, reproduce, session_paths, overtaken)
+      &render_blocking_group(
+        &1,
+        stale,
+        last_ran,
+        run_duration,
+        reproduce,
+        session_paths,
+        overtaken
+      )
     )
   end
 
@@ -427,7 +445,9 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
       |> Enum.max(fn -> 0 end)
 
     rerunning = Enum.filter(sources, &(&1 in flight.sources))
-    overtaken_sources = Enum.filter(sources, &overtaken?(&1, Map.get(last_ran, &1), run_duration, overtaken))
+
+    overtaken_sources =
+      Enum.filter(sources, &overtaken?(&1, Map.get(last_ran, &1), run_duration, overtaken))
 
     # Checked before the others because it is the most specific condition and
     # the only one none of them describes. "A rerun is in flight, stop again"
@@ -483,7 +503,7 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
   defp wait_or_report(age, rerunning, run_duration, flight) do
     case {age, rerunning, flight.tracked?} do
       {_age, [_ | _] = running, _} ->
-        " A rerun is in flight now (#{running_detail(running, run_duration, flight.since)}) — " <>
+        " A rerun is in flight now (#{running_detail(running, run_duration, flight)}) — " <>
           "stop again and let it replace these."
 
       # Nothing is watching, so "no rerun is in flight" is not something this
@@ -522,12 +542,73 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
   # The typical duration comes from the last completed run of that source, so it
   # is absent on a source that has never finished one — say the elapsed alone
   # rather than guess a total.
-  defp running_detail(running, run_duration, since) do
-    running
-    |> Enum.sort()
-    |> Enum.map_join(", ", fn source ->
-      source <> elapsed_clause(Map.get(since, source), Map.get(run_duration, source))
-    end)
+  #
+  # Only one source is ever executing. `CmsHarness.Project.AnalysisServer` runs
+  # "one at a time" by design, because `mix test` and `mix spex` share
+  # `_build/test` and two mix runs at once can corrupt the build. So among the
+  # in-flight set the earliest-started is the one running and the rest are
+  # waiting on it.
+  #
+  # That distinction is the whole of `0e4b35e8`. `started_at` is stamped at
+  # enqueue, not at execution, so a queued source rendered as "credo, running
+  # 20s of a typical 9s" — an analyzer at more than double its normal runtime,
+  # which is the signature of a stuck process. Nothing was stuck: credo was
+  # behind a 198-second spex sweep and took 8 seconds once it started. The
+  # number was doing the opposite of its job, and it is most wrong exactly when
+  # it matters most, because queue pressure is when stops block on stale sources
+  # in the first place.
+  #
+  # Naming what it waits behind answers "should I wait?" in a way no duration
+  # can. The executing source keeps its elapsed figure, which is what makes two
+  # stops inside one window differ — a byte-identical block twice is the
+  # livelock signature, and its advice is the opposite of this one's.
+  defp running_detail(rerunning, run_duration, flight) do
+    sorted = Enum.sort(rerunning)
+
+    case executing(flight.sources, flight.since) do
+      nil ->
+        Enum.map_join(sorted, ", ", fn source ->
+          source <> elapsed_clause(Map.get(flight.since, source), Map.get(run_duration, source))
+        end)
+
+      blocker ->
+        waiting = sorted -- [blocker]
+        progress = elapsed_clause(Map.get(flight.since, blocker), Map.get(run_duration, blocker))
+
+        detail(blocker in sorted, blocker, progress, waiting)
+    end
+  end
+
+  # The stale source is the one running: report it, and say what is behind it.
+  defp detail(true, blocker, progress, waiting),
+    do: blocker <> progress <> queued_clause(waiting)
+
+  # The stale source is waiting on something that is not itself stale, so the
+  # blocker never appeared in this sentence at all — which is how "queued" came
+  # to read as "running". Naming it, with its progress, is what answers "should
+  # I wait?": 60s into a typical 198s says roughly two minutes, and no duration
+  # attached to the waiting source could say that.
+  defp detail(false, blocker, progress, waiting),
+    do:
+      "#{Enum.join(waiting, ", ")} #{has(waiting)} not started — queued behind #{blocker}#{progress}"
+
+  defp has([_one]), do: "has"
+  defp has(_many), do: "have"
+
+  defp queued_clause([]), do: ""
+
+  defp queued_clause([one]), do: "; #{one} is queued behind it and has not started"
+
+  defp queued_clause(many),
+    do: "; #{Enum.join(many, ", ")} are queued behind it and have not started"
+
+  # Nil when no in-flight source has a start time — a locally executed project
+  # reports names alone, and inventing an order from nothing would name a
+  # blocker that may not be one.
+  defp executing(sources, since) do
+    sources
+    |> Enum.filter(&Map.has_key?(since, &1))
+    |> Enum.min_by(&DateTime.to_unix(Map.fetch!(since, &1)), fn -> nil end)
   end
 
   defp elapsed_clause(%DateTime{} = started_at, typical) do

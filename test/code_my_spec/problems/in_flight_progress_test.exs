@@ -90,4 +90,49 @@ defmodule CodeMySpec.Problems.InFlightProgressTest do
     assert text =~ "A rerun is in flight now (credo) — stop again"
     refute text =~ "running"
   end
+
+  # 0e4b35e8. `started_at` is stamped at enqueue, not at execution, and the
+  # harness runs analyzers one at a time — so a source waiting its turn was
+  # rendered as one that had been running the whole time. Reported as "credo,
+  # running 20s of a typical 9s": an analyzer at more than double its normal
+  # runtime, which is the signature of a stuck process. Nothing was stuck. credo
+  # was behind a 198-second spex sweep and took 8 seconds once it started.
+  describe "when one analyzer is waiting on another" do
+    defp render_queue(spex_elapsed, credo_elapsed) do
+      now = DateTime.utc_now()
+
+      ProblemRenderer.render_stop_response(
+        [problem()],
+        [],
+        stale_sources: ["credo"],
+        last_ran: %{"credo" => DateTime.add(now, -13 * 60, :second)},
+        run_duration: %{"credo" => 9, "spex" => 198},
+        in_flight: ["credo", "spex"],
+        in_flight_since: %{
+          "spex" => DateTime.add(now, -spex_elapsed, :second),
+          "credo" => DateTime.add(now, -credo_elapsed, :second)
+        },
+        tracked?: true
+      )
+    end
+
+    test "the blocker is named, with the progress that says how long to wait" do
+      assert render_queue(60, 20) =~ "queued behind spex, running 1m of a typical 3m18s"
+    end
+
+    test "the one still waiting is named as queued, not as running" do
+      text = render_queue(60, 20)
+
+      assert text =~ "credo has not started"
+
+      refute text =~ "credo, running",
+             "a queued analyzer reported as running invites exactly the wrong " <>
+               "diagnosis: 20s against a typical 9s reads as a hung process, and " <>
+               "the reader goes looking for one that does not exist"
+    end
+
+    test "the running figure still moves, so two stops do not read as a livelock" do
+      refute render_queue(60, 20) == render_queue(73, 33)
+    end
+  end
 end
