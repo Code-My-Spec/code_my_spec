@@ -316,7 +316,18 @@ end
 # provider (outbound mail still uses the per-env Mailer adapter). Sourced from
 # envs/<env>.env via Dotenvy above; empty string → client returns
 # {:error, :resend_not_configured}.
-config :code_my_spec, CodeMySpec.Mail.ResendClient, api_key: env!("RESEND_API_KEY", :string, "")
+#
+# Except test, which sets its own in `config/test.exs`. `runtime.exs` is
+# evaluated after the per-env file, so without this guard the line below
+# replaced the test key with `""` and every stubbed call short-circuited to
+# `:resend_not_configured` — a test that had configured the client correctly
+# and was told it had not. That is why the mail spex install this key with
+# `Application.put_env/3` at runtime instead of configuring it: the config
+# they wrote was being overwritten before they ran.
+unless config_env() == :test do
+  config :code_my_spec, CodeMySpec.Mail.ResendClient,
+    api_key: env!("RESEND_API_KEY", :string, "")
+end
 
 # Guided intake writes its plan with a model, so req_llm needs a provider key.
 # ReqLLM resolves keys from `config :req_llm, <provider>_api_key`. Left nil when

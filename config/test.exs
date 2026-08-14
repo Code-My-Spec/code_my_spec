@@ -247,3 +247,14 @@ config :code_my_spec, CodeMySpec.GitHub, plug: {Req.Test, CodeMySpec.GitHub}
 # deletes this key to assert the unconfigured refusal, and that is visible to
 # the node however the value arrived.
 config :code_my_spec, deploy_key: "test_platform_deploy_key"
+
+# The Resend client, same arrangement as GitHub above. `mail_domain_test` and
+# `mail_attachments_test` both wrote this key, so neither could be async.
+#
+# The api_key is here rather than per-test because it only has to be
+# *present* — what each test varies is the response, and that is the plug.
+# Unlike Hetzner, nothing outside these two files depends on Resend being
+# unconfigured; the one test that does now lives in `mail_not_configured_test`.
+config :code_my_spec, CodeMySpec.Mail.ResendClient,
+  api_key: "re_test_key",
+  plug: {Req.Test, CodeMySpec.Mail.ResendClient}
