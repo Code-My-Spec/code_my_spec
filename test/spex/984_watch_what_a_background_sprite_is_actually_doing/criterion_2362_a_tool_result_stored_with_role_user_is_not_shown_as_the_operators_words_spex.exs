@@ -45,7 +45,7 @@ defmodule CodeMySpecSpex.Story984.Criterion2362Spex do
 
       then_ "it renders as a tool result", context do
         {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/agent-conversation")
+          live(context.conn, Fixtures.agent_conversation_path(context.scope))
 
         assert has_element?(view, "[data-test='tool-result']"),
                "the tool's output is a result, not something a person said"

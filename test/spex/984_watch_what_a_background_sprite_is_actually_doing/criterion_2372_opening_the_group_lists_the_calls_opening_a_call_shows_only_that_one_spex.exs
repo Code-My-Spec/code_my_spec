@@ -37,7 +37,7 @@ defmodule CodeMySpecSpex.Story984.Criterion2372Spex do
 
       then_ "every call in the group is listed by the tool it used", context do
         {:ok, view, html} =
-          live(context.conn, "/app/projects/#{context.project.id}/agent-conversation")
+          live(context.conn, Fixtures.agent_conversation_path(context.scope))
 
         for tool <- ~w(Read Grep Bash) do
           assert has_element?(view, "[data-test='tool-call-group'] [data-tool='#{tool}']"),

@@ -26,7 +26,13 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
 
   setup :setup_project
 
+  # The index. One page per project, listing its agent sessions.
   defp path(project), do: "/app/projects/#{project.id}/agent-conversation"
+
+  # One session's transcript. The page is per-session now — it used to show
+  # whichever conversation moved most recently, which hid every other agent.
+  defp show_path(project, conversation),
+    do: "/app/projects/#{project.id}/agent-conversation/#{conversation.id}"
 
   defp agent_conversation(scope, project, external_id \\ "pi:/tmp/sprite-test") do
     {:ok, conversation} =
@@ -43,7 +49,7 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
     test "shows an empty state", %{conn: conn, project: project} do
       {:ok, _view, html} = live(conn, path(project))
 
-      assert html =~ "No agent activity recorded"
+      assert html =~ "No agent has recorded a turn"
     end
   end
 
@@ -64,7 +70,7 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
           "there are 3 open problems"
         )
 
-      {:ok, view, html} = live(conn, path(project))
+      {:ok, view, html} = live(conn, show_path(project, conversation))
 
       assert html =~ "count the open problems"
       assert has_element?(view, "[data-test='message'][data-role='user']")
@@ -92,7 +98,7 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
           "Bash\n{\"command\": \"mix spex\"}"
         )
 
-      {:ok, view, html} = live(conn, path(project))
+      {:ok, view, html} = live(conn, show_path(project, conversation))
 
       assert html =~ "Bash"
       assert html =~ "mix spex"
@@ -118,7 +124,7 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
           "walked the signup journey"
         )
 
-      {:ok, view, _html} = live(conn, path(project))
+      {:ok, view, _html} = live(conn, show_path(project, conversation))
 
       assert has_element?(view, "[data-test='message'][data-agent-role='qa']")
       assert has_element?(view, "[data-test='message']:not([data-agent-role='qa'])")
@@ -141,7 +147,7 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
           "start the first requirement"
         )
 
-      {:ok, view, html} = live(conn, path(project))
+      {:ok, view, html} = live(conn, show_path(project, conversation))
       assert html =~ "start the first requirement"
 
       {:ok, _} =

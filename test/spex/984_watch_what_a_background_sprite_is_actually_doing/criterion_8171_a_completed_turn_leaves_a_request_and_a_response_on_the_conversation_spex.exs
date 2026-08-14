@@ -39,7 +39,7 @@ defmodule CodeMySpecSpex.Story984.Criterion8171Spex do
 
       then_ "the operator's conversation shows what the agent was asked", context do
         {:ok, _view, html} =
-          live(context.conn, "/app/projects/#{context.project.id}/agent-conversation")
+          live(context.conn, Fixtures.agent_conversation_path(context.scope))
 
         assert html =~ "count the open problems",
                "expected the turn's request to appear on the conversation"
@@ -49,7 +49,7 @@ defmodule CodeMySpecSpex.Story984.Criterion8171Spex do
 
       and_ "it shows what the model answered", context do
         {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/agent-conversation")
+          live(context.conn, Fixtures.agent_conversation_path(context.scope))
 
         assert has_element?(view, "[data-test='message'][data-role='user']"),
                "expected a user-role message for the request"

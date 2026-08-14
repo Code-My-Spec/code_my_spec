@@ -35,7 +35,7 @@ defmodule CodeMySpecSpex.Story984.Criterion2366Spex do
 
       then_ "the agent's words render as the agent's", context do
         {:ok, view, html} =
-          live(context.conn, "/app/projects/#{context.project.id}/agent-conversation")
+          live(context.conn, Fixtures.agent_conversation_path(context.scope))
 
         assert has_element?(view, "[data-test='message'][data-role='assistant']")
         assert html =~ "A migration had not been run."

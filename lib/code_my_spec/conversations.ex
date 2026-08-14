@@ -114,7 +114,8 @@ defmodule CodeMySpec.Conversations do
         |> Conversation.agent_changeset(%{
           account_id: account_id,
           project_id: project_id,
-          session_external_id: session_external_id
+          session_external_id: session_external_id,
+          name: generated_name()
         })
         |> Repo.insert()
         |> case do
@@ -554,6 +555,115 @@ defmodule CodeMySpec.Conversations do
     |> limit(1)
     |> Repo.one()
   end
+
+  @doc """
+  Every agent conversation on a project, newest activity first, each with how
+  many turns it holds and when it last moved.
+
+  The counterpart to `get_agent_conversation/2`, which answers "the newest one"
+  — fine when a project had one agent, and silently hiding four when it has
+  five.
+
+  Counted in the same query rather than per row: five conversations is five
+  extra round trips today and one per agent forever after, for a number that
+  is only ever shown next to the name.
+  """
+  @spec list_agent_conversations(Scope.t(), Ecto.UUID.t()) :: [map()]
+  def list_agent_conversations(%Scope{} = scope, project_id) do
+    counts =
+      from(m in Message,
+        group_by: m.conversation_id,
+        select: %{conversation_id: m.conversation_id, count: count(m.id), last_at: max(m.inserted_at)}
+      )
+
+    from(c in Conversation,
+      left_join: n in subquery(counts),
+      on: n.conversation_id == c.id,
+      where: c.account_id == ^scope.active_account_id and c.project_id == ^project_id,
+      where: c.type == :agent and not is_nil(c.session_external_id),
+      order_by: [desc: c.updated_at],
+      select: %{
+        conversation: c,
+        message_count: coalesce(n.count, 0),
+        last_message_at: n.last_at
+      }
+    )
+    |> Repo.all()
+  end
+
+  @doc """
+  Rename a conversation.
+
+  Scoped, because the id comes off a URL: without the account check any
+  conversation id renames any conversation.
+  """
+  @spec rename_conversation(Scope.t(), Ecto.UUID.t(), String.t()) ::
+          {:ok, Conversation.t()} | {:error, :not_found | Ecto.Changeset.t()}
+  def rename_conversation(%Scope{} = scope, conversation_id, name) do
+    Conversation
+    |> where([c], c.id == ^conversation_id and c.account_id == ^scope.active_account_id)
+    |> Repo.one()
+    |> case do
+      nil ->
+        {:error, :not_found}
+
+      conversation ->
+        conversation
+        |> Conversation.rename_changeset(%{name: name})
+        |> Repo.update()
+    end
+  end
+
+  @doc """
+  Get one agent conversation by id, scoped to the account.
+
+  The show page takes its id from the URL, so this is the check that one
+  account's transcript is not readable by another.
+  """
+  @spec get_agent_conversation_by_id(Scope.t(), Ecto.UUID.t()) :: Conversation.t() | nil
+  def get_agent_conversation_by_id(%Scope{} = scope, conversation_id) do
+    Conversation
+    |> where([c], c.id == ^conversation_id and c.account_id == ^scope.active_account_id)
+    |> where([c], c.type == :agent)
+    |> Repo.one()
+  end
+
+  # A name so a new conversation is never nameless — an index of five UUIDs is
+  # the problem this exists to avoid, and it appears before anyone has had the
+  # chance to name anything.
+  #
+  # Random rather than derived from the session id: it is stored and editable,
+  # so it does not need to be reproducible, and a derived name would silently
+  # change if the derivation ever did.
+  @adjectives ~w(amber brisk candid dusk eager fleet grave hollow iron jade
+                 keen lucid mellow north opal patient quiet russet slate tacit
+                 umber vivid warm yonder zinc)
+  @nouns ~w(anvil badger cairn drift ember fathom gable harbor inlet juniper
+            kestrel lantern meadow nimbus orchard pillar quarry ridge summit
+            thicket vale willow yarrow)
+
+  defp generated_name do
+    "#{Enum.random(@adjectives)}-#{Enum.random(@nouns)}"
+  end
+
+  @doc """
+  What to show for a conversation that has no name — rows created before names
+  existed, which are not worth backfilling with a name nobody chose.
+
+  The session id, shortened. It is the identity anyway, and it is what appears
+  in the logs you would go read next.
+  """
+  @spec display_name(Conversation.t()) :: String.t()
+  def display_name(%Conversation{name: name}) when is_binary(name) and name != "", do: name
+
+  def display_name(%Conversation{session_external_id: id}) when is_binary(id) do
+    case String.split(id, "-") do
+      [first | _] when byte_size(first) == 8 -> first
+      _ -> id
+    end
+  end
+
+  def display_name(%Conversation{}), do: "unnamed"
 
   defp operator_sender_id(scope), do: scope.user && to_string(scope.user.id)
 

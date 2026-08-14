@@ -55,7 +55,7 @@ defmodule CodeMySpecSpex.Story984.Criterion2363Spex do
 
       then_ "the failure is marked as one", context do
         {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/agent-conversation")
+          live(context.conn, Fixtures.agent_conversation_path(context.scope))
 
         assert has_element?(view, "[data-test='tool-result'][data-failed='true']"),
                "a failed result has to be findable without reading its text"

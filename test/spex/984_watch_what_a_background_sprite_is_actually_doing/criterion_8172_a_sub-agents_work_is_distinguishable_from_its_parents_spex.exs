@@ -45,7 +45,7 @@ defmodule CodeMySpecSpex.Story984.Criterion8172Spex do
 
       then_ "the sub-agent's turn is marked as the sub-agent's", context do
         {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/agent-conversation")
+          live(context.conn, Fixtures.agent_conversation_path(context.scope))
 
         assert has_element?(view, "[data-test='message'][data-agent-role='qa']"),
                "expected the QA sub-agent's turn to carry its agent role"
@@ -55,7 +55,7 @@ defmodule CodeMySpecSpex.Story984.Criterion8172Spex do
 
       and_ "the main agent's turn is not attributed to the sub-agent", context do
         {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/agent-conversation")
+          live(context.conn, Fixtures.agent_conversation_path(context.scope))
 
         assert has_element?(view, "[data-test='message']:not([data-agent-role='qa'])"),
                "expected the main agent's turn to remain distinct from the sub-agent's"

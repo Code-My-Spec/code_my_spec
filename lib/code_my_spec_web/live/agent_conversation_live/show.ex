@@ -1,15 +1,19 @@
-defmodule CodeMySpecWeb.AgentConversationLive do
+defmodule CodeMySpecWeb.AgentConversationLive.Show do
   @moduledoc """
-  Read-only view of a sprite agent's conversation history for one project —
-  the turns it took, the tools it called and what they returned, with
-  sub-agent turns attributed to the sub-agent via `agent_role`. New turns
-  stream in live while the sprite runs, with no reload and nothing the
-  operator can send back.
+  Read-only view of one agent session's conversation — the turns it took, the
+  tools it called and what they returned, with sub-agent turns attributed to the
+  sub-agent via `agent_role`. New turns arrive live while the agent runs, with
+  no reload and nothing the operator can send back.
 
-  Deliberately separate from `InboxLive`: that is a support queue where a
-  person is writing to the operator; this is a machine being watched. Agent
+  One page is one **session**, taken from the URL. It used to be "whichever
+  conversation for this project moved most recently", which reads as *the*
+  conversation while a project has one agent and silently hides four when it has
+  five — and changes under you as they take turns. `Index` lists them.
+
+  Deliberately separate from `InboxLive`: that is a support queue where a person
+  is writing to the operator; this is a machine being watched. Agent
   conversations never appear in `Conversations.list_conversations/1` or count
-  toward `Conversations.unread_count/1`, so watching a sprite never raises the
+  toward `Conversations.unread_count/1`, so watching an agent never raises the
   support inbox's unread badge.
   """
 
@@ -22,11 +26,18 @@ defmodule CodeMySpecWeb.AgentConversationLive do
   @impl true
   def mount(_params, _session, socket), do: {:ok, socket}
 
+  # One page of turns. 50 is `Conversations.@default_page_size`; named here too
+  # because the loader compares against it to decide whether more sit above.
+  @page 50
+
+  defp messages_for(nil), do: []
+  defp messages_for(conversation), do: Conversations.list_messages(conversation, limit: @page)
+
   # The project comes off the scope, not out of a lookup here: `PortableHost`
   # resolves `:project_id` for every route in this live_session. It attaches on
   # `handle_params`, which is why this cannot run in `mount`.
   @impl true
-  def handle_params(_params, _uri, socket) do
+  def handle_params(params, _uri, socket) do
     case socket.assigns[:project] do
       nil ->
         {:noreply,
@@ -35,13 +46,13 @@ defmodule CodeMySpecWeb.AgentConversationLive do
          |> push_navigate(to: ~p"/app/projects")}
 
       project ->
-        {:noreply, mount_project(socket, project)}
+        {:noreply, mount_conversation(socket, project, params["conversation_id"])}
     end
   end
 
-  defp mount_project(socket, project) do
+  defp mount_conversation(socket, project, conversation_id) do
     scope = with_active_project(socket.assigns.current_scope, project)
-    conversation = Conversations.get_agent_conversation(scope, project.id)
+    conversation = Conversations.get_agent_conversation_by_id(scope, conversation_id)
     messages = messages_for(conversation)
 
     if connected?(socket) && conversation do
@@ -55,11 +66,28 @@ defmodule CodeMySpecWeb.AgentConversationLive do
     |> assign(:current_scope, scope)
     |> assign(:project, project)
     |> assign(:conversation, conversation)
-    |> assign(:page_title, "#{project.name} · Agent conversation")
+    |> assign(:page_title, page_title(project, conversation))
     |> assign(:recording_gap, conversation != nil and messages == [])
     |> assign(:questions, questions_for(conversation))
+    |> assign_more_above(messages, @page)
     |> assign_turns(messages)
   end
+
+  defp page_title(project, nil), do: "#{project.name} · Agent conversation"
+
+  defp page_title(project, conversation),
+    do: "#{project.name} · #{Conversations.display_name(conversation)}"
+
+  # The id stays visible beside the name: the name is a handle someone chose,
+  # and the session id is what appears in the logs you would go read next.
+  defp short_session(%{session_external_id: id}) when is_binary(id) do
+    case String.split(id, "-") do
+      [first | _] when byte_size(first) == 8 -> first
+      _ -> String.slice(id, 0, 16)
+    end
+  end
+
+  defp short_session(_), do: ""
 
   # `active_project_id` is what `Conversations.get_agent_conversation/2` scopes
   # on, so both fields are set together — otherwise the page for one project
@@ -87,13 +115,41 @@ defmodule CodeMySpecWeb.AgentConversationLive do
     end
   end
 
+  # Older turns, when the operator reaches the top.
+  #
+  # A transcript is 1,572 messages on a session that has run all day, and the
+  # page loads fifty — so everything before the last fifty was unreachable.
+  # `list_messages/2` already took a `:before` cursor and simply had no caller.
+  #
+  # Prepends, and re-folds the whole list: a run of calls is grouped by looking
+  # at neighbours, so an older page arriving can legitimately join a run that is
+  # already on screen.
+  def handle_event("load_older", _params, %{assigns: %{conversation: nil}} = socket),
+    do: {:noreply, socket}
+
+  def handle_event("load_older", _params, socket) do
+    case socket.assigns.messages do
+      [] ->
+        {:noreply, socket}
+
+      [oldest | _] ->
+        older =
+          Conversations.list_messages(socket.assigns.conversation,
+            limit: @page,
+            before: oldest.inserted_at
+          )
+
+        {:noreply,
+         socket
+         |> assign_more_above(older, @page)
+         |> assign_turns(older ++ socket.assigns.messages)}
+    end
+  end
+
   defp questions_for(nil), do: []
 
   defp questions_for(conversation),
     do: Notifications.list_question_requests_for_session(conversation.session_external_id)
-
-  defp messages_for(nil), do: []
-  defp messages_for(conversation), do: Conversations.list_messages(conversation)
 
   # A plain assign, not a stream.
   #
@@ -114,6 +170,13 @@ defmodule CodeMySpecWeb.AgentConversationLive do
     |> assign(:items, items)
     |> assign(:results, results)
   end
+
+  # A full page back means there is probably more; a short one means we reached
+  # the beginning. Assumed true before the first fetch so the binding is armed
+  # on a conversation that is exactly one page long — the check costs one query
+  # and being wrong the other way means the operator can never reach the top.
+  defp assign_more_above(socket, fetched, limit),
+    do: assign(socket, :more_above?, length(fetched) >= limit)
 
   @impl true
   def handle_info({:new_message, message}, socket) do
@@ -141,11 +204,26 @@ defmodule CodeMySpecWeb.AgentConversationLive do
         class="mx-auto flex w-full max-w-3xl flex-col"
       >
         <header class="flex shrink-0 items-center gap-2 border-b border-base-300 pb-3">
-          <.icon name="hero-cpu-chip" class="size-5" />
-          <h1 class="truncate text-lg font-semibold">{@project.name} · Agent conversation</h1>
+          <.link
+            navigate={~p"/app/projects/#{@project.id}/agent-conversation"}
+            class="btn btn-ghost btn-sm btn-square"
+            title="All agents"
+          >
+            <.icon name="hero-arrow-left" class="size-4" />
+          </.link>
+          <.icon name="hero-cpu-chip" class="size-5 shrink-0" />
+          <h1 class="min-w-0 truncate text-lg font-semibold">
+            {@conversation && Conversations.display_name(@conversation)}
+          </h1>
+          <span :if={@conversation} class="shrink-0 font-mono text-xs opacity-40">
+            {short_session(@conversation)}
+          </span>
         </header>
 
-        <div class="min-h-0 flex-1 overflow-y-auto py-4">
+        <%!-- `overflow-anchor` is what keeps your place when older turns are
+              prepended: without it the browser holds the scroll *offset*, so
+              inserting above jumps you backwards by exactly the height added. --%>
+        <div class="min-h-0 flex-1 overflow-y-auto py-4" style="overflow-anchor: auto">
           <p
             :if={@conversation == nil}
             data-test="agent-conversation-empty"
@@ -172,7 +250,15 @@ defmodule CodeMySpecWeb.AgentConversationLive do
             />
           </div>
 
-          <div id="agent-turns" class="space-y-2">
+          <div
+            id="agent-turns"
+            class="space-y-2"
+            phx-viewport-top={@more_above? && "load_older"}
+            data-more-above={to_string(@more_above?)}
+          >
+            <p :if={@more_above?} data-test="loading-older" class="py-2 text-center text-xs opacity-40">
+              loading earlier turns…
+            </p>
             <ChatComponents.turn_item
               :for={item <- @items}
               id={"turn-#{item.id}"}

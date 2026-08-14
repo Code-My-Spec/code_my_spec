@@ -34,7 +34,7 @@ defmodule CodeMySpecSpex.Story984.Criterion8176Spex do
 
       when_ "the operator opens the conversation while it is still running", context do
         {:ok, view, html} =
-          live(context.conn, "/app/projects/#{context.project.id}/agent-conversation")
+          live(context.conn, Fixtures.agent_conversation_path(context.scope))
 
         assert html =~ "start the first requirement",
                "expected the turns taken so far to be there on arrival"

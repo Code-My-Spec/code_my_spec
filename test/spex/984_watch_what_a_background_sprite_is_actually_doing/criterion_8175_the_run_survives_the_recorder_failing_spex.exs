@@ -43,7 +43,7 @@ defmodule CodeMySpecSpex.Story984.Criterion8175Spex do
 
       then_ "the operator is not shown a conversation that looks complete", context do
         {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/agent-conversation")
+          live(context.conn, Fixtures.agent_conversation_path(context.scope))
 
         assert has_element?(view, "[data-test='recording-gap']"),
                "expected the conversation to declare that turns are missing rather than appear whole"

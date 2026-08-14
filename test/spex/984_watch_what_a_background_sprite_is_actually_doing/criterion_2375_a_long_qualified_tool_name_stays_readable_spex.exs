@@ -39,7 +39,7 @@ defmodule CodeMySpecSpex.Story984.Criterion2375Spex do
 
       then_ "the block still says which tool was used", context do
         {:ok, view, html} =
-          live(context.conn, "/app/projects/#{context.project.id}/agent-conversation")
+          live(context.conn, Fixtures.agent_conversation_path(context.scope))
 
         assert has_element?(
                  view,

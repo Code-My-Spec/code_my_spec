@@ -37,7 +37,7 @@ defmodule CodeMySpecSpex.Story984.Criterion2364Spex do
 
       then_ "it renders as a call naming that tool", context do
         {:ok, view, html} =
-          live(context.conn, "/app/projects/#{context.project.id}/agent-conversation")
+          live(context.conn, Fixtures.agent_conversation_path(context.scope))
 
         assert has_element?(view, "[data-test='tool-call'][data-tool='Bash']"),
                "the tool's name is the thing an operator scans for"

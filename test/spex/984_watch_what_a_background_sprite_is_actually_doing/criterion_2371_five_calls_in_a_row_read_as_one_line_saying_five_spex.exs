@@ -48,7 +48,7 @@ defmodule CodeMySpecSpex.Story984.Criterion2371Spex do
 
       then_ "they render as one group that says how many", context do
         {:ok, view, html} =
-          live(context.conn, "/app/projects/#{context.project.id}/agent-conversation")
+          live(context.conn, Fixtures.agent_conversation_path(context.scope))
 
         assert has_element?(view, "[data-test='tool-call-group'][data-count='5']"),
                "five blocks in a column is most of a phone screen spent on one turn"

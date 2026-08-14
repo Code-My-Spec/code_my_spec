@@ -1157,6 +1157,28 @@ defmodule CodeMySpecSpex.Fixtures do
   end
 
   @doc """
+  The path of the transcript for this project's most recent agent session.
+
+  The page used to be per-project and is now per-session — one page per agent,
+  because a project with five agents was showing whichever one moved last. A
+  spex that records a turn and then wants to look at it needs the conversation's
+  id, and the id is created inside the recorder rather than by the spex.
+
+  So the bridge answers "the one I just wrote to", which is what every one of
+  these scenarios means. `Conversations.get_agent_conversation/2` is the same
+  newest-first lookup the page itself used before the split.
+  """
+  @spec agent_conversation_path(Scope.t()) :: String.t()
+  def agent_conversation_path(%Scope{} = scope) do
+    base = "/app/projects/#{scope.active_project_id}/agent-conversation"
+
+    case Conversations.get_agent_conversation(scope, scope.active_project_id) do
+      nil -> base
+      conversation -> "#{base}/#{conversation.id}"
+    end
+  end
+
+  @doc """
   Ask a question the way `ask_user` does, and get its id back.
 
   A spex about the notifications inbox has to put a question there, and the

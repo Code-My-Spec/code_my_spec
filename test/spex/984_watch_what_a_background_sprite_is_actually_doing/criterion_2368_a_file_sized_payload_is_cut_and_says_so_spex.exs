@@ -48,7 +48,7 @@ defmodule CodeMySpecSpex.Story984.Criterion2368Spex do
 
       then_ "the rendered arguments are cut", context do
         {:ok, view, html} =
-          live(context.conn, "/app/projects/#{context.project.id}/agent-conversation")
+          live(context.conn, Fixtures.agent_conversation_path(context.scope))
 
         assert has_element?(view, "[data-test='tool-call'][data-truncated='true']"),
                "a payload this size has to be cut or it is the whole page"
