@@ -34,6 +34,32 @@ window.Sortable = Sortable
 let Hooks = {
   StripePaymentElement,
   SigmaGraph,
+  // A transcript opens at its newest turn, like every other chat, and that is
+  // also what makes "scroll up for older" mean anything: a page that opens at
+  // the top of the last fifty starts you in the middle of the story with the
+  // newest work below the fold.
+  //
+  // Only follows the bottom while you are already there. Pinning unconditionally
+  // would yank you away from something you had scrolled up to read every time
+  // the agent takes a turn.
+  StickToBottom: {
+    mounted() {
+      this.pin();
+    },
+    updated() {
+      if (this.wasAtBottom) this.pin();
+    },
+    pin() {
+      this.el.scrollTop = this.el.scrollHeight;
+      this.wasAtBottom = true;
+    },
+    beforeUpdate() {
+      // 32px of slack: "at the bottom" should survive a stray pixel from a
+      // rounded height, or following stops working for reasons nobody can see.
+      const { scrollTop, scrollHeight, clientHeight } = this.el;
+      this.wasAtBottom = scrollHeight - (scrollTop + clientHeight) < 32;
+    },
+  },
   Copy: {
     mounted() {
       let { to } = this.el.dataset;

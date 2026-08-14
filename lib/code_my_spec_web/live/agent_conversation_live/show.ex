@@ -222,8 +222,15 @@ defmodule CodeMySpecWeb.AgentConversationLive.Show do
 
         <%!-- `overflow-anchor` is what keeps your place when older turns are
               prepended: without it the browser holds the scroll *offset*, so
-              inserting above jumps you backwards by exactly the height added. --%>
-        <div class="min-h-0 flex-1 overflow-y-auto py-4" style="overflow-anchor: auto">
+              inserting above jumps you backwards by exactly the height added.
+              `StickToBottom` opens at the newest turn and follows it only while
+              you are already down there. --%>
+        <div
+          id="agent-scroll"
+          phx-hook="StickToBottom"
+          class="min-h-0 flex-1 overflow-y-auto py-4"
+          style="overflow-anchor: auto"
+        >
           <p
             :if={@conversation == nil}
             data-test="agent-conversation-empty"
