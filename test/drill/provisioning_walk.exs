@@ -209,15 +209,33 @@ defmodule CodeMySpecSpex.Drill do
   # Fourth member of the same family here, after the SSH key, the age keys and
   # the deploy key: a credential the provider keeps and the database does not.
   defp persistent_registry_password(%{scope: scope} = context) do
-    path = Path.join(drill_state_dir(), "registry_password")
+    put_persistent_secret(scope, "registry_password")
+
+    # The database password, baked into the postgres container's PGPASSWORD the
+    # moment it was created. Rotating it left `DATABASE_URL` naming a password
+    # the running database had never heard of, and the migration failed with
+    # `FATAL 28P01 password authentication failed for user "app"` — after
+    # decrypting its environment perfectly.
+    for environment <- environments(),
+        do: put_persistent_secret(scope, "database_password_#{environment}")
+
+    context
+  end
+
+  # A secret the provider bakes into something long-lived, kept where the
+  # sandbox cannot roll it back. The app mints these on first use and stores
+  # them in `ProjectSecrets`; the drill supplies them so that "first use" is
+  # once, not once per walk.
+  defp put_persistent_secret(scope, name) do
+    path = Path.join(drill_state_dir(), name)
 
     unless File.exists?(path) do
       File.write!(path, 32 |> :crypto.strong_rand_bytes() |> Base.url_encode64(padding: false))
     end
 
-    {:ok, _} = ProjectSecrets.put_value(scope, "registry_password", String.trim(File.read!(path)))
+    {:ok, _} = ProjectSecrets.put_value(scope, name, String.trim(File.read!(path)))
 
-    context
+    :ok
   end
 
   # The age keys, for the same reason as the SSH key and with a worse failure.

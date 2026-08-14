@@ -105,9 +105,61 @@ defmodule CodeMySpec.Provisioning.Widget do
     # Mix reports a missing task on stderr. Without :stderr_to_stdout the
     # failure arrived as "exit 1:" and nothing, which reads like the generator
     # refusing rather than never being found.
-    case Environments.cmd(env, mix, args, stderr_to_stdout: true) do
-      {output, 0} -> {:ok, %{output: output}}
-      {output, status} -> {:error, "Widget generator failed (exit #{status}): #{output}"}
+    #
+    case already_installed(env, opts) do
+      nil ->
+        case Environments.cmd(env, mix, args, stderr_to_stdout: true) do
+          {output, 0} -> {:ok, %{output: output}}
+          {output, status} -> {:error, "Widget generator failed (exit #{status}): #{output}"}
+        end
+
+      marker ->
+        {:ok, %{output: "#{marker} is already present — generator not re-run"}}
+    end
+  end
+
+  # The generator, but only once.
+  #
+  # `cms_gen.support_widget` calls `Mix.Phoenix.prompt_for_conflicts/1`, which
+  # asks before overwriting files it has already written. So the *second* run of
+  # a step designed to be re-runnable stopped and waited for an answer nobody
+  # was there to give — not slow, infinite: a drill sat on it for twenty minutes
+  # having spent one second of CPU, and in a real run it would hold the whole
+  # sequence open forever while reporting nothing.
+  #
+  # Skipping is also the honest answer rather than merely the safe one. This
+  # step's claim is that the widget is installed, present and proven; when the
+  # files are already there the install is done, and the two checks after it are
+  # what actually establish the rest. Answering the prompt instead — however it
+  # were answered — would either overwrite a file the operator may have edited
+  # or decline and carry on, which is this, with a prompt.
+  # Found from the tree, not from the project row.
+  #
+  # The first version derived the path from `project.module_name`, which is the
+  # name of the CodeMySpec project ("spex drill") and not of the application in
+  # the checkout (`cms_drill_app`). So it looked for
+  # `lib/spex_drill_web/live/support_widget_live.ex`, never found it, and ran
+  # the generator into the prompt anyway. The application names itself in its
+  # own `lib/`, and that is the thing being asked about.
+  defp already_installed(env, opts) do
+    case Keyword.get(opts, :installed_markers) do
+      markers when is_list(markers) and markers != [] ->
+        Enum.find(markers, &Environments.file_exists?(env, &1))
+
+      _ ->
+        Enum.find(widget_files(env), &Environments.file_exists?(env, &1))
+    end
+  end
+
+  defp widget_files(env) do
+    case Environments.list_directory(env, "lib") do
+      {:ok, entries} ->
+        for entry <- entries,
+            String.ends_with?(entry, "_web"),
+            do: "lib/#{entry}/live/support_widget_live.ex"
+
+      _ ->
+        []
     end
   end
 

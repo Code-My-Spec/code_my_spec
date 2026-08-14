@@ -322,7 +322,14 @@ defmodule CodeMySpec.Generators.DeployArtifacts do
     echo "waiting for CI to publish the image for $COMMIT"
     gh run watch --exit-status "$(gh run list --commit "$COMMIT" --limit 1 --json databaseId --jq '.[0].databaseId')"
 
-    kamal app exec --config "$CONFIG" --version "$COMMIT" "bin/migrate"
+    # `-e`, so the migration carries the key instead of reading the host's copy.
+    # `kamal app exec` loads env/roles/<role>.env from the host, and kamal writes
+    # that only when it boots a container — so the migration ran against the
+    # environment of the last successful boot. A rotated SOPS_AGE_KEY deadlocked
+    # on it: the deploy re-encrypts to the new key, the migration reads the old
+    # one off the host, and the deploy that would replace the host's copy is the
+    # one that cannot finish.
+    kamal app exec --config "$CONFIG" --version "$COMMIT" -e "SOPS_AGE_KEY:${SOPS_AGE_KEY:-}" "bin/migrate"
     kamal deploy --config "$CONFIG" --version "$COMMIT"
 
     echo "deployed $COMMIT to $ENVIRONMENT"

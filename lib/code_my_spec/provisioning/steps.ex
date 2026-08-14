@@ -73,6 +73,11 @@ defmodule CodeMySpec.Provisioning.Steps do
   @type outcome ::
           {:ok, [map()]}
           | {:paused, String.t()}
+          # Paused, but something real was made first — a sending domain
+          # registered while it verifies, a widget installed while it waits for
+          # its first message. `run_and_record/4` records these for the same
+          # reason it records a failure's: a pause that dropped them would leak.
+          | {:paused, String.t(), [map()]}
           | {:error, term()}
           # Failed, but these resources were created before it did. See
           # `Provisioning.run_and_record/4` for why the partial list matters.
@@ -500,17 +505,9 @@ defmodule CodeMySpec.Provisioning.Steps do
     #
     # Shaped like `inbound_proof` and `restore_proof`: the claim in `kind`, the
     # thing it is about in `location`, and the evidence in `identifier`.
-    case ContentPublishing.run(scope, opts) do
-      %{state: :rendered} = result ->
-        {:ok, [content_proof(result) | content_objects(result)]}
-
-      %{state: state, published: published, reason: reason} ->
-        # A publish that uploaded and then failed to render is not the same as
-        # one that never uploaded, and 8058 turns on the difference. The
-        # objects are kept so the page can say the files are there while the
-        # post is not being served.
-        {:error, reason,
-         [content_failure(state, reason, published) | content_objects(%{published: published})]}
+    case content_proof_target(scope, opts) do
+      {:ok, opts} -> publish_content(scope, opts)
+      {:nothing_to_publish, message} -> {:ok, [%{kind: "content", location: message}]}
     end
   end
 
@@ -521,7 +518,8 @@ defmodule CodeMySpec.Provisioning.Steps do
     # a missing domain into a crashed run instead of one errored step.
     project = project(scope)
 
-    with {:ok, site} <- require_value(Keyword.get(opts, :site_url) || site_url(scope), "a domain"),
+    with {:ok, site} <-
+           require_value(Keyword.get(opts, :site_url) || site_url(scope, opts), "a domain"),
          {:ok, key} <-
            require_value(
              Keyword.get(opts, :deploy_key) || Map.get(project, :deploy_key),
@@ -544,6 +542,22 @@ defmodule CodeMySpec.Provisioning.Steps do
       case Widget.run(scope, env(scope), opts) do
         %{state: :proven} = result ->
           {:ok, Enum.reject([widget_render(result), widget_proof(result)], &is_nil/1)}
+
+        # Installed and openable, with no message yet: waiting on a person, not
+        # broken. The proof this step wants is a message *from the deployed
+        # site*, which only a visitor's browser can send — `message_proof/2`
+        # looks for one and nothing in the sequence can manufacture it, so on a
+        # site nobody has used yet this errored forever and took the run with
+        # it.
+        #
+        # Paused rather than errored, the same shape as the monitoring step
+        # waiting for a notification target and the storage step waiting for
+        # console-only keys. It still does not report done — the widget is not
+        # proven until a message arrives, and resuming re-checks (7967) — but a
+        # run stops calling a working install a failure.
+        %{state: :not_proven} = result ->
+          {:paused, awaiting_first_message(site),
+           Enum.reject([widget_render(result)], &is_nil/1)}
 
         %{reason: reason} = result ->
           {:error, reason, Enum.reject([widget_render(result)], &is_nil/1)}
@@ -789,6 +803,71 @@ defmodule CodeMySpec.Provisioning.Steps do
 
   # Named rather than silently succeeding — see the moduledoc.
   def run(key, _scope, _opts), do: {:error, {:not_implemented, key}}
+
+  # What the render proof will fetch back, and what has to be in it.
+  #
+  # `ContentPublishing.verify_render/2` reads both with `fetch!` — correctly,
+  # since it can prove nothing without them — and nothing supplied them, so the
+  # step died with `key :path not found` on a run where every step before it had
+  # succeeded and the site was live. Supplying them is this adapter's job, the
+  # same argument the widget step below makes about its own two.
+  #
+  # Derived from the content itself rather than configured: the post that will
+  # be published is the post to ask the site for. `/<content_type>/<slug>` is
+  # what `cms_gen.content` routes, and the title is what a rendered post
+  # certainly contains — a 200 alone would pass on a styled 404.
+  #
+  # A project with no content is the ordinary state of a freshly generated
+  # application, not a failure. There is nothing to publish and nothing to
+  # prove, and saying so is the honest answer; erroring would make every new
+  # project's first setup report a broken step it cannot fix by trying again.
+  defp content_proof_target(scope, opts) do
+    with :error <- proof_from_opts(opts),
+         [_ | _] = rows <- publishable_content(scope) do
+      row = hd(rows)
+      meta = row.metadata || %{}
+
+      {:ok,
+       opts
+       |> Keyword.put(:path, "/#{meta["content_type"] || "blog"}/#{meta["slug"]}")
+       |> Keyword.put(:expect, meta["title"] || meta["slug"])}
+    else
+      {:ok, _opts} = supplied -> supplied
+      [] -> {:nothing_to_publish, "no content to publish yet"}
+    end
+  end
+
+  defp proof_from_opts(opts) do
+    case {Keyword.get(opts, :path), Keyword.get(opts, :expect)} do
+      {path, expect} when is_binary(path) and is_binary(expect) -> {:ok, opts}
+      _ -> :error
+    end
+  end
+
+  # Fully qualified: the `ContentPublishing` aliased above is
+  # `Provisioning.ContentPublishing`, which orchestrates the publish. The
+  # snapshot rows belong to the context of the same name one level up, and
+  # aliasing both here would make every call site ambiguous to a reader.
+  defp publishable_content(scope) do
+    scope
+    |> CodeMySpec.ContentPublishing.list_snapshot()
+    |> Enum.filter(&(&1.parse_status == :success and (&1.metadata || %{})["slug"] not in [nil, ""]))
+  end
+
+  defp publish_content(scope, opts) do
+    case ContentPublishing.run(scope, opts) do
+      %{state: :rendered} = result ->
+        {:ok, [content_proof(result) | content_objects(result)]}
+
+      %{state: state, published: published, reason: reason} ->
+        # A publish that uploaded and then failed to render is not the same as
+        # one that never uploaded, and 8058 turns on the difference. The
+        # objects are kept so the page can say the files are there while the
+        # post is not being served.
+        {:error, reason,
+         [content_failure(state, reason, published) | content_objects(%{published: published})]}
+    end
+  end
 
   ## Client-facing configuration
   #
@@ -3566,17 +3645,47 @@ defmodule CodeMySpec.Provisioning.Steps do
 
   defp require_value(value, _what), do: {:ok, value}
 
-  defp site_url(scope) do
-    case domain(scope) do
+  # The site this project actually serves, which is an environment's host and
+  # not the project's domain.
+  #
+  # This returned `https://<domain>` — the apex — regardless of which
+  # environments exist. On a project with production turned off, the apex has no
+  # record at all, so the widget step probed a name nothing resolves and
+  # reported the widget "not usable" with `nxdomain`, on a site that was up and
+  # serving it at `uat.<domain>`.
+  #
+  # Exactly the fault the deploy step was fixed for: it used `domain/1` too, and
+  # handed a UAT deploy production's hostname, so its health check probed an
+  # address nothing had been deployed to. `environment_host/2` is the answer
+  # there and is the answer here. The domain remains the fallback for a project
+  # whose environments predate hosts.
+  defp site_url(scope, opts) do
+    host =
+      case primary_environment(scope, opts) do
+        name when is_binary(name) -> environment_host(scope, name) || domain(scope)
+        _ -> domain(scope)
+      end
+
+    case host do
       nil -> nil
       name -> "https://#{name}"
     end
   end
 
   defp router_path(scope) do
-    app = Map.get(project(scope), :module_name) || "App"
+    "lib/#{app_path(scope)}_web/router.ex"
+  end
 
-    "lib/#{app |> to_string() |> Macro.underscore()}_web/router.ex"
+  defp awaiting_first_message(site) do
+    "The widget is installed on #{site} and opens, but nothing has sent a " <>
+      "message through it yet — and only a visitor's browser can, so setup " <>
+      "cannot prove this on its own. Open #{site}, send one through the " <>
+      "widget, and resume: the socket, the deploy key and CORS are what that " <>
+      "proves, and all three can be wrong while the markup is right."
+  end
+
+  defp app_path(scope) do
+    project(scope) |> Map.get(:module_name) |> Kernel.||("App") |> to_string() |> Macro.underscore()
   end
 
   # Receiving is at the **apex**, and that is a decision rather than a default:

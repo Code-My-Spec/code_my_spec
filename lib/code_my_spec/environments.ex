@@ -107,7 +107,58 @@ defmodule CodeMySpec.Environments do
   @spec clean_otp_env() :: [{String.t(), String.t() | nil}]
   def clean_otp_env do
     Enum.map(@otp_release_vars ++ @mix_env_vars, fn var -> {var, nil} end) ++
-      path_without_release_dirs()
+      path_for_children()
+  end
+
+  # The shims first, so a child resolves the toolchain its *own* directory pins.
+  #
+  # A version manager works by putting a shim on PATH that reads
+  # `.tool-versions` from the working directory. Running under one, the parent's
+  # PATH already names a resolved version's bin directory ahead of the shims —
+  # that is how the parent got its own Elixir — and a child inherits that
+  # resolution wholesale. So `mix` run inside the user's project used ours.
+  #
+  # Which is not cosmetic: the generated application pins `~> 1.20` and the
+  # widget step, which runs a generator inside it, refused itself with
+  #
+  #   ** (Mix) You're trying to run :cms_drill_app on Elixir v1.19.4 but it has
+  #   declared in its mix.exs file it supports only Elixir ~> 1.20
+  #
+  # reported as a broken generator rather than as two checkouts on two Elixirs.
+  # Putting the shims back in front restores the per-directory resolution the
+  # user installed them for. A machine without a version manager is unaffected;
+  # the directory simply does not exist and PATH is untouched.
+  defp path_for_children do
+    case path_without_release_dirs() do
+      [{"PATH", path}] -> [{"PATH", prepend_shims(path)}]
+      [] -> shim_path_entry()
+    end
+  end
+
+  defp shim_path_entry do
+    case System.get_env("PATH") do
+      path when is_binary(path) -> [{"PATH", prepend_shims(path)}]
+      _ -> []
+    end
+  end
+
+  # asdf and mise, the two this project's checkouts are managed with. Only
+  # directories that exist, and **moved** to the front rather than added there:
+  # a version manager's shims are almost always on PATH already, just behind the
+  # resolved version's bin directory, which is precisely the ordering that has
+  # to change. Skipping the ones already present left PATH untouched and the
+  # child still resolved our Elixir — the fix was inert for exactly the case it
+  # was written for. Nothing is dropped; the order is what changes.
+  defp prepend_shims(path) do
+    sep = path_separator()
+    existing = String.split(path, sep, trim: true)
+
+    shims =
+      ["~/.asdf/shims", "~/.local/share/mise/shims"]
+      |> Enum.map(&Path.expand/1)
+      |> Enum.filter(&File.dir?/1)
+
+    Enum.join(shims ++ (existing -- shims), sep)
   end
 
   @doc """

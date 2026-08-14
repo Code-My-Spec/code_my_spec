@@ -162,7 +162,9 @@ defmodule CodeMySpec.Provisioning.Database do
 
     case run.([check]) do
       {_output, 0} ->
-        {:ok, %{host: @container, port: @port, database: credential.database}}
+        with :ok <- sync_password(run, credential) do
+          {:ok, %{host: @container, port: @port, database: credential.database}}
+        end
 
       _ when attempts > 1 ->
         Wait.sleep(2_000)
@@ -174,9 +176,45 @@ defmodule CodeMySpec.Provisioning.Database do
     end
   end
 
+  # Make the role's password the one `DATABASE_URL` actually carries.
+  #
+  # `POSTGRES_PASSWORD` is read only when Postgres *initialises* a data
+  # directory, and the volume deliberately outlives the container — that is the
+  # point of naming it, so re-running setup is not a way to lose data. The
+  # consequence is that on every serve after the first, the password in the
+  # environment is decoration: the role keeps whatever it was created with.
+  #
+  # So a rotated password left the connection string and the database
+  # disagreeing, with nothing reporting it. `serve/3` returned ready, the server
+  # step recorded done, and the failure surfaced at the deploy as
+  # `FATAL 28P01 password authentication failed for user "app"` — pointing at
+  # the migration rather than at the step that had just certified the database.
+  #
+  # `ALTER USER` is idempotent and costs one exec against a container that is
+  # already up, so it runs every time rather than only when a change is
+  # suspected — detecting the mismatch would mean trying the password, which is
+  # the same round trip for a worse guarantee.
+  defp sync_password(run, credential) do
+    sql = "ALTER USER #{credential.username} WITH PASSWORD #{sql_escape(credential.password)}"
+
+    command =
+      "docker exec #{@container} psql -v ON_ERROR_STOP=1 -U #{shell_escape(credential.username)} " <>
+        "-d #{shell_escape(credential.database)} -c #{shell_escape(sql)} > /dev/null"
+
+    case run.([command]) do
+      {_output, 0} -> :ok
+      {output, status} -> {:error, {:database_password_not_set, status, String.trim(output)}}
+    end
+  end
+
   defp describe(password, environment) do
     %{username: @username, password: password, database: "app_#{environment}"}
   end
+
+  # A SQL string literal, quoted for Postgres rather than for the shell. The
+  # result is then shell-escaped by the caller, because it travels through
+  # `docker exec … -c`.
+  defp sql_escape(value), do: "'" <> String.replace(value, "'", "''") <> "'"
 
   defp shell_escape(value), do: "'" <> String.replace(value, "'", "'\\''") <> "'"
 end
