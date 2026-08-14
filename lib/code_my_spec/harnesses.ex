@@ -260,5 +260,154 @@ defmodule CodeMySpec.Harnesses do
     |> Repo.update()
   end
 
+  @doc """
+  Reclaim the derived state of every agent on this project that has gone quiet.
+
+  Files and problems, unconditionally. Components only where they have no files
+  **and** no story link.
+
+  ## Why derived state and not the row
+
+  Problems are properties of the codebase, not of the database: an agent that
+  comes back runs analysis and produces them again. Files are the same — the
+  working copy is the truth and the rows are a projection. Keeping either across
+  an absence preserves nothing and blocks other people's gates meanwhile.
+
+  The harness row survives, and that is what makes the rest simple. Identity lives
+  in `.cms_harness.json` in the checkout, so a returning agent presents the id it
+  always had and resumes. Deleting the row would leave the file naming something
+  that does not exist, and the adjacent case is already observable: re-onboarding a
+  root whose identity file was removed issues a *third* id rather than resuming, so
+  every offboard/return cycle would leak one.
+
+  ## Why liveness comes from the agent
+
+  `last_seen_at`, never the age of the rows an agent produced. Rows update on
+  scans, and scans happen on hooks rather than on activity — this working copy went
+  unswept for three and a half hours while being actively worked, because the
+  harness was busy holding others. A rule keyed on row age reclaims someone
+  mid-session.
+
+  `last_seen_at` is `utc_datetime_usec`, so comparing it against `DateTime.utc_now/0`
+  is correct without a workaround. `updated_at` is `timestamp without time zone`
+  holding UTC, and comparing *that* against `now()` renders one side local: every
+  live agent reads as hours idle, an expiry never fires here and fires wrongly
+  elsewhere.
+
+  ## Never the caller
+
+  The scope's own harness is excluded. It is live by definition — it is the one
+  asking — and a sweep that inherited the harness scoping every other operation
+  here uses would sweep only itself, find nothing, and reclaim nothing forever
+  while looking correct.
+  """
+  @spec reclaim_quiet(Scope.t()) :: {:ok, %{harnesses: integer(), components: integer()}}
+  def reclaim_quiet(%Scope{active_project_id: project_id} = scope)
+      when is_binary(project_id) do
+    cutoff = DateTime.add(now(), -idle_seconds(scope), :second)
+
+    quiet_ids =
+      Repo.all(
+        from h in Harness,
+          where: h.project_id == ^project_id,
+          # `nil` is never quiet. The project's default harness — the row
+          # unnamed writers share — never joins, so its `last_seen_at` stays nil
+          # by design, and that is what distinguishes it from a checkout in the
+          # operator's list. Treating nil as "gone" reclaimed it on every sync,
+          # in every project, and took ten other stories' spex down with it.
+          where: not is_nil(h.last_seen_at) and h.last_seen_at < ^cutoff,
+          where: h.id != ^(scope.active_harness_id || Ecto.UUID.generate()),
+          select: h.id
+      )
+
+    reclaim_harnesses(scope, quiet_ids ++ abandoned_ids(scope))
+  end
+
+  def reclaim_quiet(_scope), do: {:ok, %{harnesses: 0, components: 0}}
+
+  # File rows can name a harness that has no row. Measured on this project:
+  # two harnesses existed and every file belonged to a third id that was neither
+  # of them nor the default.
+  #
+  # Whatever writes them, the rows are abandoned by definition — no harness row
+  # means no agent to come back, and no `last_seen_at` to age out. A sweep that
+  # only walks harnesses can never see them, so they would hold components alive
+  # forever, which is precisely the condition this story exists to end.
+  #
+  # Excludes the caller, like the aged set: a live agent writing rows faster than
+  # its harness is created must not sweep its own work.
+  defp abandoned_ids(%Scope{active_project_id: project_id} = scope) do
+    Repo.all(
+      from f in CodeMySpec.Files.File,
+        where: f.project_id == ^project_id,
+        where: f.harness_id not in subquery(from h in Harness, select: h.id),
+        where: f.harness_id != ^(scope.active_harness_id || Ecto.UUID.generate()),
+        distinct: true,
+        select: f.harness_id
+    )
+  end
+
+  defp reclaim_harnesses(_scope, []), do: {:ok, %{harnesses: 0, components: 0}}
+
+  defp reclaim_harnesses(%Scope{active_project_id: project_id}, quiet_ids) do
+    Repo.transaction(fn ->
+      Repo.delete_all(
+        from f in CodeMySpec.Files.File,
+          where: f.project_id == ^project_id and f.harness_id in ^quiet_ids
+      )
+
+      Repo.delete_all(
+        from p in CodeMySpec.Problems.Problem,
+          where: p.project_id == ^project_id and p.harness_id in ^quiet_ids
+      )
+
+      # Two plain subqueries rather than correlated `exists`. The component set is
+      # small and this is legible: anything a file or a story points at is kept,
+      # everything else on the project goes.
+      referenced_by_files =
+        from f in CodeMySpec.Files.File,
+          where: f.project_id == ^project_id and not is_nil(f.component_id),
+          select: f.component_id
+
+      referenced_by_stories =
+        from s in CodeMySpec.Stories.Story,
+          where: s.project_id == ^project_id and not is_nil(s.component_id),
+          select: s.component_id
+
+      keep =
+        (Repo.all(referenced_by_files) ++ Repo.all(referenced_by_stories))
+        |> Enum.uniq()
+
+      {components, _} =
+        Repo.delete_all(
+          from c in CodeMySpec.Components.Component,
+            where: c.project_id == ^project_id and c.id not in ^keep
+        )
+
+      %{harnesses: length(quiet_ids), components: components}
+    end)
+    |> case do
+      {:ok, counts} ->
+        {:ok, counts}
+
+      {:error, reason} ->
+        # Loud, never swallowed. A reclaim that fails quietly leaves the orphan
+        # in place and reports success, which is indistinguishable from a project
+        # that had nothing to reclaim — and that is the failure this story exists
+        # to remove, reproduced inside its own fix.
+        raise "reclaim_quiet failed for project #{inspect(reason)}"
+    end
+  end
+
+  defp idle_seconds(%Scope{} = scope) do
+    hours =
+      case CodeMySpec.Configurations.get(scope) do
+        %{harness_idle_hours: hours} when is_integer(hours) -> hours
+        _ -> 2
+      end
+
+    hours * 3600
+  end
+
   defp now, do: DateTime.utc_now()
 end

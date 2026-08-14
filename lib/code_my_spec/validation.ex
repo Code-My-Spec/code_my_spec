@@ -37,6 +37,7 @@ defmodule CodeMySpec.Validation do
   alias CodeMySpec.Files
   alias CodeMySpec.Files.ComponentSync, as: FileComponentSync
   alias CodeMySpec.Files.FileSync
+  alias CodeMySpec.Harnesses
   alias CodeMySpec.Problems
   alias CodeMySpec.StaticAnalysis
   alias CodeMySpec.StaticAnalysis.CredoRun
@@ -125,6 +126,13 @@ defmodule CodeMySpec.Validation do
   end
 
   defp do_validate_stop(%Scope{cwd: cwd} = scope, task, opts) do
+    # Story 892: before the scan, not after. `FileSync.sync_changed/2` takes
+    # ownership of the project's file rows for whoever is syncing, so a reclaim
+    # that ran afterwards would find every row belonging to the live agent and
+    # nothing left to reclaim — measured, and it is why placing this inside
+    # `ComponentSync` reclaimed nothing while looking correct.
+    Harnesses.reclaim_quiet(scope)
+
     case FileSync.sync_changed(scope, base_dir: cwd) do
       {:ok, sync_result} -> local_validate_stop(scope, task, opts, cwd, sync_result)
       {:error, {:cannot_scan, _}} -> do_validate_stop(%{scope | cwd: nil}, task, opts)

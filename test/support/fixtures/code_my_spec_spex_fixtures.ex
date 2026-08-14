@@ -25,6 +25,8 @@ defmodule CodeMySpecSpex.Fixtures do
       CodeMySpecWeb
     ]
 
+  import Ecto.Query, only: [from: 2]
+
   alias CodeMySpec.{
     AccountsFixtures,
     AgentTasks,
@@ -35,6 +37,7 @@ defmodule CodeMySpecSpex.Fixtures do
     EmbeddingsFixtures,
     EnvironmentFixtures,
     Environments,
+    Harnesses,
     IntegrationsFixtures,
     IssuesFixtures,
     Notifications,
@@ -62,12 +65,15 @@ defmodule CodeMySpecSpex.Fixtures do
   alias CodeMySpec.Architecture.SpecStub
   alias CodeMySpec.Auth.OAuthClient
   alias CodeMySpec.Configurations
+  alias CodeMySpec.Conversations
   alias CodeMySpec.Files.FileSync
   alias CodeMySpec.Files.Scanner
+  alias CodeMySpec.Harnesses.Harness
   alias CodeMySpec.Integrations.Integration
   alias CodeMySpec.Integrations.IntegrationRepository
   alias CodeMySpec.Mail.Email
   alias CodeMySpec.Mail.Mailbox
+  alias CodeMySpec.Notifications.QuestionRequest
   alias CodeMySpec.Permissions.TapOut
   alias CodeMySpec.Projects.Project
   alias CodeMySpec.Provisioning.Cloudflare
@@ -87,7 +93,6 @@ defmodule CodeMySpecSpex.Fixtures do
   alias CodeMySpec.Sessions.Session
   alias CodeMySpec.SetupFixtures.ErroringStep
   alias CodeMySpec.Stories.Story
-  alias CodeMySpec.Conversations
   alias CodeMySpec.Users.Scope
   alias CodeMySpec.Users.User
   alias CodeMySpec.Workspaces.PreviewAddress
@@ -97,6 +102,7 @@ defmodule CodeMySpecSpex.Fixtures do
   alias CodeMySpecTest.LocalPreviewRunner
   alias CodeMySpecTest.PreviewApp
   alias CodeMySpecTest.PreviewWsClient
+  alias Ecto.Changeset
 
   @doc """
   Register a sending domain and publish everything except its DKIM record.
@@ -858,6 +864,143 @@ defmodule CodeMySpecSpex.Fixtures do
   end
 
   @doc """
+  A second working copy on this project, last seen `hours` ago.
+
+  Story 892's only unreachable precondition. "This agent has been quiet for two
+  hours" is a fact about elapsed time, and no surface can produce it — a spec
+  cannot wait, and nothing an agent does makes itself *older*. Everything else in
+  that story is driven through the stop hook and read back through the components
+  view; this is the one arrangement that has to be set rather than caused.
+
+  Deliberately writes `last_seen_at` and nothing else. `updated_at` is
+  `timestamp without time zone` holding UTC, which is the trap the story records:
+  compared against `now()` it renders local, and every live agent reads as hours
+  idle. `last_seen_at` is `utc_datetime_usec`, so comparing it against
+  `DateTime.utc_now/0` is correct without a workaround — keying liveness on it is
+  what makes criterion 2382 hold by construction rather than by care.
+  """
+  @spec quiet_harness_fixture(Scope.t(), number(), keyword()) :: Harness.t()
+  def quiet_harness_fixture(%Scope{} = scope, hours, opts \\ []) do
+    label = Keyword.get(opts, :label, "a checkout nobody is running")
+    {:ok, harness} = Harnesses.issue(scope, nil, label: label)
+
+    go_quiet(harness, hours)
+  end
+
+  @doc """
+  Age a working copy's file rows without touching its agent.
+
+  The distinction criterion 2381 turns on. Rows update on scans, and scans happen
+  on hooks rather than on activity — this working copy went unswept from 10:13 to
+  13:44 while being actively worked, because the harness was busy holding others.
+  So old rows are ordinary for a live agent, and a rule keyed on them reclaims
+  someone mid-session.
+
+  Ages rows only. The harness's `last_seen_at` is left alone, which is what makes
+  the two clocks distinguishable in a spec.
+  """
+  @spec age_files_of(Scope.t(), number()) :: :ok
+  def age_files_of(%Scope{active_project_id: project_id} = scope, hours) do
+    at = DateTime.add(DateTime.utc_now(), -round(hours * 3600), :second)
+    naive = at |> DateTime.to_naive() |> NaiveDateTime.truncate(:second)
+
+    from(f in CodeMySpec.Files.File,
+      where: f.project_id == ^project_id and f.harness_id == ^scope.active_harness_id
+    )
+    |> Repo.update_all(set: [updated_at: naive, inserted_at: naive])
+
+    :ok
+  end
+
+  @doc """
+  Age an existing harness so it reads as quiet.
+
+  The arrangement most of story 892 actually wants. A component is projected by
+  the files-view sync, from file rows keyed to whoever synced — so the honest way
+  to get "a component whose only files belong to a quiet checkout" is to let one
+  agent do the ordinary thing and *then* have it go quiet, rather than to
+  construct the end state directly.
+
+  Constructing it directly does not work anyway: a channel observation carries no
+  file content, and component extraction reads the spec to find its module name.
+  Arranging through the real path avoids inventing a second one.
+  """
+  @spec go_quiet(Harness.t() | String.t(), number()) :: Harness.t()
+  def go_quiet(%Harness{} = harness, hours) do
+    last_seen = DateTime.add(DateTime.utc_now(), -round(hours * 3600), :second)
+
+    harness
+    |> Changeset.change(last_seen_at: last_seen)
+    |> Repo.update!()
+  end
+
+  def go_quiet(harness_id, hours) when is_binary(harness_id) do
+    Harness
+    |> Repo.get!(harness_id)
+    |> go_quiet(hours)
+  end
+
+  @doc """
+  Every agent on this project goes quiet.
+
+  What the story actually describes — a project whose working copies have all
+  been abandoned — and the only arrangement that does not depend on knowing which
+  harness a given sync happened to write under. The files-view sync does not
+  always write under `scope.active_harness_id`, so ageing that row by name aged a
+  harness that owned nothing and reclaimed nothing.
+  """
+  @spec all_agents_go_quiet(Scope.t(), number()) :: :ok
+  def all_agents_go_quiet(%Scope{active_project_id: project_id}, hours) do
+    at = DateTime.add(DateTime.utc_now(), -round(hours * 3600), :second)
+
+    from(h in Harness, where: h.project_id == ^project_id)
+    |> Repo.update_all(set: [last_seen_at: at])
+
+    :ok
+  end
+
+  @doc """
+  A second, live agent on this project, as a scope.
+
+  The other half: something has to still be working, because the reclaim rides on
+  a live agent's sync rather than on a schedule.
+  """
+  @spec live_agent_scope(Scope.t(), keyword()) :: Scope.t()
+  def live_agent_scope(%Scope{} = scope, opts \\ []) do
+    label = Keyword.get(opts, :label, "the agent still working")
+    {:ok, harness} = Harnesses.issue(scope, nil, label: label)
+
+    # Records a root, because the hook rebuilds the scope from the harness row
+    # rather than trusting the request: `put_scope/2` takes `cwd` from
+    # `harness.root`, and a scope with no cwd never reaches
+    # `local_validate_stop/5` — the stop returns early instead of syncing. A live
+    # agent without a working copy would therefore drive nothing, and every
+    # scenario depending on the sync would fail for a reason unrelated to what it
+    # is testing.
+    # Its **own** working copy, not the other agent's. Sharing one means the live
+    # agent's scan re-creates the very files the reclaim just removed and
+    # re-projects the component from them — correct behaviour, and it would make
+    # every scenario here assert that reclaiming does nothing.
+    {:ok, root} = Briefly.create(directory: true)
+    {:ok, harness} = Harnesses.report_root(harness, root)
+
+    # Its own **environment**, not just its own path, and registered against its
+    # own root. The hook does not trust the request: it rebuilds the scope from
+    # the harness row via `Scope.for_local_project/2`, which resolves the
+    # environment from the registry. Registered per project — as it was — every
+    # harness on the project resolved to the *same* env, so this agent scanned
+    # the other one's working copy, found its spec, and re-projected the very
+    # component the reclaim had just deleted. Measured: reclaim reported
+    # `components_deleted=1` and `ComponentSync` upserted it back in the same
+    # request. Correct behaviour on a false premise, and it made every scenario
+    # here read as though reclaiming did nothing.
+    {:ok, env} = Environments.create(:memory, working_dir: root)
+    :ok = Environments.register({:root, root}, env)
+
+    %{scope | active_harness_id: harness.id, cwd: root, environment: env}
+  end
+
+  @doc """
   The harness's side of the wire, for Story 987.
 
   Scans the working copy with the real `Scanner.observe/2` — the same function
@@ -895,7 +1038,62 @@ defmodule CodeMySpecSpex.Fixtures do
   end
 
   @doc """
-  Deliver a completed model turn the way a sprite's harness does.
+  Files observed by a *different* working copy on this project.
+
+  Story 892's other arrangement. A reclaim can only be shown to work if something
+  else is holding state, and "another checkout saw these files" is reachable —
+  through the same channel handler a real harness pushes observations to, with the
+  other harness's id on the scope.
+
+  Through the channel rather than `FileSync` directly, for the reason
+  `deliver_manifest/2` above records: a bridge that calls the context reimplements
+  the behaviour under test, and a spec built on it proves the bridge works and
+  nothing else.
+  """
+  @spec observe_files_as(Scope.t(), Harness.t(), [String.t()], keyword()) :: map()
+  def observe_files_as(%Scope{} = scope, %Harness{} = harness, paths, opts \\ []) do
+    role = Keyword.get(opts, :role, "implementation")
+
+    observations =
+      Enum.map(paths, fn path ->
+        %{
+          "path" => path,
+          "role" => role,
+          "mtime" => DateTime.to_iso8601(DateTime.utc_now()),
+          "size" => 128,
+          "fingerprint" => "spex-#{:erlang.phash2(path)}",
+          "valid" => true,
+          "validation_errors" => %{},
+          "component_id" => nil,
+          "story_id" => nil
+        }
+      end)
+
+    socket = %Phoenix.Socket{
+      assigns: %{scope: %{scope | active_harness_id: harness.id}}
+    }
+
+    case CodeMySpecWeb.HarnessProjectChannel.handle_in(
+           "observations",
+           %{"observations" => observations},
+           socket
+         ) do
+      {:reply, {:ok, reply}, _socket} ->
+        reply
+
+      {:reply, {:error, reason}, _socket} ->
+        raise """
+        the channel rejected this manifest, so nothing was arranged:
+
+        #{inspect(reason)}
+
+        A fixture that swallows a rejection leaves the spec asserting against an
+        empty project and calling that a pass.
+        """
+    end
+  end
+
+  @doc """
 
   The proxy that produces this lives in `cms_harness` and runs on the sprite,
   so a spec here cannot dispatch to it — and should not want to. What the
@@ -1036,8 +1234,8 @@ defmodule CodeMySpecSpex.Fixtures do
     {:ok, _} =
       id
       |> Notifications.get_question_request()
-      |> CodeMySpec.Notifications.QuestionRequest.changeset(%{"status" => "expired"})
-      |> CodeMySpec.Repo.update()
+      |> QuestionRequest.changeset(%{"status" => "expired"})
+      |> Repo.update()
 
     :ok
   end
