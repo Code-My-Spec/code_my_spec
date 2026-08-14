@@ -2491,6 +2491,45 @@ defmodule CodeMySpecSpex.Fixtures do
   defp spex_copy?(%Integration{provider_metadata: %{"provider_user_id" => "spex"}}), do: true
   defp spex_copy?(_), do: false
 
+  # Long enough to outlast the slowest step. The inbound probe waits five
+  # minutes for Resend to verify the MX records, settles for one, then polls
+  # five more for the message — eleven minutes in which nothing can renew the
+  # credential it started with.
+  @borrowed_token_margin_seconds 20 * 60
+
+  # The borrowed token cannot renew itself: it travels without its refresh
+  # token on purpose, because Resend and Cloudflare rotate theirs on every use
+  # and a second copy of a single-use credential is what revokes a grant. So
+  # whatever life it has when it is borrowed is all it will ever have.
+  #
+  # `fetch_access_token/2` renews at two minutes to expiry, which is right for
+  # an application making one request — and wrong here, where a token with ten
+  # minutes left is handed to a step that needs eleven. The inbound step ran
+  # 604 seconds and then reported `API key is invalid`, having started with a
+  # perfectly good credential that expired underneath it.
+  #
+  # Ageing the *dev* row is what forces the renewal, and it renews through the
+  # application's own path: the row keeps its refresh token, so the rotation
+  # happens under the same lock and persists back where it came from. There is
+  # still only one owner.
+  # Only where there is something to renew with. GitHub's user tokens carry no
+  # refresh token at all, and ageing one out would turn a working credential
+  # into `:reauthorize_required` — the placeholder path, for a token that was
+  # fine. Their stored expiry is a year out, so they never reach the margin
+  # anyway; the guard is here so that stays true by construction.
+  defp age_out_a_token_too_short_to_finish_on(%Integration{refresh_token: token} = integration)
+       when is_binary(token) and token != "" do
+    if DateTime.diff(integration.expires_at, DateTime.utc_now()) < @borrowed_token_margin_seconds do
+      integration
+      |> Ecto.Changeset.change(expires_at: DateTime.utc_now() |> DateTime.truncate(:second))
+      |> Repo.update!()
+    end
+
+    :ok
+  end
+
+  defp age_out_a_token_too_short_to_finish_on(_integration), do: :ok
+
   # Refreshes **in the dev database** — through a dynamic repo, so the app's own
   # `fetch_access_token/2` runs: same row lock, same rotation, same persistence.
   # The rotated refresh token lands back where it came from, which is the whole
@@ -2543,6 +2582,8 @@ defmodule CodeMySpecSpex.Fixtures do
       end
 
       scope = %Scope{user: CodeMySpec.Repo.get!(User, integration.user_id)}
+
+      age_out_a_token_too_short_to_finish_on(integration)
 
       case CodeMySpec.Integrations.fetch_access_token(scope, provider) do
         {:ok, access_token} ->
