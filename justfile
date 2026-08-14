@@ -395,6 +395,11 @@ refresh-harness port="4004":
         if lsof -nP -iTCP:{{port}} -sTCP:LISTEN -t >/dev/null 2>&1; then
             echo "✓ harness is listening on {{port}}"
             echo "  working copies re-register on their next hook"
+            echo
+            echo "  If this restart shipped a NEW MCP tool, every already-running"
+            echo "  agent still has the old tool list and will get \"No such tool"
+            echo "  available\" until it reconnects (/mcp in Claude Code). The"
+            echo "  server is not the reason; the client caches the list. b2d9c616."
             exit 0
         fi
         sleep 2
