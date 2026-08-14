@@ -70,6 +70,12 @@ defmodule CodeMySpec.Provisioning.Steps do
   @access_key_public "server_ssh_public_key"
   @access_key_private "server_ssh_private_key"
 
+  # Where the backup script and the encrypted env are delivered on the
+  # environment's own box. Fixed rather than per-run: the nightly systemd unit
+  # `bin/backup schedule` installs names it as its WorkingDirectory, so a path
+  # that changed every run would leave the timer pointing at a deleted tree.
+  @backup_dir "/opt/cms-backup"
+
   @type outcome ::
           {:ok, [map()]}
           | {:paused, String.t()}
@@ -780,8 +786,10 @@ defmodule CodeMySpec.Provisioning.Steps do
             |> Keyword.put(:bucket, bucket)
             |> Keyword.put(:credentials, credentials)
             |> put_age_key(scope, environment)
+            |> put_database_url(scope, environment)
 
           with :ok <- require_script(scope, "bin/backup"),
+               {:ok, environment_opts} <- on_the_environments_box(scope, environment, environment_opts),
                {:ok, resources} <-
                  backups_outcome(
                    Backups.run(env(scope), environment, environment_opts),
@@ -2734,6 +2742,20 @@ defmodule CodeMySpec.Provisioning.Steps do
   # tags them. Without it a page showing three dumps cannot say which database
   # any of them holds — and "we have backups" is only worth anything if you can
   # tell which.
+  # The connection string, handed over rather than left to be decrypted.
+  #
+  # We already know it — the server step composed it and `Database.credential/2`
+  # can say it again — and the box this now runs on has docker and curl and
+  # deliberately nothing else, so asking it to decrypt meant
+  # `sops: command not found` for a value that was already in hand. With this
+  # (and the bucket and keys beside it) `load_env` has nothing left to do.
+  defp put_database_url(opts, scope, environment) do
+    case Database.credential(scope, environment) do
+      {:ok, credential} -> Keyword.put_new(opts, :database_url, Database.url(credential))
+      _ -> opts
+    end
+  end
+
   defp put_age_key(opts, scope, environment) do
     case fetch_age_key(scope, environment) do
       {:ok, key} -> Keyword.put(opts, :age_key, key)
@@ -3674,6 +3696,45 @@ defmodule CodeMySpec.Provisioning.Steps do
 
   defp router_path(scope) do
     "lib/#{app_path(scope)}_web/router.ex"
+  end
+
+  # Point the backup at the box its database is on, and put the script there.
+  #
+  # `bin/backup` has to run where `cms-postgres` resolves, which is the
+  # environment's own server and its private docker network — from anywhere else
+  # `pg_dump` reports `could not translate host name "cms-postgres" to address`.
+  # `install_schedule` matters even more: it writes a systemd unit with sudo, so
+  # running it locally installs a nightly job on the machine that ran setup.
+  #
+  # The tree is delivered the same way the build gets its source — `git archive`
+  # over the ssh we already hold — because the app host runs a container rather
+  # than a checkout, so `bin/backup` and `envs/<env>.enc.env` are not there
+  # otherwise. `@backup_dir` is stable, so a re-run replaces the tree rather
+  # than accumulating copies, and the nightly unit's WorkingDirectory keeps
+  # pointing at something real.
+  defp on_the_environments_box(scope, environment, opts) do
+    with {:ok, ssh_opts} <- with_builder_ssh(scope, opts),
+         ip when is_binary(ip) and ip != "" <-
+           environment_ip(scope, environment_row(scope, environment), ssh_opts),
+         server = %{"ip" => ip},
+         deliver = Remote.ssh_deliver(server, ssh_opts),
+         :ok <- deliver.("HEAD", @backup_dir) do
+      {:ok,
+       opts
+       |> Keyword.put(:run, Remote.ssh_runner(server, ssh_opts))
+       |> Keyword.put(:remote_dir, @backup_dir)}
+    else
+      {:error, reason} ->
+        {:error, "could not reach #{environment}'s server to back it up: #{format(reason)}"}
+
+      _ ->
+        {:error,
+         "no address is recorded for #{environment}, so there is no box to run its backup on"}
+    end
+  end
+
+  defp environment_row(scope, environment) do
+    EnvironmentRepository.get(scope, environment) || %{name: environment}
   end
 
   defp awaiting_first_message(site) do

@@ -112,10 +112,7 @@ defmodule CodeMySpec.Provisioning.Backups do
   def take_dump(env, environment, opts \\ []) do
     script = resolve_script(env, Keyword.get(opts, :backup_script, "bin/backup"))
 
-    case Environments.cmd(env, script, ["dump", environment],
-           stderr_to_stdout: true,
-           env: script_env(opts)
-         ) do
+    case run_script(env, script, ["dump", environment], opts) do
       {output, 0} ->
         case capture(output, "key") do
           nil ->
@@ -146,10 +143,7 @@ defmodule CodeMySpec.Provisioning.Backups do
     script = resolve_script(env, Keyword.get(opts, :backup_script, "bin/backup"))
     target = Keyword.get(opts, :scratch_database, "scratch")
 
-    case Environments.cmd(env, script, ["restore", key, target],
-           stderr_to_stdout: true,
-           env: script_env(opts)
-         ) do
+    case run_script(env, script, ["restore", key, target], opts) do
       {output, 0} ->
         case rows(output) do
           n when n > 0 ->
@@ -177,10 +171,7 @@ defmodule CodeMySpec.Provisioning.Backups do
   def install_schedule(env, environment, opts \\ []) do
     script = resolve_script(env, Keyword.get(opts, :backup_script, "bin/backup"))
 
-    case Environments.cmd(env, script, ["schedule", environment],
-           stderr_to_stdout: true,
-           env: script_env(opts)
-         ) do
+    case run_script(env, script, ["schedule", environment], opts) do
       {_output, 0} ->
         :ok
 
@@ -292,6 +283,59 @@ defmodule CodeMySpec.Provisioning.Backups do
     ]
     |> Enum.reject(fn {_k, v} -> is_nil(v) or v == "" end)
   end
+
+
+  # Where the script runs, which is not where the caller runs.
+  #
+  # All three of these shelled out through `Environments.cmd/4` — the *project's
+  # local* environment, meaning the machine running setup. Three things follow,
+  # and the third is the serious one:
+  #
+  #   * the dump cannot reach the database. `DATABASE_URL` names `cms-postgres`,
+  #     a container on the server's private docker network, so a local `pg_dump`
+  #     reports `could not translate host name "cms-postgres" to address`;
+  #   * it contradicts this script's own header, which says the dump goes
+  #     straight from the host to the bucket and never through the control plane
+  #     — a production dump being exactly the thing that is a megabyte in
+  #     staging and eighty gigabytes in production;
+  #   * `schedule` runs `sudo tee /etc/systemd/system/...` and
+  #     `systemctl enable --now`. Run locally that installs a nightly timer on
+  #     whatever machine ran setup — a laptop in development — pointed at a
+  #     database it cannot reach. It fails on a host without passwordless sudo
+  #     and *succeeds* on one with it, which is the worse outcome.
+  #
+  # `:run` takes `[command]` and returns `{output, status}`, the same shape
+  # `Registry` and `Database` already use, so the caller decides which box this
+  # happens on and the tests keep a local path that needs no server.
+  defp run_script(env, script, args, opts) do
+    case Keyword.get(opts, :run) do
+      nil ->
+        Environments.cmd(env, script, args, stderr_to_stdout: true, env: script_env(opts))
+
+      run ->
+        # The *relative* name, not the resolved one. `resolve_script/2` makes it
+        # absolute against the project's local checkout, which is a path that
+        # exists on this machine and nowhere else.
+        run.([remote_command(Keyword.get(opts, :backup_script, "bin/backup"), args, opts)])
+    end
+  end
+
+  # One shell line: cd to the delivered tree, export what the script reads, run
+  # it. The environment cannot travel as `System.cmd`'s `:env` over ssh, so it
+  # is spelled out in the command — quoted, because a secret access key is not
+  # guaranteed to be shell-safe.
+  defp remote_command(script, args, opts) do
+    exports =
+      opts
+      |> script_env()
+      |> Enum.map_join(" ", fn {name, value} -> "#{name}=#{shell_quote(value)}" end)
+
+    dir = Keyword.get(opts, :remote_dir, ".")
+
+    "cd #{shell_quote(dir)} && #{exports} #{script} #{Enum.map_join(args, " ", &shell_quote/1)}"
+  end
+
+  defp shell_quote(value), do: "'" <> String.replace(to_string(value), "'", "'\\''") <> "'"
 
   defp resolve_script(%{cwd: cwd}, script) when is_binary(cwd) and cwd != "" do
     if Path.type(script) == :absolute, do: script, else: Path.join(cwd, script)
