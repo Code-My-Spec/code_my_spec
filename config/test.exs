@@ -224,3 +224,16 @@ config :code_my_spec, CodeMySpec.Workspaces.PreviewAddress,
 # The pane re-checks a workspace that is still coming up. Short here so a spec
 # observes the transition instead of waiting out the interval a visitor gets.
 config :code_my_spec, CodeMySpecWeb.PreviewLive.Show, recheck_ms: 50
+
+# The GitHub client's test plug, set once here rather than by each test.
+#
+# `{Req.Test, Module}` dispatches to whatever stub the *calling process* has
+# registered, so two test files can drive the same client concurrently —
+# which `Application.put_env` at runtime could not, being node-global. It was
+# the shared key behind `git_hub_test` and `provisioning/repository_test`
+# both having to be sync.
+#
+# A call with no stub registered raises rather than reaching GitHub, which is
+# the behaviour wanted: a test that forgot to stub should say so.
+config :code_my_spec, CodeMySpec.GitHub, plug: {Req.Test, CodeMySpec.GitHub}
+

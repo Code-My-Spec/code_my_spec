@@ -15,6 +15,25 @@ defmodule CodeMySpec.Provisioning.HetznerTest do
 
   @scope %Scope{}
 
+  # Sync, and the reason is the token rather than the plug.
+  #
+  # The plug half could move to `Req.Test`, the way `git_hub_test` and
+  # `provisioning/repository_test` now do — a stub registered against the
+  # calling process, which two files can hold at once. `api_token` cannot.
+  # `Hetzner.token/1` tries account secrets, then project secrets, then this
+  # application-environment fallback, so putting a token here does not
+  # configure *this* test — it makes every scope in the suite look configured.
+  #
+  # Tried, and it broke three tests in `ProvisioningLive` and `Provisioning`
+  # that mount a page whose `reverify` calls `list_servers/1`. They pass today
+  # because no token exists and the call short-circuits to
+  # `:hetzner_not_configured`. Giving them stubs instead would change what
+  # they assert, since the page acts on what the provider reports.
+  #
+  # The fix is in production, not here: a credential reached through the scope
+  # (account or project secrets, which are sandboxed per test) instead of an
+  # ambient fallback. Until then this file and `environment_servers_test` are
+  # pinned together by one key.
   defp stub(fun) do
     Application.put_env(:code_my_spec, Hetzner, api_token: "test-token", plug: fun)
     on_exit(fn -> Application.delete_env(:code_my_spec, Hetzner) end)

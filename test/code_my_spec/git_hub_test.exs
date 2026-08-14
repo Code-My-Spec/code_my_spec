@@ -9,7 +9,7 @@ defmodule CodeMySpec.GitHubTest do
   the committed replay cassette to avoid creating throwaway repos.
   """
 
-  use CodeMySpecTest.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: true
 
   import ReqCassette
   import CodeMySpec.UsersFixtures
@@ -20,10 +20,6 @@ defmodule CodeMySpec.GitHubTest do
 
   @cassette_dir "test/cassettes/github"
 
-  setup do
-    on_exit(fn -> Application.put_env(:code_my_spec, GitHub, plug: nil) end)
-    :ok
-  end
 
   describe "create_repository/2" do
     test "creates a repo and returns the decoded body" do
@@ -51,9 +47,12 @@ defmodule CodeMySpec.GitHubTest do
   end
 
   defp with_plug(plug, fun) do
-    # The `setup` block resets the plug via on_exit after every test, so
-    # this only needs to install it for the duration of the test body.
-    Application.put_env(:code_my_spec, GitHub, plug: plug)
+    # Registered against this process rather than the node. `config/test.exs`
+    # points the client at `{Req.Test, GitHub}` permanently, and `Req.Test`
+    # resolves the stub through the calling process, so nothing here is
+    # visible to a test running alongside. Nothing to undo afterwards either
+    # — ownership ends with the process.
+    Req.Test.stub(GitHub, plug)
     fun.()
   end
 
