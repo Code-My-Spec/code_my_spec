@@ -237,3 +237,13 @@ config :code_my_spec, CodeMySpecWeb.PreviewLive.Show, recheck_ms: 50
 # the behaviour wanted: a test that forgot to stub should say so.
 config :code_my_spec, CodeMySpec.GitHub, plug: {Req.Test, CodeMySpec.GitHub}
 
+
+# The platform deploy key, set once so tests that need one present do not have
+# to write it into application env themselves. `app_credential_test` and
+# `content_sync_controller_test` both did, with different values, which is
+# what pinned them together.
+#
+# `content_sync_controller_test` stays sync regardless: one of its tests
+# deletes this key to assert the unconfigured refusal, and that is visible to
+# the node however the value arrived.
+config :code_my_spec, deploy_key: "test_platform_deploy_key"
