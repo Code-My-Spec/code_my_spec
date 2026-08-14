@@ -230,10 +230,14 @@ defmodule CodeMySpec.Provisioning.DeployTest do
     # inspected the struct into a binary first — and binaries pass through the
     # formatter untouched. So this asserts on the production function.
     #
-    # `.invalid` is reserved by RFC 2606 and cannot resolve, which makes a
-    # transport failure the guaranteed outcome without depending on anything
-    # being up or down.
+    # The transport failure is stubbed rather than provoked. These used an
+    # RFC 2606 `.invalid` host so resolution could not succeed, which is sound
+    # reasoning but still a real DNS lookup and a real timeout budget from the
+    # unit suite. `Req.Test.transport_error/2` produces the same thing offline
+    # and instantly, and says which failure is being asserted.
     test "a transport failure comes back as words, not a struct" do
+      Req.Test.stub(Deploy, &Req.Test.transport_error(&1, :nxdomain))
+
       assert {:error, reason} = Deploy.probe("nothing.invalid", timeout_ms: 2_000)
 
       refute reason =~ "TransportError",
@@ -244,9 +248,19 @@ defmodule CodeMySpec.Provisioning.DeployTest do
     end
 
     test "the scheme is selectable so a caller can tell 443 from 80" do
-      # Same unresolvable host, so this asserts the option is threaded rather
-      # than that any particular port behaves — the URL is what changes.
+      # Records the URL the option produced, which is what this is actually
+      # about — the old version asserted only that an unresolvable host failed,
+      # which it would have done under either scheme.
+      test_pid = self()
+
+      Req.Test.stub(Deploy, fn conn ->
+        send(test_pid, {:probed, conn.scheme, conn.port})
+        Req.Test.transport_error(conn, :nxdomain)
+      end)
+
       assert {:error, _} = Deploy.probe("nothing.invalid", scheme: :http, timeout_ms: 2_000)
+
+      assert_receive {:probed, :http, 80}
     end
   end
 

@@ -271,3 +271,53 @@ config :code_my_spec, CodeMySpec.Mail.ResendClient,
 # happened while writing this.
 config :code_my_spec, CodeMySpec.Provisioning.Hetzner,
   plug: {Req.Test, CodeMySpec.Provisioning.Hetzner}
+
+# Every remaining Req client gets a test plug, for the same reason the three
+# above have one: `{Req.Test, Mod}` resolves per process, so a stub set by one
+# test is invisible to another, and a call with **no** stub raises instead of
+# reaching the internet.
+#
+# That second half is the point of doing this in bulk. A client whose
+# credential happens to be present and whose plug is unset makes a real
+# request from the unit suite. It is not hypothetical: `hetzner_test` reached
+# the live Hetzner API and came back `{:hetzner_error, 401, "the token you
+# have provided is invalid"}` — a genuine reply from Hetzner, in a test whose
+# subject was the *unconfigured* path.
+#
+# Pinning the plug does not configure a credential, so a client with no
+# credential still short-circuits exactly as before.
+config :code_my_spec, CodeMySpec.Mail.ImageProxy, plug: {Req.Test, CodeMySpec.Mail.ImageProxy}
+config :code_my_spec, CodeMySpec.Google.Ads, plug: {Req.Test, CodeMySpec.Google.Ads}
+config :code_my_spec, CodeMySpec.Google.Gsc, plug: {Req.Test, CodeMySpec.Google.Gsc}
+config :code_my_spec, CodeMySpec.Google.Ga4, plug: {Req.Test, CodeMySpec.Google.Ga4}
+
+config :code_my_spec, CodeMySpec.Provisioning.ContentPublishing,
+  plug: {Req.Test, CodeMySpec.Provisioning.ContentPublishing}
+
+config :code_my_spec, CodeMySpec.Provisioning.Cloudflare,
+  plug: {Req.Test, CodeMySpec.Provisioning.Cloudflare}
+
+config :code_my_spec, CodeMySpec.Provisioning.Deploy, plug: {Req.Test, CodeMySpec.Provisioning.Deploy}
+config :code_my_spec, CodeMySpec.Provisioning.Widget, plug: {Req.Test, CodeMySpec.Provisioning.Widget}
+config :code_my_spec, CodeMySpec.Provisioning.Resend, plug: {Req.Test, CodeMySpec.Provisioning.Resend}
+
+config :code_my_spec, CodeMySpec.Provisioning.Deploy.UptimeRobot,
+  plug: {Req.Test, CodeMySpec.Provisioning.Deploy.UptimeRobot}
+
+config :code_my_spec, CodeMySpec.Content.TriggerClient,
+  plug: {Req.Test, CodeMySpec.Content.TriggerClient}
+
+config :code_my_spec, CodeMySpec.Content.CloudflareClient,
+  plug: {Req.Test, CodeMySpec.Content.CloudflareClient}
+
+config :code_my_spec, CodeMySpec.Content.PullClient, plug: {Req.Test, CodeMySpec.Content.PullClient}
+config :code_my_spec, CodeMySpec.Content.S3Client, plug: {Req.Test, CodeMySpec.Content.S3Client}
+
+config :code_my_spec, CodeMySpec.AgentHarness.ConversationRecorder,
+  plug: {Req.Test, CodeMySpec.AgentHarness.ConversationRecorder}
+
+config :code_my_spec, CodeMySpec.Billing.StripeClient,
+  plug: {Req.Test, CodeMySpec.Billing.StripeClient}
+
+config :code_my_spec, CodeMySpec.Analytics.GoogleAnalytics.HTTPAdapter,
+  plug: {Req.Test, CodeMySpec.Analytics.GoogleAnalytics.HTTPAdapter}
