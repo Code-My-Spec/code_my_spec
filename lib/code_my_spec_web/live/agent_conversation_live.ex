@@ -42,6 +42,7 @@ defmodule CodeMySpecWeb.AgentConversationLive do
   defp mount_project(socket, project) do
     scope = with_active_project(socket.assigns.current_scope, project)
     conversation = Conversations.get_agent_conversation(scope, project.id)
+    messages = messages_for(conversation)
 
     if connected?(socket) && conversation do
       Phoenix.PubSub.subscribe(
@@ -55,9 +56,9 @@ defmodule CodeMySpecWeb.AgentConversationLive do
     |> assign(:project, project)
     |> assign(:conversation, conversation)
     |> assign(:page_title, "#{project.name} · Agent conversation")
-    |> assign(:recording_gap, conversation != nil and messages_for(conversation) == [])
+    |> assign(:recording_gap, conversation != nil and messages == [])
     |> assign(:questions, questions_for(conversation))
-    |> stream(:messages, items_for(conversation), reset: true)
+    |> assign_turns(messages)
   end
 
   # `active_project_id` is what `Conversations.get_agent_conversation/2` scopes
@@ -94,16 +95,29 @@ defmodule CodeMySpecWeb.AgentConversationLive do
   defp messages_for(nil), do: []
   defp messages_for(conversation), do: Conversations.list_messages(conversation)
 
-  # Items, not messages. A run of calls folds into one, and folding needs to see
-  # a message's neighbours — which a stream of messages cannot. Streaming the
-  # folded items instead keeps live append working: a call arriving on its own
-  # appears on its own, rather than retroactively joining the run above it.
-  defp items_for(conversation),
-    do: conversation |> messages_for() |> ChatComponents.group_turns(:call)
+  # A plain assign, not a stream.
+  #
+  # Two things here need to see a message's neighbours: folding a run of calls
+  # into one item, and nesting a result inside the call it answers. A result
+  # arrives a *turn* after its call, so it has to join something already
+  # rendered — and a stream cannot do that. `stream_insert/3` appends without
+  # reordering, and a group's dom id is its first message's id, so streaming
+  # that id back would replace the whole group with a single turn.
+  #
+  # The page holds one page of messages (50 by default), so re-folding the list
+  # on each arrival costs nothing and the whole class of problem goes away.
+  defp assign_turns(socket, messages) do
+    {items, results} = ChatComponents.group_turns(messages)
+
+    socket
+    |> assign(:messages, messages)
+    |> assign(:items, items)
+    |> assign(:results, results)
+  end
 
   @impl true
   def handle_info({:new_message, message}, socket) do
-    {:noreply, stream_insert(socket, :messages, %{id: message.id, messages: [message]})}
+    {:noreply, assign_turns(socket, socket.assigns.messages ++ [message])}
   end
 
   def handle_info(_message, socket), do: {:noreply, socket}
@@ -158,12 +172,12 @@ defmodule CodeMySpecWeb.AgentConversationLive do
             />
           </div>
 
-          <div id="agent-turns" phx-update="stream" class="space-y-3">
+          <div id="agent-turns" class="space-y-2">
             <ChatComponents.turn_item
-              :for={{dom_id, item} <- @streams.messages}
-              id={dom_id}
+              :for={item <- @items}
+              id={"turn-#{item.id}"}
               item={item}
-              tool_role={:call}
+              results={@results}
             />
           </div>
         </div>

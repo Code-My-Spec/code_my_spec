@@ -167,24 +167,42 @@ defmodule CodeMySpec.Conversations do
 
   Written as its own turn so the call is visible while it runs rather than
   after — a conversation that goes quiet mid-tool reads as broken.
+
+  `agent_role` is the speaking lane. It defaults to `"product"` for the in-app
+  chat, which has only one; a harness transcript passes the real lane, because
+  a sub-agent's call showing as the parent's is a wrong attribution and there
+  is a criterion about it (8172).
   """
-  def add_tool_call(%Conversation{} = conversation, call_id, name, arguments) do
+  def add_tool_call(%Conversation{} = conversation, call_id, name, arguments, agent_role \\ "product") do
     agent_turn(conversation, %{
       role: :assistant,
-      agent_role: "product",
+      agent_role: agent_role,
       content: [],
       tool_calls: [%{"id" => call_id, "name" => name, "arguments" => arguments}],
-      sender_id: "agent:product"
+      sender_id: "agent:#{agent_role}"
     })
   end
 
-  @doc "Records what a call returned, paired to it by `call_id`."
-  def add_tool_result(%Conversation{} = conversation, call_id, name, text) do
+  @doc """
+  Records what a call returned, paired to it by `call_id`.
+
+  `failed?` is the provider's `is_error`, kept as data. The recorder used to
+  fold it into the text as a `"← failed: "` prefix and the view read it back by
+  matching that string; a boolean means the view asks a field.
+  """
+  def add_tool_result(
+        %Conversation{} = conversation,
+        call_id,
+        name,
+        text,
+        opts \\ []
+      ) do
     agent_turn(conversation, %{
       role: :tool,
-      agent_role: "product",
+      agent_role: Keyword.get(opts, :agent_role, "product"),
       content: [Message.text_part(text)],
       tool_call_id: call_id,
+      tool_failed: Keyword.get(opts, :failed?, false),
       sender_id: "agent:#{name}"
     })
   end
@@ -306,6 +324,26 @@ defmodule CodeMySpec.Conversations do
     |> limit(^limit)
     |> Repo.all()
     |> Enum.reverse()
+  end
+
+  @doc """
+  Text of the conversation's most recent message, or nil when it has none.
+
+  Exists for the recorder's repeat check. Consecutive model turns often carry
+  an identical last request message — an injected system reminder is the usual
+  one — and writing it every time put the same block on screen twice.
+  """
+  @spec last_message_text(Conversation.t()) :: String.t() | nil
+  def last_message_text(%Conversation{} = conversation) do
+    Message
+    |> where([m], m.conversation_id == ^conversation.id)
+    |> order_by([m], desc: m.inserted_at, desc: m.id)
+    |> limit(1)
+    |> Repo.one()
+    |> case do
+      nil -> nil
+      message -> Message.text(message)
+    end
   end
 
   defp before_cursor(query, nil), do: query

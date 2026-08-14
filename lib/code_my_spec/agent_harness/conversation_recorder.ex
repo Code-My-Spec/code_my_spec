@@ -125,7 +125,7 @@ defmodule CodeMySpec.AgentHarness.ConversationRecorder do
                session_external_id
              ),
            :ok <- store_available(opts),
-           :ok <- write_request(conversation, agent_role, request_text(request)),
+           :ok <- write_request(conversation, agent_role, request),
            :ok <- write_response(conversation, agent_role, response_text(response)),
            :ok <- write_tool_calls(conversation, agent_role, tool_calls(response)) do
         :ok
@@ -189,12 +189,53 @@ defmodule CodeMySpec.AgentHarness.ConversationRecorder do
     if Keyword.get(opts, :store) == :unwritable, do: {:error, :store_unwritable}, else: :ok
   end
 
-  defp write_request(_conversation, _agent_role, nil), do: :ok
+  # A request carries two different things and they used to be flattened into
+  # one row: the tool results answering the calls of the previous turn, and
+  # whatever free text the operator or their client added.
+  #
+  # `join/1` concatenated every block of the last message, so a turn answering
+  # five parallel calls wrote one row holding all five outputs — no way to tell
+  # which output belonged to which call, even by position. Each result now gets
+  # its own row carrying the `tool_use_id` the provider sent, which is what lets
+  # the view render a result inside the call it answers.
+  defp write_request(conversation, agent_role, request) do
+    with :ok <- write_tool_results(conversation, agent_role, tool_results(request)) do
+      write_free_text(conversation, agent_role, request_text(request))
+    end
+  end
 
-  defp write_request(conversation, agent_role, text) do
-    conversation
-    |> Conversations.add_agent_message(agent_role, "user", text)
-    |> normalize()
+  defp write_tool_results(_conversation, _agent_role, []), do: :ok
+
+  defp write_tool_results(conversation, agent_role, [result | rest]) do
+    case conversation
+         |> Conversations.add_tool_result(result.call_id, result.name, result.text,
+           agent_role: agent_role,
+           failed?: result.failed?
+         )
+         |> normalize() do
+      :ok -> write_tool_results(conversation, agent_role, rest)
+      error -> error
+    end
+  end
+
+  defp write_free_text(_conversation, _agent_role, nil), do: :ok
+
+  # Consecutive turns often carry the same last message — an injected system
+  # reminder is the common case, and one of them accounted for 213 rows in a
+  # single project. Writing it every time produced 1,071 adjacent identical
+  # rows out of 4,898, which is what put the same block on screen twice.
+  #
+  # Compared against the conversation's most recent message rather than
+  # deduplicated globally: the same text arriving again after the agent has
+  # said something in between is a real repeat, and the operator should see it.
+  defp write_free_text(conversation, agent_role, text) do
+    if Conversations.last_message_text(conversation) == text do
+      :ok
+    else
+      conversation
+      |> Conversations.add_agent_message(agent_role, "user", text)
+      |> normalize()
+    end
   end
 
   defp write_response(_conversation, _agent_role, nil), do: :ok
@@ -206,39 +247,66 @@ defmodule CodeMySpec.AgentHarness.ConversationRecorder do
   end
 
   # Tool calls are their own messages, not prose folded into the assistant's.
-  # The conversation view renders a :tool message as a tool-call block, and a
-  # turn that only called tools has to show which tool and with what arguments
-  # — a name alone does not tell an operator what the sprite actually did.
+  # The conversation view renders them as call blocks, and a turn that only
+  # called tools has to show which tool and with what arguments — a name alone
+  # does not tell an operator what the sprite actually did.
   defp write_tool_calls(_conversation, _agent_role, []), do: :ok
 
   defp write_tool_calls(conversation, agent_role, [call | rest]) do
     case conversation
-         |> Conversations.add_agent_message(agent_role, "tool", call)
+         |> Conversations.add_tool_call(call.id, call.name, call.input, agent_role)
          |> normalize() do
       :ok -> write_tool_calls(conversation, agent_role, rest)
       error -> error
     end
   end
 
+  # The `tool_use` id was in scope here and thrown away, which is the whole
+  # reason a result could not be shown inside its call: the pairing the provider
+  # hands us was dropped at the door. The arguments were also flattened to
+  # `"name\njson"`, so the view re-split them on a newline and guessed at a tool
+  # name by "the first line has no space".
+  #
+  # Now the same shape `Chat.Runner` already writes — a `tool_calls` array of
+  # `{id, name, arguments}` — so both writers agree and the view stops guessing.
   @doc false
-  @spec tool_calls(map()) :: [String.t()]
+  @spec tool_calls(map()) :: [%{id: String.t(), name: String.t(), input: map()}]
   def tool_calls(%{"content" => content}) when is_list(content) do
     for %{"type" => "tool_use", "name" => name} = block <- content do
-      case block["input"] do
-        input when is_map(input) and input != %{} -> "#{name}\n#{encode(input)}"
-        _ -> name
-      end
+      %{
+        id: block["id"],
+        name: name,
+        input: if(is_map(block["input"]), do: block["input"], else: %{})
+      }
     end
   end
 
   def tool_calls(_response), do: []
 
-  defp encode(input) do
-    case Jason.encode(input, pretty: true) do
-      {:ok, json} -> json
-      {:error, _} -> inspect(input)
+  # The results in this turn's request, one entry each, with the id of the call
+  # every one of them answers.
+  @doc false
+  @spec tool_results(map()) :: [
+          %{call_id: String.t(), name: String.t(), text: String.t(), failed?: boolean()}
+        ]
+  def tool_results(%{"messages" => messages}) when is_list(messages) do
+    case List.last(messages) do
+      %{"content" => content} when is_list(content) ->
+        for %{"type" => "tool_result"} = block <- content do
+          %{
+            call_id: block["tool_use_id"],
+            name: block["name"] || "tool",
+            text: truncate(tool_result_content(block["content"])),
+            failed?: block["is_error"] == true
+          }
+        end
+
+      _ ->
+        []
     end
   end
+
+  def tool_results(_request), do: []
 
   defp normalize({:ok, _record}), do: :ok
   defp normalize({:error, reason}), do: {:error, reason}
@@ -259,18 +327,11 @@ defmodule CodeMySpec.AgentHarness.ConversationRecorder do
 
   defp block_text(%{"type" => "text", "text" => text}) when is_binary(text), do: text
 
-  # A tool result is most of what an agent's later requests are made of: once it
-  # has called anything, the next turn's content is these blocks and little
-  # else. Dropping them recorded those turns as empty, which is the same defect
-  # 8173 names for tool-only responses, on the request side.
-  #
-  # `is_error` is kept because a failed tool result is the most diagnostic thing
-  # an operator can see — it is where a run starts going wrong, several turns
-  # before the agent says anything about it.
-  defp block_text(%{"type" => "tool_result"} = block) do
-    marker = if block["is_error"], do: "failed", else: "result"
-    "← #{marker}: #{truncate(tool_result_content(block["content"]))}"
-  end
+  # A tool result is not free text and no longer renders as any. `tool_results/1`
+  # writes each one as its own row carrying the id of the call it answers, so
+  # returning nil here keeps it from also being folded into the request's prose
+  # — which is what produced a second, unpaired copy of every result.
+  defp block_text(%{"type" => "tool_result"}), do: nil
 
   # An image is worth naming without being rendered — the conversation is a
   # record of what happened, and "a screenshot went to the model here" is the

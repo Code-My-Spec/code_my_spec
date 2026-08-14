@@ -28,6 +28,7 @@ defmodule CodeMySpecWeb.ChatComponents do
   use Phoenix.Component
 
   import CodeMySpecWeb.CoreComponents, only: [icon: 1]
+  import CodeMySpecWeb.Markdown, only: [md_html: 1]
 
   alias CodeMySpec.Conversations.Message
 
@@ -40,11 +41,7 @@ defmodule CodeMySpecWeb.ChatComponents do
   attr :id, :string, required: true
   attr :message, :any, required: true
   attr :own_role, :atom, default: :assistant, doc: "the role rendered on the right"
-
-  attr :tool_role, :atom,
-    values: [:call, :result],
-    default: :result,
-    doc: "what this surface's `role: :tool` messages are"
+  attr :results, :map, default: %{}, doc: "results by tool_call_id, to render inside their call"
 
   def turn(%{message: %{agent_role: role}} = assigns) when role in ["halted", "failed"] do
     assigns = assign(assigns, :marker, "chat-#{role}")
@@ -56,14 +53,32 @@ defmodule CodeMySpecWeb.ChatComponents do
 
   def turn(%{message: %{tool_calls: calls}} = assigns) when is_list(calls) and calls != [] do
     ~H"""
-    <div id={@id} class="space-y-2">
+    <div id={@id} class="space-y-1">
       <.tool_call
         :for={call <- @message.tool_calls}
-        name={call_text(call)}
+        name={call["name"]}
+        args={call["arguments"] || %{}}
         call_id={call["id"]}
         agent_role={@message.agent_role}
+        result={@results[call["id"]]}
       />
     </div>
+    """
+  end
+
+  # A result whose call is not on this page — the transcript is paginated, so a
+  # call can be above the window while its answer is inside it. Rendered on its
+  # own rather than dropped, because a result with nowhere to nest is still
+  # something that happened.
+  def turn(%{message: %{role: :tool}} = assigns) do
+    ~H"""
+    <.tool_call
+      id={@id}
+      name={orphan_name(@message)}
+      call_id={@message.tool_call_id}
+      agent_role={@message.agent_role}
+      result={@message}
+    />
     """
   end
 
@@ -75,84 +90,12 @@ defmodule CodeMySpecWeb.ChatComponents do
     """
   end
 
-  # A surface can say its `role: :tool` messages are calls, and be wrong about a
-  # given one — `ConversationRecorder` writes calls that way and
-  # `Conversations.add_tool_result/4` writes results the same way, into the same
-  # conversation. Rendered as a call, a result has its first line offered as the
-  # tool the agent used: "Showing 1-1 of 1 stories:" appeared as a tool name
-  # twelve times in this project, naming a tool that never ran.
-  #
-  # A tool name is one token. Output is not. That is the whole test, and it is
-  # the view compensating for a disagreement that belongs in the data.
-  def turn(%{message: %{role: :tool}, tool_role: :call} = assigns) do
-    if tool_name?(Message.text(assigns.message)) do
-      tool_call_turn(assigns)
-    else
-      tool_result_turn(assigns, Message.text(assigns.message), false)
-    end
-  end
-
-  def turn(%{message: %{role: :tool}} = assigns) do
-    ~H"""
-    <.tool_result
-      id={@id}
-      call_id={@message.tool_call_id}
-      agent_role={@message.agent_role}
-      text={Message.text(@message)}
-    />
-    """
-  end
-
-  # The recorder writes a tool result as the *request* half of the next turn,
-  # because that is where the model put it — an Anthropic turn carries results
-  # as user-role content blocks. So `role: :user` means "what the model was
-  # sent", which is a person's typing sometimes and a tool's output the rest of
-  # the time, and the prefix is the only thing that says which.
-  #
-  # Taking the role at face value attributed 604 tool results to the operator
-  # in this project alone: the largest category in the transcript, every one
-  # shown as something a person typed.
-  def turn(%{message: %{role: :user}} = assigns) do
-    case Message.text(assigns.message) do
-      "← failed: " <> rest -> tool_result_turn(assigns, rest, true)
-      "← result: " <> rest -> tool_result_turn(assigns, rest, false)
-      _ -> plain_turn(assigns)
-    end
-  end
-
   def turn(assigns), do: plain_turn(assigns)
 
-  defp tool_call_turn(assigns) do
-    ~H"""
-    <.tool_call
-      id={@id}
-      name={Message.text(@message)}
-      call_id={@message.tool_call_id}
-      agent_role={@message.agent_role}
-    />
-    """
-  end
-
-  defp tool_name?(text) do
-    case String.split(text, "\n", parts: 2) do
-      [first | _] -> first != "" and not String.contains?(String.trim(first), " ")
-      _ -> false
-    end
-  end
-
-  defp tool_result_turn(assigns, text, failed?) do
-    assigns = assigns |> assign(:text, text) |> assign(:failed, failed?)
-
-    ~H"""
-    <.tool_result
-      id={@id}
-      call_id={@message.tool_call_id}
-      agent_role={@message.agent_role}
-      failed={@failed}
-      text={@text}
-    />
-    """
-  end
+  # The tool's name rides on `sender_id` as `"agent:<name>"` — see
+  # `Conversations.add_tool_result/5`.
+  defp orphan_name(%{sender_id: "agent:" <> name}) when name != "", do: name
+  defp orphan_name(_message), do: "tool"
 
   defp plain_turn(assigns) do
     ~H"""
@@ -191,9 +134,15 @@ defmodule CodeMySpecWeb.ChatComponents do
     >
       <div :if={@label} class="chat-header text-xs opacity-60">{@label}</div>
       <div class={["chat-bubble break-words", tone(@role, @own_role)]}>
-        <%!-- A message can be attachments and nothing else; an empty paragraph
-              there renders as a blank line inside the bubble. --%>
-        <p :if={@text != ""} class="whitespace-pre-wrap">{@text}</p>
+        <%!-- The model writes markdown and always has; rendering it as plain
+              text showed backticks, hyphens and hashes as literal characters.
+              `md_html/1` is Earmark configured to escape raw HTML — checked,
+              because this is model output rather than the authored content its
+              moduledoc scopes it to — so a `<script>` in a reply renders as
+              text rather than running.
+
+              Prose only. Arguments and results are code and stay in <pre>. --%>
+        <div :if={@text != ""} class="chat-prose">{md_html(@text)}</div>
         {render_slot(@extra)}
       </div>
     </div>
@@ -201,110 +150,154 @@ defmodule CodeMySpecWeb.ChatComponents do
   end
 
   @doc """
-  A call the agent made: which tool, and what it was given.
+  A call the agent made, and what it came back with.
 
-  The recorder stores these as `"<tool>\\n<json arguments>"` in one text field,
-  and rendering that whole is how a `Write` of a source file became several
-  thousand characters of escaped JSON with the turns either side pushed off the
-  screen.
+  One collapsible per call, which is the shape every chat UI that renders agent
+  work converges on — `vercel/ai-chatbot`'s `ai-elements/tool.tsx` and
+  `assistant-ui`'s opencode example both do exactly this. The result belongs
+  *inside* the call. Rendered as a sibling card it doubles the block count and
+  loses which call it answers, which is what this used to do.
 
-  The name is read every time and the arguments occasionally, so the name is
-  always on screen and the arguments sit behind a disclosure. A payload past
-  the limit is cut — and says it was cut, because a transcript that looks
-  complete and is not is a record you cannot trust.
+  The summary on the header is what makes a run readable. `Bash` alone says
+  nothing; `Bash — Check the alias group around line 69` says what happened, and
+  the model already sends that text. Everything below the header is behind the
+  disclosure, so a turn that called five tools is five lines.
   """
   attr :id, :string, default: nil
   attr :name, :string, required: true
+  attr :args, :map, default: %{}
   attr :call_id, :string, default: nil
   attr :agent_role, :string, default: nil
+  attr :result, :any, default: nil, doc: "the %Message{} answering this call, if it has returned"
 
-  @args_limit 600
+  @args_limit 2_000
 
   def tool_call(assigns) do
-    {tool, args} =
-      case String.split(assigns.name, "\n", parts: 2) do
-        [tool, args] -> {tool, String.trim(args)}
-        [tool] -> {String.trim(tool), ""}
-      end
-
-    cut? = byte_size(args) > @args_limit
+    json = encode_args(assigns.args)
+    cut? = byte_size(json) > @args_limit
 
     assigns =
       assigns
-      |> assign(:tool, tool)
-      |> assign(:args, if(cut?, do: binary_part(args, 0, @args_limit) <> "…", else: args))
+      |> assign(:summary, call_summary(assigns.name, assigns.args))
+      |> assign(:json, if(cut?, do: binary_part(json, 0, @args_limit) <> "…", else: json))
       |> assign(:cut, cut?)
+      |> assign(:failed, assigns.result != nil and assigns.result.tool_failed == true)
 
     ~H"""
-    <div
+    <details
       id={@id}
       data-test="tool-call"
-      data-tool={@tool}
+      data-tool={@name}
       data-tool-call-id={@call_id}
       data-agent-role={@agent_role}
       data-truncated={to_string(@cut)}
-      data-state="done"
-      class="rounded-box border border-base-300 bg-base-200/60 p-3"
+      data-failed={to_string(@failed)}
+      data-answered={to_string(@result != nil)}
+      class={[
+        "group rounded-box border",
+        @failed && "border-error/40 bg-error/5",
+        !@failed && "border-base-300 bg-base-200/40"
+      ]}
     >
-      <%!-- `mcp__plugin_codemyspec_local__add_scenario` is one unbreakable token
-            wider than a phone, and a flex item will not shrink below its content
-            unless told to — so the name overflowed the card and was clipped. --%>
-      <div class="flex items-center gap-2">
-        <.icon name="hero-wrench-screwdriver" class="size-4 shrink-0 opacity-60" />
-        <span class="min-w-0 break-all font-mono text-sm font-medium">{@tool}</span>
-        <span :if={@agent_role} class="shrink-0 text-xs uppercase opacity-60">{@agent_role}</span>
-      </div>
+      <%!-- min-w-0 + break-all: `mcp__plugin_codemyspec_local__add_scenario` is
+            one unbreakable token wider than a phone, and a flex item will not
+            shrink below its content unless told to. --%>
+      <summary class="flex cursor-pointer items-center gap-2 p-2 text-sm">
+        <.icon
+          name={if @failed, do: "hero-x-circle", else: "hero-wrench-screwdriver"}
+          class={"size-4 shrink-0 #{if @failed, do: "text-error", else: "opacity-50"}"}
+        />
+        <span class="min-w-0 break-all font-mono font-medium">{@name}</span>
+        <span :if={@summary} class="min-w-0 flex-1 truncate opacity-60">{@summary}</span>
+        <span :if={@agent_role} class="shrink-0 text-xs uppercase opacity-40">{@agent_role}</span>
+      </summary>
 
-      <details :if={@args != ""} class="mt-2">
-        <summary class="cursor-pointer text-xs opacity-60">arguments</summary>
-        <pre class="mt-1 overflow-x-auto whitespace-pre-wrap break-all font-mono text-xs opacity-80">{@args}</pre>
-        <p :if={@cut} class="mt-1 text-xs italic opacity-50">
-          truncated — the transcript shows what was called, not the whole payload
+      <div class="space-y-3 border-t border-base-300 px-3 pb-3 pt-2">
+        <div :if={@json != "{}"}>
+          <h4 class="mb-1 text-xs uppercase tracking-wide opacity-50">Parameters</h4>
+          <pre class="overflow-x-auto whitespace-pre-wrap break-all rounded-box bg-base-300/40 p-2 font-mono text-xs opacity-80">{@json}</pre>
+          <p :if={@cut} class="mt-1 text-xs italic opacity-50">
+            truncated — the transcript shows what was called, not the whole payload
+          </p>
+        </div>
+
+        <div :if={@result} data-test="tool-result" data-failed={to_string(@failed)}>
+          <h4 class="mb-1 text-xs uppercase tracking-wide opacity-50">
+            {if @failed, do: "Error", else: "Result"}
+          </h4>
+          <pre class={[
+            "overflow-x-auto whitespace-pre-wrap break-words rounded-box p-2 font-mono text-xs",
+            @failed && "bg-error/10 text-error",
+            !@failed && "bg-base-300/40 opacity-80"
+          ]}>{Message.text(@result)}</pre>
+        </div>
+
+        <%!-- A call with no result yet is a call still running, or one whose
+              answer never came back. Saying so beats an empty panel that reads
+              as a rendering bug. --%>
+        <p :if={is_nil(@result)} class="text-xs italic opacity-50">
+          no result recorded for this call
         </p>
-      </details>
-    </div>
+      </div>
+    </details>
     """
   end
 
-  @doc """
-  What a call came back with.
+  defp encode_args(args) when is_map(args) do
+    case Jason.encode(args, pretty: true) do
+      {:ok, json} -> json
+      {:error, _} -> inspect(args)
+    end
+  end
 
-  A failure is marked rather than left to the text. It is where a run starts
-  going wrong, usually several turns before the agent says anything about it,
-  and an operator scanning for that moment should not have to read every result
-  to find the one that matters.
-  """
-  attr :id, :string, default: nil
-  attr :call_id, :string, default: nil
-  attr :agent_role, :string, default: nil
-  attr :failed, :boolean, default: false
-  attr :text, :string, required: true
+  defp encode_args(other), do: inspect(other)
 
-  def tool_result(assigns) do
-    ~H"""
-    <div
-      id={@id}
-      data-test="tool-result"
-      data-tool-call-id={@call_id}
-      data-agent-role={@agent_role}
-      data-failed={to_string(@failed)}
-      class={[
-        "rounded-box border p-3",
-        @failed && "border-error/40 bg-error/10",
-        !@failed && "border-base-300 bg-base-200/60"
-      ]}
-    >
-      <div class="mb-1 flex items-center gap-2 text-xs opacity-60">
-        <.icon
-          name={if @failed, do: "hero-x-circle", else: "hero-arrow-uturn-left"}
-          class="size-4 shrink-0"
-        />
-        <span>{if @failed, do: "failed", else: "result"}</span>
-        <span :if={@agent_role} class="uppercase">{@agent_role}</span>
-      </div>
-      <pre class="overflow-x-auto whitespace-pre-wrap break-words font-mono text-xs">{@text}</pre>
-    </div>
-    """
+  # What this call actually did, in one line.
+  #
+  # Every tool has an argument that carries the point, and it is never the same
+  # one. `Bash` sends a human-written `description` — present on 775 of 799
+  # calls in this project's history — which is better than anything derivable
+  # from the command. A file tool's point is the file. A search's is the
+  # pattern. Guessing generically ("first string argument") picks `content` for
+  # a `Write`, which is the whole file.
+  #
+  # Falls back to nothing rather than to something wrong: a header showing just
+  # the tool name is honest, and the arguments are one click away.
+  @summary_limit 80
+
+  defp call_summary(_name, args) when not is_map(args), do: nil
+
+  defp call_summary(name, args) do
+    args
+    |> summary_value(name)
+    |> case do
+      value when is_binary(value) and value != "" -> shorten(value)
+      _ -> nil
+    end
+  end
+
+  defp summary_value(%{"description" => d}, _name) when is_binary(d) and d != "", do: d
+  defp summary_value(%{"file_path" => p}, _name) when is_binary(p), do: Path.basename(p)
+  defp summary_value(%{"path" => p}, _name) when is_binary(p), do: Path.basename(p)
+  defp summary_value(%{"url" => u}, _name), do: u
+  defp summary_value(%{"pattern" => p}, _name), do: p
+  defp summary_value(%{"title" => t}, _name), do: t
+  defp summary_value(%{"statement" => s}, _name), do: s
+  defp summary_value(%{"query" => q}, _name), do: q
+  defp summary_value(%{"command" => c}, _name), do: c
+  defp summary_value(%{"expression" => e}, _name), do: e
+  defp summary_value(%{"selector" => s}, _name), do: s
+  defp summary_value(%{"module_name" => m}, _name), do: m
+  defp summary_value(_args, _name), do: nil
+
+  defp shorten(text) do
+    flat = text |> String.replace(~r/\s+/, " ") |> String.trim()
+
+    if String.length(flat) > @summary_limit do
+      String.slice(flat, 0, @summary_limit - 1) <> "…"
+    else
+      flat
+    end
   end
 
   @doc """
@@ -471,19 +464,6 @@ defmodule CodeMySpecWeb.ChatComponents do
   # The same string the recorder stores, built from the array shape instead.
   #
   # `tool_call/1` reads "<tool>\\n<arguments>", which is how the recorder writes
-  # one. A call stored as a `tool_calls` entry holds those two parts in fields,
-  # and passing only the name threw the arguments away — so the recorder's calls
-  # showed what they were given and the chat's did not, from data that had it
-  # either way. Two writers, one rendering, which is what the rule asks for.
-  defp call_text(%{"name" => name} = call) do
-    case call["arguments"] do
-      args when is_map(args) and args != %{} -> name <> "\n" <> Jason.encode!(args, pretty: true)
-      _ -> name
-    end
-  end
-
-  defp call_text(call), do: inspect(call)
-
   @doc """
   Fold a message list into the items a transcript renders.
 
@@ -497,36 +477,71 @@ defmodule CodeMySpecWeb.ChatComponents do
 
   Returns items carrying an `:id`, so the caller can stream them.
   """
-  @spec group_turns([struct()], atom()) :: [map()]
-  def group_turns(messages, tool_role \\ :result) do
-    messages
-    |> Enum.chunk_by(&call?(&1, tool_role))
-    |> Enum.flat_map(fn
-      [_, _ | _] = run -> if call?(hd(run), tool_role), do: [group(run)], else: singles(run)
-      run -> singles(run)
-    end)
+  @spec group_turns([struct()]) :: {[map()], %{String.t() => struct()}}
+  def group_turns(messages) do
+    results = results_by_call_id(messages)
+    called = call_ids(messages)
+
+    items =
+      messages
+      |> Enum.reject(&nested?(&1, called))
+      |> Enum.chunk_by(&call?/1)
+      |> Enum.flat_map(fn
+        [_, _ | _] = run -> if call?(hd(run)), do: [group(run)], else: singles(run)
+        run -> singles(run)
+      end)
+
+    {items, results}
   end
+
+  # Results keyed by the call they answer, so a call can render its own.
+  defp results_by_call_id(messages) do
+    for %{role: :tool, tool_call_id: id} = message <- messages,
+        is_binary(id),
+        into: %{},
+        do: {id, message}
+  end
+
+  # The ids of calls actually on this page.
+  defp call_ids(messages) do
+    for %{tool_calls: calls} <- messages,
+        is_list(calls),
+        call <- calls,
+        is_binary(call["id"]),
+        into: MapSet.new(),
+        do: call["id"]
+  end
+
+  # A result renders inside its call, so it must not render again at the top
+  # level — but only when that call is on the page. The transcript is
+  # paginated, so a call can sit above the window while its answer is inside
+  # it; that result stays, because it is still something that happened.
+  defp nested?(%{role: :tool, tool_call_id: id}, called) when is_binary(id),
+    do: MapSet.member?(called, id)
+
+  defp nested?(_message, _called), do: false
 
   defp singles(messages), do: Enum.map(messages, &%{id: &1.id, messages: [&1]})
   defp group(run), do: %{id: hd(run).id, messages: run}
 
-  # A call by this surface's reckoning, and by its own text — the same check the
-  # renderer makes, so a run never folds something that will not render as a call.
-  defp call?(%{role: :tool} = message, :call), do: tool_name?(Message.text(message))
-  defp call?(%{tool_calls: calls}, _tool_role) when is_list(calls) and calls != [], do: true
-  defp call?(_message, _tool_role), do: false
+  # Both writers now record a call the same way — an assistant turn carrying a
+  # `tool_calls` array. The old check also had to sniff `role: :tool` text for
+  # "a name is one token", because the recorder wrote calls that way; it does
+  # not any more.
+  defp call?(%{tool_calls: calls}) when is_list(calls) and calls != [], do: true
+  defp call?(_message), do: false
 
-  @doc "One item from `group_turns/2` — a lone turn, or a run folded into a group."
+  @doc "One item from `group_turns/1` — a lone turn, or a run folded into a group."
   attr :id, :string, required: true
   attr :item, :any, required: true
   attr :own_role, :atom, default: :assistant
-  attr :tool_role, :atom, values: [:call, :result], default: :result
+  attr :results, :map, default: %{}
 
   def turn_item(%{item: %{messages: [message]}} = assigns) do
     assigns = assign(assigns, :message, message)
 
     ~H"""
-    <.turn id={@id} message={@message} own_role={@own_role} tool_role={@tool_role} />
+    <.turn id={@id} message={@message} own_role={@own_role} results={@results} />
     """
   end
 
@@ -535,25 +550,37 @@ defmodule CodeMySpecWeb.ChatComponents do
     <details
       id={@id}
       data-test="tool-call-group"
-      data-count={length(@item.messages)}
-      class="rounded-box border border-base-300 bg-base-200/40 p-3"
+      data-count={call_count(@item.messages)}
+      class="rounded-box border border-base-300 bg-base-200/40 p-2"
     >
       <summary class="flex cursor-pointer items-center gap-2 text-sm">
-        <.icon name="hero-wrench-screwdriver" class="size-4 shrink-0 opacity-60" />
-        <span>used {length(@item.messages)} tools</span>
+        <.icon name="hero-wrench-screwdriver" class="size-4 shrink-0 opacity-50" />
+        <span>used {call_count(@item.messages)} tools</span>
       </summary>
 
-      <div class="mt-2 space-y-2">
+      <%!-- Each entry is one line, not a card. That is the point of folding: a
+            group that expands into five cards has moved the problem rather
+            than solved it. --%>
+      <div class="mt-2 space-y-1">
         <.turn
           :for={message <- @item.messages}
           id={"#{@id}-#{message.id}"}
           message={message}
           own_role={@own_role}
-          tool_role={@tool_role}
+          results={@results}
         />
       </div>
     </details>
     """
+  end
+
+  # A turn can carry more than one call, so the count is calls rather than
+  # messages — "used 5 tools" above four rows would be a lie either way round.
+  defp call_count(messages) do
+    Enum.reduce(messages, 0, fn
+      %{tool_calls: calls}, acc when is_list(calls) -> acc + length(calls)
+      _message, acc -> acc + 1
+    end)
   end
 
   # Right is whoever the reader is speaking as, which differs per surface.

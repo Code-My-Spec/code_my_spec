@@ -42,6 +42,11 @@ defmodule CodeMySpec.Conversations.Message do
     field :tool_calls, {:array, :map}
     # The call a :tool turn is answering.
     field :tool_call_id, :string
+    # Whether that call came back an error. Anthropic sends `is_error` on the
+    # `tool_result` block; keeping it as a boolean is what lets the view ask a
+    # field instead of matching a `"← failed: "` prefix it hoped the recorder
+    # wrote. Defaults false here rather than in the migration.
+    field :tool_failed, :boolean, default: false
     # Where the widget that sent this was running, as its host app reported at
     # connect time. Provisioning's widget step gates on it: markup can be right
     # while the socket, credential or CORS is not, so "a message arrived" only
@@ -104,7 +109,8 @@ defmodule CodeMySpec.Conversations.Message do
       :sender_id,
       :conversation_id,
       :tool_calls,
-      :tool_call_id
+      :tool_call_id,
+      :tool_failed
     ])
     |> validate_required([:role, :conversation_id])
     |> validate_parts()

@@ -92,4 +92,28 @@ defmodule CodeMySpec.Analysis.LastRanAnswersTest do
              "and the footer already says so — it must not be handed a failure's " <>
              "timestamp and call it an answer"
   end
+
+  test "another working copy's run is not this one's age", %{scope: scope} do
+    # 83cde34f's headline claim. The moduledoc above shows the reported shape
+    # needs no second checkout, which disproved it as *the* cause — but not as
+    # *a* cause, and nothing pinned it. `scope_to_harness/2` is what keeps it
+    # true; unscoped, whichever checkout ran most recently answers for all of
+    # them, and a busy machine makes that the common case rather than the rare
+    # one. Measured there: three stops reported 71m, 78m, 87m, then 5m, while
+    # this copy's last completed run never moved.
+    {:ok, other} = Harnesses.issue(scope, nil, label: "a different working copy")
+
+    finished_run(scope, "spex", :completed, 5_760)
+    finished_run(%{scope | active_harness_id: other.id}, "spex", :completed, 300)
+
+    {last_ran, _duration, _overtaken} = Validation.run_timing(scope, ["spex"])
+    age = DateTime.diff(DateTime.utc_now(), Map.fetch!(last_ran, "spex"), :second)
+
+    assert age > 3_000,
+           "a neighbouring checkout's five-minute-old run was reported as this " <>
+             "one's age, which has not been tested in over an hour. The advice " <>
+             "keyed to it inverts: `a rerun is in flight, stop again` tells an " <>
+             "agent its fix has been measured when it has not been measured at " <>
+             "all, and no amount of stopping will produce a run."
+  end
 end

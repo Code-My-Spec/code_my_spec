@@ -43,14 +43,21 @@ defmodule CodeMySpecSpex.Story984.Criterion2367Spex do
 
         assert has_element?(view, "[data-test='tool-call'][data-tool='Write']")
 
+        assert has_element?(view, "[data-test='tool-call'] summary"),
+               "the name lives on the summary, which is the part that shows when closed"
+
         {:ok, Map.put(context, :view, view)}
       end
 
       then_ "the arguments are present but not open", context do
-        assert has_element?(context.view, "[data-test='tool-call'] details"),
+        # The block *is* the disclosure now — one collapsible per call, holding
+        # the parameters and the result, rather than a card with a disclosure
+        # nested inside it. So the assertion moved from "it contains a details"
+        # to "it is one", which is the same claim about the same behaviour.
+        assert has_element?(context.view, "details[data-test='tool-call']"),
                "the arguments have to be reachable"
 
-        refute has_element?(context.view, "[data-test='tool-call'] details[open]"),
+        refute has_element?(context.view, "details[data-test='tool-call'][open]"),
                "a payload open by default is the wall this criterion exists to stop"
 
         {:ok, context}
