@@ -102,7 +102,17 @@ defmodule CodeMySpecSpex.Story998.Criterion8296Spex do
             context do
         # A step the run never reached writes no row. If the entry only showed
         # up when a row existed, this one could not be on the page at all.
-        assert Floki.find(context.document, "[data-test='checklist-item'][data-key='monitoring']") != [],
+        #
+        # `callback_credential` rather than `monitoring`, which is what this
+        # asserted until monitoring left the sequence — it was the obvious
+        # never-started step precisely because nobody could run it, and a step
+        # that no longer exists proves nothing about rows. Any step behind the
+        # halted `deploy` does the same job; this is the last one in the
+        # sequence, so it is unambiguously unreached.
+        assert Floki.find(
+                 context.document,
+                 "[data-test='checklist-item'][data-key='callback_credential']"
+               ) != [],
                "only steps with a persisted row are being listed, so the checklist can " <>
                  "never report something that was never started"
 
