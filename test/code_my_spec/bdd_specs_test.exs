@@ -14,7 +14,7 @@ defmodule CodeMySpec.BddSpecsTest do
 
   defp create_test_project_with_specs(scope, specs) do
     # Create a temporary directory to act as project root
-    dir = Path.join(System.tmp_dir!(), "bdd_specs_test_#{System.unique_integer([:positive])}")
+    dir = CodeMySpec.TempFile.dir("bdd_specs_test")
     spex_dir = Path.join(dir, "test/spex")
     File.mkdir_p!(spex_dir)
 
@@ -167,7 +167,7 @@ defmodule CodeMySpec.BddSpecsTest do
       scope = full_scope_fixture()
 
       # Create project root but no specs
-      dir = Path.join(System.tmp_dir!(), "empty_project_#{System.unique_integer([:positive])}")
+      dir = CodeMySpec.TempFile.dir("empty_project")
       File.mkdir_p!(Path.join(dir, "test/spex"))
 
       project = Map.put(scope.active_project, :code_repo, dir)
@@ -493,7 +493,7 @@ defmodule CodeMySpec.BddSpecsTest do
       story = %{story | criteria: [criterion]}
 
       # Create project but no specs
-      dir = Path.join(System.tmp_dir!(), "no_coverage_#{System.unique_integer([:positive])}")
+      dir = CodeMySpec.TempFile.dir("no_coverage")
       File.mkdir_p!(Path.join(dir, "test/spex"))
       project = Map.put(scope.active_project, :code_repo, dir)
       scope = %{scope | active_project: project}
@@ -612,7 +612,7 @@ defmodule CodeMySpec.BddSpecsTest do
       story = %{story | criteria: [criterion1, criterion2]}
 
       # Create project but no specs
-      dir = Path.join(System.tmp_dir!(), "no_specs_#{System.unique_integer([:positive])}")
+      dir = CodeMySpec.TempFile.dir("no_specs")
       File.mkdir_p!(Path.join(dir, "test/spex"))
       project = Map.put(scope.active_project, :code_repo, dir)
       scope = %{scope | active_project: project}
@@ -632,7 +632,7 @@ defmodule CodeMySpec.BddSpecsTest do
       story = %{story | criteria: []}
 
       # Create project but no specs
-      dir = Path.join(System.tmp_dir!(), "no_criteria_#{System.unique_integer([:positive])}")
+      dir = CodeMySpec.TempFile.dir("no_criteria")
       File.mkdir_p!(Path.join(dir, "test/spex"))
       project = Map.put(scope.active_project, :code_repo, dir)
       scope = %{scope | active_project: project}
@@ -652,7 +652,7 @@ defmodule CodeMySpec.BddSpecsTest do
 
   describe "validate_spec_syntax/1" do
     test "returns :ok for valid Spex syntax" do
-      dir = Path.join(System.tmp_dir!(), "valid_syntax_#{System.unique_integer([:positive])}")
+      dir = CodeMySpec.TempFile.dir("valid_syntax")
       File.mkdir_p!(dir)
       file_path = Path.join(dir, "valid_spex.exs")
       File.write!(file_path, valid_spex_content())
@@ -668,7 +668,7 @@ defmodule CodeMySpec.BddSpecsTest do
     end
 
     test "returns {:error, reasons} for missing spex macro" do
-      dir = Path.join(System.tmp_dir!(), "no_spex_#{System.unique_integer([:positive])}")
+      dir = CodeMySpec.TempFile.dir("no_spex")
       File.mkdir_p!(dir)
       file_path = Path.join(dir, "no_spex.exs")
       File.write!(file_path, invalid_spex_content_no_spex_macro())
@@ -686,7 +686,7 @@ defmodule CodeMySpec.BddSpecsTest do
     end
 
     test "returns {:error, reasons} for malformed scenarios" do
-      dir = Path.join(System.tmp_dir!(), "malformed_#{System.unique_integer([:positive])}")
+      dir = CodeMySpec.TempFile.dir("malformed")
       File.mkdir_p!(dir)
       file_path = Path.join(dir, "malformed.ex")
       File.write!(file_path, invalid_spex_content_malformed_scenario())
@@ -726,7 +726,7 @@ defmodule CodeMySpec.BddSpecsTest do
       end
       """
 
-      dir = Path.join(System.tmp_dir!(), "valid_steps_#{System.unique_integer([:positive])}")
+      dir = CodeMySpec.TempFile.dir("valid_steps")
       File.mkdir_p!(dir)
       file_path = Path.join(dir, "valid_steps.ex")
       File.write!(file_path, valid_content)
@@ -776,7 +776,7 @@ defmodule CodeMySpec.BddSpecsTest do
       _criterion3 = criterion_fixture(scope, story3)
 
       # Create project with NO specs (all stories incomplete)
-      dir = Path.join(System.tmp_dir!(), "priority_test_#{System.unique_integer([:positive])}")
+      dir = CodeMySpec.TempFile.dir("priority_test")
       File.mkdir_p!(Path.join(dir, "test/spex"))
       project = Map.put(scope.active_project, :code_repo, dir)
       scope = %{scope | active_project: project}
@@ -835,7 +835,7 @@ defmodule CodeMySpec.BddSpecsTest do
       _story = story_fixture(scope, %{title: "No Criteria Story", criteria: []})
 
       # Create project
-      dir = Path.join(System.tmp_dir!(), "no_criteria_#{System.unique_integer([:positive])}")
+      dir = CodeMySpec.TempFile.dir("no_criteria")
       File.mkdir_p!(Path.join(dir, "test/spex"))
       project = Map.put(scope.active_project, :code_repo, dir)
       scope = %{scope | active_project: project}

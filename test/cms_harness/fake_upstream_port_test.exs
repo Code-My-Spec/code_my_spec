@@ -40,8 +40,13 @@ defmodule CmsHarness.FakeUpstreamPortTest do
     # Reachable over HTTP, which is the property the consumers depend on — a
     # port that merely accepts TCP would satisfy the check above while pointing
     # at something else entirely.
+    # Ten seconds rather than two. What is being asserted is that the returned
+    # number describes a socket this process holds — not how fast the box can
+    # answer. Two seconds is generous on an idle machine and not generous at
+    # all on one running three suites at load 19, where this failed as a bare
+    # `match (=) failed` that reads like the port being wrong.
     assert {:ok, %{status: status}} =
-             Req.get("http://127.0.0.1:#{port}/anything", retry: false, receive_timeout: 2_000)
+             Req.get("http://127.0.0.1:#{port}/anything", retry: false, receive_timeout: 10_000)
 
     assert is_integer(status)
   end
@@ -49,10 +54,30 @@ defmodule CmsHarness.FakeUpstreamPortTest do
   test "an explicit port is still honoured" do
     # A test that needs a known port keeps its escape hatch; the default is
     # what changed.
+    #
+    # Getting a free port to ask for means probing and closing, which is the
+    # interval this module's own moduledoc says gets hit — "a probe socket
+    # opened on 0, read, and closed". The assertion here is that an explicit
+    # port is honoured, not that we can win a race for one, so losing the race
+    # is retried rather than reported as a failure. Without this it fails under
+    # concurrent load, in a file that exists to document exactly that.
+    assert honour_an_explicit_port(5)
+  end
+
+  defp honour_an_explicit_port(0), do: flunk("no free port stayed free across five attempts")
+
+  defp honour_an_explicit_port(attempts_left) do
     {:ok, probe} = :gen_tcp.listen(0, [])
     {:ok, chosen} = :inet.port(probe)
     :gen_tcp.close(probe)
 
-    assert FakeUpstream.start!(port: chosen) == chosen
+    case FakeUpstream.start!(port: chosen) do
+      ^chosen -> true
+      _other -> honour_an_explicit_port(attempts_left - 1)
+    end
+  rescue
+    # `start_supervised!` raises when Bandit cannot bind, which is what losing
+    # the race looks like from here.
+    _ -> honour_an_explicit_port(attempts_left - 1)
   end
 end

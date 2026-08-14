@@ -27,7 +27,7 @@ defmodule CmsHarness.TestDatabasePartitionTest do
   @recorded "recorded-not-derived"
 
   setup do
-    root = Path.join(System.tmp_dir!(), "partition-#{System.unique_integer([:positive])}")
+    root = CodeMySpec.TempFile.dir("partition")
     File.mkdir_p!(Path.join(root, ".claude"))
     on_exit(fn -> File.rm_rf(root) end)
 

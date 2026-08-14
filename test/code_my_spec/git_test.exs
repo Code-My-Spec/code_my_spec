@@ -119,7 +119,7 @@ defmodule CodeMySpec.GitTest do
       _integration = github_integration_fixture(user, %{access_token: token})
       scope = %Scope{user: user}
 
-      clone_path = Path.join(System.tmp_dir!(), "git_cli_test_#{:rand.uniform(999_999)}")
+      clone_path = CodeMySpec.TempFile.dir("git_cli_test")
 
       # Test clone
       test_repo = "https://github.com/Code-My-Spec/test_phoenix_project.git"

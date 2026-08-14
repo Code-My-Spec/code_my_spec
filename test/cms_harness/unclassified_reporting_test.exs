@@ -23,10 +23,7 @@ defmodule CmsHarness.UnclassifiedReportingTest do
 
   setup do
     root =
-      Path.join(
-        System.tmp_dir!(),
-        "cms_harness_unclassified_#{System.unique_integer([:positive])}"
-      )
+      CodeMySpec.TempFile.dir("cms_harness_unclassified")
 
     File.mkdir_p!(Path.join(root, "test/support"))
 

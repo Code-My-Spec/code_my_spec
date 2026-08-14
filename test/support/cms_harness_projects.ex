@@ -51,7 +51,7 @@ defmodule CmsHarnessTest.Projects do
     id = Keyword.get(opts, :project_id, unique_id())
 
     root =
-      Path.join(System.tmp_dir!(), "cms_harness_#{System.unique_integer([:positive])}")
+      CodeMySpec.TempFile.dir("cms_harness")
 
     File.mkdir_p!(Path.join(root, ".code_my_spec"))
     File.mkdir_p!(Path.join(root, "lib"))
@@ -110,7 +110,7 @@ defmodule CmsHarnessTest.Projects do
 
   @doc "A directory with no project identity at all."
   def anonymous_dir do
-    root = Path.join(System.tmp_dir!(), "cms_harness_anon_#{System.unique_integer([:positive])}")
+    root = CodeMySpec.TempFile.dir("cms_harness_anon")
     File.mkdir_p!(Path.join(root, "lib"))
     ExUnit.Callbacks.on_exit(fn -> File.rm_rf(root) end)
     root

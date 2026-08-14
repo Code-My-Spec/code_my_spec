@@ -13,7 +13,7 @@ defmodule CodeMySpec.TaskHelpTest do
 
   setup do
     env = memory_environment_fixture()
-    dir = Path.join(System.tmp_dir!(), "task_help_#{System.unique_integer([:positive])}")
+    dir = CodeMySpec.TempFile.dir("task_help")
     File.mkdir_p!(dir)
     Application.put_env(:code_my_spec, :task_help_dir, dir)
 

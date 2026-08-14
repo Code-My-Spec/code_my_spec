@@ -373,7 +373,7 @@ defmodule CodeMySpecSpex.Fixtures do
   """
   @spec account_access_key(Scope.t()) :: :ok
   def account_access_key(scope) do
-    dir = Path.join(System.tmp_dir!(), "spex-ssh-#{System.unique_integer([:positive])}")
+    dir = CodeMySpec.TempFile.dir("spex-ssh")
     File.mkdir_p!(dir)
     path = Path.join(dir, "id_ed25519")
 
@@ -1873,7 +1873,7 @@ defmodule CodeMySpecSpex.Fixtures do
           Project.t()
   def project_fixture_unlinked(%Scope{} = scope, attrs \\ %{}) do
     unlinked_dir =
-      Path.join(System.tmp_dir!(), "spex-unlinked-#{System.unique_integer([:positive])}")
+      CodeMySpec.TempFile.dir("spex-unlinked")
 
     File.mkdir_p!(unlinked_dir)
     ExUnit.Callbacks.on_exit(fn -> File.rm_rf(unlinked_dir) end)
@@ -1898,7 +1898,7 @@ defmodule CodeMySpecSpex.Fixtures do
   """
   @spec phoenix_shape_working_dir() :: String.t()
   def phoenix_shape_working_dir do
-    dir = Path.join(System.tmp_dir!(), "unlinked-#{System.unique_integer([:positive])}")
+    dir = CodeMySpec.TempFile.dir("unlinked")
     File.mkdir_p!(Path.join(dir, "lib"))
     File.mkdir_p!(Path.join(dir, "config"))
     File.write!(Path.join(dir, "mix.exs"), "# stub for PhoenixProject.evaluate\n")
@@ -1963,10 +1963,7 @@ defmodule CodeMySpecSpex.Fixtures do
       end)
 
     path =
-      Path.join(
-        System.tmp_dir!(),
-        "spex-run-report-#{System.unique_integer([:positive])}.jsonl"
-      )
+      CodeMySpec.TempFile.path("spex-run-report", ".jsonl")
 
     File.write!(path, body <> "\n")
     ExUnit.Callbacks.on_exit(fn -> File.rm(path) end)

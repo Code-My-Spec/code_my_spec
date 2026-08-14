@@ -19,7 +19,7 @@ defmodule CmsHarness.OnboardRelayGateTest do
   alias Mix.Tasks.Cms.Harness.Onboard
 
   setup do
-    dir = Path.join(System.tmp_dir!(), "relay-gate-#{System.unique_integer([:positive])}")
+    dir = CodeMySpec.TempFile.dir("relay-gate")
     File.mkdir_p!(dir)
     on_exit(fn -> File.rm_rf(dir) end)
     {:ok, dir: dir}

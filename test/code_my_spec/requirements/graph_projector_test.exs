@@ -45,7 +45,7 @@ defmodule CodeMySpec.Requirements.GraphProjectorTest do
     scope_after_account = Fixtures.user_scope_fixture(user, account)
     Fixtures.select_active_account(scope_after_account, account.id)
 
-    stub_dir = Path.join(System.tmp_dir!(), "projector-#{System.unique_integer([:positive])}")
+    stub_dir = CodeMySpec.TempFile.dir("projector")
     File.mkdir_p!(stub_dir)
     File.write!(Path.join(stub_dir, "mix.exs"), "# stub for WorkingDir plug\n")
     on_exit(fn -> File.rm_rf(stub_dir) end)

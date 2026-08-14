@@ -62,7 +62,7 @@ defmodule CmsHarness.AnalysisTest do
 
   defp mix_project(files, opts \\ []) do
     root =
-      Path.join(System.tmp_dir!(), "cms_harness_analysis_#{System.unique_integer([:positive])}")
+      CodeMySpec.TempFile.dir("cms_harness_analysis")
 
     File.mkdir_p!(Path.join(root, "lib"))
 

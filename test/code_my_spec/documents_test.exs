@@ -371,7 +371,7 @@ defmodule CodeMySpec.DocumentsTest do
 
   describe "validate_internal_dependencies/2" do
     setup do
-      tmp_dir = System.tmp_dir!() |> Path.join("docs_validation_test_#{:rand.uniform(10000)}")
+      tmp_dir = CodeMySpec.TempFile.dir("docs_validation_test")
       File.mkdir_p!(Path.join(tmp_dir, ".code_my_spec/spec/code_my_spec/accounts"))
       File.mkdir_p!(Path.join(tmp_dir, "lib/code_my_spec/accounts"))
 

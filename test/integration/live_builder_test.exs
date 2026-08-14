@@ -38,7 +38,7 @@ defmodule CodeMySpec.LiveBuilderTest do
 
     # A key for this run only. Uploaded so the server accepts it, removed after
     # so the account does not accumulate one key per QA pass.
-    dir = Path.join(System.tmp_dir!(), "cms-live-builder-#{System.unique_integer([:positive])}")
+    dir = CodeMySpec.TempFile.dir("cms-live-builder")
     File.mkdir_p!(dir)
     key_path = Path.join(dir, "id_ed25519")
     name = "cms-live-builder-#{System.unique_integer([:positive])}"

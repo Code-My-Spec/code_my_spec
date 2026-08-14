@@ -231,7 +231,7 @@ defmodule CodeMySpec.LiveProvisioningTest do
     {:ok, private} = ProjectSecrets.fetch_value(scope, "server_ssh_private_key")
     assert private =~ "OPENSSH PRIVATE KEY"
 
-    key_path = Path.join(System.tmp_dir!(), "cms-live-key-#{System.unique_integer([:positive])}")
+    key_path = CodeMySpec.TempFile.dir("cms-live-key")
     File.write!(key_path, private)
     File.chmod!(key_path, 0o600)
     on_exit(fn -> File.rm(key_path) end)

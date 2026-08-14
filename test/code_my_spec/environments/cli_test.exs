@@ -47,7 +47,7 @@ defmodule CodeMySpec.Environments.CliTest do
 
   describe "read_file/2" do
     test "reads file content from server file system" do
-      temp_file = Path.join(System.tmp_dir!(), "test-#{:rand.uniform(10_000)}.txt")
+      temp_file = CodeMySpec.TempFile.path("test", ".txt")
       File.write!(temp_file, "test content")
 
       {:ok, env} = Cli.create(session_id: :rand.uniform(10_000))

@@ -3918,7 +3918,7 @@ defmodule CodeMySpecSpex.Case do
     # WorkingDir plug (which hits File.exists?/File.dir? directly). Real
     # file I/O still goes through the in-memory environment — the stub
     # dir is just a marker for the plug and the project's local_path.
-    stub_dir = Path.join(System.tmp_dir!(), "spex-#{System.unique_integer([:positive])}")
+    stub_dir = CodeMySpec.TempFile.dir("spex")
     File.mkdir_p!(stub_dir)
     File.write!(Path.join(stub_dir, "mix.exs"), "# stub for WorkingDir plug\n")
     # Real subdirs so FileWatcherServer.start_watcher/1 finds watchable

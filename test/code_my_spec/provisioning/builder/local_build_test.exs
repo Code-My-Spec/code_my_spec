@@ -28,7 +28,7 @@ defmodule CodeMySpec.Provisioning.Builder.LocalBuildTest do
   @moduletag timeout: 300_000
 
   setup do
-    tmp = Path.join(System.tmp_dir!(), "cms-local-build-#{System.unique_integer([:positive])}")
+    tmp = CodeMySpec.TempFile.dir("cms-local-build")
     source = Path.join(tmp, "source")
     File.mkdir_p!(source)
 
