@@ -128,6 +128,8 @@ defmodule CodeMySpecWeb.Layouts do
               navigate={~p"/app/notifications"}
               class="btn btn-ghost btn-sm tooltip tooltip-left"
               data-tip="Notifications"
+              data-test="notification-badge"
+              data-count={@pending_notifications}
             >
               <span class="indicator">
                 <span

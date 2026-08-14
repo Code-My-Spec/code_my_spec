@@ -37,6 +37,7 @@ defmodule CodeMySpecSpex.Fixtures do
     Environments,
     IntegrationsFixtures,
     IssuesFixtures,
+    Notifications,
     OauthFixtures,
     Paths,
     ProblemsFixtures,
@@ -955,6 +956,90 @@ defmodule CodeMySpecSpex.Fixtures do
       scope.active_project_id,
       "sprite"
     )
+  end
+
+  @doc """
+  Ask a question the way `ask_user` does, and get its id back.
+
+  A spex about the notifications inbox has to put a question there, and the
+  only honest way to do that is the call the MCP tool makes. Going through
+  `create_question_request/2` also gets the side effects the criteria are
+  about — the push attempt, and the broadcast the navbar badge listens to —
+  which a bare insert would silently skip, leaving a live-count scenario
+  passing against a count that never moved.
+
+  `session_external_id` is what ties a question to the conversation it was
+  asked in; nil means it was asked outside a harness.
+
+  Options are `%{"label" => …}` maps because that is the shape `AskUserQuestion`
+  sends and the shape the form renders — a bare string here raises inside the
+  component, several layers from the fixture that produced it.
+  """
+  @spec ask_question(integer(), keyword()) :: String.t()
+  def ask_question(user_id, opts \\ []) do
+    {:ok, request} =
+      Notifications.create_question_request(user_id, %{
+        "title" => Keyword.get(opts, :title, "Claude Code has a question"),
+        "questions" =>
+          Keyword.get(opts, :questions, [
+            %{
+              "question" => "Which approach?",
+              "options" => [%{"label" => "A"}, %{"label" => "B"}]
+            }
+          ]),
+        "session_external_id" => Keyword.get(opts, :session_external_id)
+      })
+
+    request.id
+  end
+
+  @doc """
+  Request a tool permission the way the Claude Code hook does.
+
+  The inbox lists questions and permission requests together, so a scenario
+  about ordering or isolation needs both kinds present — one kind alone cannot
+  show that they interleave correctly.
+  """
+  @spec request_permission(integer(), keyword()) :: String.t()
+  def request_permission(user_id, opts \\ []) do
+    {:ok, request} =
+      Notifications.create_permission_request(user_id, %{
+        "tool_name" => Keyword.get(opts, :tool_name, "Bash"),
+        "tool_input" => Keyword.get(opts, :tool_input, %{"command" => "mix test"})
+      })
+
+    request.id
+  end
+
+  @doc """
+  Answer a question, as the answering surface does.
+
+  Used by scenarios whose *setup* needs answered history — a criterion about
+  pending items sorting above resolved ones needs a resolved one to exist.
+  A scenario testing the act of answering drives the page instead.
+  """
+  @spec answer_question(String.t(), map()) :: :ok
+  def answer_question(id, answers) do
+    {:ok, _} = Notifications.answer_question_request(id, answers)
+    :ok
+  end
+
+  @doc """
+  Expire a pending question.
+
+  There is no public call for this — expiry is a state a question reaches by
+  being abandoned, not an action anyone takes — so the bridge writes it, and
+  is the only place that reaches for the changeset directly.
+  """
+  @spec expire_question(String.t()) :: :ok
+  def expire_question(id) do
+    {:ok, _} =
+      id
+      |> Notifications.get_question_request()
+      |> CodeMySpec.Notifications.QuestionRequest.changeset(%{"status" => "expired"})
+      |> CodeMySpec.Repo.update()
+
+    :ok
   end
 
   @doc """
