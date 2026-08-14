@@ -24,6 +24,11 @@ defmodule CodeMySpecSpex.Story1004.Criterion1977Spex do
   spex "The inbox is the fallback when a push notification never lands" do
     scenario "Question missed by push still appears in the inbox" do
       given_ "the user has no push subscription, so nothing can be delivered", context do
+        # given: already true — `register_log_in_setup_account` creates a user
+        # and nothing subscribes them to Web Push. Registering one would be the
+        # work; leaving it unregistered is the condition, and it is the
+        # strongest form of "the push never arrived" because there was nowhere
+        # to send it.
         {:ok, context}
       end
 
