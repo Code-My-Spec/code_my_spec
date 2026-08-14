@@ -225,11 +225,17 @@ defmodule CodeMySpec.AgentHarness.ConversationRecorder do
   # single project. Writing it every time produced 1,071 adjacent identical
   # rows out of 4,898, which is what put the same block on screen twice.
   #
-  # Compared against the conversation's most recent message rather than
-  # deduplicated globally: the same text arriving again after the agent has
-  # said something in between is a real repeat, and the operator should see it.
+  # Compared against the last message of the same role, not the last message
+  # outright: a turn writes results, then this, then the response, then the
+  # calls, so an unscoped comparison always measures a request against the
+  # previous turn's response and never matches. Measured after getting that
+  # wrong the first time — 132 duplicates in five minutes with the fix in.
+  #
+  # Still per-conversation-tail rather than global: the same text arriving
+  # again after the agent has said something in between is a real repeat, and
+  # the operator should see it.
   defp write_free_text(conversation, agent_role, text) do
-    if Conversations.last_message_text(conversation) == text do
+    if Conversations.last_message_text(conversation, :user) == text do
       :ok
     else
       conversation

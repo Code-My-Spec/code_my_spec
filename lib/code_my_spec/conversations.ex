@@ -327,16 +327,21 @@ defmodule CodeMySpec.Conversations do
   end
 
   @doc """
-  Text of the conversation's most recent message, or nil when it has none.
+  Text of the conversation's most recent message in `role`, or nil if none.
 
   Exists for the recorder's repeat check. Consecutive model turns often carry
   an identical last request message — an injected system reminder is the usual
   one — and writing it every time put the same block on screen twice.
+
+  Scoped to a role, because a turn writes several rows: results, then the
+  request's free text, then the response, then the calls. Compared against the
+  most recent message of *any* role, a request is always being measured against
+  the previous turn's response, so it never matches and every repeat is written.
   """
-  @spec last_message_text(Conversation.t()) :: String.t() | nil
-  def last_message_text(%Conversation{} = conversation) do
+  @spec last_message_text(Conversation.t(), atom()) :: String.t() | nil
+  def last_message_text(%Conversation{} = conversation, role) do
     Message
-    |> where([m], m.conversation_id == ^conversation.id)
+    |> where([m], m.conversation_id == ^conversation.id and m.role == ^role)
     |> order_by([m], desc: m.inserted_at, desc: m.id)
     |> limit(1)
     |> Repo.one()
