@@ -1510,23 +1510,35 @@ defmodule CodeMySpec.Provisioning.Steps do
   defp owner_address(_scope, _domain), do: nil
 
   defp ensure_catch_all(%Scope{active_project_id: id} = scope, domain) when not is_nil(id) do
+    # On *this* domain. The mailbox is keyed to the project and the project
+    # outlives its domain, so a project that changed domains kept a catch-all at
+    # the old one — and the probe was addressed to `inbox@` a domain that no
+    # longer existed. It never arrived, and the step reported the inbox broken,
+    # which is true of an address nobody can deliver to and says nothing about
+    # the domain being set up.
     case Mail.catch_all_mailbox(id) do
       %{address: address} when is_binary(address) and address != "" ->
-        {:ok, address}
+        if String.ends_with?(address, "@" <> domain),
+          do: {:ok, address},
+          else: create_catch_all(scope, domain)
 
       _ ->
-        # `inbox@` because it has to be called something and that is what a
-        # person expects to find. `catch_all: true` is the load-bearing part —
-        # it is what makes mail to any local part at this domain route somewhere
-        # rather than be dropped.
-        case Mail.create_mailbox(scope, %{address: "inbox@#{domain}", catch_all: true}) do
-          {:ok, %{address: address}} -> {:ok, address}
-          other -> other
-        end
+        create_catch_all(scope, domain)
     end
   end
 
   defp ensure_catch_all(_scope, _domain), do: :error
+
+  # `inbox@` because it has to be called something and that is what a person
+  # expects to find. `catch_all: true` is the load-bearing part — it is what
+  # makes mail to any local part at this domain route somewhere rather than be
+  # dropped.
+  defp create_catch_all(scope, domain) do
+    case Mail.create_mailbox(scope, %{address: "inbox@#{domain}", catch_all: true}) do
+      {:ok, %{address: address}} -> {:ok, address}
+      other -> other
+    end
+  end
 
   # Kept as the fallback for a project whose mailboxes cannot be reached —
   # better than inventing a name nobody has configured.
