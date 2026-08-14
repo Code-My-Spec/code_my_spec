@@ -152,11 +152,30 @@ defmodule CodeMySpecSpex.Drill do
     report_teardown(key, outcome, elapsed)
   end
 
-  defp report_teardown(key, {:ok, removed}, elapsed) do
-    IO.puts("  removed #{length(removed)} in #{seconds(elapsed)}")
-    for resource <- removed, do: IO.puts("    · #{resource_line(resource)}")
+  # Counted here rather than taken from `Teardown.step/3`, which returns
+  # `{:ok, r}` both for a resource it destroyed and for one it skipped because
+  # the resource was recorded `adopted` — and skipping is most of what a
+  # repeated walk does. Reading that number as "removed" is how a 9.5-second
+  # teardown reported 14/14 and "everything recorded came down" while releasing
+  # a server and leaving the DNS record pointing at the released address.
+  #
+  # The skip itself is right and must stay: teardown once destroyed a real,
+  # long-standing Resend sending domain that setup had merely adopted. What was
+  # wrong is a summary that cannot tell the two apart, so this says both.
+  defp report_teardown(key, {:ok, handled}, elapsed) do
+    {skipped, removed} = Enum.split_with(handled, &(origin_of(&1) == "adopted"))
+
+    IO.puts("  removed #{length(removed)}, skipped #{length(skipped)} as adopted, " <>
+              "in #{seconds(elapsed)}")
+
+    for resource <- removed, do: IO.puts("    · removed #{resource_line(resource)}")
+    for resource <- skipped, do: IO.puts("    · kept    #{resource_line(resource)}")
+
     %{key: key, state: :done, elapsed: elapsed, reason: nil}
   end
+
+  defp origin_of(resource),
+    do: Map.get(resource, :origin) || Map.get(resource, "origin") || "adopted"
 
   defp report_teardown(key, {:error, {:left_behind, remaining}}, elapsed) do
     IO.puts("  left behind #{length(remaining)} in #{seconds(elapsed)}")
@@ -258,7 +277,7 @@ defmodule CodeMySpecSpex.Drill do
 
     case {failed, tearing_down?()} do
       {[], false} -> IO.puts("  the whole plan ran")
-      {[], true} -> IO.puts("  everything recorded came down")
+      {[], true} -> IO.puts("  nothing was left behind that teardown tried to remove")
       {_, false} -> IO.puts("  stuck: " <> Enum.map_join(failed, ", ", &to_string(&1.key)))
       {_, true} -> IO.puts("  left behind: " <> Enum.map_join(failed, ", ", &to_string(&1.key)))
     end
