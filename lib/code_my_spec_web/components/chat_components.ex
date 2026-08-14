@@ -141,8 +141,22 @@ defmodule CodeMySpecWeb.ChatComponents do
               moduledoc scopes it to — so a `<script>` in a reply renders as
               text rather than running.
 
+              `prose` is the typography plugin, already loaded in app.css.
+              Without it Tailwind's reset leaves `<ul>` at `list-style: none`
+              and no indent, so a list parses correctly and renders as
+              unmarked lines. `max-w-none` because the bubble sets the width,
+              and `prose-invert` inside a filled bubble.
+
               Prose only. Arguments and results are code and stay in <pre>. --%>
-        <div :if={@text != ""} class="chat-prose">{md_html(@text)}</div>
+        <div
+          :if={@text != ""}
+          class={[
+            "prose prose-sm max-w-none prose-p:my-1 prose-ul:my-1 prose-ol:my-1 prose-pre:my-1",
+            side(@role, @own_role) == "chat-end" && "prose-invert"
+          ]}
+        >
+          {md_html(@text)}
+        </div>
         {render_slot(@extra)}
       </div>
     </div>
@@ -486,9 +500,12 @@ defmodule CodeMySpecWeb.ChatComponents do
       messages
       |> Enum.reject(&nested?(&1, called))
       |> Enum.chunk_by(&call?/1)
-      |> Enum.flat_map(fn
-        [_, _ | _] = run -> if call?(hd(run)), do: [group(run)], else: singles(run)
-        run -> singles(run)
+      |> Enum.flat_map(fn run ->
+        # Calls, not messages. A turn can make three calls at once — the model
+        # answers with three `tool_use` blocks in one response — and chunking by
+        # message saw that as a single item and left it unfolded, which is the
+        # exact case the fold exists for.
+        if call?(hd(run)) and call_count(run) > 1, do: [group(run)], else: singles(run)
       end)
 
     {items, results}
@@ -521,8 +538,11 @@ defmodule CodeMySpecWeb.ChatComponents do
 
   defp nested?(_message, _called), do: false
 
-  defp singles(messages), do: Enum.map(messages, &%{id: &1.id, messages: [&1]})
-  defp group(run), do: %{id: hd(run).id, messages: run}
+  # `grouped` is carried rather than inferred from the list length. A turn can
+  # make three calls in one message, so a folded run is often a single message
+  # — and matching on `[message]` sent exactly that case to the unfolded clause.
+  defp singles(messages), do: Enum.map(messages, &%{id: &1.id, messages: [&1], grouped: false})
+  defp group(run), do: %{id: hd(run).id, messages: run, grouped: true}
 
   # Both writers now record a call the same way — an assistant turn carrying a
   # `tool_calls` array. The old check also had to sniff `role: :tool` text for
@@ -537,7 +557,7 @@ defmodule CodeMySpecWeb.ChatComponents do
   attr :own_role, :atom, default: :assistant
   attr :results, :map, default: %{}
 
-  def turn_item(%{item: %{messages: [message]}} = assigns) do
+  def turn_item(%{item: %{grouped: false, messages: [message]}} = assigns) do
     assigns = assign(assigns, :message, message)
 
     ~H"""
