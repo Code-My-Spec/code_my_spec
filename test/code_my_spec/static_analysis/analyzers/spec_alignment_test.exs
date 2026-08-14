@@ -1,16 +1,15 @@
 defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignmentTest do
-  use CodeMySpecTest.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.UsersFixtures
   import CodeMySpec.AccountsFixtures
   import CodeMySpec.ProjectsFixtures
 
+  alias CodeMySpec.Environments
   alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.Support.InMemoryEnvironment
   alias CodeMySpec.StaticAnalysis.Analyzers.SpecAlignment
-  alias CodeMySpec.Support.TestAdapter
   alias CodeMySpecTest.EnvRestore
-
-  @test_repo_url "https://github.com/Code-My-Spec/test_phoenix_project.git"
 
   setup do
     user = user_fixture()
@@ -19,33 +18,28 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignmentTest do
     project = project_fixture(scope, %{module_name: "TestPhoenixProject"})
     scope = user_scope_fixture(user, account, project)
 
-    # Clone from pool
-    {:ok, project_dir} =
-      TestAdapter.clone(scope, @test_repo_url)
+    # A filesystem this test owns outright, rather than a checkout it borrows.
+    #
+    # This used to clone a real repository from a shared pool and write into it,
+    # which is what made every assertion below depend on the pool being clean.
+    # `.code_my_spec/spec` is a submodule the pool's reset does not touch, so a
+    # test that wrote specs and failed to tidy up handed the next one a tree
+    # that already looked aligned — every "detects a missing X" assertion then
+    # found nothing, under some seeds only. The answer was to clear the
+    # directory on the way in *and* out, which is a cleanup that exists solely
+    # because the test wrote somewhere it did not own.
+    #
+    # An in-memory environment is an Agent, created per test and discarded with
+    # it. There is no shared directory, so there is nothing to clear, nothing to
+    # check in, and no reason for this file to be synchronous. `SpecAlignment`
+    # reads every file through `Environments` and already accepts `environment:`,
+    # so nothing about the analyzer changes to be tested this way.
+    {:ok, env} = InMemoryEnvironment.create()
+    on_exit(fn -> InMemoryEnvironment.destroy(env) end)
 
-    # Update project with cloned repo path
-    {:ok, updated_project} =
-      CodeMySpec.Projects.update_project(scope, project, %{code_repo: project_dir})
+    scope = user_scope_fixture(user, account, project) |> Map.put(:cwd, env.cwd)
 
-    scope = user_scope_fixture(user, account, updated_project) |> Map.put(:cwd, project_dir)
-
-    # Clear the spec directory on the way *in* as well as out. The checkout
-    # comes from a shared pool and `.code_my_spec/spec` is a submodule the pool
-    # reset does not clean, so a test that wrote specs here and did not tidy up
-    # hands this one a tree that already looks aligned — every "detects a
-    # missing X" assertion then finds nothing and fails, under some seeds only.
-    # Establishing the precondition beats trusting the previous test to.
-    File.rm_rf(Path.join(project_dir, ".code_my_spec/spec"))
-
-    on_exit(fn ->
-      # Clean up .code_my_spec/spec files we created (it's a submodule, pool reset won't clean it)
-      docs_spec_dir = Path.join(project_dir, ".code_my_spec/spec")
-      File.rm_rf(docs_spec_dir)
-
-      TestAdapter.checkin(project_dir)
-    end)
-
-    %{scope: scope, project: updated_project, project_dir: project_dir}
+    %{scope: scope, project: project, env: env}
   end
 
   # An environment that cannot list files must not crash the caller.
@@ -65,7 +59,13 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignmentTest do
   describe "an environment that cannot stream files" do
     setup do
       previous = Application.get_env(:code_my_spec, :harness_fs_transport)
-      Application.put_env(:code_my_spec, :harness_fs_transport, CodeMySpec.Support.StubHarnessTransport)
+
+      Application.put_env(
+        :code_my_spec,
+        :harness_fs_transport,
+        CodeMySpec.Support.StubHarnessTransport
+      )
+
       on_exit(fn -> EnvRestore.restore_app_env(:harness_fs_transport, previous) end)
       :ok
     end
@@ -82,10 +82,9 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignmentTest do
   describe "run/2" do
     test "returns empty list when all specs match implementation perfectly", %{
       scope: scope,
-      project_dir: project_dir
+      env: env
     } do
-      spec_dir = Path.join(project_dir, ".code_my_spec/spec")
-      File.mkdir_p!(spec_dir)
+      spec_dir = ".code_my_spec/spec"
 
       spec_content = """
       # MyModule
@@ -107,10 +106,9 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignmentTest do
       """
 
       spec_file = Path.join(spec_dir, "my_module.spec.md")
-      File.write!(spec_file, spec_content)
+      :ok = Environments.write_file(env, spec_file, spec_content)
 
-      impl_file = Path.join(project_dir, "lib/my_module.ex")
-      File.mkdir_p!(Path.dirname(impl_file))
+      impl_file = "lib/my_module.ex"
 
       impl_content = """
       defmodule MyModule do
@@ -119,10 +117,9 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignmentTest do
       end
       """
 
-      File.write!(impl_file, impl_content)
+      :ok = Environments.write_file(env, impl_file, impl_content)
 
-      test_file = Path.join(project_dir, "test/my_module_test.exs")
-      File.mkdir_p!(Path.dirname(test_file))
+      test_file = "test/my_module_test.exs"
 
       test_content = """
       defmodule MyModuleTest do
@@ -136,18 +133,22 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignmentTest do
       end
       """
 
-      File.write!(test_file, test_content)
+      :ok = Environments.write_file(env, test_file, test_content)
 
       # Scope to just our created spec file to avoid problems from fixture specs
-      assert {:ok, []} = SpecAlignment.run(scope, paths: [".code_my_spec/spec/my_module.spec.md"])
+      assert {:ok, []} =
+               SpecAlignment.run(scope,
+                 environment: env,
+                 cwd: env.cwd,
+                 paths: [".code_my_spec/spec/my_module.spec.md"]
+               )
     end
 
     test "detects missing function implementations (function in spec but not in code)", %{
       scope: scope,
-      project_dir: project_dir
+      env: env
     } do
-      spec_dir = Path.join(project_dir, ".code_my_spec/spec")
-      File.mkdir_p!(spec_dir)
+      spec_dir = ".code_my_spec/spec"
 
       spec_content = """
       # MyModule
@@ -166,13 +167,12 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignmentTest do
       """
 
       spec_file = Path.join(spec_dir, "my_module.spec.md")
-      File.write!(spec_file, spec_content)
+      :ok = Environments.write_file(env, spec_file, spec_content)
 
-      impl_file = Path.join(project_dir, "lib/my_module.ex")
-      File.mkdir_p!(Path.dirname(impl_file))
-      File.write!(impl_file, "defmodule MyModule do\nend")
+      impl_file = "lib/my_module.ex"
+      :ok = Environments.write_file(env, impl_file, "defmodule MyModule do\nend")
 
-      assert {:ok, problems} = SpecAlignment.run(scope, [])
+      assert {:ok, problems} = SpecAlignment.run(scope, environment: env, cwd: env.cwd)
 
       assert problems != []
       assert Enum.any?(problems, fn p -> p.message =~ "missing_function/1" end)
@@ -180,10 +180,9 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignmentTest do
 
     test "detects extra function implementations (public function in code but not in spec)", %{
       scope: scope,
-      project_dir: project_dir
+      env: env
     } do
-      spec_dir = Path.join(project_dir, ".code_my_spec/spec")
-      File.mkdir_p!(spec_dir)
+      spec_dir = ".code_my_spec/spec"
 
       spec_content = """
       # MyModule
@@ -194,10 +193,9 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignmentTest do
       """
 
       spec_file = Path.join(spec_dir, "my_module.spec.md")
-      File.write!(spec_file, spec_content)
+      :ok = Environments.write_file(env, spec_file, spec_content)
 
-      impl_file = Path.join(project_dir, "lib/my_module.ex")
-      File.mkdir_p!(Path.dirname(impl_file))
+      impl_file = "lib/my_module.ex"
 
       impl_content = """
       defmodule MyModule do
@@ -205,9 +203,9 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignmentTest do
       end
       """
 
-      File.write!(impl_file, impl_content)
+      :ok = Environments.write_file(env, impl_file, impl_content)
 
-      assert {:ok, problems} = SpecAlignment.run(scope, [])
+      assert {:ok, problems} = SpecAlignment.run(scope, environment: env, cwd: env.cwd)
 
       assert problems != []
       assert Enum.any?(problems, fn p -> p.message =~ "extra_function" end)
@@ -215,10 +213,9 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignmentTest do
 
     test "detects mismatched @spec type signatures between spec and implementation", %{
       scope: scope,
-      project_dir: project_dir
+      env: env
     } do
-      spec_dir = Path.join(project_dir, ".code_my_spec/spec")
-      File.mkdir_p!(spec_dir)
+      spec_dir = ".code_my_spec/spec"
 
       spec_content = """
       # MyModule
@@ -237,10 +234,9 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignmentTest do
       """
 
       spec_file = Path.join(spec_dir, "my_module.spec.md")
-      File.write!(spec_file, spec_content)
+      :ok = Environments.write_file(env, spec_file, spec_content)
 
-      impl_file = Path.join(project_dir, "lib/my_module.ex")
-      File.mkdir_p!(Path.dirname(impl_file))
+      impl_file = "lib/my_module.ex"
 
       impl_content = """
       defmodule MyModule do
@@ -249,9 +245,9 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignmentTest do
       end
       """
 
-      File.write!(impl_file, impl_content)
+      :ok = Environments.write_file(env, impl_file, impl_content)
 
-      assert {:ok, problems} = SpecAlignment.run(scope, [])
+      assert {:ok, problems} = SpecAlignment.run(scope, environment: env, cwd: env.cwd)
 
       assert problems != []
 
@@ -262,10 +258,9 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignmentTest do
 
     test "detects missing test assertions (assertion in spec but test not found)", %{
       scope: scope,
-      project_dir: project_dir
+      env: env
     } do
-      spec_dir = Path.join(project_dir, ".code_my_spec/spec")
-      File.mkdir_p!(spec_dir)
+      spec_dir = ".code_my_spec/spec"
 
       spec_content = """
       # MyModule
@@ -288,10 +283,9 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignmentTest do
       """
 
       spec_file = Path.join(spec_dir, "my_module.spec.md")
-      File.write!(spec_file, spec_content)
+      :ok = Environments.write_file(env, spec_file, spec_content)
 
-      impl_file = Path.join(project_dir, "lib/my_module.ex")
-      File.mkdir_p!(Path.dirname(impl_file))
+      impl_file = "lib/my_module.ex"
 
       impl_content = """
       defmodule MyModule do
@@ -300,10 +294,9 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignmentTest do
       end
       """
 
-      File.write!(impl_file, impl_content)
+      :ok = Environments.write_file(env, impl_file, impl_content)
 
-      test_file = Path.join(project_dir, "test/my_module_test.exs")
-      File.mkdir_p!(Path.dirname(test_file))
+      test_file = "test/my_module_test.exs"
 
       test_content = """
       defmodule MyModuleTest do
@@ -317,9 +310,9 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignmentTest do
       end
       """
 
-      File.write!(test_file, test_content)
+      :ok = Environments.write_file(env, test_file, test_content)
 
-      assert {:ok, problems} = SpecAlignment.run(scope, [])
+      assert {:ok, problems} = SpecAlignment.run(scope, environment: env, cwd: env.cwd)
 
       assert problems != []
 
@@ -330,10 +323,9 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignmentTest do
 
     test "detects extra test assertions (test exists but not documented in spec)", %{
       scope: scope,
-      project_dir: project_dir
+      env: env
     } do
-      spec_dir = Path.join(project_dir, ".code_my_spec/spec")
-      File.mkdir_p!(spec_dir)
+      spec_dir = ".code_my_spec/spec"
 
       spec_content = """
       # MyModule
@@ -355,10 +347,9 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignmentTest do
       """
 
       spec_file = Path.join(spec_dir, "my_module.spec.md")
-      File.write!(spec_file, spec_content)
+      :ok = Environments.write_file(env, spec_file, spec_content)
 
-      impl_file = Path.join(project_dir, "lib/my_module.ex")
-      File.mkdir_p!(Path.dirname(impl_file))
+      impl_file = "lib/my_module.ex"
 
       impl_content = """
       defmodule MyModule do
@@ -367,10 +358,9 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignmentTest do
       end
       """
 
-      File.write!(impl_file, impl_content)
+      :ok = Environments.write_file(env, impl_file, impl_content)
 
-      test_file = Path.join(project_dir, "test/my_module_test.exs")
-      File.mkdir_p!(Path.dirname(test_file))
+      test_file = "test/my_module_test.exs"
 
       test_content = """
       defmodule MyModuleTest do
@@ -388,9 +378,9 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignmentTest do
       end
       """
 
-      File.write!(test_file, test_content)
+      :ok = Environments.write_file(env, test_file, test_content)
 
-      assert {:ok, problems} = SpecAlignment.run(scope, [])
+      assert {:ok, problems} = SpecAlignment.run(scope, environment: env, cwd: env.cwd)
 
       assert problems != []
       assert Enum.any?(problems, fn p -> p.message =~ "Extra test found" end)
@@ -398,10 +388,9 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignmentTest do
 
     test "handles spec files for modules that don't exist yet (no Problems generated)", %{
       scope: scope,
-      project_dir: project_dir
+      env: env
     } do
-      spec_dir = Path.join(project_dir, ".code_my_spec/spec")
-      File.mkdir_p!(spec_dir)
+      spec_dir = ".code_my_spec/spec"
 
       spec_content = """
       # NonExistentModule
@@ -420,25 +409,27 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignmentTest do
       """
 
       spec_file = Path.join(spec_dir, "non_existent_module.spec.md")
-      File.write!(spec_file, spec_content)
+      :ok = Environments.write_file(env, spec_file, spec_content)
 
       # Scope to just our created spec file
       assert {:ok, problems} =
-               SpecAlignment.run(scope, paths: [".code_my_spec/spec/non_existent_module.spec.md"])
+               SpecAlignment.run(scope,
+                 environment: env,
+                 cwd: env.cwd,
+                 paths: [".code_my_spec/spec/non_existent_module.spec.md"]
+               )
 
       assert problems == []
     end
 
     test "handles modules without spec files (no Problems generated)", %{
       scope: scope,
-      project_dir: project_dir
+      env: env
     } do
       # Create spec directory (required for analyzer to run)
-      spec_dir = Path.join(project_dir, ".code_my_spec/spec")
-      File.mkdir_p!(spec_dir)
+      spec_dir = ".code_my_spec/spec"
 
-      impl_file = Path.join(project_dir, "lib/no_spec_module.ex")
-      File.mkdir_p!(Path.dirname(impl_file))
+      impl_file = "lib/no_spec_module.ex"
 
       impl_content = """
       defmodule NoSpecModule do
@@ -446,21 +437,24 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignmentTest do
       end
       """
 
-      File.write!(impl_file, impl_content)
+      :ok = Environments.write_file(env, impl_file, impl_content)
 
       # Use a path that has no spec files to test "no spec" scenario
       assert {:ok, problems} =
-               SpecAlignment.run(scope, paths: [".code_my_spec/spec/no_spec_module.spec.md"])
+               SpecAlignment.run(scope,
+                 environment: env,
+                 cwd: env.cwd,
+                 paths: [".code_my_spec/spec/no_spec_module.spec.md"]
+               )
 
       assert problems == []
     end
 
     test "handles spec files with no Functions section gracefully", %{
       scope: scope,
-      project_dir: project_dir
+      env: env
     } do
-      spec_dir = Path.join(project_dir, ".code_my_spec/spec")
-      File.mkdir_p!(spec_dir)
+      spec_dir = ".code_my_spec/spec"
 
       spec_content = """
       # MyModule
@@ -471,19 +465,18 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignmentTest do
       """
 
       spec_file = Path.join(spec_dir, "my_module.spec.md")
-      File.write!(spec_file, spec_content)
+      :ok = Environments.write_file(env, spec_file, spec_content)
 
-      assert {:ok, problems} = SpecAlignment.run(scope, [])
+      assert {:ok, problems} = SpecAlignment.run(scope, environment: env, cwd: env.cwd)
 
       assert is_list(problems)
     end
 
     test "handles implementation files with no public functions gracefully", %{
       scope: scope,
-      project_dir: project_dir
+      env: env
     } do
-      spec_dir = Path.join(project_dir, ".code_my_spec/spec")
-      File.mkdir_p!(spec_dir)
+      spec_dir = ".code_my_spec/spec"
 
       spec_content = """
       # MyModule
@@ -492,10 +485,9 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignmentTest do
       """
 
       spec_file = Path.join(spec_dir, "my_module.spec.md")
-      File.write!(spec_file, spec_content)
+      :ok = Environments.write_file(env, spec_file, spec_content)
 
-      impl_file = Path.join(project_dir, "lib/my_module.ex")
-      File.mkdir_p!(Path.dirname(impl_file))
+      impl_file = "lib/my_module.ex"
 
       impl_content = """
       defmodule MyModule do
@@ -503,19 +495,18 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignmentTest do
       end
       """
 
-      File.write!(impl_file, impl_content)
+      :ok = Environments.write_file(env, impl_file, impl_content)
 
-      assert {:ok, problems} = SpecAlignment.run(scope, [])
+      assert {:ok, problems} = SpecAlignment.run(scope, environment: env, cwd: env.cwd)
 
       assert is_list(problems)
     end
 
     test "handles test files that don't exist yet (no Problems generated)", %{
       scope: scope,
-      project_dir: project_dir
+      env: env
     } do
-      spec_dir = Path.join(project_dir, ".code_my_spec/spec")
-      File.mkdir_p!(spec_dir)
+      spec_dir = ".code_my_spec/spec"
 
       spec_content = """
       # MyModule
@@ -537,10 +528,9 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignmentTest do
       """
 
       spec_file = Path.join(spec_dir, "my_module.spec.md")
-      File.write!(spec_file, spec_content)
+      :ok = Environments.write_file(env, spec_file, spec_content)
 
-      impl_file = Path.join(project_dir, "lib/my_module.ex")
-      File.mkdir_p!(Path.dirname(impl_file))
+      impl_file = "lib/my_module.ex"
 
       impl_content = """
       defmodule MyModule do
@@ -549,21 +539,24 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignmentTest do
       end
       """
 
-      File.write!(impl_file, impl_content)
+      :ok = Environments.write_file(env, impl_file, impl_content)
 
       # Scope to just our created spec file
       assert {:ok, problems} =
-               SpecAlignment.run(scope, paths: [".code_my_spec/spec/my_module.spec.md"])
+               SpecAlignment.run(scope,
+                 environment: env,
+                 cwd: env.cwd,
+                 paths: [".code_my_spec/spec/my_module.spec.md"]
+               )
 
       assert problems == []
     end
 
     test "sets source to \"spec_alignment\" on all Problems", %{
       scope: scope,
-      project_dir: project_dir
+      env: env
     } do
-      spec_dir = Path.join(project_dir, ".code_my_spec/spec")
-      File.mkdir_p!(spec_dir)
+      spec_dir = ".code_my_spec/spec"
 
       spec_content = """
       # MyModule
@@ -582,13 +575,12 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignmentTest do
       """
 
       spec_file = Path.join(spec_dir, "my_module.spec.md")
-      File.write!(spec_file, spec_content)
+      :ok = Environments.write_file(env, spec_file, spec_content)
 
-      impl_file = Path.join(project_dir, "lib/my_module.ex")
-      File.mkdir_p!(Path.dirname(impl_file))
-      File.write!(impl_file, "defmodule MyModule do\nend")
+      impl_file = "lib/my_module.ex"
+      :ok = Environments.write_file(env, impl_file, "defmodule MyModule do\nend")
 
-      assert {:ok, problems} = SpecAlignment.run(scope, [])
+      assert {:ok, problems} = SpecAlignment.run(scope, environment: env, cwd: env.cwd)
 
       assert problems != []
       assert Enum.all?(problems, fn p -> p.source == "spec_alignment" end)
@@ -596,10 +588,9 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignmentTest do
 
     test "sets source_type to :static_analysis on all Problems", %{
       scope: scope,
-      project_dir: project_dir
+      env: env
     } do
-      spec_dir = Path.join(project_dir, ".code_my_spec/spec")
-      File.mkdir_p!(spec_dir)
+      spec_dir = ".code_my_spec/spec"
 
       spec_content = """
       # MyModule
@@ -618,22 +609,20 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignmentTest do
       """
 
       spec_file = Path.join(spec_dir, "my_module.spec.md")
-      File.write!(spec_file, spec_content)
+      :ok = Environments.write_file(env, spec_file, spec_content)
 
-      impl_file = Path.join(project_dir, "lib/my_module.ex")
-      File.mkdir_p!(Path.dirname(impl_file))
-      File.write!(impl_file, "defmodule MyModule do\nend")
+      impl_file = "lib/my_module.ex"
+      :ok = Environments.write_file(env, impl_file, "defmodule MyModule do\nend")
 
-      assert {:ok, problems} = SpecAlignment.run(scope, [])
+      assert {:ok, problems} = SpecAlignment.run(scope, environment: env, cwd: env.cwd)
 
       assert problems != []
       assert Enum.all?(problems, fn p -> p.source_type == :static_analysis end)
     end
 
     test "sets appropriate severity levels (error for missing impl, warning for extra functions)",
-         %{scope: scope, project_dir: project_dir} do
-      spec_dir = Path.join(project_dir, ".code_my_spec/spec")
-      File.mkdir_p!(spec_dir)
+         %{scope: scope, env: env} do
+      spec_dir = ".code_my_spec/spec"
 
       spec_content = """
       # MyModule
@@ -652,10 +641,9 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignmentTest do
       """
 
       spec_file = Path.join(spec_dir, "my_module.spec.md")
-      File.write!(spec_file, spec_content)
+      :ok = Environments.write_file(env, spec_file, spec_content)
 
-      impl_file = Path.join(project_dir, "lib/my_module.ex")
-      File.mkdir_p!(Path.dirname(impl_file))
+      impl_file = "lib/my_module.ex"
 
       impl_content = """
       defmodule MyModule do
@@ -663,9 +651,9 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignmentTest do
       end
       """
 
-      File.write!(impl_file, impl_content)
+      :ok = Environments.write_file(env, impl_file, impl_content)
 
-      assert {:ok, problems} = SpecAlignment.run(scope, [])
+      assert {:ok, problems} = SpecAlignment.run(scope, environment: env, cwd: env.cwd)
 
       missing_problems = Enum.filter(problems, fn p -> p.message =~ "required_function" end)
       extra_problems = Enum.filter(problems, fn p -> p.message =~ "extra_function" end)
@@ -676,10 +664,9 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignmentTest do
 
     test "includes file_path and line numbers in Problems when available", %{
       scope: scope,
-      project_dir: project_dir
+      env: env
     } do
-      spec_dir = Path.join(project_dir, ".code_my_spec/spec")
-      File.mkdir_p!(spec_dir)
+      spec_dir = ".code_my_spec/spec"
 
       spec_content = """
       # MyModule
@@ -698,38 +685,35 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignmentTest do
       """
 
       spec_file = Path.join(spec_dir, "my_module.spec.md")
-      File.write!(spec_file, spec_content)
+      :ok = Environments.write_file(env, spec_file, spec_content)
 
-      impl_file = Path.join(project_dir, "lib/my_module.ex")
-      File.mkdir_p!(Path.dirname(impl_file))
-      File.write!(impl_file, "defmodule MyModule do\nend")
+      impl_file = "lib/my_module.ex"
+      :ok = Environments.write_file(env, impl_file, "defmodule MyModule do\nend")
 
-      assert {:ok, problems} = SpecAlignment.run(scope, [])
+      assert {:ok, problems} = SpecAlignment.run(scope, environment: env, cwd: env.cwd)
 
       assert problems != []
       assert Enum.all?(problems, fn p -> is_binary(p.file_path) end)
     end
 
     test "handles parsing errors in spec files gracefully (returns Problem about invalid spec)",
-         %{scope: scope, project_dir: project_dir} do
-      spec_dir = Path.join(project_dir, ".code_my_spec/spec")
-      File.mkdir_p!(spec_dir)
+         %{scope: scope, env: env} do
+      spec_dir = ".code_my_spec/spec"
 
       spec_content = "This is not valid spec markdown"
       spec_file = Path.join(spec_dir, "invalid.spec.md")
-      File.write!(spec_file, spec_content)
+      :ok = Environments.write_file(env, spec_file, spec_content)
 
-      assert {:ok, problems} = SpecAlignment.run(scope, [])
+      assert {:ok, problems} = SpecAlignment.run(scope, environment: env, cwd: env.cwd)
 
       assert is_list(problems)
     end
 
     test "handles parsing errors in implementation files gracefully", %{
       scope: scope,
-      project_dir: project_dir
+      env: env
     } do
-      spec_dir = Path.join(project_dir, ".code_my_spec/spec")
-      File.mkdir_p!(spec_dir)
+      spec_dir = ".code_my_spec/spec"
 
       spec_content = """
       # MyModule
@@ -738,26 +722,29 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignmentTest do
       """
 
       spec_file = Path.join(spec_dir, "my_module.spec.md")
-      File.write!(spec_file, spec_content)
+      :ok = Environments.write_file(env, spec_file, spec_content)
 
-      impl_file = Path.join(project_dir, "lib/my_module.ex")
-      File.mkdir_p!(Path.dirname(impl_file))
-      File.write!(impl_file, "defmodule MyModule do\n  this is invalid syntax\nend")
+      impl_file = "lib/my_module.ex"
 
-      assert {:ok, problems} = SpecAlignment.run(scope, [])
+      :ok =
+        Environments.write_file(
+          env,
+          impl_file,
+          "defmodule MyModule do\n  this is invalid syntax\nend"
+        )
+
+      assert {:ok, problems} = SpecAlignment.run(scope, environment: env, cwd: env.cwd)
 
       assert is_list(problems)
     end
 
     test "respects opts[:paths] to limit analysis to specific directories", %{
       scope: scope,
-      project_dir: project_dir
+      env: env
     } do
-      spec_dir = Path.join(project_dir, ".code_my_spec/spec")
-      File.mkdir_p!(spec_dir)
+      spec_dir = ".code_my_spec/spec"
 
       subdir = Path.join(spec_dir, "subdir")
-      File.mkdir_p!(subdir)
 
       spec_content = """
       # MyModule
@@ -776,31 +763,30 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignmentTest do
       """
 
       spec_file = Path.join(subdir, "my_module.spec.md")
-      File.write!(spec_file, spec_content)
+      :ok = Environments.write_file(env, spec_file, spec_content)
 
-      impl_file = Path.join(project_dir, "lib/my_module.ex")
-      File.mkdir_p!(Path.dirname(impl_file))
-      File.write!(impl_file, "defmodule MyModule do\nend")
+      impl_file = "lib/my_module.ex"
+      :ok = Environments.write_file(env, impl_file, "defmodule MyModule do\nend")
 
-      assert {:ok, problems} = SpecAlignment.run(scope, paths: ["other_dir"])
+      assert {:ok, problems} =
+               SpecAlignment.run(scope, environment: env, cwd: env.cwd, paths: ["other_dir"])
 
       assert problems == []
     end
 
-    test "returns error when spec directory doesn't exist", %{project_dir: project_dir} do
+    test "returns error when spec directory doesn't exist", %{env: env} do
       # Create a scope with cwd pointing to a directory without .code_my_spec/spec
       user = user_fixture()
       account = account_with_owner_fixture(user)
       scope = user_scope_fixture(user, account)
 
       # Use a temp directory without a spec folder
-      temp_dir = Path.join(project_dir, "_temp_no_spec")
-      File.mkdir_p!(temp_dir)
+      temp_dir = "_temp_no_spec"
 
       project = project_fixture(scope)
       scope = user_scope_fixture(user, account, project) |> Map.put(:cwd, temp_dir)
 
-      assert {:error, message} = SpecAlignment.run(scope, [])
+      assert {:error, message} = SpecAlignment.run(scope, environment: env, cwd: env.cwd)
 
       assert is_binary(message)
       assert message =~ "Spec directory"
@@ -808,25 +794,28 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignmentTest do
   end
 
   describe "available?/1" do
-    test "returns true when project spec directory exists", %{
-      scope: scope,
-      project_dir: project_dir
-    } do
-      spec_dir = Path.join(project_dir, ".code_my_spec/spec")
-      File.mkdir_p!(spec_dir)
+    # The one test in this file that needs a real directory, and it needs one
+    # honestly: `available?/1` asks whether this analyzer can run *here*, and
+    # answers by resolving the environment from the scope's cwd with no opts —
+    # so there is nowhere to inject a memory environment, by design. A question
+    # about the filesystem is answered by the filesystem.
+    #
+    # Unique per test rather than a fixed name, so it stays async-safe.
+    test "returns true when project spec directory exists", %{scope: scope} do
+      {:ok, dir} = Briefly.create(directory: true)
+      File.mkdir_p!(Path.join(dir, ".code_my_spec/spec"))
 
-      assert SpecAlignment.available?(scope) == true
+      assert SpecAlignment.available?(%{scope | cwd: dir}) == true
     end
 
-    test "returns false when spec directory doesn't exist", %{project_dir: project_dir} do
+    test "returns false when spec directory doesn't exist", %{env: env} do
       # Create a scope with cwd pointing to a directory without .code_my_spec/spec
       user = user_fixture()
       account = account_with_owner_fixture(user)
       scope = user_scope_fixture(user, account)
 
       # Use a temp directory without a spec folder
-      temp_dir = Path.join(project_dir, "_temp_no_spec_avail")
-      File.mkdir_p!(temp_dir)
+      temp_dir = "_temp_no_spec_avail"
 
       project = project_fixture(scope)
       scope = user_scope_fixture(user, account, project) |> Map.put(:cwd, temp_dir)
