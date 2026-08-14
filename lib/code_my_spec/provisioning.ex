@@ -786,11 +786,19 @@ defmodule CodeMySpec.Provisioning do
       end
 
     Enum.map(resources, fn resource ->
-      if MapSet.member?(ours, {resource[:kind], resource[:location]}),
+      if MapSet.member?(ours, {field(resource, :kind), field(resource, :location)}),
         do: Map.put(resource, :origin, "created"),
         else: resource
     end)
   end
+
+  # `verify/3` returns plain maps from most steps and `%Resource{}` structs from
+  # the ones that read a previous run's record back — `verify(:inbound, …)` hands
+  # over the persisted `inbound_proof` that way. Structs do not implement Access,
+  # so `resource[:kind]` raised `Resource.fetch/2 is undefined` on the one step
+  # whose satisfied path returns them, which is a crash rather than a wrong
+  # answer and took the whole walk down with it.
+  defp field(resource, key), do: Map.get(resource, key)
 
   defp mark(scope, key, state, attrs) do
     row =
