@@ -2520,8 +2520,12 @@ defmodule CodeMySpecSpex.Fixtures do
   defp age_out_a_token_too_short_to_finish_on(%Integration{refresh_token: token} = integration)
        when is_binary(token) and token != "" do
     if DateTime.diff(integration.expires_at, DateTime.utc_now()) < @borrowed_token_margin_seconds do
+      # Untruncated: the field is `:utc_datetime_usec`, and a second-precision
+      # value raises rather than being cast — which fell through to the
+      # placeholder and made every Resend call fail instantly instead of ten
+      # minutes in.
       integration
-      |> Ecto.Changeset.change(expires_at: DateTime.utc_now() |> DateTime.truncate(:second))
+      |> Ecto.Changeset.change(expires_at: DateTime.utc_now())
       |> Repo.update!()
     end
 
