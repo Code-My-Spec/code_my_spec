@@ -1,6 +1,6 @@
 defmodule CodeMySpec.AgentTasks.TechnicalStrategyTest do
   @moduledoc false
-  use CodeMySpecTest.DataCase
+  use CodeMySpecTest.DataCase, async: true
 
   import ExUnit.CaptureLog
   import CodeMySpec.UsersFixtures

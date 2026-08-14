@@ -6,7 +6,7 @@ defmodule CodeMySpecWeb.WidgetUsersControllerTest do
   key's project.
   """
 
-  use CodeMySpecTest.ConnCase
+  use CodeMySpecTest.ConnCase, async: true
 
   import CodeMySpec.{UsersFixtures, ProjectsFixtures}
 

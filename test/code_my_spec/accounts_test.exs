@@ -1,5 +1,5 @@
 defmodule CodeMySpec.AccountsTest do
-  use CodeMySpecTest.DataCase
+  use CodeMySpecTest.DataCase, async: true
   alias CodeMySpec.Accounts
 
   import CodeMySpec.AccountsFixtures

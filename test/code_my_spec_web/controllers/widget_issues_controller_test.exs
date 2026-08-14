@@ -10,7 +10,7 @@ defmodule CodeMySpecWeb.WidgetIssuesControllerTest do
   The deploy key authenticates the *app*. The reporter is anonymous by design.
   """
 
-  use CodeMySpecTest.ConnCase
+  use CodeMySpecTest.ConnCase, async: true
 
   import CodeMySpec.{UsersFixtures, ProjectsFixtures}
 

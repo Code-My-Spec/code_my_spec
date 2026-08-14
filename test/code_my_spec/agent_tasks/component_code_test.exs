@@ -1,6 +1,6 @@
 defmodule CodeMySpec.AgentTasks.ComponentCodeTest do
   @moduledoc false
-  use CodeMySpecTest.DataCase
+  use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.UsersFixtures
   import CodeMySpec.ComponentsFixtures

@@ -1,5 +1,5 @@
 defmodule CodeMySpecWeb.UserPreferenceLiveTest do
-  use CodeMySpecTest.ConnCase
+  use CodeMySpecTest.ConnCase, async: true
 
   import Phoenix.LiveViewTest
   import CodeMySpec.UserPreferencesFixtures

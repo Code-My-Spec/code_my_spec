@@ -1,5 +1,5 @@
 defmodule CodeMySpecWeb.Plugs.LegacyRedirectsTest do
-  use CodeMySpecTest.ConnCase
+  use CodeMySpecTest.ConnCase, async: true
 
   alias CodeMySpecWeb.Plugs.LegacyRedirects
 

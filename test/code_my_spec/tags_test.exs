@@ -1,5 +1,5 @@
 defmodule CodeMySpec.TagsTest do
-  use CodeMySpecTest.DataCase
+  use CodeMySpecTest.DataCase, async: true
 
   alias CodeMySpec.Tags
   alias CodeMySpec.Tags.Tag
