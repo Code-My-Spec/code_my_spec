@@ -1090,15 +1090,31 @@ defmodule CodeMySpec.Provisioning.Steps do
   # The delivery this step last proved, if it proved one. Read from what the
   # step recorded rather than re-sent — a verifier that mails somebody every
   # time the page loads would be its own bug.
+  # The proof a previous run recorded, as a plain map.
+  #
+  # `Step` embeds resources, so what comes back out is a `%Resource{}` struct —
+  # and handing one straight back to `verify/3` puts it on the path to
+  # `cast_embed(:resources)`, which wants params rather than a struct and raises
+  # `expected params to be a :map`. The satisfied branch builds its other two
+  # entries as maps; this makes the third match.
   defp delivery_proof(scope) do
     case StepRepository.get(scope, :inbound) do
       %{resources: resources} when is_list(resources) ->
-        Enum.find(resources, &(&1.kind == "inbound_proof"))
+        resources
+        |> Enum.find(&(&1.kind == "inbound_proof"))
+        |> plain_resource()
 
       _ ->
         nil
     end
   end
+
+  defp plain_resource(nil), do: nil
+
+  defp plain_resource(%CodeMySpec.Provisioning.Resource{} = resource),
+    do: Map.from_struct(resource)
+
+  defp plain_resource(resource), do: resource
 
   # One target per environment, because a certificate belongs to a host and the
   # DNS step directly above already fans out this way. Verifying the project's
