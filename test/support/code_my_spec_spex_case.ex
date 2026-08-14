@@ -3883,10 +3883,25 @@ defmodule CodeMySpecSpex.Case do
       setup :register_and_log_in_user
   """
   def register_and_log_in_user(%{conn: conn} = context) do
-    user = Fixtures.user_fixture(%{email: spex_user_email(context)})
+    user = existing_or_registered_user(spex_user_email(context))
     scope = Fixtures.user_scope_fixture(user)
 
     %{conn: log_in_user(conn, user), user: user, scope: scope}
+  end
+
+  # The email is stable per spex file on purpose — the inbound probe builds an
+  # address from it — which is fine while every run starts from an empty sandbox
+  # and fatal the moment one does not. Against dev's database the previous run's
+  # user is still there, and registration failed on `unsafe_unique` for the
+  # address this file is *supposed* to keep.
+  #
+  # Reusing it is what stable identity means. A sandbox never finds one, so
+  # nothing changes there.
+  defp existing_or_registered_user(email) do
+    case CodeMySpec.Users.get_user_by_email(email) do
+      %{} = user -> user
+      _ -> Fixtures.user_fixture(%{email: email})
+    end
   end
 
   # Stable per spex file, because the inbound probe sends to an address built
