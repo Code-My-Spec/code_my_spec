@@ -7,8 +7,11 @@ defmodule CmsHarness.ProjectIdentityTest do
   deliberately no fourth step: guessing means syncing one checkout's files over
   another project's rows.
   """
+  # Sync: this mutates OS environment variables, which belong to the BEAM node
+  # rather than to a test process. Saving and restoring them is careful and
+  # still leaves a window every concurrent test can see.
 
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: false
 
   import CmsHarnessTest.Projects
 

@@ -20,8 +20,11 @@ defmodule CodeMySpec.SpexGivensTest do
   a fact about the world the mount does not create. Those need reading. This
   is the floor, not the ceiling.
   """
+  # Sync: this mutates OS environment variables, which belong to the BEAM node
+  # rather than to a test process. Saving and restoring them is careful and
+  # still leaves a window every concurrent test can see.
 
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: false
 
   # `stage_` covers the family that seams a provider — stage_servers,
   # stage_containers, stage_inventory, stage_build, stage_deploy. Those are

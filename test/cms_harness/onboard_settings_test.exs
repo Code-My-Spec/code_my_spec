@@ -13,7 +13,10 @@ defmodule CmsHarness.OnboardSettingsTest do
   have written in it, so the thing worth pinning is not that the URL lands but
   that nothing else moves when it does.
   """
-  use ExUnit.Case, async: true
+  # Sync: this mutates OS environment variables, which belong to the BEAM node
+  # rather than to a test process. Saving and restoring them is careful and
+  # still leaves a window every concurrent test can see.
+  use ExUnit.Case, async: false
 
   alias CodeMySpec.Environments
   alias Mix.Tasks.Cms.Harness.Onboard

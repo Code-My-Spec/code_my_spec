@@ -4,7 +4,9 @@ defmodule CmsHarness.Web.HooksControllerTest do
   matters, because it is the one where a wrong answer is invisible.
   """
 
-  use CmsHarnessTest.ConnCase, async: true
+    # Sync: `CmsHarnessTest.ConnCase` clears CMS_TOKEN and friends in setup, and
+  # OS environment variables are node-global rather than per-test.
+  use CmsHarnessTest.ConnCase, async: false
 
   alias CmsHarness.Project.ChannelClient
   alias CmsHarness.Projects

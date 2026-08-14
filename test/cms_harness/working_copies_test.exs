@@ -14,7 +14,15 @@ defmodule CmsHarness.WorkingCopiesTest do
   which is every hook after a copy's first.
   """
 
-  use ExUnit.Case, async: true
+  # Sync, because this asserts on the *absence* of a credential.
+  #
+  # `root/1` returns `{:unreachable, _}` here only because the environment has
+  # no `CMS_TOKEN`, and OS environment variables belong to the node rather than
+  # to a test process. `CmsHarnessTest.ConnCase` clears and restores those same
+  # variables in its setup, so run in parallel this reads whatever another test
+  # happens to have set — and under the analyzer, which runs with `CMS_TOKEN`
+  # exported, that is a real window. Passed alone, failed in the suite.
+  use ExUnit.Case, async: false
 
   import CmsHarnessTest.Projects
 
