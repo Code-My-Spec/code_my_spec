@@ -258,4 +258,72 @@ defmodule CodeMySpec.Provisioning.WidgetTest do
              "the failure has to carry the generator's own words. got: #{inspect(result.reason)}"
     end
   end
+
+  describe "trigger_message/3 — asking the deployed site to speak" do
+    # The proof this step wants is a message from the deployed application, and
+    # only that application can send one. Until it was asked, a working install
+    # sat unproven until a visitor happened to use it.
+    test "posts to the site's verify endpoint with the deploy key" do
+      test_process = self()
+
+      post = fn url, key, probe ->
+        send(test_process, {:posted, url, key, probe})
+        {:ok, %{status: 202, probe: probe, body: %{}}}
+      end
+
+      assert {:ok, %{status: 202}} =
+               Widget.trigger_message("https://app.example.com", "dk_live", post: post)
+
+      assert_received {:posted, "https://app.example.com/_cms/verify/widget", "dk_live", _probe}
+    end
+
+    test "carries a probe token so the message can be told from a visitor's" do
+      post = fn _url, _key, probe -> {:ok, %{status: 202, probe: probe, body: %{}}} end
+
+      assert {:ok, %{probe: first}} = Widget.trigger_message("https://a.example", "k", post: post)
+      assert {:ok, %{probe: second}} = Widget.trigger_message("https://a.example", "k", post: post)
+
+      refute first == second
+    end
+  end
+
+  describe "run/3 triggers the loopback before it looks" do
+    # Failure here is deliberately not fatal. An application generated before
+    # the endpoint existed answers 404 and one built without the widget answers
+    # 501; neither is evidence about the widget, and the message lookup is the
+    # real check either way.
+    test "an endpoint that is not there does not fail the step", ctx do
+      refusing = fn _url, _key, _probe -> {:error, %{status: 404, body: "not found"}} end
+
+      result =
+        Widget.run(ctx.scope, ctx.env,
+          site_url: "https://app.example.com",
+          deploy_key: "dk",
+          mix_bin: "true",
+          installed_markers: ["mix.exs"],
+          fetch: page(installed_page()),
+          lookup: from_site(),
+          post: refusing
+        )
+
+      assert result.state == :proven
+    end
+
+    test "a raising trigger does not fail the step either", ctx do
+      exploding = fn _url, _key, _probe -> raise "cassette miss" end
+
+      result =
+        Widget.run(ctx.scope, ctx.env,
+          site_url: "https://app.example.com",
+          deploy_key: "dk",
+          mix_bin: "true",
+          installed_markers: ["mix.exs"],
+          fetch: page(installed_page()),
+          lookup: from_site(),
+          post: exploding
+        )
+
+      assert result.state == :proven
+    end
+  end
 end

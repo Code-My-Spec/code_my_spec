@@ -64,7 +64,10 @@ defmodule CodeMySpec.Provisioning.Widget do
   can send through.
   """
 
+  require Logger
+
   alias CodeMySpec.Environments
+  alias CodeMySpec.Provisioning.Wait
   alias CodeMySpec.Users.Scope
 
   @generator "cms_gen.support_widget"
@@ -326,8 +329,69 @@ defmodule CodeMySpec.Provisioning.Widget do
     end
   end
 
+  @doc """
+  Ask the deployed application to send a message through its own widget.
+
+  The proof this step wants is a message *from the deployed site*, and until
+  now only a visitor's browser could produce one — so a working install sat
+  unproven until somebody happened to use it. The generated application exposes
+  `POST /_cms/verify/widget`, which drives its own Slipstream client with its
+  own deploy key over its own socket, so the thing being proven is the thing
+  that runs.
+
+  What it does not prove is the browser half: that the bundle mounts and that a
+  real visitor's origin passes CORS. `verify_present/2` covers the markup being
+  served and openable; between them the gap is narrow, and the resource records
+  `via=loopback` so a later message from an actual visitor can be told apart
+  rather than conflated with this.
+
+  Failure is not fatal here. An application generated before this endpoint
+  existed answers 404, and one built without the widget answers 501 — neither
+  means the widget is broken, and the poll that follows is the real check.
+  """
+  @spec trigger_message(String.t(), String.t(), keyword()) :: {:ok, map()} | {:error, term()}
+  def trigger_message(site_url, deploy_key, opts \\ []) do
+    post = Keyword.get(opts, :post, &post_verify/3)
+    probe = Keyword.get(opts, :probe, "cms-verify-#{System.unique_integer([:positive])}")
+
+    post.(site_url <> "/_cms/verify/widget", deploy_key, probe)
+  end
+
+  defp post_verify(url, deploy_key, probe) do
+    req_opts =
+      [
+        method: :post,
+        url: url,
+        json: %{probe: probe},
+        headers: [{"authorization", "Bearer #{deploy_key}"}],
+        retry: false,
+        receive_timeout: 15_000
+      ] ++ plug_opt()
+
+    case Req.request(req_opts) do
+      {:ok, %Req.Response{status: status, body: body}} when status in 200..299 ->
+        {:ok, %{status: status, probe: probe, body: body}}
+
+      {:ok, %Req.Response{status: status, body: body}} ->
+        {:error, %{status: status, body: body}}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
   defp check_proof(scope, install, presence, opts) do
     now = Keyword.get(opts, :now, &DateTime.utc_now/0)
+
+    # Ask before looking. The message this step wants can only come from the
+    # deployed application, so waiting for one to appear by itself meant waiting
+    # on a visitor — and reporting a working widget unproven in the meantime.
+    #
+    # Deliberately unchecked: an application generated before the endpoint
+    # existed answers 404 and one without the widget answers 501, and neither is
+    # evidence about the widget. What follows is the check either way, and a
+    # message that arrives from a real visitor proves it just as well.
+    ask_the_site_to_speak(opts)
 
     case message_proof(scope, opts) do
       {:ok, proof} ->
@@ -351,6 +415,32 @@ defmodule CodeMySpec.Provisioning.Widget do
                 "deployed site yet. Markup can be right while the socket, credential or CORS is not."
         }
     end
+  end
+
+  # The trigger, and the wait for the message to make the round trip.
+  #
+  # `/_cms/verify/widget` answers 202 as soon as it has handed the message to
+  # its client, because the send is asynchronous — the proof is that the message
+  # turns up on our side, not that the request returned. So the poll that
+  # follows needs something to find, and a check that ran immediately would
+  # report "no message" against one still in flight.
+  defp ask_the_site_to_speak(opts) do
+    with url when is_binary(url) <- Keyword.get(opts, :site_url),
+         key when is_binary(key) <- Keyword.get(opts, :deploy_key),
+         {:ok, _accepted} <- trigger_message(url, key, opts) do
+      Wait.sleep(Keyword.get(opts, :loopback_settle_ms, 3_000))
+    end
+
+    :ok
+  rescue
+    # Nothing this call can do is worth failing the step for, including
+    # raising. A cassette recorded before the endpoint existed has no entry for
+    # this request and a replay raises on the miss — which would turn every
+    # previously-recorded widget criterion red for a request that is optional by
+    # construction. The message lookup below is the actual check.
+    error ->
+      Logger.debug("[Widget] loopback trigger skipped: #{inspect(error)}")
+      :ok
   end
 
   defp blank do

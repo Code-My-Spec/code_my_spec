@@ -3752,11 +3752,14 @@ defmodule CodeMySpec.Provisioning.Steps do
   end
 
   defp awaiting_first_message(site) do
-    "The widget is installed on #{site} and opens, but nothing has sent a " <>
-      "message through it yet — and only a visitor's browser can, so setup " <>
-      "cannot prove this on its own. Open #{site}, send one through the " <>
-      "widget, and resume: the socket, the deploy key and CORS are what that " <>
-      "proves, and all three can be wrong while the markup is right."
+    "The widget is installed on #{site} and opens, and setup asked the site " <>
+      "to send a message through its own client — but none has arrived here. " <>
+      "The likeliest reason is that the deployed application is pointed at a " <>
+      "different CodeMySpec than this one: `CODEMYSPEC_WIDGET_URL` defaults to " <>
+      "the hosted service, so an app provisioned by any other server sends its " <>
+      "messages there. Otherwise the socket, the deploy key or CORS is wrong, " <>
+      "and all three can be wrong while the markup is right. A message from a " <>
+      "real visitor at #{site} proves it just as well; resume once one exists."
   end
 
   defp app_path(scope) do
