@@ -298,15 +298,23 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
   defp killed_note(items) do
     case Enum.all?(items, &killed?/1) do
       true ->
-        "\n  (all #{length(items)} are killed processes, not assertions — the " <>
-          "suite was terminated rather than failing. That is the machine, not " <>
-          "the code: check load and concurrent runs, and clear these rather " <>
-          "than editing anything.)"
+        "\n  (#{killed_subject(length(items))} the machine, not the code: check load " <>
+          "and concurrent runs, and clear these rather than editing anything.)"
 
       false ->
         ""
     end
   end
+
+  # "all 1 are killed processes" is what counting without reading produces, and
+  # it lands in front of every agent that hits this.
+  defp killed_subject(1),
+    do:
+      "this is a killed process, not an assertion — the suite was terminated rather than failing. That is"
+
+  defp killed_subject(n),
+    do:
+      "all #{n} are killed processes, not assertions — the suite was terminated rather than failing. That is"
 
   defp killed?(%Problem{message: message}) when is_binary(message),
     do: message =~ ~r/\*\* \(EXIT from #PID<[^>]+>\) killed/

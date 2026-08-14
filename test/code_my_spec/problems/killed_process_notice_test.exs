@@ -76,4 +76,14 @@ defmodule CodeMySpec.Problems.KilledProcessNoticeTest do
 
     assert text =~ "all 2 are killed processes"
   end
+
+  test "a single finding reads as one, not as \"all 1\"" do
+    text = render([killed("test/a_test.exs", 12)])
+
+    assert text =~ "this is a killed process, not an assertion"
+
+    refute text =~ "all 1",
+           "counting without reading. This lands in front of every agent that " <>
+             "hits a one-finding block, which is the common case."
+  end
 end
