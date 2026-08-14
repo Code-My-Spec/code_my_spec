@@ -30,7 +30,7 @@ defmodule CodeMySpec.Analysis.FsRequestSelfCallTest do
   fixes: this one is our own wiring, a timeout is the harness not answering.
   """
 
-  use ExUnit.Case, async: false
+  use ExUnit.Case, async: true
 
   alias CodeMySpec.Analysis
   alias CodeMySpec.Analysis.HarnessRegistry

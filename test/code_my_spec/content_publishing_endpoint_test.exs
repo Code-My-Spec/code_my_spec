@@ -13,7 +13,7 @@ defmodule CodeMySpec.ContentPublishingEndpointTest do
   A blank endpoint still means Amazon, which is what every project did before
   this existed.
   """
-  use CodeMySpecTest.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.UsersFixtures
 
