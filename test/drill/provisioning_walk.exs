@@ -94,6 +94,7 @@ defmodule CodeMySpecSpex.Drill do
     steps = steps_to_run(context.project)
 
     banner(scope, steps)
+    :persistent_term.put({__MODULE__, :scope}, scope)
 
     results =
       if tearing_down?() do
@@ -180,18 +181,58 @@ defmodule CodeMySpecSpex.Drill do
   # empty field made a step that behaved correctly read like one that broke
   # without saying where.
   defp report(key, {:halt, step, reason}, elapsed) do
+    said = said(step, reason)
+
     IO.puts("  #{step.state} in #{seconds(elapsed)}")
     if step.attempted, do: IO.puts("  attempted: #{step.attempted}")
-    IO.puts("  said: #{step.provider_error || step.paused_instructions || reason}")
+    IO.puts("  said: #{said}")
+    if step.state == :errored, do: credentials_in_play()
     for resource <- step.resources || [], do: IO.puts("    · #{resource_line(resource)}")
 
-    %{
-      key: key,
-      state: step.state,
-      elapsed: elapsed,
-      reason: step.provider_error || step.paused_instructions || reason
-    }
+    %{key: key, state: step.state, elapsed: elapsed, reason: said}
   end
+
+  # A paused step's answer is its instructions, and only then anything else.
+  #
+  # The other order cost most of a night. `provider_error` survives on the row
+  # from a previous attempt, so a step that paused correctly — "the records are
+  # published and Resend is configured, but the message sent never arrived" —
+  # printed a `400 "API key is invalid"` recorded hours earlier. Four walks,
+  # each failing at a suspiciously constant 605 seconds, were chasing a field
+  # nothing in that run had written, while the step underneath was reporting
+  # the truth the whole time.
+  #
+  # The comment directly above this said paused steps record instructions
+  # rather than an error. Reading `provider_error` first contradicted it.
+  defp said(%{state: :paused} = step, reason),
+    do: step.paused_instructions || step.provider_error || reason
+
+  defp said(step, reason), do: step.provider_error || step.paused_instructions || reason
+
+  # What the run was holding when the step gave up, classified rather than
+  # printed. Never the token itself: the classification is what any of these
+  # questions actually needed, and a bearer in a log is a bearer in a log.
+  #
+  # Resend answers `400 "API key is invalid"` to a *malformed* token and `401`
+  # to a well-formed expired one — measured against the live API with a
+  # placeholder, an empty bearer and a real token watched to its expiry. So the
+  # 400 the inbound step reports says the run presented something that was not
+  # a token, and this is the line that names which.
+  defp credentials_in_play do
+    for provider <- [:cloudflare, :resend] do
+      state =
+        case CodeMySpec.Integrations.fetch_access_token(scope_for_credentials(), provider) do
+          {:ok, "spex-placeholder-token"} -> "placeholder"
+          {:ok, token} when is_binary(token) and token != "" -> "real (#{byte_size(token)} bytes)"
+          {:ok, _} -> "empty"
+          {:error, reason} -> "unusable: #{inspect(reason)}"
+        end
+
+      IO.puts("  credential #{provider}: #{state}")
+    end
+  end
+
+  defp scope_for_credentials, do: :persistent_term.get({__MODULE__, :scope})
 
   # Every step, not just the ones before the first failure.
   #

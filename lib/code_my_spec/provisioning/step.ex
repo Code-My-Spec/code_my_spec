@@ -130,12 +130,43 @@ defmodule CodeMySpec.Provisioning.Step do
       :verified_at
     ])
     |> cast_embed(:resources)
+    |> drop_the_other_state_s_diagnosis()
     |> validate_required([:key, :state, :position, :project_id])
     |> validate_number(:position, greater_than_or_equal_to: 0)
     |> validate_pause_is_actionable()
     |> validate_error_is_diagnosable()
     |> unique_constraint([:project_id, :key])
     |> foreign_key_constraint(:project_id)
+  end
+
+  # A step carries the diagnosis of the state it is in, and only that one.
+  #
+  # These fields are written when a step fails or pauses and were never cleared
+  # when it moved on, so they accumulated: the inbound step failed against a
+  # bad credential, was fixed, and then paused correctly — "the message sent
+  # never arrived" — while still carrying the `400 "API key is invalid"` from
+  # hours earlier. Everything reading the row showed the old provider failure,
+  # because a provider error is the more specific-looking of the two. Four
+  # drills went into chasing a field that nothing in those runs had written.
+  #
+  # Explicit values survive: only a field this changeset did not set and the
+  # state does not own is dropped, so a caller that means to record both still
+  # can.
+  defp drop_the_other_state_s_diagnosis(changeset) do
+    state = get_field(changeset, :state)
+
+    changeset
+    |> drop_unless(:provider_error, state == :errored)
+    |> drop_unless(:paused_instructions, state == :paused)
+  end
+
+  defp drop_unless(changeset, field, owned_by_this_state?) do
+    cond do
+      owned_by_this_state? -> changeset
+      not is_nil(get_change(changeset, field)) -> changeset
+      is_nil(get_field(changeset, field)) -> changeset
+      true -> put_change(changeset, field, nil)
+    end
   end
 
   # A paused step that doesn't say what Sam must do elsewhere is a dead end:
