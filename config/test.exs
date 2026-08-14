@@ -57,19 +57,46 @@ partition =
       do: "_" <> Path.basename(File.cwd!()),
       else: ""
 
+# The manual provisioning drill, against the database the *deployed* app talks
+# back to.
+#
+# Everything the drill provisions is real, and the steps that prove themselves
+# by something arriving back at CodeMySpec — the widget's socket message, the
+# inbound mail probe — cannot close against a sandbox: the deployed application
+# authenticates over the tunnel at dev.codemyspec.com, which serves the dev
+# database, and a rolled-back test database has never heard of the project it
+# presents. Dev answers 403 and the mail routes nowhere, and both look like
+# broken features rather than two databases.
+#
+# So the drill uses dev's, with a real pool for the same reason `e2e?` does:
+# a sandboxed connection is invisible to anything out of process, and the whole
+# point here is that something out of process can see it.
+#
+# `CMS_DRILL_DB` and not the default, because this writes rows that are not
+# rolled back — projects, mailboxes, conversations — into a database somebody
+# else is using.
+drill_db? = System.get_env("CMS_DRILL_DB") in ~w(1 true dev)
+
+test_database =
+  cond do
+    drill_db? -> "code_my_spec_dev"
+    e2e? -> "code_my_spec_e2e"
+    true -> "code_my_spec_test#{partition}"
+  end
+
 config :code_my_spec, CodeMySpec.Repo,
   username: "postgres",
   password: "postgres",
   hostname: "localhost",
-  database:
-    if(e2e?,
-      do: "code_my_spec_e2e",
-      else: "code_my_spec_test#{partition}"
-    ),
+  database: test_database,
   # The sandbox owns connections per test process and hands nothing to an
   # external client, so an out-of-process harness cannot see anything a
   # sandboxed pool writes.
-  pool: if(e2e?, do: DBConnection.ConnectionPool, else: Ecto.Adapters.SQL.Sandbox),
+  pool:
+    if(e2e? or drill_db?,
+      do: DBConnection.ConnectionPool,
+      else: Ecto.Adapters.SQL.Sandbox
+    ),
   pool_size: System.schedulers_online() * 2
 
 # server: false — Phoenix.ConnTest and LiveViewTest do not go through HTTP,

@@ -105,7 +105,17 @@ dirty_counts =
     {:error, _reason} -> []
   end
 
-if dirty_counts != [] do
+# Residue is only residue in a database that should be empty.
+#
+# The drill runs against dev's, deliberately, because the deployed application
+# authenticates against the same CodeMySpec over the tunnel — so rows that are
+# already there are somebody's actual work, not something that escaped a
+# sandbox, and reporting them as a leak sends the reader to grep logs for a
+# second that explains nothing.
+sandboxed? =
+  Application.get_env(:code_my_spec, CodeMySpec.Repo, [])[:pool] == Ecto.Adapters.SQL.Sandbox
+
+if dirty_counts != [] and sandboxed? do
   summary = Enum.map_join(dirty_counts, ", ", fn [table, count | _] -> "#{table}=#{count}" end)
 
   # The timestamps, because the next step is not re-running the suite.
@@ -137,7 +147,16 @@ if dirty_counts != [] do
   )
 end
 
-Ecto.Adapters.SQL.Sandbox.mode(CodeMySpec.Repo, :manual)
+# Only when there is a sandbox to put in manual mode.
+#
+# The drill and the e2e run configure a real pool on purpose — writes have to be
+# visible to something out of process, which a sandboxed connection never is —
+# and `Sandbox.mode/2` raises against one rather than no-opping. It read as a
+# broken suite instead of a deliberate configuration.
+if Application.get_env(:code_my_spec, CodeMySpec.Repo, [])[:pool] ==
+     Ecto.Adapters.SQL.Sandbox do
+  Ecto.Adapters.SQL.Sandbox.mode(CodeMySpec.Repo, :manual)
+end
 
 # The light harness tree. Its tests drive real processes — a watcher on a real
 # directory, a Slipstream client against a real websocket — rather than

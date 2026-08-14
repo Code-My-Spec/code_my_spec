@@ -128,13 +128,20 @@ defmodule CodeMySpecSpex.Case do
     # left real DNS records and sending domains behind. A teardown that cannot
     # reach the database is the one failure that costs money, so this is
     # generous on purpose.
-    pid =
-      Sandbox.start_owner!(CodeMySpec.Repo,
-        shared: not tags[:async],
-        ownership_timeout: tags[:ownership_timeout] || recording_ownership_timeout()
-      )
+    # No owner to check out when there is no sandbox. The drill and the e2e run
+    # both use a real pool — writes have to be visible to something out of
+    # process — and asking `Sandbox.start_owner!/2` for one raises rather than
+    # degrading, which would read as a broken suite instead of a deliberate
+    # configuration.
+    unless real_pool?() do
+      pid =
+        Sandbox.start_owner!(CodeMySpec.Repo,
+          shared: not tags[:async],
+          ownership_timeout: tags[:ownership_timeout] || recording_ownership_timeout()
+        )
 
-    on_exit(fn -> Sandbox.stop_owner(pid) end)
+      on_exit(fn -> Sandbox.stop_owner(pid) end)
+    end
 
     # DNS resolution cannot live in a cassette — the authoritative lookup is a
     # syscall, and it has to stay authoritative because a recursive resolver
@@ -3780,6 +3787,17 @@ defmodule CodeMySpecSpex.Case do
   end
 
   defp normalize_probe_recipient(address), do: address
+
+  @doc """
+  Whether the repo is configured with a real pool rather than the sandbox.
+
+  Read from the pool itself rather than from the environment variable that
+  selected it, so the two cannot disagree — the configuration is the fact.
+  """
+  @spec real_pool?() :: boolean()
+  def real_pool? do
+    Application.get_env(:code_my_spec, CodeMySpec.Repo, [])[:pool] != Ecto.Adapters.SQL.Sandbox
+  end
 
   def cassette_mode do
     case System.get_env("SPEX_CASSETTE_MODE") do
