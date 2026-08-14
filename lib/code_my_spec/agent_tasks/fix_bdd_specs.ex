@@ -127,7 +127,7 @@ defmodule CodeMySpec.AgentTasks.FixBddSpecs do
         {:ok, :invalid, no_specs_message(story)}
 
       not Analysis.fresh?(scope, "spex") ->
-        {:ok, :invalid, analysis_pending_message(story)}
+        {:ok, :invalid, analysis_pending_message(story, scope)}
 
       true ->
         case story_spex_problems(scope, story) do
@@ -266,7 +266,7 @@ defmodule CodeMySpec.AgentTasks.FixBddSpecs do
   # Deliberately worded as pending rather than failing. A stale run means
   # "we don't know yet", and an agent told its specs failed will go looking
   # for a bug that isn't there.
-  defp analysis_pending_message(story) do
+  defp analysis_pending_message(story, scope) do
     """
     # Specs Passing — analysis pending
 
@@ -274,11 +274,29 @@ defmodule CodeMySpec.AgentTasks.FixBddSpecs do
     latest spex run does not cover the current state of the code. This is
     **not** a spec failure — nothing is known to be broken.
 
-    Wait for the in-flight spex run with
-    `curl -sS -X POST localhost:4004/api/analysis/wait` — run it in the
-    background and you will be notified when it returns — then evaluate this
-    requirement again.
+    #{wait_directive(scope)}
     """
+  end
+
+  # Every harness route names the working copy it is about, so the unaddressed
+  # URL 404s — and it does so with exit code 0, which an agent backgrounding the
+  # curl reads as the sweep having finished. It never waited, the next
+  # evaluation says "pending" again, and the loop repeats.
+  #
+  # Same shape as `Hooks.Stop.wait_directive/1`, including the fallback: a scope
+  # with no harness has no local address to offer, and no URL beats a wrong one.
+  defp wait_directive(%{active_harness_id: id}) when not is_nil(id) do
+    "Wait for the in-flight spex run with " <>
+      "`curl -sS -X POST localhost:4004/api/harnesses/#{id}/analysis/wait` — run it in " <>
+      "the background and you will be notified when it returns — then evaluate this " <>
+      "requirement again."
+  end
+
+  defp wait_directive(_scope) do
+    "Wait for the analyzers to finish, then evaluate this requirement again. The wait " <>
+      "endpoint is on the harness and names the working copy: " <>
+      "`POST localhost:4004/api/harnesses/<harness_id>/analysis/wait`, with the id from " <>
+      "`.cms_harness.json` in the working copy."
   end
 
   defp unimplemented_message do

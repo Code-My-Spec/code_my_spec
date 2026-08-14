@@ -257,6 +257,45 @@ defmodule CodeMySpec.AgentTasks.FixBddSpecsTest do
       refute Stories.get_story(scope, story.id).specs_ready == true
     end
 
+    test "addresses the wait URL to the harness, because the unaddressed one 404s", %{
+      tmp_dir: tmp_dir
+    } do
+      scope = scope_with_env(tmp_dir)
+      component = create_implemented_component(scope)
+      story = create_story_with_component(scope, component)
+      create_bdd_spec_file(scope, story)
+
+      # Set after the fixtures, which insert files carrying an FK to a real
+      # harness row — the message only reads the field.
+      harness_id = scope.active_harness_id || Ecto.UUID.generate()
+      scope = %{scope | active_harness_id: harness_id}
+
+      assert {:ok, :invalid, feedback} = FixBddSpecs.evaluate(scope, story_task(story))
+
+      assert feedback =~ "/api/harnesses/#{harness_id}/analysis/wait"
+
+      # The failure this guards is quiet: every harness route names the working
+      # copy, so the unaddressed URL 404s — and returns exit 0, which an agent
+      # backgrounding the curl reads as the sweep having finished.
+      refute feedback =~ "localhost:4004/api/analysis/wait"
+    end
+
+    test "offers no URL when the scope has no harness, rather than a wrong one", %{
+      tmp_dir: tmp_dir
+    } do
+      scope = scope_with_env(tmp_dir)
+      component = create_implemented_component(scope)
+      story = create_story_with_component(scope, component)
+      create_bdd_spec_file(scope, story)
+
+      scope = %{scope | active_harness_id: nil}
+
+      assert {:ok, :invalid, feedback} = FixBddSpecs.evaluate(scope, story_task(story))
+
+      refute feedback =~ "localhost:4004/api/analysis/wait"
+      assert feedback =~ ".cms_harness.json"
+    end
+
     test "refuses the flip when the story has no BDD spec files", %{tmp_dir: tmp_dir} do
       scope = scope_with_env(tmp_dir)
       component = create_implemented_component(scope)
