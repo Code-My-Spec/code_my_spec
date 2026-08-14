@@ -717,14 +717,28 @@ defmodule CodeMySpec.Provisioning.Steps do
            "domain's inbox — mail to another domain arrives whether or not this one is " <>
            "configured. Give an address at #{name} and resume."}
 
+      # Paused, because the likeliest cause is a thing only a person can do and
+      # nothing here can rule it out.
+      #
+      # Resend delivers only to addresses configured for the domain, offers no
+      # API to ask which those are, and drops the rest in silence — so an
+      # unconfigured address produces exactly this, and so does a genuinely
+      # broken webhook. The two branches above already pause for the address
+      # being absent or on another domain; this is the same question one step
+      # later, and answering it "failed" put a ten-minute error at the end of
+      # every run whose only remedy was in a dashboard.
+      #
+      # It still does not report done: the inbox is unproven until a message
+      # arrives, and resuming re-sends and re-checks (7967).
       {:error, :never_arrived} ->
-        {:error,
+        {:paused,
          "the records are published and Resend is configured, but the message sent to this " <>
            "domain never arrived. Check first that the address it was sent to is configured " <>
            "to receive in Resend — an address the domain does not accept is dropped in " <>
-           "silence and looks exactly like this. Otherwise: configuration that looks right " <>
-           "is how a receiving setup fails, because the MX, Resend's receiving capability " <>
-           "and the webhook all have to be right together and each can look correct alone."}
+           "silence and looks exactly like this, and Resend offers no way to ask. Otherwise: " <>
+           "configuration that looks right is how a receiving setup fails, because the MX, " <>
+           "Resend's receiving capability and the webhook all have to be right together and " <>
+           "each can look correct alone. Fix whichever it is and resume."}
 
       {:error, reason} ->
         {:error, format(reason)}
