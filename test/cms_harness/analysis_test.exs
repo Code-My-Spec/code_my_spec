@@ -15,7 +15,24 @@ defmodule CmsHarness.AnalysisTest do
   sibling `../client_utils`.
   """
 
-  use ExUnit.Case, async: true
+  # Sync, and unusually it is the *machine* being isolated rather than state.
+  #
+  # Each `Analysis.run/2` here compiles a fixture project and runs its suite for
+  # real, and setup does a `mix deps.get` besides. Twenty of those in parallel
+  # with the rest of the suite is enough load to get processes SIGKILLed: three
+  # full runs failed 5, 5 and 4 tests with almost no overlap between the sets,
+  # and the failures read `** (EXIT from #PID<…>) killed` rather than any
+  # assertion. Every one of them passes alone, and these three pass together.
+  #
+  # So the flakes were never isolation between tests — they were this file
+  # competing with 4,000 others for one box, and the tests that died were mostly
+  # bystanders. ExUnit runs sync cases after the async phase, which is exactly
+  # the separation wanted: the heavy builds get the machine to themselves.
+  #
+  # Not stubbed, deliberately. Shelling out is what this module is for, per the
+  # moduledoc above — a faked command would assert that the harness formats a
+  # payload, which was never in doubt.
+  use ExUnit.Case, async: false
 
   import CmsHarnessTest.Projects, only: [cmd!: 3]
 
