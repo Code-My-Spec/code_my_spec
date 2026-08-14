@@ -1,4 +1,8 @@
 defmodule CodeMySpec.AgentTasks.ProjectSetupTest do
+  # Sync: `use_cmd_cassette` patches `System.cmd/3` through meck, and meck's
+  # load/unload is process-global. Run async, this kills whatever other test is
+  # inside a shell-out when the patch moves — as a bare `** (EXIT) killed` that
+  # names neither this file nor the cassette.
   use ExUnit.Case, async: false
   use ExCliVcr
 

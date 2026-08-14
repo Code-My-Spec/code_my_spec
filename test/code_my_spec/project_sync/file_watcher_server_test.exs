@@ -1,4 +1,7 @@
 defmodule CodeMySpec.ProjectSync.FileWatcherServerTest do
+  # Sync: calls `Sandbox.mode(Repo, {:shared, self()})`. Shared mode hands this
+  # process's connection to the whole node, which is precisely what an async test
+  # must not do — the watcher runs in its own process and needs to see the data.
   use CodeMySpecTest.DataCase, async: false
 
   alias CodeMySpec.ProjectSync.FileWatcherServer

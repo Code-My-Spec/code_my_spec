@@ -15,6 +15,8 @@ defmodule CodeMySpec.BootVersionTest do
   "restart your harness" costs more than a missing one.
   """
 
+  # Sync: `:persistent_term` is node-global, so the cached boot version one test
+  # writes is the one every other test reads.
   use ExUnit.Case, async: false
 
   alias CodeMySpec.BootVersion

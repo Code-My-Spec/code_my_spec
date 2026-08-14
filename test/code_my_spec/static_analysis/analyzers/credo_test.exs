@@ -1,5 +1,9 @@
 defmodule CodeMySpec.StaticAnalysis.Analyzers.CredoTest do
-  use CodeMySpecTest.DataCase
+  # Sync: `use_cmd_cassette` meck-patches `System.cmd/3` process-globally. Also
+  # `@moduletag :analyzer` — excluded from the default suite and run by
+  # `just test-analyzer`, because it works out of the shared
+  # `code_my_spec_test_repos` directory every worktree points at.
+  use CodeMySpecTest.DataCase, async: false
 
   use ExCliVcr
 

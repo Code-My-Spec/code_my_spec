@@ -15,6 +15,8 @@ defmodule CmsHarness.UnclassifiedReportingTest do
   line reads as "nothing was skipped".
   """
 
+  # Sync: `:persistent_term` is node-global. There is no per-test view of it, so
+  # two tests writing the same key see each other's value.
   use ExUnit.Case, async: false
 
   import ExUnit.CaptureLog

@@ -1,4 +1,7 @@
 defmodule CodeMySpec.StaticAnalysis.RunnerTest do
+  # Sync: `use_cmd_cassette` meck-patches `System.cmd/3` process-globally.
+  # `@moduletag :analyzer` keeps it out of the default suite, since it works out
+  # of the shared `code_my_spec_test_repos` directory.
   use CodeMySpecTest.DataCase, async: false
   use ExCliVcr
 

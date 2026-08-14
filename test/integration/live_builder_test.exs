@@ -19,6 +19,8 @@ defmodule CodeMySpec.LiveBuilderTest do
 
       MIX_ENV=test mix test --include live test/integration/live_builder_test.exs
   """
+  # Sync: shells out, and writes the shared `:code_my_spec, Hetzner` key. Tagged
+  # out of the default suite besides — it talks to real infrastructure.
   use ExUnit.Case, async: false
 
   alias CodeMySpec.Provisioning.{Builder, Hetzner}

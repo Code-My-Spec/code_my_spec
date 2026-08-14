@@ -9,6 +9,9 @@ defmodule CodeMySpec.StaticAnalysisTest do
   This test file verifies that the context module exists, delegates correctly, and provides
   a thin wrapper around the Runner module for executing static analysis tools.
   """
+  # Sync: `use_cmd_cassette` meck-patches `System.cmd/3` process-globally.
+  # `@moduletag :analyzer` keeps it out of the default suite, since it works out
+  # of the shared `code_my_spec_test_repos` directory.
   use CodeMySpecTest.DataCase, async: false
 
   use ExCliVcr

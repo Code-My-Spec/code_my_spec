@@ -11,6 +11,9 @@ defmodule CodeMySpec.Provisioning.EnvironmentServersTest do
   This asserts on what was asked of the provider, which is the part that
   matters and the part no recording can be wrong about.
   """
+  # Sync: writes `:code_my_spec, Hetzner` — the api_token as well as the plug —
+  # which `hetzner_test` also writes. The plug half could move to `Req.Test`; the
+  # token cannot, for the reason `hetzner_test` records above its own stub.
   use CodeMySpecTest.DataCase, async: false
 
   import CodeMySpec.UsersFixtures

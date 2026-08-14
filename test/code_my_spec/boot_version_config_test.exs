@@ -28,6 +28,8 @@ defmodule CodeMySpec.BootVersionConfigTest do
   is asserted in `problem_renderer` and `hooks/stop` tests that use no
   subprocess.
   """
+  # Sync: reads and writes `:persistent_term`, which is node-global, and shells
+  # out. There is no per-test scope for either.
   use ExUnit.Case, async: false
 
   alias CodeMySpec.BootVersion

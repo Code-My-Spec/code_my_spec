@@ -6,6 +6,10 @@ defmodule CodeMySpec.Provisioning.HetznerTest do
   arm-capacity findings came from. These tests pin the behaviour that survived
   that, so a regression shows up without needing to spend money again.
   """
+  # Sync: writes `:code_my_spec, Hetzner`, shared with
+  # `provisioning/environment_servers_test`. The plug half could move to
+  # `Req.Test`; the api_token cannot — see the note above `stub/1` for why,
+  # and for what would have to change in production first.
   use ExUnit.Case, async: false
 
   alias CodeMySpec.Provisioning.Hetzner

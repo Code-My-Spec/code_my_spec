@@ -11,6 +11,10 @@ defmodule CmsHarness.Web.PermissionControllerTest do
   at the terminal.
   """
 
+  # Sync, enforced by `CmsHarnessTest.ConnCase`, which raises on `async: true`
+  # because its setup clears the node-global `CMS_*` variables. It also puts a
+  # per-test upstream port in `:harness_server_url` and a token in
+  # `:harness_token`, both shared with `web/mcp_controller_test`.
   use CmsHarnessTest.ConnCase, async: false
 
   alias CmsHarnessTest.FakeUpstream

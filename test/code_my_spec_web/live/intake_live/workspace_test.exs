@@ -1,4 +1,7 @@
 defmodule CodeMySpecWeb.IntakeLive.WorkspaceTest do
+  # Sync: writes `:code_my_spec, CodeMySpec.Workspaces`, the same key
+  # `CodeMySpec.WorkspacesTest` writes, to install the fake runner. See that file
+  # for what moving it would take.
   use CodeMySpecTest.ConnCase, async: false
 
   import CodeMySpecSpex.IntakeSteps

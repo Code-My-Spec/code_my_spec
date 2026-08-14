@@ -10,6 +10,8 @@ defmodule CmsHarness.AnalysisPathTest do
   a drill.
   """
 
+  # Sync: sets OS environment variables, which belong to the node rather than to
+  # a test process, so the window is visible to everything running alongside.
   use ExUnit.Case, async: false
 
   import CmsHarnessTest.Projects

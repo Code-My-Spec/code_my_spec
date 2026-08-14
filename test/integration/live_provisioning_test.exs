@@ -18,6 +18,8 @@ defmodule CodeMySpec.LiveProvisioningTest do
   Every resource it creates is destroyed in `on_exit`, which runs even when an
   assertion fails partway through.
   """
+  # Sync: shells out, and writes the shared `:code_my_spec, Hetzner` key. Tagged
+  # out of the default suite besides — it talks to real infrastructure.
   use CodeMySpecTest.DataCase, async: false
 
   import CodeMySpec.UsersFixtures

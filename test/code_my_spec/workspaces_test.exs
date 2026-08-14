@@ -1,4 +1,9 @@
 defmodule CodeMySpec.WorkspacesTest do
+  # Sync: writes `:code_my_spec, CodeMySpec.Workspaces` — the fake runner and the
+  # boot timings — which `CodeMySpecWeb.IntakeLive.WorkspaceTest` also writes.
+  # Moving either to async needs the runner threaded into the watcher rather than
+  # swapped globally; `Workspaces.watch/1` starts it as a supervised task and
+  # resolves the runner from application env at call time.
   use CodeMySpecTest.DataCase, async: false
 
   import CodeMySpec.UsersFixtures

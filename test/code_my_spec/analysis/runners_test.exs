@@ -1,4 +1,8 @@
 defmodule CodeMySpec.Analysis.RunnersTest do
+  # Sync: `use_cmd_cassette` meck-patches `System.cmd/3` process-globally. This
+  # file at `async: true` was the cause of the suite's intermittent `** (EXIT)
+  # killed` failures — reproducible in 3.6s by running it beside
+  # `validation/blocking_on_recorded_findings_test`.
   use CodeMySpecTest.DataCase, async: false
   use ExCliVcr
 
