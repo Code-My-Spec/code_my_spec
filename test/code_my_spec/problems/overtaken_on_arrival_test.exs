@@ -76,6 +76,30 @@ defmodule CodeMySpec.Problems.OvertakenOnArrivalTest do
     assert text =~ "answered about the tree it was given"
   end
 
+  # The property the whole issue is about, and the one thing nothing asserted:
+  # the advice has to have an ending. A source slower than the edit cadence can
+  # never go fresh, so "stop again and let the rerun replace these" is an
+  # instruction to keep doing something that cannot work — five consecutive
+  # stops, escaped only by clearing the stored problems by hand.
+  #
+  # An agent reads this to decide between two actions, so it is not enough that
+  # the text be accurate: it has to name the move that terminates. Waiting is
+  # offered too, and correctly — a sweep with no editing during it does land
+  # clean — but acting on findings one edit behind must be on the table, because
+  # it is the only option that does not depend on the agent stopping work.
+  test "when waiting cannot help, acting on them is offered as a way out" do
+    text = render(overtaken: %{"exunit" => true})
+
+    assert text =~ "act on these as they stand",
+           "the message says a rerun will finish stale as well and then leaves " <>
+             "the agent nothing to do but rerun. That is the non-terminating " <>
+             "loop this branch exists to break, restored by omission."
+
+    assert text =~ "one edit behind is not the same as wrong",
+           "acting on a stale finding needs a reason, or an agent that has been " <>
+             "taught to respect the stale marker will not do it"
+  end
+
   # Runs that finished before the column existed have no answer, and guessing
   # "not overtaken" for them would restore the non-terminating advice this whole
   # branch exists to break. So they keep the inference.
