@@ -46,6 +46,14 @@ defmodule CodeMySpecSpex.Drill do
     * `CMS_DRILL_DOMAIN` — defaults to `spex-drill.legwork.ca`. It carries the
       `spex-` marker on purpose, so `mix cms.provisioning_leaks` can still find
       everything this leaves behind.
+    * `CMS_DRILL_TEARDOWN=1` — unmake instead of make. Walks the same steps in
+      reverse and reports what it removed and what survived. Run it, then run
+      the drill again: a cold rebuild is the only thing that proves setup can
+      do this from nothing rather than adopt what a previous walk left.
+    * `CMS_DRILL_DB=dev` — point at `code_my_spec_dev` instead of the test
+      database, so the deployed application and the provisioning being asked
+      about it talk to the same CodeMySpec. Needed for the widget and inbound
+      proofs, which read messages the deployed app sent.
 
   Not a spex and not a test: the filename has no `_test` suffix, so nothing
   picks it up by accident. It asserts nothing — it reports.
@@ -57,6 +65,7 @@ defmodule CodeMySpecSpex.Drill do
   alias CodeMySpec.Provisioning
   alias CodeMySpec.Provisioning.Sequence
   alias CodeMySpec.Provisioning.Sops
+  alias CodeMySpec.Provisioning.Teardown
   alias CodeMySpec.ProjectSecrets
   alias CodeMySpecSpex.Fixtures
 
@@ -86,21 +95,78 @@ defmodule CodeMySpecSpex.Drill do
 
     banner(scope, steps)
 
-    results = Enum.map(steps, &run_and_report(scope, &1))
+    results =
+      if tearing_down?() do
+        steps |> Enum.reverse() |> Enum.map(&tear_down_and_report(scope, &1))
+      else
+        Enum.map(steps, &run_and_report(scope, &1))
+      end
 
     summarise(results)
   end
 
   ## The walk
 
+  # Before each step, not once at setup. Resend hands out fifteen-minute access
+  # tokens and the borrowed copy cannot renew itself — it travels without its
+  # refresh token on purpose — so a token taken at setup is spent by the time a
+  # walk reaches the ninth step. The inbound step waits eleven minutes on its
+  # own; starting it with four left is how it ran to completion and then
+  # reported `API key is invalid`.
+  #
+  # This is the "call it between segments of a long run" the Case documents,
+  # and a step is the right segment: it is the largest unit the walk can
+  # refresh between without interrupting a provider call in flight.
   defp run_and_report(scope, key) do
     IO.puts("\n─── #{key} " <> String.duplicate("─", max(0, 60 - String.length(to_string(key)))))
     started = System.monotonic_time(:millisecond)
+
+    refresh_provider_grants(scope)
 
     outcome = Provisioning.run_step(scope, key, step_opts())
 
     elapsed = System.monotonic_time(:millisecond) - started
     report(key, outcome, elapsed)
+  end
+
+  # Reverse order, because the sequence's order is a dependency claim and
+  # unmaking something has the opposite one: the DNS record has to go before
+  # the server it points at is released, or the address is recycled to another
+  # customer while a name under this domain still resolves to it.
+  #
+  # `Teardown.step/3` skips anything recorded `adopted`, which is most of what
+  # a repeated walk records — so a drill that has adopted its way to green
+  # tears down almost nothing and says so honestly. That is the number worth
+  # reading here: it is the difference between "setup can rebuild this" and
+  # "setup found this already built".
+  defp tear_down_and_report(scope, key) do
+    IO.puts("\n─── #{key} " <> String.duplicate("─", max(0, 60 - String.length(to_string(key)))))
+    started = System.monotonic_time(:millisecond)
+
+    refresh_provider_grants(scope)
+
+    outcome = Teardown.step(scope, key, step_opts())
+
+    elapsed = System.monotonic_time(:millisecond) - started
+    report_teardown(key, outcome, elapsed)
+  end
+
+  defp report_teardown(key, {:ok, removed}, elapsed) do
+    IO.puts("  removed #{length(removed)} in #{seconds(elapsed)}")
+    for resource <- removed, do: IO.puts("    · #{resource_line(resource)}")
+    %{key: key, state: :done, elapsed: elapsed, reason: nil}
+  end
+
+  defp report_teardown(key, {:error, {:left_behind, remaining}}, elapsed) do
+    IO.puts("  left behind #{length(remaining)} in #{seconds(elapsed)}")
+    for resource <- remaining, do: IO.puts("    · #{resource_line(resource)}")
+
+    %{
+      key: key,
+      state: :left_behind,
+      elapsed: elapsed,
+      reason: "still there: " <> Enum.map_join(remaining, ", ", &to_string(&1.location))
+    }
   end
 
   defp report(key, {:ok, step}, elapsed) do
@@ -149,9 +215,11 @@ defmodule CodeMySpecSpex.Drill do
     IO.puts(String.duplicate("═", 68))
     IO.puts("  #{length(results) - length(failed)}/#{length(results)} done in #{seconds(total)}")
 
-    case failed do
-      [] -> IO.puts("  the whole plan ran")
-      _ -> IO.puts("  stuck: " <> Enum.map_join(failed, ", ", &to_string(&1.key)))
+    case {failed, tearing_down?()} do
+      {[], false} -> IO.puts("  the whole plan ran")
+      {[], true} -> IO.puts("  everything recorded came down")
+      {_, false} -> IO.puts("  stuck: " <> Enum.map_join(failed, ", ", &to_string(&1.key)))
+      {_, true} -> IO.puts("  left behind: " <> Enum.map_join(failed, ", ", &to_string(&1.key)))
     end
   end
 
@@ -445,17 +513,27 @@ defmodule CodeMySpecSpex.Drill do
   ## Reporting
 
   defp banner(scope, steps) do
+    ordered = if tearing_down?(), do: Enum.reverse(steps), else: steps
+
     IO.puts("""
 
     #{String.duplicate("═", 68)}
+      #{if tearing_down?(), do: "TEARING DOWN", else: "building"}
       project      #{scope.active_project.name}
       domain       #{scope.active_project.domain}
       environments #{Enum.join(environments(), ", ")}
       checkout     #{scope.active_project.local_path}
-      steps        #{Enum.map_join(steps, " → ", &to_string/1)}
+      steps        #{Enum.map_join(ordered, " → ", &to_string/1)}
     #{String.duplicate("═", 68)}
     """)
   end
+
+  # The other half of the drill, and the half the story's promise actually
+  # rests on: infrastructure setup can rebuild is infrastructure setup can be
+  # trusted to own. Build and tear down are one instrument on purpose — they
+  # share the project, the domain and the recorded resources, and a teardown
+  # driven from somewhere else would be tearing down something else.
+  defp tearing_down?, do: System.get_env("CMS_DRILL_TEARDOWN") in ~w(1 true yes)
 
   defp resource_line(resource) do
     kind = Map.get(resource, :kind) || Map.get(resource, "kind")
