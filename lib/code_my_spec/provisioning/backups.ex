@@ -341,7 +341,6 @@ defmodule CodeMySpec.Provisioning.Backups do
     |> Enum.reject(fn {_k, v} -> is_nil(v) or v == "" end)
   end
 
-
   # Where the script runs, which is not where the caller runs.
   #
   # All three of these shelled out through `Environments.cmd/4` — the *project's

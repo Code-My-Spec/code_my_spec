@@ -66,10 +66,23 @@ defmodule Mix.Tasks.Cms.ProviderToken do
     {:ok, _} = CodeMySpec.Vault.start_link()
     {:ok, _} = Repo.start_link()
 
+    # Newest wins — except the copies a spex wrote. `connect_provider/3` stamps
+    # every borrowed grant `provider_user_id: "spex"`, and a run pointed at
+    # code_my_spec_dev writes that copy into the database this reads. It is
+    # newer than the grant it was copied from, by milliseconds, and it travels
+    # without its refresh token on purpose — so once one exists this task picked
+    # it, found nothing to renew with, and reported `:reauthorize_required`
+    # about a connection that was never broken.
+    #
+    # The same defect `refresh_dev_grant/1` has in the spex fixtures, in the
+    # other place that reads this table.
     integration =
       Repo.one(
         from i in Integration,
           where: i.provider == ^provider,
+          where:
+            is_nil(fragment("?->>'provider_user_id'", i.provider_metadata)) or
+              fragment("?->>'provider_user_id'", i.provider_metadata) != "spex",
           order_by: [desc: i.updated_at],
           limit: 1
       )
