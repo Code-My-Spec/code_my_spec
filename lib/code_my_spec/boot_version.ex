@@ -74,6 +74,9 @@ defmodule CodeMySpec.BootVersion do
   Silent when there is no git — a sprite runs from an unpacked release with no
   checkout at all, and a harness that refused to boot over a missing `git`
   would be a far worse failure than the one this reports.
+
+  Recording is cheap and unconditional: one `git rev-parse` at boot. What was
+  expensive was asking again on every stop hook, and that caller is gone.
   """
   @spec capture(String.t() | nil) :: :ok
   def capture(root \\ nil) do
@@ -126,27 +129,16 @@ defmodule CodeMySpec.BootVersion do
   @spec contract_changed?(String.t(), String.t()) :: boolean() | :unknown
   def contract_changed?(booted, current), do: changed?(booted, current, @contract_paths)
 
-  @doc """
-  Whether the drifted range touched config, which means this process is wedged.
-
-  A different question from `contract_changed?/2` and a worse answer, because
-  the process asking is the one that breaks. Phoenix cannot hot-reload
-  `config/*.exs`; a running server whose checkout has moved over one answers
-  every request with `could not compile application` from its next reload
-  onwards. It is already too late by the time anyone sees that, and the error
-  names neither the commit nor the checkout it came from.
-
-  The condition is exactly "booted before a config change that is now on disk",
-  which is what this asks. It stays true until the process restarts and stops
-  being true the moment it does, so it needs no clearing.
-
-  Detached in time and space from the act that caused it — a config edit in one
-  worktree takes out a server the editor never touched, minutes later, for
-  whoever arrives next (5fb011f4, 6ecb257a). Which is why the process that will
-  break is the one that should say so, rather than the one that committed.
-  """
-  @spec config_changed?(String.t(), String.t()) :: boolean() | :unknown
-  def config_changed?(booted, current), do: changed?(booted, current, ["config"])
+  # `config_changed?/2` sat here, asking the same question of `config/` so the
+  # stop hook could warn that this process was wedged. Its only caller made a
+  # `git rev-parse` fork on every stop for an answer that is almost always "no",
+  # and killed twenty-one spex on the way: the spex cassettes patch
+  # `System.cmd/3` process-globally, so a `git` call inside a request dies on a
+  # missing recording and takes the criterion with it.
+  #
+  # `contract_changed?/2` survives because its caller is the failure path — a
+  # hook that has already gone wrong, where one fork buys the difference between
+  # "reconnect" and "your harness is older than the server".
 
   defp changed?(booted, current, paths) do
     case :persistent_term.get(@key, nil) do

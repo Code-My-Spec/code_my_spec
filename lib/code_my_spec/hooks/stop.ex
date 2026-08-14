@@ -24,7 +24,6 @@ defmodule CodeMySpec.Hooks.Stop do
   require Logger
 
   alias CodeMySpec.Analysis
-  alias CodeMySpec.BootVersion
   alias CodeMySpec.Configurations
   alias CodeMySpec.FileEdits
   alias CodeMySpec.McpServers.Requirements.RequirementsMapper
@@ -72,44 +71,24 @@ defmodule CodeMySpec.Hooks.Stop do
     scope
     |> do_decide(session_id, session, active_task, idle_sub, validation_opts, req_id)
     |> note_config_edits(session_id)
-    |> note_stale_config()
   end
 
-  # The other half of the same defect, from the other end. `note_config_edits/2`
-  # warns the agent that edited config; this warns everyone else, which is the
-  # population that actually gets hurt — the wedge surfaces in a different
-  # checkout, minutes later, to whoever touches it next.
+  # There was a second half to this, and it is gone: a `note_stale_config/1`
+  # that compared the sha this server booted at against the sha on disk and
+  # warned when the range touched config/. It caught the case
+  # `note_config_edits/2` structurally cannot — a config change arriving by
+  # `git pull`, which nobody's session edited.
   #
-  # Asked of the process that breaks rather than of the one that committed,
-  # because that process can answer it as a fact: it knows the commit it booted
-  # from and the commit on disk now, so "this server is wedged" is a lookup
-  # rather than a prediction about somebody else's machine. It also covers the
-  # case a commit-time warning structurally cannot — a config change that
-  # arrives by `git pull`, which nobody's session edited and which is how this
-  # keeps landing.
+  # It paid for that by shelling out to `git rev-parse` inside every stop, which
+  # is a fork per hook for a question almost always answered "no". It also broke
+  # twenty-one spex across eight unrelated stories: the spex cassettes patch
+  # `System.cmd/3` process-globally, so a stray `git` call inside a request dies
+  # on `No recording found for: git rev-parse --short HEAD` and takes the
+  # criterion with it, naming a boot version in a story about something else.
   #
-  # Self-clearing: true from the moment the checkout moves over config until the
-  # process restarts, and false immediately after. Nothing to reset, and no way
-  # for it to go on nagging about a server somebody already fixed.
-  defp note_stale_config(%{"decision" => "block"} = response), do: response
-
-  defp note_stale_config(response) do
-    with {:drifted, booted, current} <- BootVersion.drift(),
-         true <- BootVersion.config_changed?(booted, current) do
-      note =
-        "This server booted at #{booted}; its checkout is now at #{current}, and " <>
-          "that range touches config/. Phoenix cannot hot-reload config, so it " <>
-          "will answer `could not compile application` to every request from its " <>
-          "next reload onwards — including this hook. Nobody here did anything " <>
-          "wrong; the commit was made somewhere else. Kill the BEAM, " <>
-          "`rm -rf _build/<env>/lib/code_my_spec` to drop the stale compile.lock, " <>
-          "then relaunch — a plain restart does not always clear it."
-
-      Map.update(response, "systemMessage", note, &(&1 <> "\n\n" <> note))
-    else
-      _ -> response
-    end
-  end
+  # The warning was worth having and the price was not. If it comes back it
+  # comes back off the harness's file watcher, which already knows when the
+  # checkout moves and does not have to ask.
 
   # Phoenix cannot hot-reload `config/*.exs`, by design. A commit that touches
   # one leaves every running dev server answering
