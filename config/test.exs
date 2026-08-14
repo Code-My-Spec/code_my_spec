@@ -258,3 +258,16 @@ config :code_my_spec, deploy_key: "test_platform_deploy_key"
 config :code_my_spec, CodeMySpec.Mail.ResendClient,
   api_key: "re_test_key",
   plug: {Req.Test, CodeMySpec.Mail.ResendClient}
+
+# Hetzner has no api_token here on purpose. `Hetzner.token/1` falls back to
+# this key only after account and project secrets, so a token here would not
+# configure one test — it would make every scope in the suite look configured,
+# and the provisioning page's `reverify` would start really calling
+# `list_servers/1`. `hetzner_test` puts its token in a project secret instead.
+#
+# The plug is safe to pin: `{Req.Test, Hetzner}` resolves per process, and a
+# call with no stub raises rather than reaching Hetzner. Without it, a test
+# that has a token but no stub makes a live request — which is exactly what
+# happened while writing this.
+config :code_my_spec, CodeMySpec.Provisioning.Hetzner,
+  plug: {Req.Test, CodeMySpec.Provisioning.Hetzner}

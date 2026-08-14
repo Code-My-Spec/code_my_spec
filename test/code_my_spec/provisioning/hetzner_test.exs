@@ -10,14 +10,29 @@ defmodule CodeMySpec.Provisioning.HetznerTest do
   # `provisioning/environment_servers_test`. The plug half could move to
   # `Req.Test`; the api_token cannot — see the note above `stub/1` for why,
   # and for what would have to change in production first.
-  use ExUnit.Case, async: false
+  # Async: the api token now reaches the client the way production does —
+  # through the scope. `Hetzner.token/1` tries account secrets, then project
+  # secrets, and only then the ambient `:code_my_spec, Hetzner` fallback, so a
+  # token in a project secret never leaves this test's sandbox. Writing the
+  # fallback instead is what pinned this file and
+  # `provisioning/environment_servers_test` together, and what made every
+  # scope in the suite look configured.
+  use CodeMySpecTest.DataCase, async: true
 
   alias CodeMySpec.Provisioning.Hetzner
 
   doctest Hetzner, only: [fingerprint: 1]
-  alias CodeMySpec.Users.Scope
+  alias CodeMySpec.ProjectSecrets
 
-  @scope %Scope{}
+  import CodeMySpec.UsersFixtures
+
+  @token_key "hetzner_api_token"
+
+  setup do
+    scope = full_scope_fixture()
+    {:ok, _} = ProjectSecrets.put_value(scope, @token_key, "test-token")
+    %{scope: scope}
+  end
 
   # Sync, and the reason is the token rather than the plug.
   #
@@ -39,8 +54,7 @@ defmodule CodeMySpec.Provisioning.HetznerTest do
   # ambient fallback. Until then this file and `environment_servers_test` are
   # pinned together by one key.
   defp stub(fun) do
-    Application.put_env(:code_my_spec, Hetzner, api_token: "test-token", plug: fun)
-    on_exit(fn -> Application.delete_env(:code_my_spec, Hetzner) end)
+    Req.Test.stub(Hetzner, fun)
   end
 
   defp json(conn, status, body) do
@@ -100,13 +114,13 @@ defmodule CodeMySpec.Provisioning.HetznerTest do
     # attached, which is what makes Hetzner disable root password login. If
     # that ever stops being true, 22 open to the world is a password-guessing
     # target, so the two facts are asserted together.
-    test "ssh is open, and the server that answers it takes keys only" do
+    test "ssh is open, and the server that answers it takes keys only", ctx do
       assert "22" in Enum.map(Hetzner.default_firewall_rules(), & &1.port)
 
       # Enforced, not documented: without a key Hetzner sets a root password,
       # and a root password reachable on an open 22 is the one combination
       # that must not be possible.
-      assert {:error, :ssh_key_required} = Hetzner.create_server(@scope, "keyless")
+      assert {:error, :ssh_key_required} = Hetzner.create_server(ctx.scope, "keyless")
     end
   end
 
@@ -159,7 +173,7 @@ defmodule CodeMySpec.Provisioning.HetznerTest do
   end
 
   describe "create_server/3" do
-    test "sends the arch's defaults" do
+    test "sends the arch's defaults", ctx do
       stub(fn conn ->
         {:ok, body, conn} = Plug.Conn.read_body(conn)
         payload = Jason.decode!(body)
@@ -170,25 +184,25 @@ defmodule CodeMySpec.Provisioning.HetznerTest do
         json(conn, 201, %{"server" => %{"id" => 1, "name" => payload["name"]}})
       end)
 
-      assert {:ok, %{"server" => %{"id" => 1}}} = Hetzner.create_server(@scope, "box", ssh_key_ids: [1])
+      assert {:ok, %{"server" => %{"id" => 1}}} = Hetzner.create_server(ctx.scope, "box", ssh_key_ids: [1])
     end
 
-    test "an explicit option beats the arch default" do
+    test "an explicit option beats the arch default", ctx do
       stub(fn conn ->
         {:ok, body, conn} = Plug.Conn.read_body(conn)
         assert Jason.decode!(body)["location"] == "hel1"
         json(conn, 201, %{"server" => %{"id" => 1}})
       end)
 
-      assert {:ok, _} = Hetzner.create_server(@scope, "box", location: "hel1", ssh_key_ids: [1])
+      assert {:ok, _} = Hetzner.create_server(ctx.scope, "box", location: "hel1", ssh_key_ids: [1])
     end
 
-    test "surfaces the provider's own error rather than a generic one" do
+    test "surfaces the provider's own error rather than a generic one", ctx do
       stub(fn conn ->
         json(conn, 400, %{"error" => %{"code" => "invalid_input", "message" => "server type 104 is deprecated"}})
       end)
 
-      assert {:error, {:hetzner_error, 400, body}} = Hetzner.create_server(@scope, "box", ssh_key_ids: [1])
+      assert {:error, {:hetzner_error, 400, body}} = Hetzner.create_server(ctx.scope, "box", ssh_key_ids: [1])
       assert body["error"]["message"] =~ "deprecated"
     end
 
@@ -196,7 +210,7 @@ defmodule CodeMySpec.Provisioning.HetznerTest do
     # exactly this. `create_in/4` re-applies the override to the retry, so
     # falling back would resend the identical request and report the second
     # refusal as a second shortage.
-    test "a pinned server type is not retried as the other architecture" do
+    test "a pinned server type is not retried as the other architecture", ctx do
       {:ok, calls} = Agent.start_link(fn -> [] end)
 
       stub(fn conn ->
@@ -206,7 +220,7 @@ defmodule CodeMySpec.Provisioning.HetznerTest do
       end)
 
       assert {:error, {:capacity_unavailable, message}} =
-               Hetzner.create_server(@scope, "box", server_type: "cax21", ssh_key_ids: [1])
+               Hetzner.create_server(ctx.scope, "box", server_type: "cax21", ssh_key_ids: [1])
 
       assert Agent.get(calls, & &1) == ["cax21"], "the pinned type was retried"
 
@@ -219,7 +233,7 @@ defmodule CodeMySpec.Provisioning.HetznerTest do
 
   describe "ensure_server/3 — idempotence" do
     # Criterion 7965: running a step twice leaves one of everything.
-    test "reuses an existing server instead of creating a second" do
+    test "reuses an existing server instead of creating a second", ctx do
       stub(fn
         %{method: "GET"} = conn ->
           json(conn, 200, %{"servers" => [%{"id" => 7, "name" => "box"}]})
@@ -229,16 +243,16 @@ defmodule CodeMySpec.Provisioning.HetznerTest do
           conn
       end)
 
-      assert {:ok, %{"id" => 7}} = Hetzner.ensure_server(@scope, "box", ssh_key_ids: [1])
+      assert {:ok, %{"id" => 7}} = Hetzner.ensure_server(ctx.scope, "box", ssh_key_ids: [1])
     end
 
-    test "creates when absent" do
+    test "creates when absent", ctx do
       stub(fn
         %{method: "GET"} = conn -> json(conn, 200, %{"servers" => []})
         %{method: "POST"} = conn -> json(conn, 201, %{"server" => %{"id" => 9, "name" => "box"}})
       end)
 
-      assert {:ok, %{"id" => 9}} = Hetzner.ensure_server(@scope, "box", ssh_key_ids: [1])
+      assert {:ok, %{"id" => 9}} = Hetzner.ensure_server(ctx.scope, "box", ssh_key_ids: [1])
     end
   end
 
@@ -246,30 +260,37 @@ defmodule CodeMySpec.Provisioning.HetznerTest do
     # Criterion 7970 checks state against the provider, and 7964 requires a
     # resource deleted behind setup's back to be rebuilt rather than skipped.
     # Both rest on absence being reported as absence.
-    test "a server deleted behind setup's back reads as not_found" do
+    test "a server deleted behind setup's back reads as not_found", ctx do
       stub(fn conn -> json(conn, 200, %{"servers" => [%{"id" => 1, "name" => "other"}]}) end)
 
-      assert {:error, :not_found} = Hetzner.find_server(@scope, "box")
+      assert {:error, :not_found} = Hetzner.find_server(ctx.scope, "box")
     end
   end
 
   describe "credentials" do
+    # A different project, carrying no Hetzner secret — rather than deleting the
+    # ambient config, which is node-wide and was the whole reason this file was
+    # sync. Nothing configures `:code_my_spec, Hetzner` any more, so the
+    # fallback is empty and `token/1` runs out of places to look.
+    #
+    # This asserted the right thing for the wrong reason once already: with a
+    # token on the scope and the config deleted, `list_servers/1` reached the
+    # real Hetzner API and came back `{:hetzner_error, 401, ...}` — a live
+    # network call from the unit suite, which is what caught it.
     test "an unconfigured token is a named error, not a crash" do
-      Application.delete_env(:code_my_spec, Hetzner)
-
-      assert {:error, :hetzner_not_configured} = Hetzner.list_servers(@scope)
+      assert {:error, :hetzner_not_configured} = Hetzner.list_servers(full_scope_fixture())
     end
 
-    test "credential_valid? is false when the provider rejects the token" do
+    test "credential_valid? is false when the provider rejects the token", ctx do
       stub(fn conn -> json(conn, 401, %{"error" => %{"code" => "unauthorized"}}) end)
 
-      refute Hetzner.credential_valid?(@scope)
+      refute Hetzner.credential_valid?(ctx.scope)
     end
 
-    test "credential_valid? is true when the account is reachable" do
+    test "credential_valid? is true when the account is reachable", ctx do
       stub(fn conn -> json(conn, 200, %{"servers" => []}) end)
 
-      assert Hetzner.credential_valid?(@scope)
+      assert Hetzner.credential_valid?(ctx.scope)
     end
   end
 
@@ -280,7 +301,7 @@ defmodule CodeMySpec.Provisioning.HetznerTest do
   # opened in code, every run adopted a firewall from before that change, and
   # the builder's push timed out against a rule set nobody had looked at.
   describe "adopting a firewall reconciles its rules" do
-    test "stale rules are replaced with the current policy" do
+    test "stale rules are replaced with the current policy", ctx do
       stub(fn
         %{method: "GET"} = conn ->
           json(conn, 200, %{
@@ -302,7 +323,7 @@ defmodule CodeMySpec.Provisioning.HetznerTest do
           json(conn, 201, %{"actions" => []})
       end)
 
-      assert {:ok, %{"id" => 3}} = Hetzner.ensure_firewall(@scope, "sam-app")
+      assert {:ok, %{"id" => 3}} = Hetzner.ensure_firewall(ctx.scope, "sam-app")
 
       assert_received {:set_rules, rules}
 
@@ -312,7 +333,7 @@ defmodule CodeMySpec.Provisioning.HetznerTest do
 
     # A converged run must make no call, or every setup would rewrite the rules
     # and the API answers with keys we do not send.
-    test "rules that already match are left alone" do
+    test "rules that already match are left alone", ctx do
       stub(fn
         %{method: "GET"} = conn ->
           rules =
@@ -333,7 +354,7 @@ defmodule CodeMySpec.Provisioning.HetznerTest do
           conn
       end)
 
-      assert {:ok, _} = Hetzner.ensure_firewall(@scope, "sam-app")
+      assert {:ok, _} = Hetzner.ensure_firewall(ctx.scope, "sam-app")
     end
   end
 
@@ -342,7 +363,7 @@ defmodule CodeMySpec.Provisioning.HetznerTest do
   # one image reference is correct in both places — which loopback cannot do,
   # being true on only one machine.
   describe "private networks" do
-    test "a network is created with a subnet, because a server cannot attach without one" do
+    test "a network is created with a subnet, because a server cannot attach without one", ctx do
       stub(fn
         %{method: "GET"} = conn ->
           json(conn, 200, %{"networks" => []})
@@ -356,7 +377,7 @@ defmodule CodeMySpec.Provisioning.HetznerTest do
           json(conn, 201, %{"network" => %{"id" => 7, "name" => payload["name"]}})
       end)
 
-      assert {:ok, %{"id" => 7}} = Hetzner.ensure_network(@scope, "sam-app")
+      assert {:ok, %{"id" => 7}} = Hetzner.ensure_network(ctx.scope, "sam-app")
 
       assert_received {:created, payload}
 
@@ -370,7 +391,7 @@ defmodule CodeMySpec.Provisioning.HetznerTest do
     # subnet in its own. The app servers default to `ash` for x86 while the
     # builder was pinned to `fsn1` and the subnet hardcoded `eu-central`: both
     # boxes held 10.0.0.x addresses with routes, and ping got 100% packet loss.
-    test "the subnet is created in the zone its servers are actually in" do
+    test "the subnet is created in the zone its servers are actually in", ctx do
       stub(fn
         %{method: "GET"} = conn ->
           json(conn, 200, %{"networks" => []})
@@ -381,7 +402,7 @@ defmodule CodeMySpec.Provisioning.HetznerTest do
           json(conn, 201, %{"network" => %{"id" => 7}})
       end)
 
-      assert {:ok, _} = Hetzner.ensure_network(@scope, "sam-app", network_zone: "us-east")
+      assert {:ok, _} = Hetzner.ensure_network(ctx.scope, "sam-app", network_zone: "us-east")
 
       assert_received {:created, payload}
       assert [%{"network_zone" => "us-east"}] = payload["subnets"]
@@ -395,7 +416,7 @@ defmodule CodeMySpec.Provisioning.HetznerTest do
              "the whole failure was treating one as the other"
     end
 
-    test "an existing network is adopted rather than duplicated" do
+    test "an existing network is adopted rather than duplicated", ctx do
       stub(fn
         %{method: "GET"} = conn ->
           json(conn, 200, %{"networks" => [%{"id" => 7, "name" => "sam-app"}]})
@@ -405,18 +426,18 @@ defmodule CodeMySpec.Provisioning.HetznerTest do
           conn
       end)
 
-      assert {:ok, %{"id" => 7, "__adopted__" => true}} = Hetzner.ensure_network(@scope, "sam-app")
+      assert {:ok, %{"id" => 7, "__adopted__" => true}} = Hetzner.ensure_network(ctx.scope, "sam-app")
     end
 
     # Setup runs more than once and Hetzner answers a repeat attach with 409.
     # Reporting that as failure would make the second run of an idempotent step
     # fail, which is the opposite of what re-running is for.
-    test "attaching a server that is already attached is success" do
+    test "attaching a server that is already attached is success", ctx do
       stub(fn conn ->
         json(conn, 409, %{"error" => %{"code" => "server_already_attached"}})
       end)
 
-      assert {:ok, :already_attached} = Hetzner.attach_to_network(@scope, 1, 7)
+      assert {:ok, :already_attached} = Hetzner.attach_to_network(ctx.scope, 1, 7)
     end
 
     # 422 is what Hetzner actually answers, which the 409 above was written
@@ -424,31 +445,31 @@ defmodule CodeMySpec.Provisioning.HetznerTest do
     # that was the only case covered: a drill failed its whole deploy on
     # `server_already_attached`, which is the state the call is trying to
     # reach.
-    test "already attached is success at the status the provider really sends" do
+    test "already attached is success at the status the provider really sends", ctx do
       stub(fn conn ->
         json(conn, 422, %{
           "error" => %{"code" => "server_already_attached", "message" => "server already attached"}
         })
       end)
 
-      assert {:ok, :already_attached} = Hetzner.attach_to_network(@scope, 1, 7)
+      assert {:ok, :already_attached} = Hetzner.attach_to_network(ctx.scope, 1, 7)
     end
 
     # 422 is not a synonym for "already attached" — it covers a network that
     # is full, a subnet that does not exist, and more. Swallowing all of them
     # would turn a real failure into a deploy that proceeds without a network.
-    test "a different 422 is still a failure" do
+    test "a different 422 is still a failure", ctx do
       stub(fn conn ->
         json(conn, 422, %{"error" => %{"code" => "no_subnet_available"}})
       end)
 
-      assert {:error, {:hetzner_error, 422, _}} = Hetzner.attach_to_network(@scope, 1, 7)
+      assert {:error, {:hetzner_error, 422, _}} = Hetzner.attach_to_network(ctx.scope, 1, 7)
     end
 
-    test "attaching a server that is not attached yet is success" do
+    test "attaching a server that is not attached yet is success", ctx do
       stub(fn conn -> json(conn, 201, %{"action" => %{"status" => "running"}}) end)
 
-      assert {:ok, :attached} = Hetzner.attach_to_network(@scope, 1, 7)
+      assert {:ok, :attached} = Hetzner.attach_to_network(ctx.scope, 1, 7)
     end
   end
 
