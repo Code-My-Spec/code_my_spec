@@ -21,7 +21,7 @@ defmodule CodeMySpec.Provisioning.FleetStorageTest do
       docker/fleet/fleet.sh up
       mix test --only fleet
   """
-  use ExUnit.Case, async: false
+  use ExUnit.Case, async: true
 
   alias CodeMySpec.Content.S3Client
 

@@ -36,7 +36,7 @@ defmodule CodeMySpec.Provisioning.FleetDnsTest do
       docker/fleet/fleet.sh up
       mix test --only fleet
   """
-  use ExUnit.Case, async: false
+  use ExUnit.Case, async: true
 
   @moduletag :fleet
   @moduletag timeout: 120_000

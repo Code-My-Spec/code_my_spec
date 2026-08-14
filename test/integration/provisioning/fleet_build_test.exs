@@ -19,7 +19,7 @@ defmodule CodeMySpec.Provisioning.FleetBuildTest do
       docker/fleet/fleet.sh up
       mix test --only fleet
   """
-  use ExUnit.Case, async: false
+  use ExUnit.Case, async: true
 
   alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Provisioning.Builder.Remote

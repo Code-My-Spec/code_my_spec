@@ -19,15 +19,26 @@ defmodule CmsHarness.AnalysisTest do
   #
   # Each `Analysis.run/2` here compiles a fixture project and runs its suite for
   # real, and setup does a `mix deps.get` besides. Twenty of those in parallel
-  # with the rest of the suite is enough load to get processes SIGKILLed: three
-  # full runs failed 5, 5 and 4 tests with almost no overlap between the sets,
-  # and the failures read `** (EXIT from #PID<…>) killed` rather than any
-  # assertion. Every one of them passes alone, and these three pass together.
+  # with the rest of the suite is enough load to get processes SIGKILLed, and
+  # ExUnit running sync cases after the async phase is exactly the separation
+  # wanted: the heavy builds get the machine to themselves.
   #
-  # So the flakes were never isolation between tests — they were this file
-  # competing with 4,000 others for one box, and the tests that died were mostly
-  # bystanders. ExUnit runs sync cases after the async phase, which is exactly
-  # the separation wanted: the heavy builds get the machine to themselves.
+  # The evidence this comment used to cite for that has since been withdrawn.
+  # It read three full runs failing 5, 5 and 4 tests with almost no overlap and
+  # concluded this file was starving the box. The actual cause of those
+  # particular kills was `use_cmd_cassette` in an `async: true` test: ExCliVcr
+  # patches `System.cmd/3` through meck, which is process-global, so anything
+  # else inside a shell-out when the patch moved died as `** (EXIT from #PID)
+  # killed`. Non-overlapping victim sets were the signature of that, not of
+  # load — it is whoever was shelling out at the time.
+  #
+  # Kept sync anyway, on the argument that survives: this file really does run
+  # compiles and `deps.get`, and load is still a genuine cause of kills even
+  # though it was not that one. Tried at `async: true` — three clean full runs
+  # — and reverted rather than banked, because three tests is not worth
+  # re-introducing a resource risk on a box that routinely runs several
+  # worktrees' suites at once. Cheap to revisit if the sync phase ever matters
+  # more than it does at 22 seconds.
   #
   # Not stubbed, deliberately. Shelling out is what this module is for, per the
   # moduledoc above — a faked command would assert that the harness formats a
