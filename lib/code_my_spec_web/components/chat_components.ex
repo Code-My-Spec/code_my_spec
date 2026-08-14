@@ -133,7 +133,10 @@ defmodule CodeMySpecWeb.ChatComponents do
       class={["chat", side(@role, @own_role)]}
     >
       <div :if={@label} class="chat-header text-xs opacity-60">{@label}</div>
-      <div class={["chat-bubble break-words", tone(@role, @own_role)]}>
+      <%!-- min-w-0 so the bubble may shrink below its content: without it a
+            flex/grid ancestor sizes to the longest unbroken token, and the
+            wrapping rules never get the chance to apply. --%>
+      <div class={["chat-bubble min-w-0 break-words", tone(@role, @own_role)]}>
         <%!-- The model writes markdown and always has; rendering it as plain
               text showed backticks, hyphens and hashes as literal characters.
               `md_html/1` is Earmark configured to escape raw HTML — checked,
