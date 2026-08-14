@@ -193,8 +193,7 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   defp install_hooks(_env, root, dest, id, args) do
     with {:ok, relay} <- check_relay(),
          :ok <- copy_plugin(root, dest),
-         {:ok, count} <- address_hooks(dest, id, relay),
-         :ok <- address_mcp(dest, id) do
+         {:ok, count} <- address_hooks(dest, id, relay) do
       report(id, dest, count, args)
       {:ok, count}
     else
@@ -484,6 +483,25 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   # recordable when the harness serves exactly one working copy. A sprite is
   # that shape; a developer's machine never is, which is why local Claude Code
   # has never appeared in the conversations UI.
+  #
+  # ## `CMS_HARNESS_ID` rides along, and has to
+  #
+  # The plugin's MCP mount sends `X-Harness-Id: ${CMS_HARNESS_ID}` — the only
+  # way it *can* name a working copy, because a `mcpServers` entry interpolates
+  # environment variables and cannot read a file. The hook shims walk up for
+  # `.cms_harness.json` themselves; an MCP mount has no such move.
+  #
+  # Nothing set that variable, which is precisely the failure `hooks_controller`
+  # already documents: the header arrived as the literal `${CMS_HARNESS_ID}` on
+  # every hook, and the server has a clause for it. Now that identity is the
+  # only routing key, an unexpanded one is a refusal rather than a fallback, so
+  # shipping the header without this line would have taken MCP down for every
+  # checkout.
+  #
+  # Written here rather than exported by a shell, because a session inherits
+  # this file and not anyone's `.zshrc`, and because it lands next to the URL
+  # that already carries the same id — one place, one value.
+  #
   # Public only so it can be tested directly. It is the one thing here that
   # writes a file the operator owns, so "keeps what was already there" has to be
   # checkable rather than asserted in a comment.
@@ -502,6 +520,7 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
         settings
         |> Map.get("env", %{})
         |> Map.put("ANTHROPIC_BASE_URL", url)
+        |> Map.put("CMS_HARNESS_ID", id)
         |> Map.put_new("MIX_TEST_PARTITION", Onboarding.partition_name(root))
 
       merged = Map.put(settings, "env", env_block)
@@ -614,25 +633,19 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   # A missing file is an empty one. A malformed file is not — overwriting it
   # would throw away settings the operator wrote, so it stops and says so.
 
-  # The MCP surface has the same question to answer as the hooks — which
-  # working copy is this? — so it gets the same answer. Left on `?dir=` it
-  # would be the one place a directory still decided something, and two
-  # checkouts of one project would share an MCP session.
-  defp address_mcp(dest, id) do
-    file = Path.join([dest, ".claude-plugin", "plugin.json"])
-
-    case File.read(file) do
-      {:ok, contents} ->
-        addressed =
-          String.replace(contents, "/mcp?dir=${CLAUDE_PROJECT_DIR}", "/mcp?harness=#{id}")
-
-        File.write!(file, addressed)
-        :ok
-
-      {:error, reason} ->
-        {:error, "Could not read #{file}: #{inspect(reason)}"}
-    end
-  end
+  # `address_mcp/2` used to sit here, rewriting the MCP url's
+  # `?dir=${CLAUDE_PROJECT_DIR}` into `?harness=<id>` so the mount named a
+  # working copy rather than a directory. Right instinct, wrong mechanism twice
+  # over: `HarnessScope` never read a `harness` query parameter — only the
+  # header — so the generated mount was resolving on neither, and the rewrite
+  # was a string match against a url the source plugin no longer contains, which
+  # would have started silently matching nothing.
+  #
+  # The plugin ships `X-Harness-Id: ${CMS_HARNESS_ID}` and `address_model_turns/4`
+  # writes that variable into this checkout's `.claude/settings.local.json`, so
+  # the generated copy and the published one now name their working copy the same
+  # way and neither needs rewriting. One mechanism, and the id it sends is the
+  # one the file beside it records.
 
   defp report(id, dest, count, _args) do
     Mix.shell().info("""

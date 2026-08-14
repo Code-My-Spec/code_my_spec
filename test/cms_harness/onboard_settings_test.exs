@@ -52,6 +52,21 @@ defmodule CmsHarness.OnboardSettingsTest do
              "#{@base}/api/harnesses/abc-123"
   end
 
+  test "writes the harness id, which is the only way MCP can name this checkout", %{
+    root: root,
+    env: env,
+    settings_file: file
+  } do
+    assert :ok = Onboard.address_model_turns(env, root, "abc-123", @base)
+
+    assert read!(file)["env"]["CMS_HARNESS_ID"] == "abc-123",
+           "the plugin's MCP mount sends `X-Harness-Id: ${CMS_HARNESS_ID}` because an " <>
+             "mcpServers entry interpolates environment variables and cannot read " <>
+             ".cms_harness.json the way the hook shims do. Unset, it arrives as that " <>
+             "literal string — which the server refuses now that identity is the only " <>
+             "routing key."
+  end
+
   test "keeps every other setting the operator wrote", %{root: root, env: env, settings_file: file} do
     File.mkdir_p!(Path.dirname(file))
 
