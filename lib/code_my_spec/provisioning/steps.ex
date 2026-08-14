@@ -3927,20 +3927,43 @@ defmodule CodeMySpec.Provisioning.Steps do
 
   defp place_deploy_key(scope, recipients, key) do
     Enum.reduce_while(recipients, {:ok, []}, fn {environment, _public}, {:ok, acc} ->
-      case put_secret(scope, environment, "DEPLOY_KEY", key) do
-        {:ok, _} ->
-          resource = %{
-            kind: "secret",
-            location: "#{environment}/DEPLOY_KEY",
-            identifier: "generated=true"
-          }
+      with {:ok, _} <- put_secret(scope, environment, "DEPLOY_KEY", key),
+           {:ok, _} <- put_secret(scope, environment, "CODEMYSPEC_WIDGET_URL", widget_socket_url()) do
+        resource = %{
+          kind: "secret",
+          location: "#{environment}/DEPLOY_KEY",
+          identifier: "generated=true"
+        }
 
-          {:cont, {:ok, acc ++ [resource]}}
-
-        {:error, reason} ->
-          {:halt, {:error, reason}}
+        {:cont, {:ok, acc ++ [resource]}}
+      else
+        {:error, reason} -> {:halt, {:error, reason}}
       end
     end)
+  end
+
+  # Which CodeMySpec the deployed application talks back to.
+  #
+  # `config/runtime.exs` in every generated app falls back to
+  # `wss://codemyspec.com/widget` when `CODEMYSPEC_WIDGET_URL` is unset, and
+  # nothing used to set it — so an application provisioned by a self-hosted or
+  # development server opened its widget socket against the hosted service,
+  # authenticating with a deploy key that server had never issued. Rejected, but
+  # attempted, on the client's reconnect backoff, from every deployed app.
+  #
+  # It also meant the widget could never be proven anywhere but production: the
+  # loopback drives the app's real client, and the message goes wherever that
+  # client points. Setup knows the answer — it is the server running the
+  # sequence — so it writes it down beside the key the same socket authenticates
+  # with.
+  defp widget_socket_url do
+    base = Application.get_env(:code_my_spec, :base_url) || "https://codemyspec.com"
+
+    case URI.parse(base) do
+      %URI{scheme: "http"} = uri -> %{uri | scheme: "ws", path: "/widget"}
+      uri -> %{uri | scheme: "wss", path: "/widget"}
+    end
+    |> URI.to_string()
   end
 
   # SECRET_KEY_BASE is entropy, not a decision, so setup mints it here rather
