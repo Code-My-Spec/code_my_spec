@@ -270,8 +270,48 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
 
     marker = stale_marker(source, stale, last_ran, run_duration, overtaken)
 
-    "#{source} (#{count})#{marker}:\n#{details}#{overflow}#{reproduce_line(source, reproduce)}"
+    "#{source} (#{count})#{marker}:\n#{details}#{overflow}" <>
+      reproduce_line(source, reproduce) <> killed_note(items)
   end
+
+  # A group whose every finding is a killed process is reporting on the machine,
+  # not on the code, and nothing else in this footer can say so. `** (EXIT …)
+  # killed` is a process being terminated — never an assertion — so a suite that
+  # was killed under load arrives looking exactly like a suite that failed.
+  #
+  # Measured over four consecutive stops: twelve distinct findings, a different
+  # set each sweep including a different *line* of the same file, every one of
+  # them passing standalone in seconds. Load 6–8.5, two agents and the harness
+  # driving suites through one `_build/test`.
+  #
+  # The advice is what makes it expensive rather than merely noisy. "Stop again
+  # and let the rerun replace these" is correct — the rerun does land, and does
+  # replace them — with another random set, at a rate that has nothing to do
+  # with the code. Followed as instructed it produces a fresh block every couple
+  # of minutes forever, and the only exit is `clear_problems`, which requires
+  # already knowing what `killed` means.
+  #
+  # All rather than any: one killed process beside three real failures is a run
+  # that mostly worked, and calling that environmental would hide the three.
+  defp killed_note([]), do: ""
+
+  defp killed_note(items) do
+    case Enum.all?(items, &killed?/1) do
+      true ->
+        "\n  (all #{length(items)} are killed processes, not assertions — the " <>
+          "suite was terminated rather than failing. That is the machine, not " <>
+          "the code: check load and concurrent runs, and clear these rather " <>
+          "than editing anything.)"
+
+      false ->
+        ""
+    end
+  end
+
+  defp killed?(%Problem{message: message}) when is_binary(message),
+    do: message =~ ~r/\*\* \(EXIT from #PID<[^>]+>\) killed/
+
+  defp killed?(_problem), do: false
 
   # How to see these yourself. Only where the gate's command and the obvious
   # one disagree — credo, whose plain invocation hides the low-priority band
