@@ -261,6 +261,12 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
 
   def handle_in("observations", %{"observations" => observations}, socket)
       when is_list(observations) do
+    # A manifest is proof of life for a harness whose agent may not be firing
+    # hooks — the scanner runs on its own. Join alone was not enough: a stable
+    # connection never re-joins, so `last_seen_at` aged past the reclaim window
+    # while the harness was demonstrably working.
+    Harnesses.mark_alive(socket.assigns.scope.active_harness_id)
+
     case deserialize_observations(observations) do
       {:ok, entries} ->
         {:reply, {:ok, %{"status" => "accepted", "observations" => length(entries)}},

@@ -45,6 +45,13 @@ defmodule CodeMySpecSpex.Story1014.Criterion2376Spex do
         quiet = Fixtures.quiet_harness_fixture(context.scope, 96)
         Fixtures.observe_files_as(context.scope, quiet, [@gone])
 
+        # Aged again, after the manifest rather than before it. Pushing a
+        # manifest is proof of life and renews `last_seen_at`, so a checkout
+        # that reports its files and *then* goes quiet is the real sequence —
+        # aging it first and observing second describes an agent that left and
+        # kept working, which is not a thing.
+        quiet = Fixtures.go_quiet(quiet, 96)
+
         {:ok, view, _html} =
           live(context.conn, "/app/projects/#{context.project.id}/files?harness=#{quiet.id}")
 

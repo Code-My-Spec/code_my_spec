@@ -261,6 +261,46 @@ defmodule CodeMySpec.Harnesses do
   end
 
   @doc """
+  Record that this harness is alive, because something it did just proved it.
+
+  Split from `issue/3`, which answers "who are you" and happens once per
+  connection. This answers "you are still here", and the difference is what
+  `reclaim_quiet/1` reads.
+
+  Before this existed, `last_seen_at` was written only on channel join and on
+  onboarding — so it recorded when a harness last *connected*, and a harness
+  holding a stable channel never reconnects. The signal therefore got staler the
+  longer an agent worked without interruption. Measured on this project: two
+  harnesses whose agents were mid-session, scanning and answering hooks
+  continuously, read 2:21 and 2:25 idle against a 2 hour window, having only
+  ever run down. The next sync from any third agent would have deleted both
+  agents' state underneath them — the exact failure the reclaim was written to
+  avoid, arriving through the liveness signal instead of through row age.
+
+  Best-effort on purpose. This is bookkeeping on the side of a request that has
+  real work to do, and a harness that cannot be marked alive is not a reason to
+  refuse its hook.
+  """
+  @spec mark_alive(Harness.t() | Ecto.UUID.t() | nil) :: :ok
+  def mark_alive(%Harness{} = harness) do
+    save(harness, %{last_seen_at: now()})
+    :ok
+  end
+
+  # A caller that names no harness has nothing to mark, and that is a normal
+  # state rather than an error: plenty of writers legitimately have no checkout
+  # to point at. Raising here would make bookkeeping on the side of a request
+  # able to fail the request.
+  def mark_alive(nil), do: :ok
+
+  def mark_alive(harness_id) when is_binary(harness_id) do
+    case fetch(harness_id) do
+      {:ok, harness} -> mark_alive(harness)
+      {:error, _} -> :ok
+    end
+  end
+
+  @doc """
   Reclaim the derived state of every agent on this project that has gone quiet.
 
   Files and problems, unconditionally. Components only where they have no files
@@ -287,6 +327,10 @@ defmodule CodeMySpec.Harnesses do
   unswept for three and a half hours while being actively worked, because the
   harness was busy holding others. A rule keyed on row age reclaims someone
   mid-session.
+
+  That only holds while `last_seen_at` means "last proof of life". It originally
+  meant "last connected", which is worse — see `mark_alive/1`, which is what
+  keeps the two the same thing.
 
   `last_seen_at` is `utc_datetime_usec`, so comparing it against `DateTime.utc_now/0`
   is correct without a workaround. `updated_at` is `timestamp without time zone`

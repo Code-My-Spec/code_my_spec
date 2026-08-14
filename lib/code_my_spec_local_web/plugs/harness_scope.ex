@@ -72,8 +72,16 @@ defmodule CodeMySpecLocalWeb.Plugs.HarnessScope do
 
   defp resolve(conn, id) do
     case Harnesses.fetch(id) do
-      {:ok, harness} -> assign_scope(conn, harness)
-      {:error, reason} -> refuse(conn, id, reason)
+      {:ok, harness} ->
+        # A hook arriving from a harness is proof its agent is working, and this
+        # is the only place that proof is seen. Without it `last_seen_at` only
+        # ever recorded the channel join, so an uninterrupted session's liveness
+        # signal aged past the reclaim window while the agent was mid-task.
+        Harnesses.mark_alive(harness)
+        assign_scope(conn, harness)
+
+      {:error, reason} ->
+        refuse(conn, id, reason)
     end
   end
 
