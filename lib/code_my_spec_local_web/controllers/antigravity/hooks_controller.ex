@@ -32,6 +32,7 @@ defmodule CodeMySpecLocalWeb.Antigravity.HooksController do
   require Logger
 
   alias CodeMySpec.FileEdits
+  alias CodeMySpec.Hooks.PreToolUse
   alias CodeMySpec.Sessions
   alias CodeMySpecLocalWeb.Hooks.StopController
 
@@ -164,8 +165,7 @@ defmodule CodeMySpecLocalWeb.Antigravity.HooksController do
     # found and fixed twice.
     with %{active_project_id: project_id, cwd: cwd, active_harness_id: harness_id}
          when not is_nil(project_id) and is_binary(cwd) and is_binary(harness_id) <- scope,
-         {:ok, task, source, args} <-
-           CodeMySpec.Hooks.PreToolUse.classify_test_command(command) do
+         {:ok, task, source, args} <- PreToolUse.classify_test_command(command) do
       curl = build_curl(conn, harness_id, source, args)
 
       {:deny,

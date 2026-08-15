@@ -16,8 +16,8 @@ defmodule CodeMySpec.Transcripts.Player do
   """
 
   alias CodeMySpec.Transcripts
-  alias CodeMySpec.Transcripts.Replayer
   alias CodeMySpec.Transcripts.ClaudeCode.{Entry, ToolCall}
+  alias CodeMySpec.Transcripts.Replayer
 
   @harness_prefix "mcp__plugin_codemyspec_local__"
   @text_cap 700
@@ -139,25 +139,7 @@ defmodule CodeMySpec.Transcripts.Player do
         IO.ANSI.reset()
       ])
 
-      for o <- q["options"] || [] do
-        puts([
-          IO.ANSI.cyan(),
-          "  │   ",
-          IO.ANSI.yellow(),
-          "○ ",
-          to_string(o["label"] || ""),
-          IO.ANSI.reset()
-        ])
-
-        o["description"]
-        |> wrap(@option_width)
-        |> Enum.take(@option_desc_lines)
-        |> Enum.each(fn line ->
-          puts([IO.ANSI.cyan(), "  │     ", IO.ANSI.faint(), line, IO.ANSI.reset()])
-        end)
-
-        beat(per_option)
-      end
+      for o <- q["options"] || [], do: render_option(o, per_option)
     end
   end
 
@@ -180,6 +162,32 @@ defmodule CodeMySpec.Transcripts.Player do
   end
 
   defp render_block(_block, _type, _index, _ctx), do: :ok
+
+  # One option: its label, its wrapped description, and the beat after it.
+  #
+  # Split out of the clause above, which was one point over the complexity
+  # limit. It is also the unit the pacing is about — `per_option` exists so the
+  # options arrive one at a time, and that is easier to see with the thing being
+  # paced named.
+  defp render_option(option, per_option) do
+    puts([
+      IO.ANSI.cyan(),
+      "  │   ",
+      IO.ANSI.yellow(),
+      "○ ",
+      to_string(option["label"] || ""),
+      IO.ANSI.reset()
+    ])
+
+    option["description"]
+    |> wrap(@option_width)
+    |> Enum.take(@option_desc_lines)
+    |> Enum.each(fn line ->
+      puts([IO.ANSI.cyan(), "  │     ", IO.ANSI.faint(), line, IO.ANSI.reset()])
+    end)
+
+    beat(per_option)
+  end
 
   # Most results are noise past the first line. An answer block is the
   # exception — it is one line per question, and the answers are the point.
@@ -209,20 +217,20 @@ defmodule CodeMySpec.Transcripts.Player do
     text
     |> to_string()
     |> String.split(~r/\s+/, trim: true)
-    |> Enum.reduce([], fn word, acc ->
-      case acc do
-        [] ->
-          [word]
-
-        [current | rest] ->
-          if String.length(current) + 1 + String.length(word) <= width do
-            [current <> " " <> word | rest]
-          else
-            [word, current | rest]
-          end
-      end
-    end)
+    |> Enum.reduce([], &add_word(&1, &2, width))
     |> Enum.reverse()
+  end
+
+  # One word onto the accumulator: onto the current line if it fits, otherwise
+  # starting a new one. Lifted out of the fold, where the `case`-inside-`reduce`
+  # -inside-`if` was three levels deep for a two-way decision.
+  defp add_word(word, [], _width), do: [word]
+
+  defp add_word(word, [current | rest], width) do
+    case String.length(current) + 1 + String.length(word) <= width do
+      true -> [current <> " " <> word | rest]
+      false -> [word, current | rest]
+    end
   end
 
   # Task/QA tools (start_task, evaluate_task, submit_qa_result, create_issue,
