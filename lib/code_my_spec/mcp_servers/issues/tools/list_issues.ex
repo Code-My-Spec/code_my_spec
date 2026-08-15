@@ -3,14 +3,14 @@ defmodule CodeMySpec.McpServers.Issues.Tools.ListIssues do
   Lists issues in a project with optional filters.
 
   Filter by status (incoming, accepted, dismissed, resolved),
-  severity (critical, high, medium, low, info), scope (app, qa, docs),
-  or story_id.
+  severity (critical, high, medium, low, info), scope (app, qa, docs,
+  framework), or story_id.
 
-  `framework` is NOT a valid scope filter on the local agent surface
-  — framework issues route to the hosted server (story 709 / criterion
-  6215). The local LiveView at `/projects/<slug>/issues` exposes a
-  `framework` dropdown option for operator browsing, but the agent
-  surface (this tool) stays scoped to project-local concerns.
+  `framework` used to be excluded here, on the grounds that framework issues
+  routed to the hosted server rather than being stored locally. That stopped
+  being true when the tools moved onto the server — see `CreateIssue`, which
+  writes every scope the same way — so they were creatable, visible in an
+  unfiltered listing, and impossible to filter for.
   """
 
   use Anubis.Server.Component, type: :tool
@@ -22,13 +22,25 @@ defmodule CodeMySpec.McpServers.Issues.Tools.ListIssues do
   schema do
     field :status, :string, doc: "Filter by status: incoming, accepted, dismissed, resolved"
     field :severity, :string, doc: "Filter by severity: critical, high, medium, low, info"
-    field :scope, :string, doc: "Filter by scope: app, qa, docs (framework is server-routed, not filterable here)"
+    field :scope, :string, doc: "Filter by scope: app, qa, docs, framework"
     field :story_id, :integer, doc: "Filter by related story ID"
   end
 
   @valid_statuses ~w(incoming accepted dismissed resolved)
   @valid_severities ~w(critical high medium low info)
-  @valid_scopes ~w(app qa docs)
+
+  # `framework` belongs here. It was excluded because framework issues were
+  # POSTed to the hosted server rather than stored locally — but `CreateIssue`
+  # records that this stopped being true when the tools moved onto the server:
+  # "Every scope writes the same way. Framework issues used to be special …
+  # that path had the server authenticating to itself as a CLI".
+  #
+  # So they are created locally, appear in an unfiltered listing, and could not
+  # be filtered for — the one combination that reads as data loss. An agent
+  # asked to work the framework backlog got `Invalid scope: "framework".
+  # Allowed: app, qa, docs.` while the issues sat two lines above in the
+  # unfiltered list.
+  @valid_scopes ~w(app qa docs framework)
 
   @impl true
   def execute(params, frame) do
