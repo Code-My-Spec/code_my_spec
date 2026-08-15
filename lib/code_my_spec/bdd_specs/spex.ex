@@ -25,16 +25,22 @@ defmodule CodeMySpec.BddSpecs.Spex do
 
   ## Returns
 
-  `{:ok, failures, exit_code}` - List of parsed failures and exit code
+  `{:ok, failures, exit_code, raw_output}` - Parsed failures, exit code, and
+  everything `mix spex` printed. The output matters on the path where there are
+  no failures *and* a nonzero exit: that combination means the suite did not
+  run, and the output is the only account of why.
   `{:error, {:parse_error, reason}}` - If JSONL parsing fails
 
   ## Example
 
-      {:ok, failures, exit_code} = Spex.execute(["test/spex/login_spex.ex"], environment: env)
+      {:ok, failures, exit_code, _output} =
+        Spex.execute(["test/spex/login_spex.ex"], environment: env)
+
       exit_code  # => 0 for success, non-zero for failure
   """
   @spec execute(args :: [String.t()], opts :: keyword()) ::
-          {:ok, [Failure.t()], integer()} | {:error, {:parse_error, String.t()}}
+          {:ok, [Failure.t()], integer(), String.t()}
+          | {:error, {:parse_error, String.t()}}
   def execute(args, opts \\ []) do
     environment = Keyword.fetch!(opts, :environment)
     project_root = environment.cwd
@@ -86,7 +92,11 @@ defmodule CodeMySpec.BddSpecs.Spex do
     case parse_jsonl(output_file, nil) do
       {:ok, failures} ->
         Logger.info("[Spex] Replaying #{length(failures)} failure(s) from #{output_file}")
-        {:ok, failures, if(failures == [], do: 0, else: 1)}
+        # Empty output, and honestly so: nothing was shelled out, so there is
+        # nothing `mix spex` printed. The fourth element exists for the
+        # suite-did-not-run diagnosis, and this path cannot reach it — the exit
+        # status is derived from the parsed failures rather than observed.
+        {:ok, failures, if(failures == [], do: 0, else: 1), ""}
 
       {:error, reason} ->
         {:error, {:parse_error, inspect(reason)}}
@@ -115,10 +125,26 @@ defmodule CodeMySpec.BddSpecs.Spex do
 
     Logger.info("[Spex] Running: #{command}")
 
+    # The output is returned, not discarded. `{_raw_output, exit_code}` was the
+    # whole of why a failing spex sweep could not be diagnosed: an empty JSONL
+    # plus a nonzero exit becomes `{:spex_suite_did_not_run, code}`, and the
+    # reason — a spex that would not compile, a crash before `:suite_finished`,
+    # anything `mix spex` printed — existed nowhere afterwards. Not in
+    # `harness.log`, which records only the command; not on the server; not in
+    # the stop response.
+    #
+    # exunit already carries it: `{:test_suite_did_not_run, status, excerpt}`
+    # (`runners.ex:214`). This is the same tuple one analyzer short.
     case Environments.cmd(environment, "mix", spex_args, stderr_to_stdout: true, env: cmd_env) do
-      {_raw_output, exit_code} ->
+      {raw_output, exit_code} ->
         result =
-          parse_and_return_failures(temp_file, exit_code, environment, caller_provided_file)
+          parse_and_return_failures(
+            temp_file,
+            exit_code,
+            environment,
+            caller_provided_file,
+            raw_output
+          )
 
         unless caller_provided_file, do: cleanup_temp_file(temp_file, environment)
         result
@@ -223,10 +249,10 @@ defmodule CodeMySpec.BddSpecs.Spex do
   # `nil` env means "read on this machine": the caller-provided path is the
   # cassette seam, a fixture on the harness's own disk rather than something
   # `mix spex` wrote inside the environment.
-  defp parse_and_return_failures(temp_file, exit_code, env, caller_provided_file) do
+  defp parse_and_return_failures(temp_file, exit_code, env, caller_provided_file, raw_output) do
     case parse_jsonl(temp_file, if(caller_provided_file, do: nil, else: env)) do
       {:ok, failures} ->
-        {:ok, failures, exit_code}
+        {:ok, failures, exit_code, raw_output}
 
       {:error, reason} ->
         {:error, {:parse_error, inspect(reason)}}

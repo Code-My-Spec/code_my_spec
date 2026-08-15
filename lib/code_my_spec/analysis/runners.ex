@@ -124,9 +124,10 @@ defmodule CodeMySpec.Analysis.Runners do
     exec_opts = [environment: scope.environment] |> maybe_output_file(opts)
 
     case Spex.execute(args, exec_opts) do
-      {:ok, failures, exit_code} ->
+      {:ok, failures, exit_code, output} ->
         from_raw("spex", %{
           "exit_status" => exit_code,
+          "output" => cap(output),
           "diagnostics" =>
             Enum.map(failures, fn failure ->
               {file, line} = spex_location(failure.error)
@@ -268,12 +269,23 @@ defmodule CodeMySpec.Analysis.Runners do
   # indistinguishable by the failure list alone — the nonzero exit is the only
   # thing separating them. Fail the run rather than let an empty result clear
   # every spex Problem and finish `:completed`.
+  #
+  # The excerpt is the difference between a failure you can act on and one you
+  # cannot. This said `{:spex_suite_did_not_run, code}` and nothing else, so a
+  # sweep that died — a spex that would not compile, a crash before
+  # `:suite_finished` — left no account of why anywhere: `harness.log` records
+  # only the command, and the output was discarded at `Spex.execute`. exunit has
+  # carried its excerpt since `runners.ex:214`; this is the same tuple, one
+  # analyzer late.
   def from_raw("spex", raw) do
     exit_code = raw["exit_status"]
 
     case {diagnostics(raw), exit_code} do
-      {[], code} when code != 0 -> {:error, {:spex_suite_did_not_run, code}}
-      {failures, code} -> {:ok, spex_result(failures, code)}
+      {[], code} when code != 0 ->
+        {:error, {:spex_suite_did_not_run, code, error_excerpt(raw["output"])}}
+
+      {failures, code} ->
+        {:ok, spex_result(failures, code)}
     end
   end
 

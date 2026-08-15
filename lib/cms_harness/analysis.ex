@@ -180,11 +180,15 @@ defmodule CmsHarness.Analysis do
 
   defp run_spex(env, args) do
     case Spex.execute(args, environment: env, extra_env: AnalyzerEnv.extra_env(env, "spex")) do
-      {:ok, failures, exit_code} ->
+      {:ok, failures, exit_code, output} ->
         {:ok,
          %{
            "source" => "spex",
            "exit_status" => exit_code,
+           # Carried for the same reason exunit carries it: no failures plus a
+           # nonzero exit means the suite did not run, and the server's refusal
+           # is the only place that reason can still be read.
+           "output" => cap(output || ""),
            "diagnostics" => Enum.map(failures, &spex_failure/1)
          }}
 
