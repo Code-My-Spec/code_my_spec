@@ -29,6 +29,12 @@ defmodule CodeMySpecSpex.Story966.Criterion8156Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
   setup :devops_on
+  # `secrets` seeds each environment's encrypted env into `envs/<env>.enc.env`,
+  # which the project generator lays down — so both halves are needed: a real
+  # directory to generate into, and the generate itself. Without the directory
+  # the generated files have nowhere to land; without the generate the files
+  # are absent and sops exits 100 on a file it will not create.
+  setup :real_working_directory
   setup :connect_providers
   setup :account_access_key
 
