@@ -159,11 +159,15 @@ defmodule CodeMySpec.Qa.Evidence do
   # Porcelain v1 is two status columns, a space, then the path: `?? qa/x`,
   # ` M qa/x`, `A  qa/x`.
   #
-  # **Parsed by splitting on whitespace, never by column position**, because the
-  # columns do not survive the trip. `Environments.cmd/4` trims its output, so
-  # ` M qa/874/brief.md` arrives as `M qa/874/brief.md` — one character shorter,
-  # and only for the statuses whose first column is blank, which is most of the
-  # interesting ones.
+  # **Parsed by splitting on whitespace, never by column position.**
+  #
+  # `Environments.cmd/4` used to trim its output, so ` M qa/874/brief.md`
+  # arrived as `M qa/874/brief.md` — one character shorter, on the first line
+  # only, and only for the statuses whose first column is blank, which is most
+  # of the interesting ones. That is fixed at the source now (`2f6695dd`), but
+  # this stays whitespace-based: it is correct either way, and a parser that
+  # depends on a column surviving three layers of transport is one restart of
+  # that argument away from being wrong again.
   #
   # Two attempts failed on that and both failed *silently*; the tests caught
   # both. `String.slice(line, 3..-1//1)` returned `"a/874/brief.md"` — a path

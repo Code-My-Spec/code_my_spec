@@ -203,11 +203,26 @@ defmodule CodeMySpec.Environments.Local do
     end
   end
 
+  # ANSI and UTF-8, and not trimming. `2f6695dd`.
+  #
+  # The trim was there for the reason the behaviour doc gives — output "bound
+  # for a database and a JSON response" — but that reason covers the other two
+  # steps and not this one. Postgres and JSON both hold a trailing newline
+  # perfectly well; invalid UTF-8 is what crashes an MCP session.
+  #
+  # And it made this implementation disagree with `Container.cmd/4`, which
+  # returns `System.cmd`'s output verbatim, so the same parser was correct in
+  # one environment and wrong in the other with nothing to say which.
+  #
+  # What it cost concretely: for `git status --porcelain` the leading space is
+  # the staged-status column, blank for modified-but-not-staged. Trimming took
+  # it off the first line only, so the same buffer parsed two different ways
+  # depending on which file git listed first. Callers wanting a trimmed string
+  # can trim, and several already did on top of this.
   defp clean_terminal_output(output) do
     output
     |> remove_ansi_codes()
     |> ensure_valid_utf8()
-    |> String.trim()
   end
 
   # Remove ANSI escape codes (colors, formatting, etc.)
