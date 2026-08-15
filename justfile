@@ -29,6 +29,14 @@ server:
 # Symlinks rather than copies. `envs` holds secrets that must not be duplicated
 # per worktree, and the test repos are a fixture several worktrees share; a copy
 # would drift and the drift is silent.
+#
+# **Run this after a rebase, not only once.** Every step is idempotent, and the
+# two that matter — deps and migrations — are exactly the per-worktree state a
+# rebase silently invalidates. A sibling's commit moves `mix.lock` and `mix`
+# refuses before it runs anything (`66e30d85`); a sibling's migration lands and
+# the suite fails in bulk on a column nobody touched (`2fb10199`, above). Both
+# are one command, and both cost a diagnosis first because they arrive in the
+# middle of unrelated work and read as the worktree being broken.
 worktree-setup:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -57,6 +65,18 @@ worktree-setup:
     else
       echo "  (no $repos — skipping; drill and devops spex will not run here)"
     fi
+
+    # Deps before the database, because a lock mismatch stops `mix` before it
+    # loads anything — including `ecto.migrate`. So the two steps below cannot
+    # even report their own problem while this one is outstanding.
+    #
+    # `66e30d85`: twice in a week a rebase brought a `mix.lock` entry from
+    # another worktree's commit and every `mix` invocation here refused before
+    # running anything. Not the task — the tool. Recovery is one command, and
+    # the cost is that it arrives in the middle of unrelated work and reads as
+    # the worktree being broken.
+    echo "→ deps"
+    MIX_ENV=test elixir -S mix deps.get
 
     # `elixir -S mix`, not `mix`: a bare `mix` in a worktree resolves against the
     # main checkout and would create the wrong tree's database.
