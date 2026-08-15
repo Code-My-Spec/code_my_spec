@@ -510,6 +510,57 @@ defmodule CodeMySpec.Provisioning.Resend do
   end
 
   @doc """
+  Take `address` off the account's suppression list, if it is on it.
+
+  A message that bounces puts its recipient on this list account-wide, and
+  every later send to that address is dropped before delivery — reported as
+  `suppressed`, which looks from the outside exactly like a message that never
+  arrived.
+
+  That matters here because the inbound step sends its probe to a fixed
+  address. The first probe on a domain whose receiving is not verified yet
+  bounces, the address is suppressed, and from then on the step can never
+  succeed no matter how correct the configuration becomes: **its own failure
+  destroys its ability to recover.** Measured on the drill — two cold rebuilds
+  failed, and `inbox@spex-drill.earwitness.app` was on the list with
+  `origin: "bounce"` at the moment of the first one.
+
+  Clearing it is the whole fix. `DELETE /suppressions/:id` returns 200 and the
+  address delivers immediately afterwards.
+
+  Absent is success: there is nothing to clear, which is the state the caller
+  wanted. Only a provider error the caller could act on comes back as one.
+  """
+  @spec clear_suppression(Scope.t(), String.t()) :: :ok | error()
+  def clear_suppression(%Scope{} = scope, address) when is_binary(address) do
+    with {:ok, suppressions} <- list_suppressions(scope) do
+      suppressions
+      |> Enum.filter(&(String.downcase(&1["email"] || "") == String.downcase(address)))
+      |> Enum.reduce(:ok, fn %{"id" => id}, acc ->
+        case request(scope, :delete, "/suppressions/#{id}") do
+          {:ok, _} ->
+            Logger.info("[Resend] cleared suppression for #{address}")
+            acc
+
+          {:error, _} = error ->
+            error
+        end
+      end)
+    end
+  end
+
+  @doc "Every address the account is currently refusing to deliver to."
+  @spec list_suppressions(Scope.t()) :: {:ok, [body()]} | error()
+  def list_suppressions(%Scope{} = scope) do
+    case request(scope, :get, "/suppressions") do
+      {:ok, %{"data" => data}} when is_list(data) -> {:ok, data}
+      {:ok, data} when is_list(data) -> {:ok, data}
+      {:ok, _other} -> {:ok, []}
+      other -> other
+    end
+  end
+
+  @doc """
   One received message, with its contents.
 
   `GET /emails/receiving/:id`. The list endpoint carries metadata only — `text`

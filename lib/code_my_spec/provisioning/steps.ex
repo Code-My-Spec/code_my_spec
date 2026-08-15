@@ -1628,6 +1628,22 @@ defmodule CodeMySpec.Provisioning.Steps do
     # cassette, so this is exact in both.
     seen = already_received(scope, opts)
 
+    # Before sending, or the step cannot recover from its own first failure.
+    # A probe that bounced — which is what the first one does on a domain whose
+    # receiving is not verified yet — puts this address on the account's
+    # suppression list, and every later send to it is dropped before delivery.
+    # The step then reports "the message never arrived" forever, which is true
+    # and which no amount of fixing the configuration changes.
+    #
+    # Measured on the drill: two cold rebuilds failed, and
+    # `inbox@spex-drill.earwitness.app` was suppressed with `origin: "bounce"`
+    # timestamped at the first of them.
+    #
+    # Ignored rather than checked, because there is usually nothing to clear
+    # and a failure to clear is not a reason to skip the probe — the send
+    # itself reports whether the address can be delivered to.
+    _ = Resend.clear_suppression(scope, to)
+
     with {:ok, from} <- probe_sender(scope),
          {:ok, _sent} <- Resend.send_probe(scope, to, subject: token, from: from) do
       Resend.await_received(scope, &received?(&1, to, seen), probe_wait(opts))
