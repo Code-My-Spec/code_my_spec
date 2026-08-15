@@ -158,6 +158,7 @@ defmodule CodeMySpec.Stories.Story do
       :title,
       :story
     ])
+    |> validate_lengths()
     |> cast_assoc(:criteria,
       with: &Criterion.nested_changeset/2,
       sort_param: :criteria_sort,
@@ -188,6 +189,48 @@ defmodule CodeMySpec.Stories.Story do
       true ->
         changeset
     end
+  end
+
+  # The story sentence is a sentence, and `notes` is where the rest goes.
+  #
+  # Agents were writing prose into `description` — story interviews, Three
+  # Amigos, the architect, ad-hoc `create_story` callers — which makes list
+  # views unreadable and `get_story` hard to scan. `notes` exists for exactly
+  # that content and nothing was steering anyone towards it (823).
+  #
+  # Measured on this project when the caps went in: 141 stories, **0** over 120
+  # characters of title (longest 97), **18** over 600 of story text (longest
+  # 3,167). So the title cap costs nothing today and is there to stop the drift;
+  # the story cap is the one with teeth.
+  #
+  # Grandfathered by construction rather than by a flag. `validate_length/3`
+  # builds on `validate_change/3`, which fires only for fields actually being
+  # changed — so an update that touches `ready_for_dev` on one of those 18
+  # stories passes untouched, and the cap applies the next time somebody
+  # rewrites the sentence. That is the migration path the report asked for,
+  # with no backfill and no cutover.
+  #
+  # `story` and `description` both, because `sync_story_and_description/1`
+  # copies one into the other: capping only one would let the same text in
+  # through the other door.
+  @title_max 120
+  @story_max 600
+
+  defp validate_lengths(changeset) do
+    changeset
+    |> validate_length(:title,
+      max: @title_max,
+      message: "is too long (max #{@title_max} characters) — a title is a name, not a summary"
+    )
+    |> validate_length(:story, max: @story_max, message: too_long_message())
+    |> validate_length(:description, max: @story_max, message: too_long_message())
+  end
+
+  defp too_long_message do
+    "is too long (max #{@story_max} characters). The story field holds the " <>
+      "sentence — \"As a [role], I want [goal] so that [value]\" — and nothing " <>
+      "else. Move the mechanism, dependencies and caveats to `notes`, which is " <>
+      "free-form, uncapped, and kept out of list views."
   end
 
   # Chain restart: releasing, parking, or re-releasing a story sends it
