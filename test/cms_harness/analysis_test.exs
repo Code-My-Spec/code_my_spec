@@ -53,6 +53,26 @@ defmodule CmsHarness.AnalysisTest do
   # deps, but a cold `_build` on a loaded machine outruns ExUnit's default.
   @moduletag timeout: 300_000
 
+  # On demand, not on every `mix test`.
+  #
+  # Seven real `mix` subprocess trees — `deps.get`, `compile`, `test` — in the
+  # serial phase of every run anyone makes. That is the same shape `:analyzer`
+  # already exists for, and the same cost: heavy child builds whose behaviour
+  # depends on the machine rather than on the code under test.
+  #
+  # It is also the only file with a *measured* intermittent failure of that
+  # kind. `75b35ac2`: "a broken project WITHOUT the :diagnostics compiler is
+  # reported clean" fails in full-suite runs and never standalone, on a temp
+  # project that has no way to produce diagnostics at all. Nobody has traced it,
+  # and a flake in a test whose failure message says to delete it is worse than
+  # an ordinary one.
+  #
+  # Tagging it does not fix that — it stops it blocking stop hooks while it goes
+  # untraced. `just test-analyzer` runs this group, and it must be run when an
+  # analyzer changes: this is the only coverage that the harness runs anything
+  # at all, which is the thing that was silently false for two phases.
+  @moduletag :analyzer
+
   @client_utils System.get_env("CMS_CLIENT_UTILS") ||
                   Path.expand("../client_utils", File.cwd!())
 
@@ -270,6 +290,22 @@ defmodule CmsHarness.AnalysisTest do
                  cannot overlap anything.
                * A path computed once at compile time. `create_temp_file_path/0`
                  is a function, not a module attribute.
+
+             Not eliminated, and the current best candidate: build-directory
+             lock contention. `CmsHarness.Project.AnalysisServer` serialises
+             analyzers per working copy because `mix test` and `mix spex` share
+             `_build/test`, so a sweep running beside this file's child `mix`
+             invocations contends for that lock. The signature elsewhere is
+             `Waiting for lock on the build directory (held by process N)`
+             followed by a `DBConnection` checkout timeout — a timeout caused by
+             waiting, not by the connection. It matches the profile exactly
+             (full-suite only, never standalone) and none of this issue's own
+             hypotheses included it. Carried over from `5e9fa939`.
+
+             This module is `@moduletag :analyzer` now, so it no longer runs in
+             every `mix test` while that stays untraced. That is containment,
+             not a fix: `just test-analyzer` still runs it, and it must still
+             pass there.
 
              If it fires again, the diagnostics above are the evidence that was
              missing every previous time — they should name a file, and that file

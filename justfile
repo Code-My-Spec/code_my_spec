@@ -533,13 +533,17 @@ test *args:
 test-file file:
     mix test {{file}} --trace
 
-# Run the analyzer tests — the four that need a real Phoenix project on disk.
+# Run the analyzer tests — the ones that need real projects on disk.
 #
-# Excluded from `just test` because they rsync a copy out of
-# `../code_my_spec_test_repos` and run mix, credo and sobelow inside it. That
-# directory is one shared copy every worktree reaches by symlink, so two agents
-# running suites collided there — which is where the `** (EXIT …) killed`
-# findings came from. Everything else reads the committed recordings in
+# Two kinds, excluded from `just test` for the same reason. The
+# `code_my_spec_test_repos` ones rsync a copy out of a directory every worktree
+# reaches by symlink, so two agents running suites collided there — which is
+# where the `** (EXIT …) killed` findings came from. `cms_harness/analysis_test`
+# builds its own temp projects instead, but spawns seven real `mix` subprocess
+# trees to do it and carries the one measured intermittent failure of the class
+# (75b35ac2 — full-suite only, never standalone, still untraced).
+#
+# Everything else reads the committed recordings in
 # `test/fixtures/analyzer_output/`.
 #
 # Run this when you change an analyzer, and after `mix cms.test_fixtures`.
