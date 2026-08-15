@@ -58,19 +58,19 @@ defmodule CmsHarness.AnalysisTest do
   # Seven real `mix` subprocess trees — `deps.get`, `compile`, `test` — in the
   # serial phase of every run anyone makes. That is the same shape `:analyzer`
   # already exists for, and the same cost: heavy child builds whose behaviour
-  # depends on the machine rather than on the code under test.
+  # depends on the machine rather than on the code under test. Measured: 6.1s
+  # in-suite, 17.7s wall.
   #
-  # It is also the only file with a *measured* intermittent failure of that
-  # kind. `75b35ac2`: "a broken project WITHOUT the :diagnostics compiler is
-  # reported clean" fails in full-suite runs and never standalone, on a temp
-  # project that has no way to produce diagnostics at all. Nobody has traced it,
-  # and a flake in a test whose failure message says to delete it is worse than
-  # an ordinary one.
+  # That cost is the whole justification. The tag was added while `75b35ac2` —
+  # an intermittent failure in the WITHOUT-`:diagnostics` test below — was
+  # believed untraced, and read as containment for it. It was not untraced:
+  # `d4b5e051` had found and fixed the cause five days earlier, a diagnostics
+  # temp path unique within one BEAM but not across processes. So the tag stays
+  # on its own merits and nothing here is waiting on a diagnosis.
   #
-  # Tagging it does not fix that — it stops it blocking stop hooks while it goes
-  # untraced. `just test-analyzer` runs this group, and it must be run when an
-  # analyzer changes: this is the only coverage that the harness runs anything
-  # at all, which is the thing that was silently false for two phases.
+  # `just test-analyzer` runs this group, and it must be run when an analyzer
+  # changes: this is the only coverage that the harness runs anything at all,
+  # which is the thing that was silently false for two phases.
   @moduletag :analyzer
 
   @client_utils System.get_env("CMS_CLIENT_UTILS") ||
@@ -268,22 +268,32 @@ defmodule CmsHarness.AnalysisTest do
              output regardless of exit code — and if that is what happened, delete
              this test.
 
-             Check first. This has also failed intermittently for reasons nobody
-             has traced (issue 75b35ac2): full-suite runs only, never standalone,
-             on a temp project that should have no way to produce diagnostics at
-             all. An environmental failure presents exactly like a fix, and acting
-             on the instruction above would delete a test guarding a trap that is
-             still there.
+             Check first. This test's own history is the reason: it failed
+             intermittently on 2026-08-10 (issue 75b35ac2), full-suite runs only
+             and never standalone, on a temp project that should have no way to
+             produce diagnostics at all. An environmental failure presents
+             exactly like a fix, and acting on the instruction above would delete
+             a test guarding a trap that is still there.
 
              So: confirm `extract_compiler_errors/1` is actually reached on a zero
              exit before deleting anything. A self-deleting test that can fire by
              accident deletes itself by accident.
 
+             That 2026-08-10 failure **was** traced, to a shared diagnostics
+             file, and fixed the same night in `d4b5e051` — whose message names
+             this test by its line number then (`analysis_test:173`) and this
+             symptom verbatim. `create_temp_file_path/0` built the path from
+             `System.unique_integer/1`, unique within one BEAM, in a directory
+             shared by the whole machine; two OS processes each started the
+             counter fresh and one read the other's file. The diagnostics were
+             real, and belonged to another process's project.
+
              Already eliminated, so nobody spends the hour again:
 
-               * A shared diagnostics file. `Compile` takes its path from
-                 `TempFile.path/2` through `Keyword.get_lazy/3` — per call, and
-                 the token carries OS pid, a unique integer and random bytes.
+               * A shared diagnostics file — the cause above, now fixed.
+                 `Compile` takes its path from `TempFile.path/2` through
+                 `Keyword.get_lazy/3` — per call, and the token carries OS pid,
+                 a unique integer and random bytes.
                * A leaked `PATH`. `CodeMySpec.EnvironmentsTest` does rewrite
                  `PATH` and `RELEASE_ROOT` globally, but it is `use ExUnit.Case`
                  with no `async: true`, so it runs in the serial phase and
@@ -291,21 +301,20 @@ defmodule CmsHarness.AnalysisTest do
                * A path computed once at compile time. `create_temp_file_path/0`
                  is a function, not a module attribute.
 
-             Not eliminated, and the current best candidate: build-directory
+             If it fires again — meaning after 2026-08-10 02:40, which nothing
+             has yet been observed to do — the next candidate is build-directory
              lock contention. `CmsHarness.Project.AnalysisServer` serialises
              analyzers per working copy because `mix test` and `mix spex` share
              `_build/test`, so a sweep running beside this file's child `mix`
              invocations contends for that lock. The signature elsewhere is
              `Waiting for lock on the build directory (held by process N)`
              followed by a `DBConnection` checkout timeout — a timeout caused by
-             waiting, not by the connection. It matches the profile exactly
-             (full-suite only, never standalone) and none of this issue's own
-             hypotheses included it. Carried over from `5e9fa939`.
+             waiting, not by the connection. Carried over from `5e9fa939`.
 
-             This module is `@moduletag :analyzer` now, so it no longer runs in
-             every `mix test` while that stays untraced. That is containment,
-             not a fix: `just test-analyzer` still runs it, and it must still
-             pass there.
+             This module is `@moduletag :analyzer`, which is not about that
+             flake: it spawns seven real `mix` subprocess trees in the serial
+             phase of every run. `just test-analyzer` runs it and it must pass
+             there.
 
              If it fires again, the diagnostics above are the evidence that was
              missing every previous time — they should name a file, and that file
