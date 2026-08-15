@@ -2469,7 +2469,17 @@ defmodule CodeMySpec.Provisioning.Steps do
 
       case Resend.find_domain(scope, sending) do
         {:ok, %{"status" => "verified"} = d} ->
-          {:cont, {:ok, acc ++ [%{kind: "sending_domain", location: "resend/#{d["name"]}"}]}}
+          # The check counts. Without it a step that asked the provider and was
+          # told "verified" rendered "0 check(s)" — it did look, and said it
+          # had not, which is indistinguishable from assuming. One call to
+          # `find_domain` is one check, so that is what it reports.
+          {:cont,
+           {:ok,
+            acc ++
+              [
+                %{kind: "sending_domain", location: "resend/#{d["name"]}"},
+                %{kind: "verification", location: "1 attempts"}
+              ]}}
 
         {:ok, _unverified} ->
           {:halt, :absent}

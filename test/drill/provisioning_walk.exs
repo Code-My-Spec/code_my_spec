@@ -54,6 +54,12 @@ defmodule CodeMySpecSpex.Drill do
       database, so the deployed application and the provisioning being asked
       about it talk to the same CodeMySpec. Needed for the widget and inbound
       proofs, which read messages the deployed app sent.
+    * `CMS_DRILL_CONFIRM_APEX=1` — answer the apex guard. `dns` will not
+      repoint an apex that already resolves without a person saying go ahead,
+      and the only other way to say it is a button in the web UI. Say it here
+      only when you know what the name currently points at: on a drill domain
+      after a teardown that is a recycled address, and in front of a customer
+      it is their live site.
 
   Not a spex and not a test: the filename has no `_test` suffix, so nothing
   picks it up by accident. It asserts nothing — it reports.
@@ -569,7 +575,25 @@ defmodule CodeMySpecSpex.Drill do
 
   defp domain, do: System.get_env("CMS_DRILL_DOMAIN", @default_domain)
 
-  defp step_opts, do: Application.get_env(:code_my_spec, :provisioning_step_opts, [])
+  # The apex guard's answer, which otherwise only the web UI can give.
+  #
+  # `dns` refuses to repoint an apex that already resolves, because doing so
+  # takes down whatever is serving it today, and it waits for a person to say
+  # go ahead — a `confirm_apex_repoint` event in `ProvisioningLive`. The drill
+  # had no way to say it, so a walk that met the guard could never get past it,
+  # and every step downstream of DNS stayed stuck with it. Which is the state a
+  # torn-down environment leaves behind: teardown skips the apex record as
+  # adopted, the address gets recycled, and the next run finds the name already
+  # resolving — to a box that is not serving it.
+  defp confirm_apex_opts do
+    if System.get_env("CMS_DRILL_CONFIRM_APEX") in ~w(1 true yes),
+      do: [confirm_apex_repoint: true],
+      else: []
+  end
+
+  defp step_opts do
+    Application.get_env(:code_my_spec, :provisioning_step_opts, []) ++ confirm_apex_opts()
+  end
 
   defp drill_state_dir do
     dir =
