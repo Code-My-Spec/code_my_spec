@@ -4,7 +4,7 @@ defmodule CodeMySpec.AnalysisTest do
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.Analysis
-  alias CodeMySpec.Analysis.{Fingerprint, Reconciler, RunsRepository}
+  alias CodeMySpec.Analysis.{Fingerprint, Reconciler, RunsRepository, Signatures}
   alias CodeMySpec.Files
   alias CodeMySpec.Problems
   alias CodeMySpec.Problems.Problem
@@ -233,6 +233,57 @@ defmodule CodeMySpec.AnalysisTest do
 
       [persisted] = Problems.list_project_problems(scope, source: "compiler")
       assert persisted.file_path == "unknown"
+    end
+
+    # `problems` rows are replaced per run and carry no run id, so a sweep
+    # destroys the only record of what the one before it found. 08d3f858: a
+    # resolution was written on this project claiming a signature was present
+    # before a change and absent after, against a baseline that no longer
+    # existed and could not be checked. These two assert the baseline survives
+    # the sweep that replaces the problems.
+    test "a run records what it found, so the next one has a baseline", %{scope: scope} do
+      {:ok, run} = RunsRepository.start_run(scope, %{source: "exunit", kind: :full})
+
+      {:ok, finished} =
+        Reconciler.reconcile(scope, run, %{
+          problems: [problem("test/a_test.exs", message: "boom")],
+          output: "",
+          exit_status: 1,
+          stats: %{"failures" => 1}
+        })
+
+      assert Signatures.read(finished) == ["test/a_test.exs: boom"]
+
+      assert finished.stats["failures"] == 1,
+             "the runner's own stats must survive alongside the signatures"
+    end
+
+    test "the run after it can say which finding went away", %{scope: scope} do
+      {:ok, first} = RunsRepository.start_run(scope, %{source: "exunit", kind: :full})
+
+      {:ok, _} =
+        Reconciler.reconcile(scope, first, %{
+          problems: [problem("test/a_test.exs"), problem("test/b_test.exs")],
+          output: "",
+          exit_status: 1,
+          stats: %{}
+        })
+
+      # The second sweep finds only one of them — the shape of "did my change
+      # fix it", which before this was unanswerable once the rows were replaced.
+      {:ok, second} = RunsRepository.start_run(scope, %{source: "exunit", kind: :full})
+      previous = RunsRepository.latest_completed_run(scope, "exunit")
+
+      {:ok, finished} =
+        Reconciler.reconcile(scope, second, %{
+          problems: [problem("test/b_test.exs")],
+          output: "",
+          exit_status: 1,
+          stats: %{}
+        })
+
+      assert %{gone: ["test/a_test.exs: boom"], new: []} =
+               Signatures.delta(previous, Signatures.read(finished))
     end
   end
 end
