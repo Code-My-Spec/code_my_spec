@@ -43,6 +43,15 @@ defmodule CodeMySpecSpex.Story966.Criterion8156Spex do
         {:ok, view, _html} =
           live(context.conn, "/app/projects/#{context.project.id}/provisioning")
 
+        # Before setup runs, or it stops at its second step. `secrets` seeds
+        # each environment's encrypted env, and sops will not create the file
+        # it is told to write into — `envs/uat.enc.env` is scaffolding the
+        # project generator lays down (story 970, `DeployArtifacts`). Without
+        # it the step exits 100 with "cannot operate on non-existent file" and
+        # every step after it stays not_started, which reads as "UAT was never
+        # provisioned" — the thing this criterion asserts.
+        view |> element("[data-test='generate-project']") |> render_click()
+
         # The options form is `phx-change`, and its params are
         # `options[<key>]`. A submit carrying a `provisioning` map changed
         # nothing at all — the page kept every default and the criterion
