@@ -369,14 +369,32 @@ defmodule CodeMySpec.Harnesses do
 
   def reclaim_quiet(_scope), do: {:ok, %{harnesses: 0, components: 0}}
 
-  # File rows can name a harness that has no row. Measured on this project:
-  # two harnesses existed and every file belonged to a third id that was neither
-  # of them nor the default.
+  # Defence in depth against a file row naming a harness that does not exist.
+  # It cannot currently fire, and the reason it was written is not the reason to
+  # keep it.
   #
-  # Whatever writes them, the rows are abandoned by definition — no harness row
-  # means no agent to come back, and no `last_seen_at` to age out. A sweep that
-  # only walks harnesses can never see them, so they would hold components alive
-  # forever, which is precisely the condition this story exists to end.
+  # `8c75e2df` recorded this as measured — "two harnesses existed and every file
+  # belonged to a third id" — and that measurement cannot have meant what it
+  # appeared to. `files_harness_id_fkey` has referenced `harnesses(id)` since
+  # `20260807210000`, and `exqlite` defaults `foreign_keys: :on`, so the
+  # constraint is enforced on both adapters. Checked on the live server: 0
+  # orphaned or cross-project rows out of 8,063 files carrying a harness_id.
+  # The likeliest reading is the report's own wording — the id appeared in no
+  # harness row *for that project*, which is a different claim, and spex
+  # fixtures mint a harness per `full_scope_fixture` call.
+  #
+  # Kept anyway, because the two schemas are not equally strong. On SQLite the
+  # NOT NULL and the `:delete_all` flip were never mirrored — `ALTER COLUMN`
+  # does not exist there, and rebuilding `files` was judged too expensive — so
+  # that deployment holds a nullable column with `on_delete: :nilify_all`. Its
+  # own migration says the constraint is "the application's rather than the
+  # database's". One cheap query is a reasonable price for the case where that
+  # judgement is revisited.
+  #
+  # What it does *not* cover, deliberately, because SQL says so: a row whose
+  # `harness_id` is NULL. `NULL NOT IN (…)` is NULL, never true, so those rows
+  # are invisible here. `20260807220000` deleted the existing ones and argues
+  # every writer now names its working copy.
   #
   # Excludes the caller, like the aged set: a live agent writing rows faster than
   # its harness is created must not sweep its own work.
