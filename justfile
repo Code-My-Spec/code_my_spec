@@ -438,15 +438,46 @@ refresh-harness port="4004":
     ( cd "$main"; exec </dev/null >"$log" 2>&1; nohup just harness & )
     echo "→ starting from $main, logging to $log"
 
+    # Listening is not ready.
+    #
+    # The port opens seconds before the harness joins `harness_project:<id>`,
+    # and it is the *join* a stop hook needs — until it lands, a stop gets
+    # "The CodeMySpec harness could not decide whether this turn is finished",
+    # which reads as a broken harness rather than as a restart still in flight.
+    # Measured: `just refresh` printed this ✓, a stop three seconds later
+    # failed, and the harness had in fact joined at the moment I went looking.
+    #
+    # So the ✓ waits for `connected` in /health rather than for the port. The
+    # port opens as soon as the endpoint starts; the socket client connects only
+    # after the app has finished booting, and that gap is where a stop refuses.
+    #
+    # Two minutes, and it still times out on a busy machine — measured at 35s
+    # idle, then ~130s after three back-to-back restarts with a suite running.
+    # Widening further trades a recipe that lies for one that hangs, so it stops
+    # here and says which it got.
+    #
+    # The fallback is not a failure: a harness that is up and has not joined is
+    # a real state, the message names where to look, and exit 0 keeps this out
+    # of the caller's error path.
     for _ in $(seq 1 90); do
         if lsof -nP -iTCP:{{port}} -sTCP:LISTEN -t >/dev/null 2>&1; then
-            echo "✓ harness is listening on {{port}}"
-            echo "  working copies re-register on their next hook"
-            echo
-            echo "  If this restart shipped a NEW MCP tool, every already-running"
-            echo "  agent still has the old tool list and will get \"No such tool"
-            echo "  available\" until it reconnects (/mcp in Claude Code). The"
-            echo "  server is not the reason; the client caches the list. b2d9c616."
+            for _ in $(seq 1 60); do
+                if curl -sS --max-time 3 "http://localhost:{{port}}/health" 2>/dev/null \
+                     | grep -q '"connected":true'; then
+                    echo "✓ harness is listening on {{port}} and joined the server"
+                    echo
+                    echo "  If this restart shipped a NEW MCP tool, every already-running"
+                    echo "  agent still has the old tool list and will get \"No such tool"
+                    echo "  available\" until it reconnects (/mcp in Claude Code). The"
+                    echo "  server is not the reason; the client caches the list. b2d9c616."
+                    exit 0
+                fi
+                sleep 2
+            done
+
+            echo "✓ harness is listening on {{port}}, but has not joined the server in 120s"
+            echo "  A stop will refuse until it does. Check the credential and the"
+            echo "  reconnect attempts in ~/.codemyspec/harness.log."
             exit 0
         fi
         sleep 2
