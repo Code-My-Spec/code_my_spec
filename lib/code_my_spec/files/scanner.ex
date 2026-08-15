@@ -922,6 +922,15 @@ defmodule CodeMySpec.Files.Scanner do
       # nothing, so creating the very script that satisfies the check left
       # `files_digest/1` unchanged and the published graph served as current.
       # Same defect as the specs had, one indirection along.
+      #
+      # `qa_integration_plan` is a graph requirement
+      # (`requirement_definition_data.ex:900`), which is what makes the
+      # fingerprint the mechanism here. `.code_my_spec/qa/summary.md` and
+      # `.code_my_spec/design/design_system.html` are read by evaluators too and
+      # are deliberately *not* claimed: `QaApp` and `DesignUi` are session types
+      # started by hand, not graph nodes, so nothing caches a decision about
+      # them and `read_file/2` answers over the channel on a light harness.
+      # Unclassified is the right answer for a file no graph reads.
       match_qa_script?(path) -> {path, :qa_script}
       match_qa_file?(path, "brief.md") -> {path, :qa_brief}
       match_qa_result?(path) -> {path, :qa_result}
