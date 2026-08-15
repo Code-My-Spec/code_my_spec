@@ -265,6 +265,12 @@ defmodule CodeMySpec.MixProject do
       # and the ordering against its own `ExUnit.start/1` wants care. This is
       # one query in front of a task that was already an alias.
       spex: ["cms.check_test_migrations", "spex --quiet"],
+      # Same shape as `spex` above: a refusal in front of a task that was already
+      # an alias. `mix ecto.migrate` runs `priv/repo/migrations` whatever MIX_ENV
+      # says, so under a SQLite environment it points the Postgres set at a
+      # database that cannot take it and fails as if the DDL were broken
+      # (02ff6d6b). Self-referencing alias — Mix invokes the real task.
+      "ecto.migrate": ["cms.guard_cli_migrate", "ecto.migrate"],
       setup: ["deps.get", "ecto.setup", "assets.setup", "assets.build"],
       "ecto.setup": ["ecto.create", "ecto.migrate", "run priv/repo/seeds.exs"],
       "ecto.reset": ["ecto.drop", "ecto.setup"],
