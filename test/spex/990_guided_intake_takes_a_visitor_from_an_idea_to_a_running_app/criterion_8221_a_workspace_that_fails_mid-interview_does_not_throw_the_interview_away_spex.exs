@@ -21,8 +21,6 @@ defmodule CodeMySpecSpex.Story990.Criterion8221Spex do
 
   import CodeMySpecSpex.IntakeSteps
 
-  alias CodeMySpecSpex.Fixtures
-
   @endpoint CodeMySpecWeb.Endpoint
 
   @answer "clients must never see bookings from a different salon"
@@ -37,15 +35,6 @@ defmodule CodeMySpecSpex.Story990.Criterion8221Spex do
     )
 
     start_supervised!({CodeMySpecSpex.Case.workspace_runner(), healthy?: false, alive?: true})
-
-    # A workspace that is alive but never healthy polls until `:boot_timeout`,
-    # and 60 s is deliberate — the scenario needs the boot not to give up while
-    # the interview proceeds. The task is unlinked, so deleting the config below
-    # does not shorten a deadline already in flight: it would keep polling for a
-    # minute after this spex finished in milliseconds, then log
-    # `Task.Supervisor, :terminating` into whatever spex was running by then.
-    # That is `23d3c71c`.
-    Fixtures.stop_leaked_tasks_on_exit()
 
     on_exit(fn ->
       Application.delete_env(:code_my_spec, :fake_workspace_alive)
