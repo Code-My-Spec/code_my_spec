@@ -24,8 +24,8 @@ defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignmentTest do
 
   alias CodeMySpec.Environments
   alias CodeMySpec.Environments.Environment
-  alias CodeMySpec.Support.InMemoryEnvironment
   alias CodeMySpec.StaticAnalysis.Analyzers.SpecAlignment
+  alias CodeMySpec.Support.InMemoryEnvironment
   alias CodeMySpecTest.EnvRestore
 
   setup do
