@@ -62,20 +62,49 @@ defmodule CodeMySpec.Provisioning.Dns do
   """
   @spec resolves_publicly?(String.t(), atom(), keyword()) :: boolean()
   def resolves_publicly?(name, type, opts \\ []) do
+    resolution_status(name, type, opts) == :resolves
+  end
+
+  @doc """
+  Why `name` does not resolve, when it does not.
+
+  `:resolves`, or `{:absent, :cached, seconds_left}`, or `{:absent, :fresh}`.
+
+  The distinction is the difference between a record that is missing and a
+  record that is published while a resolver still remembers it was not. Both
+  read as "no answer", and reporting the second as the first cost most of an
+  evening: `c7995.astralbi.com` was written, `dig @1.1.1.1` returned it, and
+  the dns step said no public resolver returns it.
+
+  A negative answer carries the zone's SOA in its authority section, and the
+  SOA's own TTL is what is counting down in a cache. Fresh from the
+  authoritative server it arrives at the zone's minimum — 1800s on
+  astralbi.com — so a TTL *below* that minimum means some resolver has been
+  holding this answer for the difference. That is the whole test.
+
+  It matters most for names that cycle. Every spex label and every drill
+  domain is created, destroyed and created again, and a resolver asked during
+  the gap keeps saying no for half an hour after the record is back — longer
+  than any step is willing to wait, so no amount of retrying helps and the
+  honest thing is to say which it is.
+  """
+  @spec resolution_status(String.t(), atom(), keyword()) ::
+          :resolves | {:absent, :cached, non_neg_integer()} | {:absent, :fresh}
+  def resolution_status(name, type, opts \\ []) do
     attempts = Keyword.get(opts, :attempts, 1)
     interval = Keyword.get(opts, :interval_ms, 2_000)
 
-    Enum.reduce_while(1..attempts, false, fn attempt, _acc ->
+    Enum.reduce_while(1..attempts, {:absent, :fresh}, fn attempt, _acc ->
       case doh_lookup(name, type, opts) do
-        [] when attempt < attempts ->
+        {:answers, [_ | _]} ->
+          {:halt, :resolves}
+
+        absent when attempt < attempts ->
           Wait.sleep(interval)
-          {:cont, false}
+          {:cont, absent}
 
-        [] ->
-          {:halt, false}
-
-        _answers ->
-          {:halt, true}
+        absent ->
+          {:halt, absent}
       end
     end)
   end
@@ -111,10 +140,14 @@ defmodule CodeMySpec.Provisioning.Dns do
   ]
 
   defp doh_lookup(name, type, opts) do
-    Enum.reduce_while(@doh_resolvers, [], fn {endpoint, headers}, _acc ->
+    Enum.reduce_while(@doh_resolvers, {:absent, :fresh}, fn {endpoint, headers}, acc ->
       case doh_query(endpoint, headers, name, type, opts) do
-        [] -> {:cont, []}
-        answers -> {:halt, answers}
+        {:answers, [_ | _]} = answers -> {:halt, answers}
+        # A cached negative from one resolver is worth carrying: if the other
+        # is also silent, that is the answer that explains why, and it is the
+        # difference between "publish it" and "wait for it".
+        {:absent, :cached, _} = cached -> {:cont, cached}
+        _ -> {:cont, acc}
       end
     end)
   end
@@ -124,12 +157,47 @@ defmodule CodeMySpec.Provisioning.Dns do
 
     case req(opts).(url, headers) do
       {:ok, %{status: 200, body: %{"Answer" => answers}}} when is_list(answers) ->
-        Enum.map(answers, & &1["data"])
+        {:answers, Enum.map(answers, & &1["data"])}
+
+      {:ok, %{status: 200, body: %{} = body}} ->
+        negative(body)
 
       _ ->
-        []
+        {:absent, :fresh}
     end
   end
+
+  # How long a resolver has been holding this "no". The authority section of a
+  # negative answer carries the zone's SOA, whose last field is the negative
+  # TTL the zone publishes; the record's own TTL is what counts down in cache.
+  # Below the minimum means cached, and by how much.
+  defp negative(%{"Authority" => [_ | _] = authority}) do
+    Enum.find_value(authority, {:absent, :fresh}, fn record ->
+      with 6 <- record["type"],
+           ttl when is_integer(ttl) <- record["TTL"],
+           minimum when is_integer(minimum) <- soa_minimum(record["data"]),
+           true <- ttl < minimum do
+        {:absent, :cached, ttl}
+      else
+        _ -> nil
+      end
+    end)
+  end
+
+  defp negative(_body), do: {:absent, :fresh}
+
+  # `ns.example.com. hostmaster.example.com. 2412243971 10000 2400 604800 1800`
+  defp soa_minimum(data) when is_binary(data) do
+    case data |> String.split() |> List.last() do
+      nil -> nil
+      last -> case Integer.parse(last) do
+                {minimum, _} -> minimum
+                :error -> nil
+              end
+    end
+  end
+
+  defp soa_minimum(_), do: nil
 
   # Injectable so a spex can drive it through its cassette plug.
   #

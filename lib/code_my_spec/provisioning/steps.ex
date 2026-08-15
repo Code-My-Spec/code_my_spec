@@ -3460,13 +3460,31 @@ defmodule CodeMySpec.Provisioning.Steps do
   # certificate problem, on a host teardown was about to destroy. This step
   # states what it did, so it should be the one to say it did not work.
   defp confirm_dns_record(environment, ip, record, acc, opts) do
-    case dns_verification(environment, opts) do
-      [] -> {:halt, {:error, unresolved_record_message(environment, ip)}}
-      verification -> {:cont, {:ok, acc ++ [record] ++ verification}}
+    case Dns.resolution_status(environment.host, :a, resolver_opts(opts)) do
+      :resolves ->
+        {:cont, {:ok, acc ++ [record] ++ dns_verification(environment)}}
+
+      absent ->
+        {:halt, {:error, unresolved_record_message(environment, ip, absent)}}
     end
   end
 
-  defp unresolved_record_message(environment, ip) do
+  # Which of the two it is decides whether Sam goes looking for a mistake or
+  # waits. A resolver still holding "this name does not exist" from before the
+  # record was written says nothing about the record, and no amount of retrying
+  # inside one step outlasts it — the zone publishes a negative TTL of half an
+  # hour. Reported as a missing record it sent me hunting a publish bug for a
+  # name `dig` was answering correctly the whole time.
+  defp unresolved_record_message(environment, ip, {:absent, :cached, seconds}) do
+    "#{environment.host} was written as an A record for #{ip} and is published — " <>
+      "but a public resolver is still serving a cached \"does not exist\" for the " <>
+      "name, from before it was written, with about #{seconds}s left to run. " <>
+      "Nothing is wrong with the record. Re-run this step once that expires; if " <>
+      "this name is created and destroyed repeatedly, each cycle starts the wait " <>
+      "again."
+  end
+
+  defp unresolved_record_message(environment, ip, _fresh) do
     "#{environment.host} was written as an A record for #{ip}, but no public " <>
       "resolver returns it. Everything after this step reaches the name rather " <>
       "than the address, so none of it can work until the record resolves."
@@ -3475,19 +3493,19 @@ defmodule CodeMySpec.Provisioning.Steps do
   # Confirmed against a public resolver, not against our own write. A record
   # that exists in the dashboard and does not resolve is the classic DNS
   # failure, and it looks identical to success from the API's answer alone.
-  defp dns_verification(environment, opts) do
-    if Dns.resolves_publicly?(environment.host, :a, resolver_opts(opts)) do
-      [
-        %{
-          kind: "dns_verification",
-          location: environment.host,
-          identifier: "source=resolver environment=#{environment.name}",
-          origin: "created"
-        }
-      ]
-    else
-      []
-    end
+  #
+  # The asking moved to `confirm_dns_record/5`, which needs to know *why* a
+  # name did not resolve rather than only that it did not; this records the
+  # answer once that call has already been made.
+  defp dns_verification(environment) do
+    [
+      %{
+        kind: "dns_verification",
+        location: environment.host,
+        identifier: "source=resolver environment=#{environment.name}",
+        origin: "created"
+      }
+    ]
   end
 
   # Against the **zone**, not the receiving domain. Resend names its records
