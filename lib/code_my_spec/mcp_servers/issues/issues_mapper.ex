@@ -182,6 +182,23 @@ defmodule CodeMySpec.McpServers.Issues.IssuesMapper do
     |> Response.error("Issue not found.")
   end
 
+  @doc """
+  A prefix that names more than one issue.
+
+  Its own answer rather than `not_found_error/0`, because "not found" is a claim
+  about the issue and the truth here is a claim about the argument — the same
+  conflation `98fa6656` is about, one case along. Lists the candidates so the
+  caller's next call is exact rather than a guess.
+  """
+  def ambiguous_error(prefix, ids) do
+    Response.tool()
+    |> Response.error(
+      "`#{prefix}` matches #{length(ids)} issues on this project:\n\n" <>
+        Enum.map_join(ids, "\n", &("  " <> &1)) <>
+        "\n\nUse a longer prefix or the full id."
+    )
+  end
+
   def validation_error(changeset) do
     Response.tool()
     |> Response.error(Formatters.format_changeset_errors(changeset))
