@@ -34,9 +34,10 @@ server:
 # two that matter — deps and migrations — are exactly the per-worktree state a
 # rebase silently invalidates. A sibling's commit moves `mix.lock` and `mix`
 # refuses before it runs anything (`66e30d85`); a sibling's migration lands and
-# the suite fails in bulk on a column nobody touched (`2fb10199`, above). Both
-# are one command, and both cost a diagnosis first because they arrive in the
-# middle of unrelated work and read as the worktree being broken.
+# the suite fails in bulk on a column nobody touched (`f58acb37`, and `2fb10199`
+# above for the first-run version of the same miss). Both are one command, and
+# both cost a diagnosis first because they arrive in the middle of unrelated
+# work and read as the worktree being broken.
 worktree-setup:
     #!/usr/bin/env bash
     set -euo pipefail
