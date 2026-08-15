@@ -46,15 +46,38 @@ defmodule CodeMySpecLocalWeb.Plugs.HarnessScope do
   @behaviour Plug
 
   @header "x-harness-id"
+  @param "harness"
 
   @impl true
   def init(opts), do: opts
 
   @impl true
   def call(conn, _opts) do
-    case conn |> get_req_header(@header) |> List.first() do
+    case announced_id(conn) do
       nil -> missing(conn)
       raw -> raw |> String.trim() |> dispatch(conn)
+    end
+  end
+
+  # The header first, then `?harness=`. Both name the same thing and neither is
+  # a directory, which is the only distinction that matters here — an id in a
+  # query string is the same class of fact as the one in
+  # `/api/harnesses/:id/hooks/*`, which the light harness has always routed on.
+  #
+  # Two, because the two plugin shapes cannot use one. The published plugin is
+  # installed once and serves every checkout, so it has no id at build time and
+  # must interpolate `${CMS_HARNESS_ID}` into a header at request time. The
+  # per-harness plugin `mix cms.harness.onboard` generates has the id in hand
+  # and writes it straight into the url, where nothing needs to be set for it to
+  # survive.
+  #
+  # An empty header does not mask a present parameter: a client that sends both
+  # is answered by the header, and a client that sends a blank header and a real
+  # parameter meant the parameter.
+  defp announced_id(conn) do
+    case conn |> get_req_header(@header) |> List.first() do
+      value when is_binary(value) and value != "" -> value
+      _ -> conn |> fetch_query_params() |> Map.fetch!(:query_params) |> Map.get(@param)
     end
   end
 
@@ -143,11 +166,12 @@ defmodule CodeMySpecLocalWeb.Plugs.HarnessScope do
   # the body and the operator sees nothing.
   defp missing(conn) do
     error(conn, 400, """
-    #{conn.method} #{conn.request_path} sent no X-Harness-Id.
+    #{conn.method} #{conn.request_path} named no harness.
 
-    Every request names the working copy it is about. Nothing is inferred from \
-    the directory the hook fired from — that guesses, and a guess here succeeds \
-    against the wrong checkout.
+    Every request names the working copy it is about, as an `X-Harness-Id` \
+    header or a `?harness=` parameter. Nothing is inferred from the directory \
+    the hook fired from — that guesses, and a guess here succeeds against the \
+    wrong checkout.
 
     The id is written in .cms_harness.json at the working copy's root and \
     exported as CMS_HARNESS_ID. If neither exists, run `mix cms.harness.onboard` \

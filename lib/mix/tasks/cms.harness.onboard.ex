@@ -193,7 +193,8 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   defp install_hooks(_env, root, dest, id, args) do
     with {:ok, relay} <- check_relay(),
          :ok <- copy_plugin(root, dest),
-         {:ok, count} <- address_hooks(dest, id, relay) do
+         {:ok, count} <- address_hooks(dest, id, relay),
+         :ok <- address_mcp(dest, id) do
       report(id, dest, count, args)
       {:ok, count}
     else
@@ -633,19 +634,47 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   # A missing file is an empty one. A malformed file is not — overwriting it
   # would throw away settings the operator wrote, so it stops and says so.
 
-  # `address_mcp/2` used to sit here, rewriting the MCP url's
-  # `?dir=${CLAUDE_PROJECT_DIR}` into `?harness=<id>` so the mount named a
-  # working copy rather than a directory. Right instinct, wrong mechanism twice
-  # over: `HarnessScope` never read a `harness` query parameter — only the
-  # header — so the generated mount was resolving on neither, and the rewrite
-  # was a string match against a url the source plugin no longer contains, which
-  # would have started silently matching nothing.
+  # The MCP surface has the same question to answer as the hooks — which
+  # working copy is this? — so it gets the same answer, written into the url
+  # because this copy has the id in hand and nothing needs to be set for a url
+  # to survive.
   #
-  # The plugin ships `X-Harness-Id: ${CMS_HARNESS_ID}` and `address_model_turns/4`
-  # writes that variable into this checkout's `.claude/settings.local.json`, so
-  # the generated copy and the published one now name their working copy the same
-  # way and neither needs rewriting. One mechanism, and the id it sends is the
-  # one the file beside it records.
+  # The published plugin cannot do that: it is installed once and serves every
+  # checkout, so it has no id at build time and interpolates
+  # `${CMS_HARNESS_ID}` into a header instead. `HarnessScope` reads both — it
+  # did not, which is why this rewrite spent its life producing a parameter the
+  # server ignored.
+  #
+  # Matched on the header rather than the old `?dir=${CLAUDE_PROJECT_DIR}`,
+  # which is gone from the source plugin. A `String.replace` against a string
+  # that is no longer there does not fail; it writes the file back unchanged and
+  # reports `:ok`.
+  defp address_mcp(dest, id) do
+    file = Path.join([dest, ".claude-plugin", "plugin.json"])
+
+    with {:ok, contents} <- File.read(file),
+         {:ok, addressed} <- swap_mcp_address(contents, id) do
+      File.write!(file, addressed)
+      :ok
+    else
+      {:error, :no_mcp_address} ->
+        {:error,
+         "#{file} has no local MCP mount to address. The source plugin's " <>
+           "`mcpServers.local` entry is what this rewrites; if it moved, this moved too."}
+
+      {:error, reason} ->
+        {:error, "Could not read #{file}: #{inspect(reason)}"}
+    end
+  end
+
+  @mcp_header ~s|"X-Harness-Id": "${CMS_HARNESS_ID}"|
+
+  defp swap_mcp_address(contents, id) do
+    case String.contains?(contents, @mcp_header) do
+      true -> {:ok, String.replace(contents, @mcp_header, ~s|"X-Harness-Id": "#{id}"|)}
+      false -> {:error, :no_mcp_address}
+    end
+  end
 
   defp report(id, dest, count, _args) do
     Mix.shell().info("""
