@@ -162,9 +162,20 @@ defmodule CodeMySpec.Validation do
 
     config = Configurations.get_or_create(scope)
 
+    # Read *before* the pipeline enqueues, and that ordering is the whole of it.
+    # Asked afterwards, this set contains the runs this very stop just started,
+    # so every stale finding would be superseded on every stop and the gate
+    # would only ever block on fresh ones — which a finding stops being the
+    # moment anything is edited. What `23c8e006` describes is narrower: a rerun
+    # that was *already* going when the stop arrived, whose result will replace
+    # these findings without the agent doing anything.
+    already_running = Analysis.in_flight(scope)
+
     analysis = run_pipeline(scope, task, changed_files, config, opts)
 
     if Keyword.get(opts, :await, false), do: Analysis.await_all(scope)
+
+    opts = Keyword.put(opts, :already_running, already_running)
 
     with :ok <- check_blocking_problems(scope, changed_files, config, opts) do
       {:ok, %{changed_files: changed_files, analysis: analysis}}
@@ -189,9 +200,13 @@ defmodule CodeMySpec.Validation do
     changed_files = remote_changed_files(scope, task, opts)
     config = Configurations.get_or_create(scope)
 
+    already_running = Analysis.in_flight(scope)
+
     analysis = run_pipeline(scope, task, changed_files, config, opts)
 
     if Keyword.get(opts, :await, false), do: Analysis.await_all(scope)
+
+    opts = Keyword.put(opts, :already_running, already_running)
 
     with :ok <- check_blocking_problems(scope, changed_files, config, opts) do
       {:ok, %{changed_files: changed_files, analysis: analysis}}
@@ -404,6 +419,75 @@ defmodule CodeMySpec.Validation do
   end
 
   def split_unattributed(blocking, _session_paths), do: {blocking, []}
+
+  @doc """
+  Split blocking findings whose source is stale *and* currently re-running.
+
+  A finding in this state describes a tree that no longer exists, and a
+  replacement is already on its way. Blocking on it produced a response whose
+  two instructions could not both be satisfied — "fix these problems before
+  stopping", and, four lines down, "do not re-fix anything you have already
+  corrected; a rerun is in flight, stop again and let it replace these".
+
+  `23c8e006` reports both halves of that. First with a rerun that was failing
+  (2m32s then 2m53s against a typical 1m7s, under a concurrent provisioning
+  drill), and then again — the case that settles the design — with a rerun that
+  was perfectly healthy at "15s of a typical 19s". The second one had no failure
+  to surface: the findings were already fixed on disk, the analyzer agreed
+  (`422 findings project-wide, zero in that file`, instrument checked against
+  the same rules still firing elsewhere), and the block was purely the lag
+  between an edit and the sweep that measures it. Its line numbers had moved
+  too, so following them lands on unrelated code.
+
+  Both conditions are required. A stale source with nothing running still
+  blocks — that is a real outstanding finding nobody is measuring, and waiting
+  cannot help. A fresh source obviously blocks. Only the overlap is demoted,
+  and only until the run lands: if the finding is real, the next stop blocks on
+  the new result.
+
+  **`in_flight` must be read before the stop's own pipeline enqueues anything.**
+  Asked afterwards it contains the runs this very stop just started, so every
+  stale finding is superseded on every stop and the gate only ever blocks on
+  fresh ones — which a finding stops being the moment anything is edited. That
+  is not a subtle degradation; it switches the gate off. Caught by
+  `HarnessProjectChannelTest`'s "a sub-agent stopping with problems blocks,
+  rather than killing the channel", which went green-to-red on the first
+  version of this and is the reason the caller captures `already_running`
+  before `run_pipeline/5`.
+
+  This aligns the blocking path with the pending one, which already reached the
+  same answer from the other side. `Hooks.Stop` treats in-flight analysis as a
+  distinct outcome and, outside continuous mode, allows the stop with "results
+  apply next stop" — but only when validation *passed*, because blocking
+  findings return before that check. So a stop with no findings waited politely
+  while a stop with stale ones was refused on data of the same age.
+
+  Not to be confused with `cc1016a8`, which was the case where the rerun never
+  comes at all. That is fixed separately (a sweep no longer drops a request for
+  a busy source); if it recurs, this demotion would hide it, which is why the
+  response still names the source as stale and says what is running.
+  """
+  @spec split_superseded([Problems.Problem.t()], [String.t()], [String.t()]) ::
+          {[Problems.Problem.t()], [Problems.Problem.t()]}
+  def split_superseded(blocking, stale_sources, in_flight) do
+    replacing = MapSet.intersection(MapSet.new(stale_sources), MapSet.new(in_flight))
+
+    Enum.split_with(blocking, &(not MapSet.member?(replacing, &1.source)))
+  end
+
+  # Same reasoning as `log_demotions/2`: the gate declining to block is the
+  # interesting case, and it is invisible in the response.
+  defp log_supersessions([], _opts), do: :ok
+
+  defp log_supersessions(superseded, opts) do
+    sources = superseded |> Enum.map(& &1.source) |> Enum.uniq() |> Enum.join(", ")
+
+    Logger.info(
+      "[Validation] session #{inspect(Keyword.get(opts, :session_id))} — demoted " <>
+        "#{length(superseded)} finding(s) to advisory: #{sources} is stale and re-running, " <>
+        "so these describe a tree that no longer exists"
+    )
+  end
 
   # Loudly, because this is the gate declining to block. A demotion that is
   # right is uninteresting and a demotion that is wrong is invisible in the
@@ -622,6 +706,12 @@ defmodule CodeMySpec.Validation do
     {blocking, unattributed} = split_unattributed(blocking, session_paths)
     advisory = advisory ++ unattributed
     log_demotions(unattributed, opts)
+
+    {blocking, superseded} =
+      split_superseded(blocking, stale_sources, Keyword.get(opts, :already_running, []))
+
+    advisory = advisory ++ superseded
+    log_supersessions(superseded, opts)
 
     {last_ran, run_duration, overtaken} = run_timing(scope, stale_sources)
 
