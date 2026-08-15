@@ -283,6 +283,45 @@ defmodule CodeMySpec.Analysis.RunnersTest do
       assert excerpt =~ "broken_spex.exs:12"
     end
 
+    # The first excerpt this helper ever produced in anger was
+    # `Mix.Task.run_alias/6 | Mix.CLI.run_task/2 | bin/mix:7` — the last three
+    # lines of a mix crash, which are the same boilerplate every time. An
+    # excerpt that always says the same thing is not an excerpt.
+    test "the exception line wins over the mix boilerplate below it" do
+      output = """
+      ** (RuntimeError) the thing that actually broke
+          (code_my_spec 2.0.0) lib/whatever.ex:12: CodeMySpec.Whatever.go/1
+          (mix 1.19.4) lib/mix/task.ex:573: Mix.Task.run_alias/6
+          (mix 1.19.4) lib/mix/cli.ex:129: Mix.CLI.run_task/2
+          /Users/x/.asdf/installs/elixir/1.19.4-otp-28/bin/mix:7: (file)
+      """
+
+      assert {:error, {:spex_suite_did_not_run, 1, excerpt}} =
+               Runners.from_raw("spex", %{
+                 "exit_status" => 1,
+                 "diagnostics" => [],
+                 "output" => output
+               })
+
+      assert excerpt =~ "the thing that actually broke"
+      refute excerpt =~ "Mix.CLI.run_task"
+    end
+
+    # Not every failure raises. Without a marker the tail is still the best
+    # available answer, so it must not be lost chasing the better one.
+    test "falls back to the tail when nothing raised" do
+      output = "Compiling 4 files (.ex)\nsome noise\nthe last useful line\n"
+
+      assert {:error, {:spex_suite_did_not_run, 1, excerpt}} =
+               Runners.from_raw("spex", %{
+                 "exit_status" => 1,
+                 "diagnostics" => [],
+                 "output" => output
+               })
+
+      assert excerpt =~ "the last useful line"
+    end
+
     test "a spex failure names the scenario it came from" do
       raw = %{
         "exit_status" => 1,

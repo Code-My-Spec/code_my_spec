@@ -498,7 +498,25 @@ defmodule CodeMySpec.Analysis.Runners do
   # into the run's `stats["error"]`, which Reconciler.fail truncates at 500.
   defp error_excerpt(nil), do: ""
 
+  # The exception marker wins where there is one, and the tail only otherwise.
+  #
+  # `Enum.take(-3)` alone picks the least informative part of a mix crash: the
+  # last three lines are always the same boilerplate —
+  # `Mix.Task.run_alias/6 | Mix.CLI.run_task/2 | bin/mix:7` — while the line
+  # naming what actually broke sits above them. Measured on the first spex
+  # failure this helper ever reported: the excerpt arrived, and said nothing.
+  #
+  # `CmsHarness.Web.UpstreamError.exception_text/1` reached the same conclusion
+  # for Phoenix debug pages and is the precedent — "the marker wins where there
+  # is one: it is the line naming what broke".
   defp error_excerpt(output) do
+    case String.split(output, "** (", parts: 2) do
+      [_before, rest] -> "** (" <> (rest |> String.split("\n") |> hd() |> String.slice(0, 300))
+      [_no_marker] -> tail_excerpt(output)
+    end
+  end
+
+  defp tail_excerpt(output) do
     output
     |> String.split("\n", trim: true)
     |> Enum.take(-3)
