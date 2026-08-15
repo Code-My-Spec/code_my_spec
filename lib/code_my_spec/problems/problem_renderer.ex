@@ -209,7 +209,8 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
       last_ran: last_ran,
       duration: run_duration,
       overtaken: overtaken,
-      failures: Keyword.get(opts, :run_failures, %{})
+      failures: Keyword.get(opts, :run_failures, %{}),
+      analyzer_staleness: Keyword.get(opts, :analyzer_staleness, %{})
     }
 
     blocking_section = render_blocking_section(blocking, stale, runs, reproduce, session_paths)
@@ -254,8 +255,32 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
     "#{source} (#{count})#{marker}:\n#{details}#{overflow}" <>
       reproduce_line(source, reproduce) <>
       killed_note(items) <>
-      foreign_spex_note(source, items, session_paths)
+      foreign_spex_note(source, items, session_paths) <>
+      stale_build_note(source, runs)
   end
+
+  # The one case where "stop again and let a rerun replace these" is wrong for a
+  # reason the reader cannot see: the rerun will run the same old code.
+  #
+  # A harness runs the analyzer it booted with, so a fix to `StaticAnalysis` is
+  # not in force until it is rebuilt. `d9f0846c` measured three stop-hook loops
+  # spent on findings already fixed, while the compiled pipeline sat eleven
+  # commits behind for a whole session. The response said "stale, a rerun is in
+  # flight" — true, and useless — and rendered identically both to an ordinary
+  # stale finding and to the real defect it was masking, so each time the
+  # diagnosis stopped at the first plausible cause. Recovering it needed a
+  # `.beam` timestamp.
+  #
+  # On the source's own group rather than in the footer: one analyzer can be
+  # behind while another is current, and the advice differs for each.
+  defp stale_build_note(source, %{analyzer_staleness: notes}) do
+    case Map.get(notes, source) do
+      note when is_binary(note) -> "\n  Analyzer build: #{note}."
+      _ -> ""
+    end
+  end
+
+  defp stale_build_note(_source, _runs), do: ""
 
   # Why a spex still blocks after being marked as somebody else's.
   #

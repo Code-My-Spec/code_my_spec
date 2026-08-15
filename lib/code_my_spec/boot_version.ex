@@ -129,6 +129,54 @@ defmodule CodeMySpec.BootVersion do
   @spec contract_changed?(String.t(), String.t()) :: boolean() | :unknown
   def contract_changed?(booted, current), do: changed?(booted, current, @contract_paths)
 
+  @doc """
+  Whether the drifted range touched the code that decides analysis results.
+
+  A different question from `contract_changed?/2`, and the one an analyzer
+  result has to answer about itself. A harness runs the analyzer it booted
+  with, so a fix to `StaticAnalysis` or the runners is not in force until the
+  harness is rebuilt — and until then it decides stops with the old rules while
+  the fix sits in `main`.
+
+  Measured (`d9f0846c`): `be9a46f8` landed mid-afternoon and the harness's
+  compiled `StaticAnalysis.Pipeline.beam` was from the previous day, eleven
+  commits behind, for an entire session. Three stop-hook loops were spent on
+  findings that were already fixed.
+
+  What made it expensive is that it is invisible from inside the loop. "credo —
+  stale, a rerun is in flight" is true, and useless, because the rerun runs the
+  old code; and it renders identically to the defect it was masking. The
+  correct diagnosis needed a `.beam` timestamp, which is not a thing anyone
+  thinks to check while being told a rerun is coming.
+  """
+  @analyzer_paths [
+    "lib/code_my_spec/static_analysis",
+    "lib/code_my_spec/analysis",
+    "lib/cms_harness/project"
+  ]
+
+  @spec analyzer_changed?(String.t(), String.t()) :: boolean() | :unknown
+  def analyzer_changed?(booted, current), do: changed?(booted, current, @analyzer_paths)
+
+  @doc """
+  How the analyzer should describe its own build alongside a result.
+
+  `nil` when there is nothing to say — no drift, or the range cannot be read.
+  A string when the build deciding this result predates a change to analyzer
+  code, which is the case the reader needs and cannot otherwise see.
+  """
+  @spec analyzer_staleness() :: String.t() | nil
+  def analyzer_staleness do
+    with {:drifted, booted, current} <- drift(),
+         true <- analyzer_changed?(booted, current) do
+      "this result came from a build at #{booted}; the checkout is now at #{current}, " <>
+        "and that range changed analyzer code — rebuild the harness " <>
+        "(`just refresh`) before acting on it"
+    else
+      _ -> nil
+    end
+  end
+
   # `config_changed?/2` sat here, asking the same question of `config/` so the
   # stop hook could warn that this process was wedged. Its only caller made a
   # `git rev-parse` fork on every stop for an answer that is almost always "no",

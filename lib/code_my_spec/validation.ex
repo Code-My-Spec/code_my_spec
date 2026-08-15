@@ -631,6 +631,10 @@ defmodule CodeMySpec.Validation do
       # words are in `Run.output` and nothing read them back — `6f89b278` is
       # three days of blocked stops with the fix sitting in that column.
       run_failures: run_failures(scope, stale_sources),
+      # Whether the build that decided a source's findings was older than the
+      # tree it decided about. Stamped on the run by the harness, because only
+      # the harness can compare its own boot sha against its own checkout.
+      analyzer_staleness: analyzer_staleness(scope, sources_with_problems),
       # How long the run itself took. Read together with the age, this separates
       # "your edit predates this result" from "your edit landed while it was
       # running" — and only the first is fixed by waiting.
@@ -773,6 +777,28 @@ defmodule CodeMySpec.Validation do
 
   defp truncate(text, cap) when byte_size(text) <= cap, do: text
   defp truncate(text, cap), do: binary_part(text, 0, cap) <> "…"
+
+  @doc """
+  Per source, the harness's note about its own build being behind the tree.
+
+  Read off the run rather than recomputed, because the question is about the
+  moment that result was produced and the answer would drift if asked later.
+  `d9f0846c`: a fix to the analyzer is not in force until the harness is
+  rebuilt, and from inside the stop loop that is indistinguishable from an
+  ordinary stale finding — three loops were spent on findings already fixed
+  while the compiled pipeline sat eleven commits behind.
+  """
+  @spec analyzer_staleness(Scope.t(), [String.t()]) :: %{String.t() => String.t()}
+  def analyzer_staleness(_scope, []), do: %{}
+
+  def analyzer_staleness(scope, sources) do
+    for source <- sources,
+        run = RunsRepository.latest_full_run(scope, source),
+        note = get_in(run.stats || %{}, ["analyzer_staleness"]),
+        is_binary(note),
+        into: %{},
+        do: {source, note}
+  end
 
   # Did an edit land while this run was in flight?
   #

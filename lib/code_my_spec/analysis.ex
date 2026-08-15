@@ -397,9 +397,11 @@ defmodule CodeMySpec.Analysis do
       "while the analyzer was still working"
   end
 
-  defp apply_remote_result(scope, run, %{"status" => "ok", "result" => raw}) when is_map(raw) do
+  defp apply_remote_result(scope, run, %{"status" => "ok", "result" => raw} = payload)
+       when is_map(raw) do
     case Runners.from_raw(run.source, raw) do
       {:ok, result} ->
+        result = note_analyzer_staleness(result, payload)
         Reconciler.reconcile(scope, run, result, notify: true)
 
       {:error, reason} ->
@@ -436,6 +438,23 @@ defmodule CodeMySpec.Analysis do
     Reconciler.fail(run, reason)
     {:error, reason}
   end
+
+  # Whether the harness that produced this was running analyzer code older than
+  # the tree it decided about — computed there, because only the harness can see
+  # its own boot sha and its own checkout.
+  #
+  # Carried on `stats`, a free-form map, so this needs no migration and travels
+  # with the run rather than being recomputed later against a different moment.
+  # `d9f0846c`: findings from a stale build are indistinguishable from ordinary
+  # stale findings in the stop response, and the difference is whether stopping
+  # again can possibly help.
+  defp note_analyzer_staleness(result, %{"analyzer_staleness" => note}) when is_binary(note) do
+    Map.update(result, :stats, %{"analyzer_staleness" => note}, fn stats ->
+      Map.put(stats || %{}, "analyzer_staleness", note)
+    end)
+  end
+
+  defp note_analyzer_staleness(result, _payload), do: result
 
   @doc "Block until every in-flight run for the project has finished."
   @spec await_all(Scope.t(), keyword()) :: :ok | :timeout
