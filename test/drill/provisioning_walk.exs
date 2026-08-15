@@ -104,7 +104,8 @@ defmodule CodeMySpecSpex.Drill do
 
     results =
       if tearing_down?() do
-        steps |> Enum.reverse() |> Enum.map(&tear_down_and_report(scope, &1))
+        stepped = steps |> Enum.reverse() |> Enum.map(&tear_down_and_report(scope, &1))
+        stepped ++ tear_down_environments(scope)
       else
         Enum.map(steps, &run_and_report(scope, &1))
       end
@@ -138,7 +139,38 @@ defmodule CodeMySpecSpex.Drill do
     report(key, outcome, elapsed)
   end
 
-  # Reverse order, because the sequence's order is a dependency claim and
+  # After the steps, because the steps own what they recorded and this owns
+  # what the environment is.
+  #
+  # `Teardown.step/3` works from the resources a step recorded, and the apex
+  # DNS record is recorded `adopted` — setup found it already there, from the
+  # run before. So the step path skips it, every time, and the record outlives
+  # the server it points at. Hetzner then recycles the address, and the next
+  # run's `dns` step refuses to repoint a name that already resolves, which is
+  # correct and leaves the stale record in place. Two right behaviours
+  # composing into a subdomain takeover (7f999888).
+  #
+  # `Teardown.environment/2` is the path that gets this right and was never
+  # called: it builds its own resources with `origin: "created"` and removes
+  # the DNS record *before* releasing the server, which is the ordering its
+  # own docstring exists to explain.
+  defp tear_down_environments(scope) do
+    Enum.map(environments(), fn name ->
+      IO.puts("\n─── environment #{name} " <> String.duplicate("─", max(0, 48 - String.length(name))))
+      started = System.monotonic_time(:millisecond)
+
+      outcome =
+        case Teardown.environment(scope, name, step_opts()) do
+          {:ok, removed} -> {:ok, removed}
+          {:error, reason, _removed} -> {:error, reason}
+        end
+
+      elapsed = System.monotonic_time(:millisecond) - started
+      report_teardown(:"environment #{name}", outcome, elapsed)
+    end)
+  end
+
+
   # unmaking something has the opposite one: the DNS record has to go before
   # the server it points at is released, or the address is recycled to another
   # customer while a name under this domain still resolves to it.
