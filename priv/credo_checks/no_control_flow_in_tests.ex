@@ -11,21 +11,34 @@ defmodule CodeMySpec.Check.Warning.NoControlFlowInTests do
     category: :warning,
     explanations: [
       check: """
-      Imperative control flow (`case`, `if`, `cond`, `try/rescue`) is not allowed
-      in test files (`_test.exs`) or BDD spec files (`_spex.exs`).
+      Imperative control flow (`case`, `if`, `unless`, `cond`, `try/rescue`)
+      is not allowed in test files (`_test.exs`) or BDD spec files
+      (`_spex.exs`).
 
-      Tests and scenarios should be declarative — straight-line setup +
-      observation + assertion. Control flow in a test hides what's actually
-      being asserted, makes failure output harder to read, and signals that
-      the fixture isn't doing its job (the test is defending against shapes
-      the setup should guarantee).
+      A test must be fully deterministic: you own the setup, so you know
+      *exactly* what every value and shape will be, and you assert that
+      exact thing. A branch in a test is a contradiction — it means the
+      test is reacting to state it claims to control. Either the setup
+      isn't pinned down (fix the fixture so the outcome is known) or the
+      branch is dead weight guarding against a shape that cannot occur
+      (delete it and assert directly).
+
+      `if`/`case` to "handle either outcome" is the tell: if both outcomes
+      are genuinely possible, the test is non-deterministic and can pass
+      for the wrong reason. Decide which outcome you require, make the
+      setup guarantee it, and assert it unconditionally — the test should
+      *fail* when you don't get it, not quietly take the other branch.
 
       Replace with:
-      - Pattern-matching `=` for destructuring (`{:ok, value} = result`).
+      - Pattern-matching `=` for destructuring (`{:ok, value} = result`) —
+        it fails loudly when the shape is wrong, which is the point.
       - `assert match?(pattern, value)` for shape assertions.
-      - Multi-clause helper functions (`defp handle(:ok, ...)` + `defp handle(:error, ...)`).
-      - Tightening the fixture so the assertion can rely on a known shape.
-      - For scenarios with conditional setup, split into separate tests/scenarios.
+      - Multi-clause helper functions for genuinely distinct cases — each
+        becomes its own named test, not a branch.
+      - A tighter fixture: pin the state so only one outcome is possible.
+      - For cleanup or environment plumbing (`try/after`, resetting app
+        env), use `on_exit` or move it into a setup/support helper — the
+        test body asserts, it doesn't manage resources.
 
       Pattern matching in function heads and `with` clauses is fine —
       that's destructuring, not control flow. The forbidden constructs
@@ -78,7 +91,8 @@ defmodule CodeMySpec.Check.Warning.NoControlFlowInTests do
       issue_meta,
       message:
         "Imperative `#{construct}` is not allowed in _test.exs / _spex.exs files. " <>
-          "Use pattern matching, multi-clause helpers, or split into separate tests/scenarios.",
+          "A branch means the test is reacting to state it should control — make the " <>
+          "setup deterministic and assert the exact expected outcome instead.",
       trigger: construct,
       line_no: meta[:line],
       column: meta[:column]
