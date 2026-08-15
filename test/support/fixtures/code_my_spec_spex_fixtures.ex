@@ -2855,8 +2855,8 @@ defmodule CodeMySpecSpex.Fixtures do
   reported here. Returns `[]` when the credentials are absent — a developer
   without them cannot have leaked anything.
   """
-  @spec leaked_spex_resources() :: [String.t()]
-  def leaked_spex_resources do
+  @spec leaked_spex_resources(:all | [:servers | :buckets]) :: [String.t()]
+  def leaked_spex_resources(kinds \\ :all) do
     with token when is_binary(token) and token != "" <- System.get_env("HETZNER_API_TOKEN"),
          id when is_binary(id) and id != "" <- System.get_env("HETZNER_S3_ACCESS_KEY_ID"),
          secret when is_binary(secret) and secret != "" <-
@@ -2875,25 +2875,51 @@ defmodule CodeMySpecSpex.Fixtures do
         Keyword.put(previous, :api_token, token)
       )
 
-      servers =
-        case Hetzner.list_servers(%CodeMySpec.Users.Scope{}) do
-          {:ok, list} -> Enum.map(list, &(&1["name"] || &1[:name]))
-          _ -> []
-        end
-
-      buckets =
-        case Storage.list_buckets(credentials, []) do
-          {:ok, list} -> Enum.map(list, &name_of/1)
-          _ -> []
-        end
+      names = server_names(kinds) ++ bucket_names(kinds, credentials)
 
       Application.put_env(:code_my_spec, CodeMySpec.Provisioning.Hetzner, previous)
 
-      Enum.filter(servers ++ buckets, &String.starts_with?(to_string(&1), "spex-"))
+      spex_named(names)
     else
       _ -> []
     end
   end
+
+  defp server_names(kinds) do
+    if want?(kinds, :servers) do
+      case Hetzner.list_servers(%CodeMySpec.Users.Scope{}) do
+        {:ok, list} -> Enum.map(list, &(&1["name"] || &1[:name]))
+        _ -> []
+      end
+    else
+      []
+    end
+  end
+
+  defp bucket_names(kinds, credentials) do
+    if want?(kinds, :buckets) do
+      case Storage.list_buckets(credentials, []) do
+        {:ok, list} -> Enum.map(list, &name_of/1)
+        _ -> []
+      end
+    else
+      []
+    end
+  end
+
+  @doc """
+  The `spex-` names in a list. Public because it is the whole of the guard's
+  judgement and the only part testable without a provider.
+  """
+  @spec spex_named([term()]) :: [String.t()]
+  def spex_named(names), do: Enum.filter(names, &String.starts_with?(to_string(&1), "spex-"))
+
+  # `:all` is the default everywhere and stays the answer for anything that has
+  # not declared, so an undeclared spex is checked exactly as before.
+  defp want?(:all, _kind), do: true
+  defp want?(kinds, kind) when is_list(kinds), do: kind in kinds
+  defp want?(kind, kind) when is_atom(kind), do: true
+  defp want?(_kinds, _kind), do: false
 
   defp name_of(%{name: name}), do: name
   defp name_of(%{"name" => name}), do: name

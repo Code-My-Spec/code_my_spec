@@ -180,7 +180,7 @@ defmodule CodeMySpecSpex.Case do
   deliberate act it is.
   """
   def connect_providers(%{scope: scope} = context) do
-    refuse_to_run_on_residue()
+    refuse_to_run_on_residue(context)
     hold_recording_lock()
 
     start_cassette_session()
@@ -598,13 +598,35 @@ defmodule CodeMySpecSpex.Case do
   # deleted automatically: a recording may be in flight, and deleting somebody
   # else's live resource is worse than refusing to start.
   #
-  # Once per BEAM — the check costs a provider round trip and the answer cannot
-  # change while the suite that would change it is the one asking.
-  defp refuse_to_run_on_residue do
-    case :persistent_term.get({__MODULE__, :residue_checked}, nil) do
+  # Once per BEAM *per kind set* — the check costs a provider round trip and the
+  # answer cannot change while the suite that would change it is the one asking.
+  #
+  # Scoped by what the spex about to run actually creates. `9af4a111`: the guard
+  # asked for servers and buckets and refused on any `spex-` name among them, so
+  # re-recording the 969/974 *mail* cassettes was blocked by Hetzner *servers*
+  # left by a drill — no overlap at all between what it found and what those
+  # criteria touch. That made the drill and the spex suite mutually exclusive by
+  # construction even on disjoint infrastructure, and the only ways out were to
+  # tear down working infrastructure or not record.
+  #
+  # A spex declares its kinds and gets checked on those:
+  #
+  #     @moduletag spex_resources: [:buckets]
+  #
+  # Absent, it is `:all`, which is exactly the old behaviour — so this changes
+  # nothing for anything that has not opted in, and the safe answer is the one
+  # you get by not thinking about it.
+  #
+  # Keyed on the kind set rather than a single flag, because a run mixing mail
+  # and server spex would otherwise let whichever loaded first decide the check
+  # for all of them. Each distinct set is checked once.
+  defp refuse_to_run_on_residue(context) do
+    kinds = Map.get(context, :spex_resources, :all)
+
+    case :persistent_term.get({__MODULE__, :residue_checked, kinds}, nil) do
       nil ->
-        :persistent_term.put({__MODULE__, :residue_checked}, true)
-        leaked = Fixtures.leaked_spex_resources()
+        :persistent_term.put({__MODULE__, :residue_checked, kinds}, true)
+        leaked = Fixtures.leaked_spex_resources(kinds)
 
         if leaked != [] do
           raise """
@@ -616,6 +638,12 @@ defmodule CodeMySpecSpex.Case do
           creating anything. Clear them first:
 
             MIX_ENV=test mix cms.provisioning_leaks --delete
+
+          If these belong to something else entirely — a drill holding servers
+          while you re-record mail cassettes — the spex can say which kinds it
+          creates and be checked only on those:
+
+            @moduletag spex_resources: [:buckets]
           """
         end
 
