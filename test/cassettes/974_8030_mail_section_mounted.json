@@ -1,7 +1,7 @@
 {
   "interactions": [
     {
-      "recorded_at": "2026-08-12T01:19:57.238672Z",
+      "recorded_at": "2026-08-15T02:34:40.898561Z",
       "request": {
         "body": "",
         "body_type": "text",
@@ -26,9 +26,35 @@
                 "sending": "enabled"
               },
               "click_tracking": false,
-              "created_at": "2026-08-12 01:18:27.978869+00",
-              "id": "b3991eee-f1cb-44df-8863-450d0a8a6492",
+              "created_at": "2026-08-15 02:32:05.205614+00",
+              "id": "07da0665-b7d6-4c2e-8b54-8983cfe2e521",
               "name": "c8030.astralbi.com",
+              "open_tracking": false,
+              "region": "us-east-1",
+              "status": "verified"
+            },
+            {
+              "capabilities": {
+                "receiving": "enabled",
+                "sending": "enabled"
+              },
+              "click_tracking": false,
+              "created_at": "2026-08-15 02:03:58.923599+00",
+              "id": "9baae969-91d6-473e-b1d4-47feecdfb1ed",
+              "name": "spex-drill.earwitness.app",
+              "open_tracking": false,
+              "region": "us-east-1",
+              "status": "verified"
+            },
+            {
+              "capabilities": {
+                "receiving": "enabled",
+                "sending": "enabled"
+              },
+              "click_tracking": false,
+              "created_at": "2026-08-12 02:13:50.501351+00",
+              "id": "9fbe2f99-0346-47eb-bbaa-b573744db786",
+              "name": "spex-inbound.astralbi.com",
               "open_tracking": false,
               "region": "us-east-1",
               "status": "verified"
@@ -70,7 +96,7 @@
               "name": "uat.codemyspec.com",
               "open_tracking": false,
               "region": "us-east-1",
-              "status": "verified"
+              "status": "failed"
             },
             {
               "capabilities": {
@@ -160,13 +186,13 @@
             "DYNAMIC"
           ],
           "cf-ray": [
-            "a29ba79e6b36a223-YYZ"
+            "a2b4cd352e0ea20b-YYZ"
           ],
           "connection": [
             "keep-alive"
           ],
           "content-length": [
-            "2672"
+            "3212"
           ],
           "content-security-policy": [
             "default-src 'none'; frame-ancestors 'none'"
@@ -175,10 +201,10 @@
             "application/json; charset=utf-8"
           ],
           "date": [
-            "Wed, 12 Aug 2026 01:19:57 GMT"
+            "Sat, 15 Aug 2026 02:34:40 GMT"
           ],
           "etag": [
-            "W/\"a70-p1GsmcZc6doXCNQs1JhWWZo1UEE\""
+            "W/\"c8c-uI9vYiIxWfZlPyscvnf9YEd+Lzg\""
           ],
           "permissions-policy": [
             "camera=(), microphone=(), geolocation=(), payment=()"
@@ -215,7 +241,7 @@
       }
     },
     {
-      "recorded_at": "2026-08-12T01:19:57.324614Z",
+      "recorded_at": "2026-08-15T02:34:41.009269Z",
       "request": {
         "body": "",
         "body_type": "text",
@@ -229,7 +255,7 @@
         },
         "method": "GET",
         "query_string": "",
-        "uri": "https://api.resend.com/domains/b3991eee-f1cb-44df-8863-450d0a8a6492"
+        "uri": "https://api.resend.com/domains/07da0665-b7d6-4c2e-8b54-8983cfe2e521"
       },
       "response": {
         "body_json": {
@@ -238,8 +264,8 @@
             "sending": "enabled"
           },
           "click_tracking": false,
-          "created_at": "2026-08-12 01:18:27.978869+00",
-          "id": "b3991eee-f1cb-44df-8863-450d0a8a6492",
+          "created_at": "2026-08-15 02:32:05.205614+00",
+          "id": "07da0665-b7d6-4c2e-8b54-8983cfe2e521",
           "name": "c8030.astralbi.com",
           "object": "domain",
           "open_tracking": false,
@@ -288,7 +314,7 @@
             "DYNAMIC"
           ],
           "cf-ray": [
-            "a29ba79edb70a223-YYZ"
+            "a2b4cd35be6ea20b-YYZ"
           ],
           "connection": [
             "keep-alive"
@@ -303,10 +329,10 @@
             "application/json; charset=utf-8"
           ],
           "date": [
-            "Wed, 12 Aug 2026 01:19:57 GMT"
+            "Sat, 15 Aug 2026 02:34:41 GMT"
           ],
           "etag": [
-            "W/\"40a-DJ6U4jEQe5CyK1q4DKmduaZ1eJI\""
+            "W/\"40a-pWeC8nrvB6TYzdLQsYli1yZPYL4\""
           ],
           "permissions-policy": [
             "camera=(), microphone=(), geolocation=(), payment=()"
@@ -343,7 +369,7 @@
       }
     },
     {
-      "recorded_at": "2026-08-12T01:19:57.556860Z",
+      "recorded_at": "2026-08-15T02:34:41.284912Z",
       "request": {
         "body": "",
         "body_type": "text",
@@ -368,9 +394,35 @@
                 "sending": "enabled"
               },
               "click_tracking": false,
-              "created_at": "2026-08-12 01:18:27.978869+00",
-              "id": "b3991eee-f1cb-44df-8863-450d0a8a6492",
+              "created_at": "2026-08-15 02:32:05.205614+00",
+              "id": "07da0665-b7d6-4c2e-8b54-8983cfe2e521",
               "name": "c8030.astralbi.com",
+              "open_tracking": false,
+              "region": "us-east-1",
+              "status": "verified"
+            },
+            {
+              "capabilities": {
+                "receiving": "enabled",
+                "sending": "enabled"
+              },
+              "click_tracking": false,
+              "created_at": "2026-08-15 02:03:58.923599+00",
+              "id": "9baae969-91d6-473e-b1d4-47feecdfb1ed",
+              "name": "spex-drill.earwitness.app",
+              "open_tracking": false,
+              "region": "us-east-1",
+              "status": "verified"
+            },
+            {
+              "capabilities": {
+                "receiving": "enabled",
+                "sending": "enabled"
+              },
+              "click_tracking": false,
+              "created_at": "2026-08-12 02:13:50.501351+00",
+              "id": "9fbe2f99-0346-47eb-bbaa-b573744db786",
+              "name": "spex-inbound.astralbi.com",
               "open_tracking": false,
               "region": "us-east-1",
               "status": "verified"
@@ -412,7 +464,7 @@
               "name": "uat.codemyspec.com",
               "open_tracking": false,
               "region": "us-east-1",
-              "status": "verified"
+              "status": "failed"
             },
             {
               "capabilities": {
@@ -502,13 +554,13 @@
             "DYNAMIC"
           ],
           "cf-ray": [
-            "a29ba7a06c34a223-YYZ"
+            "a2b4cd379f9fa20b-YYZ"
           ],
           "connection": [
             "keep-alive"
           ],
           "content-length": [
-            "2672"
+            "3212"
           ],
           "content-security-policy": [
             "default-src 'none'; frame-ancestors 'none'"
@@ -517,10 +569,10 @@
             "application/json; charset=utf-8"
           ],
           "date": [
-            "Wed, 12 Aug 2026 01:19:57 GMT"
+            "Sat, 15 Aug 2026 02:34:41 GMT"
           ],
           "etag": [
-            "W/\"a70-p1GsmcZc6doXCNQs1JhWWZo1UEE\""
+            "W/\"c8c-uI9vYiIxWfZlPyscvnf9YEd+Lzg\""
           ],
           "permissions-policy": [
             "camera=(), microphone=(), geolocation=(), payment=()"
@@ -557,7 +609,7 @@
       }
     },
     {
-      "recorded_at": "2026-08-12T01:19:57.653029Z",
+      "recorded_at": "2026-08-15T02:34:41.384337Z",
       "request": {
         "body": "",
         "body_type": "text",
@@ -571,7 +623,7 @@
         },
         "method": "GET",
         "query_string": "",
-        "uri": "https://api.resend.com/domains/b3991eee-f1cb-44df-8863-450d0a8a6492"
+        "uri": "https://api.resend.com/domains/07da0665-b7d6-4c2e-8b54-8983cfe2e521"
       },
       "response": {
         "body_json": {
@@ -580,8 +632,8 @@
             "sending": "enabled"
           },
           "click_tracking": false,
-          "created_at": "2026-08-12 01:18:27.978869+00",
-          "id": "b3991eee-f1cb-44df-8863-450d0a8a6492",
+          "created_at": "2026-08-15 02:32:05.205614+00",
+          "id": "07da0665-b7d6-4c2e-8b54-8983cfe2e521",
           "name": "c8030.astralbi.com",
           "object": "domain",
           "open_tracking": false,
@@ -630,7 +682,7 @@
             "DYNAMIC"
           ],
           "cf-ray": [
-            "a29ba7a0dc73a223-YYZ"
+            "a2b4cd382830a20b-YYZ"
           ],
           "connection": [
             "keep-alive"
@@ -645,10 +697,10 @@
             "application/json; charset=utf-8"
           ],
           "date": [
-            "Wed, 12 Aug 2026 01:19:57 GMT"
+            "Sat, 15 Aug 2026 02:34:41 GMT"
           ],
           "etag": [
-            "W/\"40a-DJ6U4jEQe5CyK1q4DKmduaZ1eJI\""
+            "W/\"40a-pWeC8nrvB6TYzdLQsYli1yZPYL4\""
           ],
           "permissions-policy": [
             "camera=(), microphone=(), geolocation=(), payment=()"
@@ -685,7 +737,7 @@
       }
     },
     {
-      "recorded_at": "2026-08-12T01:19:57.946049Z",
+      "recorded_at": "2026-08-15T02:34:41.688604Z",
       "request": {
         "body": "",
         "body_type": "text",
@@ -710,9 +762,35 @@
                 "sending": "enabled"
               },
               "click_tracking": false,
-              "created_at": "2026-08-12 01:18:27.978869+00",
-              "id": "b3991eee-f1cb-44df-8863-450d0a8a6492",
+              "created_at": "2026-08-15 02:32:05.205614+00",
+              "id": "07da0665-b7d6-4c2e-8b54-8983cfe2e521",
               "name": "c8030.astralbi.com",
+              "open_tracking": false,
+              "region": "us-east-1",
+              "status": "verified"
+            },
+            {
+              "capabilities": {
+                "receiving": "enabled",
+                "sending": "enabled"
+              },
+              "click_tracking": false,
+              "created_at": "2026-08-15 02:03:58.923599+00",
+              "id": "9baae969-91d6-473e-b1d4-47feecdfb1ed",
+              "name": "spex-drill.earwitness.app",
+              "open_tracking": false,
+              "region": "us-east-1",
+              "status": "verified"
+            },
+            {
+              "capabilities": {
+                "receiving": "enabled",
+                "sending": "enabled"
+              },
+              "click_tracking": false,
+              "created_at": "2026-08-12 02:13:50.501351+00",
+              "id": "9fbe2f99-0346-47eb-bbaa-b573744db786",
+              "name": "spex-inbound.astralbi.com",
               "open_tracking": false,
               "region": "us-east-1",
               "status": "verified"
@@ -754,7 +832,7 @@
               "name": "uat.codemyspec.com",
               "open_tracking": false,
               "region": "us-east-1",
-              "status": "verified"
+              "status": "failed"
             },
             {
               "capabilities": {
@@ -844,13 +922,13 @@
             "DYNAMIC"
           ],
           "cf-ray": [
-            "a29ba7a2cd8da223-YYZ"
+            "a2b4cd3a39bda20b-YYZ"
           ],
           "connection": [
             "keep-alive"
           ],
           "content-length": [
-            "2672"
+            "3212"
           ],
           "content-security-policy": [
             "default-src 'none'; frame-ancestors 'none'"
@@ -859,10 +937,10 @@
             "application/json; charset=utf-8"
           ],
           "date": [
-            "Wed, 12 Aug 2026 01:19:57 GMT"
+            "Sat, 15 Aug 2026 02:34:41 GMT"
           ],
           "etag": [
-            "W/\"a70-p1GsmcZc6doXCNQs1JhWWZo1UEE\""
+            "W/\"c8c-uI9vYiIxWfZlPyscvnf9YEd+Lzg\""
           ],
           "permissions-policy": [
             "camera=(), microphone=(), geolocation=(), payment=()"
@@ -899,7 +977,7 @@
       }
     },
     {
-      "recorded_at": "2026-08-12T01:19:58.074258Z",
+      "recorded_at": "2026-08-15T02:34:41.793158Z",
       "request": {
         "body": "",
         "body_type": "text",
@@ -913,7 +991,7 @@
         },
         "method": "GET",
         "query_string": "",
-        "uri": "https://api.resend.com/domains/b3991eee-f1cb-44df-8863-450d0a8a6492"
+        "uri": "https://api.resend.com/domains/07da0665-b7d6-4c2e-8b54-8983cfe2e521"
       },
       "response": {
         "body_json": {
@@ -922,8 +1000,8 @@
             "sending": "enabled"
           },
           "click_tracking": false,
-          "created_at": "2026-08-12 01:18:27.978869+00",
-          "id": "b3991eee-f1cb-44df-8863-450d0a8a6492",
+          "created_at": "2026-08-15 02:32:05.205614+00",
+          "id": "07da0665-b7d6-4c2e-8b54-8983cfe2e521",
           "name": "c8030.astralbi.com",
           "object": "domain",
           "open_tracking": false,
@@ -972,7 +1050,7 @@
             "DYNAMIC"
           ],
           "cf-ray": [
-            "a29ba7a34dc8a223-YYZ"
+            "a2b4cd3aba13a20b-YYZ"
           ],
           "connection": [
             "keep-alive"
@@ -987,10 +1065,10 @@
             "application/json; charset=utf-8"
           ],
           "date": [
-            "Wed, 12 Aug 2026 01:19:58 GMT"
+            "Sat, 15 Aug 2026 02:34:41 GMT"
           ],
           "etag": [
-            "W/\"40a-DJ6U4jEQe5CyK1q4DKmduaZ1eJI\""
+            "W/\"40a-pWeC8nrvB6TYzdLQsYli1yZPYL4\""
           ],
           "permissions-policy": [
             "camera=(), microphone=(), geolocation=(), payment=()"
@@ -1002,7 +1080,7 @@
             "10;w=1"
           ],
           "ratelimit-remaining": [
-            "3"
+            "9"
           ],
           "ratelimit-reset": [
             "1"
@@ -1027,7 +1105,7 @@
       }
     },
     {
-      "recorded_at": "2026-08-12T01:19:58.333031Z",
+      "recorded_at": "2026-08-15T02:34:42.021366Z",
       "request": {
         "body": "",
         "body_type": "text",
@@ -1052,9 +1130,35 @@
                 "sending": "enabled"
               },
               "click_tracking": false,
-              "created_at": "2026-08-12 01:18:27.978869+00",
-              "id": "b3991eee-f1cb-44df-8863-450d0a8a6492",
+              "created_at": "2026-08-15 02:32:05.205614+00",
+              "id": "07da0665-b7d6-4c2e-8b54-8983cfe2e521",
               "name": "c8030.astralbi.com",
+              "open_tracking": false,
+              "region": "us-east-1",
+              "status": "verified"
+            },
+            {
+              "capabilities": {
+                "receiving": "enabled",
+                "sending": "enabled"
+              },
+              "click_tracking": false,
+              "created_at": "2026-08-15 02:03:58.923599+00",
+              "id": "9baae969-91d6-473e-b1d4-47feecdfb1ed",
+              "name": "spex-drill.earwitness.app",
+              "open_tracking": false,
+              "region": "us-east-1",
+              "status": "verified"
+            },
+            {
+              "capabilities": {
+                "receiving": "enabled",
+                "sending": "enabled"
+              },
+              "click_tracking": false,
+              "created_at": "2026-08-12 02:13:50.501351+00",
+              "id": "9fbe2f99-0346-47eb-bbaa-b573744db786",
+              "name": "spex-inbound.astralbi.com",
               "open_tracking": false,
               "region": "us-east-1",
               "status": "verified"
@@ -1096,7 +1200,7 @@
               "name": "uat.codemyspec.com",
               "open_tracking": false,
               "region": "us-east-1",
-              "status": "verified"
+              "status": "failed"
             },
             {
               "capabilities": {
@@ -1186,13 +1290,13 @@
             "DYNAMIC"
           ],
           "cf-ray": [
-            "a29ba7a51f2aa223-YYZ"
+            "a2b4cd3c3b09a20b-YYZ"
           ],
           "connection": [
             "keep-alive"
           ],
           "content-length": [
-            "2672"
+            "3212"
           ],
           "content-security-policy": [
             "default-src 'none'; frame-ancestors 'none'"
@@ -1201,10 +1305,10 @@
             "application/json; charset=utf-8"
           ],
           "date": [
-            "Wed, 12 Aug 2026 01:19:58 GMT"
+            "Sat, 15 Aug 2026 02:34:42 GMT"
           ],
           "etag": [
-            "W/\"a70-p1GsmcZc6doXCNQs1JhWWZo1UEE\""
+            "W/\"c8c-uI9vYiIxWfZlPyscvnf9YEd+Lzg\""
           ],
           "permissions-policy": [
             "camera=(), microphone=(), geolocation=(), payment=()"
@@ -1216,7 +1320,7 @@
             "10;w=1"
           ],
           "ratelimit-remaining": [
-            "9"
+            "8"
           ],
           "ratelimit-reset": [
             "1"
@@ -1241,7 +1345,7 @@
       }
     },
     {
-      "recorded_at": "2026-08-12T01:19:58.449211Z",
+      "recorded_at": "2026-08-15T02:34:42.113958Z",
       "request": {
         "body": "",
         "body_type": "text",
@@ -1255,7 +1359,7 @@
         },
         "method": "GET",
         "query_string": "",
-        "uri": "https://api.resend.com/domains/b3991eee-f1cb-44df-8863-450d0a8a6492"
+        "uri": "https://api.resend.com/domains/07da0665-b7d6-4c2e-8b54-8983cfe2e521"
       },
       "response": {
         "body_json": {
@@ -1264,8 +1368,8 @@
             "sending": "enabled"
           },
           "click_tracking": false,
-          "created_at": "2026-08-12 01:18:27.978869+00",
-          "id": "b3991eee-f1cb-44df-8863-450d0a8a6492",
+          "created_at": "2026-08-15 02:32:05.205614+00",
+          "id": "07da0665-b7d6-4c2e-8b54-8983cfe2e521",
           "name": "c8030.astralbi.com",
           "object": "domain",
           "open_tracking": false,
@@ -1314,7 +1418,7 @@
             "DYNAMIC"
           ],
           "cf-ray": [
-            "a29ba7a5bf90a223-YYZ"
+            "a2b4cd3ccb5ea20b-YYZ"
           ],
           "connection": [
             "keep-alive"
@@ -1329,10 +1433,10 @@
             "application/json; charset=utf-8"
           ],
           "date": [
-            "Wed, 12 Aug 2026 01:19:58 GMT"
+            "Sat, 15 Aug 2026 02:34:42 GMT"
           ],
           "etag": [
-            "W/\"40a-DJ6U4jEQe5CyK1q4DKmduaZ1eJI\""
+            "W/\"40a-pWeC8nrvB6TYzdLQsYli1yZPYL4\""
           ],
           "permissions-policy": [
             "camera=(), microphone=(), geolocation=(), payment=()"
@@ -1344,7 +1448,7 @@
             "10;w=1"
           ],
           "ratelimit-remaining": [
-            "8"
+            "7"
           ],
           "ratelimit-reset": [
             "1"
