@@ -189,6 +189,32 @@ refresh port="4000":
 
     log="$HOME/.codemyspec/phx_{{port}}.restart.log"
 
+    # Migrations, after the old server is down and before the new one is up.
+    #
+    # `Phoenix.Ecto.CheckRepoStatus` refuses *every request* with
+    # `PendingMigrationError` while the dev database is behind — a 503 on the
+    # MCP endpoint, so every agent on this machine loses its tools at once and
+    # the message they see names a harness, not a migration:
+    #
+    #   The harness could not reach http://localhost:4000 to find out where
+    #   <id> is: {:error, {:refused, 503}}
+    #
+    # An agent committing a migration from a worktree does so against its own
+    # test database, and nothing runs it on dev. Measured tonight: pushing
+    # `add_qa_script_to_file_role`, then `just refresh`, left :4000 answering
+    # 503 to everything — the recipe that exists to make the server current had
+    # pulled the migration and not run it.
+    #
+    # Unconditional rather than diffed against the pull, for the reason the deps
+    # check above already learned: when somebody else has already pulled,
+    # `before` equals `after` and the diff is empty while the database is still
+    # behind. `ecto.migrate` with nothing pending is one query.
+    #
+    # After the kill, because a `mix` invocation takes the build lock and that
+    # is what 500s a running server.
+    echo "→ migrations"
+    ( cd "$main" && mix ecto.migrate )
+
     # Rotated here because nothing else rotates it.
     #
     # CLAUDE.md documents rotation as "10 MB x 3 by :logger_std_h", and that is
