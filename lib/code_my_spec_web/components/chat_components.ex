@@ -201,6 +201,12 @@ defmodule CodeMySpecWeb.ChatComponents do
       |> assign(:failed, assigns.result != nil and assigns.result.tool_failed == true)
 
     ~H"""
+    <%!-- `data-state`, not a boolean `data-answered`: a call renders as soon as
+          the model makes it and is filled in when the result arrives, so what a
+          reader needs is which of those it is looking at. `running` / `done` is
+          the convention the rest of the app already uses (`preview_components`,
+          `provisioning_live`), and `data-answered` had no consumer anywhere
+          outside this component. --%>
     <details
       id={@id}
       data-test="tool-call"
@@ -209,7 +215,7 @@ defmodule CodeMySpecWeb.ChatComponents do
       data-agent-role={@agent_role}
       data-truncated={to_string(@cut)}
       data-failed={to_string(@failed)}
-      data-answered={to_string(@result != nil)}
+      data-state={if @result, do: "done", else: "running"}
       class={[
         "group rounded-box border",
         @failed && "border-error/40 bg-error/5",
@@ -238,7 +244,12 @@ defmodule CodeMySpecWeb.ChatComponents do
           </p>
         </div>
 
-        <div :if={@result} data-test="tool-result" data-failed={to_string(@failed)}>
+        <div
+          :if={@result}
+          data-test="tool-result"
+          data-tool-call-id={@call_id}
+          data-failed={to_string(@failed)}
+        >
           <h4 class="mb-1 text-xs uppercase tracking-wide opacity-50">
             {if @failed, do: "Error", else: "Result"}
           </h4>
