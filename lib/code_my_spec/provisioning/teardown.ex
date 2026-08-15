@@ -65,10 +65,31 @@ defmodule CodeMySpec.Provisioning.Teardown do
         removed = Enum.map(resources, &resource(scope, &1, opts))
 
         case Enum.filter(removed, &match?({:error, _}, &1)) do
-          [] -> {:ok, Enum.map(removed, fn {:ok, r} -> r end)}
-          failures -> {:error, {:left_behind, Enum.map(failures, fn {:error, r} -> r end)}}
+          [] ->
+            forget(scope, key)
+            {:ok, Enum.map(removed, fn {:ok, r} -> r end)}
+
+          failures ->
+            {:error, {:left_behind, Enum.map(failures, fn {:error, r} -> r end)}}
         end
     end
+  end
+
+  # A torn-down step is not a done step, and until this existed it stayed one.
+  # Teardown removed the provider resources and never wrote to the row, so the
+  # step kept `state: done` and every resource it had recorded — and `verify/3`
+  # reads those.
+  #
+  # What that cost: the drill's `inbound_proof` survived two teardowns, and on
+  # the rebuilt environment `inbound` reported done in 0.2s by adopting a proof
+  # earned nine hours earlier against servers that no longer existed. It
+  # overrode a real delivery failure from ten minutes before. The proof of an
+  # environment cannot outlive the environment (1040172a).
+  #
+  # Only on full success. A step that left something behind is not undone, and
+  # forgetting what it still owns is how a leak becomes invisible.
+  defp forget(scope, key) do
+    StepRepository.upsert(scope, key, %{state: :not_started, resources: [], error: nil})
   end
 
   @doc """
@@ -319,9 +340,16 @@ defmodule CodeMySpec.Provisioning.Teardown do
   # exists somewhere. Without it here every teardown that followed a deploy
   # reported a leak it could never resolve, which is the noise that makes a
   # real "left behind" easy to skip past.
+  # `inbound_proof`, `widget_proof`, `widget_render` and `verification` join
+  # them for the same reason: each records that a check was made and what it
+  # said. There is nothing at a provider to delete, and having no rule at all
+  # meant `inbound_proof` reported as left behind on every teardown that had
+  # earned one — noise in the report, and worse, it survived into the next
+  # environment and satisfied `verify/3` there (1040172a).
   def resource(_scope, %{kind: kind} = r, _opts)
       when kind in ~w(age_key age_key_delivery callback_credential commit certificate retention
-                      restore_proof content deployment monitor dump repository dns_verification) do
+                      restore_proof content deployment monitor dump repository dns_verification
+                      inbound_proof widget_proof widget_render verification) do
     {:ok, r}
   end
 

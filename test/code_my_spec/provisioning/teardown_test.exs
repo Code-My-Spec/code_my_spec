@@ -144,4 +144,47 @@ defmodule CodeMySpec.Provisioning.TeardownTest do
                Teardown.step(scope, :storage)
     end
   end
+
+  describe "a torn-down step stops being a done step" do
+    # 1040172a, as a test. Teardown removed the provider resources and never
+    # wrote to the step row, so the step stayed `done` carrying every resource
+    # it had recorded — and `verify/3` reads those.
+    #
+    # On the drill that meant an `inbound_proof` survived two teardowns and
+    # then satisfied a rebuilt environment in 0.2s, against servers that no
+    # longer existed, overriding a real delivery failure ten minutes old. The
+    # proof of an environment must not outlive the environment.
+    test "its recorded resources are forgotten", %{scope: scope} do
+      StepRepository.upsert(scope, :inbound, %{
+        state: :done,
+        position: 9,
+        resources: [
+          %{kind: "inbound_proof", location: "inbox@example.com", origin: "created"}
+        ]
+      })
+
+      assert {:ok, _} = Teardown.step(scope, :inbound)
+
+      assert %{state: :not_started, resources: []} = StepRepository.get(scope, :inbound)
+    end
+
+    # Only on full success. A step that left something behind still owns it,
+    # and forgetting that is how a leak becomes invisible — the opposite of
+    # what teardown's error path exists to do.
+    @tag :capture_log
+    test "a step that left something behind keeps what it still owns", %{scope: scope} do
+      StepRepository.upsert(scope, :storage, %{
+        state: :done,
+        position: 9,
+        resources: [
+          %{kind: "something_new", location: "provider/thing", origin: "created"}
+        ]
+      })
+
+      assert {:error, {:left_behind, _}} = Teardown.step(scope, :storage)
+
+      assert %{state: :done, resources: [%{kind: "something_new"}]} =
+               StepRepository.get(scope, :storage)
+    end
+  end
 end
