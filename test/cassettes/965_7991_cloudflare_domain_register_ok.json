@@ -1,19 +1,16 @@
 {
   "interactions": [
     {
-      "recorded_at": "2026-08-11T01:25:22.858965Z",
+      "recorded_at": "2026-08-15T03:54:05.206681Z",
       "request": {
         "body": "",
         "body_type": "text",
         "headers": {
-          "accept-encoding": [
-            "gzip"
-          ],
           "content-type": [
             "application/json"
           ],
           "user-agent": [
-            "req/0.5.17"
+            "req/0.7.2"
           ]
         },
         "method": "GET",
@@ -366,7 +363,7 @@
               },
               "activated_on": "2026-02-27T01:51:59.160872Z",
               "created_on": "2026-02-27T01:49:03.058411Z",
-              "development_mode": -13580593,
+              "development_mode": -13935116,
               "id": "51d25b6e048c9f5797cc0ea3ed6fc10e",
               "meta": {
                 "custom_certificate_quota": 0,
@@ -706,13 +703,13 @@
             "no-store, no-cache, must-revalidate, post-check=0, pre-check=0"
           ],
           "cf-auditlog-id": [
-            "019fee6c-9a47-7914-95ce-9b70c3000e9a"
+            "01a0038e-2f2e-7807-b1c4-9693a465e0a5"
           ],
           "cf-cache-status": [
             "DYNAMIC"
           ],
           "cf-ray": [
-            "a29372306cd483c2-YUL"
+            "a2b541850aafa251-YUL"
           ],
           "connection": [
             "keep-alive"
@@ -721,7 +718,7 @@
             "application/json"
           ],
           "date": [
-            "Tue, 11 Aug 2026 01:25:22 GMT"
+            "Sat, 15 Aug 2026 03:54:05 GMT"
           ],
           "expires": [
             "Sun, 25 Jan 1981 05:00:00 GMT"
