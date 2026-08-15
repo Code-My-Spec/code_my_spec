@@ -1,5 +1,22 @@
 defmodule CodeMySpec.StaticAnalysis.Analyzers.SpecAlignmentTest do
-  use CodeMySpecTest.DataCase, async: true
+  # Sync: one describe block swaps `:harness_fs_transport` for
+  # `Support.StubHarnessTransport`, and that key is global.
+  #
+  # `config/config.exs:49` points it at `CodeMySpec.Analysis`, and
+  # `environments/harness_test.exs` — also async — asserts on what Analysis
+  # answers for an unregistered id:
+  #
+  #     assert {:error, {:harness_not_registered, %{op: "read_file"}}} = result
+  #
+  # The stub answers `{:error, :harness_unreachable}` to every op but `stat`, so
+  # an overlap gives that test the wrong error and a failure describing nothing
+  # about the code under test.
+  #
+  # Found by tracing after `07c2c511`, which was the same defect on
+  # `:deploy_key`. Three conditions have to hold for one of these to bite — the
+  # key is read at runtime, another *async* test exercises the reading path, and
+  # the swapped value changes that test's outcome — and all three hold here.
+  use CodeMySpecTest.DataCase, async: false
 
   import CodeMySpec.UsersFixtures
   import CodeMySpec.AccountsFixtures
