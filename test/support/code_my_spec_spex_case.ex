@@ -181,6 +181,7 @@ defmodule CodeMySpecSpex.Case do
   """
   def connect_providers(%{scope: scope} = context) do
     refuse_to_run_on_residue()
+    hold_recording_lock()
 
     start_cassette_session()
 
@@ -562,6 +563,22 @@ defmodule CodeMySpecSpex.Case do
   # proved there. What is left here — and is genuinely proved, against real
   # Cloudflare data — is that the records setup writes are **unproxied**, so the
   # HTTP-01 challenge reaches the origin rather than terminating at Cloudflare.
+  # Tell the harness to leave spex alone while this run records.
+  #
+  # Only in `:record`. A replay is an ordinary suite — it rewrites nothing and
+  # talks to nobody — so locking the harness out of it would cost sweeps for no
+  # reason. Recording is the run that must not be raced (`5a1f6b9c`).
+  #
+  # Beside `refuse_to_run_on_residue/0` deliberately: both are once-per-BEAM
+  # facts about the run as a whole, and this is the setup every provisioning
+  # spex enters through, so it is where "a recording has started" first becomes
+  # true.
+  defp hold_recording_lock do
+    if cassette_mode() == :record do
+      CodeMySpec.RecordingLock.hold(File.cwd!())
+    end
+  end
+
   # That is the part the records decide, and the part this criterion is about.
   # Point the backup script at a database that really exists.
   #

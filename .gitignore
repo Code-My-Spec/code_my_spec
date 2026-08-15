@@ -112,3 +112,4 @@ relay/cms-mcp-relay
 
 # Fleet SSH key — generated per machine by docker/fleet/fleet.sh, never committed
 docker/fleet/keys/
+.cms_recording.lock
