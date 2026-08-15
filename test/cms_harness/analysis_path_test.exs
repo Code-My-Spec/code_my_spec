@@ -23,6 +23,23 @@ defmodule CmsHarness.AnalysisPathTest do
 
   @moduletag timeout: 300_000
 
+  # On demand, not on every `mix test` — the twin of `analysis_test.exs`, which
+  # was tagged for the same reason and this one was missed.
+  #
+  # It compiles a real project through the real harness path, against the
+  # sibling `client_utils` checkout. That checkout's `_build` is shared by every
+  # process that compiles against it, and nothing partitions it — so two suites
+  # running at once contend there, and the compiler comes back `"error"` for
+  # reasons that have nothing to do with the code under test.
+  #
+  # Not a hypothesis. Reproduced for `c8264c1f`: two full suites started
+  # together on this commit, one clean and one failing here on
+  # `payload["status"] == "ok"` getting `"error"`. That is the exact shape that
+  # issue reports — an assertion, not a kill, in a test that exercises the
+  # machinery running it — and it is why "passes standalone" was never evidence
+  # of anything.
+  @moduletag :analyzer
+
   @client_utils System.get_env("CMS_CLIENT_UTILS") ||
                   Path.expand("../client_utils", File.cwd!())
 
