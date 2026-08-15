@@ -2757,6 +2757,13 @@ defmodule CodeMySpecSpex.Case do
   Criterion 8010 is that each public host has a monitor with somewhere to
   shout — a property of the monitoring step's record, not of UptimeRobot's
   API. The monitors and their notify target are injected via step opts.
+
+  Unused since 2026-08, and nothing it stages is read any more: the monitoring
+  step was removed from `Sequence` (it needed an account, an API key and a
+  notify target only a person can supply, so it paused on every run), and 8010
+  was amended to the hostname check setup actually performs. Kept because the
+  step is expected back, but a spex calling this today stages `:monitors` into
+  step opts that no step reads, which passes and proves nothing.
   """
   def stage_monitor(context, hosts, notify \\ "sam@example.com") do
     monitors = Enum.map(List.wrap(hosts), &%{host: &1, notify: notify})

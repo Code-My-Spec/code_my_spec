@@ -2668,7 +2668,16 @@ defmodule CodeMySpecSpex.Fixtures do
 
       Application.put_env(:code_my_spec, CodeMySpec.Provisioning.Hetzner, previous)
 
-      Enum.filter(servers ++ buckets, &String.starts_with?(to_string(&1), "spex-"))
+      # `spex-drill-*` belongs to `test/drill/provisioning_walk.exs`, which
+      # keeps its environment between runs on purpose. It is not residue and no
+      # criterion's premise is ever satisfied by it — the suite builds
+      # `c8024.astralbi.com` and the like — so counting it here stopped
+      # recording sessions on a live environment that was doing nothing wrong.
+      servers
+      |> Enum.concat(buckets)
+      |> Enum.map(&to_string/1)
+      |> Enum.filter(&String.starts_with?(&1, "spex-"))
+      |> Enum.reject(&String.starts_with?(&1, "spex-drill-"))
     else
       _ -> []
     end

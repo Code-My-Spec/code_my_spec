@@ -151,28 +151,21 @@ defmodule CodeMySpec.Provisioning.Resend do
         {:ok, Map.put(domain, "__adopted__", true)}
 
       {:error, :not_found} ->
-        # Created able to receive as well as send, even though this step only
-        # needs sending.
+        # Sending only. The inbound step turns receiving on when Sam actually
+        # asks for an inbox (`ensure_receiving_domain/3` PATCHes it).
         #
-        # Resend fixes capabilities at creation and offers no API to add one
-        # later — which the adopt branch above already relies on, refusing to
-        # delete and recreate because that would silently drop inbound mail. The
-        # same fact cuts the other way here: `Resend.sending_domain/2` maps
-        # production to the apex, so this call creates the very domain the
-        # inbound step later receives on. Sending-only meant `inbound` found it
-        # disabled and could never enable it, and whichever of the two steps
-        # reached a fresh domain first decided the question permanently. `email`
-        # runs first, so on a genuinely new domain the answer was always no
-        # inbox.
-        #
-        # Costs nothing when inbound is never set up: receiving needs an MX this
-        # does not publish, so an unconfigured domain simply receives no mail.
-        # And it does not touch anything Sam already had — a domain that already
-        # exists takes the adopt branch, which is what criterion 8029 is about.
+        # Created able to receive as well, briefly, and it was wrong: a domain
+        # with receiving enabled reports a fourth record — an MX at the *apex*,
+        # `Receiving` — and this step publishes whatever records the domain
+        # reports. So setting up sending wrote an MX onto the apex of a domain
+        # that may already be receiving mail somewhere else, which is the exact
+        # thing criterion 2056 exists to prevent. The comment that justified it
+        # claimed "receiving needs an MX this does not publish"; the record set
+        # says otherwise.
         create_domain(
           scope,
           name,
-          Keyword.put_new(opts, :capabilities, %{sending: "enabled", receiving: "enabled"})
+          Keyword.put_new(opts, :capabilities, %{sending: "enabled"})
         )
 
       {:error, _} = error ->
@@ -258,28 +251,28 @@ defmodule CodeMySpec.Provisioning.Resend do
   @doc """
   Ensure a domain exists with receiving enabled.
 
-  ## Capabilities are set at creation and cannot be changed
+  ## Receiving is turned on here, not at creation
 
-  `POST /domains` takes `capabilities: %{sending:, receiving:}` and defaults
-  receiving to `"disabled"`. `PATCH /domains/:id` exposes tracking and TLS and
-  nothing else — there is no field to turn receiving on afterwards.
+  `POST /domains` defaults receiving to `"disabled"`, and the sending step
+  deliberately leaves it that way: a receiving-enabled domain reports an MX at
+  the apex, and the step that publishes records would then write it onto a
+  domain that may already receive mail elsewhere (criterion 2056).
 
-  So a domain that already exists with receiving disabled cannot be upgraded
-  through the API, and this says so rather than reporting success and leaving
-  mail silently undelivered. Deleting and recreating it is not something setup
-  will do on its own: the domain may be sending production mail, and
-  recreating it rotates the DKIM key.
+  So this is where receiving is turned on, when Sam has actually asked for an
+  inbox. `PATCH /domains/:id` accepts `capabilities` — measured against the
+  live API, contradicting the docs and this function's own earlier comment,
+  which claimed capabilities were fixed at creation and made the step pause
+  and ask for a dashboard visit it never needed.
+
+  Nothing is deleted and recreated: that rotates the DKIM key of a domain that
+  may be sending production mail.
   """
   @spec ensure_receiving_domain(Scope.t(), String.t(), keyword()) ::
           {:ok, body()} | {:error, term()}
   def ensure_receiving_domain(%Scope{} = scope, name, opts \\ []) do
     case find_domain(scope, name) do
       {:ok, domain} ->
-        if receiving?(domain) do
-          {:ok, domain}
-        else
-          {:error, {:receiving_disabled, name}}
-        end
+        if receiving?(domain), do: {:ok, domain}, else: enable_receiving(scope, domain, name)
 
       {:error, :not_found} ->
         create_domain(
@@ -290,6 +283,30 @@ defmodule CodeMySpec.Provisioning.Resend do
 
       {:error, _} = error ->
         error
+    end
+  end
+
+  # Kept as an error rather than a raise: a PATCH that does not take still
+  # leaves `{:receiving_disabled, name}` for the step to pause on with the
+  # dashboard instructions, which is the honest outcome when the API refuses.
+  #
+  # Confirmed with a GET rather than from the PATCH's own body, which is
+  # `{"object":"domain","id":"…"}` and carries no capabilities at all. Reading
+  # it for the flag reported every successful enable as a refusal — the step
+  # paused telling Sam to visit the dashboard for a domain it had just fixed.
+  defp enable_receiving(%Scope{} = scope, domain, name) do
+    id = domain["id"]
+
+    with {:ok, _} <-
+           request(scope, :patch, "/domains/#{id}",
+             json: %{capabilities: %{sending: "enabled", receiving: "enabled"}}
+           ),
+         {:ok, updated} <- get_domain(scope, id),
+         true <- receiving?(updated) do
+      Logger.info("[Resend] enabled receiving on #{name}")
+      {:ok, updated}
+    else
+      _ -> {:error, {:receiving_disabled, name}}
     end
   end
 

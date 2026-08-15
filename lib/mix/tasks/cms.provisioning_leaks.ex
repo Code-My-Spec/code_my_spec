@@ -35,6 +35,21 @@ defmodule Mix.Tasks.Cms.ProvisioningLeaks do
 
   @spex_prefix "spex-"
 
+  # The drill is not the suite. `test/drill/provisioning_walk.exs` builds a
+  # long-lived environment by hand and keeps it between runs — that is its
+  # whole purpose — but it names its resources `spex-drill-uat` /
+  # `spex-drill-prod`, so the prefix above claimed them. A sweep then reported
+  # the environment somebody was mid-way through proving as leaked, and
+  # `--delete` would have released the servers and left the DNS pointing at
+  # addresses the provider was free to hand to a stranger.
+  #
+  # Excluded by marker rather than by name because the drill takes its names
+  # from `CMS_DRILL_APP` and `CMS_DRILL_DOMAIN`, so the set is not fixed. Both
+  # separators are needed: Hetzner resources are `spex-drill-uat` and DNS
+  # records sit under `spex-drill.earwitness.app`, so a rule written for one
+  # form sweeps the other.
+  @drill_marker ~r/(^|\.)spex-drill([-.]|$)/
+
   # How recently a server has to have been created for `--delete` to leave it
   # alone. An hour is well past any recording that is still going and well
   # short of leaving residue around to be passed on to the next run.
@@ -421,6 +436,7 @@ defmodule Mix.Tasks.Cms.ProvisioningLeaks do
 
     cond do
       Enum.any?(@kept, &(name == &1 or String.ends_with?(name, "." <> &1))) -> false
+      name =~ @drill_marker -> false
       String.starts_with?(name, @spex_prefix) -> true
       String.starts_with?(name, @builder_prefix) -> true
       true -> name =~ @spex_marker

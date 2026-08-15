@@ -86,5 +86,29 @@ defmodule Mix.Tasks.Cms.ProvisioningLeaksMarkerTest do
       refute ProvisioningLeaks.leaked?("abc8025.example.com")
       refute ProvisioningLeaks.leaked?("myspex-thing.example.com")
     end
+
+    # The drill keeps its environment between runs on purpose, and names it
+    # `spex-drill-*`, so the `spex-` prefix claimed it. The sweep reported a
+    # live 14-step environment as leaked and `--delete` would have released
+    # its servers while leaving the DNS pointing at the addresses.
+    test "the drill's environment, which is deliberate and long-lived" do
+      refute ProvisioningLeaks.leaked?("spex-drill-uat")
+      refute ProvisioningLeaks.leaked?("spex-drill-prod")
+    end
+
+    # Both separators: Hetzner resources join with `-`, DNS with `.`. A rule
+    # written for one form sweeps the other.
+    test "the drill's DNS, which joins with a dot rather than a dash" do
+      refute ProvisioningLeaks.leaked?("spex-drill.earwitness.app")
+      refute ProvisioningLeaks.leaked?("uat.spex-drill.earwitness.app")
+      refute ProvisioningLeaks.leaked?("resend._domainkey.spex-drill.earwitness.app")
+    end
+
+    # And the exclusion is anchored too, or a genuine spex resource that
+    # happens to carry the word goes unswept.
+    test "a spex resource that merely mentions drilling is still a leak" do
+      assert ProvisioningLeaks.leaked?("spex-drilling-rig")
+      assert ProvisioningLeaks.leaked?("spex-story841-drill.astralbi.com")
+    end
   end
 end

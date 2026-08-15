@@ -662,8 +662,9 @@ defmodule CodeMySpec.Provisioning.Steps do
 
       {:error, {:receiving_disabled, name}} ->
         {:paused,
-         "#{name} exists in Resend with receiving disabled, and Resend only accepts " <>
-           "capabilities when a domain is created — there is no API to turn it on. " <>
+         "#{name} exists in Resend with receiving disabled, and turning it on was refused. " <>
+           "Setup asks for it directly (PATCH /domains/:id accepts capabilities), so this " <>
+           "means the provider said no rather than that it cannot be asked. " <>
            "Enable receiving for #{name} in the Resend dashboard, then resume. " <>
            "Setup will not delete and recreate the domain: that rotates its DKIM key " <>
            "and would break sending until DNS caught up."}

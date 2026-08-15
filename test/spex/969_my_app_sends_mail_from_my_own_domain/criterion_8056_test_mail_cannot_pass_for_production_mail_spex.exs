@@ -3,10 +3,15 @@ defmodule CodeMySpecSpex.Story969.Criterion8056Spex do
   Story 969 — My app sends mail from my own domain
   Criterion 8056 — Test mail cannot pass for production mail.
 
-  Each environment sends from its own subdomain: production from the main
-  domain, UAT from its own. So test mail can never be mistaken for real
-  mail, and a UAT sending-reputation problem cannot touch the domain
-  production depends on.
+  Amended 2026-08. The guarantee is unchanged; the mechanism is not. This used
+  to be "each environment sends from its own subdomain" — production from the
+  main domain, UAT from its own — so the two could never be confused. Sam's
+  later call was simpler: only production sends at all. UAT has no sending
+  domain, no verification and no reputation, which makes test mail that could
+  pass for production mail not merely distinguishable but impossible.
+
+  `Steps.mail_environments/2` is where that lives: it filters the project's
+  environments down to production before the email step does anything.
 
   Surface: `CodeMySpecWeb.ProvisioningLive` on the cloud app, driving
   `CodeMySpec.Provisioning.Resend`.
@@ -16,7 +21,7 @@ defmodule CodeMySpecSpex.Story969.Criterion8056Spex do
 
   @endpoint CodeMySpecWeb.Endpoint
 
-  @cassette "resend_sending_domains_per_environment"
+  @cassette "resend_sending_domain_production_only"
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -24,24 +29,33 @@ defmodule CodeMySpecSpex.Story969.Criterion8056Spex do
   setup :connect_providers
 
   spex "Test mail cannot pass for production mail" do
-    scenario "each environment has its own sending domain" do
-      given_ "both environments can send", context do
+    scenario "only production is set up to send" do
+      given_ "a project with both environments", context do
         # Its own subdomain. Every criterion in this story used one shared name,
         # so whichever ran second found the first's sending domain already
         # registered and *adopted* it — and an adopted resource is never torn
         # down. Recorded alone each one passed; run together they replayed each
         # other's state.
+        #
+        # Production only, matching what the step will do. Publishing UAT's
+        # records here would set up the very thing this criterion says is not
+        # set up, and the assertions below would then be reading the fixture's
+        # work rather than the step's.
         project = own_domain(context.project, "c8056.astralbi.com")
-        verified_sending_domains(context.scope, project)
+        verified_sending_domains(context.scope, project, ["prod"])
         tear_down_after(context.scope, [:email])
 
         {:ok, view, _html} =
           live(context.conn, "/app/projects/#{context.project.id}/provisioning")
 
-        {:ok, Map.put(context, :view, view)}
+        # The *updated* project, not the one setup made. `own_domain/2` returns
+        # a new struct rather than mutating, so a later step reading
+        # `context.project.domain` gets the nil it was created with and
+        # compares the step's correct answer against nothing.
+        {:ok, context |> Map.put(:view, view) |> Map.put(:project, project)}
       end
 
-      when_ "the email step has run for each", context do
+      when_ "the email step has run", context do
         html =
           with_provider_cassette(@cassette, fn ->
             context.view
@@ -60,7 +74,7 @@ defmodule CodeMySpecSpex.Story969.Criterion8056Spex do
         {:ok, Map.put(context, :html, html)}
       end
 
-      then_ "production sends from the main domain and UAT from its own subdomain", context do
+      then_ "production has a sending domain", context do
         by_env =
           context.html
           |> Floki.parse_document!()
@@ -70,36 +84,27 @@ defmodule CodeMySpecSpex.Story969.Criterion8056Spex do
              el |> Floki.attribute("data-domain") |> List.first()}
           end)
 
-        # Anchor: sending domains were recorded per environment.
-        assert map_size(by_env) >= 2,
-               "expected a sending domain per environment, got #{inspect(by_env)}"
-
-        prod = by_env["prod"]
-        uat = by_env["uat"]
-
-        assert is_binary(prod) and is_binary(uat),
-               "expected both environments to name their sending domain, got #{inspect(by_env)}"
-
-        refute prod == uat,
-               "expected UAT and production to send from different domains, both #{inspect(prod)}"
-
-        assert String.ends_with?(uat, prod),
-               "expected UAT's sending domain to be a subdomain of the main one, got uat=#{inspect(uat)} prod=#{inspect(prod)}"
+        # Anchor: the step recorded a sending domain at all. Without this, the
+        # refutation below is satisfied by a step that did nothing, which is
+        # the same page as a step that correctly did production only.
+        assert by_env["prod"] not in [nil, ""],
+               "expected production to have a sending domain, got #{inspect(by_env)}"
 
         {:ok, Map.put(context, :by_env, by_env)}
       end
 
-      then_ "a reputation problem on one does not touch the other", context do
-        # Distinct verified domains mean distinct reputation. Same-domain
-        # sending with only a differing From local-part would not.
-        verified =
-          context.html
-          |> Floki.parse_document!()
-          |> Floki.find("[data-test='mail-sending-domain']")
-          |> Enum.map(&(Floki.attribute(&1, "data-verified-separately") |> List.first()))
+      then_ "UAT has none, so it cannot send anything to be mistaken", context do
+        refute Map.has_key?(context.by_env, "uat"),
+               "expected no sending domain for UAT, got #{inspect(context.by_env)}"
 
-        assert Enum.all?(verified, &(&1 == "true")),
-               "expected each environment's sending domain to be verified in its own right, got #{inspect(verified)}"
+        {:ok, context}
+      end
+
+      then_ "production sends from Sam's own domain rather than a test one", context do
+        prod = context.by_env["prod"]
+
+        assert prod == context.project.domain,
+               "expected production to send from the project's own domain #{inspect(context.project.domain)}, got #{inspect(prod)}"
 
         {:ok, context}
       end
