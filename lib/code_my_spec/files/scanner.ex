@@ -341,13 +341,22 @@ defmodule CodeMySpec.Files.Scanner do
     # an implementation file is valid because it is there. What is new is the
     # module name travelling with it, which `ComponentSync` used to open the
     # file to learn.
+    #
+    # `ecto_schema` travels the same way and for the same reason: the content is
+    # already in hand here, so recording it costs nothing, where inferring it in
+    # `ComponentSync` would mean re-opening every implementation file on the
+    # project. It is the one type fact read from an implementation — see
+    # `ComponentExtract.ecto_schema?/1` for why schemas are the exception.
     case Environments.read_file(env, entry.path) do
       {:ok, content} ->
         Map.merge(entry, %{
           valid: true,
           validation_errors: %{
             "errors" => %{},
-            "data" => %{"module_name" => ComponentExtract.extract_defmodule(content)}
+            "data" => %{
+              "module_name" => ComponentExtract.extract_defmodule(content),
+              "ecto_schema" => ComponentExtract.ecto_schema?(content)
+            }
           }
         })
 

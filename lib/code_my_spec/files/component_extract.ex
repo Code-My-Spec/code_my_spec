@@ -105,4 +105,31 @@ defmodule CodeMySpec.Files.ComponentExtract do
       _ -> nil
     end
   end
+
+  @doc """
+  Whether a module is an Ecto schema.
+
+  The one exception to "type lives in the spec". A schema declares what it is in
+  its own first lines, and 59 components on this project were typed `module`
+  because their spec had no `## Type` section and the changeset default took
+  over — 49 of them having no spec file at all to put one in. That mistyping is
+  not cosmetic: it gives them the module requirement graph instead of the schema
+  one, and it defeats `validate_dependency_graph/1`'s schema exclusion, so every
+  `belongs_to`/`has_many` pair between two of them is counted as an
+  architectural cycle (`f198b227`).
+
+  Matches `use Ecto.Schema` at the start of a line, so a mention inside a
+  docstring or comment does not count.
+
+  Takes file content, like `extract_defmodule/1` — both are called with the
+  result of a successful read, and neither accepts `nil`. A nil here would mean
+  the scanner had lost the content it just read, which should crash rather than
+  quietly answer "not a schema".
+  """
+  @spec ecto_schema?(String.t()) :: boolean()
+  def ecto_schema?(raw) when is_binary(raw) do
+    raw
+    |> normalize()
+    |> String.match?(~r/^\s*use\s+Ecto\.Schema\b/m)
+  end
 end
