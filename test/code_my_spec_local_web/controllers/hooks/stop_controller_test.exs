@@ -14,9 +14,13 @@ defmodule CodeMySpecLocalWeb.Hooks.StopControllerTest do
   and task evaluation apply; it is not a precondition for validating.
 
   These tests hold that invariant by comparing against a resolvable session
-  under otherwise identical conditions, rather than by planting a problem: the
-  stop pipeline runs the compiler inline in tests, and a clean run reconciles
-  the planted row away before the blocking check reads it.
+  under otherwise identical conditions, rather than by planting a problem: a
+  clean analyzer result reconciles a planted row away before the blocking check
+  reads it.
+
+  "Otherwise identical" is carried by `@recorded` — every call is fed the same
+  committed analyzer output rather than compiling anything, so the two sides
+  differ in exactly one thing.
 
   Short-circuiting on a missing session is the change someone would plausibly
   make to "handle" a malformed payload, and it would turn every hook-payload
@@ -30,6 +34,7 @@ defmodule CodeMySpecLocalWeb.Hooks.StopControllerTest do
   import Plug.Conn
   import Plug.Test
 
+  alias CodeMySpec.Environments.Environment
   alias CodeMySpecLocalWeb.Hooks.StopController
 
   @degenerate [
@@ -40,42 +45,33 @@ defmodule CodeMySpecLocalWeb.Hooks.StopControllerTest do
   ]
 
   setup do
-    # Without a cwd, `do_validate_stop/3` returns early on its `%Scope{cwd:
-    # nil}` clause, and these tests would pass without reaching the
-    # session-resolution path they are about.
+    # A directory, because `do_validate_stop/3` returns early on its
+    # `%Scope{cwd: nil}` clause and these tests would then pass without reaching
+    # the session-resolution path they are about. Nothing is compiled in it —
+    # see `@recorded` — so it can stay empty.
     {:ok, tmp} = Briefly.create(directory: true)
 
-    # A real Mix project, because the pipeline compiles this directory inline
-    # (`analysis_mode: :inline`) and an empty one is not a stable thing to
-    # compile. Against a bare temp dir mix answers
+    # `cwd` **and** `environment`, pointed at the same directory.
     #
-    #     ** (Mix) Could not find a Mix.Project, please ensure you are running
-    #        Mix in a directory with a mix.exs file
+    # They were two different ones, and it mattered. `full_scope_fixture/1`
+    # anchors `environment` at a Briefly dir of its own; this setup used to
+    # write a Mix project into a second one and assign it to `cwd`.
+    # `Runners.run("compiler", scope, …)` reads `scope.environment`, so the
+    # project was written where nothing compiled it and every call answered
     #
-    # which `[Compile]` records as "no diagnostics file and no compiler error
-    # markers in output — treating as transient". Whether that transient outcome
-    # reaches the decision depends on run-ledger state, and the ledger is not the
-    # same for the two calls below: the first creates the run the second finds.
-    # So the comparison could differ on a variable it does not name (cbe216dd,
-    # ~1 failure in 15-30 iterations).
+    #     ** (Mix) Could not find a Mix.Project
     #
-    # A project that compiles cleanly gives both calls the same analyzer outcome,
-    # which leaves session resolution as the only thing that varies — the point
-    # of the file. Fixing the environment rather than relaxing the assertion,
-    # which is what the report asks for and is right: the assertion is the file.
-    File.write!(Path.join(tmp, "mix.exs"), """
-    defmodule StopHookFixture.MixProject do
-      use Mix.Project
-
-      def project, do: [app: :stop_hook_fixture, version: "0.1.0", elixir: "~> 1.14"]
-      def application, do: []
-    end
-    """)
-
-    File.mkdir_p!(Path.join(tmp, "lib"))
-    File.write!(Path.join(tmp, "lib/fixture.ex"), "defmodule StopHookFixture do\nend\n")
-
-    %{scope: %{full_scope_fixture() | cwd: tmp}}
+    # which `[Compile]` records as "treating as transient". The comment on that
+    # Mix project said it existed to eliminate exactly that outcome, and it had
+    # never done so: six of those warnings per run, one per `post_stop`, right
+    # up until this line. The fix was in the file and pointed at the wrong
+    # directory, which is the same shape as the bug it was fixing.
+    #
+    # Kept aligned rather than deleted, because a scope whose two notions of
+    # "where this working copy is" disagree is not a thing to leave lying in a
+    # fixture — the next analyzer to read one instead of the other finds the
+    # same trap.
+    %{scope: %{full_scope_fixture() | cwd: tmp, environment: Environment.new(:local, tmp)}}
   end
 
   # `998f4d93` reports the comparison below failing about 1 run in 10, and
@@ -83,23 +79,28 @@ defmodule CodeMySpecLocalWeb.Hooks.StopControllerTest do
   # asynchronous, and a run landing between them makes the second decide with
   # problems the first did not have.
   #
-  # It does not reproduce. 61 consecutive runs of the issue's own command —
-  # `--repeat-until-failure 30 --seed 7`, twice — zero failures.
+  # The confound is real as *design* — the variable this isolates does sit on
+  # top of call order — but the thing that could vary underneath it is gone.
+  # `@recorded` feeds every call the same committed analyzer output, so there is
+  # no run to land, no ledger state to differ, and nothing for the order to
+  # confound with.
   #
-  # The mechanism that would explain both the report and the silence is
-  # `analysis_mode: :inline`, which `config/test.exs` has set since 469530bb
-  # (2026-07-09, before the report). Inline runs execute in the calling process,
-  # so each `post_stop` finishes its analysis before returning and there is no
-  # window between the calls to lose. Whatever the reporter hit, it was not
-  # simply "async run lands mid-test" in this configuration.
+  # It stopped reproducing before that: 61 consecutive runs of the issue's own
+  # command, `--repeat-until-failure 30 --seed 7` twice, zero failures. The
+  # mechanism that explains the silence is `analysis_mode: :inline`
+  # (`config/test.exs`, since 469530bb, before the report) — inline runs execute
+  # in the calling process, so each `post_stop` finished its analysis before
+  # returning and there was no window to lose.
   #
-  # The confound is still real as *design* — the variable this claims to isolate
-  # does sit on top of call order — so if it returns, fix the shape rather than
-  # re-diagnosing it. What the report also noticed and is worth more attention:
-  # the 28 problems it saw were the real project's compiler warnings, absolute
-  # paths under the worktree, against a fixture whose cwd is a temp dir. A
-  # correctly isolated test cannot see those at all, and that part has no
-  # explanation yet.
+  # What the report also noticed is the part worth keeping: the 28 problems it
+  # saw were the *real project's* compiler warnings, absolute paths under the
+  # worktree, against a fixture rooted in a temp dir. This file did have a
+  # directory bug of exactly that shape — `cwd` and `environment` pointed at two
+  # different Briefly dirs, so the Mix project written to prevent a transient
+  # compile outcome was written where nothing compiled it, and all six calls hit
+  # the transient branch anyway. Fixed in the setup above. Whether it is *the*
+  # explanation is unproven: it accounts for an unstable analyzer outcome, not
+  # for absolute paths under the worktree appearing at all.
   describe "payloads that name no resolvable session" do
     for {label, params} <- @degenerate do
       test "#{label} decides the same as a resolvable session", %{scope: scope} do
@@ -176,7 +177,37 @@ defmodule CodeMySpecLocalWeb.Hooks.StopControllerTest do
     end
   end
 
+  # Recorded analyzer output, not a real compile.
+  #
+  # The pipeline reads `test_output_files` in place of producing its own, which
+  # is what the committed recordings under `test/fixtures/validation/` are for.
+  # The 555 spex drive the same pipeline the same way.
+  #
+  # This file used to build a Mix project in a temp directory and compile it
+  # inline on every call. That is the surface `998f4d93` was reported on: an
+  # analyzer outcome that depends on the machine, sitting underneath an
+  # assertion about session resolution. `compile.jsonl` is empty, which is what
+  # a clean compile records, so every call now gets the same compiler result by
+  # construction.
+  #
+  # Not every source. `exunit_output_file` moves where results are *read from*
+  # — it is a cassette seam for capturing a child's output, not a way to skip
+  # the child — so `mix test` still runs. In an empty directory it fails
+  # immediately and identically every time (`:test_suite_did_not_run`, "Could
+  # not find a Mix.Project") and contributes nothing to the decision, which
+  # makes it stable rather than absent. Suppressing it properly needs
+  # `use_cmd_cassette`, and that patches `System.cmd/3` through meck —
+  # process-global, so it cannot be used from an `async: true` file without
+  # killing whatever else is running.
+  @recorded %{
+    "compile" => "test/fixtures/validation/pipeline_clean_run/compile.jsonl",
+    "exunit" => "test/fixtures/validation/pipeline_clean_run/exunit.json",
+    "spex" => "test/fixtures/validation/spex_green.jsonl"
+  }
+
   defp post_stop(scope, params) do
+    params = Map.put_new(params, "test_output_files", recorded_outputs())
+
     conn(:post, "/api/hooks/stop", Jason.encode!(params))
     |> put_req_header("content-type", "application/json")
     |> assign(:current_scope, scope)
@@ -186,5 +217,9 @@ defmodule CodeMySpecLocalWeb.Hooks.StopControllerTest do
       assert conn.status == 200
       Jason.decode!(conn.resp_body)
     end)
+  end
+
+  defp recorded_outputs do
+    Map.new(@recorded, fn {source, path} -> {source, Path.expand(path)} end)
   end
 end
