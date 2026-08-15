@@ -193,7 +193,11 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
       since: Keyword.get(opts, :in_flight_since, %{}),
       # Defaults true: every existing caller was making the "no rerun" claim
       # already, and only a caller that knows otherwise should soften it.
-      tracked?: Keyword.get(opts, :tracked?, true)
+      tracked?: Keyword.get(opts, :tracked?, true),
+      # The harness whose `analysis/wait` will block until the sweep lands, when
+      # there is one to name. A scope with no harness gets the plain instruction
+      # rather than a URL that would 404 — same rule as `Hooks.Stop`.
+      harness_id: Keyword.get(opts, :harness_id)
     }
 
     header = "Fix these problems before stopping:\n\n"
@@ -548,8 +552,8 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
   defp wait_or_report(age, rerunning, run_duration, flight) do
     case {age, rerunning, flight.tracked?} do
       {_age, [_ | _] = running, _} ->
-        " A rerun is in flight now (#{running_detail(running, run_duration, flight)}) — " <>
-          "stop again and let it replace these."
+        " A rerun is in flight now (#{running_detail(running, run_duration, flight)})." <>
+          wait_remedy(flight)
 
       # Nothing is watching, so "no rerun is in flight" is not something this
       # can know — `in_flight/1` answers the same empty list for idle and for
@@ -573,7 +577,31 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
     end
   end
 
-  # "credo, running 13s of a typical 18s" rather than "credo".
+  # Waiting, as something the agent can actually do.
+  #
+  # "Stop again and let it replace these" was the whole remedy, and it is a race
+  # the agent loses: a stop is what it is being refused, so it re-stops
+  # immediately, lands inside the same run, and is told the same thing. Three
+  # consecutive stops on one set of findings while the run grew 0s → 4m42s →
+  # 5m15s (5e9fa939). The instruction was not wrong, it was just faster than the
+  # thing it was waiting for.
+  #
+  # `analysis/wait` blocks until the sweep lands, so following it once costs one
+  # wait instead of N stops. `Hooks.Stop` has handed this out for the *pending*
+  # case all along — the gap was that a blocking result returns before that
+  # check, so the case where waiting matters most never heard about it.
+  #
+  # Run in the background: a sweep is 200-590s here and the agent is notified
+  # when it returns, which is also why this is an HTTP endpoint rather than an
+  # MCP tool (MCP caps a request at 30s).
+  defp wait_remedy(%{harness_id: id}) when is_binary(id) do
+    " Wait for it with `curl -sS -X POST localhost:4004/api/harnesses/#{id}/analysis/wait`" <>
+      " — run that in the background and you will be notified when it returns — then" <>
+      " stop again. Stopping again immediately lands inside the same run and returns this."
+  end
+
+  defp wait_remedy(_flight), do: " Let it finish, then stop again and it will replace these."
+
   #
   # The elapsed figure is the whole point: it is the only part of this footer
   # that changes between two stops inside one run's window, and without it

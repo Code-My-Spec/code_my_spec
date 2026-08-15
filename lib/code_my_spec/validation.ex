@@ -664,7 +664,18 @@ defmodule CodeMySpec.Validation do
       # And whether anyone is watching at all. "No rerun is in flight, stopping
       # again enqueues one" is a claim about the world, and an untracked project
       # cannot support it — nothing would report a run either way.
-      tracked?: Analysis.in_flight_state(scope) != :untracked
+      tracked?: Analysis.in_flight_state(scope) != :untracked,
+      # Which harness to wait on, so "a rerun is in flight" can name a way to
+      # wait for it rather than only telling the agent to stop again.
+      #
+      # `Hooks.Stop` already has this remedy: when analysis is pending it hands
+      # over `POST /api/harnesses/<id>/analysis/wait`, which blocks until the
+      # sweep lands. But that path is only reached when validation *passed* —
+      # a blocking result returns before it, so the case where waiting matters
+      # most is the one case that never heard about the endpoint (5e9fa939:
+      # three consecutive stops blocked on the same findings while a spex run
+      # grew from 0s to 5m15s, each told to stop again).
+      harness_id: scope.active_harness_id
     )
   end
 
