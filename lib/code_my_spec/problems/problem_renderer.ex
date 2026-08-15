@@ -252,8 +252,63 @@ defmodule CodeMySpec.Problems.ProblemRenderer do
     marker = stale_marker(source, stale, last_ran, run_duration, overtaken, failures)
 
     "#{source} (#{count})#{marker}:\n#{details}#{overflow}" <>
-      reproduce_line(source, reproduce) <> killed_note(items)
+      reproduce_line(source, reproduce) <>
+      killed_note(items) <>
+      foreign_spex_note(source, items, session_paths)
   end
+
+  # Why a spex still blocks after being marked as somebody else's.
+  #
+  # `(not edited by this session)` means "advisory, demoted" on every other
+  # source — `split_unattributed/2` moves those out of the blocking set. Spex is
+  # exempt (`@attribution_exempt_sources`), so the identical marker sits on a
+  # finding that is still blocking, and nothing in the response distinguishes
+  # the two readings.
+  #
+  # The exemption is right, and so is the block. `specs_ready` is not set
+  # optimistically by anyone — the specs-passing gate sets it on a fresh green
+  # run and `clear_specs_ready_on_readiness_change/1` clears it whenever the
+  # story is released or parked. So a red spex on a latched story is a story
+  # whose specs went green and have since gone red: a regression in this working
+  # copy, which is a different thing from somebody's in-flight work and is why
+  # attribution must not demote it.
+  #
+  # What the agent is missing is that sentence. It is holding a red spex in a
+  # file it never touched, and the only reading available from the response is
+  # "somebody else's problem, and I am stuck behind it" — which is the bind
+  # `b9a9f9bc` describes, and which cost story 985 four unrelated sessions
+  # before anyone traced it.
+  #
+  # Only when there is a foreign finding to explain, and only for spex: an agent
+  # looking at its own red spex does not need a paragraph about latches.
+  defp foreign_spex_note("spex", items, %MapSet{} = session_paths) do
+    foreign? =
+      MapSet.size(session_paths) > 0 and
+        Enum.any?(items, fn
+          %Problem{file_path: path} when is_binary(path) ->
+            not MapSet.member?(session_paths, path)
+
+          _ ->
+            false
+        end)
+
+    case foreign? do
+      true ->
+        "\n  A red spex blocks even in a file this session did not touch — spex is " <>
+          "the one source attribution does not demote. That is because the latch " <>
+          "making it blocking is earned, not asserted: `specs_ready` is set by a " <>
+          "green spex run and cleared when the story is released or parked. So " <>
+          "these went green once and are red now, which is a regression in this " <>
+          "working copy rather than work in progress. Fix it, or if the story is " <>
+          "genuinely mid-rework, park it — changing `ready_for_dev` clears the " <>
+          "latch and these stop blocking."
+
+      false ->
+        ""
+    end
+  end
+
+  defp foreign_spex_note(_source, _items, _session_paths), do: ""
 
   # A group whose every finding is a killed process is reporting on the machine,
   # not on the code, and nothing else in this footer can say so. `** (EXIT …)
