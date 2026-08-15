@@ -51,9 +51,16 @@ defmodule CodeMySpec.RecordingLock do
   @doc """
   Take the lock for this VM, releasing it when the VM exits.
 
-  Idempotent per BEAM via `:persistent_term`, matching `clear_cassette_once/2`
-  and `refuse_to_run_on_residue/0` — "this `mix spex` run" without anything to
-  start or supervise.
+  Idempotent per BEAM **per root**, matching `clear_cassette_once/2`, which keys
+  on `{dir, name}` rather than a bare flag — "this `mix spex` run" without
+  anything to start or supervise.
+
+  Keyed on the root rather than a single flag because a bare flag makes the
+  first call in a VM the only one that does anything, whatever root it was
+  given. Production never notices, since a BEAM serves one working copy; two
+  tests holding two different temp roots notice immediately, and the second one
+  silently writes no file. That is the same shape as the collisions this module
+  exists to prevent, one level up.
 
   `System.at_exit` rather than `on_exit`: the lock spans the whole recording
   session, not one spex, and a per-test callback would drop it between files
@@ -61,7 +68,7 @@ defmodule CodeMySpec.RecordingLock do
   """
   @spec hold(Path.t()) :: :ok
   def hold(root) do
-    key = {__MODULE__, :held}
+    key = {__MODULE__, :held, root}
 
     case :persistent_term.get(key, :fresh) do
       :held ->
