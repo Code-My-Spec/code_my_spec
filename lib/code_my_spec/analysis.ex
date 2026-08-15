@@ -271,11 +271,6 @@ defmodule CodeMySpec.Analysis do
         {:ok, :started, run_id} ->
           wait_for_remote(scope, run_id, job.source, deadline())
 
-        # Joined an identical run already in flight on the harness. There is no
-        # id of our own to wait for, so the wait is on the source instead.
-        {:ok, :joined, nil} ->
-          wait_for_remote(scope, nil, job.source, deadline())
-
         # Never dispatched — the code does not compile, so the row is already
         # closed and nothing will ever broadcast for it.
         {:ok, :skipped, run_id} ->
@@ -289,12 +284,20 @@ defmodule CodeMySpec.Analysis do
     end
   end
 
+  # Matched on the run id, never on the source alone.
+  #
+  # There used to be an `is_nil(run_id)` escape here, for the caller that had
+  # joined an in-flight run and so had no id of its own. That caller is gone
+  # (`cc1016a8` — the join was a silent drop), and with it the only reason to
+  # accept "some run of this source finished". Keeping it would mean a sweep
+  # could be satisfied by a run that started before the edit it is waiting on,
+  # which is the same wrong answer by a shorter route.
   defp wait_for_remote(scope, run_id, source, deadline) do
     remaining = deadline - System.monotonic_time(:millisecond)
 
     receive do
-      {:analysis, %{run_id: id, source: ^source}} when is_nil(run_id) or id == run_id ->
-        {:ok, RunsRepository.get_run_in_project(scope, id)}
+      {:analysis, %{run_id: ^run_id, source: ^source}} ->
+        {:ok, RunsRepository.get_run_in_project(scope, run_id)}
 
       # Another source finishing, or another checkout's run on this project.
       # Not ours; keep the original deadline rather than restarting it.
@@ -954,24 +957,41 @@ defmodule CodeMySpec.Analysis do
   # `:running` until its channel closes and is failed then — where a
   # fire-and-forget push would leave no trace that anything was ever asked for.
   #
-  # Single-flight is the same rule the ProjectServer applies locally, and for
-  # the same physical reason: two `mix test` processes in one `_build` corrupt
-  # it. The harness refuses a duplicate as well; this stops the row being opened
-  # in the first place.
+  # ## A busy source is sent anyway, and that is the fix for `cc1016a8`
+  #
+  # This used to drop the request when `job.source` was already running:
+  # single-flight, on the reasoning that two `mix test` processes in one
+  # `_build` corrupt it. The premise is right and the conclusion was wrong,
+  # because it confused "do not run two at once" with "forget that a second was
+  # wanted".
+  #
+  # The harness never needed protecting from this. `AnalysisServer` serialises
+  # by construction — one task at a time — and `accept/2` refuses only a source
+  # already *queued*, deliberately, since a second pending run would deliver the
+  # same answer twice. A source that is merely *running* is accepted and queued
+  # behind itself, which is exactly what a sweep triggered by a new commit
+  # needs.
+  #
+  # What dropping cost, measured on `phx-new-generator`: a spex run started at
+  # 00:30:24, a commit edited a spex file at 00:30:43, the sweep at 00:31:25
+  # planned spex and this dropped it, and the run that finished at 00:33:57
+  # answered about the pre-commit tree. Nothing re-queued it. `analysis/wait`
+  # then reported "ok" with spex stale and the queue idle — accurate and
+  # useless — and `FixBddSpecs`, which gates on `Analysis.fresh?(scope, "spex")`
+  # and says to wait and re-evaluate, looped until somebody ran the analyzer by
+  # hand.
+  #
+  # `:joined` was never true either: nothing joined anything, and the caller
+  # was told its work was in progress when it had been discarded.
   defp dispatch_remote(scope, job, channel) do
-    if job.source in RunsRepository.running_sources(scope) do
-      Logger.info("[Analysis] #{job.source} already running on the harness — not re-sending")
-      {:ok, :joined, nil}
-    else
-      case RunsRepository.start_run(scope, %{
-             source: job.source,
-             kind: job.kind,
-             args: %{"args" => job.args},
-             input_fingerprint: job.fingerprint
-           }) do
-        {:ok, run} -> send_or_skip(scope, job, channel, run)
-        {:error, reason} -> {:error, reason}
-      end
+    case RunsRepository.start_run(scope, %{
+           source: job.source,
+           kind: job.kind,
+           args: %{"args" => job.args},
+           input_fingerprint: job.fingerprint
+         }) do
+      {:ok, run} -> send_or_skip(scope, job, channel, run)
+      {:error, reason} -> {:error, reason}
     end
   end
 
