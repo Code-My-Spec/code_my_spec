@@ -2063,6 +2063,44 @@ defmodule CodeMySpecSpex.Fixtures do
     end
   end
 
+  @doc """
+  Terminate any `CodeMySpec.TaskSupervisor` child this spex leaves running.
+
+  Call it from `setup`. It snapshots the supervisor's children now and, on exit,
+  kills whatever is new — so a task the spex started cannot outlive it.
+
+  `23d3c71c`, and it is the whole of that bug. `Workspaces.watch/1` starts an
+  unlinked `Task.Supervisor` child running `Boot.watch/1`, which polls until a
+  deadline computed **once** from `:boot_timeout`. `criterion_8221` sets that to
+  60 seconds and finishes in milliseconds; its `on_exit` deletes the config,
+  which does nothing to the deadline already in flight. A minute later the task
+  gives up and logs `Task.Supervisor, :terminating` — into whichever spex is
+  running by then, which fails on a logged error that is not its own.
+
+  That is why three investigations could not reproduce it: 8221 alone, its
+  neighbours, and all thirteen of story 990 together take 0.6 s. Nothing short
+  of a full sweep runs long enough to reach the timeout, and a full sweep is
+  exactly where it was always seen.
+
+  Snapshot-and-diff rather than terminating every child, because the supervisor
+  is the application's own and carries work that has nothing to do with this
+  spex. Safe because spex are sequential — a child that appeared during this
+  one belongs to it.
+  """
+  @spec stop_leaked_tasks_on_exit() :: :ok
+  def stop_leaked_tasks_on_exit do
+    before = MapSet.new(Task.Supervisor.children(CodeMySpec.TaskSupervisor))
+
+    ExUnit.Callbacks.on_exit(fn ->
+      CodeMySpec.TaskSupervisor
+      |> Task.Supervisor.children()
+      |> Enum.reject(&MapSet.member?(before, &1))
+      |> Enum.each(&Process.exit(&1, :kill))
+    end)
+
+    :ok
+  end
+
   # -- Stories (QA spex fixture setup, Stories 726/727) --
   @doc """
   Creates a story directly through the Stories context for use in QA
