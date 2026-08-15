@@ -1,8 +1,9 @@
 defmodule CodeMySpec.Check.Warning.NoControlFlowInTests do
   @moduledoc """
   Credo check that forbids imperative control flow (`case`, `if`, `unless`,
-  `cond`, `try`) inside test files (`_test.exs`) and BDD spec files
-  (`_spex.exs`). See the `:check` explanation for rationale.
+  `cond`, `try`) anywhere in a test file (`_test.exs`) or BDD spec file
+  (`_spex.exs`) — including `defp` helpers, `setup` blocks and stub plugs, not
+  only the test bodies. See the `:check` explanation for rationale.
   """
 
   use Credo.Check,
@@ -12,37 +13,66 @@ defmodule CodeMySpec.Check.Warning.NoControlFlowInTests do
     explanations: [
       check: """
       Imperative control flow (`case`, `if`, `unless`, `cond`, `try/rescue`)
-      is not allowed in test files (`_test.exs`) or BDD spec files
-      (`_spex.exs`).
+      is not allowed **anywhere** in a test file (`_test.exs`) or BDD spec
+      file (`_spex.exs`). The whole file, not only the test body: `defp`
+      helpers, `setup` blocks and stub plugs are all covered.
+
+      That breadth is the rule, not an accident of implementation. A test
+      file is read to find out what the system is claimed to do, and a branch
+      anywhere in it means the answer depends on something the reader has to
+      go and evaluate. Where the branch sits changes who has to trace it, not
+      whether it has to be traced.
+
+      ## Why a test body must not branch
 
       A test must be fully deterministic: you own the setup, so you know
-      *exactly* what every value and shape will be, and you assert that
-      exact thing. A branch in a test is a contradiction — it means the
-      test is reacting to state it claims to control. Either the setup
-      isn't pinned down (fix the fixture so the outcome is known) or the
-      branch is dead weight guarding against a shape that cannot occur
+      *exactly* what every value and shape will be, and you assert that exact
+      thing. A branch is a contradiction — the test is reacting to state it
+      claims to control. Either the setup isn't pinned down (fix the fixture
+      so the outcome is known) or the branch guards a shape that cannot occur
       (delete it and assert directly).
 
-      `if`/`case` to "handle either outcome" is the tell: if both outcomes
-      are genuinely possible, the test is non-deterministic and can pass
-      for the wrong reason. Decide which outcome you require, make the
-      setup guarantee it, and assert it unconditionally — the test should
-      *fail* when you don't get it, not quietly take the other branch.
+      `if`/`case` to "handle either outcome" is the tell: if both outcomes are
+      genuinely possible, the test is non-deterministic and can pass for the
+      wrong reason. Decide which outcome you require, make the setup guarantee
+      it, and assert it unconditionally — the test should *fail* when you
+      don't get it, not quietly take the other branch.
 
-      Replace with:
-      - Pattern-matching `=` for destructuring (`{:ok, value} = result`) —
-        it fails loudly when the shape is wrong, which is the point.
-      - `assert match?(pattern, value)` for shape assertions.
-      - Multi-clause helper functions for genuinely distinct cases — each
-        becomes its own named test, not a branch.
-      - A tighter fixture: pin the state so only one outcome is possible.
-      - For cleanup or environment plumbing (`try/after`, resetting app
-        env), use `on_exit` or move it into a setup/support helper — the
-        test body asserts, it doesn't manage resources.
+      ## The three shapes that get flagged outside test bodies
 
-      Pattern matching in function heads and `with` clauses is fine —
-      that's destructuring, not control flow. The forbidden constructs
-      are imperative branching inside the test/scenario body.
+      These are not test smells in themselves, and the fix is to move them
+      rather than to argue with the finding.
+
+      **Stub or fake-server routing** — `case conn.request_path do ... end`
+      inside a `Req.Test.stub`. Dispatching on the request is the stub's job.
+      Write it as multi-clause private functions, which is pattern matching in
+      function heads rather than a branch:
+
+          defp respond(%{request_path: "/v1/customers"} = conn), do: json(conn, ...)
+          defp respond(%{request_path: "/v1/subscriptions"} = conn), do: json(conn, ...)
+
+      A stub with more than a couple of routes belongs in `test/support`
+      alongside the other fixtures, where this rule does not apply.
+
+      **Extraction whose other branch raises** — `case Regex.run(...) do [_, id]
+      -> id; _ -> raise ... end`. The intent is right (fail loudly) and the
+      branch is unnecessary to achieve it: a bare match already raises.
+
+          [_, id] = Regex.run(~r/\\(ID: (\\d+)\\)/, body)
+
+      The MatchError names the value it got, which is the same information the
+      hand-written `raise` was assembling.
+
+      **Teardown and environment helpers** — a `defp delete_ssh_key/1` that has
+      to cope with present and absent. Resource management is not the test
+      file's job; move it to `test/support` or express it with `on_exit`.
+
+      ## What is always fine
+
+      Pattern matching in function heads, `=` destructuring (`{:ok, value} =
+      result`), `with` clauses, and `assert match?(pattern, value)`. Those are
+      destructuring, not branching — they narrow to one path and fail loudly
+      when reality disagrees, which is what a test is for.
       """
     ]
 
@@ -86,13 +116,21 @@ defmodule CodeMySpec.Check.Warning.NoControlFlowInTests do
     {ast, ctx}
   end
 
+  # The message says "anywhere in this file" rather than arguing about test
+  # bodies. The previous wording — "a branch means the test is reacting to state
+  # it should control" — justified a narrower rule than the one being enforced,
+  # so the 104 findings it produced on this working copy read as false positives
+  # rather than as a backlog. Most sit in `defp` helpers and stub plugs, where
+  # that sentence is simply untrue, and a reader who checks it concludes the
+  # check is broken (358799d7).
   defp issue_for(issue_meta, meta, construct) do
     format_issue(
       issue_meta,
       message:
-        "Imperative `#{construct}` is not allowed in _test.exs / _spex.exs files. " <>
-          "A branch means the test is reacting to state it should control — make the " <>
-          "setup deterministic and assert the exact expected outcome instead.",
+        "Imperative `#{construct}` is not allowed anywhere in a _test.exs / _spex.exs " <>
+          "file — helpers, setup blocks and stubs included, not just the test body. " <>
+          "In a test body: pin the setup and assert the exact outcome. In a helper or " <>
+          "stub: use multi-clause function heads, or move it to test/support.",
       trigger: construct,
       line_no: meta[:line],
       column: meta[:column]
