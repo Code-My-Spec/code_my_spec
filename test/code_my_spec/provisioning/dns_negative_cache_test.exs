@@ -19,7 +19,11 @@ defmodule CodeMySpec.Provisioning.DnsNegativeCacheTest do
   than any step waits, so retrying cannot help and the only useful thing is to
   say which case it is.
   """
-  use ExUnit.Case, async: true
+  # Not async: the settle tests switch `:provisioning_waits` back on, which is
+  # application-wide. It is off in test so replayed cassettes do not reproduce
+  # the waits they recorded, and the point of those tests is that the wait
+  # happens at all.
+  use ExUnit.Case, async: false
 
   alias CodeMySpec.Provisioning.Dns
 
@@ -90,6 +94,47 @@ defmodule CodeMySpec.Provisioning.DnsNegativeCacheTest do
     test "still answers a plain boolean over the top of it" do
       assert Dns.resolves_publicly?("c7995.astralbi.com", :a, resolver: answered("192.0.2.10"))
       refute Dns.resolves_publicly?("c7995.astralbi.com", :a, resolver: negative(1489))
+    end
+  end
+
+  describe "settle_ms" do
+    setup do
+      previous = Application.get_env(:code_my_spec, :provisioning_waits, :real)
+      Application.put_env(:code_my_spec, :provisioning_waits, :real)
+      on_exit(fn -> Application.put_env(:code_my_spec, :provisioning_waits, previous) end)
+      :ok
+    end
+
+    # The self-inflicted half of the problem: a record written a moment ago has
+    # not reached a public resolver, and asking before it has is what caches the
+    # "no" that every later retry then reads instead of the record. The wait
+    # happens before the first question, not only between questions.
+    test "waits before asking at all" do
+      parent = self()
+
+      resolver = fn _url, _headers ->
+        send(parent, {:asked, System.monotonic_time(:millisecond)})
+        {:ok, %{status: 200, body: %{"Status" => 0, "Answer" => [%{"data" => "192.0.2.10"}]}}}
+      end
+
+      started = System.monotonic_time(:millisecond)
+      assert Dns.resolution_status("x.astralbi.com", :a, resolver: resolver, settle_ms: 50) ==
+               :resolves
+
+      assert_received {:asked, asked_at}
+
+      assert asked_at - started >= 50,
+             "expected the first question to wait for the record to propagate"
+    end
+
+    test "does not wait when told not to" do
+      started = System.monotonic_time(:millisecond)
+
+      assert Dns.resolution_status("x.astralbi.com", :a, resolver: answered("192.0.2.10")) ==
+               :resolves
+
+      assert System.monotonic_time(:millisecond) - started < 50,
+             "expected no settle by default — a caller that already waited must not wait again"
     end
   end
 end

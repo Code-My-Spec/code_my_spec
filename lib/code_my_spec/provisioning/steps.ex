@@ -3544,11 +3544,26 @@ defmodule CodeMySpec.Provisioning.Steps do
   # connection the whole time, which surfaced later as an ownership error in
   # teardown — a failure with nothing to do with what the spex asserted.
   defp resolver_opts(opts) do
+    interval = Keyword.get(opts, :interval_ms, 2_000)
+
     opts
-    |> Keyword.take([:resolver, :interval_ms])
-    |> Keyword.put_new(:interval_ms, 2_000)
+    |> Keyword.take([:resolver])
+    |> Keyword.put(:interval_ms, interval)
     |> Keyword.put(:attempts, Keyword.get(opts, :resolver_attempts, 15))
+    |> Keyword.put(:settle_ms, settle_ms(opts, interval))
   end
+
+  # A record written a moment ago has not reached a public resolver yet, and
+  # asking before it has is what caches the "no" the retries then cannot get
+  # past. Waiting once costs a few seconds; not waiting cost a half-hour
+  # lockout on the name and fifteen retries that could never succeed.
+  #
+  # Nothing on replay, where the cassette answers instantly and there is no
+  # propagation to wait for — the same reason `interval_ms` is zeroed there.
+  # Reading it off the interval keeps the two from drifting apart, which is how
+  # a replay ends up sleeping five seconds per record for no reason.
+  defp settle_ms(opts, 0), do: Keyword.get(opts, :resolver_settle_ms, 0)
+  defp settle_ms(opts, _interval), do: Keyword.get(opts, :resolver_settle_ms, 5_000)
 
   # Prefer what the server step recorded on the environment; fall back to
   # asking Hetzner, so a project provisioned before environments existed still

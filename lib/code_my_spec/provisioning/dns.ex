@@ -94,6 +94,23 @@ defmodule CodeMySpec.Provisioning.Dns do
     attempts = Keyword.get(opts, :attempts, 1)
     interval = Keyword.get(opts, :interval_ms, 2_000)
 
+    # Before the first ask, not only between asks. A resolver that is asked
+    # for a name in the seconds before it propagates caches the "no" for the
+    # zone's negative TTL — half an hour — and every retry after that reads
+    # its own cache entry rather than the record. So the step poisons itself
+    # with its own first question, and retrying harder cannot help.
+    #
+    # Measured: c7995.astralbi.com was created, checked immediately, and
+    # reported unresolvable through fifteen retries over 75s. An hour later
+    # the same name answered from the same resolver, unchanged.
+    #
+    # Zero by default, because a caller that already waited should not wait
+    # again, and the callers that need it say so.
+    case Keyword.get(opts, :settle_ms, 0) do
+      settle when is_integer(settle) and settle > 0 -> Wait.sleep(settle)
+      _ -> :ok
+    end
+
     Enum.reduce_while(1..attempts, {:absent, :fresh}, fn attempt, _acc ->
       case doh_lookup(name, type, opts) do
         {:answers, [_ | _]} ->
