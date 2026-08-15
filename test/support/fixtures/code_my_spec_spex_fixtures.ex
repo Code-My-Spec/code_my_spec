@@ -2038,9 +2038,23 @@ defmodule CodeMySpecSpex.Fixtures do
   the bridge.)
   """
   @spec capture_log_at_info((-> any())) :: String.t()
-  def capture_log_at_info(fun) when is_function(fun, 0) do
+  def capture_log_at_info(fun) when is_function(fun, 0), do: capture_log_at(:info, fun)
+
+  @doc """
+  Capture logs with the Logger level lowered to `level` for the duration.
+
+  `Logger.configure/1` as well as the capture, because Logger drops anything
+  below its configured level before a handler ever sees it — `capture_log/2`'s
+  own `:level` option filters what was already let through.
+
+  Parameterised rather than duplicated because a trace can span levels: story
+  812 asserts one dispatch is followed from handler entry to MP delivery, and
+  those are `:info` and `:debug` respectively — the delivery line was moved down
+  deliberately, since at warning it emitted 2,190 lines in one suite run.
+  """
+  def capture_log_at(level, fun) when is_function(fun, 0) do
     previous_level = Logger.level()
-    Logger.configure(level: :info)
+    Logger.configure(level: level)
 
     try do
       ExUnit.CaptureLog.capture_log(fun)
