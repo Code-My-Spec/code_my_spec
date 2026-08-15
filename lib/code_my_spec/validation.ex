@@ -768,12 +768,47 @@ defmodule CodeMySpec.Validation do
 
   defp failure_reason(%Run{status: :failed, output: output}) when is_binary(output) do
     case String.trim(output) do
-      "" -> nil
-      text -> text |> String.split("\n") |> Enum.take(6) |> Enum.join("\n") |> truncate(600)
+      "" -> stats_error(nil)
+      text -> summarize_failure(text)
     end
   end
 
+  # A run that never produced output at all.
+  #
+  # `Reconciler.fail/2` writes the reason to `stats["error"]`, not to `output` —
+  # `output` is what the *tool* printed, and an analyzer that crashed before
+  # starting printed nothing. So the two failure shapes land in different
+  # columns and only one was ever read back.
+  #
+  # `639d0fc1` is the cost. An un-onboarded working copy made credo crash
+  # before it ran, 104 times across two checkouts, with the reason recorded
+  # every time:
+  #
+  #     credo crashed: /Users/…/intake-on-home has no recorded test partition,
+  #     so it has not been onboarded. Run: mix harness.onboard
+  #
+  # What the agent got instead was the previous run's findings, correctly
+  # labelled stale, on a file it had already fixed and verified clean — the
+  # same finding three times, still citing a line number from before the edit
+  # that shifted it. The remedy offered was "stop again and let a rerun replace
+  # these", and the rerun crashed identically. Nothing it could edit was ever
+  # measured.
+  #
+  # The information was one process away the whole time and the agent had no
+  # reason to look for it. It is the second analyzer that week to fail an unmet
+  # precondition and surface it as stale findings — spex did the same through
+  # the migration guard (`6f89b278`) — which is why this reads the column
+  # rather than the instance.
+  defp failure_reason(%Run{status: :failed, stats: stats}), do: stats_error(stats)
+
   defp failure_reason(_run), do: nil
+
+  defp stats_error(%{"error" => error}) when is_binary(error), do: summarize_failure(error)
+  defp stats_error(_stats), do: nil
+
+  defp summarize_failure(text) do
+    text |> String.split("\n") |> Enum.take(6) |> Enum.join("\n") |> truncate(600)
+  end
 
   defp truncate(text, cap) when byte_size(text) <= cap, do: text
   defp truncate(text, cap), do: binary_part(text, 0, cap) <> "…"

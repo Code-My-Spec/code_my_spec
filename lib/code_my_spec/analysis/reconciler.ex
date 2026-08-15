@@ -99,9 +99,27 @@ defmodule CodeMySpec.Analysis.Reconciler do
     Logger.warning("[Analysis] #{run.source} failed: #{inspect(reason)}")
 
     RunsRepository.finish_run(run, :failed, %{
-      stats: %{"error" => String.slice(inspect(reason), 0, 500)}
+      stats: %{"error" => error_text(reason)}
     })
   end
+
+  # A string reason is stored as itself; everything else is inspected.
+  #
+  # This was `inspect/1` unconditionally, which wrapped an already-readable
+  # message in quotes and flattened its newlines into literal `\n`. That was
+  # invisible while nothing read the column back. It stopped being invisible
+  # when `Validation.failure_reason/1` started surfacing it in the stop response
+  # (`639d0fc1`), where the reader is an agent being told why an analyzer could
+  # not run:
+  #
+  #     "credo crashed: … has not been onboarded.\nRun: mix harness.onboard"
+  #
+  # — one quoted line instead of two, with the remedy buried in an escape.
+  #
+  # Non-binaries still go through `inspect/1`, and must: `skipped_for_compile_errors?/1`
+  # matches on the inspected atom.
+  defp error_text(reason) when is_binary(reason), do: String.slice(reason, 0, 500)
+  defp error_text(reason), do: String.slice(inspect(reason), 0, 500)
 
   @doc """
   Close a run that never ran because one for the same source was already
