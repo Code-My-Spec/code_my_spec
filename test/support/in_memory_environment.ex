@@ -82,7 +82,7 @@ defmodule CodeMySpec.Support.InMemoryEnvironment do
   end
 
   @doc """
-  Run a command for real.
+  Run a command for real, unless a spex has asked for a modelled shell.
 
   This environment fakes the *filesystem*, not the shell — those are separate
   seams and both already exist. Specs that must not shell out wrap the call in
@@ -93,14 +93,28 @@ defmodule CodeMySpec.Support.InMemoryEnvironment do
   Returning an error here instead would break every cassette-driven spec, and
   would do it by making the memory environment claim authority over something
   it does not model.
+
+  The `:memory_shell` escape exists because a cassette cannot model a command's
+  *effect*. `ssh-keygen -f path` writes a key, and on replay the recorded
+  stdout comes back while no file appears — so a later step reading that path
+  diverges from the run that was recorded, which is why 963/7965 records green
+  and replays red. A modelled shell writes into this environment's own
+  filesystem, so the effect is there for the next command to find.
+
+  Off by default: nothing changes for anything that has not opted in.
   """
+  @impl true
+  def cmd(env, command, args, opts) do
+    case Application.get_env(:code_my_spec, :memory_shell) do
+      nil -> CodeMySpec.Environments.Local.cmd(env, command, args, opts)
+      module -> module.cmd(env, command, args, opts)
+    end
+  end
+
   # Execution is delegated to Local, so the execution filesystem is Local's
   # — the memfs fakes reads, not the shell.
   @impl true
   defdelegate exec_file_exists?(env, path), to: CodeMySpec.Environments.Local
-
-  @impl true
-  defdelegate cmd(env, command, args, opts), to: CodeMySpec.Environments.Local
 
   @impl true
   def read_file(%Environment{} = env, path) do

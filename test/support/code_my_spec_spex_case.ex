@@ -232,6 +232,10 @@ defmodule CodeMySpecSpex.Case do
   `Fixtures.disconnect_provider/2` explicitly, which now reads as the
   deliberate act it is.
   """
+  def connect_providers(%{scope: scope} = context) do
+    connect_providers_for_real(context, scope)
+  end
+
   @doc """
   Make the deployed site unreachable, at the layer where it is unreachable.
 
@@ -252,10 +256,6 @@ defmodule CodeMySpecSpex.Case do
     end)
 
     :ok
-  end
-
-  def connect_providers(%{scope: scope} = context) do
-    connect_providers_for_real(context, scope)
   end
 
   @doc """
