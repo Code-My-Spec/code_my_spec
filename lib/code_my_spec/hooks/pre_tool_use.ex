@@ -32,6 +32,12 @@ defmodule CodeMySpec.Hooks.PreToolUse do
   # run, so raise the tool timeout alongside the command.
   @rewrite_timeout_ms 600_000
 
+  # git subcommands a subagent may run. Every one of these only reads: none can
+  # write a ref, an object, the index, or the working tree. That is the whole
+  # criterion — see `classify_bash/1` for why the line is drawn at mutation
+  # rather than at git.
+  @read_only_git ~w(log show diff status blame rev-parse describe shortlog whatchanged)
+
   @doc """
   The hook's response for a tool about to run.
 
@@ -98,24 +104,58 @@ defmodule CodeMySpec.Hooks.PreToolUse do
     end
   end
 
-  # Subagents have no use case for git — QA, codegen, spec-writing all
-  # work against the running app and the filesystem, not git history.
-  # Block ANY git invocation from a subagent context. Main agent (no
-  # agent_id) retains full git access. Issue b5e305fc: a wandering QA
-  # subagent ran `git revert` under the engineer's git identity,
-  # silently destroying a fix; the tightest safe default is "no git
-  # for subagents at all."
+  # Subagents may read git history but not change it. Issue b5e305fc: a
+  # wandering QA subagent ran `git revert` under the engineer's git identity,
+  # silently destroying a fix, and the response was "no git for subagents at
+  # all" — the tightest safe default at the time.
+  #
+  # Too tight, as it turned out. `66f3b098`: the stop hook, when it cannot
+  # attribute findings, tells the agent to "check `git log -1 -- <path>` before
+  # repairing anything you do not recognise" — and this denied it. So the
+  # harness named the one diagnostic that would clear the block and refused it
+  # in the same breath, leaving subagents in a loop with no honest exit:
+  # `clear_problems` would record a falsehood, and fixing another area's spex
+  # was out of scope. An agent that had finished its assignment could not stop.
+  #
+  # b5e305fc's danger is mutation, and `log`/`show`/`diff`/`blame` cannot
+  # mutate. So the allowlist is by subcommand rather than by tool.
+  #
+  # Main agent (no agent_id) still gets everything.
   defp classify_bash(params) do
     command = get_in(params, ["tool_input", "command"]) || ""
     agent_id = Map.get(params, "agent_id")
 
-    if is_binary(agent_id) and agent_id != "" and git_command?(command) do
-      {:deny,
-       "Subagents have no git access. Commits stay with the engineer; propose " <>
-         "changes via file edits only. Blocked command: #{String.slice(command, 0, 200)}"}
-    else
-      :pass_through
-    end
+    classify_for_agent(subagent?(agent_id), command)
+  end
+
+  defp subagent?(agent_id), do: is_binary(agent_id) and agent_id != ""
+
+  defp classify_for_agent(false, _command), do: :pass_through
+
+  defp classify_for_agent(true, command) do
+    decide_git(git_command?(command), git_subcommands(command), command)
+  end
+
+  defp decide_git(false, _subcommands, _command), do: :pass_through
+
+  # git is in there but nothing parsed as a subcommand — a bare `git`, or a
+  # shape this does not understand. Deny: an allowlist that passes what it
+  # cannot read is not an allowlist.
+  defp decide_git(true, [], command), do: {:deny, git_denial(command)}
+
+  # Every invocation must be read-only, not just one of them. `git log && git
+  # push` contains a read-only call and is still a push.
+  defp decide_git(true, subcommands, command) do
+    allow_read_only(Enum.all?(subcommands, &(&1 in @read_only_git)), command)
+  end
+
+  defp allow_read_only(true, _command), do: :pass_through
+  defp allow_read_only(false, command), do: {:deny, git_denial(command)}
+
+  defp git_denial(command) do
+    "Subagents may read git history but not change it — #{Enum.join(@read_only_git, ", ")} " <>
+      "are allowed. Commits stay with the engineer; propose changes via file edits only. " <>
+      "Blocked command: #{String.slice(command, 0, 200)}"
   end
 
   # Match any git invocation (`git ...`) at the start of the command or
@@ -124,6 +164,32 @@ defmodule CodeMySpec.Hooks.PreToolUse do
     command_norm = String.replace(command, "\n", " ")
     Regex.match?(~r/(^|[;&|`(\s])git(\s|$)/i, command_norm)
   end
+
+  # The subcommand of every git invocation in the command, in order.
+  defp git_subcommands(command) do
+    command
+    |> String.replace("\n", " ")
+    |> then(&Regex.scan(~r/(?:^|[;&|`(\s])git\s+([^;&|`()]*)/i, &1))
+    |> Enum.map(&subcommand_of/1)
+    |> Enum.reject(&is_nil/1)
+  end
+
+  defp subcommand_of([_full, args]) do
+    args |> String.split(~r/\s+/, trim: true) |> take_subcommand()
+  end
+
+  defp subcommand_of(_match), do: nil
+
+  # Skip git's global options so `git -C path log` and `git --no-pager log` both
+  # read as `log`. `-C` and `-c` take a value; the rest do not.
+  defp take_subcommand(["-C", _path | rest]), do: take_subcommand(rest)
+  defp take_subcommand(["-c", _config | rest]), do: take_subcommand(rest)
+  defp take_subcommand(["--no-pager" | rest]), do: take_subcommand(rest)
+  defp take_subcommand(["-P" | rest]), do: take_subcommand(rest)
+  defp take_subcommand(["--git-dir=" <> _rest_of_flag | rest]), do: take_subcommand(rest)
+  defp take_subcommand(["--work-tree=" <> _rest_of_flag | rest]), do: take_subcommand(rest)
+  defp take_subcommand([subcommand | _rest]), do: subcommand
+  defp take_subcommand([]), do: nil
 
   defp deny_bash(reason) do
     Logger.warning("[PreToolUse] Bash denied: #{reason}")
