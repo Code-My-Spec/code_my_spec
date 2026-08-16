@@ -23,10 +23,14 @@ defmodule CodeMySpecSpex.Story968.Criterion8014Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
   setup :devops_on
-  # The generated deploy files land on disk, and the backups step reads them.
-  setup :real_working_directory
+  # The generated deploy files land on disk, and the backups step ships them to
+  # the box with `git archive HEAD` — which needs a committed tree.
+  # `real_working_directory` points at the stub `setup_active_project` makes,
+  # which is not a git repository, so delivery failed with "not a git
+  # repository … tar: This does not look like a tar archive".
+  setup :drill_working_directory
   setup :connect_providers
-  setup :real_backup_database
+  setup :fleet_backup_database
   # The dump runs *on* a box: the step SSHes there, delivers `bin/backup` and
   # runs it. `real_backup_database` says which database to dump, not where to
   # run, so without this the step stops on its own preconditions and every

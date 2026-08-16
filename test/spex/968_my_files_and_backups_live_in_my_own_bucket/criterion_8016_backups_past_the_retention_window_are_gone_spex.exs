@@ -26,7 +26,7 @@ defmodule CodeMySpecSpex.Story968.Criterion8016Spex do
   # The generated deploy files land on disk, and the backups step reads them.
   setup :real_working_directory
   setup :connect_providers
-  setup :real_backup_database
+  setup :fleet_backup_database
   # The retention this criterion reads is declared by the backup step, which
   # runs on the box. Without a reachable box the step stops on its
   # preconditions and declares nothing.

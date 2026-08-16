@@ -2074,6 +2074,23 @@ defmodule CodeMySpecSpex.Fixtures do
   end
 
   @doc """
+  Put one project secret, for a premise that needs a known value where the
+  code would otherwise mint a random one.
+
+  `Database.credential/2` generates a password when `database_password_<env>`
+  is absent, and that value ends up in three places at once — the URL the dump
+  authenticates with, the `ALTER USER` the step runs, and the command a
+  cassette records. Generated, the first two agree and the third can never
+  match again.
+  """
+  @spec put_project_secret(Scope.t(), String.t(), String.t()) :: :ok
+  def put_project_secret(%Scope{} = scope, key, value) do
+    {:ok, _} = ProjectSecrets.put_value(scope, key, value)
+
+    :ok
+  end
+
+  @doc """
   Give an environment a fixed address, without provisioning a box for it.
 
   `environment_ip/3` uses the environment's own `ip` when it has one and only

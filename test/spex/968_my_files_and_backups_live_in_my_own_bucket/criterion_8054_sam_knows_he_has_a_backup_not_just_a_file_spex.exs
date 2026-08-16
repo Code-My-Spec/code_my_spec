@@ -28,7 +28,7 @@ defmodule CodeMySpecSpex.Story968.Criterion8054Spex do
   # The generated deploy files land on disk, and the backups step reads them.
   setup :real_working_directory
   setup :connect_providers
-  setup :real_backup_database
+  setup :fleet_backup_database
   # The restore this criterion is about happens on the box: the step SSHes
   # there, delivers `bin/backup` and runs it. Without a reachable box the step
   # stops on its preconditions and the restore proof is never attempted.
