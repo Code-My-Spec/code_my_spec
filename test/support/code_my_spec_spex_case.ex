@@ -333,6 +333,37 @@ defmodule CodeMySpecSpex.Case do
     :ok
   end
 
+  @doc """
+  Put a record in the zone as a premise, without running a step to do it.
+
+  "Sam already receives mail at his domain" is a fact the criterion starts
+  from, not something it should have to perform — under cassettes stating it
+  meant publishing for real and recording the publish, and that recording is
+  what went stale.
+  """
+  def zone_record_exists(context, attrs) do
+    record =
+      Map.merge(%{"id" => "seed-#{System.unique_integer([:positive])}", "ttl" => 60}, attrs)
+
+    Agent.update(fake(context, :cloudflare), fn state ->
+      %{state | records: Map.update(state.records, "zone-1", [record], &(&1 ++ [record]))}
+    end)
+
+    :ok
+  end
+
+  @doc """
+  Every record in the zone, read from the fake rather than from a provider.
+
+  A criterion comparing the zone before and after is asking what *we* did, and
+  the fake is the honest record of that. Reading it here also keeps the spex
+  inside its own boundary — `CodeMySpecSpex` may not reach into
+  `CodeMySpec.Provisioning` directly.
+  """
+  def zone_records(context) do
+    Agent.get(fake(context, :cloudflare), &Map.get(&1.records, "zone-1", []))
+  end
+
   defp connect_providers_for_real(context, scope) do
     refuse_to_run_on_residue(context)
     hold_recording_lock()

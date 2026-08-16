@@ -35,8 +35,6 @@ defmodule CodeMySpecSpex.Story969.Criterion8029Spex do
 
   use CodeMySpecSpex.Case
 
-  alias CodeMySpec.Provisioning.Cloudflare
-
   @endpoint CodeMySpecWeb.Endpoint
 
   @domain "astralbi.com"
@@ -56,15 +54,14 @@ defmodule CodeMySpecSpex.Story969.Criterion8029Spex do
         # real publish against a real zone, recorded — and the recording is
         # what went stale. Here it is the fact the criterion needs: an apex MX
         # exists, pointing at Sam's own mail host.
-        {:ok, _} =
-          Cloudflare.ensure_dns_record(context.scope, "zone-1", "@", "inbound.sams-host.net",
-            type: "MX",
-            priority: 10
-          )
+        zone_record_exists(context, %{
+          "name" => "@",
+          "type" => "MX",
+          "content" => "inbound.sams-host.net",
+          "priority" => 10
+        })
 
-        {:ok, records} = Cloudflare.list_dns_records(context.scope, "zone-1")
-
-        {:ok, Map.put(context, :before, records)}
+        {:ok, Map.put(context, :before, zone_records(context))}
       end
 
       when_ "the email step publishes its sending records", context do
@@ -76,9 +73,7 @@ defmodule CodeMySpecSpex.Story969.Criterion8029Spex do
 
         CodeMySpecSpex.Case.await_step(view, :email)
 
-        {:ok, records} = Cloudflare.list_dns_records(context.scope, "zone-1")
-
-        {:ok, context |> Map.put(:view, view) |> Map.put(:after, records)}
+        {:ok, context |> Map.put(:view, view) |> Map.put(:after, zone_records(context))}
       end
 
       then_ "the apex MX is exactly as it was", context do
