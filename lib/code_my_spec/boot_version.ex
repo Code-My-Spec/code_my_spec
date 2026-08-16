@@ -116,25 +116,58 @@ defmodule CodeMySpec.BootVersion do
   def drift do
     case :persistent_term.get(@key, nil) do
       {root, booted} when is_binary(booted) ->
-        compare(booted, running_target(root))
+        {target, _kind} = assess(root)
+        compare(booted, target)
 
       _ ->
         :none
     end
   end
 
-  # What this process ought to be running: the checkout's HEAD, unless the
-  # checkout is itself behind its upstream, in which case that.
+  @doc """
+  Why the running code is stale, which decides the remedy.
+
+  `:checkout_moved` — the tree that launched this process has moved. Restarting
+  it picks the new code up.
+
+  `:behind_upstream` — the checkout has not moved and is itself behind its
+  upstream, which is what happens when an agent in a worktree pushes. **A
+  restart alone changes nothing here**: it relaunches the same commit. The
+  checkout has to be pulled first. That distinction is the whole point of
+  separating this from `drift/0` — a message saying "restart" to someone in this
+  state sends them to do the one thing that cannot work, and I spent part of an
+  evening in exactly that position (`9c474a9d`).
+
+  `:none` whenever `drift/0` is `:none`.
+  """
+  @spec stale_kind() :: :checkout_moved | :behind_upstream | :none
+  def stale_kind do
+    case :persistent_term.get(@key, nil) do
+      {root, booted} when is_binary(booted) ->
+        {target, kind} = assess(root)
+        kind_when_drifted(compare(booted, target), kind)
+
+      _ ->
+        :none
+    end
+  end
+
+  defp kind_when_drifted(:none, _kind), do: :none
+  defp kind_when_drifted({:drifted, _booted, _current}, kind), do: kind
+
+  # What this process ought to be running, and why it differs. One source of
+  # truth, so `drift/0` and `stale_kind/0` cannot disagree about which case
+  # this is.
   #
   # HEAD first because a moved checkout is the more urgent of the two — the code
   # on disk already disagrees with the process — and because it is the case that
   # needs no remote-tracking ref to exist.
-  defp running_target(root) do
+  defp assess(root) do
     head = head(root)
 
     case behind_upstream(root, head) do
-      nil -> head
-      upstream -> upstream
+      nil -> {head, :checkout_moved}
+      upstream -> {upstream, :behind_upstream}
     end
   end
 
@@ -234,12 +267,26 @@ defmodule CodeMySpec.BootVersion do
   def analyzer_staleness do
     with {:drifted, booted, current} <- drift(),
          true <- analyzer_changed?(booted, current) do
-      "this result came from a build at #{booted}; the checkout is now at #{current}, " <>
-        "and that range changed analyzer code — rebuild the harness " <>
-        "(`just refresh`) before acting on it"
+      staleness_message(stale_kind(), booted, current)
     else
       _ -> nil
     end
+  end
+
+  # `just refresh` rebuilds from the checkout, so it is the right instruction
+  # only when the checkout holds the newer code. When the checkout is itself
+  # behind, refreshing rebuilds the same commit and the result looks unchanged
+  # for a reason nothing states.
+  defp staleness_message(:behind_upstream, booted, current) do
+    "this result came from a build at #{booted}; the checkout is behind its upstream " <>
+      "at #{current}, and that range changed analyzer code — pull in that checkout, " <>
+      "then rebuild the harness (`just refresh`) before acting on it"
+  end
+
+  defp staleness_message(_kind, booted, current) do
+    "this result came from a build at #{booted}; the checkout is now at #{current}, " <>
+      "and that range changed analyzer code — rebuild the harness " <>
+      "(`just refresh`) before acting on it"
   end
 
   # `config_changed?/2` sat here, asking the same question of `config/` so the

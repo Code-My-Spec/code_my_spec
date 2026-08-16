@@ -106,13 +106,21 @@ defmodule CmsHarness.Web.HealthController do
   defp drift do
     case BootVersion.drift() do
       {:drifted, booted, current} ->
-        "booted #{booted}, checkout now #{current}" <>
+        rendered(BootVersion.stale_kind(), booted, current) <>
           verdict(BootVersion.contract_changed?(booted, current))
 
       :none ->
         nil
     end
   end
+
+  # Named separately from a moved checkout, because the remedies differ and only
+  # one of them is "restart". A checkout behind its upstream relaunches the same
+  # commit (9c474a9d).
+  defp rendered(:behind_upstream, booted, current),
+    do: "booted #{booted}, checkout behind upstream at #{current} — pull, then restart"
+
+  defp rendered(_kind, booted, current), do: "booted #{booted}, checkout now #{current}"
 
   # Answered rather than left as a condition, for the same reason the stop
   # message answers it: a caller asking a health endpoint whether to restart

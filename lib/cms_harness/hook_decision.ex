@@ -402,13 +402,26 @@ defmodule CmsHarness.HookDecision do
   defp boot_drift do
     case CodeMySpec.BootVersion.drift() do
       {:drifted, booted, current} ->
-        "\n\n    This harness booted from #{booted} and its checkout is now at " <>
-          "#{current}." <>
+        drift_sentence(CodeMySpec.BootVersion.stale_kind(), booted, current) <>
           contract_verdict(CodeMySpec.BootVersion.contract_changed?(booted, current))
 
       :none ->
         ""
     end
+  end
+
+  defp drift_sentence(:behind_upstream, booted, current) do
+    # Restarting is the wrong first move here and the obvious one, so it is
+    # ruled out by name. The harness runs from the main checkout whatever
+    # directory launched it, so an agent in a worktree pushes, the checkout's
+    # HEAD never moves, and a restart relaunches the same commit (9c474a9d).
+    "\n\n    This harness booted from #{booted} and its checkout is behind its " <>
+      "upstream, which is at #{current}. Pull in that checkout first — restarting " <>
+      "alone relaunches the same code."
+  end
+
+  defp drift_sentence(_kind, booted, current) do
+    "\n\n    This harness booted from #{booted} and its checkout is now at #{current}."
   end
 
   # The condition answered, rather than handed to the reader. It used to say "if

@@ -182,7 +182,13 @@ defmodule CodeMySpec.BootVersionTest do
 
       other = clone(origin)
       commit(other, "two")
-      {_, 0} = System.cmd("git", ["push", "-q", "origin", "HEAD:main"], cd: other, stderr_to_stdout: true)
+
+      {_, 0} =
+        System.cmd("git", ["push", "-q", "origin", "HEAD:main"],
+          cd: other,
+          stderr_to_stdout: true
+        )
+
       {_, 0} = System.cmd("git", ["fetch", "-q"], cd: work)
 
       assert head_of(work) == head_at_boot,
@@ -222,5 +228,50 @@ defmodule CodeMySpec.BootVersionTest do
   defp head_of(root) do
     {output, 0} = System.cmd("git", ["rev-parse", "--short", "HEAD"], cd: root)
     String.trim(output)
+  end
+
+  # The two states need different remedies, and only one of them is "restart".
+  # A checkout behind its upstream relaunches the same commit — which is the
+  # trap: restarting is the obvious move and cannot work, so the messages built
+  # on this must be able to tell the cases apart (9c474a9d).
+  describe "stale_kind/0" do
+    test "a moved checkout is :checkout_moved" do
+      root = git_repo()
+      commit(root, "one")
+
+      BootVersion.capture(root)
+      commit(root, "two")
+
+      assert BootVersion.stale_kind() == :checkout_moved
+    end
+
+    test "a checkout behind its upstream is :behind_upstream" do
+      {origin, work} = origin_and_clone()
+
+      BootVersion.capture(work)
+
+      other = clone(origin)
+      commit(other, "two")
+
+      {_, 0} =
+        System.cmd("git", ["push", "-q", "origin", "HEAD:main"],
+          cd: other,
+          stderr_to_stdout: true
+        )
+
+      {_, 0} = System.cmd("git", ["fetch", "-q"], cd: work)
+
+      assert BootVersion.stale_kind() == :behind_upstream
+    end
+
+    test "agrees with drift/0 about there being nothing wrong" do
+      root = git_repo()
+      commit(root, "one")
+
+      BootVersion.capture(root)
+
+      assert BootVersion.drift() == :none
+      assert BootVersion.stale_kind() == :none
+    end
   end
 end
