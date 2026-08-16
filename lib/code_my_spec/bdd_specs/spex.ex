@@ -292,12 +292,32 @@ defmodule CodeMySpec.BddSpecs.Spex do
   # reason `Runners.spex_location/1` is, and for the same kind of rule.
   def relativize_error_file(failure, project_root)
 
-  def relativize_error_file(%Failure{error: %Error{file: file} = error} = failure, project_root)
-      when is_binary(file) do
-    %{failure | error: %{error | file: Path.relative_to(file, project_root)}}
+  def relativize_error_file(%Failure{} = failure, project_root) do
+    failure
+    |> relativize_error(project_root)
+    |> relativize_spec_file(project_root)
   end
 
   def relativize_error_file(failure, _project_root), do: failure
+
+  defp relativize_error(%Failure{error: %Error{file: file} = error} = failure, project_root)
+       when is_binary(file) do
+    %{failure | error: %{error | file: Path.relative_to(file, project_root)}}
+  end
+
+  defp relativize_error(failure, _project_root), do: failure
+
+  # `spec_file` arrives absolute for the same reason `error.file` does on the
+  # backstop path: both come from `test.tags[:file]`, and ExUnit records that
+  # absolute. Relativized here rather than in the fork, so the fork emits one
+  # unambiguous thing and this side owns what the working copy's paths look
+  # like.
+  defp relativize_spec_file(%Failure{spec_file: file} = failure, project_root)
+       when is_binary(file) do
+    %{failure | spec_file: Path.relative_to(file, project_root)}
+  end
+
+  defp relativize_spec_file(failure, _project_root), do: failure
 
   defp cleanup_temp_file(temp_file, env) do
     Environments.delete_file(env, temp_file)
@@ -329,6 +349,10 @@ defmodule CodeMySpec.BddSpecs.Spex do
     %Failure{
       spex: data["spex"],
       scenario: data["scenario"],
+      # Absent until the formatter emits it (cd2a0db4). `nil` reads exactly as
+      # it does today — the reader lands before the writer, which is the safe
+      # order for a protocol change.
+      spec_file: data["spec_file"],
       steps: build_steps(data["steps"] || []),
       error: build_error(data["error"])
     }

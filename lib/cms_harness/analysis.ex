@@ -229,7 +229,7 @@ defmodule CmsHarness.Analysis do
   # `mix spex`. Its absence is why a location fix shipped against the server's
   # copy and changed nothing here.
   def spex_failure(failure) do
-    {file, line} = Runners.spex_location(failure.error)
+    {file, line} = Runners.spex_location(failure.error, failure.spec_file)
 
     %{
       "spex" => failure.spex,

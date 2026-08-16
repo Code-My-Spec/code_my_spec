@@ -130,7 +130,7 @@ defmodule CodeMySpec.Analysis.Runners do
           "output" => cap(output),
           "diagnostics" =>
             Enum.map(failures, fn failure ->
-              {file, line} = spex_location(failure.error)
+              {file, line} = spex_location(failure.error, failure.spec_file)
 
               %{
                 "spex" => failure.spex,
@@ -416,9 +416,11 @@ defmodule CodeMySpec.Analysis.Runners do
   @doc false
   # Public only so the rule can be asserted without a live `mix spex` — the
   # half that was wrong is the choice of location, not the conversion.
-  def spex_location(nil), do: {nil, nil}
+  def spex_location(error, spec_file \\ nil)
 
-  def spex_location(error) do
+  def spex_location(nil, _spec_file), do: {nil, nil}
+
+  def spex_location(error, spec_file) do
     case spec_frame(error.stacktrace) do
       # No spec frame at all — a raise from a setup block, a shared fixture, or
       # a plug, with nothing in the trace naming the spec that was running.
@@ -432,7 +434,7 @@ defmodule CodeMySpec.Analysis.Runners do
       #
       # A spex failure belongs to a spec or to no file. Saying "somewhere" when
       # the somewhere is wrong is the louder version of saying nothing.
-      nil -> spec_file_fallback(error)
+      nil -> spec_file_fallback(error, spec_file)
       frame -> {frame_get(frame, "file"), frame_get(frame, "line")}
     end
   end
@@ -449,15 +451,43 @@ defmodule CodeMySpec.Analysis.Runners do
   # landing on `unknown`, which reads to an agent as "a spex failed somewhere"
   # and is one step better than nothing — the file was right there in the
   # payload, unused.
-  defp spec_file_fallback(error) do
+  defp spec_file_fallback(error, spec_file) do
     file = error_get(error, :file)
 
     if is_binary(file) and String.ends_with?(file, "_spex.exs") do
       {file, error_get(error, :line)}
     else
-      {nil, nil}
+      declared_spec(spec_file)
     end
   end
+
+  # The last resort, and the only one available when the raise happened on
+  # another process's stack.
+  #
+  # `cd2a0db4`: a provider call from a LiveView — `ProvisioningLive.load/2`
+  # reaching Resend at mount, outside every cassette — raises with 20 frames of
+  # library code and none of them in a spec, because the spec is not on that
+  # process's stack at all. No improvement to `spec_frame/1` could find it, and
+  # `error.file` is the raise site, which the clause above correctly refuses.
+  # So the failure carries its own spec, and this is where that is spent.
+  #
+  # The line is deliberately `nil`. The spec file is known; *where in it* is
+  # not, and the comment above already records why pairing a spec path with a
+  # line number from somewhere else is worse than either alone.
+  #
+  # This fires only when there is no spec frame **and** `error.file` is not a
+  # spec, so it cannot change the attribution of anything attributed today: the
+  # backstop path keeps working through `error.file`, and stacktrace-attributed
+  # failures keep preferring their own frame. Its blast radius is exactly the
+  # set that lands on `unknown` now.
+  defp declared_spec(spec_file) when is_binary(spec_file) do
+    case String.ends_with?(spec_file, "_spex.exs") do
+      true -> {spec_file, nil}
+      false -> {nil, nil}
+    end
+  end
+
+  defp declared_spec(_spec_file), do: {nil, nil}
 
   defp error_get(error, key) when is_map(error),
     do: Map.get(error, key) || Map.get(error, Atom.to_string(key))
