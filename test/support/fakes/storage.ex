@@ -26,6 +26,19 @@ defmodule CodeMySpecSpex.Fakes.Storage do
   Not modelled: durability, consistency delay, multipart. A bucket that
   refuses to delete until emptied is real Hetzner behaviour and belongs to the
   live teardown tests, not here.
+
+  ## Not yet wired through ExAws
+
+  Verified at its own seam — `test/code_my_spec/fakes/storage_direct_test.exs`
+  drives it with `Req` and it answers correctly. Driving it through
+  `Provisioning.Storage`, which goes via ExAws, hangs rather than fails: ExAws
+  retries with backoff, so a fake that answers in a shape it does not expect is
+  indistinguishable from a slow network, and each test sat until ExUnit's
+  timeout.
+
+  That is unfinished rather than broken, and the direct tests are what will
+  tell the two apart. Until it is done, a criterion needing storage stays on
+  its current footing.
   """
 
   alias Plug.Conn
