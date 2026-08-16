@@ -31,7 +31,7 @@ defmodule CodeMySpecSpex.Fakes.HetznerTest do
     Req.new(
       method: method,
       url: "https://api.hetzner.cloud/v1" <> path,
-      plug: &CodeMySpecSpex.Fakes.Hetzner.call(&1, agent)
+      plug: &Hetzner.call(&1, agent)
     )
   end
 

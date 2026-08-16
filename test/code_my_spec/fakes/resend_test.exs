@@ -29,7 +29,7 @@ defmodule CodeMySpecSpex.Fakes.ResendTest do
     Req.new(
       method: method,
       url: "https://api.resend.com" <> path,
-      plug: &CodeMySpecSpex.Fakes.Resend.call(&1, agent)
+      plug: &Resend.call(&1, agent)
     )
   end
 
