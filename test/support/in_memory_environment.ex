@@ -107,14 +107,55 @@ defmodule CodeMySpec.Support.InMemoryEnvironment do
   def cmd(env, command, args, opts) do
     case Application.get_env(:code_my_spec, :memory_shell) do
       nil -> CodeMySpec.Environments.Local.cmd(env, command, args, opts)
-      module -> module.cmd(env, command, args, opts)
+      module -> memory_cmd(env, command, args, opts, module)
     end
   end
 
-  # Execution is delegated to Local, so the execution filesystem is Local's
-  # — the memfs fakes reads, not the shell.
+  # `chmod` is handled here rather than in the shell, because the executable
+  # bit is this filesystem's property and nothing else can see it. The
+  # generator chmods `bin/deploy` right after writing it and the deploy step
+  # refuses a script that is not executable — a real distinction, and one the
+  # product reports in its own words, so it is modelled rather than collapsed
+  # into "the file is there".
+  defp memory_cmd(env, "chmod", args, _opts, _module) do
+    for path <- Enum.filter(args, &(is_binary(&1) and not String.starts_with?(&1, "+"))) do
+      Agent.update(agent(env), &Map.put(&1, exec_key(path, env.cwd), true))
+    end
+
+    {"", 0}
+  end
+
+  defp memory_cmd(env, command, args, opts, module), do: module.cmd(env, command, args, opts)
+
+  # A binary key rather than a tuple. Everything else in this store treats a
+  # key as a path — `file_exists?/2` asks whether any key starts with the one
+  # it was given, to answer for directories — so a `{:exec, path}` key reached
+  # `String.starts_with?/2` as a tuple and took the whole environment down with
+  # a FunctionClauseError. A NUL byte cannot occur in a path, so this collides
+  # with nothing and reads as an ordinary key everywhere it is not wanted.
+  defp exec_key(path, cwd), do: "\0exec:" <> normalize(path, cwd)
+
+  # Against a modelled shell the execution filesystem is *this* one: commands
+  # write here, so asking Local whether a script is executable asks the real
+  # disk about a path that only exists in memory, and every generated script
+  # read as missing. Without one, execution really is Local's and the
+  # delegation is right — which is why this asks which shell is in play rather
+  # than picking one.
   @impl true
-  defdelegate exec_file_exists?(env, path), to: CodeMySpec.Environments.Local
+  def exec_file_exists?(%Environment{} = env, path) do
+    case Application.get_env(:code_my_spec, :memory_shell) do
+      nil ->
+        CodeMySpec.Environments.Local.exec_file_exists?(env, path)
+
+      _module ->
+        key = normalize(path, env.cwd)
+
+        Agent.get(
+          agent(env),
+          &(Map.has_key?(&1, key) and Map.get(&1, exec_key(path, env.cwd), false))
+        )
+    end
+  end
 
   @impl true
   def read_file(%Environment{} = env, path) do

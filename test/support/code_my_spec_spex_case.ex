@@ -319,6 +319,7 @@ defmodule CodeMySpecSpex.Case do
     fakes = [
       {CodeMySpec.Provisioning.Hetzner, Fakes.Hetzner,
        &Fakes.Hetzner.new/0},
+      {CodeMySpec.GitHub, Fakes.GitHub, &Fakes.GitHub.new/0},
       {CodeMySpec.Provisioning.Resend, Fakes.Resend,
        &Fakes.Resend.new/0},
       {CodeMySpec.Provisioning.Cloudflare, Fakes.Cloudflare,
@@ -346,6 +347,42 @@ defmodule CodeMySpecSpex.Case do
         {client, agent}
       end)
 
+    # The resolver last, and sharing Cloudflare's agent rather than starting an
+    # agent of its own. `Dns.resolves_publicly?/3` is what the dns step waits
+    # on, and under fakes nothing published is visible to a real resolver — so
+    # the step reported "no public resolver returns it", correctly, and the
+    # eight steps behind it never ran. Answering out of the zone the records
+    # were written into is what makes publishing mean visible.
+    cloudflare = Map.fetch!(agents, CodeMySpec.Provisioning.Cloudflare)
+    previous_dns = Application.get_env(:code_my_spec, CodeMySpec.Provisioning.Dns, [])
+
+    Application.put_env(
+      :code_my_spec,
+      CodeMySpec.Provisioning.Dns,
+      Keyword.merge(previous_dns, plug: {Req.Test, CodeMySpec.Provisioning.Dns})
+    )
+
+    Req.Test.stub(CodeMySpec.Provisioning.Dns, &Fakes.Resolver.call(&1, cloudflare))
+
+    # And the deployed app answering its health check. The deploy step runs
+    # `bin/deploy` and then asks the hostname whether it came up — with no stub
+    # the request reports "no mock or stub for CodeMySpec.Provisioning.Deploy",
+    # which is a test-harness sentence appearing where a deploy failure should
+    # be.
+    #
+    # Safe to answer unconditionally *here* because there is no
+    # `verify(:deploy, …)` clause: the step has no early return, so a probe
+    # that always answers cannot make it skip its work. The steps that do
+    # verify by probe — tls — take an injected one, which is what
+    # `certificate_issued_by_the_step/1` is for.
+    Req.Test.stub(CodeMySpec.Provisioning.Deploy, fn conn ->
+      Plug.Conn.send_resp(conn, 200, "ok")
+    end)
+
+    on_exit(fn ->
+      Application.put_env(:code_my_spec, CodeMySpec.Provisioning.Dns, previous_dns)
+    end)
+
     {:ok, fakes: agents}
   end
 
@@ -356,8 +393,19 @@ defmodule CodeMySpecSpex.Case do
   def fake(%{fakes: fakes}, :storage), do: Map.fetch!(fakes, S3Client)
 
   @doc """
-  Say which zone Sam's account holds.
+  The servers the account holds, for a `then_` asking what a run built.
 
+  The provider's own state rather than the run's report: a step that says it
+  made a box and a box existing are two different claims, and the one worth
+  asserting is the second.
+  """
+  def servers(context), do: Agent.get(fake(context, :hetzner), & &1).servers
+
+  @doc "Their names, sorted — what a criterion counting boxes actually reads."
+  def server_names(context), do: context |> servers() |> Enum.map(& &1["name"]) |> Enum.sort()
+
+  @doc """
+  Say which zone Sam's account holds.
   A premise, not a step: adopting a zone somebody already owns is the ordinary
   path, and every criterion that publishes a record starts from one. The fake
   carries `example.com` by default, so a spex working on any other name has to
@@ -1858,6 +1906,61 @@ defmodule CodeMySpecSpex.Case do
     context
     |> Map.put(:environment, env)
     |> Map.put(:scope, %{scope | environment: env, cwd: env.cwd})
+  end
+
+  @doc """
+  A checkout the deploy step will accept: boilerplate, a health route, and a
+  runtime config that lets the probe through.
+
+  The premise of story 970 — the boilerplate arrives with the project — stated
+  rather than assumed. Without it the deploy step refuses with "this project is
+  not deploy-ready: missing Dockerfile, missing CI build workflow", correctly,
+  and the six steps behind it report nothing; a criterion about setup finishing
+  then reads as setup being broken.
+
+  The two files the generator does not write are written here because they
+  belong to the app rather than to deployment: `Generators.audit/2` also
+  requires a `/health` route outside every pipeline (inside `:browser` it
+  carries session and CSRF plugs, and can fail the proxy's probe for reasons
+  that have nothing to do with the app being up) and a `force_ssl` that
+  excludes it (otherwise the probe gets a 301 and the deploy waits on a health
+  check that redirects forever).
+  """
+  def deploy_ready_checkout(%{environment: env, project: project} = context) do
+    # The domain as the database has it, not as the fixture struct remembers
+    # it: this runs inside a `given_` that has just set one, and the struct in
+    # context predates that write. Reading the stale copy generated a
+    # `config/deploy.yml` pointing at `example.com`, and the deploy step
+    # correctly refused to deploy the project somewhere it does not own.
+    domain = Fixtures.reload_project(project).domain || "example.com"
+
+    {:ok, _written} =
+      Fixtures.generate_deploy_boilerplate(env, app: "app", host: domain)
+
+    # `lib/<module_name underscored>_web/router.ex`, the path the audit derives
+    # from the project rather than a fixed one — writing `lib/app_web/router.ex`
+    # left the audit reporting "lib/my_app_web/router.ex declares no health
+    # route" about a file that was there under a different name.
+    app_path = project.module_name |> Kernel.||("App") |> to_string() |> Macro.underscore()
+
+    Fixtures.write_file(env, "lib/#{app_path}_web/router.ex", """
+    defmodule AppWeb.Router do
+      use AppWeb, :router
+
+      scope "/", AppWeb do
+        get "/health", HealthController, :show
+      end
+    end
+    """)
+
+    Fixtures.write_file(env, "config/runtime.exs", """
+    import Config
+
+    config :app, AppWeb.Endpoint,
+      force_ssl: [rewrite_on: [:x_forwarded_proto], exclude: [paths: ["/health"]]]
+    """)
+
+    context
   end
 
   @doc """

@@ -66,7 +66,7 @@ defmodule CodeMySpecSpex.Story963.Criterion7965Spex do
                "expected the first run to make a server before the second is asked to " <>
                  "converge. The page says: #{inspect(escalation(render(view)))}"
 
-        {:ok, context |> Map.put(:view, view) |> Map.put(:after_first, servers(context))}
+        {:ok, context |> Map.put(:view, view) |> Map.put(:after_first, server_names(context))}
       end
 
       when_ "the server step runs a second time", context do
@@ -79,7 +79,7 @@ defmodule CodeMySpecSpex.Story963.Criterion7965Spex do
         {:ok,
          context
          |> Map.put(:html, render(context.view))
-         |> Map.put(:after_second, servers(context))}
+         |> Map.put(:after_second, server_names(context))}
       end
 
       then_ "the step reports success rather than an already-exists error", context do
@@ -107,14 +107,6 @@ defmodule CodeMySpecSpex.Story963.Criterion7965Spex do
   # One server per environment: each environment gets its own box, which is
   # what makes it an environment. Idempotence is "no environment gained a
   # second server", not "there is only one server".
-  defp servers(context) do
-    context
-    |> fake(:hetzner)
-    |> Agent.get(& &1.servers)
-    |> Enum.map(& &1["name"])
-    |> Enum.sort()
-  end
-
   defp escalation(html) do
     html
     |> Floki.parse_document!()

@@ -17,13 +17,10 @@ defmodule CodeMySpecSpex.Story841.Criterion1961Spex do
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Devops.Tools.{DevopsStatus, RunDevopsSetup}
 
-  @cassette "841_1961_default_setup_uat_and_prod"
-
   setup :register_log_in_setup_account
   setup :setup_active_project
   setup :devops_on
-  setup :provider_credentials_on_file
-  setup :connect_providers
+  setup :fake_providers
   # sops and age are real binaries reading real files. The default fixture's
   # memory environment is invisible to them, so the server step's write of
   # DATABASE_URL into envs/<env>.enc.env landed nowhere sops could see and it
@@ -33,7 +30,7 @@ defmodule CodeMySpecSpex.Story841.Criterion1961Spex do
   # plan includes the deploy: against the stub — a directory holding only a
   # `mix.exs` — it refused with "not deploy-ready: missing Dockerfile, missing
   # CI build workflow", and the ten steps behind it reported nothing.
-  setup :drill_working_directory
+  setup :fake_working_directory
 
   # No `fleet_box`. It existed because the registry and database steps SSH to
   # the server address in the cassette, which was released weeks ago — but that
@@ -53,39 +50,28 @@ defmodule CodeMySpecSpex.Story841.Criterion1961Spex do
   spex "Default setup ends with UAT and prod live" do
     scenario "the default plan leaves both environments serving" do
       given_ "a project set to the default plan, with nothing provisioned", context do
-        # Registered before anything provisions, so a run that dies partway
-        # still returns its boxes.
-        #
-        # Hetzner's server limit on this account is 5 and two are permanently
-        # John's, so a recording has three slots. None of story 841's
-        # setup-running criteria returned any, so they accumulated *within a
-        # single run*: the first took two, the second took the third, and every
-        # one after it got `resource_limit_exceeded` — which then went into the
-        # cassette as the story's expected behaviour. No amount of cleaning
-        # between runs could have helped, because the exhaustion happens inside
-        # one.
-        tear_down_after(context.scope, [:server, :storage, :dns])
-        tear_down_repository(context.project)
-
         # A domain, before the plan runs. Nothing in story 841 has ever set
         # one, so the domain step refused with "no domain set on the project"
         # and the twelve steps after it reported nothing behind them — which
         # reads as a setup that failed everywhere rather than one that stopped
         # at its second step.
-        #
-        # Its own subdomain, the way every other criterion that needs a domain
-        # does it: the plan brings up `uat.` and the apex of whatever it is
-        # given, and pointing that at `astralbi.com` itself would have teardown
-        # removing records the zone actually uses.
-        # `legwork.ca`, not `astralbi.com`. Let's Encrypt allows five
-        # certificates a week for an exact set of identifiers, and eight drills
-        # against `c1961.astralbi.com` in one day spent all five — after which
-        # kamal-proxy got a 429 at every handshake and it presented as TLS
-        # timing out, which cost several drills chasing DNS and ACME.
-        #
-        # A trashable domain moves the quota rather than rationing it. The name
-        # is what the limit counts, so a different one starts at zero.
         own_domain(context.project, "c1961.legwork.ca")
+
+        # And a zone that covers it, which is the premise the recorded version
+        # got for free from John's real account. `ensure_domain` adopts a name
+        # the account already manages and otherwise offers to *buy* it — so
+        # without this the domain step pauses on "registering it costs money
+        # and is not refundable", correctly, and the eleven steps behind it
+        # report nothing. A criterion about the default plan finishing should
+        # not turn on whether Sam owns his own domain; that is 970's subject.
+        zone_exists(context, "legwork.ca")
+
+        # After the domain, not in the setup chain: the generated
+        # `config/deploy.yml` names the host it deploys to, and the deploy step
+        # refuses a config pointing somewhere the project does not own. Written
+        # before the domain was set, it named `example.com` and the step said
+        # so.
+        deploy_ready_checkout(context)
 
         # The default plan is the subject, so it is set rather than inherited.
         # Nothing is provisioned because nothing has run yet — the `when_` is
@@ -98,47 +84,20 @@ defmodule CodeMySpecSpex.Story841.Criterion1961Spex do
       when_ "the agent runs setup and then asks what exists", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        # Twice, with the borrowed grants refreshed in between.
-        #
-        # The whole sequence takes about fourteen minutes — two container
-        # builds and two deploys — and Resend issues a token good for about
-        # fifteen. The spex's copy cannot renew itself (see
-        # `refresh_provider_grants/1`), so a single pass lost Resend partway
-        # and halted with `:reauthorize_required` at email, leaving the seven
-        # steps behind it with nothing behind them and no error against any.
-        #
-        # A second run is not a workaround: `RunDevopsSetup` resumes from where
-        # it stopped, which is criterion 7963's subject and exactly what a
-        # person does after a run is interrupted. Recording it in two segments
-        # also keeps each cassette inside the token's life, which is how the
-        # long recordings in this epic were split before.
-        first =
-          with_full_cassette @cassette <> "_first" do
-            {:reply, run, _frame} =
-              RunDevopsSetup.execute(%{project_id: to_string(context.project.id)}, frame)
+        # One pass. The recorded version ran twice with the provider grants
+        # refreshed in between, because the whole sequence takes about fourteen
+        # minutes and Resend issues a token good for about fifteen — so a
+        # single pass lost Resend partway and halted at email. Against fakes
+        # there is no token, no expiry, and nothing to resume from.
+        {:reply, run, _frame} =
+          RunDevopsSetup.execute(%{project_id: to_string(context.project.id)}, frame)
 
-            response_text(run)
-          end
+        {:reply, status, _frame} = DevopsStatus.execute(%{}, frame)
 
-        refresh_provider_grants(context.scope)
-
-        {run, report} =
-          with_full_cassette @cassette do
-            {:reply, run, _frame} =
-              RunDevopsSetup.execute(%{project_id: to_string(context.project.id)}, frame)
-
-            {:reply, status, _frame} = DevopsStatus.execute(%{}, frame)
-            {first <> "\n\nthen, resumed: " <> response_text(run), response_text(status)}
-          end
-
-        # The run's own answer, kept rather than discarded. `RunDevopsSetup`
-        # distinguishes complete from *paused* — a run waiting on a person,
-        # which reports the instructions it is waiting on — and from halted at
-        # a named step. Throwing that away left the status report as the only
-        # evidence, and a paused run looks identical there to a finished one
-        # that failed: a tail of steps with nothing behind them and no error
-        # against any of them.
-        {:ok, context |> Map.put(:report, report) |> Map.put(:run, run)}
+        {:ok,
+         context
+         |> Map.put(:report, response_text(status))
+         |> Map.put(:run, response_text(run))}
       end
 
       then_ "every step through the deploy has resources behind it", context do
@@ -168,11 +127,24 @@ defmodule CodeMySpecSpex.Story841.Criterion1961Spex do
       end
 
       then_ "neither environment is left missing", context do
-        refute context.report =~ ~r/Missing.*uat/s,
-               "expected UAT to be live after the default plan, got: #{context.report}"
+        # Asked of the provider rather than of the report. `DevopsStatus` lists
+        # what is missing as `project/step` lines and never names an
+        # environment, so `refute report =~ ~r/Missing.*uat/` — which is what
+        # this asserted before — could not fail: there was no "uat" in the text
+        # to find either way. A criterion whose whole subject is *both*
+        # environments cannot rest on an assertion that passes vacuously.
+        #
+        # Two boxes is what "neither environment is left missing" means
+        # concretely, and the default plan is exactly the claim that a run
+        # nobody steered produces the second one.
+        names = Enum.map(servers(context), & &1["name"])
 
-        refute context.report =~ ~r/Missing.*prod/s,
-               "expected production to be live after the default plan — the default is not UAT-only"
+        assert Enum.any?(names, &String.ends_with?(&1, "-uat")),
+               "expected a UAT server after the default plan, got: #{inspect(names)}"
+
+        assert Enum.any?(names, &String.ends_with?(&1, "-prod")),
+               "expected a production server after the default plan — the default is not " <>
+                 "UAT-only, got: #{inspect(names)}"
 
         {:ok, context}
       end

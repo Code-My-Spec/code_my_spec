@@ -72,6 +72,70 @@ defmodule CodeMySpecSpex.Fakes.ShellTest do
     assert output =~ "public key: age1"
   end
 
+  # The one the deploy step turns on. `missing_secrets/4` decrypts and reads
+  # the keys back, so a sops that exits 0 while printing nothing answers
+  # "everything is missing" — which is how a fully provisioned run reported
+  # "prod is missing SECRET_KEY_BASE, DATABASE_URL" one step from the end.
+  test "a secret set is a secret read back", %{env: env} do
+    :ok = Environments.write_file(env, "envs/prod.enc.env", "SOPS_INITIALIZED=true\n")
+
+    {_out, 0} =
+      Environments.cmd(env, "sops", ["set", "envs/prod.enc.env", ~s(["SECRET_KEY_BASE"]), ~s("abc")])
+
+    assert {output, 0} = Environments.cmd(env, "sops", ["decrypt", "envs/prod.enc.env"])
+    assert output =~ "SECRET_KEY_BASE=abc"
+  end
+
+  test "setting a key twice leaves one of it", %{env: env} do
+    :ok = Environments.write_file(env, "envs/prod.enc.env", "")
+
+    for value <- ~w(first second) do
+      {_out, 0} =
+        Environments.cmd(env, "sops", ["set", "envs/prod.enc.env", ~s(["K"]), ~s("#{value}")])
+    end
+
+    assert {output, 0} = Environments.cmd(env, "sops", ["decrypt", "envs/prod.enc.env"])
+    assert output =~ "K=second"
+    refute output =~ "K=first"
+  end
+
+  # `Sops.ensure_encrypted/2` detects this state by matching sops' own message
+  # text, so the wording is load-bearing: a refusal phrased differently reads
+  # as a genuine failure and the secrets step reports `{:sops_failed, 1, …}`
+  # over a file that is perfectly fine.
+  test "encrypting twice refuses in sops' own words", %{env: env} do
+    :ok = Environments.write_file(env, "envs/prod.enc.env", "K=1\n")
+    {_out, 0} = Environments.cmd(env, "sops", ["encrypt", "--in-place", "envs/prod.enc.env"])
+
+    assert {output, 1} =
+             Environments.cmd(env, "sops", ["encrypt", "--in-place", "envs/prod.enc.env"])
+
+    assert output =~ "already being encrypted"
+  end
+
+  # `require_script/2` asks whether the script is executable, not whether it is
+  # there — and the memory environment used to answer that from the real disk,
+  # so every generated script read as missing.
+  test "a script is executable only after chmod", %{env: env} do
+    :ok = Environments.write_file(env, "bin/deploy", "#!/bin/sh\n")
+    refute Environments.exec_file_exists?(env, "bin/deploy")
+
+    {_out, 0} = Environments.cmd(env, "chmod", ["+x", "bin/deploy"])
+    assert Environments.exec_file_exists?(env, "bin/deploy")
+  end
+
+  test "the box answers what architecture its image is", %{env: env} do
+    assert {output, 0} =
+             Environments.cmd(env, "ssh", [
+               "root@box",
+               "docker image inspect --format '{{.Architecture}}' app:abc"
+             ])
+
+    # Not "": that arrives as `{:unknown_architecture, ""}`, which reads as a
+    # box answering something strange rather than one not answering.
+    assert String.trim(output) == "amd64"
+  end
+
   test "git rev-parse answers a sha", %{env: env} do
     assert {output, 0} = Environments.cmd(env, "git", ["rev-parse", "HEAD"])
     assert String.trim(output) =~ ~r/^[0-9a-f]{16}$/

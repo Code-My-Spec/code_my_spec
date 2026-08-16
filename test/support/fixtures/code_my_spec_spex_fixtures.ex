@@ -850,6 +850,31 @@ defmodule CodeMySpecSpex.Fixtures do
   defdelegate register_environment(project_id, env), to: Environments, as: :register
   defdelegate unregister_environment(project_id), to: Environments, as: :unregister
 
+  @doc "Write a file into an environment — a premise the checkout starts from."
+  defdelegate write_file(env, path, contents), to: Environments
+
+  @doc "The project as the database has it, for a premise set after the fixture."
+  def reload_project(project), do: CodeMySpec.Repo.get!(project.__struct__, project.id)
+
+  @doc """
+  Write the deploy boilerplate into an environment, through the generator that
+  really writes it.
+
+  A premise, not a step. Story 970's position is that the boilerplate arrives
+  with the project — `cms new` generates it — so a criterion about setup
+  finishing starts from a project that has it, the same as Sam's would.
+
+  The real generator rather than hand-written stand-ins: the deploy step asks
+  `Generators.audit/2` whether the tree is deploy-ready, and a stub Dockerfile
+  that satisfied today's audit would keep satisfying it after the audit learned
+  to ask for something else — which is the shape of a test that passes for
+  years while the thing it names has stopped working.
+  """
+  @spec generate_deploy_boilerplate(term(), keyword()) :: {:ok, [String.t()]} | {:error, term()}
+  defdelegate generate_deploy_boilerplate(env, opts),
+    to: CodeMySpec.Generators.DeployArtifacts,
+    as: :generate
+
   @doc """
   Returns the framework rule filenames the harness ships in `priv/rules/`.
 

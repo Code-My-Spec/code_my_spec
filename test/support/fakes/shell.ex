@@ -62,8 +62,21 @@ defmodule CodeMySpecSpex.Fakes.Shell do
      0}
   end
 
-  # -- sops: refuses on a file that is not there, which is the failure 7965
-  # surfaced when the secrets step had not run --
+  # -- sops: a file that round-trips. `set` puts a key in, `decrypt` reads the
+  # keys back out, and `encrypt` stamps the recipient from `.sops.yaml` so
+  # `recipients/2` — which regex-scans the ciphertext for `age1…` — finds one.
+  #
+  # Round-tripping is the whole point rather than an extra. The deploy step
+  # asks `missing_secrets/4` what the environment carries, and a `sops` that
+  # exits 0 while printing nothing answers "everything is missing" — which is
+  # how a fully provisioned run reported "prod is missing SECRET_KEY_BASE,
+  # DATABASE_URL" and stopped one step short of the thing it was proving.
+  #
+  # Plaintext dotenv on both sides of the door, because what is being modelled
+  # is that a secret written can be read back with the right key, and nothing
+  # in provisioning reads the ciphertext's shape. It still refuses on a file
+  # that is not there — the failure 7965 surfaced when the secrets step had not
+  # run.
 
   defp run(env, "sops", args, _opts) do
     case sops_target(args) do
@@ -72,8 +85,8 @@ defmodule CodeMySpecSpex.Fakes.Shell do
 
       path ->
         case Environments.read_file(env, path) do
-          {:ok, _contents} ->
-            {"", 0}
+          {:ok, contents} ->
+            sops_command(env, args, path, contents)
 
           _ ->
             # What is there, not only what is missing. A path that does not
@@ -94,15 +107,49 @@ defmodule CodeMySpecSpex.Fakes.Shell do
 
   # -- ssh: a box that answers. What it answers *about* is the drill's --
 
-  defp run(_env, "ssh", _args, _opts), do: {"", 0}
+  defp run(_env, "ssh", args, _opts), do: {remote_answer(Enum.join(args, " ")), 0}
   defp run(_env, "scp", _args, _opts), do: {"", 0}
 
   # `sh -c "git archive … | ssh … tar -x"` is how a tree reaches a box. The
   # pipeline's effect is on the far side, which nothing here reads.
   defp run(_env, "sh", ["-c" | _], _opts), do: {"", 0}
 
-  # Loudly, so a gap in this shell is a gap rather than a pass.
+  # -- the generated scripts, run by absolute path out of the checkout --
+  #
+  # `bin/deploy <command> <environment>` is what the deploy step shells out to,
+  # and what its failure text quotes back — so what matters is the exit status
+  # and that the environment named reaches the answer. The work it stands for
+  # (kamal pushing an image, running a migration, swapping traffic) happens on
+  # a box, and nothing on this side reads it.
   defp run(_env, command, args, _opts) do
+    case Path.basename(command) do
+      "deploy" -> {"deployed #{Enum.join(args, " ")}\n", 0}
+      "backup" -> {"backup complete\n", 0}
+      "migrate" -> {"migrated\n", 0}
+      _ -> unmodelled(command, args)
+    end
+  end
+
+  # A box on the far side of the ssh, answering about itself.
+  #
+  # Empty was fine while nothing read the output, and stopped being fine the
+  # moment the build asked what architecture the image is: `docker image
+  # inspect` returning "" arrives as `{:unknown_architecture, ""}`, which reads
+  # as a box answering something strange rather than one not answering at all.
+  #
+  # Matched on the command text because that is what crosses the wire — these
+  # are shell strings rather than argv, composed by interpolation in `Remote`.
+  defp remote_answer(command) do
+    cond do
+      String.contains?(command, "{{.Architecture}}") -> "amd64\n"
+      String.contains?(command, "/v2/") -> "< HTTP/1.1 200 OK\n"
+      String.contains?(command, "uname -m") -> "x86_64\n"
+      true -> ""
+    end
+  end
+
+  # Loudly, so a gap in this shell is a gap rather than a pass.
+  defp unmodelled(command, args) do
     {"#{command} #{Enum.join(args, " ")} is not modelled by the shell fake\n", 127}
   end
 
@@ -123,6 +170,62 @@ defmodule CodeMySpecSpex.Fakes.Shell do
     |> Enum.reject(&String.starts_with?(&1, "-"))
     |> Enum.drop(1)
     |> List.first()
+  end
+
+  defp sops_command(_env, ["decrypt" | _], _path, contents), do: {contents, 0}
+
+  defp sops_command(env, ["set", _file, key, value | _], path, contents) do
+    # `sops set FILE ["KEY"] "json"` — both arguments are JSON, which is how
+    # `put_secret/5` encodes them.
+    with {:ok, [name]} <- Jason.decode(key),
+         {:ok, plain} <- Jason.decode(value) do
+      Environments.write_file(env, path, put_line(contents, name, plain))
+      {"", 0}
+    else
+      _ -> {"Error: could not parse #{key} #{value}\n", 1}
+    end
+  end
+
+  defp sops_command(env, ["encrypt" | _], path, contents) do
+    # Idempotent the way sops is, and refusing in sops' own words: `Sops`
+    # detects this state by matching the message text, so a fake that refuses
+    # with wording of its own reads as a genuine failure and the secrets step
+    # reports `{:sops_failed, 1, …}` on a file that is perfectly fine.
+    case String.contains?(contents, "# sops:age:") do
+      true ->
+        {"Error: file is already being encrypted: it has a top-level entry called 'sops'\n", 1}
+
+      false ->
+        recipients = recipients_for(env, path)
+        Environments.write_file(env, path, contents <> "# sops:age:#{recipients}\n")
+        {"", 0}
+    end
+  end
+
+  defp sops_command(_env, _args, _path, contents), do: {contents, 0}
+
+  # From `.sops.yaml`, which is what real sops reads to decide who can open a
+  # file — so a spex that never wrote a config gets a file with no recipient,
+  # exactly as it would in the world.
+  defp recipients_for(env, path) do
+    with {:ok, config} <- Environments.read_file(env, ".sops.yaml"),
+         [_ | _] = rules <- String.split(config, "- path_regex: ", trim: true) do
+      rules
+      |> Enum.find(fn rule -> String.contains?(rule, Path.basename(path)) end)
+      |> to_string()
+      |> then(&Regex.run(~r/age1[a-z0-9]+/, &1))
+      |> case do
+        [recipient] -> recipient
+        _ -> "age1unconfigured"
+      end
+    else
+      _ -> "age1unconfigured"
+    end
+  end
+
+  defp put_line(contents, key, value) do
+    lines = contents |> String.split("\n", trim: true) |> Enum.reject(&String.starts_with?(&1, "#{key}="))
+    Enum.join(lines ++ ["#{key}=#{value}"], "\n") <> "\n"
   end
 
   defp hash(seed), do: :crypto.hash(:sha256, seed) |> Base.encode16(case: :lower) |> binary_part(0, 16)
