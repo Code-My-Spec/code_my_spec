@@ -85,21 +85,86 @@ defmodule CodeMySpec.BootVersion do
   end
 
   @doc """
-  `{:drifted, booted, current}` when the checkout has moved since boot.
+  `{:drifted, booted, current}` when what is running is behind what the project
+  has.
 
-  `:none` covers every case that is not a clear, readable difference: never
-  captured, no git, an unreadable HEAD. An uncertain answer here would be
-  appended to an error message as though it were evidence, and a wrong "restart
-  your harness" costs more than a missing one.
+  Two ways that happens, and only one of them used to be caught.
+
+  The checkout moves under a running process — someone commits or rebases in the
+  tree that launched it. `head/1` sees that immediately.
+
+  Or the checkout does not move at all, and the code still does. This project is
+  worked through git worktrees, and the harness and server both run from the
+  main checkout whatever directory started them (`just refresh-harness` says so
+  outright). An agent in a worktree commits, pushes to `origin/main`, and the
+  main checkout's HEAD is exactly where it was — so the old comparison found
+  booted == HEAD and answered `:none` while five commits sat unrun, two of them
+  touching `@contract_paths` (`9c474a9d`). The available readings for the agent
+  were "my fix is wrong" and "my fix is not running", and nothing distinguished
+  them.
+
+  So the upstream ref is consulted too. That is a **local** read: worktrees share
+  an object store and refs, so a push from any of them updates the
+  remote-tracking ref this checkout sees, with no network and no fetch.
+
+  `:none` still covers every case that is not a clear, readable difference —
+  never captured, no git, an unreadable HEAD, no upstream configured. An
+  uncertain answer here would be appended to an error message as though it were
+  evidence, and a wrong "restart your harness" costs more than a missing one.
   """
   @spec drift() :: {:drifted, String.t(), String.t()} | :none
   def drift do
     case :persistent_term.get(@key, nil) do
       {root, booted} when is_binary(booted) ->
-        compare(booted, head(root))
+        compare(booted, running_target(root))
 
       _ ->
         :none
+    end
+  end
+
+  # What this process ought to be running: the checkout's HEAD, unless the
+  # checkout is itself behind its upstream, in which case that.
+  #
+  # HEAD first because a moved checkout is the more urgent of the two — the code
+  # on disk already disagrees with the process — and because it is the case that
+  # needs no remote-tracking ref to exist.
+  defp running_target(root) do
+    head = head(root)
+
+    case behind_upstream(root, head) do
+      nil -> head
+      upstream -> upstream
+    end
+  end
+
+  # The upstream commit when this checkout is strictly behind it, `nil`
+  # otherwise. `nil` for a checkout that is ahead, level, on an unrelated
+  # branch, or has no upstream at all — none of those mean the running code is
+  # stale, and saying "drifted" for them would train readers to ignore it.
+  defp behind_upstream(root, head) when is_binary(head) do
+    with upstream when is_binary(upstream) <- rev_parse(root, "@{upstream}"),
+         true <- upstream != head,
+         true <- ancestor?(root, head, upstream) do
+      upstream
+    else
+      _ -> nil
+    end
+  end
+
+  defp behind_upstream(_root, _head), do: nil
+
+  defp ancestor?(root, maybe_ancestor, descendant) do
+    case git(root, ["merge-base", "--is-ancestor", maybe_ancestor, descendant]) do
+      {_output, 0} -> true
+      _ -> false
+    end
+  end
+
+  defp rev_parse(root, ref) do
+    case git(root, ["rev-parse", "--short", ref]) do
+      {output, 0} -> String.trim(output)
+      _ -> nil
     end
   end
 
@@ -212,14 +277,17 @@ defmodule CodeMySpec.BootVersion do
   # `find_executable/1` before `cmd/3` and a `File.dir?/1` before the `:cd`,
   # because both of those raise rather than returning a tuple and this must not
   # be able to take down the path it is decorating.
-  defp head(root) do
+  defp head(root), do: rev_parse(root, "HEAD")
+
+  # One place that knows how to run git against a checkout, so `head/1`,
+  # `rev_parse/2` and `ancestor?/3` cannot drift in how they handle a missing
+  # binary or a directory that is not there.
+  defp git(root, args) do
     with true <- is_binary(root) and File.dir?(root),
-         git when is_binary(git) <- System.find_executable("git"),
-         {output, 0} <-
-           System.cmd(git, ["rev-parse", "--short", "HEAD"], cd: root, stderr_to_stdout: true) do
-      String.trim(output)
+         git when is_binary(git) <- System.find_executable("git") do
+      System.cmd(git, args, cd: root, stderr_to_stdout: true)
     else
-      _ -> nil
+      _ -> :error
     end
   end
 end
