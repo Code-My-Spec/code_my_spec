@@ -34,9 +34,15 @@ defmodule CodeMySpecSpex.Story963.Criterion7960Spex do
         # this the state the criterion is about would be gone before the page
         # could show it — and the assertion would be about how fast the test
         # rendered, not about whether the page updates.
+        #
+        # That step is `domain`, not `secrets`. The sequence is repository →
+        # secrets → server → domain, so holding `secrets` open stopped the run
+        # *before* the server had done anything, and the criterion failed
+        # saying the server step never reached done — which was true, and said
+        # nothing about whether the page updates.
         context =
           scripted_run(context, %{
-            secrets: fn ->
+            domain: fn ->
               Process.sleep(3_000)
               {:ok, []}
             end
@@ -55,7 +61,7 @@ defmodule CodeMySpecSpex.Story963.Criterion7960Spex do
         # it can only be running once the server step finished, so one wait
         # covers both halves of the claim. Waiting on the server step alone
         # returned before the page had been told about its successor.
-        html = await_step_state(context.view, "secrets", "running")
+        html = await_step_state(context.view, "domain", "running")
 
         {:ok, Map.put(context, :html, html)}
       end

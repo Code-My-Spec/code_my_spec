@@ -52,6 +52,12 @@ defmodule CodeMySpecSpex.Story963.Criterion7965Spex do
           view
           |> element("[data-test='setup-step'][data-step='server'] [data-test='run-step']")
           |> render_click()
+
+          # Inside the cassette, because the step is asynchronous: clicking Run
+          # returns before it has finished, so its provider calls happen after
+          # the click and a block that closes on the click leaves them
+          # uncovered.
+          CodeMySpecSpex.Case.await_step(view, :server)
         end)
 
         {:ok, Map.put(context, :view, view)}
@@ -62,6 +68,8 @@ defmodule CodeMySpecSpex.Story963.Criterion7965Spex do
           context.view
           |> element("[data-test='setup-step'][data-step='server'] [data-test='run-step']")
           |> render_click()
+
+          CodeMySpecSpex.Case.await_step(context.view, :server)
         end)
 
         {:ok, Map.put(context, :html, render(context.view))}
