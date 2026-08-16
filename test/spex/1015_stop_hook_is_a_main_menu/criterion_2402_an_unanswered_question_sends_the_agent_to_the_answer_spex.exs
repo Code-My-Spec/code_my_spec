@@ -109,22 +109,25 @@ defmodule CodeMySpecSpex.Story1015.Criterion2402Spex do
       end
 
       then_ "the agent is sent to collect the answer", context do
-        reason = context.response["reason"] || ""
+        # Clean tree, so this is the allow path and the directive rides
+        # `systemMessage`. Refusing a stop over an unread reply would be
+        # continuous mode, which is opt-in — the agent is told, not held.
+        directive = context.response["systemMessage"] || context.response["reason"] || ""
 
-        assert reason =~ "check_answer",
+        assert directive =~ "check_answer",
                "both tool descriptions promise the stop hook brings the agent back " <>
-                 "for the reply. Nothing implements it, so an agent that follows them " <>
-                 "stops and never returns. Got:\n#{reason}"
+                 "for the reply. Nothing implemented it, so an agent that followed " <>
+                 "them stopped and never returned. Got:\n#{inspect(context.response)}"
 
         {:ok, context}
       end
 
       then_ "the agent is not told to ask again", context do
-        reason = context.response["reason"] || ""
+        directive = context.response["systemMessage"] || context.response["reason"] || ""
 
-        refute reason =~ "ask_user",
+        refute directive =~ "ask_user",
                "a question is already outstanding, and sending the agent to ask is " <>
-                 "how one question becomes a queue of identical ones. Got:\n#{reason}"
+                 "how one question becomes a queue of identical ones. Got:\n#{directive}"
 
         {:ok, context}
       end

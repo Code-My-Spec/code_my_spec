@@ -7,68 +7,70 @@ defmodule CodeMySpecSpex.Story1015.Criterion2393Spex do
 
   > An agent with no work in any class is allowed to stop.
 
-  This is the half of the menu that says nothing. When requirements, issues,
-  problems and owed input are all empty, the answer is that there is nothing
-  to do — and the hook has to be willing to say so.
+  The half of the menu that says nothing. When questions, problems, issues and
+  requirements are all empty, the answer is that there is nothing to do — and
+  the hook has to be willing to say so.
 
-  John's account of why it matters is the reason this criterion exists at all:
-  the framework queue emptied, nothing said so, and the agent kept sweeping
-  surfaces looking for work rather than stopping. The last of those returned
-  ~900 "orphan components" that are not defects. A menu with no terminal state
-  does not produce rest; it produces invented work.
+  John's account of why is the reason this criterion exists: the framework queue
+  emptied, nothing said so, and the agent kept sweeping surfaces looking for
+  work rather than stopping. The last of those returned ~900 "orphan components"
+  that are not defects. A menu with no terminal state does not produce rest; it
+  produces invented work.
 
-  ## What this does and does not cover
+  ## The precondition is the hard part, and two attempts got it wrong
 
-  A clean pipeline outside continuous mode. It may well pass today — a clean
-  run already allows the stop — and that is worth knowing rather than assuming,
-  because it locates the gap precisely: if this is green, the terminal state
-  already holds and what is missing is only the continuous-mode case, where the
-  hook currently never allows a stop and `tap_out` is the sole escape.
+  First on `:synced_context_component`, which leaves requirements unsatisfied —
+  the Given was false and the scenario passed anyway, because nothing rendered a
+  directive yet. Then on `:synced_context_in_satisfied_project`, which is worse
+  in an interesting way: it calls `FullSatisfactionFixtures.apply` and *then*
+  creates a component, a story and its rules, so it satisfies everything and
+  immediately adds two fresh requirements. It reads like the right given and is
+  the opposite of it.
 
-  Written as the criterion states it rather than as a prediction. If it is
-  green on the first run, that is a finding about scope, not a spec that failed
-  to be useful.
+  So this uses the fixture directly, the way criterion 5120 does for the same
+  terminal state on the continuous-mode branch. Nothing else is set up, because
+  anything set up here is work the menu would then report.
 
   ## Surface
 
-  `POST /api/hooks/stop`, routed by `x-harness-id`. Clean pipeline via the
-  `clean` cassette and the `pipeline_clean_run/` fixture directory — the pairing
-  the project cassette playbook prescribes. `compile.jsonl` is 0 bytes on
-  purpose: `Compile.execute` reads that as no diagnostics, and writing `[]` or
-  `{}` into it breaks that.
+  `POST /api/hooks/stop`, routed by `x-harness-id`. No cassette and no
+  `test_output_files`: with no changed files there is nothing for an analyzer to
+  run, and staging output would be staging the very state the criterion says is
+  absent.
   """
 
   use CodeMySpecSpex.Case
-  use ExCliVcr
 
-  import CodeMySpecSpex.SharedGivens
-
-  @fixture_dir "test/fixtures/validation/pipeline_clean_run"
+  alias CodeMySpecSpex.FullSatisfactionFixtures
 
   setup :register_log_in_setup_account
   setup :setup_active_project
 
   spex "An agent with nothing to do is allowed to stop" do
     scenario "no class of work has anything for this working copy" do
-      given_ :synced_context_in_satisfied_project
-      given_ :context_spec_task_started
+      given_ "every requirement in the graph is satisfied, so no class is live", context do
+        {:ok, FullSatisfactionFixtures.apply(context)}
+      end
+
+      given_ "a session exists for this working copy", context do
+        session_id = "spex-2393-#{System.unique_integer([:positive])}"
+
+        Phoenix.ConnTest.build_conn()
+        |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_harness_id)
+        |> Plug.Conn.put_req_header("content-type", "application/json")
+        |> post(~p"/api/hooks/session-start", %{"session_id" => session_id})
+        |> Phoenix.ConnTest.json_response(200)
+
+        {:ok, Map.put(context, :session_id, session_id)}
+      end
 
       when_ "the agent attempts to stop", context do
         response =
-          use_cmd_cassette "clean", record: :none do
-            Phoenix.ConnTest.build_conn()
-            |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_harness_id)
-            |> Plug.Conn.put_req_header("content-type", "application/json")
-            |> post(~p"/api/hooks/stop", %{
-              "session_id" => context.session_id,
-              "test_output_files" => %{
-                "compile" => fixture_path("compile.jsonl"),
-                "exunit" => fixture_path("exunit.json"),
-                "spex" => Path.expand("test/fixtures/validation/spex_green.jsonl")
-              }
-            })
-            |> Phoenix.ConnTest.json_response(200)
-          end
+          Phoenix.ConnTest.build_conn()
+          |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_harness_id)
+          |> Plug.Conn.put_req_header("content-type", "application/json")
+          |> post(~p"/api/hooks/stop", %{"session_id" => context.session_id})
+          |> Phoenix.ConnTest.json_response(200)
 
         {:ok, Map.put(context, :response, response)}
       end
@@ -94,10 +96,11 @@ defmodule CodeMySpecSpex.Story1015.Criterion2393Spex do
         refute reason =~ "list_issues",
                "nothing is outstanding, so nothing should be recommended. Got:\n#{reason}"
 
+        refute reason =~ "check_answer",
+               "nothing is outstanding, so nothing should be recommended. Got:\n#{reason}"
+
         {:ok, context}
       end
     end
   end
-
-  defp fixture_path(name), do: Path.expand(Path.join(@fixture_dir, name))
 end

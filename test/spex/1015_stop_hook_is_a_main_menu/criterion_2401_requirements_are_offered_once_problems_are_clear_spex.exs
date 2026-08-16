@@ -67,12 +67,28 @@ defmodule CodeMySpecSpex.Story1015.Criterion2401Spex do
       end
 
       then_ "the agent is sent to its next requirement", context do
-        reason = context.response["reason"] || ""
+        # On the allow path the directive rides `systemMessage`, not `reason`.
+        # A first implementation refused the stop instead, and seven scenarios
+        # across stories 555, 538 and 983 caught it in one run — all of them
+        # specify that a clean pipeline is allowed to stop. Refusing on an
+        # outstanding backlog is continuous mode, and that is opt-in.
+        directive = context.response["systemMessage"] || context.response["reason"] || ""
 
-        assert reason =~ "get_next_requirement",
+        assert directive =~ "get_next_requirement",
                "a clean tree with work outstanding is the ordinary state of a " <>
                  "project, and saying nothing in it is what left the agent inventing " <>
-                 "audits. Got:\n#{reason}"
+                 "audits. Got:\n#{inspect(context.response)}"
+
+        {:ok, context}
+      end
+
+      then_ "the stop is still allowed", context do
+        # The other half, and the reason this is a system message rather than a
+        # refusal: being told what is available must not cost the agent the stop
+        # it asked for.
+        refute context.response["decision"] == "block",
+               "an outstanding backlog is not grounds to refuse a stop outside " <>
+                 "continuous mode. Got: #{inspect(context.response)}"
 
         {:ok, context}
       end

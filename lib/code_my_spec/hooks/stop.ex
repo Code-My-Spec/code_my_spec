@@ -33,6 +33,7 @@ defmodule CodeMySpec.Hooks.Stop do
   alias CodeMySpec.Sessions
   alias CodeMySpec.Sessions.Session
   alias CodeMySpec.Validation
+  alias CodeMySpec.Validation.Menu
   alias CodeMySpec.Validation.TaskEvaluator
 
   @total_response_cap 4096
@@ -372,13 +373,13 @@ defmodule CodeMySpec.Hooks.Stop do
     Map.merge(%{"systemMessage" => message}, terminus_retrospective())
   end
 
-  defp maybe_terminate_stuck(_scope, nil, reason, req_id, _key),
-    do: block_with_reason(reason, req_id)
+  defp maybe_terminate_stuck(scope, nil, reason, req_id, _key),
+    do: block_with_reason(scope, reason, req_id)
 
   defp maybe_terminate_stuck(scope, session_id, reason, req_id, key) do
     case Sessions.get_by_external_id(scope, session_id) do
       nil ->
-        block_with_reason(reason, req_id)
+        block_with_reason(scope, reason, req_id)
 
       session ->
         session = record_block(scope, session, key)
@@ -402,7 +403,7 @@ defmodule CodeMySpec.Hooks.Stop do
             allow_stuck(session, req_id)
 
           true ->
-            block_with_reason(reason, req_id)
+            block_with_reason(scope, reason, req_id)
         end
     end
   end
@@ -441,16 +442,22 @@ defmodule CodeMySpec.Hooks.Stop do
     end
   end
 
-  defp block_with_reason(reason, req_id) do
+  defp block_with_reason(scope, reason, req_id) do
     Logger.info("[StopHook] [#{req_id}] Blocking: #{String.slice(reason, 0, 100)}",
       cms_decision: "block",
       cms_blocking: blocking_summary(reason)
     )
 
     hint = harness_hint_footer()
-    reason_budget = @total_response_cap - byte_size(hint)
+    menu = Menu.render(scope)
+
+    # The menu's bytes come off the budget before the findings, not after, so a
+    # flood of problems cannot truncate away the one part of the response that
+    # says what to do. The findings are what truncation is for — losing the last
+    # three of forty costs nothing, losing the directive costs the whole point.
+    reason_budget = @total_response_cap - byte_size(hint) - byte_size(menu)
     capped_reason = Problems.truncate_to_cap(reason, cap: reason_budget)
-    %{"decision" => "block", "reason" => capped_reason <> hint}
+    %{"decision" => "block", "reason" => capped_reason <> menu <> hint}
   end
 
   # R9 — every block-with-feedback reason carries a one-line affordance
@@ -541,9 +548,18 @@ defmodule CodeMySpec.Hooks.Stop do
         %{}
 
       not continuous_mode?(session) ->
+        # Told, not refused. A first cut blocked here whenever any class was
+        # live, and story 555's, 538's and 983's criteria caught it in one run:
+        # seven scenarios across three stories specify that a clean pipeline is
+        # allowed to stop. Refusing on an outstanding backlog is continuous
+        # mode, and continuous mode is opt-in — an interactive agent would never
+        # have been able to stop while any work remained anywhere.
+        #
+        # So the menu rides the allow as a system message. The agent still hears
+        # what is available; it is simply not held for it.
         Logger.info("[StopHook] [#{req_id}] Not in continuous mode, allowing stop")
         notify_complete()
-        %{}
+        allow_with_menu(scope)
 
       true ->
         case RequirementGraph.next_actionable(scope) do
@@ -573,6 +589,16 @@ defmodule CodeMySpec.Hooks.Stop do
 
   defp continuous_mode?(%{continuous: true}), do: true
   defp continuous_mode?(_), do: false
+
+  # An allow that still says what is waiting. `%{}` when the menu is empty, so a
+  # terminal stop stays literally silent — a "nothing to do" message on the one
+  # stop that has nothing to do is the noise this whole change exists to remove.
+  defp allow_with_menu(scope) do
+    case Menu.render(scope) do
+      "" -> %{}
+      menu -> %{"systemMessage" => String.trim_leading(menu)}
+    end
+  end
 
   # Test-only: specs back pipeline outputs with pre-recorded JSON fixtures
   # so cassette replays can observe failures (`System.cmd` side effects —
