@@ -288,25 +288,40 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
 
   # Decide a hook the harness is proxying for Claude Code.
   #
-  # The decision is database work — blocking problems, config modes, session and
-  # task state — so it lives here, while the analyzers that feed it shell out
-  # against a working copy and stay on the harness. This is the same split the
-  # local controllers already use; they call the identical `Hooks.*` modules, so
-  # the two paths cannot drift in what they decide, only in how they are reached.
+  # The decision is mostly database work — blocking problems, config modes,
+  # session and task state — so it lives here, while the analyzers that feed it
+  # shell out against a working copy and stay on the harness. This is the same
+  # split the local controllers already use; they call the identical `Hooks.*`
+  # modules, so the two paths cannot drift in what they decide, only in how they
+  # are reached.
   #
-  # On the critical path of every agent turn, so it does exactly one thing.
+  # **Mostly**, not entirely, and the difference is why this runs in a task.
+  # Task evaluation reads files — `QaIntegrationPlan` alone reads an index, each
+  # spec and each verify script, and `CodeGeneration`, `QaSetup` and `Deploy` do
+  # the same. A read goes out as `handle_call({:fs_request, …})` on *this*
+  # process, so deciding inline meant the channel calling itself: OTP detects it
+  # and exits at once with `{:calling_self, …}`, 3,270 times in one `web.log`.
+  #
+  # Every one of those was a failed read that the caller could not tell from a
+  # missing file — `check_index/1`'s catch-all reports "Integration index not
+  # found. Write it and stop again" for a file that is sitting right there. So
+  # this was not log noise; it was task evaluation being told the working copy
+  # was empty, on the critical path of every agent turn (`f530595e`).
+  #
+  # Same shape as `analysis_wait` below, and for the same reason: the channel
+  # process has to stay free to answer `fs_result`, because it is the only thing
+  # that can.
   def handle_in("hook_decision", %{"hook" => hook, "payload" => payload} = msg, socket)
       when is_binary(hook) and is_map(payload) do
-    case decide_hook(hook, socket.assigns.scope, payload, msg["port"]) do
-      {:error, reason} ->
-        {:reply, {:error, %{"reason" => reason}}, socket}
+    ref = socket_ref(socket)
+    scope = socket.assigns.scope
+    port = msg["port"]
 
-      {200, body} ->
-        {:reply, {:ok, body}, socket}
+    Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
+      Phoenix.Channel.reply(ref, decision_reply(hook, scope, payload, port))
+    end)
 
-      {status, body} when is_integer(status) ->
-        {:reply, {:error, %{"status" => status, "body" => body}}, socket}
-    end
+    {:noreply, socket}
   end
 
   # What an analyzer printed on the machine that has the working copy.
@@ -321,30 +336,22 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   # The reply is read on the far side. A rejected result is an analyzer that ran
   # and was not recorded, which looks from the outside exactly like one that
   # never ran — the distinction this whole design exists to keep.
+  #
+  # Deferred, like `hook_decision` and `analysis_run`, and for the reason the
+  # `{:calling_self, …}` warning in `Analysis.harness_fs_request/4` already
+  # names: "a reconcile running inline in the channel process reached for a
+  # file". `Reconciler`'s own moduledoc says it "runs inside the analysis Task —
+  # never inside a GenServer callback"; that held for the local queue and was
+  # never true of this path, which is the remote half of the same reconcile.
   def handle_in("analysis_result", %{"run_id" => _, "source" => source} = payload, socket) do
-    case Analysis.record_remote_result(socket.assigns.scope, payload) do
-      {:ok, run} ->
-        {:reply, {:ok, %{"run_id" => run.id, "status" => to_string(run.status)}}, socket}
+    ref = socket_ref(socket)
+    scope = socket.assigns.scope
 
-      {:error, :unknown_run} ->
-        # Not applied: reconciling it would rewrite this source's Problems off a
-        # run nobody is waiting for.
-        #
-        # Says which run and why. Without that, "already closed" and "belongs to
-        # another checkout" read identically, and the second one — every join
-        # sweeping every other working copy's runs — hid a total failure for a
-        # day behind a message that looked like an ordinary reconnect.
-        Logger.warning(
-          "[HarnessProject] #{source} result for run #{payload["run_id"]} not recorded: " <>
-            Analysis.explain_unknown_run(socket.assigns.scope, payload["run_id"])
-        )
+    Task.Supervisor.start_child(CodeMySpec.TaskSupervisor, fn ->
+      Phoenix.Channel.reply(ref, result_reply(scope, source, payload))
+    end)
 
-        {:reply, {:error, %{"reason" => "unknown_run"}}, socket}
-
-      {:error, reason} ->
-        Logger.warning("[HarnessProject] #{source} result rejected: #{inspect(reason)}")
-        {:reply, {:error, %{"reason" => inspect(reason)}}, socket}
-    end
+    {:noreply, socket}
   end
 
   # The agent's own `mix test`, routed through here so it counts.
@@ -442,6 +449,63 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
   end
 
   defp pending_fs(socket), do: socket.assigns[:pending_fs] || %{}
+
+  # Always answers, including when the decision raises.
+  #
+  # Deciding inline, a crash took the channel down and the harness saw the
+  # socket close — bad, but loud. From a task it would kill nothing and send
+  # nothing, and the harness would sit out its full decision timeout on every
+  # turn, which reads as latency rather than as a crash. This is the hot path of
+  # every agent turn; silence is the one answer it must never give.
+  defp decision_reply(hook, scope, payload, port) do
+    case decide_hook(hook, scope, payload, port) do
+      {:error, reason} -> {:error, %{"reason" => reason}}
+      {200, body} -> {:ok, body}
+      {status, body} when is_integer(status) -> {:error, %{"status" => status, "body" => body}}
+    end
+  rescue
+    exception ->
+      Logger.error(
+        "[HarnessProject] #{hook} decision crashed: #{Exception.message(exception)}\n" <>
+          Exception.format_stacktrace(__STACKTRACE__)
+      )
+
+      {:error, %{"reason" => "decision_crashed", "hook" => hook}}
+  end
+
+  # Same contract as before, moved off the channel process. The two warnings
+  # below are unchanged: "already closed" and "belongs to another checkout" read
+  # identically without them, and the second — every join sweeping every other
+  # working copy's runs — once hid a total failure for a day behind a message
+  # that looked like an ordinary reconnect.
+  defp result_reply(scope, source, payload) do
+    case Analysis.record_remote_result(scope, payload) do
+      {:ok, run} ->
+        {:ok, %{"run_id" => run.id, "status" => to_string(run.status)}}
+
+      # Not applied: reconciling it would rewrite this source's Problems off a
+      # run nobody is waiting for.
+      {:error, :unknown_run} ->
+        Logger.warning(
+          "[HarnessProject] #{source} result for run #{payload["run_id"]} not recorded: " <>
+            Analysis.explain_unknown_run(scope, payload["run_id"])
+        )
+
+        {:error, %{"reason" => "unknown_run"}}
+
+      {:error, reason} ->
+        Logger.warning("[HarnessProject] #{source} result rejected: #{inspect(reason)}")
+        {:error, %{"reason" => inspect(reason)}}
+    end
+  rescue
+    exception ->
+      Logger.error(
+        "[HarnessProject] #{source} result crashed while recording: " <>
+          Exception.message(exception)
+      )
+
+      {:error, %{"reason" => "record_crashed", "source" => source}}
+  end
 
   # The harness reports outcomes the way the behaviour states them, so this only
   # has to put the shape back together. An `error` is kept as an atom because
