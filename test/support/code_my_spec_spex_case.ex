@@ -3650,24 +3650,7 @@ defmodule CodeMySpecSpex.Case do
       clear_cassette_once(name, opts[:cassette_dir] || "test/cassettes")
     end
 
-    result =
-      ReqCassette.with_cassette(name, opts, fn plug ->
-        previous = Enum.map(provider_modules(), &{&1, Application.get_env(:code_my_spec, &1, [])})
-
-        for module <- provider_modules() do
-          Application.put_env(
-            :code_my_spec,
-            module,
-            Keyword.put(Application.get_env(:code_my_spec, module, []), :plug, plug)
-          )
-        end
-
-        try do
-          fun.()
-        after
-          for {module, config} <- previous, do: Application.put_env(:code_my_spec, module, config)
-        end
-      end)
+    result = record_or_replay(name, opts, fun)
 
     # Here rather than in `with_full_cassette/3`, which is where it started and
     # where it covered almost nothing: 841, 963, 965, 966 and 969 all drive
@@ -3685,6 +3668,98 @@ defmodule CodeMySpecSpex.Case do
     refuse_poisoned_cassette(name)
 
     result
+  end
+
+  # A recording whose run did not pass is a recording of the failure, and
+  # replaying it reproduces that failure faithfully while looking like an
+  # ordinary cassette.
+  #
+  # `refuse_poisoned_cassette/1` below is the narrower version of this rule and
+  # its reasoning is right: "recording it would make the failure the story's
+  # expected behaviour, and it would then replay forever without ever touching a
+  # provider again." Its scope was too narrow — it enumerates provider refusals,
+  # so a step that errored for any other reason, a non-zero exit from a tool, or
+  # a poll that ran to exhaustion were all kept. Three of those in one night
+  # (`05134805`), and none was a shape that guard was ever going to see.
+  #
+  # Worse than merely being kept, they are invisible: `966/8156` replayed a
+  # recorded sops failure byte-identically, so two attempts to fix the spex's
+  # premise produced identical output and the criterion was written off as
+  # unfixable. The premise was genuinely wrong; the recording was hiding that
+  # the fix had worked.
+  #
+  # The suite already knows the answer — if the block raised, the run did not
+  # pass — so this needs no enumeration of failure shapes and catches all three.
+  # Replay is untouched: nothing is being written, and a failing replay is a
+  # finding rather than a poisoned artifact.
+  defp record_or_replay(name, opts, fun) do
+    recording? = opts[:mode] == :record
+
+    try do
+      run_cassette(name, opts, fun)
+    rescue
+      error ->
+        reject_failed_recording(recording?, name, opts)
+        reraise error, __STACKTRACE__
+    catch
+      kind, reason ->
+        reject_failed_recording(recording?, name, opts)
+        :erlang.raise(kind, reason, __STACKTRACE__)
+    end
+  end
+
+  defp reject_failed_recording(false, _name, _opts), do: :ok
+
+  defp reject_failed_recording(true, name, opts) do
+    path = Path.join(opts[:cassette_dir] || "test/cassettes", name <> ".json")
+
+    File.rename(path, path <> ".rejected")
+    restore_backup(path)
+
+    IO.puts(:stderr, """
+
+    [cassette] refusing to keep #{Path.basename(path)}: the run that produced it
+    did not pass, so it is a recording of the failure. Replaying it would
+    reproduce that failure and look like ordinary expected behaviour.
+
+    Kept as #{Path.basename(path)}.rejected so you can read what happened.\
+    """)
+  end
+
+  # `clear_cassette_once/2` renamed the working cassette to `.bak` at the start
+  # of this run. Putting it back matters more than it sounds: instance 1 of
+  # `05134805` was two cassettes overwritten with 353 KB of failed verification
+  # polls and 3.3 MB of fruitless receive polls, recovered only because a human
+  # noticed and restored the `.bak` by hand.
+  defp restore_backup(path) do
+    backup = path <> ".bak"
+
+    backup
+    |> File.exists?()
+    |> restore_backup(backup, path)
+  end
+
+  defp restore_backup(false, _backup, _path), do: :ok
+  defp restore_backup(true, backup, path), do: File.rename(backup, path)
+
+  defp run_cassette(name, opts, fun) do
+    ReqCassette.with_cassette(name, opts, fn plug ->
+      previous = Enum.map(provider_modules(), &{&1, Application.get_env(:code_my_spec, &1, [])})
+
+      for module <- provider_modules() do
+        Application.put_env(
+          :code_my_spec,
+          module,
+          Keyword.put(Application.get_env(:code_my_spec, module, []), :plug, plug)
+        )
+      end
+
+      try do
+        fun.()
+      after
+        for {module, config} <- previous, do: Application.put_env(:code_my_spec, module, config)
+      end
+    end)
   end
 
   @doc "Every provider whose HTTP a cassette should capture."
