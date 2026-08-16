@@ -12,9 +12,17 @@ defmodule CodeMySpec.SpexGivensTest do
   ## What counts as establishing
 
   Driving the app: mounting a LiveView, clicking or submitting, an HTTP call,
-  a `CodeMySpecSpex.Case` helper, or the `Fixtures` bridge. That list is
-  deliberately generous — this catches the block that does *nothing at all*,
-  which is the version that always indicates the bug.
+  the `Fixtures` bridge, or one of the helpers named in `@establishes`.
+
+  That last one is a list, not a category. Most of `CodeMySpecSpex.Case` does
+  not drive anything — `spex_timeout/0` and `workspace_runner/0` are accessors —
+  so "any Case helper" would pass blocks that establish nothing. A new helper
+  that does drive the app has to be added to `@establishes` to count, and saying
+  otherwise is what made this check refuse a block that had followed its own
+  advice.
+
+  The list is deliberately generous within that: this catches the block that
+  does *nothing at all*, which is the version that always indicates the bug.
 
   It cannot catch the subtler case: a block that mounts a page while claiming
   a fact about the world the mount does not create. Those need reading. This
@@ -161,8 +169,22 @@ defmodule CodeMySpec.SpexGivensTest do
 
            #{format(new_offenders)}
 
-           A given_ should drive the app — mount the view, click, submit, call a
-           Case helper, or go through the Fixtures bridge.
+           A given_ should drive the app — mount the view, click, submit, make an
+           HTTP call, use the Fixtures bridge, or call one of the establishing
+           helpers.
+
+           "One of the establishing helpers" is literal: this check matches an
+           explicit list, `@establishes` in this file, not every function on
+           `CodeMySpecSpex.Case`. Most of that module does not drive anything —
+           `spex_timeout/0`, `workspace_runner/0` and `step_detail/2` are
+           accessors, and counting them would make this check pass on blocks that
+           establish nothing.
+
+           So if you wrote a new Case helper that genuinely drives the app, add
+           its name to `@establishes` in the same commit. That is the step, and
+           an earlier version of this message did not mention it — it said "call
+           a Case helper", which reads as though any of them will do, and left
+           whoever followed it failing for a reason the message had ruled out.
 
            If the precondition is genuinely already true, say so in the body and
            name what made it true:
