@@ -1644,7 +1644,7 @@ defmodule CodeMySpec.Provisioning.Steps do
     # itself reports whether the address can be delivered to.
     _ = Resend.clear_suppression(scope, to)
 
-    with {:ok, from} <- probe_sender(scope),
+    with {:ok, from} <- probe_sender(scope, domain_of(to)),
          {:ok, _sent} <- Resend.send_probe(scope, to, subject: token, from: from) do
       Resend.await_received(scope, &received?(&1, to, seen), probe_wait(opts))
     end
@@ -1686,17 +1686,28 @@ defmodule CodeMySpec.Provisioning.Steps do
   end
 
   # A verified sender on the account, or a clear reason there is none.
-  defp probe_sender(scope) do
+  defp probe_sender(scope, domain) do
     case Resend.list_domains(scope) do
       {:ok, domains} ->
         verified = Enum.filter(domains, &(&1["status"] == "verified"))
 
-        # Any verified domain can carry the probe, so prefer one that is not
-        # the product's own. Sending as `codemyspec.com` works and changes
-        # nothing, but a setup probe should not go out over the production
-        # sending domain when another is available.
+        # The domain under test first, when it can send.
+        #
+        # Any verified domain can carry the probe and the claim is about where
+        # mail *arrives*, so this used to take whichever came back first that
+        # was not the product's own. That makes the probe's outcome depend on
+        # what sorts first in a shared account: 974's 8030 sent from its own
+        # domain and delivered, 8048 sent from an unrelated drill domain and
+        # never arrived, minutes apart with identical code. A criterion that
+        # passes or fails on unrelated work in the same account is not testing
+        # what it says (3262205a).
+        #
+        # Still a preference rather than a requirement: at `inbound` the domain
+        # is verified for *receiving* and may not be verified for sending, which
+        # is why the fallback exists at all.
         preferred =
-          Enum.find(verified, &(not String.contains?(&1["name"] || "", "codemyspec.com"))) ||
+          Enum.find(verified, &(&1["name"] == domain)) ||
+            Enum.find(verified, &(not String.contains?(&1["name"] || "", "codemyspec.com"))) ||
             List.first(verified)
 
         case preferred do
@@ -1708,6 +1719,17 @@ defmodule CodeMySpec.Provisioning.Steps do
         other
     end
   end
+
+  # The domain half of an address, for choosing a sender that matches the
+  # domain under test.
+  defp domain_of(address) when is_binary(address) do
+    case String.split(address, "@", parts: 2) do
+      [_local, domain] -> domain
+      _ -> nil
+    end
+  end
+
+  defp domain_of(_), do: nil
 
   # Addressed to us, and not one of the messages that were already here. The
   # second half is what makes this exact without depending on a value that
