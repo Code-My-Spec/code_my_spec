@@ -1588,7 +1588,15 @@ defmodule CodeMySpecWeb.ProvisioningLive do
   end
 
   def handle_event("refresh_mail_dns", _params, socket) do
-    {:noreply, load(socket, socket.assigns.options)}
+    # `load/2` assigns the mail panel with `assign_new`, which does nothing
+    # when the key is already there — and after a mount it always is. So this
+    # button, whose whole job is to re-read DNS, never re-read the mail panel.
+    # It went unnoticed while the mount filled that panel in: the first read
+    # was right, and a stale one afterwards looks the same as a fresh one.
+    #
+    # `refresh_mail/1` assigns rather than assign_new, which is what "re-check"
+    # has to mean.
+    {:noreply, socket |> load(socket.assigns.options) |> refresh_mail()}
   end
 
   # Backups are the one piece of setup whose failure mode is silence: the step
