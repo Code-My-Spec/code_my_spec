@@ -82,7 +82,20 @@ EOF
 serve() {
   cd "$SITE_RUN"
   echo "==> serving $app on http://127.0.0.1:$PORT"
-  PORT="$PORT" mix phx.server
+  # DEPLOY_KEY in the environment, not only in dev.exs. The generated app's
+  # `config/runtime.exs` ends with
+  #
+  #     config :$app, :deploy_key, System.get_env("DEPLOY_KEY")
+  #
+  # unconditionally, and runtime.exs is evaluated after dev.exs — so with the
+  # variable unset it writes `nil` straight over the default `prepare` appends,
+  # and the config file says the right thing while the running app has nothing.
+  #
+  # `POST /api/content/pull` then answers 500 "Deploy key not configured on
+  # server", which is what the content step's render proof gets back — so a
+  # criterion about proving a post rendered fails as though the product never
+  # proves renders. Cost a 554s live recording to find, twice.
+  PORT="$PORT" DEPLOY_KEY="$DEPLOY_KEY" mix phx.server
 }
 
 case "${1:-serve}" in
