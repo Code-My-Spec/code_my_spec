@@ -41,6 +41,32 @@ defmodule CodeMySpec.BootVersionTest do
     :ok
   end
 
+  # A checkout with an upstream, and a second one able to push to it. That is
+  # the worktree situation in miniature: code arrives on the upstream ref
+  # without this checkout's HEAD ever moving.
+  defp origin_and_clone do
+    {:ok, origin} = Briefly.create(directory: true)
+    # `--initial-branch=main` so a clone lands on main. Without it the bare repo
+    # HEAD is an unborn default, and a second clone commits onto an unrelated
+    # branch whose push is refused as non-fast-forward.
+    {_, 0} = System.cmd("git", ["init", "--quiet", "--bare", "--initial-branch=main"], cd: origin)
+
+    work = clone(origin)
+    commit(work, "one")
+    {_, 0} = System.cmd("git", ["push", "-q", "-u", "origin", "HEAD:main"], cd: work)
+
+    {origin, work}
+  end
+
+  defp clone(origin) do
+    {:ok, dir} = Briefly.create(directory: true)
+    root = Path.join(dir, "checkout")
+    {_, 0} = System.cmd("git", ["clone", "-q", origin, root], stderr_to_stdout: true)
+    {_, 0} = System.cmd("git", ["config", "user.email", "t@example.com"], cd: root)
+    {_, 0} = System.cmd("git", ["config", "user.name", "t"], cd: root)
+    root
+  end
+
   test "a checkout that has not moved reports no drift" do
     root = git_repo()
     commit(root, "one")
@@ -136,6 +162,116 @@ defmodule CodeMySpec.BootVersionTest do
 
       refute BootVersion.describe() == ""
       assert is_binary(BootVersion.describe())
+    end
+  end
+
+  # 9c474a9d. The harness and server run from the main checkout; an agent in a
+  # worktree pushes to origin/main and that checkout's HEAD never moves. The old
+  # comparison found booted == HEAD and said nothing, while five commits sat
+  # unrun — two of them touching the channel contract, which is precisely what
+  # `contract_changed?/2` exists to notice.
+  #
+  # A local read: worktrees share refs, so the push updates the remote-tracking
+  # ref without a fetch. The clone here needs one to reach the same state.
+  describe "code that arrived without the checkout moving" do
+    test "a checkout behind its upstream is drifted, though its HEAD has not moved" do
+      {origin, work} = origin_and_clone()
+
+      BootVersion.capture(work)
+      head_at_boot = head_of(work)
+
+      other = clone(origin)
+      commit(other, "two")
+
+      {_, 0} =
+        System.cmd("git", ["push", "-q", "origin", "HEAD:main"],
+          cd: other,
+          stderr_to_stdout: true
+        )
+
+      {_, 0} = System.cmd("git", ["fetch", "-q"], cd: work)
+
+      assert head_of(work) == head_at_boot,
+             "the premise of this test is that HEAD did not move"
+
+      assert {:drifted, booted, current} = BootVersion.drift()
+      assert booted == head_at_boot
+      assert booted != current
+    end
+
+    # A checkout ahead of its upstream is running the newest code there is.
+    # Reporting that as drift would fire on every commit before it is pushed,
+    # which is most of an active session, and a warning that is always on is one
+    # nobody reads.
+    test "a checkout ahead of its upstream is not drifted" do
+      {_origin, work} = origin_and_clone()
+
+      BootVersion.capture(work)
+      commit(work, "local work")
+
+      # Moved HEAD, so the *first* rule fires. What must not happen is a report
+      # naming the upstream as what it should be running.
+      assert {:drifted, _booted, current} = BootVersion.drift()
+      assert current == head_of(work)
+    end
+
+    test "a checkout with no upstream at all is not drifted" do
+      root = git_repo()
+      commit(root, "one")
+
+      BootVersion.capture(root)
+
+      assert BootVersion.drift() == :none
+    end
+  end
+
+  defp head_of(root) do
+    {output, 0} = System.cmd("git", ["rev-parse", "--short", "HEAD"], cd: root)
+    String.trim(output)
+  end
+
+  # The two states need different remedies, and only one of them is "restart".
+  # A checkout behind its upstream relaunches the same commit — which is the
+  # trap: restarting is the obvious move and cannot work, so the messages built
+  # on this must be able to tell the cases apart (9c474a9d).
+  describe "stale_kind/0" do
+    test "a moved checkout is :checkout_moved" do
+      root = git_repo()
+      commit(root, "one")
+
+      BootVersion.capture(root)
+      commit(root, "two")
+
+      assert BootVersion.stale_kind() == :checkout_moved
+    end
+
+    test "a checkout behind its upstream is :behind_upstream" do
+      {origin, work} = origin_and_clone()
+
+      BootVersion.capture(work)
+
+      other = clone(origin)
+      commit(other, "two")
+
+      {_, 0} =
+        System.cmd("git", ["push", "-q", "origin", "HEAD:main"],
+          cd: other,
+          stderr_to_stdout: true
+        )
+
+      {_, 0} = System.cmd("git", ["fetch", "-q"], cd: work)
+
+      assert BootVersion.stale_kind() == :behind_upstream
+    end
+
+    test "agrees with drift/0 about there being nothing wrong" do
+      root = git_repo()
+      commit(root, "one")
+
+      BootVersion.capture(root)
+
+      assert BootVersion.drift() == :none
+      assert BootVersion.stale_kind() == :none
     end
   end
 end

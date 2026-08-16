@@ -85,21 +85,119 @@ defmodule CodeMySpec.BootVersion do
   end
 
   @doc """
-  `{:drifted, booted, current}` when the checkout has moved since boot.
+  `{:drifted, booted, current}` when what is running is behind what the project
+  has.
 
-  `:none` covers every case that is not a clear, readable difference: never
-  captured, no git, an unreadable HEAD. An uncertain answer here would be
-  appended to an error message as though it were evidence, and a wrong "restart
-  your harness" costs more than a missing one.
+  Two ways that happens, and only one of them used to be caught.
+
+  The checkout moves under a running process — someone commits or rebases in the
+  tree that launched it. `head/1` sees that immediately.
+
+  Or the checkout does not move at all, and the code still does. This project is
+  worked through git worktrees, and the harness and server both run from the
+  main checkout whatever directory started them (`just refresh-harness` says so
+  outright). An agent in a worktree commits, pushes to `origin/main`, and the
+  main checkout's HEAD is exactly where it was — so the old comparison found
+  booted == HEAD and answered `:none` while five commits sat unrun, two of them
+  touching `@contract_paths` (`9c474a9d`). The available readings for the agent
+  were "my fix is wrong" and "my fix is not running", and nothing distinguished
+  them.
+
+  So the upstream ref is consulted too. That is a **local** read: worktrees share
+  an object store and refs, so a push from any of them updates the
+  remote-tracking ref this checkout sees, with no network and no fetch.
+
+  `:none` still covers every case that is not a clear, readable difference —
+  never captured, no git, an unreadable HEAD, no upstream configured. An
+  uncertain answer here would be appended to an error message as though it were
+  evidence, and a wrong "restart your harness" costs more than a missing one.
   """
   @spec drift() :: {:drifted, String.t(), String.t()} | :none
   def drift do
     case :persistent_term.get(@key, nil) do
       {root, booted} when is_binary(booted) ->
-        compare(booted, head(root))
+        {target, _kind} = assess(root)
+        compare(booted, target)
 
       _ ->
         :none
+    end
+  end
+
+  @doc """
+  Why the running code is stale, which decides the remedy.
+
+  `:checkout_moved` — the tree that launched this process has moved. Restarting
+  it picks the new code up.
+
+  `:behind_upstream` — the checkout has not moved and is itself behind its
+  upstream, which is what happens when an agent in a worktree pushes. **A
+  restart alone changes nothing here**: it relaunches the same commit. The
+  checkout has to be pulled first. That distinction is the whole point of
+  separating this from `drift/0` — a message saying "restart" to someone in this
+  state sends them to do the one thing that cannot work, and I spent part of an
+  evening in exactly that position (`9c474a9d`).
+
+  `:none` whenever `drift/0` is `:none`.
+  """
+  @spec stale_kind() :: :checkout_moved | :behind_upstream | :none
+  def stale_kind do
+    case :persistent_term.get(@key, nil) do
+      {root, booted} when is_binary(booted) ->
+        {target, kind} = assess(root)
+        kind_when_drifted(compare(booted, target), kind)
+
+      _ ->
+        :none
+    end
+  end
+
+  defp kind_when_drifted(:none, _kind), do: :none
+  defp kind_when_drifted({:drifted, _booted, _current}, kind), do: kind
+
+  # What this process ought to be running, and why it differs. One source of
+  # truth, so `drift/0` and `stale_kind/0` cannot disagree about which case
+  # this is.
+  #
+  # HEAD first because a moved checkout is the more urgent of the two — the code
+  # on disk already disagrees with the process — and because it is the case that
+  # needs no remote-tracking ref to exist.
+  defp assess(root) do
+    head = head(root)
+
+    case behind_upstream(root, head) do
+      nil -> {head, :checkout_moved}
+      upstream -> {upstream, :behind_upstream}
+    end
+  end
+
+  # The upstream commit when this checkout is strictly behind it, `nil`
+  # otherwise. `nil` for a checkout that is ahead, level, on an unrelated
+  # branch, or has no upstream at all — none of those mean the running code is
+  # stale, and saying "drifted" for them would train readers to ignore it.
+  defp behind_upstream(root, head) when is_binary(head) do
+    with upstream when is_binary(upstream) <- rev_parse(root, "@{upstream}"),
+         true <- upstream != head,
+         true <- ancestor?(root, head, upstream) do
+      upstream
+    else
+      _ -> nil
+    end
+  end
+
+  defp behind_upstream(_root, _head), do: nil
+
+  defp ancestor?(root, maybe_ancestor, descendant) do
+    case git(root, ["merge-base", "--is-ancestor", maybe_ancestor, descendant]) do
+      {_output, 0} -> true
+      _ -> false
+    end
+  end
+
+  defp rev_parse(root, ref) do
+    case git(root, ["rev-parse", "--short", ref]) do
+      {output, 0} -> String.trim(output)
+      _ -> nil
     end
   end
 
@@ -169,12 +267,26 @@ defmodule CodeMySpec.BootVersion do
   def analyzer_staleness do
     with {:drifted, booted, current} <- drift(),
          true <- analyzer_changed?(booted, current) do
-      "this result came from a build at #{booted}; the checkout is now at #{current}, " <>
-        "and that range changed analyzer code — rebuild the harness " <>
-        "(`just refresh`) before acting on it"
+      staleness_message(stale_kind(), booted, current)
     else
       _ -> nil
     end
+  end
+
+  # `just refresh` rebuilds from the checkout, so it is the right instruction
+  # only when the checkout holds the newer code. When the checkout is itself
+  # behind, refreshing rebuilds the same commit and the result looks unchanged
+  # for a reason nothing states.
+  defp staleness_message(:behind_upstream, booted, current) do
+    "this result came from a build at #{booted}; the checkout is behind its upstream " <>
+      "at #{current}, and that range changed analyzer code — pull in that checkout, " <>
+      "then rebuild the harness (`just refresh`) before acting on it"
+  end
+
+  defp staleness_message(_kind, booted, current) do
+    "this result came from a build at #{booted}; the checkout is now at #{current}, " <>
+      "and that range changed analyzer code — rebuild the harness " <>
+      "(`just refresh`) before acting on it"
   end
 
   # `config_changed?/2` sat here, asking the same question of `config/` so the
@@ -212,14 +324,17 @@ defmodule CodeMySpec.BootVersion do
   # `find_executable/1` before `cmd/3` and a `File.dir?/1` before the `:cd`,
   # because both of those raise rather than returning a tuple and this must not
   # be able to take down the path it is decorating.
-  defp head(root) do
+  defp head(root), do: rev_parse(root, "HEAD")
+
+  # One place that knows how to run git against a checkout, so `head/1`,
+  # `rev_parse/2` and `ancestor?/3` cannot drift in how they handle a missing
+  # binary or a directory that is not there.
+  defp git(root, args) do
     with true <- is_binary(root) and File.dir?(root),
-         git when is_binary(git) <- System.find_executable("git"),
-         {output, 0} <-
-           System.cmd(git, ["rev-parse", "--short", "HEAD"], cd: root, stderr_to_stdout: true) do
-      String.trim(output)
+         git when is_binary(git) <- System.find_executable("git") do
+      System.cmd(git, args, cd: root, stderr_to_stdout: true)
     else
-      _ -> nil
+      _ -> :error
     end
   end
 end
