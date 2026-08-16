@@ -76,8 +76,28 @@ defmodule CodeMySpecSpex.Story963.Criterion7965Spex do
       end
 
       then_ "the step reports success rather than an already-exists error", context do
+        # Say what the step actually did, not only that it was not done. An
+        # errored step renders `data-test="escalation"` carrying what was
+        # attempted and the provider's own words; without them this failure is
+        # "expected done", which is the one thing already known — and the run
+        # that produced it took 82 seconds against real providers.
+        parsed = Floki.parse_document!(context.html)
+
+        state =
+          parsed
+          |> Floki.find("[data-test='setup-step'][data-step='server']")
+          |> Floki.attribute("data-state")
+          |> List.first()
+
+        escalation =
+          parsed
+          |> Floki.find("[data-test='escalation'][data-step='server']")
+          |> Floki.text()
+          |> String.trim()
+
         assert context.html =~ ~r/data-step="server"[^>]*data-state="done"/,
-               "expected the repeated run to succeed, not error on existing resources"
+               "expected the repeated run to succeed, not error on existing resources. " <>
+                 "The step is #{inspect(state)} and the page says: #{inspect(escalation)}"
 
         refute context.html =~ ~r/data-step="server"[^>]*data-state="errored"/,
                "expected no already-exists failure on the second run"
