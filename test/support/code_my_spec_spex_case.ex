@@ -293,6 +293,14 @@ defmodule CodeMySpecSpex.Case do
   def fake_providers(context) do
     Req.Test.set_req_test_to_shared(%{})
 
+    # And put it back. Shared mode is global to the VM, so a spex that leaves
+    # it on changes how *every later spex* resolves a stub — including ones
+    # driving cassettes, which then look up a shared stub nobody installed and
+    # report `cannot find mock/stub`. That is ordering-dependent by
+    # construction: it passes in isolation and fails somewhere in a full run,
+    # which is the most expensive kind of failure to attribute.
+    on_exit(fn -> Req.Test.set_req_test_to_private(self()) end)
+
     # The credentials too. A step looks one up before it makes a request, so a
     # scope with no connection stops on its own precondition and the criterion
     # reads that as the step having done nothing — which is exactly how this
