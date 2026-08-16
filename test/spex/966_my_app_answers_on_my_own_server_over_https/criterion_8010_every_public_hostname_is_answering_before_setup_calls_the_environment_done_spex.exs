@@ -33,9 +33,12 @@ defmodule CodeMySpecSpex.Story966.Criterion8010Spex do
   spex "Every public hostname is answering before setup calls the environment done" do
     scenario "the hostname is checked, and the check is what makes the step done" do
       given_ "an environment has deployed", context do
-        own_domain(context.project, "staged.example.com")
         context = stage_deploy(context, :ok)
         view = mount_provisioning(context)
+
+        # Set after the mount: a domain present at mount makes `load/2` read the
+        # mail panel, which calls Resend outside every cassette.
+        own_domain(context.project, "staged.example.com")
 
         {:ok, Map.put(context, :view, view)}
       end

@@ -32,8 +32,15 @@ defmodule CodeMySpecSpex.Story965.Criterion7991Spex do
       # owned domain rather than acting twice". astralbi.com is a real zone the
       # account manages.
       given_ "setup already adopted the domain Sam owns", context do
-        own_domain(context.project, "astralbi.com")
+        # Mounted before the domain is set. `ProvisioningLive.load/2` reads the
+        # mail panel at mount whenever the project has a domain, and that read
+        # calls Resend — while the mount sits outside every cassette, because
+        # the idiom here is mount, then act under one. So a domain set first
+        # puts a provider call in the one place no recording covers, and the
+        # run dies in `mount/3` with `cannot find mock/stub`, which reads as a
+        # `Req.Test` process-scoping problem rather than an uncovered call.
         view = mount_provisioning(context)
+        own_domain(context.project, "astralbi.com")
 
         with_provider_cassette(@register_cassette, fn ->
           view

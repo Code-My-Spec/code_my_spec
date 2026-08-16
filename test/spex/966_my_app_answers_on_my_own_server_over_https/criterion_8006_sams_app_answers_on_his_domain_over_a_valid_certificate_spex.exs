@@ -27,9 +27,12 @@ defmodule CodeMySpecSpex.Story966.Criterion8006Spex do
         # A deployed environment, staged: the injected probe returns a healthy
         # 200-over-HTTPS answer, which is what a real kamal-proxy cert issuance
         # produces. The domain is set so the tls step has a host to verify.
-        own_domain(context.project, "staged.example.com")
         context = stage_deploy(context, :ok)
         view = mount_provisioning(context)
+
+        # Set after the mount: a domain present at mount makes `load/2` read the
+        # mail panel, which calls Resend outside every cassette.
+        own_domain(context.project, "staged.example.com")
 
         {:ok, Map.put(context, :view, view)}
       end

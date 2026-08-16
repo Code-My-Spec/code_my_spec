@@ -47,10 +47,13 @@ defmodule CodeMySpecSpex.Story965.Criterion7996Spex do
         # *adopts* them instead of creating them, and adopted resources are
         # never torn down — so the records leak and the recording contains no
         # creation at all.
-        own_domain(context.project, "c7996.astralbi.com")
 
         {:ok, view, _html} =
           live(context.conn, "/app/projects/#{context.project.id}/provisioning")
+
+        # Set after the mount: a domain present at mount makes `load/2` read the
+        # mail panel, which calls Resend outside every cassette.
+        own_domain(context.project, "c7996.astralbi.com")
 
         # Registered *after* the LiveView is mounted, so it runs *before*
         # LiveViewTest tears it down — `on_exit` callbacks run in reverse order

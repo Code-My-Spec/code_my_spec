@@ -36,10 +36,13 @@ defmodule CodeMySpecSpex.Story974.Criterion8032Spex do
         # criterion runs second finds the first's domain already registered and
         # *adopts* it — and an adopted resource is never torn down, so each one
         # replays the others' state.
-        own_domain(context.project, "c8032.astralbi.com")
 
         {:ok, view, _html} =
           live(context.conn, "/app/projects/#{context.project.id}/provisioning")
+
+        # Set after the mount: a domain present at mount makes `load/2` read the
+        # mail panel, which calls Resend outside every cassette.
+        own_domain(context.project, "c8032.astralbi.com")
 
         before =
           with_provider_cassette(@sending_cassette, fn ->

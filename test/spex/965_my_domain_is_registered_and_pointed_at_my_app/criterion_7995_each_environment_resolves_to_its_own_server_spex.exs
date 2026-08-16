@@ -46,9 +46,12 @@ defmodule CodeMySpecSpex.Story965.Criterion7995Spex do
         # *adopts* them instead of creating them, and adopted resources are
         # never torn down — so the records leak and the recording contains no
         # creation at all.
-        own_domain(context.project, "c7995.astralbi.com")
 
         view = mount_provisioning(context)
+
+        # Set after the mount: a domain present at mount makes `load/2` read the
+        # mail panel, which calls Resend outside every cassette.
+        own_domain(context.project, "c7995.astralbi.com")
 
         # Only DNS is created here now, so only DNS needs returning.
         tear_down_after(context.scope, [:dns])

@@ -32,8 +32,11 @@ defmodule CodeMySpecSpex.Story965.Criterion7992Spex do
       # than bought — buying is a dashboard errand. "In his own account" is
       # about the adopted domain being recorded under his ownership.
       given_ "setup adopted the domain Sam owns", context do
-        own_domain(context.project, "astralbi.com")
         view = mount_provisioning(context)
+
+        # Set after the mount: a domain present at mount makes `load/2` read the
+        # mail panel, which calls Resend outside every cassette.
+        own_domain(context.project, "astralbi.com")
 
         with_provider_cassette(@register_cassette, fn ->
           view

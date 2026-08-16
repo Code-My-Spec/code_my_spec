@@ -34,8 +34,11 @@ defmodule CodeMySpecSpex.Story965.Criterion8052Spex do
         # astralbi.com is a real Cloudflare zone the account manages —
         # owned by DNS even though registered elsewhere, which is exactly the
         # "ordinary way in" this criterion is about.
-        own_domain(context.project, "astralbi.com")
         view = mount_provisioning(context)
+
+        # Set after the mount: a domain present at mount makes `load/2` read the
+        # mail panel, which calls Resend outside every cassette.
+        own_domain(context.project, "astralbi.com")
 
         {:ok, Map.put(context, :view, view)}
       end

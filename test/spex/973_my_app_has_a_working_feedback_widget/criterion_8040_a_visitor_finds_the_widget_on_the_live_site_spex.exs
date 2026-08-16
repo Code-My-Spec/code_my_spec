@@ -35,10 +35,13 @@ defmodule CodeMySpecSpex.Story973.Criterion8040Spex do
         # come from `widget_on_the_fleet`; this was reaching for
         # `publishable_project/2`, which buys a real object-storage bucket to
         # supply one string a widget criterion has no other use for.
-        own_domain(context.project, "c8040.astralbi.com")
 
         {:ok, view, _html} =
           live(context.conn, "/app/projects/#{context.project.id}/provisioning")
+
+        # Set after the mount: a domain present at mount makes `load/2` read the
+        # mail panel, which calls Resend outside every cassette.
+        own_domain(context.project, "c8040.astralbi.com")
 
         {:ok, Map.put(context, :view, view)}
       end
