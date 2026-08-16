@@ -27,10 +27,6 @@ defmodule CodeMySpecSpex.Story968.Criterion8016Spex do
   setup :real_working_directory
   setup :connect_providers
   setup :real_backup_database
-  # The retention this criterion reads is declared by the backup step, which
-  # runs on the box. Without a reachable box the step stops on its
-  # preconditions and declares nothing.
-  setup :backups_on_fleet_box
 
   spex "Backups past the retention window are gone" do
     scenario "no dump older than the retention window remains" do

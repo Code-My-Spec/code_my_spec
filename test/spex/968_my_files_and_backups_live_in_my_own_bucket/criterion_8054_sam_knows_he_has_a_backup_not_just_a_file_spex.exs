@@ -29,10 +29,6 @@ defmodule CodeMySpecSpex.Story968.Criterion8054Spex do
   setup :real_working_directory
   setup :connect_providers
   setup :real_backup_database
-  # The restore this criterion is about happens on the box: the step SSHes
-  # there, delivers `bin/backup` and runs it. Without a reachable box the step
-  # stops on its preconditions and the restore proof is never attempted.
-  setup :backups_on_fleet_box
 
   spex "Sam knows he has a backup, not just a file" do
     scenario "the backup step proves a restore before it reports done" do
