@@ -23,6 +23,12 @@ defmodule CodeMySpecSpex.Story963.Criterion7965Spex do
   setup :setup_active_project
   setup :devops_on
   setup :connect_providers
+  # One working directory for the whole run. Without it each step materialises
+  # its own temp root, so the secrets step encrypted `envs/prod.enc.env` under
+  # `spex-89500_22082_…` and the server step looked for it under a different
+  # `spex-…` and reported `cannot operate on non-existent file`. Both were
+  # telling the truth about their own directory.
+  setup :real_working_directory
 
   spex "Running a step twice leaves one of everything" do
     scenario "a second run of the server step converges instead of duplicating" do
@@ -44,10 +50,29 @@ defmodule CodeMySpecSpex.Story963.Criterion7965Spex do
         # push as non-fast-forward (which is 8184's subject, not this one's).
         tear_down_repository(context.project)
 
-        with_provider_cassette(@create_cassette, fn ->
+        # `with_full_cassette`, not the provider one: the server step SSHes to
+        # the box it just made, and `with_provider_cassette` records HTTP only.
+        # A subprocess is not an HTTP request, so on replay the run really
+        # connects — to an address the cassette supplies for a box that was
+        # destroyed when the recording ended. It waits out the timeout and the
+        # step errors, having spent 82 seconds proving the network works
+        # (c635d90e).
+        with_full_cassette @create_cassette do
           # Saving a credential proves it with a real call now, so this is a
           # provider interaction and belongs inside the cassette.
           paste_provider_credentials(view)
+
+          # Secrets first, because the server step reads the environment file
+          # it writes. `sops` cannot operate on a file that does not exist, and
+          # the sequence is repository → secrets → server, so running the
+          # server step alone asserts a premise the sequence never gives it:
+          # `{:sops_failed, 100, "cannot operate on non-existent file
+          # …/envs/prod.enc.env"}`.
+          view
+          |> element("[data-test='setup-step'][data-step='secrets'] [data-test='run-step']")
+          |> render_click()
+
+          CodeMySpecSpex.Case.await_step(view, :secrets)
 
           view
           |> element("[data-test='setup-step'][data-step='server'] [data-test='run-step']")
@@ -58,19 +83,19 @@ defmodule CodeMySpecSpex.Story963.Criterion7965Spex do
           # the click and a block that closes on the click leaves them
           # uncovered.
           CodeMySpecSpex.Case.await_step(view, :server)
-        end)
+        end
 
         {:ok, Map.put(context, :view, view)}
       end
 
       when_ "the server step runs a second time", context do
-        with_provider_cassette(@converge_cassette, fn ->
+        with_full_cassette @converge_cassette do
           context.view
           |> element("[data-test='setup-step'][data-step='server'] [data-test='run-step']")
           |> render_click()
 
           CodeMySpecSpex.Case.await_step(context.view, :server)
-        end)
+        end
 
         {:ok, Map.put(context, :html, render(context.view))}
       end

@@ -1,0 +1,39 @@
+{
+  "commands": [
+    {
+      "args": [
+        "decrypt",
+        "envs/prod.enc.env"
+      ],
+      "command": "sops",
+      "exit_code": 0,
+      "opts": {
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-90105_20869_u1QybJZRgXT9",
+        "env": {
+          "SOPS_AGE_KEY": "AGE-SECRET-KEY-1H4P3933A0Y5GE7SFJYXTANPNPWVKZMJGWRZZVTD60QGKNH26AY6QN6MJM4"
+        },
+        "stderr_to_stdout": true
+      },
+      "output": "SOPS_INITIALIZED=true\nSECRET_KEY_BASE=0tPAEaqmIEwuewqxUKFfOwzz0vNc+1uNQs7sqQscxX0YKNPGIEPZaHI8oRqtRZvtANvP76gsyKEl6hrNzk3QIw\nDEPLOY_KEY=dk_azAm_Gic66jSho1_ICtyPvLHIYrwXhWjsTm0UdYNK-o\nCODEMYSPEC_WIDGET_URL=wss://dev.codemyspec.com/widget\nDATABASE_URL=ecto://app:h9JYjloKQUhwusEKeOxrHlQFms9Njyeob0zIl5CsiJc@cms-postgres/app_prod\n",
+      "recorded_at": "2026-08-16T09:01:45.565571Z"
+    },
+    {
+      "args": [
+        "decrypt",
+        "envs/uat.enc.env"
+      ],
+      "command": "sops",
+      "exit_code": 0,
+      "opts": {
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/spex-90105_20869_u1QybJZRgXT9",
+        "env": {
+          "SOPS_AGE_KEY": "AGE-SECRET-KEY-1H4P3933A0Y5GE7SFJYXTANPNPWVKZMJGWRZZVTD60QGKNH26AY6QN6MJM4"
+        },
+        "stderr_to_stdout": true
+      },
+      "output": "SOPS_INITIALIZED=true\nSECRET_KEY_BASE=kRaIpAqhJNM+UMUAYoNWfEjMUE368rkh+mLk2hCMqc4Yu35kC7/lzZBVDDIcwLUW6RdCb/FrzJXAZP+OXzHBUA\nDEPLOY_KEY=dk_azAm_Gic66jSho1_ICtyPvLHIYrwXhWjsTm0UdYNK-o\nCODEMYSPEC_WIDGET_URL=wss://dev.codemyspec.com/widget\nDATABASE_URL=ecto://app:AQJcRiKpVkaTaHc5oucIfGdDy0SGz0uRHhn8Qs86bYQ@cms-postgres/app_uat\n",
+      "recorded_at": "2026-08-16T09:01:45.578464Z"
+    }
+  ],
+  "ports": []
+}

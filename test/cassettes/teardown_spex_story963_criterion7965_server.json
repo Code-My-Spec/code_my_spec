@@ -1,19 +1,16 @@
 {
   "interactions": [
     {
-      "recorded_at": "2026-08-11T03:45:50.577607Z",
+      "recorded_at": "2026-08-16T09:01:46.239568Z",
       "request": {
         "body": "",
         "body_type": "text",
         "headers": {
-          "accept-encoding": [
-            "gzip"
-          ],
           "content-type": [
             "application/json"
           ],
           "user-agent": [
-            "req/0.5.17"
+            "req/0.7.2"
           ]
         },
         "method": "GET",
@@ -60,7 +57,7 @@
                 "type": "system"
               },
               "included_traffic": 21990232555520,
-              "ingoing_traffic": 393135000,
+              "ingoing_traffic": 644290000,
               "iso": null,
               "labels": {},
               "load_balancers": [],
@@ -76,7 +73,7 @@
               },
               "locked": false,
               "name": "fuellytics",
-              "outgoing_traffic": 711530000,
+              "outgoing_traffic": 1138920000,
               "placement_group": null,
               "primary_disk_size": 40,
               "private_net": [],
@@ -218,7 +215,7 @@
                 "type": "system"
               },
               "included_traffic": 2199023255552,
-              "ingoing_traffic": 877560000,
+              "ingoing_traffic": 1237825000,
               "iso": null,
               "labels": {},
               "load_balancers": [],
@@ -234,7 +231,7 @@
               },
               "locked": false,
               "name": "fuellytics-prod",
-              "outgoing_traffic": 1677615000,
+              "outgoing_traffic": 2613440000,
               "placement_group": null,
               "primary_disk_size": 80,
               "private_net": [],
@@ -432,8 +429,8 @@
             },
             {
               "backup_window": null,
-              "created": "2026-08-11T03:44:25Z",
-              "id": 161336583,
+              "created": "2026-08-16T09:00:19Z",
+              "id": 162339695,
               "image": {
                 "architecture": "x86",
                 "bound_to": null,
@@ -480,7 +477,7 @@
                 {
                   "alias_ips": [],
                   "ip": "10.0.0.2",
-                  "mac_address": "86:00:00:3b:13:ca",
+                  "mac_address": "86:00:00:39:24:e1",
                   "network": 12535878
                 }
               ],
@@ -491,21 +488,21 @@
               "public_net": {
                 "firewalls": [
                   {
-                    "id": 11447749,
+                    "id": 11471874,
                     "status": "applied"
                   }
                 ],
                 "floating_ips": [],
                 "ipv4": {
                   "blocked": false,
-                  "dns_ptr": "static.94.200.156.178.clients.your-server.de",
-                  "id": 144331602,
-                  "ip": "178.156.200.94"
+                  "dns_ptr": "static.52.185.156.178.clients.your-server.de",
+                  "id": 145092147,
+                  "ip": "178.156.185.52"
                 },
                 "ipv6": {
                   "blocked": false,
                   "dns_ptr": [],
-                  "id": 144331603,
+                  "id": 145092148,
                   "ip": "2a01:4ff:f0:549b::/64"
                 }
               },
@@ -683,8 +680,8 @@
             },
             {
               "backup_window": null,
-              "created": "2026-08-11T03:44:26Z",
-              "id": 161336588,
+              "created": "2026-08-16T09:00:19Z",
+              "id": 162339699,
               "image": {
                 "architecture": "x86",
                 "bound_to": null,
@@ -731,7 +728,7 @@
                 {
                   "alias_ips": [],
                   "ip": "10.0.0.3",
-                  "mac_address": "86:00:00:3b:13:c9",
+                  "mac_address": "86:00:00:39:24:e0",
                   "network": 12535878
                 }
               ],
@@ -742,7 +739,7 @@
               "public_net": {
                 "firewalls": [
                   {
-                    "id": 11447749,
+                    "id": 11471874,
                     "status": "applied"
                   }
                 ],
@@ -750,13 +747,13 @@
                 "ipv4": {
                   "blocked": false,
                   "dns_ptr": "static.165.216.156.178.clients.your-server.de",
-                  "id": 144331604,
+                  "id": 145092155,
                   "ip": "178.156.216.165"
                 },
                 "ipv6": {
                   "blocked": false,
                   "dns_ptr": [],
-                  "id": 144331605,
+                  "id": 145092156,
                   "ip": "2a01:4ff:f0:af2d::/64"
                 }
               },
@@ -955,7 +952,7 @@
             "application/json"
           ],
           "date": [
-            "Tue, 11 Aug 2026 03:45:50 GMT"
+            "Sun, 16 Aug 2026 09:01:46 GMT"
           ],
           "link": [
             "<https://api.hetzner.cloud/v1/servers?page=1>; rel=\"last\""
@@ -967,7 +964,7 @@
             "3595"
           ],
           "ratelimit-reset": [
-            "1786419955"
+            "1786870911"
           ],
           "strict-transport-security": [
             "max-age=31536000; includeSubDomains"
@@ -979,31 +976,28 @@
             "Accept-Encoding"
           ],
           "x-correlation-id": [
-            "4a271f1824e6b5ecc4f7fee0be8e51c1"
+            "e721b4eca1846b0209d6f7f70a75d88c"
           ]
         },
         "status": 200
       }
     },
     {
-      "recorded_at": "2026-08-11T03:45:50.744360Z",
+      "recorded_at": "2026-08-16T09:01:46.414502Z",
       "request": {
         "body": "",
         "body_type": "text",
         "headers": {
-          "accept-encoding": [
-            "gzip"
-          ],
           "content-type": [
             "application/json"
           ],
           "user-agent": [
-            "req/0.5.17"
+            "req/0.7.2"
           ]
         },
         "method": "DELETE",
         "query_string": "",
-        "uri": "https://api.hetzner.cloud/v1/servers/161336583"
+        "uri": "https://api.hetzner.cloud/v1/servers/162339695"
       },
       "response": {
         "body_json": {
@@ -1011,15 +1005,15 @@
             "command": "delete_server",
             "error": null,
             "finished": null,
-            "id": 648187881440783,
+            "id": 649270212623545,
             "progress": 0,
             "resources": [
               {
-                "id": 161336583,
+                "id": 162339695,
                 "type": "server"
               }
             ],
-            "started": "2026-08-11T03:45:50Z",
+            "started": "2026-08-16T09:01:46Z",
             "status": "running"
           }
         },
@@ -1040,11 +1034,14 @@
           "access-control-max-age": [
             "86400"
           ],
+          "content-length": [
+            "262"
+          ],
           "content-type": [
             "application/json"
           ],
           "date": [
-            "Tue, 11 Aug 2026 03:45:50 GMT"
+            "Sun, 16 Aug 2026 09:01:46 GMT"
           ],
           "ratelimit-limit": [
             "3600"
@@ -1053,38 +1050,32 @@
             "3594"
           ],
           "ratelimit-reset": [
-            "1786419956"
+            "1786870912"
           ],
           "strict-transport-security": [
             "max-age=31536000; includeSubDomains"
-          ],
-          "transfer-encoding": [
-            "chunked"
           ],
           "vary": [
             "Accept-Encoding"
           ],
           "x-correlation-id": [
-            "ddd6c2dfc043036c084a5d5e1a98543c"
+            "d7f73dc63e5f77ec9202dcaf4474cf59"
           ]
         },
         "status": 200
       }
     },
     {
-      "recorded_at": "2026-08-11T03:45:51.002166Z",
+      "recorded_at": "2026-08-16T09:01:46.565123Z",
       "request": {
         "body": "",
         "body_type": "text",
         "headers": {
-          "accept-encoding": [
-            "gzip"
-          ],
           "content-type": [
             "application/json"
           ],
           "user-agent": [
-            "req/0.5.17"
+            "req/0.7.2"
           ]
         },
         "method": "GET",
@@ -1131,7 +1122,7 @@
                 "type": "system"
               },
               "included_traffic": 21990232555520,
-              "ingoing_traffic": 393135000,
+              "ingoing_traffic": 644290000,
               "iso": null,
               "labels": {},
               "load_balancers": [],
@@ -1147,7 +1138,7 @@
               },
               "locked": false,
               "name": "fuellytics",
-              "outgoing_traffic": 711530000,
+              "outgoing_traffic": 1138920000,
               "placement_group": null,
               "primary_disk_size": 40,
               "private_net": [],
@@ -1289,7 +1280,7 @@
                 "type": "system"
               },
               "included_traffic": 2199023255552,
-              "ingoing_traffic": 877560000,
+              "ingoing_traffic": 1237825000,
               "iso": null,
               "labels": {},
               "load_balancers": [],
@@ -1305,7 +1296,7 @@
               },
               "locked": false,
               "name": "fuellytics-prod",
-              "outgoing_traffic": 1677615000,
+              "outgoing_traffic": 2613440000,
               "placement_group": null,
               "primary_disk_size": 80,
               "private_net": [],
@@ -1503,8 +1494,8 @@
             },
             {
               "backup_window": null,
-              "created": "2026-08-11T03:44:26Z",
-              "id": 161336588,
+              "created": "2026-08-16T09:00:19Z",
+              "id": 162339699,
               "image": {
                 "architecture": "x86",
                 "bound_to": null,
@@ -1551,7 +1542,7 @@
                 {
                   "alias_ips": [],
                   "ip": "10.0.0.3",
-                  "mac_address": "86:00:00:3b:13:c9",
+                  "mac_address": "86:00:00:39:24:e0",
                   "network": 12535878
                 }
               ],
@@ -1562,7 +1553,7 @@
               "public_net": {
                 "firewalls": [
                   {
-                    "id": 11447749,
+                    "id": 11471874,
                     "status": "applied"
                   }
                 ],
@@ -1570,13 +1561,13 @@
                 "ipv4": {
                   "blocked": false,
                   "dns_ptr": "static.165.216.156.178.clients.your-server.de",
-                  "id": 144331604,
+                  "id": 145092155,
                   "ip": "178.156.216.165"
                 },
                 "ipv6": {
                   "blocked": false,
                   "dns_ptr": [],
-                  "id": 144331605,
+                  "id": 145092156,
                   "ip": "2a01:4ff:f0:af2d::/64"
                 }
               },
@@ -1775,7 +1766,7 @@
             "application/json"
           ],
           "date": [
-            "Tue, 11 Aug 2026 03:45:50 GMT"
+            "Sun, 16 Aug 2026 09:01:46 GMT"
           ],
           "link": [
             "<https://api.hetzner.cloud/v1/servers?page=1>; rel=\"last\""
@@ -1787,7 +1778,7 @@
             "3593"
           ],
           "ratelimit-reset": [
-            "1786419957"
+            "1786870913"
           ],
           "strict-transport-security": [
             "max-age=31536000; includeSubDomains"
@@ -1799,26 +1790,23 @@
             "Accept-Encoding"
           ],
           "x-correlation-id": [
-            "607e35deb9ee6885e02e2b6f6366b32c"
+            "f72fccb167341cec3dad7c77538c603a"
           ]
         },
         "status": 200
       }
     },
     {
-      "recorded_at": "2026-08-11T03:45:51.219851Z",
+      "recorded_at": "2026-08-16T09:01:46.725301Z",
       "request": {
         "body": "",
         "body_type": "text",
         "headers": {
-          "accept-encoding": [
-            "gzip"
-          ],
           "content-type": [
             "application/json"
           ],
           "user-agent": [
-            "req/0.5.17"
+            "req/0.7.2"
           ]
         },
         "method": "GET",
@@ -1865,7 +1853,7 @@
                 "type": "system"
               },
               "included_traffic": 21990232555520,
-              "ingoing_traffic": 393135000,
+              "ingoing_traffic": 644290000,
               "iso": null,
               "labels": {},
               "load_balancers": [],
@@ -1881,7 +1869,7 @@
               },
               "locked": false,
               "name": "fuellytics",
-              "outgoing_traffic": 711530000,
+              "outgoing_traffic": 1138920000,
               "placement_group": null,
               "primary_disk_size": 40,
               "private_net": [],
@@ -2023,7 +2011,7 @@
                 "type": "system"
               },
               "included_traffic": 2199023255552,
-              "ingoing_traffic": 877560000,
+              "ingoing_traffic": 1237825000,
               "iso": null,
               "labels": {},
               "load_balancers": [],
@@ -2039,7 +2027,7 @@
               },
               "locked": false,
               "name": "fuellytics-prod",
-              "outgoing_traffic": 1677615000,
+              "outgoing_traffic": 2613440000,
               "placement_group": null,
               "primary_disk_size": 80,
               "private_net": [],
@@ -2237,8 +2225,8 @@
             },
             {
               "backup_window": null,
-              "created": "2026-08-11T03:44:26Z",
-              "id": 161336588,
+              "created": "2026-08-16T09:00:19Z",
+              "id": 162339699,
               "image": {
                 "architecture": "x86",
                 "bound_to": null,
@@ -2285,7 +2273,7 @@
                 {
                   "alias_ips": [],
                   "ip": "10.0.0.3",
-                  "mac_address": "86:00:00:3b:13:c9",
+                  "mac_address": "86:00:00:39:24:e0",
                   "network": 12535878
                 }
               ],
@@ -2296,7 +2284,7 @@
               "public_net": {
                 "firewalls": [
                   {
-                    "id": 11447749,
+                    "id": 11471874,
                     "status": "applied"
                   }
                 ],
@@ -2304,13 +2292,13 @@
                 "ipv4": {
                   "blocked": false,
                   "dns_ptr": "static.165.216.156.178.clients.your-server.de",
-                  "id": 144331604,
+                  "id": 145092155,
                   "ip": "178.156.216.165"
                 },
                 "ipv6": {
                   "blocked": false,
                   "dns_ptr": [],
-                  "id": 144331605,
+                  "id": 145092156,
                   "ip": "2a01:4ff:f0:af2d::/64"
                 }
               },
@@ -2509,7 +2497,7 @@
             "application/json"
           ],
           "date": [
-            "Tue, 11 Aug 2026 03:45:51 GMT"
+            "Sun, 16 Aug 2026 09:01:46 GMT"
           ],
           "link": [
             "<https://api.hetzner.cloud/v1/servers?page=1>; rel=\"last\""
@@ -2521,7 +2509,7 @@
             "3592"
           ],
           "ratelimit-reset": [
-            "1786419959"
+            "1786870914"
           ],
           "strict-transport-security": [
             "max-age=31536000; includeSubDomains"
@@ -2533,31 +2521,28 @@
             "Accept-Encoding"
           ],
           "x-correlation-id": [
-            "22a53e0d435dde1b598c3f8907933a0a"
+            "a2f80ca92268dfed38eed9c122e9b12e"
           ]
         },
         "status": 200
       }
     },
     {
-      "recorded_at": "2026-08-11T03:45:51.386577Z",
+      "recorded_at": "2026-08-16T09:01:46.888457Z",
       "request": {
         "body": "",
         "body_type": "text",
         "headers": {
-          "accept-encoding": [
-            "gzip"
-          ],
           "content-type": [
             "application/json"
           ],
           "user-agent": [
-            "req/0.5.17"
+            "req/0.7.2"
           ]
         },
         "method": "DELETE",
         "query_string": "",
-        "uri": "https://api.hetzner.cloud/v1/servers/161336588"
+        "uri": "https://api.hetzner.cloud/v1/servers/162339699"
       },
       "response": {
         "body_json": {
@@ -2565,15 +2550,15 @@
             "command": "delete_server",
             "error": null,
             "finished": null,
-            "id": 648187881440785,
+            "id": 649270212623548,
             "progress": 0,
             "resources": [
               {
-                "id": 161336588,
+                "id": 162339699,
                 "type": "server"
               }
             ],
-            "started": "2026-08-11T03:45:51Z",
+            "started": "2026-08-16T09:01:46Z",
             "status": "running"
           }
         },
@@ -2594,11 +2579,14 @@
           "access-control-max-age": [
             "86400"
           ],
+          "content-length": [
+            "262"
+          ],
           "content-type": [
             "application/json"
           ],
           "date": [
-            "Tue, 11 Aug 2026 03:45:51 GMT"
+            "Sun, 16 Aug 2026 09:01:46 GMT"
           ],
           "ratelimit-limit": [
             "3600"
@@ -2607,38 +2595,32 @@
             "3591"
           ],
           "ratelimit-reset": [
-            "1786419960"
+            "1786870915"
           ],
           "strict-transport-security": [
             "max-age=31536000; includeSubDomains"
-          ],
-          "transfer-encoding": [
-            "chunked"
           ],
           "vary": [
             "Accept-Encoding"
           ],
           "x-correlation-id": [
-            "fc26e76e86721e3a21529ddf0024cc8b"
+            "fe68452a9aeca45de8a164e59f0c529d"
           ]
         },
         "status": 200
       }
     },
     {
-      "recorded_at": "2026-08-11T03:45:51.532727Z",
+      "recorded_at": "2026-08-16T09:01:47.039657Z",
       "request": {
         "body": "",
         "body_type": "text",
         "headers": {
-          "accept-encoding": [
-            "gzip"
-          ],
           "content-type": [
             "application/json"
           ],
           "user-agent": [
-            "req/0.5.17"
+            "req/0.7.2"
           ]
         },
         "method": "GET",
@@ -2685,7 +2667,7 @@
                 "type": "system"
               },
               "included_traffic": 21990232555520,
-              "ingoing_traffic": 393135000,
+              "ingoing_traffic": 644290000,
               "iso": null,
               "labels": {},
               "load_balancers": [],
@@ -2701,7 +2683,7 @@
               },
               "locked": false,
               "name": "fuellytics",
-              "outgoing_traffic": 711530000,
+              "outgoing_traffic": 1138920000,
               "placement_group": null,
               "primary_disk_size": 40,
               "private_net": [],
@@ -2843,7 +2825,7 @@
                 "type": "system"
               },
               "included_traffic": 2199023255552,
-              "ingoing_traffic": 877560000,
+              "ingoing_traffic": 1237825000,
               "iso": null,
               "labels": {},
               "load_balancers": [],
@@ -2859,7 +2841,7 @@
               },
               "locked": false,
               "name": "fuellytics-prod",
-              "outgoing_traffic": 1677615000,
+              "outgoing_traffic": 2613440000,
               "placement_group": null,
               "primary_disk_size": 80,
               "private_net": [],
@@ -3078,7 +3060,7 @@
             "application/json"
           ],
           "date": [
-            "Tue, 11 Aug 2026 03:45:51 GMT"
+            "Sun, 16 Aug 2026 09:01:46 GMT"
           ],
           "link": [
             "<https://api.hetzner.cloud/v1/servers?page=1>; rel=\"last\""
@@ -3090,7 +3072,7 @@
             "3590"
           ],
           "ratelimit-reset": [
-            "1786419961"
+            "1786870916"
           ],
           "strict-transport-security": [
             "max-age=31536000; includeSubDomains"
@@ -3102,26 +3084,23 @@
             "Accept-Encoding"
           ],
           "x-correlation-id": [
-            "5075aacff1681b9fbe31e338517b5e47"
+            "6058ceb3d1cdcfd1bb994ecb8a979de8"
           ]
         },
         "status": 200
       }
     },
     {
-      "recorded_at": "2026-08-11T03:45:51.684252Z",
+      "recorded_at": "2026-08-16T09:01:47.188959Z",
       "request": {
         "body": "",
         "body_type": "text",
         "headers": {
-          "accept-encoding": [
-            "gzip"
-          ],
           "content-type": [
             "application/json"
           ],
           "user-agent": [
-            "req/0.5.17"
+            "req/0.7.2"
           ]
         },
         "method": "GET",
@@ -3217,10 +3196,10 @@
             },
             {
               "applied_to": [],
-              "created": "2026-08-10T18:40:27Z",
-              "id": 11446375,
+              "created": "2026-08-16T00:08:38Z",
+              "id": 11470676,
               "labels": {},
-              "name": "spex-story972-criterion8039",
+              "name": "spex-drill",
               "rules": [
                 {
                   "description": null,
@@ -3269,374 +3248,10 @@
             },
             {
               "applied_to": [],
-              "created": "2026-08-11T00:34:45Z",
-              "id": 11447381,
+              "created": "2026-08-16T03:04:06Z",
+              "id": 11471098,
               "labels": {},
               "name": "spex-story966-criterion8156",
-              "rules": [
-                {
-                  "description": null,
-                  "destination_ips": [],
-                  "direction": "in",
-                  "port": "22",
-                  "protocol": "tcp",
-                  "source_ips": [
-                    "0.0.0.0/0",
-                    "::/0"
-                  ]
-                },
-                {
-                  "description": null,
-                  "destination_ips": [],
-                  "direction": "in",
-                  "port": "80",
-                  "protocol": "tcp",
-                  "source_ips": [
-                    "0.0.0.0/0",
-                    "::/0"
-                  ]
-                },
-                {
-                  "description": null,
-                  "destination_ips": [],
-                  "direction": "in",
-                  "port": "443",
-                  "protocol": "tcp",
-                  "source_ips": [
-                    "0.0.0.0/0",
-                    "::/0"
-                  ]
-                },
-                {
-                  "description": null,
-                  "destination_ips": [],
-                  "direction": "in",
-                  "port": "5000",
-                  "protocol": "tcp",
-                  "source_ips": [
-                    "10.0.0.0/16"
-                  ]
-                }
-              ]
-            },
-            {
-              "applied_to": [],
-              "created": "2026-08-11T01:25:28Z",
-              "id": 11447480,
-              "labels": {},
-              "name": "spex-story965-criterion7995",
-              "rules": [
-                {
-                  "description": null,
-                  "destination_ips": [],
-                  "direction": "in",
-                  "port": "22",
-                  "protocol": "tcp",
-                  "source_ips": [
-                    "0.0.0.0/0",
-                    "::/0"
-                  ]
-                },
-                {
-                  "description": null,
-                  "destination_ips": [],
-                  "direction": "in",
-                  "port": "80",
-                  "protocol": "tcp",
-                  "source_ips": [
-                    "0.0.0.0/0",
-                    "::/0"
-                  ]
-                },
-                {
-                  "description": null,
-                  "destination_ips": [],
-                  "direction": "in",
-                  "port": "443",
-                  "protocol": "tcp",
-                  "source_ips": [
-                    "0.0.0.0/0",
-                    "::/0"
-                  ]
-                },
-                {
-                  "description": null,
-                  "destination_ips": [],
-                  "direction": "in",
-                  "port": "5000",
-                  "protocol": "tcp",
-                  "source_ips": [
-                    "10.0.0.0/16"
-                  ]
-                }
-              ]
-            },
-            {
-              "applied_to": [],
-              "created": "2026-08-11T02:20:18Z",
-              "id": 11447592,
-              "labels": {},
-              "name": "spex-story841-criterion1961",
-              "rules": [
-                {
-                  "description": null,
-                  "destination_ips": [],
-                  "direction": "in",
-                  "port": "22",
-                  "protocol": "tcp",
-                  "source_ips": [
-                    "0.0.0.0/0",
-                    "::/0"
-                  ]
-                },
-                {
-                  "description": null,
-                  "destination_ips": [],
-                  "direction": "in",
-                  "port": "80",
-                  "protocol": "tcp",
-                  "source_ips": [
-                    "0.0.0.0/0",
-                    "::/0"
-                  ]
-                },
-                {
-                  "description": null,
-                  "destination_ips": [],
-                  "direction": "in",
-                  "port": "443",
-                  "protocol": "tcp",
-                  "source_ips": [
-                    "0.0.0.0/0",
-                    "::/0"
-                  ]
-                },
-                {
-                  "description": null,
-                  "destination_ips": [],
-                  "direction": "in",
-                  "port": "5000",
-                  "protocol": "tcp",
-                  "source_ips": [
-                    "10.0.0.0/16"
-                  ]
-                }
-              ]
-            },
-            {
-              "applied_to": [],
-              "created": "2026-08-11T02:21:54Z",
-              "id": 11447593,
-              "labels": {},
-              "name": "spex-story841-criterion1962",
-              "rules": [
-                {
-                  "description": null,
-                  "destination_ips": [],
-                  "direction": "in",
-                  "port": "22",
-                  "protocol": "tcp",
-                  "source_ips": [
-                    "0.0.0.0/0",
-                    "::/0"
-                  ]
-                },
-                {
-                  "description": null,
-                  "destination_ips": [],
-                  "direction": "in",
-                  "port": "80",
-                  "protocol": "tcp",
-                  "source_ips": [
-                    "0.0.0.0/0",
-                    "::/0"
-                  ]
-                },
-                {
-                  "description": null,
-                  "destination_ips": [],
-                  "direction": "in",
-                  "port": "443",
-                  "protocol": "tcp",
-                  "source_ips": [
-                    "0.0.0.0/0",
-                    "::/0"
-                  ]
-                },
-                {
-                  "description": null,
-                  "destination_ips": [],
-                  "direction": "in",
-                  "port": "5000",
-                  "protocol": "tcp",
-                  "source_ips": [
-                    "10.0.0.0/16"
-                  ]
-                }
-              ]
-            },
-            {
-              "applied_to": [],
-              "created": "2026-08-11T02:22:03Z",
-              "id": 11447594,
-              "labels": {},
-              "name": "spex-story841-criterion1967",
-              "rules": [
-                {
-                  "description": null,
-                  "destination_ips": [],
-                  "direction": "in",
-                  "port": "22",
-                  "protocol": "tcp",
-                  "source_ips": [
-                    "0.0.0.0/0",
-                    "::/0"
-                  ]
-                },
-                {
-                  "description": null,
-                  "destination_ips": [],
-                  "direction": "in",
-                  "port": "80",
-                  "protocol": "tcp",
-                  "source_ips": [
-                    "0.0.0.0/0",
-                    "::/0"
-                  ]
-                },
-                {
-                  "description": null,
-                  "destination_ips": [],
-                  "direction": "in",
-                  "port": "443",
-                  "protocol": "tcp",
-                  "source_ips": [
-                    "0.0.0.0/0",
-                    "::/0"
-                  ]
-                },
-                {
-                  "description": null,
-                  "destination_ips": [],
-                  "direction": "in",
-                  "port": "5000",
-                  "protocol": "tcp",
-                  "source_ips": [
-                    "10.0.0.0/16"
-                  ]
-                }
-              ]
-            },
-            {
-              "applied_to": [],
-              "created": "2026-08-11T02:22:08Z",
-              "id": 11447595,
-              "labels": {},
-              "name": "spex-story841-criterion1968",
-              "rules": [
-                {
-                  "description": null,
-                  "destination_ips": [],
-                  "direction": "in",
-                  "port": "22",
-                  "protocol": "tcp",
-                  "source_ips": [
-                    "0.0.0.0/0",
-                    "::/0"
-                  ]
-                },
-                {
-                  "description": null,
-                  "destination_ips": [],
-                  "direction": "in",
-                  "port": "80",
-                  "protocol": "tcp",
-                  "source_ips": [
-                    "0.0.0.0/0",
-                    "::/0"
-                  ]
-                },
-                {
-                  "description": null,
-                  "destination_ips": [],
-                  "direction": "in",
-                  "port": "443",
-                  "protocol": "tcp",
-                  "source_ips": [
-                    "0.0.0.0/0",
-                    "::/0"
-                  ]
-                },
-                {
-                  "description": null,
-                  "destination_ips": [],
-                  "direction": "in",
-                  "port": "5000",
-                  "protocol": "tcp",
-                  "source_ips": [
-                    "10.0.0.0/16"
-                  ]
-                }
-              ]
-            },
-            {
-              "applied_to": [],
-              "created": "2026-08-11T02:22:15Z",
-              "id": 11447596,
-              "labels": {},
-              "name": "spex-story841-criterion1969",
-              "rules": [
-                {
-                  "description": null,
-                  "destination_ips": [],
-                  "direction": "in",
-                  "port": "22",
-                  "protocol": "tcp",
-                  "source_ips": [
-                    "0.0.0.0/0",
-                    "::/0"
-                  ]
-                },
-                {
-                  "description": null,
-                  "destination_ips": [],
-                  "direction": "in",
-                  "port": "80",
-                  "protocol": "tcp",
-                  "source_ips": [
-                    "0.0.0.0/0",
-                    "::/0"
-                  ]
-                },
-                {
-                  "description": null,
-                  "destination_ips": [],
-                  "direction": "in",
-                  "port": "443",
-                  "protocol": "tcp",
-                  "source_ips": [
-                    "0.0.0.0/0",
-                    "::/0"
-                  ]
-                },
-                {
-                  "description": null,
-                  "destination_ips": [],
-                  "direction": "in",
-                  "port": "5000",
-                  "protocol": "tcp",
-                  "source_ips": [
-                    "10.0.0.0/16"
-                  ]
-                }
-              ]
-            },
-            {
-              "applied_to": [],
-              "created": "2026-08-11T02:23:10Z",
-              "id": 11447602,
-              "labels": {},
-              "name": "spex-story966-criterion8003",
               "rules": [
                 {
                   "description": null,
@@ -3687,19 +3302,19 @@
               "applied_to": [
                 {
                   "server": {
-                    "id": 161336583
+                    "id": 162339695
                   },
                   "type": "server"
                 },
                 {
                   "server": {
-                    "id": 161336588
+                    "id": 162339699
                   },
                   "type": "server"
                 }
               ],
-              "created": "2026-08-11T03:44:24Z",
-              "id": 11447749,
+              "created": "2026-08-16T09:00:18Z",
+              "id": 11471874,
               "labels": {},
               "name": "spex-story963-criterion7965",
               "rules": [
@@ -3756,7 +3371,7 @@
               "page": 1,
               "per_page": 25,
               "previous_page": null,
-              "total_entries": 12
+              "total_entries": 5
             }
           }
         },
@@ -3777,11 +3392,14 @@
           "access-control-max-age": [
             "86400"
           ],
+          "content-length": [
+            "8152"
+          ],
           "content-type": [
             "application/json"
           ],
           "date": [
-            "Tue, 11 Aug 2026 03:45:51 GMT"
+            "Sun, 16 Aug 2026 09:01:47 GMT"
           ],
           "link": [
             "<https://api.hetzner.cloud/v1/firewalls?page=1&per_page=25>; rel=\"last\""
@@ -3793,56 +3411,50 @@
             "3589"
           ],
           "ratelimit-reset": [
-            "1786419962"
+            "1786870918"
           ],
           "strict-transport-security": [
             "max-age=31536000; includeSubDomains"
           ],
           "traceparent": [
-            "00-90cf0df2705267551364d9e154fc08a0-9df15f89efb4c688-01"
-          ],
-          "transfer-encoding": [
-            "chunked"
+            "00-659b0e68a92abaa6e5fe1f0e345ff74f-e4a6372c63a13f13-01"
           ],
           "uber-trace-id": [
-            "90cf0df2705267551364d9e154fc08a0:9df15f89efb4c688:0:1"
+            "659b0e68a92abaa6e5fe1f0e345ff74f:e4a6372c63a13f13:0:1"
           ],
           "vary": [
             "Accept-Encoding"
           ],
           "x-correlation-id": [
-            "90cf0df2705267551364d9e154fc08a0"
+            "659b0e68a92abaa6e5fe1f0e345ff74f"
           ]
         },
         "status": 200
       }
     },
     {
-      "recorded_at": "2026-08-11T03:45:51.829354Z",
+      "recorded_at": "2026-08-16T09:01:47.324490Z",
       "request": {
         "body": "",
         "body_type": "text",
         "headers": {
-          "accept-encoding": [
-            "gzip"
-          ],
           "content-type": [
             "application/json"
           ],
           "user-agent": [
-            "req/0.5.17"
+            "req/0.7.2"
           ]
         },
         "method": "DELETE",
         "query_string": "",
-        "uri": "https://api.hetzner.cloud/v1/firewalls/11447749"
+        "uri": "https://api.hetzner.cloud/v1/firewalls/11471874"
       },
       "response": {
         "body_json": {
           "error": {
             "code": "resource_in_use",
             "details": null,
-            "message": "firewall with ID 11447749 is still in use"
+            "message": "firewall with ID 11471874 is still in use"
           }
         },
         "body_type": "json",
@@ -3862,11 +3474,14 @@
           "access-control-max-age": [
             "86400"
           ],
+          "content-length": [
+            "147"
+          ],
           "content-type": [
             "application/json"
           ],
           "date": [
-            "Tue, 11 Aug 2026 03:45:51 GMT"
+            "Sun, 16 Aug 2026 09:01:47 GMT"
           ],
           "ratelimit-limit": [
             "3600"
@@ -3875,44 +3490,38 @@
             "3588"
           ],
           "ratelimit-reset": [
-            "1786419963"
+            "1786870919"
           ],
           "strict-transport-security": [
             "max-age=31536000; includeSubDomains"
           ],
           "traceparent": [
-            "00-b5d40ef01ef5cb09553982f19eb1223d-ad0fabb56aba65b6-01"
-          ],
-          "transfer-encoding": [
-            "chunked"
+            "00-873f0670b746f6c45bcfe4a119305efc-8320c7e8ba58e4e4-01"
           ],
           "uber-trace-id": [
-            "b5d40ef01ef5cb09553982f19eb1223d:ad0fabb56aba65b6:0:1"
+            "873f0670b746f6c45bcfe4a119305efc:8320c7e8ba58e4e4:0:1"
           ],
           "vary": [
             "Accept-Encoding"
           ],
           "x-correlation-id": [
-            "b5d40ef01ef5cb09553982f19eb1223d"
+            "873f0670b746f6c45bcfe4a119305efc"
           ]
         },
         "status": 422
       }
     },
     {
-      "recorded_at": "2026-08-11T03:45:51.995463Z",
+      "recorded_at": "2026-08-16T09:01:47.479862Z",
       "request": {
         "body": "",
         "body_type": "text",
         "headers": {
-          "accept-encoding": [
-            "gzip"
-          ],
           "content-type": [
             "application/json"
           ],
           "user-agent": [
-            "req/0.5.17"
+            "req/0.7.2"
           ]
         },
         "method": "GET",
@@ -4008,10 +3617,10 @@
             },
             {
               "applied_to": [],
-              "created": "2026-08-10T18:40:27Z",
-              "id": 11446375,
+              "created": "2026-08-16T00:08:38Z",
+              "id": 11470676,
               "labels": {},
-              "name": "spex-story972-criterion8039",
+              "name": "spex-drill",
               "rules": [
                 {
                   "description": null,
@@ -4060,374 +3669,10 @@
             },
             {
               "applied_to": [],
-              "created": "2026-08-11T00:34:45Z",
-              "id": 11447381,
+              "created": "2026-08-16T03:04:06Z",
+              "id": 11471098,
               "labels": {},
               "name": "spex-story966-criterion8156",
-              "rules": [
-                {
-                  "description": null,
-                  "destination_ips": [],
-                  "direction": "in",
-                  "port": "22",
-                  "protocol": "tcp",
-                  "source_ips": [
-                    "0.0.0.0/0",
-                    "::/0"
-                  ]
-                },
-                {
-                  "description": null,
-                  "destination_ips": [],
-                  "direction": "in",
-                  "port": "80",
-                  "protocol": "tcp",
-                  "source_ips": [
-                    "0.0.0.0/0",
-                    "::/0"
-                  ]
-                },
-                {
-                  "description": null,
-                  "destination_ips": [],
-                  "direction": "in",
-                  "port": "443",
-                  "protocol": "tcp",
-                  "source_ips": [
-                    "0.0.0.0/0",
-                    "::/0"
-                  ]
-                },
-                {
-                  "description": null,
-                  "destination_ips": [],
-                  "direction": "in",
-                  "port": "5000",
-                  "protocol": "tcp",
-                  "source_ips": [
-                    "10.0.0.0/16"
-                  ]
-                }
-              ]
-            },
-            {
-              "applied_to": [],
-              "created": "2026-08-11T01:25:28Z",
-              "id": 11447480,
-              "labels": {},
-              "name": "spex-story965-criterion7995",
-              "rules": [
-                {
-                  "description": null,
-                  "destination_ips": [],
-                  "direction": "in",
-                  "port": "22",
-                  "protocol": "tcp",
-                  "source_ips": [
-                    "0.0.0.0/0",
-                    "::/0"
-                  ]
-                },
-                {
-                  "description": null,
-                  "destination_ips": [],
-                  "direction": "in",
-                  "port": "80",
-                  "protocol": "tcp",
-                  "source_ips": [
-                    "0.0.0.0/0",
-                    "::/0"
-                  ]
-                },
-                {
-                  "description": null,
-                  "destination_ips": [],
-                  "direction": "in",
-                  "port": "443",
-                  "protocol": "tcp",
-                  "source_ips": [
-                    "0.0.0.0/0",
-                    "::/0"
-                  ]
-                },
-                {
-                  "description": null,
-                  "destination_ips": [],
-                  "direction": "in",
-                  "port": "5000",
-                  "protocol": "tcp",
-                  "source_ips": [
-                    "10.0.0.0/16"
-                  ]
-                }
-              ]
-            },
-            {
-              "applied_to": [],
-              "created": "2026-08-11T02:20:18Z",
-              "id": 11447592,
-              "labels": {},
-              "name": "spex-story841-criterion1961",
-              "rules": [
-                {
-                  "description": null,
-                  "destination_ips": [],
-                  "direction": "in",
-                  "port": "22",
-                  "protocol": "tcp",
-                  "source_ips": [
-                    "0.0.0.0/0",
-                    "::/0"
-                  ]
-                },
-                {
-                  "description": null,
-                  "destination_ips": [],
-                  "direction": "in",
-                  "port": "80",
-                  "protocol": "tcp",
-                  "source_ips": [
-                    "0.0.0.0/0",
-                    "::/0"
-                  ]
-                },
-                {
-                  "description": null,
-                  "destination_ips": [],
-                  "direction": "in",
-                  "port": "443",
-                  "protocol": "tcp",
-                  "source_ips": [
-                    "0.0.0.0/0",
-                    "::/0"
-                  ]
-                },
-                {
-                  "description": null,
-                  "destination_ips": [],
-                  "direction": "in",
-                  "port": "5000",
-                  "protocol": "tcp",
-                  "source_ips": [
-                    "10.0.0.0/16"
-                  ]
-                }
-              ]
-            },
-            {
-              "applied_to": [],
-              "created": "2026-08-11T02:21:54Z",
-              "id": 11447593,
-              "labels": {},
-              "name": "spex-story841-criterion1962",
-              "rules": [
-                {
-                  "description": null,
-                  "destination_ips": [],
-                  "direction": "in",
-                  "port": "22",
-                  "protocol": "tcp",
-                  "source_ips": [
-                    "0.0.0.0/0",
-                    "::/0"
-                  ]
-                },
-                {
-                  "description": null,
-                  "destination_ips": [],
-                  "direction": "in",
-                  "port": "80",
-                  "protocol": "tcp",
-                  "source_ips": [
-                    "0.0.0.0/0",
-                    "::/0"
-                  ]
-                },
-                {
-                  "description": null,
-                  "destination_ips": [],
-                  "direction": "in",
-                  "port": "443",
-                  "protocol": "tcp",
-                  "source_ips": [
-                    "0.0.0.0/0",
-                    "::/0"
-                  ]
-                },
-                {
-                  "description": null,
-                  "destination_ips": [],
-                  "direction": "in",
-                  "port": "5000",
-                  "protocol": "tcp",
-                  "source_ips": [
-                    "10.0.0.0/16"
-                  ]
-                }
-              ]
-            },
-            {
-              "applied_to": [],
-              "created": "2026-08-11T02:22:03Z",
-              "id": 11447594,
-              "labels": {},
-              "name": "spex-story841-criterion1967",
-              "rules": [
-                {
-                  "description": null,
-                  "destination_ips": [],
-                  "direction": "in",
-                  "port": "22",
-                  "protocol": "tcp",
-                  "source_ips": [
-                    "0.0.0.0/0",
-                    "::/0"
-                  ]
-                },
-                {
-                  "description": null,
-                  "destination_ips": [],
-                  "direction": "in",
-                  "port": "80",
-                  "protocol": "tcp",
-                  "source_ips": [
-                    "0.0.0.0/0",
-                    "::/0"
-                  ]
-                },
-                {
-                  "description": null,
-                  "destination_ips": [],
-                  "direction": "in",
-                  "port": "443",
-                  "protocol": "tcp",
-                  "source_ips": [
-                    "0.0.0.0/0",
-                    "::/0"
-                  ]
-                },
-                {
-                  "description": null,
-                  "destination_ips": [],
-                  "direction": "in",
-                  "port": "5000",
-                  "protocol": "tcp",
-                  "source_ips": [
-                    "10.0.0.0/16"
-                  ]
-                }
-              ]
-            },
-            {
-              "applied_to": [],
-              "created": "2026-08-11T02:22:08Z",
-              "id": 11447595,
-              "labels": {},
-              "name": "spex-story841-criterion1968",
-              "rules": [
-                {
-                  "description": null,
-                  "destination_ips": [],
-                  "direction": "in",
-                  "port": "22",
-                  "protocol": "tcp",
-                  "source_ips": [
-                    "0.0.0.0/0",
-                    "::/0"
-                  ]
-                },
-                {
-                  "description": null,
-                  "destination_ips": [],
-                  "direction": "in",
-                  "port": "80",
-                  "protocol": "tcp",
-                  "source_ips": [
-                    "0.0.0.0/0",
-                    "::/0"
-                  ]
-                },
-                {
-                  "description": null,
-                  "destination_ips": [],
-                  "direction": "in",
-                  "port": "443",
-                  "protocol": "tcp",
-                  "source_ips": [
-                    "0.0.0.0/0",
-                    "::/0"
-                  ]
-                },
-                {
-                  "description": null,
-                  "destination_ips": [],
-                  "direction": "in",
-                  "port": "5000",
-                  "protocol": "tcp",
-                  "source_ips": [
-                    "10.0.0.0/16"
-                  ]
-                }
-              ]
-            },
-            {
-              "applied_to": [],
-              "created": "2026-08-11T02:22:15Z",
-              "id": 11447596,
-              "labels": {},
-              "name": "spex-story841-criterion1969",
-              "rules": [
-                {
-                  "description": null,
-                  "destination_ips": [],
-                  "direction": "in",
-                  "port": "22",
-                  "protocol": "tcp",
-                  "source_ips": [
-                    "0.0.0.0/0",
-                    "::/0"
-                  ]
-                },
-                {
-                  "description": null,
-                  "destination_ips": [],
-                  "direction": "in",
-                  "port": "80",
-                  "protocol": "tcp",
-                  "source_ips": [
-                    "0.0.0.0/0",
-                    "::/0"
-                  ]
-                },
-                {
-                  "description": null,
-                  "destination_ips": [],
-                  "direction": "in",
-                  "port": "443",
-                  "protocol": "tcp",
-                  "source_ips": [
-                    "0.0.0.0/0",
-                    "::/0"
-                  ]
-                },
-                {
-                  "description": null,
-                  "destination_ips": [],
-                  "direction": "in",
-                  "port": "5000",
-                  "protocol": "tcp",
-                  "source_ips": [
-                    "10.0.0.0/16"
-                  ]
-                }
-              ]
-            },
-            {
-              "applied_to": [],
-              "created": "2026-08-11T02:23:10Z",
-              "id": 11447602,
-              "labels": {},
-              "name": "spex-story966-criterion8003",
               "rules": [
                 {
                   "description": null,
@@ -4478,19 +3723,19 @@
               "applied_to": [
                 {
                   "server": {
-                    "id": 161336583
+                    "id": 162339695
                   },
                   "type": "server"
                 },
                 {
                   "server": {
-                    "id": 161336588
+                    "id": 162339699
                   },
                   "type": "server"
                 }
               ],
-              "created": "2026-08-11T03:44:24Z",
-              "id": 11447749,
+              "created": "2026-08-16T09:00:18Z",
+              "id": 11471874,
               "labels": {},
               "name": "spex-story963-criterion7965",
               "rules": [
@@ -4547,7 +3792,7 @@
               "page": 1,
               "per_page": 25,
               "previous_page": null,
-              "total_entries": 12
+              "total_entries": 5
             }
           }
         },
@@ -4568,11 +3813,14 @@
           "access-control-max-age": [
             "86400"
           ],
+          "content-length": [
+            "8152"
+          ],
           "content-type": [
             "application/json"
           ],
           "date": [
-            "Tue, 11 Aug 2026 03:45:51 GMT"
+            "Sun, 16 Aug 2026 09:01:47 GMT"
           ],
           "link": [
             "<https://api.hetzner.cloud/v1/firewalls?page=1&per_page=25>; rel=\"last\""
@@ -4584,53 +3832,53 @@
             "3587"
           ],
           "ratelimit-reset": [
-            "1786419964"
+            "1786870920"
           ],
           "strict-transport-security": [
             "max-age=31536000; includeSubDomains"
           ],
           "traceparent": [
-            "00-edee5d2fb83277758e533c26865e30e3-710098e76529204a-01"
-          ],
-          "transfer-encoding": [
-            "chunked"
+            "00-ed31d23e2e981c0e50a15efafbd3ca5b-1842abd8581f1004-01"
           ],
           "uber-trace-id": [
-            "edee5d2fb83277758e533c26865e30e3:710098e76529204a:0:1"
+            "ed31d23e2e981c0e50a15efafbd3ca5b:1842abd8581f1004:0:1"
           ],
           "vary": [
             "Accept-Encoding"
           ],
           "x-correlation-id": [
-            "edee5d2fb83277758e533c26865e30e3"
+            "ed31d23e2e981c0e50a15efafbd3ca5b"
           ]
         },
         "status": 200
       }
     },
     {
-      "recorded_at": "2026-08-11T03:45:52.214481Z",
+      "recorded_at": "2026-08-16T09:01:47.619718Z",
       "request": {
         "body": "",
         "body_type": "text",
         "headers": {
-          "accept-encoding": [
-            "gzip"
-          ],
           "content-type": [
             "application/json"
           ],
           "user-agent": [
-            "req/0.5.17"
+            "req/0.7.2"
           ]
         },
         "method": "DELETE",
         "query_string": "",
-        "uri": "https://api.hetzner.cloud/v1/firewalls/11447749"
+        "uri": "https://api.hetzner.cloud/v1/firewalls/11471874"
       },
       "response": {
-        "body": "",
-        "body_type": "text",
+        "body_json": {
+          "error": {
+            "code": "resource_in_use",
+            "details": null,
+            "message": "firewall with ID 11471874 is still in use"
+          }
+        },
+        "body_type": "json",
         "headers": {
           "access-control-allow-headers": [
             "X-Requested-With,Authorization,Content-Type"
@@ -4647,8 +3895,14 @@
           "access-control-max-age": [
             "86400"
           ],
+          "content-length": [
+            "147"
+          ],
+          "content-type": [
+            "application/json"
+          ],
           "date": [
-            "Tue, 11 Aug 2026 03:45:52 GMT"
+            "Sun, 16 Aug 2026 09:01:47 GMT"
           ],
           "ratelimit-limit": [
             "3600"
@@ -4657,41 +3911,38 @@
             "3586"
           ],
           "ratelimit-reset": [
-            "1786419966"
+            "1786870921"
           ],
           "strict-transport-security": [
             "max-age=31536000; includeSubDomains"
           ],
           "traceparent": [
-            "00-b3cd43fd41a8527c089c696789ac8f83-eff5e90ba2bf96e8-01"
+            "00-19feec903bdf08a2bfbfe9af800d2491-792851b3e5d39856-01"
           ],
           "uber-trace-id": [
-            "b3cd43fd41a8527c089c696789ac8f83:eff5e90ba2bf96e8:0:1"
+            "19feec903bdf08a2bfbfe9af800d2491:792851b3e5d39856:0:1"
           ],
           "vary": [
             "Accept-Encoding"
           ],
           "x-correlation-id": [
-            "b3cd43fd41a8527c089c696789ac8f83"
+            "19feec903bdf08a2bfbfe9af800d2491"
           ]
         },
-        "status": 204
+        "status": 422
       }
     },
     {
-      "recorded_at": "2026-08-11T03:45:52.403886Z",
+      "recorded_at": "2026-08-16T09:01:49.769038Z",
       "request": {
         "body": "",
         "body_type": "text",
         "headers": {
-          "accept-encoding": [
-            "gzip"
-          ],
           "content-type": [
             "application/json"
           ],
           "user-agent": [
-            "req/0.5.17"
+            "req/0.7.2"
           ]
         },
         "method": "GET",
@@ -4787,10 +4038,10 @@
             },
             {
               "applied_to": [],
-              "created": "2026-08-10T18:40:27Z",
-              "id": 11446375,
+              "created": "2026-08-16T00:08:38Z",
+              "id": 11470676,
               "labels": {},
-              "name": "spex-story972-criterion8039",
+              "name": "spex-drill",
               "rules": [
                 {
                   "description": null,
@@ -4839,8 +4090,8 @@
             },
             {
               "applied_to": [],
-              "created": "2026-08-11T00:34:45Z",
-              "id": 11447381,
+              "created": "2026-08-16T03:04:06Z",
+              "id": 11471098,
               "labels": {},
               "name": "spex-story966-criterion8156",
               "rules": [
@@ -4891,322 +4142,10 @@
             },
             {
               "applied_to": [],
-              "created": "2026-08-11T01:25:28Z",
-              "id": 11447480,
+              "created": "2026-08-16T09:00:18Z",
+              "id": 11471874,
               "labels": {},
-              "name": "spex-story965-criterion7995",
-              "rules": [
-                {
-                  "description": null,
-                  "destination_ips": [],
-                  "direction": "in",
-                  "port": "22",
-                  "protocol": "tcp",
-                  "source_ips": [
-                    "0.0.0.0/0",
-                    "::/0"
-                  ]
-                },
-                {
-                  "description": null,
-                  "destination_ips": [],
-                  "direction": "in",
-                  "port": "80",
-                  "protocol": "tcp",
-                  "source_ips": [
-                    "0.0.0.0/0",
-                    "::/0"
-                  ]
-                },
-                {
-                  "description": null,
-                  "destination_ips": [],
-                  "direction": "in",
-                  "port": "443",
-                  "protocol": "tcp",
-                  "source_ips": [
-                    "0.0.0.0/0",
-                    "::/0"
-                  ]
-                },
-                {
-                  "description": null,
-                  "destination_ips": [],
-                  "direction": "in",
-                  "port": "5000",
-                  "protocol": "tcp",
-                  "source_ips": [
-                    "10.0.0.0/16"
-                  ]
-                }
-              ]
-            },
-            {
-              "applied_to": [],
-              "created": "2026-08-11T02:20:18Z",
-              "id": 11447592,
-              "labels": {},
-              "name": "spex-story841-criterion1961",
-              "rules": [
-                {
-                  "description": null,
-                  "destination_ips": [],
-                  "direction": "in",
-                  "port": "22",
-                  "protocol": "tcp",
-                  "source_ips": [
-                    "0.0.0.0/0",
-                    "::/0"
-                  ]
-                },
-                {
-                  "description": null,
-                  "destination_ips": [],
-                  "direction": "in",
-                  "port": "80",
-                  "protocol": "tcp",
-                  "source_ips": [
-                    "0.0.0.0/0",
-                    "::/0"
-                  ]
-                },
-                {
-                  "description": null,
-                  "destination_ips": [],
-                  "direction": "in",
-                  "port": "443",
-                  "protocol": "tcp",
-                  "source_ips": [
-                    "0.0.0.0/0",
-                    "::/0"
-                  ]
-                },
-                {
-                  "description": null,
-                  "destination_ips": [],
-                  "direction": "in",
-                  "port": "5000",
-                  "protocol": "tcp",
-                  "source_ips": [
-                    "10.0.0.0/16"
-                  ]
-                }
-              ]
-            },
-            {
-              "applied_to": [],
-              "created": "2026-08-11T02:21:54Z",
-              "id": 11447593,
-              "labels": {},
-              "name": "spex-story841-criterion1962",
-              "rules": [
-                {
-                  "description": null,
-                  "destination_ips": [],
-                  "direction": "in",
-                  "port": "22",
-                  "protocol": "tcp",
-                  "source_ips": [
-                    "0.0.0.0/0",
-                    "::/0"
-                  ]
-                },
-                {
-                  "description": null,
-                  "destination_ips": [],
-                  "direction": "in",
-                  "port": "80",
-                  "protocol": "tcp",
-                  "source_ips": [
-                    "0.0.0.0/0",
-                    "::/0"
-                  ]
-                },
-                {
-                  "description": null,
-                  "destination_ips": [],
-                  "direction": "in",
-                  "port": "443",
-                  "protocol": "tcp",
-                  "source_ips": [
-                    "0.0.0.0/0",
-                    "::/0"
-                  ]
-                },
-                {
-                  "description": null,
-                  "destination_ips": [],
-                  "direction": "in",
-                  "port": "5000",
-                  "protocol": "tcp",
-                  "source_ips": [
-                    "10.0.0.0/16"
-                  ]
-                }
-              ]
-            },
-            {
-              "applied_to": [],
-              "created": "2026-08-11T02:22:03Z",
-              "id": 11447594,
-              "labels": {},
-              "name": "spex-story841-criterion1967",
-              "rules": [
-                {
-                  "description": null,
-                  "destination_ips": [],
-                  "direction": "in",
-                  "port": "22",
-                  "protocol": "tcp",
-                  "source_ips": [
-                    "0.0.0.0/0",
-                    "::/0"
-                  ]
-                },
-                {
-                  "description": null,
-                  "destination_ips": [],
-                  "direction": "in",
-                  "port": "80",
-                  "protocol": "tcp",
-                  "source_ips": [
-                    "0.0.0.0/0",
-                    "::/0"
-                  ]
-                },
-                {
-                  "description": null,
-                  "destination_ips": [],
-                  "direction": "in",
-                  "port": "443",
-                  "protocol": "tcp",
-                  "source_ips": [
-                    "0.0.0.0/0",
-                    "::/0"
-                  ]
-                },
-                {
-                  "description": null,
-                  "destination_ips": [],
-                  "direction": "in",
-                  "port": "5000",
-                  "protocol": "tcp",
-                  "source_ips": [
-                    "10.0.0.0/16"
-                  ]
-                }
-              ]
-            },
-            {
-              "applied_to": [],
-              "created": "2026-08-11T02:22:08Z",
-              "id": 11447595,
-              "labels": {},
-              "name": "spex-story841-criterion1968",
-              "rules": [
-                {
-                  "description": null,
-                  "destination_ips": [],
-                  "direction": "in",
-                  "port": "22",
-                  "protocol": "tcp",
-                  "source_ips": [
-                    "0.0.0.0/0",
-                    "::/0"
-                  ]
-                },
-                {
-                  "description": null,
-                  "destination_ips": [],
-                  "direction": "in",
-                  "port": "80",
-                  "protocol": "tcp",
-                  "source_ips": [
-                    "0.0.0.0/0",
-                    "::/0"
-                  ]
-                },
-                {
-                  "description": null,
-                  "destination_ips": [],
-                  "direction": "in",
-                  "port": "443",
-                  "protocol": "tcp",
-                  "source_ips": [
-                    "0.0.0.0/0",
-                    "::/0"
-                  ]
-                },
-                {
-                  "description": null,
-                  "destination_ips": [],
-                  "direction": "in",
-                  "port": "5000",
-                  "protocol": "tcp",
-                  "source_ips": [
-                    "10.0.0.0/16"
-                  ]
-                }
-              ]
-            },
-            {
-              "applied_to": [],
-              "created": "2026-08-11T02:22:15Z",
-              "id": 11447596,
-              "labels": {},
-              "name": "spex-story841-criterion1969",
-              "rules": [
-                {
-                  "description": null,
-                  "destination_ips": [],
-                  "direction": "in",
-                  "port": "22",
-                  "protocol": "tcp",
-                  "source_ips": [
-                    "0.0.0.0/0",
-                    "::/0"
-                  ]
-                },
-                {
-                  "description": null,
-                  "destination_ips": [],
-                  "direction": "in",
-                  "port": "80",
-                  "protocol": "tcp",
-                  "source_ips": [
-                    "0.0.0.0/0",
-                    "::/0"
-                  ]
-                },
-                {
-                  "description": null,
-                  "destination_ips": [],
-                  "direction": "in",
-                  "port": "443",
-                  "protocol": "tcp",
-                  "source_ips": [
-                    "0.0.0.0/0",
-                    "::/0"
-                  ]
-                },
-                {
-                  "description": null,
-                  "destination_ips": [],
-                  "direction": "in",
-                  "port": "5000",
-                  "protocol": "tcp",
-                  "source_ips": [
-                    "10.0.0.0/16"
-                  ]
-                }
-              ]
-            },
-            {
-              "applied_to": [],
-              "created": "2026-08-11T02:23:10Z",
-              "id": 11447602,
-              "labels": {},
-              "name": "spex-story966-criterion8003",
+              "name": "spex-story963-criterion7965",
               "rules": [
                 {
                   "description": null,
@@ -5261,7 +4200,7 @@
               "page": 1,
               "per_page": 25,
               "previous_page": null,
-              "total_entries": 11
+              "total_entries": 5
             }
           }
         },
@@ -5282,11 +4221,358 @@
           "access-control-max-age": [
             "86400"
           ],
+          "content-length": [
+            "7802"
+          ],
           "content-type": [
             "application/json"
           ],
           "date": [
-            "Tue, 11 Aug 2026 03:45:52 GMT"
+            "Sun, 16 Aug 2026 09:01:49 GMT"
+          ],
+          "link": [
+            "<https://api.hetzner.cloud/v1/firewalls?page=1&per_page=25>; rel=\"last\""
+          ],
+          "ratelimit-limit": [
+            "3600"
+          ],
+          "ratelimit-remaining": [
+            "3587"
+          ],
+          "ratelimit-reset": [
+            "1786870922"
+          ],
+          "strict-transport-security": [
+            "max-age=31536000; includeSubDomains"
+          ],
+          "traceparent": [
+            "00-dc5bf520d51870306fa41855aa571dd5-cc9bd3046a4ed7e7-01"
+          ],
+          "uber-trace-id": [
+            "dc5bf520d51870306fa41855aa571dd5:cc9bd3046a4ed7e7:0:1"
+          ],
+          "vary": [
+            "Accept-Encoding"
+          ],
+          "x-correlation-id": [
+            "dc5bf520d51870306fa41855aa571dd5"
+          ]
+        },
+        "status": 200
+      }
+    },
+    {
+      "recorded_at": "2026-08-16T09:01:49.917067Z",
+      "request": {
+        "body": "",
+        "body_type": "text",
+        "headers": {
+          "content-type": [
+            "application/json"
+          ],
+          "user-agent": [
+            "req/0.7.2"
+          ]
+        },
+        "method": "DELETE",
+        "query_string": "",
+        "uri": "https://api.hetzner.cloud/v1/firewalls/11471874"
+      },
+      "response": {
+        "body": "",
+        "body_type": "text",
+        "headers": {
+          "access-control-allow-headers": [
+            "X-Requested-With,Authorization,Content-Type"
+          ],
+          "access-control-allow-methods": [
+            "OPTIONS,GET,POST,PUT,PATCH,DELETE"
+          ],
+          "access-control-allow-origin": [
+            "*"
+          ],
+          "access-control-expose-headers": [
+            "Link,X-Correlation-ID"
+          ],
+          "access-control-max-age": [
+            "86400"
+          ],
+          "date": [
+            "Sun, 16 Aug 2026 09:01:49 GMT"
+          ],
+          "ratelimit-limit": [
+            "3600"
+          ],
+          "ratelimit-remaining": [
+            "3586"
+          ],
+          "ratelimit-reset": [
+            "1786870923"
+          ],
+          "strict-transport-security": [
+            "max-age=31536000; includeSubDomains"
+          ],
+          "traceparent": [
+            "00-24bc5e25d6782f9c3c6d6acf2e89765d-cf0fd16e2ed00af3-01"
+          ],
+          "uber-trace-id": [
+            "24bc5e25d6782f9c3c6d6acf2e89765d:cf0fd16e2ed00af3:0:1"
+          ],
+          "vary": [
+            "Accept-Encoding"
+          ],
+          "x-correlation-id": [
+            "24bc5e25d6782f9c3c6d6acf2e89765d"
+          ]
+        },
+        "status": 204
+      }
+    },
+    {
+      "recorded_at": "2026-08-16T09:01:50.066663Z",
+      "request": {
+        "body": "",
+        "body_type": "text",
+        "headers": {
+          "content-type": [
+            "application/json"
+          ],
+          "user-agent": [
+            "req/0.7.2"
+          ]
+        },
+        "method": "GET",
+        "query_string": "",
+        "uri": "https://api.hetzner.cloud/v1/firewalls"
+      },
+      "response": {
+        "body_json": {
+          "firewalls": [
+            {
+              "applied_to": [],
+              "created": "2026-08-03T23:25:24Z",
+              "id": 11413727,
+              "labels": {},
+              "name": "qa-fixture-project",
+              "rules": [
+                {
+                  "description": null,
+                  "destination_ips": [],
+                  "direction": "in",
+                  "port": "22",
+                  "protocol": "tcp",
+                  "source_ips": [
+                    "0.0.0.0/0",
+                    "::/0"
+                  ]
+                },
+                {
+                  "description": null,
+                  "destination_ips": [],
+                  "direction": "in",
+                  "port": "80",
+                  "protocol": "tcp",
+                  "source_ips": [
+                    "0.0.0.0/0",
+                    "::/0"
+                  ]
+                },
+                {
+                  "description": null,
+                  "destination_ips": [],
+                  "direction": "in",
+                  "port": "443",
+                  "protocol": "tcp",
+                  "source_ips": [
+                    "0.0.0.0/0",
+                    "::/0"
+                  ]
+                }
+              ]
+            },
+            {
+              "applied_to": [],
+              "created": "2026-08-09T23:09:59Z",
+              "id": 11440996,
+              "labels": {},
+              "name": "codemyspec-registry",
+              "rules": [
+                {
+                  "description": null,
+                  "destination_ips": [],
+                  "direction": "in",
+                  "port": "22",
+                  "protocol": "tcp",
+                  "source_ips": [
+                    "0.0.0.0/0",
+                    "::/0"
+                  ]
+                },
+                {
+                  "description": null,
+                  "destination_ips": [],
+                  "direction": "in",
+                  "port": "80",
+                  "protocol": "tcp",
+                  "source_ips": [
+                    "0.0.0.0/0",
+                    "::/0"
+                  ]
+                },
+                {
+                  "description": null,
+                  "destination_ips": [],
+                  "direction": "in",
+                  "port": "443",
+                  "protocol": "tcp",
+                  "source_ips": [
+                    "0.0.0.0/0",
+                    "::/0"
+                  ]
+                }
+              ]
+            },
+            {
+              "applied_to": [],
+              "created": "2026-08-16T00:08:38Z",
+              "id": 11470676,
+              "labels": {},
+              "name": "spex-drill",
+              "rules": [
+                {
+                  "description": null,
+                  "destination_ips": [],
+                  "direction": "in",
+                  "port": "22",
+                  "protocol": "tcp",
+                  "source_ips": [
+                    "0.0.0.0/0",
+                    "::/0"
+                  ]
+                },
+                {
+                  "description": null,
+                  "destination_ips": [],
+                  "direction": "in",
+                  "port": "80",
+                  "protocol": "tcp",
+                  "source_ips": [
+                    "0.0.0.0/0",
+                    "::/0"
+                  ]
+                },
+                {
+                  "description": null,
+                  "destination_ips": [],
+                  "direction": "in",
+                  "port": "443",
+                  "protocol": "tcp",
+                  "source_ips": [
+                    "0.0.0.0/0",
+                    "::/0"
+                  ]
+                },
+                {
+                  "description": null,
+                  "destination_ips": [],
+                  "direction": "in",
+                  "port": "5000",
+                  "protocol": "tcp",
+                  "source_ips": [
+                    "10.0.0.0/16"
+                  ]
+                }
+              ]
+            },
+            {
+              "applied_to": [],
+              "created": "2026-08-16T03:04:06Z",
+              "id": 11471098,
+              "labels": {},
+              "name": "spex-story966-criterion8156",
+              "rules": [
+                {
+                  "description": null,
+                  "destination_ips": [],
+                  "direction": "in",
+                  "port": "22",
+                  "protocol": "tcp",
+                  "source_ips": [
+                    "0.0.0.0/0",
+                    "::/0"
+                  ]
+                },
+                {
+                  "description": null,
+                  "destination_ips": [],
+                  "direction": "in",
+                  "port": "80",
+                  "protocol": "tcp",
+                  "source_ips": [
+                    "0.0.0.0/0",
+                    "::/0"
+                  ]
+                },
+                {
+                  "description": null,
+                  "destination_ips": [],
+                  "direction": "in",
+                  "port": "443",
+                  "protocol": "tcp",
+                  "source_ips": [
+                    "0.0.0.0/0",
+                    "::/0"
+                  ]
+                },
+                {
+                  "description": null,
+                  "destination_ips": [],
+                  "direction": "in",
+                  "port": "5000",
+                  "protocol": "tcp",
+                  "source_ips": [
+                    "10.0.0.0/16"
+                  ]
+                }
+              ]
+            }
+          ],
+          "meta": {
+            "pagination": {
+              "last_page": 1,
+              "next_page": null,
+              "page": 1,
+              "per_page": 25,
+              "previous_page": null,
+              "total_entries": 4
+            }
+          }
+        },
+        "body_type": "json",
+        "headers": {
+          "access-control-allow-headers": [
+            "X-Requested-With,Authorization,Content-Type"
+          ],
+          "access-control-allow-methods": [
+            "OPTIONS,GET,POST,PUT,PATCH,DELETE"
+          ],
+          "access-control-allow-origin": [
+            "*"
+          ],
+          "access-control-expose-headers": [
+            "Link,X-Correlation-ID"
+          ],
+          "access-control-max-age": [
+            "86400"
+          ],
+          "content-length": [
+            "6154"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "date": [
+            "Sun, 16 Aug 2026 09:01:50 GMT"
           ],
           "link": [
             "<https://api.hetzner.cloud/v1/firewalls?page=1&per_page=25>; rel=\"last\""
@@ -5298,48 +4584,42 @@
             "3585"
           ],
           "ratelimit-reset": [
-            "1786419967"
+            "1786870925"
           ],
           "strict-transport-security": [
             "max-age=31536000; includeSubDomains"
           ],
           "traceparent": [
-            "00-c36b681ad3e76305dcd8a330e8b163ab-bd3bdcf5ca04af03-01"
-          ],
-          "transfer-encoding": [
-            "chunked"
+            "00-3cb03c48980f9ca784ded9ab531d71ba-a0372832b1d86258-01"
           ],
           "uber-trace-id": [
-            "c36b681ad3e76305dcd8a330e8b163ab:bd3bdcf5ca04af03:0:1"
+            "3cb03c48980f9ca784ded9ab531d71ba:a0372832b1d86258:0:1"
           ],
           "vary": [
             "Accept-Encoding"
           ],
           "x-correlation-id": [
-            "c36b681ad3e76305dcd8a330e8b163ab"
+            "3cb03c48980f9ca784ded9ab531d71ba"
           ]
         },
         "status": 200
       }
     },
     {
-      "recorded_at": "2026-08-11T03:45:52.544935Z",
+      "recorded_at": "2026-08-16T09:01:50.204298Z",
       "request": {
         "body": "",
         "body_type": "text",
         "headers": {
-          "accept-encoding": [
-            "gzip"
-          ],
           "content-type": [
             "application/json"
           ],
           "user-agent": [
-            "req/0.5.17"
+            "req/0.7.2"
           ]
         },
         "method": "GET",
-        "query_string": "fingerprint=e8:f8:1a:57:1c:28:76:3e:64:9a:1a:67:1d:95:42:61",
+        "query_string": "fingerprint=48:4d:f3:f1:3e:07:46:83:a0:0c:52:91:c1:62:12:ab",
         "uri": "https://api.hetzner.cloud/v1/ssh_keys"
       },
       "response": {
@@ -5356,12 +4636,12 @@
           },
           "ssh_keys": [
             {
-              "created": "2026-08-11T03:44:25Z",
-              "fingerprint": "e8:f8:1a:57:1c:28:76:3e:64:9a:1a:67:1d:95:42:61",
-              "id": 116899835,
+              "created": "2026-08-16T09:00:18Z",
+              "fingerprint": "48:4d:f3:f1:3e:07:46:83:a0:0c:52:91:c1:62:12:ab",
+              "id": 117249724,
               "labels": {},
               "name": "spex-story963-criterion7965",
-              "public_key": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJZRJ3r/FfgLAReZWTpwWeLzi/gy6LYk651v4GzgerBh spex-story963-criterion7965"
+              "public_key": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHnHnvEvOjGWkGWfQM758HMhgbMWdlWFQ4g7SGHMEIRt spex-story963-criterion7965"
             }
           ]
         },
@@ -5382,14 +4662,17 @@
           "access-control-max-age": [
             "86400"
           ],
+          "content-length": [
+            "503"
+          ],
           "content-type": [
             "application/json"
           ],
           "date": [
-            "Tue, 11 Aug 2026 03:45:52 GMT"
+            "Sun, 16 Aug 2026 09:01:50 GMT"
           ],
           "link": [
-            "<https://api.hetzner.cloud/v1/ssh_keys?fingerprint=e8%3Af8%3A1a%3A57%3A1c%3A28%3A76%3A3e%3A64%3A9a%3A1a%3A67%3A1d%3A95%3A42%3A61&page=1>; rel=\"last\""
+            "<https://api.hetzner.cloud/v1/ssh_keys?fingerprint=48%3A4d%3Af3%3Af1%3A3e%3A07%3A46%3A83%3Aa0%3A0c%3A52%3A91%3Ac1%3A62%3A12%3Aab&page=1>; rel=\"last\""
           ],
           "ratelimit-limit": [
             "3600"
@@ -5398,43 +4681,37 @@
             "3584"
           ],
           "ratelimit-reset": [
-            "1786419968"
+            "1786870926"
           ],
           "strict-transport-security": [
             "max-age=31536000; includeSubDomains"
-          ],
-          "transfer-encoding": [
-            "chunked"
           ],
           "vary": [
             "Accept-Encoding"
           ],
           "x-correlation-id": [
-            "d2a39d6605acd5d5230f296b2dc5f200"
+            "9482727fc814f1e18d126ef4d9013bfd"
           ]
         },
         "status": 200
       }
     },
     {
-      "recorded_at": "2026-08-11T03:45:52.683386Z",
+      "recorded_at": "2026-08-16T09:01:50.346322Z",
       "request": {
         "body": "",
         "body_type": "text",
         "headers": {
-          "accept-encoding": [
-            "gzip"
-          ],
           "content-type": [
             "application/json"
           ],
           "user-agent": [
-            "req/0.5.17"
+            "req/0.7.2"
           ]
         },
         "method": "DELETE",
         "query_string": "",
-        "uri": "https://api.hetzner.cloud/v1/ssh_keys/116899835"
+        "uri": "https://api.hetzner.cloud/v1/ssh_keys/117249724"
       },
       "response": {
         "body": "",
@@ -5456,7 +4733,7 @@
             "86400"
           ],
           "date": [
-            "Tue, 11 Aug 2026 03:45:52 GMT"
+            "Sun, 16 Aug 2026 09:01:50 GMT"
           ],
           "ratelimit-limit": [
             "3600"
@@ -5465,7 +4742,7 @@
             "3583"
           ],
           "ratelimit-reset": [
-            "1786419969"
+            "1786870927"
           ],
           "strict-transport-security": [
             "max-age=31536000; includeSubDomains"
@@ -5474,30 +4751,27 @@
             "Accept-Encoding"
           ],
           "x-correlation-id": [
-            "e0c43f5935703d4a3c35855957ba081a"
+            "73011d47d0966ec1de3f6189a5486210"
           ]
         },
         "status": 204
       }
     },
     {
-      "recorded_at": "2026-08-11T03:45:52.820830Z",
+      "recorded_at": "2026-08-16T09:01:50.481292Z",
       "request": {
         "body": "",
         "body_type": "text",
         "headers": {
-          "accept-encoding": [
-            "gzip"
-          ],
           "content-type": [
             "application/json"
           ],
           "user-agent": [
-            "req/0.5.17"
+            "req/0.7.2"
           ]
         },
         "method": "GET",
-        "query_string": "fingerprint=e8:f8:1a:57:1c:28:76:3e:64:9a:1a:67:1d:95:42:61",
+        "query_string": "fingerprint=48:4d:f3:f1:3e:07:46:83:a0:0c:52:91:c1:62:12:ab",
         "uri": "https://api.hetzner.cloud/v1/ssh_keys"
       },
       "response": {
@@ -5531,14 +4805,17 @@
           "access-control-max-age": [
             "86400"
           ],
+          "content-length": [
+            "179"
+          ],
           "content-type": [
             "application/json"
           ],
           "date": [
-            "Tue, 11 Aug 2026 03:45:52 GMT"
+            "Sun, 16 Aug 2026 09:01:50 GMT"
           ],
           "link": [
-            "<https://api.hetzner.cloud/v1/ssh_keys?fingerprint=e8%3Af8%3A1a%3A57%3A1c%3A28%3A76%3A3e%3A64%3A9a%3A1a%3A67%3A1d%3A95%3A42%3A61&page=1>; rel=\"last\""
+            "<https://api.hetzner.cloud/v1/ssh_keys?fingerprint=48%3A4d%3Af3%3Af1%3A3e%3A07%3A46%3A83%3Aa0%3A0c%3A52%3A91%3Ac1%3A62%3A12%3Aab&page=1>; rel=\"last\""
           ],
           "ratelimit-limit": [
             "3600"
@@ -5547,19 +4824,16 @@
             "3582"
           ],
           "ratelimit-reset": [
-            "1786419970"
+            "1786870928"
           ],
           "strict-transport-security": [
             "max-age=31536000; includeSubDomains"
-          ],
-          "transfer-encoding": [
-            "chunked"
           ],
           "vary": [
             "Accept-Encoding"
           ],
           "x-correlation-id": [
-            "64b27def0693023779fd3a7d35178af6"
+            "5d47d6aaf45a71a1ca6ab79f79b14cdc"
           ]
         },
         "status": 200
