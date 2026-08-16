@@ -275,6 +275,19 @@ defmodule CodeMySpecWeb.Layouts do
   # Prefix match, not equality: a blog post lives at /blog/:slug and is still
   # the Blog section. Guarded on the boundary so /blogroll does not light up
   # /blog, which is the bug a bare String.starts_with?/2 would have.
+  # Where "Open workspace" goes.
+  #
+  # `/app` for a visitor with nothing selected, and straight to the project for
+  # someone who has one — the point of the button is resuming work, and landing
+  # on the Overview to click through to the project you already chose is the
+  # ceremony story 813 exists to remove, one step later than it used to be.
+  #
+  # Reads `active_project_id` rather than `active_project`, so it does not
+  # depend on the preference having preloaded the struct. `Scope.for_user/1`
+  # populates both from user preferences, so a dead marketing view has it.
+  defp workspace_path(%{active_project_id: id}) when is_binary(id), do: ~p"/app/projects/#{id}"
+  defp workspace_path(_scope), do: ~p"/app"
+
   defp nav_active(nil, _section), do: nil
 
   defp nav_active(current_path, section) do
@@ -361,6 +374,8 @@ defmodule CodeMySpecWeb.Layouts do
   attr :current_path, :string, default: nil
 
   def marketing(assigns) do
+    assigns = assign(assigns, :workspace_path, workspace_path(assigns[:current_scope]))
+
     ~H"""
     <div class="drawer">
       <input id="marketing-drawer-toggle" type="checkbox" class="drawer-toggle" />
@@ -474,7 +489,7 @@ defmodule CodeMySpecWeb.Layouts do
                 >
                   Log out
                 </.link>
-                <.link href={~p"/app"} class="btn btn-primary">Open workspace</.link>
+                <.link href={@workspace_path} class="btn btn-primary">Open workspace</.link>
               <% else %>
                 <.link href={~p"/users/log-in"} class="btn btn-ghost hidden sm:inline-flex">
                   Log in
@@ -688,7 +703,7 @@ defmodule CodeMySpecWeb.Layouts do
               <div class="text-xs opacity-60 px-1 truncate" title={@current_scope.user.email}>
                 {@current_scope.user.email}
               </div>
-              <.link href={~p"/app"} class="btn btn-primary btn-block">Open workspace</.link>
+              <.link href={@workspace_path} class="btn btn-primary btn-block">Open workspace</.link>
               <.link href={~p"/users/log-out"} method="delete" class="btn btn-ghost btn-block">
                 Log out
               </.link>
