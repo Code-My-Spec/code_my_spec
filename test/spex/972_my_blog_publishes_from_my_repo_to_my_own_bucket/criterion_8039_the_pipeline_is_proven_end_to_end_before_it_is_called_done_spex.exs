@@ -213,13 +213,13 @@ defmodule CodeMySpecSpex.Story972.Criterion8039Spex do
           |> Floki.text()
           |> String.trim()
 
-        because =
-          if publish_error == "",
-            do: "",
-            else: " — the page reports the publish failed: #{publish_error}"
-
         # Anchor: a proof exists rather than only a configuration summary.
-        assert proof != [], "expected the content step to record a render proof#{because}"
+        # `inspect/1` rather than a branch on whether there is an error: an
+        # empty string prints as `""`, which reads as "the page reported no
+        # publish error" without a conditional deciding what the message says.
+        assert proof != [],
+               "expected the content step to record a render proof; " <>
+                 "publish error on the page: #{inspect(publish_error)}"
 
         state = proof |> Floki.attribute("data-state") |> List.first()
 
