@@ -543,27 +543,14 @@ defmodule CodeMySpec.Hooks.Stop do
   defp maybe_continue_with_next_task(scope, session, req_id) do
     cond do
       is_nil(session) ->
-        # Same answer as a resolvable session, deliberately. What is available
-        # to do is a fact about the working copy, not about whether this stop
-        # could be tied to a session row — and a payload that names no session
-        # taking a different path is exactly how a skipped validation hides.
         Logger.info("[StopHook] [#{req_id}] No session, allowing stop")
         notify_complete()
-        allow_with_menu(scope)
+        %{}
 
       not continuous_mode?(session) ->
-        # Told, not refused. A first cut blocked here whenever any class was
-        # live, and story 555's, 538's and 983's criteria caught it in one run:
-        # seven scenarios across three stories specify that a clean pipeline is
-        # allowed to stop. Refusing on an outstanding backlog is continuous
-        # mode, and continuous mode is opt-in — an interactive agent would never
-        # have been able to stop while any work remained anywhere.
-        #
-        # So the menu rides the allow as a system message. The agent still hears
-        # what is available; it is simply not held for it.
         Logger.info("[StopHook] [#{req_id}] Not in continuous mode, allowing stop")
         notify_complete()
-        allow_with_menu(scope)
+        %{}
 
       true ->
         case RequirementGraph.next_actionable(scope) do
@@ -593,16 +580,6 @@ defmodule CodeMySpec.Hooks.Stop do
 
   defp continuous_mode?(%{continuous: true}), do: true
   defp continuous_mode?(_), do: false
-
-  # An allow that still says what is waiting. `%{}` when the menu is empty, so a
-  # terminal stop stays literally silent — a "nothing to do" message on the one
-  # stop that has nothing to do is the noise this whole change exists to remove.
-  defp allow_with_menu(scope) do
-    case Menu.render(scope) do
-      "" -> %{}
-      menu -> %{"systemMessage" => String.trim_leading(menu)}
-    end
-  end
 
   # Test-only: specs back pipeline outputs with pre-recorded JSON fixtures
   # so cassette replays can observe failures (`System.cmd` side effects —

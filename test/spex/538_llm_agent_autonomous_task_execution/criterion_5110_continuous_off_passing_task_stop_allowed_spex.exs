@@ -47,11 +47,7 @@ defmodule CodeMySpecSpex.Story538.Criterion5110Spex do
       end
 
       then_ "the stop is allowed with the empty signal", context do
-        # The absence of a block, not a byte-empty body. An allow now carries
-        # the menu as a `systemMessage` when work is available — the same
-        # loosening criterion 5120 already made when the R6 terminus gained a
-        # retrospective payload. What this criterion claims is unchanged.
-        refute context.response["decision"] == "block",
+        assert context.response == %{},
                "continuous off must allow stop on a passing task — got: #{inspect(context.response)}"
 
         {:ok, context}

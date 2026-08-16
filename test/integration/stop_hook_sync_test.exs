@@ -140,13 +140,7 @@ defmodule CodeMySpec.Integration.StopHookSyncTest do
 
       # Call stop hook — evaluates task, marks completed, allows stop (not continuous mode)
       stop_response = call_stop_hook!(scope, external_session_id)
-
-      # Allowed, rather than byte-empty. An allow now carries the menu as a
-      # `systemMessage` when work is available, so the contract is the absence
-      # of a block — the same loosening criterion 5120 made when the terminus
-      # gained a retrospective payload.
-      refute stop_response["decision"] == "block",
-             "not-continuous mode must allow the stop, got: #{inspect(stop_response)}"
+      assert stop_response == %{}
 
       # Verify task was marked completed
       session2 = Sessions.get_session(scope, session_id)
@@ -196,9 +190,8 @@ defmodule CodeMySpec.Integration.StopHookSyncTest do
       # Call stop hook — should allow stop (not evaluate manual task)
       stop_response = call_stop_hook!(scope, external_id)
 
-      # Manual tasks allow stop — the absence of a block, not a byte-empty body
-      refute stop_response["decision"] == "block",
-             "a manual task must allow the stop, got: #{inspect(stop_response)}"
+      # Manual tasks allow stop (empty response = no block)
+      assert stop_response == %{}
 
       # Task should still be active (not evaluated/completed)
       session2 = Sessions.get_session(scope, session.id)

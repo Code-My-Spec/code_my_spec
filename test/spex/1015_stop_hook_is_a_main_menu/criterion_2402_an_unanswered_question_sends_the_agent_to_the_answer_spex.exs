@@ -46,10 +46,12 @@ defmodule CodeMySpecSpex.Story1015.Criterion2402Spex do
 
   import CodeMySpecSpex.SharedGivens
 
+  alias CodeMySpec.Environments
   alias CodeMySpecSpex.Fixtures
 
   @deploy_key "dk_spex_894_pending_question"
-  @fixture_dir "test/fixtures/validation/pipeline_clean_run"
+  @impl_path "lib/example_context.ex"
+  @fixture_dir "test/fixtures/validation/pipeline_compile_error"
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -58,6 +60,15 @@ defmodule CodeMySpecSpex.Story1015.Criterion2402Spex do
     scenario "the agent asked, nobody has answered, and it tries to stop" do
       given_ :synced_context_component
       given_ :context_spec_task_started
+
+      given_ "a problem is outstanding, so the stop is refused", context do
+        # Nothing reaches the model on the allow path — it must be an empty
+        # response — so a directive is only observable on a refusal. The
+        # question still outranks the problem; the problem is what makes the
+        # ranking visible at all.
+        :ok = Environments.write_file(context.environment, @impl_path, broken_impl())
+        {:ok, context}
+      end
 
       given_ "the working copy holds a credential it can reach the API with", context do
         project = Fixtures.project_with_deploy_key(context.scope, context.project, @deploy_key)
@@ -90,17 +101,13 @@ defmodule CodeMySpecSpex.Story1015.Criterion2402Spex do
 
       when_ "the agent attempts to stop", context do
         response =
-          use_cmd_cassette "clean", record: :none do
+          use_cmd_cassette "pipeline_compile_error", record: :none do
             Phoenix.ConnTest.build_conn()
             |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_harness_id)
             |> Plug.Conn.put_req_header("content-type", "application/json")
             |> post(~p"/api/hooks/stop", %{
               "session_id" => context.session_id,
-              "test_output_files" => %{
-                "compile" => fixture_path("compile.jsonl"),
-                "exunit" => fixture_path("exunit.json"),
-                "spex" => Path.expand("test/fixtures/validation/spex_green.jsonl")
-              }
+              "test_output_files" => %{"compile" => fixture_path("compile.jsonl")}
             })
             |> Phoenix.ConnTest.json_response(200)
           end
@@ -109,25 +116,22 @@ defmodule CodeMySpecSpex.Story1015.Criterion2402Spex do
       end
 
       then_ "the agent is sent to collect the answer", context do
-        # Clean tree, so this is the allow path and the directive rides
-        # `systemMessage`. Refusing a stop over an unread reply would be
-        # continuous mode, which is opt-in — the agent is told, not held.
-        directive = context.response["systemMessage"] || context.response["reason"] || ""
+        reason = context.response["reason"] || ""
 
-        assert directive =~ "check_answer",
+        assert reason =~ "check_answer",
                "both tool descriptions promise the stop hook brings the agent back " <>
                  "for the reply. Nothing implemented it, so an agent that followed " <>
-                 "them stopped and never returned. Got:\n#{inspect(context.response)}"
+                 "them stopped and never returned. Got:\n#{reason}"
 
         {:ok, context}
       end
 
       then_ "the agent is not told to ask again", context do
-        directive = context.response["systemMessage"] || context.response["reason"] || ""
+        reason = context.response["reason"] || ""
 
-        refute directive =~ "ask_user",
+        refute reason =~ "ask_user",
                "a question is already outstanding, and sending the agent to ask is " <>
-                 "how one question becomes a queue of identical ones. Got:\n#{directive}"
+                 "how one question becomes a queue of identical ones. Got:\n#{reason}"
 
         {:ok, context}
       end
@@ -135,4 +139,11 @@ defmodule CodeMySpecSpex.Story1015.Criterion2402Spex do
   end
 
   defp fixture_path(name), do: Path.expand(Path.join(@fixture_dir, name))
+
+  defp broken_impl do
+    """
+    defmodule ExampleContext do
+      # missing `end`
+    """
+  end
 end

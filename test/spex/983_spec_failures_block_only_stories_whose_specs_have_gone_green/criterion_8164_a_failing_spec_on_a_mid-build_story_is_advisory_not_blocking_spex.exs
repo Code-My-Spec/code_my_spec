@@ -92,10 +92,7 @@ defmodule CodeMySpecSpex.Story983.Criterion8164Spex do
       end
 
       then_ "the stop is allowed", context do
-        # The absence of a block, not a byte-empty body — an allow now carries
-        # the menu as a `systemMessage` when work is available. Same loosening
-        # criterion 5120 made when the terminus gained a retrospective payload.
-        refute context.response["decision"] == "block",
+        assert context.response == %{},
                "a spec failure on a story that never went green must not block, got: #{inspect(context.response)}"
 
         {:ok, context}
