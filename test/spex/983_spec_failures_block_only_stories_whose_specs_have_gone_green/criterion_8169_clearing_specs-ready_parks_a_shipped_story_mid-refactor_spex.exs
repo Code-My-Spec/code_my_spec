@@ -138,7 +138,7 @@ defmodule CodeMySpecSpex.Story983.Criterion8169Spex do
             |> Phoenix.ConnTest.json_response(200)
           end
 
-        assert response == %{},
+        refute response["decision"] == "block",
                "a hand-parked story must not block on its failing specs, got: #{inspect(response)}"
 
         {:ok, context}

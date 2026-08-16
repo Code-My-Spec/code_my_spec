@@ -95,8 +95,8 @@ defmodule CodeMySpecSpex.Story538.Criterion5124Spex do
           |> post(~p"/api/hooks/stop", %{"session_id" => context.session_id})
           |> Phoenix.ConnTest.json_response(200)
 
-        assert response == %{},
-               "loop must end after approval — expected empty allow, got: #{inspect(response)}"
+        refute response["decision"] == "block",
+               "loop must end after approval — expected an allow, got: #{inspect(response)}"
 
         {:ok, context}
       end

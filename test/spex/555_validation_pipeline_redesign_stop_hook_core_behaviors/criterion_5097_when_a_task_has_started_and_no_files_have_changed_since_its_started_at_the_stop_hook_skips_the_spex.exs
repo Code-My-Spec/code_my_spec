@@ -42,7 +42,10 @@ defmodule CodeMySpecSpex.Story555.Criterion5097Spex do
       end
 
       then_ "the stop is allowed with the empty signal", context do
-        assert context.response == %{},
+        # The absence of a block, not a byte-empty body — an allow now carries
+        # the menu as a `systemMessage` when work is available. Same loosening
+        # criterion 5120 made when the terminus gained a retrospective payload.
+        refute context.response["decision"] == "block",
                "no-changes stop must skip the pipeline and allow, got: #{inspect(context.response)}"
 
         {:ok, context}
