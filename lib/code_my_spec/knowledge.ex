@@ -65,13 +65,15 @@ defmodule CodeMySpec.Knowledge do
     end
   end
 
+  # Probed with `list_directory`, not `file_exists?`: `Harness.file_exists?`
+  # proxies `stat`, and `stat` answers `{:error, :not_regular}` for a directory
+  # — so an existing knowledge dir read as missing over a harness environment.
   def resolve_root(%Scope{environment: env}, {:project, relative}) when not is_nil(env) do
     root = Path.join(env.cwd, relative)
 
-    if Environments.file_exists?(env, root) do
-      {:ok, {:env, env, root}}
-    else
-      {:error, "Directory not found: #{relative}"}
+    case Environments.list_directory(env, root) do
+      {:ok, _} -> {:ok, {:env, env, root}}
+      {:error, _} -> {:error, "Directory not found: #{relative}"}
     end
   end
 
@@ -194,23 +196,24 @@ defmodule CodeMySpec.Knowledge do
     end
   end
 
+  # Read first, list second: a regular file reads, a directory lists, and a path
+  # that does neither is absent. Gating on `file_exists?` made every subdirectory
+  # `:not_found` over a harness environment, for the reason in `resolve_root/2`.
+  # Directories are implicit in the in-memory backend, which is why membership is
+  # inferred from a successful listing rather than asked for directly.
   defp locate({:env, env, root_path}, full_path) do
     cond do
       not safe_path?(root_path, full_path) ->
         :invalid_path
 
-      not Environments.file_exists?(env, full_path) ->
-        :not_found
+      match?({:ok, _}, Environments.read_file(env, full_path)) ->
+        :file
 
-      # In the env backend a key that resolves through read_file is a
-      # file; if read_file fails with :enoent the path is treated as
-      # a directory (some files live under it). The InMemoryEnvironment
-      # encodes directories implicitly via prefix membership.
+      match?({:ok, _}, Environments.list_directory(env, full_path)) ->
+        :dir
+
       true ->
-        case Environments.read_file(env, full_path) do
-          {:ok, _} -> :file
-          {:error, _} -> :dir
-        end
+        :not_found
     end
   end
 
