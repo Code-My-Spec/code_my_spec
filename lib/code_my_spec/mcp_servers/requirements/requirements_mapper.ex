@@ -128,7 +128,24 @@ defmodule CodeMySpec.McpServers.Requirements.RequirementsMapper do
 
   defp format_summary_row({name, group}, false), do: "- **#{name}**: #{length(group)}"
 
-  defp format_active_filters(opts) do
+  # Names what was counted when no status filter was given, because the counts
+  # alone read as friction and are not.
+  #
+  # Unfiltered, `implementation_file: 900` on this project is 900 *satisfied*
+  # requirements. A reader who takes that as work outstanding goes looking for a
+  # break that does not exist — which happened, off a moduledoc that described
+  # the default as a summary of unsatisfied requirements. With
+  # `status: "unsatisfied"` the same project totals 55.
+  #
+  # Only when the filter is absent: with it, `format_active_filters/1` already
+  # says `status=…` and a second label would be noise.
+  defp format_active_filters(%{status: nil} = opts) do
+    named_filters(opts) <> " — all statuses; add `status: \"unsatisfied\"` for outstanding work"
+  end
+
+  defp format_active_filters(opts), do: named_filters(opts)
+
+  defp named_filters(opts) do
     parts =
       [
         {"status", opts.status},
