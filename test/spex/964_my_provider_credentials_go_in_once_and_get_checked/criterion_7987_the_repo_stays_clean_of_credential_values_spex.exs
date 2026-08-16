@@ -65,10 +65,9 @@ defmodule CodeMySpecSpex.Story964.Criterion7987Spex do
         offenders =
           entries
           |> Enum.filter(fn path ->
-            case Environments.read_file(context.environment, path) do
-              {:ok, contents} -> String.contains?(contents, @secret_value)
-              _ -> false
-            end
+            context.environment
+            |> Environments.read_file(path)
+            |> carries_secret?()
           end)
 
         assert offenders == [],
@@ -93,4 +92,12 @@ defmodule CodeMySpecSpex.Story964.Criterion7987Spex do
       end
     end
   end
+
+  # A directory entry is not always readable — a subdirectory answers
+  # `{:error, :eisdir}`, and an unreadable file is not evidence of a leak.
+  # Two heads rather than a branch: spex files forbid an imperative `case`,
+  # on the grounds that a branch means the test is reacting to state it
+  # should control.
+  defp carries_secret?({:ok, contents}), do: String.contains?(contents, @secret_value)
+  defp carries_secret?(_), do: false
 end
