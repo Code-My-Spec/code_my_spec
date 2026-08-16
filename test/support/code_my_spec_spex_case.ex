@@ -232,6 +232,28 @@ defmodule CodeMySpecSpex.Case do
   `Fixtures.disconnect_provider/2` explicitly, which now reads as the
   deliberate act it is.
   """
+  @doc """
+  Make the deployed site unreachable, at the layer where it is unreachable.
+
+  A publish POSTs a trigger to the site; a site that is down refuses the
+  connection, and `Req.Test.transport_error/2` is that, exactly — not a 500,
+  which is a site that answered.
+
+  This used to be arranged by pointing the client at `127.0.0.1:9` and letting
+  the connection really fail. That reads as more honest and is not reachable:
+  `config/test.exs` pins every client to `Req.Test`, so the request never
+  leaves and raises `no mock or stub` instead. The pin is deliberate — it stops
+  a test with a credential making a live call — and simulating the transport
+  failure is the faithful way through it.
+  """
+  def trigger_unreachable(_context) do
+    Req.Test.stub(CodeMySpec.Content.TriggerClient, fn conn ->
+      Req.Test.transport_error(conn, :econnrefused)
+    end)
+
+    :ok
+  end
+
   def connect_providers(%{scope: scope} = context) do
     connect_providers_for_real(context, scope)
   end
@@ -290,7 +312,11 @@ defmodule CodeMySpecSpex.Case do
       {CodeMySpec.Provisioning.Resend, CodeMySpecSpex.Fakes.Resend,
        &CodeMySpecSpex.Fakes.Resend.new/0},
       {CodeMySpec.Provisioning.Cloudflare, CodeMySpecSpex.Fakes.Cloudflare,
-       &CodeMySpecSpex.Fakes.Cloudflare.new/0}
+       &CodeMySpecSpex.Fakes.Cloudflare.new/0},
+      # Object storage rides on `Content.S3Client`'s config, which is what
+      # `ExAwsReqClient` reads its plug from — the same seam, one layer down.
+      {CodeMySpec.Content.S3Client, CodeMySpecSpex.Fakes.Storage,
+       &CodeMySpecSpex.Fakes.Storage.new/0}
     ]
 
     agents =
@@ -317,6 +343,7 @@ defmodule CodeMySpecSpex.Case do
   def fake(%{fakes: fakes}, :hetzner), do: Map.fetch!(fakes, CodeMySpec.Provisioning.Hetzner)
   def fake(%{fakes: fakes}, :resend), do: Map.fetch!(fakes, CodeMySpec.Provisioning.Resend)
   def fake(%{fakes: fakes}, :cloudflare), do: Map.fetch!(fakes, CodeMySpec.Provisioning.Cloudflare)
+  def fake(%{fakes: fakes}, :storage), do: Map.fetch!(fakes, CodeMySpec.Content.S3Client)
 
   @doc """
   Say which zone Sam's account holds.
