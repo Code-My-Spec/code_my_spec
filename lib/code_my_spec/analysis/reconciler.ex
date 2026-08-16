@@ -155,6 +155,30 @@ defmodule CodeMySpec.Analysis.Reconciler do
   # Problem schema requires file_path, and one nil row would roll back the
   # whole reconcile.
   defp patch_file_path(%{file_path: nil} = problem), do: %{problem | file_path: "unknown"}
+
+  # Every path in this table is relative to the working copy root, and until
+  # `cc643bf3` nothing said so or checked. An absolute one is not merely
+  # inconsistent: `clear_problems_for_missing_files/2` deletes any Problem whose
+  # path is not in the current file list, that list is relative, so the row is
+  # removed on the next sync as though its file had been deleted. Four spex
+  # failures spent an unknown period appearing on one sweep and vanishing on the
+  # next because of it.
+  #
+  # Warned rather than rejected, deliberately. A changeset that refused would
+  # roll back `insert_all_problems/2` and take every other problem for that
+  # source with it — losing a whole analyzer's findings to punish one bad path
+  # is the wrong trade. This makes the next violation announce itself, which is
+  # the property that was missing.
+  defp patch_file_path(%{file_path: "/" <> _rest = path} = problem) do
+    Logger.warning(
+      "[Analysis] problem recorded with an absolute file_path: #{path}. Paths are relative " <>
+        "to the working copy root — this row will be deleted by the next file sync, because " <>
+        "no relative path can match it (cc643bf3)."
+    )
+
+    problem
+  end
+
   defp patch_file_path(problem), do: problem
 
   # Test failures land on the test file's path; join to Files to stamp the
