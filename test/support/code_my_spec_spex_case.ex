@@ -4026,7 +4026,22 @@ defmodule CodeMySpecSpex.Case do
       # it fetches the post back from the deployed site, and that GET went to
       # the real network on every replay, so 972's criteria only passed where a
       # site was running. If a module reads a plug, it goes here.
-      CodeMySpec.Provisioning.ContentPublishing
+      CodeMySpec.Provisioning.ContentPublishing,
+      # Four. The deploy step's health probe fetches the environment over
+      # HTTPS, and that request escaped every cassette — so a *recording* of
+      # the full sequence died in the deploy step with `cannot find mock/stub
+      # CodeMySpec.Provisioning.Deploy`, 470s in, after both servers had been
+      # built. It blocked 841/1961 (uat and prod live) and 966's 8006 and 8010,
+      # which is the whole of "can we deploy repeatably, and prove it".
+      CodeMySpec.Provisioning.Deploy,
+      # Five, six and seven, found by asking the question instead of waiting to
+      # be bitten by it — `provider_modules_complete_test.exs` compares this
+      # list against every module that reads a `:plug`, and named these three
+      # the first time it ran. None had been reached by a spex yet, so each was
+      # a recording failure waiting for whoever first exercised that path.
+      CodeMySpec.Content.PullClient,
+      CodeMySpec.Provisioning.Deploy.UptimeRobot,
+      CodeMySpec.AgentHarness.ConversationRecorder
     ]
   end
 
