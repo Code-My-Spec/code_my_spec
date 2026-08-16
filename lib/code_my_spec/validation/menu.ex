@@ -48,13 +48,10 @@ defmodule CodeMySpec.Validation.Menu do
   row while telling the agent the tool was broken.
   """
 
-  import Ecto.Query, only: [where: 3]
-
   alias CodeMySpec.Issues
   alias CodeMySpec.Notifications
   alias CodeMySpec.Problems.ProblemRepository
-  alias CodeMySpec.Repo
-  alias CodeMySpec.Requirements.Node
+  alias CodeMySpec.Requirements.RequirementGraph
   alias CodeMySpec.Sessions
 
   @tools %{
@@ -127,27 +124,32 @@ defmodule CodeMySpec.Validation.Menu do
     |> Enum.count(&(&1.status in [:incoming, :accepted, "incoming", "accepted"]))
   end
 
-  # Counted off the persisted rows, never `next_actionable/1`.
+  # The actionable count, when the graph is already cached, and nothing when it
+  # is not.
   #
-  # That was the first version and it deadlocks. Recomputing the graph runs the
-  # checkers, the checkers glob the working copy, and for a harness-served
-  # project the stop decision runs *inside the channel process* — so the process
-  # that would serve the glob is the one blocked waiting for it.
-  # `harness_project_channel_test` times out at 4949ms with "it accepted the
-  # request and did not answer", which is the same calling-self shape
-  # `Analysis` already warns about. A cache hit avoids the I/O and a cold cache
-  # does not, so the safe version is the one that never computes.
+  # Two wrong versions preceded this. The first called `next_actionable/1`, which
+  # recomputes on a cache miss — the recompute runs the checkers, the checkers
+  # glob the working copy, and the stop decision runs inside the channel process
+  # for a harness-served project, so the process that would serve the glob is the
+  # one blocked waiting for it. `harness_project_channel_test` timed out at
+  # 4949ms with "it accepted the request and did not answer".
   #
-  # The cost is precision: this counts unsatisfied requirements rather than
-  # actionable ones, so a project whose remaining work is all blocked by
-  # prerequisites is reported as having work. Acceptable because the menu is
-  # advisory and the directive points at `get_next_requirement`, which does the
-  # actionable filtering properly. A number one click away from the exact answer
-  # beats a hook that hangs.
+  # The second counted rows off `requirements` directly, which read 5 against the
+  # graph's 58 — because `project_id` is set only on project-level nodes.
+  # Component requirements carry `component_id` and story requirements carry
+  # `story_id`, both leaving `project_id` null, so the filter selected 13 of
+  # about 4,900 rows. Joining through components and stories would have fixed the
+  # scoping and still given the wrong number: every unsatisfied node, including
+  # ones no agent can start. "1,700 requirements" is true and useless.
+  #
+  # So: the actionable set, which is what `get_next_requirement` would hand back,
+  # read only when it costs a cache hit. A miss omits the class rather than
+  # paying for a recompute — a menu is worth a missing line, never a deadlock.
   defp count(scope, :requirements) do
-    Node
-    |> where([r], r.project_id == ^scope.active_project_id and r.satisfied == false)
-    |> Repo.aggregate(:count)
+    case RequirementGraph.cached_actionable_count(scope) do
+      {:ok, n} -> n
+      :miss -> 0
+    end
   end
 
   defp session_external_id(%{active_harness_id: id}), do: Sessions.external_id_for_harness(id)

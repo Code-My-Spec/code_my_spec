@@ -284,6 +284,38 @@ defmodule CodeMySpec.Requirements.RequirementGraph do
   end
 
   @doc """
+  The actionable count, but only if the cache already has the graph.
+
+  `:miss` rather than a computed answer, deliberately. Every other reader here
+  falls through to `compute_and_publish/3` on a miss, which runs the checkers,
+  and the checkers glob the working copy. That is fine from a LiveView and fatal
+  from the stop hook: for a harness-served project the stop decision runs *inside
+  the channel process*, so the process that would serve the glob is the one
+  blocked waiting for it. `harness_project_channel_test` timed out at 4949ms with
+  "it accepted the request and did not answer" — the same calling-self shape
+  `Analysis` warns about.
+
+  Everything on the hit path is database or pure: `Preloader.load/1` reads rows,
+  `GraphFingerprint.compute/2` hashes what the ctx already holds, and
+  `actionable_from/3` walks nodes and edges in memory. So a caller on the channel
+  process can ask this and never reach a file.
+
+  For a caller that wants a number when it is cheap and nothing when it is not —
+  a count in a stop-hook menu is worth omitting rather than deadlocking for.
+  """
+  @spec cached_actionable_count(Scope.t()) :: {:ok, non_neg_integer()} | :miss
+  def cached_actionable_count(%Scope{} = scope) do
+    with {:ok, ctx} <- Preloader.load(scope),
+         config = CodeMySpec.Configurations.get_or_create(scope),
+         {:ok, cached, _at} <- GraphCache.fetch(scope, GraphFingerprint.compute(ctx, config)) do
+      {nodes, edges} = served_graph(scope, ctx, cached)
+      {:ok, length(actionable_from(nodes, edges, ctx))}
+    else
+      _ -> :miss
+    end
+  end
+
+  @doc """
   `cached_graph/1` plus the actionable set, for readers that want both without
   paying for the preload twice.
 
