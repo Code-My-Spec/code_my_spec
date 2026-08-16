@@ -85,9 +85,18 @@ defmodule CodeMySpec.Environments.Harness do
   # `false` — the same answer a missing file gives, which is the one place this
   # module cannot keep the two apart. Callers needing the distinction should use
   # `stat/2`, which returns a tuple.
+  #
+  # Listing is the second half rather than an optimisation: `stat` answers only
+  # for regular files (a directory comes back `{:error, :not_regular}`), while
+  # the other four implementations answer `true` for a directory — `File.exists?`
+  # twice, `test -e`, and prefix membership. Asking `stat` alone made this the
+  # one backend where an existing directory reported missing, which is what hid
+  # `.code_my_spec/knowledge` from the project knowledge library in production
+  # while every in-memory test passed.
   @impl true
   def file_exists?(%Environment{} = env, path) do
-    match?({:ok, _}, request(env, "stat", %{"path" => path}))
+    match?({:ok, _}, request(env, "stat", %{"path" => path})) or
+      match?({:ok, _}, request(env, "list_directory", %{"path" => path}))
   end
 
   @impl true
