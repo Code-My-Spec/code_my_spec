@@ -73,7 +73,7 @@ defmodule CodeMySpec.Validation.Menu do
   def render(scope) do
     case live(scope) do
       [] -> ""
-      [top | rest] -> directive(top) <> tally(rest) <> offer(live?(scope, :questions))
+      [top | rest] -> directive(top) <> tally(rest) <> offer(questions_live?(scope))
     end
   end
 
@@ -85,13 +85,21 @@ defmodule CodeMySpec.Validation.Menu do
   the decision come to disagree.
   """
   @spec live(map()) :: [{atom(), pos_integer()}]
+  # A working copy that has not been bound to a project yet. Every count below
+  # queries by `project_id`, and Ecto refuses to compare a column with `nil`
+  # rather than silently matching nothing — so this raised on a stop fired
+  # before `init_project`, which is the one stop that must stay quiet.
+  def live(%{active_project_id: nil}), do: []
+
   def live(scope) do
     @order
     |> Enum.map(&{&1, count(scope, &1)})
     |> Enum.filter(fn {_class, n} -> n > 0 end)
   end
 
-  defp live?(scope, class), do: count(scope, class) > 0
+  # Read off `live/1` rather than re-queried, so the offer and the tally can
+  # never disagree about whether a question is outstanding.
+  defp questions_live?(scope), do: List.keymember?(live(scope), :questions, 0)
 
   # Both a pending question and an answered-but-unread one send the agent to
   # `check_answer` — from the hook's side they are the same instruction, and the

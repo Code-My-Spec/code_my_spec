@@ -543,9 +543,13 @@ defmodule CodeMySpec.Hooks.Stop do
   defp maybe_continue_with_next_task(scope, session, req_id) do
     cond do
       is_nil(session) ->
+        # Same answer as a resolvable session, deliberately. What is available
+        # to do is a fact about the working copy, not about whether this stop
+        # could be tied to a session row — and a payload that names no session
+        # taking a different path is exactly how a skipped validation hides.
         Logger.info("[StopHook] [#{req_id}] No session, allowing stop")
         notify_complete()
-        %{}
+        allow_with_menu(scope)
 
       not continuous_mode?(session) ->
         # Told, not refused. A first cut blocked here whenever any class was
