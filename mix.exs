@@ -104,7 +104,13 @@ defmodule CodeMySpec.MixProject do
       {:mint_web_socket, "~> 1.0"},
 
       # Added by codemyspec
-      {:ex_cli_vcr, git: "https://github.com/johns10/ex_cli_vcr", branch: "main", only: [:test]},
+      # TEMPORARY path dep, at John's request, so the arg-masking fix for
+      # aba3ec25 can be written and proven here before it is pushed. Absolute
+      # rather than relative because this repository is worked from several
+      # git worktrees at different depths, and a relative path that resolves
+      # from one does not resolve from the others. Restore the git dep before
+      # this leaves the machine.
+      {:ex_cli_vcr, path: "/Users/johndavenport/Documents/github/ex_cli_vcr", only: [:test]},
       {:sexy_spex, git: "https://github.com/Code-My-Spec/spex.git", branch: "feature/reusable-givens", only: [:dev, :dev_cli, :test]},
       {:client_utils, "~> 0.1.24"},
       {:credo, "~> 1.7.13"},

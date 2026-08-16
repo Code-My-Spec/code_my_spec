@@ -1041,6 +1041,47 @@ defmodule CodeMySpecSpex.Case do
   end
 
   @doc """
+  Dump the fleet's own database rather than this machine's.
+
+      setup :fleet_backup_database
+
+  `real_backup_database/1` points `DATABASE_URL` at the local test database,
+  which is right when the dump runs here and wrong once it runs on a box. The
+  generated `bin/backup` reaches postgres with
+
+      docker run --rm -i --network db_net postgres:17 pg_dump …
+
+  because the environment's server carries docker and curl and no postgres
+  client. So the URL is resolved *inside that container*, where `localhost` is
+  the container itself — `connection to server at "localhost" … refused`, which
+  reads as a broken backup and is a misdirected hostname.
+
+  ## It seeds the credential rather than the URL
+
+  Overriding `:database_url` looks simpler and does not hold. The step also
+  runs `sync_password/2` — `ALTER USER app WITH PASSWORD <credential>` — so a
+  hand-written URL is authenticated against a password the step has just
+  changed to something else, and the run fails with `password authentication
+  failed for user "app"` on the second attempt having worked on the first.
+
+  Seeding `database_password_<env>` instead makes one value the source for
+  both: `credential/2` returns it, `Database.url/1` builds the URL from it, and
+  `sync_password/2` sets the role to it. Nothing disagrees.
+
+  Fixed rather than generated, because `credential/2` mints a random password
+  when the secret is absent and a value that differs between record and replay
+  can never match — the same trap that stops 8156 replaying a `sops set`
+  carrying a fresh SECRET_KEY_BASE.
+  """
+  def fleet_backup_database(%{scope: scope} = context) do
+    for environment <- ["uat", "prod"] do
+      Fixtures.put_project_secret(scope, "database_password_#{environment}", "spexfleet")
+    end
+
+    context
+  end
+
+  @doc """
   Generate a fresh application with `mix cms.new` and point the project at it.
 
   `setup_active_project` makes a stub directory holding a `mix.exs`, which is
@@ -2988,8 +3029,19 @@ defmodule CodeMySpecSpex.Case do
       # command sequence repeats commands whose answers change — `git
       # rev-parse HEAD` fails before the first commit and succeeds after —
       # and replaying the first match every time reports the wrong one.
+      #
+      # `ignore` masks the secret `sops set` carries. The command is
+      # `sops set envs/<env>.enc.env '["SECRET_KEY_BASE"]' <32 random bytes>`,
+      # and the value is minted fresh every run — so a recording that keeps it
+      # can never match again, and the only run that *can* be kept is one that
+      # failed before reaching it. That is why 8156's cassette held a sops
+      # failure rather than a success, and why no change to the spex could fix
+      # it (aba3ec25, b2bc6217).
       result =
-        use_cmd_cassette unquote(name), record: cmd_mode, sequential: true do
+        use_cmd_cassette unquote(name),
+          record: cmd_mode,
+          sequential: true,
+          ignore: [[:args, "sops", 3]] do
           CodeMySpecSpex.Case.with_recorded_repository_owner(unquote(name), fn ->
             CodeMySpecSpex.Case.with_provider_cassette(unquote(name), unquote(opts), fn ->
               unquote(block)
