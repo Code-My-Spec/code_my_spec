@@ -95,18 +95,26 @@ defmodule CodeMySpecSpex.Story958.Criterion7938Spex do
   defp epic_id_on_board!(board) do
     html = render(board)
 
-    case Regex.run(~r/data-epic-id="([0-9a-f-]{36})"/, html) do
-      [_, id] -> id
-      _ -> raise "no epic dropzone found on the board: #{html}"
-    end
+    captured!(
+      Regex.run(~r/data-epic-id="([0-9a-f-]{36})"/, html),
+      "no epic dropzone found on the board: #{html}"
+    )
   end
 
   defp story_id!(response) do
     body = CodeMySpecSpex.TaskResponseHelpers.response_text(response)
 
-    case Regex.run(~r/\(ID: (\d+)\)/, body) do
-      [_, id] -> id
-      _ -> raise "could not read story id from response: #{body}"
-    end
+    captured!(
+      Regex.run(~r/\(ID: (\d+)\)/, body),
+      "could not read story id from response: #{body}"
+    )
   end
+
+  # Two heads rather than a `case`: pattern matching in a function head is not
+  # control flow, and it keeps the message the raise was building. A bare
+  # `[_, id] = Regex.run(...)` would also remove the branch, but `Regex.run/2`
+  # returns nil on no match — the MatchError would read "value: nil" and throw
+  # away the haystack that says what went wrong.
+  defp captured!([_, value], _message), do: value
+  defp captured!(_no_match, message), do: raise(message)
 end

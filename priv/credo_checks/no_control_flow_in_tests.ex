@@ -55,13 +55,20 @@ defmodule CodeMySpec.Check.Warning.NoControlFlowInTests do
       alongside the other fixtures, where this rule does not apply.
 
       **Extraction whose other branch raises** — `case Regex.run(...) do [_, id]
-      -> id; _ -> raise ... end`. The intent is right (fail loudly) and the
-      branch is unnecessary to achieve it: a bare match already raises.
+      -> id; _ -> raise "could not read the id from: \#{body}" end`. The intent is
+      right; the branch is not the way to get it. Use multi-clause heads, which
+      keep the message:
 
-          [_, id] = Regex.run(~r/\\(ID: (\\d+)\\)/, body)
+          defp story_id!(body), do: story_id_from(Regex.run(~r/\\(ID: (\\d+)\\)/, body), body)
 
-      The MatchError names the value it got, which is the same information the
-      hand-written `raise` was assembling.
+          defp story_id_from([_, id], _body), do: id
+          defp story_id_from(_none, body), do: raise "could not read story id from: \#{body}"
+
+      A bare `[_, id] = Regex.run(...)` also removes the branch, but only reach
+      for it when the matched value is self-describing. `Regex.run/2` returns
+      `nil` on no match, so the MatchError reads `no match of right hand side
+      value: nil` — it has thrown away the very haystack the raise was there to
+      show you, and a spex that fails this way names nothing you can act on.
 
       **Teardown and environment helpers** — a `defp delete_ssh_key/1` that has
       to cope with present and absent. Resource management is not the test
