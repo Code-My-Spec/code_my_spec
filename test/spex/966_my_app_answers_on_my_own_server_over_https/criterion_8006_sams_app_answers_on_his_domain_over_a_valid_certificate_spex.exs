@@ -19,7 +19,10 @@ defmodule CodeMySpecSpex.Story966.Criterion8006Spex do
   setup :setup_active_project
   setup :devops_on
   setup :real_working_directory
-  setup :connect_providers
+  # Fakes rather than cassettes. The HTTPS answer this asserts on is injected
+  # either way — `stage_deploy/2` supplies the probe — so the cassettes were
+  # recording the provider calls around it and nothing else.
+  setup :fake_providers
 
   spex "Sam's app answers on his domain over a valid certificate" do
     scenario "the environment answers over HTTPS with a trusted certificate" do
@@ -28,6 +31,13 @@ defmodule CodeMySpecSpex.Story966.Criterion8006Spex do
         # 200-over-HTTPS answer, which is what a real kamal-proxy cert issuance
         # produces. The domain is set so the tls step has a host to verify.
         context = stage_deploy(context, :ok)
+
+        # A certificate that arrives *because the step ran*. `run_step/3`
+        # verifies first and returns early when verify is satisfied, so a probe
+        # that always answers `:ok` means the tls step has nothing to do — and
+        # this criterion reads what the run recorded.
+        context = certificate_issued_by_the_step(context)
+
         view = mount_provisioning(context)
 
         # Set after the mount: a domain present at mount makes `load/2` read the

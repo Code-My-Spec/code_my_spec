@@ -1071,6 +1071,45 @@ defmodule CodeMySpecSpex.Case do
   end
 
   @doc """
+  A certificate that does not exist yet, and does once the step has run.
+
+  `run_step/3` verifies before it executes and returns early when verify says
+  satisfied — correctly, since a certificate that already works leaves the step
+  nothing to do. So a probe staged as a flat `:ok` (`stage_certificate/1`)
+  makes the tls step a no-op, and a criterion asserting on what the *run*
+  recorded finds nothing.
+
+  Which is the same shape as everything else here: one fixed answer cannot
+  describe a world that changes. The first probe answers "not yet" and the rest
+  answer `:ok` — verify finds nothing, the run does the work, and what it
+  records is there to read.
+  """
+  def certificate_issued_by_the_step(context) do
+    {:ok, probes} = Agent.start_link(fn -> 0 end)
+
+    probe = fn _host, _opts ->
+      case Agent.get_and_update(probes, &{&1, &1 + 1}) do
+        0 -> {:error, :no_certificate_yet}
+        _ -> :ok
+      end
+    end
+
+    previous = Application.get_env(:code_my_spec, :provisioning_step_opts, [])
+
+    Application.put_env(
+      :code_my_spec,
+      :provisioning_step_opts,
+      Keyword.put(previous, :probe, probe)
+    )
+
+    ExUnit.Callbacks.on_exit(fn ->
+      Application.put_env(:code_my_spec, :provisioning_step_opts, previous)
+    end)
+
+    context
+  end
+
+  @doc """
   Print each step's state and reason, when `SPEX_DRILL_TRACE` is set.
 
   A halted provisioning sequence says nothing about itself. A step that refuses

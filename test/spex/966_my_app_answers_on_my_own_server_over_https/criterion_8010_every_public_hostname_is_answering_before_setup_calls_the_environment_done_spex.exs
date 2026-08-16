@@ -28,12 +28,21 @@ defmodule CodeMySpecSpex.Story966.Criterion8010Spex do
   setup :setup_active_project
   setup :devops_on
   setup :real_working_directory
-  setup :connect_providers
+  # Fakes rather than cassettes. What this asserts on — whether a hostname
+  # answers — is injected by `stage_deploy/2` either way.
+  setup :fake_providers
 
   spex "Every public hostname is answering before setup calls the environment done" do
     scenario "the hostname is checked, and the check is what makes the step done" do
       given_ "an environment has deployed", context do
         context = stage_deploy(context, :ok)
+
+        # The check is what makes the step done, which means the step has to
+        # run — and `run_step/3` returns early when verify is already
+        # satisfied. A hostname that answers from the start would make this
+        # criterion assert on a step that did nothing.
+        context = certificate_issued_by_the_step(context)
+
         view = mount_provisioning(context)
 
         # Set after the mount: a domain present at mount makes `load/2` read the
