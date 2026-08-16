@@ -56,26 +56,18 @@ defmodule CodeMySpecLocalWeb.EpicsLive.IndexTest do
 
       _unfiled = story_fixture(scope, %{title: "Unfiled story", ready_for_dev: false})
 
-      case board(scope.active_project.id) do
-        {:ok, _view, html} ->
-          buttons =
-            Regex.scan(~r/<button[^>]*phx-click="toggle_story_ready"[^>]*>/, html)
+      {:ok, _view, html} = board(scope.active_project.id)
 
-          assert length(buttons) >= 2,
-                 """
-                 Both columns should offer the same control. Found
-                 #{length(buttons)} toggle button(s) — a static badge on the
-                 epic side is the defect: the board looks like per-story
-                 readiness works everywhere and silently doesn't for the
-                 stories just filed.
-                 """
+      buttons = Regex.scan(~r/<button[^>]*phx-click="toggle_story_ready"[^>]*>/, html)
 
-        {:error, _} ->
-          # The board needs a resolvable working dir; when the harness cannot
-          # provide one this test has nothing to say, and asserting anyway
-          # would make it fail for an unrelated reason.
-          :ok
-      end
+      assert length(buttons) >= 2,
+             """
+             Both columns should offer the same control. Found
+             #{length(buttons)} toggle button(s) — a static badge on the
+             epic side is the defect: the board looks like per-story
+             readiness works everywhere and silently doesn't for the
+             stories just filed.
+             """
     end
 
     test "the badge colour carries the status in both columns" do
@@ -87,17 +79,13 @@ defmodule CodeMySpecLocalWeb.EpicsLive.IndexTest do
 
       _parked = story_fixture(scope, %{title: "Parked story", ready_for_dev: false})
 
-      case board(scope.active_project.id) do
-        {:ok, _view, html} ->
-          assert html =~ "badge-success", "a ready story should read as ready"
+      {:ok, _view, html} = board(scope.active_project.id)
 
-          assert html =~ "badge-ghost",
-                 "a parked story should read as parked — the unfiled column " <>
-                   "used to render both states with no variant at all"
+      assert html =~ "badge-success", "a ready story should read as ready"
 
-        {:error, _} ->
-          :ok
-      end
+      assert html =~ "badge-ghost",
+             "a parked story should read as parked — the unfiled column " <>
+               "used to render both states with no variant at all"
     end
   end
 end
