@@ -1,6 +1,6 @@
 defmodule CodeMySpec.Requirements.NodeRepository do
   @moduledoc """
-  Writes computed requirement nodes to rows.
+  Writes computed requirement nodes to rows, and reads what they say.
 
   One upsert per entity type, because the identity is a partial unique index per
   entity type and Postgres wants a concrete conflict target. Splitting on the
@@ -14,6 +14,13 @@ defmodule CodeMySpec.Requirements.NodeRepository do
 
   That is also why `on_conflict` names its columns instead of `:replace_all`:
   `inserted_at` must survive, and so must the id.
+
+  ## Reading
+
+  These rows plus `requirement_edges` are a read model, and questions about the
+  graph's *current* shape can be answered from them without recomputing
+  anything. `actionable_count/1` is the first such reader; the recompute path
+  exists to keep the rows true, not to answer every question about them.
   """
 
   import Ecto.Query
@@ -23,6 +30,73 @@ defmodule CodeMySpec.Requirements.NodeRepository do
   alias CodeMySpec.Users.Scope
 
   @replace {:replace, [:satisfied, :details, :description, :checked_at, :updated_at]}
+
+  @doc """
+  How many requirements are unsatisfied with every prerequisite met.
+
+  A read-model query and nothing else: unsatisfied nodes belonging to the
+  project, minus any with an incoming edge from a node that is itself
+  unsatisfied. No preload, no fingerprint, no cache, and no filesystem.
+
+  That last part is why this exists. The obvious reader —
+  `RequirementGraph.next_actionable/1` — recomputes on a cache miss, the
+  recompute runs the checkers, and the checkers glob the working copy. For a
+  harness-served project the stop decision runs *inside the channel process*, so
+  the process that would serve the glob is the one blocked waiting for it
+  (`harness_project_channel_test`, 4949ms, "it accepted the request and did not
+  answer"). Reading the cache instead avoided the deadlock and answered almost
+  never: `GraphFingerprint.compute/2` hashes the file digest, and the stop hook
+  syncs files before it decides, so the entry is always stale by then.
+
+  Both of those were attempts to compute an answer the rows already hold.
+
+  Scoped three ways because the rows are, deliberately: `project_id` is set only
+  on project-level nodes, while component and story requirements carry
+  `component_id` or `story_id` and leave it null. A filter on `project_id` alone
+  selects the project-level handful and silently misses the rest — measured at 5
+  of 57 on a real working copy.
+
+  Not identical to `next_actionable/1`, which also drops component requirements
+  with no inherited story priority. Measured 57 here against that path's 58, and
+  the difference is that filter rather than a disagreement about the graph.
+  """
+  @spec actionable_count(Scope.t()) :: non_neg_integer()
+  def actionable_count(%Scope{active_project_id: nil}), do: 0
+
+  def actionable_count(%Scope{active_project_id: project_id}) do
+    blocked =
+      from(e in Edge,
+        join: prereq in Node,
+        on: prereq.id == e.from_requirement_id,
+        where: prereq.satisfied == false,
+        select: e.to_requirement_id
+      )
+
+    # `type/2` on both, because these are schemaless queries: naming a table
+    # rather than a schema leaves Ecto with no field definition to cast against,
+    # so a UUID string reaches Postgrex uncast and it refuses — "expected a
+    # binary of 16 bytes". The outer `project_id` needs none, since `Node` is a
+    # schema and knows its own field is a binary id.
+    from(n in Node,
+      where: n.satisfied == false,
+      where: n.id not in subquery(blocked),
+      where:
+        n.project_id == ^project_id or
+          n.component_id in subquery(
+            from(c in "components",
+              where: c.project_id == type(^project_id, :binary_id),
+              select: c.id
+            )
+          ) or
+          n.story_id in subquery(
+            from(s in "stories",
+              where: s.project_id == type(^project_id, :binary_id),
+              select: s.id
+            )
+          )
+    )
+    |> Repo.aggregate(:count)
+  end
 
   @doc """
   Persist computed nodes, returning them keyed by `Topology.node_key/1`.

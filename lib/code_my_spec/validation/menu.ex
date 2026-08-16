@@ -51,7 +51,7 @@ defmodule CodeMySpec.Validation.Menu do
   alias CodeMySpec.Issues
   alias CodeMySpec.Notifications
   alias CodeMySpec.Problems.ProblemRepository
-  alias CodeMySpec.Requirements.RequirementGraph
+  alias CodeMySpec.Requirements.NodeRepository
   alias CodeMySpec.Sessions
 
   @tools %{
@@ -124,33 +124,23 @@ defmodule CodeMySpec.Validation.Menu do
     |> Enum.count(&(&1.status in [:incoming, :accepted, "incoming", "accepted"]))
   end
 
-  # The actionable count, when the graph is already cached, and nothing when it
-  # is not.
+  # Straight off the read model, which is where this always belonged.
   #
-  # Two wrong versions preceded this. The first called `next_actionable/1`, which
-  # recomputes on a cache miss — the recompute runs the checkers, the checkers
-  # glob the working copy, and the stop decision runs inside the channel process
-  # for a harness-served project, so the process that would serve the glob is the
-  # one blocked waiting for it. `harness_project_channel_test` timed out at
-  # 4949ms with "it accepted the request and did not answer".
+  # Two versions preceded it and both tried to compute an answer the rows
+  # already hold. The first called `next_actionable/1`, which recomputes on a
+  # cache miss and globs the working copy — fatal here, because the stop
+  # decision runs inside the channel process for a harness-served project, so
+  # the process that would serve the glob is the one waiting on it. The second
+  # read the cached graph instead, which never deadlocks and also never answers:
+  # the fingerprint hashes the file digest and the stop hook syncs files before
+  # deciding, so the entry is stale by the time the menu renders.
   #
-  # The second counted rows off `requirements` directly, which read 5 against the
-  # graph's 58 — because `project_id` is set only on project-level nodes.
-  # Component requirements carry `component_id` and story requirements carry
-  # `story_id`, both leaving `project_id` null, so the filter selected 13 of
-  # about 4,900 rows. Joining through components and stories would have fixed the
-  # scoping and still given the wrong number: every unsatisfied node, including
-  # ones no agent can start. "1,700 requirements" is true and useless.
-  #
-  # So: the actionable set, which is what `get_next_requirement` would hand back,
-  # read only when it costs a cache hit. A miss omits the class rather than
-  # paying for a recompute — a menu is worth a missing line, never a deadlock.
-  defp count(scope, :requirements) do
-    case RequirementGraph.cached_actionable_count(scope) do
-      {:ok, n} -> n
-      :miss -> 0
-    end
-  end
+  # `requirements` and `requirement_edges` are a read model. Actionable is a
+  # graph query over it — unsatisfied, minus anything with an unsatisfied
+  # prerequisite — and needs no recompute, no cache and no filesystem. John's
+  # point, and it is the answer: nothing about a stop should require rethinking
+  # the graph.
+  defp count(scope, :requirements), do: NodeRepository.actionable_count(scope)
 
   defp session_external_id(%{active_harness_id: id}), do: Sessions.external_id_for_harness(id)
   defp session_external_id(_scope), do: nil
