@@ -8,7 +8,7 @@
       "command": "git",
       "exit_code": 0,
       "opts": {
-        "cd": "/Users/johndavenport/Documents/github/code_my_spec_test_repos/devops_drill_v2",
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/briefly--576460681400189833-eM8dTWpdVKKLMlHUuy/briefly-576460681399877833-wlA8MxmKnEmQ7CgCpXU0/cms_drill_dbbf8119121148dc810af5169a27f05a",
         "env": {
           "SCRIPT_PATH": null,
           "RELEASE_ROOT": null,
@@ -17,17 +17,21 @@
           "RELEASE_DISTRIBUTION": null,
           "EMU": null,
           "RELEASE_COMMAND": null,
+          "MIX_HOME": null,
           "PROGNAME": null,
           "ELIXIR_VERSION": null,
+          "MIX_ARCHIVES": null,
           "RELEASE_MODE": null,
           "beforeExtra": null,
           "REL_EXEC": null,
           "RELEASE_PROG": null,
           "ERL_LIBS": null,
           "RELEASE_NODE": null,
+          "MIX_DEPS_PATH": null,
           "REL_EXTRA": null,
           "RELEASE_BOOT_SCRIPT_CLEAN": null,
           "RELEASE_NAME": null,
+          "MIX_TARGET": null,
           "RELEASE_VM_ARGS": null,
           "ERLEXEC_DIR": null,
           "ERTS_VSN": null,
@@ -42,13 +46,15 @@
           "RELEASE_REMOTE_VM_ARGS": null,
           "BINDIR": null,
           "REL_GOTO": null,
+          "MIX_ENV": null,
+          "MIX_BUILD_PATH": null,
           "endLoop": null,
           "RELEASE_COOKIE": null
         },
         "stderr_to_stdout": true
       },
       "output": "true\n",
-      "recorded_at": "2026-08-10T23:22:42.818615Z"
+      "recorded_at": "2026-08-13T21:15:35.251041Z"
     },
     {
       "args": [
@@ -58,7 +64,7 @@
       "command": "git",
       "exit_code": 0,
       "opts": {
-        "cd": "/Users/johndavenport/Documents/github/code_my_spec_test_repos/devops_drill_v2",
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/briefly--576460681400189833-eM8dTWpdVKKLMlHUuy/briefly-576460681399877833-wlA8MxmKnEmQ7CgCpXU0/cms_drill_dbbf8119121148dc810af5169a27f05a",
         "env": {
           "SCRIPT_PATH": null,
           "RELEASE_ROOT": null,
@@ -67,17 +73,21 @@
           "RELEASE_DISTRIBUTION": null,
           "EMU": null,
           "RELEASE_COMMAND": null,
+          "MIX_HOME": null,
           "PROGNAME": null,
           "ELIXIR_VERSION": null,
+          "MIX_ARCHIVES": null,
           "RELEASE_MODE": null,
           "beforeExtra": null,
           "REL_EXEC": null,
           "RELEASE_PROG": null,
           "ERL_LIBS": null,
           "RELEASE_NODE": null,
+          "MIX_DEPS_PATH": null,
           "REL_EXTRA": null,
           "RELEASE_BOOT_SCRIPT_CLEAN": null,
           "RELEASE_NAME": null,
+          "MIX_TARGET": null,
           "RELEASE_VM_ARGS": null,
           "ERLEXEC_DIR": null,
           "ERTS_VSN": null,
@@ -92,13 +102,15 @@
           "RELEASE_REMOTE_VM_ARGS": null,
           "BINDIR": null,
           "REL_GOTO": null,
+          "MIX_ENV": null,
+          "MIX_BUILD_PATH": null,
           "endLoop": null,
           "RELEASE_COOKIE": null
         },
         "stderr_to_stdout": true
       },
-      "output": "4089cca8708199ca33e9a198413a9e352a3c00f3\n",
-      "recorded_at": "2026-08-10T23:22:42.823646Z"
+      "output": "090ec150f19a4ede1aab08ec861cedc8bcc3820e\n",
+      "recorded_at": "2026-08-13T21:15:35.256087Z"
     },
     {
       "args": [
@@ -110,7 +122,7 @@
       "command": "git",
       "exit_code": 0,
       "opts": {
-        "cd": "/Users/johndavenport/Documents/github/code_my_spec_test_repos/devops_drill_v2",
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/briefly--576460681400189833-eM8dTWpdVKKLMlHUuy/briefly-576460681399877833-wlA8MxmKnEmQ7CgCpXU0/cms_drill_dbbf8119121148dc810af5169a27f05a",
         "env": {
           "SCRIPT_PATH": null,
           "RELEASE_ROOT": null,
@@ -119,17 +131,21 @@
           "RELEASE_DISTRIBUTION": null,
           "EMU": null,
           "RELEASE_COMMAND": null,
+          "MIX_HOME": null,
           "PROGNAME": null,
           "ELIXIR_VERSION": null,
+          "MIX_ARCHIVES": null,
           "RELEASE_MODE": null,
           "beforeExtra": null,
           "REL_EXEC": null,
           "RELEASE_PROG": null,
           "ERL_LIBS": null,
           "RELEASE_NODE": null,
+          "MIX_DEPS_PATH": null,
           "REL_EXTRA": null,
           "RELEASE_BOOT_SCRIPT_CLEAN": null,
           "RELEASE_NAME": null,
+          "MIX_TARGET": null,
           "RELEASE_VM_ARGS": null,
           "ERLEXEC_DIR": null,
           "ERTS_VSN": null,
@@ -144,65 +160,15 @@
           "RELEASE_REMOTE_VM_ARGS": null,
           "BINDIR": null,
           "REL_GOTO": null,
+          "MIX_ENV": null,
+          "MIX_BUILD_PATH": null,
           "endLoop": null,
           "RELEASE_COOKIE": null
         },
         "stderr_to_stdout": true
       },
       "output": "",
-      "recorded_at": "2026-08-10T23:22:42.829110Z"
-    },
-    {
-      "args": [
-        "push",
-        "-u",
-        "origin",
-        "main"
-      ],
-      "command": "git",
-      "exit_code": 0,
-      "opts": {
-        "cd": "/Users/johndavenport/Documents/github/code_my_spec_test_repos/devops_drill_v2",
-        "env": {
-          "SCRIPT_PATH": null,
-          "RELEASE_ROOT": null,
-          "ERTS_BIN": null,
-          "RELEASE_DISTRIBUTION_FLAG": null,
-          "RELEASE_DISTRIBUTION": null,
-          "EMU": null,
-          "RELEASE_COMMAND": null,
-          "PROGNAME": null,
-          "ELIXIR_VERSION": null,
-          "RELEASE_MODE": null,
-          "beforeExtra": null,
-          "REL_EXEC": null,
-          "RELEASE_PROG": null,
-          "ERL_LIBS": null,
-          "RELEASE_NODE": null,
-          "REL_EXTRA": null,
-          "RELEASE_BOOT_SCRIPT_CLEAN": null,
-          "RELEASE_NAME": null,
-          "RELEASE_VM_ARGS": null,
-          "ERLEXEC_DIR": null,
-          "ERTS_VSN": null,
-          "RELEASE_SYS_CONFIG": null,
-          "ROOTDIR": null,
-          "ERL_CONSOLE_MODE": null,
-          "parsErlang": null,
-          "RELEASE_TMP": null,
-          "REL_VSN_DIR": null,
-          "RELEASE_VSN": null,
-          "RELEASE_BOOT_SCRIPT": null,
-          "RELEASE_REMOTE_VM_ARGS": null,
-          "BINDIR": null,
-          "REL_GOTO": null,
-          "endLoop": null,
-          "RELEASE_COOKIE": null
-        },
-        "stderr_to_stdout": true
-      },
-      "output": "To https://github.com/codemy-my-spec-test/spex-story972-criterion8039.git\n * [new branch]      main -> main\nbranch 'main' set up to track 'origin/main'.\n",
-      "recorded_at": "2026-08-10T23:22:44.236845Z"
+      "recorded_at": "2026-08-13T21:15:35.262339Z"
     },
     {
       "args": [
@@ -212,7 +178,7 @@
       "command": "git",
       "exit_code": 0,
       "opts": {
-        "cd": "/Users/johndavenport/Documents/github/code_my_spec_test_repos/devops_drill_v2",
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/briefly--576460681400189833-eM8dTWpdVKKLMlHUuy/briefly-576460681399877833-wlA8MxmKnEmQ7CgCpXU0/cms_drill_dbbf8119121148dc810af5169a27f05a",
         "env": {
           "SCRIPT_PATH": null,
           "RELEASE_ROOT": null,
@@ -221,17 +187,21 @@
           "RELEASE_DISTRIBUTION": null,
           "EMU": null,
           "RELEASE_COMMAND": null,
+          "MIX_HOME": null,
           "PROGNAME": null,
           "ELIXIR_VERSION": null,
+          "MIX_ARCHIVES": null,
           "RELEASE_MODE": null,
           "beforeExtra": null,
           "REL_EXEC": null,
           "RELEASE_PROG": null,
           "ERL_LIBS": null,
           "RELEASE_NODE": null,
+          "MIX_DEPS_PATH": null,
           "REL_EXTRA": null,
           "RELEASE_BOOT_SCRIPT_CLEAN": null,
           "RELEASE_NAME": null,
+          "MIX_TARGET": null,
           "RELEASE_VM_ARGS": null,
           "ERLEXEC_DIR": null,
           "ERTS_VSN": null,
@@ -246,13 +216,15 @@
           "RELEASE_REMOTE_VM_ARGS": null,
           "BINDIR": null,
           "REL_GOTO": null,
+          "MIX_ENV": null,
+          "MIX_BUILD_PATH": null,
           "endLoop": null,
           "RELEASE_COOKIE": null
         },
         "stderr_to_stdout": true
       },
-      "output": "4089cca8708199ca33e9a198413a9e352a3c00f3\n",
-      "recorded_at": "2026-08-10T23:22:44.242441Z"
+      "output": "090ec150f19a4ede1aab08ec861cedc8bcc3820e\n",
+      "recorded_at": "2026-08-13T21:15:35.267398Z"
     },
     {
       "args": [
@@ -270,8 +242,8 @@
       "opts": {
         "stderr_to_stdout": true
       },
-      "output": "Generating public/private ed25519 key pair.\nYour identification has been saved in /var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/cms-ssh-27362/id_ed25519\nYour public key has been saved in /var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/cms-ssh-27362/id_ed25519.pub\nThe key fingerprint is:\nSHA256:kjuxbM0HRxkUcDuI97pVP4u3Cu1LYmb3Mnx+Teua7rg spex-story972-criterion8039\nThe key's randomart image is:\n+--[ED25519 256]--+\n|        .o=.     |\n|       . o +     |\n|      . o =      |\n|       o o .     |\n|      + S o .    |\n|     . B + o .  .|\n|      * + O.+ o.o|\n|     . . B *=o++o|\n|        .  EO&B+ |\n+----[SHA256]-----+\n",
-      "recorded_at": "2026-08-10T23:22:44.993504Z"
+      "output": "Generating public/private ed25519 key pair.\nYour identification has been saved in /var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/cms-ssh-13257_23234_qbJZpbh7ZjkO/id_ed25519\nYour public key has been saved in /var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/cms-ssh-13257_23234_qbJZpbh7ZjkO/id_ed25519.pub\nThe key fingerprint is:\nSHA256:kVLd81Mxh/R71ONd2Yl0RNZgsKeWYZFiwpRmXwllYQo spex-story972-criterion8039\nThe key's randomart image is:\n+--[ED25519 256]--+\n|       oEo.+BB*X+|\n|       .*o++B+=.X|\n|      .oo+.o++.=*|\n|       . ... =+.=|\n|        S   +  +o|\n|           .    .|\n|                 |\n|                 |\n|                 |\n+----[SHA256]-----+\n",
+      "recorded_at": "2026-08-13T21:15:35.931666Z"
     },
     {
       "args": [
@@ -283,15 +255,493 @@
         "BatchMode=yes",
         "-o",
         "IdentitiesOnly=yes",
+        "-o",
+        "ConnectTimeout=10",
         "-i",
         "*/id_ed25519",
-        "root@178.156.216.165",
+        "root@178.156.185.52",
+        "true"
+      ],
+      "command": "ssh",
+      "exit_code": 255,
+      "opts": {
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/briefly--576460681400189833-eM8dTWpdVKKLMlHUuy/briefly-576460681399877833-wlA8MxmKnEmQ7CgCpXU0/cms_drill_dbbf8119121148dc810af5169a27f05a",
+        "env": {
+          "SCRIPT_PATH": null,
+          "RELEASE_ROOT": null,
+          "ERTS_BIN": null,
+          "RELEASE_DISTRIBUTION_FLAG": null,
+          "RELEASE_DISTRIBUTION": null,
+          "EMU": null,
+          "RELEASE_COMMAND": null,
+          "MIX_HOME": null,
+          "PROGNAME": null,
+          "ELIXIR_VERSION": null,
+          "MIX_ARCHIVES": null,
+          "RELEASE_MODE": null,
+          "beforeExtra": null,
+          "REL_EXEC": null,
+          "RELEASE_PROG": null,
+          "ERL_LIBS": null,
+          "RELEASE_NODE": null,
+          "MIX_DEPS_PATH": null,
+          "REL_EXTRA": null,
+          "RELEASE_BOOT_SCRIPT_CLEAN": null,
+          "RELEASE_NAME": null,
+          "MIX_TARGET": null,
+          "RELEASE_VM_ARGS": null,
+          "ERLEXEC_DIR": null,
+          "ERTS_VSN": null,
+          "RELEASE_SYS_CONFIG": null,
+          "ROOTDIR": null,
+          "ERL_CONSOLE_MODE": null,
+          "parsErlang": null,
+          "RELEASE_TMP": null,
+          "REL_VSN_DIR": null,
+          "RELEASE_VSN": null,
+          "RELEASE_BOOT_SCRIPT": null,
+          "RELEASE_REMOTE_VM_ARGS": null,
+          "BINDIR": null,
+          "REL_GOTO": null,
+          "MIX_ENV": null,
+          "MIX_BUILD_PATH": null,
+          "endLoop": null,
+          "RELEASE_COOKIE": null
+        },
+        "stderr_to_stdout": true
+      },
+      "output": "ssh: connect to host 178.156.185.52 port 22: Operation timed out\r\n",
+      "recorded_at": "2026-08-13T21:15:48.328495Z"
+    },
+    {
+      "args": [
+        "-o",
+        "StrictHostKeyChecking=no",
+        "-o",
+        "UserKnownHostsFile=/dev/null",
+        "-o",
+        "BatchMode=yes",
+        "-o",
+        "IdentitiesOnly=yes",
+        "-o",
+        "ConnectTimeout=10",
+        "-i",
+        "*/id_ed25519",
+        "root@178.156.185.52",
+        "true"
+      ],
+      "command": "ssh",
+      "exit_code": 255,
+      "opts": {
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/briefly--576460681400189833-eM8dTWpdVKKLMlHUuy/briefly-576460681399877833-wlA8MxmKnEmQ7CgCpXU0/cms_drill_dbbf8119121148dc810af5169a27f05a",
+        "env": {
+          "SCRIPT_PATH": null,
+          "RELEASE_ROOT": null,
+          "ERTS_BIN": null,
+          "RELEASE_DISTRIBUTION_FLAG": null,
+          "RELEASE_DISTRIBUTION": null,
+          "EMU": null,
+          "RELEASE_COMMAND": null,
+          "MIX_HOME": null,
+          "PROGNAME": null,
+          "ELIXIR_VERSION": null,
+          "MIX_ARCHIVES": null,
+          "RELEASE_MODE": null,
+          "beforeExtra": null,
+          "REL_EXEC": null,
+          "RELEASE_PROG": null,
+          "ERL_LIBS": null,
+          "RELEASE_NODE": null,
+          "MIX_DEPS_PATH": null,
+          "REL_EXTRA": null,
+          "RELEASE_BOOT_SCRIPT_CLEAN": null,
+          "RELEASE_NAME": null,
+          "MIX_TARGET": null,
+          "RELEASE_VM_ARGS": null,
+          "ERLEXEC_DIR": null,
+          "ERTS_VSN": null,
+          "RELEASE_SYS_CONFIG": null,
+          "ROOTDIR": null,
+          "ERL_CONSOLE_MODE": null,
+          "parsErlang": null,
+          "RELEASE_TMP": null,
+          "REL_VSN_DIR": null,
+          "RELEASE_VSN": null,
+          "RELEASE_BOOT_SCRIPT": null,
+          "RELEASE_REMOTE_VM_ARGS": null,
+          "BINDIR": null,
+          "REL_GOTO": null,
+          "MIX_ENV": null,
+          "MIX_BUILD_PATH": null,
+          "endLoop": null,
+          "RELEASE_COOKIE": null
+        },
+        "stderr_to_stdout": true
+      },
+      "output": "ssh: connect to host 178.156.185.52 port 22: Operation timed out\r\n",
+      "recorded_at": "2026-08-13T21:16:00.348341Z"
+    },
+    {
+      "args": [
+        "-o",
+        "StrictHostKeyChecking=no",
+        "-o",
+        "UserKnownHostsFile=/dev/null",
+        "-o",
+        "BatchMode=yes",
+        "-o",
+        "IdentitiesOnly=yes",
+        "-o",
+        "ConnectTimeout=10",
+        "-i",
+        "*/id_ed25519",
+        "root@178.156.185.52",
+        "true"
+      ],
+      "command": "ssh",
+      "exit_code": 255,
+      "opts": {
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/briefly--576460681400189833-eM8dTWpdVKKLMlHUuy/briefly-576460681399877833-wlA8MxmKnEmQ7CgCpXU0/cms_drill_dbbf8119121148dc810af5169a27f05a",
+        "env": {
+          "SCRIPT_PATH": null,
+          "RELEASE_ROOT": null,
+          "ERTS_BIN": null,
+          "RELEASE_DISTRIBUTION_FLAG": null,
+          "RELEASE_DISTRIBUTION": null,
+          "EMU": null,
+          "RELEASE_COMMAND": null,
+          "MIX_HOME": null,
+          "PROGNAME": null,
+          "ELIXIR_VERSION": null,
+          "MIX_ARCHIVES": null,
+          "RELEASE_MODE": null,
+          "beforeExtra": null,
+          "REL_EXEC": null,
+          "RELEASE_PROG": null,
+          "ERL_LIBS": null,
+          "RELEASE_NODE": null,
+          "MIX_DEPS_PATH": null,
+          "REL_EXTRA": null,
+          "RELEASE_BOOT_SCRIPT_CLEAN": null,
+          "RELEASE_NAME": null,
+          "MIX_TARGET": null,
+          "RELEASE_VM_ARGS": null,
+          "ERLEXEC_DIR": null,
+          "ERTS_VSN": null,
+          "RELEASE_SYS_CONFIG": null,
+          "ROOTDIR": null,
+          "ERL_CONSOLE_MODE": null,
+          "parsErlang": null,
+          "RELEASE_TMP": null,
+          "REL_VSN_DIR": null,
+          "RELEASE_VSN": null,
+          "RELEASE_BOOT_SCRIPT": null,
+          "RELEASE_REMOTE_VM_ARGS": null,
+          "BINDIR": null,
+          "REL_GOTO": null,
+          "MIX_ENV": null,
+          "MIX_BUILD_PATH": null,
+          "endLoop": null,
+          "RELEASE_COOKIE": null
+        },
+        "stderr_to_stdout": true
+      },
+      "output": "ssh: connect to host 178.156.185.52 port 22: Operation timed out\r\n",
+      "recorded_at": "2026-08-13T21:16:12.364563Z"
+    },
+    {
+      "args": [
+        "-o",
+        "StrictHostKeyChecking=no",
+        "-o",
+        "UserKnownHostsFile=/dev/null",
+        "-o",
+        "BatchMode=yes",
+        "-o",
+        "IdentitiesOnly=yes",
+        "-o",
+        "ConnectTimeout=10",
+        "-i",
+        "*/id_ed25519",
+        "root@178.156.185.52",
+        "true"
+      ],
+      "command": "ssh",
+      "exit_code": 255,
+      "opts": {
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/briefly--576460681400189833-eM8dTWpdVKKLMlHUuy/briefly-576460681399877833-wlA8MxmKnEmQ7CgCpXU0/cms_drill_dbbf8119121148dc810af5169a27f05a",
+        "env": {
+          "SCRIPT_PATH": null,
+          "RELEASE_ROOT": null,
+          "ERTS_BIN": null,
+          "RELEASE_DISTRIBUTION_FLAG": null,
+          "RELEASE_DISTRIBUTION": null,
+          "EMU": null,
+          "RELEASE_COMMAND": null,
+          "MIX_HOME": null,
+          "PROGNAME": null,
+          "ELIXIR_VERSION": null,
+          "MIX_ARCHIVES": null,
+          "RELEASE_MODE": null,
+          "beforeExtra": null,
+          "REL_EXEC": null,
+          "RELEASE_PROG": null,
+          "ERL_LIBS": null,
+          "RELEASE_NODE": null,
+          "MIX_DEPS_PATH": null,
+          "REL_EXTRA": null,
+          "RELEASE_BOOT_SCRIPT_CLEAN": null,
+          "RELEASE_NAME": null,
+          "MIX_TARGET": null,
+          "RELEASE_VM_ARGS": null,
+          "ERLEXEC_DIR": null,
+          "ERTS_VSN": null,
+          "RELEASE_SYS_CONFIG": null,
+          "ROOTDIR": null,
+          "ERL_CONSOLE_MODE": null,
+          "parsErlang": null,
+          "RELEASE_TMP": null,
+          "REL_VSN_DIR": null,
+          "RELEASE_VSN": null,
+          "RELEASE_BOOT_SCRIPT": null,
+          "RELEASE_REMOTE_VM_ARGS": null,
+          "BINDIR": null,
+          "REL_GOTO": null,
+          "MIX_ENV": null,
+          "MIX_BUILD_PATH": null,
+          "endLoop": null,
+          "RELEASE_COOKIE": null
+        },
+        "stderr_to_stdout": true
+      },
+      "output": "ssh: connect to host 178.156.185.52 port 22: Operation timed out\r\n",
+      "recorded_at": "2026-08-13T21:16:24.378859Z"
+    },
+    {
+      "args": [
+        "-o",
+        "StrictHostKeyChecking=no",
+        "-o",
+        "UserKnownHostsFile=/dev/null",
+        "-o",
+        "BatchMode=yes",
+        "-o",
+        "IdentitiesOnly=yes",
+        "-o",
+        "ConnectTimeout=10",
+        "-i",
+        "*/id_ed25519",
+        "root@178.156.185.52",
+        "true"
+      ],
+      "command": "ssh",
+      "exit_code": 255,
+      "opts": {
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/briefly--576460681400189833-eM8dTWpdVKKLMlHUuy/briefly-576460681399877833-wlA8MxmKnEmQ7CgCpXU0/cms_drill_dbbf8119121148dc810af5169a27f05a",
+        "env": {
+          "SCRIPT_PATH": null,
+          "RELEASE_ROOT": null,
+          "ERTS_BIN": null,
+          "RELEASE_DISTRIBUTION_FLAG": null,
+          "RELEASE_DISTRIBUTION": null,
+          "EMU": null,
+          "RELEASE_COMMAND": null,
+          "MIX_HOME": null,
+          "PROGNAME": null,
+          "ELIXIR_VERSION": null,
+          "MIX_ARCHIVES": null,
+          "RELEASE_MODE": null,
+          "beforeExtra": null,
+          "REL_EXEC": null,
+          "RELEASE_PROG": null,
+          "ERL_LIBS": null,
+          "RELEASE_NODE": null,
+          "MIX_DEPS_PATH": null,
+          "REL_EXTRA": null,
+          "RELEASE_BOOT_SCRIPT_CLEAN": null,
+          "RELEASE_NAME": null,
+          "MIX_TARGET": null,
+          "RELEASE_VM_ARGS": null,
+          "ERLEXEC_DIR": null,
+          "ERTS_VSN": null,
+          "RELEASE_SYS_CONFIG": null,
+          "ROOTDIR": null,
+          "ERL_CONSOLE_MODE": null,
+          "parsErlang": null,
+          "RELEASE_TMP": null,
+          "REL_VSN_DIR": null,
+          "RELEASE_VSN": null,
+          "RELEASE_BOOT_SCRIPT": null,
+          "RELEASE_REMOTE_VM_ARGS": null,
+          "BINDIR": null,
+          "REL_GOTO": null,
+          "MIX_ENV": null,
+          "MIX_BUILD_PATH": null,
+          "endLoop": null,
+          "RELEASE_COOKIE": null
+        },
+        "stderr_to_stdout": true
+      },
+      "output": "ssh: connect to host 178.156.185.52 port 22: Connection refused\r\n",
+      "recorded_at": "2026-08-13T21:16:27.430145Z"
+    },
+    {
+      "args": [
+        "-o",
+        "StrictHostKeyChecking=no",
+        "-o",
+        "UserKnownHostsFile=/dev/null",
+        "-o",
+        "BatchMode=yes",
+        "-o",
+        "IdentitiesOnly=yes",
+        "-o",
+        "ConnectTimeout=10",
+        "-i",
+        "*/id_ed25519",
+        "root@178.156.185.52",
+        "true"
+      ],
+      "command": "ssh",
+      "exit_code": 255,
+      "opts": {
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/briefly--576460681400189833-eM8dTWpdVKKLMlHUuy/briefly-576460681399877833-wlA8MxmKnEmQ7CgCpXU0/cms_drill_dbbf8119121148dc810af5169a27f05a",
+        "env": {
+          "SCRIPT_PATH": null,
+          "RELEASE_ROOT": null,
+          "ERTS_BIN": null,
+          "RELEASE_DISTRIBUTION_FLAG": null,
+          "RELEASE_DISTRIBUTION": null,
+          "EMU": null,
+          "RELEASE_COMMAND": null,
+          "MIX_HOME": null,
+          "PROGNAME": null,
+          "ELIXIR_VERSION": null,
+          "MIX_ARCHIVES": null,
+          "RELEASE_MODE": null,
+          "beforeExtra": null,
+          "REL_EXEC": null,
+          "RELEASE_PROG": null,
+          "ERL_LIBS": null,
+          "RELEASE_NODE": null,
+          "MIX_DEPS_PATH": null,
+          "REL_EXTRA": null,
+          "RELEASE_BOOT_SCRIPT_CLEAN": null,
+          "RELEASE_NAME": null,
+          "MIX_TARGET": null,
+          "RELEASE_VM_ARGS": null,
+          "ERLEXEC_DIR": null,
+          "ERTS_VSN": null,
+          "RELEASE_SYS_CONFIG": null,
+          "ROOTDIR": null,
+          "ERL_CONSOLE_MODE": null,
+          "parsErlang": null,
+          "RELEASE_TMP": null,
+          "REL_VSN_DIR": null,
+          "RELEASE_VSN": null,
+          "RELEASE_BOOT_SCRIPT": null,
+          "RELEASE_REMOTE_VM_ARGS": null,
+          "BINDIR": null,
+          "REL_GOTO": null,
+          "MIX_ENV": null,
+          "MIX_BUILD_PATH": null,
+          "endLoop": null,
+          "RELEASE_COOKIE": null
+        },
+        "stderr_to_stdout": true
+      },
+      "output": "ssh: connect to host 178.156.185.52 port 22: Connection refused\r\n",
+      "recorded_at": "2026-08-13T21:16:29.477485Z"
+    },
+    {
+      "args": [
+        "-o",
+        "StrictHostKeyChecking=no",
+        "-o",
+        "UserKnownHostsFile=/dev/null",
+        "-o",
+        "BatchMode=yes",
+        "-o",
+        "IdentitiesOnly=yes",
+        "-o",
+        "ConnectTimeout=10",
+        "-i",
+        "*/id_ed25519",
+        "root@178.156.185.52",
+        "true"
+      ],
+      "command": "ssh",
+      "exit_code": 0,
+      "opts": {
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/briefly--576460681400189833-eM8dTWpdVKKLMlHUuy/briefly-576460681399877833-wlA8MxmKnEmQ7CgCpXU0/cms_drill_dbbf8119121148dc810af5169a27f05a",
+        "env": {
+          "SCRIPT_PATH": null,
+          "RELEASE_ROOT": null,
+          "ERTS_BIN": null,
+          "RELEASE_DISTRIBUTION_FLAG": null,
+          "RELEASE_DISTRIBUTION": null,
+          "EMU": null,
+          "RELEASE_COMMAND": null,
+          "MIX_HOME": null,
+          "PROGNAME": null,
+          "ELIXIR_VERSION": null,
+          "MIX_ARCHIVES": null,
+          "RELEASE_MODE": null,
+          "beforeExtra": null,
+          "REL_EXEC": null,
+          "RELEASE_PROG": null,
+          "ERL_LIBS": null,
+          "RELEASE_NODE": null,
+          "MIX_DEPS_PATH": null,
+          "REL_EXTRA": null,
+          "RELEASE_BOOT_SCRIPT_CLEAN": null,
+          "RELEASE_NAME": null,
+          "MIX_TARGET": null,
+          "RELEASE_VM_ARGS": null,
+          "ERLEXEC_DIR": null,
+          "ERTS_VSN": null,
+          "RELEASE_SYS_CONFIG": null,
+          "ROOTDIR": null,
+          "ERL_CONSOLE_MODE": null,
+          "parsErlang": null,
+          "RELEASE_TMP": null,
+          "REL_VSN_DIR": null,
+          "RELEASE_VSN": null,
+          "RELEASE_BOOT_SCRIPT": null,
+          "RELEASE_REMOTE_VM_ARGS": null,
+          "BINDIR": null,
+          "REL_GOTO": null,
+          "MIX_ENV": null,
+          "MIX_BUILD_PATH": null,
+          "endLoop": null,
+          "RELEASE_COOKIE": null
+        },
+        "stderr_to_stdout": true
+      },
+      "output": "Warning: Permanently added '178.156.185.52' (ED25519) to the list of known hosts.\r\n",
+      "recorded_at": "2026-08-13T21:16:32.764372Z"
+    },
+    {
+      "args": [
+        "-o",
+        "StrictHostKeyChecking=no",
+        "-o",
+        "UserKnownHostsFile=/dev/null",
+        "-o",
+        "BatchMode=yes",
+        "-o",
+        "IdentitiesOnly=yes",
+        "-o",
+        "ConnectTimeout=10",
+        "-i",
+        "*/id_ed25519",
+        "root@178.156.185.52",
         "mkdir -p /etc/docker && (grep -qF '10.0.0.2:5000' /etc/docker/daemon.json 2>/dev/null || (echo '{\"insecure-registries\":[\"10.0.0.2:5000\"]}' > /etc/docker/daemon.json && systemctl restart docker))"
       ],
       "command": "ssh",
       "exit_code": 0,
       "opts": {
-        "cd": "/Users/johndavenport/Documents/github/code_my_spec_test_repos/devops_drill_v2",
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/briefly--576460681400189833-eM8dTWpdVKKLMlHUuy/briefly-576460681399877833-wlA8MxmKnEmQ7CgCpXU0/cms_drill_dbbf8119121148dc810af5169a27f05a",
         "env": {
           "SCRIPT_PATH": null,
           "RELEASE_ROOT": null,
@@ -300,17 +750,21 @@
           "RELEASE_DISTRIBUTION": null,
           "EMU": null,
           "RELEASE_COMMAND": null,
+          "MIX_HOME": null,
           "PROGNAME": null,
           "ELIXIR_VERSION": null,
+          "MIX_ARCHIVES": null,
           "RELEASE_MODE": null,
           "beforeExtra": null,
           "REL_EXEC": null,
           "RELEASE_PROG": null,
           "ERL_LIBS": null,
           "RELEASE_NODE": null,
+          "MIX_DEPS_PATH": null,
           "REL_EXTRA": null,
           "RELEASE_BOOT_SCRIPT_CLEAN": null,
           "RELEASE_NAME": null,
+          "MIX_TARGET": null,
           "RELEASE_VM_ARGS": null,
           "ERLEXEC_DIR": null,
           "ERTS_VSN": null,
@@ -325,13 +779,15 @@
           "RELEASE_REMOTE_VM_ARGS": null,
           "BINDIR": null,
           "REL_GOTO": null,
+          "MIX_ENV": null,
+          "MIX_BUILD_PATH": null,
           "endLoop": null,
           "RELEASE_COOKIE": null
         },
         "stderr_to_stdout": true
       },
-      "output": "Warning: Permanently added '178.156.216.165' (ED25519) to the list of known hosts.\r\n",
-      "recorded_at": "2026-08-10T23:23:58.439226Z"
+      "output": "Warning: Permanently added '178.156.185.52' (ED25519) to the list of known hosts.\r\n",
+      "recorded_at": "2026-08-13T21:16:33.961637Z"
     },
     {
       "args": [
@@ -343,15 +799,17 @@
         "BatchMode=yes",
         "-o",
         "IdentitiesOnly=yes",
+        "-o",
+        "ConnectTimeout=10",
         "-i",
         "*/id_ed25519",
-        "root@178.156.216.165",
-        "mkdir -p /etc/cms-registry && printf %s 'cms:$2b$04$tJOKMFfMpi/sHJn6z.S.hOiO8PLoXb8yx.gOEqgZqyMf6lX02Lj5S' > /etc/cms-registry/htpasswd && chmod 600 /etc/cms-registry/htpasswd && docker rm -f cms-registry >/dev/null 2>&1; docker run -d --name cms-registry --restart always -v /etc/cms-registry/htpasswd:/auth/htpasswd:ro -e REGISTRY_AUTH=htpasswd -e REGISTRY_AUTH_HTPASSWD_REALM=cms -e REGISTRY_AUTH_HTPASSWD_PATH=/auth/htpasswd -p 10.0.0.2:5000:5000 -e REGISTRY_STORAGE='s3' -e REGISTRY_STORAGE_S3_REGION='fsn1' -e REGISTRY_STORAGE_S3_REGIONENDPOINT='https://fsn1.your-objectstorage.com' -e REGISTRY_STORAGE_S3_FORCEPATHSTYLE='true' -e REGISTRY_STORAGE_S3_BUCKET='spex-story972-criterion8039-registry-prod' -e REGISTRY_STORAGE_S3_ACCESSKEY='0J74VPCQHNQTI6XH75XU' -e REGISTRY_STORAGE_S3_SECRETKEY='1I99qXtzVhNoJH4wkRw9wfClbMwbvjSn7eQI4t2j' registry:3"
+        "root@178.156.185.52",
+        "mkdir -p /etc/cms-registry && printf %s 'cms:$2b$04$OSQZ/gXWzaW/Zpn1nHxqE.b5UHjjYn2rLFEAr9B2efwRVifeNoGGe' > /etc/cms-registry/htpasswd && chmod 600 /etc/cms-registry/htpasswd && docker rm -f cms-registry >/dev/null 2>&1; docker run -d --name cms-registry --restart always -v /etc/cms-registry/htpasswd:/auth/htpasswd:ro -v cms-registry-data:/var/lib/registry -e REGISTRY_AUTH=htpasswd -e REGISTRY_AUTH_HTPASSWD_REALM=cms -e REGISTRY_AUTH_HTPASSWD_PATH=/auth/htpasswd -p 10.0.0.2:5000:5000 -e REGISTRY_STORAGE='filesystem' -e REGISTRY_STORAGE_FILESYSTEM_ROOTDIRECTORY='/var/lib/registry' registry:3"
       ],
       "command": "ssh",
       "exit_code": 0,
       "opts": {
-        "cd": "/Users/johndavenport/Documents/github/code_my_spec_test_repos/devops_drill_v2",
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/briefly--576460681400189833-eM8dTWpdVKKLMlHUuy/briefly-576460681399877833-wlA8MxmKnEmQ7CgCpXU0/cms_drill_dbbf8119121148dc810af5169a27f05a",
         "env": {
           "SCRIPT_PATH": null,
           "RELEASE_ROOT": null,
@@ -360,17 +818,21 @@
           "RELEASE_DISTRIBUTION": null,
           "EMU": null,
           "RELEASE_COMMAND": null,
+          "MIX_HOME": null,
           "PROGNAME": null,
           "ELIXIR_VERSION": null,
+          "MIX_ARCHIVES": null,
           "RELEASE_MODE": null,
           "beforeExtra": null,
           "REL_EXEC": null,
           "RELEASE_PROG": null,
           "ERL_LIBS": null,
           "RELEASE_NODE": null,
+          "MIX_DEPS_PATH": null,
           "REL_EXTRA": null,
           "RELEASE_BOOT_SCRIPT_CLEAN": null,
           "RELEASE_NAME": null,
+          "MIX_TARGET": null,
           "RELEASE_VM_ARGS": null,
           "ERLEXEC_DIR": null,
           "ERTS_VSN": null,
@@ -385,13 +847,15 @@
           "RELEASE_REMOTE_VM_ARGS": null,
           "BINDIR": null,
           "REL_GOTO": null,
+          "MIX_ENV": null,
+          "MIX_BUILD_PATH": null,
           "endLoop": null,
           "RELEASE_COOKIE": null
         },
         "stderr_to_stdout": true
       },
-      "output": "Warning: Permanently added '178.156.216.165' (ED25519) to the list of known hosts.\r\nUnable to find image 'registry:3' locally\n3: Pulling from library/registry\ne6f31ffc071e: Pulling fs layer\n47465c9fe4b1: Pulling fs layer\n269b60c1a347: Pulling fs layer\nf90c3e905677: Pulling fs layer\n8f4e1177a675: Pulling fs layer\nf90c3e905677: Waiting\n8f4e1177a675: Waiting\n47465c9fe4b1: Verifying Checksum\n47465c9fe4b1: Download complete\ne6f31ffc071e: Verifying Checksum\ne6f31ffc071e: Download complete\n269b60c1a347: Verifying Checksum\n269b60c1a347: Download complete\nf90c3e905677: Verifying Checksum\nf90c3e905677: Download complete\n8f4e1177a675: Verifying Checksum\n8f4e1177a675: Download complete\ne6f31ffc071e: Pull complete\n47465c9fe4b1: Pull complete\n269b60c1a347: Pull complete\nf90c3e905677: Pull complete\n8f4e1177a675: Pull complete\nDigest: sha256:1be55279f18a2fe1a74edf2664cac61c1bea305b7b4642dab412e7affdcb3e33\nStatus: Downloaded newer image for registry:3\n4c72e0b4fe31390993c9fb6d0d9f2546becc533e01d453ad30c3ac1047146590\n",
-      "recorded_at": "2026-08-10T23:24:00.295117Z"
+      "output": "Warning: Permanently added '178.156.185.52' (ED25519) to the list of known hosts.\r\nUnable to find image 'registry:3' locally\n3: Pulling from library/registry\ne6f31ffc071e: Pulling fs layer\n47465c9fe4b1: Pulling fs layer\n269b60c1a347: Pulling fs layer\nf90c3e905677: Pulling fs layer\n8f4e1177a675: Pulling fs layer\nf90c3e905677: Waiting\n8f4e1177a675: Waiting\n47465c9fe4b1: Download complete\ne6f31ffc071e: Verifying Checksum\ne6f31ffc071e: Download complete\nf90c3e905677: Verifying Checksum\nf90c3e905677: Download complete\n269b60c1a347: Verifying Checksum\n269b60c1a347: Download complete\n8f4e1177a675: Verifying Checksum\n8f4e1177a675: Download complete\ne6f31ffc071e: Pull complete\n47465c9fe4b1: Pull complete\n269b60c1a347: Pull complete\nf90c3e905677: Pull complete\n8f4e1177a675: Pull complete\nDigest: sha256:1be55279f18a2fe1a74edf2664cac61c1bea305b7b4642dab412e7affdcb3e33\nStatus: Downloaded newer image for registry:3\n97256f56b0dd4dd0969c1aa76f94f7393943c6c9afbc339d4bf795a74ba3a57b\n",
+      "recorded_at": "2026-08-13T21:16:35.864609Z"
     },
     {
       "args": [
@@ -403,15 +867,17 @@
         "BatchMode=yes",
         "-o",
         "IdentitiesOnly=yes",
+        "-o",
+        "ConnectTimeout=10",
         "-i",
         "*/id_ed25519",
-        "root@178.156.216.165",
-        "curl -sf -u 'cms:emzjA-lSRMPwoWjFEeHL_FNM_yJX_bRzlEX4eBIQq8A' http://10.0.0.2:5000/v2/ > /dev/null"
+        "root@178.156.185.52",
+        "curl -sf -u 'cms:H4eaPZW91J6OJChVgXO340lscgtapOUxS35p3zHNPw8' http://10.0.0.2:5000/v2/ > /dev/null"
       ],
       "command": "ssh",
       "exit_code": 0,
       "opts": {
-        "cd": "/Users/johndavenport/Documents/github/code_my_spec_test_repos/devops_drill_v2",
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/briefly--576460681400189833-eM8dTWpdVKKLMlHUuy/briefly-576460681399877833-wlA8MxmKnEmQ7CgCpXU0/cms_drill_dbbf8119121148dc810af5169a27f05a",
         "env": {
           "SCRIPT_PATH": null,
           "RELEASE_ROOT": null,
@@ -420,17 +886,21 @@
           "RELEASE_DISTRIBUTION": null,
           "EMU": null,
           "RELEASE_COMMAND": null,
+          "MIX_HOME": null,
           "PROGNAME": null,
           "ELIXIR_VERSION": null,
+          "MIX_ARCHIVES": null,
           "RELEASE_MODE": null,
           "beforeExtra": null,
           "REL_EXEC": null,
           "RELEASE_PROG": null,
           "ERL_LIBS": null,
           "RELEASE_NODE": null,
+          "MIX_DEPS_PATH": null,
           "REL_EXTRA": null,
           "RELEASE_BOOT_SCRIPT_CLEAN": null,
           "RELEASE_NAME": null,
+          "MIX_TARGET": null,
           "RELEASE_VM_ARGS": null,
           "ERLEXEC_DIR": null,
           "ERTS_VSN": null,
@@ -445,13 +915,15 @@
           "RELEASE_REMOTE_VM_ARGS": null,
           "BINDIR": null,
           "REL_GOTO": null,
+          "MIX_ENV": null,
+          "MIX_BUILD_PATH": null,
           "endLoop": null,
           "RELEASE_COOKIE": null
         },
         "stderr_to_stdout": true
       },
-      "output": "Warning: Permanently added '178.156.216.165' (ED25519) to the list of known hosts.\r\n",
-      "recorded_at": "2026-08-10T23:24:00.930810Z"
+      "output": "Warning: Permanently added '178.156.185.52' (ED25519) to the list of known hosts.\r\n",
+      "recorded_at": "2026-08-13T21:16:36.522980Z"
     },
     {
       "args": [
@@ -463,15 +935,17 @@
         "BatchMode=yes",
         "-o",
         "IdentitiesOnly=yes",
+        "-o",
+        "ConnectTimeout=10",
         "-i",
         "*/id_ed25519",
-        "root@178.156.216.165",
-        "docker network create db_net >/dev/null 2>&1; docker rm -f cms-postgres >/dev/null 2>&1; docker run -d --name cms-postgres --restart always --network db_net -v cms-postgres-data:/var/lib/postgresql/data -e POSTGRES_USER='app' -e POSTGRES_PASSWORD='tR4DvB-8lVgNI7XWwYp1HN97N3G_J44fHOwGGKAFI-0' -e POSTGRES_DB='app_prod' postgres:17"
+        "root@178.156.185.52",
+        "docker network create db_net >/dev/null 2>&1; docker rm -f cms-postgres >/dev/null 2>&1; docker run -d --name cms-postgres --restart always --network db_net -v cms-postgres-data:/var/lib/postgresql/data -e POSTGRES_USER='app' -e POSTGRES_PASSWORD='CHeOAOKikkRfODB8MoeKiukwY7r3DHIroHwHbH_wz8U' -e POSTGRES_DB='app_prod' postgres:17"
       ],
       "command": "ssh",
       "exit_code": 0,
       "opts": {
-        "cd": "/Users/johndavenport/Documents/github/code_my_spec_test_repos/devops_drill_v2",
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/briefly--576460681400189833-eM8dTWpdVKKLMlHUuy/briefly-576460681399877833-wlA8MxmKnEmQ7CgCpXU0/cms_drill_dbbf8119121148dc810af5169a27f05a",
         "env": {
           "SCRIPT_PATH": null,
           "RELEASE_ROOT": null,
@@ -480,17 +954,21 @@
           "RELEASE_DISTRIBUTION": null,
           "EMU": null,
           "RELEASE_COMMAND": null,
+          "MIX_HOME": null,
           "PROGNAME": null,
           "ELIXIR_VERSION": null,
+          "MIX_ARCHIVES": null,
           "RELEASE_MODE": null,
           "beforeExtra": null,
           "REL_EXEC": null,
           "RELEASE_PROG": null,
           "ERL_LIBS": null,
           "RELEASE_NODE": null,
+          "MIX_DEPS_PATH": null,
           "REL_EXTRA": null,
           "RELEASE_BOOT_SCRIPT_CLEAN": null,
           "RELEASE_NAME": null,
+          "MIX_TARGET": null,
           "RELEASE_VM_ARGS": null,
           "ERLEXEC_DIR": null,
           "ERTS_VSN": null,
@@ -505,13 +983,15 @@
           "RELEASE_REMOTE_VM_ARGS": null,
           "BINDIR": null,
           "REL_GOTO": null,
+          "MIX_ENV": null,
+          "MIX_BUILD_PATH": null,
           "endLoop": null,
           "RELEASE_COOKIE": null
         },
         "stderr_to_stdout": true
       },
-      "output": "Warning: Permanently added '178.156.216.165' (ED25519) to the list of known hosts.\r\nUnable to find image 'postgres:17' locally\n17: Pulling from library/postgres\n26c307b5e35a: Pulling fs layer\nc7ce579d92bc: Pulling fs layer\n57b3b7f0e8be: Pulling fs layer\n639f0ce3e131: Pulling fs layer\n315760abeb8e: Pulling fs layer\n1e27b4f5b34f: Pulling fs layer\n7feaef9a63ac: Pulling fs layer\n4fa43b3f35bd: Pulling fs layer\nccc368eb7cc7: Pulling fs layer\nf5991d0b8b5b: Pulling fs layer\n3b520f7c783b: Pulling fs layer\nb33915915b51: Pulling fs layer\n881078803fc8: Pulling fs layer\n99adb42d27ad: Pulling fs layer\n639f0ce3e131: Waiting\n315760abeb8e: Waiting\n1e27b4f5b34f: Waiting\n7feaef9a63ac: Waiting\n4fa43b3f35bd: Waiting\nccc368eb7cc7: Waiting\nf5991d0b8b5b: Waiting\n3b520f7c783b: Waiting\nb33915915b51: Waiting\n881078803fc8: Waiting\n99adb42d27ad: Waiting\nc7ce579d92bc: Download complete\n57b3b7f0e8be: Verifying Checksum\n57b3b7f0e8be: Download complete\n639f0ce3e131: Verifying Checksum\n639f0ce3e131: Download complete\n26c307b5e35a: Verifying Checksum\n26c307b5e35a: Download complete\n315760abeb8e: Verifying Checksum\n315760abeb8e: Download complete\n1e27b4f5b34f: Verifying Checksum\n1e27b4f5b34f: Download complete\n7feaef9a63ac: Verifying Checksum\n7feaef9a63ac: Download complete\n4fa43b3f35bd: Verifying Checksum\n4fa43b3f35bd: Download complete\nf5991d0b8b5b: Verifying Checksum\nf5991d0b8b5b: Download complete\n3b520f7c783b: Verifying Checksum\n3b520f7c783b: Download complete\nb33915915b51: Verifying Checksum\nb33915915b51: Download complete\n881078803fc8: Verifying Checksum\n881078803fc8: Download complete\n99adb42d27ad: Verifying Checksum\n99adb42d27ad: Download complete\nccc368eb7cc7: Verifying Checksum\nccc368eb7cc7: Download complete\n26c307b5e35a: Pull complete\nc7ce579d92bc: Pull complete\n57b3b7f0e8be: Pull complete\n639f0ce3e131: Pull complete\n315760abeb8e: Pull complete\n1e27b4f5b34f: Pull complete\n7feaef9a63ac: Pull complete\n4fa43b3f35bd: Pull complete\nccc368eb7cc7: Pull complete\nf5991d0b8b5b: Pull complete\n3b520f7c783b: Pull complete\nb33915915b51: Pull complete\n881078803fc8: Pull complete\n99adb42d27ad: Pull complete\nDigest: sha256:7958605b474b3d264a969cb3a123d6aa00ad1e1fe9da8a69984dabb704d93317\nStatus: Downloaded newer image for postgres:17\n4a806e62f55e8ed74178f97d4777f13bc298c72a4c429781d0bd35ef1244a104\n",
-      "recorded_at": "2026-08-10T23:24:06.824596Z"
+      "output": "Warning: Permanently added '178.156.185.52' (ED25519) to the list of known hosts.\r\nUnable to find image 'postgres:17' locally\n17: Pulling from library/postgres\n26c307b5e35a: Pulling fs layer\na211a4ebbe9c: Pulling fs layer\n99b8d6500ca8: Pulling fs layer\n011e3de85889: Pulling fs layer\nfae9bcdccea1: Pulling fs layer\n98662c61092c: Pulling fs layer\ndd72bcd3b6cf: Pulling fs layer\nf51ddbe7fe6c: Pulling fs layer\nb6bf40d31a6c: Pulling fs layer\naaf8269598d6: Pulling fs layer\ncdcabf0f88e4: Pulling fs layer\n7696d740062e: Pulling fs layer\neb09c7374a37: Pulling fs layer\n8eb7d3b192aa: Pulling fs layer\nf51ddbe7fe6c: Waiting\nb6bf40d31a6c: Waiting\naaf8269598d6: Waiting\ncdcabf0f88e4: Waiting\n7696d740062e: Waiting\neb09c7374a37: Waiting\n8eb7d3b192aa: Waiting\n011e3de85889: Waiting\nfae9bcdccea1: Waiting\n98662c61092c: Waiting\ndd72bcd3b6cf: Waiting\na211a4ebbe9c: Verifying Checksum\na211a4ebbe9c: Download complete\n99b8d6500ca8: Verifying Checksum\n99b8d6500ca8: Download complete\n26c307b5e35a: Verifying Checksum\n26c307b5e35a: Download complete\n011e3de85889: Verifying Checksum\n011e3de85889: Download complete\nfae9bcdccea1: Verifying Checksum\nfae9bcdccea1: Download complete\ndd72bcd3b6cf: Verifying Checksum\ndd72bcd3b6cf: Download complete\n98662c61092c: Verifying Checksum\n98662c61092c: Download complete\nf51ddbe7fe6c: Verifying Checksum\nf51ddbe7fe6c: Download complete\naaf8269598d6: Verifying Checksum\naaf8269598d6: Download complete\ncdcabf0f88e4: Verifying Checksum\ncdcabf0f88e4: Download complete\n7696d740062e: Verifying Checksum\n7696d740062e: Download complete\neb09c7374a37: Verifying Checksum\neb09c7374a37: Download complete\n8eb7d3b192aa: Verifying Checksum\n8eb7d3b192aa: Download complete\nb6bf40d31a6c: Verifying Checksum\nb6bf40d31a6c: Download complete\n26c307b5e35a: Pull complete\na211a4ebbe9c: Pull complete\n99b8d6500ca8: Pull complete\n011e3de85889: Pull complete\nfae9bcdccea1: Pull complete\n98662c61092c: Pull complete\ndd72bcd3b6cf: Pull complete\nf51ddbe7fe6c: Pull complete\nb6bf40d31a6c: Pull complete\naaf8269598d6: Pull complete\ncdcabf0f88e4: Pull complete\n7696d740062e: Pull complete\neb09c7374a37: Pull complete\n8eb7d3b192aa: Pull complete\nDigest: sha256:e42539a54ee3e82e21f19d7eded61b579869585f86b90b5e851ff0d3dd8b4001\nStatus: Downloaded newer image for postgres:17\n60fabfdfdca31cf7c32ca562d8b135b176584b0a0137873d79cdeb7106df99ce\n",
+      "recorded_at": "2026-08-13T21:16:42.541146Z"
     },
     {
       "args": [
@@ -523,15 +1003,17 @@
         "BatchMode=yes",
         "-o",
         "IdentitiesOnly=yes",
+        "-o",
+        "ConnectTimeout=10",
         "-i",
         "*/id_ed25519",
-        "root@178.156.216.165",
+        "root@178.156.185.52",
         "docker exec cms-postgres pg_isready -h 127.0.0.1 -U 'app' -d 'app_prod' > /dev/null"
       ],
       "command": "ssh",
       "exit_code": 2,
       "opts": {
-        "cd": "/Users/johndavenport/Documents/github/code_my_spec_test_repos/devops_drill_v2",
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/briefly--576460681400189833-eM8dTWpdVKKLMlHUuy/briefly-576460681399877833-wlA8MxmKnEmQ7CgCpXU0/cms_drill_dbbf8119121148dc810af5169a27f05a",
         "env": {
           "SCRIPT_PATH": null,
           "RELEASE_ROOT": null,
@@ -540,17 +1022,21 @@
           "RELEASE_DISTRIBUTION": null,
           "EMU": null,
           "RELEASE_COMMAND": null,
+          "MIX_HOME": null,
           "PROGNAME": null,
           "ELIXIR_VERSION": null,
+          "MIX_ARCHIVES": null,
           "RELEASE_MODE": null,
           "beforeExtra": null,
           "REL_EXEC": null,
           "RELEASE_PROG": null,
           "ERL_LIBS": null,
           "RELEASE_NODE": null,
+          "MIX_DEPS_PATH": null,
           "REL_EXTRA": null,
           "RELEASE_BOOT_SCRIPT_CLEAN": null,
           "RELEASE_NAME": null,
+          "MIX_TARGET": null,
           "RELEASE_VM_ARGS": null,
           "ERLEXEC_DIR": null,
           "ERTS_VSN": null,
@@ -565,13 +1051,15 @@
           "RELEASE_REMOTE_VM_ARGS": null,
           "BINDIR": null,
           "REL_GOTO": null,
+          "MIX_ENV": null,
+          "MIX_BUILD_PATH": null,
           "endLoop": null,
           "RELEASE_COOKIE": null
         },
         "stderr_to_stdout": true
       },
-      "output": "Warning: Permanently added '178.156.216.165' (ED25519) to the list of known hosts.\r\n",
-      "recorded_at": "2026-08-10T23:24:07.554045Z"
+      "output": "Warning: Permanently added '178.156.185.52' (ED25519) to the list of known hosts.\r\n",
+      "recorded_at": "2026-08-13T21:16:43.226508Z"
     },
     {
       "args": [
@@ -583,15 +1071,17 @@
         "BatchMode=yes",
         "-o",
         "IdentitiesOnly=yes",
+        "-o",
+        "ConnectTimeout=10",
         "-i",
         "*/id_ed25519",
-        "root@178.156.216.165",
+        "root@178.156.185.52",
         "docker exec cms-postgres pg_isready -h 127.0.0.1 -U 'app' -d 'app_prod' > /dev/null"
       ],
       "command": "ssh",
       "exit_code": 0,
       "opts": {
-        "cd": "/Users/johndavenport/Documents/github/code_my_spec_test_repos/devops_drill_v2",
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/briefly--576460681400189833-eM8dTWpdVKKLMlHUuy/briefly-576460681399877833-wlA8MxmKnEmQ7CgCpXU0/cms_drill_dbbf8119121148dc810af5169a27f05a",
         "env": {
           "SCRIPT_PATH": null,
           "RELEASE_ROOT": null,
@@ -600,17 +1090,21 @@
           "RELEASE_DISTRIBUTION": null,
           "EMU": null,
           "RELEASE_COMMAND": null,
+          "MIX_HOME": null,
           "PROGNAME": null,
           "ELIXIR_VERSION": null,
+          "MIX_ARCHIVES": null,
           "RELEASE_MODE": null,
           "beforeExtra": null,
           "REL_EXEC": null,
           "RELEASE_PROG": null,
           "ERL_LIBS": null,
           "RELEASE_NODE": null,
+          "MIX_DEPS_PATH": null,
           "REL_EXTRA": null,
           "RELEASE_BOOT_SCRIPT_CLEAN": null,
           "RELEASE_NAME": null,
+          "MIX_TARGET": null,
           "RELEASE_VM_ARGS": null,
           "ERLEXEC_DIR": null,
           "ERTS_VSN": null,
@@ -625,13 +1119,15 @@
           "RELEASE_REMOTE_VM_ARGS": null,
           "BINDIR": null,
           "REL_GOTO": null,
+          "MIX_ENV": null,
+          "MIX_BUILD_PATH": null,
           "endLoop": null,
           "RELEASE_COOKIE": null
         },
         "stderr_to_stdout": true
       },
-      "output": "Warning: Permanently added '178.156.216.165' (ED25519) to the list of known hosts.\r\n",
-      "recorded_at": "2026-08-10T23:24:10.238642Z"
+      "output": "Warning: Permanently added '178.156.185.52' (ED25519) to the list of known hosts.\r\n",
+      "recorded_at": "2026-08-13T21:16:45.958160Z"
     },
     {
       "args": [],
@@ -640,8 +1136,8 @@
       "opts": {
         "stderr_to_stdout": true
       },
-      "output": "Public key: age1y6qlr0x76y6emn0mufnc7mveg82ucqnx5yxrt9vdphqc7crk9cqqjfvt27\n# created: 2026-08-10T19:24:10-04:00\n# public key: age1y6qlr0x76y6emn0mufnc7mveg82ucqnx5yxrt9vdphqc7crk9cqqjfvt27\nAGE-SECRET-KEY-1H4P3933A0Y5GE7SFJYXTANPNPWVKZMJGWRZZVTD60QGKNH26AY6QN6MJM4\n",
-      "recorded_at": "2026-08-10T23:24:10.242273Z"
+      "output": "Public key: age1m0rh0qyl4spvf4vjfjtnfdl86w47w8l5clzpzph5qv4fqmaml35stdd2ge\n# created: 2026-08-13T17:16:45-04:00\n# public key: age1m0rh0qyl4spvf4vjfjtnfdl86w47w8l5clzpzph5qv4fqmaml35stdd2ge\nAGE-SECRET-KEY-1H4P3933A0Y5GE7SFJYXTANPNPWVKZMJGWRZZVTD60QGKNH26AY6QN6MJM4\n",
+      "recorded_at": "2026-08-13T21:16:45.969345Z"
     },
     {
       "args": [
@@ -652,30 +1148,30 @@
       "command": "sops",
       "exit_code": 0,
       "opts": {
-        "cd": "/Users/johndavenport/Documents/github/code_my_spec_test_repos/devops_drill_v2",
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/briefly--576460681400189833-eM8dTWpdVKKLMlHUuy/briefly-576460681399877833-wlA8MxmKnEmQ7CgCpXU0/cms_drill_dbbf8119121148dc810af5169a27f05a",
         "stderr_to_stdout": true
       },
       "output": "",
-      "recorded_at": "2026-08-10T23:24:10.256599Z"
+      "recorded_at": "2026-08-13T21:16:46.104745Z"
     },
     {
       "args": [
         "set",
         "envs/prod.enc.env",
         "[\"DATABASE_URL\"]",
-        "\"ecto://app:tR4DvB-8lVgNI7XWwYp1HN97N3G_J44fHOwGGKAFI-0@cms-postgres/app_prod\""
+        "\"ecto://app:CHeOAOKikkRfODB8MoeKiukwY7r3DHIroHwHbH_wz8U@cms-postgres/app_prod\""
       ],
       "command": "sops",
       "exit_code": 0,
       "opts": {
-        "cd": "/Users/johndavenport/Documents/github/code_my_spec_test_repos/devops_drill_v2",
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/briefly--576460681400189833-eM8dTWpdVKKLMlHUuy/briefly-576460681399877833-wlA8MxmKnEmQ7CgCpXU0/cms_drill_dbbf8119121148dc810af5169a27f05a",
         "env": {
           "SOPS_AGE_KEY": "AGE-SECRET-KEY-1H4P3933A0Y5GE7SFJYXTANPNPWVKZMJGWRZZVTD60QGKNH26AY6QN6MJM4"
         },
         "stderr_to_stdout": true
       },
       "output": "",
-      "recorded_at": "2026-08-10T23:24:10.269372Z"
+      "recorded_at": "2026-08-13T21:16:46.117331Z"
     },
     {
       "args": [
@@ -687,6 +1183,76 @@
         "BatchMode=yes",
         "-o",
         "IdentitiesOnly=yes",
+        "-o",
+        "ConnectTimeout=10",
+        "-i",
+        "*/id_ed25519",
+        "root@178.156.200.94",
+        "true"
+      ],
+      "command": "ssh",
+      "exit_code": 0,
+      "opts": {
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/briefly--576460681400189833-eM8dTWpdVKKLMlHUuy/briefly-576460681399877833-wlA8MxmKnEmQ7CgCpXU0/cms_drill_dbbf8119121148dc810af5169a27f05a",
+        "env": {
+          "SCRIPT_PATH": null,
+          "RELEASE_ROOT": null,
+          "ERTS_BIN": null,
+          "RELEASE_DISTRIBUTION_FLAG": null,
+          "RELEASE_DISTRIBUTION": null,
+          "EMU": null,
+          "RELEASE_COMMAND": null,
+          "MIX_HOME": null,
+          "PROGNAME": null,
+          "ELIXIR_VERSION": null,
+          "MIX_ARCHIVES": null,
+          "RELEASE_MODE": null,
+          "beforeExtra": null,
+          "REL_EXEC": null,
+          "RELEASE_PROG": null,
+          "ERL_LIBS": null,
+          "RELEASE_NODE": null,
+          "MIX_DEPS_PATH": null,
+          "REL_EXTRA": null,
+          "RELEASE_BOOT_SCRIPT_CLEAN": null,
+          "RELEASE_NAME": null,
+          "MIX_TARGET": null,
+          "RELEASE_VM_ARGS": null,
+          "ERLEXEC_DIR": null,
+          "ERTS_VSN": null,
+          "RELEASE_SYS_CONFIG": null,
+          "ROOTDIR": null,
+          "ERL_CONSOLE_MODE": null,
+          "parsErlang": null,
+          "RELEASE_TMP": null,
+          "REL_VSN_DIR": null,
+          "RELEASE_VSN": null,
+          "RELEASE_BOOT_SCRIPT": null,
+          "RELEASE_REMOTE_VM_ARGS": null,
+          "BINDIR": null,
+          "REL_GOTO": null,
+          "MIX_ENV": null,
+          "MIX_BUILD_PATH": null,
+          "endLoop": null,
+          "RELEASE_COOKIE": null
+        },
+        "stderr_to_stdout": true
+      },
+      "output": "Warning: Permanently added '178.156.200.94' (ED25519) to the list of known hosts.\r\n",
+      "recorded_at": "2026-08-13T21:16:47.729363Z"
+    },
+    {
+      "args": [
+        "-o",
+        "StrictHostKeyChecking=no",
+        "-o",
+        "UserKnownHostsFile=/dev/null",
+        "-o",
+        "BatchMode=yes",
+        "-o",
+        "IdentitiesOnly=yes",
+        "-o",
+        "ConnectTimeout=10",
         "-i",
         "*/id_ed25519",
         "root@178.156.200.94",
@@ -695,7 +1261,7 @@
       "command": "ssh",
       "exit_code": 0,
       "opts": {
-        "cd": "/Users/johndavenport/Documents/github/code_my_spec_test_repos/devops_drill_v2",
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/briefly--576460681400189833-eM8dTWpdVKKLMlHUuy/briefly-576460681399877833-wlA8MxmKnEmQ7CgCpXU0/cms_drill_dbbf8119121148dc810af5169a27f05a",
         "env": {
           "SCRIPT_PATH": null,
           "RELEASE_ROOT": null,
@@ -704,17 +1270,21 @@
           "RELEASE_DISTRIBUTION": null,
           "EMU": null,
           "RELEASE_COMMAND": null,
+          "MIX_HOME": null,
           "PROGNAME": null,
           "ELIXIR_VERSION": null,
+          "MIX_ARCHIVES": null,
           "RELEASE_MODE": null,
           "beforeExtra": null,
           "REL_EXEC": null,
           "RELEASE_PROG": null,
           "ERL_LIBS": null,
           "RELEASE_NODE": null,
+          "MIX_DEPS_PATH": null,
           "REL_EXTRA": null,
           "RELEASE_BOOT_SCRIPT_CLEAN": null,
           "RELEASE_NAME": null,
+          "MIX_TARGET": null,
           "RELEASE_VM_ARGS": null,
           "ERLEXEC_DIR": null,
           "ERTS_VSN": null,
@@ -729,13 +1299,15 @@
           "RELEASE_REMOTE_VM_ARGS": null,
           "BINDIR": null,
           "REL_GOTO": null,
+          "MIX_ENV": null,
+          "MIX_BUILD_PATH": null,
           "endLoop": null,
           "RELEASE_COOKIE": null
         },
         "stderr_to_stdout": true
       },
       "output": "Warning: Permanently added '178.156.200.94' (ED25519) to the list of known hosts.\r\n",
-      "recorded_at": "2026-08-10T23:24:14.791273Z"
+      "recorded_at": "2026-08-13T21:16:48.902520Z"
     },
     {
       "args": [
@@ -747,15 +1319,17 @@
         "BatchMode=yes",
         "-o",
         "IdentitiesOnly=yes",
+        "-o",
+        "ConnectTimeout=10",
         "-i",
         "*/id_ed25519",
         "root@178.156.200.94",
-        "mkdir -p /etc/cms-registry && printf %s 'cms:$2b$04$sxWB9zwMNuBh5mALYYnqq.hzKWVE9l/fF/7N8NfwtGg5fK/mkUsim' > /etc/cms-registry/htpasswd && chmod 600 /etc/cms-registry/htpasswd && docker rm -f cms-registry >/dev/null 2>&1; docker run -d --name cms-registry --restart always -v /etc/cms-registry/htpasswd:/auth/htpasswd:ro -e REGISTRY_AUTH=htpasswd -e REGISTRY_AUTH_HTPASSWD_REALM=cms -e REGISTRY_AUTH_HTPASSWD_PATH=/auth/htpasswd -p 10.0.0.3:5000:5000 -e REGISTRY_STORAGE='s3' -e REGISTRY_STORAGE_S3_REGION='fsn1' -e REGISTRY_STORAGE_S3_REGIONENDPOINT='https://fsn1.your-objectstorage.com' -e REGISTRY_STORAGE_S3_FORCEPATHSTYLE='true' -e REGISTRY_STORAGE_S3_BUCKET='spex-story972-criterion8039-registry-uat' -e REGISTRY_STORAGE_S3_ACCESSKEY='0J74VPCQHNQTI6XH75XU' -e REGISTRY_STORAGE_S3_SECRETKEY='1I99qXtzVhNoJH4wkRw9wfClbMwbvjSn7eQI4t2j' registry:3"
+        "mkdir -p /etc/cms-registry && printf %s 'cms:$2b$04$JFlI2ygWGel7L/ATJFGUAeDZXfe.Xp3j/sElWYdwLY2i64Ad4JeVu' > /etc/cms-registry/htpasswd && chmod 600 /etc/cms-registry/htpasswd && docker rm -f cms-registry >/dev/null 2>&1; docker run -d --name cms-registry --restart always -v /etc/cms-registry/htpasswd:/auth/htpasswd:ro -v cms-registry-data:/var/lib/registry -e REGISTRY_AUTH=htpasswd -e REGISTRY_AUTH_HTPASSWD_REALM=cms -e REGISTRY_AUTH_HTPASSWD_PATH=/auth/htpasswd -p 10.0.0.3:5000:5000 -e REGISTRY_STORAGE='filesystem' -e REGISTRY_STORAGE_FILESYSTEM_ROOTDIRECTORY='/var/lib/registry' registry:3"
       ],
       "command": "ssh",
       "exit_code": 0,
       "opts": {
-        "cd": "/Users/johndavenport/Documents/github/code_my_spec_test_repos/devops_drill_v2",
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/briefly--576460681400189833-eM8dTWpdVKKLMlHUuy/briefly-576460681399877833-wlA8MxmKnEmQ7CgCpXU0/cms_drill_dbbf8119121148dc810af5169a27f05a",
         "env": {
           "SCRIPT_PATH": null,
           "RELEASE_ROOT": null,
@@ -764,17 +1338,21 @@
           "RELEASE_DISTRIBUTION": null,
           "EMU": null,
           "RELEASE_COMMAND": null,
+          "MIX_HOME": null,
           "PROGNAME": null,
           "ELIXIR_VERSION": null,
+          "MIX_ARCHIVES": null,
           "RELEASE_MODE": null,
           "beforeExtra": null,
           "REL_EXEC": null,
           "RELEASE_PROG": null,
           "ERL_LIBS": null,
           "RELEASE_NODE": null,
+          "MIX_DEPS_PATH": null,
           "REL_EXTRA": null,
           "RELEASE_BOOT_SCRIPT_CLEAN": null,
           "RELEASE_NAME": null,
+          "MIX_TARGET": null,
           "RELEASE_VM_ARGS": null,
           "ERLEXEC_DIR": null,
           "ERTS_VSN": null,
@@ -789,13 +1367,15 @@
           "RELEASE_REMOTE_VM_ARGS": null,
           "BINDIR": null,
           "REL_GOTO": null,
+          "MIX_ENV": null,
+          "MIX_BUILD_PATH": null,
           "endLoop": null,
           "RELEASE_COOKIE": null
         },
         "stderr_to_stdout": true
       },
-      "output": "Warning: Permanently added '178.156.200.94' (ED25519) to the list of known hosts.\r\nUnable to find image 'registry:3' locally\n3: Pulling from library/registry\ne6f31ffc071e: Pulling fs layer\n47465c9fe4b1: Pulling fs layer\n269b60c1a347: Pulling fs layer\nf90c3e905677: Pulling fs layer\n8f4e1177a675: Pulling fs layer\nf90c3e905677: Waiting\n8f4e1177a675: Waiting\n47465c9fe4b1: Verifying Checksum\n47465c9fe4b1: Download complete\ne6f31ffc071e: Verifying Checksum\ne6f31ffc071e: Download complete\nf90c3e905677: Verifying Checksum\nf90c3e905677: Download complete\n269b60c1a347: Verifying Checksum\n269b60c1a347: Download complete\n8f4e1177a675: Verifying Checksum\n8f4e1177a675: Download complete\ne6f31ffc071e: Pull complete\n47465c9fe4b1: Pull complete\n269b60c1a347: Pull complete\nf90c3e905677: Pull complete\n8f4e1177a675: Pull complete\nDigest: sha256:1be55279f18a2fe1a74edf2664cac61c1bea305b7b4642dab412e7affdcb3e33\nStatus: Downloaded newer image for registry:3\nec937472a4374a062fd0f47892db923fca4767c3c8b41d86284fb10d269c930d\n",
-      "recorded_at": "2026-08-10T23:24:16.603924Z"
+      "output": "Warning: Permanently added '178.156.200.94' (ED25519) to the list of known hosts.\r\nUnable to find image 'registry:3' locally\n3: Pulling from library/registry\ne6f31ffc071e: Pulling fs layer\n47465c9fe4b1: Pulling fs layer\n269b60c1a347: Pulling fs layer\nf90c3e905677: Pulling fs layer\n8f4e1177a675: Pulling fs layer\nf90c3e905677: Waiting\n8f4e1177a675: Waiting\n47465c9fe4b1: Verifying Checksum\n47465c9fe4b1: Download complete\ne6f31ffc071e: Verifying Checksum\ne6f31ffc071e: Download complete\nf90c3e905677: Verifying Checksum\nf90c3e905677: Download complete\n269b60c1a347: Verifying Checksum\n269b60c1a347: Download complete\n8f4e1177a675: Verifying Checksum\n8f4e1177a675: Download complete\ne6f31ffc071e: Pull complete\n47465c9fe4b1: Pull complete\n269b60c1a347: Pull complete\nf90c3e905677: Pull complete\n8f4e1177a675: Pull complete\nDigest: sha256:1be55279f18a2fe1a74edf2664cac61c1bea305b7b4642dab412e7affdcb3e33\nStatus: Downloaded newer image for registry:3\n10df534e7447c1f4b7023cfcd8b02f76ca4f6ea59f4fb777ccf7b054d2300a39\n",
+      "recorded_at": "2026-08-13T21:16:50.834812Z"
     },
     {
       "args": [
@@ -807,15 +1387,17 @@
         "BatchMode=yes",
         "-o",
         "IdentitiesOnly=yes",
+        "-o",
+        "ConnectTimeout=10",
         "-i",
         "*/id_ed25519",
         "root@178.156.200.94",
-        "curl -sf -u 'cms:emzjA-lSRMPwoWjFEeHL_FNM_yJX_bRzlEX4eBIQq8A' http://10.0.0.3:5000/v2/ > /dev/null"
+        "curl -sf -u 'cms:H4eaPZW91J6OJChVgXO340lscgtapOUxS35p3zHNPw8' http://10.0.0.3:5000/v2/ > /dev/null"
       ],
       "command": "ssh",
       "exit_code": 0,
       "opts": {
-        "cd": "/Users/johndavenport/Documents/github/code_my_spec_test_repos/devops_drill_v2",
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/briefly--576460681400189833-eM8dTWpdVKKLMlHUuy/briefly-576460681399877833-wlA8MxmKnEmQ7CgCpXU0/cms_drill_dbbf8119121148dc810af5169a27f05a",
         "env": {
           "SCRIPT_PATH": null,
           "RELEASE_ROOT": null,
@@ -824,17 +1406,21 @@
           "RELEASE_DISTRIBUTION": null,
           "EMU": null,
           "RELEASE_COMMAND": null,
+          "MIX_HOME": null,
           "PROGNAME": null,
           "ELIXIR_VERSION": null,
+          "MIX_ARCHIVES": null,
           "RELEASE_MODE": null,
           "beforeExtra": null,
           "REL_EXEC": null,
           "RELEASE_PROG": null,
           "ERL_LIBS": null,
           "RELEASE_NODE": null,
+          "MIX_DEPS_PATH": null,
           "REL_EXTRA": null,
           "RELEASE_BOOT_SCRIPT_CLEAN": null,
           "RELEASE_NAME": null,
+          "MIX_TARGET": null,
           "RELEASE_VM_ARGS": null,
           "ERLEXEC_DIR": null,
           "ERTS_VSN": null,
@@ -849,13 +1435,15 @@
           "RELEASE_REMOTE_VM_ARGS": null,
           "BINDIR": null,
           "REL_GOTO": null,
+          "MIX_ENV": null,
+          "MIX_BUILD_PATH": null,
           "endLoop": null,
           "RELEASE_COOKIE": null
         },
         "stderr_to_stdout": true
       },
       "output": "Warning: Permanently added '178.156.200.94' (ED25519) to the list of known hosts.\r\n",
-      "recorded_at": "2026-08-10T23:24:17.270425Z"
+      "recorded_at": "2026-08-13T21:16:51.475682Z"
     },
     {
       "args": [
@@ -867,15 +1455,17 @@
         "BatchMode=yes",
         "-o",
         "IdentitiesOnly=yes",
+        "-o",
+        "ConnectTimeout=10",
         "-i",
         "*/id_ed25519",
         "root@178.156.200.94",
-        "docker network create db_net >/dev/null 2>&1; docker rm -f cms-postgres >/dev/null 2>&1; docker run -d --name cms-postgres --restart always --network db_net -v cms-postgres-data:/var/lib/postgresql/data -e POSTGRES_USER='app' -e POSTGRES_PASSWORD='IOfyLXwE5pZyA4qQhPzr9iaevVwGfBbZgNBAOX2wpWM' -e POSTGRES_DB='app_uat' postgres:17"
+        "docker network create db_net >/dev/null 2>&1; docker rm -f cms-postgres >/dev/null 2>&1; docker run -d --name cms-postgres --restart always --network db_net -v cms-postgres-data:/var/lib/postgresql/data -e POSTGRES_USER='app' -e POSTGRES_PASSWORD='Ug6pYTkiaXY0DfvZkHQ5N1r8ojNuxd8_Z9T2Yy_VWRs' -e POSTGRES_DB='app_uat' postgres:17"
       ],
       "command": "ssh",
       "exit_code": 0,
       "opts": {
-        "cd": "/Users/johndavenport/Documents/github/code_my_spec_test_repos/devops_drill_v2",
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/briefly--576460681400189833-eM8dTWpdVKKLMlHUuy/briefly-576460681399877833-wlA8MxmKnEmQ7CgCpXU0/cms_drill_dbbf8119121148dc810af5169a27f05a",
         "env": {
           "SCRIPT_PATH": null,
           "RELEASE_ROOT": null,
@@ -884,17 +1474,21 @@
           "RELEASE_DISTRIBUTION": null,
           "EMU": null,
           "RELEASE_COMMAND": null,
+          "MIX_HOME": null,
           "PROGNAME": null,
           "ELIXIR_VERSION": null,
+          "MIX_ARCHIVES": null,
           "RELEASE_MODE": null,
           "beforeExtra": null,
           "REL_EXEC": null,
           "RELEASE_PROG": null,
           "ERL_LIBS": null,
           "RELEASE_NODE": null,
+          "MIX_DEPS_PATH": null,
           "REL_EXTRA": null,
           "RELEASE_BOOT_SCRIPT_CLEAN": null,
           "RELEASE_NAME": null,
+          "MIX_TARGET": null,
           "RELEASE_VM_ARGS": null,
           "ERLEXEC_DIR": null,
           "ERTS_VSN": null,
@@ -909,13 +1503,15 @@
           "RELEASE_REMOTE_VM_ARGS": null,
           "BINDIR": null,
           "REL_GOTO": null,
+          "MIX_ENV": null,
+          "MIX_BUILD_PATH": null,
           "endLoop": null,
           "RELEASE_COOKIE": null
         },
         "stderr_to_stdout": true
       },
-      "output": "Warning: Permanently added '178.156.200.94' (ED25519) to the list of known hosts.\r\nUnable to find image 'postgres:17' locally\n17: Pulling from library/postgres\n26c307b5e35a: Pulling fs layer\nc7ce579d92bc: Pulling fs layer\n57b3b7f0e8be: Pulling fs layer\n639f0ce3e131: Pulling fs layer\n315760abeb8e: Pulling fs layer\n1e27b4f5b34f: Pulling fs layer\n7feaef9a63ac: Pulling fs layer\n4fa43b3f35bd: Pulling fs layer\nccc368eb7cc7: Pulling fs layer\nf5991d0b8b5b: Pulling fs layer\n3b520f7c783b: Pulling fs layer\nb33915915b51: Pulling fs layer\n881078803fc8: Pulling fs layer\n99adb42d27ad: Pulling fs layer\n639f0ce3e131: Waiting\n315760abeb8e: Waiting\n1e27b4f5b34f: Waiting\n7feaef9a63ac: Waiting\n4fa43b3f35bd: Waiting\nccc368eb7cc7: Waiting\nf5991d0b8b5b: Waiting\n3b520f7c783b: Waiting\nb33915915b51: Waiting\n881078803fc8: Waiting\n99adb42d27ad: Waiting\nc7ce579d92bc: Verifying Checksum\nc7ce579d92bc: Download complete\n57b3b7f0e8be: Verifying Checksum\n57b3b7f0e8be: Download complete\n639f0ce3e131: Verifying Checksum\n639f0ce3e131: Download complete\n26c307b5e35a: Verifying Checksum\n26c307b5e35a: Download complete\n315760abeb8e: Verifying Checksum\n315760abeb8e: Download complete\n1e27b4f5b34f: Verifying Checksum\n1e27b4f5b34f: Download complete\n7feaef9a63ac: Verifying Checksum\n7feaef9a63ac: Download complete\n4fa43b3f35bd: Verifying Checksum\n4fa43b3f35bd: Download complete\nf5991d0b8b5b: Download complete\n3b520f7c783b: Verifying Checksum\n3b520f7c783b: Download complete\nb33915915b51: Verifying Checksum\nb33915915b51: Download complete\n881078803fc8: Verifying Checksum\n881078803fc8: Download complete\n99adb42d27ad: Verifying Checksum\n99adb42d27ad: Download complete\nccc368eb7cc7: Verifying Checksum\nccc368eb7cc7: Download complete\n26c307b5e35a: Pull complete\nc7ce579d92bc: Pull complete\n57b3b7f0e8be: Pull complete\n639f0ce3e131: Pull complete\n315760abeb8e: Pull complete\n1e27b4f5b34f: Pull complete\n7feaef9a63ac: Pull complete\n4fa43b3f35bd: Pull complete\nccc368eb7cc7: Pull complete\nf5991d0b8b5b: Pull complete\n3b520f7c783b: Pull complete\nb33915915b51: Pull complete\n881078803fc8: Pull complete\n99adb42d27ad: Pull complete\nDigest: sha256:7958605b474b3d264a969cb3a123d6aa00ad1e1fe9da8a69984dabb704d93317\nStatus: Downloaded newer image for postgres:17\n8e3dcd845723739ac5ca34ecf39a319783ff12aa753e4eda0b03569b6f7ef5b9\n",
-      "recorded_at": "2026-08-10T23:24:22.852869Z"
+      "output": "Warning: Permanently added '178.156.200.94' (ED25519) to the list of known hosts.\r\nUnable to find image 'postgres:17' locally\n17: Pulling from library/postgres\n26c307b5e35a: Pulling fs layer\na211a4ebbe9c: Pulling fs layer\n99b8d6500ca8: Pulling fs layer\n011e3de85889: Pulling fs layer\nfae9bcdccea1: Pulling fs layer\n98662c61092c: Pulling fs layer\ndd72bcd3b6cf: Pulling fs layer\nf51ddbe7fe6c: Pulling fs layer\nb6bf40d31a6c: Pulling fs layer\naaf8269598d6: Pulling fs layer\ncdcabf0f88e4: Pulling fs layer\n7696d740062e: Pulling fs layer\neb09c7374a37: Pulling fs layer\n8eb7d3b192aa: Pulling fs layer\n011e3de85889: Waiting\nfae9bcdccea1: Waiting\n98662c61092c: Waiting\ndd72bcd3b6cf: Waiting\nf51ddbe7fe6c: Waiting\nb6bf40d31a6c: Waiting\neb09c7374a37: Waiting\n8eb7d3b192aa: Waiting\naaf8269598d6: Waiting\ncdcabf0f88e4: Waiting\n7696d740062e: Waiting\na211a4ebbe9c: Download complete\n99b8d6500ca8: Verifying Checksum\n99b8d6500ca8: Download complete\n011e3de85889: Verifying Checksum\n011e3de85889: Download complete\n26c307b5e35a: Verifying Checksum\n26c307b5e35a: Download complete\nfae9bcdccea1: Verifying Checksum\nfae9bcdccea1: Download complete\n98662c61092c: Verifying Checksum\n98662c61092c: Download complete\ndd72bcd3b6cf: Verifying Checksum\ndd72bcd3b6cf: Download complete\nf51ddbe7fe6c: Verifying Checksum\nf51ddbe7fe6c: Download complete\naaf8269598d6: Verifying Checksum\naaf8269598d6: Download complete\ncdcabf0f88e4: Verifying Checksum\ncdcabf0f88e4: Download complete\n7696d740062e: Verifying Checksum\n7696d740062e: Download complete\neb09c7374a37: Verifying Checksum\neb09c7374a37: Download complete\n8eb7d3b192aa: Verifying Checksum\n8eb7d3b192aa: Download complete\nb6bf40d31a6c: Verifying Checksum\nb6bf40d31a6c: Download complete\n26c307b5e35a: Pull complete\na211a4ebbe9c: Pull complete\n99b8d6500ca8: Pull complete\n011e3de85889: Pull complete\nfae9bcdccea1: Pull complete\n98662c61092c: Pull complete\ndd72bcd3b6cf: Pull complete\nf51ddbe7fe6c: Pull complete\nb6bf40d31a6c: Pull complete\naaf8269598d6: Pull complete\ncdcabf0f88e4: Pull complete\n7696d740062e: Pull complete\neb09c7374a37: Pull complete\n8eb7d3b192aa: Pull complete\nDigest: sha256:e42539a54ee3e82e21f19d7eded61b579869585f86b90b5e851ff0d3dd8b4001\nStatus: Downloaded newer image for postgres:17\n4c16f850689e9e9c2d8340b004b23b0cf2ba42270fee64a74467805a9af9d94a\n",
+      "recorded_at": "2026-08-13T21:16:57.166680Z"
     },
     {
       "args": [
@@ -927,6 +1523,8 @@
         "BatchMode=yes",
         "-o",
         "IdentitiesOnly=yes",
+        "-o",
+        "ConnectTimeout=10",
         "-i",
         "*/id_ed25519",
         "root@178.156.200.94",
@@ -935,7 +1533,7 @@
       "command": "ssh",
       "exit_code": 2,
       "opts": {
-        "cd": "/Users/johndavenport/Documents/github/code_my_spec_test_repos/devops_drill_v2",
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/briefly--576460681400189833-eM8dTWpdVKKLMlHUuy/briefly-576460681399877833-wlA8MxmKnEmQ7CgCpXU0/cms_drill_dbbf8119121148dc810af5169a27f05a",
         "env": {
           "SCRIPT_PATH": null,
           "RELEASE_ROOT": null,
@@ -944,17 +1542,21 @@
           "RELEASE_DISTRIBUTION": null,
           "EMU": null,
           "RELEASE_COMMAND": null,
+          "MIX_HOME": null,
           "PROGNAME": null,
           "ELIXIR_VERSION": null,
+          "MIX_ARCHIVES": null,
           "RELEASE_MODE": null,
           "beforeExtra": null,
           "REL_EXEC": null,
           "RELEASE_PROG": null,
           "ERL_LIBS": null,
           "RELEASE_NODE": null,
+          "MIX_DEPS_PATH": null,
           "REL_EXTRA": null,
           "RELEASE_BOOT_SCRIPT_CLEAN": null,
           "RELEASE_NAME": null,
+          "MIX_TARGET": null,
           "RELEASE_VM_ARGS": null,
           "ERLEXEC_DIR": null,
           "ERTS_VSN": null,
@@ -969,13 +1571,15 @@
           "RELEASE_REMOTE_VM_ARGS": null,
           "BINDIR": null,
           "REL_GOTO": null,
+          "MIX_ENV": null,
+          "MIX_BUILD_PATH": null,
           "endLoop": null,
           "RELEASE_COOKIE": null
         },
         "stderr_to_stdout": true
       },
       "output": "Warning: Permanently added '178.156.200.94' (ED25519) to the list of known hosts.\r\n",
-      "recorded_at": "2026-08-10T23:24:23.601355Z"
+      "recorded_at": "2026-08-13T21:16:57.818079Z"
     },
     {
       "args": [
@@ -987,6 +1591,8 @@
         "BatchMode=yes",
         "-o",
         "IdentitiesOnly=yes",
+        "-o",
+        "ConnectTimeout=10",
         "-i",
         "*/id_ed25519",
         "root@178.156.200.94",
@@ -995,7 +1601,7 @@
       "command": "ssh",
       "exit_code": 0,
       "opts": {
-        "cd": "/Users/johndavenport/Documents/github/code_my_spec_test_repos/devops_drill_v2",
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/briefly--576460681400189833-eM8dTWpdVKKLMlHUuy/briefly-576460681399877833-wlA8MxmKnEmQ7CgCpXU0/cms_drill_dbbf8119121148dc810af5169a27f05a",
         "env": {
           "SCRIPT_PATH": null,
           "RELEASE_ROOT": null,
@@ -1004,17 +1610,21 @@
           "RELEASE_DISTRIBUTION": null,
           "EMU": null,
           "RELEASE_COMMAND": null,
+          "MIX_HOME": null,
           "PROGNAME": null,
           "ELIXIR_VERSION": null,
+          "MIX_ARCHIVES": null,
           "RELEASE_MODE": null,
           "beforeExtra": null,
           "REL_EXEC": null,
           "RELEASE_PROG": null,
           "ERL_LIBS": null,
           "RELEASE_NODE": null,
+          "MIX_DEPS_PATH": null,
           "REL_EXTRA": null,
           "RELEASE_BOOT_SCRIPT_CLEAN": null,
           "RELEASE_NAME": null,
+          "MIX_TARGET": null,
           "RELEASE_VM_ARGS": null,
           "ERLEXEC_DIR": null,
           "ERTS_VSN": null,
@@ -1029,13 +1639,15 @@
           "RELEASE_REMOTE_VM_ARGS": null,
           "BINDIR": null,
           "REL_GOTO": null,
+          "MIX_ENV": null,
+          "MIX_BUILD_PATH": null,
           "endLoop": null,
           "RELEASE_COOKIE": null
         },
         "stderr_to_stdout": true
       },
       "output": "Warning: Permanently added '178.156.200.94' (ED25519) to the list of known hosts.\r\n",
-      "recorded_at": "2026-08-10T23:24:26.332714Z"
+      "recorded_at": "2026-08-13T21:17:00.556065Z"
     },
     {
       "args": [],
@@ -1044,8 +1656,8 @@
       "opts": {
         "stderr_to_stdout": true
       },
-      "output": "Public key: age1c6u6wzgcd5hrj4ht9jpp3dgklzs6hugvhj8ys2cdrm9xa6hz0qmsum8tua\n# created: 2026-08-10T19:24:26-04:00\n# public key: age1c6u6wzgcd5hrj4ht9jpp3dgklzs6hugvhj8ys2cdrm9xa6hz0qmsum8tua\nAGE-SECRET-KEY-1H4P3933A0Y5GE7SFJYXTANPNPWVKZMJGWRZZVTD60QGKNH26AY6QN6MJM4\n",
-      "recorded_at": "2026-08-10T23:24:26.342866Z"
+      "output": "Public key: age1yj2ynppzfxy8vdza59wtj8ff9kje4l7gllgjxtw2vpqrvuau4spqpw70q2\n# created: 2026-08-13T17:17:00-04:00\n# public key: age1yj2ynppzfxy8vdza59wtj8ff9kje4l7gllgjxtw2vpqrvuau4spqpw70q2\nAGE-SECRET-KEY-1H4P3933A0Y5GE7SFJYXTANPNPWVKZMJGWRZZVTD60QGKNH26AY6QN6MJM4\n",
+      "recorded_at": "2026-08-13T21:17:00.564965Z"
     },
     {
       "args": [
@@ -1056,30 +1668,30 @@
       "command": "sops",
       "exit_code": 0,
       "opts": {
-        "cd": "/Users/johndavenport/Documents/github/code_my_spec_test_repos/devops_drill_v2",
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/briefly--576460681400189833-eM8dTWpdVKKLMlHUuy/briefly-576460681399877833-wlA8MxmKnEmQ7CgCpXU0/cms_drill_dbbf8119121148dc810af5169a27f05a",
         "stderr_to_stdout": true
       },
       "output": "",
-      "recorded_at": "2026-08-10T23:24:26.374045Z"
+      "recorded_at": "2026-08-13T21:17:00.587216Z"
     },
     {
       "args": [
         "set",
         "envs/uat.enc.env",
         "[\"DATABASE_URL\"]",
-        "\"ecto://app:IOfyLXwE5pZyA4qQhPzr9iaevVwGfBbZgNBAOX2wpWM@cms-postgres/app_uat\""
+        "\"ecto://app:Ug6pYTkiaXY0DfvZkHQ5N1r8ojNuxd8_Z9T2Yy_VWRs@cms-postgres/app_uat\""
       ],
       "command": "sops",
       "exit_code": 0,
       "opts": {
-        "cd": "/Users/johndavenport/Documents/github/code_my_spec_test_repos/devops_drill_v2",
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/briefly--576460681400189833-eM8dTWpdVKKLMlHUuy/briefly-576460681399877833-wlA8MxmKnEmQ7CgCpXU0/cms_drill_dbbf8119121148dc810af5169a27f05a",
         "env": {
           "SOPS_AGE_KEY": "AGE-SECRET-KEY-1H4P3933A0Y5GE7SFJYXTANPNPWVKZMJGWRZZVTD60QGKNH26AY6QN6MJM4"
         },
         "stderr_to_stdout": true
       },
       "output": "",
-      "recorded_at": "2026-08-10T23:24:26.398409Z"
+      "recorded_at": "2026-08-13T21:17:00.603468Z"
     },
     {
       "args": [
@@ -1091,8 +1703,25 @@
       "opts": {
         "stderr_to_stdout": true
       },
-      "output": "age1y6qlr0x76y6emn0mufnc7mveg82ucqnx5yxrt9vdphqc7crk9cqqjfvt27\n",
-      "recorded_at": "2026-08-10T23:24:26.627138Z"
+      "output": "age1m0rh0qyl4spvf4vjfjtnfdl86w47w8l5clzpzph5qv4fqmaml35stdd2ge\n",
+      "recorded_at": "2026-08-13T21:17:00.626955Z"
+    },
+    {
+      "args": [
+        "decrypt",
+        "envs/prod.enc.env"
+      ],
+      "command": "sops",
+      "exit_code": 0,
+      "opts": {
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/briefly--576460681400189833-eM8dTWpdVKKLMlHUuy/briefly-576460681399877833-wlA8MxmKnEmQ7CgCpXU0/cms_drill_dbbf8119121148dc810af5169a27f05a",
+        "env": {
+          "SOPS_AGE_KEY": "AGE-SECRET-KEY-1H4P3933A0Y5GE7SFJYXTANPNPWVKZMJGWRZZVTD60QGKNH26AY6QN6MJM4"
+        },
+        "stderr_to_stdout": true
+      },
+      "output": "# SOPS-encrypted environment file. Placeholder until the first secret is set.\n#\n# This file is safe to commit — that is the point. Values are encrypted to\n# this environment's age recipient (see .sops.yaml), so the repo carries the\n# ciphertext and only the key opens it. Anyone who clones without the key\n# reads nothing.\n#\n# Add a secret:\n#\n#   sops envs/<env>.enc.env        # opens an editor; SOPS encrypts on save\n#\n# Read one back:\n#\n#   sops -d envs/<env>.enc.env\n#\n# The app decrypts at boot using the SOPS_AGE_KEY the deploy supplies, so\n# nothing is ever placed on the host by hand. A required secret that is\n# missing fails the boot by name rather than starting half-configured.\n#\n# There is deliberately no plaintext .env anywhere in this project: one\n# mechanism for local runs and deploys, so the two cannot drift.\nDATABASE_URL=ecto://app:CHeOAOKikkRfODB8MoeKiukwY7r3DHIroHwHbH_wz8U@cms-postgres/app_prod\n",
+      "recorded_at": "2026-08-13T21:17:00.645033Z"
     },
     {
       "args": [
@@ -1104,8 +1733,149 @@
       "opts": {
         "stderr_to_stdout": true
       },
-      "output": "age1c6u6wzgcd5hrj4ht9jpp3dgklzs6hugvhj8ys2cdrm9xa6hz0qmsum8tua\n",
-      "recorded_at": "2026-08-10T23:24:26.646422Z"
+      "output": "age1m0rh0qyl4spvf4vjfjtnfdl86w47w8l5clzpzph5qv4fqmaml35stdd2ge\n",
+      "recorded_at": "2026-08-13T21:17:00.658598Z"
+    },
+    {
+      "args": [
+        "-y",
+        "*/key.txt"
+      ],
+      "command": "age-keygen",
+      "exit_code": 0,
+      "opts": {
+        "stderr_to_stdout": true
+      },
+      "output": "age1m0rh0qyl4spvf4vjfjtnfdl86w47w8l5clzpzph5qv4fqmaml35stdd2ge\n",
+      "recorded_at": "2026-08-13T21:17:00.667654Z"
+    },
+    {
+      "args": [
+        "-y",
+        "*/key.txt"
+      ],
+      "command": "age-keygen",
+      "exit_code": 0,
+      "opts": {
+        "stderr_to_stdout": true
+      },
+      "output": "age1yj2ynppzfxy8vdza59wtj8ff9kje4l7gllgjxtw2vpqrvuau4spqpw70q2\n",
+      "recorded_at": "2026-08-13T21:17:00.678425Z"
+    },
+    {
+      "args": [
+        "-y",
+        "*/key.txt"
+      ],
+      "command": "age-keygen",
+      "exit_code": 0,
+      "opts": {
+        "stderr_to_stdout": true
+      },
+      "output": "age1yj2ynppzfxy8vdza59wtj8ff9kje4l7gllgjxtw2vpqrvuau4spqpw70q2\n",
+      "recorded_at": "2026-08-13T21:17:00.685717Z"
+    },
+    {
+      "args": [
+        "decrypt",
+        "envs/prod.enc.env"
+      ],
+      "command": "sops",
+      "exit_code": 0,
+      "opts": {
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/briefly--576460681400189833-eM8dTWpdVKKLMlHUuy/briefly-576460681399877833-wlA8MxmKnEmQ7CgCpXU0/cms_drill_dbbf8119121148dc810af5169a27f05a",
+        "env": {
+          "SOPS_AGE_KEY": "AGE-SECRET-KEY-1H4P3933A0Y5GE7SFJYXTANPNPWVKZMJGWRZZVTD60QGKNH26AY6QN6MJM4"
+        },
+        "stderr_to_stdout": true
+      },
+      "output": "# SOPS-encrypted environment file. Placeholder until the first secret is set.\n#\n# This file is safe to commit — that is the point. Values are encrypted to\n# this environment's age recipient (see .sops.yaml), so the repo carries the\n# ciphertext and only the key opens it. Anyone who clones without the key\n# reads nothing.\n#\n# Add a secret:\n#\n#   sops envs/<env>.enc.env        # opens an editor; SOPS encrypts on save\n#\n# Read one back:\n#\n#   sops -d envs/<env>.enc.env\n#\n# The app decrypts at boot using the SOPS_AGE_KEY the deploy supplies, so\n# nothing is ever placed on the host by hand. A required secret that is\n# missing fails the boot by name rather than starting half-configured.\n#\n# There is deliberately no plaintext .env anywhere in this project: one\n# mechanism for local runs and deploys, so the two cannot drift.\nDATABASE_URL=ecto://app:CHeOAOKikkRfODB8MoeKiukwY7r3DHIroHwHbH_wz8U@cms-postgres/app_prod\n",
+      "recorded_at": "2026-08-13T21:17:00.702387Z"
+    },
+    {
+      "args": [
+        "encrypt",
+        "--in-place",
+        "envs/prod.enc.env"
+      ],
+      "command": "sops",
+      "exit_code": 203,
+      "opts": {
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/briefly--576460681400189833-eM8dTWpdVKKLMlHUuy/briefly-576460681399877833-wlA8MxmKnEmQ7CgCpXU0/cms_drill_dbbf8119121148dc810af5169a27f05a",
+        "stderr_to_stdout": true
+      },
+      "output": "The file you have provided contains a top-level entry called 'sops', or for\nflat file formats top-level entries starting with 'sops_'. This is\ngenerally due to the file already being encrypted. SOPS uses a top-level\nentry called 'sops' to store the metadata required to decrypt the file. For\nthis reason, SOPS can not encrypt files that already contain such an entry.\n\nIf this is an unencrypted file, rename the 'sops' entry.\n\nIf this is an encrypted file and you want to edit it, use the editor mode,\nfor example: `sops edit my_file.yaml`\n",
+      "recorded_at": "2026-08-13T21:17:00.720132Z"
+    },
+    {
+      "args": [
+        "set",
+        "envs/prod.enc.env",
+        "[\"SECRET_KEY_BASE\"]",
+        "\"yf0xWU5YlMPjsGFTZxC68Z7c36dAikQ5K+2f3L+5KAH6FToHxSXncowgBWMffj0DKTTVvwEs6hjRqVUijvQA4w\""
+      ],
+      "command": "sops",
+      "exit_code": 0,
+      "opts": {
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/briefly--576460681400189833-eM8dTWpdVKKLMlHUuy/briefly-576460681399877833-wlA8MxmKnEmQ7CgCpXU0/cms_drill_dbbf8119121148dc810af5169a27f05a",
+        "env": {
+          "SOPS_AGE_KEY": "AGE-SECRET-KEY-1H4P3933A0Y5GE7SFJYXTANPNPWVKZMJGWRZZVTD60QGKNH26AY6QN6MJM4"
+        },
+        "stderr_to_stdout": true
+      },
+      "output": "",
+      "recorded_at": "2026-08-13T21:17:00.741948Z"
+    },
+    {
+      "args": [
+        "decrypt",
+        "envs/uat.enc.env"
+      ],
+      "command": "sops",
+      "exit_code": 0,
+      "opts": {
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/briefly--576460681400189833-eM8dTWpdVKKLMlHUuy/briefly-576460681399877833-wlA8MxmKnEmQ7CgCpXU0/cms_drill_dbbf8119121148dc810af5169a27f05a",
+        "env": {
+          "SOPS_AGE_KEY": "AGE-SECRET-KEY-1H4P3933A0Y5GE7SFJYXTANPNPWVKZMJGWRZZVTD60QGKNH26AY6QN6MJM4"
+        },
+        "stderr_to_stdout": true
+      },
+      "output": "# SOPS-encrypted environment file. Placeholder until the first secret is set.\n#\n# This file is safe to commit — that is the point. Values are encrypted to\n# this environment's age recipient (see .sops.yaml), so the repo carries the\n# ciphertext and only the key opens it. Anyone who clones without the key\n# reads nothing.\n#\n# Add a secret:\n#\n#   sops envs/<env>.enc.env        # opens an editor; SOPS encrypts on save\n#\n# Read one back:\n#\n#   sops -d envs/<env>.enc.env\n#\n# The app decrypts at boot using the SOPS_AGE_KEY the deploy supplies, so\n# nothing is ever placed on the host by hand. A required secret that is\n# missing fails the boot by name rather than starting half-configured.\n#\n# There is deliberately no plaintext .env anywhere in this project: one\n# mechanism for local runs and deploys, so the two cannot drift.\nDATABASE_URL=ecto://app:Ug6pYTkiaXY0DfvZkHQ5N1r8ojNuxd8_Z9T2Yy_VWRs@cms-postgres/app_uat\n",
+      "recorded_at": "2026-08-13T21:17:00.765837Z"
+    },
+    {
+      "args": [
+        "encrypt",
+        "--in-place",
+        "envs/uat.enc.env"
+      ],
+      "command": "sops",
+      "exit_code": 203,
+      "opts": {
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/briefly--576460681400189833-eM8dTWpdVKKLMlHUuy/briefly-576460681399877833-wlA8MxmKnEmQ7CgCpXU0/cms_drill_dbbf8119121148dc810af5169a27f05a",
+        "stderr_to_stdout": true
+      },
+      "output": "The file you have provided contains a top-level entry called 'sops', or for\nflat file formats top-level entries starting with 'sops_'. This is\ngenerally due to the file already being encrypted. SOPS uses a top-level\nentry called 'sops' to store the metadata required to decrypt the file. For\nthis reason, SOPS can not encrypt files that already contain such an entry.\n\nIf this is an unencrypted file, rename the 'sops' entry.\n\nIf this is an encrypted file and you want to edit it, use the editor mode,\nfor example: `sops edit my_file.yaml`\n",
+      "recorded_at": "2026-08-13T21:17:00.782205Z"
+    },
+    {
+      "args": [
+        "set",
+        "envs/uat.enc.env",
+        "[\"SECRET_KEY_BASE\"]",
+        "\"L+ormMV3itpd33poUXZV9fwG34TxMoD2TI5SPTVce6IFGQAvdH98Qoil/q78SRWPsZhCCkApfTzZfsLBmUQzRA\""
+      ],
+      "command": "sops",
+      "exit_code": 0,
+      "opts": {
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/briefly--576460681400189833-eM8dTWpdVKKLMlHUuy/briefly-576460681399877833-wlA8MxmKnEmQ7CgCpXU0/cms_drill_dbbf8119121148dc810af5169a27f05a",
+        "env": {
+          "SOPS_AGE_KEY": "AGE-SECRET-KEY-1H4P3933A0Y5GE7SFJYXTANPNPWVKZMJGWRZZVTD60QGKNH26AY6QN6MJM4"
+        },
+        "stderr_to_stdout": true
+      },
+      "output": "",
+      "recorded_at": "2026-08-13T21:17:00.797147Z"
     }
   ],
   "ports": []

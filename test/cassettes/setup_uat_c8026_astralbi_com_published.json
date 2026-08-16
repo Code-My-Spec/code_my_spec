@@ -1,7 +1,7 @@
 {
   "interactions": [
     {
-      "recorded_at": "2026-08-12T01:08:39.309088Z",
+      "recorded_at": "2026-08-15T01:29:55.038937Z",
       "request": {
         "body": "",
         "body_type": "text",
@@ -26,12 +26,38 @@
                 "sending": "enabled"
               },
               "click_tracking": false,
-              "created_at": "2026-08-12 01:08:18.309513+00",
-              "id": "35b51234-2cb6-4756-ad0f-ed45bfcee690",
+              "created_at": "2026-08-15 01:29:40.736366+00",
+              "id": "edb68275-c229-430e-a559-334ef0d1656a",
               "name": "c8026.astralbi.com",
               "open_tracking": false,
               "region": "us-east-1",
               "status": "pending"
+            },
+            {
+              "capabilities": {
+                "receiving": "enabled",
+                "sending": "enabled"
+              },
+              "click_tracking": false,
+              "created_at": "2026-08-14 19:58:10.060692+00",
+              "id": "a1b4a2bf-86d1-436a-9589-2ce7ff36f5e2",
+              "name": "spex-drill.earwitness.app",
+              "open_tracking": false,
+              "region": "us-east-1",
+              "status": "verified"
+            },
+            {
+              "capabilities": {
+                "receiving": "enabled",
+                "sending": "enabled"
+              },
+              "click_tracking": false,
+              "created_at": "2026-08-12 02:13:50.501351+00",
+              "id": "9fbe2f99-0346-47eb-bbaa-b573744db786",
+              "name": "spex-inbound.astralbi.com",
+              "open_tracking": false,
+              "region": "us-east-1",
+              "status": "verified"
             },
             {
               "capabilities": {
@@ -70,7 +96,7 @@
               "name": "uat.codemyspec.com",
               "open_tracking": false,
               "region": "us-east-1",
-              "status": "verified"
+              "status": "failed"
             },
             {
               "capabilities": {
@@ -160,13 +186,13 @@
             "DYNAMIC"
           ],
           "cf-ray": [
-            "a29b97115ef139c5-YYZ"
+            "a2b46e56ae6d39f7-YYZ"
           ],
           "connection": [
             "keep-alive"
           ],
           "content-length": [
-            "2672"
+            "3212"
           ],
           "content-security-policy": [
             "default-src 'none'; frame-ancestors 'none'"
@@ -175,10 +201,10 @@
             "application/json; charset=utf-8"
           ],
           "date": [
-            "Wed, 12 Aug 2026 01:08:39 GMT"
+            "Sat, 15 Aug 2026 01:29:55 GMT"
           ],
           "etag": [
-            "W/\"a70-yBZjAF5NB4RP+SIgozgim94FESI\""
+            "W/\"c8c-zRMGowKu2v7gdFN6CtDYcdOVoYc\""
           ],
           "permissions-policy": [
             "camera=(), microphone=(), geolocation=(), payment=()"
@@ -215,9 +241,12 @@
       }
     },
     {
-      "recorded_at": "2026-08-12T01:08:39.560947Z",
+      "recorded_at": "2026-08-15T01:29:55.400953Z",
       "request": {
         "body_json": {
+          "capabilities": {
+            "sending": "enabled"
+          },
           "name": "uat.c8026.astralbi.com",
           "region": "us-east-1"
         },
@@ -243,8 +272,8 @@
             "receiving": "disabled",
             "sending": "enabled"
           },
-          "created_at": "2026-08-12 01:08:39.388711+00",
-          "id": "80b9c7bc-717d-42a6-aee2-3160e8fc445a",
+          "created_at": "2026-08-15 01:29:55.181524+00",
+          "id": "86e5ebc8-c960-44f9-a4cd-2a1c187493a3",
           "name": "uat.c8026.astralbi.com",
           "object": "domain",
           "records": [
@@ -283,7 +312,7 @@
             "DYNAMIC"
           ],
           "cf-ray": [
-            "a29b9711cf4839c5-YYZ"
+            "a2b46e572ecd39f7-YYZ"
           ],
           "connection": [
             "keep-alive"
@@ -298,10 +327,10 @@
             "application/json; charset=utf-8"
           ],
           "date": [
-            "Wed, 12 Aug 2026 01:08:39 GMT"
+            "Sat, 15 Aug 2026 01:29:55 GMT"
           ],
           "etag": [
-            "W/\"36a-c/xSDyfqmviI81Iz1RBKS3/GhbA\""
+            "W/\"36a-uSKIWpYnh17WGHmWClnDeR+Vnsc\""
           ],
           "permissions-policy": [
             "camera=(), microphone=(), geolocation=(), payment=()"
@@ -338,7 +367,7 @@
       }
     },
     {
-      "recorded_at": "2026-08-12T01:08:39.635326Z",
+      "recorded_at": "2026-08-15T01:29:55.472294Z",
       "request": {
         "body": "",
         "body_type": "text",
@@ -352,7 +381,7 @@
         },
         "method": "GET",
         "query_string": "",
-        "uri": "https://api.resend.com/domains/80b9c7bc-717d-42a6-aee2-3160e8fc445a"
+        "uri": "https://api.resend.com/domains/86e5ebc8-c960-44f9-a4cd-2a1c187493a3"
       },
       "response": {
         "body_json": {
@@ -361,8 +390,8 @@
             "sending": "enabled"
           },
           "click_tracking": false,
-          "created_at": "2026-08-12 01:08:39.388711+00",
-          "id": "80b9c7bc-717d-42a6-aee2-3160e8fc445a",
+          "created_at": "2026-08-15 01:29:55.181524+00",
+          "id": "86e5ebc8-c960-44f9-a4cd-2a1c187493a3",
           "name": "uat.c8026.astralbi.com",
           "object": "domain",
           "open_tracking": false,
@@ -402,7 +431,7 @@
             "DYNAMIC"
           ],
           "cf-ray": [
-            "a29b9713586a39c5-YYZ"
+            "a2b46e59686b39f7-YYZ"
           ],
           "connection": [
             "keep-alive"
@@ -417,10 +446,10 @@
             "application/json; charset=utf-8"
           ],
           "date": [
-            "Wed, 12 Aug 2026 01:08:39 GMT"
+            "Sat, 15 Aug 2026 01:29:55 GMT"
           ],
           "etag": [
-            "W/\"397-pDvswBXKoWUvEDCACbPD2rjRlhQ\""
+            "W/\"397-RTEUyLXWfQIoGfonz/cG0o0sEwo\""
           ],
           "permissions-policy": [
             "camera=(), microphone=(), geolocation=(), payment=()"
@@ -457,7 +486,7 @@
       }
     },
     {
-      "recorded_at": "2026-08-12T01:08:39.956139Z",
+      "recorded_at": "2026-08-15T01:29:55.719590Z",
       "request": {
         "body": "",
         "body_type": "text",
@@ -819,7 +848,7 @@
               },
               "activated_on": "2026-02-27T01:51:59.160872Z",
               "created_on": "2026-02-27T01:49:03.058411Z",
-              "development_mode": -13665990,
+              "development_mode": -13926466,
               "id": "51d25b6e048c9f5797cc0ea3ed6fc10e",
               "meta": {
                 "custom_certificate_quota": 0,
@@ -1159,13 +1188,13 @@
             "no-store, no-cache, must-revalidate, post-check=0, pre-check=0"
           ],
           "cf-auditlog-id": [
-            "019ff383-a869-7f7b-8b66-3b4dbc72ecb7"
+            "01a0030a-3428-7aec-adf9-14cccc73589b"
           ],
           "cf-cache-status": [
             "DYNAMIC"
           ],
           "cf-ray": [
-            "a29b9713dc210fd5-YUL"
+            "a2b46e59db7a80f3-YUL"
           ],
           "connection": [
             "keep-alive"
@@ -1174,7 +1203,7 @@
             "application/json"
           ],
           "date": [
-            "Wed, 12 Aug 2026 01:08:39 GMT"
+            "Sat, 15 Aug 2026 01:29:55 GMT"
           ],
           "expires": [
             "Sun, 25 Jan 1981 05:00:00 GMT"
@@ -1211,7 +1240,7 @@
       }
     },
     {
-      "recorded_at": "2026-08-12T01:08:40.222083Z",
+      "recorded_at": "2026-08-15T01:29:55.939291Z",
       "request": {
         "body": "",
         "body_type": "text",
@@ -1408,10 +1437,10 @@
             {
               "comment": null,
               "content": "feedback-smtp.us-east-1.amazonses.com",
-              "created_on": "2026-08-12T01:08:19.679607Z",
-              "id": "85c73aa66220139acc59de6d1a1dc09d",
+              "created_on": "2026-08-15T01:29:41.949087Z",
+              "id": "157a9cad0fafc29fc592b381dcce8957",
               "meta": {},
-              "modified_on": "2026-08-12T01:08:19.679607Z",
+              "modified_on": "2026-08-15T01:29:41.949087Z",
               "name": "send.c8026.astralbi.com",
               "priority": 10,
               "proxiable": false,
@@ -1423,11 +1452,43 @@
             },
             {
               "comment": null,
-              "content": "p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDY04pSFS73EzZ58rFKB33pj4O4UoyH+hfYS7fEGdPetpD6Ig+m0IpHYHdAf6ug5uQDWn8Kvy86+XXaCicPL5WKa97t8XpIvJ9/XBvzOX67Ntzh/hDaTduqYC0/I1i2LVCSKq8eHgoUJ5O2DEG2Aic3uuNpC7/yxVdHKEdNBlVKlwIDAQAB",
-              "created_on": "2026-08-12T01:08:19.24515Z",
-              "id": "e47aa683ce2298b4a77e622e96b0b5ce",
+              "content": "feedback-smtp.us-east-1.amazonses.com",
+              "created_on": "2026-08-12T02:14:11.361204Z",
+              "id": "68573de8f0ea3bc148e08ea27b1a5fd9",
               "meta": {},
-              "modified_on": "2026-08-12T01:08:19.24515Z",
+              "modified_on": "2026-08-12T02:14:11.361204Z",
+              "name": "send.spex-inbound.astralbi.com",
+              "priority": 10,
+              "proxiable": false,
+              "proxied": false,
+              "settings": {},
+              "tags": [],
+              "ttl": 60,
+              "type": "MX"
+            },
+            {
+              "comment": null,
+              "content": "inbound-smtp.us-east-1.amazonaws.com",
+              "created_on": "2026-08-12T02:14:11.758306Z",
+              "id": "c076641d37933dd16bb897856636f016",
+              "meta": {},
+              "modified_on": "2026-08-12T02:14:11.758306Z",
+              "name": "spex-inbound.astralbi.com",
+              "priority": 10,
+              "proxiable": false,
+              "proxied": false,
+              "settings": {},
+              "tags": [],
+              "ttl": 60,
+              "type": "MX"
+            },
+            {
+              "comment": null,
+              "content": "p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDY04pSFS73EzZ58rFKB33pj4O4UoyH+hfYS7fEGdPetpD6Ig+m0IpHYHdAf6ug5uQDWn8Kvy86+XXaCicPL5WKa97t8XpIvJ9/XBvzOX67Ntzh/hDaTduqYC0/I1i2LVCSKq8eHgoUJ5O2DEG2Aic3uuNpC7/yxVdHKEdNBlVKlwIDAQAB",
+              "created_on": "2026-08-15T01:29:41.542261Z",
+              "id": "bd8b0c223da23b00baf7c68c527f791a",
+              "meta": {},
+              "modified_on": "2026-08-15T01:29:41.542261Z",
               "name": "resend._domainkey.c8026.astralbi.com",
               "proxiable": false,
               "proxied": false,
@@ -1454,11 +1515,26 @@
             {
               "comment": null,
               "content": "v=spf1 include:amazonses.com ~all",
-              "created_on": "2026-08-12T01:08:20.172486Z",
-              "id": "c959ca11a547f9248c8cacc47beedc9c",
+              "created_on": "2026-08-15T01:29:42.359985Z",
+              "id": "dce995ae53ad37d34edb7396de3f0e6d",
               "meta": {},
-              "modified_on": "2026-08-12T01:08:20.172486Z",
+              "modified_on": "2026-08-15T01:29:42.359985Z",
               "name": "send.c8026.astralbi.com",
+              "proxiable": false,
+              "proxied": false,
+              "settings": {},
+              "tags": [],
+              "ttl": 60,
+              "type": "TXT"
+            },
+            {
+              "comment": null,
+              "content": "v=spf1 include:amazonses.com ~all",
+              "created_on": "2026-08-12T02:14:11.550996Z",
+              "id": "edcd38903d97aa14fd163989d6ebc3cb",
+              "meta": {},
+              "modified_on": "2026-08-12T02:14:11.550996Z",
+              "name": "send.spex-inbound.astralbi.com",
               "proxiable": false,
               "proxied": false,
               "settings": {},
@@ -1468,10 +1544,10 @@
             }
           ],
           "result_info": {
-            "count": 15,
+            "count": 18,
             "page": 1,
             "per_page": 100,
-            "total_count": 15,
+            "total_count": 18,
             "total_pages": 1
           },
           "success": true
@@ -1482,13 +1558,13 @@
             "2026-09-26.epoch"
           ],
           "cf-auditlog-id": [
-            "019ff383-a9b4-7f04-942b-c11965f662bf"
+            "01a0030a-3520-752f-89a1-d8d0516b87a3"
           ],
           "cf-cache-status": [
             "DYNAMIC"
           ],
           "cf-ray": [
-            "a29b9715ebdd0fd5-YUL"
+            "a2b46e5b580680f3-YUL"
           ],
           "connection": [
             "keep-alive"
@@ -1497,7 +1573,7 @@
             "application/json"
           ],
           "date": [
-            "Wed, 12 Aug 2026 01:08:40 GMT"
+            "Sat, 15 Aug 2026 01:29:55 GMT"
           ],
           "ratelimit": [
             "\"default\";r=1199;t=1"
@@ -1519,7 +1595,7 @@
       }
     },
     {
-      "recorded_at": "2026-08-12T01:08:40.478894Z",
+      "recorded_at": "2026-08-15T01:29:56.136406Z",
       "request": {
         "body_json": {
           "content": "p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDRc4BhgvsN53giUskOjyFmJT6MVCUvprflBBnmYH7CO36gLO/sz/SSZBr5+IOJ3LcuOrFpsUcoRRBWnEjuVVpsne4Jjbew27N0r4HhUUCD9i0GgfCSkboDoLVwRrGh8kl9J0/f9b7x8yiX+4z3aKbjWbc3p2nYkXMT4WJpota2MwIDAQAB",
@@ -1551,10 +1627,10 @@
           "result": {
             "comment": null,
             "content": "p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDRc4BhgvsN53giUskOjyFmJT6MVCUvprflBBnmYH7CO36gLO/sz/SSZBr5+IOJ3LcuOrFpsUcoRRBWnEjuVVpsne4Jjbew27N0r4HhUUCD9i0GgfCSkboDoLVwRrGh8kl9J0/f9b7x8yiX+4z3aKbjWbc3p2nYkXMT4WJpota2MwIDAQAB",
-            "created_on": "2026-08-12T01:08:40.409978Z",
-            "id": "040a2636835d1d1cb9b00e00dec56385",
+            "created_on": "2026-08-15T01:29:56.092484Z",
+            "id": "63af2864faaf69722912f06bca4d1cf9",
             "meta": {},
-            "modified_on": "2026-08-12T01:08:40.409978Z",
+            "modified_on": "2026-08-15T01:29:56.092484Z",
             "name": "resend._domainkey.uat.c8026.astralbi.com",
             "proxiable": false,
             "proxied": false,
@@ -1571,13 +1647,13 @@
             "2026-09-26.epoch"
           ],
           "cf-auditlog-id": [
-            "019ff383-aabc-7daa-bacb-6dbf651f91b9"
+            "01a0030a-35fd-79d7-bf17-ab0b9d24f375"
           ],
           "cf-cache-status": [
             "DYNAMIC"
           ],
           "cf-ray": [
-            "a29b97178a390fd5-YUL"
+            "a2b46e5cbc7580f3-YUL"
           ],
           "connection": [
             "keep-alive"
@@ -1586,10 +1662,10 @@
             "application/json"
           ],
           "date": [
-            "Wed, 12 Aug 2026 01:08:40 GMT"
+            "Sat, 15 Aug 2026 01:29:56 GMT"
           ],
           "ratelimit": [
-            "\"default\";r=1199;t=1"
+            "\"default\";r=1198;t=1"
           ],
           "ratelimit-policy": [
             "\"default\";q=1200;w=300"
@@ -1608,7 +1684,7 @@
       }
     },
     {
-      "recorded_at": "2026-08-12T01:08:40.694103Z",
+      "recorded_at": "2026-08-15T01:29:56.335804Z",
       "request": {
         "body": "",
         "body_type": "text",
@@ -1805,10 +1881,10 @@
             {
               "comment": null,
               "content": "feedback-smtp.us-east-1.amazonses.com",
-              "created_on": "2026-08-12T01:08:19.679607Z",
-              "id": "85c73aa66220139acc59de6d1a1dc09d",
+              "created_on": "2026-08-15T01:29:41.949087Z",
+              "id": "157a9cad0fafc29fc592b381dcce8957",
               "meta": {},
-              "modified_on": "2026-08-12T01:08:19.679607Z",
+              "modified_on": "2026-08-15T01:29:41.949087Z",
               "name": "send.c8026.astralbi.com",
               "priority": 10,
               "proxiable": false,
@@ -1820,11 +1896,43 @@
             },
             {
               "comment": null,
-              "content": "p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDY04pSFS73EzZ58rFKB33pj4O4UoyH+hfYS7fEGdPetpD6Ig+m0IpHYHdAf6ug5uQDWn8Kvy86+XXaCicPL5WKa97t8XpIvJ9/XBvzOX67Ntzh/hDaTduqYC0/I1i2LVCSKq8eHgoUJ5O2DEG2Aic3uuNpC7/yxVdHKEdNBlVKlwIDAQAB",
-              "created_on": "2026-08-12T01:08:19.24515Z",
-              "id": "e47aa683ce2298b4a77e622e96b0b5ce",
+              "content": "feedback-smtp.us-east-1.amazonses.com",
+              "created_on": "2026-08-12T02:14:11.361204Z",
+              "id": "68573de8f0ea3bc148e08ea27b1a5fd9",
               "meta": {},
-              "modified_on": "2026-08-12T01:08:19.24515Z",
+              "modified_on": "2026-08-12T02:14:11.361204Z",
+              "name": "send.spex-inbound.astralbi.com",
+              "priority": 10,
+              "proxiable": false,
+              "proxied": false,
+              "settings": {},
+              "tags": [],
+              "ttl": 60,
+              "type": "MX"
+            },
+            {
+              "comment": null,
+              "content": "inbound-smtp.us-east-1.amazonaws.com",
+              "created_on": "2026-08-12T02:14:11.758306Z",
+              "id": "c076641d37933dd16bb897856636f016",
+              "meta": {},
+              "modified_on": "2026-08-12T02:14:11.758306Z",
+              "name": "spex-inbound.astralbi.com",
+              "priority": 10,
+              "proxiable": false,
+              "proxied": false,
+              "settings": {},
+              "tags": [],
+              "ttl": 60,
+              "type": "MX"
+            },
+            {
+              "comment": null,
+              "content": "p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDY04pSFS73EzZ58rFKB33pj4O4UoyH+hfYS7fEGdPetpD6Ig+m0IpHYHdAf6ug5uQDWn8Kvy86+XXaCicPL5WKa97t8XpIvJ9/XBvzOX67Ntzh/hDaTduqYC0/I1i2LVCSKq8eHgoUJ5O2DEG2Aic3uuNpC7/yxVdHKEdNBlVKlwIDAQAB",
+              "created_on": "2026-08-15T01:29:41.542261Z",
+              "id": "bd8b0c223da23b00baf7c68c527f791a",
+              "meta": {},
+              "modified_on": "2026-08-15T01:29:41.542261Z",
               "name": "resend._domainkey.c8026.astralbi.com",
               "proxiable": false,
               "proxied": false,
@@ -1836,10 +1944,10 @@
             {
               "comment": null,
               "content": "p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDRc4BhgvsN53giUskOjyFmJT6MVCUvprflBBnmYH7CO36gLO/sz/SSZBr5+IOJ3LcuOrFpsUcoRRBWnEjuVVpsne4Jjbew27N0r4HhUUCD9i0GgfCSkboDoLVwRrGh8kl9J0/f9b7x8yiX+4z3aKbjWbc3p2nYkXMT4WJpota2MwIDAQAB",
-              "created_on": "2026-08-12T01:08:40.409978Z",
-              "id": "040a2636835d1d1cb9b00e00dec56385",
+              "created_on": "2026-08-15T01:29:56.092484Z",
+              "id": "63af2864faaf69722912f06bca4d1cf9",
               "meta": {},
-              "modified_on": "2026-08-12T01:08:40.409978Z",
+              "modified_on": "2026-08-15T01:29:56.092484Z",
               "name": "resend._domainkey.uat.c8026.astralbi.com",
               "proxiable": false,
               "proxied": false,
@@ -1866,11 +1974,26 @@
             {
               "comment": null,
               "content": "v=spf1 include:amazonses.com ~all",
-              "created_on": "2026-08-12T01:08:20.172486Z",
-              "id": "c959ca11a547f9248c8cacc47beedc9c",
+              "created_on": "2026-08-15T01:29:42.359985Z",
+              "id": "dce995ae53ad37d34edb7396de3f0e6d",
               "meta": {},
-              "modified_on": "2026-08-12T01:08:20.172486Z",
+              "modified_on": "2026-08-15T01:29:42.359985Z",
               "name": "send.c8026.astralbi.com",
+              "proxiable": false,
+              "proxied": false,
+              "settings": {},
+              "tags": [],
+              "ttl": 60,
+              "type": "TXT"
+            },
+            {
+              "comment": null,
+              "content": "v=spf1 include:amazonses.com ~all",
+              "created_on": "2026-08-12T02:14:11.550996Z",
+              "id": "edcd38903d97aa14fd163989d6ebc3cb",
+              "meta": {},
+              "modified_on": "2026-08-12T02:14:11.550996Z",
+              "name": "send.spex-inbound.astralbi.com",
               "proxiable": false,
               "proxied": false,
               "settings": {},
@@ -1880,10 +2003,10 @@
             }
           ],
           "result_info": {
-            "count": 16,
+            "count": 19,
             "page": 1,
             "per_page": 100,
-            "total_count": 15,
+            "total_count": 18,
             "total_pages": 1
           },
           "success": true
@@ -1894,13 +2017,13 @@
             "2026-09-26.epoch"
           ],
           "cf-auditlog-id": [
-            "019ff383-abb8-7528-beea-3c7ea21272e9"
+            "01a0030a-36c0-73c4-8e9b-99f2cd41da70"
           ],
           "cf-cache-status": [
             "DYNAMIC"
           ],
           "cf-ray": [
-            "a29b971918280fd5-YUL"
+            "a2b46e5df85680f3-YUL"
           ],
           "connection": [
             "keep-alive"
@@ -1909,10 +2032,10 @@
             "application/json"
           ],
           "date": [
-            "Wed, 12 Aug 2026 01:08:40 GMT"
+            "Sat, 15 Aug 2026 01:29:56 GMT"
           ],
           "ratelimit": [
-            "\"default\";r=1198;t=1"
+            "\"default\";r=1197;t=1"
           ],
           "ratelimit-policy": [
             "\"default\";q=1200;w=300"
@@ -1931,7 +2054,7 @@
       }
     },
     {
-      "recorded_at": "2026-08-12T01:08:40.924693Z",
+      "recorded_at": "2026-08-15T01:29:56.557397Z",
       "request": {
         "body_json": {
           "content": "feedback-smtp.us-east-1.amazonses.com",
@@ -1964,10 +2087,10 @@
           "result": {
             "comment": null,
             "content": "feedback-smtp.us-east-1.amazonses.com",
-            "created_on": "2026-08-12T01:08:40.873004Z",
-            "id": "e98f72b447218a41df8b915f82c8b0a4",
+            "created_on": "2026-08-15T01:29:56.513642Z",
+            "id": "535561f6a158a4112d843482555bca0a",
             "meta": {},
-            "modified_on": "2026-08-12T01:08:40.873004Z",
+            "modified_on": "2026-08-15T01:29:56.513642Z",
             "name": "send.uat.c8026.astralbi.com",
             "priority": 10,
             "proxiable": false,
@@ -1985,13 +2108,13 @@
             "2026-09-26.epoch"
           ],
           "cf-auditlog-id": [
-            "019ff383-ac99-70a9-8c90-06383f2bc769"
+            "01a0030a-378c-77a9-b957-1f8caf331478"
           ],
           "cf-cache-status": [
             "DYNAMIC"
           ],
           "cf-ray": [
-            "a29b971a8dbc0fd5-YUL"
+            "a2b46e5f3ca080f3-YUL"
           ],
           "connection": [
             "keep-alive"
@@ -2000,7 +2123,7 @@
             "application/json"
           ],
           "date": [
-            "Wed, 12 Aug 2026 01:08:40 GMT"
+            "Sat, 15 Aug 2026 01:29:56 GMT"
           ],
           "ratelimit": [
             "\"default\";r=1197;t=1"
@@ -2022,7 +2145,7 @@
       }
     },
     {
-      "recorded_at": "2026-08-12T01:08:41.127743Z",
+      "recorded_at": "2026-08-15T01:29:56.756581Z",
       "request": {
         "body": "",
         "body_type": "text",
@@ -2219,10 +2342,10 @@
             {
               "comment": null,
               "content": "feedback-smtp.us-east-1.amazonses.com",
-              "created_on": "2026-08-12T01:08:19.679607Z",
-              "id": "85c73aa66220139acc59de6d1a1dc09d",
+              "created_on": "2026-08-15T01:29:41.949087Z",
+              "id": "157a9cad0fafc29fc592b381dcce8957",
               "meta": {},
-              "modified_on": "2026-08-12T01:08:19.679607Z",
+              "modified_on": "2026-08-15T01:29:41.949087Z",
               "name": "send.c8026.astralbi.com",
               "priority": 10,
               "proxiable": false,
@@ -2235,10 +2358,26 @@
             {
               "comment": null,
               "content": "feedback-smtp.us-east-1.amazonses.com",
-              "created_on": "2026-08-12T01:08:40.873004Z",
-              "id": "e98f72b447218a41df8b915f82c8b0a4",
+              "created_on": "2026-08-12T02:14:11.361204Z",
+              "id": "68573de8f0ea3bc148e08ea27b1a5fd9",
               "meta": {},
-              "modified_on": "2026-08-12T01:08:40.873004Z",
+              "modified_on": "2026-08-12T02:14:11.361204Z",
+              "name": "send.spex-inbound.astralbi.com",
+              "priority": 10,
+              "proxiable": false,
+              "proxied": false,
+              "settings": {},
+              "tags": [],
+              "ttl": 60,
+              "type": "MX"
+            },
+            {
+              "comment": null,
+              "content": "feedback-smtp.us-east-1.amazonses.com",
+              "created_on": "2026-08-15T01:29:56.513642Z",
+              "id": "535561f6a158a4112d843482555bca0a",
+              "meta": {},
+              "modified_on": "2026-08-15T01:29:56.513642Z",
               "name": "send.uat.c8026.astralbi.com",
               "priority": 10,
               "proxiable": false,
@@ -2250,11 +2389,27 @@
             },
             {
               "comment": null,
-              "content": "p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDY04pSFS73EzZ58rFKB33pj4O4UoyH+hfYS7fEGdPetpD6Ig+m0IpHYHdAf6ug5uQDWn8Kvy86+XXaCicPL5WKa97t8XpIvJ9/XBvzOX67Ntzh/hDaTduqYC0/I1i2LVCSKq8eHgoUJ5O2DEG2Aic3uuNpC7/yxVdHKEdNBlVKlwIDAQAB",
-              "created_on": "2026-08-12T01:08:19.24515Z",
-              "id": "e47aa683ce2298b4a77e622e96b0b5ce",
+              "content": "inbound-smtp.us-east-1.amazonaws.com",
+              "created_on": "2026-08-12T02:14:11.758306Z",
+              "id": "c076641d37933dd16bb897856636f016",
               "meta": {},
-              "modified_on": "2026-08-12T01:08:19.24515Z",
+              "modified_on": "2026-08-12T02:14:11.758306Z",
+              "name": "spex-inbound.astralbi.com",
+              "priority": 10,
+              "proxiable": false,
+              "proxied": false,
+              "settings": {},
+              "tags": [],
+              "ttl": 60,
+              "type": "MX"
+            },
+            {
+              "comment": null,
+              "content": "p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDY04pSFS73EzZ58rFKB33pj4O4UoyH+hfYS7fEGdPetpD6Ig+m0IpHYHdAf6ug5uQDWn8Kvy86+XXaCicPL5WKa97t8XpIvJ9/XBvzOX67Ntzh/hDaTduqYC0/I1i2LVCSKq8eHgoUJ5O2DEG2Aic3uuNpC7/yxVdHKEdNBlVKlwIDAQAB",
+              "created_on": "2026-08-15T01:29:41.542261Z",
+              "id": "bd8b0c223da23b00baf7c68c527f791a",
+              "meta": {},
+              "modified_on": "2026-08-15T01:29:41.542261Z",
               "name": "resend._domainkey.c8026.astralbi.com",
               "proxiable": false,
               "proxied": false,
@@ -2266,10 +2421,10 @@
             {
               "comment": null,
               "content": "p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDRc4BhgvsN53giUskOjyFmJT6MVCUvprflBBnmYH7CO36gLO/sz/SSZBr5+IOJ3LcuOrFpsUcoRRBWnEjuVVpsne4Jjbew27N0r4HhUUCD9i0GgfCSkboDoLVwRrGh8kl9J0/f9b7x8yiX+4z3aKbjWbc3p2nYkXMT4WJpota2MwIDAQAB",
-              "created_on": "2026-08-12T01:08:40.409978Z",
-              "id": "040a2636835d1d1cb9b00e00dec56385",
+              "created_on": "2026-08-15T01:29:56.092484Z",
+              "id": "63af2864faaf69722912f06bca4d1cf9",
               "meta": {},
-              "modified_on": "2026-08-12T01:08:40.409978Z",
+              "modified_on": "2026-08-15T01:29:56.092484Z",
               "name": "resend._domainkey.uat.c8026.astralbi.com",
               "proxiable": false,
               "proxied": false,
@@ -2296,11 +2451,26 @@
             {
               "comment": null,
               "content": "v=spf1 include:amazonses.com ~all",
-              "created_on": "2026-08-12T01:08:20.172486Z",
-              "id": "c959ca11a547f9248c8cacc47beedc9c",
+              "created_on": "2026-08-15T01:29:42.359985Z",
+              "id": "dce995ae53ad37d34edb7396de3f0e6d",
               "meta": {},
-              "modified_on": "2026-08-12T01:08:20.172486Z",
+              "modified_on": "2026-08-15T01:29:42.359985Z",
               "name": "send.c8026.astralbi.com",
+              "proxiable": false,
+              "proxied": false,
+              "settings": {},
+              "tags": [],
+              "ttl": 60,
+              "type": "TXT"
+            },
+            {
+              "comment": null,
+              "content": "v=spf1 include:amazonses.com ~all",
+              "created_on": "2026-08-12T02:14:11.550996Z",
+              "id": "edcd38903d97aa14fd163989d6ebc3cb",
+              "meta": {},
+              "modified_on": "2026-08-12T02:14:11.550996Z",
+              "name": "send.spex-inbound.astralbi.com",
               "proxiable": false,
               "proxied": false,
               "settings": {},
@@ -2310,10 +2480,10 @@
             }
           ],
           "result_info": {
-            "count": 17,
+            "count": 20,
             "page": 1,
             "per_page": 100,
-            "total_count": 15,
+            "total_count": 18,
             "total_pages": 1
           },
           "success": true
@@ -2324,13 +2494,13 @@
             "2026-09-26.epoch"
           ],
           "cf-auditlog-id": [
-            "019ff383-ad78-727d-bda0-200f995b4aa2"
+            "01a0030a-3868-76d6-a9f7-b259a6834ba6"
           ],
           "cf-cache-status": [
             "DYNAMIC"
           ],
           "cf-ray": [
-            "a29b971beb0b0fd5-YUL"
+            "a2b46e60992f80f3-YUL"
           ],
           "connection": [
             "keep-alive"
@@ -2339,10 +2509,10 @@
             "application/json"
           ],
           "date": [
-            "Wed, 12 Aug 2026 01:08:41 GMT"
+            "Sat, 15 Aug 2026 01:29:56 GMT"
           ],
           "ratelimit": [
-            "\"default\";r=1197;t=1"
+            "\"default\";r=1196;t=1"
           ],
           "ratelimit-policy": [
             "\"default\";q=1200;w=300"
@@ -2361,7 +2531,7 @@
       }
     },
     {
-      "recorded_at": "2026-08-12T01:08:41.343291Z",
+      "recorded_at": "2026-08-15T01:29:56.966857Z",
       "request": {
         "body_json": {
           "content": "v=spf1 include:amazonses.com ~all",
@@ -2393,10 +2563,10 @@
           "result": {
             "comment": null,
             "content": "v=spf1 include:amazonses.com ~all",
-            "created_on": "2026-08-12T01:08:41.298642Z",
-            "id": "556fdd840428f4360a4e17c81a38ed5a",
+            "created_on": "2026-08-15T01:29:56.928568Z",
+            "id": "9a5906bebaf4b24b341e655bfde75aa6",
             "meta": {},
-            "modified_on": "2026-08-12T01:08:41.298642Z",
+            "modified_on": "2026-08-15T01:29:56.928568Z",
             "name": "send.uat.c8026.astralbi.com",
             "proxiable": false,
             "proxied": false,
@@ -2413,13 +2583,13 @@
             "2026-09-26.epoch"
           ],
           "cf-auditlog-id": [
-            "019ff383-ae4c-7a98-91e0-fd6a70cf1ecc"
+            "01a0030a-3932-7606-b4a9-685ccdc80d52"
           ],
           "cf-cache-status": [
             "DYNAMIC"
           ],
           "cf-ray": [
-            "a29b971d385a0fd5-YUL"
+            "a2b46e61dd1580f3-YUL"
           ],
           "connection": [
             "keep-alive"
@@ -2428,10 +2598,10 @@
             "application/json"
           ],
           "date": [
-            "Wed, 12 Aug 2026 01:08:41 GMT"
+            "Sat, 15 Aug 2026 01:29:56 GMT"
           ],
           "ratelimit": [
-            "\"default\";r=1198;t=1"
+            "\"default\";r=1197;t=1"
           ],
           "ratelimit-policy": [
             "\"default\";q=1200;w=300"
@@ -2450,7 +2620,7 @@
       }
     },
     {
-      "recorded_at": "2026-08-12T01:08:41.558292Z",
+      "recorded_at": "2026-08-15T01:29:57.132615Z",
       "request": {
         "body": "",
         "body_type": "text",
@@ -2464,11 +2634,11 @@
         },
         "method": "POST",
         "query_string": "",
-        "uri": "https://api.resend.com/domains/80b9c7bc-717d-42a6-aee2-3160e8fc445a/verify"
+        "uri": "https://api.resend.com/domains/86e5ebc8-c960-44f9-a4cd-2a1c187493a3/verify"
       },
       "response": {
         "body_json": {
-          "id": "80b9c7bc-717d-42a6-aee2-3160e8fc445a",
+          "id": "86e5ebc8-c960-44f9-a4cd-2a1c187493a3",
           "object": "domain"
         },
         "body_type": "json",
@@ -2477,7 +2647,7 @@
             "DYNAMIC"
           ],
           "cf-ray": [
-            "a29b971e884139c5-YYZ"
+            "a2b46e633fcd39f7-YYZ"
           ],
           "connection": [
             "keep-alive"
@@ -2492,10 +2662,10 @@
             "application/json; charset=utf-8"
           ],
           "date": [
-            "Wed, 12 Aug 2026 01:08:41 GMT"
+            "Sat, 15 Aug 2026 01:29:57 GMT"
           ],
           "etag": [
-            "W/\"3f-6XA5zTP5vGC+su+YAL17MlRcUiQ\""
+            "W/\"3f-K5NJPtr+JYZparoB0Ss7LdFv8wM\""
           ],
           "permissions-policy": [
             "camera=(), microphone=(), geolocation=(), payment=()"
@@ -2532,7 +2702,7 @@
       }
     },
     {
-      "recorded_at": "2026-08-12T01:08:41.683247Z",
+      "recorded_at": "2026-08-15T01:29:57.212662Z",
       "request": {
         "body": "",
         "body_type": "text",
@@ -2546,7 +2716,7 @@
         },
         "method": "GET",
         "query_string": "",
-        "uri": "https://api.resend.com/domains/80b9c7bc-717d-42a6-aee2-3160e8fc445a"
+        "uri": "https://api.resend.com/domains/86e5ebc8-c960-44f9-a4cd-2a1c187493a3"
       },
       "response": {
         "body_json": {
@@ -2555,8 +2725,8 @@
             "sending": "enabled"
           },
           "click_tracking": false,
-          "created_at": "2026-08-12 01:08:39.388711+00",
-          "id": "80b9c7bc-717d-42a6-aee2-3160e8fc445a",
+          "created_at": "2026-08-15 01:29:55.181524+00",
+          "id": "86e5ebc8-c960-44f9-a4cd-2a1c187493a3",
           "name": "uat.c8026.astralbi.com",
           "object": "domain",
           "open_tracking": false,
@@ -2596,7 +2766,7 @@
             "DYNAMIC"
           ],
           "cf-ray": [
-            "a29b971fe90d39c5-YYZ"
+            "a2b46e64389439f7-YYZ"
           ],
           "connection": [
             "keep-alive"
@@ -2611,10 +2781,10 @@
             "application/json; charset=utf-8"
           ],
           "date": [
-            "Wed, 12 Aug 2026 01:08:41 GMT"
+            "Sat, 15 Aug 2026 01:29:57 GMT"
           ],
           "etag": [
-            "W/\"387-Ikaog2MFGXWCiBX2r0ecG5QnIRM\""
+            "W/\"387-gt9XbjrON0XjyGAefeD7SM4pSVk\""
           ],
           "permissions-policy": [
             "camera=(), microphone=(), geolocation=(), payment=()"
@@ -2651,7 +2821,7 @@
       }
     },
     {
-      "recorded_at": "2026-08-12T01:08:44.768505Z",
+      "recorded_at": "2026-08-15T01:30:00.418449Z",
       "request": {
         "body": "",
         "body_type": "text",
@@ -2665,7 +2835,7 @@
         },
         "method": "GET",
         "query_string": "",
-        "uri": "https://api.resend.com/domains/80b9c7bc-717d-42a6-aee2-3160e8fc445a"
+        "uri": "https://api.resend.com/domains/86e5ebc8-c960-44f9-a4cd-2a1c187493a3"
       },
       "response": {
         "body_json": {
@@ -2674,8 +2844,8 @@
             "sending": "enabled"
           },
           "click_tracking": false,
-          "created_at": "2026-08-12 01:08:39.388711+00",
-          "id": "80b9c7bc-717d-42a6-aee2-3160e8fc445a",
+          "created_at": "2026-08-15 01:29:55.181524+00",
+          "id": "86e5ebc8-c960-44f9-a4cd-2a1c187493a3",
           "name": "uat.c8026.astralbi.com",
           "object": "domain",
           "open_tracking": false,
@@ -2715,7 +2885,7 @@
             "DYNAMIC"
           ],
           "cf-ray": [
-            "a29b97336d5739c5-YYZ"
+            "a2b46e778e7939f7-YYZ"
           ],
           "connection": [
             "keep-alive"
@@ -2730,10 +2900,10 @@
             "application/json; charset=utf-8"
           ],
           "date": [
-            "Wed, 12 Aug 2026 01:08:44 GMT"
+            "Sat, 15 Aug 2026 01:30:00 GMT"
           ],
           "etag": [
-            "W/\"387-Ikaog2MFGXWCiBX2r0ecG5QnIRM\""
+            "W/\"387-gt9XbjrON0XjyGAefeD7SM4pSVk\""
           ],
           "permissions-policy": [
             "camera=(), microphone=(), geolocation=(), payment=()"
@@ -2770,7 +2940,7 @@
       }
     },
     {
-      "recorded_at": "2026-08-12T01:08:47.866870Z",
+      "recorded_at": "2026-08-15T01:30:03.704383Z",
       "request": {
         "body": "",
         "body_type": "text",
@@ -2784,7 +2954,7 @@
         },
         "method": "GET",
         "query_string": "",
-        "uri": "https://api.resend.com/domains/80b9c7bc-717d-42a6-aee2-3160e8fc445a"
+        "uri": "https://api.resend.com/domains/86e5ebc8-c960-44f9-a4cd-2a1c187493a3"
       },
       "response": {
         "body_json": {
@@ -2793,8 +2963,8 @@
             "sending": "enabled"
           },
           "click_tracking": false,
-          "created_at": "2026-08-12 01:08:39.388711+00",
-          "id": "80b9c7bc-717d-42a6-aee2-3160e8fc445a",
+          "created_at": "2026-08-15 01:29:55.181524+00",
+          "id": "86e5ebc8-c960-44f9-a4cd-2a1c187493a3",
           "name": "uat.c8026.astralbi.com",
           "object": "domain",
           "open_tracking": false,
@@ -2834,7 +3004,7 @@
             "DYNAMIC"
           ],
           "cf-ray": [
-            "a29b9746ba6f39c5-YYZ"
+            "a2b46e8b8e0039f7-YYZ"
           ],
           "connection": [
             "keep-alive"
@@ -2849,10 +3019,10 @@
             "application/json; charset=utf-8"
           ],
           "date": [
-            "Wed, 12 Aug 2026 01:08:47 GMT"
+            "Sat, 15 Aug 2026 01:30:03 GMT"
           ],
           "etag": [
-            "W/\"387-Ikaog2MFGXWCiBX2r0ecG5QnIRM\""
+            "W/\"387-gt9XbjrON0XjyGAefeD7SM4pSVk\""
           ],
           "permissions-policy": [
             "camera=(), microphone=(), geolocation=(), payment=()"
@@ -2889,7 +3059,7 @@
       }
     },
     {
-      "recorded_at": "2026-08-12T01:08:50.964429Z",
+      "recorded_at": "2026-08-15T01:30:06.789434Z",
       "request": {
         "body": "",
         "body_type": "text",
@@ -2903,7 +3073,7 @@
         },
         "method": "GET",
         "query_string": "",
-        "uri": "https://api.resend.com/domains/80b9c7bc-717d-42a6-aee2-3160e8fc445a"
+        "uri": "https://api.resend.com/domains/86e5ebc8-c960-44f9-a4cd-2a1c187493a3"
       },
       "response": {
         "body_json": {
@@ -2912,8 +3082,8 @@
             "sending": "enabled"
           },
           "click_tracking": false,
-          "created_at": "2026-08-12 01:08:39.388711+00",
-          "id": "80b9c7bc-717d-42a6-aee2-3160e8fc445a",
+          "created_at": "2026-08-15 01:29:55.181524+00",
+          "id": "86e5ebc8-c960-44f9-a4cd-2a1c187493a3",
           "name": "uat.c8026.astralbi.com",
           "object": "domain",
           "open_tracking": false,
@@ -2953,7 +3123,7 @@
             "DYNAMIC"
           ],
           "cf-ray": [
-            "a29b975a18e239c5-YYZ"
+            "a2b46ea01bdd39f7-YYZ"
           ],
           "connection": [
             "keep-alive"
@@ -2968,10 +3138,10 @@
             "application/json; charset=utf-8"
           ],
           "date": [
-            "Wed, 12 Aug 2026 01:08:50 GMT"
+            "Sat, 15 Aug 2026 01:30:06 GMT"
           ],
           "etag": [
-            "W/\"387-Ikaog2MFGXWCiBX2r0ecG5QnIRM\""
+            "W/\"387-gt9XbjrON0XjyGAefeD7SM4pSVk\""
           ],
           "permissions-policy": [
             "camera=(), microphone=(), geolocation=(), payment=()"
@@ -3008,7 +3178,7 @@
       }
     },
     {
-      "recorded_at": "2026-08-12T01:08:54.065805Z",
+      "recorded_at": "2026-08-15T01:30:09.891111Z",
       "request": {
         "body": "",
         "body_type": "text",
@@ -3022,7 +3192,7 @@
         },
         "method": "GET",
         "query_string": "",
-        "uri": "https://api.resend.com/domains/80b9c7bc-717d-42a6-aee2-3160e8fc445a"
+        "uri": "https://api.resend.com/domains/86e5ebc8-c960-44f9-a4cd-2a1c187493a3"
       },
       "response": {
         "body_json": {
@@ -3031,8 +3201,8 @@
             "sending": "enabled"
           },
           "click_tracking": false,
-          "created_at": "2026-08-12 01:08:39.388711+00",
-          "id": "80b9c7bc-717d-42a6-aee2-3160e8fc445a",
+          "created_at": "2026-08-15 01:29:55.181524+00",
+          "id": "86e5ebc8-c960-44f9-a4cd-2a1c187493a3",
           "name": "uat.c8026.astralbi.com",
           "object": "domain",
           "open_tracking": false,
@@ -3072,7 +3242,7 @@
             "DYNAMIC"
           ],
           "cf-ray": [
-            "a29b976d7e5c39c5-YYZ"
+            "a2b46eb35a4e39f7-YYZ"
           ],
           "connection": [
             "keep-alive"
@@ -3087,10 +3257,10 @@
             "application/json; charset=utf-8"
           ],
           "date": [
-            "Wed, 12 Aug 2026 01:08:54 GMT"
+            "Sat, 15 Aug 2026 01:30:09 GMT"
           ],
           "etag": [
-            "W/\"387-Ikaog2MFGXWCiBX2r0ecG5QnIRM\""
+            "W/\"387-gt9XbjrON0XjyGAefeD7SM4pSVk\""
           ],
           "permissions-policy": [
             "camera=(), microphone=(), geolocation=(), payment=()"
@@ -3127,7 +3297,7 @@
       }
     },
     {
-      "recorded_at": "2026-08-12T01:08:54.262360Z",
+      "recorded_at": "2026-08-15T01:30:12.142837Z",
       "request": {
         "body": "",
         "body_type": "text",
@@ -3141,11 +3311,11 @@
         },
         "method": "POST",
         "query_string": "",
-        "uri": "https://api.resend.com/domains/80b9c7bc-717d-42a6-aee2-3160e8fc445a/verify"
+        "uri": "https://api.resend.com/domains/86e5ebc8-c960-44f9-a4cd-2a1c187493a3/verify"
       },
       "response": {
         "body_json": {
-          "id": "80b9c7bc-717d-42a6-aee2-3160e8fc445a",
+          "id": "86e5ebc8-c960-44f9-a4cd-2a1c187493a3",
           "object": "domain"
         },
         "body_type": "json",
@@ -3154,7 +3324,7 @@
             "DYNAMIC"
           ],
           "cf-ray": [
-            "a29b976e1ec439c5-YYZ"
+            "a2b46eb3fad939f7-YYZ"
           ],
           "connection": [
             "keep-alive"
@@ -3169,10 +3339,10 @@
             "application/json; charset=utf-8"
           ],
           "date": [
-            "Wed, 12 Aug 2026 01:08:54 GMT"
+            "Sat, 15 Aug 2026 01:30:12 GMT"
           ],
           "etag": [
-            "W/\"3f-6XA5zTP5vGC+su+YAL17MlRcUiQ\""
+            "W/\"3f-K5NJPtr+JYZparoB0Ss7LdFv8wM\""
           ],
           "permissions-policy": [
             "camera=(), microphone=(), geolocation=(), payment=()"
@@ -3184,7 +3354,7 @@
             "10;w=1"
           ],
           "ratelimit-remaining": [
-            "8"
+            "9"
           ],
           "ratelimit-reset": [
             "1"
@@ -3209,7 +3379,7 @@
       }
     },
     {
-      "recorded_at": "2026-08-12T01:08:57.354475Z",
+      "recorded_at": "2026-08-15T01:30:15.240330Z",
       "request": {
         "body": "",
         "body_type": "text",
@@ -3223,7 +3393,7 @@
         },
         "method": "GET",
         "query_string": "",
-        "uri": "https://api.resend.com/domains/80b9c7bc-717d-42a6-aee2-3160e8fc445a"
+        "uri": "https://api.resend.com/domains/86e5ebc8-c960-44f9-a4cd-2a1c187493a3"
       },
       "response": {
         "body_json": {
@@ -3232,8 +3402,8 @@
             "sending": "enabled"
           },
           "click_tracking": false,
-          "created_at": "2026-08-12 01:08:39.388711+00",
-          "id": "80b9c7bc-717d-42a6-aee2-3160e8fc445a",
+          "created_at": "2026-08-15 01:29:55.181524+00",
+          "id": "86e5ebc8-c960-44f9-a4cd-2a1c187493a3",
           "name": "uat.c8026.astralbi.com",
           "object": "domain",
           "open_tracking": false,
@@ -3273,7 +3443,7 @@
             "DYNAMIC"
           ],
           "cf-ray": [
-            "a29b97820bc339c5-YYZ"
+            "a2b46ed4dc2a39f7-YYZ"
           ],
           "connection": [
             "keep-alive"
@@ -3288,10 +3458,10 @@
             "application/json; charset=utf-8"
           ],
           "date": [
-            "Wed, 12 Aug 2026 01:08:57 GMT"
+            "Sat, 15 Aug 2026 01:30:15 GMT"
           ],
           "etag": [
-            "W/\"389-ahL/4r1CKduRbvZHrZ2oTOBAips\""
+            "W/\"389-K8zGXn1TH5cPwV8mX88DkrF0w9c\""
           ],
           "permissions-policy": [
             "camera=(), microphone=(), geolocation=(), payment=()"

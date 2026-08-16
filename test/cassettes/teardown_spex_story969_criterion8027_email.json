@@ -1,0 +1,1522 @@
+{
+  "interactions": [
+    {
+      "recorded_at": "2026-08-15T01:37:19.270992Z",
+      "request": {
+        "body": "",
+        "body_type": "text",
+        "headers": {
+          "content-type": [
+            "application/json"
+          ],
+          "user-agent": [
+            "req/0.7.2"
+          ]
+        },
+        "method": "GET",
+        "query_string": "",
+        "uri": "https://api.cloudflare.com/client/v4/zones"
+      },
+      "response": {
+        "body_json": {
+          "errors": [],
+          "messages": [],
+          "result": [
+            {
+              "account": {
+                "id": "6477547f586ec90db2c2a0081dcd98bd",
+                "name": "Johns10@gmail.com's Account"
+              },
+              "activated_on": "2026-06-25T15:16:07.473058Z",
+              "created_on": "2026-06-25T15:14:34.004099Z",
+              "development_mode": 0,
+              "id": "0287fe8206425a2aac660a57a62f65bc",
+              "meta": {
+                "custom_certificate_quota": 0,
+                "page_rule_quota": 3,
+                "phishing_detected": false,
+                "step": 2
+              },
+              "modified_on": "2026-06-25T15:16:07.473058Z",
+              "name": "astralbi.com",
+              "name_servers": [
+                "demi.ns.cloudflare.com",
+                "yichun.ns.cloudflare.com"
+              ],
+              "original_dnshost": null,
+              "original_name_servers": [
+                "ns1.dns-parking.com",
+                "ns2.dns-parking.com"
+              ],
+              "original_registrar": "hostinger operations, uab (id: 1636)",
+              "owner": {
+                "email": null,
+                "id": null,
+                "type": "user"
+              },
+              "paused": false,
+              "permissions": [
+                "#dns_records:edit",
+                "#dns_records:read",
+                "#zone:edit",
+                "#zone:read",
+                "#zone_settings:edit",
+                "#zone_settings:read",
+                "#domain:read",
+                "#organization:read",
+                "#organization:edit"
+              ],
+              "plan": {
+                "can_subscribe": false,
+                "currency": "USD",
+                "externally_managed": false,
+                "frequency": "",
+                "id": "0feeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+                "is_subscribed": false,
+                "legacy_discount": false,
+                "legacy_id": "free",
+                "name": "Free Website",
+                "price": 0
+              },
+              "status": "active",
+              "tenant": {
+                "id": null,
+                "name": null
+              },
+              "tenant_unit": {
+                "id": null
+              },
+              "type": "full",
+              "vanity_name_servers": [],
+              "vanity_name_servers_ips": null
+            },
+            {
+              "account": {
+                "id": "6477547f586ec90db2c2a0081dcd98bd",
+                "name": "Johns10@gmail.com's Account"
+              },
+              "activated_on": "2026-07-13T12:36:46.554959Z",
+              "created_on": "2026-07-13T12:36:46.211045Z",
+              "development_mode": 0,
+              "id": "799ed6f6bd983eb0f0cd0d810c602ae9",
+              "meta": {
+                "custom_certificate_quota": 0,
+                "page_rule_quota": 3,
+                "phishing_detected": false,
+                "step": 4
+              },
+              "modified_on": "2026-07-13T12:36:46.656852Z",
+              "name": "broken-oaths.com",
+              "name_servers": [
+                "demi.ns.cloudflare.com",
+                "yichun.ns.cloudflare.com"
+              ],
+              "original_dnshost": null,
+              "original_name_servers": null,
+              "original_registrar": null,
+              "owner": {
+                "email": null,
+                "id": null,
+                "type": "user"
+              },
+              "paused": false,
+              "permissions": [
+                "#dns_records:edit",
+                "#dns_records:read",
+                "#zone:edit",
+                "#zone:read",
+                "#zone_settings:edit",
+                "#zone_settings:read",
+                "#domain:read",
+                "#organization:read",
+                "#organization:edit"
+              ],
+              "plan": {
+                "can_subscribe": false,
+                "currency": "USD",
+                "externally_managed": false,
+                "frequency": "",
+                "id": "0feeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+                "is_subscribed": false,
+                "legacy_discount": false,
+                "legacy_id": "free",
+                "name": "Free Website",
+                "price": 0
+              },
+              "status": "active",
+              "tenant": {
+                "id": null,
+                "name": null
+              },
+              "tenant_unit": {
+                "id": null
+              },
+              "type": "full",
+              "vanity_name_servers": [],
+              "vanity_name_servers_ips": null
+            },
+            {
+              "account": {
+                "id": "6477547f586ec90db2c2a0081dcd98bd",
+                "name": "Johns10@gmail.com's Account"
+              },
+              "activated_on": "2026-02-28T17:45:36.370072Z",
+              "created_on": "2026-02-28T17:38:06.963541Z",
+              "development_mode": 0,
+              "id": "ba45c3c2010cb275de73f91f4f05edab",
+              "meta": {
+                "custom_certificate_quota": 0,
+                "page_rule_quota": 3,
+                "phishing_detected": false,
+                "step": 2
+              },
+              "modified_on": "2026-02-28T17:45:36.370072Z",
+              "name": "codemyspec.com",
+              "name_servers": [
+                "demi.ns.cloudflare.com",
+                "yichun.ns.cloudflare.com"
+              ],
+              "original_dnshost": null,
+              "original_name_servers": [
+                "dns1.registrar-servers.com",
+                "dns2.registrar-servers.com"
+              ],
+              "original_registrar": "namecheap, inc. (id: 1068)",
+              "owner": {
+                "email": null,
+                "id": null,
+                "type": "user"
+              },
+              "paused": false,
+              "permissions": [
+                "#dns_records:edit",
+                "#dns_records:read",
+                "#zone:edit",
+                "#zone:read",
+                "#zone_settings:edit",
+                "#zone_settings:read",
+                "#domain:read",
+                "#organization:read",
+                "#organization:edit"
+              ],
+              "plan": {
+                "can_subscribe": false,
+                "currency": "USD",
+                "externally_managed": false,
+                "frequency": "",
+                "id": "0feeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+                "is_subscribed": false,
+                "legacy_discount": false,
+                "legacy_id": "free",
+                "name": "Free Website",
+                "price": 0
+              },
+              "status": "active",
+              "tenant": {
+                "id": null,
+                "name": null
+              },
+              "tenant_unit": {
+                "id": null
+              },
+              "type": "full",
+              "vanity_name_servers": [],
+              "vanity_name_servers_ips": null
+            },
+            {
+              "account": {
+                "id": "6477547f586ec90db2c2a0081dcd98bd",
+                "name": "Johns10@gmail.com's Account"
+              },
+              "activated_on": "2026-05-01T13:33:34.481973Z",
+              "created_on": "2026-04-21T14:43:08.969666Z",
+              "development_mode": 0,
+              "id": "2c28888129f4acb4a066986fbf055cc0",
+              "meta": {
+                "custom_certificate_quota": 0,
+                "page_rule_quota": 3,
+                "phishing_detected": false,
+                "step": 2
+              },
+              "modified_on": "2026-05-01T13:33:34.481973Z",
+              "name": "desertfirstcleaning.com",
+              "name_servers": [
+                "demi.ns.cloudflare.com",
+                "yichun.ns.cloudflare.com"
+              ],
+              "original_dnshost": null,
+              "original_name_servers": [
+                "ns1.dns-parking.com",
+                "ns2.dns-parking.com"
+              ],
+              "original_registrar": "hostinger operations, uab (id: 1636)",
+              "owner": {
+                "email": null,
+                "id": null,
+                "type": "user"
+              },
+              "paused": false,
+              "permissions": [
+                "#dns_records:edit",
+                "#dns_records:read",
+                "#zone:edit",
+                "#zone:read",
+                "#zone_settings:edit",
+                "#zone_settings:read",
+                "#domain:read",
+                "#organization:read",
+                "#organization:edit"
+              ],
+              "plan": {
+                "can_subscribe": false,
+                "currency": "USD",
+                "externally_managed": false,
+                "frequency": "",
+                "id": "0feeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+                "is_subscribed": false,
+                "legacy_discount": false,
+                "legacy_id": "free",
+                "name": "Free Website",
+                "price": 0
+              },
+              "status": "active",
+              "tenant": {
+                "id": null,
+                "name": null
+              },
+              "tenant_unit": {
+                "id": null
+              },
+              "type": "full",
+              "vanity_name_servers": [],
+              "vanity_name_servers_ips": null
+            },
+            {
+              "account": {
+                "id": "6477547f586ec90db2c2a0081dcd98bd",
+                "name": "Johns10@gmail.com's Account"
+              },
+              "activated_on": "2026-07-11T18:26:06.329522Z",
+              "created_on": "2026-07-11T18:26:05.934640Z",
+              "development_mode": 0,
+              "id": "8c8b2afc2b8b6bf024e454d3510bc4c1",
+              "meta": {
+                "custom_certificate_quota": 0,
+                "page_rule_quota": 3,
+                "phishing_detected": false,
+                "step": 4
+              },
+              "modified_on": "2026-07-11T18:26:06.436633Z",
+              "name": "earwitness.app",
+              "name_servers": [
+                "demi.ns.cloudflare.com",
+                "yichun.ns.cloudflare.com"
+              ],
+              "original_dnshost": null,
+              "original_name_servers": null,
+              "original_registrar": null,
+              "owner": {
+                "email": null,
+                "id": null,
+                "type": "user"
+              },
+              "paused": false,
+              "permissions": [
+                "#dns_records:edit",
+                "#dns_records:read",
+                "#zone:edit",
+                "#zone:read",
+                "#zone_settings:edit",
+                "#zone_settings:read",
+                "#domain:read",
+                "#organization:read",
+                "#organization:edit"
+              ],
+              "plan": {
+                "can_subscribe": false,
+                "currency": "USD",
+                "externally_managed": false,
+                "frequency": "",
+                "id": "0feeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+                "is_subscribed": false,
+                "legacy_discount": false,
+                "legacy_id": "free",
+                "name": "Free Website",
+                "price": 0
+              },
+              "status": "active",
+              "tenant": {
+                "id": null,
+                "name": null
+              },
+              "tenant_unit": {
+                "id": null
+              },
+              "type": "full",
+              "vanity_name_servers": [],
+              "vanity_name_servers_ips": null
+            },
+            {
+              "account": {
+                "id": "6477547f586ec90db2c2a0081dcd98bd",
+                "name": "Johns10@gmail.com's Account"
+              },
+              "activated_on": "2026-02-27T01:51:59.160872Z",
+              "created_on": "2026-02-27T01:49:03.058411Z",
+              "development_mode": -13926910,
+              "id": "51d25b6e048c9f5797cc0ea3ed6fc10e",
+              "meta": {
+                "custom_certificate_quota": 0,
+                "page_rule_quota": 3,
+                "phishing_detected": false,
+                "step": 2
+              },
+              "modified_on": "2026-02-27T01:51:59.160872Z",
+              "name": "fuellytics.app",
+              "name_servers": [
+                "demi.ns.cloudflare.com",
+                "yichun.ns.cloudflare.com"
+              ],
+              "original_dnshost": null,
+              "original_name_servers": [
+                "dns1.registrar-servers.com",
+                "dns2.registrar-servers.com"
+              ],
+              "original_registrar": "namecheap inc. (id: 1068)",
+              "owner": {
+                "email": null,
+                "id": null,
+                "type": "user"
+              },
+              "paused": false,
+              "permissions": [
+                "#dns_records:edit",
+                "#dns_records:read",
+                "#zone:edit",
+                "#zone:read",
+                "#zone_settings:edit",
+                "#zone_settings:read",
+                "#domain:read",
+                "#organization:read",
+                "#organization:edit"
+              ],
+              "plan": {
+                "can_subscribe": false,
+                "currency": "USD",
+                "externally_managed": false,
+                "frequency": "",
+                "id": "0feeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+                "is_subscribed": false,
+                "legacy_discount": false,
+                "legacy_id": "free",
+                "name": "Free Website",
+                "price": 0
+              },
+              "status": "active",
+              "tenant": {
+                "id": null,
+                "name": null
+              },
+              "tenant_unit": {
+                "id": null
+              },
+              "type": "full",
+              "vanity_name_servers": [],
+              "vanity_name_servers_ips": null
+            },
+            {
+              "account": {
+                "id": "6477547f586ec90db2c2a0081dcd98bd",
+                "name": "Johns10@gmail.com's Account"
+              },
+              "activated_on": "2026-06-02T21:56:44.166326Z",
+              "created_on": "2026-06-02T21:56:39.952959Z",
+              "development_mode": 0,
+              "id": "6cc37c6eb5d52a3291dba0675ae5b4dd",
+              "meta": {
+                "custom_certificate_quota": 0,
+                "page_rule_quota": 3,
+                "phishing_detected": false,
+                "step": 4
+              },
+              "modified_on": "2026-06-02T21:56:44.272647Z",
+              "name": "get-ai-traffic.com",
+              "name_servers": [
+                "demi.ns.cloudflare.com",
+                "yichun.ns.cloudflare.com"
+              ],
+              "original_dnshost": null,
+              "original_name_servers": null,
+              "original_registrar": null,
+              "owner": {
+                "email": null,
+                "id": null,
+                "type": "user"
+              },
+              "paused": false,
+              "permissions": [
+                "#dns_records:edit",
+                "#dns_records:read",
+                "#zone:edit",
+                "#zone:read",
+                "#zone_settings:edit",
+                "#zone_settings:read",
+                "#domain:read",
+                "#organization:read",
+                "#organization:edit"
+              ],
+              "plan": {
+                "can_subscribe": false,
+                "currency": "USD",
+                "externally_managed": false,
+                "frequency": "",
+                "id": "0feeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+                "is_subscribed": false,
+                "legacy_discount": false,
+                "legacy_id": "free",
+                "name": "Free Website",
+                "price": 0
+              },
+              "status": "active",
+              "tenant": {
+                "id": null,
+                "name": null
+              },
+              "tenant_unit": {
+                "id": null
+              },
+              "type": "full",
+              "vanity_name_servers": [],
+              "vanity_name_servers_ips": null
+            },
+            {
+              "account": {
+                "id": "6477547f586ec90db2c2a0081dcd98bd",
+                "name": "Johns10@gmail.com's Account"
+              },
+              "activated_on": "2026-07-05T18:18:37.871013Z",
+              "created_on": "2026-07-05T18:18:34.478210Z",
+              "development_mode": 0,
+              "id": "ee2bd5364c099fbd0bf57845c1523ac0",
+              "meta": {
+                "custom_certificate_quota": 0,
+                "page_rule_quota": 3,
+                "phishing_detected": false,
+                "step": 4
+              },
+              "modified_on": "2026-07-05T18:18:37.972283Z",
+              "name": "legwork.ca",
+              "name_servers": [
+                "demi.ns.cloudflare.com",
+                "yichun.ns.cloudflare.com"
+              ],
+              "original_dnshost": null,
+              "original_name_servers": null,
+              "original_registrar": null,
+              "owner": {
+                "email": null,
+                "id": null,
+                "type": "user"
+              },
+              "paused": false,
+              "permissions": [
+                "#dns_records:edit",
+                "#dns_records:read",
+                "#zone:edit",
+                "#zone:read",
+                "#zone_settings:edit",
+                "#zone_settings:read",
+                "#domain:read",
+                "#organization:read",
+                "#organization:edit"
+              ],
+              "plan": {
+                "can_subscribe": false,
+                "currency": "USD",
+                "externally_managed": false,
+                "frequency": "",
+                "id": "0feeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+                "is_subscribed": false,
+                "legacy_discount": false,
+                "legacy_id": "free",
+                "name": "Free Website",
+                "price": 0
+              },
+              "status": "active",
+              "tenant": {
+                "id": null,
+                "name": null
+              },
+              "tenant_unit": {
+                "id": null
+              },
+              "type": "full",
+              "vanity_name_servers": [],
+              "vanity_name_servers_ips": null
+            },
+            {
+              "account": {
+                "id": "6477547f586ec90db2c2a0081dcd98bd",
+                "name": "Johns10@gmail.com's Account"
+              },
+              "activated_on": "2026-04-25T21:59:03.929608Z",
+              "created_on": "2026-04-25T21:58:59.039591Z",
+              "development_mode": 0,
+              "id": "ca9564c0c590c9af6e479d7de9440795",
+              "meta": {
+                "custom_certificate_quota": 0,
+                "page_rule_quota": 3,
+                "phishing_detected": false,
+                "step": 4
+              },
+              "modified_on": "2026-04-25T21:59:04.050978Z",
+              "name": "marketmyspec.com",
+              "name_servers": [
+                "demi.ns.cloudflare.com",
+                "yichun.ns.cloudflare.com"
+              ],
+              "original_dnshost": null,
+              "original_name_servers": null,
+              "original_registrar": null,
+              "owner": {
+                "email": null,
+                "id": null,
+                "type": "user"
+              },
+              "paused": false,
+              "permissions": [
+                "#dns_records:edit",
+                "#dns_records:read",
+                "#zone:edit",
+                "#zone:read",
+                "#zone_settings:edit",
+                "#zone_settings:read",
+                "#domain:read",
+                "#organization:read",
+                "#organization:edit"
+              ],
+              "plan": {
+                "can_subscribe": false,
+                "currency": "USD",
+                "externally_managed": false,
+                "frequency": "",
+                "id": "0feeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+                "is_subscribed": false,
+                "legacy_discount": false,
+                "legacy_id": "free",
+                "name": "Free Website",
+                "price": 0
+              },
+              "status": "active",
+              "tenant": {
+                "id": null,
+                "name": null
+              },
+              "tenant_unit": {
+                "id": null
+              },
+              "type": "full",
+              "vanity_name_servers": [],
+              "vanity_name_servers_ips": null
+            },
+            {
+              "account": {
+                "id": "6477547f586ec90db2c2a0081dcd98bd",
+                "name": "Johns10@gmail.com's Account"
+              },
+              "activated_on": "2026-03-06T03:29:51.081486Z",
+              "created_on": "2026-03-06T03:29:45.548543Z",
+              "development_mode": 0,
+              "id": "618b7d6ae0af6ee3a58f8efff0f959e7",
+              "meta": {
+                "custom_certificate_quota": 0,
+                "page_rule_quota": 3,
+                "phishing_detected": false,
+                "step": 4
+              },
+              "modified_on": "2026-03-06T03:29:51.259457Z",
+              "name": "metric-flow.app",
+              "name_servers": [
+                "demi.ns.cloudflare.com",
+                "yichun.ns.cloudflare.com"
+              ],
+              "original_dnshost": null,
+              "original_name_servers": null,
+              "original_registrar": null,
+              "owner": {
+                "email": null,
+                "id": null,
+                "type": "user"
+              },
+              "paused": false,
+              "permissions": [
+                "#dns_records:edit",
+                "#dns_records:read",
+                "#zone:edit",
+                "#zone:read",
+                "#zone_settings:edit",
+                "#zone_settings:read",
+                "#domain:read",
+                "#organization:read",
+                "#organization:edit"
+              ],
+              "plan": {
+                "can_subscribe": false,
+                "currency": "USD",
+                "externally_managed": false,
+                "frequency": "",
+                "id": "0feeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+                "is_subscribed": false,
+                "legacy_discount": false,
+                "legacy_id": "free",
+                "name": "Free Website",
+                "price": 0
+              },
+              "status": "active",
+              "tenant": {
+                "id": null,
+                "name": null
+              },
+              "tenant_unit": {
+                "id": null
+              },
+              "type": "full",
+              "vanity_name_servers": [],
+              "vanity_name_servers_ips": null
+            }
+          ],
+          "result_info": {
+            "count": 10,
+            "page": 1,
+            "per_page": 20,
+            "total_count": 10,
+            "total_pages": 1
+          },
+          "success": true
+        },
+        "body_type": "json",
+        "headers": {
+          "api-version": [
+            "2026-09-26.epoch"
+          ],
+          "cache-control": [
+            "no-store, no-cache, must-revalidate, post-check=0, pre-check=0"
+          ],
+          "cf-auditlog-id": [
+            "01a00310-f866-7750-ab7a-7df6bc5cef0e"
+          ],
+          "cf-cache-status": [
+            "DYNAMIC"
+          ],
+          "cf-ray": [
+            "a2b4792d6ae580f3-YUL"
+          ],
+          "connection": [
+            "keep-alive"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "date": [
+            "Sat, 15 Aug 2026 01:37:19 GMT"
+          ],
+          "expires": [
+            "Sun, 25 Jan 1981 05:00:00 GMT"
+          ],
+          "pragma": [
+            "no-cache"
+          ],
+          "ratelimit": [
+            "\"list_zones\";r=1200;t=1"
+          ],
+          "ratelimit-policy": [
+            "\"list_zones\";q=1201;w=300"
+          ],
+          "server": [
+            "cloudflare"
+          ],
+          "strict-transport-security": [
+            "max-age=31536000"
+          ],
+          "transfer-encoding": [
+            "chunked"
+          ],
+          "vary": [
+            "Accept-Encoding"
+          ],
+          "x-content-type-options": [
+            "nosniff"
+          ],
+          "x-frame-options": [
+            "SAMEORIGIN"
+          ]
+        },
+        "status": 200
+      }
+    },
+    {
+      "recorded_at": "2026-08-15T01:37:19.477584Z",
+      "request": {
+        "body": "",
+        "body_type": "text",
+        "headers": {
+          "content-type": [
+            "application/json"
+          ],
+          "user-agent": [
+            "req/0.7.2"
+          ]
+        },
+        "method": "GET",
+        "query_string": "",
+        "uri": "https://api.cloudflare.com/client/v4/zones/0287fe8206425a2aac660a57a62f65bc/dns_records"
+      },
+      "response": {
+        "body_json": {
+          "errors": [],
+          "messages": [],
+          "result": [
+            {
+              "comment": null,
+              "content": "82.180.172.214",
+              "created_on": "2026-06-25T15:14:36.601003Z",
+              "id": "1b15586a602ae3df39d439053a6d449c",
+              "meta": {},
+              "modified_on": "2026-06-25T15:14:36.601003Z",
+              "name": "astralbi.com",
+              "proxiable": true,
+              "proxied": true,
+              "settings": {},
+              "tags": [],
+              "ttl": 1,
+              "type": "A"
+            },
+            {
+              "comment": null,
+              "content": "178.156.216.165",
+              "created_on": "2026-08-09T21:05:07.181997Z",
+              "id": "e2243b92a5c474ce6ee3fd8a7ad538e8",
+              "meta": {},
+              "modified_on": "2026-08-09T21:05:07.181997Z",
+              "name": "drill.astralbi.com",
+              "proxiable": true,
+              "proxied": false,
+              "settings": {},
+              "tags": [],
+              "ttl": 60,
+              "type": "A"
+            },
+            {
+              "comment": null,
+              "content": "82.180.172.214",
+              "created_on": "2026-06-25T15:14:36.633542Z",
+              "id": "10e7c711eb181f2a935fec541115eadb",
+              "meta": {},
+              "modified_on": "2026-06-25T15:14:36.633542Z",
+              "name": "ftp.astralbi.com",
+              "proxiable": true,
+              "proxied": true,
+              "settings": {},
+              "tags": [],
+              "ttl": 1,
+              "type": "A"
+            },
+            {
+              "comment": null,
+              "content": "5.161.239.73",
+              "created_on": "2026-08-03T23:25:25.949725Z",
+              "id": "c8d42d2d36ce5cb016fbff064d379fee",
+              "meta": {},
+              "modified_on": "2026-08-03T23:25:25.949725Z",
+              "name": "uat.astralbi.com",
+              "proxiable": true,
+              "proxied": false,
+              "settings": {},
+              "tags": [],
+              "ttl": 60,
+              "type": "A"
+            },
+            {
+              "comment": null,
+              "content": "178.156.200.94",
+              "created_on": "2026-08-10T18:40:31.386024Z",
+              "id": "3c3cabe79b4a31bd40ce463c6f971b09",
+              "meta": {},
+              "modified_on": "2026-08-10T19:07:56.907814Z",
+              "name": "uat.drill.astralbi.com",
+              "proxiable": true,
+              "proxied": false,
+              "settings": {},
+              "tags": [],
+              "ttl": 60,
+              "type": "A"
+            },
+            {
+              "comment": null,
+              "content": "2a02:4780:b:861:0:14f1:e865:e",
+              "created_on": "2026-06-25T15:14:36.624068Z",
+              "id": "a7fff60b839a09d9113eb31b09d63d62",
+              "meta": {},
+              "modified_on": "2026-06-25T15:14:36.624068Z",
+              "name": "astralbi.com",
+              "proxiable": true,
+              "proxied": true,
+              "settings": {},
+              "tags": [],
+              "ttl": 1,
+              "type": "AAAA"
+            },
+            {
+              "comment": null,
+              "content": "test-tunnel.cfargotunnel.com",
+              "created_on": "2026-08-11T09:26:19.177992Z",
+              "id": "550d6c977ff56d6ec38afb7ecabfdc96",
+              "meta": {},
+              "modified_on": "2026-08-11T09:26:19.177992Z",
+              "name": "preview-3a7296f3-9903-498c-ba2a-8012b78e7219.codemyspec.com.astralbi.com",
+              "proxiable": true,
+              "proxied": true,
+              "settings": {
+                "flatten_cname": false
+              },
+              "tags": [],
+              "ttl": 1,
+              "type": "CNAME"
+            },
+            {
+              "comment": null,
+              "content": "12a798a4-81a3-4242-8b59-ac171c0a01a1.cfargotunnel.com",
+              "created_on": "2026-08-11T04:38:40.097833Z",
+              "id": "53ca0e7ebbc4adb8a0892eaa8ba05b77",
+              "meta": {},
+              "modified_on": "2026-08-11T04:38:40.097833Z",
+              "name": "preview-47d78148-6b92-4d9c-bfa9-6dbed5057ddd.astralbi.com",
+              "proxiable": true,
+              "proxied": true,
+              "settings": {
+                "flatten_cname": false
+              },
+              "tags": [],
+              "ttl": 1,
+              "type": "CNAME"
+            },
+            {
+              "comment": null,
+              "content": "astralbi.com",
+              "created_on": "2026-06-25T15:14:36.610811Z",
+              "id": "91786626335ce0f0670057a3f14c4af4",
+              "meta": {},
+              "modified_on": "2026-06-25T15:14:36.610811Z",
+              "name": "www.astralbi.com",
+              "proxiable": true,
+              "proxied": true,
+              "settings": {
+                "flatten_cname": false
+              },
+              "tags": [],
+              "ttl": 1,
+              "type": "CNAME"
+            },
+            {
+              "comment": null,
+              "content": "inbound-smtp.us-east-1.amazonaws.com",
+              "created_on": "2026-08-08T02:43:38.528294Z",
+              "id": "ef0a2e19902fa7eee845c1f4a76cc517",
+              "meta": {},
+              "modified_on": "2026-08-08T02:43:38.528294Z",
+              "name": "astralbi.com",
+              "priority": 10,
+              "proxiable": false,
+              "proxied": false,
+              "settings": {},
+              "tags": [],
+              "ttl": 3600,
+              "type": "MX"
+            },
+            {
+              "comment": null,
+              "content": "feedback-smtp.us-east-1.amazonses.com",
+              "created_on": "2026-08-08T02:43:38.527529Z",
+              "id": "0be43ec1d52f6fd8dc9efabf785ebe7c",
+              "meta": {},
+              "modified_on": "2026-08-08T02:43:38.527529Z",
+              "name": "send.astralbi.com",
+              "priority": 10,
+              "proxiable": false,
+              "proxied": false,
+              "settings": {},
+              "tags": [],
+              "ttl": 3600,
+              "type": "MX"
+            },
+            {
+              "comment": null,
+              "content": "feedback-smtp.us-east-1.amazonses.com",
+              "created_on": "2026-08-12T02:14:11.361204Z",
+              "id": "68573de8f0ea3bc148e08ea27b1a5fd9",
+              "meta": {},
+              "modified_on": "2026-08-12T02:14:11.361204Z",
+              "name": "send.spex-inbound.astralbi.com",
+              "priority": 10,
+              "proxiable": false,
+              "proxied": false,
+              "settings": {},
+              "tags": [],
+              "ttl": 60,
+              "type": "MX"
+            },
+            {
+              "comment": null,
+              "content": "feedback-smtp.us-east-1.amazonses.com",
+              "created_on": "2026-08-15T01:31:20.417967Z",
+              "id": "454e595f0c04cbb860ce52b40d3cf51e",
+              "meta": {},
+              "modified_on": "2026-08-15T01:31:20.417967Z",
+              "name": "send.spex-story969-criterion8027.astralbi.com",
+              "priority": 10,
+              "proxiable": false,
+              "proxied": false,
+              "settings": {},
+              "tags": [],
+              "ttl": 60,
+              "type": "MX"
+            },
+            {
+              "comment": null,
+              "content": "inbound-smtp.us-east-1.amazonaws.com",
+              "created_on": "2026-08-12T02:14:11.758306Z",
+              "id": "c076641d37933dd16bb897856636f016",
+              "meta": {},
+              "modified_on": "2026-08-12T02:14:11.758306Z",
+              "name": "spex-inbound.astralbi.com",
+              "priority": 10,
+              "proxiable": false,
+              "proxied": false,
+              "settings": {},
+              "tags": [],
+              "ttl": 60,
+              "type": "MX"
+            },
+            {
+              "comment": null,
+              "content": "p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDDyPFUPxFJ9bGPhEoPM0Un43D1lmaB0qO9GLDTQM/6S7O5kagv3RxgrgxXg9l7ejJgM+GZF4rxSVjmbKXye5/xBFy2iPi9BA06TAYwzcgxRFdhVolV+8Fy75nlAmBa6b985krLX7vHO9CX0nptoX++aNez+pajnDQTyYasZ25k5wIDAQAB",
+              "created_on": "2026-08-15T01:32:23.004888Z",
+              "id": "941ec2102de7e5cce5db60212c8dc2b2",
+              "meta": {},
+              "modified_on": "2026-08-15T01:32:23.004888Z",
+              "name": "resend._domainkey.spex-story969-criterion8027.astralbi.com",
+              "proxiable": false,
+              "proxied": false,
+              "settings": {},
+              "tags": [],
+              "ttl": 60,
+              "type": "TXT"
+            },
+            {
+              "comment": null,
+              "content": "\"v=spf1 include:amazonses.com ~all\"",
+              "created_on": "2026-08-08T02:43:38.586932Z",
+              "id": "01085a17a8a193b6d4f1833514cc23a8",
+              "meta": {},
+              "modified_on": "2026-08-08T02:43:38.586932Z",
+              "name": "send.astralbi.com",
+              "proxiable": false,
+              "proxied": false,
+              "settings": {},
+              "tags": [],
+              "ttl": 3600,
+              "type": "TXT"
+            },
+            {
+              "comment": null,
+              "content": "v=spf1 include:amazonses.com ~all",
+              "created_on": "2026-08-12T02:14:11.550996Z",
+              "id": "edcd38903d97aa14fd163989d6ebc3cb",
+              "meta": {},
+              "modified_on": "2026-08-12T02:14:11.550996Z",
+              "name": "send.spex-inbound.astralbi.com",
+              "proxiable": false,
+              "proxied": false,
+              "settings": {},
+              "tags": [],
+              "ttl": 60,
+              "type": "TXT"
+            },
+            {
+              "comment": null,
+              "content": "v=spf1 include:amazonses.com ~all",
+              "created_on": "2026-08-15T01:31:20.827507Z",
+              "id": "3206a05d5e725e1f6bb0791f2ae16d1b",
+              "meta": {},
+              "modified_on": "2026-08-15T01:31:20.827507Z",
+              "name": "send.spex-story969-criterion8027.astralbi.com",
+              "proxiable": false,
+              "proxied": false,
+              "settings": {},
+              "tags": [],
+              "ttl": 60,
+              "type": "TXT"
+            }
+          ],
+          "result_info": {
+            "count": 18,
+            "page": 1,
+            "per_page": 100,
+            "total_count": 18,
+            "total_pages": 1
+          },
+          "success": true
+        },
+        "body_type": "json",
+        "headers": {
+          "api-version": [
+            "2026-09-26.epoch"
+          ],
+          "cf-auditlog-id": [
+            "01a00310-f9c3-7b2c-850a-ecbfd4110be1"
+          ],
+          "cf-cache-status": [
+            "DYNAMIC"
+          ],
+          "cf-ray": [
+            "a2b4792f9a4080f3-YUL"
+          ],
+          "connection": [
+            "keep-alive"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "date": [
+            "Sat, 15 Aug 2026 01:37:19 GMT"
+          ],
+          "ratelimit": [
+            "\"default\";r=1199;t=1"
+          ],
+          "ratelimit-policy": [
+            "\"default\";q=1200;w=300"
+          ],
+          "server": [
+            "cloudflare"
+          ],
+          "transfer-encoding": [
+            "chunked"
+          ],
+          "vary": [
+            "Accept-Encoding"
+          ]
+        },
+        "status": 200
+      }
+    },
+    {
+      "recorded_at": "2026-08-15T01:37:19.691021Z",
+      "request": {
+        "body": "",
+        "body_type": "text",
+        "headers": {
+          "content-type": [
+            "application/json"
+          ],
+          "user-agent": [
+            "req/0.7.2"
+          ]
+        },
+        "method": "DELETE",
+        "query_string": "",
+        "uri": "https://api.cloudflare.com/client/v4/zones/0287fe8206425a2aac660a57a62f65bc/dns_records/941ec2102de7e5cce5db60212c8dc2b2"
+      },
+      "response": {
+        "body_json": {
+          "errors": [],
+          "messages": [],
+          "result": {
+            "id": "941ec2102de7e5cce5db60212c8dc2b2"
+          },
+          "success": true
+        },
+        "body_type": "json",
+        "headers": {
+          "api-version": [
+            "2026-09-26.epoch"
+          ],
+          "cf-auditlog-id": [
+            "01a00310-fa90-7d78-b6a7-d17ab7cb210d"
+          ],
+          "cf-cache-status": [
+            "DYNAMIC"
+          ],
+          "cf-ray": [
+            "a2b47930def480f3-YUL"
+          ],
+          "connection": [
+            "keep-alive"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "date": [
+            "Sat, 15 Aug 2026 01:37:19 GMT"
+          ],
+          "ratelimit": [
+            "\"default\";r=1198;t=1"
+          ],
+          "ratelimit-policy": [
+            "\"default\";q=1200;w=300"
+          ],
+          "server": [
+            "cloudflare"
+          ],
+          "transfer-encoding": [
+            "chunked"
+          ],
+          "vary": [
+            "Accept-Encoding"
+          ]
+        },
+        "status": 200
+      }
+    },
+    {
+      "recorded_at": "2026-08-15T01:37:19.894466Z",
+      "request": {
+        "body": "",
+        "body_type": "text",
+        "headers": {
+          "content-type": [
+            "application/json"
+          ],
+          "user-agent": [
+            "req/0.7.2"
+          ]
+        },
+        "method": "GET",
+        "query_string": "",
+        "uri": "https://api.cloudflare.com/client/v4/zones/0287fe8206425a2aac660a57a62f65bc/dns_records"
+      },
+      "response": {
+        "body_json": {
+          "errors": [],
+          "messages": [],
+          "result": [
+            {
+              "comment": null,
+              "content": "82.180.172.214",
+              "created_on": "2026-06-25T15:14:36.601003Z",
+              "id": "1b15586a602ae3df39d439053a6d449c",
+              "meta": {},
+              "modified_on": "2026-06-25T15:14:36.601003Z",
+              "name": "astralbi.com",
+              "proxiable": true,
+              "proxied": true,
+              "settings": {},
+              "tags": [],
+              "ttl": 1,
+              "type": "A"
+            },
+            {
+              "comment": null,
+              "content": "178.156.216.165",
+              "created_on": "2026-08-09T21:05:07.181997Z",
+              "id": "e2243b92a5c474ce6ee3fd8a7ad538e8",
+              "meta": {},
+              "modified_on": "2026-08-09T21:05:07.181997Z",
+              "name": "drill.astralbi.com",
+              "proxiable": true,
+              "proxied": false,
+              "settings": {},
+              "tags": [],
+              "ttl": 60,
+              "type": "A"
+            },
+            {
+              "comment": null,
+              "content": "82.180.172.214",
+              "created_on": "2026-06-25T15:14:36.633542Z",
+              "id": "10e7c711eb181f2a935fec541115eadb",
+              "meta": {},
+              "modified_on": "2026-06-25T15:14:36.633542Z",
+              "name": "ftp.astralbi.com",
+              "proxiable": true,
+              "proxied": true,
+              "settings": {},
+              "tags": [],
+              "ttl": 1,
+              "type": "A"
+            },
+            {
+              "comment": null,
+              "content": "5.161.239.73",
+              "created_on": "2026-08-03T23:25:25.949725Z",
+              "id": "c8d42d2d36ce5cb016fbff064d379fee",
+              "meta": {},
+              "modified_on": "2026-08-03T23:25:25.949725Z",
+              "name": "uat.astralbi.com",
+              "proxiable": true,
+              "proxied": false,
+              "settings": {},
+              "tags": [],
+              "ttl": 60,
+              "type": "A"
+            },
+            {
+              "comment": null,
+              "content": "178.156.200.94",
+              "created_on": "2026-08-10T18:40:31.386024Z",
+              "id": "3c3cabe79b4a31bd40ce463c6f971b09",
+              "meta": {},
+              "modified_on": "2026-08-10T19:07:56.907814Z",
+              "name": "uat.drill.astralbi.com",
+              "proxiable": true,
+              "proxied": false,
+              "settings": {},
+              "tags": [],
+              "ttl": 60,
+              "type": "A"
+            },
+            {
+              "comment": null,
+              "content": "2a02:4780:b:861:0:14f1:e865:e",
+              "created_on": "2026-06-25T15:14:36.624068Z",
+              "id": "a7fff60b839a09d9113eb31b09d63d62",
+              "meta": {},
+              "modified_on": "2026-06-25T15:14:36.624068Z",
+              "name": "astralbi.com",
+              "proxiable": true,
+              "proxied": true,
+              "settings": {},
+              "tags": [],
+              "ttl": 1,
+              "type": "AAAA"
+            },
+            {
+              "comment": null,
+              "content": "test-tunnel.cfargotunnel.com",
+              "created_on": "2026-08-11T09:26:19.177992Z",
+              "id": "550d6c977ff56d6ec38afb7ecabfdc96",
+              "meta": {},
+              "modified_on": "2026-08-11T09:26:19.177992Z",
+              "name": "preview-3a7296f3-9903-498c-ba2a-8012b78e7219.codemyspec.com.astralbi.com",
+              "proxiable": true,
+              "proxied": true,
+              "settings": {
+                "flatten_cname": false
+              },
+              "tags": [],
+              "ttl": 1,
+              "type": "CNAME"
+            },
+            {
+              "comment": null,
+              "content": "12a798a4-81a3-4242-8b59-ac171c0a01a1.cfargotunnel.com",
+              "created_on": "2026-08-11T04:38:40.097833Z",
+              "id": "53ca0e7ebbc4adb8a0892eaa8ba05b77",
+              "meta": {},
+              "modified_on": "2026-08-11T04:38:40.097833Z",
+              "name": "preview-47d78148-6b92-4d9c-bfa9-6dbed5057ddd.astralbi.com",
+              "proxiable": true,
+              "proxied": true,
+              "settings": {
+                "flatten_cname": false
+              },
+              "tags": [],
+              "ttl": 1,
+              "type": "CNAME"
+            },
+            {
+              "comment": null,
+              "content": "astralbi.com",
+              "created_on": "2026-06-25T15:14:36.610811Z",
+              "id": "91786626335ce0f0670057a3f14c4af4",
+              "meta": {},
+              "modified_on": "2026-06-25T15:14:36.610811Z",
+              "name": "www.astralbi.com",
+              "proxiable": true,
+              "proxied": true,
+              "settings": {
+                "flatten_cname": false
+              },
+              "tags": [],
+              "ttl": 1,
+              "type": "CNAME"
+            },
+            {
+              "comment": null,
+              "content": "inbound-smtp.us-east-1.amazonaws.com",
+              "created_on": "2026-08-08T02:43:38.528294Z",
+              "id": "ef0a2e19902fa7eee845c1f4a76cc517",
+              "meta": {},
+              "modified_on": "2026-08-08T02:43:38.528294Z",
+              "name": "astralbi.com",
+              "priority": 10,
+              "proxiable": false,
+              "proxied": false,
+              "settings": {},
+              "tags": [],
+              "ttl": 3600,
+              "type": "MX"
+            },
+            {
+              "comment": null,
+              "content": "feedback-smtp.us-east-1.amazonses.com",
+              "created_on": "2026-08-08T02:43:38.527529Z",
+              "id": "0be43ec1d52f6fd8dc9efabf785ebe7c",
+              "meta": {},
+              "modified_on": "2026-08-08T02:43:38.527529Z",
+              "name": "send.astralbi.com",
+              "priority": 10,
+              "proxiable": false,
+              "proxied": false,
+              "settings": {},
+              "tags": [],
+              "ttl": 3600,
+              "type": "MX"
+            },
+            {
+              "comment": null,
+              "content": "feedback-smtp.us-east-1.amazonses.com",
+              "created_on": "2026-08-12T02:14:11.361204Z",
+              "id": "68573de8f0ea3bc148e08ea27b1a5fd9",
+              "meta": {},
+              "modified_on": "2026-08-12T02:14:11.361204Z",
+              "name": "send.spex-inbound.astralbi.com",
+              "priority": 10,
+              "proxiable": false,
+              "proxied": false,
+              "settings": {},
+              "tags": [],
+              "ttl": 60,
+              "type": "MX"
+            },
+            {
+              "comment": null,
+              "content": "feedback-smtp.us-east-1.amazonses.com",
+              "created_on": "2026-08-15T01:31:20.417967Z",
+              "id": "454e595f0c04cbb860ce52b40d3cf51e",
+              "meta": {},
+              "modified_on": "2026-08-15T01:31:20.417967Z",
+              "name": "send.spex-story969-criterion8027.astralbi.com",
+              "priority": 10,
+              "proxiable": false,
+              "proxied": false,
+              "settings": {},
+              "tags": [],
+              "ttl": 60,
+              "type": "MX"
+            },
+            {
+              "comment": null,
+              "content": "inbound-smtp.us-east-1.amazonaws.com",
+              "created_on": "2026-08-12T02:14:11.758306Z",
+              "id": "c076641d37933dd16bb897856636f016",
+              "meta": {},
+              "modified_on": "2026-08-12T02:14:11.758306Z",
+              "name": "spex-inbound.astralbi.com",
+              "priority": 10,
+              "proxiable": false,
+              "proxied": false,
+              "settings": {},
+              "tags": [],
+              "ttl": 60,
+              "type": "MX"
+            },
+            {
+              "comment": null,
+              "content": "\"v=spf1 include:amazonses.com ~all\"",
+              "created_on": "2026-08-08T02:43:38.586932Z",
+              "id": "01085a17a8a193b6d4f1833514cc23a8",
+              "meta": {},
+              "modified_on": "2026-08-08T02:43:38.586932Z",
+              "name": "send.astralbi.com",
+              "proxiable": false,
+              "proxied": false,
+              "settings": {},
+              "tags": [],
+              "ttl": 3600,
+              "type": "TXT"
+            },
+            {
+              "comment": null,
+              "content": "v=spf1 include:amazonses.com ~all",
+              "created_on": "2026-08-12T02:14:11.550996Z",
+              "id": "edcd38903d97aa14fd163989d6ebc3cb",
+              "meta": {},
+              "modified_on": "2026-08-12T02:14:11.550996Z",
+              "name": "send.spex-inbound.astralbi.com",
+              "proxiable": false,
+              "proxied": false,
+              "settings": {},
+              "tags": [],
+              "ttl": 60,
+              "type": "TXT"
+            },
+            {
+              "comment": null,
+              "content": "v=spf1 include:amazonses.com ~all",
+              "created_on": "2026-08-15T01:31:20.827507Z",
+              "id": "3206a05d5e725e1f6bb0791f2ae16d1b",
+              "meta": {},
+              "modified_on": "2026-08-15T01:31:20.827507Z",
+              "name": "send.spex-story969-criterion8027.astralbi.com",
+              "proxiable": false,
+              "proxied": false,
+              "settings": {},
+              "tags": [],
+              "ttl": 60,
+              "type": "TXT"
+            }
+          ],
+          "result_info": {
+            "count": 17,
+            "page": 1,
+            "per_page": 100,
+            "total_count": 18,
+            "total_pages": 1
+          },
+          "success": true
+        },
+        "body_type": "json",
+        "headers": {
+          "api-version": [
+            "2026-09-26.epoch"
+          ],
+          "cf-auditlog-id": [
+            "01a00310-fb64-7cdd-a803-8e043253c9d1"
+          ],
+          "cf-cache-status": [
+            "DYNAMIC"
+          ],
+          "cf-ray": [
+            "a2b479323b7280f3-YUL"
+          ],
+          "connection": [
+            "keep-alive"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "date": [
+            "Sat, 15 Aug 2026 01:37:19 GMT"
+          ],
+          "ratelimit": [
+            "\"default\";r=1198;t=1"
+          ],
+          "ratelimit-policy": [
+            "\"default\";q=1200;w=300"
+          ],
+          "server": [
+            "cloudflare"
+          ],
+          "transfer-encoding": [
+            "chunked"
+          ],
+          "vary": [
+            "Accept-Encoding"
+          ]
+        },
+        "status": 200
+      }
+    }
+  ],
+  "version": "2.0"
+}

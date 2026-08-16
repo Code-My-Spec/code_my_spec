@@ -1,19 +1,16 @@
 {
   "interactions": [
     {
-      "recorded_at": "2026-08-11T01:06:16.260461Z",
+      "recorded_at": "2026-08-15T01:39:56.004009Z",
       "request": {
         "body": "",
         "body_type": "text",
         "headers": {
-          "accept-encoding": [
-            "gzip"
-          ],
           "content-type": [
             "application/json"
           ],
           "user-agent": [
-            "req/0.5.17"
+            "req/0.7.2"
           ]
         },
         "method": "GET",
@@ -117,6 +114,40 @@
             },
             {
               "comment": null,
+              "content": "test-tunnel.cfargotunnel.com",
+              "created_on": "2026-08-11T09:26:19.177992Z",
+              "id": "550d6c977ff56d6ec38afb7ecabfdc96",
+              "meta": {},
+              "modified_on": "2026-08-11T09:26:19.177992Z",
+              "name": "preview-3a7296f3-9903-498c-ba2a-8012b78e7219.codemyspec.com.astralbi.com",
+              "proxiable": true,
+              "proxied": true,
+              "settings": {
+                "flatten_cname": false
+              },
+              "tags": [],
+              "ttl": 1,
+              "type": "CNAME"
+            },
+            {
+              "comment": null,
+              "content": "12a798a4-81a3-4242-8b59-ac171c0a01a1.cfargotunnel.com",
+              "created_on": "2026-08-11T04:38:40.097833Z",
+              "id": "53ca0e7ebbc4adb8a0892eaa8ba05b77",
+              "meta": {},
+              "modified_on": "2026-08-11T04:38:40.097833Z",
+              "name": "preview-47d78148-6b92-4d9c-bfa9-6dbed5057ddd.astralbi.com",
+              "proxiable": true,
+              "proxied": true,
+              "settings": {
+                "flatten_cname": false
+              },
+              "tags": [],
+              "ttl": 1,
+              "type": "CNAME"
+            },
+            {
+              "comment": null,
               "content": "astralbi.com",
               "created_on": "2026-06-25T15:14:36.610811Z",
               "id": "91786626335ce0f0670057a3f14c4af4",
@@ -167,42 +198,10 @@
             {
               "comment": null,
               "content": "feedback-smtp.us-east-1.amazonses.com",
-              "created_on": "2026-08-11T00:52:36.984223Z",
-              "id": "10fc8d4e1fc9812b845f044cd3759ae0",
+              "created_on": "2026-08-15T01:37:22.358416Z",
+              "id": "c882df5e01be6cae9d0d7b51088bb89c",
               "meta": {},
-              "modified_on": "2026-08-11T00:52:36.984223Z",
-              "name": "send.c8025b.astralbi.com",
-              "priority": 10,
-              "proxiable": false,
-              "proxied": false,
-              "settings": {},
-              "tags": [],
-              "ttl": 60,
-              "type": "MX"
-            },
-            {
-              "comment": null,
-              "content": "feedback-smtp.us-east-1.amazonses.com",
-              "created_on": "2026-08-11T00:55:43.149976Z",
-              "id": "4c0f05654836225f9aed3ea61ae69977",
-              "meta": {},
-              "modified_on": "2026-08-11T00:55:43.149976Z",
-              "name": "send.c8026.astralbi.com",
-              "priority": 10,
-              "proxiable": false,
-              "proxied": false,
-              "settings": {},
-              "tags": [],
-              "ttl": 60,
-              "type": "MX"
-            },
-            {
-              "comment": null,
-              "content": "feedback-smtp.us-east-1.amazonses.com",
-              "created_on": "2026-08-11T01:03:41.047515Z",
-              "id": "c4105b6c863193e63e0b4fcff007f12c",
-              "meta": {},
-              "modified_on": "2026-08-11T01:03:41.047515Z",
+              "modified_on": "2026-08-15T01:37:22.358416Z",
               "name": "send.c8028.astralbi.com",
               "priority": 10,
               "proxiable": false,
@@ -215,11 +214,11 @@
             {
               "comment": null,
               "content": "feedback-smtp.us-east-1.amazonses.com",
-              "created_on": "2026-08-11T00:58:21.072699Z",
-              "id": "7680a244236ac4269e7ac42f4d913a20",
+              "created_on": "2026-08-12T02:14:11.361204Z",
+              "id": "68573de8f0ea3bc148e08ea27b1a5fd9",
               "meta": {},
-              "modified_on": "2026-08-11T00:58:21.072699Z",
-              "name": "send.spex-story969-criterion8027.astralbi.com",
+              "modified_on": "2026-08-12T02:14:11.361204Z",
+              "name": "send.spex-inbound.astralbi.com",
               "priority": 10,
               "proxiable": false,
               "proxied": false,
@@ -231,42 +230,10 @@
             {
               "comment": null,
               "content": "feedback-smtp.us-east-1.amazonses.com",
-              "created_on": "2026-08-11T00:54:12.187327Z",
-              "id": "a5063ed5bd5f799c9d1afbfdc891b1e4",
+              "created_on": "2026-08-15T01:38:35.661772Z",
+              "id": "9f3ea37dd66e4beec45fc4f137f6f5d9",
               "meta": {},
-              "modified_on": "2026-08-11T00:54:12.187327Z",
-              "name": "send.uat.c8025b.astralbi.com",
-              "priority": 10,
-              "proxiable": false,
-              "proxied": false,
-              "settings": {},
-              "tags": [],
-              "ttl": 60,
-              "type": "MX"
-            },
-            {
-              "comment": null,
-              "content": "feedback-smtp.us-east-1.amazonses.com",
-              "created_on": "2026-08-11T00:56:49.355065Z",
-              "id": "fa1a020bd7fe0fcdba56090062997b13",
-              "meta": {},
-              "modified_on": "2026-08-11T00:56:49.355065Z",
-              "name": "send.uat.c8026.astralbi.com",
-              "priority": 10,
-              "proxiable": false,
-              "proxied": false,
-              "settings": {},
-              "tags": [],
-              "ttl": 60,
-              "type": "MX"
-            },
-            {
-              "comment": null,
-              "content": "feedback-smtp.us-east-1.amazonses.com",
-              "created_on": "2026-08-11T01:04:58.02385Z",
-              "id": "3ab4f7d59ba87c2bc12c2f47941ab0c0",
-              "meta": {},
-              "modified_on": "2026-08-11T01:04:58.02385Z",
+              "modified_on": "2026-08-15T01:38:35.661772Z",
               "name": "send.uat.c8028.astralbi.com",
               "priority": 10,
               "proxiable": false,
@@ -278,11 +245,27 @@
             },
             {
               "comment": null,
-              "content": "p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDtzOwPrd3r+Ji+EAgM4IUcFkXVpjP3rAW+gBfiHms05+Vj7eIataNXjwZTtEjJZLLJx4zC62FkkF9I6p7iClIVYQ4h320rn0r4KyNHExrRVHsIxf8CtTs+xcd3i3q58uMdhVy0QCpmOp6K2fSNn9e+MOJFz4txrn2n6IBX+8KYGwIDAQAB",
-              "created_on": "2026-08-11T01:03:40.549617Z",
-              "id": "3ad503423782dc4041f9c3a8bc603c71",
+              "content": "inbound-smtp.us-east-1.amazonaws.com",
+              "created_on": "2026-08-12T02:14:11.758306Z",
+              "id": "c076641d37933dd16bb897856636f016",
               "meta": {},
-              "modified_on": "2026-08-11T01:03:40.549617Z",
+              "modified_on": "2026-08-12T02:14:11.758306Z",
+              "name": "spex-inbound.astralbi.com",
+              "priority": 10,
+              "proxiable": false,
+              "proxied": false,
+              "settings": {},
+              "tags": [],
+              "ttl": 60,
+              "type": "MX"
+            },
+            {
+              "comment": null,
+              "content": "p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDtzOwPrd3r+Ji+EAgM4IUcFkXVpjP3rAW+gBfiHms05+Vj7eIataNXjwZTtEjJZLLJx4zC62FkkF9I6p7iClIVYQ4h320rn0r4KyNHExrRVHsIxf8CtTs+xcd3i3q58uMdhVy0QCpmOp6K2fSNn9e+MOJFz4txrn2n6IBX+8KYGwIDAQAB",
+              "created_on": "2026-08-15T01:37:21.931906Z",
+              "id": "5b2865d17e40c55632632171a6d28b25",
+              "meta": {},
+              "modified_on": "2026-08-15T01:37:21.931906Z",
               "name": "resend._domainkey.c8028.astralbi.com",
               "proxiable": false,
               "proxied": false,
@@ -293,26 +276,11 @@
             },
             {
               "comment": null,
-              "content": "p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQDDyPFUPxFJ9bGPhEoPM0Un43D1lmaB0qO9GLDTQM/6S7O5kagv3RxgrgxXg9l7ejJgM+GZF4rxSVjmbKXye5/xBFy2iPi9BA06TAYwzcgxRFdhVolV+8Fy75nlAmBa6b985krLX7vHO9CX0nptoX++aNez+pajnDQTyYasZ25k5wIDAQAB",
-              "created_on": "2026-08-11T00:59:31.493586Z",
-              "id": "36b1628c6a56eaab071f91c93d9c5704",
-              "meta": {},
-              "modified_on": "2026-08-11T00:59:31.493586Z",
-              "name": "resend._domainkey.spex-story969-criterion8027.astralbi.com",
-              "proxiable": false,
-              "proxied": false,
-              "settings": {},
-              "tags": [],
-              "ttl": 60,
-              "type": "TXT"
-            },
-            {
-              "comment": null,
               "content": "p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQCzK/Ns+wr+DuRaIda9QkFKNFbxxoghEN9ShX6R0+/H7N65Bxg2mcC57xyvs/TJBwSPbRAsAF1UnCqym9i29om4iqTfgBx+XMolY+zjZaLiLQkMmRhGR8EFbTxAEIVdug5CBqpSZW3twCwph7SWN+EN/rBrsThDKGgFEj+9GNzq5QIDAQAB",
-              "created_on": "2026-08-11T01:04:57.592002Z",
-              "id": "c010f9fc3772c2fd99481475dedccb20",
+              "created_on": "2026-08-15T01:38:35.28346Z",
+              "id": "2e5f3334ccdc96935dd8b8fa6de964ea",
               "meta": {},
-              "modified_on": "2026-08-11T01:04:57.592002Z",
+              "modified_on": "2026-08-15T01:38:35.28346Z",
               "name": "resend._domainkey.uat.c8028.astralbi.com",
               "proxiable": false,
               "proxied": false,
@@ -339,40 +307,10 @@
             {
               "comment": null,
               "content": "v=spf1 include:amazonses.com ~all",
-              "created_on": "2026-08-11T00:52:37.210098Z",
-              "id": "8523db8ccef51f4590e4987152b8c72d",
+              "created_on": "2026-08-15T01:37:22.778057Z",
+              "id": "0dbe934865f5d2fd4a73f3c6d146dceb",
               "meta": {},
-              "modified_on": "2026-08-11T00:52:37.210098Z",
-              "name": "send.c8025b.astralbi.com",
-              "proxiable": false,
-              "proxied": false,
-              "settings": {},
-              "tags": [],
-              "ttl": 60,
-              "type": "TXT"
-            },
-            {
-              "comment": null,
-              "content": "v=spf1 include:amazonses.com ~all",
-              "created_on": "2026-08-11T00:55:43.653478Z",
-              "id": "51093a198e2825089ddbe4990eb5d297",
-              "meta": {},
-              "modified_on": "2026-08-11T00:55:43.653478Z",
-              "name": "send.c8026.astralbi.com",
-              "proxiable": false,
-              "proxied": false,
-              "settings": {},
-              "tags": [],
-              "ttl": 60,
-              "type": "TXT"
-            },
-            {
-              "comment": null,
-              "content": "v=spf1 include:amazonses.com ~all",
-              "created_on": "2026-08-11T01:03:41.550537Z",
-              "id": "73b01ec8ab45c09e0ea269292edc1d26",
-              "meta": {},
-              "modified_on": "2026-08-11T01:03:41.550537Z",
+              "modified_on": "2026-08-15T01:37:22.778057Z",
               "name": "send.c8028.astralbi.com",
               "proxiable": false,
               "proxied": false,
@@ -384,11 +322,11 @@
             {
               "comment": null,
               "content": "v=spf1 include:amazonses.com ~all",
-              "created_on": "2026-08-11T00:58:21.554429Z",
-              "id": "5912ffd2079a5ce0386fd60ee93cbee6",
+              "created_on": "2026-08-12T02:14:11.550996Z",
+              "id": "edcd38903d97aa14fd163989d6ebc3cb",
               "meta": {},
-              "modified_on": "2026-08-11T00:58:21.554429Z",
-              "name": "send.spex-story969-criterion8027.astralbi.com",
+              "modified_on": "2026-08-12T02:14:11.550996Z",
+              "name": "send.spex-inbound.astralbi.com",
               "proxiable": false,
               "proxied": false,
               "settings": {},
@@ -399,40 +337,10 @@
             {
               "comment": null,
               "content": "v=spf1 include:amazonses.com ~all",
-              "created_on": "2026-08-11T00:54:12.510005Z",
-              "id": "1449f3eacc945bde0a03f98b91b2204a",
+              "created_on": "2026-08-15T01:38:36.111356Z",
+              "id": "cf74844e97052ebb3d9cb8154131926d",
               "meta": {},
-              "modified_on": "2026-08-11T00:54:12.510005Z",
-              "name": "send.uat.c8025b.astralbi.com",
-              "proxiable": false,
-              "proxied": false,
-              "settings": {},
-              "tags": [],
-              "ttl": 60,
-              "type": "TXT"
-            },
-            {
-              "comment": null,
-              "content": "v=spf1 include:amazonses.com ~all",
-              "created_on": "2026-08-11T00:56:49.851835Z",
-              "id": "3523edb5ad14cfa39a03f97b5df9d894",
-              "meta": {},
-              "modified_on": "2026-08-11T00:56:49.851835Z",
-              "name": "send.uat.c8026.astralbi.com",
-              "proxiable": false,
-              "proxied": false,
-              "settings": {},
-              "tags": [],
-              "ttl": 60,
-              "type": "TXT"
-            },
-            {
-              "comment": null,
-              "content": "v=spf1 include:amazonses.com ~all",
-              "created_on": "2026-08-11T01:04:58.516494Z",
-              "id": "07e6eaa03235b231cab18a463d363420",
-              "meta": {},
-              "modified_on": "2026-08-11T01:04:58.516494Z",
+              "modified_on": "2026-08-15T01:38:36.111356Z",
               "name": "send.uat.c8028.astralbi.com",
               "proxiable": false,
               "proxied": false,
@@ -443,10 +351,10 @@
             }
           ],
           "result_info": {
-            "count": 27,
+            "count": 21,
             "page": 1,
             "per_page": 100,
-            "total_count": 27,
+            "total_count": 21,
             "total_pages": 1
           },
           "success": true
@@ -457,13 +365,13 @@
             "2026-09-26.epoch"
           ],
           "cf-auditlog-id": [
-            "019fee5b-1b77-78e9-8d82-16e11dea83e6"
+            "01a00313-5cdb-73e0-abde-99c698410cb9"
           ],
           "cf-cache-status": [
             "DYNAMIC"
           ],
           "cf-ray": [
-            "a293563248f7c6cd-YUL"
+            "a2b47d015bdf80f3-YUL"
           ],
           "connection": [
             "keep-alive"
@@ -472,7 +380,7 @@
             "application/json"
           ],
           "date": [
-            "Tue, 11 Aug 2026 01:06:16 GMT"
+            "Sat, 15 Aug 2026 01:39:56 GMT"
           ],
           "ratelimit": [
             "\"default\";r=1199;t=1"
@@ -494,31 +402,28 @@
       }
     },
     {
-      "recorded_at": "2026-08-11T01:06:16.522958Z",
+      "recorded_at": "2026-08-15T01:39:56.222686Z",
       "request": {
         "body": "",
         "body_type": "text",
         "headers": {
-          "accept-encoding": [
-            "gzip"
-          ],
           "content-type": [
             "application/json"
           ],
           "user-agent": [
-            "req/0.5.17"
+            "req/0.7.2"
           ]
         },
         "method": "DELETE",
         "query_string": "",
-        "uri": "https://api.cloudflare.com/client/v4/zones/0287fe8206425a2aac660a57a62f65bc/dns_records/3ab4f7d59ba87c2bc12c2f47941ab0c0"
+        "uri": "https://api.cloudflare.com/client/v4/zones/0287fe8206425a2aac660a57a62f65bc/dns_records/9f3ea37dd66e4beec45fc4f137f6f5d9"
       },
       "response": {
         "body_json": {
           "errors": [],
           "messages": [],
           "result": {
-            "id": "3ab4f7d59ba87c2bc12c2f47941ab0c0"
+            "id": "9f3ea37dd66e4beec45fc4f137f6f5d9"
           },
           "success": true
         },
@@ -528,13 +433,13 @@
             "2026-09-26.epoch"
           ],
           "cf-auditlog-id": [
-            "019fee5b-1c62-7daa-b9c3-5ceaa410442b"
+            "01a00313-5dff-753d-9e0a-e22604efae5a"
           ],
           "cf-cache-status": [
             "DYNAMIC"
           ],
           "cf-ray": [
-            "a2935633ce60c6cd-YUL"
+            "a2b47d032c9f80f3-YUL"
           ],
           "connection": [
             "keep-alive"
@@ -543,7 +448,75 @@
             "application/json"
           ],
           "date": [
-            "Tue, 11 Aug 2026 01:06:16 GMT"
+            "Sat, 15 Aug 2026 01:39:56 GMT"
+          ],
+          "ratelimit": [
+            "\"default\";r=1199;t=1"
+          ],
+          "ratelimit-policy": [
+            "\"default\";q=1200;w=300"
+          ],
+          "server": [
+            "cloudflare"
+          ],
+          "transfer-encoding": [
+            "chunked"
+          ],
+          "vary": [
+            "Accept-Encoding"
+          ]
+        },
+        "status": 200
+      }
+    },
+    {
+      "recorded_at": "2026-08-15T01:39:56.426895Z",
+      "request": {
+        "body": "",
+        "body_type": "text",
+        "headers": {
+          "content-type": [
+            "application/json"
+          ],
+          "user-agent": [
+            "req/0.7.2"
+          ]
+        },
+        "method": "DELETE",
+        "query_string": "",
+        "uri": "https://api.cloudflare.com/client/v4/zones/0287fe8206425a2aac660a57a62f65bc/dns_records/2e5f3334ccdc96935dd8b8fa6de964ea"
+      },
+      "response": {
+        "body_json": {
+          "errors": [],
+          "messages": [],
+          "result": {
+            "id": "2e5f3334ccdc96935dd8b8fa6de964ea"
+          },
+          "success": true
+        },
+        "body_type": "json",
+        "headers": {
+          "api-version": [
+            "2026-09-26.epoch"
+          ],
+          "cf-auditlog-id": [
+            "01a00313-5ed6-7869-a858-a94fc196e818"
+          ],
+          "cf-cache-status": [
+            "DYNAMIC"
+          ],
+          "cf-ray": [
+            "a2b47d048b1280f3-YUL"
+          ],
+          "connection": [
+            "keep-alive"
+          ],
+          "content-type": [
+            "application/json"
+          ],
+          "date": [
+            "Sat, 15 Aug 2026 01:39:56 GMT"
           ],
           "ratelimit": [
             "\"default\";r=1198;t=1"
@@ -565,31 +538,28 @@
       }
     },
     {
-      "recorded_at": "2026-08-11T01:06:16.776320Z",
+      "recorded_at": "2026-08-15T01:39:56.620659Z",
       "request": {
         "body": "",
         "body_type": "text",
         "headers": {
-          "accept-encoding": [
-            "gzip"
-          ],
           "content-type": [
             "application/json"
           ],
           "user-agent": [
-            "req/0.5.17"
+            "req/0.7.2"
           ]
         },
         "method": "DELETE",
         "query_string": "",
-        "uri": "https://api.cloudflare.com/client/v4/zones/0287fe8206425a2aac660a57a62f65bc/dns_records/c010f9fc3772c2fd99481475dedccb20"
+        "uri": "https://api.cloudflare.com/client/v4/zones/0287fe8206425a2aac660a57a62f65bc/dns_records/cf74844e97052ebb3d9cb8154131926d"
       },
       "response": {
         "body_json": {
           "errors": [],
           "messages": [],
           "result": {
-            "id": "c010f9fc3772c2fd99481475dedccb20"
+            "id": "cf74844e97052ebb3d9cb8154131926d"
           },
           "success": true
         },
@@ -599,13 +569,13 @@
             "2026-09-26.epoch"
           ],
           "cf-auditlog-id": [
-            "019fee5b-1d67-7d41-9641-71d121b6ad24"
+            "01a00313-5fa2-7104-ab97-456da5a779f2"
           ],
           "cf-cache-status": [
             "DYNAMIC"
           ],
           "cf-ray": [
-            "a29356356d14c6cd-YUL"
+            "a2b47d05c87080f3-YUL"
           ],
           "connection": [
             "keep-alive"
@@ -614,7 +584,7 @@
             "application/json"
           ],
           "date": [
-            "Tue, 11 Aug 2026 01:06:16 GMT"
+            "Sat, 15 Aug 2026 01:39:56 GMT"
           ],
           "ratelimit": [
             "\"default\";r=1197;t=1"
@@ -636,100 +606,26 @@
       }
     },
     {
-      "recorded_at": "2026-08-11T01:06:16.996912Z",
+      "recorded_at": "2026-08-15T01:39:56.803673Z",
       "request": {
         "body": "",
         "body_type": "text",
         "headers": {
-          "accept-encoding": [
-            "gzip"
-          ],
           "content-type": [
             "application/json"
           ],
           "user-agent": [
-            "req/0.5.17"
+            "req/0.7.2"
           ]
         },
         "method": "DELETE",
         "query_string": "",
-        "uri": "https://api.cloudflare.com/client/v4/zones/0287fe8206425a2aac660a57a62f65bc/dns_records/07e6eaa03235b231cab18a463d363420"
-      },
-      "response": {
-        "body_json": {
-          "errors": [],
-          "messages": [],
-          "result": {
-            "id": "07e6eaa03235b231cab18a463d363420"
-          },
-          "success": true
-        },
-        "body_type": "json",
-        "headers": {
-          "api-version": [
-            "2026-09-26.epoch"
-          ],
-          "cf-auditlog-id": [
-            "019fee5b-1e68-760f-8925-fc64ea58e8c1"
-          ],
-          "cf-cache-status": [
-            "DYNAMIC"
-          ],
-          "cf-ray": [
-            "a2935636fb82c6cd-YUL"
-          ],
-          "connection": [
-            "keep-alive"
-          ],
-          "content-type": [
-            "application/json"
-          ],
-          "date": [
-            "Tue, 11 Aug 2026 01:06:16 GMT"
-          ],
-          "ratelimit": [
-            "\"default\";r=1197;t=1"
-          ],
-          "ratelimit-policy": [
-            "\"default\";q=1200;w=300"
-          ],
-          "server": [
-            "cloudflare"
-          ],
-          "transfer-encoding": [
-            "chunked"
-          ],
-          "vary": [
-            "Accept-Encoding"
-          ]
-        },
-        "status": 200
-      }
-    },
-    {
-      "recorded_at": "2026-08-11T01:06:17.173541Z",
-      "request": {
-        "body": "",
-        "body_type": "text",
-        "headers": {
-          "accept-encoding": [
-            "gzip"
-          ],
-          "content-type": [
-            "application/json"
-          ],
-          "user-agent": [
-            "req/0.5.17"
-          ]
-        },
-        "method": "DELETE",
-        "query_string": "",
-        "uri": "https://api.resend.com/domains/6d9e4a4e-3c85-4219-aeb8-7908f566533f"
+        "uri": "https://api.resend.com/domains/aa7c36de-baa5-4fd7-8683-b40907fd94eb"
       },
       "response": {
         "body_json": {
           "deleted": true,
-          "id": "6d9e4a4e-3c85-4219-aeb8-7908f566533f",
+          "id": "aa7c36de-baa5-4fd7-8683-b40907fd94eb",
           "object": "domain"
         },
         "body_type": "json",
@@ -738,10 +634,13 @@
             "DYNAMIC"
           ],
           "cf-ray": [
-            "a29356386a8db407-YYZ"
+            "a2b47d070d7539f7-YYZ"
           ],
           "connection": [
             "keep-alive"
+          ],
+          "content-length": [
+            "78"
           ],
           "content-security-policy": [
             "default-src 'none'; frame-ancestors 'none'"
@@ -750,10 +649,10 @@
             "application/json; charset=utf-8"
           ],
           "date": [
-            "Tue, 11 Aug 2026 01:06:17 GMT"
+            "Sat, 15 Aug 2026 01:39:56 GMT"
           ],
           "etag": [
-            "W/\"4e-/hLDZmJXXNWkfb+5Hhajh0wd7Fw\""
+            "W/\"4e-6jVOh14g9WlqN2on9m1OP3DTZug\""
           ],
           "permissions-policy": [
             "camera=(), microphone=(), geolocation=(), payment=()"
@@ -778,9 +677,6 @@
           ],
           "strict-transport-security": [
             "max-age=63072000; includeSubDomains"
-          ],
-          "transfer-encoding": [
-            "chunked"
           ],
           "x-content-type-options": [
             "nosniff"
