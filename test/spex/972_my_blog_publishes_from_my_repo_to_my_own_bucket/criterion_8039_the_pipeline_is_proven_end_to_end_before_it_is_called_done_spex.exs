@@ -172,6 +172,20 @@ defmodule CodeMySpecSpex.Story972.Criterion8039Spex do
             context.view
             |> element("[data-test='setup-step'][data-step='content'] [data-test='run-step']")
             |> render_click()
+
+            # Wait for the step, then read the page — not what the click handed
+            # back. Clicking Run does not wait: the step happens under a
+            # supervised task, because a publish-and-prove takes longer than a
+            # LiveView event may. So `render_click/1` returns while the step is
+            # still running, and the proof this criterion is about is assigned
+            # when `{:provisioning, :step, …}` arrives, strictly afterwards.
+            #
+            # Read too early it looks exactly like a product defect: a full
+            # pipeline runs — server, deploy, publish, 554s of it against real
+            # providers — and the page carries no render proof, so the step
+            # reads as having skipped the thing it exists to do.
+            CodeMySpecSpex.Case.await_step(context.view, :content)
+            render(context.view)
           end)
 
         {:ok, Map.put(context, :html, html)}
