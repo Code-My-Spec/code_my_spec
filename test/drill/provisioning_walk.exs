@@ -37,9 +37,27 @@ defmodule CodeMySpecSpex.Drill do
       set -a; source envs/.env; set +a
       CMS_DRILL_APP=/path/to/checkout elixir -S mix test test/drill/provisioning_walk.exs
 
+  ### It needs room for a fifth machine
+
+  `deploy` builds the image on a **builder** server it creates and destroys, so
+  a walk needs headroom for one more box than the environments it is making.
+  Hetzner counts primary IPs rather than servers, and a dual-stack box holds
+  two — so four servers exhaust an eight-IP account and `deploy` fails with
+
+      resource_limit_exceeded … limits: [%{"name" => "primary_ip_limit"}]
+
+  which reads as a leak and is not one: `GET /v1/primary_ips` showed all eight
+  assigned to servers that should exist. A walk that reaches `deploy` and stops
+  there, with `tls` and `widget` failing behind it, is this and not a defect.
+
   Options, all through the environment:
 
     * `CMS_DRILL_STEPS` — comma-separated step keys to run, in sequence order.
+      **A subset that omits `server` will not deploy.** Environment rows are
+      dropped and recreated on every walk (see `setup_project/1` for why —
+      reusing them sent the server step SSHing to a released address), so a
+      partial walk discards the server association the later steps read, and
+      `deploy` correctly reports that the environment has no server.
       Defaults to the project's whole plan.
     * `CMS_DRILL_ENVIRONMENTS` — `uat` (the default: one box, one deploy) or
       `uat,prod` for the full default plan.
