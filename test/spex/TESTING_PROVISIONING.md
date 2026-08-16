@@ -49,30 +49,65 @@ either works today or it does not. This already exists and is what proved the
 deploy on 2026-08-16: both boxes, DNS, HTTPS at c1961.legwork.ca, twelve of
 fourteen steps in 23 minutes.
 
-## Classification of what is currently failing
+## What happened: the whole epic converted
 
-**Logic — belongs against a fake, should be milliseconds**
+Written as a plan for converting the logic third "as they next break". All of
+it converted instead, over 2026-08-16: 841, 963, 964, 965, 966, 967, 968, 969,
+971, 972, 973, 974 and 985 run against fakes. The suite is 964 spex, green, in
+under four minutes — 841's fourteen provisioning steps take 1.9 seconds where
+they took fourteen minutes and a Resend token that expired partway.
 
-| Criterion | Claim | Why it is logic |
-|---|---|---|
-| 963/7965 | Running a step twice leaves one of everything | Idempotency of our step, not of Hetzner. Cost ~100s and a real server tonight and still does not replay. |
-| 969/8029 | Existing inbound mail survives the sending setup | That we do not touch the apex MX. A fake zone answers this. |
-| 972/8058 | A lost trigger is reported, not swallowed | Our error handling on a failed trigger. |
-| 992/8233 | Deploying builds the image on demand | That the deploy step *asks* for a build and records what it got. |
+Two things stayed recorded, and the reason is the same for both: their subject
+is a real binary or a real filesystem, so a fake answering them would be
+asserting its own implementation.
 
-**Reality — belongs in the drill or a live scheduled run**
+| Kept real | Why |
+|---|---|
+| 967's six encryption criteria | "The value in the repo is ciphertext", "a UAT key will not open production's secrets". The shell fake keeps plaintext dotenv on both sides of the door — round-tripping is what the *other* criteria need from it. |
+| 964/7987, 971/8022 | Both scan the working tree for leaked credential values. A memory filesystem holding nothing finds no leaked credential for the same reason it finds no files. |
 
-| Criterion | Claim | Why no fake can answer |
-|---|---|---|
-| 965/7996 | The records let the proxy get its certificate | A real ACME challenge against a real resolver. |
-| 966/8006 | Answers on his domain over a valid certificate | A real TLS handshake. |
-| 966/8010 | Every public hostname answers before done | Real DNS, real HTTP. |
-| 974/8030, 8032, 8048 | Inbound mail arrives, survives, is acted on | Real mail delivery through Resend. |
-| 992/8234 | The image runs on the architecture the box runs | A real box, a real image. |
+Reality claims did not disappear; they moved to where they can be answered. A
+certificate a browser trusts, an image running on real hardware, mail actually
+delivered — those belong to the drill, and 966 keeps them with an injected
+probe so the criterion still asserts that setup *checked*.
 
-Split of the current 14: roughly a third logic, two thirds reality. The logic
-third is where the recurring maintenance has been going, and it is the third
-that never needed a recording.
+## What the conversion actually taught
+
+**A premise that was a fact about somebody's account.** Most conversions failed
+first on this. "Sam owns his domain" was true because John's Cloudflare
+manages `astralbi.com`. "A repository already exists" was true because an
+earlier run left one — so those criteria passed on a dirty account and failed
+on a clean one. "An under-scoped token" was a token narrowed by hand. Each is
+now a line in the spex: `zone_exists/2`, `repository_exists/3`,
+`grant_cannot_use_the_registrar/1`, `push_is_rejected/1`, `migration_fails/1`,
+`dumps_stopped_landing/4`, `visitor_message_from/2`, `widget_backend_is_down/1`.
+
+**Publishing and observing must be the same fact.** Three seams answered the
+question "does this record resolve" from three different places — a DoH
+request, a plain `:dns_resolver` function, and a table of names recorded on an
+earlier day. They all read the zone now, so publishing a record is what makes
+it resolve. Same for the site: it serves what publishing put in the bucket, and
+answers 404 where nothing was published. An unconditional 200 passes a run that
+provisioned one environment and forgot the other.
+
+**`fake_providers` without `fake_working_directory` is half a spex.** Half of
+setup is HTTP and half is a subprocess. Installing only the first leaves the
+server step running a real `ssh` against the TEST-NET address the fake handed
+back, which never returns — reported three minutes later as a LiveView
+timeout, naming neither half. Cost most of a session.
+
+**A fake that says no is worth more than one that says yes.** Unmodelled
+commands exit 127 naming themselves; unmodelled routes answer 501. Every
+fidelity gap in this conversion was found by a criterion failing loudly rather
+than by reading the code: a dump that landed nowhere, a lifecycle rule the
+create-bucket route swallowed, a constant `LastModified` that made every dump
+the same age, `sops` that exited 0 while printing nothing.
+
+**And one product bug**, which is the point of the exercise: a project set to
+`devops: :uat` was getting a production server, DNS record and database built
+anyway. It hid behind a green — the prod steps succeeded, so status reported
+complete and the criterion whose whole subject is this passed on an assertion
+that could only see the missing list.
 
 ## The structural change worth making regardless
 
@@ -83,8 +118,10 @@ somewhere visible but not gating.
 
 ## What not to do
 
-Do not rewrite eighty spex. Classify, and convert the logic ones as they next
-break. The table above is a starting set.
+Do not fake a claim about reality. The test for whether a fake may answer a
+criterion is whether the fake would be asserting its own implementation — that
+is what rules out 967's encryption criteria and the working-tree scans, and it
+is a sharper line than "logic vs reality" turned out to be in practice.
 
 Do not keep the local fleet. It has the costs of reality — must be running, a
 machine-local key that is gitignored, real SSH — without the fidelity: no
