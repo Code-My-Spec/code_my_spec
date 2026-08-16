@@ -200,6 +200,24 @@ defmodule CodeMySpecSpex.Fixtures do
     project
   end
 
+  # A project credential and nothing else.
+  #
+  # `publishable_project/3` also issues a deploy key, and reaching for it to get
+  # one drags in S3 credentials and a recorded content bucket — setup that can
+  # fail for reasons having nothing to do with the criterion under test, and a
+  # `given_` that claims the project is publishable when what is meant is that it
+  # holds a credential.
+  #
+  # The credential branch this serves is `DeployKeyOrOAuth`, which exists for an
+  # agent with no browser to run an OAuth flow in: the key resolves to the
+  # project's account owner so the agent can reach a person. Anything driving
+  # `/api/questions/*` as an unattended agent needs one.
+  @spec project_with_deploy_key(map(), map(), String.t()) :: map()
+  def project_with_deploy_key(scope, project, key) do
+    {:ok, project} = CodeMySpec.Projects.update_project(scope, project, %{deploy_key: key})
+    project
+  end
+
   # The keys the publish signs with, on the project itself.
   #
   # `ContentPublishing` reads the project's own columns — a published install
