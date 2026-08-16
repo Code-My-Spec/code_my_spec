@@ -1025,6 +1025,29 @@ defmodule CodeMySpecWeb.ProvisioningLive do
         </li>
       </ul>
 
+      <div
+        :if={@mail.missing_records != []}
+        data-test="dns-record-deleted"
+        data-name={List.first(@mail.missing_records)}
+      >
+        a record this domain needs is no longer published: {Enum.join(@mail.missing_records, ", ")}
+      </div>
+    </section>
+
+    <%!-- The mail *actions* are not gated on the mail panel, for the same
+         reason content and widget are not: `:if={@mail}` made them present
+         only when a sending domain had already been read back from the
+         provider, and these are how Sam causes that to happen. Since the page
+         stopped reading Resend at mount — no cassette can cover a mount —
+         `@mail` is nil until something loads it, and the controls that would
+         load it were inside the block that needed loading. 8028, 8029 and
+         8030 all failed as "expected selector … but got none", which reads as
+         a missing feature rather than a control hidden behind its own
+         precondition.
+
+         The results sit here with their buttons: a probe's outcome should not
+         vanish because the panel above it has not been read. --%>
+    <section data-test="mail-actions" class="my-6">
       <.button data-test="mail-send-probe" phx-click="mail_send_probe" class="mt-3">
         Send a test message
       </.button>
@@ -1056,14 +1079,6 @@ defmodule CodeMySpecWeb.ProvisioningLive do
       <.button data-test="dns-refresh" phx-click="refresh_mail_dns" class="mt-2">
         Re-check DNS
       </.button>
-
-      <div
-        :if={@mail.missing_records != []}
-        data-test="dns-record-deleted"
-        data-name={List.first(@mail.missing_records)}
-      >
-        a record this domain needs is no longer published: {Enum.join(@mail.missing_records, ", ")}
-      </div>
     </section>
 
     <%!-- Content and widget live in their own section rather than inside the
