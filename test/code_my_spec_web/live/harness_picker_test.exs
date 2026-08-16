@@ -115,4 +115,57 @@ defmodule CodeMySpecWeb.HarnessPickerTest do
              "a harness id from another project must not select rows across the boundary"
     end
   end
+
+  describe "many working copies" do
+    setup %{scope: scope} do
+      # Every harness ever registered is a row, and a row is forever. This
+      # project has 90 real ones, 46 of them `/T/cms_harness_<pid>` temp
+      # directories left by test runs — rendered flat, that is most of a screen
+      # and it grows every time anything registers.
+      harnesses =
+        for i <- 1..8 do
+          checkout(scope, "the harness at /repo/copy-#{i}", ["lib/c#{i}.ex"])
+        end
+
+      %{harnesses: harnesses}
+    end
+
+    test "only a few are buttons; the rest are behind a count", %{conn: conn, project: project} do
+      {:ok, _view, html} = live(conn, files_path(project))
+
+      assert html =~ ~s(data-test="harness-more"),
+             "eight checkouts in a flat row is the growth this bounds"
+
+      assert html =~ ">+5<" or html =~ "+5",
+             "the count says how many are hidden rather than hiding that anything is"
+    end
+
+    test "the selected copy stays visible even when it is not recent", %{
+      conn: conn,
+      project: project,
+      harnesses: harnesses
+    } do
+      oldest = List.first(harnesses)
+
+      {:ok, view, _html} = live(conn, files_path(project) <> "?harness=#{oldest.id}")
+
+      # Not merely present in the DOM — present as a *button*, outside the
+      # dropdown. A picker that cannot show you what you are looking at is
+      # worse than one that is too long.
+      assert has_element?(
+               view,
+               ~s([data-test="harness-picker"] > [data-test="harness-#{oldest.id}"].btn-primary)
+             ),
+             "the active checkout was pushed into the overflow, so nothing on screen says which one you are reading"
+    end
+
+    test "every checkout is still reachable", %{conn: conn, project: project, harnesses: harnesses} do
+      {:ok, view, _html} = live(conn, files_path(project))
+
+      for h <- harnesses do
+        assert has_element?(view, ~s([data-test="harness-#{h.id}"])),
+               "bounding the picker must not make a checkout unreachable"
+      end
+    end
+  end
 end
