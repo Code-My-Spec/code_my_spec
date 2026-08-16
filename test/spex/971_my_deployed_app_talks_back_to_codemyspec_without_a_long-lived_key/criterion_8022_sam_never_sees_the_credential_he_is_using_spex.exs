@@ -18,13 +18,16 @@ defmodule CodeMySpecSpex.Story971.Criterion8022Spex do
 
   @endpoint CodeMySpecWeb.Endpoint
 
-  @cassette "setup_places_callback_credential"
-
   setup :register_log_in_setup_account
   setup :setup_active_project
   setup :devops_on
+  # A real directory: this criterion reads the working tree, looking for the
+  # credential in what setup wrote. A memory filesystem holding nothing finds
+  # no leaked credential for the same reason it finds no files, and
+  # `list_directory/2` on an empty store answers `{:error, :enoent}`.
   setup :real_working_directory
-  setup :connect_providers
+  setup :fake_providers
+  setup :fake_providers
 
   spex "Sam never sees the credential he is using" do
     scenario "setup places the credential and the environment authenticates with it" do
@@ -39,11 +42,11 @@ defmodule CodeMySpecSpex.Story971.Criterion8022Spex do
 
       when_ "setup finishes placing the callback credential", context do
         html =
-          with_provider_cassette(@cassette, fn ->
-            context.view
-            |> element("[data-test='setup-step'][data-step='callback_credential'] [data-test='run-step']")
-            |> render_click()
-          end)
+          context.view
+          |> element(
+            "[data-test='setup-step'][data-step='callback_credential'] [data-test='run-step']"
+          )
+          |> render_click()
 
         {:ok, Map.put(context, :html, html)}
       end
@@ -83,11 +86,7 @@ defmodule CodeMySpecSpex.Story971.Criterion8022Spex do
         plaintext_configs =
           Enum.filter(entries, fn path ->
             Path.extname(path) in [".exs", ".env"] and
-              match?({:ok, body} when is_binary(body), Environments.read_file(context.environment, path)) and
-              (case Environments.read_file(context.environment, path) do
-                 {:ok, body} -> body =~ ~r/deploy_key|refresh_secret/
-                 _ -> false
-               end)
+              carries_credential?(Environments.read_file(context.environment, path))
           end)
 
         assert plaintext_configs == [],
@@ -97,4 +96,12 @@ defmodule CodeMySpecSpex.Story971.Criterion8022Spex do
       end
     end
   end
+
+  # Function heads rather than a `case`, and one read rather than two: the
+  # previous form read every file twice — once to `match?` it and once to
+  # search it — which is the shape a `case` inside a filter tends to take.
+  defp carries_credential?({:ok, body}) when is_binary(body),
+    do: body =~ ~r/deploy_key|refresh_secret/
+
+  defp carries_credential?(_), do: false
 end

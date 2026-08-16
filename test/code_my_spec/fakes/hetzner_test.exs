@@ -95,6 +95,25 @@ defmodule CodeMySpecSpex.Fakes.HetznerTest do
   end
 
   # A gap in the fake should read as a gap, not as an empty success.
+  # 841/1958: a token the provider recognises and will not act on. "Recognised
+  # but refused" is not "bad token" — `Credentials.classify/2` turns a 403 into
+  # `rejected` and anything else into `unchecked`, and Sam is sent somewhere
+  # different by each.
+  test "a refused token is forbidden rather than unrecognised", %{agent: agent} do
+    response =
+      Req.request!(
+        Req.new(
+          method: :get,
+          url: "https://api.hetzner.cloud/v1/servers",
+          headers: [{"authorization", "Bearer spex-read-only-token"}],
+          plug: &Hetzner.call(&1, agent)
+        )
+      )
+
+    assert response.status == 403
+    assert response.body["error"]["code"] == "forbidden"
+  end
+
   test "an unmodelled path says so", %{agent: agent} do
     assert %{status: 501, body: %{"error" => %{"code" => "not_modelled"}}} =
              request(agent, :get, "/volumes")

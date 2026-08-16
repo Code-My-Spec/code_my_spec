@@ -16,13 +16,10 @@ defmodule CodeMySpecSpex.Story968.Criterion8012Spex do
 
   @endpoint CodeMySpecWeb.Endpoint
 
-  @storage_cassette "hetzner_bucket_create_per_environment"
-  @upload_cassette "hetzner_bucket_put_object_uat"
-
   setup :register_log_in_setup_account
   setup :setup_active_project
   setup :devops_on
-  setup :connect_providers
+  setup :fake_providers
 
   spex "Test data never lands in the production bucket" do
     scenario "a file uploaded in UAT appears only in the UAT bucket" do
@@ -34,11 +31,9 @@ defmodule CodeMySpecSpex.Story968.Criterion8012Spex do
         tear_down_after(context.scope, [:storage])
 
         html =
-          with_provider_cassette(@storage_cassette, fn ->
-            view
-            |> element("[data-test='setup-step'][data-step='storage'] [data-test='run-step']")
-            |> render_click()
-          end)
+          view
+          |> element("[data-test='setup-step'][data-step='storage'] [data-test='run-step']")
+          |> render_click()
 
         buckets_by_env =
           html
@@ -62,13 +57,11 @@ defmodule CodeMySpecSpex.Story968.Criterion8012Spex do
 
       when_ "a file is uploaded in UAT", context do
         html =
-          with_provider_cassette(@upload_cassette, fn ->
-            context.view
-            |> form("[data-test='storage-probe-form']",
-              probe: %{environment: "uat", key: "probe.txt"}
-            )
-            |> render_submit()
-          end)
+          context.view
+          |> form("[data-test='storage-probe-form']",
+            probe: %{environment: "uat", key: "probe.txt"}
+          )
+          |> render_submit()
 
         {:ok, Map.put(context, :html, html)}
       end

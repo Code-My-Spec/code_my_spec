@@ -58,6 +58,16 @@ defmodule CodeMySpecSpex.Fakes.Hetzner do
     %{servers: [], ssh_keys: [], firewalls: [], networks: [], next_id: 1}
   end
 
+  # A token the account recognises and will not act on.
+  #
+  # 841/1958's premise, and the distinction it is about: "recognised but
+  # refused" is not "bad token", and Sam is sent somewhere different by each.
+  # Named rather than inferred from scopes, the same way the GitHub fake names
+  # the revoked one — the suite has no model of Hetzner permissions, and
+  # inventing one to serve a single criterion would be a second implementation
+  # nobody checks.
+  @refused "spex-read-only-token"
+
   @doc """
   Answer a request from the account's state.
 
@@ -67,6 +77,26 @@ defmodule CodeMySpecSpex.Fakes.Hetzner do
   def call(conn, agent) do
     conn = Conn.fetch_query_params(conn)
 
+    case Conn.get_req_header(conn, "authorization") do
+      ["Bearer " <> @refused] -> forbidden(conn)
+      _ -> dispatch(conn, agent)
+    end
+  end
+
+  defp forbidden(conn) do
+    body = %{
+      "error" => %{
+        "code" => "forbidden",
+        "message" => "insufficient permissions for this resource"
+      }
+    }
+
+    conn
+    |> Conn.put_resp_content_type("application/json")
+    |> Conn.send_resp(403, Jason.encode!(body))
+  end
+
+  defp dispatch(conn, agent) do
     {status, body} =
       Agent.get_and_update(
         agent,

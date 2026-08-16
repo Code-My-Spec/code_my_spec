@@ -69,7 +69,12 @@ defmodule CodeMySpecSpex.Story968.Criterion8014Spex do
 
         assert html =~ ~r/data-step="backups"[^>]*data-state="done"/,
                "expected the backup step to complete before checking for dumps, got: " <>
-                 (html |> Floki.parse_document!() |> Floki.find("[data-step='backups']") |> Floki.text() |> String.replace(~r/\s+/, " ") |> String.slice(0, 600))
+                 (html
+                  |> Floki.parse_document!()
+                  |> Floki.find("[data-step='backups']")
+                  |> Floki.text()
+                  |> String.replace(~r/\s+/, " ")
+                  |> String.slice(0, 600))
 
         {:ok, Map.put(context, :view, view)}
       end

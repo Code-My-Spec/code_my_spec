@@ -17,11 +17,14 @@ defmodule CodeMySpecSpex.Story841.Criterion1958Spex do
 
   @endpoint CodeMySpecWeb.Endpoint
 
-  @cassette "841_1958_under_scoped_token"
-
   setup :register_log_in_setup_account
   setup :setup_active_project
   setup :devops_on
+  # The provider that refuses. This criterion had no provider setup at all —
+  # the cassette *was* the provider, answering the check with a recorded 403 —
+  # so without a fake the check finds nothing configured and reports
+  # "unchecked", which is a third state and not the one under test.
+  setup :fake_providers
 
   spex "An under-scoped token names its missing permission" do
     scenario "a token the provider accepts but will not act on" do
@@ -40,9 +43,7 @@ defmodule CodeMySpecSpex.Story841.Criterion1958Spex do
 
       when_ "the credentials are checked against the providers", context do
         html =
-          with_provider_cassette(@cassette, fn ->
-            context.view |> element("[data-test='check-credentials']") |> render_click()
-          end)
+          context.view |> element("[data-test='check-credentials']") |> render_click()
 
         {:ok, Map.put(context, :html, html)}
       end

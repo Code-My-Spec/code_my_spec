@@ -53,7 +53,8 @@ defmodule CodeMySpecSpex.Story841.Criterion1967Spex do
         # put it there, so every run had nothing to fetch and failed on its own
         # premise — "expected at least one provisioned environment to check" —
         # without ever making a request.
-        {:ok, Map.put(context, :environments, CodeMySpecSpex.Fixtures.environments(context.scope))}
+        {:ok,
+         Map.put(context, :environments, CodeMySpecSpex.Fixtures.environments(context.scope))}
       end
 
       when_ "each environment's host is fetched over HTTPS", context do

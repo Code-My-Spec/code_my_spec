@@ -20,7 +20,7 @@ defmodule CodeMySpecSpex.Story963.Criterion7962Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
   setup :devops_on
-  setup :connect_providers
+  setup :fake_providers
 
   spex "The provider's own error reaches the agent session" do
     scenario "the escalation carries what the provider actually said" do

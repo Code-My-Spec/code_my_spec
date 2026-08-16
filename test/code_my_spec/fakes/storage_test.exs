@@ -99,6 +99,20 @@ defmodule CodeMySpecSpex.Fakes.StorageWiringTest do
     assert DateTime.diff(DateTime.utc_now(), taken_at, :second) < 60
   end
 
+  # 968/8015's premise: dumps *stopped* landing. A run that has just installed
+  # the schedule has also just taken one, and a fresh dump reads as healthy
+  # however old the rest are — so the premise has to clear what this run made.
+  test "clearing a prefix leaves the rest of the bucket alone", %{credentials: creds, agent: agent} do
+    {:ok, _} = Storage.ensure_bucket("sams-dumps", creds)
+    :ok = Storage.put_object("sams-dumps", "dumps/prod/one.sql.gz", "PGDMP", creds)
+    :ok = Storage.put_object("sams-dumps", "media/logo.png", "PNG", creds)
+
+    Fakes.Storage.clear_prefix(agent, "sams-dumps", "dumps/")
+
+    assert {:ok, []} = Storage.list_dumps("sams-dumps", creds, prefix: "dumps/")
+    assert {:ok, [_]} = Storage.list_dumps("sams-dumps", creds, prefix: "media/")
+  end
+
   # The bucket really does remove them, which is the whole of 8016: retention
   # enforced rather than hoped for. A fake that listed everything it was ever
   # given would fail that criterion against a rule working perfectly.

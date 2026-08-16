@@ -20,13 +20,10 @@ defmodule CodeMySpecSpex.Story963.Criterion7970Spex do
 
   @endpoint CodeMySpecWeb.Endpoint
 
-  @create_cassette "963_7970_hetzner_bucket_create_ok"
-  @verify_cassette "hetzner_bucket_head_exists"
-
   setup :register_log_in_setup_account
   setup :setup_active_project
   setup :devops_on
-  setup :connect_providers
+  setup :fake_providers
 
   spex "A step's state is checked against the provider, not remembered" do
     scenario "opening the page re-checks the bucket rather than trusting the old result" do
@@ -34,23 +31,18 @@ defmodule CodeMySpecSpex.Story963.Criterion7970Spex do
         view = mount_provisioning(context)
         paste_storage_credentials(view)
 
-        with_provider_cassette(@create_cassette, fn ->
-          view
-          |> element("[data-test='setup-step'][data-step='storage'] [data-test='run-step']")
-          |> render_click()
-        end)
+        view
+        |> element("[data-test='setup-step'][data-step='storage'] [data-test='run-step']")
+        |> render_click()
 
         {:ok, context}
       end
 
       when_ "Sam opens the status page later", context do
-        {view, html} =
-          with_provider_cassette(@verify_cassette, fn ->
-            {:ok, view, html} =
-              live(context.conn, "/app/projects/#{context.project.id}/provisioning")
+        {:ok, view, html} =
+          live(context.conn, "/app/projects/#{context.project.id}/provisioning")
 
-            {view, html}
-          end)
+        {view, html} = {view, html}
 
         {:ok, context |> Map.put(:view, view) |> Map.put(:html, html)}
       end

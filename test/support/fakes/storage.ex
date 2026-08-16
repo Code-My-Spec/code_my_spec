@@ -50,6 +50,26 @@ defmodule CodeMySpecSpex.Fakes.Storage do
     end)
   end
 
+  @doc """
+  Drop every object under a prefix.
+
+  For the premise that dumps *stopped*: a run that just installed the schedule
+  also just took a dump, and a fresh one reads as healthy however old the rest
+  are — so 968/8015 has to clear what this run made before saying the newest
+  is days old.
+  """
+  def clear_prefix(agent, bucket, prefix) do
+    Agent.update(agent, fn state ->
+      objects =
+        state.buckets
+        |> Map.get(bucket, %{})
+        |> Enum.reject(fn {key, _} -> String.starts_with?(key, prefix) end)
+        |> Map.new()
+
+      %{state | buckets: Map.put(state.buckets, bucket, objects)}
+    end)
+  end
+
   def call(conn, agent) do
     conn = Conn.fetch_query_params(conn)
     {:ok, body, conn} = read_body(conn)

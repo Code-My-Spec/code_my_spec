@@ -18,13 +18,10 @@ defmodule CodeMySpecSpex.Story841.Criterion1960Spex do
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Devops.Tools.DevopsStatus
 
-  @cassette "841_1960_setup_outstanding"
-
   setup :register_log_in_setup_account
   setup :setup_active_project
   setup :devops_on
-  setup :provider_credentials_on_file
-  setup :connect_providers
+  setup :fake_providers
 
   spex "DevOps setup surfaces after code generation" do
     scenario "there is code, and no infrastructure behind it" do
@@ -44,9 +41,7 @@ defmodule CodeMySpecSpex.Story841.Criterion1960Spex do
 
       when_ "the agent asks whether the infrastructure exists", context do
         {:reply, response, _frame} =
-          with_provider_cassette(@cassette, fn ->
-            DevopsStatus.execute(%{}, %Frame{assigns: %{current_scope: context.scope}})
-          end)
+          DevopsStatus.execute(%{}, %Frame{assigns: %{current_scope: context.scope}})
 
         {:ok, Map.put(context, :report, response_text(response))}
       end

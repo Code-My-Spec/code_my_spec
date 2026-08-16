@@ -19,21 +19,18 @@ defmodule CodeMySpecSpex.Story968.Criterion8013Spex do
 
   @endpoint CodeMySpecWeb.Endpoint
 
-  @cassette "hetzner_bucket_put_then_get_object"
-
   # The bucket has to exist before anything can be written to it, and the
   # given_ said so without doing it — the probe was writing into a bucket
   # nothing had created and failing with NoSuchBucket. Established through the
   # storage step rather than by reaching past the app, because that step is
   # what wires an app to its bucket.
-  @setup_cassette "hetzner_bucket_create_for_probe"
 
   @body "round-trip-probe-contents"
 
   setup :register_log_in_setup_account
   setup :setup_active_project
   setup :devops_on
-  setup :connect_providers
+  setup :fake_providers
 
   spex "A file uploaded to the app comes back from the bucket" do
     scenario "the object written through the app reads back identical" do
@@ -46,26 +43,22 @@ defmodule CodeMySpecSpex.Story968.Criterion8013Spex do
         # Pasting is inside the cassette because saving a credential now
         # proves it with a real call (criterion 7983) — it is a provider
         # interaction, not just a write.
-        with_provider_cassette(@setup_cassette, fn ->
-          paste_storage_credentials(view)
+        paste_storage_credentials(view)
 
-          view
-          |> element("[data-test='setup-step'][data-step='storage'] [data-test='run-step']")
-          |> render_click()
-        end)
+        view
+        |> element("[data-test='setup-step'][data-step='storage'] [data-test='run-step']")
+        |> render_click()
 
         {:ok, Map.put(context, :view, view)}
       end
 
       when_ "Sam uploads a file through the app and requests it back", context do
         html =
-          with_provider_cassette(@cassette, fn ->
-            context.view
-            |> form("[data-test='storage-probe-form']",
-              probe: %{environment: "prod", key: "round-trip.txt", body: @body}
-            )
-            |> render_submit()
-          end)
+          context.view
+          |> form("[data-test='storage-probe-form']",
+            probe: %{environment: "prod", key: "round-trip.txt", body: @body}
+          )
+          |> render_submit()
 
         {:ok, Map.put(context, :html, html)}
       end

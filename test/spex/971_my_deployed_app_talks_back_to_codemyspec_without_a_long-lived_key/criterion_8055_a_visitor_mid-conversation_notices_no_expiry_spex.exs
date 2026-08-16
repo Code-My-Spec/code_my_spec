@@ -80,7 +80,8 @@ defmodule CodeMySpecSpex.Story971.Criterion8055Spex do
       end
 
       then_ "the visitor's conversation continues uninterrupted", context do
-        ref = Phoenix.ChannelTest.push(context.channel, "send_message", %{"body" => "after renewal"})
+        ref =
+          Phoenix.ChannelTest.push(context.channel, "send_message", %{"body" => "after renewal"})
 
         assert_reply(ref, :ok, _, 1000)
 

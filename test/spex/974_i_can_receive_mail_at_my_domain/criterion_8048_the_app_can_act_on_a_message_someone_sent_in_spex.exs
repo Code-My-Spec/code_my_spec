@@ -98,7 +98,8 @@ defmodule CodeMySpecSpex.Story974.Criterion8048Spex do
       end
 
       then_ "Sam did not have to forward it there himself", context do
-        forwarded_by_hand = context.delivery |> Floki.attribute("data-manual-forward") |> List.first()
+        forwarded_by_hand =
+          context.delivery |> Floki.attribute("data-manual-forward") |> List.first()
 
         assert forwarded_by_hand == "false",
                "expected no manual forwarding step, got #{inspect(forwarded_by_hand)}"

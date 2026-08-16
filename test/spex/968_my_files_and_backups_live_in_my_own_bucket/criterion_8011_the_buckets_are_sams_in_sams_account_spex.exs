@@ -15,12 +15,10 @@ defmodule CodeMySpecSpex.Story968.Criterion8011Spex do
 
   @endpoint CodeMySpecWeb.Endpoint
 
-  @cassette "968_8011_hetzner_bucket_create_ok"
-
   setup :register_log_in_setup_account
   setup :setup_active_project
   setup :devops_on
-  setup :connect_providers
+  setup :fake_providers
 
   spex "The buckets are Sam's, in Sam's account" do
     scenario "the created buckets are recorded under Sam's own account" do
@@ -36,11 +34,9 @@ defmodule CodeMySpecSpex.Story968.Criterion8011Spex do
 
       when_ "the storage step has run", context do
         html =
-          with_provider_cassette(@cassette, fn ->
-            context.view
-            |> element("[data-test='setup-step'][data-step='storage'] [data-test='run-step']")
-            |> render_click()
-          end)
+          context.view
+          |> element("[data-test='setup-step'][data-step='storage'] [data-test='run-step']")
+          |> render_click()
 
         {:ok, Map.put(context, :html, html)}
       end

@@ -22,7 +22,7 @@ defmodule CodeMySpecSpex.Story963.Criterion7960Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
   setup :devops_on
-  setup :connect_providers
+  setup :fake_providers
   # Watching a step change state needs a run that is still going.
   setup :watchable_run
 

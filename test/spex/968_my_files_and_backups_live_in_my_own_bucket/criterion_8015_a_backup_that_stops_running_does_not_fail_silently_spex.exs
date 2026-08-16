@@ -15,15 +15,12 @@ defmodule CodeMySpecSpex.Story968.Criterion8015Spex do
 
   @endpoint CodeMySpecWeb.Endpoint
 
-  @install_cassette "968_8015_backup_schedule_installed"
-  @stalled_cassette "hetzner_bucket_list_dumps_stale"
-
   setup :register_log_in_setup_account
   setup :setup_active_project
   setup :devops_on
   # The generated deploy files land on disk, and the backups step reads them.
-  setup :real_working_directory
-  setup :connect_providers
+  setup :fake_working_directory
+  setup :fake_providers
   setup :real_backup_database
   setup :several_nights_later
 
@@ -42,38 +39,43 @@ defmodule CodeMySpecSpex.Story968.Criterion8015Spex do
         # The bucket the dumps land in is real; it goes away with the spex.
         tear_down_after(context.scope, [:storage])
 
-        with_full_cassette @install_cassette do
+        # Hetzner issues object-storage keys only in its console, so they are
 
-          # Hetzner issues object-storage keys only in its console, so they are
+        # pasted per project — without them the backups step pauses asking for
 
-          # pasted per project — without them the backups step pauses asking for
+        # them and never reaches the schedule this criterion is about.
 
-          # them and never reaches the schedule this criterion is about.
+        paste_storage_credentials(view)
 
-          paste_storage_credentials(view)
+        # Backups land in the bucket the storage step makes, so that has to exist
+        # first — otherwise the dump fails with NoSuchBucket, which is true and
+        # says nothing about the schedule under test.
+        view
+        |> element("[data-test='setup-step'][data-step='storage'] [data-test='run-step']")
+        |> render_click()
 
-          # Backups land in the bucket the storage step makes, so that has to exist
-          # first — otherwise the dump fails with NoSuchBucket, which is true and
-          # says nothing about the schedule under test.
-          view
-          |> element("[data-test='setup-step'][data-step='storage'] [data-test='run-step']")
-          |> render_click()
-
-          view
-          |> element("[data-test='setup-step'][data-step='backups'] [data-test='run-step']")
-          |> render_click()
-        end
+        view
+        |> element("[data-test='setup-step'][data-step='backups'] [data-test='run-step']")
+        |> render_click()
 
         {:ok, Map.put(context, :view, view)}
       end
 
       when_ "the scheduled dump has failed for several nights", context do
+        # Nights that failed, stated: the newest dump is three days old and
+        # nothing has landed since. Under a recording this was true by accident
+        # — the bucket held dumps from earlier runs and none from that one.
+        dumps_stopped_landing(
+          context,
+          CodeMySpecSpex.Fixtures.bucket_name(context.project, "uat"),
+          "uat",
+          3
+        )
+
         html =
-          with_provider_cassette(@stalled_cassette, fn ->
-            context.view
-            |> element("[data-test='backups-refresh']")
-            |> render_click()
-          end)
+          context.view
+          |> element("[data-test='backups-refresh']")
+          |> render_click()
 
         {:ok, Map.put(context, :html, html)}
       end

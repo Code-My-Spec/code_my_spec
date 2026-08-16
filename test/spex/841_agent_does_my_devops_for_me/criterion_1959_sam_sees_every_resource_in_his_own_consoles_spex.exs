@@ -17,31 +17,24 @@ defmodule CodeMySpecSpex.Story841.Criterion1959Spex do
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Devops.Tools.{DevopsStatus, RunDevopsSetup}
 
-  @cassette "841_1959_resources_in_own_accounts"
-
   setup :register_log_in_setup_account
   setup :setup_active_project
   setup :devops_on
-  setup :connect_providers
+  setup :fake_providers
 
   spex "Sam sees every resource in his own consoles" do
     scenario "the report reads the providers Sam owns" do
       given_ "Sam has had setup run against his own provider accounts", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        with_provider_cassette(@cassette <> "_setup", fn ->
-          {:reply, _response, _frame} =
-            RunDevopsSetup.execute(%{project_id: to_string(context.project.id)}, frame)
-        end)
+        {:reply, _response, _frame} =
+          RunDevopsSetup.execute(%{project_id: to_string(context.project.id)}, frame)
 
         {:ok, Map.put(context, :frame, frame)}
       end
 
       when_ "the agent asks what infrastructure exists", context do
-        {:reply, response, _frame} =
-          with_provider_cassette(@cassette, fn ->
-            DevopsStatus.execute(%{}, context.frame)
-          end)
+        {:reply, response, _frame} = DevopsStatus.execute(%{}, context.frame)
 
         {:ok, Map.put(context, :report, response_text(response))}
       end

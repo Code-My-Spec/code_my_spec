@@ -614,6 +614,24 @@ defmodule CodeMySpecSpex.Case do
   end
 
   @doc """
+  Dumps stopped landing: the newest one is days old.
+
+  968/8015's premise — "the scheduled dump has failed for several nights" —
+  which the page reports as `stalled` rather than `never`, because "it stopped
+  last Tuesday" and "it never ran" send Sam to different places. Under a
+  recording it was true by accident: the bucket held dumps from earlier runs
+  and none from this one.
+
+  The bucket's dumps are cleared first, because a run that has just installed
+  the schedule has also just taken one, and a fresh dump reads as healthy no
+  matter what else is in there.
+  """
+  def dumps_stopped_landing(context, bucket, environment, days_ago) do
+    Fakes.Storage.clear_prefix(fake(context, :storage), bucket, "dumps/")
+    old_dump_in_bucket(context, bucket, environment, days_ago)
+  end
+
+  @doc """
   A dump that was taken days ago.
 
   "Backups have been running longer than the retention window" is a premise

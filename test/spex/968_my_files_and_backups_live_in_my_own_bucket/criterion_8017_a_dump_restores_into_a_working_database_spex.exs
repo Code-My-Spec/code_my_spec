@@ -14,16 +14,12 @@ defmodule CodeMySpecSpex.Story968.Criterion8017Spex do
 
   @endpoint CodeMySpecWeb.Endpoint
 
-  @cassette "backup_restore_into_scratch_db"
-
-  @given_cassette "968_8017_dump_taken"
-
   setup :register_log_in_setup_account
   setup :setup_active_project
   setup :devops_on
   # The generated deploy files land on disk, and the backups step reads them.
-  setup :real_working_directory
-  setup :connect_providers
+  setup :fake_working_directory
+  setup :fake_providers
   setup :real_backup_database
 
   spex "A dump restores into a working database" do
@@ -42,18 +38,18 @@ defmodule CodeMySpecSpex.Story968.Criterion8017Spex do
         view |> element("[data-test='generate-project']") |> render_click()
         paste_storage_credentials(view)
 
-        run_steps(view, [:storage, :backups], @given_cassette)
+        # The server first: `bin/backup` runs on the environment's own box,
+        # and the server step is what mints the key that gets there.
+        run_steps(view, [:server, :storage, :backups])
 
         {:ok, Map.put(context, :view, view)}
       end
 
       when_ "it is restored into an empty database", context do
         html =
-          with_full_cassette @cassette do
-            context.view
-            |> element("[data-test='backup-restore-probe']")
-            |> render_click()
-          end
+          context.view
+          |> element("[data-test='backup-restore-probe']")
+          |> render_click()
 
         {:ok, Map.put(context, :html, html)}
       end

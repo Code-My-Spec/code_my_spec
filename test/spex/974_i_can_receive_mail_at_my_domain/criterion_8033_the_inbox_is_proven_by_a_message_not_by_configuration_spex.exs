@@ -16,16 +16,13 @@ defmodule CodeMySpecSpex.Story974.Criterion8033Spex do
 
   @endpoint CodeMySpecWeb.Endpoint
 
-  @cassette "resend_inbound_step_proves_delivery_before_done"
-
   # Mounting reads the sending domains off Resend, and the premise is published
   # here rather than left to the step — see the given_ for why.
-  @mount_cassette "974_8033_inbound_records_published"
 
   setup :register_log_in_setup_account
   setup :setup_active_project
   setup :devops_on
-  setup :connect_providers
+  setup :fake_providers
 
   spex "The inbox is proven by a message, not by configuration" do
     scenario "the step confirms an end-to-end delivery before reporting done" do
@@ -34,6 +31,11 @@ defmodule CodeMySpecSpex.Story974.Criterion8033Spex do
         # criterion runs second finds the first's domain already registered and
         # *adopts* it — and an adopted resource is never torn down, so each one
         # replays the others' state.
+        # The zone the records go into. Under a cassette this was true because
+        # John's Cloudflare manages `astralbi.com`; stated here, so publishing
+        # a record means it resolves.
+        zone_exists(context, "astralbi.com")
+
         project = own_domain(context.project, "c8033.astralbi.com")
 
         # The premise is "the inbound records are published", so publish them
@@ -46,27 +48,22 @@ defmodule CodeMySpecSpex.Story974.Criterion8033Spex do
         # `receiving: true` because Resend grants receiving at creation and
         # never afterwards; a sending-only domain here cannot be upgraded and
         # the probe would be dropped in silence.
-        view =
-          with_provider_cassette(@mount_cassette, fn ->
-            verified_sending_domains(context.scope, project, ["prod"], receiving: true)
+        verified_sending_domains(context.scope, project, ["prod"], receiving: true)
 
-            {:ok, view, _html} =
-              live(context.conn, "/app/projects/#{context.project.id}/provisioning")
+        {:ok, view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/provisioning")
 
-            _ = Phoenix.LiveViewTest.render(view)
-            view
-          end)
+        _ = Phoenix.LiveViewTest.render(view)
+        view = view
 
         {:ok, Map.put(context, :view, view)}
       end
 
       when_ "setup verifies the step", context do
         html =
-          with_provider_cassette(@cassette, fn ->
-            context.view
-            |> element("[data-test='setup-step'][data-step='inbound'] [data-test='run-step']")
-            |> render_click()
-          end)
+          context.view
+          |> element("[data-test='setup-step'][data-step='inbound'] [data-test='run-step']")
+          |> render_click()
 
         {:ok, Map.put(context, :html, html)}
       end

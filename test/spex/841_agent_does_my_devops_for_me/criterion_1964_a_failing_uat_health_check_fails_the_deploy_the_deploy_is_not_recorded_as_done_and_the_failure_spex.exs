@@ -22,12 +22,10 @@ defmodule CodeMySpecSpex.Story841.Criterion1964Spex do
 
   @endpoint CodeMySpecWeb.Endpoint
 
-  @cassette "841_1964_uat_health_check_fails"
-
   setup :register_log_in_setup_account
   setup :setup_active_project
   setup :devops_on
-  setup :connect_providers
+  setup :fake_providers
 
   spex "A failing UAT health check fails the deploy" do
     scenario "UAT comes up sick" do
@@ -39,14 +37,11 @@ defmodule CodeMySpecSpex.Story841.Criterion1964Spex do
       end
 
       when_ "the deploy runs and UAT does not answer its health check", context do
-        html =
-          with_full_cassette @cassette do
-            context.view
-            |> element("[data-test='setup-step'][data-step='deploy'] [data-test='run-step']")
-            |> render_click()
+        context.view
+        |> element("[data-test='setup-step'][data-step='deploy'] [data-test='run-step']")
+        |> render_click()
 
-            render(context.view)
-          end
+        html = render(context.view)
 
         {:ok, Map.put(context, :html, html)}
       end

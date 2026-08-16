@@ -30,8 +30,8 @@ defmodule CodeMySpecSpex.Story841.Criterion1966Spex do
   #
   # It went unnoticed while the deploy stopped at an earlier check and never
   # reached the decrypt.
-  setup :real_working_directory
-  setup :connect_providers
+  setup :fake_working_directory
+  setup :fake_providers
 
   spex "A missing secret fails the boot loudly and by name" do
     scenario "the environment is short a required secret" do
@@ -66,14 +66,11 @@ defmodule CodeMySpecSpex.Story841.Criterion1966Spex do
       end
 
       when_ "the deploy runs", context do
-        html =
-          with_full_cassette @cassette do
-            context.view
-            |> element("[data-test='setup-step'][data-step='deploy'] [data-test='run-step']")
-            |> render_click()
+        context.view
+        |> element("[data-test='setup-step'][data-step='deploy'] [data-test='run-step']")
+        |> render_click()
 
-            render(context.view)
-          end
+        html = render(context.view)
 
         {:ok, Map.put(context, :html, html)}
       end

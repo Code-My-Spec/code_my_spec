@@ -18,7 +18,7 @@ defmodule CodeMySpecSpex.Story963.Criterion7969Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
   setup :devops_on
-  setup :connect_providers
+  setup :fake_providers
 
   spex "Sam reads back what he now owns" do
     scenario "the record lists each provisioned resource and where it lives" do

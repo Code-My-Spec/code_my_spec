@@ -19,20 +19,17 @@ defmodule CodeMySpecSpex.Story963.Criterion7964Spex do
 
   @endpoint CodeMySpecWeb.Endpoint
 
-  @create_cassette "963_7964_hetzner_server_create_ok"
-  @gone_cassette "hetzner_server_missing_then_recreated"
-
   setup :register_log_in_setup_account
   setup :setup_active_project
   setup :devops_on
-  setup :connect_providers
+  setup :fake_providers
   # The registry runs on the box over SSH, and the box in a cassette is an
   # address that was released weeks ago — so this stepped out to a stranger's
   # machine and failed with `ssh: connect to host … Operation timed out`.
   # The fleet's app box is a real box with a real Docker daemon, reachable on
   # loopback, so the step runs its actual commands against something that
   # exists. Needs `docker/fleet/fleet.sh up`.
-  setup :real_working_directory
+  setup :fake_working_directory
   setup :fleet_box
 
   spex "A resource deleted behind setup's back is rebuilt, not skipped" do
@@ -61,15 +58,13 @@ defmodule CodeMySpecSpex.Story963.Criterion7964Spex do
         # push as non-fast-forward (which is 8184's subject, not this one's).
         tear_down_repository(context.project)
 
-        with_provider_cassette(@create_cassette, fn ->
-          # Saving a credential proves it with a real call now, so this is a
-          # provider interaction and belongs inside the cassette.
-          paste_provider_credentials(view)
+        # Saving a credential proves it with a real call now, so this is a
+        # provider interaction and belongs inside the cassette.
+        paste_provider_credentials(view)
 
-          view
-          |> element("[data-test='setup-step'][data-step='server'] [data-test='run-step']")
-          |> render_click()
-        end)
+        view
+        |> element("[data-test='setup-step'][data-step='server'] [data-test='run-step']")
+        |> render_click()
 
         html = render(view)
 
@@ -83,9 +78,7 @@ defmodule CodeMySpecSpex.Story963.Criterion7964Spex do
       when_ "Sam has deleted that server and setup runs again", context do
         # The cassette answers the existence check with "not found", which
         # is how setup learns the resource is gone.
-        with_provider_cassette(@gone_cassette, fn ->
-          context.view |> element("[data-test='start-setup']") |> render_click()
-        end)
+        context.view |> element("[data-test='start-setup']") |> render_click()
 
         {:ok, Map.put(context, :html, render(context.view))}
       end
