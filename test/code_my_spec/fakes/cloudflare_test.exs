@@ -135,6 +135,20 @@ defmodule CodeMySpecSpex.Fakes.CloudflareTest do
     assert result["supported_tld"] == false
   end
 
+  # 964/7984: a grant can read zones and still refuse to buy a domain, which is
+  # why `Credentials.do_check/3` makes two calls rather than one. A fake that
+  # answered both alike would call an under-scoped grant verified.
+  test "a grant without the registrar scope is refused, and zones still read", %{agent: agent} do
+    Cloudflare.revoke_scope(agent, :registrar)
+
+    assert %{status: 200} = request(agent, :get, "/zones")
+
+    assert %{status: 403, body: body} =
+             request(agent, :get, "/accounts/acct-1/registrar/domains")
+
+    assert inspect(body) =~ "registrar"
+  end
+
   test "an unmodelled path says so", %{agent: agent} do
     assert %{status: 501, body: %{"success" => false}} = request(agent, :get, "/user/tokens")
   end

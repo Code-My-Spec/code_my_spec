@@ -44,8 +44,18 @@ defmodule CodeMySpecSpex.Fakes.Cloudflare do
       zones: [%{"id" => "zone-1", "name" => zone_name}],
       records: %{"zone-1" => []},
       registrar: [zone_name],
-      next_id: 1
+      next_id: 1,
+      # What the grant is allowed to do. A token can read zones and still
+      # refuse to buy a domain, and that gap is criterion 964/7984 — the check
+      # reads zones *then* the registrar precisely because reporting the zone
+      # read as success would call an under-scoped grant verified.
+      scopes: [:zones, :registrar]
     }
+  end
+
+  @doc "Narrow the grant, for the criterion about a token that cannot do the job."
+  def revoke_scope(agent, scope) do
+    Agent.update(agent, fn state -> %{state | scopes: List.delete(state.scopes, scope)} end)
   end
 
   def call(conn, agent) do
@@ -121,11 +131,32 @@ defmodule CodeMySpecSpex.Fakes.Cloudflare do
 
   # -- registrar --
 
-  defp route("GET", ["accounts", _acct, "registrar", "domains"], _body, _params, state) do
+  # Every registrar path goes through the scope gate first, and a grant that
+  # does not hold it gets Cloudflare's own refusal. `Credentials.do_check/3`
+  # reads zones and *then* the registrar precisely to tell "can read zones"
+  # from "can buy a domain" — criterion 964/7984 — so a fake that answered
+  # both alike would call an under-scoped grant verified.
+  #
+  # One gate dispatching onward rather than a clause per path: a top clause
+  # matching `["accounts", _, "registrar" | _]` would shadow the ones below it,
+  # and the single-domain lookup 965 depends on would never be reached.
+  defp route(method, ["accounts", acct, "registrar" | rest], body, params, state) do
+    case :registrar in state.scopes do
+      true -> registrar(method, [acct | rest], body, params, state)
+      false -> {{403, failure(unscoped_message())}, state}
+    end
+  end
+
+  defp unscoped_message do
+    "Actor 'com.cloudflare.api.token' requires permission " <>
+      "'com.cloudflare.registrar.domain.list' to access requested resource"
+  end
+
+  defp registrar("GET", [_acct, "domains"], _body, _params, state) do
     {ok(Enum.map(state.registrar, &%{"name" => &1, "available" => false})), state}
   end
 
-  defp route("GET", ["accounts", _acct, "registrar", "domains", name], _body, _params, state) do
+  defp registrar("GET", [_acct, "domains", name], _body, _params, state) do
     # A domain already on the account is an ordinary way in, not an error path
     # (965/8052) — it answers, rather than 404ing, and the step adopts it.
     #
@@ -149,7 +180,7 @@ defmodule CodeMySpecSpex.Fakes.Cloudflare do
     name |> String.split(".") |> List.last() |> Kernel.in(~w(com net org dev io co ca app))
   end
 
-  defp route("POST", ["accounts", _acct, "registrar", "domains"], body, _params, state) do
+  defp registrar("POST", [_acct, "domains"], body, _params, state) do
     name = body["name"]
     {ok(%{"name" => name}), %{state | registrar: Enum.uniq(state.registrar ++ [name])}}
   end

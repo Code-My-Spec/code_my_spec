@@ -542,6 +542,49 @@ defmodule CodeMySpecSpex.Case do
   end
 
   @doc """
+  Sam's Cloudflare grant can read zones and cannot buy a domain.
+
+  964/7984's premise. Under a recording it was a real token somebody had
+  narrowed by hand, which is a fact about one person's Cloudflare account and
+  unreproducible everywhere else. The grant refuses the registrar the way
+  Cloudflare does — a 403 naming the permission — so the check still has to
+  read zones first and fail on the second call, which is the whole point of it
+  making two.
+  """
+  def grant_cannot_use_the_registrar(context) do
+    Fakes.Cloudflare.revoke_scope(fake(context, :cloudflare), :registrar)
+
+    context
+  end
+
+  @doc """
+  The widget's backend is unreachable, and the site says so.
+
+  973/8043's premise: the page still answers and the widget reports itself
+  unavailable rather than pretending to work. Under a recording it meant
+  pointing the probe at a site whose backend really was down, which is a state
+  somebody had to arrange by hand and could not be arranged twice.
+
+  `"unavailable"`, not `"absent"` — the probe rejects both a broken page and a
+  page carrying no widget at all, because a site where the install silently did
+  nothing degrades perfectly and proves nothing.
+  """
+  def widget_backend_is_down(_context) do
+    Req.Test.stub(CodeMySpec.Provisioning.Widget, fn conn ->
+      Plug.Conn.send_resp(conn, 200, """
+      <html><body>
+        <h1>Sam's site</h1>
+        <div data-cms-widget data-cms-widget-state="unavailable">
+          <button data-cms-widget-toggle>?</button>
+        </div>
+      </body></html>
+      """)
+    end)
+
+    :ok
+  end
+
+  @doc """
   A dump that was taken days ago.
 
   "Backups have been running longer than the retention window" is a premise

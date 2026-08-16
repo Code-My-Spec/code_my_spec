@@ -20,12 +20,10 @@ defmodule CodeMySpecSpex.Story964.Criterion7983Spex do
 
   @endpoint CodeMySpecWeb.Endpoint
 
-  @cassette "hetzner_token_verify_ok"
-
   setup :register_log_in_setup_account
   setup :setup_active_project
   setup :devops_on
-  setup :connect_providers
+  setup :fake_providers
 
   spex "A credential is proven by a real call, not by looking right" do
     scenario "the Hetzner token is confirmed against Hetzner before it reads verified" do
@@ -40,15 +38,13 @@ defmodule CodeMySpecSpex.Story964.Criterion7983Spex do
       # a literal "valid-looking-token" would capture a 401 — a cassette that
       # replays perfectly and proves the opposite of the criterion.
       when_ "he submits his Hetzner API token", context do
-        with_provider_cassette(@cassette, fn ->
-          context.view
-          |> form("[data-test='credentials-form']",
-            credentials: %{
-              hetzner_api_token: System.get_env("HETZNER_API_TOKEN", "spex-placeholder-token")
-            }
-          )
-          |> render_submit()
-        end)
+        context.view
+        |> form("[data-test='credentials-form']",
+          credentials: %{
+            hetzner_api_token: System.get_env("HETZNER_API_TOKEN", "spex-placeholder-token")
+          }
+        )
+        |> render_submit()
 
         {:ok, context}
       end

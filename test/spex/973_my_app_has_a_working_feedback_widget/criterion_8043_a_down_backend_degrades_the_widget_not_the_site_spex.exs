@@ -16,12 +16,10 @@ defmodule CodeMySpecSpex.Story973.Criterion8043Spex do
 
   @endpoint CodeMySpecWeb.Endpoint
 
-  @cassette "widget_backend_unreachable_page_still_renders"
-
   setup :register_log_in_setup_account
   setup :setup_active_project
   setup :devops_on
-  setup :connect_providers
+  setup :fake_providers
   setup :widget_on_the_fleet
 
   spex "A down backend degrades the widget, not the site" do
@@ -37,12 +35,15 @@ defmodule CodeMySpecSpex.Story973.Criterion8043Spex do
       end
 
       when_ "CodeMySpec is unreachable and a visitor loads the site", context do
+        # Unreachable, stated. The site still answers — that is the whole
+        # distinction — and its widget reports itself unavailable rather than
+        # claiming to work.
+        widget_backend_is_down(context)
+
         html =
-          with_full_cassette @cassette do
-            context.view
-            |> element("[data-test='widget-degradation-probe']")
-            |> render_click()
-          end
+          context.view
+          |> element("[data-test='widget-degradation-probe']")
+          |> render_click()
 
         {:ok, Map.put(context, :html, html)}
       end

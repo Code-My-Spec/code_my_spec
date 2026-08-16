@@ -24,14 +24,12 @@ defmodule CodeMySpecSpex.Story973.Criterion8044Spex do
 
   @endpoint CodeMySpecWeb.Endpoint
 
-  @cassette "widget_step_proves_message_before_done"
-
   @site "http://127.0.0.1:4100"
 
   setup :register_log_in_setup_account
   setup :setup_active_project
   setup :devops_on
-  setup :connect_providers
+  setup :fake_providers
   setup :widget_on_the_fleet
 
   spex "The widget is proven by a message, not by a script tag" do
@@ -84,11 +82,9 @@ defmodule CodeMySpecSpex.Story973.Criterion8044Spex do
 
       when_ "it verifies itself", context do
         html =
-          with_full_cassette @cassette do
-            context.view
-            |> element("[data-test='setup-step'][data-step='widget'] [data-test='run-step']")
-            |> render_click()
-          end
+          context.view
+          |> element("[data-test='setup-step'][data-step='widget'] [data-test='run-step']")
+          |> render_click()
 
         {:ok, Map.put(context, :html, html)}
       end

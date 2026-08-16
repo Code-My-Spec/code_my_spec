@@ -16,13 +16,11 @@ defmodule CodeMySpecSpex.Story967.Criterion7999Spex do
 
   @endpoint CodeMySpecWeb.Endpoint
 
-  @cassette "kamal_deploy_with_age_key_env"
-
   setup :register_log_in_setup_account
   setup :setup_active_project
   setup :devops_on
-  setup :real_working_directory
-  setup :connect_providers
+  setup :fake_working_directory
+  setup :fake_providers
 
   spex "The deploy carries the key, Sam does not" do
     scenario "the key travels as deploy configuration, not as a file placed by hand" do
@@ -41,11 +39,9 @@ defmodule CodeMySpecSpex.Story967.Criterion7999Spex do
 
       when_ "Sam deploys that environment", context do
         html =
-          with_provider_cassette(@cassette, fn ->
-            context.view
-            |> element("[data-test='setup-step'][data-step='deploy'] [data-test='run-step']")
-            |> render_click()
-          end)
+          context.view
+          |> element("[data-test='setup-step'][data-step='deploy'] [data-test='run-step']")
+          |> render_click()
 
         {:ok, Map.put(context, :html, html)}
       end
@@ -58,7 +54,8 @@ defmodule CodeMySpecSpex.Story967.Criterion7999Spex do
           |> Floki.find("[data-test='age-key-delivery']")
 
         # Anchor: the deploy recorded how the key got there.
-        assert key_delivery != [], "expected the deploy to record how the decryption key was supplied"
+        assert key_delivery != [],
+               "expected the deploy to record how the decryption key was supplied"
 
         via = key_delivery |> Floki.attribute("data-via") |> List.first()
 

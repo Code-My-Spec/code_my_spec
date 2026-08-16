@@ -17,13 +17,11 @@ defmodule CodeMySpecSpex.Story967.Criterion8000Spex do
 
   @endpoint CodeMySpecWeb.Endpoint
 
-  @cassette "kamal_deploy_boot_missing_secret"
-
   setup :register_log_in_setup_account
   setup :setup_active_project
   setup :devops_on
-  setup :real_working_directory
-  setup :connect_providers
+  setup :fake_working_directory
+  setup :fake_providers
 
   spex "A missing secret refuses the boot by name" do
     scenario "the boot fails naming the absent key rather than starting anyway" do
@@ -57,11 +55,9 @@ defmodule CodeMySpecSpex.Story967.Criterion8000Spex do
 
       when_ "the app boots", context do
         html =
-          with_provider_cassette(@cassette, fn ->
-            context.view
-            |> element("[data-test='setup-step'][data-step='deploy'] [data-test='run-step']")
-            |> render_click()
-          end)
+          context.view
+          |> element("[data-test='setup-step'][data-step='deploy'] [data-test='run-step']")
+          |> render_click()
 
         {:ok, Map.put(context, :html, html)}
       end

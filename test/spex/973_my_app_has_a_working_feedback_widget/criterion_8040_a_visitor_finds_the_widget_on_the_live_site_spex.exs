@@ -15,12 +15,10 @@ defmodule CodeMySpecSpex.Story973.Criterion8040Spex do
 
   @endpoint CodeMySpecWeb.Endpoint
 
-  @cassette "widget_installed_and_rendered"
-
   setup :register_log_in_setup_account
   setup :setup_active_project
   setup :devops_on
-  setup :connect_providers
+  setup :fake_providers
   # The step runs a mix generator in the project's working directory and then
   # fetches the site it was installed on. Both are real here while recording:
   # a committed application to install into, and the fleet's site to fetch.
@@ -52,11 +50,9 @@ defmodule CodeMySpecSpex.Story973.Criterion8040Spex do
         # `System.cmd`, the presence check through Req — and recording only
         # the HTTP half leaves the generator running for real on every replay.
         html =
-          with_full_cassette @cassette do
-            context.view
-            |> element("[data-test='setup-step'][data-step='widget'] [data-test='run-step']")
-            |> render_click()
-          end
+          context.view
+          |> element("[data-test='setup-step'][data-step='widget'] [data-test='run-step']")
+          |> render_click()
 
         {:ok, Map.put(context, :html, html)}
       end

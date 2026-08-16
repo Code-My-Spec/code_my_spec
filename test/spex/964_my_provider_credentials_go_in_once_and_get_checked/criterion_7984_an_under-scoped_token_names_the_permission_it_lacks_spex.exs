@@ -19,16 +19,19 @@ defmodule CodeMySpecSpex.Story964.Criterion7984Spex do
 
   @endpoint CodeMySpecWeb.Endpoint
 
-  @cassette "cloudflare_token_missing_registrar_write"
-
   setup :register_log_in_setup_account
   setup :setup_active_project
   setup :devops_on
-  setup :connect_providers
+  setup :fake_providers
 
   spex "An under-scoped token names the permission it lacks" do
     scenario "a DNS-only Cloudflare token is rejected naming Registrar write" do
       given_ "Sam is on credential entry", context do
+        # The grant is narrowed before anything checks it. Under a recording
+        # this was a token somebody had scoped by hand — a fact about one
+        # person's Cloudflare account, and unreproducible anywhere else.
+        grant_cannot_use_the_registrar(context)
+
         {:ok, view, _html} =
           live(context.conn, "/app/projects/#{context.project.id}/provisioning")
 
@@ -42,11 +45,9 @@ defmodule CodeMySpecSpex.Story964.Criterion7984Spex do
       # which is what the check does.
       when_ "his Cloudflare grant is checked against the provider", context do
         html =
-          with_provider_cassette(@cassette, fn ->
-            context.view
-            |> element("[data-test='check-credentials']")
-            |> render_click()
-          end)
+          context.view
+          |> element("[data-test='check-credentials']")
+          |> render_click()
 
         {:ok, Map.put(context, :html, html)}
       end

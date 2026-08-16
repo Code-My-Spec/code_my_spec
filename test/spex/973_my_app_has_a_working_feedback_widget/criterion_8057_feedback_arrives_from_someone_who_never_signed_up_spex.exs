@@ -98,10 +98,10 @@ defmodule CodeMySpecSpex.Story973.Criterion8057Spex do
       end
 
       then_ "Sam hears from someone who would otherwise have left silently", context do
+        # A plain path, not `~p`. The sigil binds its router at compile time and
+        # this module's is the local one, so `~p` checks a route table that
+        # does not own the inbox — the cloud router does, under `/app`.
         {:ok, _view, html} =
-          # A plain path, not `~p`. The sigil binds its router at compile time and
-          # this module's is the local one, so `~p` checks a route table that
-          # does not own the inbox — the cloud router does, under `/app`.
           live(context.conn, "/app/projects/#{context.project.id}/inbox")
 
         assert html =~ "never signed up but here is my feedback",

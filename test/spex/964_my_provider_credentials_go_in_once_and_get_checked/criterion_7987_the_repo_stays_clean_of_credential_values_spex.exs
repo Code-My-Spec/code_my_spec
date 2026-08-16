@@ -26,11 +26,12 @@ defmodule CodeMySpecSpex.Story964.Criterion7987Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
   setup :devops_on
-  # This criterion reads the working tree — it is the only one in this story
-  # that does. Without a directory on disk `list_directory/2` answers
-  # `{:error, :enoent}`, and the `{:ok, entries}` match fails with a bare
-  # MatchError naming neither the path nor the reason, which reads as the
-  # assertion being wrong rather than as there being nothing to scan.
+  # A real directory, deliberately. This criterion reads the working tree —
+  # it is the only one in this story that does — and scanning a memory
+  # filesystem that holds nothing would find no leaked credential for the same
+  # reason it would find no files. `list_directory/2` on an empty store
+  # answers `{:error, :enoent}`, so the match fails with a bare MatchError
+  # naming neither the path nor the reason.
   setup :real_working_directory
 
   spex "The repo stays clean of credential values" do
