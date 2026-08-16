@@ -241,7 +241,17 @@ defmodule CodeMySpec.Provisioning.Steps do
       h ->
         # The certificate either works or it does not, and the only honest
         # check is an HTTPS request that would fail on a bad one.
-        case Deploy.probe(h, opts) do
+        #
+        # Through the same injectable probe `run(:tls, …)` uses, rather than
+        # `Deploy.probe/2` directly. `run_step/3` verifies before it executes,
+        # so a spex that staged a probe for the run still met the real client
+        # here — and the run never happened, because verify raised first. Three
+        # criteria failed that way (965/7996, 966/8006 and 8010), each
+        # reporting `no mock or stub for CodeMySpec.Provisioning.Deploy` from a
+        # step whose probe was staged two lines earlier.
+        probe = Keyword.get(opts, :probe, &Deploy.probe/2)
+
+        case probe.(h, opts) do
           :ok -> {:ok, :satisfied, [%{kind: "certificate", location: "https://#{h}"}]}
           {:error, _} -> {:ok, :absent}
         end
