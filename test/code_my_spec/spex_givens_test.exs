@@ -190,12 +190,35 @@ defmodule CodeMySpec.SpexGivensTest do
     for path <- Path.wildcard("test/spex/**/*_spex.exs"),
         source = File.read!(path),
         [whole, indent, title, body] <- Regex.scan(@given_block, source),
-        not String.contains?(body, @establishes),
+        not String.contains?(strip_comments(body), @establishes),
         not String.contains?(body, @already_established) do
       _ = whole
       offset = source |> String.split(indent <> "given_ " <> title) |> hd()
       {path, length(String.split(offset, "\n")), String.trim(title, ~s("))}
     end
+  end
+
+  # Matched against code, not prose. A comment saying `live(` is a block
+  # describing a drive it does not perform, and this check exists to catch a
+  # block that does nothing at all — the version that always indicates the bug.
+  #
+  # Measured before changing it: **zero** `given_` blocks in the suite pass only
+  # because of a comment, so this closes the hole at no cost rather than
+  # starting a migration. The measurement was checked against a synthetic
+  # comment-only block first, because a zero from a probe that cannot return
+  # anything else is not a finding.
+  #
+  # `@already_established` is deliberately matched against the raw body: that
+  # marker *is* a comment, and stripping it here would delete the one escape
+  # hatch this check offers.
+  #
+  # Whole-line comments only. A `#` inside a heredoc line would be stripped too,
+  # which could flag a block whose only establishing call sits in such a line —
+  # no block in the suite is shaped that way, and the test itself would catch it.
+  defp strip_comments(body) do
+    body
+    |> String.split("\n")
+    |> Enum.map_join("\n", &Regex.replace(~r/^\s*#.*$/, &1, ""))
   end
 
   defp format(offenders) do
