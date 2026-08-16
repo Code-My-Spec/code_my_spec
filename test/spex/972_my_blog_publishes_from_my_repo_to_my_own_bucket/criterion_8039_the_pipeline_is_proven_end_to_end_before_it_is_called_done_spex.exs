@@ -196,8 +196,30 @@ defmodule CodeMySpecSpex.Story972.Criterion8039Spex do
 
         proof = parsed |> Floki.find("[data-test='content-render-proof']")
 
+        # Report what the page says about the failure, not only that the proof
+        # is missing. A publish that uploaded and could not be served renders
+        # `content-publish-error` right beside the absent proof, carrying the
+        # reason — so the page knew "500, deploy key not configured" while this
+        # assertion said "no render proof", and the two read as completely
+        # different problems.
+        #
+        # That gap cost a second 440s live recording. The absence of a proof is
+        # the same page state whether the step never ran, ran and refused, or
+        # was never built; the annotation beside it is what tells them apart,
+        # and it was there both times.
+        publish_error =
+          parsed
+          |> Floki.find("[data-test='content-publish-error']")
+          |> Floki.text()
+          |> String.trim()
+
+        because =
+          if publish_error == "",
+            do: "",
+            else: " — the page reports the publish failed: #{publish_error}"
+
         # Anchor: a proof exists rather than only a configuration summary.
-        assert proof != [], "expected the content step to record a render proof"
+        assert proof != [], "expected the content step to record a render proof#{because}"
 
         state = proof |> Floki.attribute("data-state") |> List.first()
 
