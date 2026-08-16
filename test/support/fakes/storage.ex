@@ -26,19 +26,6 @@ defmodule CodeMySpecSpex.Fakes.Storage do
   Not modelled: durability, consistency delay, multipart. A bucket that
   refuses to delete until emptied is real Hetzner behaviour and belongs to the
   live teardown tests, not here.
-
-  ## Not yet wired through ExAws
-
-  Verified at its own seam — `test/code_my_spec/fakes/storage_direct_test.exs`
-  drives it with `Req` and it answers correctly. Driving it through
-  `Provisioning.Storage`, which goes via ExAws, hangs rather than fails: ExAws
-  retries with backoff, so a fake that answers in a shape it does not expect is
-  indistinguishable from a slow network, and each test sat until ExUnit's
-  timeout.
-
-  That is unfinished rather than broken, and the direct tests are what will
-  tell the two apart. Until it is done, a criterion needing storage stays on
-  its current footing.
   """
 
   alias Plug.Conn
@@ -76,6 +63,18 @@ defmodule CodeMySpecSpex.Fakes.Storage do
   end
 
   # -- buckets --
+
+  # `ensure_bucket/3` polls this after creating one, because a fresh Hetzner
+  # bucket 404s for about a second. Without it here the poll got the catch-all,
+  # ExAws retried each attempt with backoff, and twenty attempts of that is a
+  # test that hangs rather than fails — which is how this fake first looked
+  # broken when it was merely incomplete.
+  defp route("HEAD", bucket, "", _body, _params, state) do
+    case Map.has_key?(state.buckets, bucket) do
+      true -> {{200, [], ""}, state}
+      false -> {{404, [], ""}, state}
+    end
+  end
 
   defp route("GET", nil, _key, _body, _params, state) do
     {{200, [], list_buckets_xml(Map.keys(state.buckets))}, state}
