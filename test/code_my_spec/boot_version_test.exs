@@ -223,6 +223,37 @@ defmodule CodeMySpec.BootVersionTest do
 
       assert BootVersion.drift() == :none
     end
+
+    # The case the first version of this missed, and the one that matters.
+    #
+    # The main checkout on this machine — which both long-running processes
+    # serve from — has a `[branch "main"]` section with no `remote`/`merge`
+    # key, so `@{upstream}` does not resolve. `drift/0` reported `:none` for a
+    # checkout that was demonstrably behind, which is the same blindness this
+    # was written to remove, one layer down. A long-lived checkout somebody has
+    # pulled in for years is the ordinary case, not the tidy one.
+    test "falls back to origin/<branch> when no tracking ref is configured" do
+      {origin, work} = origin_and_clone()
+
+      {_, 0} = System.cmd("git", ["branch", "--unset-upstream"], cd: work, stderr_to_stdout: true)
+
+      {_, unset} =
+        System.cmd("git", ["rev-parse", "@{upstream}"], cd: work, stderr_to_stdout: true)
+
+      refute unset == 0, "the premise is that @{upstream} does not resolve here"
+
+      BootVersion.capture(work)
+
+      other = clone(origin)
+      commit(other, "two")
+      {_, 0} = System.cmd("git", ["push", "-q", "origin", "HEAD:main"], cd: other, stderr_to_stdout: true)
+      {_, 0} = System.cmd("git", ["fetch", "-q"], cd: work)
+
+      assert {:drifted, _booted, _current} = BootVersion.drift(),
+             "with no tracking ref the check went blind in exactly the checkout it was for"
+
+      assert BootVersion.stale_kind() == :behind_upstream
+    end
   end
 
   defp head_of(root) do
