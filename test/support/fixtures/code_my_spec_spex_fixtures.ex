@@ -3020,16 +3020,45 @@ defmodule CodeMySpecSpex.Fixtures do
       ]
 
       previous = Application.get_env(:code_my_spec, CodeMySpec.Provisioning.Hetzner, [])
+      previous_s3 = Application.get_env(:code_my_spec, CodeMySpec.Content.S3Client, [])
 
+      # The token *and* both plugs. `config/test.exs` pins
+      # `plug: {Req.Test, …}` on every provider client so that a call with no
+      # stub raises instead of quietly reaching a provider — right for the
+      # suite, and fatal here: this check runs in `connect_providers`, which is
+      # setup, so it is outside every cassette and nothing stubs that process.
+      # It raised `cannot find mock/stub`, and `case` does not catch a raise,
+      # so the guard meant to protect a recording session was the thing that
+      # ended it — before a single interaction was written.
+      #
+      # Both, because the two halves take different routes: servers go through
+      # `Provisioning.Hetzner`, buckets through ExAws and `Content.S3Client`.
+      # Clearing only the first moves the same failure one layer down, which is
+      # exactly what it did.
+      #
+      # Dropping the pins is not a loosening. Asking the real provider what
+      # this account holds is the entire point of the check; a stubbed answer
+      # would report nothing and pass, which is the failure it exists to catch.
+      # Both are restored below, so nothing that follows sees a live client.
+      #
+      # Only reachable with real credentials in the environment, i.e. a
+      # recording run — the `with` above returns `[]` otherwise.
       Application.put_env(
         :code_my_spec,
         CodeMySpec.Provisioning.Hetzner,
-        Keyword.put(previous, :api_token, token)
+        previous |> Keyword.put(:api_token, token) |> Keyword.delete(:plug)
+      )
+
+      Application.put_env(
+        :code_my_spec,
+        CodeMySpec.Content.S3Client,
+        Keyword.delete(previous_s3, :plug)
       )
 
       names = server_names(kinds) ++ bucket_names(kinds, credentials)
 
       Application.put_env(:code_my_spec, CodeMySpec.Provisioning.Hetzner, previous)
+      Application.put_env(:code_my_spec, CodeMySpec.Content.S3Client, previous_s3)
 
       spex_named(names)
     else
