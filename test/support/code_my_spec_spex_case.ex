@@ -1778,6 +1778,40 @@ defmodule CodeMySpecSpex.Case do
   end
 
   @doc """
+  A working directory in memory, with a shell whose commands have effects.
+
+      setup :fake_working_directory
+
+  The counterpart to `real_working_directory` for criteria whose claim is about
+  our sequencing rather than about a real filesystem. `ssh-keygen -f path`
+  leaves a key at `path`, and `sops` refuses a file that is not there — so a
+  step reading what an earlier step wrote finds it, which is the one thing a
+  cassette cannot arrange (`c635d90e`).
+
+  The memfs was already the virtual filesystem; `:memory_shell` connects the
+  shell to it, and is unset again on exit so nothing else sees a modelled
+  shell.
+  """
+  def fake_working_directory(%{scope: scope, project: project} = context) do
+    {:ok, env} = CodeMySpec.Support.InMemoryEnvironment.create(working_dir: project.local_path)
+
+    previous = Application.get_env(:code_my_spec, :memory_shell)
+    Application.put_env(:code_my_spec, :memory_shell, CodeMySpecSpex.Fakes.Shell)
+
+    Fixtures.unregister_environment(project.id)
+    Fixtures.register_environment(project.id, env)
+
+    ExUnit.Callbacks.on_exit(fn ->
+      Application.put_env(:code_my_spec, :memory_shell, previous)
+      Fixtures.unregister_environment(project.id)
+    end)
+
+    context
+    |> Map.put(:environment, env)
+    |> Map.put(:scope, %{scope | environment: env, cwd: env.cwd})
+  end
+
+  @doc """
   Choose the project's setup options through the options form.
 
   `given_ "Sam has chosen his setup options"` was a comment saying the

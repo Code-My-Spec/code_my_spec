@@ -86,8 +86,8 @@ defmodule CodeMySpecSpex.Fakes.Hetzner do
 
   # -- servers --
 
-  defp route("GET", "/servers", _body, _params, state) do
-    {{200, %{"servers" => Enum.map(state.servers, &running/1)}}, promote(state)}
+  defp route("GET", "/servers", _body, params, state) do
+    {{200, %{"servers" => Enum.map(matching_servers(state, params), &running/1)}}, promote(state)}
   end
 
   defp route("POST", "/servers", body, _params, state) do
@@ -111,12 +111,21 @@ defmodule CodeMySpecSpex.Fakes.Hetzner do
      %{state | servers: Enum.reject(state.servers, &(to_string(&1["id"]) == id))}}
   end
 
-  defp route("POST", "/servers/" <> rest, _body, _params, state) do
-    # `…/actions/attach_to_network`. Nothing downstream reads the attachment,
-    # so this succeeds without modelling it — and says so, rather than
-    # pretending there is a network to look at.
-    _ = rest
-    {{201, %{"action" => %{"status" => "success"}}}, state}
+  defp route("POST", "/servers/" <> rest, body, _params, state) do
+    # `…/actions/attach_to_network`. Hetzner assigns the private address here
+    # rather than at creation — `private_ip/2` reads it back off the server
+    # precisely because the attach call does not say which one it handed out.
+    # A fake that gave servers an address upfront answered
+    # `{:error, :no_private_address}`, because the entry carried no network to
+    # match against.
+    id = rest |> String.split("/") |> List.first()
+
+    servers =
+      Enum.map(state.servers, fn server ->
+        attach_if_named(server, id, body["network"])
+      end)
+
+    {{201, %{"action" => %{"status" => "success"}}}, %{state | servers: servers}}
   end
 
   # -- ssh keys --
@@ -212,11 +221,23 @@ defmodule CodeMySpecSpex.Fakes.Hetzner do
       "name" => name,
       "status" => "starting",
       "server_type" => %{"name" => body["server_type"] || "cx32", "architecture" => "x86"},
+      # Where the box is. `join_baseline_network/4` reads it to pick the
+      # network zone, and a server without one falls out of that `with` into an
+      # `else` that has no clause for it — reported as `no with clause
+      # matching` against a list of servers, which names the shape and not the
+      # missing field.
+      "location" => %{"name" => "fsn1", "network_zone" => "eu-central"},
+      "datacenter" => %{
+        "name" => "fsn1-dc14",
+        "location" => %{"name" => "fsn1", "network_zone" => "eu-central"}
+      },
       "public_net" => %{
         "ipv4" => %{"ip" => "203.0.113.#{state.next_id}"},
         "ipv6" => %{"ip" => "2001:db8::#{state.next_id}"}
       },
-      "private_net" => [%{"ip" => "10.0.0.#{state.next_id}"}]
+      # Empty until attached. The address arrives with the attach, which is
+      # what `private_ip/2` reads back.
+      "private_net" => []
     }
 
     {server, %{state | servers: state.servers ++ [server], next_id: state.next_id + 1}}
@@ -230,6 +251,28 @@ defmodule CodeMySpecSpex.Fakes.Hetzner do
   end
 
   defp running(server), do: server
+
+  # Hetzner filters `GET /servers` by `name`, and the code uses it to ask
+  # whether the server it is about to create is already there. Ignoring the
+  # filter hands back every server in the account, so a lookup expecting one
+  # match gets two and the caller fails with `no with clause matching` — which
+  # names the shape and not the reason.
+  defp matching_servers(state, %{"name" => name}),
+    do: Enum.filter(state.servers, &(&1["name"] == name))
+
+  defp matching_servers(state, _params), do: state.servers
+
+  # Give the named server an address on the network it just joined.
+  defp attach_if_named(%{"id" => server_id} = server, id, network) do
+    case to_string(server_id) == id do
+      true ->
+        entry = %{"network" => network, "ip" => "10.0.0.#{server_id}"}
+        Map.update(server, "private_net", [entry], &(&1 ++ [entry]))
+
+      false ->
+        server
+    end
+  end
 
   # Hetzner filters `GET /ssh_keys` by `name` or `fingerprint`, and the code
   # uses both — `ensure_access_key/2` looks up by fingerprint precisely so a

@@ -76,7 +76,12 @@ defmodule CodeMySpecSpex.Fakes.Shell do
             {"", 0}
 
           _ ->
-            {"Error: cannot operate on non-existent file #{inspect(path)}\n", 128}
+            # What is there, not only what is missing. A path that does not
+            # exist has two causes — nobody wrote it, or it was written
+            # somewhere else — and the message naming only the absent one sends
+            # the reader to the wrong half.
+            {"Error: cannot operate on non-existent file #{inspect(path)}\n" <>
+               "The environment holds: #{inspect(listing(env))}\n", 128}
         end
     end
   end
@@ -121,4 +126,11 @@ defmodule CodeMySpecSpex.Fakes.Shell do
   end
 
   defp hash(seed), do: :crypto.hash(:sha256, seed) |> Base.encode16(case: :lower) |> binary_part(0, 16)
+
+  defp listing(env) do
+    case Environments.list_directory(env, ".") do
+      {:ok, entries} -> entries
+      other -> other
+    end
+  end
 end
