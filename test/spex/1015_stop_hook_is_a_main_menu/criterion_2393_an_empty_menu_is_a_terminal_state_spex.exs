@@ -50,7 +50,7 @@ defmodule CodeMySpecSpex.Story1015.Criterion2393Spex do
 
   spex "An agent with nothing to do is allowed to stop" do
     scenario "no class of work has anything for this working copy" do
-      given_ :synced_context_component
+      given_ :synced_context_in_satisfied_project
       given_ :context_spec_task_started
 
       when_ "the agent attempts to stop", context do
