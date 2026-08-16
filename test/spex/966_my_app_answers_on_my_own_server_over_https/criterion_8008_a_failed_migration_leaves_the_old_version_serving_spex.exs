@@ -19,8 +19,8 @@ defmodule CodeMySpecSpex.Story966.Criterion8008Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
   setup :devops_on
-  setup :real_working_directory
-  setup :connect_providers
+  setup :fake_working_directory
+  setup :fake_providers
 
   spex "A failed migration leaves the old version serving" do
     scenario "the deploy stops and the previous version is still live" do
@@ -40,13 +40,21 @@ defmodule CodeMySpecSpex.Story966.Criterion8008Spex do
       end
 
       when_ "a deploy's migration fails partway", context do
-        # The next deploy is set to fail; nothing else changes.
-        stage_deploy(context, :migrate_fails)
+        # The next deploy's migration is set to fail; nothing else changes.
+        #
+        # Said to the shell rather than staged as a script. `stage_deploy/2`
+        # wrote a `bin/deploy` that exits 1 on `migrate`, which needs a real
+        # filesystem to execute — under the modelled shell the script is a file
+        # nobody runs, so the deploy succeeded and the criterion read that as
+        # the step failing to stop.
+        migration_fails(context)
 
-        html =
-          context.view
-          |> element("[data-test='setup-step'][data-step='deploy'] [data-test='run-step']")
-          |> render_click()
+        context.view
+        |> element("[data-test='setup-step'][data-step='deploy'] [data-test='run-step']")
+        |> render_click()
+
+        await_step(context.view, :deploy)
+        html = render(context.view)
 
         {:ok, Map.put(context, :html, html)}
       end

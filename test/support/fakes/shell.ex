@@ -172,7 +172,7 @@ defmodule CodeMySpecSpex.Fakes.Shell do
   defp run(_env, command, args, opts) do
     case Path.basename(command) do
       "deploy" ->
-        {"deployed #{Enum.join(args, " ")}\n", 0}
+        deploy(args)
 
       # Run from here the script is handed its environment through `:env`
       # rather than through shell exports, so the bucket comes from there.
@@ -186,6 +186,25 @@ defmodule CodeMySpecSpex.Fakes.Shell do
         unmodelled(command, args)
     end
   end
+
+  # `bin/deploy migrate <env>` is the one subcommand with a failure worth
+  # modelling: 966/8008 is that a migration which fails leaves the previous
+  # version serving, and the deploy step tells them apart by exit status.
+  # Injected rather than inferred — nothing here knows what a migration would
+  # do, and a fake that guessed would be deciding the criterion.
+  defp deploy(["migrate" | _] = args) do
+    case Application.get_env(:code_my_spec, :memory_shell_migration) do
+      :fails ->
+        {"** (Postgrex.Error) ERROR 42P07 (duplicate_table) relation \"posts\" already exists\n" <>
+           "    (ecto_sql) lib/ecto/adapters/sql.ex:1054: Ecto.Adapters.SQL.raise_sql_call_error/1\n",
+         1}
+
+      _ ->
+        {"deployed #{Enum.join(args, " ")}\n", 0}
+    end
+  end
+
+  defp deploy(args), do: {"deployed #{Enum.join(args, " ")}\n", 0}
 
   # `bin/backup` reports what it did in `key=…` / `rows=…` lines, and the step
   # takes the script's word for the key because the script is what wrote it.

@@ -295,6 +295,17 @@ defmodule CodeMySpecSpex.Case do
 
   Shared `Req.Test` mode, because the LiveView runs in its own process and a
   stub is otherwise scoped to the process that installed it.
+
+  ## Pair it with `fake_working_directory/1`
+
+  Half of setup is HTTP and half is a subprocess. This handles the first half
+  only, so a spex that installs it alone still shells out for real — and the
+  server step's first `ssh` goes to the TEST-NET address the Hetzner fake hands
+  back, which never answers. That surfaced as 966/8003 timing out after three
+  minutes with a stack in `Phoenix.LiveViewTest.call/2`: the click blocks
+  behind the subprocess, so the report names the LiveView and not the half that
+  is missing. Unless a criterion's subject is a real binary — 967's encryption,
+  964/7987's scan of the working tree — use both.
   """
   def fake_providers(context) do
     Req.Test.set_req_test_to_shared(%{})
@@ -500,6 +511,24 @@ defmodule CodeMySpecSpex.Case do
     name = Fixtures.repository_name(project)
 
     Fakes.GitHub.add_repository(fake(context, :github), owner, name)
+
+    context
+  end
+
+  @doc """
+  The migration fails.
+
+  966/8008's premise: a deploy whose migration does not apply leaves the
+  previous version serving, rather than swapping traffic to something that
+  cannot boot. The deploy step tells the two apart by `bin/deploy migrate`'s
+  exit status, and nothing on the shell side knows what a migration would do —
+  so this is stated, which also puts the failure in the spex where a reader
+  looks for it.
+  """
+  def migration_fails(context) do
+    previous = Application.get_env(:code_my_spec, :memory_shell_migration)
+    Application.put_env(:code_my_spec, :memory_shell_migration, :fails)
+    on_exit(fn -> Application.put_env(:code_my_spec, :memory_shell_migration, previous) end)
 
     context
   end

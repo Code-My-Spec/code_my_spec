@@ -15,12 +15,15 @@ defmodule CodeMySpecSpex.Story966.Criterion8003Spex do
 
   @endpoint CodeMySpecWeb.Endpoint
 
-  @cassette "966_8003_hetzner_server_create_ok"
-
   setup :register_log_in_setup_account
   setup :setup_active_project
   setup :devops_on
-  setup :connect_providers
+  setup :fake_providers
+  # And a modelled shell. Without one the step shells out for real — `ssh` to
+  # a TEST-NET address the fake handed back — and the click blocks behind a
+  # subprocess that will never answer, which arrives as the whole test timing
+  # out three minutes later with a stack in `Phoenix.LiveViewTest.call/2`.
+  setup :fake_working_directory
 
   spex "The server shows up in Sam's own console" do
     scenario "the provisioned server is recorded under Sam's own account" do
@@ -35,14 +38,16 @@ defmodule CodeMySpecSpex.Story966.Criterion8003Spex do
       end
 
       when_ "the server step has run", context do
-        html =
-          with_provider_cassette(@cassette, fn ->
-            paste_provider_credentials(context.view)
+        paste_provider_credentials(context.view)
 
-            context.view
-            |> element("[data-test='setup-step'][data-step='server'] [data-test='run-step']")
-            |> render_click()
-          end)
+        context.view
+        |> element("[data-test='setup-step'][data-step='server'] [data-test='run-step']")
+        |> render_click()
+
+        # Waited for, then read: the step runs under a supervised task, so
+        # `render_click/1` returns while it is still running.
+        await_step(context.view, :server)
+        html = render(context.view)
 
         {:ok, Map.put(context, :html, html)}
       end
