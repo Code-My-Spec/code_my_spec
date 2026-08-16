@@ -44,7 +44,10 @@ defmodule CodeMySpecSpex.Fakes.StorageWiringTest do
 
     on_exit(fn -> Application.put_env(:code_my_spec, CodeMySpec.Content.S3Client, previous) end)
 
-    %{credentials: [access_key_id: "fake-id", secret_access_key: "fake-secret", region: "fsn1"]}
+    %{
+      agent: agent,
+      credentials: [access_key_id: "fake-id", secret_access_key: "fake-secret", region: "fsn1"]
+    }
   end
 
   test "listing buckets through ExAws reaches the fake", %{credentials: creds} do
@@ -68,5 +71,53 @@ defmodule CodeMySpecSpex.Fakes.StorageWiringTest do
   test "put_lifecycle reaches the fake", %{credentials: creds} do
     {:ok, _} = Storage.ensure_bucket("sams-dumps", creds)
     assert :ok = Storage.put_lifecycle("sams-dumps", 30, creds)
+  end
+
+  # Setting a lifecycle rule is `PUT /<bucket>/?lifecycle` — the create-bucket
+  # request plus a query — so the create clause, which matched any query, was
+  # swallowing it. The rule was never stored, and criterion 8016 read a bucket
+  # with no retention on it while the step that set one reported success.
+  test "a lifecycle rule survives being set", %{credentials: creds} do
+    {:ok, _} = Storage.ensure_bucket("sams-dumps", creds)
+    :ok = Storage.put_lifecycle("sams-dumps", 30, creds)
+
+    assert {:ok, days} = Storage.get_lifecycle("sams-dumps", creds)
+    assert days == 30
+  end
+
+  # Every reader of a listing is asking a question about time — is last night's
+  # dump there, is this one past its window. A constant `LastModified` makes
+  # every dump the same age, which is either always fresh or always stale
+  # depending on the day the suite runs.
+  test "an object is listed with the time it was put", %{credentials: creds} do
+    {:ok, _} = Storage.ensure_bucket("sams-dumps", creds)
+    :ok = Storage.put_object("sams-dumps", "dumps/prod/one.sql.gz", "PGDMP", creds)
+
+    {:ok, [dump]} = Storage.list_dumps("sams-dumps", creds, prefix: "dumps/")
+
+    {:ok, taken_at, _} = DateTime.from_iso8601(dump.taken_at)
+    assert DateTime.diff(DateTime.utc_now(), taken_at, :second) < 60
+  end
+
+  # The bucket really does remove them, which is the whole of 8016: retention
+  # enforced rather than hoped for. A fake that listed everything it was ever
+  # given would fail that criterion against a rule working perfectly.
+  test "an object past the window is not listed", %{credentials: creds, agent: agent} do
+    {:ok, _} = Storage.ensure_bucket("sams-dumps", creds)
+    :ok = Storage.put_lifecycle("sams-dumps", 14, creds)
+
+    Fakes.Storage.put_object(
+      agent,
+      "sams-dumps",
+      "dumps/prod/old.sql.gz",
+      "PGDMP",
+      DateTime.add(DateTime.utc_now(), -30, :day)
+    )
+
+    Fakes.Storage.put_object(agent, "sams-dumps", "dumps/prod/new.sql.gz", "PGDMP")
+
+    {:ok, dumps} = Storage.list_dumps("sams-dumps", creds, prefix: "dumps/")
+
+    assert Enum.map(dumps, & &1.key) == ["dumps/prod/new.sql.gz"]
   end
 end

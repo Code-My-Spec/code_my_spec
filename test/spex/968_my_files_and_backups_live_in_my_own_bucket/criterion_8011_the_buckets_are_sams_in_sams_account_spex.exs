@@ -51,9 +51,6 @@ defmodule CodeMySpecSpex.Story968.Criterion8011Spex do
           |> Floki.parse_document!()
           |> Floki.find("[data-test='provisioned-resource'][data-kind='bucket']")
 
-
-
-
         # Anchor: buckets were recorded at all.
         assert buckets != [], "expected the storage step to record the buckets it created"
 

@@ -18,21 +18,15 @@ defmodule CodeMySpecSpex.Story968.Criterion8054Spex do
 
   @endpoint CodeMySpecWeb.Endpoint
 
-  @cassette "968_8054_backup_step_proves_restore_before_done"
-
   @given_cassette "968_8054_storage_ready"
 
   setup :register_log_in_setup_account
   setup :setup_active_project
   setup :devops_on
   # The generated deploy files land on disk, and the backups step reads them.
-  setup :real_working_directory
-  setup :connect_providers
+  setup :fake_working_directory
+  setup :fake_providers
   setup :fleet_backup_database
-  # The restore this criterion is about happens on the box: the step SSHes
-  # there, delivers `bin/backup` and runs it. Without a reachable box the step
-  # stops on its preconditions and the restore proof is never attempted.
-  setup :backups_on_fleet_box
 
   spex "Sam knows he has a backup, not just a file" do
     scenario "the backup step proves a restore before it reports done" do
@@ -52,18 +46,27 @@ defmodule CodeMySpecSpex.Story968.Criterion8054Spex do
         # Storage only: the backup step is what the `when_` runs, and
         # running it here too would make the criterion assert about a second
         # invocation rather than the first.
-        run_steps(view, [:storage], @given_cassette)
+        # The server first: the dump runs on the environment's own box, and
+        # the server step is what mints the key that gets there. Storage next,
+        # because dumps land in the bucket it makes. Not backups — that is what
+        # the `when_` runs, and running it here would make the criterion assert
+        # about a second invocation rather than the first.
+        run_steps(view, [:server, :storage])
 
         {:ok, Map.put(context, :view, view)}
       end
 
       when_ "it verifies itself", context do
-        html =
-          with_full_cassette @cassette do
-            context.view
-            |> element("[data-test='setup-step'][data-step='backups'] [data-test='run-step']")
-            |> render_click()
-          end
+        context.view
+        |> element("[data-test='setup-step'][data-step='backups'] [data-test='run-step']")
+        |> render_click()
+
+        # Waited for, then read. The step runs under a supervised task because
+        # a dump takes longer than a LiveView event may, so `render_click/1`
+        # returns while it is still running and the proof this criterion reads
+        # is not on the page yet.
+        await_step(context.view, :backups)
+        html = render(context.view)
 
         {:ok, Map.put(context, :html, html)}
       end

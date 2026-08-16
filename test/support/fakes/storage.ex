@@ -33,6 +33,23 @@ defmodule CodeMySpecSpex.Fakes.Storage do
   @doc "Fresh storage. One per test."
   def new, do: %{buckets: %{}, lifecycles: %{}}
 
+  @doc """
+  Put an object in without going through S3.
+
+  For the one caller that is not an S3 client: `bin/backup` uploads its dump
+  from the box, and in the shell fake that upload has to land somewhere or the
+  listing criterion 8014 reads reports no dumps after a run that reported
+  success — the precise failure story 968 exists to catch, reported falsely.
+  """
+  def put_object(agent, bucket, key, body, taken_at \\ nil) do
+    stamp = taken_at || DateTime.utc_now()
+
+    Agent.update(agent, fn state ->
+      objects = state.buckets |> Map.get(bucket, %{}) |> Map.put(key, {body, stamp})
+      %{state | buckets: Map.put(state.buckets, bucket, objects)}
+    end)
+  end
+
   def call(conn, agent) do
     conn = Conn.fetch_query_params(conn)
     {:ok, body, conn} = read_body(conn)
@@ -84,7 +101,17 @@ defmodule CodeMySpecSpex.Fakes.Storage do
     {{200, [], list_buckets_xml(Map.keys(state.buckets))}, state}
   end
 
-  defp route("PUT", bucket, "", _body, _params, state) do
+  # Every sub-resource before this one, because "create the bucket" is `PUT
+  # /<bucket>/` with *no* query and this clause matched it with any. The
+  # lifecycle rule is the same request plus `?lifecycle`, so it was being
+  # swallowed here and quietly creating an already-existing bucket: the rule
+  # was never stored, `GET ?lifecycle` 404'd, and criterion 8016 read a bucket
+  # with no retention on it while the step that set one reported success.
+  defp route("PUT", bucket, "", body, %{"lifecycle" => _}, state) do
+    {{200, [], ""}, %{state | lifecycles: Map.put(state.lifecycles, bucket, body)}}
+  end
+
+  defp route("PUT", bucket, "", _body, params, state) when map_size(params) == 0 do
     {{200, [], ""}, %{state | buckets: Map.put_new(state.buckets, bucket, %{})}}
   end
 
@@ -97,12 +124,9 @@ defmodule CodeMySpecSpex.Fakes.Storage do
      }}
   end
 
-  # -- lifecycle: written, and readable back, because 8016 turns on the
-  # difference between setting a rule and pruning by hand --
-
-  defp route("PUT", bucket, "", body, %{"lifecycle" => _}, state) do
-    {{200, [], ""}, %{state | lifecycles: Map.put(state.lifecycles, bucket, body)}}
-  end
+  # -- lifecycle: written above (before the bucket-create clause could swallow
+  # it), and readable back, because 8016 turns on the difference between
+  # setting a rule and pruning by hand --
 
   defp route("GET", bucket, "", _body, %{"lifecycle" => _}, state) do
     case Map.get(state.lifecycles, bucket) do
@@ -114,27 +138,49 @@ defmodule CodeMySpecSpex.Fakes.Storage do
   # -- objects --
 
   defp route("PUT", bucket, key, body, _params, state) do
-    objects = state.buckets |> Map.get(bucket, %{}) |> Map.put(key, body)
+    objects = state.buckets |> Map.get(bucket, %{}) |> Map.put(key, {body, DateTime.utc_now()})
 
     {{200, [{"etag", ~s("#{:erlang.phash2(body)}")}], ""},
      %{state | buckets: Map.put(state.buckets, bucket, objects)}}
   end
 
+  # Expired objects are not listed, because the bucket really does remove them.
+  #
+  # Criterion 8016 is "backups past the retention window are gone", and its
+  # whole point is that the *bucket* enforces it rather than a script somebody
+  # hopes ran. A fake that listed every object it was ever given would fail
+  # that criterion against a lifecycle rule that is working perfectly, and one
+  # that ignored the rule would pass it against no rule at all.
   defp route("GET", bucket, "", _body, params, state) do
-    keys =
+    listed =
       state.buckets
       |> Map.get(bucket, %{})
-      |> Map.keys()
-      |> Enum.filter(&String.starts_with?(&1, params["prefix"] || ""))
-      |> Enum.sort()
+      |> Enum.filter(fn {key, {_body, _stamp}} ->
+        String.starts_with?(key, params["prefix"] || "")
+      end)
+      |> Enum.reject(fn {_key, {_body, stamp}} -> expired?(stamp, state.lifecycles[bucket]) end)
+      |> Enum.sort_by(&elem(&1, 0))
 
-    {{200, [], list_objects_xml(bucket, keys)}, state}
+    {{200, [], list_objects_xml(bucket, listed)}, state}
+  end
+
+  defp expired?(_stamp, nil), do: false
+
+  defp expired?(stamp, days) when is_integer(days) do
+    DateTime.diff(DateTime.utc_now(), stamp, :day) > days
+  end
+
+  defp expired?(stamp, lifecycle) do
+    case Regex.run(~r/<Days>(\d+)<\/Days>/, to_string(lifecycle)) do
+      [_, days] -> expired?(stamp, String.to_integer(days))
+      _ -> false
+    end
   end
 
   defp route("GET", bucket, key, _body, _params, state) do
     case state.buckets |> Map.get(bucket, %{}) |> Map.get(key) do
       nil -> {{404, [], error_xml("NoSuchKey")}, state}
-      body -> {{200, [], body}, state}
+      {body, _stamp} -> {{200, [], body}, state}
     end
   end
 
@@ -158,16 +204,21 @@ defmodule CodeMySpecSpex.Fakes.Storage do
     """
   end
 
-  defp list_objects_xml(bucket, keys) do
+  # Each object's own timestamp, not a fixed one. Everything that reads a
+  # listing reads it to answer a question about *time* — is last night's dump
+  # there, is this one past its window — and a constant makes every dump the
+  # same age, which is either always fresh or always stale depending on the day
+  # the suite runs.
+  defp list_objects_xml(bucket, listed) do
     contents =
-      Enum.map_join(keys, "", fn key ->
+      Enum.map_join(listed, "", fn {key, {_body, stamp}} ->
         "<Contents><Key>#{key}</Key><Size>1</Size>" <>
-          "<LastModified>2026-01-01T00:00:00.000Z</LastModified></Contents>"
+          "<LastModified>#{DateTime.to_iso8601(stamp)}</LastModified></Contents>"
       end)
 
     """
     <?xml version="1.0" encoding="UTF-8"?>
-    <ListBucketResult><Name>#{bucket}</Name><KeyCount>#{length(keys)}</KeyCount>#{contents}</ListBucketResult>
+    <ListBucketResult><Name>#{bucket}</Name><KeyCount>#{length(listed)}</KeyCount>#{contents}</ListBucketResult>
     """
   end
 

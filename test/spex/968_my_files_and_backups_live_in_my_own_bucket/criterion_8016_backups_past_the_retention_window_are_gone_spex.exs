@@ -16,21 +16,13 @@ defmodule CodeMySpecSpex.Story968.Criterion8016Spex do
 
   @endpoint CodeMySpecWeb.Endpoint
 
-  @cassette "hetzner_bucket_list_dumps_after_expiry"
-
-  @given_cassette "968_8016_backups_installed"
-
   setup :register_log_in_setup_account
   setup :setup_active_project
   setup :devops_on
   # The generated deploy files land on disk, and the backups step reads them.
-  setup :real_working_directory
-  setup :connect_providers
+  setup :fake_working_directory
+  setup :fake_providers
   setup :fleet_backup_database
-  # The retention this criterion reads is declared by the backup step, which
-  # runs on the box. Without a reachable box the step stops on its
-  # preconditions and declares nothing.
-  setup :backups_on_fleet_box
 
   spex "Backups past the retention window are gone" do
     scenario "no dump older than the retention window remains" do
@@ -48,18 +40,30 @@ defmodule CodeMySpecSpex.Story968.Criterion8016Spex do
         view |> element("[data-test='generate-project']") |> render_click()
         paste_storage_credentials(view)
 
-        run_steps(view, [:storage, :backups], @given_cassette)
+        # The boxes first: `bin/backup` runs on the environment's own server,
+        # and the server step is what mints the key that gets there.
+        run_steps(view, [:server, :storage, :backups])
+
+        # A dump from before the window, which is what "backups have been
+        # running longer than the retention window" states. Without one the
+        # assertion below has only this run's fresh dumps to look at and passes
+        # whether or not anything expires them — which is the single thing this
+        # criterion exists to check.
+        old_dump_in_bucket(
+          context,
+          CodeMySpecSpex.Fixtures.bucket_name(context.project, "uat"),
+          "uat",
+          30
+        )
 
         {:ok, Map.put(context, :view, view)}
       end
 
       when_ "Sam lists the bucket", context do
         html =
-          with_provider_cassette(@cassette, fn ->
-            context.view
-            |> element("[data-test='backups-refresh']")
-            |> render_click()
-          end)
+          context.view
+          |> element("[data-test='backups-refresh']")
+          |> render_click()
 
         {:ok, Map.put(context, :html, html)}
       end

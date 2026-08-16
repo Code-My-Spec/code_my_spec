@@ -18,9 +18,12 @@ defmodule CodeMySpecSpex.Fakes.GitHubTest do
 
   defp request(agent, method, path, body \\ nil) do
     Req.new(method: method, url: "https://api.github.com" <> path, plug: &GitHub.call(&1, agent))
-    |> then(fn req -> if body, do: Req.merge(req, json: body), else: req end)
+    |> with_body(body)
     |> Req.request!()
   end
+
+  defp with_body(req, nil), do: req
+  defp with_body(req, body), do: Req.merge(req, json: body)
 
   test "a created repository is readable back", %{agent: agent} do
     assert %{status: 201, body: repo} = request(agent, :post, "/user/repos", %{"name" => "app"})

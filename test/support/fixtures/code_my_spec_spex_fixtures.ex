@@ -856,6 +856,9 @@ defmodule CodeMySpecSpex.Fixtures do
   @doc "The project as the database has it, for a premise set after the fixture."
   def reload_project(project), do: CodeMySpec.Repo.get!(project.__struct__, project.id)
 
+  @doc "The bucket an environment's dumps land in, named the way the app names it."
+  defdelegate bucket_name(project, environment), to: CodeMySpec.Provisioning.Storage
+
   @doc """
   Write the deploy boilerplate into an environment, through the generator that
   really writes it.

@@ -362,6 +362,14 @@ defmodule CodeMySpecSpex.Case do
     cloudflare = Map.fetch!(agents, CodeMySpec.Provisioning.Cloudflare)
     previous_dns = Application.get_env(:code_my_spec, CodeMySpec.Provisioning.Dns, [])
 
+    # Where `bin/backup` uploads to. The shell fake is configured as a module
+    # rather than an instance, so the bucket it writes into has to reach it
+    # some other way — and it has to be *this* test's storage, or a dump would
+    # land where nothing is looking.
+    previous_storage = Application.get_env(:code_my_spec, :memory_shell_storage)
+    Application.put_env(:code_my_spec, :memory_shell_storage, Map.fetch!(agents, S3Client))
+    on_exit(fn -> Application.put_env(:code_my_spec, :memory_shell_storage, previous_storage) end)
+
     Application.put_env(
       :code_my_spec,
       CodeMySpec.Provisioning.Dns,
@@ -423,6 +431,33 @@ defmodule CodeMySpecSpex.Case do
 
   @doc "Their names, sorted — what a criterion counting boxes actually reads."
   def server_names(context), do: context |> servers() |> Enum.map(& &1["name"]) |> Enum.sort()
+
+  @doc """
+  A dump that was taken days ago.
+
+  "Backups have been running longer than the retention window" is a premise
+  about the past, and a run that has only just happened cannot supply it: with
+  nothing but fresh dumps, "no dump older than the window remains" passes
+  whether or not anything expires them, which is the one thing criterion 8016
+  is about.
+
+  Put straight into the bucket, because what is being stated is that a dump
+  exists and is old — not that the script ran again.
+  """
+  def old_dump_in_bucket(context, bucket, environment, age_days) do
+    taken_at = DateTime.utc_now() |> DateTime.add(-age_days, :day)
+    stamp = taken_at |> DateTime.to_iso8601() |> String.replace(":", "-")
+
+    Fakes.Storage.put_object(
+      fake(context, :storage),
+      bucket,
+      "dumps/#{environment}/app-#{stamp}.sql.gz",
+      "-- an old pg_dump --\n",
+      taken_at
+    )
+
+    context
+  end
 
   @doc """
   Fetch a host the way a visitor's browser would.
@@ -3471,6 +3506,35 @@ defmodule CodeMySpecSpex.Case do
         {:ok, Map.put(context, :view, view)}
       end
   """
+  @doc """
+  Run steps in order through the page, against fakes.
+
+  The same sequence as `run_steps/4` with no cassette to name — the providers
+  are wired by `fake_providers/1`, so there is no recording to keep in step
+  with the code and nothing to re-record when a step learns to call something
+  new.
+
+  Still one at a time, waiting for each: clicking Run returns while the step is
+  still running (a deploy cannot be held inside a LiveView event), so a caller
+  that fired them all would run them concurrently and assert against whichever
+  finished first.
+  """
+  defmacro run_steps(view, keys) do
+    quote do
+      view = unquote(view)
+
+      for key <- unquote(keys) do
+        view
+        |> Phoenix.LiveViewTest.element(
+          "[data-test='setup-step'][data-step='#{key}'] [data-test='run-step']"
+        )
+        |> Phoenix.LiveViewTest.render_click()
+
+        CodeMySpecSpex.Case.await_step(view, key)
+      end
+    end
+  end
+
   # A macro, and recording both halves: the deploy and backups steps shell out
   # as well as calling providers, and a cassette holding only the HTTP half
   # passes while recording then fails on replay — naming the subprocess, which

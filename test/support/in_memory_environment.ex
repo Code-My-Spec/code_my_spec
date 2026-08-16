@@ -18,6 +18,7 @@ defmodule CodeMySpec.Support.InMemoryEnvironment do
   @behaviour CodeMySpec.Environments.EnvironmentsBehaviour
 
   alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.Environments.Local
 
   @impl true
   def create(opts \\ []) do
@@ -106,7 +107,7 @@ defmodule CodeMySpec.Support.InMemoryEnvironment do
   @impl true
   def cmd(env, command, args, opts) do
     case Application.get_env(:code_my_spec, :memory_shell) do
-      nil -> CodeMySpec.Environments.Local.cmd(env, command, args, opts)
+      nil -> Local.cmd(env, command, args, opts)
       module -> memory_cmd(env, command, args, opts, module)
     end
   end
@@ -145,7 +146,7 @@ defmodule CodeMySpec.Support.InMemoryEnvironment do
   def exec_file_exists?(%Environment{} = env, path) do
     case Application.get_env(:code_my_spec, :memory_shell) do
       nil ->
-        CodeMySpec.Environments.Local.exec_file_exists?(env, path)
+        Local.exec_file_exists?(env, path)
 
       _module ->
         key = normalize(path, env.cwd)

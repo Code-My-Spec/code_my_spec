@@ -30,6 +30,7 @@ defmodule CodeMySpecSpex.Fakes.Shell do
   """
 
   alias CodeMySpec.Environments
+  alias CodeMySpecSpex.Fakes.Storage
 
   # What `dump` says went in and `restore` says came back. One number, because
   # the step compares them and a mismatch is reported as data loss.
@@ -150,12 +151,21 @@ defmodule CodeMySpecSpex.Fakes.Shell do
   # and that the environment named reaches the answer. The work it stands for
   # (kamal pushing an image, running a migration, swapping traffic) happens on
   # a box, and nothing on this side reads it.
-  defp run(_env, command, args, _opts) do
+  defp run(_env, command, args, opts) do
     case Path.basename(command) do
-      "deploy" -> {"deployed #{Enum.join(args, " ")}\n", 0}
-      "backup" -> backup(args)
-      "migrate" -> {"migrated\n", 0}
-      _ -> unmodelled(command, args)
+      "deploy" ->
+        {"deployed #{Enum.join(args, " ")}\n", 0}
+
+      # Run from here the script is handed its environment through `:env`
+      # rather than through shell exports, so the bucket comes from there.
+      "backup" ->
+        backup(args, opts |> Keyword.get(:env, []) |> Enum.into(%{}) |> Map.get("BACKUP_BUCKET"))
+
+      "migrate" ->
+        {"migrated\n", 0}
+
+      _ ->
+        unmodelled(command, args)
     end
   end
 
@@ -166,15 +176,47 @@ defmodule CodeMySpecSpex.Fakes.Shell do
   # `dump` printed, and a restore that comes back short is reported as "a
   # restore that loses data is not a backup". A fake answering a different
   # number each time would produce exactly that failure, about nothing.
-  defp backup(args), do: args |> Enum.map(&unquote_arg/1) |> backup_command()
+  defp backup(args, bucket), do: args |> Enum.map(&unquote_arg/1) |> backup_command(bucket)
 
-  defp backup_command(["dump", environment | _]) do
-    {"key=#{dump_key(environment)}\nrows=#{@backup_rows}\n", 0}
+  # A dump that lands somewhere. `bin/backup dump` pg_dumps and uploads to the
+  # bucket, and the listing that criterion 8014 reads is an ordinary
+  # `ListObjects` against that bucket — so a fake that only prints a key
+  # produces a report of "no dumps" after a run that reported success, which is
+  # the exact failure 968 exists to catch and would be reporting falsely.
+  #
+  # The bucket travels in the command as `BACKUP_BUCKET`, the same way the real
+  # script learns it, and the object goes into the storage fake if one is
+  # wired. No storage fake means no upload rather than an error: not every
+  # criterion running a backup cares where it landed.
+  defp backup_command(["dump", environment | _], bucket) do
+    key = dump_key(environment)
+    put_object(bucket, key)
+
+    {"key=#{key}\nrows=#{@backup_rows}\n", 0}
   end
 
-  defp backup_command(["restore" | _]), do: {"rows=#{@backup_rows}\n", 0}
-  defp backup_command(["install_schedule" | _]), do: {"installed\n", 0}
-  defp backup_command(_args), do: {"", 0}
+  defp backup_command(["restore" | _], _bucket), do: {"rows=#{@backup_rows}\n", 0}
+  defp backup_command(["install_schedule" | _], _bucket), do: {"installed\n", 0}
+  defp backup_command(_args, _bucket), do: {"", 0}
+
+  # `cd /opt/… && BACKUP_BUCKET='b' AWS_… bin/backup dump 'uat'` — the exports
+  # come *before* the script name, so reading them off the arguments found
+  # nothing and every remote dump uploaded into a bucket called nil.
+  defp bucket_from(command) do
+    case Regex.run(~r/BACKUP_BUCKET='?([^'\s]+)'?/, command) do
+      [_, bucket] -> bucket
+      _ -> nil
+    end
+  end
+
+  defp put_object(nil, _key), do: :ok
+
+  defp put_object(bucket, key) do
+    case Application.get_env(:code_my_spec, :memory_shell_storage) do
+      nil -> :ok
+      agent -> Storage.put_object(agent, bucket, key, "-- pg_dump --\n")
+    end
+  end
 
   # Over ssh the arguments arrive shell-quoted — `remote_command/3` wraps every
   # one in single quotes because a secret access key is not guaranteed to be
@@ -188,10 +230,19 @@ defmodule CodeMySpecSpex.Fakes.Shell do
     end
   end
 
+  # The key the generated script really writes: `dumps/<environment>/<app>-
+  # <stamp>.sql.gz`. Under `dumps/` because that is the prefix the app lists to
+  # answer "are backups still arriving?" — the script says so in its own
+  # comment, and a dump written anywhere else is invisible to the listing,
+  # which is how this fake first reported no dumps after a run that had just
+  # uploaded one.
+  #
   # Dated, because criterion 8014 asserts a dump is from *that run* — a key
   # with no date in it cannot answer that, however plausible it looks.
   defp dump_key(environment) do
-    "backups/#{environment}/#{DateTime.utc_now() |> DateTime.to_iso8601() |> String.replace(":", "-")}.sql.gz"
+    stamp = DateTime.utc_now() |> DateTime.to_iso8601() |> String.replace(":", "-")
+
+    "dumps/#{environment}/app-#{stamp}.sql.gz"
   end
 
   # A box on the far side of the ssh, answering about itself.
@@ -213,7 +264,8 @@ defmodule CodeMySpecSpex.Fakes.Shell do
       # `:run` and the command arrives here as one shell line rather than as
       # argv. Answering it in one place keeps the dump and the restore telling
       # the same story, which is what the step checks.
-      String.contains?(command, "bin/backup") -> command |> backup_args() |> backup() |> elem(0)
+      String.contains?(command, "bin/backup") ->
+        command |> backup_args() |> backup(bucket_from(command)) |> elem(0)
       true -> ""
     end
   end

@@ -17,25 +17,17 @@ defmodule CodeMySpecSpex.Story968.Criterion8014Spex do
 
   @endpoint CodeMySpecWeb.Endpoint
 
-  @install_cassette "968_8014_backup_schedule_installed"
-  @listing_cassette "hetzner_bucket_list_dumps_after_run"
-
   setup :register_log_in_setup_account
   setup :setup_active_project
   setup :devops_on
-  # The generated deploy files land on disk, and the backups step ships them to
-  # the box with `git archive HEAD` — which needs a committed tree.
-  # `real_working_directory` points at the stub `setup_active_project` makes,
-  # which is not a git repository, so delivery failed with "not a git
-  # repository … tar: This does not look like a tar archive".
-  setup :drill_working_directory
-  setup :connect_providers
-  setup :fleet_backup_database
+  setup :fake_providers
   # The dump runs *on* a box: the step SSHes there, delivers `bin/backup` and
-  # runs it. `real_backup_database` says which database to dump, not where to
-  # run, so without this the step stops on its own preconditions and every
-  # assertion below fails on a premise rather than on backups.
-  setup :backups_on_fleet_box
+  # runs it. That box is why this criterion sat parked — recording it wanted a
+  # machine that could take a systemd unit. In the modelled shell the script
+  # runs, prints the key it wrote, and puts the object in the bucket, which is
+  # the effect this criterion reads.
+  setup :fake_working_directory
+  setup :fleet_backup_database
 
   spex "Last night's dump is there in the morning" do
     scenario "a dump dated from the scheduled run is in the bucket" do
@@ -49,27 +41,31 @@ defmodule CodeMySpecSpex.Story968.Criterion8014Spex do
         # true (story 970).
         view |> element("[data-test='generate-project']") |> render_click()
 
-        # The bucket the dumps land in is real; it goes away with the spex.
-        tear_down_after(context.scope, [:storage])
+        # Hetzner issues object-storage keys only in its console, so they are
+        # pasted per project — without them the backups step pauses asking for
+        # them and never reaches the schedule this criterion is about.
+        paste_storage_credentials(view)
+
+        # The boxes first: `bin/backup` runs on the environment's own server —
+        # where `cms-postgres` resolves — and the server step is what mints the
+        # access key that gets there. Without it the step refuses with "no
+        # server access key on this account", which is true and is about the
+        # step before this one.
+        view
+        |> element("[data-test='setup-step'][data-step='server'] [data-test='run-step']")
+        |> render_click()
+
+        # Backups land in the bucket the storage step makes, so that has to exist
+        # first — otherwise the dump fails with NoSuchBucket, which is true and
+        # says nothing about the schedule under test.
+        view
+        |> element("[data-test='setup-step'][data-step='storage'] [data-test='run-step']")
+        |> render_click()
 
         html =
-          with_full_cassette @install_cassette do
-            # Hetzner issues object-storage keys only in its console, so they are
-            # pasted per project — without them the backups step pauses asking for
-            # them and never reaches the schedule this criterion is about.
-            paste_storage_credentials(view)
-
-            # Backups land in the bucket the storage step makes, so that has to exist
-            # first — otherwise the dump fails with NoSuchBucket, which is true and
-            # says nothing about the schedule under test.
-            view
-            |> element("[data-test='setup-step'][data-step='storage'] [data-test='run-step']")
-            |> render_click()
-
-            view
-            |> element("[data-test='setup-step'][data-step='backups'] [data-test='run-step']")
-            |> render_click()
-          end
+          view
+          |> element("[data-test='setup-step'][data-step='backups'] [data-test='run-step']")
+          |> render_click()
 
         assert html =~ ~r/data-step="backups"[^>]*data-state="done"/,
                "expected the backup step to complete before checking for dumps, got: " <>
@@ -80,11 +76,9 @@ defmodule CodeMySpecSpex.Story968.Criterion8014Spex do
 
       when_ "a scheduled run has passed", context do
         html =
-          with_provider_cassette(@listing_cassette, fn ->
-            context.view
-            |> element("[data-test='backups-refresh']")
-            |> render_click()
-          end)
+          context.view
+          |> element("[data-test='backups-refresh']")
+          |> render_click()
 
         {:ok, Map.put(context, :html, html)}
       end
