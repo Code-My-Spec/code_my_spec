@@ -233,6 +233,107 @@ defmodule CodeMySpecSpex.Case do
   deliberate act it is.
   """
   def connect_providers(%{scope: scope} = context) do
+    connect_providers_for_real(context, scope)
+  end
+
+  @doc """
+  Wire the provider fakes in place of the real clients.
+
+  An alternative to `connect_providers` for criteria whose claim is about *our
+  logic* — sequencing, idempotency, what we do when a resource already exists.
+  Those need a provider that remembers what was done to it, which is exactly
+  what a cassette cannot be: a tape answers with what the provider said once,
+  and provisioning's whole difficulty is that the right answer depends on
+  everything that happened before.
+
+  Reality claims — that a box answers over HTTPS, that a message arrives —
+  cannot be faked and should not be. They stay live, in the drill. The split is
+  written down in `test/spex/TESTING_PROVISIONING.md`.
+
+  Each fake is an ordinary `Req` plug over an `Agent`, wired at the seam
+  `config/test.exs` already uses. Nothing in production changes.
+
+  The agents come back in the context so a `given_` can arrange the world it
+  needs — an apex MX already published, a domain already verified — by writing
+  state rather than by recording a session that did it:
+
+      setup :fake_providers
+
+      given_ "Sam already receives mail at his domain", context do
+        apex_mx_exists(context, "astralbi.com")
+        ...
+
+  Shared `Req.Test` mode, because the LiveView runs in its own process and a
+  stub is otherwise scoped to the process that installed it.
+  """
+  def fake_providers(context) do
+    Req.Test.set_req_test_to_shared(%{})
+
+    # The credentials too. A step looks one up before it makes a request, so a
+    # scope with no connection stops on its own precondition and the criterion
+    # reads that as the step having done nothing — which is exactly how this
+    # rewrite first failed, reporting "published no records" for a step that
+    # never ran. The values are placeholders; the fakes do not check them.
+    for provider <- [:github, :cloudflare, :resend] do
+      CodeMySpecSpex.Fixtures.connect_provider(context.scope, provider,
+        access_token: "fake-#{provider}-token",
+        refresh_token: "fake-#{provider}-refresh",
+        expires_at: DateTime.add(DateTime.utc_now(), 3600, :second)
+      )
+    end
+
+    CodeMySpecSpex.Fixtures.store_provider_secrets(context.scope)
+
+    fakes = [
+      {CodeMySpec.Provisioning.Hetzner, CodeMySpecSpex.Fakes.Hetzner,
+       &CodeMySpecSpex.Fakes.Hetzner.new/0},
+      {CodeMySpec.Provisioning.Resend, CodeMySpecSpex.Fakes.Resend,
+       &CodeMySpecSpex.Fakes.Resend.new/0},
+      {CodeMySpec.Provisioning.Cloudflare, CodeMySpecSpex.Fakes.Cloudflare,
+       &CodeMySpecSpex.Fakes.Cloudflare.new/0}
+    ]
+
+    agents =
+      Map.new(fakes, fn {client, fake, init} ->
+        {:ok, agent} = Agent.start_link(init)
+        previous = Application.get_env(:code_my_spec, client, [])
+
+        Application.put_env(
+          :code_my_spec,
+          client,
+          Keyword.merge(previous, api_token: "fake-token", plug: {Req.Test, client})
+        )
+
+        Req.Test.stub(client, &fake.call(&1, agent))
+        on_exit(fn -> Application.put_env(:code_my_spec, client, previous) end)
+
+        {client, agent}
+      end)
+
+    {:ok, fakes: agents}
+  end
+
+  @doc "The agent holding a fake provider's state, for a `given_` to arrange."
+  def fake(%{fakes: fakes}, :hetzner), do: Map.fetch!(fakes, CodeMySpec.Provisioning.Hetzner)
+  def fake(%{fakes: fakes}, :resend), do: Map.fetch!(fakes, CodeMySpec.Provisioning.Resend)
+  def fake(%{fakes: fakes}, :cloudflare), do: Map.fetch!(fakes, CodeMySpec.Provisioning.Cloudflare)
+
+  @doc """
+  Say which zone Sam's account holds.
+
+  A premise, not a step: adopting a zone somebody already owns is the ordinary
+  path, and every criterion that publishes a record starts from one. The fake
+  carries `example.com` by default, so a spex working on any other name has to
+  say so — and a zone that does not exist makes `find_zone/2` answer nothing,
+  which surfaces as a step that published no records rather than as a missing
+  precondition.
+  """
+  def zone_exists(context, name) do
+    Agent.update(fake(context, :cloudflare), fn _ -> CodeMySpecSpex.Fakes.Cloudflare.new(name) end)
+    :ok
+  end
+
+  defp connect_providers_for_real(context, scope) do
     refuse_to_run_on_residue(context)
     hold_recording_lock()
 

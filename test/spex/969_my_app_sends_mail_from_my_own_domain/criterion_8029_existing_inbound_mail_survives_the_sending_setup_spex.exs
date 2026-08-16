@@ -14,125 +14,96 @@ defmodule CodeMySpecSpex.Story969.Criterion8029Spex do
 
   Surface: `CodeMySpecWeb.ProvisioningLive` on the cloud app, driving
   `CodeMySpec.Provisioning.Resend`.
+
+  ## Against fakes, not cassettes
+
+  Rewritten 2026-08-16. The claim here is about *what we do* — that our
+  publishing touches `send` and not `@` — and not about whether Cloudflare
+  stores a record or a resolver can see it. A stateful fake answers that
+  properly and a recording cannot: the assertion is a comparison of the zone
+  before and after, which needs a provider that remembers the before.
+
+  Under cassettes this criterion cost two live recordings and never replayed.
+  The premise had to publish an apex MX for real, register a real domain, and
+  read both back through a page whose mount made its own provider call — and
+  the recording of all that went stale the moment any of those calls changed.
+  Now the premise is one line of state, and the run is milliseconds.
+
+  What is *not* claimed here, deliberately: that the published records
+  resolve. That is a fact about the world and belongs to the drill.
   """
 
   use CodeMySpecSpex.Case
 
+  alias CodeMySpec.Provisioning.Cloudflare
+
   @endpoint CodeMySpecWeb.Endpoint
 
-  @existing_cassette "cloudflare_apex_mx_already_present"
-  # Its own cassette, not 8025's. `with_provider_cassette` deletes the file
-  # when it opens in record mode, so two spex naming the same cassette means
-  # whichever records second erases the first's interactions.
-  @sending_cassette "969_8029_records_published_and_resolved"
+  @domain "astralbi.com"
 
   setup :register_log_in_setup_account
   setup :setup_active_project
   setup :devops_on
-  setup :connect_providers
+  setup :fake_providers
 
   spex "Existing inbound mail survives the sending setup" do
     scenario "apex MX is untouched by publishing the sending records" do
       given_ "Sam already receives mail at his domain", context do
-        # Its own subdomain. Every criterion in this story used one shared name,
-        # so whichever ran second found the first's sending domain already
-        # registered and *adopted* it — and an adopted resource is never torn
-        # down. Recorded alone each one passed; run together they replayed each
-        # other's state.
-        project = own_domain(context.project, "c8029.astralbi.com")
+        own_domain(context.project, @domain)
+        zone_exists(context, @domain)
 
-        # "Already receives mail" has to be true before the step runs, or the
-        # criterion asserts that setup left alone something that was never
-        # there.
-        tear_down_after(context.scope, [:email])
+        # The premise, stated rather than performed. Under cassettes this was a
+        # real publish against a real zone, recorded — and the recording is
+        # what went stale. Here it is the fact the criterion needs: an apex MX
+        # exists, pointing at Sam's own mail host.
+        {:ok, _} =
+          Cloudflare.ensure_dns_record(context.scope, "zone-1", "@", "inbound.sams-host.net",
+            type: "MX",
+            priority: 10
+          )
 
-        # Publishing the apex MX, registering the sending domain and mounting
-        # the page are all real provider calls. Outside a cassette they reach
-        # the live API while recording and the network while replaying, so the
-        # page came up knowing about a verified domain when recording and
-        # nothing when replaying.
-        before =
-          with_provider_cassette(@existing_cassette, fn ->
-            existing_apex_mx(context.scope, project)
+        {:ok, records} = Cloudflare.list_dns_records(context.scope, "zone-1")
 
-            # Published here, not left to the step. Two attempts at the leaner
-            # premise failed on the same wall: the DNS panel lists the records
-            # Resend asks for *and has checked*, so a domain that is merely
-            # registered shows no apex row, and there is no "before" to read.
-            #
-            # The cost is real and worth naming — with the records already in
-            # place the step adopts rather than publishes, so this criterion no
-            # longer proves the step can publish. It still proves what it is
-            # named for: that whatever setup does to the sending records, the
-            # apex MX is the same afterwards. Coverage of the publishing itself
-            # lives in 8025.
-            verified_sending_domains(context.scope, project)
-
-            {:ok, view, _html} =
-              live(context.conn, "/app/projects/#{context.project.id}/provisioning")
-
-            Process.put(:spex_view, view)
-
-            view |> element("[data-test='dns-refresh']") |> render_click()
-
-            # The page *after* the run, not what the click handed back. A step
-            # announces itself with `{:provisioning, :step, …}`, and the
-            # sections this criterion reads are assigned when that arrives —
-            # which is after the event `render_click/1` returns from. Its
-            # return value therefore shows the page before anything was
-            # recorded, and an empty section reads as "nothing happened".
-            render(view)
-          end)
-
-        view = Process.get(:spex_view)
-
-        apex_before = apex_mx(before)
-
-        # Anchor: there really was inbound mail to preserve.
-        assert apex_before != [],
-               "expected an existing apex MX record before the sending setup runs"
-
-        {:ok, context |> Map.put(:view, view) |> Map.put(:apex_before, apex_before)}
+        {:ok, Map.put(context, :before, records)}
       end
 
       when_ "the email step publishes its sending records", context do
-        html =
-          with_provider_cassette(@sending_cassette, fn ->
-            context.view
-            |> element("[data-test='setup-step'][data-step='email'] [data-test='run-step']")
-            |> render_click()
-          end)
+        view = mount_provisioning(context)
 
-        {:ok, Map.put(context, :html, html)}
+        view
+        |> element("[data-test='setup-step'][data-step='email'] [data-test='run-step']")
+        |> render_click()
+
+        CodeMySpecSpex.Case.await_step(view, :email)
+
+        {:ok, records} = Cloudflare.list_dns_records(context.scope, "zone-1")
+
+        {:ok, context |> Map.put(:view, view) |> Map.put(:after, records)}
       end
 
-      then_ "mail sent to his domain still reaches him", context do
-        assert apex_mx(context.html) == context.apex_before,
-               "expected apex MX to be unchanged:\n  before: #{inspect(context.apex_before)}\n  after:  #{inspect(apex_mx(context.html))}"
+      then_ "the apex MX is exactly as it was", context do
+        assert apex(context.after) == apex(context.before),
+               "expected the apex MX to survive the sending setup:\n" <>
+                 "  before: #{inspect(apex(context.before))}\n" <>
+                 "  after:  #{inspect(apex(context.after))}"
 
         {:ok, context}
       end
 
-      then_ "no record inbound delivery depends on was replaced", context do
-        deletions =
-          context.html
-          |> Floki.parse_document!()
-          |> Floki.find("[data-test='dns-record-deleted']")
-          |> Enum.map(&(Floki.attribute(&1, "data-name") |> List.first()))
+      then_ "the sending records went on the send subdomain", context do
+        added = context.after -- context.before
 
-        refute Enum.any?(deletions, &(&1 in ["@", ""])),
-               "expected no apex record to be deleted by the sending setup, deleted: #{inspect(deletions)}"
+        refute added == [],
+               "expected the email step to publish sending records, and it published none"
+
+        refute Enum.any?(added, &(&1["name"] == "@")),
+               "expected nothing published at the apex, got: #{inspect(names(added))}"
 
         {:ok, context}
       end
     end
   end
 
-  defp apex_mx(html) do
-    html
-    |> Floki.parse_document!()
-    |> Floki.find("[data-test='mail-dns-record'][data-type='MX'][data-name='@']")
-    |> Enum.map(&(Floki.attribute(&1, "data-content") |> List.first()))
-    |> Enum.sort()
-  end
+  defp apex(records), do: Enum.filter(records, &(&1["name"] == "@" and &1["type"] == "MX"))
+  defp names(records), do: Enum.map(records, & &1["name"])
 end
