@@ -2143,15 +2143,22 @@ defmodule CodeMySpecWeb.ProvisioningLive do
     # one more time than the recording consumed an interaction that was not
     # there. `refresh_mail/1` re-reads when mail could actually have changed.
     |> then(fn socket ->
-      # One listing for both assigns, resolved lazily so a page with neither
-      # already assigned pays for it once and a page with both pays nothing.
-      domains = fn -> list_domains(socket.assigns.current_scope) end
-
+      # No provider call while mounting. `mail_state/3` and `mail_domains/2`
+      # both reach Resend, and a mount cannot be covered by a cassette — the
+      # idiom everywhere is mount, then act under one — so every page load with
+      # a project domain put a `GET /domains` where no recording could reach
+      # it. On replay that raises `cannot find mock/stub …Resend`, which names
+      # process scoping and sends the reader after a `Req.Test` sharing problem
+      # that is not there.
+      #
+      # `:if={@mail}` on the section means nil is a rendered state, not a
+      # crash: the panel is absent until there is something to say. It fills in
+      # from `refresh_mail/1`, which already runs when the email or inbound
+      # step finishes — the moment its contents could have changed, and inside
+      # whatever cassette the caller opened to run that step.
       socket
-      |> assign_new(:mail, fn -> mail_state(socket.assigns.current_scope, "prod", domains.()) end)
-      |> assign_new(:mail_domains, fn ->
-        mail_domains(socket.assigns.current_scope, domains.())
-      end)
+      |> assign_new(:mail, fn -> nil end)
+      |> assign_new(:mail_domains, fn -> [] end)
     end)
     |> assign_new(:mail_send_result, fn -> nil end)
     |> assign_new(:mail_inbound_result, fn -> nil end)
