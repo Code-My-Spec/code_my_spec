@@ -28,9 +28,19 @@ defmodule CodeMySpecSpex.Fakes.StorageWiringTest do
     {:ok, agent} = Agent.start_link(&Fakes.Storage.new/0)
     previous = Application.get_env(:code_my_spec, CodeMySpec.Content.S3Client, [])
 
+    # A `Req.Test` stub rather than a function plug, because the plug lives in
+    # application env and application env is global. Two async tests each
+    # writing their own function there fight, and the loser gets the other's
+    # fake — or, when the winner wrote `{Req.Test, …}`, `cannot find mock/stub`
+    # for a stub it never installed.
+    #
+    # The tuple is the same for everyone and the stub is per-process, so this
+    # composes with `fake_providers/1` doing the same thing in the spex suite.
     Application.put_env(:code_my_spec, CodeMySpec.Content.S3Client,
-      plug: &Fakes.Storage.call(&1, agent)
+      plug: {Req.Test, CodeMySpec.Content.S3Client}
     )
+
+    Req.Test.stub(CodeMySpec.Content.S3Client, &Fakes.Storage.call(&1, agent))
 
     on_exit(fn -> Application.put_env(:code_my_spec, CodeMySpec.Content.S3Client, previous) end)
 
