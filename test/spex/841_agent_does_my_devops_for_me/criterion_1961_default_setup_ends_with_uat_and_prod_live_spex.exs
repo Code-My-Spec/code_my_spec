@@ -141,10 +141,28 @@ defmodule CodeMySpecSpex.Story841.Criterion1961Spex do
         {:ok, context |> Map.put(:report, report) |> Map.put(:run, run)}
       end
 
-      then_ "setup reports complete", context do
-        assert context.report =~ "Setup is complete",
-               "expected the default plan to finish.\n\nThe run said: #{context.run}\n\n" <>
-                 "The status says: #{context.report}"
+      then_ "every step through the deploy has resources behind it", context do
+        # "UAT and prod live" is the sequence through `deploy`: a repository,
+        # keys, both boxes, the name, the records pointing at them, and the app
+        # serving. `DevopsStatus` lists what is missing as `project/step`
+        # lines, so a step absent from that list has resources behind it.
+        #
+        # Not "Setup is complete", which this asserted before. The steps after
+        # deploy prove things a run cannot cause on its own — the widget's
+        # proof is a message from the deployed site's own client, and it lands
+        # wherever `CODEMYSPEC_WIDGET_URL` points. Recorded from a laptop that
+        # is the dev server behind the tunnel, not the test database this run
+        # watches, so the message arrives somewhere this spex cannot see. The
+        # widget step pauses for it by design — "waiting on a person, not
+        # broken" — and 973 has criteria for that claim already.
+        #
+        # John's call, 2026-08-16, asked directly: end 1961 at "uat and prod
+        # are serving".
+        for step <- ~w(repository secrets server domain dns deploy) do
+          refute context.report =~ "/#{step}",
+                 "expected #{step} to have resources behind it after the default plan.\n\n" <>
+                   "The run said: #{context.run}\n\nThe status says: #{context.report}"
+        end
 
         {:ok, context}
       end
