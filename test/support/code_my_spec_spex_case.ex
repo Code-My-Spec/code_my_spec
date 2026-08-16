@@ -299,6 +299,13 @@ defmodule CodeMySpecSpex.Case do
   def fake_providers(context) do
     Req.Test.set_req_test_to_shared(%{})
 
+    # Which the cassette helpers read, so a `given_` that wraps itself in one
+    # runs against these fakes instead of replaying a file recorded against
+    # somebody's real account.
+    previous_flag = Application.get_env(:code_my_spec, :spex_fakes, false)
+    Application.put_env(:code_my_spec, :spex_fakes, true)
+    on_exit(fn -> Application.put_env(:code_my_spec, :spex_fakes, previous_flag) end)
+
     # And put it back. Shared mode is global to the VM, so a spex that leaves
     # it on changes how *every later spex* resolves a stub — including ones
     # driving cassettes, which then look up a shared stub nobody installed and
@@ -378,6 +385,20 @@ defmodule CodeMySpecSpex.Case do
 
     Req.Test.stub(CodeMySpec.Provisioning.Dns, &Fakes.Resolver.call(&1, cloudflare))
 
+    # The *other* DNS seam, and the last recorded thing in this setup. The
+    # page's "does this record resolve" check goes through `:dns_resolver`,
+    # which in replay reads a table of names recorded on some earlier day — so
+    # a record published in this run resolved only if a past run happened to
+    # write the same name down. Pointed at the zone instead, publishing a
+    # record is what makes it resolve, which is the claim 969/8025 asserts.
+    previous_resolver = Application.get_env(:code_my_spec, :dns_resolver)
+
+    Application.put_env(:code_my_spec, :dns_resolver, fn name, type ->
+      Fakes.Resolver.resolves?(cloudflare, name, type)
+    end)
+
+    on_exit(fn -> Application.put_env(:code_my_spec, :dns_resolver, previous_resolver) end)
+
     # And the deployed app answering its health check. The deploy step runs
     # `bin/deploy` and then asks the hostname whether it came up — with no stub
     # the request reports "no mock or stub for CodeMySpec.Provisioning.Deploy",
@@ -406,6 +427,31 @@ defmodule CodeMySpecSpex.Case do
         200,
         ~s(<html><body><div data-cms-widget><button data-cms-widget-toggle>?</button></div></body></html>)
       )
+    end)
+
+    # And the deployed site accepting a pull trigger. Publishing is
+    # trigger-only by design — CodeMySpec writes the manifest and tells the
+    # site to fetch it — so without this the publish reports "no mock or stub
+    # for CodeMySpec.Content.TriggerClient", which is a harness sentence where
+    # a publishing failure should be.
+    Req.Test.stub(CodeMySpec.Content.TriggerClient, fn conn ->
+      conn
+      |> Plug.Conn.put_resp_content_type("application/json")
+      |> Plug.Conn.send_resp(202, Jason.encode!(%{"sync_id" => "sync-#{System.unique_integer([:positive])}"}))
+    end)
+
+    # And the deployed site serving what was published. `verify_render/2`
+    # fetches the site and looks for the post in the body, so a stub returning
+    # a fixed page would report "rendered" for content that was never
+    # published — and 972/8038's whole subject is content that is *not* served.
+    #
+    # Served out of `content.json`, which is what publishing uploads and what
+    # the site pulls: the post appears on the site exactly when it reached the
+    # bucket.
+    storage = Map.fetch!(agents, S3Client)
+
+    Req.Test.stub(CodeMySpec.Provisioning.ContentPublishing, fn conn ->
+      Plug.Conn.send_resp(conn, 200, published_page(storage))
     end)
 
     on_exit(fn ->
@@ -473,6 +519,26 @@ defmodule CodeMySpecSpex.Case do
     on_exit(fn -> Application.put_env(:code_my_spec, :memory_shell_push, previous) end)
 
     context
+  end
+
+  @doc """
+  The site answers, and does not have the post.
+
+  972/8038's premise: a publish whose objects landed and whose page never
+  appeared. That is a different failure from a site that is down — the
+  pipeline calls it `not_rendered`, and the distinction is the criterion.
+
+  Under recordings it was arranged by pointing the render check at
+  `127.0.0.1:9000`, a host that happened to answer and serve something else.
+  Said directly here, because what matters is what the site returns, not which
+  address it was.
+  """
+  def site_serves_nothing(_context) do
+    Req.Test.stub(CodeMySpec.Provisioning.ContentPublishing, fn conn ->
+      Plug.Conn.send_resp(conn, 200, "<html><body>nothing published here</body></html>")
+    end)
+
+    :ok
   end
 
   @doc """
@@ -546,6 +612,23 @@ defmodule CodeMySpecSpex.Case do
       name when name in ["@", ""] -> zone
       name -> if String.ends_with?(name, zone), do: name, else: "#{name}.#{zone}"
     end
+  end
+
+  # What the site would render, out of the blob publishing uploaded. Every
+  # bucket is searched rather than the project's one, because the stub has no
+  # scope — there is one account per test, so `content.json` is unambiguous,
+  # and a project with nothing published serves nothing.
+  defp published_page(storage) do
+    storage
+    |> Agent.get(& &1.buckets)
+    |> Enum.flat_map(fn {_bucket, objects} ->
+      case Map.get(objects, "content.json") do
+        {body, _stamp} -> [body]
+        _ -> []
+      end
+    end)
+    |> Enum.join("\n")
+    |> then(&"<html><body>#{&1}</body></html>")
   end
 
   @doc """
@@ -2890,28 +2973,22 @@ defmodule CodeMySpecSpex.Case do
   Point publishing at the fleet: MinIO for storage, the fleet site for the
   trigger.
 
-      setup :publishing_to_the_fleet
+      setup :publishing_configured
 
-  A publish is two real things — objects written to S3, and a trigger POSTed to
-  the deployed site — and both have a local counterpart here, so both can be
-  exercised for real rather than against a stranger's Hetzner bucket.
+  A publish is two things — objects written to S3, and a trigger POSTed to the
+  deployed site — and this supplies what both need: a content bucket, storage
+  credentials, a client API URL and a deploy key. Without them the publish
+  refuses outright ("Publishing is not configured"), which is correct and says
+  nothing about the criterion doing the asking.
 
-  This used to argue that they should therefore not be recorded at all: "a
-  cassette answers from a file no matter what the code did". That is true of a
-  *hand-written* cassette and false of one recorded against a real MinIO and a
-  real site. The recording is the real run; replay is the regression check.
-  Skipping the recording did not make the criteria more honest, it made them
-  green only on whichever machine happened to have the fleet up — and for
-  months that machine's site lived in a session scratchpad with no commits, so
-  nobody else could run them at all.
-
-  Recording needs the fleet up and the site serving. Replay needs neither:
-
-      docker/fleet/fleet.sh up
-      docker/fleet/site.sh          # the generated app on :4100
-      SPEX_CASSETTE_MODE=record mix spex --pattern "test/spex/972*/*_spex.exs"
+  It was `publishing_to_the_fleet`, and it pointed at a local MinIO on :9000
+  and a generated site on :4100. That made these criteria green only on a
+  machine that had both running — for months, one machine, whose site lived in
+  a session scratchpad with no commits. The addresses are still here and
+  nothing listens on them: `fake_providers/1` answers storage, the trigger and
+  the site, so the values are configuration rather than infrastructure.
   """
-  def publishing_to_the_fleet(%{scope: scope, project: project} = context) do
+  def publishing_configured(%{scope: scope, project: project} = context) do
     project =
       publishable_project(scope, project, %{
         content_bucket: "cms-spex-content",
@@ -4392,6 +4469,23 @@ defmodule CodeMySpecSpex.Case do
   """
   @spec with_provider_cassette(String.t(), keyword(), (-> any())) :: any()
   def with_provider_cassette(name, opts \\ [], fun) when is_function(fun, 0) do
+    # Fakes stand where a cassette would. Several `given_` helpers wrap
+    # themselves in one — `verified_sending_domains/4` publishes records and
+    # verifies a domain, `existing_apex_mx/2` publishes an MX — and a spex on
+    # fakes that calls them would otherwise be half recorded: the premise
+    # replaying from a file while the step under test talks to the fake, which
+    # is two different accounts and no relationship between them.
+    #
+    # Passing the function through unwrapped runs it against the fakes, which
+    # is what the caller wanted. Off for anything that has not installed them,
+    # so nothing still on cassettes changes.
+    case Application.get_env(:code_my_spec, :spex_fakes, false) do
+      true -> fun.()
+      false -> recorded_provider_call(name, opts, fun)
+    end
+  end
+
+  defp recorded_provider_call(name, opts, fun) do
     # Recording publishes DNS from cold and then waits for a provider to see
     # it, which takes longer than the production default allows for. On
     # replay the wait is irrelevant — the cassette answers immediately — so

@@ -281,7 +281,7 @@ defmodule CodeMySpecSpex.Fixtures do
         :ok
 
       # Storage that is not Hetzner's has its own bucket and its own keys, and
-      # provisioning them is not this fixture's job. `publishing_to_the_fleet/1`
+      # provisioning them is not this fixture's job. `publishing_configured/1`
       # points at the local MinIO, and this reached for Hetzner regardless — so
       # recording a purely local publish refused for want of an account it never
       # touches, and would have created the bucket in the wrong place if it had

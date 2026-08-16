@@ -110,9 +110,29 @@ defmodule CodeMySpecSpex.Fakes.CloudflareTest do
   test "a domain already on the account is found, not missing", %{agent: agent} do
     assert %{status: 200, body: %{"result" => %{"available" => false}}} =
              request(agent, :get, "/accounts/acct-1/registrar/domains/astralbi.com")
+  end
 
-    assert %{status: 404} =
+  # And a name the account does not hold answers too, with less. Verified
+  # against the live API and recorded in `Cloudflare.check_domain/2`: full
+  # detail only for domains it knows, and for anything else the name plus
+  # whether the extension is one it sells. 965/7988 asserts exactly that
+  # difference — "what the registrar actually said, and no more" — which a 404
+  # turned into an error path.
+  test "a name nobody owns answers with the extension, not a 404", %{agent: agent} do
+    assert %{status: 200, body: %{"result" => result}} =
              request(agent, :get, "/accounts/acct-1/registrar/domains/never-owned.com")
+
+    assert result["supported_tld"] == true
+    refute Map.has_key?(result, "available")
+  end
+
+  # 965/7993: an extension Cloudflare does not sell is a dashboard errand, not
+  # a failure.
+  test "an unsupported extension is reported as unsupported", %{agent: agent} do
+    assert %{status: 200, body: %{"result" => result}} =
+             request(agent, :get, "/accounts/acct-1/registrar/domains/sams-new-thing.museum")
+
+    assert result["supported_tld"] == false
   end
 
   test "an unmodelled path says so", %{agent: agent} do

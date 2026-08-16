@@ -22,18 +22,15 @@ defmodule CodeMySpecSpex.Story969.Criterion8025Spex do
 
   @endpoint CodeMySpecWeb.Endpoint
 
-  @cassette "resend_domain_records_published_and_resolved"
-
   # Registering the sending domain and mounting the page are real provider
   # calls. Outside a cassette they reach the live API while recording and the
   # network while replaying, so the page knew about a verified domain when
   # recording and nothing when replaying.
-  @given_cassette "969_8025_verified_domain"
 
   setup :register_log_in_setup_account
   setup :setup_active_project
   setup :devops_on
-  setup :connect_providers
+  setup :fake_providers
 
   spex "The signing and bounce records resolve publicly" do
     scenario "each record the provider asked for resolves from a public resolver" do
@@ -49,6 +46,11 @@ defmodule CodeMySpecSpex.Story969.Criterion8025Spex do
         # registered and *adopted* it — and an adopted resource is never torn
         # down. Recorded alone each one passed; run together they replayed each
         # other's state.
+        # The zone the records go into. Under a cassette this was true because
+        # John's Cloudflare manages `astralbi.com`; stated here, so publishing
+        # a record means it resolves.
+        zone_exists(context, "astralbi.com")
+
         _project = own_domain(context.project, "c8025b.astralbi.com")
         tear_down_after(context.scope, [:email])
 
@@ -62,32 +64,26 @@ defmodule CodeMySpecSpex.Story969.Criterion8025Spex do
         # name that does not exist yet caches the absence for the zone's SOA
         # negative TTL, and the record would then be invisible for half an hour
         # after it was written.
-        view =
-          with_provider_cassette(@given_cassette, fn ->
-            {:ok, view, _html} =
-              live(context.conn, "/app/projects/#{context.project.id}/provisioning")
+        {:ok, view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/provisioning")
 
-            view
-          end)
+        view = view
 
         {:ok, Map.put(context, :view, view)}
       end
 
       when_ "the email step registers the domain and publishes what it asks for", context do
-        html =
-          with_provider_cassette(@cassette, fn ->
-            context.view
-            |> element("[data-test='setup-step'][data-step='email'] [data-test='run-step']")
-            |> render_click()
+        context.view
+        |> element("[data-test='setup-step'][data-step='email'] [data-test='run-step']")
+        |> render_click()
 
-            # The page *after* the run, not what the click handed back. A step
-            # announces itself with `{:provisioning, :step, …}`, and the
-            # sections this criterion reads are assigned when that arrives —
-            # which is after the event `render_click/1` returns from. Its
-            # return value therefore shows the page before anything was
-            # recorded, and an empty section reads as "nothing happened".
-            render(context.view)
-          end)
+        # The page *after* the run, not what the click handed back. A step
+        # announces itself with `{:provisioning, :step, …}`, and the
+        # sections this criterion reads are assigned when that arrives —
+        # which is after the event `render_click/1` returns from. Its
+        # return value therefore shows the page before anything was
+        # recorded, and an empty section reads as "nothing happened".
+        html = render(context.view)
 
         {:ok, Map.put(context, :html, html)}
       end

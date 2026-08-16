@@ -18,17 +18,14 @@ defmodule CodeMySpecSpex.Story972.Criterion8038Spex do
 
   @endpoint CodeMySpecWeb.Endpoint
 
-  @cassette "content_unverified_good_version_first"
-  @failing_cassette "content_unverified_left_unserved"
-
   setup :register_log_in_setup_account
   setup :setup_active_project
   setup :devops_on
-  setup :connect_providers
+  setup :fake_providers
   # A publish refuses outright without content_bucket, client_api_url and
   # deploy_key — "Publishing is not configured" — so the step never reaches
   # storage and the criterion reads that as nothing having been written.
-  setup :publishing_to_the_fleet
+  setup :publishing_configured
 
   spex "Content that does not verify is left unserved" do
     scenario "a failing verification leaves the previous version serving" do
@@ -49,11 +46,9 @@ defmodule CodeMySpecSpex.Story972.Criterion8038Spex do
         # is what records the proof — the publish button reports a result but
         # leaves no resource for the page to keep.
         before =
-          with_provider_cassette(@cassette, [match_requests_on: [:method, :uri]], fn ->
-            view
-            |> element("[data-test='setup-step'][data-step='content'] [data-test='run-step']")
-            |> render_click()
-          end)
+          view
+          |> element("[data-test='setup-step'][data-step='content'] [data-test='run-step']")
+          |> render_click()
 
         # Anchor: something good was serving before the bad publish.
         assert before =~ ~r/data-test="content-render-check"[^>]*data-status="200"/,
@@ -63,41 +58,32 @@ defmodule CodeMySpecSpex.Story972.Criterion8038Spex do
       end
 
       when_ "a published file arrives but does not verify", context do
-        # A real failure, not a recorded one: the objects upload to MinIO and
-        # the trigger lands as before, but the address the post should be
-        # served at is checked against a host that answers and does not serve
-        # it. That is what "arrives but does not verify" is — the file is in
-        # the bucket and the site is up, and the post is not there.
+        # A real failure, not a recorded one: the objects upload and the
+        # trigger lands as before, and the address the post should be served
+        # at answers without serving it. That is what "arrives but does not
+        # verify" is — the file is in the bucket and the site is up, and the
+        # post is not there.
+        site_serves_nothing(context)
+
+        # One attempt. The render check retries, because the trigger is async
+        # and a single fetch races it — but this site will never serve the
+        # post, so waiting is time spent proving something already known.
         previous = Application.get_env(:code_my_spec, :provisioning_step_opts, [])
 
         Application.put_env(
           :code_my_spec,
           :provisioning_step_opts,
-          # One attempt. The render check now retries, because the trigger is
-          # async and a single fetch races it — but this host answers and will
-          # never serve the post, so waiting is thirty seconds spent proving
-          # something already known.
-          previous
-          |> Keyword.put(:site_url, "http://127.0.0.1:9000")
-          |> Keyword.put(:render_attempts, 1)
+          Keyword.put(previous, :render_attempts, 1)
         )
 
         on_exit(fn ->
           Application.put_env(:code_my_spec, :provisioning_step_opts, previous)
         end)
 
-        # Its own cassette, not the good publish's. Both blocks share a
-        # sequential cursor when they share a name, and in `:record` mode the
-        # second publish's uploads matched the first's and replayed instead of
-        # being written — so the file held one run's requests and a stray
-        # trailing GET, and replaying the second block ran off the end of it.
-        # Two publishes, two recordings.
         html =
-          with_provider_cassette(@failing_cassette, [match_requests_on: [:method, :uri]], fn ->
-            context.view
-            |> element("[data-test='setup-step'][data-step='content'] [data-test='run-step']")
-            |> render_click()
-          end)
+          context.view
+          |> element("[data-test='setup-step'][data-step='content'] [data-test='run-step']")
+          |> render_click()
 
         {:ok, Map.put(context, :html, html)}
       end

@@ -21,12 +21,10 @@ defmodule CodeMySpecSpex.Story969.Criterion8056Spex do
 
   @endpoint CodeMySpecWeb.Endpoint
 
-  @cassette "resend_sending_domain_production_only"
-
   setup :register_log_in_setup_account
   setup :setup_active_project
   setup :devops_on
-  setup :connect_providers
+  setup :fake_providers
 
   spex "Test mail cannot pass for production mail" do
     scenario "only production is set up to send" do
@@ -41,6 +39,11 @@ defmodule CodeMySpecSpex.Story969.Criterion8056Spex do
         # records here would set up the very thing this criterion says is not
         # set up, and the assertions below would then be reading the fixture's
         # work rather than the step's.
+        # The zone the records go into. Under a cassette this was true because
+        # John's Cloudflare manages `astralbi.com`; stated here, so publishing
+        # a record means it resolves.
+        zone_exists(context, "astralbi.com")
+
         project = own_domain(context.project, "c8056.astralbi.com")
         verified_sending_domains(context.scope, project, ["prod"])
         tear_down_after(context.scope, [:email])
@@ -56,20 +59,17 @@ defmodule CodeMySpecSpex.Story969.Criterion8056Spex do
       end
 
       when_ "the email step has run", context do
-        html =
-          with_provider_cassette(@cassette, fn ->
-            context.view
-            |> element("[data-test='setup-step'][data-step='email'] [data-test='run-step']")
-            |> render_click()
+        context.view
+        |> element("[data-test='setup-step'][data-step='email'] [data-test='run-step']")
+        |> render_click()
 
-            # The page *after* the run, not what the click handed back. A step
-            # announces itself with `{:provisioning, :step, …}`, and the
-            # sections this criterion reads are assigned when that arrives —
-            # which is after the event `render_click/1` returns from. Its
-            # return value therefore shows the page before anything was
-            # recorded, and an empty section reads as "nothing happened".
-            render(context.view)
-          end)
+        # The page *after* the run, not what the click handed back. A step
+        # announces itself with `{:provisioning, :step, …}`, and the
+        # sections this criterion reads are assigned when that arrives —
+        # which is after the event `render_click/1` returns from. Its
+        # return value therefore shows the page before anything was
+        # recorded, and an empty section reads as "nothing happened".
+        html = render(context.view)
 
         {:ok, Map.put(context, :html, html)}
       end

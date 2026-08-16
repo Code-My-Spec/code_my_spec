@@ -17,16 +17,11 @@ defmodule CodeMySpecSpex.Story972.Criterion8039Spex do
 
   @endpoint CodeMySpecWeb.Endpoint
 
-  @cassette "content_step_proves_render_before_done"
-
   # Two blocks, two cassettes. Both used to be recorded under one name, and a
   # cassette is loaded and consulted when it is entered — so the second block
   # replayed the first block's reads. The deploy step was answered with the
   # server list recorded before any server existed and reported that the box
   # the previous step had just created was missing.
-  @given_cassette "972_8039_site_deployed"
-
-  @deploy_cassette "972_8039_site_deployed_deploy"
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -34,12 +29,12 @@ defmodule CodeMySpecSpex.Story972.Criterion8039Spex do
 
   # A real application on disk, because the deploy step runs `bin/deploy` from
   # the project's cwd and the stub directory has no such script.
-  setup :drill_working_directory
-  setup :connect_providers
+  setup :fake_working_directory
+  setup :fake_providers
   # A publish refuses outright without content_bucket, client_api_url and
   # deploy_key — "Publishing is not configured" — so the step never reaches
   # storage and the criterion reads that as nothing having been written.
-  setup :publishing_to_the_fleet
+  setup :publishing_configured
 
   spex "The pipeline is proven end to end before it is called done" do
     scenario "the step confirms a rendered post before reporting done" do
@@ -122,7 +117,7 @@ defmodule CodeMySpecSpex.Story972.Criterion8039Spex do
         # `server` and the steps after it never ran. The recording that
         # produced was four interactions long and stopped at the repository.
         paste_provider_credentials(view)
-        run_steps(view, [:repository, :server, :secrets], @given_cassette)
+        run_steps(view, [:repository, :server, :secrets])
 
         # The app refuses to boot without these, and `check_secrets/2` is the
         # first thing in the deploy step's `with` — so without them the deploy
@@ -149,17 +144,12 @@ defmodule CodeMySpecSpex.Story972.Criterion8039Spex do
         # No `:storage`. That step provisions object storage on Hetzner, which
         # is a different story's claim — this one is about the content pipeline
         # proving a render before reporting done, and it publishes to the
-        # fleet's MinIO bucket that `publishing_to_the_fleet` configures. Running
+        # fleet's MinIO bucket that `publishing_configured` configures. Running
         # both left the criterion with two halves disagreeing about whose
         # storage it was using: the deploy made Hetzner buckets and the content
         # step read one back, against a cassette recorded for neither.
         #
-        # Method and URI rather than the default: the S3 puts carry bodies the
-        # recorder does not capture, so a body-inclusive match cannot find them
-        # again.
-        run_steps(view, [:domain, :dns, :deploy], @deploy_cassette,
-          match_requests_on: [:method, :uri]
-        )
+        run_steps(view, [:domain, :dns, :deploy])
 
         trace_steps(view, [:repository, :server, :secrets, :domain, :dns, :deploy])
 
@@ -168,25 +158,23 @@ defmodule CodeMySpecSpex.Story972.Criterion8039Spex do
 
       when_ "it verifies itself", context do
         html =
-          with_provider_cassette(@cassette, [match_requests_on: [:method, :uri]], fn ->
-            context.view
-            |> element("[data-test='setup-step'][data-step='content'] [data-test='run-step']")
-            |> render_click()
+          context.view
+          |> element("[data-test='setup-step'][data-step='content'] [data-test='run-step']")
+          |> render_click()
 
-            # Wait for the step, then read the page — not what the click handed
-            # back. Clicking Run does not wait: the step happens under a
-            # supervised task, because a publish-and-prove takes longer than a
-            # LiveView event may. So `render_click/1` returns while the step is
-            # still running, and the proof this criterion is about is assigned
-            # when `{:provisioning, :step, …}` arrives, strictly afterwards.
-            #
-            # Read too early it looks exactly like a product defect: a full
-            # pipeline runs — server, deploy, publish, 554s of it against real
-            # providers — and the page carries no render proof, so the step
-            # reads as having skipped the thing it exists to do.
-            CodeMySpecSpex.Case.await_step(context.view, :content)
-            render(context.view)
-          end)
+        # Wait for the step, then read the page — not what the click handed
+        # back. Clicking Run does not wait: the step happens under a
+        # supervised task, because a publish-and-prove takes longer than a
+        # LiveView event may. So `render_click/1` returns while the step is
+        # still running, and the proof this criterion is about is assigned
+        # when `{:provisioning, :step, …}` arrives, strictly afterwards.
+        #
+        # Read too early it looks exactly like a product defect: a full
+        # pipeline runs — server, deploy, publish, 554s of it against real
+        # providers — and the page carries no render proof, so the step
+        # reads as having skipped the thing it exists to do.
+        CodeMySpecSpex.Case.await_step(context.view, :content)
+        render(context.view)
 
         {:ok, Map.put(context, :html, html)}
       end

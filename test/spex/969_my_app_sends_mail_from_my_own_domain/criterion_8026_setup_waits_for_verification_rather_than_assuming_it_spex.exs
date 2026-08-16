@@ -17,12 +17,10 @@ defmodule CodeMySpecSpex.Story969.Criterion8026Spex do
 
   @endpoint CodeMySpecWeb.Endpoint
 
-  @cassette "resend_domain_verify_pending_then_verified"
-
   setup :register_log_in_setup_account
   setup :setup_active_project
   setup :devops_on
-  setup :connect_providers
+  setup :fake_providers
 
   spex "Setup waits for verification rather than assuming it" do
     scenario "the step polls to verified before reporting done" do
@@ -32,6 +30,11 @@ defmodule CodeMySpecSpex.Story969.Criterion8026Spex do
         # registered and *adopted* it — and an adopted resource is never torn
         # down. Recorded alone each one passed; run together they replayed each
         # other's state.
+        # The zone the records go into. Under a cassette this was true because
+        # John's Cloudflare manages `astralbi.com`; stated here, so publishing
+        # a record means it resolves.
+        zone_exists(context, "astralbi.com")
+
         project = own_domain(context.project, "c8026.astralbi.com")
         # Published, not verified. The claim is that setup *waits*, and a
         # domain handed over already verified leaves it nothing to wait for —
@@ -56,20 +59,17 @@ defmodule CodeMySpecSpex.Story969.Criterion8026Spex do
       end
 
       when_ "setup checks the domain's status", context do
-        html =
-          with_provider_cassette(@cassette, fn ->
-            context.view
-            |> element("[data-test='setup-step'][data-step='email'] [data-test='run-step']")
-            |> render_click()
+        context.view
+        |> element("[data-test='setup-step'][data-step='email'] [data-test='run-step']")
+        |> render_click()
 
-            # The page *after* the run, not what the click handed back. A step
-            # announces itself with `{:provisioning, :step, …}`, and the
-            # sections this criterion reads are assigned when that arrives —
-            # which is after the event `render_click/1` returns from. Its
-            # return value therefore shows the page before anything was
-            # recorded, and an empty section reads as "nothing happened".
-            render(context.view)
-          end)
+        # The page *after* the run, not what the click handed back. A step
+        # announces itself with `{:provisioning, :step, …}`, and the
+        # sections this criterion reads are assigned when that arrives —
+        # which is after the event `render_click/1` returns from. Its
+        # return value therefore shows the page before anything was
+        # recorded, and an empty section reads as "nothing happened".
+        html = render(context.view)
 
         {:ok, Map.put(context, :html, html)}
       end

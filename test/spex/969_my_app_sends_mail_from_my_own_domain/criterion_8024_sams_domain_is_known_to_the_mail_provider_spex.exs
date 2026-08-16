@@ -15,12 +15,10 @@ defmodule CodeMySpecSpex.Story969.Criterion8024Spex do
 
   @endpoint CodeMySpecWeb.Endpoint
 
-  @cassette "resend_domain_create_ok"
-
   setup :register_log_in_setup_account
   setup :setup_active_project
   setup :devops_on
-  setup :connect_providers
+  setup :fake_providers
 
   spex "Sam's domain is known to the mail provider" do
     scenario "the email step registers the domain with the provider" do
@@ -30,6 +28,11 @@ defmodule CodeMySpecSpex.Story969.Criterion8024Spex do
         # registered and *adopted* it — and an adopted resource is never torn
         # down. Recorded alone each one passed; run together they replayed each
         # other's state.
+        # The zone the records go into. Under a cassette this was true because
+        # John's Cloudflare manages `astralbi.com`; stated here, so publishing
+        # a record means it resolves.
+        zone_exists(context, "astralbi.com")
+
         project = own_domain(context.project, "c8024.astralbi.com")
         verified_sending_domains(context.scope, project)
         tear_down_after(context.scope, [:email])
@@ -41,20 +44,17 @@ defmodule CodeMySpecSpex.Story969.Criterion8024Spex do
       end
 
       when_ "the email step runs", context do
-        html =
-          with_provider_cassette(@cassette, fn ->
-            context.view
-            |> element("[data-test='setup-step'][data-step='email'] [data-test='run-step']")
-            |> render_click()
+        context.view
+        |> element("[data-test='setup-step'][data-step='email'] [data-test='run-step']")
+        |> render_click()
 
-            # The page *after* the run, not what the click handed back. The
-            # mail section is assigned when the step announces itself
-            # (`handle_info({:provisioning, :step, …})` refreshes it), which
-            # happens after the event that `render_click/1` returns from — so
-            # its return value shows the page before the domain existed, and
-            # the criterion read an empty section as "nothing was registered".
-            render(context.view)
-          end)
+        # The page *after* the run, not what the click handed back. The
+        # mail section is assigned when the step announces itself
+        # (`handle_info({:provisioning, :step, …})` refreshes it), which
+        # happens after the event that `render_click/1` returns from — so
+        # its return value shows the page before the domain existed, and
+        # the criterion read an empty section as "nothing was registered".
+        html = render(context.view)
 
         {:ok, Map.put(context, :html, html)}
       end

@@ -17,16 +17,14 @@ defmodule CodeMySpecSpex.Story972.Criterion8036Spex do
 
   @endpoint CodeMySpecWeb.Endpoint
 
-  @cassette "content_post_appears_on_site"
-
   setup :register_log_in_setup_account
   setup :setup_active_project
   setup :devops_on
-  setup :connect_providers
+  setup :fake_providers
   # A publish refuses outright without content_bucket, client_api_url and
   # deploy_key — "Publishing is not configured" — so the step never reaches
   # storage and the criterion reads that as nothing having been written.
-  setup :publishing_to_the_fleet
+  setup :publishing_configured
 
   spex "The post appears on the live site" do
     scenario "the published post renders at its address on the deployed site" do
@@ -49,11 +47,9 @@ defmodule CodeMySpecSpex.Story972.Criterion8036Spex do
       end
 
       when_ "he publishes, and the pipeline fetches its address on the deployed site", context do
-        with_provider_cassette(@cassette, [match_requests_on: [:method, :uri]], fn ->
-          context.view
-          |> element("[data-test='setup-step'][data-step='content'] [data-test='run-step']")
-          |> render_click()
-        end)
+        context.view
+        |> element("[data-test='setup-step'][data-step='content'] [data-test='run-step']")
+        |> render_click()
 
         html = render(context.view)
 

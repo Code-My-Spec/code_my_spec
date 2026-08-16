@@ -18,16 +18,14 @@ defmodule CodeMySpecSpex.Story972.Criterion8035Spex do
 
   @endpoint CodeMySpecWeb.Endpoint
 
-  @cassette "content_objects_in_own_bucket"
-
   setup :register_log_in_setup_account
   setup :setup_active_project
   setup :devops_on
-  setup :connect_providers
+  setup :fake_providers
   # A publish refuses outright without content_bucket, client_api_url and
   # deploy_key — "Publishing is not configured" — so the step never reaches
   # storage and the criterion reads that as nothing having been written.
-  setup :publishing_to_the_fleet
+  setup :publishing_configured
 
   spex "The published files are in Sam's storage" do
     scenario "the published objects are recorded in Sam's own bucket" do
@@ -46,11 +44,9 @@ defmodule CodeMySpecSpex.Story972.Criterion8035Spex do
         # `ContentPublishing.run/2` — the button is the step on demand — but only
         # the step records what it wrote as resources, and "the files are in
         # Sam's own bucket" is a claim about those records.
-        with_provider_cassette(@cassette, [match_requests_on: [:method, :uri]], fn ->
-          view
-          |> element("[data-test='setup-step'][data-step='content'] [data-test='run-step']")
-          |> render_click()
-        end)
+        view
+        |> element("[data-test='setup-step'][data-step='content'] [data-test='run-step']")
+        |> render_click()
 
         html = render(view)
 

@@ -18,13 +18,11 @@ defmodule CodeMySpecSpex.Story972.Criterion8034Spex do
 
   @endpoint CodeMySpecWeb.Endpoint
 
-  @cassette "content_publish_is_one_command"
-
   setup :register_log_in_setup_account
   setup :setup_active_project
   setup :devops_on
-  setup :connect_providers
-  setup :publishing_to_the_fleet
+  setup :fake_providers
+  setup :publishing_configured
 
   spex "Publishing is one command, not a checklist" do
     scenario "one publish action takes the post all the way out" do
@@ -39,7 +37,7 @@ defmodule CodeMySpecSpex.Story972.Criterion8034Spex do
         # Somewhere to publish to is part of the premise — sync is trigger-only,
         # so without a bucket and a reachable client the publish refuses to
         # start and this fails on its setup rather than its claim. That is
-        # `publishing_to_the_fleet` above, as it is for every other criterion in
+        # `publishing_configured` above, as it is for every other criterion in
         # this story; this one alone pointed at real object storage and got
         # `403 InvalidAccessKeyId` back from Hetzner. The fleet bucket is
         # standing infrastructure shared with those siblings, so it is not torn
@@ -55,11 +53,9 @@ defmodule CodeMySpecSpex.Story972.Criterion8034Spex do
         # Clicking the step's run button provisions the bucket and leaves
         # `@content_publish` unset, so the result this criterion reads on was
         # never rendered and the failure read as "no publish happened".
-        with_provider_cassette(@cassette, [match_requests_on: [:method, :uri]], fn ->
-          context.view
-          |> element("[data-test='content-publish']")
-          |> render_click()
-        end)
+        context.view
+        |> element("[data-test='content-publish']")
+        |> render_click()
 
         html = render(context.view)
 

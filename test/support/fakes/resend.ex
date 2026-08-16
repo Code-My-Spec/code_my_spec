@@ -242,6 +242,12 @@ defmodule CodeMySpecSpex.Fakes.Resend do
       "id" => "dom-#{seq}",
       "name" => name,
       "status" => "pending",
+      # Resend stamps one and the setup page reads it as the domain's
+      # verification time — `data-verified-at`, which 969/8026 pairs with the
+      # step's own completion to assert setup waited rather than assumed.
+      # Absent, the page rendered an empty attribute and the criterion read it
+      # as "verification was never timestamped" on a domain that had verified.
+      "created_at" => DateTime.utc_now() |> DateTime.to_iso8601(),
       "capabilities" => caps,
       "records" => records_for(name, caps)
     }

@@ -17,20 +17,17 @@ defmodule CodeMySpecSpex.Story969.Criterion8028Spex do
 
   @endpoint CodeMySpecWeb.Endpoint
 
-  @cassette "resend_send_probe_message_accepted"
-
   # The `given_` registers and verifies a sending domain and then mounts the
   # page, which reads mail state from Resend — all real provider calls. Left
   # outside a cassette they hit the live API while recording and the network
   # while replaying, so the page came up knowing about a verified domain when
   # recording and knowing nothing when replaying, and the send-probe control
   # the `when_` clicks was simply absent.
-  @given_cassette "969_8028_verified_domain"
 
   setup :register_log_in_setup_account
   setup :setup_active_project
   setup :devops_on
-  setup :connect_providers
+  setup :fake_providers
 
   spex "A real message arrives from Sam's domain" do
     scenario "the probe send is accepted and authenticated" do
@@ -40,29 +37,29 @@ defmodule CodeMySpecSpex.Story969.Criterion8028Spex do
         # registered and *adopted* it — and an adopted resource is never torn
         # down. Recorded alone each one passed; run together they replayed each
         # other's state.
+        # The zone the records go into. Under a cassette this was true because
+        # John's Cloudflare manages `astralbi.com`; stated here, so publishing
+        # a record means it resolves.
+        zone_exists(context, "astralbi.com")
+
         project = own_domain(context.project, "c8028.astralbi.com")
         tear_down_after(context.scope, [:email])
 
-        view =
-          with_provider_cassette(@given_cassette, fn ->
-            verified_sending_domains(context.scope, project)
+        verified_sending_domains(context.scope, project)
 
-            {:ok, view, _html} =
-              live(context.conn, "/app/projects/#{context.project.id}/provisioning")
+        {:ok, view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/provisioning")
 
-            view
-          end)
+        view = view
 
         {:ok, Map.put(context, :view, view)}
       end
 
       when_ "the app sends a message", context do
         html =
-          with_provider_cassette(@cassette, fn ->
-            context.view
-            |> element("[data-test='mail-send-probe']")
-            |> render_click()
-          end)
+          context.view
+          |> element("[data-test='mail-send-probe']")
+          |> render_click()
 
         {:ok, Map.put(context, :html, html)}
       end

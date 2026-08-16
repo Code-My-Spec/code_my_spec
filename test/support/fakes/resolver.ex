@@ -44,6 +44,22 @@ defmodule CodeMySpecSpex.Fakes.Resolver do
     |> Conn.send_resp(200, Jason.encode!(body))
   end
 
+  @doc """
+  Whether the zone answers for this name, for the caller that is not HTTP.
+
+  The page's record check goes through `:dns_resolver`, a plain function rather
+  than a request — a second seam onto the same question. Answering both from
+  the zone is what keeps "published" and "resolves" the same fact; under
+  recordings they were two, and the function one read a table of names written
+  down on an earlier day.
+  """
+  def resolves?(cloudflare_agent, name, type) do
+    cloudflare_agent
+    |> Agent.get(& &1)
+    |> matching(String.trim_trailing(to_string(name), "."), String.upcase(to_string(type)))
+    |> Kernel.!=([])
+  end
+
   defp matching(state, name, type) do
     zones = Map.new(state.zones, &{&1["id"], &1["name"]})
 
