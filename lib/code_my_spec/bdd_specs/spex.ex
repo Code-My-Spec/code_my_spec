@@ -143,7 +143,8 @@ defmodule CodeMySpec.BddSpecs.Spex do
             exit_code,
             environment,
             caller_provided_file,
-            raw_output
+            raw_output,
+            project_root
           )
 
         unless caller_provided_file, do: cleanup_temp_file(temp_file, environment)
@@ -249,15 +250,54 @@ defmodule CodeMySpec.BddSpecs.Spex do
   # `nil` env means "read on this machine": the caller-provided path is the
   # cassette seam, a fixture on the harness's own disk rather than something
   # `mix spex` wrote inside the environment.
-  defp parse_and_return_failures(temp_file, exit_code, env, caller_provided_file, raw_output) do
+  defp parse_and_return_failures(
+         temp_file,
+         exit_code,
+         env,
+         caller_provided_file,
+         raw_output,
+         project_root
+       ) do
     case parse_jsonl(temp_file, if(caller_provided_file, do: nil, else: env)) do
       {:ok, failures} ->
-        {:ok, failures, exit_code, raw_output}
+        {:ok, Enum.map(failures, &relativize_error_file(&1, project_root)), exit_code, raw_output}
 
       {:error, reason} ->
         {:error, {:parse_error, inspect(reason)}}
     end
   end
+
+  # `error.file` is the one path in a failure that can arrive absolute, and it
+  # has to leave here relative to the working copy root.
+  #
+  # `Runners.spex_location/1` normally takes the file from a stacktrace frame,
+  # which is already relative. Its fallback — a failure with no `_spex.exs`
+  # frame at all, which is what `** (EXIT from #PID<…>) an exception was raised`
+  # produces when a linked LiveView dies — reads `error.file` instead, and that
+  # is absolute.
+  #
+  # An absolute path is not merely inconsistent. `clear_problems_for_missing_files/2`
+  # deletes every Problem whose path is not in the current file list, and that
+  # list is relative, so such a row is removed on the next sync as though its
+  # file had been deleted. The failure disappears without being fixed and
+  # returns on the next sweep — four of them observed doing exactly that
+  # (`cc643bf3`). It also costs the component link and session attribution,
+  # which both join on relative paths.
+  #
+  # Here rather than server-side: `Runners.from_raw/2` converts where there is
+  # no working copy and no cwd to relativize against, which is how this went
+  # unnoticed.
+  @doc false
+  # Public only so the rule can be asserted without a live `mix spex` — the same
+  # reason `Runners.spex_location/1` is, and for the same kind of rule.
+  def relativize_error_file(failure, project_root)
+
+  def relativize_error_file(%Failure{error: %Error{file: file} = error} = failure, project_root)
+      when is_binary(file) do
+    %{failure | error: %{error | file: Path.relative_to(file, project_root)}}
+  end
+
+  def relativize_error_file(failure, _project_root), do: failure
 
   defp cleanup_temp_file(temp_file, env) do
     Environments.delete_file(env, temp_file)

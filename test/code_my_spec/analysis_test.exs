@@ -285,5 +285,38 @@ defmodule CodeMySpec.AnalysisTest do
       assert %{gone: ["test/a_test.exs: boom"], new: []} =
                Signatures.delta(previous, Signatures.read(finished))
     end
+
+    # Every path in `problems` is relative to the working copy root, and until
+    # cc643bf3 nothing said so or checked. An absolute one is deleted by the
+    # next file sync — `clear_problems_for_missing_files/2` removes any row not
+    # in the current file list, and that list is relative — so a real failure
+    # disappears without being fixed. Four did, for an unknown period.
+    #
+    # Warned rather than rejected: refusing would roll back the insert and take
+    # every other problem for that source with it.
+    test "an absolute file_path is recorded, and says it will be deleted", %{scope: scope} do
+      {:ok, run} = RunsRepository.start_run(scope, %{source: "spex", kind: :full})
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          {:ok, _} =
+            Reconciler.reconcile(scope, run, %{
+              problems: [problem("/Users/dev/project/test/spex/a_spex.exs", source: "spex")],
+              output: "",
+              exit_status: 1,
+              stats: %{}
+            })
+        end)
+
+      assert log =~ "absolute file_path"
+
+      assert log =~ "deleted by the next file sync",
+             "the warning has to say what happens next — an absolute path looks harmless, " <>
+               "and the consequence is the finding quietly vanishing"
+
+      assert [%{file_path: "/Users/dev/project/test/spex/a_spex.exs"}] =
+               Problems.list_project_problems(scope, source: "spex"),
+             "the row is still written: dropping it would lose the finding this warns about"
+    end
   end
 end
