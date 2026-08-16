@@ -286,14 +286,36 @@ defmodule CodeMySpecSpex.Fakes.Hetzner do
 
   defp matching_keys(state, _params), do: state.ssh_keys
 
-  # Stable and derived, so the same public key always fingerprints the same way
-  # and a second create is recognised as a duplicate.
+  # Hetzner's own algorithm: md5 of the *decoded* key material — the second
+  # field of the public key — rendered as colon-separated hex.
+  #
+  # Fidelity matters here more than anywhere else in this fake. Hashing the
+  # whole string instead gives a stable, plausible, and *different* answer, so
+  # `find_ssh_key_by_fingerprint/2` misses, the caller uploads, and this fake
+  # rejects the duplicate with a 409 — which reads as the server step not being
+  # idempotent. It nearly got reported as a product bug in 963/7965, whose
+  # entire subject is idempotency.
   defp fingerprint(public_key) do
-    :crypto.hash(:md5, public_key)
+    public_key
+    |> String.trim()
+    |> String.split(~r/\s+/)
+    |> Enum.at(1)
+    |> decode_material()
+    |> then(&:crypto.hash(:md5, &1))
     |> Base.encode16(case: :lower)
-    |> String.to_charlist()
-    |> Enum.chunk_every(2)
-    |> Enum.map_join(":", &to_string/1)
+    |> String.replace(~r/(..)(?!$)/, "\\1:")
+  end
+
+  # A key this fake wrote is not real base64 in every case; fall back to the
+  # raw field so a malformed one still fingerprints deterministically rather
+  # than raising inside a request.
+  defp decode_material(nil), do: ""
+
+  defp decode_material(material) do
+    case Base.decode64(material) do
+      {:ok, decoded} -> decoded
+      :error -> material
+    end
   end
 
   defp error(code, message), do: %{"error" => %{"code" => code, "message" => message}}
