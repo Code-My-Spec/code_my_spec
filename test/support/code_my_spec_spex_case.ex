@@ -15,6 +15,8 @@ defmodule CodeMySpecSpex.Case do
   """
   use ExUnit.CaseTemplate
 
+  alias CodeMySpec.Content.S3Client
+  alias CodeMySpecSpex.Fakes
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
@@ -307,16 +309,16 @@ defmodule CodeMySpecSpex.Case do
     CodeMySpecSpex.Fixtures.store_provider_secrets(context.scope)
 
     fakes = [
-      {CodeMySpec.Provisioning.Hetzner, CodeMySpecSpex.Fakes.Hetzner,
-       &CodeMySpecSpex.Fakes.Hetzner.new/0},
-      {CodeMySpec.Provisioning.Resend, CodeMySpecSpex.Fakes.Resend,
-       &CodeMySpecSpex.Fakes.Resend.new/0},
-      {CodeMySpec.Provisioning.Cloudflare, CodeMySpecSpex.Fakes.Cloudflare,
-       &CodeMySpecSpex.Fakes.Cloudflare.new/0},
+      {CodeMySpec.Provisioning.Hetzner, Fakes.Hetzner,
+       &Fakes.Hetzner.new/0},
+      {CodeMySpec.Provisioning.Resend, Fakes.Resend,
+       &Fakes.Resend.new/0},
+      {CodeMySpec.Provisioning.Cloudflare, Fakes.Cloudflare,
+       &Fakes.Cloudflare.new/0},
       # Object storage rides on `Content.S3Client`'s config, which is what
       # `ExAwsReqClient` reads its plug from — the same seam, one layer down.
-      {CodeMySpec.Content.S3Client, CodeMySpecSpex.Fakes.Storage,
-       &CodeMySpecSpex.Fakes.Storage.new/0}
+      {S3Client, Fakes.Storage,
+       &Fakes.Storage.new/0}
     ]
 
     agents =
@@ -343,7 +345,7 @@ defmodule CodeMySpecSpex.Case do
   def fake(%{fakes: fakes}, :hetzner), do: Map.fetch!(fakes, CodeMySpec.Provisioning.Hetzner)
   def fake(%{fakes: fakes}, :resend), do: Map.fetch!(fakes, CodeMySpec.Provisioning.Resend)
   def fake(%{fakes: fakes}, :cloudflare), do: Map.fetch!(fakes, CodeMySpec.Provisioning.Cloudflare)
-  def fake(%{fakes: fakes}, :storage), do: Map.fetch!(fakes, CodeMySpec.Content.S3Client)
+  def fake(%{fakes: fakes}, :storage), do: Map.fetch!(fakes, S3Client)
 
   @doc """
   Say which zone Sam's account holds.
@@ -356,7 +358,7 @@ defmodule CodeMySpecSpex.Case do
   precondition.
   """
   def zone_exists(context, name) do
-    Agent.update(fake(context, :cloudflare), fn _ -> CodeMySpecSpex.Fakes.Cloudflare.new(name) end)
+    Agent.update(fake(context, :cloudflare), fn _ -> Fakes.Cloudflare.new(name) end)
     :ok
   end
 
@@ -1793,10 +1795,10 @@ defmodule CodeMySpecSpex.Case do
   shell.
   """
   def fake_working_directory(%{scope: scope, project: project} = context) do
-    {:ok, env} = CodeMySpec.Support.InMemoryEnvironment.create(working_dir: project.local_path)
+    env = Fixtures.memory_environment_fixture(working_dir: project.local_path)
 
     previous = Application.get_env(:code_my_spec, :memory_shell)
-    Application.put_env(:code_my_spec, :memory_shell, CodeMySpecSpex.Fakes.Shell)
+    Application.put_env(:code_my_spec, :memory_shell, Fakes.Shell)
 
     Fixtures.unregister_environment(project.id)
     Fixtures.register_environment(project.id, env)
@@ -4210,7 +4212,7 @@ defmodule CodeMySpecSpex.Case do
       # the record it asserted on has been torn down.
       CodeMySpec.Provisioning.Dns,
       CodeMySpec.GitHub,
-      CodeMySpec.Content.S3Client,
+      S3Client,
       # The publish trigger is an ordinary HTTP POST to the deployed site, and
       # it was the one provider call escaping the cassette — so a replay sent it
       # to the real network, got nothing, and `trigger_client/2` failed the whole
