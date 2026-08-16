@@ -11,115 +11,127 @@ defmodule CodeMySpecSpex.Story974.Criterion8032Spex do
 
   Surface: `CodeMySpecWeb.ProvisioningLive` on the cloud app, driving
   `CodeMySpec.Provisioning.Resend`.
+
+  ## Against fakes, not cassettes
+
+  Rewritten 2026-08-16, and it is the same argument as its mirror: the claim
+  is about what our two steps do to each other's records, which is a
+  before-and-after comparison of one zone. That needs a provider which
+  remembers the before, and a recording is precisely the thing that cannot.
+
+  Under cassettes it needed two of them, one per step, and each had to be
+  recorded against a real domain in a real account. Both had already been
+  named by another criterion once — recording this story silently destroyed
+  another's tape, because record mode deletes the file when it opens and
+  cassette names are global.
+
+  What is not claimed here: that mail actually arrives. That is the drill's.
   """
 
   use CodeMySpecSpex.Case
 
   @endpoint CodeMySpecWeb.Endpoint
 
-  # Its own cassette. This shared a name with 969's criterion 8025, and record
-  # mode deletes the cassette file when it opens — so recording this story
-  # silently destroyed another story's recording. Cassette names are global;
-  # they need a story prefix.
-  @sending_cassette "974_8032_sending_records_published"
-  @inbound_cassette "resend_inbound_records_published"
+  @domain "astralbi.com"
 
   setup :register_log_in_setup_account
   setup :setup_active_project
   setup :devops_on
-  setup :connect_providers
+  setup :fake_providers
 
   spex "Receiving mail does not break sending it" do
     scenario "the sending domain stays verified after inbound records are published" do
       given_ "the app already sends verified mail from Sam's domain", context do
-        # Its own subdomain. Sharing one name across a story means whichever
-        # criterion runs second finds the first's domain already registered and
-        # *adopts* it — and an adopted resource is never torn down, so each one
-        # replays the others' state.
+        own_domain(context.project, @domain)
+        zone_exists(context, @domain)
 
-        {:ok, view, _html} =
-          live(context.conn, "/app/projects/#{context.project.id}/provisioning")
+        view = mount_provisioning(context)
 
-        # Set after the mount: a domain present at mount makes `load/2` read the
-        # mail panel, which calls Resend outside every cassette.
-        own_domain(context.project, "c8032.astralbi.com")
+        view
+        |> element("[data-test='setup-step'][data-step='email'] [data-test='run-step']")
+        |> render_click()
 
-        before =
-          with_provider_cassette(@sending_cassette, fn ->
-            view
-            |> element("[data-test='setup-step'][data-step='email'] [data-test='run-step']")
-            |> render_click()
+        CodeMySpecSpex.Case.await_step(view, :email)
 
-            # The page *after* the run, not what the click handed back. A step
-            # announces itself with `{:provisioning, :step, …}`, and the
-            # sections this criterion reads are assigned when that arrives —
-            # which is after the event `render_click/1` returns from. Its
-            # return value therefore shows the page before anything was
-            # recorded, and an empty section reads as "nothing happened".
-            render(view)
-          end)
+        html = render(view)
 
         # Anchor: sending really was working before inbound touched anything.
-        assert before =~ ~r/data-step="email"[^>]*data-state="done"/,
-               "expected sending to be set up and verified first"
+        assert html =~ ~r/data-step="email"[^>]*data-state="done"/,
+               "expected sending to be set up and verified first, got:\n#{step_states(html)}"
 
         {:ok,
          context
          |> Map.put(:view, view)
-         |> Map.put(:send_records_before, send_records(before))}
+         |> Map.put(:before, zone_records(context))}
       end
 
       when_ "the inbound step publishes its records", context do
-        html =
-          with_provider_cassette(@inbound_cassette, fn ->
-            context.view
-            |> element("[data-test='setup-step'][data-step='inbound'] [data-test='run-step']")
-            |> render_click()
-          end)
+        context.view
+        |> element("[data-test='setup-step'][data-step='inbound'] [data-test='run-step']")
+        |> render_click()
 
-        {:ok, Map.put(context, :html, html)}
-      end
+        CodeMySpecSpex.Case.await_step(context.view, :inbound)
 
-      then_ "the sending domain is still verified", context do
-        verification =
-          context.html
-          |> Floki.parse_document!()
-          |> Floki.find("[data-test='mail-verification']")
-          |> Floki.attribute("data-status")
-          |> List.first()
-
-        assert verification == "verified",
-               "expected the sending domain to remain verified after inbound setup, got #{inspect(verification)}"
-
-        {:ok, context}
+        {:ok,
+         context
+         |> Map.put(:html, render(context.view))
+         |> Map.put(:after, zone_records(context))}
       end
 
       then_ "the send subdomain's records were left alone", context do
-        assert send_records(context.html) == context.send_records_before,
-               "expected the send subdomain records to be untouched by inbound setup:\n  before: #{inspect(context.send_records_before)}\n  after:  #{inspect(send_records(context.html))}"
+        assert send_records(context.after) == send_records(context.before),
+               "expected the send subdomain's records to survive inbound setup:\n" <>
+                 "  before: #{inspect(send_records(context.before))}\n" <>
+                 "  after:  #{inspect(send_records(context.after))}"
 
         {:ok, context}
       end
 
-      then_ "the app can still send", context do
-        assert context.html =~ ~r/data-step="email"[^>]*data-state="done"/,
-               "expected the email step to remain done after inbound setup"
+      then_ "the inbound records went on the apex", context do
+        added = context.after -- context.before
+
+        refute added == [],
+               "expected the inbound step to publish records, and it published none.\n" <>
+                 "The steps are:\n#{step_states(context.html)}\n" <>
+                 "The page says: #{inspect(escalation(context.html, "inbound"))}"
+
+        assert Enum.any?(added, &apex?/1),
+               "expected inbound delivery to be published at the apex, got: #{inspect(added)}"
 
         {:ok, context}
       end
     end
   end
 
-  defp send_records(html) do
+  # The apex is written either way: `@` is how a zone file names it and how the
+  # page renders it, and the fully-qualified zone name is what the API takes.
+  # A criterion that accepted only one would fail on a correct publish.
+  defp apex?(record), do: record["name"] in ["@", @domain]
+
+  defp send_records(records) do
+    records
+    |> Enum.filter(&String.starts_with?(&1["name"], "send"))
+    |> Enum.sort_by(&{&1["name"], &1["type"], &1["content"]})
+  end
+
+  defp step_states(html) do
     html
     |> Floki.parse_document!()
-    |> Floki.find("[data-test='mail-dns-record']")
-    |> Enum.filter(&((&1 |> Floki.attribute("data-name") |> List.first() || "") =~ ~r/^send/))
-    |> Enum.map(fn el ->
-      {el |> Floki.attribute("data-type") |> List.first(),
-       el |> Floki.attribute("data-name") |> List.first(),
-       el |> Floki.attribute("data-content") |> List.first()}
+    |> Floki.find("[data-test='setup-step']")
+    |> Enum.map_join("\n", fn step ->
+      "  #{attr(step, "data-step")}: #{attr(step, "data-state")}"
     end)
-    |> Enum.sort()
+  end
+
+  defp attr(element, name), do: element |> Floki.attribute(name) |> List.first()
+
+  # What the page says about a step that stopped. An assertion reporting only
+  # that nothing happened is the one thing already known when it fails.
+  defp escalation(html, step) do
+    html
+    |> Floki.parse_document!()
+    |> Floki.find("[data-test='escalation'][data-step='#{step}']")
+    |> Floki.text()
+    |> String.trim()
   end
 end

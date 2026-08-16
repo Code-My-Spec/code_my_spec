@@ -108,7 +108,16 @@ defmodule CodeMySpecSpex.Fakes.Resend do
   # a confirming GET.
   defp route("PATCH", "/domains/" <> id, body, state) do
     with_domain(state, id, fn domain ->
-      patched = Map.put(domain, "capabilities", capabilities(body["capabilities"]))
+      caps = capabilities(body["capabilities"])
+
+      # The record set follows the capability. Enabling receiving is what makes
+      # Resend ask for an apex MX, and the inbound step publishes what it is
+      # asked for — so a fake that changed the capability without the record
+      # would report a receiving domain with nothing to publish.
+      patched =
+        domain
+        |> Map.put("capabilities", caps)
+        |> Map.put("records", merge_records(domain["records"], caps))
 
       {{200, %{"object" => "domain", "id" => id}}, replace(state, patched)}
     end)
@@ -211,12 +220,14 @@ defmodule CodeMySpecSpex.Fakes.Resend do
   # -- helpers --
 
   defp new_domain(name, capabilities, seq) do
+    caps = capabilities(capabilities)
+
     %{
       "id" => "dom-#{seq}",
       "name" => name,
       "status" => "pending",
-      "capabilities" => capabilities(capabilities),
-      "records" => records_for(name)
+      "capabilities" => caps,
+      "records" => records_for(name, caps)
     }
   end
 
@@ -232,11 +243,19 @@ defmodule CodeMySpecSpex.Fakes.Resend do
     }
   end
 
-  # The 2026 record set: one DKIM TXT, an MX and an SPF TXT on `send`. Pending
-  # until verified, because a criterion about waiting needs to see them not
-  # verified yet.
-  defp records_for(name) do
-    [
+  # The 2026 record set: one DKIM TXT, an MX and an SPF TXT on `send` — and,
+  # when the domain may receive, a fourth at the apex labelled `Receiving`.
+  #
+  # That fourth record is the whole of the inbound step: it publishes what
+  # Resend asks for, and a domain that cannot receive asks for nothing, so the
+  # step reports "no MX record … there is nothing to publish". Modelling
+  # sending-only domains without it is what makes 974's premise real rather
+  # than assumed.
+  #
+  # Pending until verified, because a criterion about waiting needs to see them
+  # not verified yet.
+  defp records_for(name, capabilities) do
+    sending = [
       %{
         "record" => "DKIM",
         "name" => "resend._domainkey",
@@ -260,6 +279,36 @@ defmodule CodeMySpecSpex.Fakes.Resend do
         "status" => "pending"
       }
     ]
+
+    sending ++ receiving_records(capabilities)
+  end
+
+  defp receiving_records(%{"receiving" => "enabled"}) do
+    [
+      %{
+        "record" => "Receiving",
+        "name" => "",
+        "type" => "MX",
+        "value" => "inbound-smtp.us-east-1.amazonaws.com",
+        "priority" => 10,
+        "status" => "pending"
+      }
+    ]
+  end
+
+  defp receiving_records(_capabilities), do: []
+
+  # Keep the records already there — their verification status is state a
+  # criterion may have moved — and add or drop the receiving one to match.
+  defp merge_records(existing, capabilities) do
+    sending = Enum.reject(existing, &(&1["record"] == "Receiving"))
+    kept = Enum.filter(existing, &(&1["record"] == "Receiving"))
+
+    case {receiving_records(capabilities), kept} do
+      {[], _} -> sending
+      {_new, [_ | _] = already} -> sending ++ already
+      {new, []} -> sending ++ new
+    end
   end
 
   # The list endpoint omits `records`; only the single-domain read carries
