@@ -147,8 +147,24 @@ defmodule CodeMySpecSpex.Fakes.Resend do
       true ->
         id = "msg-#{state.next_id}"
 
+        # Loopback. A message addressed to a domain this account can *receive*
+        # on comes back through `GET /emails/receiving`, which is how the
+        # inbound probe proves an inbox exists at all: setup sends to the
+        # domain and then waits for Resend to say it arrived.
+        #
+        # Only for receiving-enabled domains, which is the distinction story
+        # 974 spent a night on — a sending-only domain accepts the probe,
+        # returns an id, and drops it. That is modelled by this clause not
+        # matching.
+        received = deliver_inbound(state, to, body, id)
+
         {{200, %{"id" => id}},
-         %{state | sent: state.sent ++ [Map.put(body, "id", id)], next_id: state.next_id + 1}}
+         %{
+           state
+           | sent: state.sent ++ [Map.put(body, "id", id)],
+             received: received,
+             next_id: state.next_id + 1
+         }}
     end
   end
 
@@ -336,6 +352,37 @@ defmodule CodeMySpecSpex.Fakes.Resend do
 
     Enum.any?(state.domains, fn d ->
       d["status"] == "verified" and String.ends_with?(host, d["name"])
+    end)
+  end
+
+  # A message to a domain this account receives on comes back as inbound mail.
+  # Anywhere else it is simply sent, and nothing arrives here — which is the
+  # sending-only case, and the reason 974's probes were accepted and dropped.
+  defp deliver_inbound(state, to, body, id) do
+    case receiving_domain(state, to) do
+      nil ->
+        state.received
+
+      _domain ->
+        state.received ++
+          [
+            %{
+              "id" => "in-#{id}",
+              "to" => [to],
+              "from" => body["from"],
+              "subject" => body["subject"],
+              "text" => body["text"] || body["html"],
+              "created_at" => "2026-01-01T00:00:00.000Z"
+            }
+          ]
+    end
+  end
+
+  defp receiving_domain(state, to) do
+    host = to |> to_string() |> String.split("@") |> List.last()
+
+    Enum.find(state.domains, fn d ->
+      d["capabilities"]["receiving"] == "enabled" and String.ends_with?(host, d["name"])
     end)
   end
 

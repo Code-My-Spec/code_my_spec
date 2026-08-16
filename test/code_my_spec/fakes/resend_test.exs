@@ -138,6 +138,41 @@ defmodule CodeMySpecSpex.Fakes.ResendTest do
     end
   end
 
+  describe "inbound is the mirror of sending, and only when receiving is on" do
+    # The probe proves an inbox exists by sending to the domain and waiting for
+    # Resend to say it arrived. On a receiving-enabled domain it does.
+    test "a message to a receiving domain comes back as inbound", %{agent: agent} do
+      %{"id" => id} =
+        register(agent, "example.com", %{"sending" => "enabled", "receiving" => "enabled"})
+
+      request(agent, :post, "/domains/#{id}/verify")
+
+      request(agent, :post, "/emails", %{
+        "from" => "probe@example.com",
+        "to" => ["inbox@example.com"],
+        "subject" => "knock"
+      })
+
+      assert %{body: %{"data" => [%{"subject" => "knock"}]}} =
+               request(agent, :get, "/emails/receiving?limit=10")
+    end
+
+    # And the case that cost story 974 a night: sending-only accepts the probe,
+    # returns an id, and drops it. Nothing distinguishes it at the send.
+    test "a sending-only domain accepts the probe and delivers nothing", %{agent: agent} do
+      %{"id" => id} = register(agent, "example.com")
+      request(agent, :post, "/domains/#{id}/verify")
+
+      assert %{status: 200, body: %{"id" => _}} =
+               request(agent, :post, "/emails", %{
+                 "from" => "probe@example.com",
+                 "to" => ["inbox@example.com"]
+               })
+
+      assert %{body: %{"data" => []}} = request(agent, :get, "/emails/receiving?limit=10")
+    end
+  end
+
   describe "ordinary shapes" do
     # 965/8052: a domain you already have is a way in, not an error path.
     test "registering the same domain twice hands back the one it has", %{agent: agent} do
