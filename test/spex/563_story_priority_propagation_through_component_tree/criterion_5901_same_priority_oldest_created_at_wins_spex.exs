@@ -98,7 +98,6 @@ defmodule CodeMySpecSpex.Story563.Criterion5901Spex do
     end
   end
 
-
   # Verifies ordering of two positions in a response text. Pattern-matched
   # rather than imperative branching so the spex stays declarative.
   defp verify_priority_order({high_pos, nil}, _opts) when not is_nil(high_pos), do: :ok

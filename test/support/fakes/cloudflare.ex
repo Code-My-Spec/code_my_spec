@@ -128,10 +128,25 @@ defmodule CodeMySpecSpex.Fakes.Cloudflare do
   defp route("GET", ["accounts", _acct, "registrar", "domains", name], _body, _params, state) do
     # A domain already on the account is an ordinary way in, not an error path
     # (965/8052) — it answers, rather than 404ing, and the step adopts it.
+    #
+    # A name that is *not* on the account also answers, with less. Verified
+    # against the live API and recorded in `Cloudflare.check_domain/2`: the
+    # registrar returns `available`, `can_register` and `current_registrar`
+    # only for domains it already knows, and for anything else it returns the
+    # name and whether the extension is one it sells. That distinction is
+    # criterion 7988's whole subject — "what the registrar actually said, and
+    # no more" — and 404ing instead made every unknown name an error.
     case name in state.registrar do
       true -> {ok(%{"name" => name, "available" => false}), state}
-      false -> {{404, failure("domain not found")}, state}
+      false -> {ok(%{"name" => name, "supported_tld" => supported_tld?(name)}), state}
     end
+  end
+
+  # The extensions Cloudflare Registrar sells. `.museum` is not one, which is
+  # what makes 965/7993 — "an unsupported extension becomes a dashboard
+  # errand" — a real answer rather than a failure.
+  defp supported_tld?(name) do
+    name |> String.split(".") |> List.last() |> Kernel.in(~w(com net org dev io co ca app))
   end
 
   defp route("POST", ["accounts", _acct, "registrar", "domains"], body, _params, state) do

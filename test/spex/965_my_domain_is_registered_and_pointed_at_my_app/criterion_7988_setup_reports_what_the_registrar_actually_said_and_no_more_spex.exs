@@ -20,12 +20,10 @@ defmodule CodeMySpecSpex.Story965.Criterion7988Spex do
 
   @endpoint CodeMySpecWeb.Endpoint
 
-  @cassette "cloudflare_domain_check_unpriced"
-
   setup :register_log_in_setup_account
   setup :setup_active_project
   setup :devops_on
-  setup :connect_providers
+  setup :fake_providers
 
   spex "Setup reports what the registrar actually said, and no more" do
     scenario "an available domain comes back with its price before he commits" do
@@ -38,11 +36,9 @@ defmodule CodeMySpecSpex.Story965.Criterion7988Spex do
 
       when_ "he types the domain he wants and setup checks it", context do
         html =
-          with_provider_cassette(@cassette, fn ->
-            context.view
-            |> form("[data-test='domain-form']", domain: %{name: "sams-new-thing.com"})
-            |> render_submit()
-          end)
+          context.view
+          |> form("[data-test='domain-form']", domain: %{name: "sams-new-thing.com"})
+          |> render_submit()
 
         {:ok, Map.put(context, :html, html)}
       end

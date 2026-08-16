@@ -23,7 +23,6 @@ defmodule CodeMySpecSpex.Story996.Criterion8327Spex do
   # call site rather than shadowing either.
   import Phoenix.ChannelTest, except: [push: 3, assert_reply: 3]
 
-
   @endpoint CodeMySpecWeb.Endpoint
 
   setup :register_log_in_setup_account

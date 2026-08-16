@@ -19,12 +19,10 @@ defmodule CodeMySpecSpex.Story965.Criterion7992Spex do
 
   @endpoint CodeMySpecWeb.Endpoint
 
-  @register_cassette "965_7992_cloudflare_domain_register_ok"
-
   setup :register_log_in_setup_account
   setup :setup_active_project
   setup :devops_on
-  setup :connect_providers
+  setup :fake_providers
 
   spex "Sam finds the domain in his own account" do
     scenario "the registered domain is recorded under Sam's own account" do
@@ -32,17 +30,20 @@ defmodule CodeMySpecSpex.Story965.Criterion7992Spex do
       # than bought — buying is a dashboard errand. "In his own account" is
       # about the adopted domain being recorded under his ownership.
       given_ "setup adopted the domain Sam owns", context do
+        # The zone, in the account. Under a cassette this was true because
+        # John's Cloudflare really manages it; stated here, so the criterion
+        # does not depend on whose account is recording.
+        zone_exists(context, "astralbi.com")
+
         view = mount_provisioning(context)
 
         # Set after the mount: a domain present at mount makes `load/2` read the
         # mail panel, which calls Resend outside every cassette.
         own_domain(context.project, "astralbi.com")
 
-        with_provider_cassette(@register_cassette, fn ->
-          view
-          |> form("[data-test='domain-form']", domain: %{name: "astralbi.com"})
-          |> render_submit()
-        end)
+        view
+        |> form("[data-test='domain-form']", domain: %{name: "astralbi.com"})
+        |> render_submit()
 
         {:ok, Map.put(context, :view, view)}
       end

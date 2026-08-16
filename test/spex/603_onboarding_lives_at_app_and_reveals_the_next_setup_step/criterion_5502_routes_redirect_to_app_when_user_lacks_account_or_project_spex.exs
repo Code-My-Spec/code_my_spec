@@ -23,7 +23,6 @@ defmodule CodeMySpecSpex.Story603.Criterion5502Spex do
 
   @endpoint CodeMySpecWeb.Endpoint
 
-
   spex "Routes redirect to /app when the user lacks account or project" do
     scenario "User with no accounts is redirected to /app from an account-required route" do
       given_ "a logged-in user with zero accounts", context do

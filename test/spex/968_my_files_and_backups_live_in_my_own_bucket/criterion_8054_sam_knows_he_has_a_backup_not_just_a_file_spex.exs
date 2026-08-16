@@ -18,8 +18,6 @@ defmodule CodeMySpecSpex.Story968.Criterion8054Spex do
 
   @endpoint CodeMySpecWeb.Endpoint
 
-  @given_cassette "968_8054_storage_ready"
-
   setup :register_log_in_setup_account
   setup :setup_active_project
   setup :devops_on

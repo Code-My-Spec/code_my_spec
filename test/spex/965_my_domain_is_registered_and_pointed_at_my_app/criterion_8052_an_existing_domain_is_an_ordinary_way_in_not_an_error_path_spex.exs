@@ -17,12 +17,10 @@ defmodule CodeMySpecSpex.Story965.Criterion8052Spex do
 
   @endpoint CodeMySpecWeb.Endpoint
 
-  @cassette "cloudflare_zone_already_in_account"
-
   setup :register_log_in_setup_account
   setup :setup_active_project
   setup :devops_on
-  setup :connect_providers
+  setup :fake_providers
 
   spex "An existing domain is an ordinary way in, not an error path" do
     scenario "a domain Sam already owns is adopted without any purchase offer" do
@@ -34,6 +32,11 @@ defmodule CodeMySpecSpex.Story965.Criterion8052Spex do
         # astralbi.com is a real Cloudflare zone the account manages —
         # owned by DNS even though registered elsewhere, which is exactly the
         # "ordinary way in" this criterion is about.
+        # The zone, in the account. Under a cassette this was true because
+        # John's Cloudflare really manages `astralbi.com`; stated here, so the
+        # criterion does not depend on whose account is recording.
+        zone_exists(context, "astralbi.com")
+
         view = mount_provisioning(context)
 
         # Set after the mount: a domain present at mount makes `load/2` read the
@@ -45,11 +48,9 @@ defmodule CodeMySpecSpex.Story965.Criterion8052Spex do
 
       when_ "the domain step runs", context do
         html =
-          with_provider_cassette(@cassette, fn ->
-            context.view
-            |> form("[data-test='domain-form']", domain: %{name: "astralbi.com"})
-            |> render_submit()
-          end)
+          context.view
+          |> form("[data-test='domain-form']", domain: %{name: "astralbi.com"})
+          |> render_submit()
 
         {:ok, Map.put(context, :html, html)}
       end

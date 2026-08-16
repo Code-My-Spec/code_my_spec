@@ -17,8 +17,6 @@ defmodule CodeMySpecSpex.Story965.Criterion7995Spex do
 
   @endpoint CodeMySpecWeb.Endpoint
 
-  @cassette "cloudflare_dns_records_created_per_environment"
-
   # Fixed, distinct addresses so the DNS bodies recorded here are the same
   # every time and no server has to exist to supply them.
   @environment_ips [{"prod", "192.0.2.10"}, {"uat", "192.0.2.11"}]
@@ -26,7 +24,7 @@ defmodule CodeMySpecSpex.Story965.Criterion7995Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
   setup :devops_on
-  setup :connect_providers
+  setup :fake_providers
 
   spex "Each environment resolves to its own server" do
     scenario "each environment's hostname points at the server serving it" do
@@ -46,6 +44,11 @@ defmodule CodeMySpecSpex.Story965.Criterion7995Spex do
         # *adopts* them instead of creating them, and adopted resources are
         # never torn down — so the records leak and the recording contains no
         # creation at all.
+
+        # The zone, in the account. Under a cassette this was true because
+        # John's Cloudflare really manages it; stated here, so the criterion
+        # does not depend on whose account is recording.
+        zone_exists(context, "astralbi.com")
 
         view = mount_provisioning(context)
 
@@ -84,17 +87,15 @@ defmodule CodeMySpecSpex.Story965.Criterion7995Spex do
 
       when_ "the DNS step runs", context do
         html =
-          with_provider_cassette(@cassette, fn ->
-            context.view
-            |> element("[data-test='setup-step'][data-step='dns'] [data-test='run-step']")
-            |> render_click()
+          context.view
+          |> element("[data-test='setup-step'][data-step='dns'] [data-test='run-step']")
+          |> render_click()
 
-            # The page after the run, not what the click handed back. The step
-            # announces itself with `{:provisioning, :step, …}` and the records
-            # section is assigned when that arrives — after the event
-            # `render_click/1` returns from.
-            render(context.view)
-          end)
+        # The page after the run, not what the click handed back. The step
+        # announces itself with `{:provisioning, :step, …}` and the records
+        # section is assigned when that arrives — after the event
+        # `render_click/1` returns from.
+        render(context.view)
 
         {:ok, Map.put(context, :html, html)}
       end

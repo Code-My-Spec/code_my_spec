@@ -15,12 +15,10 @@ defmodule CodeMySpecSpex.Story965.Criterion7989Spex do
 
   @endpoint CodeMySpecWeb.Endpoint
 
-  @cassette "cloudflare_domain_check_unavailable"
-
   setup :register_log_in_setup_account
   setup :setup_active_project
   setup :devops_on
-  setup :connect_providers
+  setup :fake_providers
 
   spex "A name setup cannot register says so plainly" do
     scenario "an unavailable domain is reported and no charge is attempted" do
@@ -33,11 +31,9 @@ defmodule CodeMySpecSpex.Story965.Criterion7989Spex do
 
       when_ "he checks a domain someone else already owns", context do
         html =
-          with_provider_cassette(@cassette, fn ->
-            context.view
-            |> form("[data-test='domain-form']", domain: %{name: "google.com"})
-            |> render_submit()
-          end)
+          context.view
+          |> form("[data-test='domain-form']", domain: %{name: "google.com"})
+          |> render_submit()
 
         {:ok, Map.put(context, :html, html)}
       end

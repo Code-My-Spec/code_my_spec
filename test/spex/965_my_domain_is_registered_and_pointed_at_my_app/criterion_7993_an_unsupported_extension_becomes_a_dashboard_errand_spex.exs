@@ -16,12 +16,10 @@ defmodule CodeMySpecSpex.Story965.Criterion7993Spex do
 
   @endpoint CodeMySpecWeb.Endpoint
 
-  @unsupported_cassette "965_7993_cloudflare_tld_not_available_via_api"
-
   setup :register_log_in_setup_account
   setup :setup_active_project
   setup :devops_on
-  setup :connect_providers
+  setup :fake_providers
 
   spex "An unsupported extension becomes a dashboard errand" do
     scenario "an out-of-beta TLD is handed off and then adopted on return" do
@@ -37,11 +35,9 @@ defmodule CodeMySpecSpex.Story965.Criterion7993Spex do
       # returns `supported_tld: false`, which is the case under test.
       when_ "Sam checks a name whose extension the Registrar API cannot sell", context do
         html =
-          with_provider_cassette(@unsupported_cassette, fn ->
-            context.view
-            |> form("[data-test='domain-form']", domain: %{name: "sams-new-thing.museum"})
-            |> render_submit()
-          end)
+          context.view
+          |> form("[data-test='domain-form']", domain: %{name: "sams-new-thing.museum"})
+          |> render_submit()
 
         {:ok, Map.put(context, :html, html)}
       end
