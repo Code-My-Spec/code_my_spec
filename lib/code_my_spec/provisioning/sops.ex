@@ -195,7 +195,7 @@ defmodule CodeMySpec.Provisioning.Sops do
          :ok <- ensure_file(env, environment) do
       args = ["set", env_file(environment), ~s(["#{key}"]), Jason.encode!(value)]
 
-      case sops(args, cd: env.cwd, env: [{"SOPS_AGE_KEY", private_key}]) do
+      case sops(env, args, cd: env.cwd, env: [{"SOPS_AGE_KEY", private_key}]) do
         {_out, 0} -> :ok
         {out, status} -> {:error, {:sops_failed, status, out}}
       end
@@ -215,7 +215,7 @@ defmodule CodeMySpec.Provisioning.Sops do
     with :ok <- ensure_available() do
       args = ["decrypt", env_file(environment)]
 
-      case sops(args, cd: env.cwd, env: [{"SOPS_AGE_KEY", private_key}]) do
+      case sops(env, args, cd: env.cwd, env: [{"SOPS_AGE_KEY", private_key}]) do
         {out, 0} -> {:ok, parse_dotenv(out)}
         {out, status} -> {:error, {:sops_failed, status, out}}
       end
@@ -311,7 +311,7 @@ defmodule CodeMySpec.Provisioning.Sops do
   # the re-encrypt for the opposite reason. Asking sops to encrypt answers both
   # questions with the key it does have — the recipient.
   defp ensure_encrypted(env, path) do
-    case sops(["encrypt", "--in-place", path], cd: env.cwd) do
+    case sops(env, ["encrypt", "--in-place", path], cd: env.cwd) do
       {_out, 0} ->
         :ok
 
@@ -330,8 +330,15 @@ defmodule CodeMySpec.Provisioning.Sops do
   # root with relative paths is what makes the creation_rules apply — an
   # absolute path with the wrong cwd fails with "config file not found, or
   # has no creation rules".
-  defp sops(args, opts) do
-    System.cmd("sops", args, [stderr_to_stdout: true] ++ opts)
+  #
+  # Through `Environments.cmd/4` rather than `System.cmd/3`, so this runs
+  # wherever the environment says it runs. Every other command in provisioning
+  # already goes that way; sops was the exception, and the exception was
+  # invisible until a test modelled the shell and watched the real binary run
+  # anyway (15193154). `Local.cmd/4` applies the environment's cwd itself and
+  # passes the rest through, so nothing about the sops semantics changes.
+  defp sops(env, args, opts) do
+    Environments.cmd(env, "sops", args, [stderr_to_stdout: true] ++ opts)
   end
 
   defp parse_dotenv(output) do
