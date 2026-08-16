@@ -16,14 +16,23 @@ defmodule CodeMySpecSpex.Fakes.HetznerTest do
     %{agent: agent}
   end
 
-  defp request(agent, method, path, body \\ nil) do
+  defp request(agent, method, path), do: send_request(agent, method, path, nil)
+  defp request(agent, method, path, body), do: send_request(agent, method, path, body)
+
+  defp send_request(agent, method, path, nil) do
+    Req.request!(req(agent, method, path))
+  end
+
+  defp send_request(agent, method, path, body) do
+    req(agent, method, path) |> Req.merge(json: body) |> Req.request!()
+  end
+
+  defp req(agent, method, path) do
     Req.new(
       method: method,
       url: "https://api.hetzner.cloud/v1" <> path,
-      plug: &Hetzner.call(&1, agent)
+      plug: &CodeMySpecSpex.Fakes.Hetzner.call(&1, agent)
     )
-    |> then(&if(body, do: Req.merge(&1, json: body), else: &1))
-    |> Req.request!()
   end
 
   test "a created server is in the listing afterwards", %{agent: agent} do

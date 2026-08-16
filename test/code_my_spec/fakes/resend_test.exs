@@ -16,14 +16,29 @@ defmodule CodeMySpecSpex.Fakes.ResendTest do
     %{agent: agent}
   end
 
-  defp request(agent, method, path, body \\ nil) do
-    Req.new(method: method, url: "https://api.resend.com" <> path, plug: &Resend.call(&1, agent))
-    |> then(&if(body, do: Req.merge(&1, json: body), else: &1))
-    |> Req.request!()
+  defp request(agent, method, path), do: send_request(agent, method, path, nil)
+  defp request(agent, method, path, body), do: send_request(agent, method, path, body)
+
+  defp send_request(agent, method, path, nil), do: Req.request!(req(agent, method, path))
+
+  defp send_request(agent, method, path, body) do
+    req(agent, method, path) |> Req.merge(json: body) |> Req.request!()
   end
 
-  defp register(agent, name, caps \\ nil) do
-    body = %{"name" => name} |> then(&if(caps, do: Map.put(&1, "capabilities", caps), else: &1))
+  defp req(agent, method, path) do
+    Req.new(
+      method: method,
+      url: "https://api.resend.com" <> path,
+      plug: &CodeMySpecSpex.Fakes.Resend.call(&1, agent)
+    )
+  end
+
+  defp register(agent, name), do: do_register(agent, %{"name" => name})
+
+  defp register(agent, name, caps),
+    do: do_register(agent, %{"name" => name, "capabilities" => caps})
+
+  defp do_register(agent, body) do
     %{body: domain} = request(agent, :post, "/domains", body)
     domain
   end
