@@ -7,7 +7,7 @@ defmodule CodeMySpec.BillingTest do
   real work, and a test that stubbed it would prove nothing.
   """
 
-  use CodeMySpecTest.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.UsersFixtures
   import CodeMySpec.AccountsFixtures

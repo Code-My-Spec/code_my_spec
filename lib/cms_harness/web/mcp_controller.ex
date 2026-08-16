@@ -300,22 +300,29 @@ defmodule CmsHarness.Web.McpController do
     })
   end
 
-  defp message(:no_credential),
+  @doc """
+  The sentence an agent gets when the harness cannot forward its call.
+
+  Public because it is the whole of what the agent sees and it carries real
+  judgement — five different failures arrive here and the wrong wording sends
+  the reader after the wrong thing. Testable without building a conn.
+  """
+  def message(:no_credential),
     do:
       "The CodeMySpec harness has no credential for the server, so it cannot " <>
         "forward this. Set CMS_DEPLOY_KEY to this project's deploy key, or " <>
         "CMS_TOKEN if you are signed in on this machine."
 
-  defp message({:refused, status}),
+  def message({:refused, status}),
     do:
       "The server refused this harness's deploy key with #{status}, so there is " <>
         "no token to forward with. Check CMS_DEPLOY_KEY against the project's " <>
-        "deploy key on #{Config.server_url()}."
+        "deploy key on #{Config.server_url()}." <> unavailable_hint({:refused, status})
 
-  defp message({:unreachable, reason}),
+  def message({:unreachable, reason}),
     do: "The harness could not reach #{Config.server_url()} to get a token: #{inspect(reason)}"
 
-  defp message({:unknown_harness, id}),
+  def message({:unknown_harness, id}),
     do:
       "This harness is not serving the working copy #{id}. Either it serves a " <>
         "different set of copies, or this checkout's plugin was generated against " <>
@@ -323,30 +330,61 @@ defmodule CmsHarness.Web.McpController do
 
   # Distinct from the clause above, where the server answered and said no. Here
   # nobody got to ask, so the id is not implicated and onboarding is not the fix.
-  defp message({:server_unreachable, id, reason}),
+  def message({:server_unreachable, id, reason}),
     do:
       "The harness could not reach #{Config.server_url()} to find out where #{id} " <>
         "is: #{inspect(reason, limit: 5)}. Nothing is wrong with the id and " <>
-        "re-onboarding will not help — the server is down or unreachable from here."
+        "re-onboarding will not help — the server is down or unreachable from here." <>
+        unavailable_hint(reason)
 
-  defp message(:no_harness),
+  def message(:no_harness),
     do:
       "This request does not say which working copy it is about. The MCP " <>
         "server is addressed as /mcp?harness=<id>; run `mix cms.harness.onboard` " <>
         "in the checkout to generate a plugin that sends one."
 
-  defp message(:no_project_id),
+  def message(:no_project_id),
     do:
       "This directory does not say which project it is. Put a `project_id` in " <>
         ".code_my_spec/config.yml, or set CMS_PROJECT_ID."
 
-  defp message(:unreadable_config),
+  def message(:unreadable_config),
     do: "The harness could not read .code_my_spec/config.yml in this directory."
 
-  defp message({:invalid_config, reason}),
+  def message({:invalid_config, reason}),
     do: "The harness could not parse .code_my_spec/config.yml: #{inspect(reason)}"
 
-  defp message(reason), do: "The CodeMySpec harness could not forward this: #{inspect(reason)}"
+  def message(reason), do: "The CodeMySpec harness could not forward this: #{inspect(reason)}"
+
+  # A 503 is not "unreachable". The server answered — it is up and refusing
+  # everything — and on this stack there is one overwhelming reason for that.
+  #
+  # `Phoenix.Ecto.CheckRepoStatus` refuses every request with
+  # `PendingMigrationError` while the dev database is behind. Since :4000 serves
+  # the MCP endpoint, every agent on the machine loses every tool at the same
+  # moment, and the message they get names a harness id — which is the one thing
+  # that is definitely fine. Measured: an agent committed a migration from a
+  # worktree, ran it against its own test partition, pushed, and nothing ran it
+  # on dev. The reason was visible only in `web.log`, behind a 4KB `conn` dump.
+  #
+  # A hint rather than a diagnosis: the harness cannot see the body, so this
+  # says what to check first, not what is wrong. `7d1bde0e`.
+  defp unavailable_hint(reason) do
+    if service_unavailable?(reason) do
+      "\n\nA 503 means the server is up and refusing every request. The usual " <>
+        "cause here is a pending migration — `Phoenix.Ecto.CheckRepoStatus` " <>
+        "refuses everything while the dev database is behind, and a migration " <>
+        "committed from a worktree is only ever run against that worktree's test " <>
+        "database. Check with `mix ecto.migrate` in the main checkout, or " <>
+        "`just refresh`, which now does it. The reason is in ~/.codemyspec/web.log."
+    else
+      ""
+    end
+  end
+
+  defp service_unavailable?({:refused, 503}), do: true
+  defp service_unavailable?({:error, inner}), do: service_unavailable?(inner)
+  defp service_unavailable?(_), do: false
 
   defp unreachable(conn, reason) do
     Logger.error("[CmsHarness] MCP upstream unreachable: #{inspect(reason)}")

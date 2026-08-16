@@ -10,7 +10,7 @@ defmodule CodeMySpec.LiveContainerTest do
   is about the toolchain — it is about whether the environment contract holds
   when the filesystem is inside a container.
   """
-  use ExUnit.Case, async: false
+  use ExUnit.Case, async: true
 
   @moduletag :live
   @moduletag timeout: 600_000

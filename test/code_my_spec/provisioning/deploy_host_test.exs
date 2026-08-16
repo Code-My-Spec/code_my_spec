@@ -12,7 +12,7 @@ defmodule CodeMySpec.Provisioning.DeployHostTest do
   The failure looked like a broken deploy. It was a deploy to the right
   machine, described to itself as the wrong site.
   """
-  use CodeMySpecTest.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.UsersFixtures
 

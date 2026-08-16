@@ -76,8 +76,11 @@ defmodule CodeMySpecLocalWeb.Hooks.PreToolUseControllerTest do
 
   describe "mix test rewriting" do
     setup %{scope: scope} do
-      # The analysis-API rewrite requires a linked project with a working dir.
-      %{scope: %{scope | cwd: "/tmp/proj"}}
+      # What `HarnessScope` produces on every hook request: the id it routed on,
+      # and the working copy that id names. The rewrite needs both — the cwd to
+      # decide which server can reach the disk, the id to tell that server which
+      # checkout it is about.
+      %{scope: %{scope | cwd: "/tmp/proj", active_harness_id: Ecto.UUID.generate()}}
     end
 
     test "rewrites mix test into an analysis API curl", %{scope: scope} do
@@ -96,22 +99,24 @@ defmodule CodeMySpecLocalWeb.Hooks.PreToolUseControllerTest do
       assert command =~ "/api/analysis/run"
       assert command =~ ~s("source":"exunit")
       assert command =~ "test/my_test.exs"
-      assert command =~ "X-Working-Dir: /tmp/proj"
+      assert command =~ "X-Harness-Id: #{scope.active_harness_id}"
+
+      refute command =~ "X-Working-Dir",
+             "the endpoint is chosen by cwd; the working copy is named by id"
+
       # A big suite outlives the Bash tool's ~2 min default kill.
       assert body["hookSpecificOutput"]["updatedInput"]["timeout"] == 600_000
     end
 
     # A heavy harness carries *both* a harness id and a cwd — `HarnessScope`
-    # sets the first and `WorkingDirScope` the second, in that order, on every
-    # hook request. So "has a harness id" does not mean "is the light harness",
-    # and routing on it would send this to the id-addressed endpoint only the
-    # light harness serves: a 404 on every `mix test` an agent runs here.
+    # resolves the id and builds a scope with a cwd on it. So "has a harness id"
+    # does not mean "is the light harness", and routing on it would send this to
+    # the id-addressed endpoint only the light harness serves: a 404 on every
+    # `mix test` an agent runs here.
     #
     # The question the rewrite is actually asking is whether whoever answers can
     # reach the disk, and `cwd` is what answers it.
     test "a harness id does not divert a run that has a working dir", %{scope: scope} do
-      scope = %{scope | active_harness_id: Ecto.UUID.generate()}
-
       conn =
         build_post(scope, %{
           "tool_name" => "Bash",
@@ -125,7 +130,8 @@ defmodule CodeMySpecLocalWeb.Hooks.PreToolUseControllerTest do
         |> Jason.decode!()
         |> get_in(["hookSpecificOutput", "updatedInput", "command"])
 
-      assert command =~ "X-Working-Dir: /tmp/proj"
+      assert command =~ "/api/analysis/run"
+      assert command =~ "X-Harness-Id: #{scope.active_harness_id}"
       refute command =~ "/api/harnesses/"
     end
 

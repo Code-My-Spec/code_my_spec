@@ -8,6 +8,14 @@ defmodule CmsHarness.TestDatabaseTest do
   what the others' tests see, and the analyzer reports the difference as failures
   belonging to whoever asked.
 
+  These assert properties of **assignment**, which is `Onboarding.partition_name/1`
+  — the function onboarding uses once to pick a name. `TestDatabase.partition_for/1`
+  no longer derives anything: it reads what was recorded and refuses a copy that
+  has none, which is covered by `CmsHarness.TestDatabasePartitionTest`.
+
+  Splitting them is the point. Deriving on every resolve is what let the analyzer
+  ignore the recorded value and compute its own (acaf8035).
+
   This module now only *names* the partition. It used to create and migrate the
   database as well, and that shelled out to `mix ecto.create` / `ecto.migrate`
   with an environment that had `MIX_ENV` scrubbed out of it — so the migration
@@ -18,12 +26,13 @@ defmodule CmsHarness.TestDatabaseTest do
 
   use ExUnit.Case, async: true
 
+  alias ClientUtils.Harness.Onboarding
   alias CmsHarness.TestDatabase
 
   describe "partition_for/1" do
     test "two checkouts of one project get different databases" do
-      main = TestDatabase.partition_for("/src/app")
-      worktree = TestDatabase.partition_for("/src/app/.claude/worktrees/feature")
+      main = Onboarding.partition_name("/src/app")
+      worktree = Onboarding.partition_name("/src/app/.claude/worktrees/feature")
 
       refute main == worktree,
              "a worktree needs its own schema; sharing is how one branch's " <>
@@ -31,18 +40,18 @@ defmodule CmsHarness.TestDatabaseTest do
     end
 
     test "the same checkout gets the same database across restarts" do
-      assert TestDatabase.partition_for("/src/app") == TestDatabase.partition_for("/src/app")
+      assert Onboarding.partition_name("/src/app") == Onboarding.partition_name("/src/app")
     end
 
     test "spellings of one path agree, so a harness does not migrate twice" do
-      assert TestDatabase.partition_for("/src/app") == TestDatabase.partition_for("/src/app/")
+      assert Onboarding.partition_name("/src/app") == Onboarding.partition_name("/src/app/")
 
-      assert TestDatabase.partition_for("/src/app") ==
-               TestDatabase.partition_for("/src/other/../app")
+      assert Onboarding.partition_name("/src/app") ==
+               Onboarding.partition_name("/src/other/../app")
     end
 
     test "it is a usable database suffix" do
-      assert TestDatabase.partition_for("/src/app") =~ ~r/^h[0-9a-f]{8}$/,
+      assert Onboarding.partition_name("/src/app") =~ ~r/^h[0-9a-f]{8}$/,
              "this is concatenated onto a database name — it has to be short and plain"
     end
   end

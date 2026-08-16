@@ -3,12 +3,13 @@ defmodule CodeMySpec.McpServers.Issues.Tools.ListIssuesTest do
   import CodeMySpec.UsersFixtures
   import CodeMySpec.IssuesFixtures
 
-  alias CodeMySpec.McpServers.Issues.Tools.ListIssues
   alias Anubis.Server.Frame
   alias Anubis.Server.Response
+  alias CodeMySpec.McpServers.Issues.Tools.ListIssues
+  alias Ecto.Adapters.SQL.Sandbox
 
   setup do
-    :ok = Ecto.Adapters.SQL.Sandbox.checkout(CodeMySpec.Repo)
+    :ok = Sandbox.checkout(CodeMySpec.Repo)
   end
 
   describe "execute/2" do
@@ -63,6 +64,38 @@ defmodule CodeMySpec.McpServers.Issues.Tools.ListIssuesTest do
       assert {:reply, response, ^frame} = ListIssues.execute(%{}, frame)
       content = response_text(response)
       assert content =~ "No issues found"
+    end
+
+    # `framework` was refused here, on the grounds that framework issues routed
+    # to the hosted server rather than being stored locally. `CreateIssue`
+    # records that this stopped being true when the tools moved onto the
+    # server — it writes every scope the same way — so framework issues were
+    # creatable, visible in an unfiltered listing, and impossible to filter
+    # for. An agent asked to work the framework backlog got
+    # `Invalid scope: "framework". Allowed: app, qa, docs.` while the issues
+    # sat in the unfiltered list above it.
+    test "filters by framework scope, which is stored locally like every other" do
+      scope = full_scope_fixture()
+      issue_fixture(scope, %{title: "Harness Friction", scope: :framework})
+      issue_fixture(scope, %{title: "Ordinary App Bug", scope: :app})
+
+      frame = %Frame{assigns: %{current_scope: scope}}
+
+      assert {:reply, response, ^frame} = ListIssues.execute(%{scope: "framework"}, frame)
+      content = response_text(response)
+
+      assert content =~ "Harness Friction"
+      refute content =~ "Ordinary App Bug"
+    end
+
+    test "an unfiltered listing already showed them, which is what made the refusal wrong" do
+      scope = full_scope_fixture()
+      issue_fixture(scope, %{title: "Harness Friction", scope: :framework})
+
+      frame = %Frame{assigns: %{current_scope: scope}}
+
+      assert {:reply, response, ^frame} = ListIssues.execute(%{}, frame)
+      assert response_text(response) =~ "Harness Friction"
     end
   end
 

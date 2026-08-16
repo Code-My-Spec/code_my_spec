@@ -6,12 +6,17 @@ defmodule CodeMySpecWeb.HarnessChannelTest do
   `user_message` tagged with the session's external id.
   """
 
+  # Sync, and this one has a reason: the channel runs in its own process, so an
+  # async sandbox connection checked out by the test is not one the channel can
+  # see. It passes alone either way — the failure only appears under
+  # concurrency, which is why "it passed when I flipped it" is not evidence.
   use CodeMySpecTest.DataCase, async: false
 
   import Phoenix.ChannelTest
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.Conversations
+  alias CodeMySpec.Conversations.Message
 
   @endpoint CodeMySpecWeb.Endpoint
 
@@ -71,7 +76,7 @@ defmodule CodeMySpecWeb.HarnessChannelTest do
     [message] = Conversations.list_messages(conversation)
     assert message.role == :assistant
     assert message.agent_role == "coding"
-    assert CodeMySpec.Conversations.Message.text(message) == "implemented the context"
+    assert Message.text(message) == "implemented the context"
   end
 
   test "an operator reply is pushed down to the harness as user_message", %{

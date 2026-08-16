@@ -5,7 +5,7 @@ defmodule CodeMySpecLocalWeb.HarnessChannelTest do
   the manager's `dispatch` is routed DOWN to the target lane's topic.
   """
 
-  use CodeMySpecTest.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: true
 
   import Phoenix.ChannelTest
   import CodeMySpec.UsersFixtures

@@ -20,7 +20,7 @@ defmodule CodeMySpec.Provisioning.Builder.LocalBuildTest do
   Tagged `:docker` and excluded by default — it builds an image, which is
   seconds rather than milliseconds and needs a working daemon.
   """
-  use ExUnit.Case, async: false
+  use ExUnit.Case, async: true
 
   alias CodeMySpec.Provisioning.Builder.Remote
 
@@ -28,7 +28,7 @@ defmodule CodeMySpec.Provisioning.Builder.LocalBuildTest do
   @moduletag timeout: 300_000
 
   setup do
-    tmp = Path.join(System.tmp_dir!(), "cms-local-build-#{System.unique_integer([:positive])}")
+    tmp = CodeMySpec.TempFile.dir("cms-local-build")
     source = Path.join(tmp, "source")
     File.mkdir_p!(source)
 

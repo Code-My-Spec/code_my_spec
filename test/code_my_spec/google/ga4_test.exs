@@ -10,7 +10,7 @@ defmodule CodeMySpec.Google.Ga4Test do
   rows at record time).
   """
 
-  use ExUnit.Case, async: false
+  use ExUnit.Case, async: true
 
   import ReqCassette
   import CodeMySpec.GoogleCassetteHelpers

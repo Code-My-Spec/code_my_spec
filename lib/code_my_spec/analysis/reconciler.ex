@@ -14,7 +14,7 @@ defmodule CodeMySpec.Analysis.Reconciler do
 
   require Logger
 
-  alias CodeMySpec.Analysis.{Fingerprint, Run, RunsRepository}
+  alias CodeMySpec.Analysis.{Fingerprint, Run, RunsRepository, Signatures}
   alias CodeMySpec.Files
   alias CodeMySpec.Notifications.NotificationClient
   alias CodeMySpec.Problems
@@ -63,11 +63,17 @@ defmodule CodeMySpec.Analysis.Reconciler do
 
     case Problems.reconcile_problems_for_source(scope, run.source, file_scope, problems) do
       {:ok, _inserted} ->
+        # Read before finishing: this run is still `:running`, so
+        # `latest_completed_run/2` returns the sweep before it. After
+        # `finish_run` it would return this one and the delta would be empty.
+        previous = RunsRepository.latest_completed_run(scope, run.source)
+        signatures = Signatures.of(problems)
+
         {:ok, finished} =
           RunsRepository.finish_run(run, :completed, %{
             output: result.output,
             exit_status: result.exit_status,
-            stats: result.stats,
+            stats: Signatures.put(result.stats, signatures),
             # The tree this answered about, as opposed to the one it was asked
             # about. `input_fingerprint` is stamped at enqueue, so the two differ
             # exactly when an edit landed while the run was in flight — which is
@@ -81,7 +87,8 @@ defmodule CodeMySpec.Analysis.Reconciler do
         maybe_notify(scope, finished, problems, opts)
 
         Logger.info(
-          "[Analysis] #{run.source} reconciled: #{length(problems)} problem(s) (#{run.kind})"
+          "[Analysis] #{run.source} reconciled: #{length(problems)} problem(s) (#{run.kind})" <>
+            Signatures.delta_suffix(previous, signatures)
         )
 
         {:ok, finished}
@@ -99,9 +106,27 @@ defmodule CodeMySpec.Analysis.Reconciler do
     Logger.warning("[Analysis] #{run.source} failed: #{inspect(reason)}")
 
     RunsRepository.finish_run(run, :failed, %{
-      stats: %{"error" => String.slice(inspect(reason), 0, 500)}
+      stats: %{"error" => error_text(reason)}
     })
   end
+
+  # A string reason is stored as itself; everything else is inspected.
+  #
+  # This was `inspect/1` unconditionally, which wrapped an already-readable
+  # message in quotes and flattened its newlines into literal `\n`. That was
+  # invisible while nothing read the column back. It stopped being invisible
+  # when `Validation.failure_reason/1` started surfacing it in the stop response
+  # (`639d0fc1`), where the reader is an agent being told why an analyzer could
+  # not run:
+  #
+  #     "credo crashed: … has not been onboarded.\nRun: mix harness.onboard"
+  #
+  # — one quoted line instead of two, with the remedy buried in an escape.
+  #
+  # Non-binaries still go through `inspect/1`, and must: `skipped_for_compile_errors?/1`
+  # matches on the inspected atom.
+  defp error_text(reason) when is_binary(reason), do: String.slice(reason, 0, 500)
+  defp error_text(reason), do: String.slice(inspect(reason), 0, 500)
 
   @doc """
   Close a run that never ran because one for the same source was already

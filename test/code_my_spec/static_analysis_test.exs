@@ -9,16 +9,28 @@ defmodule CodeMySpec.StaticAnalysisTest do
   This test file verifies that the context module exists, delegates correctly, and provides
   a thin wrapper around the Runner module for executing static analysis tools.
   """
+  # Sync: `use_cmd_cassette` meck-patches `System.cmd/3` process-globally.
+  # `@moduletag :analyzer` keeps it out of the default suite, since it works out
+  # of the shared `code_my_spec_test_repos` directory.
   use CodeMySpecTest.DataCase, async: false
 
   use ExCliVcr
+
+  # Out of the default suite. This file rsyncs a copy of a real Phoenix project
+  # out of `../code_my_spec_test_repos` and runs real tools inside it — a
+  # directory every worktree reaches through a symlink to one shared copy, so
+  # two agents running suites collided there. `just test-analyzer` runs it.
+  @moduletag :analyzer
+
   import ExUnit.CaptureLog
   import CodeMySpec.UsersFixtures
   import CodeMySpec.AccountsFixtures
   import CodeMySpec.ProjectsFixtures
 
-  alias CodeMySpec.StaticAnalysis
   alias CodeMySpec.Problems.Problem
+  alias CodeMySpec.StaticAnalysis
+  alias CodeMySpec.StaticAnalysis.Runner
+  alias CodeMySpec.Support.TestAdapter
 
   @test_repo_url "https://github.com/Code-My-Spec/test_phoenix_project.git"
 
@@ -51,7 +63,7 @@ defmodule CodeMySpec.StaticAnalysisTest do
 
     # Clone from pool
     {:ok, project_dir} =
-      CodeMySpec.Support.TestAdapter.clone(scope, @test_repo_url)
+      TestAdapter.clone(scope, @test_repo_url)
 
     # Update project with cloned repo path
     {:ok, updated_project} =
@@ -60,7 +72,7 @@ defmodule CodeMySpec.StaticAnalysisTest do
     scope = user_scope_fixture(user, account, updated_project) |> Map.put(:cwd, project_dir)
 
     on_exit(fn ->
-      CodeMySpec.Support.TestAdapter.checkin(project_dir)
+      TestAdapter.checkin(project_dir)
     end)
 
     %{scope: scope, project: updated_project, project_dir: project_dir}
@@ -89,7 +101,7 @@ defmodule CodeMySpec.StaticAnalysisTest do
     test "delegates to Runner.list_analyzers/0" do
       # Verify that the result matches what Runner.list_analyzers/0 returns
       assert StaticAnalysis.list_analyzers() ==
-               CodeMySpec.StaticAnalysis.Runner.list_analyzers()
+               Runner.list_analyzers()
     end
   end
 
@@ -102,7 +114,7 @@ defmodule CodeMySpec.StaticAnalysisTest do
       context = setup_test_project()
 
       on_exit(fn ->
-        CodeMySpec.Support.TestAdapter.checkin(context.project_dir)
+        TestAdapter.checkin(context.project_dir)
       end)
 
       context
@@ -145,7 +157,7 @@ defmodule CodeMySpec.StaticAnalysisTest do
       context = setup_test_project()
 
       on_exit(fn ->
-        CodeMySpec.Support.TestAdapter.checkin(context.project_dir)
+        TestAdapter.checkin(context.project_dir)
       end)
 
       context

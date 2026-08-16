@@ -55,7 +55,7 @@ defmodule CodeMySpecSpex.Story538.Criterion5119Spex do
 
         registration =
           Phoenix.ConnTest.build_conn()
-          |> Plug.Conn.put_req_header("x-working-dir", context.scope.cwd)
+          |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_harness_id)
           |> Plug.Conn.put_req_header("content-type", "application/json")
           |> post(~p"/api/hooks/subagent-start", %{
             "session_id" => context.session_id,
@@ -76,7 +76,7 @@ defmodule CodeMySpecSpex.Story538.Criterion5119Spex do
       when_ "the stop hook fires", context do
         response =
           Phoenix.ConnTest.build_conn()
-          |> Plug.Conn.put_req_header("x-working-dir", context.scope.cwd)
+          |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_harness_id)
           |> Plug.Conn.put_req_header("content-type", "application/json")
           |> post(~p"/api/hooks/stop", %{"session_id" => context.session_id})
           |> Phoenix.ConnTest.json_response(200)

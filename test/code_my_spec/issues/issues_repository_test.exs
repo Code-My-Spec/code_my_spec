@@ -1,5 +1,5 @@
 defmodule CodeMySpec.Issues.IssuesRepositoryTest do
-  use CodeMySpecTest.DataCase
+  use CodeMySpecTest.DataCase, async: true
 
   alias CodeMySpec.Issues.Issue
   alias CodeMySpec.Issues.IssuesRepository

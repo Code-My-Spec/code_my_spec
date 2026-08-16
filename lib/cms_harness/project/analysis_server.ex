@@ -262,12 +262,25 @@ defmodule CmsHarness.Project.AnalysisServer do
     push_result(state.project.root, running.run_id, running.source, result)
   end
 
+  # The result carries whether the build that produced it is behind the tree it
+  # decided about.
+  #
+  # A harness runs the analyzer it booted with, so a fix to `StaticAnalysis` is
+  # not in force until the harness is rebuilt — and from inside the stop loop
+  # that is indistinguishable from an ordinary stale finding. `d9f0846c`: three
+  # loops spent on findings already fixed, while the compiled pipeline sat
+  # eleven commits behind for a whole session. Diagnosing it needed a `.beam`
+  # timestamp.
+  #
+  # Sent rather than logged, because the reader is the agent being told to stop
+  # again, and the harness log is the one place it is not looking.
   defp push_result(root, run_id, source, {:ok, result}) do
     ChannelClient.deliver_analysis_result(root, %{
       "run_id" => run_id,
       "source" => source,
       "status" => "ok",
-      "result" => result
+      "result" => result,
+      "analyzer_staleness" => CodeMySpec.BootVersion.analyzer_staleness()
     })
   end
 

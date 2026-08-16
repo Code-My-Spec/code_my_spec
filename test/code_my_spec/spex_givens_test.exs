@@ -20,8 +20,11 @@ defmodule CodeMySpec.SpexGivensTest do
   a fact about the world the mount does not create. Those need reading. This
   is the floor, not the ceiling.
   """
+  # Sync: this mutates OS environment variables, which belong to the BEAM node
+  # rather than to a test process. Saving and restoring them is careful and
+  # still leaves a window every concurrent test can see.
 
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: false
 
   # `stage_` covers the family that seams a provider — stage_servers,
   # stage_containers, stage_inventory, stage_build, stage_deploy. Those are
@@ -36,13 +39,26 @@ defmodule CodeMySpec.SpexGivensTest do
   # pushing to it IS driving the app. `join_widget` is listed by the same
   # precedent as `stage_`: a helper whose whole body is the drive.
   #
-  # `System.put_env`/`delete_env` join `System.cmd` and `File.write` by the same
-  # reasoning the list already applies to those: they make a fact about the
-  # machine true rather than merely asserting it. The case that needed it is a
-  # given whose precondition is an *absence* — "no project id is set in its
-  # environment" — where this VM really does export one, because it runs under a
-  # harness. Clearing it is the only way to establish that premise, and reading
-  # it and hoping is exactly what this check exists to stop.
+  # `System.cmd`, `System.put_env` and `System.delete_env` were removed from this
+  # list, because `SpexDeniedCalls` (CMS0002) forbids all three inside a
+  # `_spex.exs`. Listing them here told an author to establish a precondition by
+  # writing exactly what the other check rejects, and the two together left a
+  # `given_` about an environment variable with no legal way to be written
+  # (5c50b880).
+  #
+  # `put_env!`/`delete_env!` replace them. They live on `CodeMySpecSpex.Case`,
+  # mutate in support where CMS0002 does not reach, and restore on exit — so the
+  # case that motivated the `System.*` entries in the first place ("no project id
+  # is set in its environment", on a VM that really does export one because it
+  # runs under a harness) is still establishable, just not by the spex reaching
+  # for the VM itself.
+  #
+  # Removing them broke nothing, which is worth recording: no spex ever called
+  # any of the three. All six files that matched did so through a *comment* —
+  # 1013/criterion_2361 says "Through the environment, not `System.cmd`" and was
+  # counted as establishing for saying so. This list is a substring match over
+  # the whole block, comments included, so a block can still pass by describing
+  # the drive it does not perform. That is a hole in the floor, not the floor.
   #
   # Nothing may be commented *inside* the sigil — ~w has no comments, so a `#`
   # line becomes literal words like "a" and "is", which match every body and
@@ -56,9 +72,10 @@ defmodule CodeMySpec.SpexGivensTest do
     existing_apex_mx paste_storage_credentials verified_sending_domains
     stuck_sending_domain unverifiable_domain app_holds_refresh_secret
     connect_providers tear_down_after Environments. File.write File.mkdir
-    System.cmd System.put_env System.delete_env assign put_session
+    assign put_session
     stage_ scripted_run built_deploy_run devops_on
     subscribe_and_join ChannelTest. join_widget
+    put_env! delete_env!
   )
 
   # The failure message has always offered a second remedy — "if the
@@ -173,12 +190,35 @@ defmodule CodeMySpec.SpexGivensTest do
     for path <- Path.wildcard("test/spex/**/*_spex.exs"),
         source = File.read!(path),
         [whole, indent, title, body] <- Regex.scan(@given_block, source),
-        not String.contains?(body, @establishes),
+        not String.contains?(strip_comments(body), @establishes),
         not String.contains?(body, @already_established) do
       _ = whole
       offset = source |> String.split(indent <> "given_ " <> title) |> hd()
       {path, length(String.split(offset, "\n")), String.trim(title, ~s("))}
     end
+  end
+
+  # Matched against code, not prose. A comment saying `live(` is a block
+  # describing a drive it does not perform, and this check exists to catch a
+  # block that does nothing at all — the version that always indicates the bug.
+  #
+  # Measured before changing it: **zero** `given_` blocks in the suite pass only
+  # because of a comment, so this closes the hole at no cost rather than
+  # starting a migration. The measurement was checked against a synthetic
+  # comment-only block first, because a zero from a probe that cannot return
+  # anything else is not a finding.
+  #
+  # `@already_established` is deliberately matched against the raw body: that
+  # marker *is* a comment, and stripping it here would delete the one escape
+  # hatch this check offers.
+  #
+  # Whole-line comments only. A `#` inside a heredoc line would be stripped too,
+  # which could flag a block whose only establishing call sits in such a line —
+  # no block in the suite is shaped that way, and the test itself would catch it.
+  defp strip_comments(body) do
+    body
+    |> String.split("\n")
+    |> Enum.map_join("\n", &Regex.replace(~r/^\s*#.*$/, &1, ""))
   end
 
   defp format(offenders) do

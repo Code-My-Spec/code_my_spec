@@ -9,7 +9,19 @@ defmodule CodeMySpec.Users.SignupAnalyticsTest do
   new user, never for returning users.
   """
 
-  use CodeMySpecTest.DataCase
+  # Sync, because telemetry handlers are node-global.
+  #
+  # `Analytics.attach_test_subscriber(self())` and the `{__MODULE__,
+  # :crashing_handler}` attach below both register against the whole node, not
+  # this test. Run concurrently, a subscriber receives `:sign_up` events raised
+  # by any other test creating a user, and the assertions here are about
+  # whether the event fired *once* — so a neighbour's signup reads as a double
+  # dispatch. The handler ids collide too: two tests attaching the same id
+  # means the second call is the one that sticks.
+  #
+  # Flipped to async during the sandbox sweep and caught immediately: all four
+  # tests failed together, which is what a shared subscriber looks like.
+  use CodeMySpecTest.DataCase, async: false
 
   alias CodeMySpec.Analytics
   alias CodeMySpec.Users

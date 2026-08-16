@@ -67,6 +67,15 @@ defmodule CodeMySpec.Issues do
     IssuesRepository.get_issue(scope, id)
   end
 
+  @doc """
+  An issue by full id or unique prefix — `{:ok, issue} | :not_found | {:ambiguous, ids}`.
+
+  See `CodeMySpec.Issues.IssuesRepository.fetch_issue/2`. Use this over
+  `get_issue/2` wherever the answer is shown to somebody, so an ambiguous prefix
+  can say so instead of being reported as a missing issue.
+  """
+  defdelegate fetch_issue(scope, id), to: IssuesRepository
+
   def get_issue!(%Scope{} = scope, id) do
     IssuesRepository.get_issue!(scope, id)
   end

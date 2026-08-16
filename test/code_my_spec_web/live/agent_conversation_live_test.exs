@@ -26,7 +26,13 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
 
   setup :setup_project
 
+  # The index. One page per project, listing its agent sessions.
   defp path(project), do: "/app/projects/#{project.id}/agent-conversation"
+
+  # One session's transcript. The page is per-session now — it used to show
+  # whichever conversation moved most recently, which hid every other agent.
+  defp show_path(project, conversation),
+    do: "/app/projects/#{project.id}/agent-conversation/#{conversation.id}"
 
   defp agent_conversation(scope, project, external_id \\ "pi:/tmp/sprite-test") do
     {:ok, conversation} =
@@ -43,7 +49,7 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
     test "shows an empty state", %{conn: conn, project: project} do
       {:ok, _view, html} = live(conn, path(project))
 
-      assert html =~ "No agent activity recorded"
+      assert html =~ "No agent has recorded a turn"
     end
   end
 
@@ -64,7 +70,7 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
           "there are 3 open problems"
         )
 
-      {:ok, view, html} = live(conn, path(project))
+      {:ok, view, html} = live(conn, show_path(project, conversation))
 
       assert html =~ "count the open problems"
       assert has_element?(view, "[data-test='message'][data-role='user']")
@@ -80,11 +86,22 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
       # A turn made entirely of tool calls records an empty assistant line
       # alongside the tool call — the empty line must not render as anything.
       {:ok, _} = Conversations.add_agent_message(conversation, nil, "assistant", "")
-      {:ok, _} = Conversations.add_agent_message(conversation, nil, "tool", "Bash(mix spex)")
+      # The shape the recorder actually writes: the tool, a newline, its arguments.
+      # This said `"Bash(mix spex)"`, which no recorded message has ever been —
+      # across this project's history the stored shapes are "Tool\njson" (933),
+      # a bare name (6), and output misfiled under this role (14). Nothing inline.
+      {:ok, _} =
+        Conversations.add_agent_message(
+          conversation,
+          nil,
+          "tool",
+          "Bash\n{\"command\": \"mix spex\"}"
+        )
 
-      {:ok, view, html} = live(conn, path(project))
+      {:ok, view, html} = live(conn, show_path(project, conversation))
 
-      assert html =~ "Bash(mix spex)"
+      assert html =~ "Bash"
+      assert html =~ "mix spex"
       assert has_element?(view, "[data-test='tool-call']")
       refute has_element?(view, "[data-test='empty-turn']")
     end
@@ -107,7 +124,7 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
           "walked the signup journey"
         )
 
-      {:ok, view, _html} = live(conn, path(project))
+      {:ok, view, _html} = live(conn, show_path(project, conversation))
 
       assert has_element?(view, "[data-test='message'][data-agent-role='qa']")
       assert has_element?(view, "[data-test='message']:not([data-agent-role='qa'])")
@@ -130,7 +147,7 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
           "start the first requirement"
         )
 
-      {:ok, view, html} = live(conn, path(project))
+      {:ok, view, html} = live(conn, show_path(project, conversation))
       assert html =~ "start the first requirement"
 
       {:ok, _} =

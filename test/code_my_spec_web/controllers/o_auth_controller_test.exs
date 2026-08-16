@@ -1,5 +1,5 @@
 defmodule CodeMySpecWeb.OAuthControllerTest do
-  use CodeMySpecTest.ConnCase
+  use CodeMySpecTest.ConnCase, async: true
 
   import ExUnit.CaptureLog
   import CodeMySpec.UsersFixtures

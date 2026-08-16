@@ -53,6 +53,14 @@ defmodule CodeMySpec.Files.ClassifiableArtifactsTest do
     # the one this list existed to catch. `QaIntegrationPlan.check_index/1`
     # gates on it and writing it is half the task's done signal.
     {Paths.integrations_index(), "integration index"},
+    # The script each integration spec names, one indirection past the spec.
+    # `41406ceb`: classifying the specs closed the hole for their contents and
+    # left this open — `check_one_verify_script/2` parses the path out of the
+    # spec and asserts the file exists, so an agent creating the very script
+    # that satisfies the check moved no fingerprint. Seventh instance, and the
+    # first where the gated path is named by *another* gated file rather than
+    # hard-coded, which is why reading the checker was not enough to spot it.
+    {Path.join(Paths.qa_scripts_dir(), "verify_github.sh"), "an integration verify script"},
     {"mix.exs", "mix.exs"},
     {".credo.exs", ".credo.exs"},
     {"CLAUDE.md", "CLAUDE.md"},
@@ -67,9 +75,10 @@ defmodule CodeMySpec.Files.ClassifiableArtifactsTest do
              role for it, so it never syncs — and on a server with no working copy
              the requirement reports it missing while it sits on the agent's disk.
 
-             Add a clause to `Scanner.classify/1`, a role to `Files.File`, a
-             Postgres enum migration, and port all of it to cms_scan so the harness
-             classifies it the same way.
+             Add a clause to `Scanner.classify/1`, a role to `Files.File`, and a
+             Postgres enum migration. The harness runs this same `Scanner`, so
+             there is nothing to port — `CmsHarness.Sync` calls
+             `Scanner.observe/2` directly and says so.
              """
 
       assert is_atom(role)

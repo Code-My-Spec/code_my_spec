@@ -2,11 +2,11 @@ defmodule CodeMySpecLocalWeb.InitController do
   @moduledoc """
   Bootstrap entry point for `/codemyspec:init`.
 
-  Init must run *before* a project is linked, so it lives on its own route
-  with the cwd-only `WorkingDirCwdScope` plug instead of the project-required
-  `WorkingDirScope` used by `/api/skills/start`. It handles only the init
-  surface: the plain bootstrap task and the `auth` sub-flow. `sync` is its
-  own skill (`/codemyspec:sync`).
+  Init must run *before* a project is linked, so it lives on its own route with
+  the cwd-only `InitCwd` plug rather than `HarnessScope` — there is no harness
+  id yet, because issuing one is downstream of what init does. It handles only
+  the init surface: the plain bootstrap task and the `auth` sub-flow. `sync` is
+  its own skill (`/codemyspec:sync`).
   """
   use CodeMySpecLocalWeb, :controller
 

@@ -1,4 +1,8 @@
 defmodule CodeMySpec.Analysis.RunnersTest do
+  # Sync: `use_cmd_cassette` meck-patches `System.cmd/3` process-globally. This
+  # file at `async: true` was the cause of the suite's intermittent `** (EXIT)
+  # killed` failures — reproducible in 3.6s by running it beside
+  # `validation/blocking_on_recorded_findings_test`.
   use CodeMySpecTest.DataCase, async: false
   use ExCliVcr
 
@@ -252,8 +256,70 @@ defmodule CodeMySpec.Analysis.RunnersTest do
     end
 
     test "a spex run that exited nonzero with no failures fails the run" do
-      assert {:error, {:spex_suite_did_not_run, 2}} =
+      assert {:error, {:spex_suite_did_not_run, 2, ""}} =
                Runners.from_raw("spex", %{"exit_status" => 2, "diagnostics" => []})
+    end
+
+    # The excerpt is the whole point of the third element. Without it this
+    # failure said `{:spex_suite_did_not_run, code}` and nothing else, so a
+    # sweep that died left no account of why anywhere — `harness.log` records
+    # only the command, and `Spex.execute` discarded the output. exunit has
+    # carried its excerpt since it had the same defect.
+    test "a spex suite that did not run carries what mix printed" do
+      output = """
+      Compiling 1 file (.exs)
+      ** (CompileError) test/spex/broken_spex.exs:12: undefined function given_/2
+          (elixir 1.19.4) expanding macro
+      """
+
+      assert {:error, {:spex_suite_did_not_run, 1, excerpt}} =
+               Runners.from_raw("spex", %{
+                 "exit_status" => 1,
+                 "diagnostics" => [],
+                 "output" => output
+               })
+
+      assert excerpt =~ "CompileError"
+      assert excerpt =~ "broken_spex.exs:12"
+    end
+
+    # The first excerpt this helper ever produced in anger was
+    # `Mix.Task.run_alias/6 | Mix.CLI.run_task/2 | bin/mix:7` — the last three
+    # lines of a mix crash, which are the same boilerplate every time. An
+    # excerpt that always says the same thing is not an excerpt.
+    test "the exception line wins over the mix boilerplate below it" do
+      output = """
+      ** (RuntimeError) the thing that actually broke
+          (code_my_spec 2.0.0) lib/whatever.ex:12: CodeMySpec.Whatever.go/1
+          (mix 1.19.4) lib/mix/task.ex:573: Mix.Task.run_alias/6
+          (mix 1.19.4) lib/mix/cli.ex:129: Mix.CLI.run_task/2
+          /Users/x/.asdf/installs/elixir/1.19.4-otp-28/bin/mix:7: (file)
+      """
+
+      assert {:error, {:spex_suite_did_not_run, 1, excerpt}} =
+               Runners.from_raw("spex", %{
+                 "exit_status" => 1,
+                 "diagnostics" => [],
+                 "output" => output
+               })
+
+      assert excerpt =~ "the thing that actually broke"
+      refute excerpt =~ "Mix.CLI.run_task"
+    end
+
+    # Not every failure raises. Without a marker the tail is still the best
+    # available answer, so it must not be lost chasing the better one.
+    test "falls back to the tail when nothing raised" do
+      output = "Compiling 4 files (.ex)\nsome noise\nthe last useful line\n"
+
+      assert {:error, {:spex_suite_did_not_run, 1, excerpt}} =
+               Runners.from_raw("spex", %{
+                 "exit_status" => 1,
+                 "diagnostics" => [],
+                 "output" => output
+               })
+
+      assert excerpt =~ "the last useful line"
     end
 
     test "a spex failure names the scenario it came from" do

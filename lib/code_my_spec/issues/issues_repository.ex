@@ -88,11 +88,84 @@ defmodule CodeMySpec.Issues.IssuesRepository do
   end
 
   def get_issue(%Scope{} = scope, id) do
-    case Ecto.UUID.cast(id) do
-      {:ok, uuid} -> Repo.get_by(Issue, id: uuid, project_id: scope.active_project.id)
-      :error -> nil
+    case fetch_issue(scope, id) do
+      {:ok, issue} -> issue
+      _ -> nil
     end
   end
+
+  @doc """
+  An issue by full id or by unique prefix, saying which of the three answers it is.
+
+  `98fa6656`. This took only a full UUID and answered anything else with `nil`,
+  which every caller renders as "Issue not found." That message is a claim about
+  the issue when the truth is a claim about the argument, and the two are not
+  interchangeable: an agent told an id does not exist has no reason to doubt it.
+
+  The prefix is the input this will keep being given. Nothing in the codebase
+  cites a full UUID — commit messages, code comments, spec files and issue
+  bodies all use the 8-character prefix, because that is what fits in prose. So
+  the common path to this function is copying a prefix out of a comment, and
+  that path always failed.
+
+  Measured cost: a correct citation was deleted from `justfile` on the strength
+  of a "not found" for `f58acb37`, which exists and was exactly the right
+  reference. The repair — removing the reference — looks like diligence, which
+  is what makes it worse than an error.
+
+  ## Three answers, not two
+
+  `{:ambiguous, ids}` exists because collapsing it into `:not_found` rebuilds
+  the original defect one case along: the caller would again be told something
+  false about the issue rather than something true about the argument.
+
+  ## Filtering in Elixir rather than in SQL
+
+  `CodeMySpec.Repo` runs on Postgres normally and on SQLite in `cli_demo`, and
+  the two disagree about what a `binary_id` is on the wire — Postgres stores a
+  `uuid` needing `::text` to pattern-match, SQLite a string that matches
+  directly. A fragment for either crashes the other, which is `61351c19`
+  exactly. Selecting ids and filtering here is portable and costs one small
+  query on a table with hundreds of rows, not millions.
+  """
+  @spec fetch_issue(Scope.t(), String.t()) ::
+          {:ok, Issue.t()} | :not_found | {:ambiguous, [String.t()]}
+  def fetch_issue(%Scope{} = scope, id) when is_binary(id) do
+    case Ecto.UUID.cast(id) do
+      {:ok, uuid} -> exact(scope, uuid)
+      :error -> by_prefix(scope, id)
+    end
+  end
+
+  defp exact(scope, uuid) do
+    case Repo.get_by(Issue, id: uuid, project_id: scope.active_project.id) do
+      nil -> :not_found
+      issue -> {:ok, issue}
+    end
+  end
+
+  # Four hex characters is roughly 65k values, so a collision across a few
+  # hundred issues is possible rather than fanciful — which is what
+  # `{:ambiguous, …}` is for. Shorter than that is not a prefix anyone typed on
+  # purpose, and matching it would turn a typo into a wrong issue.
+  @min_prefix 4
+
+  defp by_prefix(scope, prefix) do
+    normalized = String.downcase(prefix)
+
+    if String.length(normalized) >= @min_prefix and normalized =~ ~r/\A[0-9a-f-]+\z/ do
+      from(i in Issue, where: i.project_id == ^scope.active_project.id, select: i.id)
+      |> Repo.all()
+      |> Enum.filter(&String.starts_with?(String.downcase(to_string(&1)), normalized))
+      |> resolve_prefix_matches(scope)
+    else
+      :not_found
+    end
+  end
+
+  defp resolve_prefix_matches([], _scope), do: :not_found
+  defp resolve_prefix_matches([id], scope), do: exact(scope, id)
+  defp resolve_prefix_matches(ids, _scope), do: {:ambiguous, Enum.map(ids, &to_string/1)}
 
   def create_issue(%Scope{} = scope, attrs) do
     scope

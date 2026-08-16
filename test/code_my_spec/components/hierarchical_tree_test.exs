@@ -1,5 +1,5 @@
 defmodule CodeMySpec.Components.HierarchicalTreeTest do
-  use ExUnit.Case
+  use ExUnit.Case, async: true
   doctest CodeMySpec.Components.HierarchicalTree
   alias CodeMySpec.Components.{Component, HierarchicalTree}
 

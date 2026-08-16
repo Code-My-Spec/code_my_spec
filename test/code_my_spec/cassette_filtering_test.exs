@@ -14,7 +14,7 @@ defmodule CodeMySpec.CassetteFilteringTest do
   nothing and can assert on the bytes that reach disk.
   """
 
-  use ExUnit.Case, async: false
+  use ExUnit.Case, async: true
 
   alias CodeMySpecSpex.Case, as: SpexCase
 

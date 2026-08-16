@@ -59,7 +59,7 @@ defmodule CodeMySpec.EnvironmentFixtures do
   def local_environment_fixture(opts \\ []) do
     working_dir =
       Keyword.get_lazy(opts, :working_dir, fn ->
-        dir = Path.join(System.tmp_dir!(), "spex-local-#{System.unique_integer([:positive])}")
+        dir = CodeMySpec.TempFile.dir("spex-local")
         File.mkdir_p!(dir)
         dir
       end)

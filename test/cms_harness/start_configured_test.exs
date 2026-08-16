@@ -18,6 +18,9 @@ defmodule CmsHarness.StartConfiguredTest do
   the standalone harness has read it since extraction — so the sprite switches
   over without changing how it is launched.
   """
+  # Sync: this mutates OS environment variables, which belong to the BEAM node
+  # rather than to a test process. Saving and restoring them is careful and
+  # still leaves a window every concurrent test can see.
 
   use ExUnit.Case, async: false
 

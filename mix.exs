@@ -4,7 +4,7 @@ defmodule CodeMySpec.MixProject do
   def project do
     [
       app: :code_my_spec,
-      version: "1.8.2",
+      version: "2.0.0",
       elixir: "~> 1.19",
       elixirc_paths: elixirc_paths(Mix.env()),
       start_permanent: Mix.env() in [:prod, :prod_cli],
@@ -106,7 +106,7 @@ defmodule CodeMySpec.MixProject do
       # Added by codemyspec
       {:ex_cli_vcr, git: "https://github.com/johns10/ex_cli_vcr", branch: "main", only: [:test]},
       {:sexy_spex, git: "https://github.com/Code-My-Spec/spex.git", branch: "feature/reusable-givens", only: [:dev, :dev_cli, :test]},
-      {:client_utils, "~> 0.1.24"},
+      {:client_utils, "~> 0.1.25"},
       {:credo, "~> 1.7.13"},
       {:sobelow, "~> 0.14.1"},
       {:boundary, "~> 0.10.4"},
@@ -265,6 +265,12 @@ defmodule CodeMySpec.MixProject do
       # and the ordering against its own `ExUnit.start/1` wants care. This is
       # one query in front of a task that was already an alias.
       spex: ["cms.check_test_migrations", "spex --quiet"],
+      # Same shape as `spex` above: a refusal in front of a task that was already
+      # an alias. `mix ecto.migrate` runs `priv/repo/migrations` whatever MIX_ENV
+      # says, so under a SQLite environment it points the Postgres set at a
+      # database that cannot take it and fails as if the DDL were broken
+      # (02ff6d6b). Self-referencing alias — Mix invokes the real task.
+      "ecto.migrate": ["cms.guard_cli_migrate", "ecto.migrate"],
       setup: ["deps.get", "ecto.setup", "assets.setup", "assets.build"],
       "ecto.setup": ["ecto.create", "ecto.migrate", "run priv/repo/seeds.exs"],
       "ecto.reset": ["ecto.drop", "ecto.setup"],

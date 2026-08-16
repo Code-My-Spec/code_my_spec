@@ -47,7 +47,8 @@ defmodule CodeMySpec.Problems.InFlightProgressTest do
       run_duration: Keyword.get(opts, :run_duration, %{"credo" => 18}),
       in_flight: ["credo"],
       in_flight_since: Keyword.get(opts, :since, %{"credo" => started_at}),
-      tracked?: true
+      tracked?: true,
+      harness_id: Keyword.get(opts, :harness_id)
     )
   end
 
@@ -67,10 +68,31 @@ defmodule CodeMySpec.Problems.InFlightProgressTest do
     assert render(13) =~ "credo, running 13s of a typical 18s"
   end
 
-  # The advice itself was never wrong, and an agent that has learned to trust it
-  # should still find it here.
-  test "it still says to stop again and let the rerun replace these" do
-    assert render(13) =~ "stop again and let it replace these"
+  # The advice used to be "stop again and let it replace these", and taking it
+  # promptly is what 5e9fa939 measured: three consecutive blocked stops while
+  # the run grew 0s → 4m42s → 5m15s. A stop is the thing being refused, so the
+  # agent re-stops immediately, lands inside the same run, and is told the same
+  # thing. Now it is offered a wait that outlasts the run instead.
+  test "it offers a wait that outlasts the run, not another stop into it" do
+    text = render(13, harness_id: "h-abc")
+
+    assert text =~ "analysis/wait",
+           "a stop is what is being refused, so 'stop again' races the run and loses"
+
+    assert text =~ "localhost:4004/api/harnesses/h-abc/analysis/wait"
+
+    assert text =~ "background",
+           "a sweep is 200-590s; a foreground curl would hit the agent's own timeout"
+  end
+
+  # No harness, no URL to offer — the same rule `Hooks.Stop.wait_directive/1`
+  # follows. A 404 dressed as a remedy is worse than plain instructions.
+  test "without a harness it says to wait without naming an endpoint" do
+    text = render(13)
+
+    assert text =~ "Let it finish, then stop again"
+    refute text =~ "analysis/wait"
+    refute text =~ "localhost"
   end
 
   # A source that has never completed a run has no typical duration to compare
@@ -87,7 +109,52 @@ defmodule CodeMySpec.Problems.InFlightProgressTest do
   test "with no start time it falls back to the sentence as it was" do
     text = render(13, since: %{})
 
-    assert text =~ "A rerun is in flight now (credo) — stop again"
+    assert text =~ "A rerun is in flight now (credo)."
     refute text =~ "running"
+  end
+
+  # 0e4b35e8. `started_at` is stamped at enqueue, not at execution, and the
+  # harness runs analyzers one at a time — so a source waiting its turn was
+  # rendered as one that had been running the whole time. Reported as "credo,
+  # running 20s of a typical 9s": an analyzer at more than double its normal
+  # runtime, which is the signature of a stuck process. Nothing was stuck. credo
+  # was behind a 198-second spex sweep and took 8 seconds once it started.
+  describe "when one analyzer is waiting on another" do
+    defp render_queue(spex_elapsed, credo_elapsed) do
+      now = DateTime.utc_now()
+
+      ProblemRenderer.render_stop_response(
+        [problem()],
+        [],
+        stale_sources: ["credo"],
+        last_ran: %{"credo" => DateTime.add(now, -13 * 60, :second)},
+        run_duration: %{"credo" => 9, "spex" => 198},
+        in_flight: ["credo", "spex"],
+        in_flight_since: %{
+          "spex" => DateTime.add(now, -spex_elapsed, :second),
+          "credo" => DateTime.add(now, -credo_elapsed, :second)
+        },
+        tracked?: true
+      )
+    end
+
+    test "the blocker is named, with the progress that says how long to wait" do
+      assert render_queue(60, 20) =~ "queued behind spex, running 1m of a typical 3m18s"
+    end
+
+    test "the one still waiting is named as queued, not as running" do
+      text = render_queue(60, 20)
+
+      assert text =~ "credo has not started"
+
+      refute text =~ "credo, running",
+             "a queued analyzer reported as running invites exactly the wrong " <>
+               "diagnosis: 20s against a typical 9s reads as a hung process, and " <>
+               "the reader goes looking for one that does not exist"
+    end
+
+    test "the running figure still moves, so two stops do not read as a livelock" do
+      refute render_queue(60, 20) == render_queue(73, 33)
+    end
   end
 end

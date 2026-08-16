@@ -260,5 +260,216 @@ defmodule CodeMySpec.Harnesses do
     |> Repo.update()
   end
 
+  @doc """
+  Record that this harness is alive, because something it did just proved it.
+
+  Split from `issue/3`, which answers "who are you" and happens once per
+  connection. This answers "you are still here", and the difference is what
+  `reclaim_quiet/1` reads.
+
+  Before this existed, `last_seen_at` was written only on channel join and on
+  onboarding — so it recorded when a harness last *connected*, and a harness
+  holding a stable channel never reconnects. The signal therefore got staler the
+  longer an agent worked without interruption. Measured on this project: two
+  harnesses whose agents were mid-session, scanning and answering hooks
+  continuously, read 2:21 and 2:25 idle against a 2 hour window, having only
+  ever run down. The next sync from any third agent would have deleted both
+  agents' state underneath them — the exact failure the reclaim was written to
+  avoid, arriving through the liveness signal instead of through row age.
+
+  Best-effort on purpose. This is bookkeeping on the side of a request that has
+  real work to do, and a harness that cannot be marked alive is not a reason to
+  refuse its hook.
+  """
+  @spec mark_alive(Harness.t() | Ecto.UUID.t() | nil) :: :ok
+  def mark_alive(%Harness{} = harness) do
+    save(harness, %{last_seen_at: now()})
+    :ok
+  end
+
+  # A caller that names no harness has nothing to mark, and that is a normal
+  # state rather than an error: plenty of writers legitimately have no checkout
+  # to point at. Raising here would make bookkeeping on the side of a request
+  # able to fail the request.
+  def mark_alive(nil), do: :ok
+
+  def mark_alive(harness_id) when is_binary(harness_id) do
+    case fetch(harness_id) do
+      {:ok, harness} -> mark_alive(harness)
+      {:error, _} -> :ok
+    end
+  end
+
+  @doc """
+  Reclaim the derived state of every agent on this project that has gone quiet.
+
+  Files and problems, unconditionally. Components only where they have no files
+  **and** no story link.
+
+  ## Why derived state and not the row
+
+  Problems are properties of the codebase, not of the database: an agent that
+  comes back runs analysis and produces them again. Files are the same — the
+  working copy is the truth and the rows are a projection. Keeping either across
+  an absence preserves nothing and blocks other people's gates meanwhile.
+
+  The harness row survives, and that is what makes the rest simple. Identity lives
+  in `.cms_harness.json` in the checkout, so a returning agent presents the id it
+  always had and resumes. Deleting the row would leave the file naming something
+  that does not exist, and the adjacent case is already observable: re-onboarding a
+  root whose identity file was removed issues a *third* id rather than resuming, so
+  every offboard/return cycle would leak one.
+
+  ## Why liveness comes from the agent
+
+  `last_seen_at`, never the age of the rows an agent produced. Rows update on
+  scans, and scans happen on hooks rather than on activity — this working copy went
+  unswept for three and a half hours while being actively worked, because the
+  harness was busy holding others. A rule keyed on row age reclaims someone
+  mid-session.
+
+  That only holds while `last_seen_at` means "last proof of life". It originally
+  meant "last connected", which is worse — see `mark_alive/1`, which is what
+  keeps the two the same thing.
+
+  `last_seen_at` is `utc_datetime_usec`, so comparing it against `DateTime.utc_now/0`
+  is correct without a workaround. `updated_at` is `timestamp without time zone`
+  holding UTC, and comparing *that* against `now()` renders one side local: every
+  live agent reads as hours idle, an expiry never fires here and fires wrongly
+  elsewhere.
+
+  ## Never the caller
+
+  The scope's own harness is excluded. It is live by definition — it is the one
+  asking — and a sweep that inherited the harness scoping every other operation
+  here uses would sweep only itself, find nothing, and reclaim nothing forever
+  while looking correct.
+  """
+  @spec reclaim_quiet(Scope.t()) :: {:ok, %{harnesses: integer(), components: integer()}}
+  def reclaim_quiet(%Scope{active_project_id: project_id} = scope)
+      when is_binary(project_id) do
+    cutoff = DateTime.add(now(), -idle_seconds(scope), :second)
+
+    quiet_ids =
+      Repo.all(
+        from h in Harness,
+          where: h.project_id == ^project_id,
+          # `nil` is never quiet. The project's default harness — the row
+          # unnamed writers share — never joins, so its `last_seen_at` stays nil
+          # by design, and that is what distinguishes it from a checkout in the
+          # operator's list. Treating nil as "gone" reclaimed it on every sync,
+          # in every project, and took ten other stories' spex down with it.
+          where: not is_nil(h.last_seen_at) and h.last_seen_at < ^cutoff,
+          where: h.id != ^(scope.active_harness_id || Ecto.UUID.generate()),
+          select: h.id
+      )
+
+    reclaim_harnesses(scope, quiet_ids ++ abandoned_ids(scope))
+  end
+
+  def reclaim_quiet(_scope), do: {:ok, %{harnesses: 0, components: 0}}
+
+  # Defence in depth against a file row naming a harness that does not exist.
+  # It cannot currently fire, and the reason it was written is not the reason to
+  # keep it.
+  #
+  # `8c75e2df` recorded this as measured — "two harnesses existed and every file
+  # belonged to a third id" — and that measurement cannot have meant what it
+  # appeared to. `files_harness_id_fkey` has referenced `harnesses(id)` since
+  # `20260807210000`, and `exqlite` defaults `foreign_keys: :on`, so the
+  # constraint is enforced on both adapters. Checked on the live server: 0
+  # orphaned or cross-project rows out of 8,063 files carrying a harness_id.
+  # The likeliest reading is the report's own wording — the id appeared in no
+  # harness row *for that project*, which is a different claim, and spex
+  # fixtures mint a harness per `full_scope_fixture` call.
+  #
+  # Kept anyway, because the two schemas are not equally strong. On SQLite the
+  # NOT NULL and the `:delete_all` flip were never mirrored — `ALTER COLUMN`
+  # does not exist there, and rebuilding `files` was judged too expensive — so
+  # that deployment holds a nullable column with `on_delete: :nilify_all`. Its
+  # own migration says the constraint is "the application's rather than the
+  # database's". One cheap query is a reasonable price for the case where that
+  # judgement is revisited.
+  #
+  # What it does *not* cover, deliberately, because SQL says so: a row whose
+  # `harness_id` is NULL. `NULL NOT IN (…)` is NULL, never true, so those rows
+  # are invisible here. `20260807220000` deleted the existing ones and argues
+  # every writer now names its working copy.
+  #
+  # Excludes the caller, like the aged set: a live agent writing rows faster than
+  # its harness is created must not sweep its own work.
+  defp abandoned_ids(%Scope{active_project_id: project_id} = scope) do
+    Repo.all(
+      from f in CodeMySpec.Files.File,
+        where: f.project_id == ^project_id,
+        where: f.harness_id not in subquery(from h in Harness, select: h.id),
+        where: f.harness_id != ^(scope.active_harness_id || Ecto.UUID.generate()),
+        distinct: true,
+        select: f.harness_id
+    )
+  end
+
+  defp reclaim_harnesses(_scope, []), do: {:ok, %{harnesses: 0, components: 0}}
+
+  defp reclaim_harnesses(%Scope{active_project_id: project_id}, quiet_ids) do
+    Repo.transaction(fn ->
+      Repo.delete_all(
+        from f in CodeMySpec.Files.File,
+          where: f.project_id == ^project_id and f.harness_id in ^quiet_ids
+      )
+
+      Repo.delete_all(
+        from p in CodeMySpec.Problems.Problem,
+          where: p.project_id == ^project_id and p.harness_id in ^quiet_ids
+      )
+
+      # Two plain subqueries rather than correlated `exists`. The component set is
+      # small and this is legible: anything a file or a story points at is kept,
+      # everything else on the project goes.
+      referenced_by_files =
+        from f in CodeMySpec.Files.File,
+          where: f.project_id == ^project_id and not is_nil(f.component_id),
+          select: f.component_id
+
+      referenced_by_stories =
+        from s in CodeMySpec.Stories.Story,
+          where: s.project_id == ^project_id and not is_nil(s.component_id),
+          select: s.component_id
+
+      keep =
+        (Repo.all(referenced_by_files) ++ Repo.all(referenced_by_stories))
+        |> Enum.uniq()
+
+      {components, _} =
+        Repo.delete_all(
+          from c in CodeMySpec.Components.Component,
+            where: c.project_id == ^project_id and c.id not in ^keep
+        )
+
+      %{harnesses: length(quiet_ids), components: components}
+    end)
+    |> case do
+      {:ok, counts} ->
+        {:ok, counts}
+
+      {:error, reason} ->
+        # Loud, never swallowed. A reclaim that fails quietly leaves the orphan
+        # in place and reports success, which is indistinguishable from a project
+        # that had nothing to reclaim — and that is the failure this story exists
+        # to remove, reproduced inside its own fix.
+        raise "reclaim_quiet failed for project #{inspect(reason)}"
+    end
+  end
+
+  defp idle_seconds(%Scope{} = scope) do
+    hours =
+      case CodeMySpec.Configurations.get(scope) do
+        %{harness_idle_hours: hours} when is_integer(hours) -> hours
+        _ -> 2
+      end
+
+    hours * 3600
+  end
+
   defp now, do: DateTime.utc_now()
 end

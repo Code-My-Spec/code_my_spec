@@ -12,6 +12,9 @@ defmodule CmsHarness.HarnessConfigTest do
 
   One file now, no fallback, one writer.
   """
+  # Sync: sets OS environment variables. `HarnessConfig.read/1` checks the
+  # environment before the file, so one exported value makes every working copy
+  # in the suite resolve to the same harness.
   use ExUnit.Case, async: false
 
   alias CmsHarness.HarnessConfig

@@ -9,7 +9,7 @@ defmodule CodeMySpec.DeploysEnvironmentTest do
   Environments are rows rather than a fixed prod/uat pair, and one server can
   carry more than one of them, so neither answer can be derived from a name.
   """
-  use CodeMySpecTest.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.UsersFixtures
 

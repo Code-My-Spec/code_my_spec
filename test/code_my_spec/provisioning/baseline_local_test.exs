@@ -24,7 +24,7 @@ defmodule CodeMySpec.Provisioning.BaselineLocalTest do
 
       mix test test/code_my_spec/provisioning/baseline_local_test.exs --include docker
   """
-  use ExUnit.Case, async: false
+  use ExUnit.Case, async: true
 
   alias CodeMySpec.Provisioning.Builder.Remote
   alias CodeMySpec.Provisioning.Database

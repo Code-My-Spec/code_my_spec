@@ -114,7 +114,8 @@ defmodule CodeMySpec.Conversations do
         |> Conversation.agent_changeset(%{
           account_id: account_id,
           project_id: project_id,
-          session_external_id: session_external_id
+          session_external_id: session_external_id,
+          name: generated_name()
         })
         |> Repo.insert()
         |> case do
@@ -167,24 +168,42 @@ defmodule CodeMySpec.Conversations do
 
   Written as its own turn so the call is visible while it runs rather than
   after — a conversation that goes quiet mid-tool reads as broken.
+
+  `agent_role` is the speaking lane. It defaults to `"product"` for the in-app
+  chat, which has only one; a harness transcript passes the real lane, because
+  a sub-agent's call showing as the parent's is a wrong attribution and there
+  is a criterion about it (8172).
   """
-  def add_tool_call(%Conversation{} = conversation, call_id, name, arguments) do
+  def add_tool_call(%Conversation{} = conversation, call_id, name, arguments, agent_role \\ "product") do
     agent_turn(conversation, %{
       role: :assistant,
-      agent_role: "product",
+      agent_role: agent_role,
       content: [],
       tool_calls: [%{"id" => call_id, "name" => name, "arguments" => arguments}],
-      sender_id: "agent:product"
+      sender_id: "agent:#{agent_role}"
     })
   end
 
-  @doc "Records what a call returned, paired to it by `call_id`."
-  def add_tool_result(%Conversation{} = conversation, call_id, name, text) do
+  @doc """
+  Records what a call returned, paired to it by `call_id`.
+
+  `failed?` is the provider's `is_error`, kept as data. The recorder used to
+  fold it into the text as a `"← failed: "` prefix and the view read it back by
+  matching that string; a boolean means the view asks a field.
+  """
+  def add_tool_result(
+        %Conversation{} = conversation,
+        call_id,
+        name,
+        text,
+        opts \\ []
+      ) do
     agent_turn(conversation, %{
       role: :tool,
-      agent_role: "product",
+      agent_role: Keyword.get(opts, :agent_role, "product"),
       content: [Message.text_part(text)],
       tool_call_id: call_id,
+      tool_failed: Keyword.get(opts, :failed?, false),
       sender_id: "agent:#{name}"
     })
   end
@@ -308,6 +327,31 @@ defmodule CodeMySpec.Conversations do
     |> Enum.reverse()
   end
 
+  @doc """
+  Text of the conversation's most recent message in `role`, or nil if none.
+
+  Exists for the recorder's repeat check. Consecutive model turns often carry
+  an identical last request message — an injected system reminder is the usual
+  one — and writing it every time put the same block on screen twice.
+
+  Scoped to a role, because a turn writes several rows: results, then the
+  request's free text, then the response, then the calls. Compared against the
+  most recent message of *any* role, a request is always being measured against
+  the previous turn's response, so it never matches and every repeat is written.
+  """
+  @spec last_message_text(Conversation.t(), atom()) :: String.t() | nil
+  def last_message_text(%Conversation{} = conversation, role) do
+    Message
+    |> where([m], m.conversation_id == ^conversation.id and m.role == ^role)
+    |> order_by([m], desc: m.inserted_at, desc: m.id)
+    |> limit(1)
+    |> Repo.one()
+    |> case do
+      nil -> nil
+      message -> Message.text(message)
+    end
+  end
+
   defp before_cursor(query, nil), do: query
 
   defp before_cursor(query, %DateTime{} = before),
@@ -321,8 +365,15 @@ defmodule CodeMySpec.Conversations do
   for rendering). Older messages load on demand.
   """
   def list_conversations(scope) do
+    # Support only. An inbox is for "someone needs you", and a machine's
+    # conversation in it costs the surface the only meaning it has — story 870's
+    # rule, which said so and was not enforced anywhere: this filtered on the
+    # account and nothing else, so every agent conversation was listed.
+    #
+    # Agent conversations are reachable from their own project surface. This is
+    # the query the support inbox reads, so it is where the separation belongs.
     Conversation
-    |> where([c], c.account_id == ^scope.active_account_id)
+    |> where([c], c.account_id == ^scope.active_account_id and c.type == :support)
     |> order_by([c], asc: c.inserted_at)
     |> preload([c], messages: ^recent_messages_query())
     |> Repo.all()
@@ -504,6 +555,115 @@ defmodule CodeMySpec.Conversations do
     |> limit(1)
     |> Repo.one()
   end
+
+  @doc """
+  Every agent conversation on a project, newest activity first, each with how
+  many turns it holds and when it last moved.
+
+  The counterpart to `get_agent_conversation/2`, which answers "the newest one"
+  — fine when a project had one agent, and silently hiding four when it has
+  five.
+
+  Counted in the same query rather than per row: five conversations is five
+  extra round trips today and one per agent forever after, for a number that
+  is only ever shown next to the name.
+  """
+  @spec list_agent_conversations(Scope.t(), Ecto.UUID.t()) :: [map()]
+  def list_agent_conversations(%Scope{} = scope, project_id) do
+    counts =
+      from(m in Message,
+        group_by: m.conversation_id,
+        select: %{conversation_id: m.conversation_id, count: count(m.id), last_at: max(m.inserted_at)}
+      )
+
+    from(c in Conversation,
+      left_join: n in subquery(counts),
+      on: n.conversation_id == c.id,
+      where: c.account_id == ^scope.active_account_id and c.project_id == ^project_id,
+      where: c.type == :agent and not is_nil(c.session_external_id),
+      order_by: [desc: c.updated_at],
+      select: %{
+        conversation: c,
+        message_count: coalesce(n.count, 0),
+        last_message_at: n.last_at
+      }
+    )
+    |> Repo.all()
+  end
+
+  @doc """
+  Rename a conversation.
+
+  Scoped, because the id comes off a URL: without the account check any
+  conversation id renames any conversation.
+  """
+  @spec rename_conversation(Scope.t(), Ecto.UUID.t(), String.t()) ::
+          {:ok, Conversation.t()} | {:error, :not_found | Ecto.Changeset.t()}
+  def rename_conversation(%Scope{} = scope, conversation_id, name) do
+    Conversation
+    |> where([c], c.id == ^conversation_id and c.account_id == ^scope.active_account_id)
+    |> Repo.one()
+    |> case do
+      nil ->
+        {:error, :not_found}
+
+      conversation ->
+        conversation
+        |> Conversation.rename_changeset(%{name: name})
+        |> Repo.update()
+    end
+  end
+
+  @doc """
+  Get one agent conversation by id, scoped to the account.
+
+  The show page takes its id from the URL, so this is the check that one
+  account's transcript is not readable by another.
+  """
+  @spec get_agent_conversation_by_id(Scope.t(), Ecto.UUID.t()) :: Conversation.t() | nil
+  def get_agent_conversation_by_id(%Scope{} = scope, conversation_id) do
+    Conversation
+    |> where([c], c.id == ^conversation_id and c.account_id == ^scope.active_account_id)
+    |> where([c], c.type == :agent)
+    |> Repo.one()
+  end
+
+  # A name so a new conversation is never nameless — an index of five UUIDs is
+  # the problem this exists to avoid, and it appears before anyone has had the
+  # chance to name anything.
+  #
+  # Random rather than derived from the session id: it is stored and editable,
+  # so it does not need to be reproducible, and a derived name would silently
+  # change if the derivation ever did.
+  @adjectives ~w(amber brisk candid dusk eager fleet grave hollow iron jade
+                 keen lucid mellow north opal patient quiet russet slate tacit
+                 umber vivid warm yonder zinc)
+  @nouns ~w(anvil badger cairn drift ember fathom gable harbor inlet juniper
+            kestrel lantern meadow nimbus orchard pillar quarry ridge summit
+            thicket vale willow yarrow)
+
+  defp generated_name do
+    "#{Enum.random(@adjectives)}-#{Enum.random(@nouns)}"
+  end
+
+  @doc """
+  What to show for a conversation that has no name — rows created before names
+  existed, which are not worth backfilling with a name nobody chose.
+
+  The session id, shortened. It is the identity anyway, and it is what appears
+  in the logs you would go read next.
+  """
+  @spec display_name(Conversation.t()) :: String.t()
+  def display_name(%Conversation{name: name}) when is_binary(name) and name != "", do: name
+
+  def display_name(%Conversation{session_external_id: id}) when is_binary(id) do
+    case String.split(id, "-") do
+      [first | _] when byte_size(first) == 8 -> first
+      _ -> id
+    end
+  end
+
+  def display_name(%Conversation{}), do: "unnamed"
 
   defp operator_sender_id(scope), do: scope.user && to_string(scope.user.id)
 

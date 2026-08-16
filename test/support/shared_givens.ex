@@ -1029,19 +1029,20 @@ defmodule CodeMySpecSpex.SharedGivens do
   # walk-up fallback — "guesses the working copy by walking up to the nearest
   # mix.exs and cannot tell two checkouts apart reliably". Fifteen of those
   # warnings in a single spex slice, and none at all in production across every
-  # log rotation, because onboarded hooks carry the id in the path.
+  # log rotation, because onboarded hooks carry the id.
   #
-  # That asymmetry is the problem: the suite was exercising the fallback rather
-  # than the mechanism that runs. A spex that drives "the real POST
+  # That asymmetry was the problem: the suite exercised the fallback rather than
+  # the mechanism that runs. A spex that drives "the real POST
   # /api/hooks/session-start hook" should drive the real identity path with it,
   # or it cannot notice the day that path breaks.
   #
-  # `x-working-dir` stays because `WorkingDir` still wants it; what changes is
-  # that identity no longer has to be inferred from it.
+  # The directory is gone now, here and on the wire. Sending both would let a
+  # wrong root ride along unnoticed, which is the failure mode itself: the server
+  # answers where the working copy is, from the harness record, so a spex that
+  # also announced one could not have caught them disagreeing.
   defp hook_conn(scope) do
     Phoenix.ConnTest.build_conn()
     |> Plug.Conn.put_req_header("x-harness-id", scope.active_harness_id)
-    |> Plug.Conn.put_req_header("x-working-dir", scope.cwd)
     |> Plug.Conn.put_req_header("content-type", "application/json")
   end
 

@@ -1,5 +1,5 @@
 defmodule CodeMySpec.Provisioning.RepositoryTest do
-  use CodeMySpecTest.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.IntegrationsFixtures
   import CodeMySpec.UsersFixtures
@@ -23,9 +23,11 @@ defmodule CodeMySpec.Provisioning.RepositoryTest do
     %{env: Environment.new(:local, tmp), scope: scope}
   end
 
+  # Process-scoped, so this file and `git_hub_test` can drive the same client
+  # at once. `config/test.exs` pins the plug to `{Req.Test, GitHub}`; the stub
+  # below is what that resolves to, for this process only.
   defp stub_github(fun) do
-    Application.put_env(:code_my_spec, GitHub, plug: fun)
-    on_exit(fn -> Application.delete_env(:code_my_spec, GitHub) end)
+    Req.Test.stub(GitHub, fun)
   end
 
   defp json(conn, status, body) do

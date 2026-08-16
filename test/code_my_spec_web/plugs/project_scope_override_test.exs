@@ -1,5 +1,5 @@
 defmodule CodeMySpecWeb.Plugs.ProjectScopeOverrideTest do
-  use CodeMySpecTest.ConnCase
+  use CodeMySpecTest.ConnCase, async: true
 
   import CodeMySpec.{UsersFixtures, AccountsFixtures, ProjectsFixtures}
 

@@ -7,7 +7,7 @@ defmodule CodeMySpec.MailAttachmentsTest do
   `Content.S3Client` (via `ExAwsReqClient`). No network, no cassette files.
   """
 
-  use CodeMySpecTest.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.UsersFixtures
 
@@ -19,16 +19,13 @@ defmodule CodeMySpec.MailAttachmentsTest do
   @domain "att.example.com"
 
   setup do
-    Req.Test.set_req_test_to_shared(%{})
-
-    prev_resend = Application.get_env(:code_my_spec, ResendClient, [])
+    # `S3Client` is only configured here, so it stays a runtime put_env — no
+    # other file in the default suite reads or writes that key. `ResendClient`
+    # is pinned in `config/test.exs` and stubbed per process below, which is
+    # what lets this file run beside `mail_domain_test`.
     prev_s3 = Application.get_env(:code_my_spec, S3Client, [])
     Application.put_env(:code_my_spec, S3Client, plug: {Req.Test, S3Client})
-
-    on_exit(fn ->
-      Application.put_env(:code_my_spec, ResendClient, prev_resend)
-      Application.put_env(:code_my_spec, S3Client, prev_s3)
-    end)
+    on_exit(fn -> Application.put_env(:code_my_spec, S3Client, prev_s3) end)
 
     scope = full_scope_fixture()
 
@@ -55,7 +52,7 @@ defmodule CodeMySpec.MailAttachmentsTest do
       end
     end
 
-    Application.put_env(:code_my_spec, ResendClient, api_key: "re_test", plug: plug)
+    Req.Test.stub(ResendClient, plug)
   end
 
   defp stub_s3 do
@@ -153,9 +150,9 @@ defmodule CodeMySpec.MailAttachmentsTest do
   end
 
   test "no attachments metadata means the provider is never called", ctx do
-    # No stub installed → any Resend call would fail the config check, but the
-    # gated path shouldn't reach it.
-    Application.put_env(:code_my_spec, ResendClient, api_key: "", plug: nil)
+    # No stub installed. A Resend call would now raise and name the client
+    # rather than returning a soft `:resend_not_configured` the gated path
+    # could swallow — the assertion is that it is never reached.
 
     {:ok, _email} =
       Mail.route_inbound(ctx.project, %{

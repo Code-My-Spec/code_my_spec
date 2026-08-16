@@ -33,6 +33,7 @@ defmodule CodeMySpec.McpServers.Qa.Tools.SubmitQaResult do
   alias Anubis.Server.Response
   alias CodeMySpec.McpServers.Validators
   alias CodeMySpec.Qa
+  alias CodeMySpec.Qa.Evidence
 
   schema do
     field :task_id, :string,
@@ -41,7 +42,8 @@ defmodule CodeMySpec.McpServers.Qa.Tools.SubmitQaResult do
 
     field :status, :string,
       required: true,
-      doc: "Outcome: 'pass' (satisfies qa_complete), 'partial' (audit only), or 'fail' (audit only)"
+      doc:
+        "Outcome: 'pass' (satisfies qa_complete), 'partial' (audit only), or 'fail' (audit only)"
 
     field :scenarios, {:list, :map},
       required: true,
@@ -62,7 +64,7 @@ defmodule CodeMySpec.McpServers.Qa.Tools.SubmitQaResult do
     with {:ok, scope} <- Validators.validate_local_scope(frame, params),
          attrs <- build_attrs(params),
          {:ok, attempt} <- Qa.submit_qa_result(scope, attrs) do
-      {:reply, attempt_response(attempt), frame}
+      {:reply, attempt_response(attempt, evidence(frame, attempt)), frame}
     else
       {:error, changeset = %Ecto.Changeset{}} ->
         {:reply, validation_error(changeset), frame}
@@ -71,6 +73,24 @@ defmodule CodeMySpec.McpServers.Qa.Tools.SubmitQaResult do
         {:reply, error_response(reason), frame}
     end
   end
+
+  # Asked only on a pass, and asked after the attempt is written.
+  #
+  # Only on a pass because that is the claim: `partial` and `fail` record an
+  # audit row and leave `qa_complete` open, so there is nothing outliving its
+  # evidence.
+  #
+  # After rather than before, and this is the part worth being deliberate about.
+  # Refusing to *write the attempt* would lose the QA work — the agent has
+  # finished probing, and the attempt row is the only place that record exists.
+  # So the row lands, and what the response does is refuse to let the agent walk
+  # away believing the job is done. `qa_complete` is satisfied either way; the
+  # gate here is the reader's attention, not the database.
+  defp evidence(frame, %{status: :pass, story_id: story_id}) do
+    frame |> Validators.mcp_environment() |> Evidence.committed?(story_id)
+  end
+
+  defp evidence(_frame, _attempt), do: :skip
 
   # Pass params straight through to the changeset.
   #
@@ -81,7 +101,7 @@ defmodule CodeMySpec.McpServers.Qa.Tools.SubmitQaResult do
   # mixed-key map that crashed `Ecto.Changeset.cast/3`.
   defp build_attrs(params), do: params
 
-  defp attempt_response(attempt) do
+  defp attempt_response(attempt, evidence) do
     issue_ids = attempt.issue_ids || []
 
     issue_line =
@@ -104,10 +124,24 @@ defmodule CodeMySpec.McpServers.Qa.Tools.SubmitQaResult do
       Scenarios recorded: #{length(attempt.scenarios)}
       #{issue_line}
 
-      #{satisfaction_note(attempt.status)}
+      #{satisfaction_note(attempt.status)}#{evidence_note(attempt, evidence)}
       """
     )
   end
+
+  # The pass is recorded; whether it is *auditable* is a separate sentence.
+  #
+  # `0a1435c7`: four briefs sat uncommitted in one worktree while the passes they
+  # backed had propagated to the server and closed `qa_complete`. One was for a
+  # story that shipped that night. Nothing said so — a submodule takes writes
+  # normally and this project suppresses the dirty-pointer notice everywhere.
+  defp evidence_note(_attempt, :skip), do: ""
+  defp evidence_note(_attempt, :ok), do: ""
+
+  defp evidence_note(attempt, {:uncommitted, paths}),
+    do: "\n\n" <> Evidence.refusal(attempt.story_id, paths)
+
+  defp evidence_note(_attempt, {:unknown, reason}), do: Evidence.unknown_note(reason)
 
   defp satisfaction_note(:pass),
     do: "Status pass — qa_complete is satisfied for the story."

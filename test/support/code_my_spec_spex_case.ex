@@ -113,6 +113,52 @@ defmodule CodeMySpecSpex.Case do
   """
   def workspace_runner, do: CodeMySpecTest.FakeWorkspaceRunner
 
+  @doc """
+  Set an environment variable for one spex, and put it back afterwards.
+
+  `System.put_env/2` and `System.delete_env/1` are denied inside `_spex.exs` by
+  `SpexDeniedCalls` (CMS0002), as VM mutation, and that deny is right nearly
+  always: a spec reaching for the VM is usually reaching around the surface it
+  ought to be driving.
+
+  Story 1000's criterion is the case where the variable *is* the input — "a
+  project id exported in the operator's shell does not change which project it
+  serves" cannot be arranged any other way, and the scenario is about that
+  export. So the arrangement lives here for the same reason `workspace_runner/0`
+  does, one paragraph up: the spex names what it wants, and the part the rule
+  forbids happens where the rule allows it and one place can own it.
+
+  Restored via `on_exit`, including back to "unset". A variable left set changes
+  what every later spec in the same VM resolves, and that is exactly the bug the
+  criterion using this describes.
+  """
+  @spec put_env!(String.t(), String.t()) :: :ok
+  def put_env!(name, value) do
+    restore_env_on_exit(name)
+    System.put_env(name, value)
+  end
+
+  @doc """
+  Unset an environment variable for one spex, and put it back afterwards.
+
+  The other half of `put_env!/2` — see there for why this lives in support.
+  """
+  @spec delete_env!(String.t()) :: :ok
+  def delete_env!(name) do
+    restore_env_on_exit(name)
+    System.delete_env(name)
+  end
+
+  defp restore_env_on_exit(name) do
+    previous = System.get_env(name)
+    ExUnit.Callbacks.on_exit(fn -> restore_env(name, previous) end)
+  end
+
+  # Two heads, so "there was nothing there before" is a value rather than a
+  # branch — and so restoring never leaves a variable set that was not.
+  defp restore_env(name, nil), do: System.delete_env(name)
+  defp restore_env(name, previous), do: System.put_env(name, previous)
+
   setup tags do
     # `ownership_timeout` has to outlast the work, not the request. Recording a
     # spex waits on a provider verifying DNS — minutes, not milliseconds — and
@@ -187,7 +233,8 @@ defmodule CodeMySpecSpex.Case do
   deliberate act it is.
   """
   def connect_providers(%{scope: scope} = context) do
-    refuse_to_run_on_residue()
+    refuse_to_run_on_residue(context)
+    hold_recording_lock()
 
     start_cassette_session()
 
@@ -597,6 +644,22 @@ defmodule CodeMySpecSpex.Case do
   # proved there. What is left here — and is genuinely proved, against real
   # Cloudflare data — is that the records setup writes are **unproxied**, so the
   # HTTP-01 challenge reaches the origin rather than terminating at Cloudflare.
+  # Tell the harness to leave spex alone while this run records.
+  #
+  # Only in `:record`. A replay is an ordinary suite — it rewrites nothing and
+  # talks to nobody — so locking the harness out of it would cost sweeps for no
+  # reason. Recording is the run that must not be raced (`5a1f6b9c`).
+  #
+  # Beside `refuse_to_run_on_residue/0` deliberately: both are once-per-BEAM
+  # facts about the run as a whole, and this is the setup every provisioning
+  # spex enters through, so it is where "a recording has started" first becomes
+  # true.
+  defp hold_recording_lock do
+    if cassette_mode() == :record do
+      CodeMySpec.RecordingLock.hold(File.cwd!())
+    end
+  end
+
   # That is the part the records decide, and the part this criterion is about.
   # Point the backup script at a database that really exists.
   #
@@ -616,13 +679,35 @@ defmodule CodeMySpecSpex.Case do
   # deleted automatically: a recording may be in flight, and deleting somebody
   # else's live resource is worse than refusing to start.
   #
-  # Once per BEAM — the check costs a provider round trip and the answer cannot
-  # change while the suite that would change it is the one asking.
-  defp refuse_to_run_on_residue do
-    case :persistent_term.get({__MODULE__, :residue_checked}, nil) do
+  # Once per BEAM *per kind set* — the check costs a provider round trip and the
+  # answer cannot change while the suite that would change it is the one asking.
+  #
+  # Scoped by what the spex about to run actually creates. `9af4a111`: the guard
+  # asked for servers and buckets and refused on any `spex-` name among them, so
+  # re-recording the 969/974 *mail* cassettes was blocked by Hetzner *servers*
+  # left by a drill — no overlap at all between what it found and what those
+  # criteria touch. That made the drill and the spex suite mutually exclusive by
+  # construction even on disjoint infrastructure, and the only ways out were to
+  # tear down working infrastructure or not record.
+  #
+  # A spex declares its kinds and gets checked on those:
+  #
+  #     @moduletag spex_resources: [:buckets]
+  #
+  # Absent, it is `:all`, which is exactly the old behaviour — so this changes
+  # nothing for anything that has not opted in, and the safe answer is the one
+  # you get by not thinking about it.
+  #
+  # Keyed on the kind set rather than a single flag, because a run mixing mail
+  # and server spex would otherwise let whichever loaded first decide the check
+  # for all of them. Each distinct set is checked once.
+  defp refuse_to_run_on_residue(context) do
+    kinds = Map.get(context, :spex_resources, :all)
+
+    case :persistent_term.get({__MODULE__, :residue_checked, kinds}, nil) do
       nil ->
-        :persistent_term.put({__MODULE__, :residue_checked}, true)
-        leaked = Fixtures.leaked_spex_resources()
+        :persistent_term.put({__MODULE__, :residue_checked, kinds}, true)
+        leaked = Fixtures.leaked_spex_resources(kinds)
 
         if leaked != [] do
           raise """
@@ -634,6 +719,12 @@ defmodule CodeMySpecSpex.Case do
           creating anything. Clear them first:
 
             MIX_ENV=test mix cms.provisioning_leaks --delete
+
+          If these belong to something else entirely — a drill holding servers
+          while you re-record mail cassettes — the spex can say which kinds it
+          creates and be checked only on those:
+
+            @moduletag spex_resources: [:buckets]
           """
         end
 
@@ -1830,7 +1921,8 @@ defmodule CodeMySpecSpex.Case do
     view
     |> Phoenix.LiveViewTest.form("form[phx-submit='save_credentials']", %{
       "credentials" => %{
-        "hetzner_api_token" => recording_credential("HETZNER_API_TOKEN", "spex-placeholder-token"),
+        "hetzner_api_token" =>
+          recording_credential("HETZNER_API_TOKEN", "spex-placeholder-token"),
         "hetzner_s3_access_key_id" =>
           recording_credential("HETZNER_S3_ACCESS_KEY_ID", "spex-placeholder-id"),
         "hetzner_s3_secret_access_key" =>
@@ -3787,24 +3879,7 @@ defmodule CodeMySpecSpex.Case do
       clear_cassette_once(name, opts[:cassette_dir] || "test/cassettes")
     end
 
-    result =
-      ReqCassette.with_cassette(name, opts, fn plug ->
-        previous = Enum.map(provider_modules(), &{&1, Application.get_env(:code_my_spec, &1, [])})
-
-        for module <- provider_modules() do
-          Application.put_env(
-            :code_my_spec,
-            module,
-            Keyword.put(Application.get_env(:code_my_spec, module, []), :plug, plug)
-          )
-        end
-
-        try do
-          fun.()
-        after
-          for {module, config} <- previous, do: Application.put_env(:code_my_spec, module, config)
-        end
-      end)
+    result = record_or_replay(name, opts, fun)
 
     # Here rather than in `with_full_cassette/3`, which is where it started and
     # where it covered almost nothing: 841, 963, 965, 966 and 969 all drive
@@ -3822,6 +3897,98 @@ defmodule CodeMySpecSpex.Case do
     refuse_poisoned_cassette(name)
 
     result
+  end
+
+  # A recording whose run did not pass is a recording of the failure, and
+  # replaying it reproduces that failure faithfully while looking like an
+  # ordinary cassette.
+  #
+  # `refuse_poisoned_cassette/1` below is the narrower version of this rule and
+  # its reasoning is right: "recording it would make the failure the story's
+  # expected behaviour, and it would then replay forever without ever touching a
+  # provider again." Its scope was too narrow — it enumerates provider refusals,
+  # so a step that errored for any other reason, a non-zero exit from a tool, or
+  # a poll that ran to exhaustion were all kept. Three of those in one night
+  # (`05134805`), and none was a shape that guard was ever going to see.
+  #
+  # Worse than merely being kept, they are invisible: `966/8156` replayed a
+  # recorded sops failure byte-identically, so two attempts to fix the spex's
+  # premise produced identical output and the criterion was written off as
+  # unfixable. The premise was genuinely wrong; the recording was hiding that
+  # the fix had worked.
+  #
+  # The suite already knows the answer — if the block raised, the run did not
+  # pass — so this needs no enumeration of failure shapes and catches all three.
+  # Replay is untouched: nothing is being written, and a failing replay is a
+  # finding rather than a poisoned artifact.
+  defp record_or_replay(name, opts, fun) do
+    recording? = opts[:mode] == :record
+
+    try do
+      run_cassette(name, opts, fun)
+    rescue
+      error ->
+        reject_failed_recording(recording?, name, opts)
+        reraise error, __STACKTRACE__
+    catch
+      kind, reason ->
+        reject_failed_recording(recording?, name, opts)
+        :erlang.raise(kind, reason, __STACKTRACE__)
+    end
+  end
+
+  defp reject_failed_recording(false, _name, _opts), do: :ok
+
+  defp reject_failed_recording(true, name, opts) do
+    path = Path.join(opts[:cassette_dir] || "test/cassettes", name <> ".json")
+
+    File.rename(path, path <> ".rejected")
+    restore_backup(path)
+
+    IO.puts(:stderr, """
+
+    [cassette] refusing to keep #{Path.basename(path)}: the run that produced it
+    did not pass, so it is a recording of the failure. Replaying it would
+    reproduce that failure and look like ordinary expected behaviour.
+
+    Kept as #{Path.basename(path)}.rejected so you can read what happened.\
+    """)
+  end
+
+  # `clear_cassette_once/2` renamed the working cassette to `.bak` at the start
+  # of this run. Putting it back matters more than it sounds: instance 1 of
+  # `05134805` was two cassettes overwritten with 353 KB of failed verification
+  # polls and 3.3 MB of fruitless receive polls, recovered only because a human
+  # noticed and restored the `.bak` by hand.
+  defp restore_backup(path) do
+    backup = path <> ".bak"
+
+    backup
+    |> File.exists?()
+    |> restore_backup(backup, path)
+  end
+
+  defp restore_backup(false, _backup, _path), do: :ok
+  defp restore_backup(true, backup, path), do: File.rename(backup, path)
+
+  defp run_cassette(name, opts, fun) do
+    ReqCassette.with_cassette(name, opts, fn plug ->
+      previous = Enum.map(provider_modules(), &{&1, Application.get_env(:code_my_spec, &1, [])})
+
+      for module <- provider_modules() do
+        Application.put_env(
+          :code_my_spec,
+          module,
+          Keyword.put(Application.get_env(:code_my_spec, module, []), :plug, plug)
+        )
+      end
+
+      try do
+        fun.()
+      after
+        for {module, config} <- previous, do: Application.put_env(:code_my_spec, module, config)
+      end
+    end)
   end
 
   @doc "Every provider whose HTTP a cassette should capture."
@@ -4148,7 +4315,7 @@ defmodule CodeMySpecSpex.Case do
     # WorkingDir plug (which hits File.exists?/File.dir? directly). Real
     # file I/O still goes through the in-memory environment — the stub
     # dir is just a marker for the plug and the project's local_path.
-    stub_dir = Path.join(System.tmp_dir!(), "spex-#{System.unique_integer([:positive])}")
+    stub_dir = CodeMySpec.TempFile.dir("spex")
     File.mkdir_p!(stub_dir)
     File.write!(Path.join(stub_dir, "mix.exs"), "# stub for WorkingDir plug\n")
     # Real subdirs so FileWatcherServer.start_watcher/1 finds watchable

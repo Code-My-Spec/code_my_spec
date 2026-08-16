@@ -1,4 +1,7 @@
 defmodule CodeMySpec.ProjectSync.FileWatcherServerTest do
+  # Sync: calls `Sandbox.mode(Repo, {:shared, self()})`. Shared mode hands this
+  # process's connection to the whole node, which is precisely what an async test
+  # must not do — the watcher runs in its own process and needs to see the data.
   use CodeMySpecTest.DataCase, async: false
 
   alias CodeMySpec.ProjectSync.FileWatcherServer
@@ -13,7 +16,7 @@ defmodule CodeMySpec.ProjectSync.FileWatcherServerTest do
     scope = full_scope_fixture(%{module_name: "CodeMySpec"})
 
     tmp_dir =
-      Path.join(System.tmp_dir!(), "file_watcher_test_#{System.unique_integer([:positive])}")
+      CodeMySpec.TempFile.dir("file_watcher_test")
 
     File.mkdir_p!(Path.join(tmp_dir, "lib"))
     File.mkdir_p!(Path.join(tmp_dir, "test"))
@@ -59,7 +62,7 @@ defmodule CodeMySpec.ProjectSync.FileWatcherServerTest do
 
     test "watches multiple project directories", %{scope: scope, server: name} do
       tmp_dir2 =
-        Path.join(System.tmp_dir!(), "file_watcher_test2_#{System.unique_integer([:positive])}")
+        CodeMySpec.TempFile.dir("file_watcher_test2")
 
       File.mkdir_p!(Path.join(tmp_dir2, "lib"))
       on_exit(fn -> File.rm_rf!(tmp_dir2) end)
@@ -293,7 +296,7 @@ defmodule CodeMySpec.ProjectSync.FileWatcherServerTest do
 
   describe "boot snapshot" do
     test "snapshots mix.lock mtime for ensure_watching projects" do
-      tmp_dir = Path.join(System.tmp_dir!(), "fw_boot_#{System.unique_integer([:positive])}")
+      tmp_dir = CodeMySpec.TempFile.dir("fw_boot")
       File.mkdir_p!(Path.join(tmp_dir, "lib"))
       lock_path = Path.join(tmp_dir, "mix.lock")
       File.write!(lock_path, "%{}")

@@ -87,8 +87,12 @@ defmodule CodeMySpecSpex.Story995.Criterion8269Spex do
         assert context.html =~ "already produced a story",
                "expected the refusal to come back as the tool result the model reads"
 
-        refute context.html =~ "Stylists get a text when someone books",
-               "the second story was created rather than refused"
+        # Not "the title is absent from the page" — the refused call renders its
+        # own arguments now, so the title it *asked* for legitimately appears
+        # there. Whether a story was created is a question about the board, and
+        # the board is checked below: one card, and no second title on it.
+        refute has_element?(context.chat, "[data-test='story-card'][data-story-title]"),
+               "a refused create must not produce a second story card"
 
         {:ok, context}
       end

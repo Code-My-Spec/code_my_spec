@@ -29,7 +29,8 @@ defmodule CodeMySpec.Architecture do
         dependency_count: 18,
         orphaned_count: 1,
         max_depth: 4,
-        circular_dependencies: false
+        circular_dependencies: false,
+        circular_dependency_count: 0
       }
 
   """
@@ -39,13 +40,15 @@ defmodule CodeMySpec.Architecture do
           dependency_count: non_neg_integer(),
           orphaned_count: non_neg_integer(),
           max_depth: non_neg_integer(),
-          circular_dependencies: boolean()
+          circular_dependencies: boolean(),
+          circular_dependency_count: non_neg_integer()
         }
   def get_architecture_summary(%Scope{} = scope) do
     components = Components.list_components_with_dependencies(scope)
     contexts = Components.list_contexts(scope)
     dependencies = Components.list_dependencies(scope)
     orphaned = list_orphaned_contexts(scope)
+    cycles = circular_dependencies(scope)
 
     %{
       context_count: length(contexts),
@@ -53,7 +56,8 @@ defmodule CodeMySpec.Architecture do
       dependency_count: length(dependencies),
       orphaned_count: length(orphaned),
       max_depth: calculate_max_namespace_depth(components),
-      circular_dependencies: has_circular_dependencies?(scope)
+      circular_dependencies: cycles != [],
+      circular_dependency_count: length(cycles)
     }
   end
 
@@ -67,10 +71,20 @@ defmodule CodeMySpec.Architecture do
     |> Enum.max(fn -> 0 end)
   end
 
-  defp has_circular_dependencies?(scope) do
+  # `73ff202b`: the count went from 4 to 21 without anyone noticing, because
+  # every surface that had it reduced it to a boolean on the way out. This one
+  # is called "a structured summary of architecture metrics" and a metric with a
+  # magnitude should not be reported as yes/no — `validate_dependency_graph`
+  # hands back the cycles themselves and they were being thrown away one line
+  # later.
+  #
+  # Reporting only. Nothing gates on the count, deliberately: at 21 a gate would
+  # wedge every agent, and which edge of each pair is the wrong one is an
+  # architecture decision per cycle.
+  defp circular_dependencies(scope) do
     case Components.validate_dependency_graph(scope) do
-      :ok -> false
-      {:error, _cycles} -> true
+      :ok -> []
+      {:error, cycles} -> cycles
     end
   end
 

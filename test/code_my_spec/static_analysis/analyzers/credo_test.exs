@@ -1,7 +1,17 @@
 defmodule CodeMySpec.StaticAnalysis.Analyzers.CredoTest do
-  use CodeMySpecTest.DataCase
+  # Sync: `use_cmd_cassette` meck-patches `System.cmd/3` process-globally. Also
+  # `@moduletag :analyzer` — excluded from the default suite and run by
+  # `just test-analyzer`, because it works out of the shared
+  # `code_my_spec_test_repos` directory every worktree points at.
+  use CodeMySpecTest.DataCase, async: false
 
   use ExCliVcr
+
+  # Out of the default suite. This file rsyncs a copy of a real Phoenix project
+  # out of `../code_my_spec_test_repos` and runs credo inside it — a directory
+  # every worktree reaches through a symlink to one shared copy, so two agents
+  # running suites collided there. `just test-analyzer` runs it.
+  @moduletag :analyzer
   import ExUnit.CaptureLog
   import CodeMySpec.{UsersFixtures, AccountsFixtures, ProjectsFixtures}
 

@@ -1,5 +1,5 @@
 defmodule CodeMySpec.McpServers.Personas.Tools.ListPersonasTest do
-  use ExUnit.Case, async: false
+  use ExUnit.Case, async: true
 
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Personas.Tools.ListPersonas

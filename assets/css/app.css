@@ -202,3 +202,47 @@ body {
         color: var(--color-warning);
     }
 }
+
+/* A transcript is read on a phone, and nothing in it may pan sideways.
+ *
+ * The typography plugin gives `pre` `white-space: pre` and `overflow-x: auto`,
+ * which is right for a docs page and wrong here: an agent's reply is mostly
+ * code, so every fenced block became a horizontal scroller inside a column
+ * that cannot scroll, and dragging one pans the page under your thumb.
+ *
+ * A long URL is the same failure without the code: a bare link has no break
+ * opportunity, so it pushes the bubble wider than the screen.
+ *
+ * Wrapping loses the original line breaks of wide code. That is the trade:
+ * a line you can read across two rows beats a line you have to drag to see. */
+/* The catch-all, and the one that actually matters: a 197-character unbroken
+ * token in an ordinary paragraph. Measured in a real transcript — file paths,
+ * base64, and long identifiers all land in plain prose, not in a code block.
+ * `break-words` on the bubble is `overflow-wrap: break-word`, which breaks a
+ * long word only after it has already established the line box's width, so a
+ * flex or grid ancestor still sizes to the unbroken token. `anywhere` also
+ * shrinks min-content, which is what keeps the bubble inside the column. */
+.chat-prose,
+.chat-prose :where(p, li, h1, h2, h3, h4, blockquote, td, th) {
+    overflow-wrap: anywhere;
+}
+
+.chat-prose :where(pre) {
+    white-space: pre-wrap;
+    overflow-x: hidden;
+    word-break: break-word;
+}
+
+.chat-prose :where(code) {
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.chat-prose :where(a) {
+    word-break: break-all;
+}
+
+.chat-prose :where(table) {
+    display: block;
+    overflow-x: auto;
+}

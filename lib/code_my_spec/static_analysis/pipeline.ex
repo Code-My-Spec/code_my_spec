@@ -335,8 +335,18 @@ defmodule CodeMySpec.StaticAnalysis.Pipeline do
   # to the subprocess set first — so this is a contradiction nobody was
   # executing. Left in place rather than deleted because a caller that does
   # reach it should get the current policy, not the one from two changes ago.
-  defp files_for_analyzer(:credo, _file_paths, _config), do: nil
-  defp files_for_analyzer(_atom, file_paths, _config), do: file_paths
+  # `nil` means every file, for every analyzer.
+  #
+  # Credo was already whole-project; the rest scanned only the turn's changed
+  # files. That asymmetry is half of the clearing bug — an analyzer that examines
+  # a subset can only honestly clear that subset, and a subset-clear cannot express
+  # "nothing is wrong any more". Scanning everything is what makes clearing
+  # everything correct, so the two are set together and neither is a knob.
+  #
+  # The cost is a full scan where a narrow one might have done. The benefit is that
+  # a finding outside the turn's files is found rather than merely retained, which
+  # is what `:block_changed` always claimed and never delivered.
+  defp files_for_analyzer(_atom, _file_paths, _config), do: nil
 
   defp run_validators(_scope, [], _files), do: []
 
@@ -484,41 +494,29 @@ defmodule CodeMySpec.StaticAnalysis.Pipeline do
 
   # Each entry pairs a problem `source` (the string written into the DB)
   # with the file scope to clear before re-inserting. credo in
-  # `:block_all` clears project-wide (`:all`); everything else clears
-  # only the changed files of this turn.
-  defp source_scopes_for(static_analyzers, validators, file_paths, config) do
-    static_pairs =
-      Enum.map(static_analyzers, fn atom ->
-        source = Map.get(@analyzer_source_map, atom, Atom.to_string(atom))
-        {source, scope_for_source(atom, file_paths, config)}
-      end)
-
-    validator_pairs =
-      Enum.map(validators, fn validator ->
-        source = Map.get(@analyzer_source_map, validator, Atom.to_string(validator))
-        {source, file_paths}
-      end)
-
-    (static_pairs ++ validator_pairs)
+  # Everything scans everything, and every result clears project-wide.
+  #
+  # Partial scanning and partial clearing are each defensible on their own and
+  # lethal together, which is what this project kept discovering. Clearing is keyed
+  # on the files a result names; a run that finds nothing names nothing; so a
+  # narrower scan that came back clean cleared nothing and every earlier finding
+  # survived it. `[]` is exactly the shape of "the last finding was fixed", so the
+  # moment clearing mattered most was the one moment it could not act. Three
+  # separate stop-hook loops on 2026-08-13 traced to that, across two sources,
+  # because the first fix was made per-source rather than to the interpretation.
+  #
+  # One rule instead: scan all, clear all. It costs a full run where a narrow one
+  # might have done, and it buys a stop gate whose answer is about the tree as it
+  # is rather than about whichever subset was examined. Whole-project runs are also
+  # what make `:all` correct — the two decisions are one decision, and separating
+  # them is what produced the bug. See 6b3351cb.
+  defp source_scopes_for(static_analyzers, validators, _file_paths, _config) do
+    (static_analyzers ++ validators)
+    |> Enum.map(fn atom ->
+      {Map.get(@analyzer_source_map, atom, Atom.to_string(atom)), :all}
+    end)
     |> Enum.uniq_by(&elem(&1, 0))
   end
-
-  # Credo always examines the whole project, so its result is always authoritative
-  # for the whole project. The command the harness runs is
-  # `mix credo suggest --all --all-priorities --format json --no-color` — no path
-  # filter, in every mode.
-  #
-  # This used to be `:all` only under `block_all` and the edited files otherwise,
-  # which made a clean run unable to say so. Clearing is keyed on the files a
-  # result names, and a run that finds nothing names nothing — so it cleared
-  # nothing, and a finding survived every subsequent clean run. The stop hook then
-  # blocked on a fixed file indefinitely while advising "stop again and let the
-  # rerun replace these", which was the one action that could not work. Measured
-  # on 2026-08-13: three identical blocks against `a7086249`, with
-  # `[CmsHarness] credo [] ... sent the credo result (ok)` in harness.log between
-  # each. See 6b3351cb.
-  defp scope_for_source(:credo, _file_paths, _config), do: :all
-  defp scope_for_source(_atom, file_paths, _config), do: file_paths
 
   # -- Problem persistence --
 

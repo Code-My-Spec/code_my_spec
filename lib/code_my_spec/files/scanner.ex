@@ -341,13 +341,22 @@ defmodule CodeMySpec.Files.Scanner do
     # an implementation file is valid because it is there. What is new is the
     # module name travelling with it, which `ComponentSync` used to open the
     # file to learn.
+    #
+    # `ecto_schema` travels the same way and for the same reason: the content is
+    # already in hand here, so recording it costs nothing, where inferring it in
+    # `ComponentSync` would mean re-opening every implementation file on the
+    # project. It is the one type fact read from an implementation — see
+    # `ComponentExtract.ecto_schema?/1` for why schemas are the exception.
     case Environments.read_file(env, entry.path) do
       {:ok, content} ->
         Map.merge(entry, %{
           valid: true,
           validation_errors: %{
             "errors" => %{},
-            "data" => %{"module_name" => ComponentExtract.extract_defmodule(content)}
+            "data" => %{
+              "module_name" => ComponentExtract.extract_defmodule(content),
+              "ecto_schema" => ComponentExtract.ecto_schema?(content)
+            }
           }
         })
 
@@ -363,6 +372,7 @@ defmodule CodeMySpec.Files.Scanner do
     :bdd_spec,
     :qa_brief,
     :qa_result,
+    :qa_script,
     :json,
     :review,
     :architecture,
@@ -914,6 +924,23 @@ defmodule CodeMySpec.Files.Scanner do
       # them off a disk — and reported them missing on a server that has
       # none, while they sat in the agent's working copy.
       path in [Paths.qa_plan(), Paths.qa_journey_plan()] -> {path, :qa_plan}
+      # The scripts the integration specs point at. `41406ceb`: classifying the
+      # specs closed the fingerprint hole for their *contents*, but
+      # `QaIntegrationPlan.check_one_verify_script/2` parses a path out of each
+      # spec and asserts that file exists — and that file was claimed by
+      # nothing, so creating the very script that satisfies the check left
+      # `files_digest/1` unchanged and the published graph served as current.
+      # Same defect as the specs had, one indirection along.
+      #
+      # `qa_integration_plan` is a graph requirement
+      # (`requirement_definition_data.ex:900`), which is what makes the
+      # fingerprint the mechanism here. `.code_my_spec/qa/summary.md` and
+      # `.code_my_spec/design/design_system.html` are read by evaluators too and
+      # are deliberately *not* claimed: `QaApp` and `DesignUi` are session types
+      # started by hand, not graph nodes, so nothing caches a decision about
+      # them and `read_file/2` answers over the channel on a light harness.
+      # Unclassified is the right answer for a file no graph reads.
+      match_qa_script?(path) -> {path, :qa_script}
       match_qa_file?(path, "brief.md") -> {path, :qa_brief}
       match_qa_result?(path) -> {path, :qa_result}
       true -> nil
@@ -940,6 +967,17 @@ defmodule CodeMySpec.Files.Scanner do
   defp match_qa_file?(path, filename) do
     qa_prefix = Paths.qa_dir() <> "/"
     String.starts_with?(path, qa_prefix) and String.ends_with?(path, "/" <> filename)
+  end
+
+  # Anything under `.code_my_spec/qa/scripts/`, without pinning an extension.
+  # The specs name their verify script by path and nothing constrains it to
+  # `.sh` — the three that exist happen to be shell, and a Python one would be
+  # just as valid and just as invisible.
+  #
+  # Checked before `match_qa_file?/2` so a script named `brief.md` cannot be
+  # taken for a story brief; the story-id parse would then fail on "scripts".
+  defp match_qa_script?(path) do
+    String.starts_with?(path, Paths.qa_scripts_dir() <> "/")
   end
 
   # Only result_complete.md satisfies the :qa_result role. In-progress

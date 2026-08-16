@@ -771,7 +771,44 @@ defmodule CmsHarness.Project.ChannelClient do
   defp log_analysis_reply(_source, {:ok, _}, socket), do: socket
   defp log_analysis_reply(_source, :ok, socket), do: socket
 
-  defp log_analysis_reply(source, other, socket) do
+  defp log_analysis_reply(source, {:error, %{"reason" => reason}} = reply, socket)
+       when is_binary(reason) do
+    log_by_kind(superseded?(reason), source, reply, socket)
+  end
+
+  defp log_analysis_reply(source, other, socket), do: log_rejection(source, other, socket)
+
+  # A supersede is a scheduling fact, not a rejection. The server enqueued a run
+  # for this source, a second arrived while the first was still open, and the
+  # first answers for both.
+  #
+  # `Reconciler.supersede/2` already made exactly this call on the server side —
+  # "at `:info`, not `:warning` — nothing is wrong … logging it as a failure
+  # taught readers to ignore a level that should mean something" — and the
+  # reasoning never crossed to the harness. 80 of the 385 rejections in this
+  # machine's `harness.log` are supersedes, every one at `level=error` under a
+  # message saying the analyzer's work was lost and the next stop will report
+  # pending. Both halves are wrong for this case, and a log where `error` is
+  # routinely a non-event is a log nobody reads.
+  #
+  # Still worth a line: the analyzer *did* run, and a full spex sweep is minutes.
+  # Repeated supersedes mean that work is being done twice and discarded, which
+  # is a thing to notice — just not a failure.
+  defp superseded?(reason), do: String.starts_with?(reason, "{:superseded")
+
+  defp log_by_kind(false, source, reply, socket), do: log_rejection(source, reply, socket)
+
+  defp log_by_kind(true, source, _reply, socket) do
+    Logger.info(
+      "[CmsHarness] the #{source} result for #{socket.assigns.project.root} was superseded — " <>
+        "another run for this source was already queued and answers for both. Nothing is " <>
+        "wrong; this analyzer's work was duplicated and discarded."
+    )
+
+    socket
+  end
+
+  defp log_rejection(source, other, socket) do
     Logger.error("""
     [CmsHarness] the server REJECTED the #{source} result for #{socket.assigns.project.root}: #{inspect(other)}
 

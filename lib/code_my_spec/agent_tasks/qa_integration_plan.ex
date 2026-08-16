@@ -267,12 +267,43 @@ defmodule CodeMySpec.AgentTasks.QaIntegrationPlan do
   end
 
   defp verified_status(file, content) do
-    if String.contains?(String.downcase(content), "verified") do
-      {:cont, :ok}
-    else
-      {:halt, {:error, "Integration `#{file}` is not yet verified. Run the verify script and update the status."}}
-    end
+    content
+    |> status_section()
+    |> verified_section?()
+    |> status_result(file)
   end
+
+  defp status_result(true, _file), do: {:cont, :ok}
+
+  defp status_result(false, file) do
+    {:halt,
+     {:error,
+      "Integration `#{file}` is not yet verified. Run the verify script and set " <>
+        "`## Status` to `verified`."}}
+  end
+
+  # The body of the `## Status` section, or "" when there is none.
+  #
+  # This used to be `String.contains?(String.downcase(content), "verified")` over
+  # the whole document, which passes on the word appearing anywhere — and
+  # "unverified" contains "verified". So an integration explicitly marked
+  # unverified satisfied the check, as did one whose prose merely said "once
+  # verified, …". A gate that reports satisfied when it is not is the worst
+  # failure mode available to a gate, because it is invisible.
+  defp status_section(content) do
+    content
+    |> String.split("\n")
+    |> Enum.drop_while(&(!String.match?(&1, ~r/^##\s*Status\s*$/i)))
+    |> Enum.drop(1)
+    |> Enum.take_while(&(!String.starts_with?(&1, "##")))
+    |> Enum.map_join(" ", &String.trim/1)
+    |> String.trim()
+    |> String.downcase()
+  end
+
+  # Anchored, so `unverified`, `not verified` and `pending verification` are all
+  # what they say rather than near-misses that pass.
+  defp verified_section?(section), do: String.match?(section, ~r/^verified\b/)
 
   defp read_verify_script_path(env, spec_file) do
     case Environments.read_file(env, spec_file) do

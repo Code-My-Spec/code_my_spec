@@ -66,7 +66,7 @@ defmodule CodeMySpecSpex.Story127.Criterion5921Spex do
         response =
           use_cmd_cassette "clean", record: :none do
             Phoenix.ConnTest.build_conn()
-            |> Plug.Conn.put_req_header("x-working-dir", context.scope.cwd)
+            |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_harness_id)
             |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_harness_id)
             |> Plug.Conn.put_req_header("content-type", "application/json")
             |> post(~p"/api/hooks/stop", %{

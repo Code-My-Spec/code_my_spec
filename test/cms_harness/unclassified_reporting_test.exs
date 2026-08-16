@@ -15,6 +15,8 @@ defmodule CmsHarness.UnclassifiedReportingTest do
   line reads as "nothing was skipped".
   """
 
+  # Sync: `:persistent_term` is node-global. There is no per-test view of it, so
+  # two tests writing the same key see each other's value.
   use ExUnit.Case, async: false
 
   import ExUnit.CaptureLog
@@ -23,10 +25,7 @@ defmodule CmsHarness.UnclassifiedReportingTest do
 
   setup do
     root =
-      Path.join(
-        System.tmp_dir!(),
-        "cms_harness_unclassified_#{System.unique_integer([:positive])}"
-      )
+      CodeMySpec.TempFile.dir("cms_harness_unclassified")
 
     File.mkdir_p!(Path.join(root, "test/support"))
 

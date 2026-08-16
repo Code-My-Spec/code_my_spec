@@ -16,8 +16,8 @@ defmodule CodeMySpec.Transcripts.Player do
   """
 
   alias CodeMySpec.Transcripts
-  alias CodeMySpec.Transcripts.Replayer
   alias CodeMySpec.Transcripts.ClaudeCode.{Entry, ToolCall}
+  alias CodeMySpec.Transcripts.Replayer
 
   @harness_prefix "mcp__plugin_codemyspec_local__"
   @text_cap 700
@@ -139,25 +139,7 @@ defmodule CodeMySpec.Transcripts.Player do
         IO.ANSI.reset()
       ])
 
-      for o <- q["options"] || [] do
-        puts([
-          IO.ANSI.cyan(),
-          "  │   ",
-          IO.ANSI.yellow(),
-          "○ ",
-          to_string(o["label"] || ""),
-          IO.ANSI.reset()
-        ])
-
-        o["description"]
-        |> wrap(@option_width)
-        |> Enum.take(@option_desc_lines)
-        |> Enum.each(fn line ->
-          puts([IO.ANSI.cyan(), "  │     ", IO.ANSI.faint(), line, IO.ANSI.reset()])
-        end)
-
-        beat(per_option)
-      end
+      for o <- q["options"] || [], do: render_option(o, per_option)
     end
   end
 
@@ -180,6 +162,32 @@ defmodule CodeMySpec.Transcripts.Player do
   end
 
   defp render_block(_block, _type, _index, _ctx), do: :ok
+
+  # One option: its label, its wrapped description, and the beat after it.
+  #
+  # Split out of the clause above, which was one point over the complexity
+  # limit. It is also the unit the pacing is about — `per_option` exists so the
+  # options arrive one at a time, and that is easier to see with the thing being
+  # paced named.
+  defp render_option(option, per_option) do
+    puts([
+      IO.ANSI.cyan(),
+      "  │   ",
+      IO.ANSI.yellow(),
+      "○ ",
+      to_string(option["label"] || ""),
+      IO.ANSI.reset()
+    ])
+
+    option["description"]
+    |> wrap(@option_width)
+    |> Enum.take(@option_desc_lines)
+    |> Enum.each(fn line ->
+      puts([IO.ANSI.cyan(), "  │     ", IO.ANSI.faint(), line, IO.ANSI.reset()])
+    end)
+
+    beat(per_option)
+  end
 
   # Most results are noise past the first line. An answer block is the
   # exception — it is one line per question, and the answers are the point.
@@ -209,20 +217,20 @@ defmodule CodeMySpec.Transcripts.Player do
     text
     |> to_string()
     |> String.split(~r/\s+/, trim: true)
-    |> Enum.reduce([], fn word, acc ->
-      case acc do
-        [] ->
-          [word]
-
-        [current | rest] ->
-          if String.length(current) + 1 + String.length(word) <= width do
-            [current <> " " <> word | rest]
-          else
-            [word, current | rest]
-          end
-      end
-    end)
+    |> Enum.reduce([], &add_word(&1, &2, width))
     |> Enum.reverse()
+  end
+
+  # One word onto the accumulator: onto the current line if it fits, otherwise
+  # starting a new one. Lifted out of the fold, where the `case`-inside-`reduce`
+  # -inside-`if` was three levels deep for a two-way decision.
+  defp add_word(word, [], _width), do: [word]
+
+  defp add_word(word, [current | rest], width) do
+    case String.length(current) + 1 + String.length(word) <= width do
+      true -> [current <> " " <> word | rest]
+      false -> [word, current | rest]
+    end
   end
 
   # Task/QA tools (start_task, evaluate_task, submit_qa_result, create_issue,
@@ -278,7 +286,9 @@ defmodule CodeMySpec.Transcripts.Player do
   end
 
   # -- action labels (Claude Code-ish) --------------------------------------
-  defp action_label(%ToolCall{name: "Bash", input: i}), do: "Bash(#{first_line(i["command"] || "")})"
+  defp action_label(%ToolCall{name: "Bash", input: i}),
+    do: "Bash(#{first_line(i["command"] || "")})"
+
   defp action_label(%ToolCall{name: "Write", input: i}), do: "Write(#{rel(i["file_path"])})"
   defp action_label(%ToolCall{name: "Edit", input: i}), do: "Edit(#{rel(i["file_path"])})"
   defp action_label(%ToolCall{name: "Read", input: i}), do: "Read(#{rel(i["file_path"])})"
@@ -286,12 +296,22 @@ defmodule CodeMySpec.Transcripts.Player do
   defp action_label(%ToolCall{name: @harness_prefix <> tool, input: i}),
     do: "#{tool}(#{args(i)})"
 
-  defp action_label(%ToolCall{name: "mcp__" <> rest}), do: rest |> String.split("__") |> List.last()
+  defp action_label(%ToolCall{name: "mcp__" <> rest}),
+    do: rest |> String.split("__") |> List.last()
+
   defp action_label(%ToolCall{name: name}), do: name
 
   defp args(input) when is_map(input) do
     input
-    |> Map.take(["story_id", "title", "statement", "requirement_name", "path", "name", "component_name"])
+    |> Map.take([
+      "story_id",
+      "title",
+      "statement",
+      "requirement_name",
+      "path",
+      "name",
+      "component_name"
+    ])
     |> Enum.map_join(", ", fn {k, v} -> "#{k}: #{cap(to_string(v), 48)}" end)
   end
 
@@ -299,7 +319,11 @@ defmodule CodeMySpec.Transcripts.Player do
 
   # -- helpers --------------------------------------------------------------
   defp result_text(%{"content" => content}) when is_list(content),
-    do: content |> Enum.map(fn b -> is_map(b) && b["text"] end) |> Enum.filter(& &1) |> Enum.join(" ")
+    do:
+      content
+      |> Enum.map(fn b -> is_map(b) && b["text"] end)
+      |> Enum.filter(& &1)
+      |> Enum.join(" ")
 
   defp result_text(%{"content" => content}) when is_binary(content), do: content
   defp result_text(_), do: ""
@@ -361,8 +385,12 @@ defmodule CodeMySpec.Transcripts.Player do
       url = base <> "/api/hooks/session-start"
       target = opts[:target_dir] || "/tmp/cms_demo_mms"
 
+      # The target's own harness id, from `.cms_harness.json`. Sending the
+      # directory instead had the server walk up to a `mix.exs` to find a
+      # checkout, which is how a demo replay could seed a session against a
+      # neighbouring one.
       headers = [
-        {"x-working-dir", target},
+        {"x-harness-id", Replayer.harness_id(target) || ""},
         {"content-type", "application/json"}
       ]
 

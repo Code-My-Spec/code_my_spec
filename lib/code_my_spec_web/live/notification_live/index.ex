@@ -117,7 +117,7 @@ defmodule CodeMySpecWeb.NotificationLive.Index do
 
   defp item(assigns) do
     ~H"""
-    <li>
+    <li data-test="notification" data-id={@item.id} data-kind={@item.type} data-status={@item.status}>
       <.link
         navigate={@item.path}
         class={[

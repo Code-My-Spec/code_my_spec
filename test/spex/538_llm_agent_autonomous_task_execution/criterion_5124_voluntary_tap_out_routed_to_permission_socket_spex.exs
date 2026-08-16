@@ -90,7 +90,7 @@ defmodule CodeMySpecSpex.Story538.Criterion5124Spex do
       then_ "the autonomous loop has terminated — next stop is allowed", context do
         response =
           Phoenix.ConnTest.build_conn()
-          |> Plug.Conn.put_req_header("x-working-dir", context.scope.cwd)
+          |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_harness_id)
           |> Plug.Conn.put_req_header("content-type", "application/json")
           |> post(~p"/api/hooks/stop", %{"session_id" => context.session_id})
           |> Phoenix.ConnTest.json_response(200)

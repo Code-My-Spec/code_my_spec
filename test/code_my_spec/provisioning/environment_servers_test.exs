@@ -11,18 +11,20 @@ defmodule CodeMySpec.Provisioning.EnvironmentServersTest do
   This asserts on what was asked of the provider, which is the part that
   matters and the part no recording can be wrong about.
   """
-  use CodeMySpecTest.DataCase, async: false
+  # Async: the token is a project secret on this test's own scope, and the plug
+  # is a `Req.Test` stub registered against this process. Neither is visible to
+  # anything else, which is what the shared `:code_my_spec, Hetzner` key was.
+  use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.UsersFixtures
 
+  alias CodeMySpec.ProjectSecrets
   alias CodeMySpec.Provisioning.Hetzner
   alias CodeMySpec.Provisioning.Steps
 
   setup do
     scope = full_scope_fixture()
-
-    on_exit(fn -> Application.delete_env(:code_my_spec, Hetzner) end)
-
+    {:ok, _} = ProjectSecrets.put_value(scope, "hetzner_api_token", "test-token")
     {:ok, scope: scope}
   end
 
@@ -79,7 +81,7 @@ defmodule CodeMySpec.Provisioning.EnvironmentServersTest do
       reply(conn, conn.method, conn.request_path, decode(body), {owner, state, capacity})
     end
 
-    Application.put_env(:code_my_spec, Hetzner, api_token: "test-token", plug: plug)
+    Req.Test.stub(Hetzner, plug)
   end
 
   defp decode(""), do: %{}

@@ -24,6 +24,12 @@ defmodule CodeMySpec.Conversations.Conversation do
     # Set for background-agent-session conversations (harness team's shared id);
     # nil for customer-support widget conversations.
     field :session_external_id, :string
+    # A handle a person can set. `session_external_id` stays the identity — it
+    # is what the recorder keys on and what shows up in logs — but a UUID tells
+    # you nothing when five agents are running, so this is what the index shows.
+    # Generated at creation, editable after; nil on rows created before names
+    # existed, which fall back to the session id.
+    field :name, :string
     field :read, :boolean, default: true
     field :status, Ecto.Enum, values: [:open, :closed], default: :open
     # Which kind of thread this is. Was inferred from a nil session_external_id,
@@ -51,11 +57,32 @@ defmodule CodeMySpec.Conversations.Conversation do
   """
   def agent_changeset(conversation, attrs) do
     conversation
-    |> cast(attrs, [:account_id, :project_id, :session_external_id, :read, :status])
+    |> cast(attrs, [:account_id, :project_id, :session_external_id, :read, :status, :name])
     |> put_change(:type, :agent)
     |> validate_required([:account_id, :project_id, :session_external_id])
     |> unique_constraint([:account_id, :project_id, :session_external_id],
       name: :conversations_account_project_session_index
     )
+  end
+
+  @doc """
+  Rename a conversation, and nothing else.
+
+  Separate from `agent_changeset/2` so the rename form cannot reach the session
+  id or the account: a form that casts what it does not show is how a hidden
+  field becomes an edit.
+
+  A blank name clears it rather than storing `""` — the display falls back to
+  the session id, which is the same thing an unnamed row does, and one empty
+  state beats two.
+  """
+  def rename_changeset(conversation, attrs) do
+    conversation
+    |> cast(attrs, [:name])
+    |> update_change(:name, fn
+      name when is_binary(name) -> if String.trim(name) == "", do: nil, else: String.trim(name)
+      name -> name
+    end)
+    |> validate_length(:name, max: 120)
   end
 end

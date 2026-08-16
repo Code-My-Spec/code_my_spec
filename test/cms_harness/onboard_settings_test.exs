@@ -13,7 +13,10 @@ defmodule CmsHarness.OnboardSettingsTest do
   have written in it, so the thing worth pinning is not that the URL lands but
   that nothing else moves when it does.
   """
-  use ExUnit.Case, async: true
+  # Sync: this mutates OS environment variables, which belong to the BEAM node
+  # rather than to a test process. Saving and restoring them is careful and
+  # still leaves a window every concurrent test can see.
+  use ExUnit.Case, async: false
 
   alias CodeMySpec.Environments
   alias Mix.Tasks.Cms.Harness.Onboard
@@ -21,7 +24,7 @@ defmodule CmsHarness.OnboardSettingsTest do
   @base "http://localhost:4003"
 
   setup do
-    root = Path.join(System.tmp_dir!(), "onboard-settings-#{System.unique_integer([:positive])}")
+    root = CodeMySpec.TempFile.dir("onboard-settings")
     File.mkdir_p!(root)
     on_exit(fn -> File.rm_rf(root) end)
 
@@ -47,6 +50,21 @@ defmodule CmsHarness.OnboardSettingsTest do
 
     assert read!(file)["env"]["ANTHROPIC_BASE_URL"] ==
              "#{@base}/api/harnesses/abc-123"
+  end
+
+  test "writes the harness id, which is the only way MCP can name this checkout", %{
+    root: root,
+    env: env,
+    settings_file: file
+  } do
+    assert :ok = Onboard.address_model_turns(env, root, "abc-123", @base)
+
+    assert read!(file)["env"]["CMS_HARNESS_ID"] == "abc-123",
+           "the plugin's MCP mount sends `X-Harness-Id: ${CMS_HARNESS_ID}` because an " <>
+             "mcpServers entry interpolates environment variables and cannot read " <>
+             ".cms_harness.json the way the hook shims do. Unset, it arrives as that " <>
+             "literal string — which the server refuses now that identity is the only " <>
+             "routing key."
   end
 
   test "keeps every other setting the operator wrote", %{root: root, env: env, settings_file: file} do

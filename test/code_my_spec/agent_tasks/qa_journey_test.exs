@@ -1,21 +1,24 @@
 defmodule CodeMySpec.AgentTasks.QaJourneyTest do
   @moduledoc false
-  use CodeMySpecTest.DataCase
+  use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.AgentTasks.QaJourney
-  alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.Environments
+  alias CodeMySpec.Support.InMemoryEnvironment
 
   # ============================================================================
   # Test Helpers
   # ============================================================================
 
   defp create_scope(_context) do
-    {:ok, tmp_dir} = Briefly.create(directory: true)
+    {:ok, env} = InMemoryEnvironment.create()
+    on_exit(fn -> InMemoryEnvironment.destroy(env) end)
+
     scope = full_scope_fixture()
-    scope = %{scope | environment: Environment.new(:local, tmp_dir)}
-    %{scope: scope, tmp_dir: tmp_dir}
+    scope = %{scope | environment: env}
+    %{scope: scope, tmp_dir: env.cwd}
   end
 
   defp create_task(context) do
@@ -23,10 +26,10 @@ defmodule CodeMySpec.AgentTasks.QaJourneyTest do
     Map.put(context, :task, task)
   end
 
+  # Through the environment the code under test reads from. Writing to disk here
+  # would be seeding a filesystem `QaJourney` never looks at.
   defp write_file!(env, relative_path, content) do
-    full_path = Path.join(env.cwd, relative_path)
-    full_path |> Path.dirname() |> File.mkdir_p!()
-    File.write!(full_path, content)
+    :ok = Environments.write_file(env, relative_path, content)
   end
 
   # ============================================================================

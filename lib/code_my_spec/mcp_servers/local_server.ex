@@ -5,16 +5,31 @@ defmodule CodeMySpec.McpServers.LocalServer do
   Exposes tools relevant to the local agent workflow.
   Story CRUD lives on the web server — only linking is local.
 
-  ## Restart required after tool changes
+  ## A new tool needs three things, and two of them are not the server
 
-  Adding or removing a `component(...)` registration below requires
-  a **full `cms server` restart** to take effect. The running BEAM
-  binds its tool registry at boot; reconnecting the MCP client
-  (`/mcp` in Claude Code) only refreshes the client-side tool list,
-  not the server-side handler module list. A freshly-added tool
-  will appear in `tools/list` but invocation returns
-  `MCP error -32603: Internal error` because the server has no
-  handler module loaded for it.
+  Adding or removing a `component(...)` registration below requires **all** of:
+
+  1. `MIX_ENV=dev_cli mix compile` — the `:4004` build is not refreshed by a
+     plain restart, only `_build/dev` is. `just refresh` does this now
+     (`a2ff68fa`); before it did, the server ran two-day-old modules while
+     every mtime looked current.
+  2. A full server restart. The running BEAM binds its tool registry at boot,
+     so a tool compiled in but not restarted into appears in `tools/list` and
+     returns `MCP error -32603: Internal error` on invocation — the server has
+     no handler module loaded for it.
+  3. **Every already-running agent must reconnect** (`/mcp` in Claude Code).
+     The client caches its tool list at connect, so a tool the server has
+     compiled, loaded and answered on is still `No such tool available` to any
+     session that connected earlier. A subagent shares its parent's transport
+     and inherits the stale list with it.
+
+  The third is not fixable from here, and it is the one that reads as a bug in
+  the tool. Proven by bypassing the client entirely — raw JSON-RPC over HTTP
+  (`initialize` → `tools/list` → `tools/call`) found the tool present and
+  working at the same moment two live sessions were told it did not exist
+  (`b2d9c616`). Nothing signals which of the three is missing, so when a tool
+  call fails with "no such tool", check in that order rather than assuming the
+  tool is wrong.
   """
 
   use Anubis.Server,
@@ -22,7 +37,8 @@ defmodule CodeMySpec.McpServers.LocalServer do
     version: "1.0.0",
     capabilities: [:tools]
 
-  # Scope resolved from x-working-dir header via merge_transport_assigns.
+  # Scope resolved from the X-Harness-Id header by `Plugs.HarnessScope`, which
+  # reaches a tool's frame through the transport's assigns.
 
   # Bootstrap — project linking, resource installation
   component(CodeMySpec.McpServers.Bootstrap.Tools.ListProjects)

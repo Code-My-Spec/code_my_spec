@@ -32,9 +32,12 @@ defmodule CodeMySpecSpex.Story1000.Criterion740Spex do
       end
 
       when_ "the operator edits files in it", context do
+        # No header at all, because there is no id to send: nothing issued one
+        # for this directory. Announcing the path instead is what the server used
+        # to accept, and accepting it is how an edit in a directory no agent
+        # serves got recorded against the project anyway.
         response =
           Phoenix.ConnTest.build_conn()
-          |> Plug.Conn.put_req_header("x-working-dir", context.unserved)
           |> Plug.Conn.put_req_header("content-type", "application/json")
           |> post(~p"/api/hooks/post-tool-use", %{
             "session_id" => "spex-unserved",

@@ -85,7 +85,7 @@ defmodule CodeMySpecSpex.Story983.Criterion8160Spex do
 
         post(
           Phoenix.ConnTest.build_conn()
-          |> Plug.Conn.put_req_header("x-working-dir", context.scope.cwd)
+          |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_harness_id)
           |> Plug.Conn.put_req_header("content-type", "application/json"),
           "/api/hooks/session-start",
           %{"session_id" => session_id}

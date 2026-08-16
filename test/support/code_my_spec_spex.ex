@@ -5,6 +5,8 @@ defmodule CodeMySpecSpex do
     deps: [
       CodeMySpec.Environments,
       CodeMySpec.McpServers,
+      CodeMySpec.RecordingLock,
+      CodeMySpec.TempFile,
       CodeMySpecSpex.Fixtures,
       CodeMySpecWeb,
       CodeMySpecLocalWeb

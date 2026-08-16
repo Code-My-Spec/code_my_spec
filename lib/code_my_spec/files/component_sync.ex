@@ -21,7 +21,8 @@ defmodule CodeMySpec.Files.ComponentSync do
   alias CodeMySpec.Components
   alias CodeMySpec.Components.Component
   alias CodeMySpec.Environments
-  alias CodeMySpec.Files.File
+  alias CodeMySpec.Files.{ComponentExtract, File}
+  alias CodeMySpec.Harnesses
   alias CodeMySpec.Paths
   alias CodeMySpec.Repo
   alias CodeMySpec.Users.Scope
@@ -51,6 +52,17 @@ defmodule CodeMySpec.Files.ComponentSync do
     incremental? = is_list(changed_paths)
     start = System.monotonic_time(:millisecond)
     env = scope.environment
+
+    # Story 892. Reclaim before projecting, so components are projected from what
+    # live agents actually hold rather than from the leavings of agents that are
+    # gone.
+    #
+    # Here rather than on a schedule because components are where the damage shows
+    # and this is where someone is asking about them. A project nobody is touching
+    # has nobody blocked; reclaiming exactly when someone needs the answer needs no
+    # scheduler at all — and a scheduler would not have helped the case this comes
+    # from, where every remaining harness was stale.
+    Harnesses.reclaim_quiet(scope)
 
     {spec_files, impl_files} = query_files(scope, changed_paths)
 
@@ -276,8 +288,8 @@ defmodule CodeMySpec.Files.ComponentSync do
   # `Components.upsert_component`.
   defp parse_impl_file(%File{validation_errors: errors} = file, env) do
     case stored_component_data(errors) do
-      %{"module_name" => name} when is_binary(name) ->
-        %{module_name: name, type: nil, description: nil, dependencies: []}
+      %{"module_name" => name} = data when is_binary(name) ->
+        %{module_name: name, type: impl_type(data), description: nil, dependencies: []}
 
       # An impl file with no defmodule (a script, an .exs) has no component
       # identity, and the scan recorded that as an explicit nil. Distinguish it
@@ -291,12 +303,28 @@ defmodule CodeMySpec.Files.ComponentSync do
     end
   end
 
+  # The one type an implementation is allowed to claim. Everything else still
+  # comes from the spec's `## Type`, and the merge below prefers the spec — so
+  # an explicit declaration always wins and nothing already correct moves.
+  #
+  # A row scanned before `ecto_schema` was recorded has no such key, which reads
+  # as `nil` and yields no type. That is the same answer it gave before, so the
+  # backfill is whatever the next scan of that file produces rather than a
+  # migration.
+  defp impl_type(%{"ecto_schema" => true}), do: "schema"
+  defp impl_type(_data), do: nil
+
   defp parse_impl_file_from_disk(%File{path: path} = _file, env) do
     case Environments.read_file(env, path) do
       {:ok, content} ->
         case Regex.run(~r/^defmodule\s+([A-Z][a-zA-Z0-9_.]*)\s+do/m, content) do
           [_, name] ->
-            %{module_name: name, type: nil, description: nil, dependencies: []}
+            %{
+              module_name: name,
+              type: impl_type(%{"ecto_schema" => ComponentExtract.ecto_schema?(content)}),
+              description: nil,
+              dependencies: []
+            }
 
           _ ->
             nil

@@ -1,5 +1,19 @@
 defmodule CodeMySpecWeb.ContentSyncControllerTest do
-  use CodeMySpecTest.ConnCase, async: true
+  # Sync: this file rewrites `Application.env(:code_my_spec, :deploy_key)` —
+  # `put_env` in setup, `delete_env` in one test, restore in another — and that
+  # is process-global, not per-test.
+  #
+  # `/api/cms/users` reads the same key at *request* time
+  # (`cms_users_controller.ex:94`), so `app_credential_test.exs:95` — which
+  # sends the compile-time literal and is also async — got 401 instead of 200
+  # whenever the two overlapped. Observed once by the analyzer's exunit run; it
+  # passes 20 consecutive standalone runs and five full suites, because the
+  # window is the few milliseconds between this file's `put_env` and its
+  # restore.
+  #
+  # Same shape and same fix as `analysis/runners_test.exs`, which went sync
+  # because `use_cmd_cassette` patches `System.cmd/3` through meck globally.
+  use CodeMySpecTest.ConnCase, async: false
 
   import ExUnit.CaptureLog
 

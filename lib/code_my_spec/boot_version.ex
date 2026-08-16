@@ -74,6 +74,9 @@ defmodule CodeMySpec.BootVersion do
   Silent when there is no git — a sprite runs from an unpacked release with no
   checkout at all, and a harness that refused to boot over a missing `git`
   would be a far worse failure than the one this reports.
+
+  Recording is cheap and unconditional: one `git rev-parse` at boot. What was
+  expensive was asking again on every stop hook, and that caller is gone.
   """
   @spec capture(String.t() | nil) :: :ok
   def capture(root \\ nil) do
@@ -124,18 +127,79 @@ defmodule CodeMySpec.BootVersion do
   @contract_paths ["lib/cms_harness", "lib/code_my_spec_web/channels"]
 
   @spec contract_changed?(String.t(), String.t()) :: boolean() | :unknown
-  def contract_changed?(booted, current) do
+  def contract_changed?(booted, current), do: changed?(booted, current, @contract_paths)
+
+  @doc """
+  Whether the drifted range touched the code that decides analysis results.
+
+  A different question from `contract_changed?/2`, and the one an analyzer
+  result has to answer about itself. A harness runs the analyzer it booted
+  with, so a fix to `StaticAnalysis` or the runners is not in force until the
+  harness is rebuilt — and until then it decides stops with the old rules while
+  the fix sits in `main`.
+
+  Measured (`d9f0846c`): `be9a46f8` landed mid-afternoon and the harness's
+  compiled `StaticAnalysis.Pipeline.beam` was from the previous day, eleven
+  commits behind, for an entire session. Three stop-hook loops were spent on
+  findings that were already fixed.
+
+  What made it expensive is that it is invisible from inside the loop. "credo —
+  stale, a rerun is in flight" is true, and useless, because the rerun runs the
+  old code; and it renders identically to the defect it was masking. The
+  correct diagnosis needed a `.beam` timestamp, which is not a thing anyone
+  thinks to check while being told a rerun is coming.
+  """
+  @analyzer_paths [
+    "lib/code_my_spec/static_analysis",
+    "lib/code_my_spec/analysis",
+    "lib/cms_harness/project"
+  ]
+
+  @spec analyzer_changed?(String.t(), String.t()) :: boolean() | :unknown
+  def analyzer_changed?(booted, current), do: changed?(booted, current, @analyzer_paths)
+
+  @doc """
+  How the analyzer should describe its own build alongside a result.
+
+  `nil` when there is nothing to say — no drift, or the range cannot be read.
+  A string when the build deciding this result predates a change to analyzer
+  code, which is the case the reader needs and cannot otherwise see.
+  """
+  @spec analyzer_staleness() :: String.t() | nil
+  def analyzer_staleness do
+    with {:drifted, booted, current} <- drift(),
+         true <- analyzer_changed?(booted, current) do
+      "this result came from a build at #{booted}; the checkout is now at #{current}, " <>
+        "and that range changed analyzer code — rebuild the harness " <>
+        "(`just refresh`) before acting on it"
+    else
+      _ -> nil
+    end
+  end
+
+  # `config_changed?/2` sat here, asking the same question of `config/` so the
+  # stop hook could warn that this process was wedged. Its only caller made a
+  # `git rev-parse` fork on every stop for an answer that is almost always "no",
+  # and killed twenty-one spex on the way: the spex cassettes patch
+  # `System.cmd/3` process-globally, so a `git` call inside a request dies on a
+  # missing recording and takes the criterion with it.
+  #
+  # `contract_changed?/2` survives because its caller is the failure path — a
+  # hook that has already gone wrong, where one fork buys the difference between
+  # "reconnect" and "your harness is older than the server".
+
+  defp changed?(booted, current, paths) do
     case :persistent_term.get(@key, nil) do
-      {root, _} -> changed_paths(root, booted, current)
+      {root, _} -> changed_paths(root, booted, current, paths)
       _ -> :unknown
     end
   end
 
-  defp changed_paths(root, booted, current) do
+  defp changed_paths(root, booted, current, paths) do
     with true <- is_binary(root) and File.dir?(root),
          git when is_binary(git) <- System.find_executable("git"),
          {output, 0} <-
-           System.cmd(git, ["diff", "--name-only", "#{booted}..#{current}", "--" | @contract_paths],
+           System.cmd(git, ["diff", "--name-only", "#{booted}..#{current}", "--" | paths],
              cd: root,
              stderr_to_stdout: true
            ) do

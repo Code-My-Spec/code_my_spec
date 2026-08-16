@@ -55,8 +55,17 @@ defmodule CodeMySpecSpex.Story726.Criterion6444Spex do
 
         text = response_text(context.submit_response)
 
-        refute text =~ ~r/brief/i,
-               "expected no mention of brief in response; got:\n#{text}"
+        # The complaint, not the word.
+        #
+        # This refuted `~r/brief/i` outright, which was fair when nothing else
+        # in a submit response mentioned one. `Qa.Evidence` now appends "make
+        # sure `.code_my_spec` is committed and pushed where the brief was
+        # written, or the claim outlives its evidence" — a sentence about
+        # whether the evidence survives, not about the brief being absent. The
+        # step asks for no warning about a *missing* brief, and there is none;
+        # matching the bare word turned an unrelated feature into a failure.
+        refute text =~ ~r/(missing|no|without a) brief/i,
+               "expected no complaint about an absent brief; got:\n#{text}"
 
         {:ok, context}
       end

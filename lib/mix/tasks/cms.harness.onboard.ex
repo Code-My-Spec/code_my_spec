@@ -484,6 +484,25 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   # recordable when the harness serves exactly one working copy. A sprite is
   # that shape; a developer's machine never is, which is why local Claude Code
   # has never appeared in the conversations UI.
+  #
+  # ## `CMS_HARNESS_ID` rides along, and has to
+  #
+  # The plugin's MCP mount sends `X-Harness-Id: ${CMS_HARNESS_ID}` — the only
+  # way it *can* name a working copy, because a `mcpServers` entry interpolates
+  # environment variables and cannot read a file. The hook shims walk up for
+  # `.cms_harness.json` themselves; an MCP mount has no such move.
+  #
+  # Nothing set that variable, which is precisely the failure `hooks_controller`
+  # already documents: the header arrived as the literal `${CMS_HARNESS_ID}` on
+  # every hook, and the server has a clause for it. Now that identity is the
+  # only routing key, an unexpanded one is a refusal rather than a fallback, so
+  # shipping the header without this line would have taken MCP down for every
+  # checkout.
+  #
+  # Written here rather than exported by a shell, because a session inherits
+  # this file and not anyone's `.zshrc`, and because it lands next to the URL
+  # that already carries the same id — one place, one value.
+  #
   # Public only so it can be tested directly. It is the one thing here that
   # writes a file the operator owns, so "keeps what was already there" has to be
   # checkable rather than asserted in a comment.
@@ -502,6 +521,7 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
         settings
         |> Map.get("env", %{})
         |> Map.put("ANTHROPIC_BASE_URL", url)
+        |> Map.put("CMS_HARNESS_ID", id)
         |> Map.put_new("MIX_TEST_PARTITION", Onboarding.partition_name(root))
 
       merged = Map.put(settings, "env", env_block)
@@ -615,22 +635,44 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   # would throw away settings the operator wrote, so it stops and says so.
 
   # The MCP surface has the same question to answer as the hooks — which
-  # working copy is this? — so it gets the same answer. Left on `?dir=` it
-  # would be the one place a directory still decided something, and two
-  # checkouts of one project would share an MCP session.
+  # working copy is this? — so it gets the same answer, written into the url
+  # because this copy has the id in hand and nothing needs to be set for a url
+  # to survive.
+  #
+  # The published plugin cannot do that: it is installed once and serves every
+  # checkout, so it has no id at build time and interpolates
+  # `${CMS_HARNESS_ID}` into a header instead. `HarnessScope` reads both — it
+  # did not, which is why this rewrite spent its life producing a parameter the
+  # server ignored.
+  #
+  # Matched on the header rather than the old `?dir=${CLAUDE_PROJECT_DIR}`,
+  # which is gone from the source plugin. A `String.replace` against a string
+  # that is no longer there does not fail; it writes the file back unchanged and
+  # reports `:ok`.
   defp address_mcp(dest, id) do
     file = Path.join([dest, ".claude-plugin", "plugin.json"])
 
-    case File.read(file) do
-      {:ok, contents} ->
-        addressed =
-          String.replace(contents, "/mcp?dir=${CLAUDE_PROJECT_DIR}", "/mcp?harness=#{id}")
-
-        File.write!(file, addressed)
-        :ok
+    with {:ok, contents} <- File.read(file),
+         {:ok, addressed} <- swap_mcp_address(contents, id) do
+      File.write!(file, addressed)
+      :ok
+    else
+      {:error, :no_mcp_address} ->
+        {:error,
+         "#{file} has no local MCP mount to address. The source plugin's " <>
+           "`mcpServers.local` entry is what this rewrites; if it moved, this moved too."}
 
       {:error, reason} ->
         {:error, "Could not read #{file}: #{inspect(reason)}"}
+    end
+  end
+
+  @mcp_header ~s|"X-Harness-Id": "${CMS_HARNESS_ID}"|
+
+  defp swap_mcp_address(contents, id) do
+    case String.contains?(contents, @mcp_header) do
+      true -> {:ok, String.replace(contents, @mcp_header, ~s|"X-Harness-Id": "#{id}"|)}
+      false -> {:error, :no_mcp_address}
     end
   end
 

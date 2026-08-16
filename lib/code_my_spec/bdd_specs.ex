@@ -252,20 +252,21 @@ defmodule CodeMySpec.BddSpecs do
 
   ## Returns
 
-  - `{:ok, failures, exit_code}` - List of failures (empty if all pass) and exit code
+  - `{:ok, failures, exit_code, raw_output}` - Failures (empty if all pass), the
+    exit code, and everything `mix spex` printed
   - `{:error, reason}` - If execution fails
 
   ## Examples
 
       iex> run_specs(["test/spex/login_spex.exs"], environment: env)
-      {:ok, [], 0}
+      {:ok, [], 0, "…"}
 
       iex> run_specs(["test/spex/failing_spex.exs"], environment: env)
-      {:ok, [%Spex.Failure{...}], 1}
+      {:ok, [%Spex.Failure{...}], 1, "…"}
 
   """
   @spec run_specs([String.t()], keyword()) ::
-          {:ok, [Spex.Failure.t()], integer()} | {:error, term()}
+          {:ok, [Spex.Failure.t()], integer(), String.t()} | {:error, term()}
   def run_specs(file_paths, opts \\ []) do
     Spex.execute(file_paths, opts)
   end

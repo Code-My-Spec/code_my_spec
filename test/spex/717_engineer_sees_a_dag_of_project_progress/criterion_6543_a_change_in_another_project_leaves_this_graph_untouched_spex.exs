@@ -34,7 +34,7 @@ defmodule CodeMySpecSpex.Story717.Criterion6543Spex do
         other_project =
           Fixtures.project_fixture(context.scope,
             account_id: context.account.id,
-            local_path: Path.join(System.tmp_dir!(), "spex-other-#{System.unique_integer([:positive])}"),
+            local_path: CodeMySpec.TempFile.dir("spex-other"),
             client_user_id: context.user.id
           )
 

@@ -5,7 +5,7 @@ defmodule CodeMySpecWeb.ResendWebhookControllerTest do
   missing signature is rejected with 400 once a secret is configured.
   """
 
-  use CodeMySpecTest.ConnCase, async: false
+  use CodeMySpecTest.ConnCase, async: true
 
   import CodeMySpec.UsersFixtures
 

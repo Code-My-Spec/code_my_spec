@@ -19,7 +19,7 @@ defmodule CodeMySpec.Provisioning.FleetBuildTest do
       docker/fleet/fleet.sh up
       mix test --only fleet
   """
-  use ExUnit.Case, async: false
+  use ExUnit.Case, async: true
 
   alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Provisioning.Builder.Remote
@@ -125,7 +125,7 @@ defmodule CodeMySpec.Provisioning.FleetBuildTest do
   end
 
   defp tmp_repo do
-    dir = Path.join(System.tmp_dir!(), "fleet-build-#{System.unique_integer([:positive])}")
+    dir = CodeMySpec.TempFile.dir("fleet-build")
     File.mkdir_p!(dir)
     on_exit(fn -> File.rm_rf(dir) end)
 

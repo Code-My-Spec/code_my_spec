@@ -9,28 +9,24 @@ defmodule CodeMySpecWeb.AppCredentialTest do
   token would leave 8045 and 8046 unmet with the exchange sitting unused.
   """
 
-  # Not async: the configured-key surfaces read `:code_my_spec, :deploy_key`
-  # from application env, and setting it is global.
-  use CodeMySpecTest.ConnCase, async: false
+  # Async: this file no longer writes `:code_my_spec, :deploy_key`.
+  #
+  # It used to set the key in `setup` and restore it on exit, which is
+  # node-global and collided with `content_sync_controller_test` doing the
+  # same with a different value. The key is now pinned in `config/test.exs`
+  # and read from there, so there is nothing to install or undo.
+  use CodeMySpecTest.ConnCase, async: true
 
   import CodeMySpec.ProjectsFixtures
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.AppTokens
 
-  @configured_key "app_credential_test_configured_key"
+  # One source of truth with `config/test.exs`, rather than a literal here
+  # that has to agree with one there.
+  @configured_key Application.compile_env(:code_my_spec, :deploy_key)
 
   setup do
-    original = Application.get_env(:code_my_spec, :deploy_key)
-    Application.put_env(:code_my_spec, :deploy_key, @configured_key)
-
-    on_exit(fn ->
-      case original do
-        nil -> Application.delete_env(:code_my_spec, :deploy_key)
-        key -> Application.put_env(:code_my_spec, :deploy_key, key)
-      end
-    end)
-
     scope = full_scope_fixture()
 
     deploy_key = :crypto.strong_rand_bytes(64) |> Base.encode16(case: :lower)

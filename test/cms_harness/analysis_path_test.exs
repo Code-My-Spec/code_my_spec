@@ -10,6 +10,8 @@ defmodule CmsHarness.AnalysisPathTest do
   a drill.
   """
 
+  # Sync: sets OS environment variables, which belong to the node rather than to
+  # a test process, so the window is visible to everything running alongside.
   use ExUnit.Case, async: false
 
   import CmsHarnessTest.Projects
@@ -20,6 +22,23 @@ defmodule CmsHarness.AnalysisPathTest do
   alias CmsHarnessTest.FakeServer
 
   @moduletag timeout: 300_000
+
+  # On demand, not on every `mix test` — the twin of `analysis_test.exs`, which
+  # was tagged for the same reason and this one was missed.
+  #
+  # It compiles a real project through the real harness path, against the
+  # sibling `client_utils` checkout. That checkout's `_build` is shared by every
+  # process that compiles against it, and nothing partitions it — so two suites
+  # running at once contend there, and the compiler comes back `"error"` for
+  # reasons that have nothing to do with the code under test.
+  #
+  # Not a hypothesis. Reproduced for `c8264c1f`: two full suites started
+  # together on this commit, one clean and one failing here on
+  # `payload["status"] == "ok"` getting `"error"`. That is the exact shape that
+  # issue reports — an assertion, not a kill, in a test that exercises the
+  # machinery running it — and it is why "passes standalone" was never evidence
+  # of anything.
+  @moduletag :analyzer
 
   @client_utils System.get_env("CMS_CLIENT_UTILS") ||
                   Path.expand("../client_utils", File.cwd!())
@@ -160,6 +179,47 @@ defmodule CmsHarness.AnalysisPathTest do
     assert log =~ "REJECTED",
            "an analyzer that ran and was not recorded looks from outside exactly like " <>
              "one that never ran"
+  end
+
+  # The reply above and this one arrive through the same path and are not the
+  # same event. A supersede is a scheduling fact: the server had a run for this
+  # source already open and it answers for both.
+  #
+  # `Reconciler.supersede/2` made this call on the server side — "at `:info`,
+  # not `:warning` — nothing is wrong … logging it as a failure taught readers
+  # to ignore a level that should mean something" — and the harness kept
+  # shouting. 80 of the 385 rejections in this machine's `harness.log` were
+  # supersedes, each at `level=error` under a message claiming the work was lost
+  # and the next stop would report pending. Neither is true of a supersede, and
+  # a log where `error` is routinely a non-event is one nobody reads.
+  test "a supersede from the server is reported as a fact, not as a rejection", ctx do
+    # The suite runs at `warning`, and the whole point of this change is that the
+    # line is no longer above that. Lowered for the duration, restored by
+    # `on_exit` rather than `try/after` — control flow is not allowed in a test
+    # file, which is the rule this project's own credo check enforces.
+    previous_level = Logger.level()
+    Logger.configure(level: :info)
+    on_exit(fn -> Logger.configure(level: previous_level) end)
+
+    FakeServer.start()
+    FakeServer.reject_analysis(~s({:superseded, "already queued"}))
+    {:ok, _} = Projects.ensure_started(ctx.project.root)
+    assert await_connected(ctx.project.root)
+
+    log =
+      capture_log(fn ->
+        FakeServer.request_analysis([%{"run_id" => 31, "source" => "sobelow", "args" => []}])
+        await_result(31)
+        Process.sleep(500)
+      end)
+
+    refute log =~ "REJECTED",
+           "a supersede is not a rejection, and calling it one trains readers to " <>
+             "skip the level that should mean something"
+
+    assert log =~ "superseded",
+           "it should still say what happened — the analyzer did run, and that work " <>
+             "was duplicated and discarded"
   end
 
   test "a second run of a source already queued is superseded, not failed", ctx do

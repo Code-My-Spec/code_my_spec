@@ -46,7 +46,7 @@ defmodule CodeMySpecSpex.Story815.Criterion6579Spex do
         Phoenix.ChannelTest.push(chan_x, "send_message", %{"body" => "From project one"})
         wait_for_channel(chan_x)
 
-        dir2 = Path.join(System.tmp_dir!(), "spex-#{System.unique_integer([:positive])}")
+        dir2 = CodeMySpec.TempFile.dir("spex")
         File.mkdir_p!(dir2)
         on_exit(fn -> File.rm_rf(dir2) end)
 

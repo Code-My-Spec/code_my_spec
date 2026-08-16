@@ -15,7 +15,7 @@ defmodule CodeMySpec.Provisioning.CassetteSessionTest do
   session belongs to the test, so a block is handed the test's — unless there
   isn't one, or it has already died with the process that owned it.
   """
-  use ExUnit.Case, async: false
+  use ExUnit.Case, async: true
 
   alias CodeMySpecSpex.Case, as: SpexCase
 

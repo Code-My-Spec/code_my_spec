@@ -53,117 +53,144 @@ defmodule CodeMySpecWeb.ConfigurationLive do
   @impl true
   def render(assigns) do
     ~H"""
-      <div :if={@error} role="alert" class="alert alert-error">
-        <span>{@error}</span>
+    <div :if={@error} role="alert" class="alert alert-error">
+      <span>{@error}</span>
+    </div>
+
+    <div :if={!@error && @project}>
+      <div class="mb-6">
+        <h1 class="text-3xl font-bold">Configuration</h1>
+        <p class="text-base-content/60 mt-1">
+          Local quality gate settings. Never synced to the server.
+        </p>
       </div>
 
-      <div :if={!@error && @project}>
-        <div class="mb-6">
-          <h1 class="text-3xl font-bold">Configuration</h1>
-          <p class="text-base-content/60 mt-1">
-            Local quality gate settings. Never synced to the server.
-          </p>
-        </div>
+      <form id="configuration-form" data-test="configuration-form" phx-submit="save" class="space-y-6">
+        <section class="card bg-base-200 border border-base-300">
+          <div class="card-body">
+            <h2 class="card-title text-lg">Requirement Toggles</h2>
+            <p class="text-sm opacity-70">What's required for a component to be considered done.</p>
 
-        <form id="configuration-form" data-test="configuration-form" phx-submit="save" class="space-y-6">
-          <section class="card bg-base-200 border border-base-300">
-            <div class="card-body">
-              <h2 class="card-title text-lg">Requirement Toggles</h2>
-              <p class="text-sm opacity-70">What's required for a component to be considered done.</p>
+            <div class="divider my-1"></div>
 
-              <div class="divider my-1"></div>
-
-              <.toggle_field
-                name="require_specs"
-                label="Require Specs"
-                checked={@configuration.require_specs}
-              />
-              <.toggle_field
-                name="require_reviews"
-                label="Require Reviews"
-                checked={@configuration.require_reviews}
-              />
-              <.toggle_field
-                name="require_unit_tests"
-                label="Require Unit Tests"
-                checked={@configuration.require_unit_tests}
-              />
-            </div>
-          </section>
-
-          <section class="card bg-base-200 border border-base-300">
-            <div class="card-body">
-              <h2 class="card-title text-lg">Analyzer Settings</h2>
-              <p class="text-sm opacity-70">What runs at stop time and whether it blocks.</p>
-
-              <div class="divider my-1"></div>
-
-              <.select_field
-                name="compile_warnings"
-                label="Compile Warnings"
-                value={@configuration.compile_warnings}
-                modes={@compile_modes}
-              />
-              <.select_field
-                name="credo"
-                label="Credo"
-                value={@configuration.credo}
-                modes={@analyzer_modes}
-              />
-              <.select_field
-                name="exunit"
-                label="ExUnit"
-                value={@configuration.exunit}
-                modes={@analyzer_modes}
-              />
-              <.select_field
-                name="spex"
-                label="Spex"
-                value={@configuration.spex}
-                modes={@analyzer_modes}
-              />
-              <.select_field
-                name="spec_validation"
-                label="Spec Validation"
-                value={@configuration.spec_validation}
-                modes={@analyzer_modes}
-              />
-              <.select_field
-                name="qa_validation"
-                label="QA Validation"
-                value={@configuration.qa_validation}
-                modes={@analyzer_modes}
-              />
-            </div>
-          </section>
-
-          <section class="card bg-base-200 border border-base-300">
-            <div class="card-body">
-              <h2 class="card-title text-lg">DevOps</h2>
-              <p class="text-sm opacity-70">
-                One ordered level: Off (deploy on your own terms), UAT Only
-                (staging; you promote to prod yourself), or Full Promotion —
-                cleared QA rides to UAT, then prod. We recommend Full Promotion.
-              </p>
-
-              <div class="divider my-1"></div>
-
-              <.select_field
-                name="devops"
-                label="DevOps Level"
-                value={@configuration.devops}
-                modes={[:off, :uat, :prod]}
-              />
-            </div>
-          </section>
-
-          <div class="flex justify-end">
-            <button type="submit" class="btn btn-primary" data-test="save-configuration">
-              Save Configuration
-            </button>
+            <.toggle_field
+              name="require_specs"
+              label="Require Specs"
+              checked={@configuration.require_specs}
+            />
+            <.toggle_field
+              name="require_reviews"
+              label="Require Reviews"
+              checked={@configuration.require_reviews}
+            />
+            <.toggle_field
+              name="require_unit_tests"
+              label="Require Unit Tests"
+              checked={@configuration.require_unit_tests}
+            />
           </div>
-        </form>
-      </div>
+        </section>
+
+        <section class="card bg-base-200 border border-base-300">
+          <div class="card-body">
+            <h2 class="card-title text-lg">Analyzer Settings</h2>
+            <p class="text-sm opacity-70">What runs at stop time and whether it blocks.</p>
+
+            <div class="divider my-1"></div>
+
+            <.select_field
+              name="compile_warnings"
+              label="Compile Warnings"
+              value={@configuration.compile_warnings}
+              modes={@compile_modes}
+            />
+            <.select_field
+              name="credo"
+              label="Credo"
+              value={@configuration.credo}
+              modes={@analyzer_modes}
+            />
+            <.select_field
+              name="exunit"
+              label="ExUnit"
+              value={@configuration.exunit}
+              modes={@analyzer_modes}
+            />
+            <.select_field
+              name="spex"
+              label="Spex"
+              value={@configuration.spex}
+              modes={@analyzer_modes}
+            />
+            <.select_field
+              name="spec_validation"
+              label="Spec Validation"
+              value={@configuration.spec_validation}
+              modes={@analyzer_modes}
+            />
+            <.select_field
+              name="qa_validation"
+              label="QA Validation"
+              value={@configuration.qa_validation}
+              modes={@analyzer_modes}
+            />
+          </div>
+        </section>
+
+        <section class="card bg-base-200 border border-base-300">
+          <div class="card-body">
+            <h2 class="card-title text-lg">DevOps</h2>
+            <p class="text-sm opacity-70">
+              One ordered level: Off (deploy on your own terms), UAT Only
+              (staging; you promote to prod yourself), or Full Promotion —
+              cleared QA rides to UAT, then prod. We recommend Full Promotion.
+            </p>
+
+            <div class="divider my-1"></div>
+
+            <.select_field
+              name="devops"
+              label="DevOps Level"
+              value={@configuration.devops}
+              modes={[:off, :uat, :prod]}
+            />
+          </div>
+        </section>
+
+        <section class="card bg-base-200 border border-base-300">
+          <div class="card-body">
+            <h2 class="card-title text-lg">Agents</h2>
+            <p class="text-sm opacity-70">
+              How long a working copy can go without reporting in before the
+              files, problems and orphaned components it left behind are
+              reclaimed. An agent that comes back rebuilds them on its next
+              sync — only derived state is taken, never its identity. 0
+              reclaims a checkout as soon as another agent syncs.
+            </p>
+
+            <div class="divider my-1"></div>
+
+            <label class="flex items-center justify-between gap-4">
+              <span class="label-text">Harness idle hours</span>
+              <input
+                type="number"
+                min="0"
+                name="configuration[harness_idle_hours]"
+                value={@configuration.harness_idle_hours}
+                class="input input-bordered input-sm w-24"
+                data-test="harness-idle-hours"
+              />
+            </label>
+          </div>
+        </section>
+
+        <div class="flex justify-end">
+          <button type="submit" class="btn btn-primary" data-test="save-configuration">
+            Save Configuration
+          </button>
+        </div>
+      </form>
+    </div>
     """
   end
 
@@ -231,5 +258,4 @@ defmodule CodeMySpecWeb.ConfigurationLive do
   defp format_mode(:block_changed), do: "Block Changed"
   defp format_mode(:dont_block), do: "Don't Block"
   defp format_mode(:block), do: "Block"
-
 end

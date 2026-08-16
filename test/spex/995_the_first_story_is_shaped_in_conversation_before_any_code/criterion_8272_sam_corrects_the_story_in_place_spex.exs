@@ -14,7 +14,6 @@ defmodule CodeMySpecSpex.Story995.Criterion8272Spex do
 
   use CodeMySpecSpex.Case
 
-
   @endpoint CodeMySpecWeb.Endpoint
 
   setup :register_log_in_setup_account

@@ -17,6 +17,14 @@ ExUnit.start(
   # sequence changes.
   # :fleet needs the local fleet up (`docker/fleet/fleet.sh up`) — real boxes
   # over real SSH, on this machine. Run it with `mix test --only fleet`.
+  # :analyzer rsyncs a copy of a real Phoenix project out of
+  # `../code_my_spec_test_repos` and runs `mix`, `credo` and `sobelow` inside
+  # it. Four files, and they are the last thing in the default suite that
+  # touched that directory — which every worktree reaches through a symlink to
+  # one shared copy, so two agents running suites collided there. Everything
+  # else now reads the committed recordings in `test/fixtures/analyzer_output/`.
+  # Run it with `just test-analyzer` (or `mix test --only analyzer`) when
+  # changing an analyzer, and after `mix cms.test_fixtures`.
   exclude:
     [
       :scenario,
@@ -26,6 +34,7 @@ ExUnit.start(
       :docker,
       :fleet,
       :registry,
+      :analyzer,
       :record_google_login_shape,
       :record_github_login_shape
     ] ++ sops_exclusions
@@ -71,81 +80,23 @@ ExUnit.start(
 # runs that task before booting; this line is the same check for `mix test`.
 Mix.Tasks.Cms.CheckTestMigrations.refuse_if_behind!()
 
-# Say when the database starts dirty.
+# The dirty-database check that stood here is gone, along with the escape it
+# watched for.
 #
-# The sandbox rolls each test back, so these tables are empty at the start of a
-# run — unless something escaped it and committed, and then the row is permanent,
-# because the test database is created once and reused forever.
+# It reported rows left in users/accounts/projects/stories/components at suite
+# start, on the reasoning that a row which escaped the sandbox and committed is
+# permanent and surfaces later as unrelated tests failing on unscoped reads.
+# That was true, and worth reporting while nobody knew what was writing them.
 #
-# What that looks like is not a database error. It is a handful of unrelated
-# tests going red: anything reading an unscoped query answers about the stranger
-# instead of the row it just made. Four did here — `Repo.all(query) |> hd()` in
-# the accounts repositories — and they read as broken preloads. Those four now
-# scope to their own row, but the next unscoped read will not.
+# Two things closed it. `CmsHarness.TestDatabase` no longer truncates anything —
+# it computes a database name and stops — after its truncate was found running
+# against dev, which it emptied three times on 2026-08-13. And the env guard
+# below stops a fixture working copy joining the live server, which was writing
+# a harness row per temp root.
 #
-# `CmsHarness.TestDatabase.reset_data/2` truncates the *analyzer's* partition
-# before every sweep for exactly this reason, and reports the count it removed
-# because "a silent repair that runs every sweep is how a defect stops being
-# visible". Nothing owns the database an agent's own `mix test` uses, so this
-# reports rather than repairs: truncating a developer's database from a test
-# helper is a bigger liberty than the problem warrants.
-dirty_counts =
-  case Ecto.Adapters.SQL.query(
-         CodeMySpec.Repo,
-         """
-         SELECT 'users', count(*), min(inserted_at), max(inserted_at) FROM users
-         UNION ALL SELECT 'accounts', count(*), min(inserted_at), max(inserted_at) FROM accounts
-         UNION ALL SELECT 'projects', count(*), min(inserted_at), max(inserted_at) FROM projects
-         UNION ALL SELECT 'stories', count(*), min(inserted_at), max(inserted_at) FROM stories
-         UNION ALL SELECT 'components', count(*), min(inserted_at), max(inserted_at) FROM components
-         """,
-         []
-       ) do
-    {:ok, %{rows: rows}} -> Enum.filter(rows, fn [_table, count | _] -> count > 0 end)
-    {:error, _reason} -> []
-  end
-
-# Residue is only residue in a database that should be empty.
-#
-# The drill runs against dev's, deliberately, because the deployed application
-# authenticates against the same CodeMySpec over the tunnel — so rows that are
-# already there are somebody's actual work, not something that escaped a
-# sandbox, and reporting them as a leak sends the reader to grep logs for a
-# second that explains nothing.
-sandboxed? =
-  Application.get_env(:code_my_spec, CodeMySpec.Repo, [])[:pool] == Ecto.Adapters.SQL.Sandbox
-
-if dirty_counts != [] and sandboxed? do
-  summary = Enum.map_join(dirty_counts, ", ", fn [table, count | _] -> "#{table}=#{count}" end)
-
-  # The timestamps, because the next step is not re-running the suite.
-  #
-  # `afaa6eae` ruled out four vectors by re-running — the full suite, two spex
-  # stories, and its own additions — and all four came back clean, which is what
-  # a condition none of them reproduce looks like. What it did not have was a
-  # way to ask *what ran at that second*, and gathering that meant querying the
-  # rows by hand after the fact. A whole fixture chain sharing one `inserted_at`
-  # is also the strongest evidence available that this is one escape rather than
-  # accumulated strays, and that shape is invisible in a count.
-  window =
-    Enum.map_join(dirty_counts, "\n  ", fn [table, count, first, last] ->
-      "#{table}: #{count} row(s), inserted_at #{first}" <>
-        if(first == last, do: "", else: " .. #{last}")
-    end)
-
-  IO.puts(
-    :stderr,
-    "[test_helper] the test database is not empty before this run (#{summary}). " <>
-      "Rows that escaped the ExUnit sandbox and committed are permanent, and they " <>
-      "surface as unrelated tests failing on unscoped reads.\n\n  " <>
-      window <>
-      "\n\nStart from the timestamps — grep ~/.codemyspec/*.log for that second — " <>
-      "rather than by re-running the suite; the residue is the only evidence of " <>
-      "whatever escaped, so read it before clearing it. Clear with " <>
-      "`MIX_ENV=test mix ecto.drop && MIX_ENV=test mix ecto.create && " <>
-      "MIX_ENV=test mix ecto.migrate`."
-  )
-end
+# Measured after both: a full suite of 4368 tests leaves all five tables at zero.
+# A check that reports a condition which no longer occurs is a thing to read and
+# dismiss on every run, and this one was 65 of this file's 248 lines.
 
 # Only when there is a sandbox to put in manual mode.
 #
@@ -236,8 +187,18 @@ Mox.defmock(CodeMySpec.MockEnvironment, for: CodeMySpec.Environments.Environment
 # Define mock for Git operations in tests
 Mox.defmock(CodeMySpec.MockGit, for: CodeMySpec.Git.Behaviour)
 
-# Initialize test fixture repositories
-CodeMySpec.Support.TestAdapter.ensure_fixture_fresh()
+# Fixture repositories are NOT refreshed here. `ensure_fixture_fresh/0` ran
+# `git pull` in both of them on every `mix test` — and they live under
+# `../code_my_spec_test_repos`, which every worktree reaches through a symlink
+# to one shared directory. Two agents starting suites near each other were two
+# pulls racing in one repository before a single test ran.
+#
+# The recorded analyzer output those repos used to generate is now committed
+# under `test/fixtures/analyzer_output/` — 60KB of JSON, read by the tests that
+# want it. Regenerate deliberately with `mix cms.test_fixtures`.
+#
+# The pool below creates copies lazily, so a checkout without the fixture
+# repository costs nothing until one of the five analyzer tests asks for one.
 
 # Start the test repo pool for fast directory reuse
 {:ok, _} = CodeMySpec.Support.TestAdapter.Pool.start_link()

@@ -47,10 +47,24 @@ defmodule CodeMySpec.McpServers.Validators do
   end
 
   @doc """
-  Validates scope, falling back to resolving from a working_dir param.
+  The scope for a local MCP tool.
 
-  Use this for local MCP tools where scope may be injected via a PreToolUse
-  hook that adds working_dir to the tool input.
+  Over HTTP this is decided before the tool runs: `Plugs.HarnessScope` resolves
+  the harness id the request names, loads its project, and assigns the scope, so
+  the first clause matches and this is a read.
+
+  ## Why there is no directory fallback
+
+  There was: a working copy could be identified by matching the directory a
+  request announced against `projects.local_path`. It is gone with the rest of
+  working-directory resolution — the directory a request announces is a
+  filesystem path supplied from outside, and a wrong one did not fail, it
+  succeeded against the wrong disk.
+
+  What is left is the stdio transport, which has no connection and therefore no
+  assigns. There the project is named in configuration (`:project_id`, set at
+  startup), which is a fact about the installation rather than about the
+  request. `nil` and a configured project are the only two answers.
   """
   def validate_local_scope(frame, _params \\ %{}) do
     case frame.assigns[:current_scope] do
@@ -58,33 +72,24 @@ defmodule CodeMySpec.McpServers.Validators do
         {:ok, scope}
 
       _ ->
-        resolve_scope_from_working_dir(frame.assigns[:working_dir])
+        configured_scope(Application.get_env(:code_my_spec, :project_id))
     end
   end
 
-  # A configured sprite knows its project without a directory, so a missing
-  # working_dir is only fatal when the directory *is* the identity mechanism.
-  defp resolve_scope_from_working_dir(nil) do
-    case Application.get_env(:code_my_spec, :project_id) do
-      nil -> {:error, :no_working_dir}
-      _ -> do_resolve_scope(nil)
-    end
-  end
+  defp configured_scope(nil), do: {:error, :no_working_dir}
 
-  defp resolve_scope_from_working_dir(working_dir), do: do_resolve_scope(working_dir)
-
-  defp do_resolve_scope(working_dir) do
+  defp configured_scope(_project_id) do
     require Logger
     alias CodeMySpec.Projects
     alias CodeMySpec.Users.Scope
 
-    with {:ok, project} <- Projects.resolve_local_project(working_dir),
-         {:ok, scope} <- Scope.for_local_project(project, working_dir) do
+    with {:ok, project} <- Projects.resolve_local_project(nil),
+         {:ok, scope} <- Scope.for_local_project(project, nil) do
       {:ok, scope}
     else
       {:error, reason} ->
         Logger.warning(
-          "[Validators] Failed to resolve scope from #{inspect(working_dir)}: #{inspect(reason)}"
+          "[Validators] Failed to resolve the configured project: #{inspect(reason)}"
         )
 
         {:error, :unauthorized}
@@ -95,7 +100,8 @@ defmodule CodeMySpec.McpServers.Validators do
   The working directory this request's project lives in, or nil if it does not
   live on this machine.
 
-  For HTTP transport, from the X-Working-Dir header. For stdio, from
+  For HTTP transport, from the scope `Plugs.HarnessScope` resolved — the
+  harness's own recorded root, not anything the request said. For stdio, from
   `Application.get_env` — the CLI sets it at startup from `CMS_MCP_WORKING_DIR`,
   and there cwd genuinely is the project.
 

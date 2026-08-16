@@ -38,13 +38,38 @@ defmodule CodeMySpec.ArchitectureTest do
     test "detects circular dependencies" do
       scope = full_scope_fixture()
 
-      # No circular dependencies case
       {_parent, _child} = component_with_dependencies_fixture(scope)
       summary = Architecture.get_architecture_summary(scope)
-      assert summary.circular_dependencies == false
 
-      # With circular dependencies - would need to create A->B->A cycle
-      # This test assumes detect_circular_dependencies returns true when found
+      assert summary.circular_dependencies == false
+      assert summary.circular_dependency_count == 0
+    end
+
+    # The count, not just the boolean. `73ff202b`: the project's cycles went
+    # from 4 to 21 unnoticed, because every surface holding the list reduced it
+    # to yes/no on the way out — and yes/no reads the same at 4 and at 21.
+    #
+    # Two contexts, because the detector excludes `schema` components on both
+    # ends of an edge, so the obvious parent/child fixture cannot make a cycle.
+    test "counts circular dependencies rather than only reporting that some exist" do
+      scope = full_scope_fixture()
+
+      a = component_fixture(scope, %{type: "context", name: "CycleA", module_name: "CycleA"})
+      b = component_fixture(scope, %{type: "context", name: "CycleB", module_name: "CycleB"})
+
+      edge = fn source, target ->
+        %Dependency{}
+        |> Dependency.changeset(%{source_component_id: source.id, target_component_id: target.id})
+        |> Repo.insert!()
+      end
+
+      edge.(a, b)
+      edge.(b, a)
+
+      summary = Architecture.get_architecture_summary(scope)
+
+      assert summary.circular_dependencies == true
+      assert summary.circular_dependency_count == 1
     end
 
     test "calculates max namespace depth" do

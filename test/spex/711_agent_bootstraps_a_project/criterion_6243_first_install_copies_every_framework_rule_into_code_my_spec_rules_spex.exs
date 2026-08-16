@@ -28,8 +28,16 @@ defmodule CodeMySpecSpex.Story711.Criterion6243Spex do
   spex "install_rules copies framework rule files from priv/rules/ into .code_my_spec/rules/" do
     scenario "First install copies every framework rule into .code_my_spec/rules/" do
       given_ "the working directory has no .code_my_spec/rules/ directory", context do
-        assert {:ok, []} = Environments.list_directory(context.environment, @rules_dir),
-               "expected rules dir to be empty before install"
+        # Absent and present-but-empty both mean "no rules installed yet", which
+        # is what this scenario needs. `list_directory/2` is `File.ls/1`, so a
+        # directory that does not exist answers `{:error, :enoent}` — and the
+        # step title says it does not exist. Asserting only `{:ok, []}` was a
+        # claim about a leftover empty directory rather than about install.
+        assert Environments.list_directory(context.environment, @rules_dir) in [
+                 {:ok, []},
+                 {:error, :enoent}
+               ],
+               "expected rules dir to be absent or empty before install"
 
         framework_rules = Fixtures.framework_rule_files()
 

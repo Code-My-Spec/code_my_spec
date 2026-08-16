@@ -39,6 +39,6 @@ defmodule CmsHarness do
 
   use Boundary,
     top_level?: true,
-    deps: [CodeMySpec, CodeMySpec.Environments],
+    deps: [CodeMySpec, CodeMySpec.Environments, CodeMySpec.RecordingLock],
     exports: :all
 end

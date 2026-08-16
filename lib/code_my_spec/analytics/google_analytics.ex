@@ -177,7 +177,15 @@ defmodule CodeMySpec.Analytics.GoogleAnalytics do
     user_id = payload[:user_id] || payload["user_id"]
 
     if is_nil(measurement_id) or is_nil(api_secret) do
-      Logger.warning("GA MP delivery skipped: missing measurement_id or api_secret",
+      # Debug, not warning. GA being unconfigured is a steady state, not an
+      # anomaly — it is the intended condition in test and in any dev checkout
+      # without GA4 credentials, and this runs once per analytics event. At
+      # warning level it emitted 2,190 lines in a single suite run, which
+      # buries the warnings that do mean something.
+      #
+      # A deployment that wants GA and has not configured it is worth saying
+      # loudly, but once at boot rather than per event.
+      Logger.debug("GA MP delivery skipped: missing measurement_id or api_secret",
         event: event,
         user_id: user_id,
         mp_status: :missing_config

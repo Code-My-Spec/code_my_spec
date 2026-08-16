@@ -45,6 +45,8 @@ defmodule CmsHarness.TestDatabase do
   failure mode than a background process with DDL rights on a shared server.
   """
 
+  alias ClientUtils.Harness.Onboarding
+
   @doc """
   Environment for a `mix test` in `env` — the partition name, and nothing else.
 
@@ -69,7 +71,17 @@ defmodule CmsHarness.TestDatabase do
   def env(_environment, _build_env, _source), do: []
 
   @doc """
-  The partition name for a working copy.
+  The partition name for a working copy — **read, never derived**.
+
+  Delegates to `ClientUtils.Harness.Onboarding.resolve_partition!/2`, which returns
+  what onboarding recorded and raises for a copy that has none, naming the command
+  that fixes it.
+
+  One path, deliberately. This used to digest the cwd here, with an identical
+  digest in client_utils, so the analyzer ignored whatever onboarding wrote and the
+  two agreed only because one algorithm had been written twice (acaf8035). A
+  derive-on-miss fallback would have kept both alive for exactly the copies nobody
+  had onboarded — silently, which is how the first pair survived.
 
   Short, stable, and derived from the absolute path — two worktrees of one
   project get different databases, and the same worktree gets the same one
@@ -77,14 +89,7 @@ defmodule CmsHarness.TestDatabase do
   """
   @spec partition_for(String.t()) :: String.t()
   def partition_for(cwd) do
-    digest =
-      cwd
-      |> Path.expand()
-      |> then(&:crypto.hash(:sha256, &1))
-      |> Base.encode16(case: :lower)
-      |> binary_part(0, 8)
-
-    "h#{digest}"
+    Onboarding.resolve_partition!(cwd)
   end
 
   @doc """

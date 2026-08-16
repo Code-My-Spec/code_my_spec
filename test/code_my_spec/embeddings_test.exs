@@ -3,6 +3,18 @@ defmodule CodeMySpec.EmbeddingsTest do
   # `Application.get_env(:code_my_spec, :framework_knowledge_dir)` —
   # tests put a per-test value via `Application.put_env` and
   # concurrent tests would race on the global.
+  #
+  # That comment was here and the `use` line said `async: true` anyway, so the
+  # reasoning was written and never applied. The race it predicts is real and
+  # reaches further than `framework_knowledge_dir`: this file also
+  # `delete_env`s `:embeddings_backend`, which `Embeddings.search/3` reads per
+  # call, returning `{:error, :embeddings_unavailable}` when it is absent.
+  # `files/file_sync_test.exs:643` — also async — writes
+  #
+  #     {:ok, results} = CodeMySpec.Embeddings.search(scope, "create_widget", …)
+  #
+  # so an overlap does not fail an assertion, it raises MatchError in a test
+  # about file syncing. Found while tracing `f6badea0`.
   use ExUnit.Case, async: false
 
   import CodeMySpec.UsersFixtures

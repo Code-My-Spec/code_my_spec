@@ -316,7 +316,18 @@ end
 # provider (outbound mail still uses the per-env Mailer adapter). Sourced from
 # envs/<env>.env via Dotenvy above; empty string → client returns
 # {:error, :resend_not_configured}.
-config :code_my_spec, CodeMySpec.Mail.ResendClient, api_key: env!("RESEND_API_KEY", :string, "")
+#
+# Except test, which sets its own in `config/test.exs`. `runtime.exs` is
+# evaluated after the per-env file, so without this guard the line below
+# replaced the test key with `""` and every stubbed call short-circuited to
+# `:resend_not_configured` — a test that had configured the client correctly
+# and was told it had not. That is why the mail spex install this key with
+# `Application.put_env/3` at runtime instead of configuring it: the config
+# they wrote was being overwritten before they ran.
+unless config_env() == :test do
+  config :code_my_spec, CodeMySpec.Mail.ResendClient,
+    api_key: env!("RESEND_API_KEY", :string, "")
+end
 
 # Guided intake writes its plan with a model, so req_llm needs a provider key.
 # ReqLLM resolves keys from `config :req_llm, <provider>_api_key`. Left nil when
@@ -353,6 +364,25 @@ ga_measurement_id =
   env!("GA4_MEASUREMENT_ID", :string, nil) ||
     if config_env() == :test, do: "G-TEST000000"
 
+# The api_secret is withheld in test, which is what actually stops delivery:
+# `deliver/2` checks for `measurement_id` and `api_secret` and logs "skipped"
+# when either is missing, so the measurement id can stay and the gtag snippet
+# still renders in test HTML.
+#
+# The comment above claimed test "overrides http_adapter to a no-op so unit
+# tests can't accidentally POST to real GA". There was no such override —
+# `http_adapter` read `nil` in test — and `envs/test.env` supplies a real
+# measurement id and api_secret, not the `G-TEST000000` fallback. So the suite
+# was delivering: 2,407 events in one run — `sign_up`, `intake_*`,
+# `workspace_*` — as real POSTs to the live property, from every worktree, on
+# every run.
+#
+# `config/test.exs` also pins `{Req.Test, HTTPAdapter}` now, so a call that
+# gets past this raises instead of reaching Google. Two independent guards,
+# because the one that was documented did not exist.
+ga_api_secret =
+  if config_env() == :test, do: nil, else: env!("GA4_MP_API_SECRET", :string, nil)
+
 config :code_my_spec, CodeMySpec.Analytics.GoogleAnalytics,
   measurement_id: ga_measurement_id,
-  api_secret: env!("GA4_MP_API_SECRET", :string, nil)
+  api_secret: ga_api_secret

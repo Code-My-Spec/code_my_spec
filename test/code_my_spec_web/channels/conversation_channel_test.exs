@@ -7,6 +7,10 @@ defmodule CodeMySpecWeb.ConversationChannelTest do
   `request_screenshot_upload`; only the key travels over the socket.
   """
 
+  # Sync for the same reason as harness_channel_test: the channel runs in its
+  # own process and cannot see a connection the test checked out asynchronously.
+  # Both channel tests pass alone with `async: true` and fail under concurrency,
+  # so a green single-file run is not evidence here.
   use CodeMySpecTest.DataCase, async: false
 
   import Phoenix.ChannelTest

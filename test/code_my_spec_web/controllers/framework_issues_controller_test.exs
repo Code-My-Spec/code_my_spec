@@ -6,7 +6,7 @@ defmodule CodeMySpecWeb.FrameworkIssuesControllerTest do
   key's project with scope forced to `framework`.
   """
 
-  use CodeMySpecTest.ConnCase
+  use CodeMySpecTest.ConnCase, async: true
 
   import CodeMySpec.{UsersFixtures, ProjectsFixtures}
 

@@ -1,5 +1,5 @@
 defmodule CodeMySpecWeb.PageControllerTest do
-  use CodeMySpecTest.ConnCase
+  use CodeMySpecTest.ConnCase, async: true
 
   describe "starting the intake from the home page" do
     test "the home page asks for the idea rather than a signup", %{conn: conn} do

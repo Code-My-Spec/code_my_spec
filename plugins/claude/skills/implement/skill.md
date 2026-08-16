@@ -8,7 +8,7 @@ argument-hint: "[start|stop]"
 
 The JSON response from the skill endpoint:
 
-!`curl -s -X POST http://localhost:4004/api/skills/start -H "X-Working-Dir: ${CLAUDE_PROJECT_DIR}" --data-urlencode "skill=implement" --data-urlencode "external_id=${CLAUDE_SESSION_ID}" --data-urlencode "arguments=$ARGUMENTS"`
+!`curl -s -X POST http://localhost:4004/api/skills/start -H "X-Harness-Id: $(grep -o '"harness_id"[[:space:]]*:[[:space:]]*"[^"]*"' "${CLAUDE_PROJECT_DIR}/.cms_harness.json" | head -1 | cut -d'"' -f4)" --data-urlencode "skill=implement" --data-urlencode "external_id=${CLAUDE_SESSION_ID}" --data-urlencode "arguments=$ARGUMENTS"`
 
 If the response contains a `prompt` field, extract and follow it.
 

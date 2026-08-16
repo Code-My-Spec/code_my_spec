@@ -161,23 +161,41 @@ defmodule CmsHarness.Analysis do
   end
 
   defp execute("spex", env, args) do
-    case Spex.execute(args, environment: env, extra_env: AnalyzerEnv.extra_env(env, "spex")) do
-      {:ok, failures, exit_code} ->
-        {:ok,
-         %{
-           "source" => "spex",
-           "exit_status" => exit_code,
-           "diagnostics" => Enum.map(failures, &spex_failure/1)
-         }}
-
-      {:error, reason} ->
-        {:error, inspect(reason)}
+    # Stand down while a recording session owns this working copy. `5a1f6b9c`:
+    # a replay landing on a cassette mid-rewrite fails on a half-written file
+    # and reports failures that describe nothing about the code, and a second
+    # suite saturating the machine times out the recorder's real DNS waits.
+    #
+    # Before the run rather than inside it, because by the time `mix spex` has
+    # started, the damage this avoids has already been done.
+    case CodeMySpec.RecordingLock.skip_reason(env.cwd) do
+      nil -> run_spex(env, args)
+      reason -> {:error, reason}
     end
   rescue
     exception -> crashed("spex", exception)
   end
 
   defp execute(source, _env, _args), do: {:error, "unknown analyzer source: #{source}"}
+
+  defp run_spex(env, args) do
+    case Spex.execute(args, environment: env, extra_env: AnalyzerEnv.extra_env(env, "spex")) do
+      {:ok, failures, exit_code, output} ->
+        {:ok,
+         %{
+           "source" => "spex",
+           "exit_status" => exit_code,
+           # Carried for the same reason exunit carries it: no failures plus a
+           # nonzero exit means the suite did not run, and the server's refusal
+           # is the only place that reason can still be read.
+           "output" => cap(output || ""),
+           "diagnostics" => Enum.map(failures, &spex_failure/1)
+         }}
+
+      {:error, reason} ->
+        {:error, inspect(reason)}
+    end
+  end
 
   defp crashed(source, exception) do
     Logger.error("[CmsHarness] #{source} crashed: #{Exception.message(exception)}")

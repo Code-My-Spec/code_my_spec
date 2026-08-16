@@ -1,5 +1,5 @@
 defmodule CodeMySpec.Git.CLITest do
-  use CodeMySpecTest.DataCase
+  use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.{UsersFixtures, IntegrationsFixtures}
 

@@ -21,9 +21,12 @@ defmodule CodeMySpecSpex.Fixtures do
       CodeMySpec.AgentHarness,
       CodeMySpec.Environments,
       CodeMySpec.Repo,
+      CodeMySpec.TempFile,
       CodeMySpecTest,
       CodeMySpecWeb
     ]
+
+  import Ecto.Query, only: [from: 2]
 
   alias CodeMySpec.{
     AccountsFixtures,
@@ -35,8 +38,10 @@ defmodule CodeMySpecSpex.Fixtures do
     EmbeddingsFixtures,
     EnvironmentFixtures,
     Environments,
+    Harnesses,
     IntegrationsFixtures,
     IssuesFixtures,
+    Notifications,
     OauthFixtures,
     Paths,
     ProblemsFixtures,
@@ -61,12 +66,15 @@ defmodule CodeMySpecSpex.Fixtures do
   alias CodeMySpec.Architecture.SpecStub
   alias CodeMySpec.Auth.OAuthClient
   alias CodeMySpec.Configurations
+  alias CodeMySpec.Conversations
   alias CodeMySpec.Files.FileSync
   alias CodeMySpec.Files.Scanner
+  alias CodeMySpec.Harnesses.Harness
   alias CodeMySpec.Integrations.Integration
   alias CodeMySpec.Integrations.IntegrationRepository
   alias CodeMySpec.Mail.Email
   alias CodeMySpec.Mail.Mailbox
+  alias CodeMySpec.Notifications.QuestionRequest
   alias CodeMySpec.Permissions.TapOut
   alias CodeMySpec.Projects.Project
   alias CodeMySpec.Provisioning.Cloudflare
@@ -95,6 +103,7 @@ defmodule CodeMySpecSpex.Fixtures do
   alias CodeMySpecTest.LocalPreviewRunner
   alias CodeMySpecTest.PreviewApp
   alias CodeMySpecTest.PreviewWsClient
+  alias Ecto.Changeset
 
   import Ecto.Query, only: [from: 2]
 
@@ -367,7 +376,7 @@ defmodule CodeMySpecSpex.Fixtures do
   """
   @spec account_access_key(Scope.t()) :: :ok
   def account_access_key(scope) do
-    dir = Path.join(System.tmp_dir!(), "spex-ssh-#{System.unique_integer([:positive])}")
+    dir = CodeMySpec.TempFile.dir("spex-ssh")
     File.mkdir_p!(dir)
     path = Path.join(dir, "id_ed25519")
 
@@ -858,6 +867,143 @@ defmodule CodeMySpecSpex.Fixtures do
   end
 
   @doc """
+  A second working copy on this project, last seen `hours` ago.
+
+  Story 892's only unreachable precondition. "This agent has been quiet for two
+  hours" is a fact about elapsed time, and no surface can produce it — a spec
+  cannot wait, and nothing an agent does makes itself *older*. Everything else in
+  that story is driven through the stop hook and read back through the components
+  view; this is the one arrangement that has to be set rather than caused.
+
+  Deliberately writes `last_seen_at` and nothing else. `updated_at` is
+  `timestamp without time zone` holding UTC, which is the trap the story records:
+  compared against `now()` it renders local, and every live agent reads as hours
+  idle. `last_seen_at` is `utc_datetime_usec`, so comparing it against
+  `DateTime.utc_now/0` is correct without a workaround — keying liveness on it is
+  what makes criterion 2382 hold by construction rather than by care.
+  """
+  @spec quiet_harness_fixture(Scope.t(), number(), keyword()) :: Harness.t()
+  def quiet_harness_fixture(%Scope{} = scope, hours, opts \\ []) do
+    label = Keyword.get(opts, :label, "a checkout nobody is running")
+    {:ok, harness} = Harnesses.issue(scope, nil, label: label)
+
+    go_quiet(harness, hours)
+  end
+
+  @doc """
+  Age a working copy's file rows without touching its agent.
+
+  The distinction criterion 2381 turns on. Rows update on scans, and scans happen
+  on hooks rather than on activity — this working copy went unswept from 10:13 to
+  13:44 while being actively worked, because the harness was busy holding others.
+  So old rows are ordinary for a live agent, and a rule keyed on them reclaims
+  someone mid-session.
+
+  Ages rows only. The harness's `last_seen_at` is left alone, which is what makes
+  the two clocks distinguishable in a spec.
+  """
+  @spec age_files_of(Scope.t(), number()) :: :ok
+  def age_files_of(%Scope{active_project_id: project_id} = scope, hours) do
+    at = DateTime.add(DateTime.utc_now(), -round(hours * 3600), :second)
+    naive = at |> DateTime.to_naive() |> NaiveDateTime.truncate(:second)
+
+    from(f in CodeMySpec.Files.File,
+      where: f.project_id == ^project_id and f.harness_id == ^scope.active_harness_id
+    )
+    |> Repo.update_all(set: [updated_at: naive, inserted_at: naive])
+
+    :ok
+  end
+
+  @doc """
+  Age an existing harness so it reads as quiet.
+
+  The arrangement most of story 892 actually wants. A component is projected by
+  the files-view sync, from file rows keyed to whoever synced — so the honest way
+  to get "a component whose only files belong to a quiet checkout" is to let one
+  agent do the ordinary thing and *then* have it go quiet, rather than to
+  construct the end state directly.
+
+  Constructing it directly does not work anyway: a channel observation carries no
+  file content, and component extraction reads the spec to find its module name.
+  Arranging through the real path avoids inventing a second one.
+  """
+  @spec go_quiet(Harness.t() | String.t(), number()) :: Harness.t()
+  def go_quiet(%Harness{} = harness, hours) do
+    last_seen = DateTime.add(DateTime.utc_now(), -round(hours * 3600), :second)
+
+    harness
+    |> Changeset.change(last_seen_at: last_seen)
+    |> Repo.update!()
+  end
+
+  def go_quiet(harness_id, hours) when is_binary(harness_id) do
+    Harness
+    |> Repo.get!(harness_id)
+    |> go_quiet(hours)
+  end
+
+  @doc """
+  Every agent on this project goes quiet.
+
+  What the story actually describes — a project whose working copies have all
+  been abandoned — and the only arrangement that does not depend on knowing which
+  harness a given sync happened to write under. The files-view sync does not
+  always write under `scope.active_harness_id`, so ageing that row by name aged a
+  harness that owned nothing and reclaimed nothing.
+  """
+  @spec all_agents_go_quiet(Scope.t(), number()) :: :ok
+  def all_agents_go_quiet(%Scope{active_project_id: project_id}, hours) do
+    at = DateTime.add(DateTime.utc_now(), -round(hours * 3600), :second)
+
+    from(h in Harness, where: h.project_id == ^project_id)
+    |> Repo.update_all(set: [last_seen_at: at])
+
+    :ok
+  end
+
+  @doc """
+  A second, live agent on this project, as a scope.
+
+  The other half: something has to still be working, because the reclaim rides on
+  a live agent's sync rather than on a schedule.
+  """
+  @spec live_agent_scope(Scope.t(), keyword()) :: Scope.t()
+  def live_agent_scope(%Scope{} = scope, opts \\ []) do
+    label = Keyword.get(opts, :label, "the agent still working")
+    {:ok, harness} = Harnesses.issue(scope, nil, label: label)
+
+    # Records a root, because the hook rebuilds the scope from the harness row
+    # rather than trusting the request: `put_scope/2` takes `cwd` from
+    # `harness.root`, and a scope with no cwd never reaches
+    # `local_validate_stop/5` — the stop returns early instead of syncing. A live
+    # agent without a working copy would therefore drive nothing, and every
+    # scenario depending on the sync would fail for a reason unrelated to what it
+    # is testing.
+    # Its **own** working copy, not the other agent's. Sharing one means the live
+    # agent's scan re-creates the very files the reclaim just removed and
+    # re-projects the component from them — correct behaviour, and it would make
+    # every scenario here assert that reclaiming does nothing.
+    {:ok, root} = Briefly.create(directory: true)
+    {:ok, harness} = Harnesses.report_root(harness, root)
+
+    # Its own **environment**, not just its own path, and registered against its
+    # own root. The hook does not trust the request: it rebuilds the scope from
+    # the harness row via `Scope.for_local_project/2`, which resolves the
+    # environment from the registry. Registered per project — as it was — every
+    # harness on the project resolved to the *same* env, so this agent scanned
+    # the other one's working copy, found its spec, and re-projected the very
+    # component the reclaim had just deleted. Measured: reclaim reported
+    # `components_deleted=1` and `ComponentSync` upserted it back in the same
+    # request. Correct behaviour on a false premise, and it made every scenario
+    # here read as though reclaiming did nothing.
+    {:ok, env} = Environments.create(:memory, working_dir: root)
+    :ok = Environments.register({:root, root}, env)
+
+    %{scope | active_harness_id: harness.id, cwd: root, environment: env}
+  end
+
+  @doc """
   The harness's side of the wire, for Story 987.
 
   Scans the working copy with the real `Scanner.observe/2` — the same function
@@ -895,7 +1041,62 @@ defmodule CodeMySpecSpex.Fixtures do
   end
 
   @doc """
-  Deliver a completed model turn the way a sprite's harness does.
+  Files observed by a *different* working copy on this project.
+
+  Story 892's other arrangement. A reclaim can only be shown to work if something
+  else is holding state, and "another checkout saw these files" is reachable —
+  through the same channel handler a real harness pushes observations to, with the
+  other harness's id on the scope.
+
+  Through the channel rather than `FileSync` directly, for the reason
+  `deliver_manifest/2` above records: a bridge that calls the context reimplements
+  the behaviour under test, and a spec built on it proves the bridge works and
+  nothing else.
+  """
+  @spec observe_files_as(Scope.t(), Harness.t(), [String.t()], keyword()) :: map()
+  def observe_files_as(%Scope{} = scope, %Harness{} = harness, paths, opts \\ []) do
+    role = Keyword.get(opts, :role, "implementation")
+
+    observations =
+      Enum.map(paths, fn path ->
+        %{
+          "path" => path,
+          "role" => role,
+          "mtime" => DateTime.to_iso8601(DateTime.utc_now()),
+          "size" => 128,
+          "fingerprint" => "spex-#{:erlang.phash2(path)}",
+          "valid" => true,
+          "validation_errors" => %{},
+          "component_id" => nil,
+          "story_id" => nil
+        }
+      end)
+
+    socket = %Phoenix.Socket{
+      assigns: %{scope: %{scope | active_harness_id: harness.id}}
+    }
+
+    case CodeMySpecWeb.HarnessProjectChannel.handle_in(
+           "observations",
+           %{"observations" => observations},
+           socket
+         ) do
+      {:reply, {:ok, reply}, _socket} ->
+        reply
+
+      {:reply, {:error, reason}, _socket} ->
+        raise """
+        the channel rejected this manifest, so nothing was arranged:
+
+        #{inspect(reason)}
+
+        A fixture that swallows a rejection leaves the spec asserting against an
+        empty project and calling that a pass.
+        """
+    end
+  end
+
+  @doc """
 
   The proxy that produces this lives in `cms_harness` and runs on the sprite,
   so a spec here cannot dispatch to it — and should not want to. What the
@@ -916,6 +1117,150 @@ defmodule CodeMySpecSpex.Fixtures do
         },
         socket
       )
+
+    :ok
+  end
+
+  @doc """
+  Store a tool call the way the in-app chat does, rather than the way the
+  recorder does.
+
+  Two writers put a call in a conversation and disagree about its shape: the
+  recorder writes a `role: :tool` message whose text is the tool and its
+  arguments; the chat path writes an assistant message with a `tool_calls`
+  array. A spex about both has to produce both, and reaching the domain
+  directly from a spex crosses a boundary the analyzer forbids — so the bridge
+  does it.
+  """
+  @spec chat_tool_call(Scope.t(), String.t(), String.t(), map()) :: :ok
+  def chat_tool_call(%Scope{} = scope, call_id, name, arguments) do
+    {:ok, conversation} = spex_agent_conversation(scope)
+    {:ok, _} = Conversations.add_tool_call(conversation, call_id, name, arguments)
+    :ok
+  end
+
+  @doc """
+  Store a tool result the way the chat path does — `role: :tool`, the same role
+  the recorder uses for a *call*. That collision is what criterion 2374 is
+  about, so a spex has to be able to create it.
+  """
+  @spec chat_tool_result(Scope.t(), String.t(), String.t(), String.t()) :: :ok
+  def chat_tool_result(%Scope{} = scope, call_id, name, text) do
+    {:ok, conversation} = spex_agent_conversation(scope)
+    {:ok, _} = Conversations.add_tool_result(conversation, call_id, name, text)
+    :ok
+  end
+
+  defp spex_agent_conversation(%Scope{} = scope) do
+    Conversations.find_or_create_agent_conversation(
+      scope.active_account_id,
+      scope.active_project_id,
+      "sprite"
+    )
+  end
+
+  @doc """
+  The path of the transcript for this project's most recent agent session.
+
+  The page used to be per-project and is now per-session — one page per agent,
+  because a project with five agents was showing whichever one moved last. A
+  spex that records a turn and then wants to look at it needs the conversation's
+  id, and the id is created inside the recorder rather than by the spex.
+
+  So the bridge answers "the one I just wrote to", which is what every one of
+  these scenarios means. `Conversations.get_agent_conversation/2` is the same
+  newest-first lookup the page itself used before the split.
+  """
+  @spec agent_conversation_path(Scope.t()) :: String.t()
+  def agent_conversation_path(%Scope{} = scope) do
+    base = "/app/projects/#{scope.active_project_id}/agent-conversation"
+
+    case Conversations.get_agent_conversation(scope, scope.active_project_id) do
+      nil -> base
+      conversation -> "#{base}/#{conversation.id}"
+    end
+  end
+
+  @doc """
+  Ask a question the way `ask_user` does, and get its id back.
+
+  A spex about the notifications inbox has to put a question there, and the
+  only honest way to do that is the call the MCP tool makes. Going through
+  `create_question_request/2` also gets the side effects the criteria are
+  about — the push attempt, and the broadcast the navbar badge listens to —
+  which a bare insert would silently skip, leaving a live-count scenario
+  passing against a count that never moved.
+
+  `session_external_id` is what ties a question to the conversation it was
+  asked in; nil means it was asked outside a harness.
+
+  Options are `%{"label" => …}` maps because that is the shape `AskUserQuestion`
+  sends and the shape the form renders — a bare string here raises inside the
+  component, several layers from the fixture that produced it.
+  """
+  @spec ask_question(integer(), keyword()) :: String.t()
+  def ask_question(user_id, opts \\ []) do
+    {:ok, request} =
+      Notifications.create_question_request(user_id, %{
+        "title" => Keyword.get(opts, :title, "Claude Code has a question"),
+        "questions" =>
+          Keyword.get(opts, :questions, [
+            %{
+              "question" => "Which approach?",
+              "options" => [%{"label" => "A"}, %{"label" => "B"}]
+            }
+          ]),
+        "session_external_id" => Keyword.get(opts, :session_external_id)
+      })
+
+    request.id
+  end
+
+  @doc """
+  Request a tool permission the way the Claude Code hook does.
+
+  The inbox lists questions and permission requests together, so a scenario
+  about ordering or isolation needs both kinds present — one kind alone cannot
+  show that they interleave correctly.
+  """
+  @spec request_permission(integer(), keyword()) :: String.t()
+  def request_permission(user_id, opts \\ []) do
+    {:ok, request} =
+      Notifications.create_permission_request(user_id, %{
+        "tool_name" => Keyword.get(opts, :tool_name, "Bash"),
+        "tool_input" => Keyword.get(opts, :tool_input, %{"command" => "mix test"})
+      })
+
+    request.id
+  end
+
+  @doc """
+  Answer a question, as the answering surface does.
+
+  Used by scenarios whose *setup* needs answered history — a criterion about
+  pending items sorting above resolved ones needs a resolved one to exist.
+  A scenario testing the act of answering drives the page instead.
+  """
+  @spec answer_question(String.t(), map()) :: :ok
+  def answer_question(id, answers) do
+    {:ok, _} = Notifications.answer_question_request(id, answers)
+    :ok
+  end
+
+  @doc """
+  Expire a pending question.
+
+  There is no public call for this — expiry is a state a question reaches by
+  being abandoned, not an action anyone takes — so the bridge writes it, and
+  is the only place that reaches for the changeset directly.
+  """
+  @spec expire_question(String.t()) :: :ok
+  def expire_question(id) do
+    {:ok, _} =
+      id
+      |> Notifications.get_question_request()
+      |> QuestionRequest.changeset(%{"status" => "expired"})
+      |> Repo.update()
 
     :ok
   end
@@ -1245,7 +1590,7 @@ defmodule CodeMySpecSpex.Fixtures do
   def start_continuous_mode(scope, external_id) when is_binary(external_id) do
     response =
       Phoenix.ConnTest.build_conn()
-      |> Plug.Conn.put_req_header("x-working-dir", scope.cwd)
+      |> Plug.Conn.put_req_header("x-harness-id", scope.active_harness_id)
       |> Plug.Conn.put_req_header("content-type", "application/json")
       |> Phoenix.ConnTest.dispatch(
         CodeMySpecLocalWeb.Endpoint,
@@ -1564,7 +1909,7 @@ defmodule CodeMySpecSpex.Fixtures do
           Project.t()
   def project_fixture_unlinked(%Scope{} = scope, attrs \\ %{}) do
     unlinked_dir =
-      Path.join(System.tmp_dir!(), "spex-unlinked-#{System.unique_integer([:positive])}")
+      CodeMySpec.TempFile.dir("spex-unlinked")
 
     File.mkdir_p!(unlinked_dir)
     ExUnit.Callbacks.on_exit(fn -> File.rm_rf(unlinked_dir) end)
@@ -1589,7 +1934,7 @@ defmodule CodeMySpecSpex.Fixtures do
   """
   @spec phoenix_shape_working_dir() :: String.t()
   def phoenix_shape_working_dir do
-    dir = Path.join(System.tmp_dir!(), "unlinked-#{System.unique_integer([:positive])}")
+    dir = CodeMySpec.TempFile.dir("unlinked")
     File.mkdir_p!(Path.join(dir, "lib"))
     File.mkdir_p!(Path.join(dir, "config"))
     File.write!(Path.join(dir, "mix.exs"), "# stub for PhoenixProject.evaluate\n")
@@ -1654,10 +1999,7 @@ defmodule CodeMySpecSpex.Fixtures do
       end)
 
     path =
-      Path.join(
-        System.tmp_dir!(),
-        "spex-run-report-#{System.unique_integer([:positive])}.jsonl"
-      )
+      CodeMySpec.TempFile.path("spex-run-report", ".jsonl")
 
     File.write!(path, body <> "\n")
     ExUnit.Callbacks.on_exit(fn -> File.rm(path) end)
@@ -1731,9 +2073,23 @@ defmodule CodeMySpecSpex.Fixtures do
   the bridge.)
   """
   @spec capture_log_at_info((-> any())) :: String.t()
-  def capture_log_at_info(fun) when is_function(fun, 0) do
+  def capture_log_at_info(fun) when is_function(fun, 0), do: capture_log_at(:info, fun)
+
+  @doc """
+  Capture logs with the Logger level lowered to `level` for the duration.
+
+  `Logger.configure/1` as well as the capture, because Logger drops anything
+  below its configured level before a handler ever sees it — `capture_log/2`'s
+  own `:level` option filters what was already let through.
+
+  Parameterised rather than duplicated because a trace can span levels: story
+  812 asserts one dispatch is followed from handler entry to MP delivery, and
+  those are `:info` and `:debug` respectively — the delivery line was moved down
+  deliberately, since at warning it emitted 2,190 lines in one suite run.
+  """
+  def capture_log_at(level, fun) when is_function(fun, 0) do
     previous_level = Logger.level()
-    Logger.configure(level: :info)
+    Logger.configure(level: level)
 
     try do
       ExUnit.CaptureLog.capture_log(fun)
@@ -2651,8 +3007,8 @@ defmodule CodeMySpecSpex.Fixtures do
   reported here. Returns `[]` when the credentials are absent — a developer
   without them cannot have leaked anything.
   """
-  @spec leaked_spex_resources() :: [String.t()]
-  def leaked_spex_resources do
+  @spec leaked_spex_resources(:all | [:servers | :buckets]) :: [String.t()]
+  def leaked_spex_resources(kinds \\ :all) do
     with token when is_binary(token) and token != "" <- System.get_env("HETZNER_API_TOKEN"),
          id when is_binary(id) and id != "" <- System.get_env("HETZNER_S3_ACCESS_KEY_ID"),
          secret when is_binary(secret) and secret != "" <-
@@ -2671,34 +3027,67 @@ defmodule CodeMySpecSpex.Fixtures do
         Keyword.put(previous, :api_token, token)
       )
 
-      servers =
-        case Hetzner.list_servers(%CodeMySpec.Users.Scope{}) do
-          {:ok, list} -> Enum.map(list, &(&1["name"] || &1[:name]))
-          _ -> []
-        end
-
-      buckets =
-        case Storage.list_buckets(credentials, []) do
-          {:ok, list} -> Enum.map(list, &name_of/1)
-          _ -> []
-        end
+      names = server_names(kinds) ++ bucket_names(kinds, credentials)
 
       Application.put_env(:code_my_spec, CodeMySpec.Provisioning.Hetzner, previous)
 
-      # `spex-drill-*` belongs to `test/drill/provisioning_walk.exs`, which
-      # keeps its environment between runs on purpose. It is not residue and no
-      # criterion's premise is ever satisfied by it — the suite builds
-      # `c8024.astralbi.com` and the like — so counting it here stopped
-      # recording sessions on a live environment that was doing nothing wrong.
-      servers
-      |> Enum.concat(buckets)
-      |> Enum.map(&to_string/1)
-      |> Enum.filter(&String.starts_with?(&1, "spex-"))
-      |> Enum.reject(&String.starts_with?(&1, "spex-drill-"))
+      spex_named(names)
     else
       _ -> []
     end
   end
+
+  defp server_names(kinds) do
+    if want?(kinds, :servers) do
+      case Hetzner.list_servers(%CodeMySpec.Users.Scope{}) do
+        {:ok, list} -> Enum.map(list, &(&1["name"] || &1[:name]))
+        _ -> []
+      end
+    else
+      []
+    end
+  end
+
+  defp bucket_names(kinds, credentials) do
+    if want?(kinds, :buckets) do
+      case Storage.list_buckets(credentials, []) do
+        {:ok, list} -> Enum.map(list, &name_of/1)
+        _ -> []
+      end
+    else
+      []
+    end
+  end
+
+  @doc """
+  The `spex-` names in a list. Public because it is the whole of the guard's
+  judgement and the only part testable without a provider.
+
+  `spex-drill-*` is excluded. It belongs to `test/drill/provisioning_walk.exs`,
+  which keeps its environment between runs on purpose, and no criterion's
+  premise is ever satisfied by it — the suite builds `c8024.astralbi.com` and
+  the like. Counted as residue, a live environment that was doing nothing wrong
+  stopped every recording session.
+
+  The same exclusion, for the same reason, guards `mix cms.provisioning_leaks`
+  (`@drill_marker`); there it stands between a sweep and `--delete`.
+  """
+  @spec spex_named([term()]) :: [String.t()]
+  def spex_named(names) do
+    Enum.filter(names, fn name ->
+      string = to_string(name)
+
+      String.starts_with?(string, "spex-") and
+        not Regex.match?(~r/(^|\.)spex-drill([-.]|$)/, string)
+    end)
+  end
+
+  # `:all` is the default everywhere and stays the answer for anything that has
+  # not declared, so an undeclared spex is checked exactly as before.
+  defp want?(:all, _kind), do: true
+  defp want?(kinds, kind) when is_list(kinds), do: kind in kinds
+  defp want?(kind, kind) when is_atom(kind), do: true
+  defp want?(_kinds, _kind), do: false
 
   defp name_of(%{name: name}), do: name
   defp name_of(%{"name" => name}), do: name

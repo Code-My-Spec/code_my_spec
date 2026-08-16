@@ -14,7 +14,7 @@ defmodule CmsHarness.ChannelClientTransportTest do
   operations wide.
   """
 
-  use ExUnit.Case, async: false
+  use ExUnit.Case, async: true
 
   import ExUnit.CaptureLog
 
@@ -171,7 +171,7 @@ defmodule CmsHarness.ChannelClientTransportTest do
 
   describe "the identity the server issues" do
     setup do
-      root = Path.join(System.tmp_dir!(), "cms_join_id_#{System.unique_integer([:positive])}")
+      root = CodeMySpec.TempFile.dir("cms_join_id")
       File.mkdir_p!(root)
       on_exit(fn -> File.rm_rf(root) end)
       %{root: root}

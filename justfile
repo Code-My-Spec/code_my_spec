@@ -29,6 +29,15 @@ server:
 # Symlinks rather than copies. `envs` holds secrets that must not be duplicated
 # per worktree, and the test repos are a fixture several worktrees share; a copy
 # would drift and the drift is silent.
+#
+# **Run this after a rebase, not only once.** Every step is idempotent, and the
+# two that matter — deps and migrations — are exactly the per-worktree state a
+# rebase silently invalidates. A sibling's commit moves `mix.lock` and `mix`
+# refuses before it runs anything (`66e30d85`); a sibling's migration lands and
+# the suite fails in bulk on a column nobody touched (`f58acb37`, and `2fb10199`
+# above for the first-run version of the same miss). Both are one command, and
+# both cost a diagnosis first because they arrive in the middle of unrelated
+# work and read as the worktree being broken.
 worktree-setup:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -57,6 +66,18 @@ worktree-setup:
     else
       echo "  (no $repos — skipping; drill and devops spex will not run here)"
     fi
+
+    # Deps before the database, because a lock mismatch stops `mix` before it
+    # loads anything — including `ecto.migrate`. So the two steps below cannot
+    # even report their own problem while this one is outstanding.
+    #
+    # `66e30d85`: twice in a week a rebase brought a `mix.lock` entry from
+    # another worktree's commit and every `mix` invocation here refused before
+    # running anything. Not the task — the tool. Recovery is one command, and
+    # the cost is that it arrives in the middle of unrelated work and reads as
+    # the worktree being broken.
+    echo "→ deps"
+    MIX_ENV=test elixir -S mix deps.get
 
     # `elixir -S mix`, not `mix`: a bare `mix` in a worktree resolves against the
     # main checkout and would create the wrong tree's database.
@@ -167,6 +188,32 @@ refresh port="4000":
     fi
 
     log="$HOME/.codemyspec/phx_{{port}}.restart.log"
+
+    # Migrations, after the old server is down and before the new one is up.
+    #
+    # `Phoenix.Ecto.CheckRepoStatus` refuses *every request* with
+    # `PendingMigrationError` while the dev database is behind — a 503 on the
+    # MCP endpoint, so every agent on this machine loses its tools at once and
+    # the message they see names a harness, not a migration:
+    #
+    #   The harness could not reach http://localhost:4000 to find out where
+    #   <id> is: {:error, {:refused, 503}}
+    #
+    # An agent committing a migration from a worktree does so against its own
+    # test database, and nothing runs it on dev. Measured tonight: pushing
+    # `add_qa_script_to_file_role`, then `just refresh`, left :4000 answering
+    # 503 to everything — the recipe that exists to make the server current had
+    # pulled the migration and not run it.
+    #
+    # Unconditional rather than diffed against the pull, for the reason the deps
+    # check above already learned: when somebody else has already pulled,
+    # `before` equals `after` and the diff is empty while the database is still
+    # behind. `ecto.migrate` with nothing pending is one query.
+    #
+    # After the kill, because a `mix` invocation takes the build lock and that
+    # is what 500s a running server.
+    echo "→ migrations"
+    ( cd "$main" && mix ecto.migrate )
 
     # Rotated here because nothing else rotates it.
     #
@@ -391,10 +438,46 @@ refresh-harness port="4004":
     ( cd "$main"; exec </dev/null >"$log" 2>&1; nohup just harness & )
     echo "→ starting from $main, logging to $log"
 
+    # Listening is not ready.
+    #
+    # The port opens seconds before the harness joins `harness_project:<id>`,
+    # and it is the *join* a stop hook needs — until it lands, a stop gets
+    # "The CodeMySpec harness could not decide whether this turn is finished",
+    # which reads as a broken harness rather than as a restart still in flight.
+    # Measured: `just refresh` printed this ✓, a stop three seconds later
+    # failed, and the harness had in fact joined at the moment I went looking.
+    #
+    # So the ✓ waits for `connected` in /health rather than for the port. The
+    # port opens as soon as the endpoint starts; the socket client connects only
+    # after the app has finished booting, and that gap is where a stop refuses.
+    #
+    # Two minutes, and it still times out on a busy machine — measured at 35s
+    # idle, then ~130s after three back-to-back restarts with a suite running.
+    # Widening further trades a recipe that lies for one that hangs, so it stops
+    # here and says which it got.
+    #
+    # The fallback is not a failure: a harness that is up and has not joined is
+    # a real state, the message names where to look, and exit 0 keeps this out
+    # of the caller's error path.
     for _ in $(seq 1 90); do
         if lsof -nP -iTCP:{{port}} -sTCP:LISTEN -t >/dev/null 2>&1; then
-            echo "✓ harness is listening on {{port}}"
-            echo "  working copies re-register on their next hook"
+            for _ in $(seq 1 60); do
+                if curl -sS --max-time 3 "http://localhost:{{port}}/health" 2>/dev/null \
+                     | grep -q '"connected":true'; then
+                    echo "✓ harness is listening on {{port}} and joined the server"
+                    echo
+                    echo "  If this restart shipped a NEW MCP tool, every already-running"
+                    echo "  agent still has the old tool list and will get \"No such tool"
+                    echo "  available\" until it reconnects (/mcp in Claude Code). The"
+                    echo "  server is not the reason; the client caches the list. b2d9c616."
+                    exit 0
+                fi
+                sleep 2
+            done
+
+            echo "✓ harness is listening on {{port}}, but has not joined the server in 120s"
+            echo "  A stop will refuse until it does. Check the credential and the"
+            echo "  reconnect attempts in ~/.codemyspec/harness.log."
             exit 0
         fi
         sleep 2
@@ -528,6 +611,29 @@ test *args:
 test-file file:
     mix test {{file}} --trace
 
+# Run the analyzer tests — the ones that need real projects on disk.
+#
+# Two kinds, excluded from `just test` for the same reason. The
+# `code_my_spec_test_repos` ones rsync a copy out of a directory every worktree
+# reaches by symlink, so two agents running suites collided there — which is
+# where the `** (EXIT …) killed` findings came from. `cms_harness/analysis_test`
+# builds its own temp projects instead, but spawns seven real `mix` subprocess
+# trees to do it and carries the one measured intermittent failure of the class
+# (75b35ac2 — full-suite only, never standalone, still untraced).
+#
+# Everything else reads the committed recordings in
+# `test/fixtures/analyzer_output/`.
+#
+# Run this when you change an analyzer, and after `mix cms.test_fixtures`.
+# Needs the fixture repos; `mix cms.test_fixtures` clones them.
+test-analyzer *args:
+    MIX_ENV=test mix test --only analyzer {{args}}
+
+# Record the analyzer fixtures the suite reads. Clones the fixture repos if
+# they are missing. Commit what it changes.
+test-fixtures:
+    MIX_ENV=test mix cms.test_fixtures
+
 # Setup: deps + db
 setup:
     mix deps.get && mix ecto.setup
@@ -579,9 +685,28 @@ publish VERSION:
       echo "plugin.json or mix.exs already has uncommitted changes — commit or reset first" >&2
       exit 1
     fi
+
+    # Releases go from main, and this has to say so before it writes anything.
+    #
+    # `git push origin HEAD` pushes to a remote branch of the *same name*, so
+    # run from a worktree on `light-harness` it created `origin/light-harness`
+    # and left main without the version bump. `release` then refused, naming
+    # origin/main — which was true and unrelated to what had just gone wrong.
+    # Two steps disagreeing about which branch a release lives on.
+    git fetch origin main --quiet
+    if [ "$(git rev-parse HEAD)" != "$(git rev-parse origin/main)" ]; then
+      echo "✗ HEAD is not at origin/main — a release is a commit on main." >&2
+      echo >&2
+      git log --oneline --left-right HEAD...origin/main >&2
+      echo >&2
+      echo "  From a worktree: rebase onto origin/main first, or run this from" >&2
+      echo "  the main checkout. The tag has to point at a commit main has." >&2
+      exit 1
+    fi
+
     just bump {{VERSION}}
     git commit -m "Release v{{VERSION}}"
-    git push origin HEAD
+    git push origin HEAD:main
     just release
 
 # Tag HEAD with vN.N.N from plugin.json and push the tag — triggers the marketplace release CI
@@ -609,9 +734,16 @@ release:
       exit 1
     fi
 
-    if [ "$(git rev-parse HEAD)" != "$(git rev-parse @{u})" ]; then
+    # `origin/main` by name, not `@{u}`. The upstream of the current branch is
+    # whatever that branch tracks — on a worktree branch that is often itself —
+    # so the check could pass against a branch main has never seen while the
+    # message claimed it had compared against main. A tag is permanent and
+    # points at one commit; the check that guards it should name the same ref
+    # the message does.
+    git fetch origin main --quiet
+    if [ "$(git rev-parse HEAD)" != "$(git rev-parse origin/main)" ]; then
       echo "HEAD is not at origin/main. Push first:" >&2
-      git log --oneline --left-right HEAD...@{u} >&2
+      git log --oneline --left-right HEAD...origin/main >&2
       exit 1
     fi
 

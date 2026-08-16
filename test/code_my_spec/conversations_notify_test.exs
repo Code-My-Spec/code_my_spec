@@ -10,8 +10,18 @@ defmodule CodeMySpec.ConversationsNotifyTest do
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.{Conversations, Mail}
+  alias CodeMySpec.Mail.ResendClient
 
   setup do
+    # Says what the provider does, rather than relying on it being
+    # unconfigured. This test passed before because no Resend key was set, so
+    # the send failed early and the record was written anyway — it asserts on
+    # the record, and the provider was incidental. The key now comes from
+    # `config/test.exs`, so the call is real and needs an answer.
+    Req.Test.stub(ResendClient, fn conn ->
+      Req.Test.json(conn, %{"id" => "email_offline_reply"})
+    end)
+
     scope = full_scope_fixture()
 
     {:ok, conversation} =

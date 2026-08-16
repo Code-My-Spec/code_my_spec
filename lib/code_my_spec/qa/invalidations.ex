@@ -79,7 +79,7 @@ defmodule CodeMySpec.Qa.Invalidations do
     if exists?, do: {:error, :already_invalidated}, else: :ok
   end
 
-  # The local app's WorkingDirScope has no user — invalidations from
+  # The local app's harness-resolved scope has no user — invalidations from
   # the local LiveView are stamped with the host (nil user_id) plus a
   # reason. The hosted SaaS scope carries a real `scope.user.id`.
   defp scope_user_id(%Scope{user: %{id: id}}) when not is_nil(id), do: id

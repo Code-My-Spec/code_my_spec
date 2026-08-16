@@ -11,6 +11,10 @@ defmodule CmsHarness.ConfigTest do
   nothing to do.
   """
 
+  # Sync, for two reasons that would each be enough. It sets OS environment
+  # variables, which are node-global; and it writes `:base_url` and
+  # `:harness_server_url` into application env, the latter shared with
+  # `web/mcp_controller_test` and `web/permission_controller_test`.
   use ExUnit.Case, async: false
 
   alias CmsHarness.Config

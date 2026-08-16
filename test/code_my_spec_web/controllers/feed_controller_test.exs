@@ -1,5 +1,5 @@
 defmodule CodeMySpecWeb.FeedControllerTest do
-  use CodeMySpecTest.ConnCase, async: false
+  use CodeMySpecTest.ConnCase, async: true
 
   import CodeMySpec.ContentFixtures
 

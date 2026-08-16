@@ -174,8 +174,19 @@ defmodule CodeMySpec.Support.InMemoryEnvironmentTest do
       assert children == ["a.txt", "b"]
     end
 
-    test "empty directory returns empty list", %{env: env} do
-      assert {:ok, []} = InMemoryEnvironment.list_directory(env, "nope")
+    # Named "empty directory" but asking about one that does not exist, and it
+    # asserted `{:ok, []}` — which is what `File.ls` answers for a directory
+    # that is there and empty, not for one that is absent. That gap was load
+    # bearing: callers branch on the tuple, so `match?({:ok, _}, ...)` made
+    # every path a directory. `HexDocProjector.dir?/2` is exactly that, so an
+    # uninstalled package still looked installed and its orphaned markdown was
+    # never dropped — five tests failing while the projector reported success.
+    #
+    # A map keyed by file path cannot distinguish an empty directory from an
+    # absent one, and absent is the answer worth being right about: the
+    # analyzers this stands in for ask whether anything is there.
+    test "a directory with nothing under it does not exist", %{env: env} do
+      assert {:error, :enoent} = InMemoryEnvironment.list_directory(env, "nope")
     end
   end
 

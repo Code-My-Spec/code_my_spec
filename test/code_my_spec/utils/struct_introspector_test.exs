@@ -1,5 +1,5 @@
 defmodule CodeMySpec.Utils.StructIntrospectorTest do
-  use ExUnit.Case
+  use ExUnit.Case, async: true
   doctest CodeMySpec.Utils.StructIntrospector
   alias CodeMySpec.Utils.StructIntrospector
 

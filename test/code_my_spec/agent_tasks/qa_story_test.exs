@@ -1,6 +1,6 @@
 defmodule CodeMySpec.AgentTasks.QaStoryTest do
   @moduledoc false
-  use CodeMySpecTest.DataCase
+  use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.StoriesFixtures
   import CodeMySpec.UsersFixtures

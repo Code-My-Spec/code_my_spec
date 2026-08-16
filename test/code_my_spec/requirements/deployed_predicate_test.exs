@@ -12,7 +12,7 @@ defmodule CodeMySpec.Requirements.DeployedPredicateTest do
   These assert the queries against a real database rather than their shape. A
   predicate that compiles and selects the wrong rows is the failure this is for.
   """
-  use CodeMySpecTest.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.UsersFixtures
 

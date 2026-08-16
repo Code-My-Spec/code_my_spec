@@ -73,6 +73,23 @@ defmodule CodeMySpec.Hooks.Stop do
     |> note_config_edits(session_id)
   end
 
+  # There was a second half to this, and it is gone: a `note_stale_config/1`
+  # that compared the sha this server booted at against the sha on disk and
+  # warned when the range touched config/. It caught the case
+  # `note_config_edits/2` structurally cannot — a config change arriving by
+  # `git pull`, which nobody's session edited.
+  #
+  # It paid for that by shelling out to `git rev-parse` inside every stop, which
+  # is a fork per hook for a question almost always answered "no". It also broke
+  # twenty-one spex across eight unrelated stories: the spex cassettes patch
+  # `System.cmd/3` process-globally, so a stray `git` call inside a request dies
+  # on `No recording found for: git rev-parse --short HEAD` and takes the
+  # criterion with it, naming a boot version in a story about something else.
+  #
+  # The warning was worth having and the price was not. If it comes back it
+  # comes back off the harness's file watcher, which already knows when the
+  # checkout moves and does not have to ask.
+
   # Phoenix cannot hot-reload `config/*.exs`, by design. A commit that touches
   # one leaves every running dev server answering
   #
@@ -291,8 +308,7 @@ defmodule CodeMySpec.Hooks.Stop do
 
       %{
         "decision" => "block",
-        "reason" =>
-          "Background analysis is still running: #{sources}. " <> wait_directive(scope)
+        "reason" => "Background analysis is still running: #{sources}. " <> wait_directive(scope)
       }
     else
       Logger.info("[StopHook] [#{req_id}] Analysis pending (#{sources}) — allowing stop")

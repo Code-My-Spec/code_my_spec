@@ -9,6 +9,11 @@ defmodule CmsHarness.Web.McpControllerTest do
   none of that.
   """
 
+  # Sync, and it could not be otherwise: `CmsHarnessTest.ConnCase` raises at
+  # compile time on `async: true`, because its setup clears and restores the
+  # `CMS_*` OS variables for every test. This file also points
+  # `:harness_server_url` at a FakeUpstream's port — a per-test value living in
+  # node-global application env.
   use CmsHarnessTest.ConnCase, async: false
 
   alias CmsHarnessTest.FakeUpstream

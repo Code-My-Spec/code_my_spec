@@ -1,4 +1,7 @@
 defmodule CodeMySpecWeb.IntakeLive.WorkspaceTest do
+  # Sync: writes `:code_my_spec, CodeMySpec.Workspaces`, the same key
+  # `CodeMySpec.WorkspacesTest` writes, to install the fake runner. See that file
+  # for what moving it would take.
   use CodeMySpecTest.ConnCase, async: false
 
   import CodeMySpecSpex.IntakeSteps
@@ -16,24 +19,16 @@ defmodule CodeMySpecWeb.IntakeLive.WorkspaceTest do
       poll_interval: 20
     )
 
-    on_exit(&stop_watchers/0)
+    # Kills this test's watchers before clearing the config, in that order.
+    # A watcher that outlives its test falls back to the default runner —
+    # which is the real Docker one — and polls it for fifteen minutes,
+    # dragging the rest of the suite with it.
+    CodeMySpecTest.WorkspaceWatchers.reset_on_exit()
 
     %{conn: log_in_user(conn, user_fixture())}
   end
 
   defp fake(opts), do: start_supervised!({FakeWorkspaceRunner, opts})
-
-  # Kill every watcher before clearing the config, in that order. A watcher
-  # that outlives its test falls back to the default runner — which is the
-  # real Docker one — and polls it for the default fifteen minutes, dragging
-  # the rest of the suite with it.
-  defp stop_watchers do
-    CodeMySpec.TaskSupervisor
-    |> Task.Supervisor.children()
-    |> Enum.each(&Process.exit(&1, :kill))
-
-    Application.delete_env(:code_my_spec, CodeMySpec.Workspaces)
-  end
 
   # A boot that will not time out on its own. Tests that need to observe the
   # booting state end it explicitly with finish_boot/0 rather than racing the

@@ -77,10 +77,14 @@ defmodule CodeMySpecSpex.Story709.Criterion6218Spex do
       end
 
       then_ "list_issues filtered by scope=qa excludes the issue", context do
-        # The local list_issues surface refuses scope=framework on purpose
-        # (framework issues live server-side, not locally), so we use
-        # scope=qa here to prove the default-scoped issue lands as :app
-        # and is filtered out of any other local scope.
+        # `scope=qa` rather than `scope=framework` is arbitrary now — any scope
+        # other than :app proves the same thing, which is that a default-scoped
+        # issue lands as :app and is filtered out of every other scope.
+        #
+        # It used to be forced: the local surface refused scope=framework, on
+        # the grounds that framework issues lived server-side. That stopped
+        # being true when the tools moved onto the server, and `ListIssues`
+        # accepts framework now.
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
         {:reply, response, _frame} = ListIssues.execute(%{scope: "qa"}, frame)

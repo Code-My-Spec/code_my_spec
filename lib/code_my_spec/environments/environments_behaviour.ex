@@ -111,9 +111,12 @@ defmodule CodeMySpec.Environments.EnvironmentsBehaviour do
   Implementations run in `env.cwd` unless the caller overrides `:cd`. `opts`
   otherwise follows `System.cmd/3`.
 
-  Output is returned cleaned — ANSI stripped, valid UTF-8, trimmed — because
-  it is bound for a database and a JSON response, and neither tolerates raw
-  terminal bytes.
+  Output is returned with ANSI escapes stripped and invalid UTF-8 scrubbed,
+  because it is bound for a database and a JSON response and neither tolerates
+  raw terminal bytes. It is **not** trimmed: a trailing newline is not a
+  terminal-byte problem, and for column-oriented output — `git status
+  --porcelain` above all — the leading space is data. Callers wanting a
+  trimmed string trim it.
   """
   @callback cmd(
               env :: Environment.t(),

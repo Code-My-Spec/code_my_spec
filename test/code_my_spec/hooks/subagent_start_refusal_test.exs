@@ -19,7 +19,7 @@ defmodule CodeMySpec.Hooks.SubagentStartRefusalTest do
   observable is the cheaper half and it does not decide the contract.
   """
 
-  use CodeMySpecTest.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.UsersFixtures
   import ExUnit.CaptureLog

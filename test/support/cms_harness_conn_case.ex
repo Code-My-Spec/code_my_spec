@@ -10,7 +10,36 @@ defmodule CmsHarnessTest.ConnCase do
 
   use ExUnit.CaseTemplate
 
-  using do
+  # This case cannot be used asynchronously, and says so rather than letting a
+  # caller find out from a neighbour.
+  #
+  # `setup` below clears `CMS_TOKEN` and friends and restores them on exit. OS
+  # environment variables belong to the BEAM node, not to a test process, so
+  # that window is open to every other test running at the same time — and at
+  # least one asserts on their *absence*: `working_copies_test` expects
+  # `{:unreachable, _}` because this environment has no credential. Under the
+  # analyzer, which runs with `CMS_TOKEN` exported, that test passed alone and
+  # failed in the suite.
+  #
+  # Guarding here rather than in each file because the mutation is here. Three
+  # files were moved to async on the reasoning "no app env, no filesystem, no
+  # spawn, no named process" — a list that did not name OS env, and could not
+  # have caught this by reading the test files, since nothing in them mentions
+  # it.
+  using opts do
+    if Keyword.get(opts, :async, false) do
+      raise ArgumentError, """
+      CmsHarnessTest.ConnCase cannot be async.
+
+      Its setup deletes and restores CMS_TOKEN, CMS_DEPLOY_KEY, CMS_SERVER_URL,
+      CMS_PROJECT_ID, CMS_PROJECT_DIR and CMS_HARNESS_ID. Those are node-global,
+      so the window is visible to every concurrently running test — including
+      ones that assert on a credential being absent.
+
+      Use `async: false`.
+      """
+    end
+
     quote do
       use Phoenix.ConnTest
 

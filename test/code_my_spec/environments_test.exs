@@ -1,5 +1,20 @@
 defmodule CodeMySpec.EnvironmentsTest do
-  use ExUnit.Case
+  # Sync, and not incidentally: the `clean_otp_env` tests below replace PATH
+  # with `/usr/bin:/usr/local/bin` for the duration of a test.
+  #
+  # PATH belongs to the node, and `System.cmd/3` resolves binaries through it.
+  # `sops` and `age-keygen` live in `/opt/homebrew/bin`, which that value drops
+  # — so anything shelling out while the window is open stops finding them.
+  # `Provisioning.Sops` alone is reached by five async test files, and what they
+  # would report is a non-zero exit from a tool that is installed and working.
+  #
+  # `clean_otp_env/0` reads the ambient environment by design — it exists to
+  # scrub what a Burrito release exports — so testing it means mutating the
+  # real thing. Sync is the isolation, which is why it is now said out loud:
+  # this file carried no `async:` at all, and a file that is safe only by
+  # omission is one flip away from a nondeterministic failure somewhere else.
+  use ExUnit.Case, async: false
+
   import CodeMySpec.Support.CLIRecorder
 
   alias CodeMySpecTest.EnvRestore

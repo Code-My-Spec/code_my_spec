@@ -29,7 +29,7 @@ defmodule CodeMySpec.LiveInboundTest do
   A subdomain of the project's domain, an MX record, and a webhook — all
   removed in `on_exit`, and the removal is verified rather than assumed.
   """
-  use CodeMySpecTest.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: true
 
   @moduletag :live
   @moduletag timeout: 900_000

@@ -189,15 +189,27 @@ defmodule CodeMySpec.Users.Scope do
   end
 
   # Consult the environment registry first — spex tests register an
-  # in-memory env per project so the LiveView (which rebuilds scope from
-  # the project record) gets the same env the test set up. Production
-  # projects have no registration and get a default :local env.
+  # in-memory env so the LiveView (which rebuilds scope from the project
+  # record) gets the same env the test set up. Production projects have no
+  # registration and get a default :local env.
+  #
+  # A root-specific registration wins over the project's, because an
+  # environment describes a *working copy* and a project can have several. With
+  # only the project key, every harness on a project resolved to one env, so a
+  # second agent scanned the first one's files — and story 892's scenarios,
+  # which turn on one agent holding a component no other checkout has, could
+  # not be written at all. The reclaim deleted the component and the live
+  # agent's own sync re-projected it from what it believed was its working
+  # copy, which is correct behaviour on a false premise.
   defp resolve_environment(%Project{} = project, root) do
-    case CodeMySpec.Environments.lookup_registered(project.id) do
+    case registered_for(root) || CodeMySpec.Environments.lookup_registered(project.id) do
       nil -> Environment.new(:local, root || project.local_path)
       %Environment{} = env -> env
     end
   end
+
+  defp registered_for(nil), do: nil
+  defp registered_for(root), do: CodeMySpec.Environments.lookup_registered({:root, root})
 
   # Default user for local/CLI contexts where no OAuth user is available
   defp default_local_user do

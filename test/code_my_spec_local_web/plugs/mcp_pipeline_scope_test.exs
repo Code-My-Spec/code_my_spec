@@ -9,13 +9,14 @@ defmodule CodeMySpecLocalWeb.Plugs.McpPipelineScopeTest do
   type by hand, which reads as a limitation of the light harness rather than a
   missing plug. Specs stopped being created.
 
-  Hooks never had this problem because `:hook` resolves identity first. This
-  asserts the two pipelines now agree, by driving the plugs in each one's order
-  and comparing what comes out.
+  Hooks never had this problem because `:hook` resolves identity first. The two
+  pipelines are now the same two plugs, and this drives them in order to check
+  that what comes out is a scope a tool can write through.
 
-  Both resolution paths matter and are asserted separately: by harness id, which
-  is what a configured checkout sends, and by working directory, which is the
-  fallback when no id arrives.
+  The directory cases that used to be here are gone with the behaviour: there is
+  no second way to name a working copy, so there is nothing to assert about one.
+  What replaced them is the refusal — a request that names no harness is
+  answered, not resolved.
   """
 
   use CodeMySpecTest.DataCase, async: true
@@ -25,7 +26,7 @@ defmodule CodeMySpecLocalWeb.Plugs.McpPipelineScopeTest do
   import Plug.Test
 
   alias CodeMySpec.Harnesses
-  alias CodeMySpecLocalWeb.Plugs.{HarnessScope, WorkingDir, WorkingDirScope}
+  alias CodeMySpecLocalWeb.Plugs.HarnessScope
 
   setup do
     scope = full_scope_fixture()
@@ -39,10 +40,9 @@ defmodule CodeMySpecLocalWeb.Plugs.McpPipelineScopeTest do
     %{scope: %{scope | active_project: project}, root: tmp}
   end
 
-  # The `:mcp` pipeline's plugs, in order.
-  defp mcp(conn) do
-    conn |> HarnessScope.call([]) |> WorkingDir.call([]) |> WorkingDirScope.call([])
-  end
+  # The `:mcp` pipeline's scope resolution. `LocalOnly` is omitted — it decides
+  # whether the request is allowed in, not which working copy it is about.
+  defp mcp(conn), do: HarnessScope.call(conn, [])
 
   defp harness_for(scope, root) do
     {:ok, harness} = Harnesses.issue(scope, nil, label: "mcp test")
@@ -61,6 +61,7 @@ defmodule CodeMySpecLocalWeb.Plugs.McpPipelineScopeTest do
     resolved = conn.assigns.current_scope
 
     assert resolved.cwd == root
+
     assert resolved.environment,
            "a tool that writes to disk needs an environment; a project id alone is what made " <>
              "create_component refuse to write spec stubs"
@@ -68,27 +69,34 @@ defmodule CodeMySpecLocalWeb.Plugs.McpPipelineScopeTest do
     assert resolved.active_harness_id == harness.id
   end
 
-  test "a call with no harness id falls back to its working directory", %{root: root} do
+  test "a call naming no harness is refused, not resolved by its directory", %{root: root} do
     conn =
       conn(:post, "/mcp")
       |> put_req_header("x-working-dir", root)
       |> mcp()
 
-    resolved = conn.assigns.current_scope
+    assert conn.halted
+    assert conn.status == 400
+    refute conn.assigns[:current_scope]
 
-    assert resolved.cwd == root
-    assert resolved.environment
+    assert Jason.decode!(conn.resp_body)["error"] =~ "X-Harness-Id"
   end
 
-  test "an unexpanded id falls back rather than refusing", %{root: root} do
-    # `${CMS_HARNESS_ID}` reaching the server literally means the checkout is not
-    # onboarded. Refusing would take MCP down for every such checkout.
+  test "an unexpanded id is refused and names the fix", %{root: root} do
+    # `${CMS_HARNESS_ID}` reaching the server literally means the checkout was
+    # never onboarded. It used to fall back to the directory, which is how a
+    # checkout with no id at all still got a working copy — someone else's, if
+    # the walk landed there.
     conn =
       conn(:post, "/mcp")
       |> put_req_header("x-harness-id", "${CMS_HARNESS_ID}")
       |> put_req_header("x-working-dir", root)
       |> mcp()
 
-    assert conn.assigns.current_scope.environment
+    assert conn.halted
+    assert conn.status == 400
+    refute conn.assigns[:current_scope]
+
+    assert Jason.decode!(conn.resp_body)["error"] =~ "cms.harness.onboard"
   end
 end

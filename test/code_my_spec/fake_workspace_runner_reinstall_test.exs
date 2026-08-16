@@ -14,7 +14,7 @@ defmodule CodeMySpecTest.FakeWorkspaceRunnerReinstallTest do
   code under test. The second installer was the caller's own fixture call, and
   finding that took a stacktrace read.
   """
-  use ExUnit.Case, async: false
+  use ExUnit.Case, async: true
 
   alias CodeMySpecSpex.Fixtures
   alias CodeMySpecTest.FakeWorkspaceRunner

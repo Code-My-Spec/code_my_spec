@@ -14,7 +14,25 @@ defmodule CmsHarness.WorkingCopiesTest do
   which is every hook after a copy's first.
   """
 
-  use ExUnit.Case, async: false
+  # Async, on an invariant rather than on hope — this asserts on the *absence*
+  # of a credential, which is node-global state.
+  #
+  # `root/1` returns `{:unreachable, _}` here only because the environment has
+  # no `CMS_TOKEN`, and OS environment variables belong to the node rather than
+  # to a test process. What made that unsafe was `CmsHarnessTest.ConnCase`,
+  # which clears and restores those variables in its setup.
+  #
+  # Every file that mutates `CMS_*` is now sync, and `ConnCase` raises at
+  # compile time if anyone passes `async: true` to it. ExUnit finishes the
+  # async phase before the sync one begins, so nothing is touching these
+  # variables while this runs. That is what makes it safe — not that it
+  # happens to pass, which it also did before, alone.
+  #
+  # The other half is unchanged and is not about concurrency: under the
+  # analyzer, `mix test` inherits an exported `CMS_TOKEN` from the harness, and
+  # then this file's premise is false no matter what the flag says. That is
+  # what `ConnCase` clearing the variables for every test exists to prevent.
+  use ExUnit.Case, async: true
 
   import CmsHarnessTest.Projects
 

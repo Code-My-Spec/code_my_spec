@@ -15,7 +15,35 @@ defmodule CmsHarness.AnalysisTest do
   sibling `../client_utils`.
   """
 
-  use ExUnit.Case, async: true
+  # Sync, and unusually it is the *machine* being isolated rather than state.
+  #
+  # Each `Analysis.run/2` here compiles a fixture project and runs its suite for
+  # real, and setup does a `mix deps.get` besides. Twenty of those in parallel
+  # with the rest of the suite is enough load to get processes SIGKILLed, and
+  # ExUnit running sync cases after the async phase is exactly the separation
+  # wanted: the heavy builds get the machine to themselves.
+  #
+  # The evidence this comment used to cite for that has since been withdrawn.
+  # It read three full runs failing 5, 5 and 4 tests with almost no overlap and
+  # concluded this file was starving the box. The actual cause of those
+  # particular kills was `use_cmd_cassette` in an `async: true` test: ExCliVcr
+  # patches `System.cmd/3` through meck, which is process-global, so anything
+  # else inside a shell-out when the patch moved died as `** (EXIT from #PID)
+  # killed`. Non-overlapping victim sets were the signature of that, not of
+  # load — it is whoever was shelling out at the time.
+  #
+  # Kept sync anyway, on the argument that survives: this file really does run
+  # compiles and `deps.get`, and load is still a genuine cause of kills even
+  # though it was not that one. Tried at `async: true` — three clean full runs
+  # — and reverted rather than banked, because three tests is not worth
+  # re-introducing a resource risk on a box that routinely runs several
+  # worktrees' suites at once. Cheap to revisit if the sync phase ever matters
+  # more than it does at 22 seconds.
+  #
+  # Not stubbed, deliberately. Shelling out is what this module is for, per the
+  # moduledoc above — a faked command would assert that the harness formats a
+  # payload, which was never in doubt.
+  use ExUnit.Case, async: false
 
   import CmsHarnessTest.Projects, only: [cmd!: 3]
 
@@ -25,6 +53,26 @@ defmodule CmsHarness.AnalysisTest do
   # deps, but a cold `_build` on a loaded machine outruns ExUnit's default.
   @moduletag timeout: 300_000
 
+  # On demand, not on every `mix test`.
+  #
+  # Seven real `mix` subprocess trees — `deps.get`, `compile`, `test` — in the
+  # serial phase of every run anyone makes. That is the same shape `:analyzer`
+  # already exists for, and the same cost: heavy child builds whose behaviour
+  # depends on the machine rather than on the code under test. Measured: 6.1s
+  # in-suite, 17.7s wall.
+  #
+  # That cost is the whole justification. The tag was added while `75b35ac2` —
+  # an intermittent failure in the WITHOUT-`:diagnostics` test below — was
+  # believed untraced, and read as containment for it. It was not untraced:
+  # `d4b5e051` had found and fixed the cause five days earlier, a diagnostics
+  # temp path unique within one BEAM but not across processes. So the tag stays
+  # on its own merits and nothing here is waiting on a diagnosis.
+  #
+  # `just test-analyzer` runs this group, and it must be run when an analyzer
+  # changes: this is the only coverage that the harness runs anything at all,
+  # which is the thing that was silently false for two phases.
+  @moduletag :analyzer
+
   @client_utils System.get_env("CMS_CLIENT_UTILS") ||
                   Path.expand("../client_utils", File.cwd!())
 
@@ -32,11 +80,28 @@ defmodule CmsHarness.AnalysisTest do
     {:ok, client_utils?: File.exists?(Path.join(@client_utils, "mix.exs"))}
   end
 
+  defp onboard(root) do
+    File.mkdir_p!(Path.join(root, ".claude"))
+
+    File.write!(
+      Path.join([root, ".claude", "settings.local.json"]),
+      Jason.encode!(%{
+        "env" => %{"MIX_TEST_PARTITION" => "fixture#{System.unique_integer([:positive])}"}
+      })
+    )
+  end
+
   defp mix_project(files, opts \\ []) do
     root =
-      Path.join(System.tmp_dir!(), "cms_harness_analysis_#{System.unique_integer([:positive])}")
+      CodeMySpec.TempFile.dir("cms_harness_analysis")
 
     File.mkdir_p!(Path.join(root, "lib"))
+
+    # A working copy is onboarded; the analyzer only runs against one that is.
+    # `TestDatabase.partition_for/1` reads the recorded partition and refuses a
+    # copy with none, so a fixture standing in for a checkout records one too.
+    onboard(root)
+
     File.write!(Path.join(root, "mix.exs"), mix_exs(opts))
 
     Enum.each(files, fn {relative, contents} ->
@@ -203,28 +268,53 @@ defmodule CmsHarness.AnalysisTest do
              output regardless of exit code — and if that is what happened, delete
              this test.
 
-             Check first. This has also failed intermittently for reasons nobody
-             has traced (issue 75b35ac2): full-suite runs only, never standalone,
-             on a temp project that should have no way to produce diagnostics at
-             all. An environmental failure presents exactly like a fix, and acting
-             on the instruction above would delete a test guarding a trap that is
-             still there.
+             Check first. This test's own history is the reason: it failed
+             intermittently on 2026-08-10 (issue 75b35ac2), full-suite runs only
+             and never standalone, on a temp project that should have no way to
+             produce diagnostics at all. An environmental failure presents
+             exactly like a fix, and acting on the instruction above would delete
+             a test guarding a trap that is still there.
 
              So: confirm `extract_compiler_errors/1` is actually reached on a zero
              exit before deleting anything. A self-deleting test that can fire by
              accident deletes itself by accident.
 
+             That 2026-08-10 failure **was** traced, to a shared diagnostics
+             file, and fixed the same night in `d4b5e051` — whose message names
+             this test by its line number then (`analysis_test:173`) and this
+             symptom verbatim. `create_temp_file_path/0` built the path from
+             `System.unique_integer/1`, unique within one BEAM, in a directory
+             shared by the whole machine; two OS processes each started the
+             counter fresh and one read the other's file. The diagnostics were
+             real, and belonged to another process's project.
+
              Already eliminated, so nobody spends the hour again:
 
-               * A shared diagnostics file. `Compile` takes its path from
-                 `TempFile.path/2` through `Keyword.get_lazy/3` — per call, and
-                 the token carries OS pid, a unique integer and random bytes.
+               * A shared diagnostics file — the cause above, now fixed.
+                 `Compile` takes its path from `TempFile.path/2` through
+                 `Keyword.get_lazy/3` — per call, and the token carries OS pid,
+                 a unique integer and random bytes.
                * A leaked `PATH`. `CodeMySpec.EnvironmentsTest` does rewrite
                  `PATH` and `RELEASE_ROOT` globally, but it is `use ExUnit.Case`
                  with no `async: true`, so it runs in the serial phase and
                  cannot overlap anything.
                * A path computed once at compile time. `create_temp_file_path/0`
                  is a function, not a module attribute.
+
+             If it fires again — meaning after 2026-08-10 02:40, which nothing
+             has yet been observed to do — the next candidate is build-directory
+             lock contention. `CmsHarness.Project.AnalysisServer` serialises
+             analyzers per working copy because `mix test` and `mix spex` share
+             `_build/test`, so a sweep running beside this file's child `mix`
+             invocations contends for that lock. The signature elsewhere is
+             `Waiting for lock on the build directory (held by process N)`
+             followed by a `DBConnection` checkout timeout — a timeout caused by
+             waiting, not by the connection. Carried over from `5e9fa939`.
+
+             This module is `@moduletag :analyzer`, which is not about that
+             flake: it spawns seven real `mix` subprocess trees in the serial
+             phase of every run. `just test-analyzer` runs it and it must pass
+             there.
 
              If it fires again, the diagnostics above are the evidence that was
              missing every previous time — they should name a file, and that file

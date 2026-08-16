@@ -36,11 +36,14 @@ defmodule CodeMySpecSpex.Story812.Criterion6514Spex do
       end
 
       when_ "Analytics.dispatch fires and the handler runs end-to-end", context do
-        # capture_log_at_info lowers the Logger level to :info for the
-        # capture window (and restores it after) so the handler-entry
-        # trace, logged at :info, reaches the buffer.
+        # `:debug`, not `:info`, because the trace this criterion follows spans
+        # both levels: handler entry is logged at `:info`, and the MP delivery
+        # outcome at `:debug` — moved down deliberately, since at warning it
+        # emitted 2,190 lines in a single suite run and buried the warnings that
+        # meant something. Capturing at `:info` saw the first half and asserted
+        # on the second.
         log =
-          Fixtures.capture_log_at_info(fn ->
+          Fixtures.capture_log_at(:debug, fn ->
             Fixtures.dispatch_analytics_event(:sign_up, %{
               user_id: context.user_id,
               method: "log_trace_test"

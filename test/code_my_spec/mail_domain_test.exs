@@ -3,13 +3,17 @@ defmodule CodeMySpec.MailDomainTest do
   Covers the Resend-backed domain onboarding flow in `CodeMySpec.Mail`:
   register a sending domain, read its DNS records/status, and verify it.
 
-  HTTP is stubbed with a Req `plug:` (no network, no cassette files) and a
-  fake api_key is installed under the client's config key for the duration of
-  each test so the client actually issues requests rather than short-circuiting
-  on a missing key.
+  HTTP is stubbed through `Req.Test`, which resolves a stub against the
+  calling process — so this file and `mail_attachments_test` can drive the
+  same client at once. The api_key and the `{Req.Test, ResendClient}` plug are
+  pinned in `config/test.exs`; only the response varies per test.
+
+  A test that installs no stub is asserting the provider is never reached: any
+  call raises and names the client, rather than returning a soft
+  `:resend_not_configured` that a gated path could swallow.
   """
 
-  use CodeMySpecTest.DataCase, async: false
+  use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.UsersFixtures
 
@@ -21,12 +25,6 @@ defmodule CodeMySpec.MailDomainTest do
     %{"type" => "TXT", "name" => "resend._domainkey", "value" => "p=ABC", "status" => "pending"},
     %{"type" => "TXT", "name" => "@", "value" => "v=spf1 include:resend", "status" => "pending"}
   ]
-
-  setup do
-    previous = Application.get_env(:code_my_spec, ResendClient, [])
-    on_exit(fn -> Application.put_env(:code_my_spec, ResendClient, previous) end)
-    :ok
-  end
 
   defp install_plug(status) do
     plug = fn conn ->
@@ -42,7 +40,7 @@ defmodule CodeMySpec.MailDomainTest do
       end
     end
 
-    Application.put_env(:code_my_spec, ResendClient, api_key: "re_test_key", plug: plug)
+    Req.Test.stub(ResendClient, plug)
   end
 
   describe "setup_domain/3" do
@@ -61,14 +59,6 @@ defmodule CodeMySpec.MailDomainTest do
       # Persisted, not just returned.
       {:ok, reloaded} = Projects.get_project(scope, project.id)
       assert reloaded.resend_domain_id == "dom_1"
-    end
-
-    test "surfaces a clear error when the provider key is missing" do
-      Application.put_env(:code_my_spec, ResendClient, api_key: "", plug: nil)
-      scope = full_scope_fixture()
-
-      assert {:error, :resend_not_configured} =
-               Mail.setup_domain(scope, scope.active_project, "inbound.sam-ships.com")
     end
 
     test "adopts an already-registered domain when the provider rejects creation" do
@@ -90,7 +80,7 @@ defmodule CodeMySpec.MailDomainTest do
         end
       end
 
-      Application.put_env(:code_my_spec, ResendClient, api_key: "re_test_key", plug: plug)
+      Req.Test.stub(ResendClient, plug)
       scope = full_scope_fixture()
 
       assert {:ok, project, records} =
@@ -143,7 +133,7 @@ defmodule CodeMySpec.MailDomainTest do
         end
       end
 
-      Application.put_env(:code_my_spec, ResendClient, api_key: "re_test_key", plug: plug)
+      Req.Test.stub(ResendClient, plug)
       scope = full_scope_fixture()
       {:ok, mailbox} = Mail.create_mailbox(scope, %{address: "support@sam-ships.com"})
 
@@ -156,7 +146,15 @@ defmodule CodeMySpec.MailDomainTest do
     end
 
     test "persists the email even when the provider send fails" do
-      Application.put_env(:code_my_spec, ResendClient, api_key: "", plug: nil)
+      # A provider that answers badly, rather than a client that was never
+      # configured. What this replaced blanked the api_key, so the send never
+      # left the process and the test proved the *unconfigured* path rather
+      # than the failing-provider one it is named for — the two reach the same
+      # `{:error, _}` in `deliver/3` from opposite directions.
+      Req.Test.stub(ResendClient, fn conn ->
+        Plug.Conn.send_resp(conn, 500, ~s({"message":"upstream unavailable"}))
+      end)
+
       scope = full_scope_fixture()
       {:ok, mailbox} = Mail.create_mailbox(scope, %{address: "support@sam-ships.com"})
 
@@ -251,7 +249,7 @@ defmodule CodeMySpec.MailDomainTest do
         end
       end
 
-      Application.put_env(:code_my_spec, ResendClient, api_key: "re_test", plug: plug)
+      Req.Test.stub(ResendClient, plug)
 
       {:ok, email} =
         Mail.route_inbound(ctx.project, %{
@@ -267,8 +265,7 @@ defmodule CodeMySpec.MailDomainTest do
     end
 
     test "uses the event body when present (no fetch)", ctx do
-      Application.put_env(:code_my_spec, ResendClient, api_key: "", plug: nil)
-
+      # No stub: the event body is used, so nothing should be fetched.
       {:ok, email} =
         Mail.route_inbound(ctx.project, %{
           from: "lead@example.com",
@@ -321,7 +318,7 @@ defmodule CodeMySpec.MailDomainTest do
         conn |> Plug.Conn.put_resp_content_type("application/json") |> Plug.Conn.send_resp(200, body)
       end
 
-      Application.put_env(:code_my_spec, ResendClient, api_key: "re_test", plug: plug)
+      Req.Test.stub(ResendClient, plug)
     end
 
     test "inserts inbound the project never recorded and reports counts", ctx do

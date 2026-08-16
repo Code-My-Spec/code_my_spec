@@ -15,6 +15,8 @@ defmodule CmsHarness.Web.HealthControllerTest do
   this puts the same fact somewhere you can ask for it before stopping.
   """
 
+    # Sync: `CmsHarnessTest.ConnCase` clears CMS_TOKEN and friends in setup, and
+  # OS environment variables are node-global rather than per-test.
   use CmsHarnessTest.ConnCase, async: false
 
   test "it names the commit the harness booted from", %{conn: conn} do

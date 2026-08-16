@@ -251,3 +251,100 @@ config :code_my_spec, CodeMySpec.Workspaces.PreviewAddress,
 # The pane re-checks a workspace that is still coming up. Short here so a spec
 # observes the transition instead of waiting out the interval a visitor gets.
 config :code_my_spec, CodeMySpecWeb.PreviewLive.Show, recheck_ms: 50
+
+# The GitHub client's test plug, set once here rather than by each test.
+#
+# `{Req.Test, Module}` dispatches to whatever stub the *calling process* has
+# registered, so two test files can drive the same client concurrently —
+# which `Application.put_env` at runtime could not, being node-global. It was
+# the shared key behind `git_hub_test` and `provisioning/repository_test`
+# both having to be sync.
+#
+# A call with no stub registered raises rather than reaching GitHub, which is
+# the behaviour wanted: a test that forgot to stub should say so.
+config :code_my_spec, CodeMySpec.GitHub, plug: {Req.Test, CodeMySpec.GitHub}
+
+
+# The platform deploy key, set once so tests that need one present do not have
+# to write it into application env themselves. `app_credential_test` and
+# `content_sync_controller_test` both did, with different values, which is
+# what pinned them together.
+#
+# `content_sync_controller_test` stays sync regardless: one of its tests
+# deletes this key to assert the unconfigured refusal, and that is visible to
+# the node however the value arrived.
+config :code_my_spec, deploy_key: "test_platform_deploy_key"
+
+# The Resend client, same arrangement as GitHub above. `mail_domain_test` and
+# `mail_attachments_test` both wrote this key, so neither could be async.
+#
+# The api_key is here rather than per-test because it only has to be
+# *present* — what each test varies is the response, and that is the plug.
+# Unlike Hetzner, nothing outside these two files depends on Resend being
+# unconfigured; the one test that does now lives in `mail_not_configured_test`.
+config :code_my_spec, CodeMySpec.Mail.ResendClient,
+  api_key: "re_test_key",
+  plug: {Req.Test, CodeMySpec.Mail.ResendClient}
+
+# Hetzner has no api_token here on purpose. `Hetzner.token/1` falls back to
+# this key only after account and project secrets, so a token here would not
+# configure one test — it would make every scope in the suite look configured,
+# and the provisioning page's `reverify` would start really calling
+# `list_servers/1`. `hetzner_test` puts its token in a project secret instead.
+#
+# The plug is safe to pin: `{Req.Test, Hetzner}` resolves per process, and a
+# call with no stub raises rather than reaching Hetzner. Without it, a test
+# that has a token but no stub makes a live request — which is exactly what
+# happened while writing this.
+config :code_my_spec, CodeMySpec.Provisioning.Hetzner,
+  plug: {Req.Test, CodeMySpec.Provisioning.Hetzner}
+
+# Every remaining Req client gets a test plug, for the same reason the three
+# above have one: `{Req.Test, Mod}` resolves per process, so a stub set by one
+# test is invisible to another, and a call with **no** stub raises instead of
+# reaching the internet.
+#
+# That second half is the point of doing this in bulk. A client whose
+# credential happens to be present and whose plug is unset makes a real
+# request from the unit suite. It is not hypothetical: `hetzner_test` reached
+# the live Hetzner API and came back `{:hetzner_error, 401, "the token you
+# have provided is invalid"}` — a genuine reply from Hetzner, in a test whose
+# subject was the *unconfigured* path.
+#
+# Pinning the plug does not configure a credential, so a client with no
+# credential still short-circuits exactly as before.
+config :code_my_spec, CodeMySpec.Mail.ImageProxy, plug: {Req.Test, CodeMySpec.Mail.ImageProxy}
+config :code_my_spec, CodeMySpec.Google.Ads, plug: {Req.Test, CodeMySpec.Google.Ads}
+config :code_my_spec, CodeMySpec.Google.Gsc, plug: {Req.Test, CodeMySpec.Google.Gsc}
+config :code_my_spec, CodeMySpec.Google.Ga4, plug: {Req.Test, CodeMySpec.Google.Ga4}
+
+config :code_my_spec, CodeMySpec.Provisioning.ContentPublishing,
+  plug: {Req.Test, CodeMySpec.Provisioning.ContentPublishing}
+
+config :code_my_spec, CodeMySpec.Provisioning.Cloudflare,
+  plug: {Req.Test, CodeMySpec.Provisioning.Cloudflare}
+
+config :code_my_spec, CodeMySpec.Provisioning.Deploy, plug: {Req.Test, CodeMySpec.Provisioning.Deploy}
+config :code_my_spec, CodeMySpec.Provisioning.Widget, plug: {Req.Test, CodeMySpec.Provisioning.Widget}
+config :code_my_spec, CodeMySpec.Provisioning.Resend, plug: {Req.Test, CodeMySpec.Provisioning.Resend}
+
+config :code_my_spec, CodeMySpec.Provisioning.Deploy.UptimeRobot,
+  plug: {Req.Test, CodeMySpec.Provisioning.Deploy.UptimeRobot}
+
+config :code_my_spec, CodeMySpec.Content.TriggerClient,
+  plug: {Req.Test, CodeMySpec.Content.TriggerClient}
+
+config :code_my_spec, CodeMySpec.Content.CloudflareClient,
+  plug: {Req.Test, CodeMySpec.Content.CloudflareClient}
+
+config :code_my_spec, CodeMySpec.Content.PullClient, plug: {Req.Test, CodeMySpec.Content.PullClient}
+config :code_my_spec, CodeMySpec.Content.S3Client, plug: {Req.Test, CodeMySpec.Content.S3Client}
+
+config :code_my_spec, CodeMySpec.AgentHarness.ConversationRecorder,
+  plug: {Req.Test, CodeMySpec.AgentHarness.ConversationRecorder}
+
+config :code_my_spec, CodeMySpec.Billing.StripeClient,
+  plug: {Req.Test, CodeMySpec.Billing.StripeClient}
+
+config :code_my_spec, CodeMySpec.Analytics.GoogleAnalytics.HTTPAdapter,
+  plug: {Req.Test, CodeMySpec.Analytics.GoogleAnalytics.HTTPAdapter}

@@ -5,6 +5,33 @@ defmodule CodeMySpec.Support.TestAdapter do
   Maintains a single fixture repository that is cloned once and kept fresh,
   then copies it for each test to avoid network calls and prevent test
   contention from concurrent modifications.
+
+  ## Recorded analyzer output is committed, not generated
+
+  The `*_cache_path/0` functions point into `test/fixtures/analyzer_output/`,
+  which is in the repository. Roughly 60KB of JSON, and every test run reads it
+  without producing it.
+
+  It used to be generated at boot by `ensure_fixture_fresh/0`, called from
+  `test_helper.exs` on every `mix test`. Most of that work was
+  `File.exists?`-guarded and therefore cheap, but `ensure_repo_fresh/2` was not:
+  it ran `git pull` in both fixture repositories every single time. Those live
+  under `../code_my_spec_test_repos`, which every worktree reaches through a
+  symlink to one shared directory — so two agents starting suites near each
+  other were two pulls racing in one repository before a single test ran, and
+  the analyzer tests then compiled and ran suites inside that same shared build
+  tree. That is the contention behind the `** (EXIT …) killed` findings.
+
+  Regenerate deliberately with `mix cms.test_fixtures` when the real tools
+  change shape. Nothing in the test path regenerates anything.
+
+  ## The live fixture project is still on disk
+
+  `checkout/1` and `clone/4` hand out pooled copies of a real Phoenix project,
+  which cannot be committed usefully — it is 9MB with a build tree. Only the
+  analyzer tests need it, and the pool creates copies lazily, so a checkout
+  without the fixture repository costs nothing until one of those tests asks
+  for it. `mix cms.test_fixtures` is what puts it there.
   """
 
   @behaviour CodeMySpec.Git.Behaviour
@@ -13,21 +40,33 @@ defmodule CodeMySpec.Support.TestAdapter do
   @content_repo_fixture_path "../code_my_spec_test_repos/test_content_repo"
   @code_fixture_url "https://github.com/Code-My-Spec/test_phoenix_project.git"
   @content_fixture_url "https://github.com/johns10/test_content_repo.git"
-  @test_results_cache "../code_my_spec_test_repos/test_results_cache.json"
-  @test_results_failing_cache "../code_my_spec_test_repos/test_results_failing_cache.json"
-  @test_results_post_cache_failing_cache "../code_my_spec_test_repos/test_results_post_cache_failing_cache.json"
-  @compiler_ok_cache "../code_my_spec_test_repos/compiler_ok_cache.json"
-  @compiler_warnings_cache "../code_my_spec_test_repos/compiler_warnings_cache.json"
-  @compiler_errors_cache "../code_my_spec_test_repos/compiler_errors_cache.json"
-  @spex_results_passing_cache "../code_my_spec_test_repos/spex_results_passing_cache.jsonl"
-  @spex_results_failing_cache "../code_my_spec_test_repos/spex_results_failing_cache.jsonl"
+
+  # Committed. See the moduledoc.
+  @fixture_output_dir "test/fixtures/analyzer_output"
+  @test_results_cache "#{@fixture_output_dir}/test_results_cache.json"
+  @test_results_failing_cache "#{@fixture_output_dir}/test_results_failing_cache.json"
+  @test_results_post_cache_failing_cache "#{@fixture_output_dir}/test_results_post_cache_failing_cache.json"
+  @compiler_ok_cache "#{@fixture_output_dir}/compiler_ok_cache.json"
+  @compiler_warnings_cache "#{@fixture_output_dir}/compiler_warnings_cache.json"
+  @compiler_errors_cache "#{@fixture_output_dir}/compiler_errors_cache.json"
+  @spex_results_passing_cache "#{@fixture_output_dir}/spex_results_passing_cache.jsonl"
+  @spex_results_failing_cache "#{@fixture_output_dir}/spex_results_failing_cache.jsonl"
+
+  @doc "Where the fixture repositories live, for `mix cms.test_fixtures`."
+  def code_repo_fixture_path, do: @code_repo_fixture_path
+  def content_repo_fixture_path, do: @content_repo_fixture_path
+  def code_fixture_url, do: @code_fixture_url
+  def content_fixture_url, do: @content_fixture_url
+  def fixture_output_dir, do: @fixture_output_dir
 
   @doc """
   Ensures the fixture repositories exist and are up to date.
 
   Clones the repositories if they don't exist, otherwise pulls latest changes.
   Generates and caches test results and compiler diagnostics if not already cached.
-  This should be called once during test setup.
+
+  **Not called from `test_helper.exs`.** This is `mix cms.test_fixtures`'s
+  entry point and runs only when someone asks for it — see the moduledoc.
   """
   def ensure_fixture_fresh do
     ensure_repo_fresh(@code_repo_fixture_path, @code_fixture_url)

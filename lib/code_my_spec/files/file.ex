@@ -32,6 +32,7 @@ defmodule CodeMySpec.Files.File do
     :persona_sources,
     :credo_check,
     :qa_plan,
+    :qa_script,
     :integration,
     :task_artifact,
     :mix_exs,
@@ -57,6 +58,7 @@ defmodule CodeMySpec.Files.File do
           | :qa_result
           | :config
           | :architecture
+          | :qa_script
           | :integration
           | :task_artifact
           | :mix_exs
