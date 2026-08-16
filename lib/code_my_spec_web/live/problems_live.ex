@@ -175,7 +175,15 @@ defmodule CodeMySpecWeb.ProblemsLive do
               <td data-test="problem-source" class="font-mono text-xs">{problem.source}</td>
               <td data-test="problem-file" class="font-mono text-xs">{problem.file_path || "—"}</td>
               <td class="font-mono text-xs">{problem.line || ""}</td>
-              <td data-test="problem-message" class="text-sm">{problem.message}</td>
+              <%!-- The full message rides on the cell's title, so truncating
+                    the visible line does not throw the evidence away. On the
+                    cell rather than the inner div so the whole cell is the
+                    hover target. --%>
+              <td data-test="problem-message" class="text-sm" title={problem.message}>
+                <div data-test="problem-message-line" class="max-w-md truncate">
+                  {summary_line(problem.message)}
+                </div>
+              </td>
               <td class="text-xs opacity-70">{problem.category || ""}</td>
             </tr>
             <tr :if={@result.problems == []}>
@@ -217,6 +225,38 @@ defmodule CodeMySpecWeb.ProblemsLive do
     </div>
     """
   end
+
+  # One line of a message that is sometimes a whole failure.
+  #
+  # A row is one problem, and the table is for finding the one you want. Most
+  # messages are short — 360 of 724 fit in 80 characters — but a spex failure
+  # carries its stack trace, and 15 run past 400 characters with the longest at
+  # 4,393 and 28 containing newlines. Rendered whole, one of those is taller
+  # than the rest of the table.
+  #
+  # The first line is the part that identifies it: for a spex that is the
+  # criterion and what it was checking, and everything after is the trace. Cut
+  # to a line and capped, with the whole message on the title attribute and
+  # still reachable in full from `list_problems`.
+  @message_cap 140
+
+  defp summary_line(nil), do: ""
+
+  defp summary_line(message) do
+    message
+    |> String.split("\n", parts: 2)
+    |> hd()
+    |> String.trim()
+    |> case do
+      "" -> message |> String.replace(~r/\s+/, " ") |> String.trim() |> cap()
+      line -> cap(line)
+    end
+  end
+
+  defp cap(text) when byte_size(text) > @message_cap,
+    do: String.slice(text, 0, @message_cap) <> "…"
+
+  defp cap(text), do: text
 
   attr :severity, :any, required: true
 
