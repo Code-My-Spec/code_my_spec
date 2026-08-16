@@ -176,7 +176,7 @@ defmodule CodeMySpec.BootVersion do
   # branch, or has no upstream at all — none of those mean the running code is
   # stale, and saying "drifted" for them would train readers to ignore it.
   defp behind_upstream(root, head) when is_binary(head) do
-    with upstream when is_binary(upstream) <- rev_parse(root, "@{upstream}"),
+    with upstream when is_binary(upstream) <- upstream_ref(root),
          true <- upstream != head,
          true <- ancestor?(root, head, upstream) do
       upstream
@@ -186,6 +186,46 @@ defmodule CodeMySpec.BootVersion do
   end
 
   defp behind_upstream(_root, _head), do: nil
+
+  # `@{upstream}` first, `origin/<branch>` when that is not configured.
+  #
+  # The fallback is not belt-and-braces, it is the case that matters. The main
+  # checkout on this machine — the one both long-running processes serve from —
+  # has a `[branch "main"]` section carrying `vscode-merge-base` and no `remote`
+  # or `merge` key, so `@{upstream}` does not resolve there and the first
+  # version of this returned `nil` in the exact configuration it was written
+  # for. Shipped blind, and only caught by reading `/health` afterwards and
+  # asking why a checkout that was demonstrably behind reported no drift.
+  #
+  # That is the same failure this function exists to fix, one layer down: an
+  # instrument that cannot answer in the situation where the answer is needed.
+  # A branch with a tracking ref set is the tidy case; a long-lived checkout
+  # someone has pulled in for years is the ordinary one.
+  #
+  # Convention rather than configuration, so it stays `nil` when there is no
+  # such ref — a guess about which remote is worse than no answer.
+  defp upstream_ref(root) do
+    rev_parse(root, "@{upstream}") || origin_ref(root)
+  end
+
+  defp origin_ref(root) do
+    case current_branch(root) do
+      nil -> nil
+      "HEAD" -> nil
+      branch -> rev_parse(root, "origin/" <> branch)
+    end
+  end
+
+  # Detached HEAD answers the literal string "HEAD", which names no branch and
+  # so has no `origin/` counterpart — refused above rather than turned into
+  # `origin/HEAD`, which resolves to the default branch and would compare
+  # against something the checkout is not on.
+  defp current_branch(root) do
+    case git(root, ["rev-parse", "--abbrev-ref", "HEAD"]) do
+      {output, 0} -> String.trim(output)
+      _ -> nil
+    end
+  end
 
   defp ancestor?(root, maybe_ancestor, descendant) do
     case git(root, ["merge-base", "--is-ancestor", maybe_ancestor, descendant]) do
