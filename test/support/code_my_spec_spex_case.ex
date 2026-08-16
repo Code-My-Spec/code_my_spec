@@ -113,6 +113,52 @@ defmodule CodeMySpecSpex.Case do
   """
   def workspace_runner, do: CodeMySpecTest.FakeWorkspaceRunner
 
+  @doc """
+  Set an environment variable for one spex, and put it back afterwards.
+
+  `System.put_env/2` and `System.delete_env/1` are denied inside `_spex.exs` by
+  `SpexDeniedCalls` (CMS0002), as VM mutation, and that deny is right nearly
+  always: a spec reaching for the VM is usually reaching around the surface it
+  ought to be driving.
+
+  Story 1000's criterion is the case where the variable *is* the input — "a
+  project id exported in the operator's shell does not change which project it
+  serves" cannot be arranged any other way, and the scenario is about that
+  export. So the arrangement lives here for the same reason `workspace_runner/0`
+  does, one paragraph up: the spex names what it wants, and the part the rule
+  forbids happens where the rule allows it and one place can own it.
+
+  Restored via `on_exit`, including back to "unset". A variable left set changes
+  what every later spec in the same VM resolves, and that is exactly the bug the
+  criterion using this describes.
+  """
+  @spec put_env!(String.t(), String.t()) :: :ok
+  def put_env!(name, value) do
+    restore_env_on_exit(name)
+    System.put_env(name, value)
+  end
+
+  @doc """
+  Unset an environment variable for one spex, and put it back afterwards.
+
+  The other half of `put_env!/2` — see there for why this lives in support.
+  """
+  @spec delete_env!(String.t()) :: :ok
+  def delete_env!(name) do
+    restore_env_on_exit(name)
+    System.delete_env(name)
+  end
+
+  defp restore_env_on_exit(name) do
+    previous = System.get_env(name)
+    ExUnit.Callbacks.on_exit(fn -> restore_env(name, previous) end)
+  end
+
+  # Two heads, so "there was nothing there before" is a value rather than a
+  # branch — and so restoring never leaves a variable set that was not.
+  defp restore_env(name, nil), do: System.delete_env(name)
+  defp restore_env(name, previous), do: System.put_env(name, previous)
+
   setup tags do
     # `ownership_timeout` has to outlast the work, not the request. Recording a
     # spex waits on a provider verifying DNS — minutes, not milliseconds — and
@@ -1711,7 +1757,8 @@ defmodule CodeMySpecSpex.Case do
     view
     |> Phoenix.LiveViewTest.form("form[phx-submit='save_credentials']", %{
       "credentials" => %{
-        "hetzner_api_token" => recording_credential("HETZNER_API_TOKEN", "spex-placeholder-token"),
+        "hetzner_api_token" =>
+          recording_credential("HETZNER_API_TOKEN", "spex-placeholder-token"),
         "hetzner_s3_access_key_id" =>
           recording_credential("HETZNER_S3_ACCESS_KEY_ID", "spex-placeholder-id"),
         "hetzner_s3_secret_access_key" =>

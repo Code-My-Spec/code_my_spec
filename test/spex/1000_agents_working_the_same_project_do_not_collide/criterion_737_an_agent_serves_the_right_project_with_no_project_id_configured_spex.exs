@@ -43,14 +43,10 @@ defmodule CodeMySpecSpex.Story1000.Criterion737Spex do
         # it is precisely the situation the rule exists for, and leaving it set
         # would make the premise false while the scenario claimed it held.
         #
-        # Restored on exit, including to "unset", so a spec that runs after this
-        # one sees whatever the machine actually has.
-        previous = System.get_env("CMS_PROJECT_ID")
-        System.delete_env("CMS_PROJECT_ID")
-
-        ExUnit.Callbacks.on_exit(fn ->
-          restore_env("CMS_PROJECT_ID", previous)
-        end)
+        # Through the case helper, which restores on exit including to "unset":
+        # the mutation itself is denied in a spex file (CMS0002) and belongs in
+        # support, the same way the workspace runner does.
+        delete_env!("CMS_PROJECT_ID")
 
         refute System.get_env("CMS_PROJECT_ID")
 
@@ -92,44 +88,21 @@ defmodule CodeMySpecSpex.Story1000.Criterion737Spex do
             context do
         other_project_id = Ecto.UUID.generate()
 
-        with_env("CMS_PROJECT_ID", other_project_id, fn ->
-          response =
-            Phoenix.ConnTest.build_conn()
-            |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_harness_id)
-            |> Plug.Conn.put_req_header("content-type", "application/json")
-            |> post(~p"/api/hooks/stop", %{"session_id" => "spex-hijack-attempt"})
+        put_env!("CMS_PROJECT_ID", other_project_id)
 
-          refute response.resp_body =~ other_project_id,
-                 "an exported CMS_PROJECT_ID reached the agent's work. A developer with two " <>
-                   "projects in two terminals has this set, and an agent that reads it writes " <>
-                   "one project's files into the other's rows with nothing suspicious in any log."
-        end)
+        response =
+          Phoenix.ConnTest.build_conn()
+          |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_harness_id)
+          |> Plug.Conn.put_req_header("content-type", "application/json")
+          |> post(~p"/api/hooks/stop", %{"session_id" => "spex-hijack-attempt"})
+
+        refute response.resp_body =~ other_project_id,
+               "an exported CMS_PROJECT_ID reached the agent's work. A developer with two " <>
+                 "projects in two terminals has this set, and an agent that reads it writes " <>
+                 "one project's files into the other's rows with nothing suspicious in any log."
 
         {:ok, context}
       end
     end
   end
-
-  # Restores whatever was there, including "nothing" — leaving a stray
-  # CMS_PROJECT_ID set would silently change what every later spec in this VM
-  # resolves.
-  #
-  # `on_exit` rather than `try/after`: control flow is not permitted in a spex
-  # file, and this is the idiom the `given_` step above already uses for this
-  # same variable. Restoration still happens if `fun` raises — `on_exit` runs
-  # either way — and the block is the last thing the scenario does, so restoring
-  # at test exit rather than at block exit is the same restoration a moment
-  # later.
-  defp with_env(name, value, fun) do
-    previous = System.get_env(name)
-    ExUnit.Callbacks.on_exit(fn -> restore_env(name, previous) end)
-    System.put_env(name, value)
-
-    fun.()
-  end
-
-  # Two heads, so "there was nothing there before" is a value rather than a
-  # branch.
-  defp restore_env(name, nil), do: System.delete_env(name)
-  defp restore_env(name, previous), do: System.put_env(name, previous)
 end

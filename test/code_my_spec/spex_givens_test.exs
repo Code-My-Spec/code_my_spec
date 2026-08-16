@@ -62,6 +62,7 @@ defmodule CodeMySpec.SpexGivensTest do
     System.cmd System.put_env System.delete_env assign put_session
     stage_ scripted_run built_deploy_run devops_on
     subscribe_and_join ChannelTest. join_widget
+    put_env! delete_env!
   )
 
   # The failure message has always offered a second remedy — "if the
