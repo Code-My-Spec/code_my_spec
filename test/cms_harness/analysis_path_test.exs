@@ -181,6 +181,47 @@ defmodule CmsHarness.AnalysisPathTest do
              "one that never ran"
   end
 
+  # The reply above and this one arrive through the same path and are not the
+  # same event. A supersede is a scheduling fact: the server had a run for this
+  # source already open and it answers for both.
+  #
+  # `Reconciler.supersede/2` made this call on the server side — "at `:info`,
+  # not `:warning` — nothing is wrong … logging it as a failure taught readers
+  # to ignore a level that should mean something" — and the harness kept
+  # shouting. 80 of the 385 rejections in this machine's `harness.log` were
+  # supersedes, each at `level=error` under a message claiming the work was lost
+  # and the next stop would report pending. Neither is true of a supersede, and
+  # a log where `error` is routinely a non-event is one nobody reads.
+  test "a supersede from the server is reported as a fact, not as a rejection", ctx do
+    # The suite runs at `warning`, and the whole point of this change is that the
+    # line is no longer above that. Lowered for the duration, restored by
+    # `on_exit` rather than `try/after` — control flow is not allowed in a test
+    # file, which is the rule this project's own credo check enforces.
+    previous_level = Logger.level()
+    Logger.configure(level: :info)
+    on_exit(fn -> Logger.configure(level: previous_level) end)
+
+    FakeServer.start()
+    FakeServer.reject_analysis(~s({:superseded, "already queued"}))
+    {:ok, _} = Projects.ensure_started(ctx.project.root)
+    assert await_connected(ctx.project.root)
+
+    log =
+      capture_log(fn ->
+        FakeServer.request_analysis([%{"run_id" => 31, "source" => "sobelow", "args" => []}])
+        await_result(31)
+        Process.sleep(500)
+      end)
+
+    refute log =~ "REJECTED",
+           "a supersede is not a rejection, and calling it one trains readers to " <>
+             "skip the level that should mean something"
+
+    assert log =~ "superseded",
+           "it should still say what happened — the analyzer did run, and that work " <>
+             "was duplicated and discarded"
+  end
+
   test "a second run of a source already queued is superseded, not failed", ctx do
     FakeServer.start()
     {:ok, _} = Projects.ensure_started(ctx.project.root)
