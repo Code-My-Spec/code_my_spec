@@ -420,6 +420,7 @@ defmodule CodeMySpecSpex.Case do
   def fake(%{fakes: fakes}, :resend), do: Map.fetch!(fakes, CodeMySpec.Provisioning.Resend)
   def fake(%{fakes: fakes}, :cloudflare), do: Map.fetch!(fakes, CodeMySpec.Provisioning.Cloudflare)
   def fake(%{fakes: fakes}, :storage), do: Map.fetch!(fakes, S3Client)
+  def fake(%{fakes: fakes}, :github), do: Map.fetch!(fakes, CodeMySpec.GitHub)
 
   @doc """
   The servers the account holds, for a `then_` asking what a run built.
@@ -431,6 +432,48 @@ defmodule CodeMySpecSpex.Case do
 
   @doc "Their names, sorted — what a criterion counting boxes actually reads."
   def server_names(context), do: context |> servers() |> Enum.map(& &1["name"]) |> Enum.sort()
+
+  @doc """
+  A repository of that name is already in the account.
+
+  The premise behind both "adopt rather than duplicate" (8179) and "a colliding
+  name is named, and Sam chooses" (8185). Under recordings it was true because
+  an earlier run had left one behind — which made those criteria pass on a
+  dirty account and fail on a clean one, the state of GitHub deciding the
+  result rather than the code.
+
+  Planted in the fake account, so the premise is the same on every run.
+  """
+  def repository_exists(context, project, opts \\ []) do
+    # The owner the step will actually use, not the fake's default login: the
+    # suite sets `:org` to a throwaway organisation, so a repository planted
+    # under `sam` is a repository in a different account and collides with
+    # nothing — the step created its own and reported done, adopting a
+    # collision that was never in its way.
+    owner = Keyword.get(opts, :owner, spex_owner() || "sam")
+    name = Fixtures.repository_name(project)
+
+    Fakes.GitHub.add_repository(fake(context, :github), owner, name)
+
+    context
+  end
+
+  @doc """
+  The remote refuses the push.
+
+  A repository that exists and a push that landed are two claims, and
+  criterion 8184 is the gap between them: a remote that has moved on rejects a
+  non-fast-forward, and the step is not done until a push succeeds. Nothing on
+  the shell side can know what a remote holds, so this is stated rather than
+  arranged — which also means it says, in the spex, what is being tested.
+  """
+  def push_is_rejected(context) do
+    previous = Application.get_env(:code_my_spec, :memory_shell_push)
+    Application.put_env(:code_my_spec, :memory_shell_push, :rejected)
+    on_exit(fn -> Application.put_env(:code_my_spec, :memory_shell_push, previous) end)
+
+    context
+  end
 
   @doc """
   A dump that was taken days ago.
@@ -2055,11 +2098,27 @@ defmodule CodeMySpecSpex.Case do
     previous = Application.get_env(:code_my_spec, :memory_shell)
     Application.put_env(:code_my_spec, :memory_shell, Fakes.Shell)
 
+    # And put the push back. `stage_local_only_push/0` skips it for every spex
+    # because `git` is a subprocess no cassette intercepts, so a replay pushed
+    # to a repository that existed only while the recording was made — the same
+    # criterion passing or failing by the age of its cassette. With a modelled
+    # shell it is not a subprocess and there is no network to protect, and
+    # skipping it would leave 985/8184 — "a repository that exists but rejects
+    # the push is not done" — asserting about a push that never happened.
+    previous_opts = Application.get_env(:code_my_spec, :provisioning_step_opts, [])
+
+    Application.put_env(
+      :code_my_spec,
+      :provisioning_step_opts,
+      Keyword.delete(previous_opts, :push_remote)
+    )
+
     Fixtures.unregister_environment(project.id)
     Fixtures.register_environment(project.id, env)
 
     ExUnit.Callbacks.on_exit(fn ->
       Application.put_env(:code_my_spec, :memory_shell, previous)
+      Application.put_env(:code_my_spec, :provisioning_step_opts, previous_opts)
       Fixtures.unregister_environment(project.id)
     end)
 
@@ -3596,6 +3655,58 @@ defmodule CodeMySpecSpex.Case do
 
   defp settled?(_view, key, state, _attempts) do
     raise "the #{key} step is still #{state} after five minutes"
+  end
+
+  @doc """
+  Run a step that has already run, and wait for *this* run to finish.
+
+  `await_step/3` returns the moment the step reads `done`, which is the right
+  answer for a first run and the wrong one for a second: the page still shows
+  the previous run's result, so the click starts a run nobody waits for and the
+  assertions read what the earlier one left behind. 985/8179 caught it —
+  "adopted rather than duplicated" reported `created`, which was the first
+  run's own disposition.
+
+  Waits on `data-started-at` changing, because that is what a new run
+  replaces and it does not depend on the outcome being different from last
+  time.
+  """
+  def rerun_step(view, key) do
+    before = step_started_at(view, key)
+
+    view
+    |> Phoenix.LiveViewTest.element(
+      "[data-test='setup-step'][data-step='#{key}'] [data-test='run-step']"
+    )
+    |> Phoenix.LiveViewTest.render_click()
+
+    await_restart(view, key, before, 600)
+    await_step(view, key)
+    Phoenix.LiveViewTest.render(view)
+  end
+
+  defp await_restart(view, key, before, attempts) when attempts > 1 do
+    case step_started_at(view, key) do
+      ^before ->
+        Process.sleep(100)
+        await_restart(view, key, before, attempts - 1)
+
+      _ ->
+        :ok
+    end
+  end
+
+  defp await_restart(_view, key, _before, _attempts) do
+    raise "the #{key} step never restarted"
+  end
+
+  defp step_started_at(view, key) do
+    view
+    |> Phoenix.LiveViewTest.render()
+    |> Floki.parse_document!()
+    |> Floki.find("[data-test='setup-step'][data-step='#{key}']")
+    |> Floki.attribute("data-started-at")
+    |> List.first()
   end
 
   @doc """

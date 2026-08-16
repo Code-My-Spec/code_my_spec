@@ -25,11 +25,53 @@ defmodule CodeMySpecSpex.Fakes.GitHub do
   alias Plug.Conn
 
   @doc "Fresh account state. One per test."
-  def new(login \\ "sam"), do: %{login: login, repos: [], next_id: 1}
+  def new(login \\ "sam"), do: %{login: login, repos: [], next_id: 1, token: "fake-github-token"}
+
+  @doc """
+  Put a repository in the account without creating it.
+
+  A premise, for the criteria that start from one already being there —
+  adoption (8179) and the colliding name (8185). Under recordings that was true
+  because an earlier run had left one, so those criteria passed on a dirty
+  account and failed on a clean one.
+  """
+  def add_repository(agent, owner, name) do
+    Agent.update(agent, fn state ->
+      {_status, %{repos: repos, next_id: next_id}} = create(%{"name" => name}, owner, state)
+      %{state | repos: repos, next_id: next_id}
+    end)
+  end
 
   def call(conn, agent) do
     conn = Conn.fetch_query_params(conn)
-    {status, body} = Agent.get_and_update(agent, &route(conn.method, conn.request_path, body_of(conn), &1))
+
+    case authorized?(conn, agent) do
+      true -> dispatch(conn, agent)
+      false -> unauthorized(conn)
+    end
+  end
+
+  # A token the account never issued is a 401, which is what GitHub answers
+  # for a revoked installation and what `GitHub.request/4` translates into
+  # `:github_not_connected` — "reconnect GitHub" rather than "could not create
+  # the repository". Criterion 8181's whole premise is a connection that no
+  # longer works, and a fake that ignored the credential would let the step
+  # sail through the revocation and complete.
+  defp authorized?(conn, agent) do
+    expected = Agent.get(agent, & &1.token)
+
+    Conn.get_req_header(conn, "authorization") == ["Bearer #{expected}"]
+  end
+
+  defp unauthorized(conn) do
+    conn
+    |> Conn.put_resp_content_type("application/json")
+    |> Conn.send_resp(401, Jason.encode!(%{"message" => "Bad credentials"}))
+  end
+
+  defp dispatch(conn, agent) do
+    {status, body} =
+      Agent.get_and_update(agent, &route(conn.method, conn.request_path, body_of(conn), &1))
 
     conn
     |> Conn.put_resp_content_type("application/json")

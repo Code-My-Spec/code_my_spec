@@ -17,13 +17,37 @@ defmodule CodeMySpecSpex.Fakes.GitHubTest do
   end
 
   defp request(agent, method, path, body \\ nil) do
-    Req.new(method: method, url: "https://api.github.com" <> path, plug: &GitHub.call(&1, agent))
+    Req.new(
+      method: method,
+      url: "https://api.github.com" <> path,
+      # The credential, because the account checks it — a token it never
+      # issued is a 401, the same as a revoked installation.
+      headers: [{"authorization", "Bearer fake-github-token"}],
+      plug: &GitHub.call(&1, agent)
+    )
     |> with_body(body)
     |> Req.request!()
   end
 
   defp with_body(req, nil), do: req
   defp with_body(req, body), do: Req.merge(req, json: body)
+
+  # 8181's premise: Sam revoked the installation. `GitHub.request/4` turns this
+  # into `:github_not_connected`, which is what makes the step say "reconnect
+  # GitHub" rather than "could not create the repository".
+  test "a token the account never issued is refused", %{agent: agent} do
+    response =
+      Req.request!(
+        Req.new(
+          method: :get,
+          url: "https://api.github.com/user",
+          headers: [{"authorization", "Bearer spex-deliberately-invalid-token"}],
+          plug: &GitHub.call(&1, agent)
+        )
+      )
+
+    assert response.status == 401
+  end
 
   test "a created repository is readable back", %{agent: agent} do
     assert %{status: 201, body: repo} = request(agent, :post, "/user/repos", %{"name" => "app"})

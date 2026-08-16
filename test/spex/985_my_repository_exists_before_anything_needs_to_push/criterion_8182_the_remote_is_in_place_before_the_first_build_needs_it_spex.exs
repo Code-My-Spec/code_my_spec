@@ -17,23 +17,16 @@ defmodule CodeMySpecSpex.Story985.Criterion8182Spex do
   """
 
   use CodeMySpecSpex.Case
-  use ExCliVcr
 
   @endpoint CodeMySpecWeb.Endpoint
-
-  @cassette "setup_run_repository_then_deploy"
-
-  # Mounting the page and saving credentials both reach providers for real —
-  # saving a credential proves it with a live call. Outside a cassette they hit
-  # the API while recording and the network while replaying, so on replay the
-  # credentials never proved, setup refused to start, and the criterion
-  # reported the repository step as never finishing.
-  @given_cassette "985_8182_credentials"
 
   setup :register_log_in_setup_account
   setup :setup_active_project
   setup :devops_on
-  setup :connect_providers
+  setup :fake_providers
+  # A modelled shell over the memory filesystem: the repository step's proof
+  # is a `git push`, which is a subprocess rather than an API call.
+  setup :fake_working_directory
 
   spex "The remote is in place before the first build needs it" do
     scenario "the repository step completes before the deploy step starts" do
@@ -42,46 +35,30 @@ defmodule CodeMySpecSpex.Story985.Criterion8182Spex do
       # criterion reports the repository step as never finishing — which is
       # true, and nothing to do with what it is asking.
       given_ "Sam is on the setup status page with his credentials entered", context do
-        # This runs the whole sequence, which makes real servers, a firewall and
-        # an ssh key. Nothing removed them: the run leaked two boxes per pass
-        # and eventually exhausted the Hetzner server limit, which surfaced in
-        # an unrelated story as "server limit reached".
-        tear_down_after(context.scope, [:server])
-
-        # The repository too, so the next recording starts from one that does not
-        # exist — a repository carrying an earlier run's commits rejects a fresh
-        # push as non-fast-forward (which is 8184's subject, not this one's).
-        tear_down_repository(context.project)
-
         # The repository an earlier recording made still exists and cannot be
         # deleted, so setup would pause asking whose it is — halting the run
         # before the deploy step this criterion is about. It is this project's.
         # (8185 is the criterion that *wants* that prompt; it must not get this.)
         own_repository(context.project)
 
-        view =
-          with_provider_cassette(@given_cassette, fn ->
-            view = mount_provisioning(context)
-            paste_provider_credentials(view)
-            view
-          end)
+        # Saving a credential proves it with a live call, which is why this
+        # needed a cassette. Against fakes the proof reaches the fake.
+        view = mount_provisioning(context)
+        paste_provider_credentials(view)
 
         {:ok, Map.put(context, :view, view)}
       end
 
       when_ "he runs setup", context do
-        html =
-          with_full_cassette @cassette do
-            context.view
-            |> element("[data-test='start-setup']")
-            |> render_click()
+        context.view
+        |> element("[data-test='start-setup']")
+        |> render_click()
 
-            # Started, not finished: the click returns as soon as the run
-            # begins, so the page is read once the run settles.
-            await_provisioning(context.view)
-          end
+        # Started, not finished: the click returns as soon as the run
+        # begins, so the page is read once the run settles.
+        await_provisioning(context.view)
 
-        {:ok, Map.put(context, :html, html)}
+        {:ok, Map.put(context, :html, render(context.view))}
       end
 
       then_ "the repository step records when it finished", context do
@@ -118,19 +95,23 @@ defmodule CodeMySpecSpex.Story985.Criterion8182Spex do
         # Demanding a deploy timestamp would make this criterion require a
         # provisioned server to say anything about repository ordering, which
         # is a different and much more expensive claim.
-        case started do
-          nil ->
-            refute context.html =~ ~r/data-step="deploy"[^>]*data-state="done"/,
-                   "the deploy finished without ever recording a start"
-
-          started ->
-            assert context.repo_finished_at <= started,
-                   "expected the repository to exist before the deploy needed it — " <>
-                     "repository finished #{context.repo_finished_at}, deploy started #{started}"
-        end
+        assert_ordering(started, context)
 
         {:ok, context}
       end
     end
+  end
+
+  # Function heads rather than a `case`: the two outcomes are different claims,
+  # and the suite's own rule is that a spex names them rather than branching.
+  defp assert_ordering(nil, context) do
+    refute context.html =~ ~r/data-step="deploy"[^>]*data-state="done"/,
+           "the deploy finished without ever recording a start"
+  end
+
+  defp assert_ordering(started, context) do
+    assert context.repo_finished_at <= started,
+           "expected the repository to exist before the deploy needed it — " <>
+             "repository finished #{context.repo_finished_at}, deploy started #{started}"
   end
 end

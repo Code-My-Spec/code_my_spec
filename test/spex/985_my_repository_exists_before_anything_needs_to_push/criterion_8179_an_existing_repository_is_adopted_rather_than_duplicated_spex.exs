@@ -13,17 +13,16 @@ defmodule CodeMySpecSpex.Story985.Criterion8179Spex do
   """
 
   use CodeMySpecSpex.Case
-  use ExCliVcr
 
   @endpoint CodeMySpecWeb.Endpoint
-
-  @cassette "github_repo_already_owned"
-  @given_cassette "github_repo_first_run_created"
 
   setup :register_log_in_setup_account
   setup :setup_active_project
   setup :devops_on
-  setup :connect_providers
+  setup :fake_providers
+  # A modelled shell over the memory filesystem: the repository step's proof
+  # is a `git push`, which is a subprocess rather than an API call.
+  setup :fake_working_directory
 
   spex "An existing repository is adopted rather than duplicated" do
     scenario "a repository Sam already owns becomes the project's remote untouched" do
@@ -33,32 +32,30 @@ defmodule CodeMySpecSpex.Story985.Criterion8179Spex do
       # that one stops and asks rather than adopting.
       given_ "setup already created the repository on an earlier run", context do
 
-        # The repository is already there — that is the premise. It used to be
-        # there because an earlier run left it, which made this pass on a dirty
-        # account and fail on a clean one.
-        existing_repository(context.project)
+        # The repository an earlier run left in the account. A premise, not a
+        # first click in this test: a step re-run merges its resources by
+        # location, so a repository created inside the scenario keeps the
+        # `created` disposition its first run recorded and the second run's
+        # adoption is invisible — which is a fair description of the page, and
+        # not what this criterion is asking about.
+        repository_exists(context, context.project)
 
-        # And it is this project's, so setup adopts rather than asking.
+        # And it is this project's, so setup adopts rather than asking; 8185 is
+        # the criterion for a repository that merely happens to exist.
         own_repository(context.project)
 
         view = mount_provisioning(context)
-
-        with_full_cassette @given_cassette do
-          view
-          |> element("[data-test='setup-step'][data-step='repository'] [data-test='run-step']")
-          |> render_click()
-        end
 
         {:ok, Map.put(context, :view, view)}
       end
 
       when_ "the repository step runs", context do
-        html =
-          with_full_cassette @cassette do
-            context.view
-            |> element("[data-test='setup-step'][data-step='repository'] [data-test='run-step']")
-            |> render_click()
-          end
+        context.view
+        |> element("[data-test='setup-step'][data-step='repository'] [data-test='run-step']")
+        |> render_click()
+
+        await_step(context.view, :repository)
+        html = render(context.view)
 
         {:ok, Map.put(context, :html, html)}
       end

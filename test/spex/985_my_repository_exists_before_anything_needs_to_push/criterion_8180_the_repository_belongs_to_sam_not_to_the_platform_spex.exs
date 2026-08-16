@@ -16,24 +16,20 @@ defmodule CodeMySpecSpex.Story985.Criterion8180Spex do
   """
 
   use CodeMySpecSpex.Case
-  use ExCliVcr
 
   @endpoint CodeMySpecWeb.Endpoint
-
-  @cassette "github_repo_create_ok"
 
   setup :register_log_in_setup_account
   setup :setup_active_project
   setup :devops_on
-  setup :connect_providers
+  setup :fake_providers
+  # A modelled shell over the memory filesystem: the repository step's proof
+  # is a `git push`, which is a subprocess rather than an API call.
+  setup :fake_working_directory
 
   spex "The repository belongs to Sam, not to the platform" do
     scenario "the created repository is owned by Sam's own account" do
       given_ "Sam is on the setup status page with GitHub connected", context do
-        # The repository this makes lives in the throwaway organisation and goes
-        # away with the spex, so the next recording starts from one that is not there.
-        tear_down_repository(context.project)
-
         {:ok, view, _html} =
           live(context.conn, "/app/projects/#{context.project.id}/provisioning")
 
@@ -41,12 +37,15 @@ defmodule CodeMySpecSpex.Story985.Criterion8180Spex do
       end
 
       when_ "the repository step runs", context do
-        html =
-          with_full_cassette @cassette do
-            context.view
-            |> element("[data-test='setup-step'][data-step='repository'] [data-test='run-step']")
-            |> render_click()
-          end
+        context.view
+        |> element("[data-test='setup-step'][data-step='repository'] [data-test='run-step']")
+        |> render_click()
+
+        # Waited for, then read. The step runs under a supervised task — a deploy
+        # or a push takes longer than a LiveView event may — so `render_click/1`
+        # returns while it is still running and the page has not caught up.
+        await_step(context.view, :repository)
+        html = render(context.view)
 
         {:ok, Map.put(context, :html, html)}
       end

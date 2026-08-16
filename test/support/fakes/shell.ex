@@ -104,10 +104,28 @@ defmodule CodeMySpecSpex.Fakes.Shell do
     end
   end
 
-  # -- git: the two the steps use --
+  # -- git: the ones the steps use --
 
   defp run(_env, "git", ["rev-parse" | _], _opts), do: {"#{hash("HEAD")}\n", 0}
   defp run(_env, "git", ["archive" | _], _opts), do: {"", 0}
+
+  # A remote that has moved on refuses the push, and the step is not done until
+  # one lands — criterion 8184 is exactly that distinction, and a repository
+  # that exists is not the same claim as a push that succeeded. Injected rather
+  # than inferred: nothing on this side knows what the remote holds, and a fake
+  # that guessed would be deciding the criterion rather than serving it.
+  defp run(_env, "git", ["push" | _] = args, _opts) do
+    case Application.get_env(:code_my_spec, :memory_shell_push) do
+      :rejected ->
+        {" ! [rejected]        main -> main (non-fast-forward)\n" <>
+           "error: failed to push some refs\n" <>
+           "hint: Updates were rejected because the tip of your current branch is behind\n", 1}
+
+      _ ->
+        {"To github.com\n * [new branch]      #{Enum.join(args, " ")}\n", 0}
+    end
+  end
+
   defp run(_env, "git", _args, _opts), do: {"", 0}
 
   # -- ssh: a box that answers. What it answers *about* is the drill's --
