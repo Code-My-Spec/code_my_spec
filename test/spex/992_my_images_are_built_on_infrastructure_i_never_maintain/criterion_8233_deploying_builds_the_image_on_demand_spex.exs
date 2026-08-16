@@ -27,7 +27,10 @@ defmodule CodeMySpecSpex.Story992.Criterion8233Spex do
   # Setup refuses to start while a credential is missing (criterion 7985), so
   # without this the run never begins and this criterion reports "nothing was
   # built" — which is true, and nothing to do with what it is asking.
-  setup :connect_providers
+  # Fakes rather than cassettes: these criteria drive the deploy step, whose
+  # Hetzner calls fall outside every cassette — `cannot find mock/stub`,
+  # reported as whatever the criterion was asserting.
+  setup :fake_providers
   setup :real_working_directory
 
   spex "Deploying builds the image on demand" do

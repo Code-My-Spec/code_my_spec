@@ -24,7 +24,10 @@ defmodule CodeMySpecSpex.Story992.Criterion8234Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
   setup :devops_on
-  setup :connect_providers
+  # Fakes rather than cassettes: these criteria drive the deploy step, whose
+  # Hetzner calls fall outside every cassette — `cannot find mock/stub`,
+  # reported as whatever the criterion was asserting.
+  setup :fake_providers
   setup :real_working_directory
 
   spex "The builder produces an image the server can run" do

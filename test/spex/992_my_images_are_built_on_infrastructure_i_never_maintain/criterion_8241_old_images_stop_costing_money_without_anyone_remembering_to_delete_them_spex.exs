@@ -24,7 +24,12 @@ defmodule CodeMySpecSpex.Story992.Criterion8241Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
   setup :devops_on
-  setup :connect_providers
+  # Fakes rather than cassettes: the claim is that *we* record a retention the
+  # bucket enforces, which is about our step and not about Hetzner. Under
+  # cassettes the deploy step reached Hetzner outside any recording and errored
+  # with `cannot find mock/stub`, so the criterion reported "nothing says when
+  # images expire" for a step that never got as far as an image.
+  setup :fake_providers
   setup :real_working_directory
 
   spex "Old images stop costing money without anyone remembering to delete them" do
@@ -46,8 +51,15 @@ defmodule CodeMySpecSpex.Story992.Criterion8241Spex do
           |> Floki.parse_document!()
           |> Floki.find("[data-test='image-retention']")
 
+        # Say what the run did, not only that the element is absent. The
+        # retention is recorded by the deploy step when it produces an image,
+        # so "nothing says when images expire" has two very different causes —
+        # the feature is missing, or the build never happened — and the bare
+        # assertion cannot tell them apart.
         assert retention != [],
-               "nothing says when images expire, so they accumulate until a disk fills"
+               "nothing says when images expire, so they accumulate until a disk fills.\n" <>
+                 "The steps are:\n#{step_states(context.html)}\n" <>
+                 "The deploy step says: #{inspect(escalation(context.html, "deploy"))}"
 
         assert [days] = Floki.attribute(retention, "data-days")
         assert String.to_integer(days) > 0, "images are kept for zero days"
@@ -64,4 +76,30 @@ defmodule CodeMySpecSpex.Story992.Criterion8241Spex do
       end
     end
   end
+
+  defp step_states(html) do
+    html
+    |> Floki.parse_document!()
+    |> Floki.find("[data-test='setup-step']")
+    |> Enum.map_join("\n", fn step ->
+      "  #{attr(step, "data-step")}: #{attr(step, "data-state")}"
+    end)
+  end
+
+  # The deploy step renders its provider error in its own block rather than in
+  # the escalation, so reading only the escalation gets "run the deploy step"
+  # and nothing about why it stopped.
+  defp escalation(html, step) do
+    parsed = Floki.parse_document!(html)
+
+    [
+      parsed |> Floki.find("[data-test='escalation'][data-step='#{step}']") |> Floki.text(),
+      parsed |> Floki.find("[data-test='boot-failure']") |> Floki.text()
+    ]
+    |> Enum.map(&String.trim/1)
+    |> Enum.reject(&(&1 == ""))
+    |> Enum.join(" — ")
+  end
+
+  defp attr(element, name), do: element |> Floki.attribute(name) |> List.first()
 end
