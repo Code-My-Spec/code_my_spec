@@ -27,6 +27,11 @@ defmodule CodeMySpecSpex.Story968.Criterion8014Spex do
   setup :real_working_directory
   setup :connect_providers
   setup :real_backup_database
+  # The dump runs *on* a box: the step SSHes there, delivers `bin/backup` and
+  # runs it. `real_backup_database` says which database to dump, not where to
+  # run, so without this the step stops on its own preconditions and every
+  # assertion below fails on a premise rather than on backups.
+  setup :backups_on_fleet_box
 
   spex "Last night's dump is there in the morning" do
     scenario "a dump dated from the scheduled run is in the bucket" do

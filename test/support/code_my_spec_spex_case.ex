@@ -978,6 +978,69 @@ defmodule CodeMySpecSpex.Case do
   end
 
   @doc """
+  Run the backups step against the local fleet's app box.
+
+      setup :backups_on_fleet_box
+
+  `on_the_environments_box/3` SSHes to the environment's address, delivers
+  `bin/backup` there and runs it — the dump happens *on* the box, which is what
+  criterion 8054 means by proving a restore rather than a file. So a backup
+  criterion needs a reachable box, and `real_backup_database` alone is not
+  enough: it says which database to dump, not where to run.
+
+  Without this the step stops on its own preconditions — first "no server
+  access key on this account", then "no address is recorded for prod" — and
+  every backup assertion fails on a premise rather than on backups.
+
+  Three things have to line up, each read from a different place:
+
+    * the **address**, seeded per environment, because `environment_ip/3`
+      prefers the recorded one and only asks Hetzner when there is none;
+    * the **key**, because `with_builder_ssh/2` uses a provided `ssh_key_path`
+      and only mints the account's builder key when there is not one — and the
+      account key is not authorized on the fleet box;
+    * the **port**, because the fleet box answers on 2223 rather than 22.
+
+  Same reasoning as `fleet_box/1`, which the content criteria use: the real
+  commands run against a daemon that really exists, so what they prove is that
+  they work rather than that they were attempted.
+
+  Needs the fleet up (`docker/fleet/fleet.sh up`), and raises rather than
+  skipping when it is not — a criterion that quietly passed without running the
+  commands it is about is the failure this exercise exists to catch.
+  """
+  def backups_on_fleet_box(%{scope: scope} = context) do
+    key = Path.expand("docker/fleet/keys/fleet", File.cwd!())
+
+    File.exists?(key) ||
+      raise """
+      No fleet key at #{key}.
+
+      This criterion runs the backup on a real box. Bring the fleet up with:
+
+          docker/fleet/fleet.sh up
+      """
+
+    for environment <- Fixtures.environments(scope) do
+      Fixtures.seed_environment_ip(scope, environment.name, "127.0.0.1")
+    end
+
+    previous = Application.get_env(:code_my_spec, :provisioning_step_opts, [])
+
+    Application.put_env(
+      :code_my_spec,
+      :provisioning_step_opts,
+      Keyword.merge(previous, ssh_key_path: key, ssh_port: 2223)
+    )
+
+    ExUnit.Callbacks.on_exit(fn ->
+      Application.put_env(:code_my_spec, :provisioning_step_opts, previous)
+    end)
+
+    context
+  end
+
+  @doc """
   Generate a fresh application with `mix cms.new` and point the project at it.
 
   `setup_active_project` makes a stub directory holding a `mix.exs`, which is
