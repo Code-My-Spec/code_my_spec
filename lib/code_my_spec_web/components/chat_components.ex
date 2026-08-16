@@ -122,7 +122,27 @@ defmodule CodeMySpecWeb.ChatComponents do
     doc:
       "rendered inside the bubble, under the text — attachments, cards, anything the tool returned"
 
+  # Past this, a message is shown as a preview you can open.
+  #
+  # Nothing in a transcript bounded the length of a *message*, because the
+  # collapsing that exists is for tool blocks and these are prose. Measured on
+  # the live transcript: a 67 kB bubble beginning "Called the Read tool with the
+  # following input", which is a sub-agent's work narrated back to its parent as
+  # text rather than as `tool_use` blocks; and file-modified reminders at 24-48
+  # kB that carry whole files.
+  #
+  # 1,500 characters is roughly a screen on a phone — past that you are
+  # scrolling through one turn to reach the next.
+  @preview_limit 1_500
+
   def chat_message(assigns) do
+    long? = byte_size(assigns.text) > @preview_limit
+
+    assigns =
+      assigns
+      |> assign(:long, long?)
+      |> assign(:preview, if(long?, do: preview_of(assigns.text), else: assigns.text))
+
     ~H"""
     <div
       id={@id}
@@ -130,6 +150,7 @@ defmodule CodeMySpecWeb.ChatComponents do
       data-role={@role}
       data-agent-role={@label}
       data-sender-id={@sender_id}
+      data-long={to_string(@long)}
       class={["chat", side(@role, @own_role)]}
     >
       <div :if={@label} class="chat-header text-xs opacity-60">{@label}</div>
@@ -152,7 +173,7 @@ defmodule CodeMySpecWeb.ChatComponents do
 
               Prose only. Arguments and results are code and stay in <pre>. --%>
         <div
-          :if={@text != ""}
+          :if={@text != "" and not @long}
           class={[
             "chat-prose prose prose-sm max-w-none prose-p:my-1 prose-ul:my-1 prose-ol:my-1 prose-pre:my-1",
             side(@role, @own_role) == "chat-end" && "prose-invert"
@@ -160,10 +181,41 @@ defmodule CodeMySpecWeb.ChatComponents do
         >
           {md_html(@text)}
         </div>
+
+        <%!-- The whole message is kept — the model received it, so it is part of
+              the record — but it opens rather than arriving unfolded. The
+              preview renders as plain text, not markdown: a cut at 1,500 bytes
+              lands mid-fence often enough that parsing it produces a code block
+              swallowing the rest of the preview. --%>
+        <details :if={@long} data-test="long-message" class="group">
+          <summary class="cursor-pointer">
+            <span class="whitespace-pre-wrap opacity-90">{@preview}</span>
+            <span class="mt-1 block text-xs underline opacity-60">
+              show all {byte_size(@text)} characters
+            </span>
+          </summary>
+          <div class={[
+            "chat-prose prose prose-sm mt-2 max-w-none border-t border-current/20 pt-2 prose-p:my-1",
+            side(@role, @own_role) == "chat-end" && "prose-invert"
+          ]}>
+            {md_html(@text)}
+          </div>
+        </details>
         {render_slot(@extra)}
       </div>
     </div>
     """
+  end
+
+  # Cut on a line boundary where there is one nearby, so the preview does not
+  # end mid-word.
+  defp preview_of(text) do
+    head = binary_part(text, 0, @preview_limit)
+
+    case String.split(head, "\n") do
+      [_] -> head <> "…"
+      parts -> parts |> Enum.drop(-1) |> Enum.join("\n") |> Kernel.<>("\n…")
+    end
   end
 
   @doc """

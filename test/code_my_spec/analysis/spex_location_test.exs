@@ -126,4 +126,63 @@ defmodule CodeMySpec.Analysis.SpexLocationTest do
       assert {nil, nil} = locate(nil)
     end
   end
+
+  # cd2a0db4. A provider call from a LiveView process — `ProvisioningLive.load/2`
+  # reaching Resend at mount, outside every cassette — raises with 20 frames of
+  # library code and none in a spec, because the spec is not on that process's
+  # stack at all. No improvement to the stacktrace search can find it; the
+  # failure has to carry its own spec, and this is where that is spent.
+  describe "a failure that declares its own spec" do
+    defp lib_error do
+      %{
+        file: "lib/req/test.ex",
+        line: 494,
+        stacktrace: [
+          %{"file" => "lib/req/test.ex", "line" => 494, "module" => "Req.Test"},
+          %{"file" => "lib/req/plug.ex", "line" => 207, "module" => "Req.Plug"}
+        ]
+      }
+    end
+
+    test "is filed against that spec when nothing else can name it" do
+      assert {@spec_file, nil} = Runners.spex_location(lib_error(), @spec_file)
+    end
+
+    # The spec file is known; *where in it* is not. Pairing a spec path with a
+    # line number from another file is worse than either alone — the same reason
+    # the stacktrace clause takes file and line from one frame.
+    test "carries no line, rather than a line from the raising file" do
+      assert {_file, nil} = Runners.spex_location(lib_error(), @spec_file)
+    end
+
+    test "is refused if what it declares is not a spec" do
+      assert {nil, nil} = Runners.spex_location(lib_error(), "lib/code_my_spec/mail.ex")
+    end
+
+    test "changes nothing when absent, which is every failure until the formatter emits it" do
+      assert {nil, nil} = Runners.spex_location(lib_error(), nil)
+      assert {nil, nil} = Runners.spex_location(lib_error())
+    end
+  end
+
+  # The property that makes this safe to land before the formatter, and before
+  # any of the causes: it answers only where nothing else could.
+  describe "it cannot disturb what is already attributed" do
+    @other_spec "test/spex/555_other/criterion_1_other_spex.exs"
+
+    test "a stacktrace naming the spec still wins over the declared file" do
+      error = %{
+        file: "lib/req/test.ex",
+        stacktrace: [%{"file" => @spec_file, "line" => 42, "module" => "Elixir.Spex"}]
+      }
+
+      assert {@spec_file, 42} = Runners.spex_location(error, @other_spec)
+    end
+
+    test "an error.file that is itself a spec still wins" do
+      error = %{file: @spec_file, line: 7, stacktrace: []}
+
+      assert {@spec_file, 7} = Runners.spex_location(error, @other_spec)
+    end
+  end
 end

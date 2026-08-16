@@ -129,6 +129,46 @@ defmodule CodeMySpecWeb.AgentConversationLiveTest do
       assert has_element?(view, "[data-test='message'][data-agent-role='qa']")
       assert has_element?(view, "[data-test='message']:not([data-agent-role='qa'])")
     end
+
+    test "a very long message is a preview you can open, not a wall", %{
+      conn: conn,
+      scope: scope,
+      project: project
+    } do
+      conversation = agent_conversation(scope, project)
+
+      # The shape that prompted this: a sub-agent's work narrated back to its
+      # parent as prose rather than as `tool_use` blocks, so the tool-call
+      # collapsing never sees it. Measured at 67 kB in the live transcript.
+      wall =
+        "Called the Read tool with the following input: " <>
+          String.duplicate("defmodule Example do\n  def run, do: :ok\nend\n", 400)
+
+      {:ok, _} = Conversations.add_agent_message(conversation, nil, "assistant", wall)
+
+      {:ok, view, html} = live(conn, show_path(project, conversation))
+
+      assert has_element?(view, "[data-test='message'][data-long='true']"),
+             "a message past the preview limit has to fold"
+
+      assert has_element?(view, "[data-test='long-message']")
+
+      # Kept, not truncated — the model received it, so it is part of the record.
+      assert html =~ "show all #{byte_size(wall)} characters"
+      assert String.contains?(html, "def run, do: :ok")
+    end
+
+    test "an ordinary message is not folded", %{conn: conn, scope: scope, project: project} do
+      conversation = agent_conversation(scope, project)
+      {:ok, _} = Conversations.add_agent_message(conversation, nil, "assistant", "short answer")
+
+      {:ok, view, _html} = live(conn, show_path(project, conversation))
+
+      refute has_element?(view, "[data-test='long-message']"),
+             "folding every message would put a click in front of every turn"
+
+      assert has_element?(view, "[data-test='message'][data-long='false']")
+    end
   end
 
   describe "live updates" do
