@@ -14,11 +14,13 @@ defmodule CodeMySpecSpex.Story816.Criterion6588Spex do
   use CodeMySpecSpex.Case
 
   alias CodeMySpecSpex.Fixtures
+  alias CodeMySpec.Mail.ResendClient
 
   @endpoint CodeMySpecWeb.Endpoint
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :stub_resend
 
   @domain "sam-ships.com"
 
@@ -76,4 +78,29 @@ defmodule CodeMySpecSpex.Story816.Criterion6588Spex do
       end
     end
   end
+
+  # The same stub its siblings use. `Mail.deliver/3` runs inside the LiveView
+  # process, and a `Req.Test` stub is scoped to the process that set it, so
+  # shared mode is what lets the LiveView see it.
+  defp stub_resend(_context) do
+    Req.Test.set_req_test_to_shared(%{})
+    previous = Application.get_env(:code_my_spec, ResendClient, [])
+
+    Application.put_env(:code_my_spec, ResendClient,
+      api_key: "re_test",
+      plug: {Req.Test, ResendClient}
+    )
+
+    on_exit(fn -> Application.put_env(:code_my_spec, ResendClient, previous) end)
+
+    Req.Test.stub(ResendClient, fn conn ->
+      conn
+      |> Plug.Conn.put_resp_content_type("application/json")
+      |> Plug.Conn.send_resp(200, cassette("send"))
+    end)
+
+    :ok
+  end
+
+  defp cassette(name), do: File.read!(Path.join(["test", "cassettes", "resend", "#{name}.json"]))
 end

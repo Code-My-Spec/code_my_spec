@@ -15,11 +15,13 @@ defmodule CodeMySpecSpex.Story816.Criterion6580Spex do
   use CodeMySpecSpex.Case
 
   alias CodeMySpecSpex.Fixtures
+  alias CodeMySpec.Mail.ResendClient
 
   @endpoint CodeMySpecWeb.Endpoint
 
   setup :register_log_in_setup_account
   setup :setup_active_project
+  setup :stub_resend
 
   @domain "sam-ships.com"
 
@@ -63,4 +65,34 @@ defmodule CodeMySpecSpex.Story816.Criterion6580Spex do
       end
     end
   end
+
+  # The same stub its five siblings use, and the reason it is needed here is
+  # the reason it is needed there: `Mail.deliver/3` runs inside the LiveView
+  # process, and a `Req.Test` stub is scoped to the process that set it. Shared
+  # mode is what lets the LiveView see it.
+  #
+  # Without it the run dies with `cannot find mock/stub
+  # CodeMySpec.Mail.ResendClient in process #PID<…>` — which names process
+  # scoping, and is for once exactly right about the cause.
+  defp stub_resend(_context) do
+    Req.Test.set_req_test_to_shared(%{})
+    previous = Application.get_env(:code_my_spec, ResendClient, [])
+
+    Application.put_env(:code_my_spec, ResendClient,
+      api_key: "re_test",
+      plug: {Req.Test, ResendClient}
+    )
+
+    on_exit(fn -> Application.put_env(:code_my_spec, ResendClient, previous) end)
+
+    Req.Test.stub(ResendClient, fn conn ->
+      conn
+      |> Plug.Conn.put_resp_content_type("application/json")
+      |> Plug.Conn.send_resp(200, cassette("send"))
+    end)
+
+    :ok
+  end
+
+  defp cassette(name), do: File.read!(Path.join(["test", "cassettes", "resend", "#{name}.json"]))
 end
