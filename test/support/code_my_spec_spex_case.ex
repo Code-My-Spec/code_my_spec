@@ -3991,6 +3991,20 @@ defmodule CodeMySpecSpex.Case do
     end)
   end
 
+  @doc """
+  A recorded Resend response body, by name, from `test/cassettes/resend/`.
+
+  Here rather than in each spex because spex files may not call `File` — they
+  drive the public surface and observe rendered output, and a file read is
+  neither. Several of story 816's criteria stub `Mail.ResendClient` with a
+  `Req.Test` plug and need a body to answer with; this is where that body
+  comes from.
+  """
+  @spec resend_cassette(String.t()) :: String.t()
+  def resend_cassette(name) do
+    File.read!(Path.join(["test", "cassettes", "resend", "#{name}.json"]))
+  end
+
   @doc "Every provider whose HTTP a cassette should capture."
   def provider_modules do
     [

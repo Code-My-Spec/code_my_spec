@@ -13,8 +13,8 @@ defmodule CodeMySpecSpex.Story816.Criterion6588Spex do
 
   use CodeMySpecSpex.Case
 
-  alias CodeMySpecSpex.Fixtures
   alias CodeMySpec.Mail.ResendClient
+  alias CodeMySpecSpex.Fixtures
 
   @endpoint CodeMySpecWeb.Endpoint
 
@@ -96,11 +96,9 @@ defmodule CodeMySpecSpex.Story816.Criterion6588Spex do
     Req.Test.stub(ResendClient, fn conn ->
       conn
       |> Plug.Conn.put_resp_content_type("application/json")
-      |> Plug.Conn.send_resp(200, cassette("send"))
+      |> Plug.Conn.send_resp(200, resend_cassette("send"))
     end)
 
     :ok
   end
-
-  defp cassette(name), do: File.read!(Path.join(["test", "cassettes", "resend", "#{name}.json"]))
 end
