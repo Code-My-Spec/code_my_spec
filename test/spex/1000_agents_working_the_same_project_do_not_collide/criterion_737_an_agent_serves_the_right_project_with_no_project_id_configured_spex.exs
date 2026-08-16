@@ -49,7 +49,7 @@ defmodule CodeMySpecSpex.Story1000.Criterion737Spex do
         System.delete_env("CMS_PROJECT_ID")
 
         ExUnit.Callbacks.on_exit(fn ->
-          if previous, do: System.put_env("CMS_PROJECT_ID", previous)
+          restore_env("CMS_PROJECT_ID", previous)
         end)
 
         refute System.get_env("CMS_PROJECT_ID")
@@ -113,17 +113,23 @@ defmodule CodeMySpecSpex.Story1000.Criterion737Spex do
   # Restores whatever was there, including "nothing" — leaving a stray
   # CMS_PROJECT_ID set would silently change what every later spec in this VM
   # resolves.
+  #
+  # `on_exit` rather than `try/after`: control flow is not permitted in a spex
+  # file, and this is the idiom the `given_` step above already uses for this
+  # same variable. Restoration still happens if `fun` raises — `on_exit` runs
+  # either way — and the block is the last thing the scenario does, so restoring
+  # at test exit rather than at block exit is the same restoration a moment
+  # later.
   defp with_env(name, value, fun) do
     previous = System.get_env(name)
+    ExUnit.Callbacks.on_exit(fn -> restore_env(name, previous) end)
     System.put_env(name, value)
 
-    try do
-      fun.()
-    after
-      case previous do
-        nil -> System.delete_env(name)
-        old -> System.put_env(name, old)
-      end
-    end
+    fun.()
   end
+
+  # Two heads, so "there was nothing there before" is a value rather than a
+  # branch.
+  defp restore_env(name, nil), do: System.delete_env(name)
+  defp restore_env(name, previous), do: System.put_env(name, previous)
 end
