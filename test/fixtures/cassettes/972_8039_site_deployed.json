@@ -8,7 +8,7 @@
       "command": "git",
       "exit_code": 0,
       "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/briefly--576460681400189833-eM8dTWpdVKKLMlHUuy/briefly-576460681399877833-wlA8MxmKnEmQ7CgCpXU0/cms_drill_dbbf8119121148dc810af5169a27f05a",
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/briefly--576460737812276834-OpLrMi7Rl8BAhdqeegGt/briefly-576460737811638250-catNgxgeRcSDKOu9nWUG/cms_drill_31c5844bec3143798e556bd573130f0c",
         "env": {
           "SCRIPT_PATH": null,
           "RELEASE_ROOT": null,
@@ -46,6 +46,7 @@
           "RELEASE_REMOTE_VM_ARGS": null,
           "BINDIR": null,
           "REL_GOTO": null,
+          "PATH": "/Users/johndavenport/.asdf/shims:/Users/johndavenport/.asdf/installs/erlang/28.1/erts-16.1/bin:/Users/johndavenport/.asdf/installs/erlang/28.1/bin:/Users/johndavenport/.asdf/plugins/elixir/shims:/Users/johndavenport/.asdf/installs/elixir/1.19.4-otp-28/bin:/Users/johndavenport/.asdf/installs/elixir/1.19.4-otp-28/.mix/escripts:/Users/johndavenport/.local/bin:/Users/johndavenport/bin:/Users/johndavenport/.pyenv/shims:/Users/johndavenport/bin:/usr/local/bin:/opt/homebrew/Cellar/postgresql@15/15.5_1/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/opt/pmk/env/global/bin:/Library/Apple/usr/bin:/Users/johndavenport/.cargo/bin:/Users/johndavenport/.dotnet/tools:/Users/johndavenport/.dotnet/tools:/usr/local/share/dotnet/dotnet:/Users/johndavenport/Documents/github/code_my_spec/.claude/worktrees/devops-qa/.claude/plugin-dev/bin:/Users/johndavenport/Documents/github/code_my_spec/.claude/worktrees/devops-qa/.claude/plugin-dev/bin",
           "MIX_ENV": null,
           "MIX_BUILD_PATH": null,
           "endLoop": null,
@@ -54,7 +55,7 @@
         "stderr_to_stdout": true
       },
       "output": "true\n",
-      "recorded_at": "2026-08-13T21:15:35.251041Z"
+      "recorded_at": "2026-08-16T05:25:43.916150Z"
     },
     {
       "args": [
@@ -64,7 +65,7 @@
       "command": "git",
       "exit_code": 0,
       "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/briefly--576460681400189833-eM8dTWpdVKKLMlHUuy/briefly-576460681399877833-wlA8MxmKnEmQ7CgCpXU0/cms_drill_dbbf8119121148dc810af5169a27f05a",
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/briefly--576460737812276834-OpLrMi7Rl8BAhdqeegGt/briefly-576460737811638250-catNgxgeRcSDKOu9nWUG/cms_drill_31c5844bec3143798e556bd573130f0c",
         "env": {
           "SCRIPT_PATH": null,
           "RELEASE_ROOT": null,
@@ -102,6 +103,7 @@
           "RELEASE_REMOTE_VM_ARGS": null,
           "BINDIR": null,
           "REL_GOTO": null,
+          "PATH": "/Users/johndavenport/.asdf/shims:/Users/johndavenport/.asdf/installs/erlang/28.1/erts-16.1/bin:/Users/johndavenport/.asdf/installs/erlang/28.1/bin:/Users/johndavenport/.asdf/plugins/elixir/shims:/Users/johndavenport/.asdf/installs/elixir/1.19.4-otp-28/bin:/Users/johndavenport/.asdf/installs/elixir/1.19.4-otp-28/.mix/escripts:/Users/johndavenport/.local/bin:/Users/johndavenport/bin:/Users/johndavenport/.pyenv/shims:/Users/johndavenport/bin:/usr/local/bin:/opt/homebrew/Cellar/postgresql@15/15.5_1/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/opt/pmk/env/global/bin:/Library/Apple/usr/bin:/Users/johndavenport/.cargo/bin:/Users/johndavenport/.dotnet/tools:/Users/johndavenport/.dotnet/tools:/usr/local/share/dotnet/dotnet:/Users/johndavenport/Documents/github/code_my_spec/.claude/worktrees/devops-qa/.claude/plugin-dev/bin:/Users/johndavenport/Documents/github/code_my_spec/.claude/worktrees/devops-qa/.claude/plugin-dev/bin",
           "MIX_ENV": null,
           "MIX_BUILD_PATH": null,
           "endLoop": null,
@@ -109,8 +111,8 @@
         },
         "stderr_to_stdout": true
       },
-      "output": "090ec150f19a4ede1aab08ec861cedc8bcc3820e\n",
-      "recorded_at": "2026-08-13T21:15:35.256087Z"
+      "output": "0f201f7437d6cb443b38d371d6db1c40666054bb\n",
+      "recorded_at": "2026-08-16T05:25:43.921168Z"
     },
     {
       "args": [
@@ -122,7 +124,7 @@
       "command": "git",
       "exit_code": 0,
       "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/briefly--576460681400189833-eM8dTWpdVKKLMlHUuy/briefly-576460681399877833-wlA8MxmKnEmQ7CgCpXU0/cms_drill_dbbf8119121148dc810af5169a27f05a",
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/briefly--576460737812276834-OpLrMi7Rl8BAhdqeegGt/briefly-576460737811638250-catNgxgeRcSDKOu9nWUG/cms_drill_31c5844bec3143798e556bd573130f0c",
         "env": {
           "SCRIPT_PATH": null,
           "RELEASE_ROOT": null,
@@ -160,6 +162,7 @@
           "RELEASE_REMOTE_VM_ARGS": null,
           "BINDIR": null,
           "REL_GOTO": null,
+          "PATH": "/Users/johndavenport/.asdf/shims:/Users/johndavenport/.asdf/installs/erlang/28.1/erts-16.1/bin:/Users/johndavenport/.asdf/installs/erlang/28.1/bin:/Users/johndavenport/.asdf/plugins/elixir/shims:/Users/johndavenport/.asdf/installs/elixir/1.19.4-otp-28/bin:/Users/johndavenport/.asdf/installs/elixir/1.19.4-otp-28/.mix/escripts:/Users/johndavenport/.local/bin:/Users/johndavenport/bin:/Users/johndavenport/.pyenv/shims:/Users/johndavenport/bin:/usr/local/bin:/opt/homebrew/Cellar/postgresql@15/15.5_1/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/opt/pmk/env/global/bin:/Library/Apple/usr/bin:/Users/johndavenport/.cargo/bin:/Users/johndavenport/.dotnet/tools:/Users/johndavenport/.dotnet/tools:/usr/local/share/dotnet/dotnet:/Users/johndavenport/Documents/github/code_my_spec/.claude/worktrees/devops-qa/.claude/plugin-dev/bin:/Users/johndavenport/Documents/github/code_my_spec/.claude/worktrees/devops-qa/.claude/plugin-dev/bin",
           "MIX_ENV": null,
           "MIX_BUILD_PATH": null,
           "endLoop": null,
@@ -168,7 +171,7 @@
         "stderr_to_stdout": true
       },
       "output": "",
-      "recorded_at": "2026-08-13T21:15:35.262339Z"
+      "recorded_at": "2026-08-16T05:25:43.926442Z"
     },
     {
       "args": [
@@ -178,7 +181,7 @@
       "command": "git",
       "exit_code": 0,
       "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/briefly--576460681400189833-eM8dTWpdVKKLMlHUuy/briefly-576460681399877833-wlA8MxmKnEmQ7CgCpXU0/cms_drill_dbbf8119121148dc810af5169a27f05a",
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/briefly--576460737812276834-OpLrMi7Rl8BAhdqeegGt/briefly-576460737811638250-catNgxgeRcSDKOu9nWUG/cms_drill_31c5844bec3143798e556bd573130f0c",
         "env": {
           "SCRIPT_PATH": null,
           "RELEASE_ROOT": null,
@@ -216,6 +219,7 @@
           "RELEASE_REMOTE_VM_ARGS": null,
           "BINDIR": null,
           "REL_GOTO": null,
+          "PATH": "/Users/johndavenport/.asdf/shims:/Users/johndavenport/.asdf/installs/erlang/28.1/erts-16.1/bin:/Users/johndavenport/.asdf/installs/erlang/28.1/bin:/Users/johndavenport/.asdf/plugins/elixir/shims:/Users/johndavenport/.asdf/installs/elixir/1.19.4-otp-28/bin:/Users/johndavenport/.asdf/installs/elixir/1.19.4-otp-28/.mix/escripts:/Users/johndavenport/.local/bin:/Users/johndavenport/bin:/Users/johndavenport/.pyenv/shims:/Users/johndavenport/bin:/usr/local/bin:/opt/homebrew/Cellar/postgresql@15/15.5_1/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/opt/pmk/env/global/bin:/Library/Apple/usr/bin:/Users/johndavenport/.cargo/bin:/Users/johndavenport/.dotnet/tools:/Users/johndavenport/.dotnet/tools:/usr/local/share/dotnet/dotnet:/Users/johndavenport/Documents/github/code_my_spec/.claude/worktrees/devops-qa/.claude/plugin-dev/bin:/Users/johndavenport/Documents/github/code_my_spec/.claude/worktrees/devops-qa/.claude/plugin-dev/bin",
           "MIX_ENV": null,
           "MIX_BUILD_PATH": null,
           "endLoop": null,
@@ -223,8 +227,8 @@
         },
         "stderr_to_stdout": true
       },
-      "output": "090ec150f19a4ede1aab08ec861cedc8bcc3820e\n",
-      "recorded_at": "2026-08-13T21:15:35.267398Z"
+      "output": "0f201f7437d6cb443b38d371d6db1c40666054bb\n",
+      "recorded_at": "2026-08-16T05:25:43.931113Z"
     },
     {
       "args": [
@@ -242,8 +246,8 @@
       "opts": {
         "stderr_to_stdout": true
       },
-      "output": "Generating public/private ed25519 key pair.\nYour identification has been saved in /var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/cms-ssh-13257_23234_qbJZpbh7ZjkO/id_ed25519\nYour public key has been saved in /var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/cms-ssh-13257_23234_qbJZpbh7ZjkO/id_ed25519.pub\nThe key fingerprint is:\nSHA256:kVLd81Mxh/R71ONd2Yl0RNZgsKeWYZFiwpRmXwllYQo spex-story972-criterion8039\nThe key's randomart image is:\n+--[ED25519 256]--+\n|       oEo.+BB*X+|\n|       .*o++B+=.X|\n|      .oo+.o++.=*|\n|       . ... =+.=|\n|        S   +  +o|\n|           .    .|\n|                 |\n|                 |\n|                 |\n+----[SHA256]-----+\n",
-      "recorded_at": "2026-08-13T21:15:35.931666Z"
+      "output": "Generating public/private ed25519 key pair.\nYour identification has been saved in /var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/cms-ssh-1152_23205_he-fVswfyjjV/id_ed25519\nYour public key has been saved in /var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/cms-ssh-1152_23205_he-fVswfyjjV/id_ed25519.pub\nThe key fingerprint is:\nSHA256:b1XtCLrxzNdZ6Nzjx8jDzpgfJN6wxOiOfINTAvjabFo spex-story972-criterion8039\nThe key's randomart image is:\n+--[ED25519 256]--+\n|                 |\n|               . |\n|     .      . . .|\n|    . .    + o + |\n|     . .S + * + o|\n|      . .o.X O oo|\n|     +E  += *o*=o|\n|    ..+.o+o  =*.+|\n|    .o  oo..oo+o.|\n+----[SHA256]-----+\n",
+      "recorded_at": "2026-08-16T05:25:44.643214Z"
     },
     {
       "args": [
@@ -265,7 +269,7 @@
       "command": "ssh",
       "exit_code": 255,
       "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/briefly--576460681400189833-eM8dTWpdVKKLMlHUuy/briefly-576460681399877833-wlA8MxmKnEmQ7CgCpXU0/cms_drill_dbbf8119121148dc810af5169a27f05a",
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/briefly--576460737812276834-OpLrMi7Rl8BAhdqeegGt/briefly-576460737811638250-catNgxgeRcSDKOu9nWUG/cms_drill_31c5844bec3143798e556bd573130f0c",
         "env": {
           "SCRIPT_PATH": null,
           "RELEASE_ROOT": null,
@@ -303,6 +307,7 @@
           "RELEASE_REMOTE_VM_ARGS": null,
           "BINDIR": null,
           "REL_GOTO": null,
+          "PATH": "/Users/johndavenport/.asdf/shims:/Users/johndavenport/.asdf/installs/erlang/28.1/erts-16.1/bin:/Users/johndavenport/.asdf/installs/erlang/28.1/bin:/Users/johndavenport/.asdf/plugins/elixir/shims:/Users/johndavenport/.asdf/installs/elixir/1.19.4-otp-28/bin:/Users/johndavenport/.asdf/installs/elixir/1.19.4-otp-28/.mix/escripts:/Users/johndavenport/.local/bin:/Users/johndavenport/bin:/Users/johndavenport/.pyenv/shims:/Users/johndavenport/bin:/usr/local/bin:/opt/homebrew/Cellar/postgresql@15/15.5_1/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/opt/pmk/env/global/bin:/Library/Apple/usr/bin:/Users/johndavenport/.cargo/bin:/Users/johndavenport/.dotnet/tools:/Users/johndavenport/.dotnet/tools:/usr/local/share/dotnet/dotnet:/Users/johndavenport/Documents/github/code_my_spec/.claude/worktrees/devops-qa/.claude/plugin-dev/bin:/Users/johndavenport/Documents/github/code_my_spec/.claude/worktrees/devops-qa/.claude/plugin-dev/bin",
           "MIX_ENV": null,
           "MIX_BUILD_PATH": null,
           "endLoop": null,
@@ -311,7 +316,7 @@
         "stderr_to_stdout": true
       },
       "output": "ssh: connect to host 178.156.185.52 port 22: Operation timed out\r\n",
-      "recorded_at": "2026-08-13T21:15:48.328495Z"
+      "recorded_at": "2026-08-16T05:25:57.716987Z"
     },
     {
       "args": [
@@ -333,7 +338,7 @@
       "command": "ssh",
       "exit_code": 255,
       "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/briefly--576460681400189833-eM8dTWpdVKKLMlHUuy/briefly-576460681399877833-wlA8MxmKnEmQ7CgCpXU0/cms_drill_dbbf8119121148dc810af5169a27f05a",
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/briefly--576460737812276834-OpLrMi7Rl8BAhdqeegGt/briefly-576460737811638250-catNgxgeRcSDKOu9nWUG/cms_drill_31c5844bec3143798e556bd573130f0c",
         "env": {
           "SCRIPT_PATH": null,
           "RELEASE_ROOT": null,
@@ -371,6 +376,7 @@
           "RELEASE_REMOTE_VM_ARGS": null,
           "BINDIR": null,
           "REL_GOTO": null,
+          "PATH": "/Users/johndavenport/.asdf/shims:/Users/johndavenport/.asdf/installs/erlang/28.1/erts-16.1/bin:/Users/johndavenport/.asdf/installs/erlang/28.1/bin:/Users/johndavenport/.asdf/plugins/elixir/shims:/Users/johndavenport/.asdf/installs/elixir/1.19.4-otp-28/bin:/Users/johndavenport/.asdf/installs/elixir/1.19.4-otp-28/.mix/escripts:/Users/johndavenport/.local/bin:/Users/johndavenport/bin:/Users/johndavenport/.pyenv/shims:/Users/johndavenport/bin:/usr/local/bin:/opt/homebrew/Cellar/postgresql@15/15.5_1/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/opt/pmk/env/global/bin:/Library/Apple/usr/bin:/Users/johndavenport/.cargo/bin:/Users/johndavenport/.dotnet/tools:/Users/johndavenport/.dotnet/tools:/usr/local/share/dotnet/dotnet:/Users/johndavenport/Documents/github/code_my_spec/.claude/worktrees/devops-qa/.claude/plugin-dev/bin:/Users/johndavenport/Documents/github/code_my_spec/.claude/worktrees/devops-qa/.claude/plugin-dev/bin",
           "MIX_ENV": null,
           "MIX_BUILD_PATH": null,
           "endLoop": null,
@@ -379,7 +385,7 @@
         "stderr_to_stdout": true
       },
       "output": "ssh: connect to host 178.156.185.52 port 22: Operation timed out\r\n",
-      "recorded_at": "2026-08-13T21:16:00.348341Z"
+      "recorded_at": "2026-08-16T05:26:09.741738Z"
     },
     {
       "args": [
@@ -401,7 +407,7 @@
       "command": "ssh",
       "exit_code": 255,
       "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/briefly--576460681400189833-eM8dTWpdVKKLMlHUuy/briefly-576460681399877833-wlA8MxmKnEmQ7CgCpXU0/cms_drill_dbbf8119121148dc810af5169a27f05a",
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/briefly--576460737812276834-OpLrMi7Rl8BAhdqeegGt/briefly-576460737811638250-catNgxgeRcSDKOu9nWUG/cms_drill_31c5844bec3143798e556bd573130f0c",
         "env": {
           "SCRIPT_PATH": null,
           "RELEASE_ROOT": null,
@@ -439,6 +445,7 @@
           "RELEASE_REMOTE_VM_ARGS": null,
           "BINDIR": null,
           "REL_GOTO": null,
+          "PATH": "/Users/johndavenport/.asdf/shims:/Users/johndavenport/.asdf/installs/erlang/28.1/erts-16.1/bin:/Users/johndavenport/.asdf/installs/erlang/28.1/bin:/Users/johndavenport/.asdf/plugins/elixir/shims:/Users/johndavenport/.asdf/installs/elixir/1.19.4-otp-28/bin:/Users/johndavenport/.asdf/installs/elixir/1.19.4-otp-28/.mix/escripts:/Users/johndavenport/.local/bin:/Users/johndavenport/bin:/Users/johndavenport/.pyenv/shims:/Users/johndavenport/bin:/usr/local/bin:/opt/homebrew/Cellar/postgresql@15/15.5_1/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/opt/pmk/env/global/bin:/Library/Apple/usr/bin:/Users/johndavenport/.cargo/bin:/Users/johndavenport/.dotnet/tools:/Users/johndavenport/.dotnet/tools:/usr/local/share/dotnet/dotnet:/Users/johndavenport/Documents/github/code_my_spec/.claude/worktrees/devops-qa/.claude/plugin-dev/bin:/Users/johndavenport/Documents/github/code_my_spec/.claude/worktrees/devops-qa/.claude/plugin-dev/bin",
           "MIX_ENV": null,
           "MIX_BUILD_PATH": null,
           "endLoop": null,
@@ -447,7 +454,7 @@
         "stderr_to_stdout": true
       },
       "output": "ssh: connect to host 178.156.185.52 port 22: Operation timed out\r\n",
-      "recorded_at": "2026-08-13T21:16:12.364563Z"
+      "recorded_at": "2026-08-16T05:26:21.752723Z"
     },
     {
       "args": [
@@ -469,7 +476,7 @@
       "command": "ssh",
       "exit_code": 255,
       "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/briefly--576460681400189833-eM8dTWpdVKKLMlHUuy/briefly-576460681399877833-wlA8MxmKnEmQ7CgCpXU0/cms_drill_dbbf8119121148dc810af5169a27f05a",
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/briefly--576460737812276834-OpLrMi7Rl8BAhdqeegGt/briefly-576460737811638250-catNgxgeRcSDKOu9nWUG/cms_drill_31c5844bec3143798e556bd573130f0c",
         "env": {
           "SCRIPT_PATH": null,
           "RELEASE_ROOT": null,
@@ -507,6 +514,7 @@
           "RELEASE_REMOTE_VM_ARGS": null,
           "BINDIR": null,
           "REL_GOTO": null,
+          "PATH": "/Users/johndavenport/.asdf/shims:/Users/johndavenport/.asdf/installs/erlang/28.1/erts-16.1/bin:/Users/johndavenport/.asdf/installs/erlang/28.1/bin:/Users/johndavenport/.asdf/plugins/elixir/shims:/Users/johndavenport/.asdf/installs/elixir/1.19.4-otp-28/bin:/Users/johndavenport/.asdf/installs/elixir/1.19.4-otp-28/.mix/escripts:/Users/johndavenport/.local/bin:/Users/johndavenport/bin:/Users/johndavenport/.pyenv/shims:/Users/johndavenport/bin:/usr/local/bin:/opt/homebrew/Cellar/postgresql@15/15.5_1/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/opt/pmk/env/global/bin:/Library/Apple/usr/bin:/Users/johndavenport/.cargo/bin:/Users/johndavenport/.dotnet/tools:/Users/johndavenport/.dotnet/tools:/usr/local/share/dotnet/dotnet:/Users/johndavenport/Documents/github/code_my_spec/.claude/worktrees/devops-qa/.claude/plugin-dev/bin:/Users/johndavenport/Documents/github/code_my_spec/.claude/worktrees/devops-qa/.claude/plugin-dev/bin",
           "MIX_ENV": null,
           "MIX_BUILD_PATH": null,
           "endLoop": null,
@@ -515,7 +523,7 @@
         "stderr_to_stdout": true
       },
       "output": "ssh: connect to host 178.156.185.52 port 22: Operation timed out\r\n",
-      "recorded_at": "2026-08-13T21:16:24.378859Z"
+      "recorded_at": "2026-08-16T05:26:33.761885Z"
     },
     {
       "args": [
@@ -537,7 +545,7 @@
       "command": "ssh",
       "exit_code": 255,
       "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/briefly--576460681400189833-eM8dTWpdVKKLMlHUuy/briefly-576460681399877833-wlA8MxmKnEmQ7CgCpXU0/cms_drill_dbbf8119121148dc810af5169a27f05a",
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/briefly--576460737812276834-OpLrMi7Rl8BAhdqeegGt/briefly-576460737811638250-catNgxgeRcSDKOu9nWUG/cms_drill_31c5844bec3143798e556bd573130f0c",
         "env": {
           "SCRIPT_PATH": null,
           "RELEASE_ROOT": null,
@@ -575,6 +583,76 @@
           "RELEASE_REMOTE_VM_ARGS": null,
           "BINDIR": null,
           "REL_GOTO": null,
+          "PATH": "/Users/johndavenport/.asdf/shims:/Users/johndavenport/.asdf/installs/erlang/28.1/erts-16.1/bin:/Users/johndavenport/.asdf/installs/erlang/28.1/bin:/Users/johndavenport/.asdf/plugins/elixir/shims:/Users/johndavenport/.asdf/installs/elixir/1.19.4-otp-28/bin:/Users/johndavenport/.asdf/installs/elixir/1.19.4-otp-28/.mix/escripts:/Users/johndavenport/.local/bin:/Users/johndavenport/bin:/Users/johndavenport/.pyenv/shims:/Users/johndavenport/bin:/usr/local/bin:/opt/homebrew/Cellar/postgresql@15/15.5_1/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/opt/pmk/env/global/bin:/Library/Apple/usr/bin:/Users/johndavenport/.cargo/bin:/Users/johndavenport/.dotnet/tools:/Users/johndavenport/.dotnet/tools:/usr/local/share/dotnet/dotnet:/Users/johndavenport/Documents/github/code_my_spec/.claude/worktrees/devops-qa/.claude/plugin-dev/bin:/Users/johndavenport/Documents/github/code_my_spec/.claude/worktrees/devops-qa/.claude/plugin-dev/bin",
+          "MIX_ENV": null,
+          "MIX_BUILD_PATH": null,
+          "endLoop": null,
+          "RELEASE_COOKIE": null
+        },
+        "stderr_to_stdout": true
+      },
+      "output": "ssh: connect to host 178.156.185.52 port 22: Operation timed out\r\n",
+      "recorded_at": "2026-08-16T05:26:45.780206Z"
+    },
+    {
+      "args": [
+        "-o",
+        "StrictHostKeyChecking=no",
+        "-o",
+        "UserKnownHostsFile=/dev/null",
+        "-o",
+        "BatchMode=yes",
+        "-o",
+        "IdentitiesOnly=yes",
+        "-o",
+        "ConnectTimeout=10",
+        "-i",
+        "*/id_ed25519",
+        "root@178.156.185.52",
+        "true"
+      ],
+      "command": "ssh",
+      "exit_code": 255,
+      "opts": {
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/briefly--576460737812276834-OpLrMi7Rl8BAhdqeegGt/briefly-576460737811638250-catNgxgeRcSDKOu9nWUG/cms_drill_31c5844bec3143798e556bd573130f0c",
+        "env": {
+          "SCRIPT_PATH": null,
+          "RELEASE_ROOT": null,
+          "ERTS_BIN": null,
+          "RELEASE_DISTRIBUTION_FLAG": null,
+          "RELEASE_DISTRIBUTION": null,
+          "EMU": null,
+          "RELEASE_COMMAND": null,
+          "MIX_HOME": null,
+          "PROGNAME": null,
+          "ELIXIR_VERSION": null,
+          "MIX_ARCHIVES": null,
+          "RELEASE_MODE": null,
+          "beforeExtra": null,
+          "REL_EXEC": null,
+          "RELEASE_PROG": null,
+          "ERL_LIBS": null,
+          "RELEASE_NODE": null,
+          "MIX_DEPS_PATH": null,
+          "REL_EXTRA": null,
+          "RELEASE_BOOT_SCRIPT_CLEAN": null,
+          "RELEASE_NAME": null,
+          "MIX_TARGET": null,
+          "RELEASE_VM_ARGS": null,
+          "ERLEXEC_DIR": null,
+          "ERTS_VSN": null,
+          "RELEASE_SYS_CONFIG": null,
+          "ROOTDIR": null,
+          "ERL_CONSOLE_MODE": null,
+          "parsErlang": null,
+          "RELEASE_TMP": null,
+          "REL_VSN_DIR": null,
+          "RELEASE_VSN": null,
+          "RELEASE_BOOT_SCRIPT": null,
+          "RELEASE_REMOTE_VM_ARGS": null,
+          "BINDIR": null,
+          "REL_GOTO": null,
+          "PATH": "/Users/johndavenport/.asdf/shims:/Users/johndavenport/.asdf/installs/erlang/28.1/erts-16.1/bin:/Users/johndavenport/.asdf/installs/erlang/28.1/bin:/Users/johndavenport/.asdf/plugins/elixir/shims:/Users/johndavenport/.asdf/installs/elixir/1.19.4-otp-28/bin:/Users/johndavenport/.asdf/installs/elixir/1.19.4-otp-28/.mix/escripts:/Users/johndavenport/.local/bin:/Users/johndavenport/bin:/Users/johndavenport/.pyenv/shims:/Users/johndavenport/bin:/usr/local/bin:/opt/homebrew/Cellar/postgresql@15/15.5_1/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/opt/pmk/env/global/bin:/Library/Apple/usr/bin:/Users/johndavenport/.cargo/bin:/Users/johndavenport/.dotnet/tools:/Users/johndavenport/.dotnet/tools:/usr/local/share/dotnet/dotnet:/Users/johndavenport/Documents/github/code_my_spec/.claude/worktrees/devops-qa/.claude/plugin-dev/bin:/Users/johndavenport/Documents/github/code_my_spec/.claude/worktrees/devops-qa/.claude/plugin-dev/bin",
           "MIX_ENV": null,
           "MIX_BUILD_PATH": null,
           "endLoop": null,
@@ -583,7 +661,7 @@
         "stderr_to_stdout": true
       },
       "output": "ssh: connect to host 178.156.185.52 port 22: Connection refused\r\n",
-      "recorded_at": "2026-08-13T21:16:27.430145Z"
+      "recorded_at": "2026-08-16T05:26:48.833116Z"
     },
     {
       "args": [
@@ -605,7 +683,7 @@
       "command": "ssh",
       "exit_code": 255,
       "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/briefly--576460681400189833-eM8dTWpdVKKLMlHUuy/briefly-576460681399877833-wlA8MxmKnEmQ7CgCpXU0/cms_drill_dbbf8119121148dc810af5169a27f05a",
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/briefly--576460737812276834-OpLrMi7Rl8BAhdqeegGt/briefly-576460737811638250-catNgxgeRcSDKOu9nWUG/cms_drill_31c5844bec3143798e556bd573130f0c",
         "env": {
           "SCRIPT_PATH": null,
           "RELEASE_ROOT": null,
@@ -643,6 +721,7 @@
           "RELEASE_REMOTE_VM_ARGS": null,
           "BINDIR": null,
           "REL_GOTO": null,
+          "PATH": "/Users/johndavenport/.asdf/shims:/Users/johndavenport/.asdf/installs/erlang/28.1/erts-16.1/bin:/Users/johndavenport/.asdf/installs/erlang/28.1/bin:/Users/johndavenport/.asdf/plugins/elixir/shims:/Users/johndavenport/.asdf/installs/elixir/1.19.4-otp-28/bin:/Users/johndavenport/.asdf/installs/elixir/1.19.4-otp-28/.mix/escripts:/Users/johndavenport/.local/bin:/Users/johndavenport/bin:/Users/johndavenport/.pyenv/shims:/Users/johndavenport/bin:/usr/local/bin:/opt/homebrew/Cellar/postgresql@15/15.5_1/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/opt/pmk/env/global/bin:/Library/Apple/usr/bin:/Users/johndavenport/.cargo/bin:/Users/johndavenport/.dotnet/tools:/Users/johndavenport/.dotnet/tools:/usr/local/share/dotnet/dotnet:/Users/johndavenport/Documents/github/code_my_spec/.claude/worktrees/devops-qa/.claude/plugin-dev/bin:/Users/johndavenport/Documents/github/code_my_spec/.claude/worktrees/devops-qa/.claude/plugin-dev/bin",
           "MIX_ENV": null,
           "MIX_BUILD_PATH": null,
           "endLoop": null,
@@ -651,7 +730,7 @@
         "stderr_to_stdout": true
       },
       "output": "ssh: connect to host 178.156.185.52 port 22: Connection refused\r\n",
-      "recorded_at": "2026-08-13T21:16:29.477485Z"
+      "recorded_at": "2026-08-16T05:26:50.879821Z"
     },
     {
       "args": [
@@ -673,7 +752,7 @@
       "command": "ssh",
       "exit_code": 0,
       "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/briefly--576460681400189833-eM8dTWpdVKKLMlHUuy/briefly-576460681399877833-wlA8MxmKnEmQ7CgCpXU0/cms_drill_dbbf8119121148dc810af5169a27f05a",
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/briefly--576460737812276834-OpLrMi7Rl8BAhdqeegGt/briefly-576460737811638250-catNgxgeRcSDKOu9nWUG/cms_drill_31c5844bec3143798e556bd573130f0c",
         "env": {
           "SCRIPT_PATH": null,
           "RELEASE_ROOT": null,
@@ -711,6 +790,7 @@
           "RELEASE_REMOTE_VM_ARGS": null,
           "BINDIR": null,
           "REL_GOTO": null,
+          "PATH": "/Users/johndavenport/.asdf/shims:/Users/johndavenport/.asdf/installs/erlang/28.1/erts-16.1/bin:/Users/johndavenport/.asdf/installs/erlang/28.1/bin:/Users/johndavenport/.asdf/plugins/elixir/shims:/Users/johndavenport/.asdf/installs/elixir/1.19.4-otp-28/bin:/Users/johndavenport/.asdf/installs/elixir/1.19.4-otp-28/.mix/escripts:/Users/johndavenport/.local/bin:/Users/johndavenport/bin:/Users/johndavenport/.pyenv/shims:/Users/johndavenport/bin:/usr/local/bin:/opt/homebrew/Cellar/postgresql@15/15.5_1/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/opt/pmk/env/global/bin:/Library/Apple/usr/bin:/Users/johndavenport/.cargo/bin:/Users/johndavenport/.dotnet/tools:/Users/johndavenport/.dotnet/tools:/usr/local/share/dotnet/dotnet:/Users/johndavenport/Documents/github/code_my_spec/.claude/worktrees/devops-qa/.claude/plugin-dev/bin:/Users/johndavenport/Documents/github/code_my_spec/.claude/worktrees/devops-qa/.claude/plugin-dev/bin",
           "MIX_ENV": null,
           "MIX_BUILD_PATH": null,
           "endLoop": null,
@@ -719,7 +799,7 @@
         "stderr_to_stdout": true
       },
       "output": "Warning: Permanently added '178.156.185.52' (ED25519) to the list of known hosts.\r\n",
-      "recorded_at": "2026-08-13T21:16:32.764372Z"
+      "recorded_at": "2026-08-16T05:26:54.523837Z"
     },
     {
       "args": [
@@ -741,7 +821,7 @@
       "command": "ssh",
       "exit_code": 0,
       "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/briefly--576460681400189833-eM8dTWpdVKKLMlHUuy/briefly-576460681399877833-wlA8MxmKnEmQ7CgCpXU0/cms_drill_dbbf8119121148dc810af5169a27f05a",
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/briefly--576460737812276834-OpLrMi7Rl8BAhdqeegGt/briefly-576460737811638250-catNgxgeRcSDKOu9nWUG/cms_drill_31c5844bec3143798e556bd573130f0c",
         "env": {
           "SCRIPT_PATH": null,
           "RELEASE_ROOT": null,
@@ -779,6 +859,7 @@
           "RELEASE_REMOTE_VM_ARGS": null,
           "BINDIR": null,
           "REL_GOTO": null,
+          "PATH": "/Users/johndavenport/.asdf/shims:/Users/johndavenport/.asdf/installs/erlang/28.1/erts-16.1/bin:/Users/johndavenport/.asdf/installs/erlang/28.1/bin:/Users/johndavenport/.asdf/plugins/elixir/shims:/Users/johndavenport/.asdf/installs/elixir/1.19.4-otp-28/bin:/Users/johndavenport/.asdf/installs/elixir/1.19.4-otp-28/.mix/escripts:/Users/johndavenport/.local/bin:/Users/johndavenport/bin:/Users/johndavenport/.pyenv/shims:/Users/johndavenport/bin:/usr/local/bin:/opt/homebrew/Cellar/postgresql@15/15.5_1/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/opt/pmk/env/global/bin:/Library/Apple/usr/bin:/Users/johndavenport/.cargo/bin:/Users/johndavenport/.dotnet/tools:/Users/johndavenport/.dotnet/tools:/usr/local/share/dotnet/dotnet:/Users/johndavenport/Documents/github/code_my_spec/.claude/worktrees/devops-qa/.claude/plugin-dev/bin:/Users/johndavenport/Documents/github/code_my_spec/.claude/worktrees/devops-qa/.claude/plugin-dev/bin",
           "MIX_ENV": null,
           "MIX_BUILD_PATH": null,
           "endLoop": null,
@@ -787,7 +868,7 @@
         "stderr_to_stdout": true
       },
       "output": "Warning: Permanently added '178.156.185.52' (ED25519) to the list of known hosts.\r\n",
-      "recorded_at": "2026-08-13T21:16:33.961637Z"
+      "recorded_at": "2026-08-16T05:26:55.748540Z"
     },
     {
       "args": [
@@ -804,12 +885,12 @@
         "-i",
         "*/id_ed25519",
         "root@178.156.185.52",
-        "mkdir -p /etc/cms-registry && printf %s 'cms:$2b$04$OSQZ/gXWzaW/Zpn1nHxqE.b5UHjjYn2rLFEAr9B2efwRVifeNoGGe' > /etc/cms-registry/htpasswd && chmod 600 /etc/cms-registry/htpasswd && docker rm -f cms-registry >/dev/null 2>&1; docker run -d --name cms-registry --restart always -v /etc/cms-registry/htpasswd:/auth/htpasswd:ro -v cms-registry-data:/var/lib/registry -e REGISTRY_AUTH=htpasswd -e REGISTRY_AUTH_HTPASSWD_REALM=cms -e REGISTRY_AUTH_HTPASSWD_PATH=/auth/htpasswd -p 10.0.0.2:5000:5000 -e REGISTRY_STORAGE='filesystem' -e REGISTRY_STORAGE_FILESYSTEM_ROOTDIRECTORY='/var/lib/registry' registry:3"
+        "mkdir -p /etc/cms-registry && printf %s 'cms:$2b$04$XiGlKZIE7wB166/DU4YnHO4988/LtiEzZjPNwpv5vBBSFD8HKirxC' > /etc/cms-registry/htpasswd && chmod 600 /etc/cms-registry/htpasswd && docker rm -f cms-registry >/dev/null 2>&1; docker run -d --name cms-registry --restart always -v /etc/cms-registry/htpasswd:/auth/htpasswd:ro -v cms-registry-data:/var/lib/registry -e REGISTRY_AUTH=htpasswd -e REGISTRY_AUTH_HTPASSWD_REALM=cms -e REGISTRY_AUTH_HTPASSWD_PATH=/auth/htpasswd -p 10.0.0.2:5000:5000 -e REGISTRY_STORAGE='filesystem' -e REGISTRY_STORAGE_FILESYSTEM_ROOTDIRECTORY='/var/lib/registry' registry:3"
       ],
       "command": "ssh",
       "exit_code": 0,
       "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/briefly--576460681400189833-eM8dTWpdVKKLMlHUuy/briefly-576460681399877833-wlA8MxmKnEmQ7CgCpXU0/cms_drill_dbbf8119121148dc810af5169a27f05a",
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/briefly--576460737812276834-OpLrMi7Rl8BAhdqeegGt/briefly-576460737811638250-catNgxgeRcSDKOu9nWUG/cms_drill_31c5844bec3143798e556bd573130f0c",
         "env": {
           "SCRIPT_PATH": null,
           "RELEASE_ROOT": null,
@@ -847,6 +928,7 @@
           "RELEASE_REMOTE_VM_ARGS": null,
           "BINDIR": null,
           "REL_GOTO": null,
+          "PATH": "/Users/johndavenport/.asdf/shims:/Users/johndavenport/.asdf/installs/erlang/28.1/erts-16.1/bin:/Users/johndavenport/.asdf/installs/erlang/28.1/bin:/Users/johndavenport/.asdf/plugins/elixir/shims:/Users/johndavenport/.asdf/installs/elixir/1.19.4-otp-28/bin:/Users/johndavenport/.asdf/installs/elixir/1.19.4-otp-28/.mix/escripts:/Users/johndavenport/.local/bin:/Users/johndavenport/bin:/Users/johndavenport/.pyenv/shims:/Users/johndavenport/bin:/usr/local/bin:/opt/homebrew/Cellar/postgresql@15/15.5_1/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/opt/pmk/env/global/bin:/Library/Apple/usr/bin:/Users/johndavenport/.cargo/bin:/Users/johndavenport/.dotnet/tools:/Users/johndavenport/.dotnet/tools:/usr/local/share/dotnet/dotnet:/Users/johndavenport/Documents/github/code_my_spec/.claude/worktrees/devops-qa/.claude/plugin-dev/bin:/Users/johndavenport/Documents/github/code_my_spec/.claude/worktrees/devops-qa/.claude/plugin-dev/bin",
           "MIX_ENV": null,
           "MIX_BUILD_PATH": null,
           "endLoop": null,
@@ -854,8 +936,8 @@
         },
         "stderr_to_stdout": true
       },
-      "output": "Warning: Permanently added '178.156.185.52' (ED25519) to the list of known hosts.\r\nUnable to find image 'registry:3' locally\n3: Pulling from library/registry\ne6f31ffc071e: Pulling fs layer\n47465c9fe4b1: Pulling fs layer\n269b60c1a347: Pulling fs layer\nf90c3e905677: Pulling fs layer\n8f4e1177a675: Pulling fs layer\nf90c3e905677: Waiting\n8f4e1177a675: Waiting\n47465c9fe4b1: Download complete\ne6f31ffc071e: Verifying Checksum\ne6f31ffc071e: Download complete\nf90c3e905677: Verifying Checksum\nf90c3e905677: Download complete\n269b60c1a347: Verifying Checksum\n269b60c1a347: Download complete\n8f4e1177a675: Verifying Checksum\n8f4e1177a675: Download complete\ne6f31ffc071e: Pull complete\n47465c9fe4b1: Pull complete\n269b60c1a347: Pull complete\nf90c3e905677: Pull complete\n8f4e1177a675: Pull complete\nDigest: sha256:1be55279f18a2fe1a74edf2664cac61c1bea305b7b4642dab412e7affdcb3e33\nStatus: Downloaded newer image for registry:3\n97256f56b0dd4dd0969c1aa76f94f7393943c6c9afbc339d4bf795a74ba3a57b\n",
-      "recorded_at": "2026-08-13T21:16:35.864609Z"
+      "output": "Warning: Permanently added '178.156.185.52' (ED25519) to the list of known hosts.\r\nUnable to find image 'registry:3' locally\n3: Pulling from library/registry\ne6f31ffc071e: Pulling fs layer\n47465c9fe4b1: Pulling fs layer\n269b60c1a347: Pulling fs layer\nf90c3e905677: Pulling fs layer\n8f4e1177a675: Pulling fs layer\nf90c3e905677: Waiting\n8f4e1177a675: Waiting\n47465c9fe4b1: Verifying Checksum\n47465c9fe4b1: Download complete\ne6f31ffc071e: Verifying Checksum\ne6f31ffc071e: Download complete\nf90c3e905677: Verifying Checksum\nf90c3e905677: Download complete\n269b60c1a347: Verifying Checksum\n269b60c1a347: Download complete\n8f4e1177a675: Verifying Checksum\n8f4e1177a675: Download complete\ne6f31ffc071e: Pull complete\n47465c9fe4b1: Pull complete\n269b60c1a347: Pull complete\nf90c3e905677: Pull complete\n8f4e1177a675: Pull complete\nDigest: sha256:1be55279f18a2fe1a74edf2664cac61c1bea305b7b4642dab412e7affdcb3e33\nStatus: Downloaded newer image for registry:3\n1778cde6b025a7ad901e2d01f8b32e73cb6d84cb5bc95d8140f2aafc1cd972e9\n",
+      "recorded_at": "2026-08-16T05:26:58.063220Z"
     },
     {
       "args": [
@@ -872,12 +954,12 @@
         "-i",
         "*/id_ed25519",
         "root@178.156.185.52",
-        "curl -sf -u 'cms:H4eaPZW91J6OJChVgXO340lscgtapOUxS35p3zHNPw8' http://10.0.0.2:5000/v2/ > /dev/null"
+        "curl -sf -u 'cms:4EiYPp6pLq-C4N75ruZ-ECr4vfyTCzJva8-zAg36lJc' http://10.0.0.2:5000/v2/ > /dev/null"
       ],
       "command": "ssh",
       "exit_code": 0,
       "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/briefly--576460681400189833-eM8dTWpdVKKLMlHUuy/briefly-576460681399877833-wlA8MxmKnEmQ7CgCpXU0/cms_drill_dbbf8119121148dc810af5169a27f05a",
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/briefly--576460737812276834-OpLrMi7Rl8BAhdqeegGt/briefly-576460737811638250-catNgxgeRcSDKOu9nWUG/cms_drill_31c5844bec3143798e556bd573130f0c",
         "env": {
           "SCRIPT_PATH": null,
           "RELEASE_ROOT": null,
@@ -915,6 +997,7 @@
           "RELEASE_REMOTE_VM_ARGS": null,
           "BINDIR": null,
           "REL_GOTO": null,
+          "PATH": "/Users/johndavenport/.asdf/shims:/Users/johndavenport/.asdf/installs/erlang/28.1/erts-16.1/bin:/Users/johndavenport/.asdf/installs/erlang/28.1/bin:/Users/johndavenport/.asdf/plugins/elixir/shims:/Users/johndavenport/.asdf/installs/elixir/1.19.4-otp-28/bin:/Users/johndavenport/.asdf/installs/elixir/1.19.4-otp-28/.mix/escripts:/Users/johndavenport/.local/bin:/Users/johndavenport/bin:/Users/johndavenport/.pyenv/shims:/Users/johndavenport/bin:/usr/local/bin:/opt/homebrew/Cellar/postgresql@15/15.5_1/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/opt/pmk/env/global/bin:/Library/Apple/usr/bin:/Users/johndavenport/.cargo/bin:/Users/johndavenport/.dotnet/tools:/Users/johndavenport/.dotnet/tools:/usr/local/share/dotnet/dotnet:/Users/johndavenport/Documents/github/code_my_spec/.claude/worktrees/devops-qa/.claude/plugin-dev/bin:/Users/johndavenport/Documents/github/code_my_spec/.claude/worktrees/devops-qa/.claude/plugin-dev/bin",
           "MIX_ENV": null,
           "MIX_BUILD_PATH": null,
           "endLoop": null,
@@ -923,7 +1006,7 @@
         "stderr_to_stdout": true
       },
       "output": "Warning: Permanently added '178.156.185.52' (ED25519) to the list of known hosts.\r\n",
-      "recorded_at": "2026-08-13T21:16:36.522980Z"
+      "recorded_at": "2026-08-16T05:26:58.732728Z"
     },
     {
       "args": [
@@ -940,12 +1023,12 @@
         "-i",
         "*/id_ed25519",
         "root@178.156.185.52",
-        "docker network create db_net >/dev/null 2>&1; docker rm -f cms-postgres >/dev/null 2>&1; docker run -d --name cms-postgres --restart always --network db_net -v cms-postgres-data:/var/lib/postgresql/data -e POSTGRES_USER='app' -e POSTGRES_PASSWORD='CHeOAOKikkRfODB8MoeKiukwY7r3DHIroHwHbH_wz8U' -e POSTGRES_DB='app_prod' postgres:17"
+        "docker network create db_net >/dev/null 2>&1; docker rm -f cms-postgres >/dev/null 2>&1; docker run -d --name cms-postgres --restart always --network db_net -v cms-postgres-data:/var/lib/postgresql/data -e POSTGRES_USER='app' -e POSTGRES_PASSWORD='TIngClNoQP29T-_Uq5-pmjmdB9p2n6axRiPH9n1s3nU' -e POSTGRES_DB='app_prod' postgres:17"
       ],
       "command": "ssh",
       "exit_code": 0,
       "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/briefly--576460681400189833-eM8dTWpdVKKLMlHUuy/briefly-576460681399877833-wlA8MxmKnEmQ7CgCpXU0/cms_drill_dbbf8119121148dc810af5169a27f05a",
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/briefly--576460737812276834-OpLrMi7Rl8BAhdqeegGt/briefly-576460737811638250-catNgxgeRcSDKOu9nWUG/cms_drill_31c5844bec3143798e556bd573130f0c",
         "env": {
           "SCRIPT_PATH": null,
           "RELEASE_ROOT": null,
@@ -983,6 +1066,7 @@
           "RELEASE_REMOTE_VM_ARGS": null,
           "BINDIR": null,
           "REL_GOTO": null,
+          "PATH": "/Users/johndavenport/.asdf/shims:/Users/johndavenport/.asdf/installs/erlang/28.1/erts-16.1/bin:/Users/johndavenport/.asdf/installs/erlang/28.1/bin:/Users/johndavenport/.asdf/plugins/elixir/shims:/Users/johndavenport/.asdf/installs/elixir/1.19.4-otp-28/bin:/Users/johndavenport/.asdf/installs/elixir/1.19.4-otp-28/.mix/escripts:/Users/johndavenport/.local/bin:/Users/johndavenport/bin:/Users/johndavenport/.pyenv/shims:/Users/johndavenport/bin:/usr/local/bin:/opt/homebrew/Cellar/postgresql@15/15.5_1/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/opt/pmk/env/global/bin:/Library/Apple/usr/bin:/Users/johndavenport/.cargo/bin:/Users/johndavenport/.dotnet/tools:/Users/johndavenport/.dotnet/tools:/usr/local/share/dotnet/dotnet:/Users/johndavenport/Documents/github/code_my_spec/.claude/worktrees/devops-qa/.claude/plugin-dev/bin:/Users/johndavenport/Documents/github/code_my_spec/.claude/worktrees/devops-qa/.claude/plugin-dev/bin",
           "MIX_ENV": null,
           "MIX_BUILD_PATH": null,
           "endLoop": null,
@@ -990,8 +1074,8 @@
         },
         "stderr_to_stdout": true
       },
-      "output": "Warning: Permanently added '178.156.185.52' (ED25519) to the list of known hosts.\r\nUnable to find image 'postgres:17' locally\n17: Pulling from library/postgres\n26c307b5e35a: Pulling fs layer\na211a4ebbe9c: Pulling fs layer\n99b8d6500ca8: Pulling fs layer\n011e3de85889: Pulling fs layer\nfae9bcdccea1: Pulling fs layer\n98662c61092c: Pulling fs layer\ndd72bcd3b6cf: Pulling fs layer\nf51ddbe7fe6c: Pulling fs layer\nb6bf40d31a6c: Pulling fs layer\naaf8269598d6: Pulling fs layer\ncdcabf0f88e4: Pulling fs layer\n7696d740062e: Pulling fs layer\neb09c7374a37: Pulling fs layer\n8eb7d3b192aa: Pulling fs layer\nf51ddbe7fe6c: Waiting\nb6bf40d31a6c: Waiting\naaf8269598d6: Waiting\ncdcabf0f88e4: Waiting\n7696d740062e: Waiting\neb09c7374a37: Waiting\n8eb7d3b192aa: Waiting\n011e3de85889: Waiting\nfae9bcdccea1: Waiting\n98662c61092c: Waiting\ndd72bcd3b6cf: Waiting\na211a4ebbe9c: Verifying Checksum\na211a4ebbe9c: Download complete\n99b8d6500ca8: Verifying Checksum\n99b8d6500ca8: Download complete\n26c307b5e35a: Verifying Checksum\n26c307b5e35a: Download complete\n011e3de85889: Verifying Checksum\n011e3de85889: Download complete\nfae9bcdccea1: Verifying Checksum\nfae9bcdccea1: Download complete\ndd72bcd3b6cf: Verifying Checksum\ndd72bcd3b6cf: Download complete\n98662c61092c: Verifying Checksum\n98662c61092c: Download complete\nf51ddbe7fe6c: Verifying Checksum\nf51ddbe7fe6c: Download complete\naaf8269598d6: Verifying Checksum\naaf8269598d6: Download complete\ncdcabf0f88e4: Verifying Checksum\ncdcabf0f88e4: Download complete\n7696d740062e: Verifying Checksum\n7696d740062e: Download complete\neb09c7374a37: Verifying Checksum\neb09c7374a37: Download complete\n8eb7d3b192aa: Verifying Checksum\n8eb7d3b192aa: Download complete\nb6bf40d31a6c: Verifying Checksum\nb6bf40d31a6c: Download complete\n26c307b5e35a: Pull complete\na211a4ebbe9c: Pull complete\n99b8d6500ca8: Pull complete\n011e3de85889: Pull complete\nfae9bcdccea1: Pull complete\n98662c61092c: Pull complete\ndd72bcd3b6cf: Pull complete\nf51ddbe7fe6c: Pull complete\nb6bf40d31a6c: Pull complete\naaf8269598d6: Pull complete\ncdcabf0f88e4: Pull complete\n7696d740062e: Pull complete\neb09c7374a37: Pull complete\n8eb7d3b192aa: Pull complete\nDigest: sha256:e42539a54ee3e82e21f19d7eded61b579869585f86b90b5e851ff0d3dd8b4001\nStatus: Downloaded newer image for postgres:17\n60fabfdfdca31cf7c32ca562d8b135b176584b0a0137873d79cdeb7106df99ce\n",
-      "recorded_at": "2026-08-13T21:16:42.541146Z"
+      "output": "Warning: Permanently added '178.156.185.52' (ED25519) to the list of known hosts.\r\nUnable to find image 'postgres:17' locally\n17: Pulling from library/postgres\n26c307b5e35a: Pulling fs layer\na211a4ebbe9c: Pulling fs layer\n99b8d6500ca8: Pulling fs layer\n011e3de85889: Pulling fs layer\nfae9bcdccea1: Pulling fs layer\n98662c61092c: Pulling fs layer\ndd72bcd3b6cf: Pulling fs layer\nf51ddbe7fe6c: Pulling fs layer\nb6bf40d31a6c: Pulling fs layer\naaf8269598d6: Pulling fs layer\ncdcabf0f88e4: Pulling fs layer\n7696d740062e: Pulling fs layer\neb09c7374a37: Pulling fs layer\n8eb7d3b192aa: Pulling fs layer\nb6bf40d31a6c: Waiting\naaf8269598d6: Waiting\ncdcabf0f88e4: Waiting\n7696d740062e: Waiting\neb09c7374a37: Waiting\n8eb7d3b192aa: Waiting\n011e3de85889: Waiting\nfae9bcdccea1: Waiting\n98662c61092c: Waiting\ndd72bcd3b6cf: Waiting\nf51ddbe7fe6c: Waiting\na211a4ebbe9c: Verifying Checksum\na211a4ebbe9c: Download complete\n99b8d6500ca8: Verifying Checksum\n99b8d6500ca8: Download complete\n011e3de85889: Verifying Checksum\n011e3de85889: Download complete\n26c307b5e35a: Verifying Checksum\n26c307b5e35a: Download complete\ndd72bcd3b6cf: Verifying Checksum\ndd72bcd3b6cf: Download complete\nfae9bcdccea1: Verifying Checksum\nfae9bcdccea1: Download complete\n98662c61092c: Verifying Checksum\n98662c61092c: Download complete\nf51ddbe7fe6c: Verifying Checksum\nf51ddbe7fe6c: Download complete\naaf8269598d6: Verifying Checksum\naaf8269598d6: Download complete\ncdcabf0f88e4: Verifying Checksum\ncdcabf0f88e4: Download complete\n7696d740062e: Verifying Checksum\n7696d740062e: Download complete\neb09c7374a37: Verifying Checksum\neb09c7374a37: Download complete\n8eb7d3b192aa: Verifying Checksum\n8eb7d3b192aa: Download complete\nb6bf40d31a6c: Verifying Checksum\nb6bf40d31a6c: Download complete\n26c307b5e35a: Pull complete\na211a4ebbe9c: Pull complete\n99b8d6500ca8: Pull complete\n011e3de85889: Pull complete\nfae9bcdccea1: Pull complete\n98662c61092c: Pull complete\ndd72bcd3b6cf: Pull complete\nf51ddbe7fe6c: Pull complete\nb6bf40d31a6c: Pull complete\naaf8269598d6: Pull complete\ncdcabf0f88e4: Pull complete\n7696d740062e: Pull complete\neb09c7374a37: Pull complete\n8eb7d3b192aa: Pull complete\nDigest: sha256:e38411452a464af89e5adadb8d223bf53b898d47d6ef918b2d58c08707350449\nStatus: Downloaded newer image for postgres:17\n79bbe131a3d854452a8d6d62dba4f8278697a84c93740c2b4fb1aa1c89f259bd\n",
+      "recorded_at": "2026-08-16T05:27:06.877460Z"
     },
     {
       "args": [
@@ -1013,7 +1097,7 @@
       "command": "ssh",
       "exit_code": 2,
       "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/briefly--576460681400189833-eM8dTWpdVKKLMlHUuy/briefly-576460681399877833-wlA8MxmKnEmQ7CgCpXU0/cms_drill_dbbf8119121148dc810af5169a27f05a",
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/briefly--576460737812276834-OpLrMi7Rl8BAhdqeegGt/briefly-576460737811638250-catNgxgeRcSDKOu9nWUG/cms_drill_31c5844bec3143798e556bd573130f0c",
         "env": {
           "SCRIPT_PATH": null,
           "RELEASE_ROOT": null,
@@ -1051,6 +1135,7 @@
           "RELEASE_REMOTE_VM_ARGS": null,
           "BINDIR": null,
           "REL_GOTO": null,
+          "PATH": "/Users/johndavenport/.asdf/shims:/Users/johndavenport/.asdf/installs/erlang/28.1/erts-16.1/bin:/Users/johndavenport/.asdf/installs/erlang/28.1/bin:/Users/johndavenport/.asdf/plugins/elixir/shims:/Users/johndavenport/.asdf/installs/elixir/1.19.4-otp-28/bin:/Users/johndavenport/.asdf/installs/elixir/1.19.4-otp-28/.mix/escripts:/Users/johndavenport/.local/bin:/Users/johndavenport/bin:/Users/johndavenport/.pyenv/shims:/Users/johndavenport/bin:/usr/local/bin:/opt/homebrew/Cellar/postgresql@15/15.5_1/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/opt/pmk/env/global/bin:/Library/Apple/usr/bin:/Users/johndavenport/.cargo/bin:/Users/johndavenport/.dotnet/tools:/Users/johndavenport/.dotnet/tools:/usr/local/share/dotnet/dotnet:/Users/johndavenport/Documents/github/code_my_spec/.claude/worktrees/devops-qa/.claude/plugin-dev/bin:/Users/johndavenport/Documents/github/code_my_spec/.claude/worktrees/devops-qa/.claude/plugin-dev/bin",
           "MIX_ENV": null,
           "MIX_BUILD_PATH": null,
           "endLoop": null,
@@ -1059,7 +1144,7 @@
         "stderr_to_stdout": true
       },
       "output": "Warning: Permanently added '178.156.185.52' (ED25519) to the list of known hosts.\r\n",
-      "recorded_at": "2026-08-13T21:16:43.226508Z"
+      "recorded_at": "2026-08-16T05:27:07.673577Z"
     },
     {
       "args": [
@@ -1081,7 +1166,7 @@
       "command": "ssh",
       "exit_code": 0,
       "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/briefly--576460681400189833-eM8dTWpdVKKLMlHUuy/briefly-576460681399877833-wlA8MxmKnEmQ7CgCpXU0/cms_drill_dbbf8119121148dc810af5169a27f05a",
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/briefly--576460737812276834-OpLrMi7Rl8BAhdqeegGt/briefly-576460737811638250-catNgxgeRcSDKOu9nWUG/cms_drill_31c5844bec3143798e556bd573130f0c",
         "env": {
           "SCRIPT_PATH": null,
           "RELEASE_ROOT": null,
@@ -1119,6 +1204,7 @@
           "RELEASE_REMOTE_VM_ARGS": null,
           "BINDIR": null,
           "REL_GOTO": null,
+          "PATH": "/Users/johndavenport/.asdf/shims:/Users/johndavenport/.asdf/installs/erlang/28.1/erts-16.1/bin:/Users/johndavenport/.asdf/installs/erlang/28.1/bin:/Users/johndavenport/.asdf/plugins/elixir/shims:/Users/johndavenport/.asdf/installs/elixir/1.19.4-otp-28/bin:/Users/johndavenport/.asdf/installs/elixir/1.19.4-otp-28/.mix/escripts:/Users/johndavenport/.local/bin:/Users/johndavenport/bin:/Users/johndavenport/.pyenv/shims:/Users/johndavenport/bin:/usr/local/bin:/opt/homebrew/Cellar/postgresql@15/15.5_1/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/opt/pmk/env/global/bin:/Library/Apple/usr/bin:/Users/johndavenport/.cargo/bin:/Users/johndavenport/.dotnet/tools:/Users/johndavenport/.dotnet/tools:/usr/local/share/dotnet/dotnet:/Users/johndavenport/Documents/github/code_my_spec/.claude/worktrees/devops-qa/.claude/plugin-dev/bin:/Users/johndavenport/Documents/github/code_my_spec/.claude/worktrees/devops-qa/.claude/plugin-dev/bin",
           "MIX_ENV": null,
           "MIX_BUILD_PATH": null,
           "endLoop": null,
@@ -1127,51 +1213,7 @@
         "stderr_to_stdout": true
       },
       "output": "Warning: Permanently added '178.156.185.52' (ED25519) to the list of known hosts.\r\n",
-      "recorded_at": "2026-08-13T21:16:45.958160Z"
-    },
-    {
-      "args": [],
-      "command": "age-keygen",
-      "exit_code": 0,
-      "opts": {
-        "stderr_to_stdout": true
-      },
-      "output": "Public key: age1m0rh0qyl4spvf4vjfjtnfdl86w47w8l5clzpzph5qv4fqmaml35stdd2ge\n# created: 2026-08-13T17:16:45-04:00\n# public key: age1m0rh0qyl4spvf4vjfjtnfdl86w47w8l5clzpzph5qv4fqmaml35stdd2ge\nAGE-SECRET-KEY-1H4P3933A0Y5GE7SFJYXTANPNPWVKZMJGWRZZVTD60QGKNH26AY6QN6MJM4\n",
-      "recorded_at": "2026-08-13T21:16:45.969345Z"
-    },
-    {
-      "args": [
-        "encrypt",
-        "--in-place",
-        "envs/prod.enc.env"
-      ],
-      "command": "sops",
-      "exit_code": 0,
-      "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/briefly--576460681400189833-eM8dTWpdVKKLMlHUuy/briefly-576460681399877833-wlA8MxmKnEmQ7CgCpXU0/cms_drill_dbbf8119121148dc810af5169a27f05a",
-        "stderr_to_stdout": true
-      },
-      "output": "",
-      "recorded_at": "2026-08-13T21:16:46.104745Z"
-    },
-    {
-      "args": [
-        "set",
-        "envs/prod.enc.env",
-        "[\"DATABASE_URL\"]",
-        "\"ecto://app:CHeOAOKikkRfODB8MoeKiukwY7r3DHIroHwHbH_wz8U@cms-postgres/app_prod\""
-      ],
-      "command": "sops",
-      "exit_code": 0,
-      "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/briefly--576460681400189833-eM8dTWpdVKKLMlHUuy/briefly-576460681399877833-wlA8MxmKnEmQ7CgCpXU0/cms_drill_dbbf8119121148dc810af5169a27f05a",
-        "env": {
-          "SOPS_AGE_KEY": "AGE-SECRET-KEY-1H4P3933A0Y5GE7SFJYXTANPNPWVKZMJGWRZZVTD60QGKNH26AY6QN6MJM4"
-        },
-        "stderr_to_stdout": true
-      },
-      "output": "",
-      "recorded_at": "2026-08-13T21:16:46.117331Z"
+      "recorded_at": "2026-08-16T05:27:10.401485Z"
     },
     {
       "args": [
@@ -1187,13 +1229,126 @@
         "ConnectTimeout=10",
         "-i",
         "*/id_ed25519",
-        "root@178.156.200.94",
+        "root@178.156.185.52",
+        "docker exec cms-postgres psql -v ON_ERROR_STOP=1 -U 'app' -d 'app_prod' -c 'ALTER USER app WITH PASSWORD '\\''TIngClNoQP29T-_Uq5-pmjmdB9p2n6axRiPH9n1s3nU'\\''' > /dev/null"
+      ],
+      "command": "ssh",
+      "exit_code": 0,
+      "opts": {
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/briefly--576460737812276834-OpLrMi7Rl8BAhdqeegGt/briefly-576460737811638250-catNgxgeRcSDKOu9nWUG/cms_drill_31c5844bec3143798e556bd573130f0c",
+        "env": {
+          "SCRIPT_PATH": null,
+          "RELEASE_ROOT": null,
+          "ERTS_BIN": null,
+          "RELEASE_DISTRIBUTION_FLAG": null,
+          "RELEASE_DISTRIBUTION": null,
+          "EMU": null,
+          "RELEASE_COMMAND": null,
+          "MIX_HOME": null,
+          "PROGNAME": null,
+          "ELIXIR_VERSION": null,
+          "MIX_ARCHIVES": null,
+          "RELEASE_MODE": null,
+          "beforeExtra": null,
+          "REL_EXEC": null,
+          "RELEASE_PROG": null,
+          "ERL_LIBS": null,
+          "RELEASE_NODE": null,
+          "MIX_DEPS_PATH": null,
+          "REL_EXTRA": null,
+          "RELEASE_BOOT_SCRIPT_CLEAN": null,
+          "RELEASE_NAME": null,
+          "MIX_TARGET": null,
+          "RELEASE_VM_ARGS": null,
+          "ERLEXEC_DIR": null,
+          "ERTS_VSN": null,
+          "RELEASE_SYS_CONFIG": null,
+          "ROOTDIR": null,
+          "ERL_CONSOLE_MODE": null,
+          "parsErlang": null,
+          "RELEASE_TMP": null,
+          "REL_VSN_DIR": null,
+          "RELEASE_VSN": null,
+          "RELEASE_BOOT_SCRIPT": null,
+          "RELEASE_REMOTE_VM_ARGS": null,
+          "BINDIR": null,
+          "REL_GOTO": null,
+          "PATH": "/Users/johndavenport/.asdf/shims:/Users/johndavenport/.asdf/installs/erlang/28.1/erts-16.1/bin:/Users/johndavenport/.asdf/installs/erlang/28.1/bin:/Users/johndavenport/.asdf/plugins/elixir/shims:/Users/johndavenport/.asdf/installs/elixir/1.19.4-otp-28/bin:/Users/johndavenport/.asdf/installs/elixir/1.19.4-otp-28/.mix/escripts:/Users/johndavenport/.local/bin:/Users/johndavenport/bin:/Users/johndavenport/.pyenv/shims:/Users/johndavenport/bin:/usr/local/bin:/opt/homebrew/Cellar/postgresql@15/15.5_1/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/opt/pmk/env/global/bin:/Library/Apple/usr/bin:/Users/johndavenport/.cargo/bin:/Users/johndavenport/.dotnet/tools:/Users/johndavenport/.dotnet/tools:/usr/local/share/dotnet/dotnet:/Users/johndavenport/Documents/github/code_my_spec/.claude/worktrees/devops-qa/.claude/plugin-dev/bin:/Users/johndavenport/Documents/github/code_my_spec/.claude/worktrees/devops-qa/.claude/plugin-dev/bin",
+          "MIX_ENV": null,
+          "MIX_BUILD_PATH": null,
+          "endLoop": null,
+          "RELEASE_COOKIE": null
+        },
+        "stderr_to_stdout": true
+      },
+      "output": "Warning: Permanently added '178.156.185.52' (ED25519) to the list of known hosts.\r\n",
+      "recorded_at": "2026-08-16T05:27:11.173618Z"
+    },
+    {
+      "args": [],
+      "command": "age-keygen",
+      "exit_code": 0,
+      "opts": {
+        "stderr_to_stdout": true
+      },
+      "output": "Public key: age1et3epqguy99xss6fukfch3qx9lurs0f9wt9zqllhf4ua3wzch55s3e4aw7\n# created: 2026-08-16T01:27:11-04:00\n# public key: age1et3epqguy99xss6fukfch3qx9lurs0f9wt9zqllhf4ua3wzch55s3e4aw7\nAGE-SECRET-KEY-1H4P3933A0Y5GE7SFJYXTANPNPWVKZMJGWRZZVTD60QGKNH26AY6QN6MJM4\n",
+      "recorded_at": "2026-08-16T05:27:11.177677Z"
+    },
+    {
+      "args": [
+        "encrypt",
+        "--in-place",
+        "envs/prod.enc.env"
+      ],
+      "command": "sops",
+      "exit_code": 0,
+      "opts": {
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/briefly--576460737812276834-OpLrMi7Rl8BAhdqeegGt/briefly-576460737811638250-catNgxgeRcSDKOu9nWUG/cms_drill_31c5844bec3143798e556bd573130f0c",
+        "stderr_to_stdout": true
+      },
+      "output": "",
+      "recorded_at": "2026-08-16T05:27:11.191641Z"
+    },
+    {
+      "args": [
+        "set",
+        "envs/prod.enc.env",
+        "[\"DATABASE_URL\"]",
+        "\"ecto://app:TIngClNoQP29T-_Uq5-pmjmdB9p2n6axRiPH9n1s3nU@cms-postgres/app_prod\""
+      ],
+      "command": "sops",
+      "exit_code": 0,
+      "opts": {
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/briefly--576460737812276834-OpLrMi7Rl8BAhdqeegGt/briefly-576460737811638250-catNgxgeRcSDKOu9nWUG/cms_drill_31c5844bec3143798e556bd573130f0c",
+        "env": {
+          "SOPS_AGE_KEY": "AGE-SECRET-KEY-1H4P3933A0Y5GE7SFJYXTANPNPWVKZMJGWRZZVTD60QGKNH26AY6QN6MJM4"
+        },
+        "stderr_to_stdout": true
+      },
+      "output": "",
+      "recorded_at": "2026-08-16T05:27:11.206201Z"
+    },
+    {
+      "args": [
+        "-o",
+        "StrictHostKeyChecking=no",
+        "-o",
+        "UserKnownHostsFile=/dev/null",
+        "-o",
+        "BatchMode=yes",
+        "-o",
+        "IdentitiesOnly=yes",
+        "-o",
+        "ConnectTimeout=10",
+        "-i",
+        "*/id_ed25519",
+        "root@178.156.216.165",
         "true"
       ],
       "command": "ssh",
       "exit_code": 0,
       "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/briefly--576460681400189833-eM8dTWpdVKKLMlHUuy/briefly-576460681399877833-wlA8MxmKnEmQ7CgCpXU0/cms_drill_dbbf8119121148dc810af5169a27f05a",
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/briefly--576460737812276834-OpLrMi7Rl8BAhdqeegGt/briefly-576460737811638250-catNgxgeRcSDKOu9nWUG/cms_drill_31c5844bec3143798e556bd573130f0c",
         "env": {
           "SCRIPT_PATH": null,
           "RELEASE_ROOT": null,
@@ -1231,6 +1386,7 @@
           "RELEASE_REMOTE_VM_ARGS": null,
           "BINDIR": null,
           "REL_GOTO": null,
+          "PATH": "/Users/johndavenport/.asdf/shims:/Users/johndavenport/.asdf/installs/erlang/28.1/erts-16.1/bin:/Users/johndavenport/.asdf/installs/erlang/28.1/bin:/Users/johndavenport/.asdf/plugins/elixir/shims:/Users/johndavenport/.asdf/installs/elixir/1.19.4-otp-28/bin:/Users/johndavenport/.asdf/installs/elixir/1.19.4-otp-28/.mix/escripts:/Users/johndavenport/.local/bin:/Users/johndavenport/bin:/Users/johndavenport/.pyenv/shims:/Users/johndavenport/bin:/usr/local/bin:/opt/homebrew/Cellar/postgresql@15/15.5_1/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/opt/pmk/env/global/bin:/Library/Apple/usr/bin:/Users/johndavenport/.cargo/bin:/Users/johndavenport/.dotnet/tools:/Users/johndavenport/.dotnet/tools:/usr/local/share/dotnet/dotnet:/Users/johndavenport/Documents/github/code_my_spec/.claude/worktrees/devops-qa/.claude/plugin-dev/bin:/Users/johndavenport/Documents/github/code_my_spec/.claude/worktrees/devops-qa/.claude/plugin-dev/bin",
           "MIX_ENV": null,
           "MIX_BUILD_PATH": null,
           "endLoop": null,
@@ -1238,8 +1394,8 @@
         },
         "stderr_to_stdout": true
       },
-      "output": "Warning: Permanently added '178.156.200.94' (ED25519) to the list of known hosts.\r\n",
-      "recorded_at": "2026-08-13T21:16:47.729363Z"
+      "output": "Warning: Permanently added '178.156.216.165' (ED25519) to the list of known hosts.\r\n",
+      "recorded_at": "2026-08-16T05:27:12.735225Z"
     },
     {
       "args": [
@@ -1255,13 +1411,13 @@
         "ConnectTimeout=10",
         "-i",
         "*/id_ed25519",
-        "root@178.156.200.94",
+        "root@178.156.216.165",
         "mkdir -p /etc/docker && (grep -qF '10.0.0.3:5000' /etc/docker/daemon.json 2>/dev/null || (echo '{\"insecure-registries\":[\"10.0.0.3:5000\"]}' > /etc/docker/daemon.json && systemctl restart docker))"
       ],
       "command": "ssh",
       "exit_code": 0,
       "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/briefly--576460681400189833-eM8dTWpdVKKLMlHUuy/briefly-576460681399877833-wlA8MxmKnEmQ7CgCpXU0/cms_drill_dbbf8119121148dc810af5169a27f05a",
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/briefly--576460737812276834-OpLrMi7Rl8BAhdqeegGt/briefly-576460737811638250-catNgxgeRcSDKOu9nWUG/cms_drill_31c5844bec3143798e556bd573130f0c",
         "env": {
           "SCRIPT_PATH": null,
           "RELEASE_ROOT": null,
@@ -1299,6 +1455,7 @@
           "RELEASE_REMOTE_VM_ARGS": null,
           "BINDIR": null,
           "REL_GOTO": null,
+          "PATH": "/Users/johndavenport/.asdf/shims:/Users/johndavenport/.asdf/installs/erlang/28.1/erts-16.1/bin:/Users/johndavenport/.asdf/installs/erlang/28.1/bin:/Users/johndavenport/.asdf/plugins/elixir/shims:/Users/johndavenport/.asdf/installs/elixir/1.19.4-otp-28/bin:/Users/johndavenport/.asdf/installs/elixir/1.19.4-otp-28/.mix/escripts:/Users/johndavenport/.local/bin:/Users/johndavenport/bin:/Users/johndavenport/.pyenv/shims:/Users/johndavenport/bin:/usr/local/bin:/opt/homebrew/Cellar/postgresql@15/15.5_1/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/opt/pmk/env/global/bin:/Library/Apple/usr/bin:/Users/johndavenport/.cargo/bin:/Users/johndavenport/.dotnet/tools:/Users/johndavenport/.dotnet/tools:/usr/local/share/dotnet/dotnet:/Users/johndavenport/Documents/github/code_my_spec/.claude/worktrees/devops-qa/.claude/plugin-dev/bin:/Users/johndavenport/Documents/github/code_my_spec/.claude/worktrees/devops-qa/.claude/plugin-dev/bin",
           "MIX_ENV": null,
           "MIX_BUILD_PATH": null,
           "endLoop": null,
@@ -1306,8 +1463,8 @@
         },
         "stderr_to_stdout": true
       },
-      "output": "Warning: Permanently added '178.156.200.94' (ED25519) to the list of known hosts.\r\n",
-      "recorded_at": "2026-08-13T21:16:48.902520Z"
+      "output": "Warning: Permanently added '178.156.216.165' (ED25519) to the list of known hosts.\r\n",
+      "recorded_at": "2026-08-16T05:27:14.085603Z"
     },
     {
       "args": [
@@ -1323,13 +1480,13 @@
         "ConnectTimeout=10",
         "-i",
         "*/id_ed25519",
-        "root@178.156.200.94",
-        "mkdir -p /etc/cms-registry && printf %s 'cms:$2b$04$JFlI2ygWGel7L/ATJFGUAeDZXfe.Xp3j/sElWYdwLY2i64Ad4JeVu' > /etc/cms-registry/htpasswd && chmod 600 /etc/cms-registry/htpasswd && docker rm -f cms-registry >/dev/null 2>&1; docker run -d --name cms-registry --restart always -v /etc/cms-registry/htpasswd:/auth/htpasswd:ro -v cms-registry-data:/var/lib/registry -e REGISTRY_AUTH=htpasswd -e REGISTRY_AUTH_HTPASSWD_REALM=cms -e REGISTRY_AUTH_HTPASSWD_PATH=/auth/htpasswd -p 10.0.0.3:5000:5000 -e REGISTRY_STORAGE='filesystem' -e REGISTRY_STORAGE_FILESYSTEM_ROOTDIRECTORY='/var/lib/registry' registry:3"
+        "root@178.156.216.165",
+        "mkdir -p /etc/cms-registry && printf %s 'cms:$2b$04$M0m8lTgHi47dBHuM.fFjFeydK.9jJ8KOyjb/ff.Swkl5J6wtbLKEW' > /etc/cms-registry/htpasswd && chmod 600 /etc/cms-registry/htpasswd && docker rm -f cms-registry >/dev/null 2>&1; docker run -d --name cms-registry --restart always -v /etc/cms-registry/htpasswd:/auth/htpasswd:ro -v cms-registry-data:/var/lib/registry -e REGISTRY_AUTH=htpasswd -e REGISTRY_AUTH_HTPASSWD_REALM=cms -e REGISTRY_AUTH_HTPASSWD_PATH=/auth/htpasswd -p 10.0.0.3:5000:5000 -e REGISTRY_STORAGE='filesystem' -e REGISTRY_STORAGE_FILESYSTEM_ROOTDIRECTORY='/var/lib/registry' registry:3"
       ],
       "command": "ssh",
       "exit_code": 0,
       "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/briefly--576460681400189833-eM8dTWpdVKKLMlHUuy/briefly-576460681399877833-wlA8MxmKnEmQ7CgCpXU0/cms_drill_dbbf8119121148dc810af5169a27f05a",
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/briefly--576460737812276834-OpLrMi7Rl8BAhdqeegGt/briefly-576460737811638250-catNgxgeRcSDKOu9nWUG/cms_drill_31c5844bec3143798e556bd573130f0c",
         "env": {
           "SCRIPT_PATH": null,
           "RELEASE_ROOT": null,
@@ -1367,6 +1524,7 @@
           "RELEASE_REMOTE_VM_ARGS": null,
           "BINDIR": null,
           "REL_GOTO": null,
+          "PATH": "/Users/johndavenport/.asdf/shims:/Users/johndavenport/.asdf/installs/erlang/28.1/erts-16.1/bin:/Users/johndavenport/.asdf/installs/erlang/28.1/bin:/Users/johndavenport/.asdf/plugins/elixir/shims:/Users/johndavenport/.asdf/installs/elixir/1.19.4-otp-28/bin:/Users/johndavenport/.asdf/installs/elixir/1.19.4-otp-28/.mix/escripts:/Users/johndavenport/.local/bin:/Users/johndavenport/bin:/Users/johndavenport/.pyenv/shims:/Users/johndavenport/bin:/usr/local/bin:/opt/homebrew/Cellar/postgresql@15/15.5_1/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/opt/pmk/env/global/bin:/Library/Apple/usr/bin:/Users/johndavenport/.cargo/bin:/Users/johndavenport/.dotnet/tools:/Users/johndavenport/.dotnet/tools:/usr/local/share/dotnet/dotnet:/Users/johndavenport/Documents/github/code_my_spec/.claude/worktrees/devops-qa/.claude/plugin-dev/bin:/Users/johndavenport/Documents/github/code_my_spec/.claude/worktrees/devops-qa/.claude/plugin-dev/bin",
           "MIX_ENV": null,
           "MIX_BUILD_PATH": null,
           "endLoop": null,
@@ -1374,8 +1532,8 @@
         },
         "stderr_to_stdout": true
       },
-      "output": "Warning: Permanently added '178.156.200.94' (ED25519) to the list of known hosts.\r\nUnable to find image 'registry:3' locally\n3: Pulling from library/registry\ne6f31ffc071e: Pulling fs layer\n47465c9fe4b1: Pulling fs layer\n269b60c1a347: Pulling fs layer\nf90c3e905677: Pulling fs layer\n8f4e1177a675: Pulling fs layer\nf90c3e905677: Waiting\n8f4e1177a675: Waiting\n47465c9fe4b1: Verifying Checksum\n47465c9fe4b1: Download complete\ne6f31ffc071e: Verifying Checksum\ne6f31ffc071e: Download complete\nf90c3e905677: Verifying Checksum\nf90c3e905677: Download complete\n269b60c1a347: Verifying Checksum\n269b60c1a347: Download complete\n8f4e1177a675: Verifying Checksum\n8f4e1177a675: Download complete\ne6f31ffc071e: Pull complete\n47465c9fe4b1: Pull complete\n269b60c1a347: Pull complete\nf90c3e905677: Pull complete\n8f4e1177a675: Pull complete\nDigest: sha256:1be55279f18a2fe1a74edf2664cac61c1bea305b7b4642dab412e7affdcb3e33\nStatus: Downloaded newer image for registry:3\n10df534e7447c1f4b7023cfcd8b02f76ca4f6ea59f4fb777ccf7b054d2300a39\n",
-      "recorded_at": "2026-08-13T21:16:50.834812Z"
+      "output": "Warning: Permanently added '178.156.216.165' (ED25519) to the list of known hosts.\r\nUnable to find image 'registry:3' locally\n3: Pulling from library/registry\ne6f31ffc071e: Pulling fs layer\n47465c9fe4b1: Pulling fs layer\n269b60c1a347: Pulling fs layer\nf90c3e905677: Pulling fs layer\n8f4e1177a675: Pulling fs layer\nf90c3e905677: Waiting\n8f4e1177a675: Waiting\n47465c9fe4b1: Verifying Checksum\n47465c9fe4b1: Download complete\ne6f31ffc071e: Verifying Checksum\ne6f31ffc071e: Download complete\nf90c3e905677: Verifying Checksum\nf90c3e905677: Download complete\n8f4e1177a675: Verifying Checksum\n8f4e1177a675: Download complete\n269b60c1a347: Verifying Checksum\n269b60c1a347: Download complete\ne6f31ffc071e: Pull complete\n47465c9fe4b1: Pull complete\n269b60c1a347: Pull complete\nf90c3e905677: Pull complete\n8f4e1177a675: Pull complete\nDigest: sha256:1be55279f18a2fe1a74edf2664cac61c1bea305b7b4642dab412e7affdcb3e33\nStatus: Downloaded newer image for registry:3\ne68ee141aef9cf16891400afcf117185b65009052674f65dbf9230f65cce15f6\n",
+      "recorded_at": "2026-08-16T05:27:16.151190Z"
     },
     {
       "args": [
@@ -1391,13 +1549,13 @@
         "ConnectTimeout=10",
         "-i",
         "*/id_ed25519",
-        "root@178.156.200.94",
-        "curl -sf -u 'cms:H4eaPZW91J6OJChVgXO340lscgtapOUxS35p3zHNPw8' http://10.0.0.3:5000/v2/ > /dev/null"
+        "root@178.156.216.165",
+        "curl -sf -u 'cms:4EiYPp6pLq-C4N75ruZ-ECr4vfyTCzJva8-zAg36lJc' http://10.0.0.3:5000/v2/ > /dev/null"
       ],
       "command": "ssh",
       "exit_code": 0,
       "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/briefly--576460681400189833-eM8dTWpdVKKLMlHUuy/briefly-576460681399877833-wlA8MxmKnEmQ7CgCpXU0/cms_drill_dbbf8119121148dc810af5169a27f05a",
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/briefly--576460737812276834-OpLrMi7Rl8BAhdqeegGt/briefly-576460737811638250-catNgxgeRcSDKOu9nWUG/cms_drill_31c5844bec3143798e556bd573130f0c",
         "env": {
           "SCRIPT_PATH": null,
           "RELEASE_ROOT": null,
@@ -1435,6 +1593,7 @@
           "RELEASE_REMOTE_VM_ARGS": null,
           "BINDIR": null,
           "REL_GOTO": null,
+          "PATH": "/Users/johndavenport/.asdf/shims:/Users/johndavenport/.asdf/installs/erlang/28.1/erts-16.1/bin:/Users/johndavenport/.asdf/installs/erlang/28.1/bin:/Users/johndavenport/.asdf/plugins/elixir/shims:/Users/johndavenport/.asdf/installs/elixir/1.19.4-otp-28/bin:/Users/johndavenport/.asdf/installs/elixir/1.19.4-otp-28/.mix/escripts:/Users/johndavenport/.local/bin:/Users/johndavenport/bin:/Users/johndavenport/.pyenv/shims:/Users/johndavenport/bin:/usr/local/bin:/opt/homebrew/Cellar/postgresql@15/15.5_1/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/opt/pmk/env/global/bin:/Library/Apple/usr/bin:/Users/johndavenport/.cargo/bin:/Users/johndavenport/.dotnet/tools:/Users/johndavenport/.dotnet/tools:/usr/local/share/dotnet/dotnet:/Users/johndavenport/Documents/github/code_my_spec/.claude/worktrees/devops-qa/.claude/plugin-dev/bin:/Users/johndavenport/Documents/github/code_my_spec/.claude/worktrees/devops-qa/.claude/plugin-dev/bin",
           "MIX_ENV": null,
           "MIX_BUILD_PATH": null,
           "endLoop": null,
@@ -1442,8 +1601,8 @@
         },
         "stderr_to_stdout": true
       },
-      "output": "Warning: Permanently added '178.156.200.94' (ED25519) to the list of known hosts.\r\n",
-      "recorded_at": "2026-08-13T21:16:51.475682Z"
+      "output": "Warning: Permanently added '178.156.216.165' (ED25519) to the list of known hosts.\r\n",
+      "recorded_at": "2026-08-16T05:27:16.788212Z"
     },
     {
       "args": [
@@ -1459,13 +1618,13 @@
         "ConnectTimeout=10",
         "-i",
         "*/id_ed25519",
-        "root@178.156.200.94",
-        "docker network create db_net >/dev/null 2>&1; docker rm -f cms-postgres >/dev/null 2>&1; docker run -d --name cms-postgres --restart always --network db_net -v cms-postgres-data:/var/lib/postgresql/data -e POSTGRES_USER='app' -e POSTGRES_PASSWORD='Ug6pYTkiaXY0DfvZkHQ5N1r8ojNuxd8_Z9T2Yy_VWRs' -e POSTGRES_DB='app_uat' postgres:17"
+        "root@178.156.216.165",
+        "docker network create db_net >/dev/null 2>&1; docker rm -f cms-postgres >/dev/null 2>&1; docker run -d --name cms-postgres --restart always --network db_net -v cms-postgres-data:/var/lib/postgresql/data -e POSTGRES_USER='app' -e POSTGRES_PASSWORD='bIUyVCch6nP15Y1iNsXLN2ogtoxGVIviYkyjH60R3A8' -e POSTGRES_DB='app_uat' postgres:17"
       ],
       "command": "ssh",
       "exit_code": 0,
       "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/briefly--576460681400189833-eM8dTWpdVKKLMlHUuy/briefly-576460681399877833-wlA8MxmKnEmQ7CgCpXU0/cms_drill_dbbf8119121148dc810af5169a27f05a",
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/briefly--576460737812276834-OpLrMi7Rl8BAhdqeegGt/briefly-576460737811638250-catNgxgeRcSDKOu9nWUG/cms_drill_31c5844bec3143798e556bd573130f0c",
         "env": {
           "SCRIPT_PATH": null,
           "RELEASE_ROOT": null,
@@ -1503,6 +1662,7 @@
           "RELEASE_REMOTE_VM_ARGS": null,
           "BINDIR": null,
           "REL_GOTO": null,
+          "PATH": "/Users/johndavenport/.asdf/shims:/Users/johndavenport/.asdf/installs/erlang/28.1/erts-16.1/bin:/Users/johndavenport/.asdf/installs/erlang/28.1/bin:/Users/johndavenport/.asdf/plugins/elixir/shims:/Users/johndavenport/.asdf/installs/elixir/1.19.4-otp-28/bin:/Users/johndavenport/.asdf/installs/elixir/1.19.4-otp-28/.mix/escripts:/Users/johndavenport/.local/bin:/Users/johndavenport/bin:/Users/johndavenport/.pyenv/shims:/Users/johndavenport/bin:/usr/local/bin:/opt/homebrew/Cellar/postgresql@15/15.5_1/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/opt/pmk/env/global/bin:/Library/Apple/usr/bin:/Users/johndavenport/.cargo/bin:/Users/johndavenport/.dotnet/tools:/Users/johndavenport/.dotnet/tools:/usr/local/share/dotnet/dotnet:/Users/johndavenport/Documents/github/code_my_spec/.claude/worktrees/devops-qa/.claude/plugin-dev/bin:/Users/johndavenport/Documents/github/code_my_spec/.claude/worktrees/devops-qa/.claude/plugin-dev/bin",
           "MIX_ENV": null,
           "MIX_BUILD_PATH": null,
           "endLoop": null,
@@ -1510,8 +1670,8 @@
         },
         "stderr_to_stdout": true
       },
-      "output": "Warning: Permanently added '178.156.200.94' (ED25519) to the list of known hosts.\r\nUnable to find image 'postgres:17' locally\n17: Pulling from library/postgres\n26c307b5e35a: Pulling fs layer\na211a4ebbe9c: Pulling fs layer\n99b8d6500ca8: Pulling fs layer\n011e3de85889: Pulling fs layer\nfae9bcdccea1: Pulling fs layer\n98662c61092c: Pulling fs layer\ndd72bcd3b6cf: Pulling fs layer\nf51ddbe7fe6c: Pulling fs layer\nb6bf40d31a6c: Pulling fs layer\naaf8269598d6: Pulling fs layer\ncdcabf0f88e4: Pulling fs layer\n7696d740062e: Pulling fs layer\neb09c7374a37: Pulling fs layer\n8eb7d3b192aa: Pulling fs layer\n011e3de85889: Waiting\nfae9bcdccea1: Waiting\n98662c61092c: Waiting\ndd72bcd3b6cf: Waiting\nf51ddbe7fe6c: Waiting\nb6bf40d31a6c: Waiting\neb09c7374a37: Waiting\n8eb7d3b192aa: Waiting\naaf8269598d6: Waiting\ncdcabf0f88e4: Waiting\n7696d740062e: Waiting\na211a4ebbe9c: Download complete\n99b8d6500ca8: Verifying Checksum\n99b8d6500ca8: Download complete\n011e3de85889: Verifying Checksum\n011e3de85889: Download complete\n26c307b5e35a: Verifying Checksum\n26c307b5e35a: Download complete\nfae9bcdccea1: Verifying Checksum\nfae9bcdccea1: Download complete\n98662c61092c: Verifying Checksum\n98662c61092c: Download complete\ndd72bcd3b6cf: Verifying Checksum\ndd72bcd3b6cf: Download complete\nf51ddbe7fe6c: Verifying Checksum\nf51ddbe7fe6c: Download complete\naaf8269598d6: Verifying Checksum\naaf8269598d6: Download complete\ncdcabf0f88e4: Verifying Checksum\ncdcabf0f88e4: Download complete\n7696d740062e: Verifying Checksum\n7696d740062e: Download complete\neb09c7374a37: Verifying Checksum\neb09c7374a37: Download complete\n8eb7d3b192aa: Verifying Checksum\n8eb7d3b192aa: Download complete\nb6bf40d31a6c: Verifying Checksum\nb6bf40d31a6c: Download complete\n26c307b5e35a: Pull complete\na211a4ebbe9c: Pull complete\n99b8d6500ca8: Pull complete\n011e3de85889: Pull complete\nfae9bcdccea1: Pull complete\n98662c61092c: Pull complete\ndd72bcd3b6cf: Pull complete\nf51ddbe7fe6c: Pull complete\nb6bf40d31a6c: Pull complete\naaf8269598d6: Pull complete\ncdcabf0f88e4: Pull complete\n7696d740062e: Pull complete\neb09c7374a37: Pull complete\n8eb7d3b192aa: Pull complete\nDigest: sha256:e42539a54ee3e82e21f19d7eded61b579869585f86b90b5e851ff0d3dd8b4001\nStatus: Downloaded newer image for postgres:17\n4c16f850689e9e9c2d8340b004b23b0cf2ba42270fee64a74467805a9af9d94a\n",
-      "recorded_at": "2026-08-13T21:16:57.166680Z"
+      "output": "Warning: Permanently added '178.156.216.165' (ED25519) to the list of known hosts.\r\nUnable to find image 'postgres:17' locally\n17: Pulling from library/postgres\n26c307b5e35a: Pulling fs layer\na211a4ebbe9c: Pulling fs layer\n99b8d6500ca8: Pulling fs layer\n011e3de85889: Pulling fs layer\nfae9bcdccea1: Pulling fs layer\n98662c61092c: Pulling fs layer\ndd72bcd3b6cf: Pulling fs layer\nf51ddbe7fe6c: Pulling fs layer\nb6bf40d31a6c: Pulling fs layer\naaf8269598d6: Pulling fs layer\ncdcabf0f88e4: Pulling fs layer\n7696d740062e: Pulling fs layer\neb09c7374a37: Pulling fs layer\n8eb7d3b192aa: Pulling fs layer\nf51ddbe7fe6c: Waiting\nb6bf40d31a6c: Waiting\naaf8269598d6: Waiting\ncdcabf0f88e4: Waiting\n7696d740062e: Waiting\neb09c7374a37: Waiting\n8eb7d3b192aa: Waiting\nfae9bcdccea1: Waiting\n98662c61092c: Waiting\ndd72bcd3b6cf: Waiting\na211a4ebbe9c: Verifying Checksum\na211a4ebbe9c: Download complete\n99b8d6500ca8: Verifying Checksum\n99b8d6500ca8: Download complete\n011e3de85889: Verifying Checksum\n011e3de85889: Download complete\n26c307b5e35a: Download complete\nfae9bcdccea1: Verifying Checksum\nfae9bcdccea1: Download complete\ndd72bcd3b6cf: Verifying Checksum\ndd72bcd3b6cf: Download complete\n98662c61092c: Verifying Checksum\n98662c61092c: Download complete\nf51ddbe7fe6c: Verifying Checksum\nf51ddbe7fe6c: Download complete\naaf8269598d6: Verifying Checksum\naaf8269598d6: Download complete\ncdcabf0f88e4: Verifying Checksum\ncdcabf0f88e4: Download complete\n7696d740062e: Verifying Checksum\n7696d740062e: Download complete\neb09c7374a37: Verifying Checksum\neb09c7374a37: Download complete\n8eb7d3b192aa: Verifying Checksum\n8eb7d3b192aa: Download complete\nb6bf40d31a6c: Verifying Checksum\nb6bf40d31a6c: Download complete\n26c307b5e35a: Pull complete\na211a4ebbe9c: Pull complete\n99b8d6500ca8: Pull complete\n011e3de85889: Pull complete\nfae9bcdccea1: Pull complete\n98662c61092c: Pull complete\ndd72bcd3b6cf: Pull complete\nf51ddbe7fe6c: Pull complete\nb6bf40d31a6c: Pull complete\naaf8269598d6: Pull complete\ncdcabf0f88e4: Pull complete\n7696d740062e: Pull complete\neb09c7374a37: Pull complete\n8eb7d3b192aa: Pull complete\nDigest: sha256:e38411452a464af89e5adadb8d223bf53b898d47d6ef918b2d58c08707350449\nStatus: Downloaded newer image for postgres:17\na08c92d4fbb962e0b969b87dea5a7557aa6dcd44cb350cb2cf5bf99e67fc9f25\n",
+      "recorded_at": "2026-08-16T05:27:22.677365Z"
     },
     {
       "args": [
@@ -1527,13 +1687,13 @@
         "ConnectTimeout=10",
         "-i",
         "*/id_ed25519",
-        "root@178.156.200.94",
+        "root@178.156.216.165",
         "docker exec cms-postgres pg_isready -h 127.0.0.1 -U 'app' -d 'app_uat' > /dev/null"
       ],
       "command": "ssh",
       "exit_code": 2,
       "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/briefly--576460681400189833-eM8dTWpdVKKLMlHUuy/briefly-576460681399877833-wlA8MxmKnEmQ7CgCpXU0/cms_drill_dbbf8119121148dc810af5169a27f05a",
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/briefly--576460737812276834-OpLrMi7Rl8BAhdqeegGt/briefly-576460737811638250-catNgxgeRcSDKOu9nWUG/cms_drill_31c5844bec3143798e556bd573130f0c",
         "env": {
           "SCRIPT_PATH": null,
           "RELEASE_ROOT": null,
@@ -1571,6 +1731,7 @@
           "RELEASE_REMOTE_VM_ARGS": null,
           "BINDIR": null,
           "REL_GOTO": null,
+          "PATH": "/Users/johndavenport/.asdf/shims:/Users/johndavenport/.asdf/installs/erlang/28.1/erts-16.1/bin:/Users/johndavenport/.asdf/installs/erlang/28.1/bin:/Users/johndavenport/.asdf/plugins/elixir/shims:/Users/johndavenport/.asdf/installs/elixir/1.19.4-otp-28/bin:/Users/johndavenport/.asdf/installs/elixir/1.19.4-otp-28/.mix/escripts:/Users/johndavenport/.local/bin:/Users/johndavenport/bin:/Users/johndavenport/.pyenv/shims:/Users/johndavenport/bin:/usr/local/bin:/opt/homebrew/Cellar/postgresql@15/15.5_1/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/opt/pmk/env/global/bin:/Library/Apple/usr/bin:/Users/johndavenport/.cargo/bin:/Users/johndavenport/.dotnet/tools:/Users/johndavenport/.dotnet/tools:/usr/local/share/dotnet/dotnet:/Users/johndavenport/Documents/github/code_my_spec/.claude/worktrees/devops-qa/.claude/plugin-dev/bin:/Users/johndavenport/Documents/github/code_my_spec/.claude/worktrees/devops-qa/.claude/plugin-dev/bin",
           "MIX_ENV": null,
           "MIX_BUILD_PATH": null,
           "endLoop": null,
@@ -1578,8 +1739,8 @@
         },
         "stderr_to_stdout": true
       },
-      "output": "Warning: Permanently added '178.156.200.94' (ED25519) to the list of known hosts.\r\n",
-      "recorded_at": "2026-08-13T21:16:57.818079Z"
+      "output": "Warning: Permanently added '178.156.216.165' (ED25519) to the list of known hosts.\r\n",
+      "recorded_at": "2026-08-16T05:27:23.381971Z"
     },
     {
       "args": [
@@ -1595,13 +1756,13 @@
         "ConnectTimeout=10",
         "-i",
         "*/id_ed25519",
-        "root@178.156.200.94",
+        "root@178.156.216.165",
         "docker exec cms-postgres pg_isready -h 127.0.0.1 -U 'app' -d 'app_uat' > /dev/null"
       ],
       "command": "ssh",
       "exit_code": 0,
       "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/briefly--576460681400189833-eM8dTWpdVKKLMlHUuy/briefly-576460681399877833-wlA8MxmKnEmQ7CgCpXU0/cms_drill_dbbf8119121148dc810af5169a27f05a",
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/briefly--576460737812276834-OpLrMi7Rl8BAhdqeegGt/briefly-576460737811638250-catNgxgeRcSDKOu9nWUG/cms_drill_31c5844bec3143798e556bd573130f0c",
         "env": {
           "SCRIPT_PATH": null,
           "RELEASE_ROOT": null,
@@ -1639,6 +1800,7 @@
           "RELEASE_REMOTE_VM_ARGS": null,
           "BINDIR": null,
           "REL_GOTO": null,
+          "PATH": "/Users/johndavenport/.asdf/shims:/Users/johndavenport/.asdf/installs/erlang/28.1/erts-16.1/bin:/Users/johndavenport/.asdf/installs/erlang/28.1/bin:/Users/johndavenport/.asdf/plugins/elixir/shims:/Users/johndavenport/.asdf/installs/elixir/1.19.4-otp-28/bin:/Users/johndavenport/.asdf/installs/elixir/1.19.4-otp-28/.mix/escripts:/Users/johndavenport/.local/bin:/Users/johndavenport/bin:/Users/johndavenport/.pyenv/shims:/Users/johndavenport/bin:/usr/local/bin:/opt/homebrew/Cellar/postgresql@15/15.5_1/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/opt/pmk/env/global/bin:/Library/Apple/usr/bin:/Users/johndavenport/.cargo/bin:/Users/johndavenport/.dotnet/tools:/Users/johndavenport/.dotnet/tools:/usr/local/share/dotnet/dotnet:/Users/johndavenport/Documents/github/code_my_spec/.claude/worktrees/devops-qa/.claude/plugin-dev/bin:/Users/johndavenport/Documents/github/code_my_spec/.claude/worktrees/devops-qa/.claude/plugin-dev/bin",
           "MIX_ENV": null,
           "MIX_BUILD_PATH": null,
           "endLoop": null,
@@ -1646,8 +1808,77 @@
         },
         "stderr_to_stdout": true
       },
-      "output": "Warning: Permanently added '178.156.200.94' (ED25519) to the list of known hosts.\r\n",
-      "recorded_at": "2026-08-13T21:17:00.556065Z"
+      "output": "Warning: Permanently added '178.156.216.165' (ED25519) to the list of known hosts.\r\n",
+      "recorded_at": "2026-08-16T05:27:26.126009Z"
+    },
+    {
+      "args": [
+        "-o",
+        "StrictHostKeyChecking=no",
+        "-o",
+        "UserKnownHostsFile=/dev/null",
+        "-o",
+        "BatchMode=yes",
+        "-o",
+        "IdentitiesOnly=yes",
+        "-o",
+        "ConnectTimeout=10",
+        "-i",
+        "*/id_ed25519",
+        "root@178.156.216.165",
+        "docker exec cms-postgres psql -v ON_ERROR_STOP=1 -U 'app' -d 'app_uat' -c 'ALTER USER app WITH PASSWORD '\\''bIUyVCch6nP15Y1iNsXLN2ogtoxGVIviYkyjH60R3A8'\\''' > /dev/null"
+      ],
+      "command": "ssh",
+      "exit_code": 0,
+      "opts": {
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/briefly--576460737812276834-OpLrMi7Rl8BAhdqeegGt/briefly-576460737811638250-catNgxgeRcSDKOu9nWUG/cms_drill_31c5844bec3143798e556bd573130f0c",
+        "env": {
+          "SCRIPT_PATH": null,
+          "RELEASE_ROOT": null,
+          "ERTS_BIN": null,
+          "RELEASE_DISTRIBUTION_FLAG": null,
+          "RELEASE_DISTRIBUTION": null,
+          "EMU": null,
+          "RELEASE_COMMAND": null,
+          "MIX_HOME": null,
+          "PROGNAME": null,
+          "ELIXIR_VERSION": null,
+          "MIX_ARCHIVES": null,
+          "RELEASE_MODE": null,
+          "beforeExtra": null,
+          "REL_EXEC": null,
+          "RELEASE_PROG": null,
+          "ERL_LIBS": null,
+          "RELEASE_NODE": null,
+          "MIX_DEPS_PATH": null,
+          "REL_EXTRA": null,
+          "RELEASE_BOOT_SCRIPT_CLEAN": null,
+          "RELEASE_NAME": null,
+          "MIX_TARGET": null,
+          "RELEASE_VM_ARGS": null,
+          "ERLEXEC_DIR": null,
+          "ERTS_VSN": null,
+          "RELEASE_SYS_CONFIG": null,
+          "ROOTDIR": null,
+          "ERL_CONSOLE_MODE": null,
+          "parsErlang": null,
+          "RELEASE_TMP": null,
+          "REL_VSN_DIR": null,
+          "RELEASE_VSN": null,
+          "RELEASE_BOOT_SCRIPT": null,
+          "RELEASE_REMOTE_VM_ARGS": null,
+          "BINDIR": null,
+          "REL_GOTO": null,
+          "PATH": "/Users/johndavenport/.asdf/shims:/Users/johndavenport/.asdf/installs/erlang/28.1/erts-16.1/bin:/Users/johndavenport/.asdf/installs/erlang/28.1/bin:/Users/johndavenport/.asdf/plugins/elixir/shims:/Users/johndavenport/.asdf/installs/elixir/1.19.4-otp-28/bin:/Users/johndavenport/.asdf/installs/elixir/1.19.4-otp-28/.mix/escripts:/Users/johndavenport/.local/bin:/Users/johndavenport/bin:/Users/johndavenport/.pyenv/shims:/Users/johndavenport/bin:/usr/local/bin:/opt/homebrew/Cellar/postgresql@15/15.5_1/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/opt/pmk/env/global/bin:/Library/Apple/usr/bin:/Users/johndavenport/.cargo/bin:/Users/johndavenport/.dotnet/tools:/Users/johndavenport/.dotnet/tools:/usr/local/share/dotnet/dotnet:/Users/johndavenport/Documents/github/code_my_spec/.claude/worktrees/devops-qa/.claude/plugin-dev/bin:/Users/johndavenport/Documents/github/code_my_spec/.claude/worktrees/devops-qa/.claude/plugin-dev/bin",
+          "MIX_ENV": null,
+          "MIX_BUILD_PATH": null,
+          "endLoop": null,
+          "RELEASE_COOKIE": null
+        },
+        "stderr_to_stdout": true
+      },
+      "output": "Warning: Permanently added '178.156.216.165' (ED25519) to the list of known hosts.\r\n",
+      "recorded_at": "2026-08-16T05:27:26.881857Z"
     },
     {
       "args": [],
@@ -1656,8 +1887,8 @@
       "opts": {
         "stderr_to_stdout": true
       },
-      "output": "Public key: age1yj2ynppzfxy8vdza59wtj8ff9kje4l7gllgjxtw2vpqrvuau4spqpw70q2\n# created: 2026-08-13T17:17:00-04:00\n# public key: age1yj2ynppzfxy8vdza59wtj8ff9kje4l7gllgjxtw2vpqrvuau4spqpw70q2\nAGE-SECRET-KEY-1H4P3933A0Y5GE7SFJYXTANPNPWVKZMJGWRZZVTD60QGKNH26AY6QN6MJM4\n",
-      "recorded_at": "2026-08-13T21:17:00.564965Z"
+      "output": "Public key: age1y3lvg5rls5s2csy4crntkljl2mp8ael4cxm0q2v309zhakq9z43qcg3cxz\n# created: 2026-08-16T01:27:26-04:00\n# public key: age1y3lvg5rls5s2csy4crntkljl2mp8ael4cxm0q2v309zhakq9z43qcg3cxz\nAGE-SECRET-KEY-1H4P3933A0Y5GE7SFJYXTANPNPWVKZMJGWRZZVTD60QGKNH26AY6QN6MJM4\n",
+      "recorded_at": "2026-08-16T05:27:26.886326Z"
     },
     {
       "args": [
@@ -1668,30 +1899,30 @@
       "command": "sops",
       "exit_code": 0,
       "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/briefly--576460681400189833-eM8dTWpdVKKLMlHUuy/briefly-576460681399877833-wlA8MxmKnEmQ7CgCpXU0/cms_drill_dbbf8119121148dc810af5169a27f05a",
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/briefly--576460737812276834-OpLrMi7Rl8BAhdqeegGt/briefly-576460737811638250-catNgxgeRcSDKOu9nWUG/cms_drill_31c5844bec3143798e556bd573130f0c",
         "stderr_to_stdout": true
       },
       "output": "",
-      "recorded_at": "2026-08-13T21:17:00.587216Z"
+      "recorded_at": "2026-08-16T05:27:26.902220Z"
     },
     {
       "args": [
         "set",
         "envs/uat.enc.env",
         "[\"DATABASE_URL\"]",
-        "\"ecto://app:Ug6pYTkiaXY0DfvZkHQ5N1r8ojNuxd8_Z9T2Yy_VWRs@cms-postgres/app_uat\""
+        "\"ecto://app:bIUyVCch6nP15Y1iNsXLN2ogtoxGVIviYkyjH60R3A8@cms-postgres/app_uat\""
       ],
       "command": "sops",
       "exit_code": 0,
       "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/briefly--576460681400189833-eM8dTWpdVKKLMlHUuy/briefly-576460681399877833-wlA8MxmKnEmQ7CgCpXU0/cms_drill_dbbf8119121148dc810af5169a27f05a",
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/briefly--576460737812276834-OpLrMi7Rl8BAhdqeegGt/briefly-576460737811638250-catNgxgeRcSDKOu9nWUG/cms_drill_31c5844bec3143798e556bd573130f0c",
         "env": {
           "SOPS_AGE_KEY": "AGE-SECRET-KEY-1H4P3933A0Y5GE7SFJYXTANPNPWVKZMJGWRZZVTD60QGKNH26AY6QN6MJM4"
         },
         "stderr_to_stdout": true
       },
       "output": "",
-      "recorded_at": "2026-08-13T21:17:00.603468Z"
+      "recorded_at": "2026-08-16T05:27:26.914034Z"
     },
     {
       "args": [
@@ -1703,8 +1934,8 @@
       "opts": {
         "stderr_to_stdout": true
       },
-      "output": "age1m0rh0qyl4spvf4vjfjtnfdl86w47w8l5clzpzph5qv4fqmaml35stdd2ge\n",
-      "recorded_at": "2026-08-13T21:17:00.626955Z"
+      "output": "age1et3epqguy99xss6fukfch3qx9lurs0f9wt9zqllhf4ua3wzch55s3e4aw7\n",
+      "recorded_at": "2026-08-16T05:27:26.932420Z"
     },
     {
       "args": [
@@ -1714,14 +1945,14 @@
       "command": "sops",
       "exit_code": 0,
       "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/briefly--576460681400189833-eM8dTWpdVKKLMlHUuy/briefly-576460681399877833-wlA8MxmKnEmQ7CgCpXU0/cms_drill_dbbf8119121148dc810af5169a27f05a",
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/briefly--576460737812276834-OpLrMi7Rl8BAhdqeegGt/briefly-576460737811638250-catNgxgeRcSDKOu9nWUG/cms_drill_31c5844bec3143798e556bd573130f0c",
         "env": {
           "SOPS_AGE_KEY": "AGE-SECRET-KEY-1H4P3933A0Y5GE7SFJYXTANPNPWVKZMJGWRZZVTD60QGKNH26AY6QN6MJM4"
         },
         "stderr_to_stdout": true
       },
-      "output": "# SOPS-encrypted environment file. Placeholder until the first secret is set.\n#\n# This file is safe to commit — that is the point. Values are encrypted to\n# this environment's age recipient (see .sops.yaml), so the repo carries the\n# ciphertext and only the key opens it. Anyone who clones without the key\n# reads nothing.\n#\n# Add a secret:\n#\n#   sops envs/<env>.enc.env        # opens an editor; SOPS encrypts on save\n#\n# Read one back:\n#\n#   sops -d envs/<env>.enc.env\n#\n# The app decrypts at boot using the SOPS_AGE_KEY the deploy supplies, so\n# nothing is ever placed on the host by hand. A required secret that is\n# missing fails the boot by name rather than starting half-configured.\n#\n# There is deliberately no plaintext .env anywhere in this project: one\n# mechanism for local runs and deploys, so the two cannot drift.\nDATABASE_URL=ecto://app:CHeOAOKikkRfODB8MoeKiukwY7r3DHIroHwHbH_wz8U@cms-postgres/app_prod\n",
-      "recorded_at": "2026-08-13T21:17:00.645033Z"
+      "output": "# SOPS-encrypted environment file. Placeholder until the first secret is set.\n#\n# This file is safe to commit — that is the point. Values are encrypted to\n# this environment's age recipient (see .sops.yaml), so the repo carries the\n# ciphertext and only the key opens it. Anyone who clones without the key\n# reads nothing.\n#\n# Add a secret:\n#\n#   sops envs/<env>.enc.env        # opens an editor; SOPS encrypts on save\n#\n# Read one back:\n#\n#   sops -d envs/<env>.enc.env\n#\n# The app decrypts at boot using the SOPS_AGE_KEY the deploy supplies, so\n# nothing is ever placed on the host by hand. A required secret that is\n# missing fails the boot by name rather than starting half-configured.\n#\n# There is deliberately no plaintext .env anywhere in this project: one\n# mechanism for local runs and deploys, so the two cannot drift.\nDATABASE_URL=ecto://app:TIngClNoQP29T-_Uq5-pmjmdB9p2n6axRiPH9n1s3nU@cms-postgres/app_prod\n",
+      "recorded_at": "2026-08-16T05:27:26.945340Z"
     },
     {
       "args": [
@@ -1733,8 +1964,8 @@
       "opts": {
         "stderr_to_stdout": true
       },
-      "output": "age1m0rh0qyl4spvf4vjfjtnfdl86w47w8l5clzpzph5qv4fqmaml35stdd2ge\n",
-      "recorded_at": "2026-08-13T21:17:00.658598Z"
+      "output": "age1et3epqguy99xss6fukfch3qx9lurs0f9wt9zqllhf4ua3wzch55s3e4aw7\n",
+      "recorded_at": "2026-08-16T05:27:26.951331Z"
     },
     {
       "args": [
@@ -1746,8 +1977,8 @@
       "opts": {
         "stderr_to_stdout": true
       },
-      "output": "age1m0rh0qyl4spvf4vjfjtnfdl86w47w8l5clzpzph5qv4fqmaml35stdd2ge\n",
-      "recorded_at": "2026-08-13T21:17:00.667654Z"
+      "output": "age1et3epqguy99xss6fukfch3qx9lurs0f9wt9zqllhf4ua3wzch55s3e4aw7\n",
+      "recorded_at": "2026-08-16T05:27:26.955717Z"
     },
     {
       "args": [
@@ -1759,8 +1990,8 @@
       "opts": {
         "stderr_to_stdout": true
       },
-      "output": "age1yj2ynppzfxy8vdza59wtj8ff9kje4l7gllgjxtw2vpqrvuau4spqpw70q2\n",
-      "recorded_at": "2026-08-13T21:17:00.678425Z"
+      "output": "age1y3lvg5rls5s2csy4crntkljl2mp8ael4cxm0q2v309zhakq9z43qcg3cxz\n",
+      "recorded_at": "2026-08-16T05:27:26.961910Z"
     },
     {
       "args": [
@@ -1772,8 +2003,8 @@
       "opts": {
         "stderr_to_stdout": true
       },
-      "output": "age1yj2ynppzfxy8vdza59wtj8ff9kje4l7gllgjxtw2vpqrvuau4spqpw70q2\n",
-      "recorded_at": "2026-08-13T21:17:00.685717Z"
+      "output": "age1y3lvg5rls5s2csy4crntkljl2mp8ael4cxm0q2v309zhakq9z43qcg3cxz\n",
+      "recorded_at": "2026-08-16T05:27:26.966403Z"
     },
     {
       "args": [
@@ -1783,14 +2014,14 @@
       "command": "sops",
       "exit_code": 0,
       "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/briefly--576460681400189833-eM8dTWpdVKKLMlHUuy/briefly-576460681399877833-wlA8MxmKnEmQ7CgCpXU0/cms_drill_dbbf8119121148dc810af5169a27f05a",
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/briefly--576460737812276834-OpLrMi7Rl8BAhdqeegGt/briefly-576460737811638250-catNgxgeRcSDKOu9nWUG/cms_drill_31c5844bec3143798e556bd573130f0c",
         "env": {
           "SOPS_AGE_KEY": "AGE-SECRET-KEY-1H4P3933A0Y5GE7SFJYXTANPNPWVKZMJGWRZZVTD60QGKNH26AY6QN6MJM4"
         },
         "stderr_to_stdout": true
       },
-      "output": "# SOPS-encrypted environment file. Placeholder until the first secret is set.\n#\n# This file is safe to commit — that is the point. Values are encrypted to\n# this environment's age recipient (see .sops.yaml), so the repo carries the\n# ciphertext and only the key opens it. Anyone who clones without the key\n# reads nothing.\n#\n# Add a secret:\n#\n#   sops envs/<env>.enc.env        # opens an editor; SOPS encrypts on save\n#\n# Read one back:\n#\n#   sops -d envs/<env>.enc.env\n#\n# The app decrypts at boot using the SOPS_AGE_KEY the deploy supplies, so\n# nothing is ever placed on the host by hand. A required secret that is\n# missing fails the boot by name rather than starting half-configured.\n#\n# There is deliberately no plaintext .env anywhere in this project: one\n# mechanism for local runs and deploys, so the two cannot drift.\nDATABASE_URL=ecto://app:CHeOAOKikkRfODB8MoeKiukwY7r3DHIroHwHbH_wz8U@cms-postgres/app_prod\n",
-      "recorded_at": "2026-08-13T21:17:00.702387Z"
+      "output": "# SOPS-encrypted environment file. Placeholder until the first secret is set.\n#\n# This file is safe to commit — that is the point. Values are encrypted to\n# this environment's age recipient (see .sops.yaml), so the repo carries the\n# ciphertext and only the key opens it. Anyone who clones without the key\n# reads nothing.\n#\n# Add a secret:\n#\n#   sops envs/<env>.enc.env        # opens an editor; SOPS encrypts on save\n#\n# Read one back:\n#\n#   sops -d envs/<env>.enc.env\n#\n# The app decrypts at boot using the SOPS_AGE_KEY the deploy supplies, so\n# nothing is ever placed on the host by hand. A required secret that is\n# missing fails the boot by name rather than starting half-configured.\n#\n# There is deliberately no plaintext .env anywhere in this project: one\n# mechanism for local runs and deploys, so the two cannot drift.\nDATABASE_URL=ecto://app:TIngClNoQP29T-_Uq5-pmjmdB9p2n6axRiPH9n1s3nU@cms-postgres/app_prod\n",
+      "recorded_at": "2026-08-16T05:27:26.979232Z"
     },
     {
       "args": [
@@ -1801,30 +2032,30 @@
       "command": "sops",
       "exit_code": 203,
       "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/briefly--576460681400189833-eM8dTWpdVKKLMlHUuy/briefly-576460681399877833-wlA8MxmKnEmQ7CgCpXU0/cms_drill_dbbf8119121148dc810af5169a27f05a",
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/briefly--576460737812276834-OpLrMi7Rl8BAhdqeegGt/briefly-576460737811638250-catNgxgeRcSDKOu9nWUG/cms_drill_31c5844bec3143798e556bd573130f0c",
         "stderr_to_stdout": true
       },
       "output": "The file you have provided contains a top-level entry called 'sops', or for\nflat file formats top-level entries starting with 'sops_'. This is\ngenerally due to the file already being encrypted. SOPS uses a top-level\nentry called 'sops' to store the metadata required to decrypt the file. For\nthis reason, SOPS can not encrypt files that already contain such an entry.\n\nIf this is an unencrypted file, rename the 'sops' entry.\n\nIf this is an encrypted file and you want to edit it, use the editor mode,\nfor example: `sops edit my_file.yaml`\n",
-      "recorded_at": "2026-08-13T21:17:00.720132Z"
+      "recorded_at": "2026-08-16T05:27:26.991335Z"
     },
     {
       "args": [
         "set",
         "envs/prod.enc.env",
         "[\"SECRET_KEY_BASE\"]",
-        "\"yf0xWU5YlMPjsGFTZxC68Z7c36dAikQ5K+2f3L+5KAH6FToHxSXncowgBWMffj0DKTTVvwEs6hjRqVUijvQA4w\""
+        "\"puVpwmx6ZcrqTSazjJoKO0JmwgOtlQR5eqvCaxYwROJEvSSq9VaVC6ZFzoc/8BNnGQZ9vki3qrVsaH8sdq1C0w\""
       ],
       "command": "sops",
       "exit_code": 0,
       "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/briefly--576460681400189833-eM8dTWpdVKKLMlHUuy/briefly-576460681399877833-wlA8MxmKnEmQ7CgCpXU0/cms_drill_dbbf8119121148dc810af5169a27f05a",
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/briefly--576460737812276834-OpLrMi7Rl8BAhdqeegGt/briefly-576460737811638250-catNgxgeRcSDKOu9nWUG/cms_drill_31c5844bec3143798e556bd573130f0c",
         "env": {
           "SOPS_AGE_KEY": "AGE-SECRET-KEY-1H4P3933A0Y5GE7SFJYXTANPNPWVKZMJGWRZZVTD60QGKNH26AY6QN6MJM4"
         },
         "stderr_to_stdout": true
       },
       "output": "",
-      "recorded_at": "2026-08-13T21:17:00.741948Z"
+      "recorded_at": "2026-08-16T05:27:27.003424Z"
     },
     {
       "args": [
@@ -1834,14 +2065,14 @@
       "command": "sops",
       "exit_code": 0,
       "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/briefly--576460681400189833-eM8dTWpdVKKLMlHUuy/briefly-576460681399877833-wlA8MxmKnEmQ7CgCpXU0/cms_drill_dbbf8119121148dc810af5169a27f05a",
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/briefly--576460737812276834-OpLrMi7Rl8BAhdqeegGt/briefly-576460737811638250-catNgxgeRcSDKOu9nWUG/cms_drill_31c5844bec3143798e556bd573130f0c",
         "env": {
           "SOPS_AGE_KEY": "AGE-SECRET-KEY-1H4P3933A0Y5GE7SFJYXTANPNPWVKZMJGWRZZVTD60QGKNH26AY6QN6MJM4"
         },
         "stderr_to_stdout": true
       },
-      "output": "# SOPS-encrypted environment file. Placeholder until the first secret is set.\n#\n# This file is safe to commit — that is the point. Values are encrypted to\n# this environment's age recipient (see .sops.yaml), so the repo carries the\n# ciphertext and only the key opens it. Anyone who clones without the key\n# reads nothing.\n#\n# Add a secret:\n#\n#   sops envs/<env>.enc.env        # opens an editor; SOPS encrypts on save\n#\n# Read one back:\n#\n#   sops -d envs/<env>.enc.env\n#\n# The app decrypts at boot using the SOPS_AGE_KEY the deploy supplies, so\n# nothing is ever placed on the host by hand. A required secret that is\n# missing fails the boot by name rather than starting half-configured.\n#\n# There is deliberately no plaintext .env anywhere in this project: one\n# mechanism for local runs and deploys, so the two cannot drift.\nDATABASE_URL=ecto://app:Ug6pYTkiaXY0DfvZkHQ5N1r8ojNuxd8_Z9T2Yy_VWRs@cms-postgres/app_uat\n",
-      "recorded_at": "2026-08-13T21:17:00.765837Z"
+      "output": "# SOPS-encrypted environment file. Placeholder until the first secret is set.\n#\n# This file is safe to commit — that is the point. Values are encrypted to\n# this environment's age recipient (see .sops.yaml), so the repo carries the\n# ciphertext and only the key opens it. Anyone who clones without the key\n# reads nothing.\n#\n# Add a secret:\n#\n#   sops envs/<env>.enc.env        # opens an editor; SOPS encrypts on save\n#\n# Read one back:\n#\n#   sops -d envs/<env>.enc.env\n#\n# The app decrypts at boot using the SOPS_AGE_KEY the deploy supplies, so\n# nothing is ever placed on the host by hand. A required secret that is\n# missing fails the boot by name rather than starting half-configured.\n#\n# There is deliberately no plaintext .env anywhere in this project: one\n# mechanism for local runs and deploys, so the two cannot drift.\nDATABASE_URL=ecto://app:bIUyVCch6nP15Y1iNsXLN2ogtoxGVIviYkyjH60R3A8@cms-postgres/app_uat\n",
+      "recorded_at": "2026-08-16T05:27:27.016545Z"
     },
     {
       "args": [
@@ -1852,30 +2083,166 @@
       "command": "sops",
       "exit_code": 203,
       "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/briefly--576460681400189833-eM8dTWpdVKKLMlHUuy/briefly-576460681399877833-wlA8MxmKnEmQ7CgCpXU0/cms_drill_dbbf8119121148dc810af5169a27f05a",
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/briefly--576460737812276834-OpLrMi7Rl8BAhdqeegGt/briefly-576460737811638250-catNgxgeRcSDKOu9nWUG/cms_drill_31c5844bec3143798e556bd573130f0c",
         "stderr_to_stdout": true
       },
       "output": "The file you have provided contains a top-level entry called 'sops', or for\nflat file formats top-level entries starting with 'sops_'. This is\ngenerally due to the file already being encrypted. SOPS uses a top-level\nentry called 'sops' to store the metadata required to decrypt the file. For\nthis reason, SOPS can not encrypt files that already contain such an entry.\n\nIf this is an unencrypted file, rename the 'sops' entry.\n\nIf this is an encrypted file and you want to edit it, use the editor mode,\nfor example: `sops edit my_file.yaml`\n",
-      "recorded_at": "2026-08-13T21:17:00.782205Z"
+      "recorded_at": "2026-08-16T05:27:27.029291Z"
     },
     {
       "args": [
         "set",
         "envs/uat.enc.env",
         "[\"SECRET_KEY_BASE\"]",
-        "\"L+ormMV3itpd33poUXZV9fwG34TxMoD2TI5SPTVce6IFGQAvdH98Qoil/q78SRWPsZhCCkApfTzZfsLBmUQzRA\""
+        "\"xEl88sIKBA8B7pgL+MU8Wh5j5uLRFYNgyzl1ybQ8red3EL5ZIat+UjrU1fodxbcMrKvV08Z2XxUu1pVw0tXNWA\""
       ],
       "command": "sops",
       "exit_code": 0,
       "opts": {
-        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/briefly--576460681400189833-eM8dTWpdVKKLMlHUuy/briefly-576460681399877833-wlA8MxmKnEmQ7CgCpXU0/cms_drill_dbbf8119121148dc810af5169a27f05a",
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/briefly--576460737812276834-OpLrMi7Rl8BAhdqeegGt/briefly-576460737811638250-catNgxgeRcSDKOu9nWUG/cms_drill_31c5844bec3143798e556bd573130f0c",
         "env": {
           "SOPS_AGE_KEY": "AGE-SECRET-KEY-1H4P3933A0Y5GE7SFJYXTANPNPWVKZMJGWRZZVTD60QGKNH26AY6QN6MJM4"
         },
         "stderr_to_stdout": true
       },
       "output": "",
-      "recorded_at": "2026-08-13T21:17:00.797147Z"
+      "recorded_at": "2026-08-16T05:27:27.041409Z"
+    },
+    {
+      "args": [
+        "encrypt",
+        "--in-place",
+        "envs/prod.enc.env"
+      ],
+      "command": "sops",
+      "exit_code": 203,
+      "opts": {
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/briefly--576460737812276834-OpLrMi7Rl8BAhdqeegGt/briefly-576460737811638250-catNgxgeRcSDKOu9nWUG/cms_drill_31c5844bec3143798e556bd573130f0c",
+        "stderr_to_stdout": true
+      },
+      "output": "The file you have provided contains a top-level entry called 'sops', or for\nflat file formats top-level entries starting with 'sops_'. This is\ngenerally due to the file already being encrypted. SOPS uses a top-level\nentry called 'sops' to store the metadata required to decrypt the file. For\nthis reason, SOPS can not encrypt files that already contain such an entry.\n\nIf this is an unencrypted file, rename the 'sops' entry.\n\nIf this is an encrypted file and you want to edit it, use the editor mode,\nfor example: `sops edit my_file.yaml`\n",
+      "recorded_at": "2026-08-16T05:27:27.053815Z"
+    },
+    {
+      "args": [
+        "set",
+        "envs/prod.enc.env",
+        "[\"DEPLOY_KEY\"]",
+        "\"dk_fleet_spex\""
+      ],
+      "command": "sops",
+      "exit_code": 0,
+      "opts": {
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/briefly--576460737812276834-OpLrMi7Rl8BAhdqeegGt/briefly-576460737811638250-catNgxgeRcSDKOu9nWUG/cms_drill_31c5844bec3143798e556bd573130f0c",
+        "env": {
+          "SOPS_AGE_KEY": "AGE-SECRET-KEY-1H4P3933A0Y5GE7SFJYXTANPNPWVKZMJGWRZZVTD60QGKNH26AY6QN6MJM4"
+        },
+        "stderr_to_stdout": true
+      },
+      "output": "",
+      "recorded_at": "2026-08-16T05:27:27.065602Z"
+    },
+    {
+      "args": [
+        "encrypt",
+        "--in-place",
+        "envs/prod.enc.env"
+      ],
+      "command": "sops",
+      "exit_code": 203,
+      "opts": {
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/briefly--576460737812276834-OpLrMi7Rl8BAhdqeegGt/briefly-576460737811638250-catNgxgeRcSDKOu9nWUG/cms_drill_31c5844bec3143798e556bd573130f0c",
+        "stderr_to_stdout": true
+      },
+      "output": "The file you have provided contains a top-level entry called 'sops', or for\nflat file formats top-level entries starting with 'sops_'. This is\ngenerally due to the file already being encrypted. SOPS uses a top-level\nentry called 'sops' to store the metadata required to decrypt the file. For\nthis reason, SOPS can not encrypt files that already contain such an entry.\n\nIf this is an unencrypted file, rename the 'sops' entry.\n\nIf this is an encrypted file and you want to edit it, use the editor mode,\nfor example: `sops edit my_file.yaml`\n",
+      "recorded_at": "2026-08-16T05:27:27.079236Z"
+    },
+    {
+      "args": [
+        "set",
+        "envs/prod.enc.env",
+        "[\"CODEMYSPEC_WIDGET_URL\"]",
+        "\"wss://dev.codemyspec.com/widget\""
+      ],
+      "command": "sops",
+      "exit_code": 0,
+      "opts": {
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/briefly--576460737812276834-OpLrMi7Rl8BAhdqeegGt/briefly-576460737811638250-catNgxgeRcSDKOu9nWUG/cms_drill_31c5844bec3143798e556bd573130f0c",
+        "env": {
+          "SOPS_AGE_KEY": "AGE-SECRET-KEY-1H4P3933A0Y5GE7SFJYXTANPNPWVKZMJGWRZZVTD60QGKNH26AY6QN6MJM4"
+        },
+        "stderr_to_stdout": true
+      },
+      "output": "",
+      "recorded_at": "2026-08-16T05:27:27.091601Z"
+    },
+    {
+      "args": [
+        "encrypt",
+        "--in-place",
+        "envs/uat.enc.env"
+      ],
+      "command": "sops",
+      "exit_code": 203,
+      "opts": {
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/briefly--576460737812276834-OpLrMi7Rl8BAhdqeegGt/briefly-576460737811638250-catNgxgeRcSDKOu9nWUG/cms_drill_31c5844bec3143798e556bd573130f0c",
+        "stderr_to_stdout": true
+      },
+      "output": "The file you have provided contains a top-level entry called 'sops', or for\nflat file formats top-level entries starting with 'sops_'. This is\ngenerally due to the file already being encrypted. SOPS uses a top-level\nentry called 'sops' to store the metadata required to decrypt the file. For\nthis reason, SOPS can not encrypt files that already contain such an entry.\n\nIf this is an unencrypted file, rename the 'sops' entry.\n\nIf this is an encrypted file and you want to edit it, use the editor mode,\nfor example: `sops edit my_file.yaml`\n",
+      "recorded_at": "2026-08-16T05:27:27.104794Z"
+    },
+    {
+      "args": [
+        "set",
+        "envs/uat.enc.env",
+        "[\"DEPLOY_KEY\"]",
+        "\"dk_fleet_spex\""
+      ],
+      "command": "sops",
+      "exit_code": 0,
+      "opts": {
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/briefly--576460737812276834-OpLrMi7Rl8BAhdqeegGt/briefly-576460737811638250-catNgxgeRcSDKOu9nWUG/cms_drill_31c5844bec3143798e556bd573130f0c",
+        "env": {
+          "SOPS_AGE_KEY": "AGE-SECRET-KEY-1H4P3933A0Y5GE7SFJYXTANPNPWVKZMJGWRZZVTD60QGKNH26AY6QN6MJM4"
+        },
+        "stderr_to_stdout": true
+      },
+      "output": "",
+      "recorded_at": "2026-08-16T05:27:27.117426Z"
+    },
+    {
+      "args": [
+        "encrypt",
+        "--in-place",
+        "envs/uat.enc.env"
+      ],
+      "command": "sops",
+      "exit_code": 203,
+      "opts": {
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/briefly--576460737812276834-OpLrMi7Rl8BAhdqeegGt/briefly-576460737811638250-catNgxgeRcSDKOu9nWUG/cms_drill_31c5844bec3143798e556bd573130f0c",
+        "stderr_to_stdout": true
+      },
+      "output": "The file you have provided contains a top-level entry called 'sops', or for\nflat file formats top-level entries starting with 'sops_'. This is\ngenerally due to the file already being encrypted. SOPS uses a top-level\nentry called 'sops' to store the metadata required to decrypt the file. For\nthis reason, SOPS can not encrypt files that already contain such an entry.\n\nIf this is an unencrypted file, rename the 'sops' entry.\n\nIf this is an encrypted file and you want to edit it, use the editor mode,\nfor example: `sops edit my_file.yaml`\n",
+      "recorded_at": "2026-08-16T05:27:27.129890Z"
+    },
+    {
+      "args": [
+        "set",
+        "envs/uat.enc.env",
+        "[\"CODEMYSPEC_WIDGET_URL\"]",
+        "\"wss://dev.codemyspec.com/widget\""
+      ],
+      "command": "sops",
+      "exit_code": 0,
+      "opts": {
+        "cd": "/var/folders/3j/35g_3wbj1dd_mhn49jxvdlcw0000gn/T/briefly--576460737812276834-OpLrMi7Rl8BAhdqeegGt/briefly-576460737811638250-catNgxgeRcSDKOu9nWUG/cms_drill_31c5844bec3143798e556bd573130f0c",
+        "env": {
+          "SOPS_AGE_KEY": "AGE-SECRET-KEY-1H4P3933A0Y5GE7SFJYXTANPNPWVKZMJGWRZZVTD60QGKNH26AY6QN6MJM4"
+        },
+        "stderr_to_stdout": true
+      },
+      "output": "",
+      "recorded_at": "2026-08-16T05:27:27.142374Z"
     }
   ],
   "ports": []
