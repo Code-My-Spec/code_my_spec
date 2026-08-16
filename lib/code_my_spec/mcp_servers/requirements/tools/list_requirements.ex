@@ -2,11 +2,26 @@ defmodule CodeMySpec.McpServers.Requirements.Tools.ListRequirements do
   @moduledoc """
   List project requirements with their satisfaction status — filterable.
 
-  The unfiltered default is **summary mode**: aggregate counts of unsatisfied
-  requirements grouped by requirement name. With a 500+ component project the
-  raw per-entity dump can run 180k+ characters and exceed tool-response token
-  limits; the summary tells you where the friction lives in one line, then
-  you drill in with the filter params.
+  **The default is every requirement, satisfied and not, one row each, capped at
+  100** — `status` unset, `summary: false`, `limit: 100`. Those defaults are
+  deliberate and `parse_opts/1` says why: the tool predates its filters and
+  existing callers ask it for the full picture.
+
+  **For "where is the friction", ask for it:**
+
+      summary: true, status: "unsatisfied"
+
+  Both parts matter. `summary: true` alone counts *all* requirements, which on
+  this project reads `implementation_file: 900` — a number that looks like a
+  catastrophic regression and is in fact 900 satisfied requirements. An agent
+  who takes it as friction goes hunting a break that does not exist; this
+  paragraph exists because that happened, off a moduledoc that claimed the
+  unfiltered default was a summary of unsatisfied requirements. It is neither.
+  With both set the same project reads 55.
+
+  The size warning is still real and is the reason `summary` exists: with a 500+
+  component project the raw per-entity dump runs 180k+ characters and can exceed
+  tool-response token limits. `limit` bounds it; the summary avoids it.
 
   This is a read-only discovery tool — use it to understand the full picture
   of what needs doing before picking a requirement to work on.
