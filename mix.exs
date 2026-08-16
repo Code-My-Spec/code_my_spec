@@ -106,7 +106,12 @@ defmodule CodeMySpec.MixProject do
       # Added by codemyspec
       {:ex_cli_vcr, git: "https://github.com/johns10/ex_cli_vcr", branch: "main", only: [:test]},
       {:sexy_spex, git: "https://github.com/Code-My-Spec/spex.git", branch: "feature/reusable-givens", only: [:dev, :dev_cli, :test]},
-      {:client_utils, "~> 0.1.25"},
+      # git rather than hex, so the harness and the library it shares a contract
+      # with move together. `Onboarding.databases/2` lists the partitions and
+      # `TestDatabase.partition_for/2` uses them; a release boundary between the
+      # two means a window where the harness runs a suite against a database
+      # nothing told anyone to create.
+      {:client_utils, git: "https://github.com/Code-My-Spec/client_utils.git", branch: "master"},
       {:credo, "~> 1.7.13"},
       {:sobelow, "~> 0.14.1"},
       {:boundary, "~> 0.10.4"},

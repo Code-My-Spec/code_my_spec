@@ -95,7 +95,12 @@ defmodule CmsHarness.TestDatabase do
   @doc """
   The partition name for a working copy and one analyzer source.
 
-  spex gets its own; everything else keeps the shared one.
+  Each suite that can run concurrently gets its own; anything else keeps the
+  shared one.
+
+    <partition>    the interactive session's `mix test`
+    <partition>s   the analyzer's spex run
+    <partition>a   the analyzer's exunit run
 
   `Analysis` enqueues compiler, exunit and spex together, so exunit and spex
   suites run at the same time — and they ran against one database. Symptom
@@ -105,15 +110,40 @@ defmodule CmsHarness.TestDatabase do
   passed 3,936/0 two minutes earlier. Failures that name files the session
   never touched and read exactly like real ones.
 
-  Only spex moves. Giving exunit a new name would orphan the database it has
-  and force a fresh `ecto.create` + `ecto.migrate`, measured at 37.6s; spex
-  pays that once and nothing else pays it at all.
+  **exunit moves too, and this paragraph used to argue it should not.** The
+  original reasoning — "only spex moves; giving exunit a new name would orphan
+  the database it has and force a fresh `ecto.create` + `ecto.migrate`, measured
+  at 37.6s; spex pays that once and nothing else pays it at all" — costed the
+  change correctly while answering a narrower question. It compared the
+  analyzer's two suites to each other and missed the collision between the
+  analyzer's exunit and **the agent's own interactive `mix test`**.
 
-  The suffix rather than a separate digest so the two stay visibly related —
-  `h1a2b3c4d` and `h1a2b3c4ds` are recognisably one working copy when you are
-  looking at a list of databases wondering which to drop.
+  Those shared a database, and not by accident: `mix cms.harness.onboard` writes
+  `MIX_TEST_PARTITION` into `.claude/settings.local.json`'s `env` block so
+  `resolve_partition!/2` can read it back, and Claude Code exports that block
+  into the session. So an agent running `mix test` during a sweep got
+  `bcad622d`'s exact shape, and it failed in the direction of "your branch broke
+  these tests". The 37.6s is now knowingly paid, once per working copy.
+
+  Ordering matters if this is ever changed again: `Onboarding.databases/2` is
+  what tells anyone a database exists, and nothing creates them — see the note
+  under the moduledoc. A partition used here and absent there is a database
+  nobody is told to create. That is why `client_utils` is a git dependency
+  rather than a hex one; a release boundary between these two is a window where
+  the analyzer runs against a database no one has made.
+
+  Deliberately a stopgap. The intent is to move `mix test` arbitration into our
+  own analyzer — which already owns the run ledger and writes to Problems —
+  rather than leaving client_utils to arbitrate it through an environment
+  variable Claude Code happens to export. Nothing expensive should be built on
+  this suffix.
+
+  The suffix rather than a separate digest so the three stay visibly related —
+  `h1a2b3c4d`, `h1a2b3c4ds` and `h1a2b3c4da` are recognisably one working copy
+  when you are looking at a list of databases wondering which to drop.
   """
   @spec partition_for(String.t(), String.t() | nil) :: String.t()
   def partition_for(cwd, "spex"), do: partition_for(cwd) <> "s"
+  def partition_for(cwd, "exunit"), do: partition_for(cwd) <> "a"
   def partition_for(cwd, _source), do: partition_for(cwd)
 end
