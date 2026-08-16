@@ -387,11 +387,22 @@ defmodule CodeMySpec.Analysis.Runners do
   # Where a spex failure belongs: its spec, not wherever the exception was
   # raised.
   #
-  # `error.file` is the top stacktrace frame. For an assertion inside the spec
-  # those are the same file, which is why this held for so long. For anything
-  # that *raises* from library code they are not: two cassette failures filed
-  # against `lib/req_cassette/plug.ex:481` and `:607`, the plug that raised,
+  # `error.file` is the top stacktrace frame — for a failure reported from
+  # inside a scenario. For an assertion inside the spec those are the same file,
+  # which is why this held for so long. For anything that *raises* from library
+  # code they are not: two cassette failures filed against
+  # `lib/req_cassette/plug.ex:481` and `:607`, the plug that raised,
   # with nothing left pointing at the specs that failed.
+  #
+  # There is a second shape, and it is worth knowing before reasoning about this
+  # function. `SexySpex.JsonlFormatter.backstop_failure/2` handles failures that
+  # never reached a scenario — a `setup` that raised, and the `{:EXIT, pid}` kind
+  # ExUnit uses when a linked process takes the test down — and it sets
+  # `error.file` to `test.tags[:file]`, the spex's *own* file, absolute. So the
+  # fallback below is the branch those take, and its `_spex.exs` guard passes
+  # trivially for them rather than doing the filtering it does for the first
+  # shape. That absoluteness is `cc643bf3`, fixed on the harness side before the
+  # failure reaches here.
   #
   # That costs three things. The story link is gone — a spex path carries its
   # story id and a library path carries nothing — so the finding cannot be
