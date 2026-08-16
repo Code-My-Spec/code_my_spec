@@ -24,8 +24,8 @@ defmodule CodeMySpecSpex.Story966.Criterion8009Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
   setup :devops_on
-  setup :real_working_directory
-  setup :connect_providers
+  setup :fake_working_directory
+  setup :fake_providers
 
   spex "An unhealthy deploy does not become the live version" do
     scenario "a version failing its health check is not swapped in" do

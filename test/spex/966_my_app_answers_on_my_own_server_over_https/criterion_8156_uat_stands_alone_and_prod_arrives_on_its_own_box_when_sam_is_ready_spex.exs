@@ -22,10 +22,6 @@ defmodule CodeMySpecSpex.Story966.Criterion8156Spex do
 
   @endpoint CodeMySpecWeb.Endpoint
 
-  @uat_only_cassette "hetzner_uat_server_only"
-  @prod_added_cassette "hetzner_prod_server_added"
-  @given_cassette "966_8156_credentials"
-
   setup :register_log_in_setup_account
   setup :setup_active_project
   setup :devops_on
@@ -34,8 +30,8 @@ defmodule CodeMySpecSpex.Story966.Criterion8156Spex do
   # directory to generate into, and the generate itself. Without the directory
   # the generated files have nowhere to land; without the generate the files
   # are absent and sops exits 100 on a file it will not create.
-  setup :real_working_directory
-  setup :connect_providers
+  setup :fake_working_directory
+  setup :fake_providers
   setup :account_access_key
 
   spex "UAT stands alone, and prod arrives on its own box when Sam is ready" do
@@ -71,20 +67,15 @@ defmodule CodeMySpecSpex.Story966.Criterion8156Spex do
         tear_down_after(context.scope, [:server])
         tear_down_repository(context.project)
 
-        with_provider_cassette(@given_cassette, fn ->
-          paste_provider_credentials(view)
-        end)
+        paste_provider_credentials(view)
 
-        html =
-          with_full_cassette @uat_only_cassette do
-            view |> element("[data-test='start-setup']") |> render_click()
+        view |> element("[data-test='start-setup']") |> render_click()
 
-            # The click starts the run and returns; the step transitions
-            # arrive afterwards, so reading what `render_click/1` handed back
-            # shows the page as it was *before* anything ran — every step
-            # not_started, which reads as "nothing was provisioned".
-            await_provisioning(view)
-          end
+        # The click starts the run and returns; the step transitions
+        # arrive afterwards, so reading what `render_click/1` handed back
+        # shows the page as it was *before* anything ran — every step
+        # not_started, which reads as "nothing was provisioned".
+        html = await_provisioning(view)
 
         servers = servers_by_environment(html)
 
@@ -110,16 +101,13 @@ defmodule CodeMySpecSpex.Story966.Criterion8156Spex do
         |> form("[data-test='add-environment-form']", environment: %{name: "prod"})
         |> render_submit()
 
-        html =
-          with_full_cassette @prod_added_cassette do
-            context.view |> element("[data-test='start-setup']") |> render_click()
+        context.view |> element("[data-test='start-setup']") |> render_click()
 
-            # Waiting for production's server specifically. "Nothing is
-            # running" cannot distinguish this run finishing from the previous
-            # one having finished, and the previous one halted — so that wait
-            # returns the page as it was before this run wrote anything.
-            await_environment_server(context.view, "prod")
-          end
+        # Waiting for production's server specifically. "Nothing is
+        # running" cannot distinguish this run finishing from the previous
+        # one having finished, and the previous one halted — so that wait
+        # returns the page as it was before this run wrote anything.
+        html = await_environment_server(context.view, "prod")
 
         {:ok, Map.put(context, :html, html)}
       end

@@ -18,7 +18,7 @@ defmodule CodeMySpecSpex.Story966.Criterion8006Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
   setup :devops_on
-  setup :real_working_directory
+  setup :fake_working_directory
   # Fakes rather than cassettes. The HTTPS answer this asserts on is injected
   # either way — `stage_deploy/2` supplies the probe — so the cassettes were
   # recording the provider calls around it and nothing else.

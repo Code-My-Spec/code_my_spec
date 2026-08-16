@@ -27,7 +27,7 @@ defmodule CodeMySpecSpex.Story966.Criterion8010Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
   setup :devops_on
-  setup :real_working_directory
+  setup :fake_working_directory
   # Fakes rather than cassettes. What this asserts on — whether a hostname
   # answers — is injected by `stage_deploy/2` either way.
   setup :fake_providers

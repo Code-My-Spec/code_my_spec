@@ -2394,11 +2394,19 @@ defmodule CodeMySpecSpex.Case do
   def tear_down_repository(project) do
     name = Fixtures.repository_name(project)
 
-    ExUnit.Callbacks.on_exit(fn ->
-      safe_teardown(name, fn -> Fixtures.delete_spex_repository(name) end)
-    end)
+    ExUnit.Callbacks.on_exit(fn -> delete_repository_unless_faked(name) end)
 
     project
+  end
+
+  # Same as `tear_down_after/3`: a fake account needs no cleaning, and cleaning
+  # it from `on_exit` reaches the real GitHub with a placeholder credential
+  # after the stub is gone.
+  defp delete_repository_unless_faked(name) do
+    case Application.get_env(:code_my_spec, :spex_fakes, false) do
+      true -> :ok
+      false -> safe_teardown(name, fn -> Fixtures.delete_spex_repository(name) end)
+    end
   end
 
   @doc """
@@ -4907,6 +4915,22 @@ defmodule CodeMySpecSpex.Case do
   prevent.
   """
   def tear_down_after(scope, keys, opts \\ []) when is_list(keys) do
+    # Nothing to tear down when the providers are fakes: the account is an
+    # Agent that dies with the test, so there is no box to release and no
+    # bucket to empty.
+    #
+    # And nothing that *can* be. Teardown runs from `on_exit`, by which point
+    # the fake's agent is stopped and `Req.Test` is back in private mode — so
+    # the calls left the harness for the real internet with a placeholder
+    # credential, and 966/8003 spent its full three-minute timeout there
+    # rather than failing.
+    case Application.get_env(:code_my_spec, :spex_fakes, false) do
+      true -> :ok
+      false -> record_teardown(scope, keys, opts)
+    end
+  end
+
+  defp record_teardown(scope, keys, opts) do
     # Per spex, not per step. Every spex tearing down storage wrote to one
     # `teardown_storage` cassette, so the last recorder won and the others
     # replayed a teardown of somebody else's buckets. The project name is

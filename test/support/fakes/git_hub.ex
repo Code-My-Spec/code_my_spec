@@ -25,7 +25,21 @@ defmodule CodeMySpecSpex.Fakes.GitHub do
   alias Plug.Conn
 
   @doc "Fresh account state. One per test."
-  def new(login \\ "sam"), do: %{login: login, repos: [], next_id: 1, token: "fake-github-token"}
+  def new(login \\ "sam"), do: %{login: login, repos: [], next_id: 1}
+
+  # Any credential but a revoked one.
+  #
+  # 8181's premise is a connection Sam has revoked, and `break_provider_credential/2`
+  # states it by storing this exact token — so that is what the account
+  # refuses, and everything else it accepts.
+  #
+  # The first version pinned one valid token instead. That reads as more
+  # faithful and models a relationship the suite does not have: credentials
+  # arrive from `fake_providers/1`, from a paste into the credentials form,
+  # and from fixtures, and none of them agree on a value. Every paste 401'd,
+  # the page's credential proof retried, and 966/8003 spent its whole
+  # three-minute timeout inside `render_submit`.
+  @revoked "spex-deliberately-invalid-token"
 
   @doc """
   Put a repository in the account without creating it.
@@ -45,22 +59,20 @@ defmodule CodeMySpecSpex.Fakes.GitHub do
   def call(conn, agent) do
     conn = Conn.fetch_query_params(conn)
 
-    case authorized?(conn, agent) do
+    case authorized?(conn) do
       true -> dispatch(conn, agent)
       false -> unauthorized(conn)
     end
   end
 
-  # A token the account never issued is a 401, which is what GitHub answers
-  # for a revoked installation and what `GitHub.request/4` translates into
-  # `:github_not_connected` — "reconnect GitHub" rather than "could not create
-  # the repository". Criterion 8181's whole premise is a connection that no
-  # longer works, and a fake that ignored the credential would let the step
-  # sail through the revocation and complete.
-  defp authorized?(conn, agent) do
-    expected = Agent.get(agent, & &1.token)
-
-    Conn.get_req_header(conn, "authorization") == ["Bearer #{expected}"]
+  # A revoked token is a 401, which is what GitHub answers and what
+  # `GitHub.request/4` translates into `:github_not_connected` — "reconnect
+  # GitHub" rather than "could not create the repository". Criterion 8181's
+  # whole premise is a connection that no longer works, and a fake that
+  # ignored the credential would let the step sail through the revocation and
+  # complete.
+  defp authorized?(conn) do
+    Conn.get_req_header(conn, "authorization") != ["Bearer #{@revoked}"]
   end
 
   defp unauthorized(conn) do

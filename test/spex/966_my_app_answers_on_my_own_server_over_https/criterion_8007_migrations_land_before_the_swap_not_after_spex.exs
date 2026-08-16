@@ -20,13 +20,11 @@ defmodule CodeMySpecSpex.Story966.Criterion8007Spex do
 
   @endpoint CodeMySpecWeb.Endpoint
 
-  @cassette "kamal_deploy_migrate_then_swap"
-
   setup :register_log_in_setup_account
   setup :setup_active_project
   setup :devops_on
-  setup :real_working_directory
-  setup :connect_providers
+  setup :fake_working_directory
+  setup :fake_providers
 
   spex "Migrations land before the swap, not after" do
     scenario "the migration completes before traffic moves to the new version" do
@@ -39,11 +37,9 @@ defmodule CodeMySpecSpex.Story966.Criterion8007Spex do
 
       when_ "the deploy runs", context do
         html =
-          with_provider_cassette(@cassette, fn ->
-            context.view
-            |> element("[data-test='setup-step'][data-step='deploy'] [data-test='run-step']")
-            |> render_click()
-          end)
+          context.view
+          |> element("[data-test='setup-step'][data-step='deploy'] [data-test='run-step']")
+          |> render_click()
 
         {:ok, Map.put(context, :html, html)}
       end

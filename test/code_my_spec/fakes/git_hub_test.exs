@@ -20,8 +20,7 @@ defmodule CodeMySpecSpex.Fakes.GitHubTest do
     Req.new(
       method: method,
       url: "https://api.github.com" <> path,
-      # The credential, because the account checks it — a token it never
-      # issued is a 401, the same as a revoked installation.
+      # A credential, because the account checks for the revoked one.
       headers: [{"authorization", "Bearer fake-github-token"}],
       plug: &GitHub.call(&1, agent)
     )

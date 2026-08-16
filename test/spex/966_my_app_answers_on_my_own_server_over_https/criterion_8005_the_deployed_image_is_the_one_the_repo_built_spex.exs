@@ -19,8 +19,8 @@ defmodule CodeMySpecSpex.Story966.Criterion8005Spex do
   setup :register_log_in_setup_account
   setup :setup_active_project
   setup :devops_on
-  setup :real_working_directory
-  setup :connect_providers
+  setup :fake_working_directory
+  setup :fake_providers
 
   spex "The deployed image is the one the repo built" do
     scenario "the running version is traceable to the commit CI built" do
