@@ -58,9 +58,11 @@ defmodule CodeMySpec.ProviderModulesCompleteTest do
   # The module a file defines, from its first `defmodule`. Good enough: these
   # are single-module provider files, and a file that defines none is skipped.
   defp module_of(path) do
-    case Regex.run(~r/^defmodule\s+([A-Za-z0-9_.]+)\s+do/m, File.read!(path)) do
-      [_, name] -> Module.concat([name])
-      _ -> nil
-    end
+    ~r/^defmodule\s+([A-Za-z0-9_.]+)\s+do/m
+    |> Regex.run(File.read!(path), capture: :all_but_first)
+    |> to_module()
   end
+
+  defp to_module([name]), do: Module.concat([name])
+  defp to_module(_), do: nil
 end
