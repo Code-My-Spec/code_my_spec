@@ -31,59 +31,46 @@ defmodule CodeMySpecSpex.Story841.Criterion1968Spex do
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Devops.Tools.{DevopsStatus, RunDevopsSetup}
 
-  @cassette "841_1968_backups_and_monitors"
-
   setup :register_log_in_setup_account
   setup :setup_active_project
   setup :devops_on
-  setup :provider_credentials_on_file
-  setup :connect_providers
-  # sops and age are real binaries reading real files. The default fixture's
-  # memory environment is invisible to them, so the server step's write of
-  # DATABASE_URL into envs/<env>.enc.env landed nowhere sops could see and it
-  # exited 100 with "cannot operate on non-existent file".
-  setup :real_working_directory
+  setup :fake_providers
+  # A modelled shell over the memory filesystem, so a step reading what an
+  # earlier step wrote finds it — and, for this criterion in particular, so
+  # `bin/backup` runs somewhere. Recording it needed a box that could take a
+  # systemd unit, which is why this sat parked; against fakes the dump and the
+  # restore answer each other and there is no box to find.
+  setup :fake_working_directory
 
   spex "Setup leaves backups running" do
     scenario "setup has finished, and the dumps are landing" do
       given_ "a project whose setup has run to completion", context do
-        # Registered before anything provisions, so a run that dies partway
-        # still returns its boxes.
-        #
-        # Hetzner's server limit on this account is 5 and two are permanently
-        # John's, so a recording has three slots. None of story 841's
-        # setup-running criteria returned any, so they accumulated *within a
-        # single run*: the first took two, the second took the third, and every
-        # one after it got `resource_limit_exceeded` — which then went into the
-        # cassette as the story's expected behaviour. No amount of cleaning
-        # between runs could have helped, because the exhaustion happens inside
-        # one.
-        tear_down_after(context.scope, [:server, :storage, :dns])
-        tear_down_repository(context.project)
-
         # Its own domain, or the domain step refuses and every step behind it
-        # reports nothing — the gap 1961 had. Its own *name* as well, because
-        # Let's Encrypt allows five certificates a week per exact identifier
-        # set and criteria sharing a hostname spend each other's quota.
+        # reports nothing — the gap 1961 had.
         own_domain(context.project, "c1968.legwork.ca")
+
+        # And a zone covering it, so `ensure_domain` adopts rather than
+        # offering to buy the name.
+        zone_exists(context, "legwork.ca")
+
+        # A checkout the deploy step accepts, after the domain because the
+        # generated `config/deploy.yml` names the host it deploys to. It also
+        # carries `bin/backup`, which is the script this criterion is about.
+        deploy_ready_checkout(context)
 
         # Run, not asserted. Backups being in place is what the criterion is
         # about, so the run that would put them there has to actually happen.
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        with_full_cassette @cassette <> "_setup" do
-          {:reply, _response, _frame} =
-            RunDevopsSetup.execute(%{project_id: to_string(context.project.id)}, frame)
-        end
+        {:reply, _response, _frame} =
+          RunDevopsSetup.execute(%{project_id: to_string(context.project.id)}, frame)
 
         {:ok, Map.put(context, :frame, frame)}
       end
 
       when_ "the agent asks what infrastructure exists", context do
         {:reply, response, _frame} =
-          with_provider_cassette(@cassette, fn ->
-            DevopsStatus.execute(%{}, %Frame{assigns: %{current_scope: context.scope}})
-          end)
+          DevopsStatus.execute(%{}, %Frame{assigns: %{current_scope: context.scope}})
 
         {:ok, Map.put(context, :report, response_text(response))}
       end

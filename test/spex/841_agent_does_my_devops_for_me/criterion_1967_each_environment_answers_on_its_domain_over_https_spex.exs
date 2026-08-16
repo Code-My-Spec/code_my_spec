@@ -17,51 +17,36 @@ defmodule CodeMySpecSpex.Story841.Criterion1967Spex do
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Devops.Tools.RunDevopsSetup
 
-  @cassette "841_1967_environments_answer_over_https"
-
   setup :register_log_in_setup_account
   setup :setup_active_project
   setup :devops_on
-  setup :provider_credentials_on_file
-  setup :connect_providers
-  # sops and age are real binaries reading real files. The default fixture's
-  # memory environment is invisible to them, so the server step's write of
-  # DATABASE_URL into envs/<env>.enc.env landed nowhere sops could see and it
-  # exited 100 with "cannot operate on non-existent file".
-  setup :real_working_directory
+  setup :fake_providers
+  # A modelled shell over the memory filesystem, so a step reading what an
+  # earlier step wrote finds it.
+  setup :fake_working_directory
 
   spex "Each environment answers on its domain over HTTPS" do
     scenario "every provisioned environment serves on its own host" do
       given_ "the project has its environments provisioned", context do
-        # Registered before anything provisions, so a run that dies partway
-        # still returns its boxes.
-        #
-        # Hetzner's server limit on this account is 5 and two are permanently
-        # John's, so a recording has three slots. None of story 841's
-        # setup-running criteria returned any, so they accumulated *within a
-        # single run*: the first took two, the second took the third, and every
-        # one after it got `resource_limit_exceeded` — which then went into the
-        # cassette as the story's expected behaviour. No amount of cleaning
-        # between runs could have helped, because the exhaustion happens inside
-        # one.
-        tear_down_after(context.scope, [:server, :storage, :dns])
-        tear_down_repository(context.project)
-
         # Its own domain, or the domain step refuses and every step behind it
-        # reports nothing — the gap 1961 had. Its own *name* as well, because
-        # Let's Encrypt allows five certificates a week per exact identifier
-        # set and criteria sharing a hostname spend each other's quota.
+        # reports nothing — the gap 1961 had.
         own_domain(context.project, "c1967.legwork.ca")
+
+        # And a zone covering it, so `ensure_domain` adopts rather than
+        # offering to buy the name.
+        zone_exists(context, "legwork.ca")
+
+        # A checkout the deploy step accepts, after the domain because the
+        # generated `config/deploy.yml` names the host it deploys to.
+        deploy_ready_checkout(context)
 
         # Provisioned by running setup. A visitor gets an answer only if
         # something is serving, so the thing that makes something serve has to
         # run before the request in `when_`.
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        with_full_cassette @cassette <> "_setup" do
-          {:reply, _response, _frame} =
-            RunDevopsSetup.execute(%{project_id: to_string(context.project.id)}, frame)
-        end
+        {:reply, _response, _frame} =
+          RunDevopsSetup.execute(%{project_id: to_string(context.project.id)}, frame)
 
         # What setup actually provisioned, carried into the scenario.
         # `environment_hosts/1` read `context[:environments]` and nothing ever
@@ -72,11 +57,14 @@ defmodule CodeMySpecSpex.Story841.Criterion1967Spex do
       end
 
       when_ "each environment's host is fetched over HTTPS", context do
+        # Fetched the way a visitor would, one host at a time. Under fakes the
+        # site is served from the zone rather than unconditionally, so an
+        # environment setup never published a record for does not answer —
+        # which is what keeps "each environment answers on *its own* host" a
+        # claim rather than a formality.
         results =
-          with_provider_cassette(@cassette, fn ->
-            Enum.map(environment_hosts(context), fn {name, host} ->
-              {name, host, Req.get("https://#{host}", retry: false, receive_timeout: 15_000)}
-            end)
+          Enum.map(environment_hosts(context), fn {name, host} ->
+            {name, host, fetch_site(host)}
           end)
 
         {:ok, Map.put(context, :results, results)}

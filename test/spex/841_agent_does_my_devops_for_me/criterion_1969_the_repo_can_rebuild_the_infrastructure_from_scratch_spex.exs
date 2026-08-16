@@ -18,47 +18,53 @@ defmodule CodeMySpecSpex.Story841.Criterion1969Spex do
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Devops.Tools.{DevopsStatus, RunDevopsSetup}
 
-  @cassette "841_1969_rebuild_from_scratch"
+  # The widget message travels over a real socket, and `connect/3` reads this.
+  @endpoint CodeMySpecWeb.Endpoint
 
   setup :register_log_in_setup_account
   setup :setup_active_project
   setup :devops_on
-  setup :provider_credentials_on_file
-  setup :connect_providers
-  # sops and age are real binaries reading real files. The default fixture's
-  # memory environment is invisible to them, so the server step's write of
-  # DATABASE_URL into envs/<env>.enc.env landed nowhere sops could see and it
-  # exited 100 with "cannot operate on non-existent file".
-  setup :real_working_directory
+  setup :fake_providers
+  # A modelled shell over the memory filesystem, so a step reading what an
+  # earlier step wrote finds it.
+  setup :fake_working_directory
 
   spex "The repo can rebuild the infrastructure from scratch" do
     scenario "the resources are gone, and setup makes them again" do
       given_ "the repo holds its deployment configuration, and nothing is provisioned",
              context do
-        # Registered before anything provisions, so a run that dies partway
-        # still returns its boxes. The account's server limit is 5 with two
-        # permanently spoken for, and none of 841's setup-running criteria
-        # returned a slot — so they exhausted the account inside a single run
-        # and recorded `resource_limit_exceeded` as the story's behaviour.
-        tear_down_after(context.scope, [:server, :storage, :dns])
-        tear_down_repository(context.project)
-
         # Its own domain, or the domain step refuses and every step behind it
-        # reports nothing — the gap 1961 had. Its own *name* as well, because
-        # Let's Encrypt allows five certificates a week per exact identifier
-        # set and criteria sharing a hostname spend each other's quota.
+        # reports nothing — the gap 1961 had.
         own_domain(context.project, "c1969.legwork.ca")
+
+        # And a zone covering it, so `ensure_domain` adopts rather than
+        # offering to buy the name.
+        zone_exists(context, "legwork.ca")
+
+        # A checkout the deploy step accepts, after the domain because the
+        # generated `config/deploy.yml` names the host it deploys to.
+        deploy_ready_checkout(context)
+
+        # A visitor who has used the widget: the widget step reports done only
+        # on a message from the deployed site, and a criterion asserting the
+        # rebuild *finishes* has to say where that came from.
+        visitor_message_from(context, "https://c1969.legwork.ca")
 
         # "From scratch" is the premise, so nothing is provisioned — this
         # scenario never runs setup before the `when_`. What has to be
         # established is the other half: the repo actually carries the
         # configuration a rebuild would read. If that only ever lived in a
         # console, there is nothing to rebuild from.
+        # Its own hostname, not `uat.example.com`. The deploy step refuses a
+        # config pointing at a host the project does not own — "point the
+        # config at the right hostname, or fix the project's domain" — so a
+        # premise naming somebody else's domain describes a repo that cannot
+        # rebuild anything, which is the opposite of what it is here to say.
         :ok =
-          CodeMySpec.Environments.write_file(
+          CodeMySpecSpex.Fixtures.write_file(
             context.environment,
             "config/deploy.uat.yml",
-            "service: story841\nimage: story841\nproxy:\n  host: uat.example.com\n"
+            "service: story841\nimage: story841\nproxy:\n  host: uat.c1969.legwork.ca\n"
           )
 
         {:ok, context}
@@ -67,14 +73,11 @@ defmodule CodeMySpecSpex.Story841.Criterion1969Spex do
       when_ "setup is run again from what the repo holds", context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        report =
-          with_full_cassette @cassette do
-            {:reply, _run, _frame} =
-              RunDevopsSetup.execute(%{project_id: to_string(context.project.id)}, frame)
+        {:reply, _run, _frame} =
+          RunDevopsSetup.execute(%{project_id: to_string(context.project.id)}, frame)
 
-            {:reply, status, _frame} = DevopsStatus.execute(%{}, frame)
-            response_text(status)
-          end
+        {:reply, status, _frame} = DevopsStatus.execute(%{}, frame)
+        report = response_text(status)
 
         {:ok, Map.put(context, :report, report)}
       end

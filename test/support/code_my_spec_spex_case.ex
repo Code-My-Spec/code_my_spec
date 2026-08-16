@@ -376,14 +376,17 @@ defmodule CodeMySpecSpex.Case do
     # which is a test-harness sentence appearing where a deploy failure should
     # be.
     #
-    # Safe to answer unconditionally *here* because there is no
-    # `verify(:deploy, …)` clause: the step has no early return, so a probe
-    # that always answers cannot make it skip its work. The steps that do
-    # verify by probe — tls — take an injected one, which is what
+    # Answered from the zone rather than unconditionally: a host with no A
+    # record is a host nothing is serving, so a criterion checking that each
+    # environment answers *on its own host* still fails when setup published
+    # one of them and not the other. `fetch_site/1` fetches through the same
+    # stub, which is what makes that a chain rather than two arrangements.
+    #
+    # Safe against the step skipping its work because there is no
+    # `verify(:deploy, …)` clause — the step has no early return. The steps
+    # that do verify by probe (tls) take an injected one, which is what
     # `certificate_issued_by_the_step/1` is for.
-    Req.Test.stub(CodeMySpec.Provisioning.Deploy, fn conn ->
-      Plug.Conn.send_resp(conn, 200, "ok")
-    end)
+    Req.Test.stub(CodeMySpec.Provisioning.Deploy, &serve_site(&1, cloudflare))
 
     # The same site, fetched for what it renders rather than whether it
     # answers. `Widget.verify_present/2` reads the page for two published
@@ -412,7 +415,6 @@ defmodule CodeMySpecSpex.Case do
 
   @doc """
   The servers the account holds, for a `then_` asking what a run built.
-
   The provider's own state rather than the run's report: a step that says it
   made a box and a box existing are two different claims, and the one worth
   asserting is the second.
@@ -421,6 +423,52 @@ defmodule CodeMySpecSpex.Case do
 
   @doc "Their names, sorted — what a criterion counting boxes actually reads."
   def server_names(context), do: context |> servers() |> Enum.map(& &1["name"]) |> Enum.sort()
+
+  @doc """
+  Fetch a host the way a visitor's browser would.
+
+  For the criteria whose claim is about the site rather than about a step —
+  "each environment answers on its own domain". Under fakes there is nothing
+  listening, so the request is served from the zone: a host with an A record
+  answers, and a host without one does not.
+
+  That distinction is the point. An unconditional 200 would pass a run that
+  provisioned one environment and forgot the other, which is precisely what
+  these criteria exist to catch. What *cannot* be faked is the certificate a
+  browser trusts — that is a fact about the internet, and it belongs to the
+  live drill; 966 owns it with its own injected probe.
+  """
+  def fetch_site(host, opts \\ []) do
+    Req.get(
+      [url: "https://#{host}", retry: false, plug: {Req.Test, CodeMySpec.Provisioning.Deploy}] ++
+        opts
+    )
+  end
+
+  # A site that exists where the zone says it does.
+  defp serve_site(conn, cloudflare) do
+    state = Agent.get(cloudflare, & &1)
+    zones = Map.new(state.zones, &{&1["id"], &1["name"]})
+
+    published? =
+      state.records
+      |> Enum.flat_map(fn {zone_id, records} ->
+        Enum.map(records, &qualified_name(&1, Map.get(zones, zone_id, "")))
+      end)
+      |> Enum.member?(conn.host)
+
+    case published? do
+      true -> Plug.Conn.send_resp(conn, 200, "ok")
+      false -> Plug.Conn.send_resp(conn, 404, "no site is published at #{conn.host}")
+    end
+  end
+
+  defp qualified_name(record, zone) do
+    case to_string(record["name"]) do
+      name when name in ["@", ""] -> zone
+      name -> if String.ends_with?(name, zone), do: name, else: "#{name}.#{zone}"
+    end
+  end
 
   @doc """
   A visitor has used the widget on Sam's site.

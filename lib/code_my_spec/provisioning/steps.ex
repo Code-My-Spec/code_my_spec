@@ -428,7 +428,7 @@ defmodule CodeMySpec.Provisioning.Steps do
     # move a live apex*, and proving that should not need a real zone.
     with name when is_binary(name) <- domain(scope),
          {:ok, zone} <- find_dns_zone(scope, name, opts),
-         environments <- EnvironmentRepository.assign_hosts(scope, name),
+         environments <- permitted_hosts(scope, name),
          {:ok, resources} <- dns_records_for(scope, zone, environments, opts) do
       record_client_api_url(scope, environments, opts)
       {:ok, resources}
@@ -1165,7 +1165,7 @@ defmodule CodeMySpec.Provisioning.Steps do
 
           name ->
             scope
-            |> EnvironmentRepository.assign_hosts(name)
+            |> permitted_hosts(name)
             |> Enum.filter(&is_binary(&1.host))
         end
     end
@@ -2085,7 +2085,7 @@ defmodule CodeMySpec.Provisioning.Steps do
 
       name ->
         scope
-        |> EnvironmentRepository.assign_hosts(name)
+        |> permitted_hosts(name)
         |> Enum.filter(&(&1.name == environment and is_binary(&1.host)))
         |> Enum.map(& &1.host)
     end
@@ -3091,6 +3091,23 @@ defmodule CodeMySpec.Provisioning.Steps do
       :uat -> Enum.reject(rows, &(&1.name == "prod"))
       _ -> rows
     end
+  end
+
+  # The same rule again, for the three steps that need each environment's
+  # *host* rather than its name — dns publishes them, tls certifies them, and
+  # the deploy config check compares against them.
+  #
+  # All three read `assign_hosts/2` straight, so on a UAT-only project the tls
+  # step tried to certify the production apex: a name the dns step had
+  # correctly not published, on a box that had correctly not been built. The
+  # report then blamed certificate issuance, which is three steps away from the
+  # decision that caused it.
+  defp permitted_hosts(scope, domain) do
+    permitted = MapSet.new(permitted_environments(scope))
+
+    scope
+    |> EnvironmentRepository.assign_hosts(domain)
+    |> Enum.filter(&MapSet.member?(permitted, &1.name))
   end
 
   # No row, or a row predating the column, means nobody has said this project
