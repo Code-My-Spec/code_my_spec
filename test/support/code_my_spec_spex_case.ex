@@ -20,6 +20,12 @@ defmodule CodeMySpecSpex.Case do
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
 
+  # `get/2` and `assert_reply/4` are macros. This module's own function bodies
+  # need them at compile time — the `using` block's imports only reach the spex
+  # that use it, not the helpers defined here.
+  require Phoenix.ChannelTest
+  require Phoenix.ConnTest
+
   using do
     quote do
       @endpoint CodeMySpecLocalWeb.Endpoint
@@ -379,6 +385,18 @@ defmodule CodeMySpecSpex.Case do
       Plug.Conn.send_resp(conn, 200, "ok")
     end)
 
+    # The same site, fetched for what it renders rather than whether it
+    # answers. `Widget.verify_present/2` reads the page for two published
+    # markers — present and openable are different failures, and a bundle that
+    # renders the tag while never initialising is the second one.
+    Req.Test.stub(CodeMySpec.Provisioning.Widget, fn conn ->
+      Plug.Conn.send_resp(
+        conn,
+        200,
+        ~s(<html><body><div data-cms-widget><button data-cms-widget-toggle>?</button></div></body></html>)
+      )
+    end)
+
     on_exit(fn ->
       Application.put_env(:code_my_spec, CodeMySpec.Provisioning.Dns, previous_dns)
     end)
@@ -403,6 +421,65 @@ defmodule CodeMySpecSpex.Case do
 
   @doc "Their names, sorted — what a criterion counting boxes actually reads."
   def server_names(context), do: context |> servers() |> Enum.map(& &1["name"]) |> Enum.sort()
+
+  @doc """
+  A visitor has used the widget on Sam's site.
+
+  The widget step reports done only when a message has travelled from the
+  deployed site into CodeMySpec — deliberately, and criterion 8044 is entirely
+  about that gate. Nothing in the sequence can manufacture one, so a run
+  against a site nobody has visited pauses at the widget ("waiting on a person,
+  not broken") and every step behind it never runs. A criterion asserting
+  setup *finishes* has to state this premise or it is really asserting that
+  someone used the widget while the test was running.
+
+  Sent through the real transport rather than inserted: `WidgetSocket` plus
+  `ConversationChannel` is how a visitor's message arrives, and `origin` is
+  what makes it a message from the deployed site rather than from a laptop
+  holding the same credential — the step compares it against the site it just
+  checked. Modelled on 973/8044, which proves the gate itself.
+
+  A macro for the reason `mount_provisioning/1` is one: `connect/3` reads
+  `@endpoint` from the module it expands in, and as a function here it would
+  resolve against this module's rather than the spex's.
+  """
+  defmacro visitor_message_from(context, site) do
+    quote do
+      ctx = unquote(context)
+
+      # Shared mode: the channel is another process and cannot see an
+      # owner-only connection.
+      Sandbox.mode(CodeMySpec.Repo, {:shared, self()})
+
+      token =
+        Phoenix.ConnTest.build_conn()
+        |> Plug.Conn.put_req_header("authorization", "Bearer " <> app_access_token(ctx.project))
+        |> get("/api/widget/socket_token")
+        |> json_response(200)
+        |> Map.fetch!("socket_token")
+
+      visitor = "visitor-#{System.unique_integer([:positive])}"
+
+      {:ok, socket} =
+        Phoenix.ChannelTest.connect(
+          CodeMySpecWeb.WidgetSocket,
+          %{
+            "socket_token" => token,
+            "user_id" => visitor,
+            "user_email" => "#{visitor}@example.com",
+            "origin" => unquote(site)
+          },
+          connect_info: %{}
+        )
+
+      {:ok, _reply, channel} = subscribe_and_join(socket, "conversation:#{visitor}", %{})
+
+      ref = Phoenix.ChannelTest.push(channel, "send_message", %{"body" => "the widget works"})
+      Phoenix.ChannelTest.assert_reply(ref, :ok, %{}, 1000)
+
+      ctx
+    end
+  end
 
   @doc """
   Say which zone Sam's account holds.

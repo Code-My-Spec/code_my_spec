@@ -31,6 +31,10 @@ defmodule CodeMySpecSpex.Fakes.Shell do
 
   alias CodeMySpec.Environments
 
+  # What `dump` says went in and `restore` says came back. One number, because
+  # the step compares them and a mismatch is reported as data loss.
+  @backup_rows 42
+
   @doc "Run a command against the environment's filesystem."
   def cmd(env, command, args, opts) do
     run(env, command, args, opts)
@@ -114,6 +118,31 @@ defmodule CodeMySpecSpex.Fakes.Shell do
   # pipeline's effect is on the far side, which nothing here reads.
   defp run(_env, "sh", ["-c" | _], _opts), do: {"", 0}
 
+  # -- mix: the generators the steps run, which are generators because their
+  # effect is a file --
+
+  defp run(env, "mix", ["cms_gen.support_widget" | _], _opts) do
+    # `installed?/2` looks for `lib/<app>_web/live/support_widget_live.ex` and
+    # skips the generator when it is already there, so writing it is both the
+    # effect and what makes a second run a no-op rather than a re-generation.
+    for entry <- web_dirs(env) do
+      Environments.write_file(
+        env,
+        "lib/#{entry}/live/support_widget_live.ex",
+        "defmodule SupportWidgetLive do\n  # data-cms-widget\nend\n"
+      )
+    end
+
+    {"* creating lib/app_web/live/support_widget_live.ex\n", 0}
+  end
+
+  defp web_dirs(env) do
+    case Environments.list_directory(env, "lib") do
+      {:ok, entries} -> Enum.filter(entries, &String.ends_with?(&1, "_web"))
+      _ -> []
+    end
+  end
+
   # -- the generated scripts, run by absolute path out of the checkout --
   #
   # `bin/deploy <command> <environment>` is what the deploy step shells out to,
@@ -124,10 +153,45 @@ defmodule CodeMySpecSpex.Fakes.Shell do
   defp run(_env, command, args, _opts) do
     case Path.basename(command) do
       "deploy" -> {"deployed #{Enum.join(args, " ")}\n", 0}
-      "backup" -> {"backup complete\n", 0}
+      "backup" -> backup(args)
       "migrate" -> {"migrated\n", 0}
       _ -> unmodelled(command, args)
     end
+  end
+
+  # `bin/backup` reports what it did in `key=…` / `rows=…` lines, and the step
+  # takes the script's word for the key because the script is what wrote it.
+  #
+  # The two subcommands have to agree: `restore` is checked against the count
+  # `dump` printed, and a restore that comes back short is reported as "a
+  # restore that loses data is not a backup". A fake answering a different
+  # number each time would produce exactly that failure, about nothing.
+  defp backup(args), do: args |> Enum.map(&unquote_arg/1) |> backup_command()
+
+  defp backup_command(["dump", environment | _]) do
+    {"key=#{dump_key(environment)}\nrows=#{@backup_rows}\n", 0}
+  end
+
+  defp backup_command(["restore" | _]), do: {"rows=#{@backup_rows}\n", 0}
+  defp backup_command(["install_schedule" | _]), do: {"installed\n", 0}
+  defp backup_command(_args), do: {"", 0}
+
+  # Over ssh the arguments arrive shell-quoted — `remote_command/3` wraps every
+  # one in single quotes because a secret access key is not guaranteed to be
+  # shell-safe. A real shell strips them before the script sees them; matching
+  # on `"'dump'"` instead of `"dump"` is how this fake answered nothing to a
+  # dump it had a perfectly good answer for.
+  defp unquote_arg(arg) do
+    case String.starts_with?(arg, "'") and String.ends_with?(arg, "'") do
+      true -> String.slice(arg, 1..-2//1)
+      false -> arg
+    end
+  end
+
+  # Dated, because criterion 8014 asserts a dump is from *that run* — a key
+  # with no date in it cannot answer that, however plausible it looks.
+  defp dump_key(environment) do
+    "backups/#{environment}/#{DateTime.utc_now() |> DateTime.to_iso8601() |> String.replace(":", "-")}.sql.gz"
   end
 
   # A box on the far side of the ssh, answering about itself.
@@ -144,8 +208,23 @@ defmodule CodeMySpecSpex.Fakes.Shell do
       String.contains?(command, "{{.Architecture}}") -> "amd64\n"
       String.contains?(command, "/v2/") -> "< HTTP/1.1 200 OK\n"
       String.contains?(command, "uname -m") -> "x86_64\n"
+      # The same script, on the box. `bin/backup` runs where `cms-postgres`
+      # resolves — the environment's own server — so the backups step passes a
+      # `:run` and the command arrives here as one shell line rather than as
+      # argv. Answering it in one place keeps the dump and the restore telling
+      # the same story, which is what the step checks.
+      String.contains?(command, "bin/backup") -> command |> backup_args() |> backup() |> elem(0)
       true -> ""
     end
+  end
+
+  # `cd /build && export A=b … && bin/backup dump uat` — what follows the
+  # script name is what it was called with.
+  defp backup_args(command) do
+    command
+    |> String.split("bin/backup", parts: 2)
+    |> List.last()
+    |> String.split(~r/\s+/, trim: true)
   end
 
   # Loudly, so a gap in this shell is a gap rather than a pass.

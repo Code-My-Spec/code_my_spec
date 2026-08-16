@@ -39,6 +39,7 @@ defmodule CodeMySpec.Provisioning.Steps do
 
   alias CodeMySpec.{
     AccountSecrets,
+    Configurations,
     Conversations,
     Deploys,
     Environments,
@@ -3054,7 +3055,52 @@ defmodule CodeMySpec.Provisioning.Steps do
   end
 
   defp environments(scope, opts) do
-    Keyword.get(opts, :environments) || EnvironmentRepository.names(scope)
+    Keyword.get(opts, :environments) || permitted_environments(scope)
+  end
+
+  # What the project asked for, not what it has rows for.
+  #
+  # `ProjectConfiguration` states the levels plainly: `:uat` is "stand up
+  # staging only; the user promotes to prod themselves". Nothing consulted it —
+  # `EnvironmentRepository.seed/1` creates prod and uat for every project and
+  # every step fanned out over both, so a project set to `:uat` finished setup
+  # holding a production server, a DNS record and a database it had explicitly
+  # opted out of. Against real providers that is a box somebody pays for.
+  #
+  # It hid behind a green, too: the prod steps *succeeded*, so `devops_status`
+  # reported complete and 841/1962 — the criterion whose whole subject is this
+  # — passed for the wrong reason.
+  #
+  # Filtered here rather than in the seed, because a row is not infrastructure.
+  # Seeding both keeps promotion a matter of changing one setting, which is
+  # what "the user promotes to prod themselves" means.
+  defp permitted_environments(scope) do
+    scope |> permitted_environment_rows() |> Enum.map(& &1.name)
+  end
+
+  # The rows, filtered by the same rule. The server step fans out over structs
+  # rather than names, and the comment on `ensure_environment_servers/3` is
+  # about precisely this hazard: a step that fans out over one list and checks
+  # its work against another reports gaps that are really disagreements. It
+  # took the unfiltered list, so the `:uat` filter above stopped the *later*
+  # steps touching prod while the server step went on building the box.
+  defp permitted_environment_rows(scope) do
+    rows = EnvironmentRepository.list(scope)
+
+    case devops_level(scope) do
+      :uat -> Enum.reject(rows, &(&1.name == "prod"))
+      _ -> rows
+    end
+  end
+
+  # No row, or a row predating the column, means nobody has said this project
+  # ships — the same answer the schema default gives. Mirrors
+  # `Resources.devops/2`, which reads it for the same reason.
+  defp devops_level(scope) do
+    case Configurations.get(scope) do
+      %{devops: devops} when not is_nil(devops) -> devops
+      _ -> :off
+    end
   end
 
   defp server_name(scope, opts) do
@@ -3109,7 +3155,7 @@ defmodule CodeMySpec.Provisioning.Steps do
   # a *different* list can report a gap that is really a disagreement, or miss
   # one that is real. One read cannot disagree with itself.
   defp ensure_environment_servers(scope, opts, made) do
-    environments = EnvironmentRepository.list(scope)
+    environments = permitted_environment_rows(scope)
 
     Logger.info(
       "[Provisioning] server step provisioning #{length(environments)} environment(s): " <>
