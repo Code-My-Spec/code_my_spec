@@ -50,19 +50,6 @@ defmodule CodeMySpecSpex.Story972.Criterion8039Spex do
       # the render proof has nothing to fetch and the step fails for a reason
       # that has nothing to do with proving a render.
       given_ "Sam's site is deployed and his storage is ready", context do
-        # A domain, before anything runs. The `domain` and `dns` steps have
-        # nothing to register without one, and the render proof has nowhere to
-        # fetch from — the first drill made a server and two buckets and then
-        # stopped here, having never touched Cloudflare.
-        # The domain the drill application is actually built for. Its
-        # `config/deploy.uat.yml` names `uat.drill.astralbi.com`, and
-        # `config_targets_this_project/2` refuses to deploy when the config's
-        # proxy host belongs to a different project — correctly, since that is
-        # how one project's app lands on another's host. Giving this criterion
-        # its own subdomain made the guard refuse and the deploy step do
-        # nothing at all, silently, between dns and storage.
-        own_domain(context.project, "drill.astralbi.com")
-
         # A post to publish. Without one the step uploads an empty content set
         # and then waits for `/blog/hello` to appear, which it never can — the
         # criterion was asserting that a pipeline proves a render while giving
@@ -106,7 +93,28 @@ defmodule CodeMySpecSpex.Story972.Criterion8039Spex do
           Application.put_env(:code_my_spec, :provisioning_step_opts, previous)
         end)
 
+        # Mounted before the domain is set, and that ordering is load-bearing.
+        # `ProvisioningLive.load/2` lists Resend's domains at mount whenever the
+        # project has one, and the mount sits outside every cassette by design
+        # — the idiom across this epic is mount, then `run_steps` with a
+        # cassette. So a domain set first put a `GET /domains` into the one
+        # place no recording can cover, and replay failed in `mount/3` with
+        # "cannot find mock/stub", which reads as process scoping rather than
+        # as a call nothing was recording.
         view = mount_provisioning(context)
+
+        # The domain the drill application is actually built for. Its
+        # `config/deploy.uat.yml` names `uat.drill.astralbi.com`, and
+        # `config_targets_this_project/2` refuses to deploy when the config's
+        # proxy host belongs to a different project — correctly, since that is
+        # how one project's app lands on another's host. Giving this criterion
+        # its own subdomain made the guard refuse and the deploy step do
+        # nothing at all, silently, between dns and storage.
+        #
+        # The steps this `given_` runs — repository, server, secrets — need no
+        # domain, and the ones that do run later against the database rather
+        # than the mount's assigns.
+        own_domain(context.project, "drill.astralbi.com")
 
         # Every pasted credential, not just the storage pair. This `given_`
         # runs the server step, which needs the Hetzner API token —
