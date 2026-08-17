@@ -75,8 +75,19 @@ defmodule CodeMySpecSpex.Story970.Criterion7978Spex do
           assert body =~ ~r/exclude:/,
                  "expected #{path} to exclude paths from force_ssl so the proxy probe is not redirected"
 
-          assert body =~ ~r/exclude:\s*\[[^\]]*(health|up)/,
-                 "expected #{path} to exclude the health path specifically, got:\n#{Regex.run(~r/force_ssl.*/, body) |> inspect()}"
+          # `paths:`, not just a list mentioning health. This asserted the
+          # looser form and so accepted `exclude: ["/health"]`, which is what
+          # the generator emitted — and `Plug.SSL.validate_exclude!/1` turns a
+          # bare string into `{:hosts, [string]}`, so that excluded a host
+          # named "/health", matched nothing, and left the probe redirected.
+          #
+          # `DeployBoilerplate.@health_exclusion` requires `paths:` for exactly
+          # this reason, learned from a deploy that stalled on "target failed
+          # to become healthy". This criterion is the one that should have
+          # caught the generator disagreeing with it, and could not.
+          assert body =~ ~r/paths:\s*\[[^\]]*(health|up)/,
+                 "expected #{path} to exclude the health path via `paths:`, which is the " <>
+                   "only form Plug.SSL reads, got:\n#{Regex.run(~r/force_ssl.*/, body) |> inspect()}"
         end
 
         {:ok, Map.put(context, :with_force_ssl, with_force_ssl)}

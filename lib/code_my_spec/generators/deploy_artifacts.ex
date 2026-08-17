@@ -540,7 +540,22 @@ defmodule CodeMySpec.Generators.DeployArtifacts do
         # `exclude` so the proxy's probe is not redirected. Without it the
         # health check gets a 301, reads as unhealthy, and the deploy stalls
         # with everything apparently fine.
-        force_ssl: [rewrite_on: [:x_forwarded_proto], exclude: ["/health"]]
+        #
+        # `paths:`, not a bare list. `Plug.SSL.validate_exclude!/1` turns a
+        # plain string into `{:hosts, [string]}` — so `exclude: ["/health"]`
+        # excluded a *host* named "/health", matched nothing, and left the
+        # probe being redirected exactly as if the option were absent.
+        # `DeployBoilerplate` learned this from a deploy that stalled on
+        # "target failed to become healthy" and tightened its audit to require
+        # `paths:`; this generator kept emitting the form that audit rejects,
+        # so every project it produced failed our own deploy-readiness check.
+        #
+        # The default hosts are restated because Plug drops them as soon as
+        # `:exclude` is given at all.
+        force_ssl: [
+          rewrite_on: [:x_forwarded_proto],
+          exclude: [hosts: ["localhost", "127.0.0.1"], paths: ["/health"]]
+        ]
 
       config :app, App.Repo,
         url: System.fetch_env!("DATABASE_URL"),
