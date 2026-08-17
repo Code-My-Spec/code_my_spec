@@ -164,7 +164,6 @@ defmodule CodeMySpec.Validation.Menu do
   # the graph.
   defp count(scope, :requirements), do: NodeRepository.actionable_count(scope)
 
-
   # The tool call goes on the `Next:` line rather than below it. A directive
   # whose action sits on the following line reads as two facts, and the agent
   # has to join them; on one line it is a single instruction.
