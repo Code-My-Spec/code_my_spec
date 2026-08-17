@@ -94,6 +94,70 @@ defmodule CodeMySpec.Provisioning.PartialRecordTest do
     end
   end
 
+  describe "a second walk that finds everything already there" do
+    # The satisfied path, which is where the takeover came from. `ensure_*`
+    # marks a resource `adopted` when it finds one already present — right for
+    # "did I make this on *this* run", wrong for "did this exist before setup
+    # ever ran". So a DNS record setup created on the first walk came back
+    # adopted on the second, `Teardown.resource/3` spared it, and the server it
+    # pointed at was released. Hetzner recycles those addresses (167394ad).
+    #
+    # `keeping_earlier/3` covers the run path and is tested above; this is the
+    # same rule on the path a *repeated* walk takes, where every step verifies
+    # satisfied and nothing is executed at all.
+    test "a resource an earlier run created stays created when re-verified as adopted", ctx do
+      StepRepository.upsert(ctx.scope, :dns, %{
+        state: :done,
+        position: 5,
+        resources: [
+          %{kind: "dns_record", location: "cloudflare/uat.example.com", origin: "created"}
+        ]
+      })
+
+      verify = fn
+        _scope, :dns ->
+          {:ok, :satisfied,
+           [%{kind: "dns_record", location: "cloudflare/uat.example.com", origin: "adopted"}]}
+
+        _scope, _key ->
+          {:ok, :absent}
+      end
+
+      Provisioning.run_step(ctx.scope, :dns, verify: verify)
+
+      assert [%{origin: "created"}] = StepRepository.get(ctx.scope, :dns).resources,
+             "a second walk re-labelled a record setup had created as adopted, " <>
+               "which is what makes teardown spare it"
+    end
+
+    # The other direction stays refused, and that is not symmetry for its own
+    # sake: a step claiming `created` for something Sam had before setup ran is
+    # how teardown gets licensed to destroy it.
+    test "a resource first seen as adopted is not promoted by a later created claim", ctx do
+      StepRepository.upsert(ctx.scope, :dns, %{
+        state: :done,
+        position: 5,
+        resources: [
+          %{kind: "dns_record", location: "cloudflare/apex.example.com", origin: "adopted"}
+        ]
+      })
+
+      verify = fn
+        _scope, :dns ->
+          {:ok, :satisfied,
+           [%{kind: "dns_record", location: "cloudflare/apex.example.com", origin: "created"}]}
+
+        _scope, _key ->
+          {:ok, :absent}
+      end
+
+      Provisioning.run_step(ctx.scope, :dns, verify: verify)
+
+      assert [%{origin: "adopted"}] = StepRepository.get(ctx.scope, :dns).resources,
+             "a later run claimed ownership of a record it had only adopted"
+    end
+  end
+
   describe "a second run that adds an environment" do
     # The shape criterion 8156 provisions: UAT stands alone, then production
     # arrives on its own box. The second run succeeds and returns production's

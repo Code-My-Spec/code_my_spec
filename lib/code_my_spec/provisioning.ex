@@ -42,6 +42,7 @@ defmodule CodeMySpec.Provisioning do
 
   alias CodeMySpec.Projects
   alias CodeMySpec.Projects.Project
+
   alias CodeMySpec.Provisioning.{
     Environment,
     EnvironmentRepository,
@@ -50,6 +51,7 @@ defmodule CodeMySpec.Provisioning do
     StepRepository,
     Steps
   }
+
   alias CodeMySpec.Users.Scope
 
   @type run_result :: %{
@@ -154,7 +156,9 @@ defmodule CodeMySpec.Provisioning do
           {:ok, Project.t()} | {:error, Ecto.Changeset.t()}
   def put_setup_options(%Scope{active_project: %Project{} = project} = scope, options) do
     known = MapSet.new(available_options(), &to_string/1)
-    stored = options |> Enum.map(&to_string/1) |> Enum.filter(&MapSet.member?(known, &1)) |> Enum.uniq()
+
+    stored =
+      options |> Enum.map(&to_string/1) |> Enum.filter(&MapSet.member?(known, &1)) |> Enum.uniq()
 
     Projects.update_project(scope, project, %{setup_options: stored})
   end
@@ -619,8 +623,11 @@ defmodule CodeMySpec.Provisioning do
 
     Enum.reduce_while(remaining, %{steps: [], halted_at: nil, reason: nil}, fn step, acc ->
       case run_step(scope, step.key, opts) do
-        {:ok, row} -> {:cont, %{acc | steps: acc.steps ++ [row]}}
-        {:halt, row, reason} -> {:halt, %{acc | steps: acc.steps ++ [row], halted_at: step.key, reason: reason}}
+        {:ok, row} ->
+          {:cont, %{acc | steps: acc.steps ++ [row]}}
+
+        {:halt, row, reason} ->
+          {:halt, %{acc | steps: acc.steps ++ [row], halted_at: step.key, reason: reason}}
       end
     end)
   end
@@ -776,19 +783,29 @@ defmodule CodeMySpec.Provisioning do
   # earlier `adopted` stays refused, because that is a step restating something
   # Sam had before setup ran, and believing it would license destroying it.
   defp still_ours(scope, key, resources) do
+    # Both directions, which is what the paragraph above says and what this did
+    # not do. It collected only the `created` ones, so an earlier `adopted`
+    # met a later `created` claim and the later one stood — the promotion the
+    # comment calls refused. `keeping_earlier/3` never had the asymmetry: it
+    # keeps the earlier record whole and only appends what is new.
+    #
+    # Which matters in the dangerous direction. A step restating something Sam
+    # had before setup ran as `created` is how teardown gets licensed to
+    # destroy it, and that is the Resend sending-domain incident exactly.
     ours =
       case StepRepository.get(scope, key) do
         %{resources: earlier} when is_list(earlier) ->
-          for r <- earlier, r.origin == "created", into: MapSet.new(), do: {r.kind, r.location}
+          for r <- earlier, into: %{}, do: {{r.kind, r.location}, r.origin}
 
         _ ->
-          MapSet.new()
+          %{}
       end
 
     Enum.map(resources, fn resource ->
-      if MapSet.member?(ours, {field(resource, :kind), field(resource, :location)}),
-        do: Map.put(resource, :origin, "created"),
-        else: resource
+      case Map.fetch(ours, {field(resource, :kind), field(resource, :location)}) do
+        {:ok, origin} -> Map.put(resource, :origin, origin)
+        :error -> resource
+      end
     end)
   end
 
