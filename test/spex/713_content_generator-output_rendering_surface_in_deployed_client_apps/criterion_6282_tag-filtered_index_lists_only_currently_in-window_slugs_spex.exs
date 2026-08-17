@@ -85,8 +85,11 @@ defmodule CodeMySpecSpex.Story713.Criterion6282Spex do
         assert context.index_html =~ "p1"
         assert context.index_html =~ "p2"
 
-        refute context.index_html =~ "p3", "an expired post must not appear in the tag index"
-        refute context.index_html =~ "p4", "a future post must not appear in the tag index"
+        refute context.index_html =~ "p3",
+               "an expired post must not appear in the tag index, got: #{context.index_html}"
+
+        refute context.index_html =~ "p4",
+               "a future post must not appear in the tag index, got: #{context.index_html}"
 
         assert get(build_conn(), "/blog/p3").status == 404
         assert get(build_conn(), "/blog/p4").status == 404
