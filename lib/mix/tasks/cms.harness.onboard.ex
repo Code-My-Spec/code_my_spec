@@ -130,18 +130,76 @@ defmodule Mix.Tasks.Cms.Harness.Onboard do
   # identical empty output for opposite states, which is worse than unhelpful. QA
   # caught it where the spex structurally could not (d053bac5), and it was this
   # story's own defect wearing the costume of its own fix.
+  #
+  # It answered from `file_exists?` alone for the same reason, and got the one
+  # state anybody runs it to diagnose wrong: a run that refuses partway leaves
+  # the file behind, written by an earlier attempt. The measured copy printed
+  # `onboarded:` and `hooks: skipped` two lines apart while `CMS_HARNESS_ID` was
+  # absent and `ANTHROPIC_BASE_URL` was the prefix with no id on it — so the
+  # plugin's MCP mount sent the literal `${CMS_HARNESS_ID}` and every hook
+  # resolved to the *parent* checkout's harness for three days (`c79ee092`).
+  #
+  # So this asserts the keys `address_model_turns/4` writes. `client_utils`
+  # carries the same fix in `Onboarding.check/2` — two implementations, which is
+  # this story's own complaint about onboarding, and they are kept in step by
+  # naming the same three keys rather than by one calling the other: this side
+  # reads through `Environments` so specs can drive an in-memory copy.
   defp check(env, root) do
-    onboarded = Environments.file_exists?(env, @settings_file)
-    announce_check(onboarded, root)
+    missing = missing_settings(env)
+    onboarded = missing == []
+    announce_check(onboarded, missing, root)
 
-    %{onboarded: onboarded, remedy: "mix cms.harness.onboard"}
+    %{onboarded: onboarded, missing: missing, remedy: "mix cms.harness.onboard"}
   end
 
-  defp announce_check(true, root) do
+  @required_env ["CMS_HARNESS_ID", "MIX_TEST_PARTITION", "ANTHROPIC_BASE_URL"]
+
+  defp missing_settings(env) do
+    settings =
+      case Environments.read_file(env, @settings_file) do
+        {:ok, contents} -> decode_env(contents)
+        _ -> %{}
+      end
+
+    Enum.filter(@required_env, &blank_or_invalid?(&1, Map.get(settings, &1)))
+  end
+
+  defp decode_env(contents) do
+    case Jason.decode(contents) do
+      {:ok, %{"env" => env}} when is_map(env) -> env
+      _ -> %{}
+    end
+  end
+
+  # Checked for an id rather than for presence: the measured failure had
+  # `http://localhost:4004/api/harnesses/` — the prefix with nothing after it,
+  # which is not a route to anything and is what a run that refused before
+  # learning its harness id leaves behind.
+  defp blank_or_invalid?("ANTHROPIC_BASE_URL", value) when is_binary(value) do
+    case String.split(value, "/api/harnesses/") do
+      [_prefix, id] -> String.trim(id) == ""
+      _ -> true
+    end
+  end
+
+  defp blank_or_invalid?(_key, value) when is_binary(value), do: String.trim(value) == ""
+  defp blank_or_invalid?(_key, _value), do: true
+
+  defp announce_check(true, _missing, root) do
     Mix.shell().info("onboarded: #{root}")
   end
 
-  defp announce_check(false, root) do
+  # Names them, because "not onboarded" alone sends the reader back to the file
+  # to work out which half failed — and the half-onboarded copy, file present
+  # and some keys right, is where that costs most.
+  defp announce_check(false, [_ | _] = missing, root) do
+    Mix.shell().info(
+      "not onboarded: #{root}\n  missing: #{Enum.join(missing, ", ")}\n" <>
+        "run: mix cms.harness.onboard"
+    )
+  end
+
+  defp announce_check(false, _missing, root) do
     Mix.shell().info("not onboarded: #{root}\nrun: mix cms.harness.onboard")
   end
 
