@@ -403,7 +403,7 @@ defmodule CodeMySpec.Hooks.Stop do
             allow_stuck(session, req_id)
 
           true ->
-            block_with_reason(scope, reason, req_id)
+            block_with_reason(scope, reason, req_id, continuous_mode?(session))
         end
     end
   end
@@ -442,14 +442,14 @@ defmodule CodeMySpec.Hooks.Stop do
     end
   end
 
-  defp block_with_reason(scope, reason, req_id) do
+  defp block_with_reason(scope, reason, req_id, continuous? \\ false) do
     Logger.info("[StopHook] [#{req_id}] Blocking: #{String.slice(reason, 0, 100)}",
       cms_decision: "block",
       cms_blocking: blocking_summary(reason)
     )
 
     hint = harness_hint_footer()
-    menu = Menu.render(scope)
+    menu = Menu.render(scope, continuous?)
 
     # The menu's bytes come off the budget before the findings, not after, so a
     # flood of problems cannot truncate away the one part of the response that
@@ -567,7 +567,7 @@ defmodule CodeMySpec.Hooks.Stop do
               Task completed successfully. Continuing the autonomous loop with the next assignment:
 
               #{directive}
-              """
+              """ <> Menu.tap_out_offer(true)
             }
 
           [] ->

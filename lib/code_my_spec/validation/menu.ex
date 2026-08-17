@@ -15,23 +15,27 @@ defmodule CodeMySpec.Validation.Menu do
   is a line printed regardless, because the condition it serves cannot be
   detected.
 
-  The distinction is load-bearing and was got wrong once. Needing input is an
-  intention, and no query answers "does this agent want to ask something". A
+  The distinction is load-bearing and was got wrong twice. Needing input is an
+  intention, and no query answers "does this agent want to ask something" — a
   first draft made it a class anyway, with a scenario beginning "Given the agent
-  has work it cannot proceed on without a decision from the user" — a Given
-  nothing can evaluate. So `ask_user` is an offer, and only `check_answer` is a
-  class, because asking wrote a row and wanting to ask did not.
+  has work it cannot proceed on without a decision from the user", a Given
+  nothing can evaluate.
+
+  The second time was subtler. A pending question *is* detectable, so
+  `check_answer` was made a class and ranked first, on the reasoning that a
+  waiting reply is cheap and may change what the right work is. Both true, and
+  it was still wrong: it let one row outrank every real class of work, and
+  `e39b4eba` — a question answered anywhere but `QuestionLive` never closes —
+  meant a stale row could hold the top of the menu permanently. Detectable is
+  necessary for a class, not sufficient. It also has to be work in this working
+  copy that the hook can rank against other work.
 
   ## The order
 
-      1. questions      check_answer         a reply already waiting is the
-                                             cheapest thing on the list, and the
-                                             one most likely to change what the
-                                             right work is
-      2. problems       list_problems        do not start new work on a broken
-                                             tree
-      3. issues         list_issues
-      4. requirements   get_next_requirement
+      1. problems       list_problems          do not start new work on a broken
+                                               tree
+      2. issues         list_issues
+      3. requirements   get_next_requirement
 
   One directive, not the whole menu: a full list on every stop buries the
   important item among the easy ones and invites the agent to take whichever is
@@ -39,33 +43,30 @@ defmodule CodeMySpec.Validation.Menu do
   is never mentioned starves invisibly — which is the failure a strict single
   directive has.
 
-  ## The offer is withdrawn in exactly one case
+  ## Three offers, none conditional
 
-  While a question is outstanding, `ask_user` is not offered. Asking again
-  before reading the reply to the last one is how a queue fills with the same
-  question — the failure that split the blocking `ask_user` into ask-then-check
-  in the first place, when a transport timeout made each retry create another
-  row while telling the agent the tool was broken.
+  `check_answer`, `ask_user`, `semantic_search`. Every refusal carries all
+  three, because what they serve — a reply the agent has not read, a decision it
+  needs, a fact already written down somewhere — is invisible from here. They
+  cost three lines and cannot starve anything.
 
-  The knowledge offer is never withdrawn. There is no equivalent harm in
-  searching twice, and the case for looking is strongest exactly when the agent
-  is stuck enough to be stopping.
+  The last of those is the one most often skipped in practice, and the most
+  expensive: a great deal of what an agent needs is already written down, and
+  one that does not think to search reasons from nothing and produces confident
+  nonsense. That is harder to catch than a red test.
   """
 
   alias CodeMySpec.Issues
-  alias CodeMySpec.Notifications
   alias CodeMySpec.Problems.ProblemRepository
   alias CodeMySpec.Requirements.NodeRepository
-  alias CodeMySpec.Sessions
 
   @tools %{
-    questions: "check_answer",
     problems: "list_problems",
     issues: "list_issues",
     requirements: "get_next_requirement"
   }
 
-  @order [:questions, :problems, :issues, :requirements]
+  @order [:problems, :issues, :requirements]
 
   @doc """
   The menu, rendered for appending to a refusal.
@@ -73,12 +74,44 @@ defmodule CodeMySpec.Validation.Menu do
   `""` when no class is live — the caller is then looking at a stop that should
   be allowed, and a menu with nothing on it would be noise.
   """
-  @spec render(map()) :: String.t()
-  def render(scope) do
+  @spec render(map(), boolean()) :: String.t()
+  def render(scope, continuous? \\ false) do
     case live(scope) do
       [] -> ""
-      [top | rest] -> directive(top) <> tally(rest) <> offer(questions_live?(scope))
+      [top | rest] -> directive(top) <> tally(rest) <> offers() <> tap_out_offer(continuous?)
     end
+  end
+
+  @doc """
+  The way out of the autonomous loop, when the agent is in one.
+
+  Conditional, unlike the other three, and the condition does not break the
+  class/offer split: `session.continuous` is a flag, as detectable as a row.
+  What makes this an offer rather than a class is that leaving the loop is not
+  work — it cannot be ranked against problems and must not compete for the
+  directive.
+
+  Shown only inside the loop, because inviting an agent to tap out of a loop it
+  is not running is worse than saying nothing: it reads as an instruction and
+  the tool would refuse it.
+
+  Public so the continuous-mode refusal in `Hooks.Stop` can carry it too. That
+  refusal builds its own reason — the next assignment — rather than a menu, and
+  it is the one an agent sees most while burning tokens in a loop, so it is the
+  last place that should omit the exit.
+
+  Worth knowing what this does and does not buy: `tap_out` publishes a
+  permission request and waits on a human, so it is not an escape the agent can
+  take alone. The one that fires unattended is R8's stuck detection, at
+  `@stuck_threshold` identical blocks.
+  """
+  @spec tap_out_offer(boolean()) :: String.t()
+  def tap_out_offer(false), do: ""
+
+  def tap_out_offer(true) do
+    "\n\nThe autonomous loop is running. If continuing is not worth the tokens, " <>
+      "`tap_out` asks to leave it — it returns immediately and clears the loop " <>
+      "once a human approves."
   end
 
   @doc """
@@ -99,21 +132,6 @@ defmodule CodeMySpec.Validation.Menu do
     @order
     |> Enum.map(&{&1, count(scope, &1)})
     |> Enum.filter(fn {_class, n} -> n > 0 end)
-  end
-
-  # Read off `live/1` rather than re-queried, so the offer and the tally can
-  # never disagree about whether a question is outstanding.
-  defp questions_live?(scope), do: List.keymember?(live(scope), :questions, 0)
-
-  # Both a pending question and an answered-but-unread one send the agent to
-  # `check_answer` — from the hook's side they are the same instruction, and the
-  # tool itself reports which it found. What they share is that neither is
-  # resolved, so neither should produce another question.
-  defp count(scope, :questions) do
-    scope
-    |> session_external_id()
-    |> Notifications.list_question_requests_for_session()
-    |> Enum.count(&(&1.status in ["pending", "answered"]))
   end
 
   defp count(scope, :problems) do
@@ -146,8 +164,6 @@ defmodule CodeMySpec.Validation.Menu do
   # the graph.
   defp count(scope, :requirements), do: NodeRepository.actionable_count(scope)
 
-  defp session_external_id(%{active_harness_id: id}), do: Sessions.external_id_for_harness(id)
-  defp session_external_id(_scope), do: nil
 
   # The tool call goes on the `Next:` line rather than below it. A directive
   # whose action sits on the following line reads as two facts, and the agent
@@ -165,8 +181,6 @@ defmodule CodeMySpec.Validation.Menu do
   # Counts without their tool names, deliberately. The tally says what is
   # waiting; naming its call too would make four instructions out of one, which
   # is the full menu this is meant to avoid.
-  defp label(:questions, 1), do: "1 question outstanding"
-  defp label(:questions, n), do: "#{n} questions outstanding"
   defp label(:problems, 1), do: "1 problem in this working copy"
   defp label(:problems, n), do: "#{n} problems in this working copy"
   defp label(:issues, 1), do: "1 issue"
@@ -174,30 +188,35 @@ defmodule CodeMySpec.Validation.Menu do
   defp label(:requirements, 1), do: "1 requirement"
   defp label(:requirements, n), do: "#{n} requirements"
 
-  defp offer(true), do: knowledge_offer()
-
-  defp offer(false) do
-    "\n\nIf you need something from the user to go further, call `ask_user` — " <>
-      "nothing here can tell that you do." <> knowledge_offer()
-  end
-
-  # The second standing offer, and unconditional for the same reason as the
-  # first: no query answers "is this agent missing something it could look up".
+  # Three offers, every time, none of them conditional.
   #
-  # It is here because the failure it addresses is common and expensive. A great
-  # deal of what an agent needs is already written down — framework reference,
-  # this project's own research and decisions, the specs and rules — and an
-  # agent that does not think to search it reasons from nothing and produces
-  # confident nonsense. That costs more than any finding in the list above,
-  # because a wrong answer arrived at fluently is harder to catch than a red
-  # test.
+  # `ask_user` was withdrawn while a question was outstanding, on the reasoning
+  # that asking twice fills a queue with duplicates. John reversed it: "it's
+  # totally fine for the model to ask another question of the user." He is
+  # right, and the withdrawal was solving the wrong problem — the duplicate
+  # queue came from `ask_user` blocking inline and being retried after a
+  # transport timeout, which splitting it into ask-then-check fixed at the
+  # source. A second, *different* question while one is pending is an agent with
+  # two needs, not that failure.
   #
-  # Never withdrawn. `ask_user` steps aside while a question is outstanding,
-  # since asking twice is a real harm; there is no equivalent harm in searching
-  # twice, and the case for looking is strongest exactly when the agent is stuck
-  # enough to be stopping.
-  defp knowledge_offer do
-    "\n\nBefore concluding anything you are unsure of, `semantic_search` covers " <>
+  # `check_answer` was the top of the tier, ranked above problems on the
+  # reasoning that a waiting reply is cheap and may change what the right work
+  # is. That is true and it is still not a class: it made a pending question
+  # outrank every real class of work, and `e39b4eba` — a question answered
+  # anywhere but `QuestionLive` never closes — meant one stale row could hold
+  # the top of the menu permanently. As an offer it costs a line and cannot
+  # starve anything. John: "we should offer answers unconditionally and they
+  # will have to ultimately be scoped by conversation."
+  #
+  # That scoping is the real fix for `e39b4eba` and is not built here.
+  #
+  # What is left in the tiers is only what the hook can both detect and rank:
+  # rows describing work in this working copy.
+  defp offers do
+    "\n\nIf a question you asked has been answered, `check_answer` has the reply." <>
+      "\n\nIf you need something from the user to go further, call `ask_user` — " <>
+      "nothing here can tell that you do." <>
+      "\n\nBefore concluding anything you are unsure of, `semantic_search` covers " <>
       "this project's own research and decisions as well as framework reference — " <>
       "a lot of what looks like a missing answer is already written down."
   end
