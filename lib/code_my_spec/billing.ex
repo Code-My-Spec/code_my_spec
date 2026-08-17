@@ -57,6 +57,17 @@ defmodule CodeMySpec.Billing do
           {:ok, %{client_secret: String.t(), subscription_id: String.t()}} | {:error, term()}
   def start_subscription(%Scope{} = scope, tier) when tier in @tiers do
     with {:ok, account} <- ensure_customer(scope) do
+      # Reloaded, never taken from the scope. `scope.active_account` is a
+      # snapshot from when the page mounted, and `stripe_subscription_id` is
+      # written by a *webhook* — so between mount and click the struct in hand
+      # is exactly the one that has not heard about the subscription yet.
+      #
+      # The first attempt at this fix read the scope's copy and shipped looking
+      # correct: unit tests passed, because they built the account themselves.
+      # Against real Stripe it created a second subscription every time, in both
+      # directions, because the field it branched on was nil (`5a5708a7`).
+      account = Accounts.get_account_by_id(account.id) || account
+
       case billing_subscription(account) do
         {:ok, existing} -> change_tier(account, existing, tier)
         :none -> create_subscription(account, tier)
@@ -109,20 +120,48 @@ defmodule CodeMySpec.Billing do
   # of them should block a new subscription.
   @billing_statuses ~w(active trialing past_due unpaid paused)
 
-  defp billing_subscription(%Account{stripe_subscription_id: id}) when is_binary(id) do
+  defp billing_subscription(%Account{stripe_subscription_id: id} = account) when is_binary(id) do
     case StripeClient.get_subscription(id) do
       {:ok, %{"status" => status} = subscription} when status in @billing_statuses ->
         {:ok, subscription}
 
-      _ ->
-        # Unreadable is treated as absent on purpose. Refusing to sell because
-        # Stripe was briefly unreachable is worse than the duplicate this
-        # guards against, which the reconciliation below would still catch.
+      {:ok, %{"status" => status}} ->
+        # Not billing — incomplete, canceled, expired. Proceeding is right, and
+        # saying so is what makes the next duplicate diagnosable in one line
+        # instead of by driving real purchases against real Stripe.
+        Logger.info(
+          "[Billing] account #{account.id}: subscription #{id} is #{status}, " <>
+            "not billing — creating a new one"
+        )
+
+        :none
+
+      other ->
+        # Unreadable is treated as absent deliberately: refusing to take money
+        # because Stripe blipped is worse than the duplicate this guards
+        # against. But it is logged at warning, because a *persistent* read
+        # failure here silently reinstates the double-billing bug and nothing
+        # else in the system would ever notice.
+        #
+        # An earlier version of this comment claimed "the reconciliation below
+        # would still catch it". There is no reconciliation, here or anywhere —
+        # that was a reassurance I wrote and did not have. Saying so plainly
+        # rather than deleting it, because the claim was load-bearing in
+        # review: it is why this fallback looked safe.
+        Logger.warning(
+          "[Billing] account #{account.id}: could not read subscription #{id} " <>
+            "(#{inspect(other)}) — creating a new one, which double-bills if the " <>
+            "old one is still active"
+        )
+
         :none
     end
   end
 
-  defp billing_subscription(_account), do: :none
+  defp billing_subscription(%Account{id: id}) do
+    Logger.info("[Billing] account #{id}: no subscription recorded — creating one")
+    :none
+  end
 
   # The item, not the price and not the subscription. Naming the wrong one adds
   # a second line to the same subscription rather than replacing the first —

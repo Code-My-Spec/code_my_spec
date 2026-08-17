@@ -21,7 +21,12 @@ defmodule CodeMySpec.BillingOneSubscriptionTest do
   subscription.
   """
 
-  use CodeMySpecTest.DataCase, async: true
+  # `async: false` deliberately. This file configures the Stripe client through
+  # `Application.put_env`, which is global — and `BillingTest` does the same. Two
+  # async files mutating one app env is a race that shows up as either file
+  # failing depending on scheduling, which is exactly what it did: each passed
+  # alone and one failed when they ran together.
+  use CodeMySpecTest.DataCase, async: false
 
   import CodeMySpec.UsersFixtures
   import CodeMySpec.AccountsFixtures
@@ -78,6 +83,49 @@ defmodule CodeMySpec.BillingOneSubscriptionTest do
   defp secret, do: %{"confirmation_secret" => %{"client_secret" => "pi_secret"}}
 
   describe "an account that already pays" do
+    # The case the first attempt at this fix shipped broken.
+    #
+    # `ensure_customer/1` hands back `scope.active_account` — a snapshot from
+    # when the page mounted. `stripe_subscription_id` is written by a webhook
+    # *after* that, so at click time the struct in hand is precisely the one
+    # that has not heard about the subscription. Branching on it created a
+    # second subscription every time, in both directions, against real Stripe
+    # (`5a5708a7`) while every unit test passed — because the tests built the
+    # account themselves and never had a stale one.
+    test "a stale scope does not cause a second subscription" do
+      scope = owner_scope() |> with_subscription("sub_existing")
+
+      # What a LiveView actually holds: the account as it was before the
+      # webhook landed. The database knows better.
+      stale = %{scope | active_account: %{scope.active_account | stripe_subscription_id: nil}}
+
+      test_pid = self()
+
+      stub(fn conn ->
+        send(test_pid, {:stripe, conn.method, conn.request_path})
+
+        case conn.request_path do
+          "/v1/subscriptions/sub_existing" ->
+            json(conn, %{"id" => "sub_existing", "status" => "active",
+                         "items" => %{"data" => [%{"id" => "si_1"}]},
+                         "latest_invoice" => secret()})
+
+          "/v1/subscriptions" ->
+            json(conn, %{"id" => "sub_new", "latest_invoice" => secret()})
+        end
+      end)
+
+      assert {:ok, %{subscription_id: "sub_existing"}} = Billing.start_subscription(stale, :pro)
+
+      refute_received {:stripe, "POST", "/v1/subscriptions"},
+                      """
+                      The scope's account was stale, so the existing subscription
+                      was invisible and a second was created — which is exactly
+                      what shipped and what real Stripe caught. The account has
+                      to be reloaded, not taken from the scope.
+                      """
+    end
+
     test "has its existing subscription moved, not a second one created" do
       scope = owner_scope() |> with_subscription("sub_existing")
       test_pid = self()
