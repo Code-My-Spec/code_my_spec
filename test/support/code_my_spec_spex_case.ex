@@ -633,6 +633,25 @@ defmodule CodeMySpecSpex.Case do
   end
 
   @doc """
+  The dump keys in a bucket, for a `then_` asking whether backups happened.
+
+  The provider's own state rather than the status report. A criterion made
+  only of refutes against a report passes when the report is empty or an
+  error — 841/1968 asserted "backups are not among the missing" and "the
+  report says nothing about monitoring", and both hold for a `devops_status`
+  that failed outright.
+  """
+  def dumps_in_bucket(context, bucket) do
+    context
+    |> fake(:storage)
+    |> Agent.get(& &1.buckets)
+    |> Map.get(bucket, %{})
+    |> Map.keys()
+    |> Enum.filter(&String.starts_with?(&1, "dumps/"))
+    |> Enum.sort()
+  end
+
+  @doc """
   Dumps stopped landing: the newest one is days old.
 
   968/8015's premise — "the scheduled dump has failed for several nights" —

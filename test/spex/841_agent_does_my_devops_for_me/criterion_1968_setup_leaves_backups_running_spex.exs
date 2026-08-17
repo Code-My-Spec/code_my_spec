@@ -75,6 +75,24 @@ defmodule CodeMySpecSpex.Story841.Criterion1968Spex do
         {:ok, Map.put(context, :report, response_text(response))}
       end
 
+      then_ "a dump is in the bucket", context do
+        # The anchor this scenario did not have. Both assertions below are
+        # refutes against the status report, and a refute passes when the
+        # report is empty or an error — so a `devops_status` that failed
+        # outright satisfied "backups are not among the missing" and "the
+        # report says nothing about monitoring" alike.
+        #
+        # A dump in the bucket is the concrete fact behind "setup leaves
+        # backups running", and it is what 968/8014 reads too.
+        dumps =
+          dumps_in_bucket(context, CodeMySpecSpex.Fixtures.bucket_name(context.project, "uat"))
+
+        assert dumps != [],
+               "expected setup to have taken a dump, found nothing under dumps/"
+
+        {:ok, context}
+      end
+
       then_ "backups are not among the missing", context do
         refute context.report =~ ~r/Missing.*backups/s,
                "expected setup to leave backups running, got: #{context.report}"
