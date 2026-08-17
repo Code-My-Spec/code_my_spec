@@ -360,17 +360,13 @@ defmodule CodeMySpecSpex.Case do
     CodeMySpecSpex.Fixtures.store_provider_secrets(context.scope)
 
     fakes = [
-      {CodeMySpec.Provisioning.Hetzner, Fakes.Hetzner,
-       &Fakes.Hetzner.new/0},
+      {CodeMySpec.Provisioning.Hetzner, Fakes.Hetzner, &Fakes.Hetzner.new/0},
       {CodeMySpec.GitHub, Fakes.GitHub, &Fakes.GitHub.new/0},
-      {CodeMySpec.Provisioning.Resend, Fakes.Resend,
-       &Fakes.Resend.new/0},
-      {CodeMySpec.Provisioning.Cloudflare, Fakes.Cloudflare,
-       &Fakes.Cloudflare.new/0},
+      {CodeMySpec.Provisioning.Resend, Fakes.Resend, &Fakes.Resend.new/0},
+      {CodeMySpec.Provisioning.Cloudflare, Fakes.Cloudflare, &Fakes.Cloudflare.new/0},
       # Object storage rides on `Content.S3Client`'s config, which is what
       # `ExAwsReqClient` reads its plug from — the same seam, one layer down.
-      {S3Client, Fakes.Storage,
-       &Fakes.Storage.new/0}
+      {S3Client, Fakes.Storage, &Fakes.Storage.new/0}
     ]
 
     agents =
@@ -475,7 +471,10 @@ defmodule CodeMySpecSpex.Case do
     Req.Test.stub(CodeMySpec.Content.TriggerClient, fn conn ->
       conn
       |> Plug.Conn.put_resp_content_type("application/json")
-      |> Plug.Conn.send_resp(202, Jason.encode!(%{"sync_id" => "sync-#{System.unique_integer([:positive])}"}))
+      |> Plug.Conn.send_resp(
+        202,
+        Jason.encode!(%{"sync_id" => "sync-#{System.unique_integer([:positive])}"})
+      )
     end)
 
     # And the deployed site serving what was published. `verify_render/2`
@@ -502,7 +501,10 @@ defmodule CodeMySpecSpex.Case do
   @doc "The agent holding a fake provider's state, for a `given_` to arrange."
   def fake(%{fakes: fakes}, :hetzner), do: Map.fetch!(fakes, CodeMySpec.Provisioning.Hetzner)
   def fake(%{fakes: fakes}, :resend), do: Map.fetch!(fakes, CodeMySpec.Provisioning.Resend)
-  def fake(%{fakes: fakes}, :cloudflare), do: Map.fetch!(fakes, CodeMySpec.Provisioning.Cloudflare)
+
+  def fake(%{fakes: fakes}, :cloudflare),
+    do: Map.fetch!(fakes, CodeMySpec.Provisioning.Cloudflare)
+
   def fake(%{fakes: fakes}, :storage), do: Map.fetch!(fakes, S3Client)
   def fake(%{fakes: fakes}, :github), do: Map.fetch!(fakes, CodeMySpec.GitHub)
 
@@ -2491,31 +2493,22 @@ defmodule CodeMySpecSpex.Case do
     # correctly refused to deploy the project somewhere it does not own.
     domain = Fixtures.reload_project(project).domain || "example.com"
 
-    {:ok, _written} =
-      Fixtures.generate_deploy_boilerplate(env, app: "app", host: domain)
+    # The app name the *audit* derives, passed to the generator rather than
+    # worked around afterwards. `Generators.audit/2` looks for
+    # `lib/<module_name underscored>_web/router.ex`, so a generator told
+    # `app: "app"` writes `lib/app_web/router.ex` and the audit reports "no
+    # health route" about a file that is there under a different name.
+    #
+    # This helper used to hand-write that router and `config/runtime.exs` for
+    # exactly that reason — which made the premise *my approximation* of what
+    # `cms new` ships rather than what it ships. The `force_ssl` bug is the
+    # argument: my hand-written config used `exclude: [paths: […]]` and the
+    # generator emitted a flat list Plug.SSL ignores, so the criteria that
+    # depend on this helper could not have caught it. Now they run the real
+    # output.
+    app = project.module_name |> Kernel.||("App") |> to_string() |> Macro.underscore()
 
-    # `lib/<module_name underscored>_web/router.ex`, the path the audit derives
-    # from the project rather than a fixed one — writing `lib/app_web/router.ex`
-    # left the audit reporting "lib/my_app_web/router.ex declares no health
-    # route" about a file that was there under a different name.
-    app_path = project.module_name |> Kernel.||("App") |> to_string() |> Macro.underscore()
-
-    Fixtures.write_file(env, "lib/#{app_path}_web/router.ex", """
-    defmodule AppWeb.Router do
-      use AppWeb, :router
-
-      scope "/", AppWeb do
-        get "/health", HealthController, :show
-      end
-    end
-    """)
-
-    Fixtures.write_file(env, "config/runtime.exs", """
-    import Config
-
-    config :app, AppWeb.Endpoint,
-      force_ssl: [rewrite_on: [:x_forwarded_proto], exclude: [paths: ["/health"]]]
-    """)
+    {:ok, _written} = Fixtures.generate_deploy_boilerplate(env, app: app, host: domain)
 
     context
   end
