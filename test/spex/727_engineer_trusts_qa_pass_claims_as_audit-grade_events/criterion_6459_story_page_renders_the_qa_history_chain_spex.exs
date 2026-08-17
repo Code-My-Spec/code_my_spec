@@ -44,7 +44,7 @@ defmodule CodeMySpecSpex.Story727.Criterion6459Spex do
               )
 
             refute response.isError
-            extract_attempt_id(response_text(response))
+            extract_attempt_id!(response_text(response))
           end
 
         [_, middle_id, _] = attempt_ids
@@ -91,10 +91,4 @@ defmodule CodeMySpecSpex.Story727.Criterion6459Spex do
       end
     end
   end
-
-  defp extract_attempt_id(text),
-    do: extract_attempt_id_from(Regex.run(~r/attempt[_ ]id[: ]+([a-f0-9-]+)/i, text), text)
-
-  defp extract_attempt_id_from([_, id], _text), do: id
-  defp extract_attempt_id_from(_, text), do: raise("no attempt_id in submit response: #{text}")
 end

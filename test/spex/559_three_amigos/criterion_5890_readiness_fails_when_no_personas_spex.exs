@@ -20,7 +20,6 @@ defmodule CodeMySpecSpex.Story559.Criterion5890Spex do
   use CodeMySpecSpex.Case
 
   import CodeMySpecSpex.SharedGivens
-  import CodeMySpecSpex.TaskResponseHelpers
 
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Tasks.Tools.EvaluateTask

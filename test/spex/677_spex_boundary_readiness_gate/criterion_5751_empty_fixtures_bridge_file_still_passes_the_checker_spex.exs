@@ -18,7 +18,6 @@ defmodule CodeMySpecSpex.Story677.Criterion5751Spex do
   use CodeMySpecSpex.Case
 
   import CodeMySpecSpex.SharedGivens
-  import CodeMySpecSpex.TaskResponseHelpers
   alias CodeMySpecSpex.SpexBoundaryArtifactHelpers, as: Artifacts
 
   alias Anubis.Server.Frame

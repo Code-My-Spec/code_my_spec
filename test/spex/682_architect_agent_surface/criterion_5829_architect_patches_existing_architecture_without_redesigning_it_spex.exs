@@ -75,7 +75,7 @@ defmodule CodeMySpecSpex.Story682.Criterion5829Spex do
             frame
           )
 
-        task_id = extract_task_id(response_text(response))
+        task_id = extract_task_id!(response_text(response))
         {:ok, Map.put(context, :task_id, task_id)}
       end
 
@@ -176,12 +176,4 @@ defmodule CodeMySpecSpex.Story682.Criterion5829Spex do
       |> Plug.Conn.send_resp(200, body)
     end
   end
-
-  defp extract_task_id(text),
-    do: extract_task_id_from(Regex.run(~r/Task ID: `([^`]+)`/, text), text)
-
-  defp extract_task_id_from([_, task_id], _text), do: task_id
-
-  defp extract_task_id_from(_, text),
-    do: raise("Could not extract task ID from response: #{inspect(text)}")
 end

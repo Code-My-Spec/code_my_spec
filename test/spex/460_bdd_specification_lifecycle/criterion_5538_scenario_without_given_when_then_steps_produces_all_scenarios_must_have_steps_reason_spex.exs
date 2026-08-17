@@ -17,7 +17,6 @@ defmodule CodeMySpecSpex.Story460.Criterion5538Spex do
   use CodeMySpecSpex.Case
 
   import CodeMySpecSpex.SharedGivens
-  import CodeMySpecSpex.TaskResponseHelpers
 
   alias Anubis.Server.Frame
   alias CodeMySpec.Environments

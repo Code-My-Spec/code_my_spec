@@ -63,7 +63,7 @@ defmodule CodeMySpecSpex.Story727.Criterion6474Spex do
           )
 
         refute resp_b_old.isError
-        old_b_attempt_id = extract_attempt_id(response_text(resp_b_old))
+        old_b_attempt_id = extract_attempt_id!(response_text(resp_b_old))
 
         {:reply, inv_resp, _frame} =
           InvalidateQaAttempt.execute(
@@ -157,10 +157,4 @@ defmodule CodeMySpecSpex.Story727.Criterion6474Spex do
       end
     end
   end
-
-  defp extract_attempt_id(text),
-    do: extract_attempt_id_from(Regex.run(~r/attempt[_ ]id[: ]+([a-f0-9-]+)/i, text), text)
-
-  defp extract_attempt_id_from([_, id], _text), do: id
-  defp extract_attempt_id_from(_, text), do: raise("no attempt_id in submit response: #{text}")
 end

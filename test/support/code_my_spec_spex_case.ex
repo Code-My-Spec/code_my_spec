@@ -87,7 +87,14 @@ defmodule CodeMySpecSpex.Case do
       # Imported for everyone rather than per file: a criterion that drives a
       # tool needs it, and the copies existed because reaching for the import
       # was the less obvious of the two.
-      import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
+      import CodeMySpecSpex.TaskResponseHelpers,
+        only: [
+          response_text: 1,
+          extract_task_id!: 1,
+          extract_issue_id!: 1,
+          extract_attempt_id!: 1,
+          satisfied_qa_complete_text: 1
+        ]
     end
   end
 

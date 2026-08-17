@@ -44,7 +44,7 @@ defmodule CodeMySpecSpex.Story727.Criterion6460Spex do
           )
 
         refute submit_response.isError
-        attempt_id = extract_attempt_id(response_text(submit_response))
+        attempt_id = extract_attempt_id!(response_text(submit_response))
 
         {:ok, view, _html} =
           live(context.conn, "/app/projects/#{context.project.id}/stories/#{context.story.id}")
@@ -80,10 +80,4 @@ defmodule CodeMySpecSpex.Story727.Criterion6460Spex do
       end
     end
   end
-
-  defp extract_attempt_id(text),
-    do: extract_attempt_id_from(Regex.run(~r/attempt[_ ]id[: ]+([a-f0-9-]+)/i, text), text)
-
-  defp extract_attempt_id_from([_, id], _text), do: id
-  defp extract_attempt_id_from(_, text), do: raise("no attempt_id in submit response: #{text}")
 end

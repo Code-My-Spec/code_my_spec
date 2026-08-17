@@ -50,7 +50,7 @@ defmodule CodeMySpecSpex.Story726.Criterion6443Spex do
           )
 
         refute issue_response.isError
-        issue_id = extract_issue_id(response_text(issue_response))
+        issue_id = extract_issue_id!(response_text(issue_response))
 
         {:reply, submit_response, _frame} =
           SubmitQaResult.execute(
@@ -94,11 +94,4 @@ defmodule CodeMySpecSpex.Story726.Criterion6443Spex do
       end
     end
   end
-
-  defp extract_issue_id(text),
-    do:
-      extract_issue_id_from(Regex.run(~r/(?:ID:?\s*|issue[_ ]id[: ]+)([a-f0-9-]+)/i, text), text)
-
-  defp extract_issue_id_from([_, id], _text), do: id
-  defp extract_issue_id_from(_, text), do: raise("no issue id in create_issue response: #{text}")
 end
