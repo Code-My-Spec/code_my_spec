@@ -20,7 +20,23 @@ defmodule CodeMySpecSpex.Story560.Criterion5146Spex do
     scenario "checker accepts the folder and graph advances" do
       given_ :persona_exists
 
-      given_ "summary.md and sources.md both exist", context do
+      # What the graph offers with the folder empty. The criterion's observable
+      # is that writing the files *advances* it, and the refute below cannot
+      # show that on its own: a response that never mentions
+      # `personas_complete` satisfies "it is cleared" whether or not anything
+      # changed. Both responses were `### TechnicalStrategy` — identical — so
+      # the criterion held with the hook doing nothing at all.
+      given_ "the persona folder is still empty", context do
+        frame = %Frame{assigns: %{current_scope: context.scope}}
+        {:reply, before, _frame} = GetNextRequirement.execute(%{}, frame)
+
+        {:ok, Map.put(context, :before_response, before)}
+      end
+
+      given_ :persona_research_task_started
+
+      when_ "the agent writes both files, fires the stop hook and asks for next work",
+            context do
         :ok =
           Environments.write_file(
             context.environment,
@@ -35,12 +51,6 @@ defmodule CodeMySpecSpex.Story560.Criterion5146Spex do
             "- https://example.com — Source — 2026-04-23\n"
           )
 
-        {:ok, context}
-      end
-
-      given_ :persona_research_task_started
-
-      when_ "the agent fires the stop hook and asks for next work", context do
         Phoenix.ConnTest.build_conn()
         |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_harness_id)
         |> Plug.Conn.put_req_header("content-type", "application/json")
@@ -53,10 +63,16 @@ defmodule CodeMySpecSpex.Story560.Criterion5146Spex do
         {:ok, Map.put(context, :next_response, response)}
       end
 
-      then_ "personas_complete is cleared from the actionable set", context do
-        body = response_text(context.next_response)
+      then_ "personas_complete was what the graph wanted beforehand", context do
+        assert response_text(context.before_response) =~ "personas_complete",
+               "expected persona research to be the outstanding requirement while the " <>
+                 "folder was empty — without that, the refute below cannot fail"
 
-        refute body =~ "personas_complete",
+        {:ok, context}
+      end
+
+      then_ "personas_complete is cleared from the actionable set", context do
+        refute response_text(context.next_response) =~ "personas_complete",
                "expected personas_complete to clear when both files exist"
 
         {:ok, context}

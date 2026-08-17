@@ -58,6 +58,22 @@ defmodule CodeMySpecSpex.Story608.Criterion5392Spex do
         {:ok, Map.put(context, :stop_response, response)}
       end
 
+      then_ "the stop hook let the agent stop rather than sending it back", context do
+        # The half of this scenario's own title — "evaluate marks the task
+        # done" — that nothing asserted. Everything below it is a refute
+        # against a *different* call's output, and a refute holds when the
+        # hook errored, when it blocked, and when the requirement was never
+        # offered in the first place.
+        assert is_map(context.stop_response),
+               "expected a stop-hook response to read, got: #{inspect(context.stop_response)}"
+
+        refute inspect(context.stop_response) =~ ~r/unresolved/i,
+               "expected the fix-issues task to evaluate clean, got: " <>
+                 inspect(context.stop_response)
+
+        {:ok, context}
+      end
+
       then_ "the graph advances past issues_resolved", context do
         # When the stop hook completes the task, the next
         # get_next_requirement call must surface a different requirement

@@ -20,6 +20,16 @@ defmodule CodeMySpecSpex.Story560.Criterion5151Spex do
     scenario "validation passes and graph advances" do
       given_ :persona_exists
 
+      # What the graph wants before the folder exists. Without it the refute
+      # below cannot fail: a response that never mentions `personas_complete`
+      # satisfies "it cleared" whether or not anything changed.
+      given_ "the persona folder is still empty", context do
+        frame = %Frame{assigns: %{current_scope: context.scope}}
+        {:reply, before, _frame} = GetNextRequirement.execute(%{}, frame)
+
+        {:ok, Map.put(context, :before_response, before)}
+      end
+
       given_ "summary.md includes optional Jobs to Be Done section", context do
         :ok =
           Environments.write_file(
@@ -74,6 +84,14 @@ defmodule CodeMySpecSpex.Story560.Criterion5151Spex do
         {:reply, response, _frame} = GetNextRequirement.execute(%{}, frame)
 
         {:ok, Map.put(context, :next_response, response)}
+      end
+
+      then_ "personas_complete was what the graph wanted beforehand", context do
+        assert response_text(context.before_response) =~ "personas_complete",
+               "expected persona research to be outstanding while the folder was empty — " <>
+                 "without that, the refute below cannot fail"
+
+        {:ok, context}
       end
 
       then_ "personas_complete clears — optional section did not block", context do

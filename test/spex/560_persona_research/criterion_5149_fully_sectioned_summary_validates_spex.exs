@@ -21,6 +21,16 @@ defmodule CodeMySpecSpex.Story560.Criterion5149Spex do
     scenario "graph clears personas_complete after stop hook" do
       given_ :persona_exists
 
+      # What the graph wants before the folder exists. Without it the refute
+      # below cannot fail: a response that never mentions `personas_complete`
+      # satisfies "it is no longer there" whether or not anything changed.
+      given_ "the persona folder is still empty", context do
+        frame = %Frame{assigns: %{current_scope: context.scope}}
+        {:reply, before, _frame} = GetNextRequirement.execute(%{}, frame)
+
+        {:ok, Map.put(context, :before_response, before)}
+      end
+
       given_ "summary.md has all six required sections", context do
         :ok =
           Environments.write_file(
@@ -72,6 +82,14 @@ defmodule CodeMySpecSpex.Story560.Criterion5149Spex do
         {:reply, response, _frame} = GetNextRequirement.execute(%{}, frame)
 
         {:ok, Map.put(context, :next_response, response)}
+      end
+
+      then_ "personas_complete was what the graph wanted beforehand", context do
+        assert response_text(context.before_response) =~ "personas_complete",
+               "expected persona research to be outstanding while the folder was empty — " <>
+                 "without that, the refute below cannot fail"
+
+        {:ok, context}
       end
 
       then_ "personas_complete is no longer in the response", context do
