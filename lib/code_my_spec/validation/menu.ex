@@ -46,6 +46,10 @@ defmodule CodeMySpec.Validation.Menu do
   question — the failure that split the blocking `ask_user` into ask-then-check
   in the first place, when a transport timeout made each retry create another
   row while telling the agent the tool was broken.
+
+  The knowledge offer is never withdrawn. There is no equivalent harm in
+  searching twice, and the case for looking is strongest exactly when the agent
+  is stuck enough to be stopping.
   """
 
   alias CodeMySpec.Issues
@@ -170,10 +174,31 @@ defmodule CodeMySpec.Validation.Menu do
   defp label(:requirements, 1), do: "1 requirement"
   defp label(:requirements, n), do: "#{n} requirements"
 
-  defp offer(true), do: ""
+  defp offer(true), do: knowledge_offer()
 
   defp offer(false) do
     "\n\nIf you need something from the user to go further, call `ask_user` — " <>
-      "nothing here can tell that you do."
+      "nothing here can tell that you do." <> knowledge_offer()
+  end
+
+  # The second standing offer, and unconditional for the same reason as the
+  # first: no query answers "is this agent missing something it could look up".
+  #
+  # It is here because the failure it addresses is common and expensive. A great
+  # deal of what an agent needs is already written down — framework reference,
+  # this project's own research and decisions, the specs and rules — and an
+  # agent that does not think to search it reasons from nothing and produces
+  # confident nonsense. That costs more than any finding in the list above,
+  # because a wrong answer arrived at fluently is harder to catch than a red
+  # test.
+  #
+  # Never withdrawn. `ask_user` steps aside while a question is outstanding,
+  # since asking twice is a real harm; there is no equivalent harm in searching
+  # twice, and the case for looking is strongest exactly when the agent is stuck
+  # enough to be stopping.
+  defp knowledge_offer do
+    "\n\nBefore concluding anything you are unsure of, `semantic_search` covers " <>
+      "this project's own research and decisions as well as framework reference — " <>
+      "a lot of what looks like a missing answer is already written down."
   end
 end
