@@ -98,7 +98,9 @@ defmodule CodeMySpec.Components.DependencyRepository do
   # which the self-join found 17. Among the fifteen it missed were
   # `Components -> Documents -> Requirements -> Components` and a six-hop
   # `AgentTasks -> Sessions -> Interaction -> InteractionsRepository ->
-  # Session -> SessionType -> AgentTasks`.
+  # Session -> SessionType -> AgentTasks`. (That path is the graph as it stood
+  # at the measurement; the `Interaction` modules in it were deleted by
+  # `1742e187` and no longer exist to grep for.)
   #
   # That matters beyond tidiness. `d10f65e8` measured a cyclic context
   # dependency graph at 877 seconds of edge computation against 4 for the

@@ -225,7 +225,8 @@ defmodule CodeMySpec.Components.DependencyRepositoryTest do
     # graph, of which the self-join found 17. The fifteen it missed included
     # `Components -> Documents -> Requirements -> Components` and a six-hop
     # `AgentTasks -> Sessions -> Interaction -> InteractionsRepository ->
-    # Session -> SessionType -> AgentTasks`. d10f65e8 records that a cyclic
+    # Session -> SessionType -> AgentTasks` (the `Interaction` modules there
+    # were deleted by `1742e187`; the path is the graph as it stood then). d10f65e8 records that a cyclic
     # dependency graph is catastrophic for edge computation — 877 seconds
     # against 4 for the acyclic equivalent — and puts the project's cycle count
     # at 4, so it grew eightfold unseen.

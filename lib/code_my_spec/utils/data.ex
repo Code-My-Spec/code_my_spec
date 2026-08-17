@@ -234,11 +234,6 @@ defmodule CodeMySpec.Utils.Data do
           :project_id,
           :component_id,
           :user_id,
-          :environment,
-          :agent,
-          :context_id,
-          :interactions,
-          :execution_mode,
           :session_id,
           :inserted_at,
           :updated_at
@@ -248,9 +243,6 @@ defmodule CodeMySpec.Utils.Data do
       session_map
       |> Map.update(:type, nil, &to_string/1)
       |> Map.update(:status, nil, &to_string/1)
-      |> Map.update(:agent, nil, &to_string/1)
-      |> Map.update(:execution_mode, nil, &to_string/1)
-      |> Map.update(:environment, nil, &to_string/1)
     end)
   end
 

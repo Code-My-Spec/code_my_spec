@@ -51,16 +51,4 @@ defmodule CodeMySpecWeb.SessionChannel do
     push(socket, "session_updated", payload)
     {:noreply, socket}
   end
-
-  @impl true
-  def handle_info({:session_event_received, payload}, socket) do
-    push(socket, "session_event_received", payload)
-    {:noreply, socket}
-  end
-
-  @impl true
-  def handle_info({:session_events_received, payload}, socket) do
-    push(socket, "session_events_received", payload)
-    {:noreply, socket}
-  end
 end
