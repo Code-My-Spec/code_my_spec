@@ -582,7 +582,7 @@ defmodule CodeMySpecWeb.ProvisioningLive do
             >
               {pr.location} answered {proof_field(pr.identifier, "status")}
             </span>
-
+            
     <!-- Which version is live. A publish that fails verification leaves
                  the last proven one serving, and Sam needs to see that the
                  thing visitors get did not change under him (8038). -->
@@ -1413,7 +1413,7 @@ defmodule CodeMySpecWeb.ProvisioningLive do
           end
       end)
       |> Enum.map(fn field ->
-        ProjectSecrets.put_value(scope, field.key, String.trim(Map.fetch!(values, field.key)))
+        Credentials.put_value(scope, field, String.trim(Map.fetch!(values, field.key)))
         field
       end)
 

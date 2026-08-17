@@ -36,6 +36,7 @@ defmodule CodeMySpec.Provisioning.Credentials do
   alias CodeMySpec.Integrations
   alias CodeMySpec.Projects.Project
   alias CodeMySpec.Provisioning.{Cloudflare, Hetzner, Resend, Storage}
+  alias CodeMySpec.AccountSecrets
   alias CodeMySpec.ProjectSecrets
   alias CodeMySpec.Users.Scope
 
@@ -73,6 +74,7 @@ defmodule CodeMySpec.Provisioning.Credentials do
     },
     %{
       key: "hetzner_api_token",
+      grain: :account,
       label: "Hetzner API token",
       kind: :secret,
       provider: :hetzner,
@@ -95,7 +97,8 @@ defmodule CodeMySpec.Provisioning.Credentials do
         "Hetzner Cloud console → Object Storage → S3 credentials → Generate credentials. " <>
           "There is no API for this — the key pair exists only in the console. " <>
           "The secret half is shown once when the pair is created and cannot be viewed again.",
-      why: "Creates your buckets. Hetzner issues these in the console only — there is no API for it."
+      why:
+        "Creates your buckets. Hetzner issues these in the console only — there is no API for it."
     },
     %{
       key: "hetzner_s3_secret_access_key",
@@ -129,7 +132,8 @@ defmodule CodeMySpec.Provisioning.Credentials do
       provider: :resend,
       options: [:email, :inbound],
       hint: "Connected on your account settings",
-      directions: "Connect Resend from your account settings. Setup adds your sending domain to it.",
+      directions:
+        "Connect Resend from your account settings. Setup adds your sending domain to it.",
       why: "Sends mail from your domain and receives replies."
     }
   ]
@@ -165,9 +169,21 @@ defmodule CodeMySpec.Provisioning.Credentials do
   @doc """
   Whether a credential's value is on file — without reading the value.
 
-  A secret is stored per project; a connection is stored per account by the
-  OAuth flow. Both answer the same question, which is the only one the page
-  needs: is there something here to check.
+  A connection is stored per account by the OAuth flow. A secret is stored at
+  the grain its catalogue entry names, because the answer differs per
+  credential and getting it from the wrong place is worse than not asking:
+
+  `48a6e127` moved the Hetzner token and the S3 key pair to the account,
+  "the same grain as the servers they name" — a token names a Hetzner account
+  and the boxes it reaches outlive any project, so keying it per project made
+  the servers page depend on which project happened to be open. Age keys stayed
+  on the project, where they mean something.
+
+  `Hetzner.token/1` was taught to read the account first in that same commit.
+  This was not, and the form kept writing per project — so a token typed into
+  the page went to a grain the runtime ignores, and the check reported the
+  account credential's result against the project field the operator had just
+  filled in (`bcd2b2b4`).
   """
   @spec stored?(Scope.t(), credential() | String.t()) :: boolean()
   def stored?(scope, key) when is_binary(key) do
@@ -177,12 +193,38 @@ defmodule CodeMySpec.Provisioning.Credentials do
     end
   end
 
+  def stored?(%Scope{} = scope, %{kind: :secret, grain: :account, key: key}),
+    do: AccountSecrets.has_value?(scope, key)
+
   def stored?(%Scope{} = scope, %{kind: :secret, key: key}),
     do: ProjectSecrets.has_value?(scope, key)
 
   def stored?(%Scope{} = scope, %{kind: :connection, provider: provider}) do
     match?({:ok, _}, Integrations.fetch_access_token(scope, provider))
   end
+
+  @doc """
+  Store a secret at the grain its catalogue entry names.
+
+  The counterpart to `stored?/2`, and the half that was missing: the form wrote
+  every secret to the project while `Hetzner.token/1` read the account first,
+  so a token typed into the page went somewhere the runtime never looks. One
+  function decides the grain now, and both the write and the read ask it.
+  """
+  @spec put_value(Scope.t(), credential() | String.t(), String.t()) ::
+          {:ok, term()} | {:error, term()}
+  def put_value(scope, key, value) when is_binary(key) do
+    case Enum.find(@catalogue, &(&1.key == key)) do
+      nil -> {:error, :unknown_credential}
+      credential -> put_value(scope, credential, value)
+    end
+  end
+
+  def put_value(%Scope{} = scope, %{kind: :secret, grain: :account, key: key}, value),
+    do: AccountSecrets.put_value(scope, key, value)
+
+  def put_value(%Scope{} = scope, %{kind: :secret, key: key}, value),
+    do: ProjectSecrets.put_value(scope, key, value)
 
   @doc """
   Prove a credential by using it.
@@ -316,9 +358,14 @@ defmodule CodeMySpec.Provisioning.Credentials do
 
       state =
         cond do
-          not stored -> :missing
-          check_all? or (is_list(only) and credential.key in only) -> check(scope, credential, opts)
-          true -> :unchecked
+          not stored ->
+            :missing
+
+          check_all? or (is_list(only) and credential.key in only) ->
+            check(scope, credential, opts)
+
+          true ->
+            :unchecked
         end
 
       credential

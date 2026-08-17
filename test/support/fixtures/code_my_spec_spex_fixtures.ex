@@ -3518,7 +3518,13 @@ defmodule CodeMySpecSpex.Fixtures do
           {"hetzner_s3_access_key_id", "HETZNER_S3_ACCESS_KEY_ID"},
           {"hetzner_s3_secret_access_key", "HETZNER_S3_SECRET_ACCESS_KEY"}
         ] do
-      CodeMySpec.ProjectSecrets.put_value(
+      # Through `Credentials.put_value/3` so the fixture lands where the
+      # runtime looks. All three of these are account-grain since `48a6e127`
+      # — "the same grain as the servers they name" — and writing them per
+      # project put them where `Hetzner.token/1` never reads, which is the
+      # defect QA found on story 850 (bcd2b2b4). A fixture that stores them
+      # the old way would keep passing while the page it stands in for did not.
+      CodeMySpec.Provisioning.Credentials.put_value(
         scope,
         key,
         System.get_env(env, "spex-placeholder-#{key}")

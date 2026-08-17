@@ -3,6 +3,7 @@ defmodule CodeMySpecWeb.ProvisioningLiveTest do
 
   import Phoenix.LiveViewTest
 
+  alias CodeMySpec.AccountSecrets
   alias CodeMySpec.ProjectSecrets
   alias CodeMySpec.Provisioning.{Sequence, StepRepository}
 
@@ -14,7 +15,13 @@ defmodule CodeMySpecWeb.ProvisioningLiveTest do
   # rendering, so the provider's answer is supplied rather than reached for.
   defp stub_verifier(fun) do
     previous = Application.get_env(:code_my_spec, :provisioning_step_opts, [])
-    Application.put_env(:code_my_spec, :provisioning_step_opts, Keyword.put(previous, :verify, fun))
+
+    Application.put_env(
+      :code_my_spec,
+      :provisioning_step_opts,
+      Keyword.put(previous, :verify, fun)
+    )
+
     ExUnit.Callbacks.on_exit(fn ->
       Application.put_env(:code_my_spec, :provisioning_step_opts, previous)
     end)
@@ -345,7 +352,8 @@ defmodule CodeMySpecWeb.ProvisioningLiveTest do
       assert has_element?(view, "[data-test='unverified-resource'][data-step='server']"),
              "a resource whose step just failed to verify must say so"
 
-      refute html =~ ~s(data-kind="server" data-location="hetzner/ash/cms-prod" data-verified="true"),
+      refute html =~
+               ~s(data-kind="server" data-location="hetzner/ash/cms-prod" data-verified="true"),
              "an unverified resource must not be marked verified"
     end
 
@@ -465,7 +473,11 @@ defmodule CodeMySpecWeb.ProvisioningLiveTest do
       end
     end
 
-    test "saving a credential records it and reports it set", %{conn: conn, project: project, scope: scope} do
+    test "saving a credential records it and reports it set", %{
+      conn: conn,
+      project: project,
+      scope: scope
+    } do
       {:ok, view, _html} = live(conn, path(project))
 
       html =
@@ -478,14 +490,22 @@ defmodule CodeMySpecWeb.ProvisioningLiveTest do
       assert html =~ ~s(data-key="hetzner_api_token")
       assert html =~ ~r/data-key="hetzner_api_token"[^>]*data-set="true"/
 
-      assert {:ok, "tok-abc"} = ProjectSecrets.fetch_value(scope, "hetzner_api_token")
+      # The account, not the project. `48a6e127` moved the Hetzner credentials
+      # to "the same grain as the servers they name" and taught
+      # `Hetzner.token/1` to read the account first; the form kept writing per
+      # project, so what was typed here went where nothing reads (bcd2b2b4).
+      assert {:ok, "tok-abc"} = AccountSecrets.fetch_value(scope, "hetzner_api_token")
     end
 
     # The field renders empty for a secret that is already set, because the
     # value is never sent back to the browser. Treating blank as a delete would
     # therefore wipe every other credential each time one was saved.
-    test "a blank field leaves an existing credential alone", %{conn: conn, project: project, scope: scope} do
-      ProjectSecrets.put_value(scope, "hetzner_api_token", "keep-me")
+    test "a blank field leaves an existing credential alone", %{
+      conn: conn,
+      project: project,
+      scope: scope
+    } do
+      AccountSecrets.put_value(scope, "hetzner_api_token", "keep-me")
 
       {:ok, view, _html} = live(conn, path(project))
 
@@ -498,14 +518,16 @@ defmodule CodeMySpecWeb.ProvisioningLiveTest do
       })
       |> render_submit()
 
-      assert {:ok, "keep-me"} = ProjectSecrets.fetch_value(scope, "hetzner_api_token")
+      assert {:ok, "keep-me"} = AccountSecrets.fetch_value(scope, "hetzner_api_token")
+      # The S3 pair did not move — `Storage.credentials/2` still reads it on the
+      # project, so read and write agree there and it stays where it was.
       assert {:ok, "new-key"} = ProjectSecrets.fetch_value(scope, "hetzner_s3_access_key_id")
     end
 
     # A secret rendered back into the page is a secret in every browser cache
     # and screenshot from then on.
     test "a stored value is never rendered back", %{conn: conn, project: project, scope: scope} do
-      ProjectSecrets.put_value(scope, "hetzner_api_token", "super-secret-value")
+      AccountSecrets.put_value(scope, "hetzner_api_token", "super-secret-value")
 
       {:ok, _view, html} = live(conn, path(project))
 

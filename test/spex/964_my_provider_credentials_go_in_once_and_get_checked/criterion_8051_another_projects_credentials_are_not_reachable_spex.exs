@@ -3,15 +3,28 @@ defmodule CodeMySpecSpex.Story964.Criterion8051Spex do
   Story 964 — My provider credentials go in once and get checked
   Criterion 8051 — Another project's credentials are not reachable.
 
-  Credentials are scoped to the project that owns them. A user with two
-  projects on different provider accounts must not have one project's
-  run reaching for the other's keys — so the second project's intake
-  starts empty even though the first project's is populated.
+  Credentials are scoped to the account that owns them, and an account is where
+  a provider credential means something: a Hetzner token names a Hetzner
+  account, and the boxes it reaches outlive any one project (`48a6e127`, "the
+  same grain as the servers they name"). Two projects on one account therefore
+  *do* share a token, deliberately — keying it per project is what made the
+  servers page depend on which project happened to be open.
 
-  Surface: `CodeMySpecWeb.CredentialsLive` on the cloud app.
+  So the isolation this criterion is about is between accounts. A user with two
+  accounts must not have one account's run reaching for the other's keys — the
+  second account's intake starts empty even though the first is populated.
+
+  Rewritten from a two-project check to a two-account one after QA on story 850
+  found the form still writing per project while the runtime read per account
+  (`bcd2b2b4`). The old shape passed only because the write was going somewhere
+  nothing read.
+
+  Surface: the provisioning page on the cloud app.
   """
 
   use CodeMySpecSpex.Case
+
+  alias CodeMySpecSpex.Fixtures
 
   @endpoint CodeMySpecWeb.Endpoint
 
@@ -34,53 +47,53 @@ defmodule CodeMySpecSpex.Story964.Criterion8051Spex do
         {:ok, context}
       end
 
-      given_ "Sam also owns a second project", context do
-        {:ok, form_live, _html} = live(context.conn, "/app/projects/new")
+      given_ "Sam also owns a second account, with a project on it", context do
+        second_account = Fixtures.account_with_owner_fixture(context.user, %{name: "Globex"})
+        second_scope = Fixtures.user_scope_fixture(context.user, second_account)
 
-        form_live
-        |> form("[data-test='project-form']", project: %{name: "second-project"})
-        |> render_submit()
+        second_project =
+          Fixtures.project_fixture(second_scope, %{name: "Globex Site", module_name: "GlobexSite"})
 
-        {:ok, index, html} = live(context.conn, "/app/projects")
-
-        assert html =~ "second-project",
-               "expected the second project to be created so the isolation check is meaningful"
-
-        {:ok, Map.put(context, :index, index)}
+        {:ok,
+         context
+         |> Map.put(:second_project, second_project)
+         |> Map.put(:second_account_id, second_account.id)}
       end
 
-      when_ "he opens credential entry for the second project", context do
-        second_id =
-          context.index
-          |> render()
-          |> Floki.parse_document!()
-          |> Floki.find("[data-test='project-row'][data-name='second-project']")
-          |> Floki.attribute("data-id")
-          |> List.first()
+      when_ "he opens credential entry for the project on the other account", context do
+        # Through the picker, because the page reads the *active* account and
+        # switching it is what a user with two accounts actually does.
+        {:ok, picker, _html} = live(context.conn, "/app/accounts/picker")
+
+        picker
+        |> element("a[phx-value-account-id='#{second_account_id(context)}']")
+        |> render_click()
 
         {:ok, view, html} =
-          live(context.conn, "/app/projects/#{second_id}/provisioning")
+          live(context.conn, "/app/projects/#{context.second_project.id}/provisioning")
 
         {:ok, context |> Map.put(:view, view) |> Map.put(:html, html)}
       end
 
-      then_ "the first project's credential is not there", context do
+      then_ "the first account's credential is not there", context do
         # Anchor: intake rendered for the second project, so the absence
         # below is real rather than an empty page.
         assert has_element?(context.view, "[data-test='credentials-form']"),
-               "expected the second project's credential intake to render"
+               "expected the second account's credential intake to render"
 
         refute has_element?(
                  context.view,
                  "[data-test='credential-field'][data-credential='hetzner_api_token'][data-stored='true']"
                ),
-               "expected the second project to hold no credential of its own"
+               "expected the second account to hold no credential of its own"
 
         refute context.html =~ "first-project-token",
-               "expected the first project's value never to surface on another project"
+               "expected the first account's value never to surface on another account"
 
         {:ok, context}
       end
     end
   end
+
+  defp second_account_id(context), do: context.second_account_id
 end
