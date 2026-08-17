@@ -24,13 +24,16 @@ defmodule CodeMySpecSpex.Story963.Criterion7964Spex do
   setup :devops_on
   setup :fake_providers
   # The registry runs on the box over SSH, and the box in a cassette is an
-  # address that was released weeks ago — so this stepped out to a stranger's
-  # machine and failed with `ssh: connect to host … Operation timed out`.
-  # The fleet's app box is a real box with a real Docker daemon, reachable on
-  # loopback, so the step runs its actual commands against something that
-  # exists. Needs `docker/fleet/fleet.sh up`.
+  # address that was released weeks ago — so this once stepped out to a
+  # stranger's machine and failed with `ssh: connect to host … Operation timed
+  # out`. It then ran against the local fleet's app box, which fixed the
+  # address and made the criterion green on exactly one machine: `fleet_box`
+  # raises "No fleet key" anywhere `docker/fleet/fleet.sh up` has not been run.
+  #
+  # The modelled shell answers the SSH instead. What this criterion is about —
+  # that a step re-checks the provider rather than trusting its own record — is
+  # a claim about our logic, and needs no box at all.
   setup :fake_working_directory
-  setup :fleet_box
 
   spex "A resource deleted behind setup's back is rebuilt, not skipped" do
     scenario "the server step runs again when the server is gone" do

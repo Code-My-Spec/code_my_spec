@@ -2598,7 +2598,7 @@ defmodule CodeMySpecSpex.Case do
         html
 
       System.monotonic_time(:millisecond) > deadline ->
-        html
+        raise "no server ever appeared for #{environment}. Steps on the page: #{steps_on(html)}"
 
       true ->
         Process.sleep(500)
@@ -2622,9 +2622,19 @@ defmodule CodeMySpecSpex.Case do
       )
 
     cond do
-      started? -> :started
-      System.monotonic_time(:millisecond) > deadline -> :never_started
-      true -> Process.sleep(50) && await_start(view, deadline)
+      started? ->
+        :started
+
+      # Flunk rather than answer `:never_started` to a caller that ignores it.
+      # `await_provisioning/2` went straight on to wait for the run to settle,
+      # and a run that never started is settled by definition — so "setup did
+      # not begin" and "setup finished" were the same answer, and the criterion
+      # read an untouched page as a completed one.
+      System.monotonic_time(:millisecond) > deadline ->
+        ExUnit.Assertions.flunk("setup never started. Steps on the page: #{steps_on(html)}")
+
+      true ->
+        Process.sleep(50) && await_start(view, deadline)
     end
   end
 
