@@ -64,21 +64,24 @@ defmodule CodeMySpecSpex.Story813.Criterion6559Spex do
       end
 
       then_ "each task shows a type tag derived from its own type", context do
+        # Each tag is read where it hangs, because the criterion is that a task
+        # is labelled by *its own* type. Against the whole page these were
+        # `html =~ "arch"` and `html =~ "qa"`, which a search box satisfies by
+        # itself — "search" contains "arch" — and which would both still pass
+        # if the two tags rendered the same type.
         assert has_element?(
                  context.view,
-                 "[data-test='task'][data-task-id='#{context.arch_id}'] [data-test='task-type']"
+                 "[data-test='task'][data-task-id='#{context.arch_id}'] [data-test='task-type']",
+                 "arch"
                ),
-               "expected the architecture task to carry its own type tag"
+               "expected the architecture task tag to read its own type"
 
         assert has_element?(
                  context.view,
-                 "[data-test='task'][data-task-id='#{context.qa_id}'] [data-test='task-type']"
+                 "[data-test='task'][data-task-id='#{context.qa_id}'] [data-test='task-type']",
+                 "qa"
                ),
-               "expected the qa task to carry its own type tag"
-
-        html = render(context.view)
-        assert html =~ "arch", "expected the architecture task tag to read its type"
-        assert html =~ "qa", "expected the qa task tag to read its type"
+               "expected the qa task tag to read its own type"
 
         {:ok, context}
       end

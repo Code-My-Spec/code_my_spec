@@ -72,8 +72,11 @@ defmodule CodeMySpecSpex.Story712.Criterion6270Spex do
       then_ "all six rows, statuses, error detail, last-sync, and re-sync render", context do
         html = render(context.view)
 
-        assert html =~ "5",
-               "expected the success count to render"
+        # Read off the badge that carries it. `html =~ "5"` was the whole page,
+        # which holds a "5" in a timestamp, an id or a class on any render — it
+        # could not have failed, so it said nothing.
+        assert has_element?(context.view, "[data-test='content-summary']", "5 success"),
+               "expected the success count to render, got: #{html}"
 
         for n <- 1..5 do
           assert has_element?(

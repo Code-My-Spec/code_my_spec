@@ -82,13 +82,19 @@ defmodule CodeMySpecSpex.Story713.Criterion6282Spex do
       end
 
       then_ "only the in-window posts are listed and out-of-window ones 404", context do
-        assert context.index_html =~ "p1"
-        assert context.index_html =~ "p2"
+        # Matched on the link rather than the slug. A bare "p3" is two
+        # characters against a whole page, and the page carries a random CSP
+        # nonce — `nonce="5qlp37JPoZgNZyBOwzhjbtUz"` contains "p3", so this
+        # refute failed about once in forty runs on the nonce alone, with the
+        # index listing exactly p1 and p2. It read as an intermittent
+        # filtering bug and was neither intermittent nor about filtering.
+        assert context.index_html =~ "/blog/p1"
+        assert context.index_html =~ "/blog/p2"
 
-        refute context.index_html =~ "p3",
+        refute context.index_html =~ "/blog/p3",
                "an expired post must not appear in the tag index, got: #{context.index_html}"
 
-        refute context.index_html =~ "p4",
+        refute context.index_html =~ "/blog/p4",
                "a future post must not appear in the tag index, got: #{context.index_html}"
 
         assert get(build_conn(), "/blog/p3").status == 404
