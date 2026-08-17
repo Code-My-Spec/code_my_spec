@@ -87,6 +87,11 @@ defmodule CodeMySpec.Provisioning.Dns do
   the gap keeps saying no for half an hour after the record is back — longer
   than any step is willing to wait, so no amount of retrying helps and the
   honest thing is to say which it is.
+
+  All of which describes a recursive resolver, and is why this asks the zone's
+  own nameservers first — see `probe/3`. `{:absent, :cached, _}` can only come
+  back from the fallback now, because the authoritative path has no cache to
+  read a stale answer out of.
   """
   @spec resolution_status(String.t(), atom(), keyword()) ::
           :resolves | {:absent, :cached, non_neg_integer()} | {:absent, :fresh}
@@ -112,7 +117,7 @@ defmodule CodeMySpec.Provisioning.Dns do
     end
 
     Enum.reduce_while(1..attempts, {:absent, :fresh}, fn attempt, _acc ->
-      case doh_lookup(name, type, opts) do
+      case probe(name, type, opts) do
         {:answers, [_ | _]} ->
           {:halt, :resolves}
 
@@ -124,6 +129,90 @@ defmodule CodeMySpec.Provisioning.Dns do
           {:halt, absent}
       end
     end)
+  end
+
+  # The zone first, a recursive resolver only if the zone cannot be reached.
+  #
+  # Everything above about cached negatives is a description of recursive
+  # resolvers, and the fix for all of it is to stop asking them. The zone's own
+  # nameservers answer from the zone: a record that exists reads as existing the
+  # instant it is written, and one that does not never lingers. Asking a cache
+  # whether a record we just published exists is asking the wrong party — the
+  # claim the step makes is "this is published", not "some resolver has noticed
+  # yet", and only the first of those is about setup (8fb98c23).
+  #
+  # An authoritative "no" is therefore conclusive in a way a recursive "no"
+  # never was, so it does not need the cached/fresh distinction — that
+  # distinction exists only to explain a cache's answer, and there is no cache
+  # in this path. It stays for the fallback, which still talks to one.
+  defp probe(name, type, opts) do
+    case authoritative_lookup(name, type, opts) do
+      {:answers, _} = answers -> answers
+      :none -> {:absent, :fresh}
+      :unavailable -> doh_lookup(name, type, opts)
+    end
+  end
+
+  # `:unavailable` rather than an answer whenever something is standing in for
+  # the world's DNS. Under fakes and cassettes the records live in an agent no
+  # nameserver has heard of, and a spex that published into that agent is
+  # asking whether *it* holds the record; reaching past the stand-in to real
+  # nameservers would answer a question nobody asked, and answer it "no".
+  #
+  # An explicitly configured nameserver is the exception, because naming one is
+  # already the instruction to ask it — that is how the fleet points this at its
+  # own DNS container.
+  defp authoritative_lookup(name, type, opts) do
+    cond do
+      configured_nameserver() != nil -> zone_answer(name, type, opts)
+      Keyword.has_key?(opts, :resolver) or stubbed_resolver?() -> :unavailable
+      true -> zone_answer(name, type, opts)
+    end
+  end
+
+  defp stubbed_resolver? do
+    :code_my_spec |> Application.get_env(__MODULE__, []) |> Keyword.has_key?(:plug)
+  end
+
+  @spec zone_answer(String.t(), atom(), keyword()) ::
+          {:answers, [String.t()]} | :none | :unavailable
+  defp zone_answer(name, type, opts) do
+    timeout = Keyword.get(opts, :timeout, @default_timeout)
+
+    case nameserver_addresses(name, timeout) do
+      [] -> :unavailable
+      servers -> zone_answer(servers, name, type, timeout)
+    end
+  rescue
+    _ -> :unavailable
+  end
+
+  defp zone_answer(servers, name, type, timeout) do
+    case :inet_res.resolve(
+           to_charlist(name),
+           :in,
+           type,
+           resolver_options(servers, timeout),
+           timeout
+         ) do
+      {:ok, record} ->
+        case answers(record) do
+          [] -> :none
+          answers -> {:answers, answers}
+        end
+
+      # The zone answering "no such name" is a fact about the record. Anything
+      # else — a timeout, a refusal, a server that would not talk to us — is a
+      # fact about the asking, and saying "not published" on the strength of it
+      # would be the same false negative in a new place.
+      {:error, {:nxdomain, _}} -> :none
+      {:error, :nxdomain} -> :none
+      _ -> :unavailable
+    end
+  end
+
+  defp answers(record) do
+    record |> :inet_dns.msg(:anlist) |> Enum.map(&(&1 |> :inet_dns.rr(:data) |> format()))
   end
 
   # Google first, then Cloudflare, and only if Google had nothing to say.
@@ -304,11 +393,8 @@ defmodule CodeMySpec.Provisioning.Dns do
                resolver_options(servers, timeout),
                timeout
              ) do
-          {:ok, record} ->
-            record |> :inet_dns.msg(:anlist) |> Enum.map(&(&1 |> :inet_dns.rr(:data) |> format()))
-
-          _ ->
-            []
+          {:ok, record} -> answers(record)
+          _ -> []
         end
     end
   rescue

@@ -943,18 +943,6 @@ defmodule CodeMySpecSpex.Fixtures do
   end
 
   @doc """
-  Age a working copy's file rows without touching its agent.
-
-  The distinction criterion 2381 turns on. Rows update on scans, and scans happen
-  on hooks rather than on activity — this working copy went unswept from 10:13 to
-  13:44 while being actively worked, because the harness was busy holding others.
-  So old rows are ordinary for a live agent, and a rule keyed on them reclaims
-  someone mid-session.
-
-  Ages rows only. The harness's `last_seen_at` is left alone, which is what makes
-  the two clocks distinguishable in a spec.
-  """
-  @doc """
   Make a story older, so "the oldest wins" is a fact the premise set.
 
   The tie-break spex separated two creations with `Process.sleep(10)` and hoped
@@ -964,7 +952,7 @@ defmodule CodeMySpecSpex.Fixtures do
   once in a sweep (48924084).
 
   Setting the value removes the race rather than widening it — the same idiom
-  `age_files_of/2` already uses one function below.
+  `age_files_of/2` already uses just below.
   """
   @spec age_story(Scope.t(), term(), number()) :: :ok
   def age_story(%Scope{} = _scope, story_id, seconds) do
@@ -977,6 +965,18 @@ defmodule CodeMySpecSpex.Fixtures do
     :ok
   end
 
+  @doc """
+  Age a working copy's file rows without touching its agent.
+
+  The distinction criterion 2381 turns on. Rows update on scans, and scans happen
+  on hooks rather than on activity — this working copy went unswept from 10:13 to
+  13:44 while being actively worked, because the harness was busy holding others.
+  So old rows are ordinary for a live agent, and a rule keyed on them reclaims
+  someone mid-session.
+
+  Ages rows only. The harness's `last_seen_at` is left alone, which is what makes
+  the two clocks distinguishable in a spec.
+  """
   @spec age_files_of(Scope.t(), number()) :: :ok
   def age_files_of(%Scope{active_project_id: project_id} = scope, hours) do
     at = DateTime.add(DateTime.utc_now(), -round(hours * 3600), :second)

@@ -97,6 +97,51 @@ defmodule CodeMySpec.Provisioning.DnsNegativeCacheTest do
     end
   end
 
+  # The zone's own nameservers are asked first, which is what removes the
+  # cached negative rather than explaining it. That path is a system call and
+  # cannot be stubbed, so what is pinned here is the half that can be: a
+  # stand-in for the world's DNS is never reached past.
+  #
+  # It is the regression the change could introduce. Under fakes the records
+  # live in an agent no nameserver has heard of, so a run that asked real
+  # nameservers would get an honest "no" to a question nobody asked, and every
+  # dns step in the spex suite would fail on a record it had just written.
+  describe "which resolver gets asked" do
+    test "an injected resolver answers, and no nameserver is consulted" do
+      parent = self()
+
+      resolver = fn _url, _headers ->
+        send(parent, :asked)
+        {:ok, %{status: 200, body: %{"Status" => 0, "Answer" => [%{"data" => "192.0.2.10"}]}}}
+      end
+
+      assert Dns.resolution_status("c7995.astralbi.com", :a, resolver: resolver) == :resolves
+      assert_received :asked
+    end
+
+    test "a configured plug answers, even with no resolver in the opts" do
+      previous = Application.get_env(:code_my_spec, Dns, [])
+      Application.put_env(:code_my_spec, Dns, plug: {Req.Test, __MODULE__})
+      on_exit(fn -> Application.put_env(:code_my_spec, Dns, previous) end)
+
+      parent = self()
+
+      Req.Test.stub(__MODULE__, fn conn ->
+        send(parent, :asked)
+
+        conn
+        |> Plug.Conn.put_resp_content_type("application/json")
+        |> Plug.Conn.send_resp(
+          200,
+          Jason.encode!(%{"Status" => 0, "Answer" => [%{"data" => "192.0.2.10"}]})
+        )
+      end)
+
+      assert Dns.resolution_status("c7995.astralbi.com", :a) == :resolves
+      assert_received :asked
+    end
+  end
+
   describe "settle_ms" do
     setup do
       previous = Application.get_env(:code_my_spec, :provisioning_waits, :real)
