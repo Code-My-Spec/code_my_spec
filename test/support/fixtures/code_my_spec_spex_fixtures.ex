@@ -1933,6 +1933,17 @@ defmodule CodeMySpecSpex.Fixtures do
   @doc "Reads whatever frames have come back down, or none within the deadline."
   defdelegate preview_frames(client, timeout \\ 2_000), to: PreviewWsClient, as: :recv
 
+  @doc """
+  Read preview frames until the one being asserted on turns up.
+
+  `preview_frames/2` stops at the first batch, which is the wrong wait for a
+  criterion asserting a particular frame — whatever arrived first comes back
+  and the frame under test may still be in flight.
+  """
+  def preview_frames_containing(client, frame, timeout \\ 2_000) do
+    PreviewWsClient.recv_until(client, &Enum.member?(&1, frame), timeout)
+  end
+
   @doc "Closes a preview socket."
   defdelegate close_preview_socket(client), to: PreviewWsClient, as: :close
 

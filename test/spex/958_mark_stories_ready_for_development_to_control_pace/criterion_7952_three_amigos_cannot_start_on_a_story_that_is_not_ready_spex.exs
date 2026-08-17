@@ -49,6 +49,17 @@ defmodule CodeMySpecSpex.Story958.Criterion7952Spex do
         {:ok, Map.put(context, :next_body, response_text(response))}
       end
 
+      then_ "the graph answered with work of some kind", context do
+        # The contrast both refutes need. A reply that offered nothing mentions
+        # neither `three_amigos_complete` nor the story's title, so "the parked
+        # story is not in here" was true of an empty answer.
+        assert context.next_body =~ "requirement_name=",
+               "expected the graph to offer work while the story is parked, got:\n" <>
+                 context.next_body
+
+        {:ok, context}
+      end
+
       then_ "no Three Amigos session is offered for that story", context do
         refute context.next_body =~ "three_amigos_complete",
                "expected no Three Amigos requirement for a parked story, got: #{context.next_body}"

@@ -24,6 +24,17 @@ defmodule CodeMySpecSpex.Story668.Criterion5486Spex do
     scenario "No existing plan omits the Existing Plan section entirely" do
       given_ :qa_setup_task_started
 
+      then_ "a prompt came back at all", context do
+        # The contrast the refutes need: an errored or empty reply contains no
+        # section header either, so "the optional section is absent" held for a
+        # `start_task` that produced nothing. `StartTask` writes the task id
+        # into a footer, so that is the cheapest evidence a prompt is a prompt.
+        assert extract_task_id!(context.prompt),
+               "expected start_task to return a prompt with its task id, got:\n#{context.prompt}"
+
+        {:ok, context}
+      end
+
       then_ "the prompt does not contain an Existing Plan H2", context do
         prompt = context.prompt
 

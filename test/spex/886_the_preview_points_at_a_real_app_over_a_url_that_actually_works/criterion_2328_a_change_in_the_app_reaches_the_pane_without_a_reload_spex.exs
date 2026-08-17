@@ -63,7 +63,12 @@ defmodule CodeMySpecSpex.Story886.Criterion2328Spex do
       then_ "the app's unprompted first push arrives", context do
         # Nothing was sent up to provoke this. It is the direction a
         # request/response proxy gets wrong while looking correct.
-        {:ok, frames, client} = Fixtures.preview_frames(context.client)
+        # Waited for by name. `preview_frames/2` returns at the first batch,
+        # so whatever the socket delivered first came back and this push could
+        # still be in flight — which is why this passed alone and failed in a
+        # sweep, where the interleaving changes.
+        {:ok, frames, client} =
+          Fixtures.preview_frames_containing(context.client, {:text, "hello from the app"})
 
         assert Enum.any?(frames, &match?({:text, "hello from the app"}, &1)),
                "the app pushed and the pane never heard it — a framed app that " <>
@@ -74,7 +79,9 @@ defmodule CodeMySpecSpex.Story886.Criterion2328Spex do
 
       then_ "and what the pane sends reaches the app", context do
         {:ok, client} = Fixtures.send_preview_frame(context.client, "sam clicked something")
-        {:ok, frames, client} = Fixtures.preview_frames(client)
+
+        {:ok, frames, client} =
+          Fixtures.preview_frames_containing(client, {:text, "app saw: sam clicked something"})
 
         assert Enum.any?(frames, &match?({:text, "app saw: sam clicked something"}, &1)),
                "the app never saw the pane's frame, so every click in the preview is " <>
@@ -88,7 +95,9 @@ defmodule CodeMySpecSpex.Story886.Criterion2328Spex do
         # protocol is its own business, and a proxy that understood it would be
         # a proxy that could get it wrong.
         {:ok, client} = Fixtures.send_preview_frame(context.client, ~s({"event":"phx_join"}))
-        {:ok, frames, client} = Fixtures.preview_frames(client)
+
+        {:ok, frames, client} =
+          Fixtures.preview_frames_containing(client, {:text, ~s(app saw: {"event":"phx_join"})})
 
         assert Enum.any?(frames, &match?({:text, ~s(app saw: {"event":"phx_join"})}, &1)),
                "a payload came back altered, got: #{inspect(frames)}"

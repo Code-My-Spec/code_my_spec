@@ -78,6 +78,17 @@ defmodule CodeMySpecSpex.Story670.Criterion5585Spex do
         {:ok, Map.put(context, :prompt, TaskResponseHelpers.response_text(response))}
       end
 
+      then_ "a prompt came back at all", context do
+        # The contrast the refutes need: an errored or empty reply contains no
+        # section header either, so "the optional section is absent" held for a
+        # `start_task` that produced nothing. `StartTask` writes the task id
+        # into a footer, so that is the cheapest evidence a prompt is a prompt.
+        assert extract_task_id!(context.prompt),
+               "expected start_task to return a prompt with its task id, got:\n#{context.prompt}"
+
+        {:ok, context}
+      end
+
       then_ "neither non-matching rule body appears in the prompt", context do
         refute context.prompt =~ @wrong_type_signature,
                "liveview+code rule must not surface for a context component"

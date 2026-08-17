@@ -62,6 +62,18 @@ defmodule CodeMySpecSpex.Story597.Criterion5287Spex do
         {:ok, Map.put(context, :prompt, response_text(response))}
       end
 
+      then_ "a prompt came back at all", context do
+        # Both assertions below refute a section header, and an errored or
+        # empty reply contains neither — so "the optional sections are absent"
+        # was true of a `start_task` that produced nothing. `StartTask` writes
+        # the task id into a footer, so that is the cheapest evidence the
+        # prompt is a prompt.
+        assert extract_task_id!(context.prompt),
+               "expected start_task to return a prompt with its task id, got:\n#{context.prompt}"
+
+        {:ok, context}
+      end
+
       then_ "the prompt does not contain an Existing Integration Specs section", context do
         refute context.prompt =~ "Existing Integration Specs",
                "expected the existing-specs section to be absent"

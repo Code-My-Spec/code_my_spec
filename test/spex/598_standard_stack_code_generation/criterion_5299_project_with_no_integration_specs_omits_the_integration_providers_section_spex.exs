@@ -54,6 +54,17 @@ defmodule CodeMySpecSpex.Story598.Criterion5299Spex do
         {:ok, Map.put(context, :prompt, response_text(response))}
       end
 
+      then_ "a prompt came back at all", context do
+        # The contrast the refutes need: an errored or empty reply contains no
+        # section header either, so "the optional section is absent" held for a
+        # `start_task` that produced nothing. `StartTask` writes the task id
+        # into a footer, so that is the cheapest evidence a prompt is a prompt.
+        assert extract_task_id!(context.prompt),
+               "expected start_task to return a prompt with its task id, got:\n#{context.prompt}"
+
+        {:ok, context}
+      end
+
       then_ "the Integration Providers section is absent from the prompt", context do
         # "Integration Providers" also appears in Step 2's instruction
         # heading. Refute the `## ` section-header form so this assertion

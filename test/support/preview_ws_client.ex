@@ -46,10 +46,64 @@ defmodule CodeMySpecTest.PreviewWsClient do
 
   Returns `{:ok, frames, client}`. An empty list means nothing came back in
   time, which is a legitimate answer for the scenarios that assert silence.
+
+  Stops at the *first* batch. Use `recv_until/3` when the assertion is about a
+  particular frame — see the note there.
   """
   @spec recv(%__MODULE__{}, timeout()) :: {:ok, [term()], %__MODULE__{}}
   def recv(%__MODULE__{} = client, timeout \\ 2_000) do
     read_frames(client, System.monotonic_time(:millisecond) + timeout, [])
+  end
+
+  @doc """
+  Reads until `predicate` holds over the frames seen, or the deadline passes.
+
+  `recv/2` returns as soon as *any* frame arrives, which is the wrong wait for
+  a caller asserting a *specific* one: whatever the socket delivered first
+  comes back and the frame under test may still be in flight. 886/2328 failed
+  that way in a full sweep and passed in isolation, because the interleaving
+  only changes when the machine is busy — the same shape as 713/6282, where a
+  wait covered one of the two things its assertions read.
+
+  Still returns what it has at the deadline, so a scenario asserting silence
+  gets the same answer as before.
+  """
+  @spec recv_until(%__MODULE__{}, (list() -> boolean()), timeout()) ::
+          {:ok, [term()], %__MODULE__{}}
+  def recv_until(%__MODULE__{} = client, predicate, timeout \\ 2_000)
+      when is_function(predicate, 1) do
+    read_until(client, System.monotonic_time(:millisecond) + timeout, [], predicate)
+  end
+
+  defp read_until(client, deadline, acc, predicate) do
+    remaining = deadline - System.monotonic_time(:millisecond)
+
+    case remaining > 0 and not predicate.(acc) do
+      false ->
+        {:ok, Enum.reverse(acc), client}
+
+      true ->
+        receive do
+          message ->
+            case WebSocket.stream(client.conn, message) do
+              {:ok, conn, responses} ->
+                {websocket, frames} = decode_all(client.websocket, responses)
+
+                read_until(
+                  %{client | conn: conn, websocket: websocket},
+                  deadline,
+                  frames ++ acc,
+                  predicate
+                )
+
+              {:error, conn, _reason, _} ->
+                {:ok, Enum.reverse(acc), %{client | conn: conn}}
+            end
+        after
+          max(deadline - System.monotonic_time(:millisecond), 0) ->
+            {:ok, Enum.reverse(acc), client}
+        end
+    end
   end
 
   @doc "Closes the socket."
