@@ -83,6 +83,7 @@ defmodule CodeMySpecSpex.Fixtures do
   alias CodeMySpec.Permissions.TapOut
   alias CodeMySpec.Projects.Project
   alias CodeMySpec.Provisioning.Cloudflare
+  alias CodeMySpec.Provisioning.Credentials
   alias CodeMySpec.Provisioning.Dns
   alias CodeMySpec.Provisioning.Hetzner
   alias CodeMySpec.Provisioning.Repository
@@ -3524,7 +3525,7 @@ defmodule CodeMySpecSpex.Fixtures do
       # project put them where `Hetzner.token/1` never reads, which is the
       # defect QA found on story 850 (bcd2b2b4). A fixture that stores them
       # the old way would keep passing while the page it stands in for did not.
-      CodeMySpec.Provisioning.Credentials.put_value(
+      Credentials.put_value(
         scope,
         key,
         System.get_env(env, "spex-placeholder-#{key}")
