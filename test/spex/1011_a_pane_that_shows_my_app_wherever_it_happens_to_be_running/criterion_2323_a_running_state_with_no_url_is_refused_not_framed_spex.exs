@@ -60,7 +60,10 @@ defmodule CodeMySpecSpex.Story885.Criterion2323Spex do
 
       then_ "and it says the preview is unavailable rather than showing a blank pane",
             context do
-        assert context.html =~ ~r/unavailable/i,
+        # The state's own marker rather than the word "unavailable", which the
+        # pane could print in any number of places. This renders the component
+        # directly, so there is no view to ask — the attribute is the anchor.
+        assert context.html =~ ~s(data-test="preview-unavailable"),
                "expected the pane to say the preview is unavailable, got: #{context.html}"
 
         {:ok, context}

@@ -136,17 +136,24 @@ defmodule CodeMySpecSpex.Story727.Criterion6474Spex do
 
       and_ "each row shows story title, status, agent, timestamp, and links to the story page",
            context do
-        assert context.html =~ context.story.title,
-               "expected story A's title in the index"
-
-        assert context.html =~ context.story_b.title,
-               "expected story B's title in the index"
-
-        assert context.html =~ context.story_c.title,
-               "expected story C's title in the index"
-
-        assert context.html =~ ~r/pass/i, "expected status pass rendered"
-        assert context.html =~ ~r/\d{4}-\d{2}-\d{2}/, "expected an ISO timestamp"
+        # One row at a time, since "each row shows" is the claim. Three title
+        # assertions plus a single `~r/pass/i` and a single date anywhere on the
+        # page left the pairing untested — one row carrying a status and a
+        # different row carrying a timestamp satisfied it. `~r/pass/i` is also
+        # met by "password", and a bare date regex by anything the layout
+        # prints.
+        # The index prints `%Y-%m-%d %H:%M`; the story page's history prints
+        # seconds and a UTC suffix. Two formats, two criteria — which is only
+        # visible once the assertion reads the cell rather than the page.
+        for story <- [context.story, context.story_b, context.story_c] do
+          assert has_element?(
+                   context.view,
+                   "tr",
+                   ~r/pass[\s\S]*#{Regex.escape(story.title)}[\s\S]*\d{4}-\d{2}-\d{2} \d{2}:\d{2}/
+                 ),
+                 "expected one row carrying #{inspect(story.title)} with its status and " <>
+                   "timestamp, got:\n#{context.html}"
+        end
 
         story_b_path = "/app/projects/#{context.project.id}/stories/#{context.story_b.id}"
 

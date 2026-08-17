@@ -41,14 +41,17 @@ defmodule CodeMySpecSpex.Story885.Criterion2318Spex do
       end
 
       then_ "it says the app is down", context do
-        assert context.html =~ ~r/down/i,
+        # The pane's own state, not the word. `~r/down/i` also matches
+        # "dropdown" and "shutdown" — and the pane publishes a data-test per
+        # state precisely so this does not have to be guessed at.
+        assert has_element?(context.view, "[data-test='preview-down']"),
                "expected the pane to say the app is down, got: #{context.html}"
 
         {:ok, context}
       end
 
       then_ "and it is not the same screen a starting app shows", context do
-        refute context.html =~ ~r/starting/i,
+        refute has_element?(context.view, "[data-test='preview-starting']"),
                "a stopped app was reported as still coming up, which is how a broken " <>
                  "app reads as a slow one"
 

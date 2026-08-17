@@ -91,8 +91,22 @@ defmodule CodeMySpecSpex.Story727.Criterion6459Spex do
       end
 
       and_ "each attempt shows status, scenarios, and timestamp markers", context do
-        assert context.html =~ ~r/pass/i, "expected status pass rendered"
-        assert context.html =~ ~r/\d{4}-\d{2}-\d{2}/, "expected an ISO timestamp"
+        # Per card, because "each attempt shows" is the claim and one match
+        # anywhere on the page satisfied it — two cards could have rendered no
+        # status at all. `~r/pass/i` was also loose enough to be met by the
+        # word "password", and a bare `\d{4}-\d{2}-\d{2}` by any date the
+        # layout happens to print.
+        for attempt_id <- context.attempt_ids do
+          assert has_element?(context.view, "#qa-attempt-#{attempt_id} .badge", "pass"),
+                 "expected attempt #{attempt_id} to render its status"
+
+          assert has_element?(
+                   context.view,
+                   "#qa-attempt-#{attempt_id}",
+                   ~r/\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} UTC/
+                 ),
+                 "expected attempt #{attempt_id} to render its submitted-at timestamp"
+        end
 
         {:ok, context}
       end

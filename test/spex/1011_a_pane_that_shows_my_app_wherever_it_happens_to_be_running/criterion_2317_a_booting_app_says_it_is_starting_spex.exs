@@ -42,7 +42,7 @@ defmodule CodeMySpecSpex.Story885.Criterion2317Spex do
       end
 
       then_ "it says the app is starting", context do
-        assert context.html =~ ~r/starting/i,
+        assert has_element?(context.view, "[data-test='preview-starting']"),
                "expected the pane to say the app is starting, got: #{context.html}"
 
         {:ok, context}
