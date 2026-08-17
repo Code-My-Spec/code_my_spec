@@ -20,8 +20,7 @@ defmodule CodeMySpecSpex.Story712.Criterion6273Spex do
   use CodeMySpecSpex.Case
 
   alias CodeMySpec.Environments
-  alias CodeMySpec.Content.S3Client
-  alias CodeMySpec.Content.CloudflareClient
+  alias CodeMySpecSpex.Fixtures
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -80,7 +79,7 @@ defmodule CodeMySpecSpex.Story712.Criterion6273Spex do
       end
 
       then_ "the new bytes upload and a CF purge fires for that exact path", context do
-        assert_received {:s3_put, target}, "expected the replaced bytes uploaded to S3"
+        assert_received {:s3_put, target, _body}, "expected the replaced bytes uploaded to S3"
 
         assert target =~ "images.foo.com" and target =~ "hero-foo.webp",
                "expected hero-foo.webp re-uploaded to the images.foo.com bucket; got #{inspect(target)}"
@@ -96,41 +95,9 @@ defmodule CodeMySpecSpex.Story712.Criterion6273Spex do
     end
   end
 
-  defp stub_s3(_context) do
-    Req.Test.set_req_test_to_shared(%{})
-    previous = Application.get_env(:code_my_spec, S3Client, [])
-    Application.put_env(:code_my_spec, S3Client, plug: {Req.Test, S3Client})
-    on_exit(fn -> Application.put_env(:code_my_spec, S3Client, previous) end)
+  defp stub_s3(_context), do: Fixtures.stub_s3_puts(self())
 
-    test_pid = self()
-
-    Req.Test.stub(S3Client, fn conn ->
-      send(test_pid, {:s3_put, conn.host <> conn.request_path})
-      Plug.Conn.send_resp(conn, 200, "")
-    end)
-
-    :ok
-  end
-
-  defp stub_cloudflare(_context) do
-    previous = Application.get_env(:code_my_spec, CloudflareClient, [])
-    Application.put_env(:code_my_spec, CloudflareClient, plug: {Req.Test, CloudflareClient})
-    on_exit(fn -> Application.put_env(:code_my_spec, CloudflareClient, previous) end)
-
-    test_pid = self()
-
-    Req.Test.stub(CloudflareClient, fn conn ->
-      {:ok, body, conn} = Plug.Conn.read_body(conn)
-      urls = body |> Jason.decode!() |> Map.get("files", [])
-      send(test_pid, {:cf_purge, urls})
-
-      conn
-      |> Plug.Conn.put_resp_content_type("application/json")
-      |> Plug.Conn.send_resp(200, ~s({"success":true}))
-    end)
-
-    :ok
-  end
+  defp stub_cloudflare(_context), do: Fixtures.stub_cloudflare_purges(self())
 
   defp flush_messages do
     receive do

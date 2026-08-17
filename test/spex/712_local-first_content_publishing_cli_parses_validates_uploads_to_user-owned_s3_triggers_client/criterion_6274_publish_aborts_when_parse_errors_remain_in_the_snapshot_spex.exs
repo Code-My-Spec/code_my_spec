@@ -86,10 +86,10 @@ defmodule CodeMySpecSpex.Story712.Criterion6274Spex do
         assert has_element?(context.view, "[data-test='publish-error']", "broken"),
                "publish must surface a blocking error naming the failing file, got:\n#{html}"
 
-        refute_received {:s3_put, _target},
+        refute_received {:s3_put, _target, _body},
                         "no manifest or blob may be written to S3 when parse errors remain"
 
-        refute_received {:trigger_post, _url, _body},
+        refute_received {:trigger, _request},
                         "no pull trigger may be POSTed to the client when publish aborts"
 
         {:ok, context}

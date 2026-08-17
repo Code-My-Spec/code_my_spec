@@ -20,7 +20,7 @@ defmodule CodeMySpecSpex.Story712.Criterion6271Spex do
   use CodeMySpecSpex.Case
 
   alias CodeMySpec.Environments
-  alias CodeMySpec.Content.S3Client
+  alias CodeMySpecSpex.Fixtures
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -67,7 +67,7 @@ defmodule CodeMySpecSpex.Story712.Criterion6271Spex do
       end
 
       then_ "the image uploads to the user's bucket and the summary counts it", context do
-        assert_received {:s3_put, target}, "expected an S3 upload during sync"
+        assert_received {:s3_put, target, _body}, "expected an S3 upload during sync"
 
         assert target =~ "images.foo.com" and target =~ "hero-foo.webp",
                "expected hero-foo.webp uploaded to the images.foo.com bucket; got #{inspect(target)}"
@@ -80,19 +80,5 @@ defmodule CodeMySpecSpex.Story712.Criterion6271Spex do
     end
   end
 
-  defp stub_s3(_context) do
-    Req.Test.set_req_test_to_shared(%{})
-    previous = Application.get_env(:code_my_spec, S3Client, [])
-    Application.put_env(:code_my_spec, S3Client, plug: {Req.Test, S3Client})
-    on_exit(fn -> Application.put_env(:code_my_spec, S3Client, previous) end)
-
-    test_pid = self()
-
-    Req.Test.stub(S3Client, fn conn ->
-      send(test_pid, {:s3_put, conn.host <> conn.request_path})
-      Plug.Conn.send_resp(conn, 200, "")
-    end)
-
-    :ok
-  end
+  defp stub_s3(_context), do: Fixtures.stub_s3_puts(self())
 end

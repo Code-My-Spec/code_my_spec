@@ -66,6 +66,7 @@ defmodule CodeMySpecSpex.Fixtures do
   alias CodeMySpec.Architecture.SpecStub
   alias CodeMySpec.Auth.OAuthClient
   alias CodeMySpec.Configurations
+  alias CodeMySpec.Content.CloudflareClient
   alias CodeMySpec.Content.S3Client
   alias CodeMySpec.Content.TriggerClient
   alias CodeMySpec.Conversations
@@ -1777,17 +1778,67 @@ defmodule CodeMySpecSpex.Fixtures do
   """
   @spec stub_publishing_outbound(pid()) :: :ok
   def stub_publishing_outbound(test_pid) do
+    stub_s3_puts(test_pid)
+    stub_trigger_posts(test_pid)
+  end
+
+  @doc """
+  Stub the content bucket, sending `{:s3_put, target, body}` per upload.
+
+  The body travels whether or not the caller reads it. Story 712 had two
+  versions of this stub — one recording the target, one the target and the
+  body — and a criterion that wanted the body had to carry its own copy of the
+  scaffolding to get it.
+  """
+  @spec stub_s3_puts(pid()) :: :ok
+  def stub_s3_puts(test_pid) do
     Req.Test.set_req_test_to_shared(%{})
 
     stub_client(S3Client, fn conn ->
-      send(test_pid, {:s3_put, conn.host <> conn.request_path})
-      conn
+      {:ok, body, conn} = Plug.Conn.read_body(conn)
+      send(test_pid, {:s3_put, conn.host <> conn.request_path, body})
+      {conn, ""}
     end)
+  end
+
+  @doc """
+  Stub the client's pull trigger, sending `{:trigger, request}` per POST.
+
+  `request` carries the url, the authorization header and the decoded body,
+  which is what the criteria about *what the trigger says* need — and costs the
+  ones that only care whether it fired nothing.
+  """
+  @spec stub_trigger_posts(pid()) :: :ok
+  def stub_trigger_posts(test_pid) do
+    Req.Test.set_req_test_to_shared(%{})
 
     stub_client(TriggerClient, fn conn ->
-      {:ok, body, conn} = Plug.Conn.read_body(conn)
-      send(test_pid, {:trigger_post, conn.request_path, body})
-      conn
+      {:ok, raw, conn} = Plug.Conn.read_body(conn)
+
+      send(
+        test_pid,
+        {:trigger,
+         %{
+           url: "#{conn.scheme}://#{conn.host}#{conn.request_path}",
+           auth: conn |> Plug.Conn.get_req_header("authorization") |> List.first(),
+           body: Jason.decode!(raw)
+         }}
+      )
+
+      {conn, ~s({"status":"accepted","sync_id":"sync-1"})}
+    end)
+  end
+
+  @doc """
+  Stub Cloudflare's purge endpoint, sending `{:cf_purge, urls}` per call.
+  """
+  @spec stub_cloudflare_purges(pid()) :: :ok
+  def stub_cloudflare_purges(test_pid) do
+    stub_client(CloudflareClient, fn conn ->
+      {:ok, raw, conn} = Plug.Conn.read_body(conn)
+      send(test_pid, {:cf_purge, raw |> Jason.decode!() |> Map.get("files", [])})
+
+      {conn, ~s({"success":true})}
     end)
   end
 
@@ -1800,9 +1851,11 @@ defmodule CodeMySpecSpex.Fixtures do
     end)
 
     Req.Test.stub(module, fn conn ->
+      {conn, body} = record.(conn)
+
       conn
-      |> record.()
-      |> Plug.Conn.send_resp(200, "")
+      |> Plug.Conn.put_resp_content_type("application/json")
+      |> Plug.Conn.send_resp(200, body)
     end)
 
     :ok

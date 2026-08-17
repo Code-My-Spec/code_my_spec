@@ -22,7 +22,7 @@ defmodule CodeMySpecSpex.Story712.Criterion6275Spex do
   use CodeMySpecSpex.Case
 
   alias CodeMySpec.Environments
-  alias CodeMySpec.Content.S3Client
+  alias CodeMySpecSpex.Fixtures
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -118,27 +118,17 @@ defmodule CodeMySpecSpex.Story712.Criterion6275Spex do
   end
 
   defp find_put(puts, bucket, key) do
-    Enum.find_value(puts, fn {target, body} ->
-      if String.contains?(target, bucket) and String.contains?(target, key), do: body
-    end)
+    puts
+    |> Enum.filter(&addressed_to?(&1, bucket, key))
+    |> Enum.map(fn {_target, body} -> body end)
+    |> List.first()
+  end
+
+  defp addressed_to?({target, _body}, bucket, key) do
+    String.contains?(target, bucket) and String.contains?(target, key)
   end
 
   defp sha256(bytes), do: :crypto.hash(:sha256, bytes) |> Base.encode16(case: :lower)
 
-  defp stub_s3(_context) do
-    Req.Test.set_req_test_to_shared(%{})
-    previous = Application.get_env(:code_my_spec, S3Client, [])
-    Application.put_env(:code_my_spec, S3Client, plug: {Req.Test, S3Client})
-    on_exit(fn -> Application.put_env(:code_my_spec, S3Client, previous) end)
-
-    test_pid = self()
-
-    Req.Test.stub(S3Client, fn conn ->
-      {:ok, body, conn} = Plug.Conn.read_body(conn)
-      send(test_pid, {:s3_put, conn.host <> conn.request_path, body})
-      Plug.Conn.send_resp(conn, 200, "")
-    end)
-
-    :ok
-  end
+  defp stub_s3(_context), do: Fixtures.stub_s3_puts(self())
 end

@@ -23,8 +23,7 @@ defmodule CodeMySpecSpex.Story712.Criterion6276Spex do
   use CodeMySpecSpex.Case
 
   alias CodeMySpec.Environments
-  alias CodeMySpec.Content.S3Client
-  alias CodeMySpec.Content.TriggerClient
+  alias CodeMySpecSpex.Fixtures
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -95,45 +94,7 @@ defmodule CodeMySpecSpex.Story712.Criterion6276Spex do
     end
   end
 
-  defp stub_s3(_context) do
-    Req.Test.set_req_test_to_shared(%{})
-    previous = Application.get_env(:code_my_spec, S3Client, [])
-    Application.put_env(:code_my_spec, S3Client, plug: {Req.Test, S3Client})
-    on_exit(fn -> Application.put_env(:code_my_spec, S3Client, previous) end)
+  defp stub_s3(_context), do: Fixtures.stub_s3_puts(self())
 
-    Req.Test.stub(S3Client, fn conn -> Plug.Conn.send_resp(conn, 200, "") end)
-    :ok
-  end
-
-  defp stub_trigger(_context) do
-    previous = Application.get_env(:code_my_spec, TriggerClient, [])
-    Application.put_env(:code_my_spec, TriggerClient, plug: {Req.Test, TriggerClient})
-    on_exit(fn -> Application.put_env(:code_my_spec, TriggerClient, previous) end)
-
-    test_pid = self()
-
-    Req.Test.stub(TriggerClient, fn conn ->
-      {:ok, raw, conn} = Plug.Conn.read_body(conn)
-
-      auth =
-        case Plug.Conn.get_req_header(conn, "authorization") do
-          [value | _] -> value
-          [] -> nil
-        end
-
-      request = %{
-        url: "#{conn.scheme}://#{conn.host}#{conn.request_path}",
-        auth: auth,
-        body: Jason.decode!(raw)
-      }
-
-      send(test_pid, {:trigger, request})
-
-      conn
-      |> Plug.Conn.put_resp_content_type("application/json")
-      |> Plug.Conn.send_resp(200, ~s({"status":"accepted","sync_id":"sync-1"}))
-    end)
-
-    :ok
-  end
+  defp stub_trigger(_context), do: Fixtures.stub_trigger_posts(self())
 end

@@ -20,7 +20,7 @@ defmodule CodeMySpecSpex.Story712.Criterion6272Spex do
   use CodeMySpecSpex.Case
 
   alias CodeMySpec.Environments
-  alias CodeMySpec.Content.S3Client
+  alias CodeMySpecSpex.Fixtures
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -89,13 +89,5 @@ defmodule CodeMySpecSpex.Story712.Criterion6272Spex do
     end
   end
 
-  defp stub_s3(_context) do
-    Req.Test.set_req_test_to_shared(%{})
-    previous = Application.get_env(:code_my_spec, S3Client, [])
-    Application.put_env(:code_my_spec, S3Client, plug: {Req.Test, S3Client})
-    on_exit(fn -> Application.put_env(:code_my_spec, S3Client, previous) end)
-
-    Req.Test.stub(S3Client, fn conn -> Plug.Conn.send_resp(conn, 200, "") end)
-    :ok
-  end
+  defp stub_s3(_context), do: Fixtures.stub_s3_puts(self())
 end
