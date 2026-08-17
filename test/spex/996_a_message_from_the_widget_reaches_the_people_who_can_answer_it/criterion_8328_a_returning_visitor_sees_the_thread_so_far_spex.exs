@@ -47,7 +47,7 @@ defmodule CodeMySpecSpex.Story996.Criterion8328Spex do
         ref =
           Phoenix.ChannelTest.push(socket, "send_message", %{"body" => "is the calendar broken?"})
 
-        Phoenix.ChannelTest.assert_reply(ref, :ok, _)
+        Phoenix.ChannelTest.assert_reply(ref, :ok, _, 1000)
 
         {:ok, Map.put(context, :first_socket, socket)}
       end

@@ -41,7 +41,7 @@ defmodule CodeMySpecSpex.Story960.Criterion8333Spex do
       given_ "a visitor sends a message Sam has not seen", context do
         {:ok, _, socket} = join_widget(context.project.id, "eu-unread", "unread@example.com")
         ref = Phoenix.ChannelTest.push(socket, "send_message", %{"body" => "anyone home?"})
-        Phoenix.ChannelTest.assert_reply(ref, :ok, _)
+        Phoenix.ChannelTest.assert_reply(ref, :ok, _, 1000)
 
         {:ok, context}
       end

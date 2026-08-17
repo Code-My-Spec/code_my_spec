@@ -50,7 +50,7 @@ defmodule CodeMySpecSpex.Story996.Criterion8327Spex do
             "body" => "first visitor's private problem"
           })
 
-        Phoenix.ChannelTest.assert_reply(ref, :ok, _)
+        Phoenix.ChannelTest.assert_reply(ref, :ok, _, 1000)
 
         {:ok, Map.put(context, :first, first)}
       end

@@ -87,7 +87,7 @@ defmodule CodeMySpecSpex.Story1000.Criterion744Spex do
             "observations" => [observation("lib/held.ex")]
           })
 
-        Phoenix.ChannelTest.assert_reply(ref, :ok, _summary)
+        Phoenix.ChannelTest.assert_reply(ref, :ok, _summary, 1000)
 
         {:ok, context}
       end

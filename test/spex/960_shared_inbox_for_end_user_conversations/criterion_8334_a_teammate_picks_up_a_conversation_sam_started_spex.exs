@@ -44,7 +44,7 @@ defmodule CodeMySpecSpex.Story960.Criterion8334Spex do
       given_ "Sam replied to a visitor earlier", context do
         {:ok, _, socket} = join_widget(context.project.id, "eu-team", "team@example.com")
         ref = Phoenix.ChannelTest.push(socket, "send_message", %{"body" => "my invoice is wrong"})
-        Phoenix.ChannelTest.assert_reply(ref, :ok, _)
+        Phoenix.ChannelTest.assert_reply(ref, :ok, _, 1000)
 
         {:ok, inbox, _html} = live(context.conn, inbox_path(context.project))
         result = inbox |> element("[data-test='conversation']") |> render_click()

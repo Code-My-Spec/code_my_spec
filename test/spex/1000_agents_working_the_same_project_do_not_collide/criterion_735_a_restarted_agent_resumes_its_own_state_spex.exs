@@ -43,7 +43,7 @@ defmodule CodeMySpecSpex.Story1000.Criterion735Spex do
             "observations" => [observation("lib/before_restart.ex")]
           })
 
-        Phoenix.ChannelTest.assert_reply(ref, :ok, _summary)
+        Phoenix.ChannelTest.assert_reply(ref, :ok, _summary, 1000)
 
         {:ok, context |> Map.put(:socket, socket) |> Map.put(:issued_id, issued)}
       end
@@ -76,7 +76,7 @@ defmodule CodeMySpecSpex.Story1000.Criterion735Spex do
             "observations" => [observation("lib/before_restart.ex")]
           })
 
-        Phoenix.ChannelTest.assert_reply(ref, :ok, summary)
+        Phoenix.ChannelTest.assert_reply(ref, :ok, summary, 1000)
 
         assert summary["observations"] == 1
 

@@ -119,7 +119,7 @@ defmodule CodeMySpecSpex.Story1000.Criterion732Spex do
             ]
           })
 
-        Phoenix.ChannelTest.assert_reply(ref, :ok, _summary)
+        Phoenix.ChannelTest.assert_reply(ref, :ok, _summary, 1000)
 
         {:ok, context}
       end

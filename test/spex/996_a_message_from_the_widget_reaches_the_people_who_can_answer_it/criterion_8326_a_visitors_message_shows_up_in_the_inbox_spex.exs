@@ -54,7 +54,7 @@ defmodule CodeMySpecSpex.Story996.Criterion8326Spex do
             "body" => "my booking page is broken"
           })
 
-        Phoenix.ChannelTest.assert_reply(ref, :ok, _)
+        Phoenix.ChannelTest.assert_reply(ref, :ok, _, 1000)
 
         {:ok, context}
       end

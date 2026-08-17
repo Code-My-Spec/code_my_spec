@@ -43,7 +43,7 @@ defmodule CodeMySpecSpex.Story1000.Criterion736Spex do
             "observations" => [observation("lib/original.ex")]
           })
 
-        Phoenix.ChannelTest.assert_reply(ref, :ok, _summary)
+        Phoenix.ChannelTest.assert_reply(ref, :ok, _summary, 1000)
 
         {:ok, context |> Map.put(:original, socket) |> Map.put(:original_id, id_of(reply))}
       end
@@ -72,7 +72,7 @@ defmodule CodeMySpecSpex.Story1000.Criterion736Spex do
             "observations" => [observation("lib/fresh.ex")]
           })
 
-        Phoenix.ChannelTest.assert_reply(ref, :ok, summary)
+        Phoenix.ChannelTest.assert_reply(ref, :ok, summary, 1000)
 
         assert summary["observations"] == 1
 

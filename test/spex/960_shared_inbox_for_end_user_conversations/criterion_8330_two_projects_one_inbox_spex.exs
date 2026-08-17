@@ -49,14 +49,14 @@ defmodule CodeMySpecSpex.Story960.Criterion8330Spex do
         r1 =
           Phoenix.ChannelTest.push(first, "send_message", %{"body" => "from the first project"})
 
-        Phoenix.ChannelTest.assert_reply(r1, :ok, _)
+        Phoenix.ChannelTest.assert_reply(r1, :ok, _, 1000)
 
         {:ok, _, second} = join_widget(other.id, "eu-p2", "p2@example.com")
 
         r2 =
           Phoenix.ChannelTest.push(second, "send_message", %{"body" => "from the second project"})
 
-        Phoenix.ChannelTest.assert_reply(r2, :ok, _)
+        Phoenix.ChannelTest.assert_reply(r2, :ok, _, 1000)
 
         {:ok, Map.put(context, :other_project, other)}
       end

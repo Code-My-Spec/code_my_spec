@@ -107,7 +107,7 @@ defmodule CodeMySpecSpex.Story1000.Criterion739Spex do
         ]
       })
 
-    Phoenix.ChannelTest.assert_reply(ref, :ok, _summary)
+    Phoenix.ChannelTest.assert_reply(ref, :ok, _summary, 1000)
 
     {reply["harness_id"] || reply[:harness_id], socket}
   end

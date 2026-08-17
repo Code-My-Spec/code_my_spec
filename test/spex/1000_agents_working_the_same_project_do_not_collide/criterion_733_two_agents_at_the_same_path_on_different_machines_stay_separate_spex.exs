@@ -78,8 +78,15 @@ defmodule CodeMySpecSpex.Story1000.Criterion733Spex do
       end
 
       then_ "each stop hook reports only its own machine's state", context do
-        Phoenix.ChannelTest.assert_reply(context.first_ref, :ok, first_summary)
-        Phoenix.ChannelTest.assert_reply(context.second_ref, :ok, second_summary)
+        # A second, like the other channel criteria in the suite. The default
+        # `assert_reply` window is 100ms, which is a wait rather than a claim:
+        # this step is about *what* each hook reports, not how quickly, and a
+        # stop hook that answers in 150ms has not collided with anything. The
+        # analyzer caught this red on a cold run and it passed 31 consecutive
+        # repeats afterwards, which is what a too-short wait looks like from
+        # the outside.
+        Phoenix.ChannelTest.assert_reply(context.first_ref, :ok, first_summary, 1000)
+        Phoenix.ChannelTest.assert_reply(context.second_ref, :ok, second_summary, 1000)
 
         # Each manifest is accepted on its own terms. A server that treated these
         # as one working copy would take the second as a full replacement of the

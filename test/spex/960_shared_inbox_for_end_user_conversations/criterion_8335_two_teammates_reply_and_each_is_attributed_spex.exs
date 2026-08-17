@@ -44,7 +44,7 @@ defmodule CodeMySpecSpex.Story960.Criterion8335Spex do
       given_ "a visitor has written in", context do
         {:ok, _, socket} = join_widget(context.project.id, "eu-attr", "attr@example.com")
         ref = Phoenix.ChannelTest.push(socket, "send_message", %{"body" => "still broken"})
-        Phoenix.ChannelTest.assert_reply(ref, :ok, _)
+        Phoenix.ChannelTest.assert_reply(ref, :ok, _, 1000)
 
         {:ok, context}
       end
