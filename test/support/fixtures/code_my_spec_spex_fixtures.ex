@@ -1762,6 +1762,23 @@ defmodule CodeMySpecSpex.Fixtures do
   # -- Workspaces --
 
   @doc """
+  The attribute names the real widget script looks for.
+
+  Read from `Widget.markers/0` rather than written out again: they are a
+  published contract, and a fake that copies it keeps serving the old strings
+  after the contract moves — so the criteria pass while the real widget stops
+  being found, which is the failure the contract exists to prevent. The spex
+  boundary cannot name `CodeMySpec.Provisioning` itself, so it comes through
+  here.
+  """
+  defdelegate widget_markers(), to: CodeMySpec.Provisioning.Widget, as: :markers
+
+  @doc """
+  Where database dumps are keyed under, from the module that decides it.
+  """
+  defdelegate dumps_prefix(), to: CodeMySpec.Provisioning.Storage
+
+  @doc """
   Swap the workspace runner for the fake one and start it.
 
   A spex cannot name `CodeMySpecTest.FakeWorkspaceRunner` — `CodeMySpecSpex`
