@@ -232,18 +232,17 @@ defmodule CodeMySpec.SpexGivensTest do
     source
     |> String.split("\n")
     |> Enum.map_reduce(false, fn line, inside? ->
-      delimiter? = String.contains?(line, ~s("""))
-
-      case {inside?, delimiter?} do
-        {false, false} -> {line, false}
-        {false, true} -> {line, true}
-        {true, false} -> {"", true}
-        {true, true} -> {"", false}
-      end
+      blank_line(line, inside?, String.contains?(line, ~s(""")))
     end)
     |> elem(0)
     |> Enum.join("\n")
   end
+
+  # {line, inside-a-heredoc?, is-a-delimiter-line?} -> {what to keep, still inside?}
+  defp blank_line(line, false, false), do: {line, false}
+  defp blank_line(line, false, true), do: {line, true}
+  defp blank_line(_line, true, false), do: {"", true}
+  defp blank_line(_line, true, true), do: {"", false}
 
   defp strip_comments(body) do
     body
