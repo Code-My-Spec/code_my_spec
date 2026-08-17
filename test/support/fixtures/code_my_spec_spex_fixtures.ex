@@ -66,6 +66,8 @@ defmodule CodeMySpecSpex.Fixtures do
   alias CodeMySpec.Architecture.SpecStub
   alias CodeMySpec.Auth.OAuthClient
   alias CodeMySpec.Configurations
+  alias CodeMySpec.Content.S3Client
+  alias CodeMySpec.Content.TriggerClient
   alias CodeMySpec.Conversations
   alias CodeMySpec.Files.FileSync
   alias CodeMySpec.Files.Scanner
@@ -74,6 +76,7 @@ defmodule CodeMySpecSpex.Fixtures do
   alias CodeMySpec.Integrations.IntegrationRepository
   alias CodeMySpec.Mail.Email
   alias CodeMySpec.Mail.Mailbox
+  alias CodeMySpec.Mail.ResendClient
   alias CodeMySpec.Notifications.QuestionRequest
   alias CodeMySpec.Permissions.TapOut
   alias CodeMySpec.Projects.Project
@@ -98,9 +101,6 @@ defmodule CodeMySpecSpex.Fixtures do
   alias CodeMySpec.Workspaces.PreviewAddress
   alias CodeMySpec.Workspaces.Workspace
   alias CodeMySpec.Workspaces.WorkspacesRepository
-  alias CodeMySpec.Content.S3Client
-  alias CodeMySpec.Content.TriggerClient
-  alias CodeMySpec.Mail.ResendClient
   alias CodeMySpecTest.FakeWorkspaceRunner
   alias CodeMySpecTest.LocalPreviewRunner
   alias CodeMySpecTest.PreviewApp
