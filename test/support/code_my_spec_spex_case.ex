@@ -1429,6 +1429,62 @@ defmodule CodeMySpecSpex.Case do
   end
 
   @doc """
+  A scripted step that blocks until the scenario lets it finish.
+
+  Some criteria are about a state that only exists *while* a step runs: "Sam
+  watches this step move to done" cannot be observed if the step finishes
+  before the page renders. `Process.sleep/1` inside the step buys that window
+  by guessing. Three seconds was the number in story 963 — three seconds of
+  every suite run, still a race if the machine is slower than the guess, and it
+  leaves the step running after the scenario ends, writing to a sandbox
+  connection that is about to go away.
+
+  This holds the step open until `release_step/2` says otherwise, so the window
+  is exactly as long as the assertions need and closes deterministically.
+
+      {hold, ref} = held_step()
+      scripted_run(context, %{domain: hold})
+      ...
+      release_step(ref)
+
+  The fallback timeout is there so a scenario that forgets to release fails on
+  its own assertion rather than hanging the suite.
+  """
+  def held_step(timeout \\ 10_000) do
+    test = self()
+    ref = make_ref()
+
+    hold = fn ->
+      send(test, {:step_held, ref, self()})
+
+      receive do
+        {:release_step, ^ref} -> {:ok, []}
+      after
+        timeout -> {:ok, []}
+      end
+    end
+
+    {hold, ref}
+  end
+
+  @doc """
+  Lets a step held by `held_step/1` finish.
+
+  Waits for the step to announce itself first, so releasing before it has
+  started is not a no-op that leaves it held.
+  """
+  def release_step(ref, timeout \\ 10_000) do
+    receive do
+      {:step_held, ^ref, pid} ->
+        send(pid, {:release_step, ref})
+        :ok
+    after
+      timeout ->
+        raise "released a step that never ran — nothing was holding"
+    end
+  end
+
+  @doc """
   Run setup in a task, so the page has states to show while it runs.
 
       setup :watchable_run

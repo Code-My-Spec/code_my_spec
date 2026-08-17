@@ -40,7 +40,6 @@ defmodule CodeMySpecSpex.Story713.Criterion6279Spex do
       when_ "a pull arrives whose blob hash does not match the manifest", context do
         stub_pull([content_row("beta", "Beta Post")], match_hash: false)
         trigger_pull()
-        Process.sleep(200)
         {:ok, context}
       end
 

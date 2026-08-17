@@ -84,7 +84,6 @@ defmodule CodeMySpecSpex.Story713.Criterion6280Spex do
         bad_blob = [content_row("a", "Post a"), Map.delete(content_row("b", "Post b"), "slug")]
         stub_pull(bad_blob, valid: true)
         trigger_pull()
-        Process.sleep(200)
         {:ok, context}
       end
 

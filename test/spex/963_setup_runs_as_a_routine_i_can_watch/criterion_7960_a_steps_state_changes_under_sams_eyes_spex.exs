@@ -35,23 +35,22 @@ defmodule CodeMySpecSpex.Story963.Criterion7960Spex do
         # could show it — and the assertion would be about how fast the test
         # rendered, not about whether the page updates.
         #
+        # Held by the scenario rather than by a three-second sleep: the window
+        # is then as long as the assertions need instead of as long as someone
+        # guessed, and it closes here rather than after the test has gone.
+        #
         # That step is `domain`, not `secrets`. The sequence is repository →
         # secrets → server → domain, so holding `secrets` open stopped the run
         # *before* the server had done anything, and the criterion failed
         # saying the server step never reached done — which was true, and said
         # nothing about whether the page updates.
-        context =
-          scripted_run(context, %{
-            domain: fn ->
-              Process.sleep(3_000)
-              {:ok, []}
-            end
-          })
+        {hold, held_ref} = held_step()
+        context = scripted_run(context, %{domain: hold})
 
         {:ok, view, _html} =
           live(context.conn, "/app/projects/#{context.project.id}/provisioning")
 
-        {:ok, Map.put(context, :view, view)}
+        {:ok, Map.merge(context, %{view: view, held_ref: held_ref})}
       end
 
       when_ "the server step runs to completion", context do
@@ -84,6 +83,12 @@ defmodule CodeMySpecSpex.Story963.Criterion7960Spex do
                   |> Enum.map_join(", ", fn s ->
                     "#{s |> Floki.attribute("data-step") |> List.first()}=#{s |> Floki.attribute("data-state") |> List.first()}"
                   end))
+
+        # Let the held step finish inside the scenario. Left holding, it
+        # resumes and writes once the sandbox owner has gone — the straggler
+        # shape that fails whichever spex is running at that moment.
+        release_step(context.held_ref)
+        await_step_state(context.view, "domain", "done")
 
         {:ok, context}
       end

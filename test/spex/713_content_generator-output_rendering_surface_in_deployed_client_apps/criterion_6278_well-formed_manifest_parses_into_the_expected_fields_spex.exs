@@ -76,9 +76,11 @@ defmodule CodeMySpecSpex.Story713.Criterion6278Spex do
       end
 
       then_ "no content is persisted from the malformed manifest", context do
-        # Give any (incorrectly-proceeding) sync a chance to run, then assert
-        # the content never landed.
-        Process.sleep(200)
+        # No wait: `content_pull_async: false` in the test config makes the
+        # controller run the pull inline, and `post/3` dispatches in this
+        # process, so the POST returns after the pull has finished. The sleep
+        # here was 200ms of hoping, and it made the negative claim below read
+        # as "nothing landed within 200ms" rather than "nothing landed".
         conn = get(build_conn(), "/blog/never-lands")
         assert conn.status == 404, "a malformed manifest must abort without persisting content"
         {:ok, context}
