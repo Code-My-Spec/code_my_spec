@@ -1405,6 +1405,31 @@ defmodule CodeMySpecSpex.Case do
   end
 
   @doc """
+  A scripted step that answers one thing on its first run and another after.
+
+  The shape every resume criterion needs: a step fails, errors or pauses, and
+  the *next* run of it succeeds — which is what makes "a re-run picks up where
+  it stopped" a claim rather than a re-run of something that never stopped.
+
+  Written three times as a `case` on an Agent counter, once per criterion,
+  which is both the rule the suite has about branching in a spex and three
+  chances to get the counter wrong. Naming it also names the pattern: `then`
+  is what happens from the second call on.
+
+      email: first_then(fn -> {:error, "Resend rejected the key"} end, fn -> {:ok, []} end)
+  """
+  def first_then(first, then) when is_function(first, 0) and is_function(then, 0) do
+    {:ok, calls} = Agent.start_link(fn -> 0 end)
+
+    fn ->
+      case Agent.get_and_update(calls, &{&1, &1 + 1}) do
+        0 -> first.()
+        _ -> then.()
+      end
+    end
+  end
+
+  @doc """
   Wait until a step reaches a state, then hand back the page.
 
   A run is asynchronous, so a criterion that renders immediately after
@@ -3097,16 +3122,24 @@ defmodule CodeMySpecSpex.Case do
     do: Fixtures.publishable_project(scope, project, attrs)
 
   @doc """
-  Point publishing at the fleet: MinIO for storage, the fleet site for the
-  trigger.
+  Configure the project so a publish can actually run.
 
       setup :publishing_configured
 
   A publish is two things — objects written to S3, and a trigger POSTed to the
   deployed site — and this supplies what both need: a content bucket, storage
-  credentials, a client API URL and a deploy key. Without them the publish
-  refuses outright ("Publishing is not configured"), which is correct and says
-  nothing about the criterion doing the asking.
+  credentials, a client API URL and a deploy key.
+
+  `ContentPublishing.publish/1` refuses without them: "Publishing is not
+  configured. Sync is trigger-only, so a publish without a reachable client
+  would never reach the site." That refusal happens before anything is
+  written, so a criterion about *storage* reads it as nothing having been
+  published.
+
+  A setup rather than a call in the `given_`, because the LiveView reads the
+  project into its assigns when it mounts and every step it runs reads that
+  copy — configuring the row afterwards updates the database and not the page,
+  which is the trap story 965 was stuck behind.
 
   It was `publishing_to_the_fleet`, and it pointed at a local MinIO on :9000
   and a generated site on :4100. That made these criteria green only on a
@@ -3153,30 +3186,6 @@ defmodule CodeMySpecSpex.Case do
     ExUnit.Callbacks.on_exit(fn ->
       Application.put_env(:code_my_spec, :provisioning_step_opts, previous)
     end)
-
-    context
-    |> Map.put(:project, project)
-    |> Map.put(:scope, %{scope | active_project: project})
-  end
-
-  @doc """
-  Configure the project so a publish can actually run.
-
-      setup :publishing_configured
-
-  `ContentPublishing.publish/1` refuses without `content_bucket`,
-  `client_api_url` and `deploy_key` — "Publishing is not configured. Sync is
-  trigger-only, so a publish without a reachable client would never reach the
-  site." That refusal happens before anything is written, so a criterion about
-  *storage* reads it as nothing having been published.
-
-  A setup rather than a call in the `given_`, because the LiveView reads the
-  project into its assigns when it mounts and every step it runs reads that
-  copy — configuring the row after the mount updates the database and not the
-  page, which is the trap story 965 was stuck behind.
-  """
-  def publishing_configured(%{scope: scope, project: project} = context) do
-    project = publishable_project(scope, project)
 
     context
     |> Map.put(:project, project)
@@ -3769,6 +3778,28 @@ defmodule CodeMySpecSpex.Case do
         {:ok, Map.put(context, :view, view)}
       end
   """
+  # A macro, and recording both halves: the deploy and backups steps shell out
+  # as well as calling providers, and a cassette holding only the HTTP half
+  # passes while recording then fails on replay — naming the subprocess, which
+  # was not the thing that changed.
+  defmacro run_steps(view, keys, cassette_name, opts \\ []) do
+    quote do
+      view = unquote(view)
+
+      with_full_cassette unquote(cassette_name), unquote(opts) do
+        for key <- unquote(keys) do
+          view
+          |> Phoenix.LiveViewTest.element(
+            "[data-test='setup-step'][data-step='#{key}'] [data-test='run-step']"
+          )
+          |> Phoenix.LiveViewTest.render_click()
+
+          CodeMySpecSpex.Case.await_step(view, key)
+        end
+      end
+    end
+  end
+
   @doc """
   Run steps in order through the page, against fakes.
 
@@ -3794,28 +3825,6 @@ defmodule CodeMySpecSpex.Case do
         |> Phoenix.LiveViewTest.render_click()
 
         CodeMySpecSpex.Case.await_step(view, key)
-      end
-    end
-  end
-
-  # A macro, and recording both halves: the deploy and backups steps shell out
-  # as well as calling providers, and a cassette holding only the HTTP half
-  # passes while recording then fails on replay — naming the subprocess, which
-  # was not the thing that changed.
-  defmacro run_steps(view, keys, cassette_name, opts \\ []) do
-    quote do
-      view = unquote(view)
-
-      with_full_cassette unquote(cassette_name), unquote(opts) do
-        for key <- unquote(keys) do
-          view
-          |> Phoenix.LiveViewTest.element(
-            "[data-test='setup-step'][data-step='#{key}'] [data-test='run-step']"
-          )
-          |> Phoenix.LiveViewTest.render_click()
-
-          CodeMySpecSpex.Case.await_step(view, key)
-        end
       end
     end
   end

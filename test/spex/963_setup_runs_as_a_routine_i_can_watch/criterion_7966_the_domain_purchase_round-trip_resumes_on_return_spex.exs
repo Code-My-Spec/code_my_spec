@@ -25,28 +25,19 @@ defmodule CodeMySpecSpex.Story963.Criterion7966Spex do
   spex "The domain purchase round-trip resumes on return" do
     scenario "an unsellable TLD pauses with instructions rather than failing" do
       given_ "the domain Sam wants has a TLD the Registrar API cannot sell", context do
-        # A pause, not an error: the run stops and hands Sam an errand it
-        # cannot do for him. Scripting the pause makes the instructions
-        # deterministic, where the old version depended on the registrar
-        # continuing to refuse this particular TLD.
-        # Pauses the first time and finds the domain the next, which is the
-        # round trip the criterion is named for: Sam goes and registers it by
-        # hand, comes back, and setup adopts what is now there.
-        {:ok, visits} = Agent.start_link(fn -> 0 end)
-
         context =
           scripted_run(context, %{
-            domain: fn ->
-              case Agent.get_and_update(visits, &{&1 + 1, &1 + 1}) do
-                1 ->
+            domain:
+              first_then(
+                fn ->
                   {:paused,
                    "This TLD cannot be bought through the Registrar API. Register it in the Cloudflare dashboard, then run this step again."}
-
-                _ ->
+                end,
+                fn ->
                   {:ok,
                    [%{kind: "domain", location: "cloudflare/his-app.dev", origin: "adopted"}]}
-              end
-            end
+                end
+              )
           })
 
         {:ok, view, _html} =

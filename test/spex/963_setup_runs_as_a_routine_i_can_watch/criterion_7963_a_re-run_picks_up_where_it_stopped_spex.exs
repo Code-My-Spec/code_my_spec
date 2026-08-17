@@ -23,20 +23,13 @@ defmodule CodeMySpecSpex.Story963.Criterion7963Spex do
   spex "A re-run picks up where it stopped" do
     scenario "the second run resumes at the failure without redoing the rest" do
       given_ "setup stopped at the email step with earlier steps succeeded", context do
-        # Fails on the first run and succeeds on the second, which is what "Sam
-        # fixes the credential and runs setup again" means. The old version
-        # needed one cassette for a run that stops and another for a run that
-        # does not, and the difference between them was invisible.
-        {:ok, attempts} = Agent.start_link(fn -> 0 end)
-
         context =
           scripted_run(context, %{
-            email: fn ->
-              case Agent.get_and_update(attempts, &{&1 + 1, &1 + 1}) do
-                1 -> {:error, "Resend rejected the API key"}
-                _ -> {:ok, []}
-              end
-            end
+            email:
+              first_then(
+                fn -> {:error, "Resend rejected the API key"} end,
+                fn -> {:ok, []} end
+              )
           })
 
         {:ok, view, _html} =

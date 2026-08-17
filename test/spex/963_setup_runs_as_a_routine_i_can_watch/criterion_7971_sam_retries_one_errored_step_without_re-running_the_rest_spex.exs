@@ -23,20 +23,13 @@ defmodule CodeMySpecSpex.Story963.Criterion7971Spex do
   spex "Sam retries one errored step without re-running the rest" do
     scenario "retrying the errored step leaves every other step untouched" do
       given_ "the status page shows the email step errored and the others done", context do
-        # Fails the first time and succeeds when retried, which is the whole
-        # shape of this criterion. Scripting it that way says so directly; the
-        # alternative was two cassettes and a provider that had to be persuaded
-        # to fail once and then stop.
-        {:ok, attempts} = Agent.start_link(fn -> 0 end)
-
         context =
           scripted_run(context, %{
-            email: fn ->
-              case Agent.get_and_update(attempts, &{&1 + 1, &1 + 1}) do
-                1 -> {:error, "Resend rejected the sending domain"}
-                _ -> {:ok, []}
-              end
-            end
+            email:
+              first_then(
+                fn -> {:error, "Resend rejected the sending domain"} end,
+                fn -> {:ok, []} end
+              )
           })
 
         {:ok, view, _html} =

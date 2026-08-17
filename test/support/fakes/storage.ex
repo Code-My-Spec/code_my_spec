@@ -184,19 +184,6 @@ defmodule CodeMySpecSpex.Fakes.Storage do
     {{200, [], list_objects_xml(bucket, listed)}, state}
   end
 
-  defp expired?(_stamp, nil), do: false
-
-  defp expired?(stamp, days) when is_integer(days) do
-    DateTime.diff(DateTime.utc_now(), stamp, :day) > days
-  end
-
-  defp expired?(stamp, lifecycle) do
-    case Regex.run(~r/<Days>(\d+)<\/Days>/, to_string(lifecycle)) do
-      [_, days] -> expired?(stamp, String.to_integer(days))
-      _ -> false
-    end
-  end
-
   defp route("GET", bucket, key, _body, _params, state) do
     case state.buckets |> Map.get(bucket, %{}) |> Map.get(key) do
       nil -> {{404, [], error_xml("NoSuchKey")}, state}
@@ -222,6 +209,19 @@ defmodule CodeMySpecSpex.Fakes.Storage do
     <?xml version="1.0" encoding="UTF-8"?>
     <ListAllMyBucketsResult><Owner><ID>spex</ID></Owner><Buckets>#{buckets}</Buckets></ListAllMyBucketsResult>
     """
+  end
+
+  defp expired?(_stamp, nil), do: false
+
+  defp expired?(stamp, days) when is_integer(days) do
+    DateTime.diff(DateTime.utc_now(), stamp, :day) > days
+  end
+
+  defp expired?(stamp, lifecycle) do
+    case Regex.run(~r/<Days>(\d+)<\/Days>/, to_string(lifecycle)) do
+      [_, days] -> expired?(stamp, String.to_integer(days))
+      _ -> false
+    end
   end
 
   # Each object's own timestamp, not a fixed one. Everything that reads a

@@ -155,13 +155,6 @@ defmodule CodeMySpecSpex.Fakes.Shell do
     {"* creating lib/app_web/live/support_widget_live.ex\n", 0}
   end
 
-  defp web_dirs(env) do
-    case Environments.list_directory(env, "lib") do
-      {:ok, entries} -> Enum.filter(entries, &String.ends_with?(&1, "_web"))
-      _ -> []
-    end
-  end
-
   # -- the generated scripts, run by absolute path out of the checkout --
   #
   # `bin/deploy <command> <environment>` is what the deploy step shells out to,
@@ -184,6 +177,13 @@ defmodule CodeMySpecSpex.Fakes.Shell do
 
       _ ->
         unmodelled(command, args)
+    end
+  end
+
+  defp web_dirs(env) do
+    case Environments.list_directory(env, "lib") do
+      {:ok, entries} -> Enum.filter(entries, &String.ends_with?(&1, "_web"))
+      _ -> []
     end
   end
 

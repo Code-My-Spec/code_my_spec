@@ -147,6 +147,25 @@ defmodule CodeMySpecSpex.Fakes.Cloudflare do
     end
   end
 
+  defp route(method, segments, _body, _params, state) do
+    {{501, failure("#{method} /#{Enum.join(segments, "/")} is not modelled by the Cloudflare fake")},
+     state}
+  end
+
+  # -- helpers --
+
+  defp records(state, zone), do: Map.get(state.records, zone, [])
+  defp put_records(state, zone, records), do: %{state | records: Map.put(state.records, zone, records)}
+
+  defp matching_zones(state, %{"name" => name}),
+    do: Enum.filter(state.zones, &(&1["name"] == name))
+
+  defp matching_zones(state, _params), do: state.zones
+
+  # Only the fields a caller may change. Without this a PUT could rewrite the
+  # id or move a record between zones, and a bug that did so would pass.
+  defp sanitise(body), do: Map.take(body, ["name", "type", "content", "ttl", "priority", "proxied"])
+
   defp unscoped_message do
     "Actor 'com.cloudflare.api.token' requires permission " <>
       "'com.cloudflare.registrar.domain.list' to access requested resource"
@@ -173,36 +192,17 @@ defmodule CodeMySpecSpex.Fakes.Cloudflare do
     end
   end
 
+  defp registrar("POST", [_acct, "domains"], body, _params, state) do
+    name = body["name"]
+    {ok(%{"name" => name}), %{state | registrar: Enum.uniq(state.registrar ++ [name])}}
+  end
+
   # The extensions Cloudflare Registrar sells. `.museum` is not one, which is
   # what makes 965/7993 — "an unsupported extension becomes a dashboard
   # errand" — a real answer rather than a failure.
   defp supported_tld?(name) do
     name |> String.split(".") |> List.last() |> Kernel.in(~w(com net org dev io co ca app))
   end
-
-  defp registrar("POST", [_acct, "domains"], body, _params, state) do
-    name = body["name"]
-    {ok(%{"name" => name}), %{state | registrar: Enum.uniq(state.registrar ++ [name])}}
-  end
-
-  defp route(method, segments, _body, _params, state) do
-    {{501, failure("#{method} /#{Enum.join(segments, "/")} is not modelled by the Cloudflare fake")},
-     state}
-  end
-
-  # -- helpers --
-
-  defp records(state, zone), do: Map.get(state.records, zone, [])
-  defp put_records(state, zone, records), do: %{state | records: Map.put(state.records, zone, records)}
-
-  defp matching_zones(state, %{"name" => name}),
-    do: Enum.filter(state.zones, &(&1["name"] == name))
-
-  defp matching_zones(state, _params), do: state.zones
-
-  # Only the fields a caller may change. Without this a PUT could rewrite the
-  # id or move a record between zones, and a bug that did so would pass.
-  defp sanitise(body), do: Map.take(body, ["name", "type", "content", "ttl", "priority", "proxied"])
 
   defp ok(result), do: {200, %{"success" => true, "errors" => [], "result" => result}}
 
