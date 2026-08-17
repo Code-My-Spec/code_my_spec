@@ -867,9 +867,8 @@ defmodule CodeMySpec.Analysis do
     fingerprints = Fingerprint.current(scope)
 
     for source <- sources,
-        %Run{input_fingerprint: fp} <- [RunsRepository.latest_completed_run(scope, source)],
-        is_binary(fp),
-        fp == Map.get(fingerprints, source),
+        %Run{} = run <- [RunsRepository.latest_completed_run(scope, source)],
+        run_answers_for?(run, Map.get(fingerprints, source)),
         into: MapSet.new(),
         do: source
   end
@@ -882,11 +881,8 @@ defmodule CodeMySpec.Analysis do
     # result stale, and used to, because this took the newest row of any status
     # and then required `:completed`.
     case RunsRepository.latest_completed_run(scope, source) do
-      %Run{input_fingerprint: fp} when is_binary(fp) ->
-        fp == Fingerprint.current(scope, source)
-
-      _ ->
-        false
+      %Run{} = run -> run_answers_for?(run, Fingerprint.current(scope, source))
+      _ -> false
     end
   end
 
@@ -907,10 +903,44 @@ defmodule CodeMySpec.Analysis do
 
   defp stale?(source, fingerprints, latest) do
     case latest[source] do
-      %Run{status: :completed, input_fingerprint: fp} -> fp != fingerprints[source]
+      %Run{status: :completed} = run -> not run_answers_for?(run, fingerprints[source])
       _ -> true
     end
   end
+
+  # Does this run's answer describe `current`?
+  #
+  # Two fingerprints are recorded and only one was ever read. `input_fingerprint`
+  # is stamped at enqueue — the tree we *asked* about. `completed_fingerprint` is
+  # stamped at reconcile — the tree the run *answered* about. The reconciler has
+  # written both since 7a7eed33 and called out the distinction as "the difference
+  # between a result that waiting will refresh and one that no amount of waiting
+  # can". Nothing consumed it.
+  #
+  # Judging on input alone is what no amount of waiting fixes. The ordinary
+  # sequence is: edit code, a stop enqueues a run at F1, keep working, the run
+  # reads the edited files and completes at F2. Its answer describes F2 and it is
+  # marked stale against F1 forever, so the next stop enqueues another run, which
+  # the next edit invalidates in the same way. For any analyzer slower than the
+  # edit rate that never converges — story 896 sat green through four sweeps
+  # unable to latch, and `Coverage`'s moduledoc records the same trap for exunit
+  # at ~2m20s.
+  #
+  # Either matching is enough:
+  #
+  #   input == current      nothing moved between ask and now
+  #   completed == current  the tree at answer time is the tree now
+  #
+  # The second is the weaker claim — a run spanning an edit read some files
+  # before it and some after, so its answer is a mixture — and it is the one that
+  # terminates. The mixture is bounded by the fact that anything the run got
+  # wrong shows up as a problem on the next sweep, whereas the alternative is a
+  # gate that cannot be passed by doing the work correctly.
+  defp run_answers_for?(%Run{} = run, current) when is_binary(current) do
+    run.input_fingerprint == current or run.completed_fingerprint == current
+  end
+
+  defp run_answers_for?(_run, _current), do: false
 
   # Compile first: it's the cheapest signal and every other source
   # short-circuits on its errors.
