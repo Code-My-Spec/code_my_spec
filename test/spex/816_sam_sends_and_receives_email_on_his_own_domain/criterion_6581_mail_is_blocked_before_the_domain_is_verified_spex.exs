@@ -38,8 +38,12 @@ defmodule CodeMySpecSpex.Story816.Criterion6581Spex do
       end
 
       then_ "he is told to verify the domain and cannot send", context do
-        assert context.html =~ "verify" or context.html =~ "Verify",
-               "expected a notice that the domain must be verified before mail flows"
+        # The notice itself. `html =~ "verify" or html =~ "Verify"` is two
+        # common words against a whole page, and the disjunction widened it
+        # further — the assertion held whether or not the notice rendered.
+        assert has_element?(context.view, "[data-test='verify-notice']"),
+               "expected a notice that the domain must be verified before mail flows, " <>
+                 "got:\n#{context.html}"
 
         refute has_element?(context.view, "[data-test='compose-form']"),
                "expected no compose surface while the domain is unverified"

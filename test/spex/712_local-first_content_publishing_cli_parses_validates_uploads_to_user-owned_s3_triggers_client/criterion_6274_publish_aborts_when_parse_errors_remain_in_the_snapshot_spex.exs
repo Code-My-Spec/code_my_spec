@@ -80,11 +80,12 @@ defmodule CodeMySpecSpex.Story712.Criterion6274Spex do
       then_ "publish errors naming the file and writes/triggers nothing", context do
         html = render(context.view)
 
-        assert html =~ "broken",
-               "the publish error must name the failing file"
-
-        assert has_element?(context.view, "[data-test='publish-error']"),
-               "publish must surface a blocking error, not proceed"
+        # Read inside the error alert. `html =~ "broken"` was the whole page,
+        # which lists `broken.md` in the content table whether or not the error
+        # names it — so the criterion's own subject, that the error names the
+        # failing file, was the part not being checked.
+        assert has_element?(context.view, "[data-test='publish-error']", "broken"),
+               "publish must surface a blocking error naming the failing file, got:\n#{html}"
 
         refute_received {:s3_put, _target},
                         "no manifest or blob may be written to S3 when parse errors remain"

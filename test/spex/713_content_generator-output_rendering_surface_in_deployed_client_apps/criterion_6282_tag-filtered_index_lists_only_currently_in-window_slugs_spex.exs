@@ -69,8 +69,8 @@ defmodule CodeMySpecSpex.Story713.Criterion6282Spex do
         # waits for *those* to become true.
         eventually(fn ->
           index = html_response(get(build_conn(), "/blog/tag/ai"), 200)
-          assert index =~ "p1"
-          assert index =~ "p2"
+          assert index =~ "/blog/p1"
+          assert index =~ "/blog/p2"
         end)
 
         {:ok, context}

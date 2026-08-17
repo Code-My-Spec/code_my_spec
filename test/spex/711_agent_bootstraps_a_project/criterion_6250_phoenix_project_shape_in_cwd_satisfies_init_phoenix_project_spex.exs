@@ -26,21 +26,23 @@ defmodule CodeMySpecSpex.Story711.Criterion6250Spex do
       end
 
       when_ "the engineer opens the PhoenixProject per-step page", context do
-        {:ok, _view, html} =
+        {:ok, view, html} =
           live(
             context.conn,
             "/app/projects/#{context.project.id}/init/phoenix_project"
           )
 
-        {:ok, Map.put(context, :html, html)}
+        {:ok, Map.merge(context, %{view: view, html: html})}
       end
 
       then_ "the step shows the Done badge", context do
-        assert context.html =~ "badge-success",
-               "expected the PhoenixProject per-step page to show a success badge, got:\n#{context.html}"
-
-        assert context.html =~ "Done",
-               "expected the PhoenixProject per-step page to render the literal Done badge, got:\n#{context.html}"
+        # The badge, not the page. `html =~ "badge-success"` is also true of the
+        # checklist in the sidebar, which carries a green tick for every step
+        # already done — so both assertions passed on a page where *this* step
+        # was not done. The sidebar ticks render "✓", so asking for the
+        # success badge that reads "Done" names this step's badge alone.
+        assert has_element?(context.view, "span.badge-success", "Done"),
+               "expected the PhoenixProject step's own badge to read Done, got:\n#{context.html}"
 
         {:ok, context}
       end

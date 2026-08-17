@@ -46,8 +46,12 @@ defmodule CodeMySpecSpex.Story816.Criterion6596Spex do
       then_ "the missed message is recorded and a count is shown", context do
         html = render(context.view)
 
-        assert html =~ "Synced",
-               "expected the admin to see how many messages were synced"
+        # The count, since that is what the step claims is shown. `html =~
+        # "Synced"` passed on the word alone — it would have held for "Synced 0
+        # message(s)", which is the one outcome this criterion exists to rule
+        # out. The provider has exactly one message the project never recorded.
+        assert html =~ "Synced 1 message(s) — 1 new",
+               "expected the admin to see how many messages were synced, got:\n#{html}"
 
         # The recovered message now shows in the mailbox inbox.
         {:ok, _mail_view, mail_html} =

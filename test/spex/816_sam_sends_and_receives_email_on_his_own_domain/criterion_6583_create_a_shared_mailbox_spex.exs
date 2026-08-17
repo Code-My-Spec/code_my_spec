@@ -45,11 +45,12 @@ defmodule CodeMySpecSpex.Story816.Criterion6583Spex do
       then_ "a shared mailbox appears", context do
         html = render(context.view)
 
-        assert html =~ "hello@#{@domain}",
-               "expected the new shared mailbox to be listed"
-
-        assert html =~ "Shared" or html =~ "shared",
-               "expected the mailbox to be marked shared (no assigned user)"
+        # One row, both facts. The page's own "assign to" dropdown carries the
+        # option "Shared (no user)", so `html =~ "Shared"` was true before the
+        # mailbox existed — and the two assertions could not tell that *this*
+        # address is the one marked shared.
+        assert has_element?(context.view, "tr", ~r/hello@#{@domain}[\s\S]*Shared/),
+               "expected the new mailbox to be listed and marked shared, got:\n#{html}"
 
         {:ok, context}
       end

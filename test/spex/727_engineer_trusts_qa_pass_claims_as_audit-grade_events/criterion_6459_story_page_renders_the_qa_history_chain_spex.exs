@@ -55,7 +55,7 @@ defmodule CodeMySpecSpex.Story727.Criterion6459Spex do
             frame
           )
 
-        {:ok, context}
+        {:ok, Map.put(context, :attempt_ids, attempt_ids)}
       end
 
       when_ "the engineer navigates to the local story page", context do
@@ -66,9 +66,16 @@ defmodule CodeMySpecSpex.Story727.Criterion6459Spex do
       end
 
       then_ "the QA history section renders all three attempts in order", context do
-        assert context.html =~ "alpha"
-        assert context.html =~ "beta"
-        assert context.html =~ "gamma"
+        # Position, not presence. "In order" is the claim and only presence was
+        # checked — three attempts rendered newest-last would have passed. The
+        # markers were also the wrong thing to read: they are scenario names,
+        # which the page prints twice per card. The cards carry the attempt id.
+        [alpha, beta, gamma] = context.attempt_ids
+        positions = Enum.map([gamma, beta, alpha], &card_position!(context.html, &1))
+
+        assert positions == Enum.sort(positions),
+               "expected the newest attempt first, got card positions " <>
+                 "#{inspect(Enum.zip([:gamma, :beta, :alpha], positions))}"
 
         {:ok, context}
       end
@@ -91,4 +98,18 @@ defmodule CodeMySpecSpex.Story727.Criterion6459Spex do
       end
     end
   end
+
+  # Where an attempt's card starts in the document. `desc: inserted_at,
+  # desc: id` orders the list, so ties are broken and the order is a fact
+  # about the page rather than a race.
+  defp card_position!(html, attempt_id) do
+    html
+    |> :binary.match("qa-attempt-#{attempt_id}")
+    |> position!(attempt_id, html)
+  end
+
+  defp position!({start, _length}, _attempt_id, _html), do: start
+
+  defp position!(:nomatch, attempt_id, html),
+    do: raise("expected a card for attempt #{attempt_id}, got: #{html}")
 end

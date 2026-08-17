@@ -57,9 +57,12 @@ defmodule CodeMySpecSpex.Story688.Criterion5974Spex do
       then_ "the sync result panel renders without an error block", context do
         html = render(context.files_live)
 
-        # Anchor: the success panel rendered.
-        assert html =~ "Files"
-        assert html =~ "Changed files"
+        # The success panel, not the page. `html =~ "Files"` is the name of the
+        # page it is already on, and both labels render inside the panel that
+        # only appears once a sync is done — so asking for the panel is the
+        # anchor the comment claimed these two were.
+        assert has_element?(context.files_live, "[role='alert'].alert-success", "Changed files"),
+               "expected the sync result panel to have rendered, got:\n#{html}"
 
         refute html =~ "Sync failed",
                "Expected sync to succeed without raising an embedding-unavailability error, got:\n#{html}"
