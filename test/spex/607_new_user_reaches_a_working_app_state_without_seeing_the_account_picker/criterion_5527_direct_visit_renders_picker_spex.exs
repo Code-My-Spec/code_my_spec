@@ -18,6 +18,8 @@ defmodule CodeMySpecSpex.Story607.Criterion5527Spex do
   spex "Direct visit to /app/accounts/picker renders the picker" do
     scenario "Authenticated user manually navigates to the picker" do
       given_ "the user has an active account", context do
+        # given: already true — `setup :setup_active_account` creates an account
+        # and makes it the active one, which is this precondition entire.
         {:ok, context}
       end
 

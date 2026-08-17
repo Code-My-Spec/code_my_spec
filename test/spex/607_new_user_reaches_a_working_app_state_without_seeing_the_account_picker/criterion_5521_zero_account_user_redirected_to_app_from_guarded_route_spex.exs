@@ -18,6 +18,10 @@ defmodule CodeMySpecSpex.Story607.Criterion5521Spex do
   spex "Zero-account user visiting a guarded route is redirected to /app" do
     scenario "User with zero accounts is redirected to /app from /app/projects" do
       given_ "the user is logged in with zero accounts", context do
+        # given: already true — `setup :register_and_log_in_user` creates and
+        # logs in a fresh user, and a fresh user owns no accounts. Zero is the
+        # starting state; the other criteria in this story are the ones that
+        # have to build something.
         {:ok, context}
       end
 

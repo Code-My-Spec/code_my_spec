@@ -115,23 +115,13 @@ defmodule CodeMySpec.SpexGivensTest do
   # (963-974, 985) is deliberately absent — it was cleared, and this test is
   # what keeps it cleared.
   @baseline [
-    "test/spex/460_bdd_specification_lifecycle/criterion_5531_missing_spec_file_is_reported_with_the_criterion_id_and_expected_path_spex.exs",
-    "test/spex/460_bdd_specification_lifecycle/criterion_5536_specs_that_exist_parse_have_scenarios_with_steps_and_compile_return_valid_spex.exs",
-    "test/spex/460_bdd_specification_lifecycle/criterion_5539_compilation_failure_produces_a_diagnostic_listing_each_errors_file_and_line_spex.exs",
     "test/spex/460_bdd_specification_lifecycle/criterion_5556_every_component_types_prompt_scaffold_opens_with_use_app_spex_case_as_the_only_test_case_use_spex.exs",
-    "test/spex/460_bdd_specification_lifecycle/criterion_5557_spec_written_with_conncase_instead_of_spex_case_fails_to_compile_on_undefined_spex_macro_spex.exs",
     "test/spex/602_oauth_registration_logs_the_user_in_via_the_callback/criterion_5493_first_google_signup_creates_a_user_with_confirmed_at_set_spex.exs",
     "test/spex/602_oauth_registration_logs_the_user_in_via_the_callback/criterion_5495_second_google_sign-in_returns_the_same_user_with_no_duplicate_records_spex.exs",
     "test/spex/602_oauth_registration_logs_the_user_in_via_the_callback/criterion_5496_same_email_from_a_different_oauth_provider_links_to_the_existing_user_instead_of_creating_a_new_one_spex.exs",
     "test/spex/603_onboarding_lives_at_app_and_reveals_the_next_setup_step/criterion_5502_routes_redirect_to_app_when_user_lacks_account_or_project_spex.exs",
-    "test/spex/607_new_user_reaches_a_working_app_state_without_seeing_the_account_picker/criterion_5521_zero_account_user_redirected_to_app_from_guarded_route_spex.exs",
-    "test/spex/607_new_user_reaches_a_working_app_state_without_seeing_the_account_picker/criterion_5523_single_account_user_reaches_projects_without_picker_spex.exs",
-    "test/spex/607_new_user_reaches_a_working_app_state_without_seeing_the_account_picker/criterion_5524_multi_account_user_auto_picks_first_bypassing_picker_spex.exs",
-    "test/spex/607_new_user_reaches_a_working_app_state_without_seeing_the_account_picker/criterion_5527_direct_visit_renders_picker_spex.exs",
     "test/spex/677_spex_boundary_readiness_gate/criterion_5751_empty_fixtures_bridge_file_still_passes_the_checker_spex.exs",
     "test/spex/686_ai_assisted_story_management/criterion_5912_agent_creates_and_applies_a_tag_spex.exs",
-    "test/spex/688_always_fresh_project_documentation_search/criterion_5973_the_agents_mcp_tool_list_does_not_expose_embed_docs_spex.exs",
-    "test/spex/689_always_fresh_hex_documentation_search/criterion_5981_the_agents_mcp_tool_list_does_not_expose_embed_hexdocs_spex.exs",
     "test/spex/70_architecture_design/criterion_5289_architect_links_every_unsatisfied_story_to_at_least_one_component_spex.exs",
     "test/spex/70_architecture_design/criterion_5290_architect_leaves_an_unsatisfied_story_without_any_component_link_spex.exs",
     "test/spex/70_architecture_design/criterion_5313_architect_declares_a_dependency_on_a_component_that_does_not_exist_spex.exs",
@@ -198,7 +188,7 @@ defmodule CodeMySpec.SpexGivensTest do
 
   defp scan do
     for path <- Path.wildcard("test/spex/**/*_spex.exs"),
-        source = File.read!(path),
+        source = path |> File.read!() |> blank_heredocs(),
         [whole, indent, title, body] <- Regex.scan(@given_block, source),
         not String.contains?(strip_comments(body), @establishes),
         not String.contains?(body, @already_established) do
@@ -225,6 +215,36 @@ defmodule CodeMySpec.SpexGivensTest do
   # Whole-line comments only. A `#` inside a heredoc line would be stripped too,
   # which could flag a block whose only establishing call sits in such a line —
   # no block in the suite is shaped that way, and the test itself would catch it.
+  # A spex that writes a spec file writes spex source, and story 460 does
+  # exactly that: five of its criteria embed an example
+  #
+  #     given_ "setup", _context do
+  #       :ok
+  #     end
+  #
+  # inside a heredoc, as the fixture whose parsing is under test. Scanning raw
+  # text cannot tell that from code, so all five were offenders for containing
+  # a picture of one — and sat on the baseline for it.
+  #
+  # Blanked rather than deleted, line for line, so the line numbers this
+  # reports still point at the right place in the file.
+  defp blank_heredocs(source) do
+    source
+    |> String.split("\n")
+    |> Enum.map_reduce(false, fn line, inside? ->
+      delimiter? = String.contains?(line, ~s("""))
+
+      case {inside?, delimiter?} do
+        {false, false} -> {line, false}
+        {false, true} -> {line, true}
+        {true, false} -> {"", true}
+        {true, true} -> {"", false}
+      end
+    end)
+    |> elem(0)
+    |> Enum.join("\n")
+  end
+
   defp strip_comments(body) do
     body
     |> String.split("\n")

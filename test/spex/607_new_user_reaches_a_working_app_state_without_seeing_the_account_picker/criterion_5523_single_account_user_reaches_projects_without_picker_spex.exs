@@ -28,6 +28,11 @@ defmodule CodeMySpecSpex.Story607.Criterion5523Spex do
   spex "Single-account user with no active selection auto-advances past the picker" do
     scenario "User with one account loads /app/projects without seeing the picker" do
       given_ "the user has one account but no active selection", context do
+        # given: already true — the `setup` block above creates one owned
+        # account through `Fixtures.account_with_owner_fixture/2` and
+        # deliberately does not select it. Both halves are the precondition,
+        # and the second half is an omission, which is why it is worth saying
+        # out loud.
         {:ok, context}
       end
 

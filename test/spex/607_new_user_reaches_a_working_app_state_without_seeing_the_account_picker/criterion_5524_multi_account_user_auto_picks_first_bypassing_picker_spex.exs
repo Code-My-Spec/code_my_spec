@@ -29,6 +29,10 @@ defmodule CodeMySpecSpex.Story607.Criterion5524Spex do
   spex "Multi-account user with no active selection still bypasses the picker" do
     scenario "User with multiple accounts auto-picks the first instead of seeing the picker" do
       given_ "the user has two accounts but no active selection", context do
+        # given: already true — the `setup` block above creates two owned
+        # accounts through `Fixtures.account_with_owner_fixture/2` and selects
+        # neither. Two rather than one is what separates this criterion from
+        # 5523.
         {:ok, context}
       end
 

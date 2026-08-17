@@ -28,9 +28,10 @@ defmodule CodeMySpecSpex.Story688.Criterion5973Spex do
   spex "Agent cannot invoke a manual embed_docs action against the local MCP server" do
     scenario "embed_docs is absent from the registered tool list" do
       given_ "an agent connected to the local MCP server", context do
-        # The local MCP server is the LocalServer module itself —
-        # connection is implicit in being able to enumerate its
-        # registered components.
+        # given: already true — there is nothing to connect to. The local MCP
+        # server is the `LocalServer` module, and its tool list is a static
+        # registration read by `__components__/1`; being able to enumerate it
+        # is what "connected" means here.
         {:ok, context}
       end
 
