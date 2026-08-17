@@ -23,12 +23,30 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.AskUser do
   So this returns a question id and `check_answer` fetches the reply when the
   agent next looks. In between the agent can stop — the stop hook brings it
   back, which is the loop that already exists.
+
+  ## Why this no longer goes over HTTP
+
+  It used to hand off to `QuestionClient`, which POSTed to
+  `/api/questions/ask` on the configured server. That made sense when the MCP
+  server ran in the CLI and the rows lived in the cloud. It does not now: this
+  runs *in* the cloud app, in the same process as `Notifications` and against
+  the same database, so the request left the VM and came back to call the
+  function that was already in scope.
+
+  The cost was not only a round trip. It made the agent's own asking surface
+  undrivable from a spex — in-process it answers `{:http, 401}`, because there
+  is no server to authenticate to — so nothing has ever tested it. That is
+  story 896's `given_`, and John's instruction: "stop arbitraging Claude's ask
+  user question and implement our own mcp tool."
+
+  `QuestionClient` stays for the CLI, which genuinely is a different process.
   """
 
   use Anubis.Server.Component, type: :tool
 
   alias Anubis.Server.Response
-  alias CodeMySpec.Notifications.QuestionClient
+  alias CodeMySpec.Notifications
+  alias CodeMySpec.Sessions
 
   schema do
     field :message, :string,
@@ -38,14 +56,9 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.AskUser do
 
   @impl true
   def execute(%{message: message}, frame) when is_binary(message) and message != "" do
-    question = %{
-      "question" => message,
-      "header" => nil,
-      "multiSelect" => false,
-      "options" => []
-    }
+    scope = frame.assigns[:current_scope]
 
-    case QuestionClient.ask([question], "Claude has a message", harness_id(frame)) do
+    case ask(scope, message) do
       {:ok, id} ->
         {:reply,
          Response.tool()
@@ -58,11 +71,11 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.AskUser do
          will bring you back. Call `check_answer` with that id for the reply.
          """), frame}
 
-      {:error, :not_configured} ->
+      {:error, :no_user} ->
         {:reply,
          Response.tool()
          |> Response.error(
-           "Not connected to CodeMySpec, so the user can't be reached remotely. Ask in the terminal instead."
+           "No user on this scope, so there is nobody to ask. Ask in the terminal instead."
          ), frame}
 
       {:error, reason} ->
@@ -75,12 +88,31 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.AskUser do
     {:reply, Response.tool() |> Response.error("message is required"), frame}
   end
 
+  defp ask(%{user: %{id: user_id}} = scope, message) do
+    attrs = %{
+      "questions" => [
+        %{"question" => message, "header" => nil, "multiSelect" => false, "options" => []}
+      ],
+      "title" => "Claude has a message",
+      # The harness, not the session: the asking agent's scope carries a working
+      # copy, and the session running there is what a conversation is keyed by.
+      # Resolved here for the same reason `QuestionController.ask` resolves it —
+      # the agent does not know its own session id.
+      "session_external_id" => Sessions.external_id_for_harness(harness_id(scope))
+    }
+
+    case Notifications.create_question_request(user_id, attrs) do
+      {:ok, request} -> {:ok, request.id}
+      {:error, changeset} -> {:error, changeset}
+    end
+  end
+
+  defp ask(_scope, _message), do: {:error, :no_user}
+
   # The working copy this agent is in, when there is one. `HarnessScope` puts it
   # on the scope from the id in the MCP URL; a caller reaching this from
   # somewhere unaddressed has none, and the question is still asked — it simply
   # has no conversation to be shown in.
-  defp harness_id(%{assigns: %{current_scope: %{active_harness_id: id}}}) when is_binary(id),
-    do: id
-
-  defp harness_id(_frame), do: nil
+  defp harness_id(%{active_harness_id: id}) when is_binary(id), do: id
+  defp harness_id(_scope), do: nil
 end

@@ -466,7 +466,12 @@ defmodule CodeMySpecWeb.ChatComponents do
           </dl>
         </div>
 
-        <form :if={@request.status == "pending"} phx-submit={@on_submit} class="mt-2 space-y-6">
+        <form
+          :if={@request.status == "pending"}
+          phx-submit={@on_submit}
+          data-test="question-form"
+          class="mt-2 space-y-6"
+        >
           <fieldset :for={{question, i} <- Enum.with_index(@request.questions)} class="space-y-2">
             <div>
               <span :if={question["header"]} class="badge badge-primary badge-sm">

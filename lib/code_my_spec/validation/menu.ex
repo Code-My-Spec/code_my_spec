@@ -57,8 +57,10 @@ defmodule CodeMySpec.Validation.Menu do
   """
 
   alias CodeMySpec.Issues
+  alias CodeMySpec.Notifications
   alias CodeMySpec.Problems.ProblemRepository
   alias CodeMySpec.Requirements.NodeRepository
+  alias CodeMySpec.Sessions
 
   @tools %{
     problems: "list_problems",
@@ -78,7 +80,7 @@ defmodule CodeMySpec.Validation.Menu do
   def render(scope, continuous? \\ false) do
     case live(scope) do
       [] -> ""
-      [top | rest] -> directive(top) <> tally(rest) <> offers() <> tap_out_offer(continuous?)
+      [top | rest] -> directive(top) <> tally(rest) <> offers(scope) <> tap_out_offer(continuous?)
     end
   end
 
@@ -211,12 +213,54 @@ defmodule CodeMySpec.Validation.Menu do
   #
   # What is left in the tiers is only what the hook can both detect and rank:
   # rows describing work in this working copy.
-  defp offers do
-    "\n\nIf a question you asked has been answered, `check_answer` has the reply." <>
+  defp offers(scope) do
+    answer_offer(open_questions(scope)) <>
       "\n\nIf you need something from the user to go further, call `ask_user` — " <>
       "nothing here can tell that you do." <>
       "\n\nBefore concluding anything you are unsure of, `semantic_search` covers " <>
       "this project's own research and decisions as well as framework reference — " <>
       "a lot of what looks like a missing answer is already written down."
   end
+
+  # The count is a fact about now; the offer without it is boilerplate that
+  # reads identically whether nothing is waiting or three things are. Story 896.
+  #
+  # It stays an *offer* rather than becoming a class, which is the distinction
+  # this module exists to hold: a pending question is detectable but is not work
+  # in this working copy, so it cannot be ranked against problems. It rides a
+  # refusal caused by something else and never causes one — an unanswered
+  # question that could refuse a stop would pin the agent in the loop with no
+  # work available to escape.
+  defp answer_offer(0) do
+    "\n\nIf a question you asked has been answered, `check_answer` has the reply."
+  end
+
+  defp answer_offer(1) do
+    "\n\n1 question is open and waiting on the user — `list_user_questions` shows it, " <>
+      "`check_answer` collects a reply once it lands."
+  end
+
+  defp answer_offer(n) do
+    "\n\n#{n} questions are open and waiting on the user — `list_user_questions` shows them, " <>
+      "`check_answer` collects a reply once one lands."
+  end
+
+  # Resolved from the working copy, the same asymmetry `ask_user` works around:
+  # the scope carries a harness and never a session id.
+  #
+  # Never raises the stop. A question count that could fail the hook would make
+  # asking a question a liability, and the whole point is that asking is cheap.
+  defp open_questions(scope) do
+    with id when is_binary(id) <- harness_id(scope),
+         external_id when is_binary(external_id) <- Sessions.external_id_for_harness(id) do
+      external_id
+      |> Notifications.list_question_requests_for_session()
+      |> Enum.count(&(&1.status == "pending"))
+    else
+      _ -> 0
+    end
+  end
+
+  defp harness_id(%{active_harness_id: id}) when is_binary(id), do: id
+  defp harness_id(_scope), do: 0
 end

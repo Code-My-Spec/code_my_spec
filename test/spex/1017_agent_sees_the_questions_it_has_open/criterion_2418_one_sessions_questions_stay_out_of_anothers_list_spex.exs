@@ -47,35 +47,19 @@ defmodule CodeMySpecSpex.Story1017.Criterion2418Spex do
   alias CodeMySpec.McpServers.Tasks.Tools.AskUser
   alias CodeMySpec.McpServers.Tasks.Tools.ListUserQuestions
 
-  @mine "Which approach do you want here?"
-  @theirs "Should the other worktree ship behind a flag?"
+  @earlier "Which approach do you want here?"
+  @later "Should this ship behind a flag?"
 
   setup :register_log_in_setup_account
   setup :setup_active_project
 
   spex "A list is scoped to the session that asked" do
-    scenario "another session on the same user has a question open" do
-      given_ "a session exists and asks a question", context do
-        context = start_session(context, "spex-2418-mine")
+    scenario "an earlier session on this working copy has a question open" do
+      given_ "an earlier session asked a question", context do
+        context = start_session(context, "spex-2418-earlier")
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:reply, response, _frame} = AskUser.execute(%{message: @mine}, frame)
-
-        refute response.isError,
-               "asking is the agent's own surface and has to work here. " <>
-                 "Got: #{response_text(response)}"
-
-        {:ok, Map.put(context, :mine_session_id, context.session_id)}
-      end
-
-      given_ "a second session starts and asks a different question", context do
-        # Same user, same working copy, different conversation. A question from
-        # another *user* would be excluded by ownership alone and would prove
-        # nothing about session scoping.
-        frame = %Frame{assigns: %{current_scope: context.scope}}
-        context = start_session(context, "spex-2418-theirs")
-
-        {:reply, response, _frame} = AskUser.execute(%{message: @theirs}, frame)
+        {:reply, response, _frame} = AskUser.execute(%{message: @earlier}, frame)
 
         refute response.isError,
                "asking is the agent's own surface and has to work here. " <>
@@ -84,22 +68,56 @@ defmodule CodeMySpecSpex.Story1017.Criterion2418Spex do
         {:ok, context}
       end
 
-      when_ "the first session's agent lists its questions", context do
-        scope = Map.put(context.scope, :active_session_external_id, context.mine_session_id)
-        frame = %Frame{assigns: %{current_scope: scope}}
+      given_ "a later session starts and asks its own question", context do
+        # Same user, same working copy, a new conversation. A question from
+        # another *user* would be excluded by ownership alone and would prove
+        # nothing about session scoping.
+        #
+        # The wait is not padding. `Sessions.external_id_for_harness/1` resolves
+        # "newest wins" by `order_by desc: :inserted_at, limit: 1`, and
+        # `sessions` carries `timestamps(type: :utc_datetime)` — second
+        # granularity. Two sessions started inside one second tie, the limit
+        # returns whichever row comes first, and both sessions' questions land
+        # under one id. Without this the scenario cannot even establish its own
+        # Given: there is no "earlier" session, only two indistinguishable ones.
+        # Filed separately; the fix is usec timestamps, not a sleep in a spec.
+        Process.sleep(1_100)
+
+        context = start_session(context, "spex-2418-later")
+        frame = %Frame{assigns: %{current_scope: context.scope}}
+
+        {:reply, response, _frame} = AskUser.execute(%{message: @later}, frame)
+
+        refute response.isError,
+               "asking is the agent's own surface and has to work here. " <>
+                 "Got: #{response_text(response)}"
+
+        {:ok, context}
+      end
+
+      when_ "the later session's agent lists its questions", context do
+        frame = %Frame{assigns: %{current_scope: context.scope}}
         {:reply, response, _frame} = ListUserQuestions.execute(%{}, frame)
 
         {:ok, Map.put(context, :response, response)}
       end
 
-      then_ "the other session's question is not returned", context do
+      then_ "its own question is listed", context do
+        # The anchor: without it the refutation below passes against an empty
+        # list, which is also what a broken tool returns.
         text = response_text(context.response)
 
-        refute text =~ @theirs,
+        assert text =~ @later, "the current session's own question is missing. Got:\n#{text}"
+
+        {:ok, Map.put(context, :text, text)}
+      end
+
+      then_ "the earlier session's question is not returned", context do
+        refute context.text =~ @earlier,
                "a question belonging to another conversation must not appear " <>
                  "here — an agent that can see it can act on it, which is the " <>
                  "cross-working-copy bleed this scoping exists to prevent. " <>
-                 "Got:\n#{text}"
+                 "Got:\n#{context.text}"
 
         {:ok, context}
       end
