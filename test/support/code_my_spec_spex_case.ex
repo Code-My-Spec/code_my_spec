@@ -451,11 +451,19 @@ defmodule CodeMySpecSpex.Case do
     # answers. `Widget.verify_present/2` reads the page for two published
     # markers — present and openable are different failures, and a bundle that
     # renders the tag while never initialising is the second one.
+    # Markers from `Widget.markers/0`, not written out again here. They are a
+    # published contract, and a fake that copies it keeps serving the old
+    # strings after the contract moves — so the criteria pass while the real
+    # widget stops being found, which is the failure the contract exists to
+    # prevent.
+    markers = CodeMySpec.Provisioning.Widget.markers()
+
     Req.Test.stub(CodeMySpec.Provisioning.Widget, fn conn ->
       Plug.Conn.send_resp(
         conn,
         200,
-        ~s(<html><body><div data-cms-widget><button data-cms-widget-toggle>?</button></div></body></html>)
+        "<html><body><div #{markers.present}>" <>
+          "<button #{markers.toggle}>?</button></div></body></html>"
       )
     end)
 
@@ -618,12 +626,14 @@ defmodule CodeMySpecSpex.Case do
   nothing degrades perfectly and proves nothing.
   """
   def widget_backend_is_down(_context) do
+    markers = CodeMySpec.Provisioning.Widget.markers()
+
     Req.Test.stub(CodeMySpec.Provisioning.Widget, fn conn ->
       Plug.Conn.send_resp(conn, 200, """
       <html><body>
         <h1>Sam's site</h1>
-        <div data-cms-widget data-cms-widget-state="unavailable">
-          <button data-cms-widget-toggle>?</button>
+        <div #{markers.present} #{markers.state}="unavailable">
+          <button #{markers.toggle}>?</button>
         </div>
       </body></html>
       """)

@@ -78,6 +78,19 @@ defmodule CodeMySpec.Provisioning.Widget do
   @present_marker "data-cms-widget"
   @toggle_marker "data-cms-widget-toggle"
 
+  @doc """
+  The markers a prober looks for, as data.
+
+  They are a published contract — the moduledoc above says so — and a contract
+  nobody can read is one every consumer copies. The spex fakes serve a page for
+  the deploy and widget probes to fetch, and they had these two strings written
+  out again: change the contract and the fake keeps serving the old markers, so
+  the criteria pass while the real widget stops being found.
+  """
+  @spec markers() :: %{present: String.t(), toggle: String.t(), state: String.t()}
+  def markers,
+    do: %{present: @present_marker, toggle: @toggle_marker, state: "data-cms-widget-state"}
+
   @type result :: %{
           state: :proven | :install_failed | :absent | :not_proven,
           install: map() | nil,

@@ -279,7 +279,7 @@ defmodule CodeMySpecSpex.Fakes.Shell do
   defp dump_key(environment) do
     stamp = DateTime.utc_now() |> DateTime.to_iso8601() |> String.replace(":", "-")
 
-    "dumps/#{environment}/app-#{stamp}.sql.gz"
+    "#{CodeMySpec.Provisioning.Storage.dumps_prefix()}#{environment}/app-#{stamp}.sql.gz"
   end
 
   # A box on the far side of the ssh, answering about itself.
