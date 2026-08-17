@@ -39,7 +39,7 @@ defmodule CodeMySpecSpex.Story1012.Criterion2349Spex do
         session = "spex-fixing-#{System.unique_integer([:positive])}"
 
         use_cmd_cassette "pipeline_exunit_failure", record: :none do
-          hook("/api/hooks/stop", context, %{
+          post_hook(context, "/api/hooks/stop", %{
             "session_id" => "spex-seed-#{System.unique_integer([:positive])}",
             "test_output_files" => %{
               "spex" => Path.expand("test/fixtures/validation/spex_green.jsonl"),
@@ -49,7 +49,7 @@ defmodule CodeMySpecSpex.Story1012.Criterion2349Spex do
           })
         end
 
-        told = hook("/api/hooks/post-tool-use", context, tool_call(session))
+        told = post_hook(context, "/api/hooks/post-tool-use", tool_call(session))
 
         assert (told["systemMessage"] || "") =~ "exunit",
                "the premise failed: nothing was reported as failing"
@@ -67,7 +67,7 @@ defmodule CodeMySpecSpex.Story1012.Criterion2349Spex do
             "defmodule ExampleContext do\n  @moduledoc false\n  def fixed, do: :ok\nend\n"
           )
 
-        hook("/api/hooks/post-tool-use", context, %{
+        post_hook(context, "/api/hooks/post-tool-use", %{
           "session_id" => context.session,
           "tool_name" => "Write",
           "tool_input" => %{"file_path" => "lib/example_context.ex"}
@@ -77,7 +77,7 @@ defmodule CodeMySpecSpex.Story1012.Criterion2349Spex do
       end
 
       then_ "it is not told the analyzer is passing", context do
-        after_fix = hook("/api/hooks/post-tool-use", context, tool_call(context.session))
+        after_fix = post_hook(context, "/api/hooks/post-tool-use", tool_call(context.session))
         message = after_fix["systemMessage"] || ""
 
         refute message =~ ~r/passing|green|clean|resolved|fixed/i,
@@ -95,7 +95,9 @@ defmodule CodeMySpecSpex.Story1012.Criterion2349Spex do
         # the fix is silent by design (criterion 2345), and branching on whether
         # it happened to speak would make this assert whatever the run did.
         fresh = "spex-fresh-#{System.unique_integer([:positive])}"
-        message = hook("/api/hooks/post-tool-use", context, tool_call(fresh))["systemMessage"]
+
+        message =
+          post_hook(context, "/api/hooks/post-tool-use", tool_call(fresh))["systemMessage"]
 
         assert message =~ "exunit",
                "the outstanding failure vanished from the alert without a run having " <>
@@ -111,14 +113,6 @@ defmodule CodeMySpecSpex.Story1012.Criterion2349Spex do
         {:ok, context}
       end
     end
-  end
-
-  defp hook(path, context, params) do
-    Phoenix.ConnTest.build_conn()
-    |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_harness_id)
-    |> Plug.Conn.put_req_header("content-type", "application/json")
-    |> Phoenix.ConnTest.dispatch(CodeMySpecLocalWeb.Endpoint, :post, path, params)
-    |> Phoenix.ConnTest.json_response(200)
   end
 
   defp tool_call(session_id) do

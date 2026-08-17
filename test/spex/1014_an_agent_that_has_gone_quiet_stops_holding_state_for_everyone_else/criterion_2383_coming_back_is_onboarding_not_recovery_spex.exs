@@ -33,7 +33,10 @@ defmodule CodeMySpecSpex.Story1014.Criterion2383Spex do
         Fixtures.go_quiet(returning.active_harness_id, 96)
 
         live = Fixtures.live_agent_scope(context.scope)
-        hook(live, %{"session_id" => "spex-#{System.unique_integer([:positive])}"})
+
+        post_hook(live, "/api/hooks/stop", %{
+          "session_id" => "spex-#{System.unique_integer([:positive])}"
+        })
 
         {:ok, view, _html} =
           live(context.conn, "/app/projects/#{context.project.id}/components")
@@ -67,13 +70,5 @@ defmodule CodeMySpecSpex.Story1014.Criterion2383Spex do
         {:ok, context}
       end
     end
-  end
-
-  defp hook(scope, params) do
-    Phoenix.ConnTest.build_conn()
-    |> Plug.Conn.put_req_header("x-harness-id", scope.active_harness_id)
-    |> Plug.Conn.put_req_header("content-type", "application/json")
-    |> Phoenix.ConnTest.dispatch(@endpoint, :post, "/api/hooks/stop", params)
-    |> Phoenix.ConnTest.json_response(200)
   end
 end

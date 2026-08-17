@@ -53,7 +53,7 @@ defmodule CodeMySpecSpex.Story1014.Criterion2378Spex do
 
       when_ "the quiet agent comes back, presenting the id from its checkout", context do
         report =
-          hook(%{active_harness_id: context.quiet_id}, %{
+          post_hook(%{active_harness_id: context.quiet_id}, "/api/hooks/stop", %{
             "session_id" => "spex-return-#{System.unique_integer([:positive])}"
           })
 
@@ -71,13 +71,5 @@ defmodule CodeMySpecSpex.Story1014.Criterion2378Spex do
         {:ok, context}
       end
     end
-  end
-
-  defp hook(scope, params) do
-    Phoenix.ConnTest.build_conn()
-    |> Plug.Conn.put_req_header("x-harness-id", scope.active_harness_id)
-    |> Plug.Conn.put_req_header("content-type", "application/json")
-    |> Phoenix.ConnTest.dispatch(@endpoint, :post, "/api/hooks/stop", params)
-    |> Phoenix.ConnTest.json_response(200)
   end
 end

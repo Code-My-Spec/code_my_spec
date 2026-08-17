@@ -45,7 +45,7 @@ defmodule CodeMySpecSpex.Story1012.Criterion2340Spex do
             context do
         # A real analyzer result entering the system the way one does.
         use_cmd_cassette "pipeline_exunit_failure", record: :none do
-          hook("/api/hooks/stop", context, %{
+          post_hook(context, "/api/hooks/stop", %{
             "session_id" => context.breaker,
             "test_output_files" => %{
               "spex" => Path.expand("test/fixtures/validation/spex_green.jsonl"),
@@ -59,8 +59,8 @@ defmodule CodeMySpecSpex.Story1012.Criterion2340Spex do
       end
 
       then_ "both agents are told about the failure", context do
-        breaker = hook("/api/hooks/post-tool-use", context, tool_call(context.breaker))
-        bystander = hook("/api/hooks/post-tool-use", context, tool_call(context.bystander))
+        breaker = post_hook(context, "/api/hooks/post-tool-use", tool_call(context.breaker))
+        bystander = post_hook(context, "/api/hooks/post-tool-use", tool_call(context.bystander))
 
         assert (breaker["systemMessage"] || "") =~ "exunit",
                "the agent whose turn produced the failure was not told on its next " <>
@@ -76,7 +76,7 @@ defmodule CodeMySpecSpex.Story1012.Criterion2340Spex do
       end
 
       then_ "neither is told it belongs to somebody else", context do
-        bystander = hook("/api/hooks/post-tool-use", context, tool_call(context.bystander))
+        bystander = post_hook(context, "/api/hooks/post-tool-use", tool_call(context.bystander))
         rendered = inspect(bystander)
 
         refute rendered =~ "another agent" or rendered =~ "not yours",
@@ -90,14 +90,6 @@ defmodule CodeMySpecSpex.Story1012.Criterion2340Spex do
   end
 
   # Hooks live on CodeMySpecLocalWeb; `x-harness-id` names the working copy.
-  defp hook(path, context, params) do
-    Phoenix.ConnTest.build_conn()
-    |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_harness_id)
-    |> Plug.Conn.put_req_header("content-type", "application/json")
-    |> Phoenix.ConnTest.dispatch(CodeMySpecLocalWeb.Endpoint, :post, path, params)
-    |> Phoenix.ConnTest.json_response(200)
-  end
-
   defp tool_call(session_id) do
     %{
       "session_id" => session_id,

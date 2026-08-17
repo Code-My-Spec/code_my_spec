@@ -127,7 +127,7 @@ defmodule CodeMySpecSpex.Story1000.Criterion732Spex do
       given_ "the first agent is working an implementation task", context do
         session_id = "spex-first-agent-#{System.unique_integer([:positive])}"
 
-        hook(context.scope.active_harness_id, "/api/hooks/session-start", %{
+        post_hook(context.scope.active_harness_id, "/api/hooks/session-start", %{
           "session_id" => session_id
         })
 
@@ -157,7 +157,7 @@ defmodule CodeMySpecSpex.Story1000.Criterion732Spex do
       when_ "one agent's analyzer records a failing test", context do
         response =
           use_cmd_cassette "pipeline_exunit_failure", record: :none do
-            hook(context.scope.active_harness_id, "/api/hooks/stop", %{
+            post_hook(context.scope.active_harness_id, "/api/hooks/stop", %{
               "session_id" => context.session_id,
               "test_output_files" => %{
                 "spex" => Path.expand("test/fixtures/validation/spex_green.jsonl"),
@@ -184,7 +184,7 @@ defmodule CodeMySpecSpex.Story1000.Criterion732Spex do
 
       then_ "the other agent's stop hook reports nothing about it", context do
         other =
-          hook(context.second_harness_id, "/api/hooks/stop", %{
+          post_hook(context.second_harness_id, "/api/hooks/stop", %{
             "session_id" => "spex-second-agent-#{System.unique_integer([:positive])}"
           })
 
@@ -211,13 +211,5 @@ defmodule CodeMySpecSpex.Story1000.Criterion732Spex do
   #
   # No `x-working-dir`: the harness id names the working copy, and the server
   # answers where it is. Sending both would let a wrong root pass unnoticed.
-  defp hook(harness_id, path, params) do
-    Phoenix.ConnTest.build_conn()
-    |> Plug.Conn.put_req_header("x-harness-id", harness_id)
-    |> Plug.Conn.put_req_header("content-type", "application/json")
-    |> Phoenix.ConnTest.dispatch(CodeMySpecLocalWeb.Endpoint, :post, path, params)
-    |> Phoenix.ConnTest.json_response(200)
-  end
-
   defp fixture_path(name), do: Path.expand(Path.join(@fixture_dir, name))
 end

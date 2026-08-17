@@ -35,7 +35,7 @@ defmodule CodeMySpecSpex.Story1012.Criterion2345Spex do
         session = "spex-quiet-#{System.unique_integer([:positive])}"
 
         use_cmd_cassette "pipeline_exunit_failure", record: :none do
-          hook("/api/hooks/stop", context, %{
+          post_hook(context, "/api/hooks/stop", %{
             "session_id" => "spex-seed-#{System.unique_integer([:positive])}",
             "test_output_files" => %{
               "spex" => Path.expand("test/fixtures/validation/spex_green.jsonl"),
@@ -45,7 +45,7 @@ defmodule CodeMySpecSpex.Story1012.Criterion2345Spex do
           })
         end
 
-        first = hook("/api/hooks/post-tool-use", context, tool_call(session))
+        first = post_hook(context, "/api/hooks/post-tool-use", tool_call(session))
 
         assert (first["systemMessage"] || "") =~ "exunit",
                "the premise failed: this agent was never told in the first place, so " <>
@@ -55,8 +55,8 @@ defmodule CodeMySpecSpex.Story1012.Criterion2345Spex do
       end
 
       when_ "it makes further tool calls and nothing new has landed", context do
-        second = hook("/api/hooks/post-tool-use", context, tool_call(context.session))
-        third = hook("/api/hooks/post-tool-use", context, tool_call(context.session))
+        second = post_hook(context, "/api/hooks/post-tool-use", tool_call(context.session))
+        third = post_hook(context, "/api/hooks/post-tool-use", tool_call(context.session))
 
         {:ok, context |> Map.put(:second, second) |> Map.put(:third, third)}
       end
@@ -73,14 +73,6 @@ defmodule CodeMySpecSpex.Story1012.Criterion2345Spex do
         {:ok, context}
       end
     end
-  end
-
-  defp hook(path, context, params) do
-    Phoenix.ConnTest.build_conn()
-    |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_harness_id)
-    |> Plug.Conn.put_req_header("content-type", "application/json")
-    |> Phoenix.ConnTest.dispatch(CodeMySpecLocalWeb.Endpoint, :post, path, params)
-    |> Phoenix.ConnTest.json_response(200)
   end
 
   defp tool_call(session_id) do

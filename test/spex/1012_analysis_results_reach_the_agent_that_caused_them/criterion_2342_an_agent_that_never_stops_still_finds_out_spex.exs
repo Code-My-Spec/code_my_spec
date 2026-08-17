@@ -39,7 +39,7 @@ defmodule CodeMySpecSpex.Story1012.Criterion2342Spex do
       given_ "an agent has changed code and an analyzer run is in flight", context do
         session = "spex-working-#{System.unique_integer([:positive])}"
 
-        hook("/api/hooks/post-tool-use", context, %{
+        post_hook(context, "/api/hooks/post-tool-use", %{
           "session_id" => session,
           "tool_name" => "Write",
           "tool_input" => %{"file_path" => "lib/example_context.ex"}
@@ -50,7 +50,7 @@ defmodule CodeMySpecSpex.Story1012.Criterion2342Spex do
 
       when_ "the run completes while the agent is still working", context do
         use_cmd_cassette "pipeline_exunit_failure", record: :none do
-          hook("/api/hooks/stop", context, %{
+          post_hook(context, "/api/hooks/stop", %{
             "session_id" => "spex-someone-else-#{System.unique_integer([:positive])}",
             "test_output_files" => %{
               "spex" => Path.expand("test/fixtures/validation/spex_green.jsonl"),
@@ -65,7 +65,7 @@ defmodule CodeMySpecSpex.Story1012.Criterion2342Spex do
 
       then_ "the agent is told on its next tool call", context do
         told =
-          hook("/api/hooks/post-tool-use", context, %{
+          post_hook(context, "/api/hooks/post-tool-use", %{
             "session_id" => context.session,
             "tool_name" => "Read",
             "tool_input" => %{"file_path" => "lib/example_context.ex"}
@@ -90,13 +90,5 @@ defmodule CodeMySpecSpex.Story1012.Criterion2342Spex do
         {:ok, context}
       end
     end
-  end
-
-  defp hook(path, context, params) do
-    Phoenix.ConnTest.build_conn()
-    |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_harness_id)
-    |> Plug.Conn.put_req_header("content-type", "application/json")
-    |> Phoenix.ConnTest.dispatch(CodeMySpecLocalWeb.Endpoint, :post, path, params)
-    |> Phoenix.ConnTest.json_response(200)
   end
 end

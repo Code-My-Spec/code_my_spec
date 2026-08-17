@@ -34,7 +34,7 @@ defmodule CodeMySpecSpex.Story1012.Criterion2348Spex do
 
       given_ "an analyzer run has finished", context do
         use_cmd_cassette "pipeline_exunit_failure", record: :none do
-          hook("/api/hooks/stop", context, %{
+          post_hook(context, "/api/hooks/stop", %{
             "session_id" => "spex-seed-#{System.unique_integer([:positive])}",
             "test_output_files" => %{
               "spex" => Path.expand("test/fixtures/validation/spex_green.jsonl"),
@@ -49,7 +49,7 @@ defmodule CodeMySpecSpex.Story1012.Criterion2348Spex do
 
       when_ "the agent is told about its failures", context do
         told =
-          hook("/api/hooks/post-tool-use", context, %{
+          post_hook(context, "/api/hooks/post-tool-use", %{
             "session_id" => "spex-asking-#{System.unique_integer([:positive])}",
             "tool_name" => "Read",
             "tool_input" => %{"file_path" => "lib/example_context.ex"}
@@ -75,13 +75,5 @@ defmodule CodeMySpecSpex.Story1012.Criterion2348Spex do
         {:ok, context}
       end
     end
-  end
-
-  defp hook(path, context, params) do
-    Phoenix.ConnTest.build_conn()
-    |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_harness_id)
-    |> Plug.Conn.put_req_header("content-type", "application/json")
-    |> Phoenix.ConnTest.dispatch(CodeMySpecLocalWeb.Endpoint, :post, path, params)
-    |> Phoenix.ConnTest.json_response(200)
   end
 end

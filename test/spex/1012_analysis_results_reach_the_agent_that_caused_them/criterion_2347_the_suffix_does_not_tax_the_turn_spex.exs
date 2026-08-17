@@ -39,7 +39,7 @@ defmodule CodeMySpecSpex.Story1012.Criterion2347Spex do
         session = "spex-busy-#{System.unique_integer([:positive])}"
 
         use_cmd_cassette "pipeline_exunit_failure", record: :none do
-          hook("/api/hooks/stop", context, %{
+          post_hook(context, "/api/hooks/stop", %{
             "session_id" => "spex-seed-#{System.unique_integer([:positive])}",
             "test_output_files" => %{
               "spex" => Path.expand("test/fixtures/validation/spex_green.jsonl"),
@@ -49,7 +49,7 @@ defmodule CodeMySpecSpex.Story1012.Criterion2347Spex do
           })
         end
 
-        hook("/api/hooks/post-tool-use", context, tool_call(session))
+        post_hook(context, "/api/hooks/post-tool-use", tool_call(session))
 
         {:ok, Map.put(context, :session, session)}
       end
@@ -75,11 +75,11 @@ defmodule CodeMySpecSpex.Story1012.Criterion2347Spex do
         # would assert something about PostToolUse rather than about the check.
         # A call with no session short-circuits the check entirely, so the gap
         # between the two IS the check's cost.
-        for _ <- 1..calls, do: hook("/api/hooks/post-tool-use", context, tool_call(nil))
+        for _ <- 1..calls, do: post_hook(context, "/api/hooks/post-tool-use", tool_call(nil))
         baseline = :counters.get(counter, 1)
 
         for _ <- 1..calls,
-            do: hook("/api/hooks/post-tool-use", context, tool_call(context.session))
+            do: post_hook(context, "/api/hooks/post-tool-use", tool_call(context.session))
 
         with_check = :counters.get(counter, 1) - baseline
         :telemetry.detach(handler)
@@ -110,14 +110,6 @@ defmodule CodeMySpecSpex.Story1012.Criterion2347Spex do
         {:ok, context}
       end
     end
-  end
-
-  defp hook(path, context, params) do
-    Phoenix.ConnTest.build_conn()
-    |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_harness_id)
-    |> Plug.Conn.put_req_header("content-type", "application/json")
-    |> Phoenix.ConnTest.dispatch(CodeMySpecLocalWeb.Endpoint, :post, path, params)
-    |> Phoenix.ConnTest.json_response(200)
   end
 
   defp tool_call(nil) do

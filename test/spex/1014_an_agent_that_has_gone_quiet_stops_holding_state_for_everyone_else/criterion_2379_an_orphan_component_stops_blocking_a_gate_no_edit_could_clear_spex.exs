@@ -64,7 +64,7 @@ defmodule CodeMySpecSpex.Story1014.Criterion2379Spex do
       end
 
       when_ "the live agent stops, which syncs components", context do
-        hook(context.live, "/api/hooks/stop", %{
+        post_hook(context.live, "/api/hooks/stop", %{
           "session_id" => "spex-live-#{System.unique_integer([:positive])}"
         })
 
@@ -85,13 +85,5 @@ defmodule CodeMySpecSpex.Story1014.Criterion2379Spex do
         {:ok, context}
       end
     end
-  end
-
-  defp hook(scope, path, params) do
-    Phoenix.ConnTest.build_conn()
-    |> Plug.Conn.put_req_header("x-harness-id", scope.active_harness_id)
-    |> Plug.Conn.put_req_header("content-type", "application/json")
-    |> Phoenix.ConnTest.dispatch(@endpoint, :post, path, params)
-    |> Phoenix.ConnTest.json_response(200)
   end
 end

@@ -55,7 +55,7 @@ defmodule CodeMySpecSpex.Story1014.Criterion2377WorkingAgentSpex do
         :ok = Environments.write_file(worker.environment, @impl_path, impl_file())
 
         # Its own stop is what projects the component, under its own harness.
-        hook(worker, %{"session_id" => "spex-worker-sync-#{unique()}"})
+        post_hook(worker, "/api/hooks/stop", %{"session_id" => "spex-worker-sync-#{unique()}"})
 
         {:ok, Map.put(context, :worker, worker)}
       end
@@ -81,7 +81,7 @@ defmodule CodeMySpecSpex.Story1014.Criterion2377WorkingAgentSpex do
 
       when_ "a third agent stops, sweeping everyone it believes is quiet", context do
         third = Fixtures.live_agent_scope(context.scope, label: "the third agent")
-        hook(third, %{"session_id" => "spex-third-#{unique()}"})
+        post_hook(third, "/api/hooks/stop", %{"session_id" => "spex-third-#{unique()}"})
         {:ok, context}
       end
 
@@ -103,14 +103,6 @@ defmodule CodeMySpecSpex.Story1014.Criterion2377WorkingAgentSpex do
   end
 
   defp unique, do: System.unique_integer([:positive])
-
-  defp hook(scope, params) do
-    Phoenix.ConnTest.build_conn()
-    |> Plug.Conn.put_req_header("x-harness-id", scope.active_harness_id)
-    |> Plug.Conn.put_req_header("content-type", "application/json")
-    |> Phoenix.ConnTest.dispatch(@endpoint, :post, "/api/hooks/stop", params)
-    |> Phoenix.ConnTest.json_response(200)
-  end
 
   defp spec_file do
     """

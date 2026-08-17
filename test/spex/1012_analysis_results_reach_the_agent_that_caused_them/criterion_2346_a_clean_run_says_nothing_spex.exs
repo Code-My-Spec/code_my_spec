@@ -36,7 +36,7 @@ defmodule CodeMySpecSpex.Story1012.Criterion2346Spex do
         session = "spex-fixer-#{System.unique_integer([:positive])}"
 
         use_cmd_cassette "pipeline_exunit_failure", record: :none do
-          hook("/api/hooks/stop", context, %{
+          post_hook(context, "/api/hooks/stop", %{
             "session_id" => "spex-seed-#{System.unique_integer([:positive])}",
             "test_output_files" => %{
               "spex" => Path.expand("test/fixtures/validation/spex_green.jsonl"),
@@ -46,7 +46,7 @@ defmodule CodeMySpecSpex.Story1012.Criterion2346Spex do
           })
         end
 
-        told = hook("/api/hooks/post-tool-use", context, tool_call(session))
+        told = post_hook(context, "/api/hooks/post-tool-use", tool_call(session))
 
         assert (told["systemMessage"] || "") =~ "exunit",
                "the premise failed: nothing was reported as failing, so a later " <>
@@ -57,7 +57,7 @@ defmodule CodeMySpecSpex.Story1012.Criterion2346Spex do
 
       when_ "it fixes the cause and the next run lands clean", context do
         use_cmd_cassette "clean", record: :none do
-          hook("/api/hooks/stop", context, %{
+          post_hook(context, "/api/hooks/stop", %{
             "session_id" => context.session,
             "test_output_files" => %{
               "spex" => Path.expand("test/fixtures/validation/spex_green.jsonl")
@@ -69,7 +69,7 @@ defmodule CodeMySpecSpex.Story1012.Criterion2346Spex do
       end
 
       then_ "it is not told that the run was green", context do
-        after_fix = hook("/api/hooks/post-tool-use", context, tool_call(context.session))
+        after_fix = post_hook(context, "/api/hooks/post-tool-use", tool_call(context.session))
         message = after_fix["systemMessage"] || ""
 
         refute message =~ ~r/green|passing|clean|resolved|fixed/i,
@@ -95,14 +95,6 @@ defmodule CodeMySpecSpex.Story1012.Criterion2346Spex do
         {:ok, context}
       end
     end
-  end
-
-  defp hook(path, context, params) do
-    Phoenix.ConnTest.build_conn()
-    |> Plug.Conn.put_req_header("x-harness-id", context.scope.active_harness_id)
-    |> Plug.Conn.put_req_header("content-type", "application/json")
-    |> Phoenix.ConnTest.dispatch(CodeMySpecLocalWeb.Endpoint, :post, path, params)
-    |> Phoenix.ConnTest.json_response(200)
   end
 
   defp tool_call(session_id) do
