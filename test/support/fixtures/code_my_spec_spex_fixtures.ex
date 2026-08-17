@@ -1820,6 +1820,35 @@ defmodule CodeMySpecSpex.Fixtures do
   """
   @spec stub_resend_receiving() :: :ok
   def stub_resend_receiving do
+    stub_resend(&resend_recording(&1.method, &1.request_path))
+  end
+
+  @doc """
+  Serve Resend's domain calls, with the registered domain in `status`.
+
+  `:not_started`, `:pending` and `:verified` are Resend's own words for it, and
+  each has a recorded response — which is the only thing story 816's six
+  domain criteria disagreed about. They each carried a copy of this stub whose
+  `case` differed by one arm, so the state a criterion is *about* was buried in
+  eleven lines of identical scaffolding.
+  """
+  @spec stub_resend_domain(:not_started | :pending | :verified) :: :ok
+  def stub_resend_domain(status) when status in [:not_started, :pending, :verified] do
+    stub_resend(&domain_recording(&1.method, &1.request_path, status))
+  end
+
+  @doc """
+  Answer every Resend call with the recorded send response.
+
+  For criteria about mail going out, where the domain calls are scaffolding
+  rather than subject.
+  """
+  @spec stub_resend_send() :: :ok
+  def stub_resend_send do
+    stub_resend(fn _conn -> recorded_body("send") end)
+  end
+
+  defp stub_resend(answer) do
     # Shared, because the call is made by the LiveView process rather than the
     # test — a per-process stub leaves it unstubbed and the sync silently finds
     # nothing.
@@ -1839,7 +1868,7 @@ defmodule CodeMySpecSpex.Fixtures do
     Req.Test.stub(ResendClient, fn conn ->
       conn
       |> Plug.Conn.put_resp_content_type("application/json")
-      |> Plug.Conn.send_resp(200, resend_recording(conn.method, conn.request_path))
+      |> Plug.Conn.send_resp(200, answer.(conn))
     end)
 
     :ok
@@ -1847,6 +1876,18 @@ defmodule CodeMySpecSpex.Fixtures do
 
   defp resend_recording("GET", "/emails/receiving/" <> _id), do: recorded_body("received_email")
   defp resend_recording("GET", "/emails/receiving"), do: recorded_body("received_list")
+
+  # Registering answers with the domain as created; asking about it answers
+  # with the status this stub was installed for; triggering verification
+  # answers with the trigger's own response.
+  defp domain_recording("POST", "/domains", _status), do: recorded_body("domain_create")
+  defp domain_recording("POST", "/domains/" <> _id, _status), do: recorded_body("verify_trigger")
+
+  defp domain_recording("GET", "/domains/" <> _id, :not_started),
+    do: recorded_body("domain_create")
+
+  defp domain_recording("GET", "/domains/" <> _id, status),
+    do: recorded_body("domain_#{status}")
 
   defp recorded_body(name) do
     File.read!(Path.join(["test", "cassettes", "resend", "#{name}.json"]))

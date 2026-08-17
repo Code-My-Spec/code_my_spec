@@ -13,7 +13,6 @@ defmodule CodeMySpecSpex.Story816.Criterion6588Spex do
 
   use CodeMySpecSpex.Case
 
-  alias CodeMySpec.Mail.ResendClient
   alias CodeMySpecSpex.Fixtures
 
   @endpoint CodeMySpecWeb.Endpoint
@@ -82,23 +81,5 @@ defmodule CodeMySpecSpex.Story816.Criterion6588Spex do
   # The same stub its siblings use. `Mail.deliver/3` runs inside the LiveView
   # process, and a `Req.Test` stub is scoped to the process that set it, so
   # shared mode is what lets the LiveView see it.
-  defp stub_resend(_context) do
-    Req.Test.set_req_test_to_shared(%{})
-    previous = Application.get_env(:code_my_spec, ResendClient, [])
-
-    Application.put_env(:code_my_spec, ResendClient,
-      api_key: "re_test",
-      plug: {Req.Test, ResendClient}
-    )
-
-    on_exit(fn -> Application.put_env(:code_my_spec, ResendClient, previous) end)
-
-    Req.Test.stub(ResendClient, fn conn ->
-      conn
-      |> Plug.Conn.put_resp_content_type("application/json")
-      |> Plug.Conn.send_resp(200, resend_cassette("send"))
-    end)
-
-    :ok
-  end
+  defp stub_resend(_context), do: Fixtures.stub_resend_send()
 end

@@ -14,7 +14,6 @@ defmodule CodeMySpecSpex.Story816.Criterion6580Spex do
 
   use CodeMySpecSpex.Case
 
-  alias CodeMySpec.Mail.ResendClient
   alias CodeMySpecSpex.Fixtures
 
   @endpoint CodeMySpecWeb.Endpoint
@@ -78,23 +77,5 @@ defmodule CodeMySpecSpex.Story816.Criterion6580Spex do
   # Without it the run dies with `cannot find mock/stub
   # CodeMySpec.Mail.ResendClient in process #PID<…>` — which names process
   # scoping, and is for once exactly right about the cause.
-  defp stub_resend(_context) do
-    Req.Test.set_req_test_to_shared(%{})
-    previous = Application.get_env(:code_my_spec, ResendClient, [])
-
-    Application.put_env(:code_my_spec, ResendClient,
-      api_key: "re_test",
-      plug: {Req.Test, ResendClient}
-    )
-
-    on_exit(fn -> Application.put_env(:code_my_spec, ResendClient, previous) end)
-
-    Req.Test.stub(ResendClient, fn conn ->
-      conn
-      |> Plug.Conn.put_resp_content_type("application/json")
-      |> Plug.Conn.send_resp(200, resend_cassette("send"))
-    end)
-
-    :ok
-  end
+  defp stub_resend(_context), do: Fixtures.stub_resend_send()
 end

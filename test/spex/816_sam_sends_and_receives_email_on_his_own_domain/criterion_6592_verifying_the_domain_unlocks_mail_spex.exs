@@ -15,7 +15,7 @@ defmodule CodeMySpecSpex.Story816.Criterion6592Spex do
 
   use CodeMySpecSpex.Case
 
-  alias CodeMySpec.Mail.ResendClient
+  alias CodeMySpecSpex.Fixtures
 
   @endpoint CodeMySpecWeb.Endpoint
 
@@ -54,32 +54,5 @@ defmodule CodeMySpecSpex.Story816.Criterion6592Spex do
     end
   end
 
-  defp stub_resend(_context) do
-    Req.Test.set_req_test_to_shared(%{})
-    previous = Application.get_env(:code_my_spec, ResendClient, [])
-
-    Application.put_env(:code_my_spec, ResendClient,
-      api_key: "re_test",
-      plug: {Req.Test, ResendClient}
-    )
-
-    on_exit(fn -> Application.put_env(:code_my_spec, ResendClient, previous) end)
-
-    Req.Test.stub(ResendClient, fn conn ->
-      body =
-        case {conn.method, conn.request_path} do
-          {"POST", "/domains"} -> cassette("domain_create")
-          {"POST", "/domains/" <> _} -> cassette("verify_trigger")
-          {"GET", "/domains/" <> _} -> cassette("domain_verified")
-        end
-
-      conn
-      |> Plug.Conn.put_resp_content_type("application/json")
-      |> Plug.Conn.send_resp(200, body)
-    end)
-
-    :ok
-  end
-
-  defp cassette(name), do: File.read!(Path.join(["test", "cassettes", "resend", "#{name}.json"]))
+  defp stub_resend(_context), do: Fixtures.stub_resend_domain(:verified)
 end
