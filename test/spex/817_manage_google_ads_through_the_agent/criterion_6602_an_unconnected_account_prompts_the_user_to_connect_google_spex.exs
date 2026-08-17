@@ -20,6 +20,8 @@ defmodule CodeMySpecSpex.Story817.Criterion6602Spex do
   spex "Errors surface as readable messages" do
     scenario "An unconnected account prompts the user to connect Google" do
       given_ "a user who has not connected a Google account", context do
+        # given: already true — `setup :register_log_in_setup_account` creates
+        # a fresh user, and connecting Google is a thing a user does later.
         # No google_integration_fixture — the user has no Google connection.
         {:ok, context}
       end

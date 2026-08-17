@@ -27,9 +27,10 @@ defmodule CodeMySpecSpex.Story811.Criterion6492Spex do
   spex "Head of displayed queue equals get_next_requirement's return" do
     scenario "the first item the LiveView renders matches what the MCP tool serves" do
       given_ "the project has multiple actionable requirements", context do
-        # Fresh project state: project_setup is actionable first,
-        # everything else queued behind it. Multiple distinct
-        # requirements exist in the graph.
+        # given: already true — `setup :setup_active_project` creates the
+        # project, and the requirement graph is computed from it: project_setup
+        # is actionable first and the rest queue behind it. Multiple distinct
+        # requirements exist without anything being added.
         {:ok, context}
       end
 

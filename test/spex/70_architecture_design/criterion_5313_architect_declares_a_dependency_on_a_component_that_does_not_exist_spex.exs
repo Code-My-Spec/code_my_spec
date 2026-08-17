@@ -35,6 +35,9 @@ defmodule CodeMySpecSpex.Story70.Criterion5313Spex do
       end
 
       given_ "the database does not contain a component named Stroies", context do
+        # given: already true — nothing has created that component, and a typo
+        # is the point: the architect is expected to reject the misspelling
+        # rather than find something under it. An absence needs no arranging.
         app = context.project.module_name || "MyApp"
 
         # Confirm no component named "Stroies" (a typo) exists

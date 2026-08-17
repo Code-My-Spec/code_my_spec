@@ -27,6 +27,9 @@ defmodule CodeMySpecSpex.Story727.Criterion6452Spex do
   spex "Each QA submission creates a durable, immutable history row" do
     scenario "QA submission creates a row that persists across server restarts" do
       given_ "a started qa_complete task on a story with no prior attempts", context do
+        # given: already true — `setup :setup_qa_story_task` builds the story
+        # and a session carrying a started qa_complete task, and nothing has
+        # submitted against it. "No prior attempts" is the fresh state.
         {:ok, context}
       end
 

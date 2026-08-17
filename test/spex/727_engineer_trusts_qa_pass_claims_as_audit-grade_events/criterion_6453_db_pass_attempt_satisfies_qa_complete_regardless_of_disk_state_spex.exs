@@ -26,6 +26,9 @@ defmodule CodeMySpecSpex.Story727.Criterion6453Spex do
   spex "qa_complete is satisfied by DB state, not file existence" do
     scenario "DB pass attempt satisfies qa_complete regardless of disk state" do
       given_ "a started qa_complete task and no result_complete.md on disk", context do
+        # given: already true — `setup :setup_qa_story_task` builds the task,
+        # and no result file has been written. The absence is the subject: this
+        # criterion is about the attempt row being the record, not a file.
         {:ok, context}
       end
 

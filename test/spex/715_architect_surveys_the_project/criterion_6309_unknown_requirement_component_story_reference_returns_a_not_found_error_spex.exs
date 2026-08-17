@@ -24,6 +24,9 @@ defmodule CodeMySpecSpex.Story715.Criterion6309Spex do
   spex "Requirement-query tools resolve their reference and return requirement details or done/total summaries; an unknown reference returns a not-found error rather than crashing" do
     scenario "Unknown requirement/component/story reference returns a not-found error" do
       given_ "no component exists with module name `DoesNotExist.Module`", context do
+        # given: already true — the project is fresh and nothing creates that
+        # module. The criterion is about what the lookup says when it finds
+        # nothing, which is a state no setup can make truer.
         {:ok, context}
       end
 

@@ -29,6 +29,9 @@ defmodule CodeMySpecSpex.Story713.Criterion6277Spex do
   spex "A valid deploy key accepts the trigger; a wrong key is rejected" do
     scenario "Valid trigger with matching deploy_key kicks off the sync" do
       given_ "the client is configured with a deploy key", context do
+        # given: already true — `setup :set_deploy_key` puts the key the
+        # trigger endpoint authorizes against into application config, and
+        # restores it afterwards.
         {:ok, context}
       end
 
