@@ -65,15 +65,33 @@ defmodule CodeMySpec.Analysis.CoverageTest do
              "without this, both files are `count == 0` and both read as clean"
     end
 
-    # Roles are per source, so a file that feeds spex does not make credo
-    # incomplete.
+    # Roles are per source, so a file that feeds one analyzer does not make
+    # another incomplete.
+    #
+    # The example used to be a `:bdd_spec` against credo, on the belief that
+    # credo does not read spex files. It does — `.credo.exs` includes `test/`,
+    # and the project ships checks written only for `_spex.exs`. That belief
+    # cost a stop hook presenting fixed credo findings as current, because
+    # editing a spex file could not move credo's fingerprint (`b1340e13`).
+    # `:spec` is a genuine non-input: a markdown spec document feeds neither.
     test "only files whose role feeds the source count", %{scope: scope} do
-      put_file(scope, "test/spex/x_spex.exs", "fp-s", :bdd_spec)
+      put_file(scope, ".code_my_spec/spec/x.md", "fp-d", :spec)
 
       assert Coverage.unanalyzed_files(scope, "credo") == [],
-             "a bdd_spec is not a credo input"
+             "a spec document is not a credo input"
+
+      assert Coverage.unanalyzed_files(scope, "spex") == [],
+             "nor a spex input"
+    end
+
+    test "a spex file is an input to both credo and spex", %{scope: scope} do
+      put_file(scope, "test/spex/x_spex.exs", "fp-s", :bdd_spec)
 
       assert [%{path: "test/spex/x_spex.exs"}] = Coverage.unanalyzed_files(scope, "spex")
+
+      assert [%{path: "test/spex/x_spex.exs"}] = Coverage.unanalyzed_files(scope, "credo"),
+             "credo lints test/spex/**/*_spex.exs, so an unread one leaves credo " <>
+               "incomplete — the omission that let fixed findings read as current"
     end
   end
 
