@@ -526,8 +526,55 @@ defmodule CodeMySpecWeb.HarnessProjectChannel do
 
     scope
     |> CodeMySpec.Analysis.status()
-    |> Enum.map_join("\n", fn {source, %{state: state}} ->
-      "- #{source}: #{state}, #{Map.get(counts, source, 0)} problem(s)"
+    |> Enum.map_join("\n", fn {source, %{state: state} = entry} ->
+      "- #{source}: #{state}, #{Map.get(counts, source, 0)} problem(s)" <>
+        why_it_failed(state, entry[:run])
+    end)
+  end
+
+  # Why a failed analyzer failed, on the line that says it failed.
+  #
+  # `failed, 0 problem(s)` is indistinguishable from a crashed analyzer, a
+  # killed process, or a machine under load — and when it happened the machine
+  # *was* under load, so the agent attributed it to contention and carried on
+  # stopping against green local runs. The real reason was one string away:
+  #
+  #     the server REJECTED the exunit result: {:test_suite_did_not_run, 1,
+  #       "** (RuntimeError) The test database `code_my_spec_testhac99571fa`
+  #        is 2 migration(s) behind."}
+  #
+  # That message was written to `harness.log` and thrown away on the way here.
+  # `Reconciler.fail/2` has always persisted it to `stats["error"]`, and
+  # `Analysis.status/1` has always returned the run — this line simply never
+  # read it. Four sweeps' worth of stop hooks reported an analyzer that had
+  # silently stopped verifying the working copy, and the only tell was a log
+  # file the agent has no reason to open (`d1f74ee7`).
+  #
+  # Truncated because an analyzer failure can carry a whole stacktrace, and a
+  # summary that scrolls is one nobody reads. The first line is where these
+  # tools put the sentence that names the cause.
+  defp why_it_failed(:failed, %{stats: %{"error" => error}}) when is_binary(error) do
+    case String.trim(error) do
+      "" -> ""
+      text -> "\n    " <> truncate_reason(text)
+    end
+  end
+
+  defp why_it_failed(_state, _run), do: ""
+
+  @reason_limit 400
+
+  defp truncate_reason(text) do
+    text
+    |> String.split("\n", parts: 2)
+    |> hd()
+    |> String.trim()
+    |> then(fn line ->
+      if String.length(line) > @reason_limit do
+        String.slice(line, 0, @reason_limit) <> "…"
+      else
+        line
+      end
     end)
   end
 
