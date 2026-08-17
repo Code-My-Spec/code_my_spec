@@ -16,6 +16,7 @@ defmodule CodeMySpecSpex.Case do
   use ExUnit.CaseTemplate
 
   alias CodeMySpec.Content.S3Client
+  alias CodeMySpec.Provisioning.Widget
   alias CodeMySpecSpex.Fakes
   alias CodeMySpecSpex.Fixtures
   alias Ecto.Adapters.SQL.Sandbox
@@ -452,7 +453,7 @@ defmodule CodeMySpecSpex.Case do
     # strings after the contract moves — so the criteria pass while the real
     # widget stops being found, which is the failure the contract exists to
     # prevent.
-    markers = CodeMySpec.Provisioning.Widget.markers()
+    markers = Widget.markers()
 
     Req.Test.stub(CodeMySpec.Provisioning.Widget, fn conn ->
       Plug.Conn.send_resp(
@@ -628,7 +629,7 @@ defmodule CodeMySpecSpex.Case do
   nothing degrades perfectly and proves nothing.
   """
   def widget_backend_is_down(_context) do
-    markers = CodeMySpec.Provisioning.Widget.markers()
+    markers = Widget.markers()
 
     Req.Test.stub(CodeMySpec.Provisioning.Widget, fn conn ->
       Plug.Conn.send_resp(conn, 200, """
