@@ -97,6 +97,19 @@ defmodule CodeMySpecSpex.Story555.Criterion6237Spex do
             "# OtherContext\n\n## Type\n\ncontext\n\nIntent prose only — no Functions section.\n"
           )
 
+        # The file is really there, and really invalid. Both assertions below
+        # are refutes — and an allowed stop answers `%{}`, which is `Hooks.Stop`
+        # returning from `allow/2`, so `nil != "block"` and `"" =~ path` hold
+        # for a run with nothing to filter as readily as for one that filtered
+        # correctly. This is what makes the difference observable: there was a
+        # blocking-shaped finding available, and it was left out.
+        assert {:ok, contents} =
+                 Environments.read_file(context.environment, @other_session_spec_path)
+
+        refute contents =~ "## Functions",
+               "the other session's spec has to be invalid, or there is nothing for the " <>
+                 "stop hook to have filtered"
+
         {:ok, context}
       end
 
