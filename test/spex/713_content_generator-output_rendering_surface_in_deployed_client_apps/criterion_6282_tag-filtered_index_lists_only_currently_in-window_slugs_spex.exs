@@ -48,22 +48,30 @@ defmodule CodeMySpecSpex.Story713.Criterion6282Spex do
         stub_pull(rows)
         trigger_pull()
 
-        # Every in-window post, not just the first. The pull is asynchronous
-        # and lands a post at a time, so waiting on `p1` alone let the `when_`
-        # read the tag index while `p2` was still arriving — an index missing
-        # `p2` then failed an assertion about filtering, which is not what was
-        # wrong.
+        # Wait on the index, because the index is what this criterion reads
+        # and it is the last thing to become true.
         #
-        # This is what the harness kept catching and an isolated run did not:
-        # the window is only as wide as the machine is busy, and the sweep runs
-        # beside the analyzer. Giving `eventually/2` a longer deadline, which
-        # is where I looked first, does not help a wait that is watching the
-        # wrong thing.
-        for slug <- ~w(p1 p2) do
-          eventually(fn ->
-            assert html_response(get(build_conn(), "/blog/#{slug}"), 200) =~ slug
-          end)
-        end
+        # `Pull.persist/1` writes every content row in one transaction and then
+        # attaches tags per record, outside it — so a post answers at
+        # `/blog/p2` while its tags are still landing, and `list_published_by_tag`
+        # joins on tags. Waiting for the posts to be fetchable, which is what
+        # this did first, narrows that window without closing it: the two rows
+        # commit together and the tags follow one at a time.
+        #
+        # The harness caught this twice while twelve repeats and four sweeps of
+        # mine did not, because the window is only as wide as the machine is
+        # busy and I was running one thing at a time. The first fix — a longer
+        # deadline on `eventually/2` — was aimed at the wrong half entirely.
+        #
+        # The two `assert`s below are then a restatement of this wait rather
+        # than an independent claim. What carries the criterion is the pair of
+        # refutes and the 404s: the filtering is the subject, and nothing here
+        # waits for *those* to become true.
+        eventually(fn ->
+          index = html_response(get(build_conn(), "/blog/tag/ai"), 200)
+          assert index =~ "p1"
+          assert index =~ "p2"
+        end)
 
         {:ok, context}
       end
