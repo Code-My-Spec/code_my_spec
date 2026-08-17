@@ -47,6 +47,7 @@ defmodule CodeMySpec.Provisioning.Steps do
     Projects,
     ProjectSecrets
   }
+
   alias CodeMySpec.Generators.DeployBoilerplate
   alias CodeMySpec.TempFile
 
@@ -549,8 +550,7 @@ defmodule CodeMySpec.Provisioning.Steps do
         # proven until a message arrives, and resuming re-checks (7967) — but a
         # run stops calling a working install a failure.
         %{state: :not_proven} = result ->
-          {:paused, awaiting_first_message(site),
-           Enum.reject([widget_render(result)], &is_nil/1)}
+          {:paused, awaiting_first_message(site), Enum.reject([widget_render(result)], &is_nil/1)}
 
         %{reason: reason} = result ->
           {:error, reason, Enum.reject([widget_render(result)], &is_nil/1)}
@@ -791,7 +791,8 @@ defmodule CodeMySpec.Provisioning.Steps do
             |> put_database_url(scope, environment)
 
           with :ok <- require_script(scope, "bin/backup"),
-               {:ok, environment_opts} <- on_the_environments_box(scope, environment, environment_opts),
+               {:ok, environment_opts} <-
+                 on_the_environments_box(scope, environment, environment_opts),
                {:ok, resources} <-
                  backups_outcome(
                    Backups.run(env(scope), environment, environment_opts),
@@ -861,7 +862,9 @@ defmodule CodeMySpec.Provisioning.Steps do
   defp publishable_content(scope) do
     scope
     |> CodeMySpec.ContentPublishing.list_snapshot()
-    |> Enum.filter(&(&1.parse_status == :success and (&1.metadata || %{})["slug"] not in [nil, ""]))
+    |> Enum.filter(
+      &(&1.parse_status == :success and (&1.metadata || %{})["slug"] not in [nil, ""])
+    )
   end
 
   defp publish_content(scope, opts) do
@@ -1235,8 +1238,10 @@ defmodule CodeMySpec.Provisioning.Steps do
     "#{target.host} did not answer over HTTPS with a valid certificate (#{format(reason)}). " <>
       "Issuance needs DNS resolving to the server and the proxy reachable on 80. " <>
       plain_http_observation(target.host, probe, opts) <>
-      " " <> acme_path_observation(target.host, probe, opts) <>
-      " " <> dns_observation(target.host, reason, opts) <>
+      " " <>
+      acme_path_observation(target.host, probe, opts) <>
+      " " <>
+      dns_observation(target.host, reason, opts) <>
       " " <> proxy_log_observation(scope, target, opts)
   end
 
@@ -3575,6 +3580,22 @@ defmodule CodeMySpec.Provisioning.Steps do
       :resolves ->
         {:cont, {:ok, acc ++ [record] ++ dns_verification(environment)}}
 
+      # A counting-down TTL on a negative is a fact about a resolver's cache,
+      # not about the record. The write went to Cloudflare and was accepted;
+      # what a recursive resolver remembers from before that is not the step's
+      # to fail on, and no amount of retrying inside one step outlasts a
+      # half-hour negative TTL. Failing here stopped a run whose record `dig`
+      # was answering correctly the whole time, and every name that gets
+      # created, destroyed and created again — every spex label, every drill
+      # domain, every retried setup — walks into it (8fb98c23).
+      {:absent, :cached, seconds} ->
+        Logger.info(
+          "[Steps] #{environment.host} is published; a public resolver still holds a " <>
+            "cached negative with about #{seconds}s left. Continuing."
+        )
+
+        {:cont, {:ok, acc ++ [record] ++ dns_verification(environment)}}
+
       absent ->
         {:halt, {:error, unresolved_record_message(environment, ip, absent)}}
     end
@@ -4018,7 +4039,11 @@ defmodule CodeMySpec.Provisioning.Steps do
   end
 
   defp app_path(scope) do
-    project(scope) |> Map.get(:module_name) |> Kernel.||("App") |> to_string() |> Macro.underscore()
+    project(scope)
+    |> Map.get(:module_name)
+    |> Kernel.||("App")
+    |> to_string()
+    |> Macro.underscore()
   end
 
   # Receiving is at the **apex**, and that is a decision rather than a default:
@@ -4183,7 +4208,8 @@ defmodule CodeMySpec.Provisioning.Steps do
   defp place_deploy_key(scope, recipients, key) do
     Enum.reduce_while(recipients, {:ok, []}, fn {environment, _public}, {:ok, acc} ->
       with {:ok, _} <- put_secret(scope, environment, "DEPLOY_KEY", key),
-           {:ok, _} <- put_secret(scope, environment, "CODEMYSPEC_WIDGET_URL", widget_socket_url()) do
+           {:ok, _} <-
+             put_secret(scope, environment, "CODEMYSPEC_WIDGET_URL", widget_socket_url()) do
         resource = %{
           kind: "secret",
           location: "#{environment}/DEPLOY_KEY",
