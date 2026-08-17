@@ -72,6 +72,21 @@ defmodule CodeMySpec.WorkspacesTest do
       assert {:ok, ^running} = Workspaces.boot(scope)
       assert length(FakeWorkspaceRunner.calls()) == 1
     end
+
+    # LiveView mounts twice for one page view — disconnected, then over the
+    # socket — so this is what every visitor did. Each call took a fresh port
+    # and started the container again, leaving the row pointing at the second
+    # instance and two watchers polling for it.
+    test "one that is still coming up is not started alongside itself" do
+      fake(healthy?: false, alive?: true)
+      scope = full_scope_fixture()
+
+      {:ok, booting} = Workspaces.boot(scope)
+      assert {:ok, second} = Workspaces.boot(scope)
+
+      assert second.port == booting.port
+      assert length(FakeWorkspaceRunner.calls()) == 1
+    end
   end
 
   describe "progress" do

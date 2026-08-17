@@ -93,6 +93,19 @@ defmodule CodeMySpec.Workspaces do
     end
   end
 
+  # One page view calls this twice — LiveView mounts disconnected, then again
+  # over the socket — and each call used to take a fresh port and start the
+  # container again, leaving the row pointing at the second instance and two
+  # watchers polling for it. An instance that is already coming up is the
+  # answer to "bring one up", so only a `:booting` row with nothing behind it
+  # starts anything.
+  defp boot_workspace(%Workspace{status: :booting} = workspace, project) do
+    case Runner.alive?(workspace.container_name) do
+      true -> {:ok, workspace}
+      false -> start_instance(workspace, project)
+    end
+  end
+
   defp boot_workspace(existing, %Project{} = project), do: start_instance(existing, project)
 
   defp still_serving?(%Workspace{container_name: name, port: port})
