@@ -103,6 +103,7 @@ defmodule CodeMySpecSpex.Fixtures do
   alias CodeMySpecTest.LocalPreviewRunner
   alias CodeMySpecTest.PreviewApp
   alias CodeMySpecTest.PreviewWsClient
+  alias CodeMySpecTest.WorkspaceWatchers
   alias Ecto.Changeset
 
   import Ecto.Query, only: [from: 2]
@@ -1768,16 +1769,40 @@ defmodule CodeMySpecSpex.Fixtures do
   into the app is this module's job, not the criterion's. This bridge already
   has the dep, so the swap belongs here.
 
-  Exactly what the spex did inline: install the runner in application config,
-  remove it on exit, and start the fake supervised.
-  """
-  @spec install_workspace_runner(keyword()) :: :ok
-  def install_workspace_runner(opts \\ [healthy?: true, serving: :serving]) do
-    Application.put_env(:code_my_spec, CodeMySpec.Workspaces, runner: FakeWorkspaceRunner)
+  `config` carries the boot timings a criterion needs (`boot_timeout`,
+  `poll_interval`) alongside the runner.
 
-    ExUnit.Callbacks.on_exit(fn ->
-      Application.delete_env(:code_my_spec, CodeMySpec.Workspaces)
-    end)
+  ## Teardown is ordered, and the order is the whole point
+
+  Bringing a workspace up spawns a watcher that polls the database until the
+  container answers or dies. Two of story 990's criteria describe a boot that
+  is *deliberately* still in progress when the scenario ends, so their watchers
+  cannot be waited out — they have to be killed, while everything they call is
+  still there.
+
+  Both of the obvious ways to write this teardown break that. `start_supervised!/1`
+  stops what it started **before any `on_exit` runs** (probed, not assumed), so
+  the watcher's next poll calls a runner that is gone. Clearing the config
+  first is worse: the watcher falls back to the default runner, which is the
+  real Docker one, and polls it for fifteen minutes.
+
+  Either way the crash is logged at `:error`, and `SexySpex.ErrorCapture`'s
+  handler is global — so it fails whichever spex is running at that moment,
+  not the one that left the watcher behind. That is what 990/8221 was: a
+  failure in a sweep, green in isolation, and not actually 8221's.
+
+  So this is one callback with the order in it — kill this spex's watchers,
+  stop the runner they call, then clear the config. The sandbox owner outlives
+  all three, because the Case registers `stop_owner` earlier and earlier means
+  later on the way out.
+  """
+  @spec install_workspace_runner(keyword(), keyword()) :: :ok
+  def install_workspace_runner(opts \\ [healthy?: true, serving: :serving], config \\ []) do
+    Application.put_env(
+      :code_my_spec,
+      CodeMySpec.Workspaces,
+      Keyword.merge([runner: FakeWorkspaceRunner], config)
+    )
 
     # Idempotent, because a caller means "the workspace behaves like this now"
     # rather than "start a second one". Scenarios inside one `spex` block share
@@ -1792,11 +1817,22 @@ defmodule CodeMySpecSpex.Fixtures do
     # code under test. It took a stacktrace read to find that the second
     # installer was the caller's own fixture call.
     case Process.whereis(FakeWorkspaceRunner) do
-      nil -> ExUnit.Callbacks.start_supervised!({FakeWorkspaceRunner, opts})
+      nil -> start_runner_with_ordered_teardown(opts)
       _already_running -> FakeWorkspaceRunner.configure(opts)
     end
 
     :ok
+  end
+
+  defp start_runner_with_ordered_teardown(opts) do
+    started_before = WorkspaceWatchers.running()
+    {:ok, runner} = FakeWorkspaceRunner.start_link(opts)
+
+    ExUnit.Callbacks.on_exit(fn ->
+      WorkspaceWatchers.kill_since(started_before)
+      if Process.alive?(runner), do: GenServer.stop(runner)
+      Application.delete_env(:code_my_spec, CodeMySpec.Workspaces)
+    end)
   end
 
   @doc """

@@ -19,22 +19,17 @@ defmodule CodeMySpecSpex.Story990.Criterion8218Spex do
 
   import CodeMySpecSpex.IntakeSteps
 
-  alias CodeMySpecTest.FakeWorkspaceRunner
-
   @endpoint CodeMySpecWeb.Endpoint
 
   setup :register_log_in_setup_account
 
   setup do
-    Application.put_env(:code_my_spec, CodeMySpec.Workspaces,
-      runner: FakeWorkspaceRunner,
+    start_workspace_runner([healthy?: false, alive?: false],
       boot_timeout: 5_000,
       poll_interval: 20
     )
 
     # Never answers, and stops running — the container died on its way up.
-    start_supervised!({FakeWorkspaceRunner, healthy?: false, alive?: false})
-    on_exit(fn -> Application.delete_env(:code_my_spec, CodeMySpec.Workspaces) end)
     :ok
   end
 

@@ -49,59 +49,28 @@ defmodule CodeMySpecTest.WorkspaceWatchers do
     started_before = children()
 
     ExUnit.Callbacks.on_exit(fn ->
-      children()
-      |> Kernel.--(started_before)
-      |> Enum.each(&Process.exit(&1, :kill))
+      kill_since(started_before)
 
       Application.delete_env(:code_my_spec, CodeMySpec.Workspaces)
     end)
   end
 
   @doc """
-  The watchers running right now, to be handed back to `settle/2`.
+  Kills the watchers started since `started_before`, and only those.
+  """
+  @spec kill_since([pid()]) :: :ok
+  def kill_since(started_before) do
+    children()
+    |> Kernel.--(started_before)
+    |> Enum.each(&Process.exit(&1, :kill))
+  end
+
+  @doc """
+  The watchers running right now, to be handed back to `kill_since/1` after
+  the test has started more.
   """
   @spec running() :: [pid()]
   def running, do: children()
-
-  @doc """
-  Waits for the watchers started since `started_before` to finish.
-
-  `reset_on_exit/0` kills stragglers, but killing is teardown, and teardown
-  runs after the test process has exited — which is the moment that takes the
-  sandbox connection away. A watcher mid-query at that point crashes with
-  `{:shutdown, "owner … exited"}` and the supervisor reports it at `:error`,
-  which fails a spex run before anything gets killed. So a test that leaves
-  live watchers behind has to wait for them while it still owns the
-  connection, and that cannot be done from `on_exit`.
-
-  Scoped by difference for the reason the moduledoc gives: the supervisor is
-  application-wide, so "no children at all" is a wait on other people's work.
-  """
-  @spec settle([pid()], timeout()) :: :ok
-  def settle(started_before, timeout \\ 5_000) do
-    deadline = System.monotonic_time(:millisecond) + timeout
-    wait(started_before, deadline)
-  end
-
-  defp wait(started_before, deadline) do
-    case children() -- started_before do
-      [] ->
-        :ok
-
-      _still_running ->
-        case System.monotonic_time(:millisecond) < deadline do
-          true ->
-            Process.sleep(10)
-            wait(started_before, deadline)
-
-          # Not an assertion: a watcher that outlives the wait is the caller's
-          # own timeout, and `reset_on_exit/0` still kills it. Failing here
-          # would rename someone else's slow boot as this helper's problem.
-          false ->
-            :ok
-        end
-    end
-  end
 
   defp children do
     Task.Supervisor.children(@supervisor)

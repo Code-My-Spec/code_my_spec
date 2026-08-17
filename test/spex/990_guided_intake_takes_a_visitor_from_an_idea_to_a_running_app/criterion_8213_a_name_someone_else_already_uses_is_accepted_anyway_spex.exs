@@ -18,8 +18,6 @@ defmodule CodeMySpecSpex.Story990.Criterion8213Spex do
 
   import CodeMySpecSpex.IntakeSteps
 
-  alias CodeMySpecTest.FakeWorkspaceRunner
-
   @endpoint CodeMySpecWeb.Endpoint
 
   @taken "Acme"
@@ -27,14 +25,7 @@ defmodule CodeMySpecSpex.Story990.Criterion8213Spex do
   setup :register_log_in_setup_account
 
   setup do
-    Application.put_env(:code_my_spec, CodeMySpec.Workspaces,
-      runner: FakeWorkspaceRunner,
-      boot_timeout: 5_000,
-      poll_interval: 20
-    )
-
-    start_supervised!({FakeWorkspaceRunner, healthy?: true})
-    on_exit(fn -> Application.delete_env(:code_my_spec, CodeMySpec.Workspaces) end)
+    start_workspace_runner([healthy?: true], boot_timeout: 5_000, poll_interval: 20)
     :ok
   end
 

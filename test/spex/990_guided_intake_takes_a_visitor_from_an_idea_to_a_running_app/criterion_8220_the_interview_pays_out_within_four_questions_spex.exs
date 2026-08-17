@@ -18,8 +18,6 @@ defmodule CodeMySpecSpex.Story990.Criterion8220Spex do
 
   import CodeMySpecSpex.IntakeSteps
 
-  alias CodeMySpecTest.FakeWorkspaceRunner
-
   @endpoint CodeMySpecWeb.Endpoint
 
   @question_form "form[phx-submit=answer]"
@@ -32,14 +30,11 @@ defmodule CodeMySpecSpex.Story990.Criterion8220Spex do
   setup :register_log_in_setup_account
 
   setup do
-    Application.put_env(:code_my_spec, CodeMySpec.Workspaces,
-      runner: FakeWorkspaceRunner,
+    start_workspace_runner([healthy?: false, alive?: true],
       boot_timeout: 60_000,
       poll_interval: 20
     )
 
-    start_supervised!({FakeWorkspaceRunner, healthy?: false, alive?: true})
-    on_exit(fn -> Application.delete_env(:code_my_spec, CodeMySpec.Workspaces) end)
     :ok
   end
 

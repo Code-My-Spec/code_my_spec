@@ -28,18 +28,14 @@ defmodule CodeMySpecSpex.Story990.Criterion8221Spex do
   setup :register_log_in_setup_account
 
   setup do
-    Application.put_env(:code_my_spec, CodeMySpec.Workspaces,
-      runner: CodeMySpecSpex.Case.workspace_runner(),
+    start_workspace_runner([healthy?: false, alive?: true],
       boot_timeout: 60_000,
       poll_interval: 20
     )
 
-    start_supervised!({CodeMySpecSpex.Case.workspace_runner(), healthy?: false, alive?: true})
-
-    on_exit(fn ->
-      Application.delete_env(:code_my_spec, :fake_workspace_alive)
-      Application.delete_env(:code_my_spec, CodeMySpec.Workspaces)
-    end)
+    # The scenario kills the container by flipping this, so it has to go back —
+    # it is read by the fake runner every spex in this story shares.
+    on_exit(fn -> Application.delete_env(:code_my_spec, :fake_workspace_alive) end)
 
     :ok
   end
@@ -87,21 +83,11 @@ defmodule CodeMySpecSpex.Story990.Criterion8221Spex do
       end
 
       then_ "the answer they already gave is still there", context do
-        watchers = boot_watchers()
-
         # Re-mount, the way a visitor who reloads after a failure would.
-        {:ok, view, html} = live(context.conn, "/build/workspace")
+        {:ok, _view, html} = live(context.conn, "/build/workspace")
 
         assert html =~ @answer,
                "expected the answer given before the failure to survive it, got: #{html}"
-
-        # This mount brought the workspace up again — the container is gone, so
-        # there is something to start — and that spawns a watcher which polls
-        # the database. Returning here ends the test mid-poll and takes the
-        # sandbox connection with it. Wait for the failure this scenario has
-        # already established, then for the watcher itself.
-        until_rendered(view, "didn&#39;t come up")
-        settled_boot_watchers(watchers)
 
         {:ok, context}
       end

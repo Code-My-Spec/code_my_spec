@@ -12,8 +12,12 @@ defmodule CodeMySpecTest do
   #
   # `PreviewWsClient` is the browser's end of story 886's preview socket. It is
   # a client the bridge drives, not something a criterion should be holding.
+  #
+  # `WorkspaceWatchers` is the teardown for the tasks `Workspaces.boot/1`
+  # leaves polling. The bridge has to order that teardown against the fake
+  # runner it starts, so it needs to name it; a criterion never does.
   use Boundary,
     top_level?: true,
     deps: [CodeMySpec],
-    exports: [FakeWorkspaceRunner, PreviewWsClient]
+    exports: [FakeWorkspaceRunner, PreviewWsClient, WorkspaceWatchers]
 end
