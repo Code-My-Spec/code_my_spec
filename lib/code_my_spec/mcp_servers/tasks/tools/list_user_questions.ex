@@ -103,7 +103,6 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.ListUserQuestions do
   defp text(%{title: title}) when is_binary(title), do: title
   defp text(_request), do: "(no question text)"
 
-
   defp no_session do
     """
     No session is registered for this working copy, so there are no questions to
