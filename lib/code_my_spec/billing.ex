@@ -34,15 +34,38 @@ defmodule CodeMySpec.Billing do
   def tiers, do: @tiers
 
   @doc """
-  Starts a subscription for `tier` and returns the secret the browser confirms.
+  Starts or changes a subscription for `tier` and returns the secret the browser
+  confirms.
 
   Nothing about the account's plan changes here — see the moduledoc.
+
+  ## One subscription per account, always
+
+  An account that already has a billing subscription has that one *moved* to the
+  new price rather than a second one created beside it. `27f519dc`: creating
+  unconditionally left both live, Stripe billed the sum, and our own data looked
+  perfect throughout — one `stripe_subscription_id`, the right `plan` — because
+  the older subscription simply stopped being referenced by anything we store.
+  The only place the truth existed was Stripe.
+
+  "Already has" means a subscription in a status that bills. A subscription left
+  `incomplete` by an abandoned checkout charges nothing, so it is not what this
+  guards against and a fresh one is created beside it; Stripe expires those on
+  its own.
   """
   @spec start_subscription(Scope.t(), atom()) ::
           {:ok, %{client_secret: String.t(), subscription_id: String.t()}} | {:error, term()}
   def start_subscription(%Scope{} = scope, tier) when tier in @tiers do
-    with {:ok, account} <- ensure_customer(scope),
-         {:ok, subscription} <-
+    with {:ok, account} <- ensure_customer(scope) do
+      case billing_subscription(account) do
+        {:ok, existing} -> change_tier(account, existing, tier)
+        :none -> create_subscription(account, tier)
+      end
+    end
+  end
+
+  defp create_subscription(account, tier) do
+    with {:ok, subscription} <-
            StripeClient.create_subscription(%{
              "customer" => account.stripe_customer_id,
              "items[0][price]" => price_id!(tier),
@@ -56,6 +79,58 @@ defmodule CodeMySpec.Billing do
              "expand[0]" => "latest_invoice.confirmation_secret"
            }) do
       client_secret(subscription)
+    end
+  end
+
+  # `always_invoice` rather than the default `create_prorations`: the browser is
+  # sitting on a Payment Element waiting for something to confirm, and deferring
+  # the proration to the next cycle would leave it with nothing. This bills the
+  # difference now, which is also what someone clicking "upgrade" expects.
+  defp change_tier(account, subscription, tier) do
+    with {:ok, item_id} <- subscription_item_id(subscription),
+         {:ok, updated} <-
+           StripeClient.update_subscription(subscription["id"], %{
+             "items[0][id]" => item_id,
+             "items[0][price]" => price_id!(tier),
+             "items[0][quantity]" => "1",
+             "proration_behavior" => "always_invoice",
+             "payment_behavior" => "default_incomplete",
+             "payment_settings[save_default_payment_method]" => "on_subscription",
+             "metadata[account_id]" => account.id,
+             "metadata[tier]" => to_string(tier),
+             "expand[0]" => "latest_invoice.confirmation_secret"
+           }) do
+      client_secret(updated)
+    end
+  end
+
+  # Statuses that take money. `incomplete` and `incomplete_expired` never
+  # charged, and `canceled` has stopped — none of them can double-bill, so none
+  # of them should block a new subscription.
+  @billing_statuses ~w(active trialing past_due unpaid paused)
+
+  defp billing_subscription(%Account{stripe_subscription_id: id}) when is_binary(id) do
+    case StripeClient.get_subscription(id) do
+      {:ok, %{"status" => status} = subscription} when status in @billing_statuses ->
+        {:ok, subscription}
+
+      _ ->
+        # Unreadable is treated as absent on purpose. Refusing to sell because
+        # Stripe was briefly unreachable is worse than the duplicate this
+        # guards against, which the reconciliation below would still catch.
+        :none
+    end
+  end
+
+  defp billing_subscription(_account), do: :none
+
+  # The item, not the price and not the subscription. Naming the wrong one adds
+  # a second line to the same subscription rather than replacing the first —
+  # the same defect one level down, and just as invisible from our side.
+  defp subscription_item_id(subscription) do
+    case get_in(subscription, ["items", "data"]) do
+      [%{"id" => id} | _] -> {:ok, id}
+      _ -> {:error, :no_subscription_item}
     end
   end
 

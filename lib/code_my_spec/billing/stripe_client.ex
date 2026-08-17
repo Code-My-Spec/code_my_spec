@@ -35,6 +35,22 @@ defmodule CodeMySpec.Billing.StripeClient do
   @doc "Retrieves a subscription — e.g. to read its status after a webhook."
   def get_subscription(id), do: get("/v1/subscriptions/#{id}")
 
+  @doc """
+  Moves an existing subscription to a different price, in place.
+
+  The alternative — creating a second subscription — is what `27f519dc` was:
+  Stripe happily bills both, our single `stripe_subscription_id` column keeps
+  only the newer one, and the older keeps charging while nothing we store
+  references it. An account that had upgraded once was paying the sum of every
+  tier it had ever bought, and every internal signal said it was fine.
+
+  `items[0][id]` is the *subscription item*, not the price and not the
+  subscription — replacing an item requires naming the one being replaced, and
+  omitting it adds a second line instead of swapping the first, which is the
+  same bug one level down.
+  """
+  def update_subscription(id, params), do: post("/v1/subscriptions/#{id}", params)
+
   @doc "Cancels at period end. The account keeps the tier it paid for until then."
   def cancel_subscription_at_period_end(id),
     do: post("/v1/subscriptions/#{id}", %{"cancel_at_period_end" => "true"})
