@@ -142,20 +142,19 @@ defmodule CodeMySpecSpex.Story713.Criterion6282Spex do
     }
 
     Req.Test.stub(PullClient, fn conn ->
-      body =
-        case conn.request_path do
-          "/manifest.json" -> Jason.encode!(manifest)
-          "/content.json" -> blob_json
-          _ -> "{}"
-        end
-
       conn
       |> Plug.Conn.put_resp_content_type("application/json")
-      |> Plug.Conn.send_resp(200, body)
+      |> Plug.Conn.send_resp(200, served(conn.request_path, manifest, blob_json))
     end)
 
     :ok
   end
+
+  # The two documents the pull fetches, answered by path. Function heads rather
+  # than a `case`: a spex file may not branch imperatively, helpers included.
+  defp served("/manifest.json", manifest, _blob_json), do: Jason.encode!(manifest)
+  defp served("/content.json", _manifest, blob_json), do: blob_json
+  defp served(_other, _manifest, _blob_json), do: "{}"
 
   defp set_deploy_key(_context) do
     previous = Application.get_env(:code_my_spec, :deploy_key)
