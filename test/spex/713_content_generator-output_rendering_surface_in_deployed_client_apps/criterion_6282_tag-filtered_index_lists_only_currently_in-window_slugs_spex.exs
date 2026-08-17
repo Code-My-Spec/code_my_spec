@@ -48,9 +48,22 @@ defmodule CodeMySpecSpex.Story713.Criterion6282Spex do
         stub_pull(rows)
         trigger_pull()
 
-        eventually(fn ->
-          assert html_response(get(build_conn(), "/blog/p1"), 200) =~ "p1"
-        end)
+        # Every in-window post, not just the first. The pull is asynchronous
+        # and lands a post at a time, so waiting on `p1` alone let the `when_`
+        # read the tag index while `p2` was still arriving — an index missing
+        # `p2` then failed an assertion about filtering, which is not what was
+        # wrong.
+        #
+        # This is what the harness kept catching and an isolated run did not:
+        # the window is only as wide as the machine is busy, and the sweep runs
+        # beside the analyzer. Giving `eventually/2` a longer deadline, which
+        # is where I looked first, does not help a wait that is watching the
+        # wrong thing.
+        for slug <- ~w(p1 p2) do
+          eventually(fn ->
+            assert html_response(get(build_conn(), "/blog/#{slug}"), 200) =~ slug
+          end)
+        end
 
         {:ok, context}
       end
