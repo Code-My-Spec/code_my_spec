@@ -54,6 +54,11 @@ defmodule CodeMySpecSpex.Story812.Criterion6509Spex do
   spex "OAuth :existing via provider identity is silent" do
     scenario "returning login fires no :sign_up telemetry" do
       given_ "the user + Google integration are already on file", context do
+        # given: already true — the `setup` block above creates the user and a
+        # Google integration carrying the same provider_user_id, through
+        # `Fixtures.user_fixture/1` and `Fixtures.google_integration_fixture/2`.
+        # The claim is about who exists before the callback, so it is arranged
+        # once for the scenario rather than driven here.
         {:ok, context}
       end
 

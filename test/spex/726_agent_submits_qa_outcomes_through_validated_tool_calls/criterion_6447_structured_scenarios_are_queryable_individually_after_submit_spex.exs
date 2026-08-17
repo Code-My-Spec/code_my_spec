@@ -25,6 +25,10 @@ defmodule CodeMySpecSpex.Story726.Criterion6447Spex do
   spex "The submit payload's scenarios field is a structured list" do
     scenario "Structured scenarios are queryable individually after submit" do
       given_ "a started qa_complete task", context do
+        # given: already true — `setup :setup_qa_story_task` builds the project,
+        # the story and a session carrying a started qa_complete task for it,
+        # through `Fixtures.qa_story_task_fixture/2`. Every criterion in this
+        # story needs exactly that, so it is scaffolding rather than subject.
         {:ok, context}
       end
 

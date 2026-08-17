@@ -24,6 +24,10 @@ defmodule CodeMySpecSpex.Story726.Criterion6487Spex do
   spex "Non-pass submissions must carry at least one issue id" do
     scenario "Submit with fail status and empty issue_ids is rejected at the tool boundary" do
       given_ "a started qa_complete task", context do
+        # given: already true — `setup :setup_qa_story_task` builds the project,
+        # the story and a session carrying a started qa_complete task for it,
+        # through `Fixtures.qa_story_task_fixture/2`. Every criterion in this
+        # story needs exactly that, so it is scaffolding rather than subject.
         {:ok, context}
       end
 
@@ -59,6 +63,10 @@ defmodule CodeMySpecSpex.Story726.Criterion6487Spex do
 
     scenario "Submit with partial status and empty issue_ids is rejected at the tool boundary" do
       given_ "a started qa_complete task", context do
+        # given: already true — `setup :setup_qa_story_task` builds the project,
+        # the story and a session carrying a started qa_complete task for it,
+        # through `Fixtures.qa_story_task_fixture/2`. Every criterion in this
+        # story needs exactly that, so it is scaffolding rather than subject.
         {:ok, context}
       end
 
@@ -94,6 +102,10 @@ defmodule CodeMySpecSpex.Story726.Criterion6487Spex do
 
     scenario "Pass with empty issue_ids remains allowed" do
       given_ "a started qa_complete task", context do
+        # given: already true — `setup :setup_qa_story_task` builds the project,
+        # the story and a session carrying a started qa_complete task for it,
+        # through `Fixtures.qa_story_task_fixture/2`. Every criterion in this
+        # story needs exactly that, so it is scaffolding rather than subject.
         {:ok, context}
       end
 

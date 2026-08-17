@@ -31,6 +31,9 @@ defmodule CodeMySpecSpex.Story812.Criterion6536Spex do
   spex "Register and onboarding mounts fire their gtag behavior events" do
     scenario "the registration page wires the ViewRegisterPage gtag hook on mount" do
       given_ "an unauthenticated visitor", context do
+        # given: already true — the Case hands every scenario a bare conn with
+        # no session, and the scenario below this one logs a user in to draw
+        # the contrast.
         {:ok, context}
       end
 

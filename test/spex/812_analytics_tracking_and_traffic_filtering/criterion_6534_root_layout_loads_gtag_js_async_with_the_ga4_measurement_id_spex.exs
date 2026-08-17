@@ -28,6 +28,9 @@ defmodule CodeMySpecSpex.Story812.Criterion6534Spex do
   spex "Root layout loads gtag.js async with GA4 measurement id" do
     scenario "homepage renders with gtag async script in <head>" do
       given_ "an unauthenticated request to the homepage", context do
+        # given: already true — the Case hands every scenario a bare conn with
+        # no session. An unauthenticated visitor is the default state of the
+        # world; logging one in is what would take work.
         {:ok, context}
       end
 

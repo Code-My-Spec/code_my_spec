@@ -28,6 +28,7 @@ defmodule CodeMySpec.SpexGivensTest do
   a fact about the world the mount does not create. Those need reading. This
   is the floor, not the ceiling.
   """
+
   # Sync: this mutates OS environment variables, which belong to the BEAM node
   # rather than to a test process. Saving and restoring them is careful and
   # still leaves a window every concurrent test can see.
@@ -71,6 +72,11 @@ defmodule CodeMySpec.SpexGivensTest do
   # Nothing may be commented *inside* the sigil — ~w has no comments, so a `#`
   # line becomes literal words like "a" and "is", which match every body and
   # silently disable the whole check.
+  # `seed_cookies` joins `assign` and `put_session` for the same reason they are
+  # here: a request's state is part of the world a criterion drives, and story
+  # 812's session-stitching criteria have no other way to say "a visitor
+  # arriving with these GA cookies". The helper's whole body is
+  # `Plug.Test.put_req_cookie/3` twice.
   @establishes ~w(
     Fixtures. live( render_click render_submit render_change element(
     post( put( patch( delete( dispatch( with_provider_cassette use_cmd_cassette
@@ -81,7 +87,7 @@ defmodule CodeMySpec.SpexGivensTest do
     existing_apex_mx paste_storage_credentials verified_sending_domains
     stuck_sending_domain unverifiable_domain app_holds_refresh_secret
     connect_providers tear_down_after Environments. File.write File.mkdir
-    assign put_session
+    assign put_session seed_cookies
     stage_ scripted_run built_deploy_run devops_on
     subscribe_and_join ChannelTest. join_widget
     put_env! delete_env!
@@ -132,23 +138,9 @@ defmodule CodeMySpec.SpexGivensTest do
     "test/spex/70_architecture_design/criterion_5657_architect_classifies_an_orphaned_framework_module_by_adding_its_path_to_infrastructure_paths_spex.exs",
     "test/spex/713_content_generator-output_rendering_surface_in_deployed_client_apps/criterion_6277_valid_trigger_with_matching_deploy_key_kicks_off_the_sync_spex.exs",
     "test/spex/715_architect_surveys_the_project/criterion_6309_unknown_requirement_component_story_reference_returns_a_not_found_error_spex.exs",
-    "test/spex/726_agent_submits_qa_outcomes_through_validated_tool_calls/criterion_6440_agent_submits_a_completed_qa_pass_with_one_tool_call_spex.exs",
-    "test/spex/726_agent_submits_qa_outcomes_through_validated_tool_calls/criterion_6441_submit_with_all_required_fields_returns_an_attempt_id_spex.exs",
-    "test/spex/726_agent_submits_qa_outcomes_through_validated_tool_calls/criterion_6442_submit_without_status_is_rejected_at_the_tool_boundary_spex.exs",
-    "test/spex/726_agent_submits_qa_outcomes_through_validated_tool_calls/criterion_6447_structured_scenarios_are_queryable_individually_after_submit_spex.exs",
-    "test/spex/726_agent_submits_qa_outcomes_through_validated_tool_calls/criterion_6448_submit_with_scenarios_as_a_single_string_is_rejected_spex.exs",
-    "test/spex/726_agent_submits_qa_outcomes_through_validated_tool_calls/criterion_6449_status_pass_satisfies_qa_complete_spex.exs",
-    "test/spex/726_agent_submits_qa_outcomes_through_validated_tool_calls/criterion_6487_submit_with_fail_or_partial_status_and_empty_issue_ids_is_rejected_at_the_tool_boundary_spex.exs",
     "test/spex/727_engineer_trusts_qa_pass_claims_as_audit-grade_events/criterion_6452_qa_submission_creates_a_row_that_persists_across_server_restarts_spex.exs",
     "test/spex/727_engineer_trusts_qa_pass_claims_as_audit-grade_events/criterion_6453_db_pass_attempt_satisfies_qa_complete_regardless_of_disk_state_spex.exs",
     "test/spex/811_user_sees_the_agents_task_queue_at_a_glance/criterion_6492_head_of_displayed_queue_equals_get_next_requirements_return_spex.exs",
-    "test/spex/812_analytics_tracking_and_traffic_filtering/criterion_6509_oauth_existing_via_provider_identity_is_silent_spex.exs",
-    "test/spex/812_analytics_tracking_and_traffic_filtering/criterion_6510_oauth_existing_via_email_auto_link_is_silent_spex.exs",
-    "test/spex/812_analytics_tracking_and_traffic_filtering/criterion_6512_first_cms_connect_dispatches_first_cli_connect_once_spex.exs",
-    "test/spex/812_analytics_tracking_and_traffic_filtering/criterion_6513_subsequent_cms_connects_do_not_re_fire_first_cli_connect_spex.exs",
-    "test/spex/812_analytics_tracking_and_traffic_filtering/criterion_6534_root_layout_loads_gtag_js_async_with_the_ga4_measurement_id_spex.exs",
-    "test/spex/812_analytics_tracking_and_traffic_filtering/criterion_6536_register_and_onboarding_mounts_fire_their_gtag_behavior_events_spex.exs",
-    "test/spex/812_analytics_tracking_and_traffic_filtering/criterion_6539_server_mp_conversions_carry_the_gtag_session_id_from_the_ga_session_cookie_spex.exs",
     "test/spex/815_sam_sends_and_receives_messages_with_his_users/criterion_6576_user_sees_only_their_own_conversation_spex.exs",
     "test/spex/817_manage_google_ads_through_the_agent/criterion_6602_an_unconnected_account_prompts_the_user_to_connect_google_spex.exs",
     "test/spex/983_spec_failures_block_only_stories_whose_specs_have_gone_green/criterion_8161_a_later_edit_stales_the_spex_run_without_un-readying_the_story_spex.exs",

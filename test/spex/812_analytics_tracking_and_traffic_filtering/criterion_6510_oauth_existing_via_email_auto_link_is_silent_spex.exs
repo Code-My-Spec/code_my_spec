@@ -47,6 +47,9 @@ defmodule CodeMySpecSpex.Story812.Criterion6510Spex do
   spex "OAuth :existing via email auto-link is silent" do
     scenario "email match on a user with no Google integration fires no :sign_up" do
       given_ "the user is already on file with that email", context do
+        # given: already true — the `setup` block above creates the user with
+        # this email via `Fixtures.user_fixture/1`, and deliberately no Google
+        # integration: matching by email alone is what this criterion is about.
         {:ok, context}
       end
 

@@ -32,6 +32,10 @@ defmodule CodeMySpecSpex.Story812.Criterion6513Spex do
   spex "Subsequent cms connects do not re-fire :first_cli_connect" do
     scenario "channel join on a previously-connected user fires no :first_cli_connect" do
       given_ "a user whose cli_first_connected_at is already set", context do
+        # given: already true — the `setup` block above calls
+        # `Fixtures.mark_cli_first_connected/1` on the registered user, which
+        # is exactly this precondition and the one thing separating this
+        # criterion from 6512.
         {:ok, context}
       end
 

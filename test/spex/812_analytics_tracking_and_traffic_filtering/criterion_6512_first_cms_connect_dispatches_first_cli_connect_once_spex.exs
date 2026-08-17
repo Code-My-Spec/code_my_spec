@@ -33,8 +33,9 @@ defmodule CodeMySpecSpex.Story812.Criterion6512Spex do
   spex "First cms connect dispatches :first_cli_connect once" do
     scenario "CliChannel join for a fresh user fires one first_cli_connect MP payload" do
       given_ "a user whose cli_first_connected_at is NULL", context do
-        # register_log_in_setup_account creates a fresh user; cli_first_connected_at
-        # defaults to nil, so this is already satisfied.
+        # given: already true — `setup :register_log_in_setup_account` creates a
+        # fresh user, and `cli_first_connected_at` stays NULL until a CLI
+        # connects. 6513 is the criterion that arranges the opposite.
         {:ok, context}
       end
 

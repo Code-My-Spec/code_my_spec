@@ -23,6 +23,10 @@ defmodule CodeMySpecSpex.Story726.Criterion6441Spex do
   spex "The submit tool validates required fields at call time" do
     scenario "Submit with all required fields returns an attempt id" do
       given_ "a started qa_complete task", context do
+        # given: already true — `setup :setup_qa_story_task` builds the project,
+        # the story and a session carrying a started qa_complete task for it,
+        # through `Fixtures.qa_story_task_fixture/2`. Every criterion in this
+        # story needs exactly that, so it is scaffolding rather than subject.
         {:ok, context}
       end
 
