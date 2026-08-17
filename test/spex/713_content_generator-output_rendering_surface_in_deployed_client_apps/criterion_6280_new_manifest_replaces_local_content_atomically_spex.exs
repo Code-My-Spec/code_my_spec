@@ -18,7 +18,7 @@ defmodule CodeMySpecSpex.Story713.Criterion6280Spex do
 
   use CodeMySpecSpex.Case
 
-  alias CodeMySpec.Content.PullClient
+  alias CodeMySpecSpex.Fixtures
 
   @endpoint CodeMySpecWeb.Endpoint
 
@@ -34,7 +34,7 @@ defmodule CodeMySpecSpex.Story713.Criterion6280Spex do
     fail_on_error_logs: false do
     scenario "New manifest replaces local content atomically" do
       given_ "a first sync persisted five posts", context do
-        stub_pull(Enum.map(@five, &content_row(&1, "Post #{&1}")), valid: true)
+        Fixtures.stub_content_pull(Enum.map(@five, &content_row(&1, "Post #{&1}")))
         trigger_pull()
 
         eventually(fn ->
@@ -45,7 +45,7 @@ defmodule CodeMySpecSpex.Story713.Criterion6280Spex do
       end
 
       when_ "a clean sync of four posts arrives", context do
-        stub_pull(Enum.map(@four, &content_row(&1, "Post #{&1}")), valid: true)
+        Fixtures.stub_content_pull(Enum.map(@four, &content_row(&1, "Post #{&1}")))
         trigger_pull()
 
         eventually(fn ->
@@ -69,7 +69,7 @@ defmodule CodeMySpecSpex.Story713.Criterion6280Spex do
 
     scenario "A replace that fails mid-insert leaves the original rows intact" do
       given_ "a first sync persisted five posts", context do
-        stub_pull(Enum.map(@five, &content_row(&1, "Post #{&1}")), valid: true)
+        Fixtures.stub_content_pull(Enum.map(@five, &content_row(&1, "Post #{&1}")))
         trigger_pull()
 
         eventually(fn ->
@@ -82,7 +82,7 @@ defmodule CodeMySpecSpex.Story713.Criterion6280Spex do
       when_ "a sync whose blob has an invalid row arrives", context do
         # A row missing the required slug makes the insert fail mid-transaction.
         bad_blob = [content_row("a", "Post a"), Map.delete(content_row("b", "Post b"), "slug")]
-        stub_pull(bad_blob, valid: true)
+        Fixtures.stub_content_pull(bad_blob)
         trigger_pull()
         {:ok, context}
       end
@@ -116,38 +116,6 @@ defmodule CodeMySpecSpex.Story713.Criterion6280Spex do
     |> put_req_header("authorization", "Bearer k-abc123")
     |> put_req_header("content-type", "application/json")
     |> post("/api/content/pull", %{"manifest_url" => "https://content.foo.com/manifest.json"})
-  end
-
-  defp stub_pull(blob_rows, _opts) do
-    Req.Test.set_req_test_to_shared(%{})
-    Application.put_env(:code_my_spec, PullClient, plug: {Req.Test, PullClient})
-    on_exit(fn -> Application.delete_env(:code_my_spec, PullClient) end)
-
-    blob_json = Jason.encode!(blob_rows)
-    hash = "sha256:" <> (:crypto.hash(:sha256, blob_json) |> Base.encode16(case: :lower))
-
-    manifest = %{
-      "version" => "1.0",
-      "generated_at" => "2026-05-15T12:00:00Z",
-      "content_blob_url" => "https://content.foo.com/content.json",
-      "content_blob_hash" => hash,
-      "counts" => %{"blog" => length(blob_rows)}
-    }
-
-    Req.Test.stub(PullClient, fn conn ->
-      body =
-        case conn.request_path do
-          "/manifest.json" -> Jason.encode!(manifest)
-          "/content.json" -> blob_json
-          _ -> "{}"
-        end
-
-      conn
-      |> Plug.Conn.put_resp_content_type("application/json")
-      |> Plug.Conn.send_resp(200, body)
-    end)
-
-    :ok
   end
 
   defp set_deploy_key(_context) do

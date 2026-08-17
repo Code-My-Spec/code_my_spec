@@ -17,7 +17,7 @@ defmodule CodeMySpecSpex.Story713.Criterion6277Spex do
 
   use CodeMySpecSpex.Case
 
-  alias CodeMySpec.Content.PullClient
+  alias CodeMySpecSpex.Fixtures
 
   @endpoint CodeMySpecWeb.Endpoint
 
@@ -83,23 +83,5 @@ defmodule CodeMySpecSpex.Story713.Criterion6277Spex do
     :ok
   end
 
-  defp stub_pull(_context) do
-    Req.Test.set_req_test_to_shared(%{})
-    previous = Application.get_env(:code_my_spec, PullClient, [])
-    Application.put_env(:code_my_spec, PullClient, plug: {Req.Test, PullClient})
-    on_exit(fn -> Application.put_env(:code_my_spec, PullClient, previous) end)
-
-    test_pid = self()
-
-    Req.Test.stub(PullClient, fn conn ->
-      url = "#{conn.scheme}://#{conn.host}#{conn.request_path}"
-      send(test_pid, {:pull_fetch, url})
-
-      conn
-      |> Plug.Conn.put_resp_content_type("application/json")
-      |> Plug.Conn.send_resp(200, ~s({}))
-    end)
-
-    :ok
-  end
+  defp stub_pull(_context), do: Fixtures.stub_content_pull(:no_content)
 end

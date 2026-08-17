@@ -24,7 +24,7 @@ defmodule CodeMySpecSpex.Story713.Criterion6278Spex do
 
   use CodeMySpecSpex.Case
 
-  alias CodeMySpec.Content.PullClient
+  alias CodeMySpecSpex.Fixtures
 
   @endpoint CodeMySpecWeb.Endpoint
 
@@ -34,7 +34,7 @@ defmodule CodeMySpecSpex.Story713.Criterion6278Spex do
     scenario "Well-formed manifest parses into the expected fields" do
       given_ "a well-formed manifest and a hash-matching blob are served", context do
         blob = [content_row("welcome", "Welcome Post")]
-        stub_pull(blob, manifest_overrides: %{})
+        Fixtures.stub_content_pull(blob)
         {:ok, context}
       end
 
@@ -62,7 +62,7 @@ defmodule CodeMySpecSpex.Story713.Criterion6278Spex do
         # Distinct slug so this assertion is independent of the first
         # scenario's persisted content (scenarios share the test sandbox).
         blob = [content_row("never-lands", "Should Not Land")]
-        stub_pull(blob, manifest_overrides: %{drop: "content_blob_hash"})
+        Fixtures.stub_content_pull(blob, manifest: %{drop: "content_blob_hash"})
         {:ok, context}
       end
 
@@ -102,43 +102,6 @@ defmodule CodeMySpecSpex.Story713.Criterion6278Spex do
       "tags" => []
     }
   end
-
-  defp stub_pull(blob_rows, opts) do
-    Req.Test.set_req_test_to_shared(%{})
-    Application.put_env(:code_my_spec, PullClient, plug: {Req.Test, PullClient})
-    on_exit(fn -> Application.delete_env(:code_my_spec, PullClient) end)
-
-    blob_json = Jason.encode!(blob_rows)
-    hash = "sha256:" <> (:crypto.hash(:sha256, blob_json) |> Base.encode16(case: :lower))
-
-    manifest =
-      %{
-        "version" => "1.0",
-        "generated_at" => "2026-05-15T12:00:00Z",
-        "content_blob_url" => "https://content.foo.com/content.json",
-        "content_blob_hash" => hash,
-        "counts" => %{"blog" => length(blob_rows)}
-      }
-      |> apply_manifest_overrides(Keyword.get(opts, :manifest_overrides, %{}))
-
-    Req.Test.stub(PullClient, fn conn ->
-      body =
-        case conn.request_path do
-          "/manifest.json" -> Jason.encode!(manifest)
-          "/content.json" -> blob_json
-          _ -> "{}"
-        end
-
-      conn
-      |> Plug.Conn.put_resp_content_type("application/json")
-      |> Plug.Conn.send_resp(200, body)
-    end)
-
-    :ok
-  end
-
-  defp apply_manifest_overrides(manifest, %{drop: key}), do: Map.delete(manifest, key)
-  defp apply_manifest_overrides(manifest, overrides), do: Map.merge(manifest, overrides)
 
   defp set_deploy_key(_context) do
     previous = Application.get_env(:code_my_spec, :deploy_key)

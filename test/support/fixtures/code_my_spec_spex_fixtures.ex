@@ -67,6 +67,7 @@ defmodule CodeMySpecSpex.Fixtures do
   alias CodeMySpec.Auth.OAuthClient
   alias CodeMySpec.Configurations
   alias CodeMySpec.Content.CloudflareClient
+  alias CodeMySpec.Content.PullClient
   alias CodeMySpec.Content.S3Client
   alias CodeMySpec.Content.TriggerClient
   alias CodeMySpec.Conversations
@@ -1856,6 +1857,87 @@ defmodule CodeMySpecSpex.Fixtures do
       conn
       |> Plug.Conn.put_resp_content_type("application/json")
       |> Plug.Conn.send_resp(200, body)
+    end)
+
+    :ok
+  end
+
+  @doc """
+  Serve a content pull from `rows`, recording `{:pull_fetch, url}` per fetch.
+
+  Story 713 carried six copies of this stub, each about thirty lines, and they
+  differed in three places: whether the advertised hash matches the blob,
+  whether a manifest field is dropped, and whether fetches were recorded at
+  all. Those three are the entire subject of the criteria that use them, and
+  they were the hardest thing to find in the file.
+
+      stub_content_pull(rows)
+      stub_content_pull(rows, hash: :mismatched)
+      stub_content_pull(rows, manifest: %{drop: "content_blob_hash"})
+      stub_content_pull(:no_content)
+
+  `:no_content` answers `{}` to everything, for the criteria that only ask
+  whether a fetch happened at all. Recording is unconditional: a caller that
+  does not read the messages pays nothing for them, and the alternative was a
+  second copy of the stub.
+  """
+  @spec stub_content_pull([map()] | :no_content, keyword()) :: :ok
+  def stub_content_pull(rows, opts \\ [])
+
+  def stub_content_pull(:no_content, opts) do
+    install_pull_stub(fn _path -> "{}" end, opts)
+  end
+
+  def stub_content_pull(rows, opts) do
+    blob_json = Jason.encode!(rows)
+    manifest_json = rows |> pull_manifest(blob_json, opts) |> Jason.encode!()
+
+    install_pull_stub(
+      fn
+        "/manifest.json" -> manifest_json
+        "/content.json" -> blob_json
+        _other -> "{}"
+      end,
+      opts
+    )
+  end
+
+  defp pull_manifest(rows, blob_json, opts) do
+    %{
+      "version" => "1.0",
+      "generated_at" => "2026-05-15T12:00:00Z",
+      "content_blob_url" => "https://content.foo.com/content.json",
+      "content_blob_hash" => blob_hash(blob_json, Keyword.get(opts, :hash, :matching)),
+      "counts" => %{"blog" => length(rows)}
+    }
+    |> override_manifest(Keyword.get(opts, :manifest, %{}))
+  end
+
+  defp blob_hash(blob_json, :matching),
+    do: "sha256:" <> (:sha256 |> :crypto.hash(blob_json) |> Base.encode16(case: :lower))
+
+  defp blob_hash(_blob_json, :mismatched), do: "sha256:" <> String.duplicate("0", 64)
+
+  defp override_manifest(manifest, %{drop: key}), do: Map.delete(manifest, key)
+  defp override_manifest(manifest, overrides), do: Map.merge(manifest, overrides)
+
+  defp install_pull_stub(answer, opts) do
+    test_pid = Keyword.get(opts, :record_to, self())
+
+    Req.Test.set_req_test_to_shared(%{})
+    previous = Application.get_env(:code_my_spec, PullClient, [])
+    Application.put_env(:code_my_spec, PullClient, plug: {Req.Test, PullClient})
+
+    ExUnit.Callbacks.on_exit(fn ->
+      Application.put_env(:code_my_spec, PullClient, previous)
+    end)
+
+    Req.Test.stub(PullClient, fn conn ->
+      send(test_pid, {:pull_fetch, "#{conn.scheme}://#{conn.host}#{conn.request_path}"})
+
+      conn
+      |> Plug.Conn.put_resp_content_type("application/json")
+      |> Plug.Conn.send_resp(200, answer.(conn.request_path))
     end)
 
     :ok

@@ -18,7 +18,7 @@ defmodule CodeMySpecSpex.Story713.Criterion6279Spex do
 
   use CodeMySpecSpex.Case
 
-  alias CodeMySpec.Content.PullClient
+  alias CodeMySpecSpex.Fixtures
 
   @endpoint CodeMySpecWeb.Endpoint
 
@@ -27,7 +27,7 @@ defmodule CodeMySpecSpex.Story713.Criterion6279Spex do
   spex "Hash match persists; hash mismatch leaves existing content untouched" do
     scenario "Blob whose hash matches the manifest passes verification" do
       given_ "a first clean sync persisted the alpha post", context do
-        stub_pull([content_row("alpha", "Alpha Post")], match_hash: true)
+        Fixtures.stub_content_pull([content_row("alpha", "Alpha Post")])
         trigger_pull()
 
         eventually(fn ->
@@ -38,7 +38,7 @@ defmodule CodeMySpecSpex.Story713.Criterion6279Spex do
       end
 
       when_ "a pull arrives whose blob hash does not match the manifest", context do
-        stub_pull([content_row("beta", "Beta Post")], match_hash: false)
+        Fixtures.stub_content_pull([content_row("beta", "Beta Post")], hash: :mismatched)
         trigger_pull()
         {:ok, context}
       end
@@ -73,43 +73,6 @@ defmodule CodeMySpecSpex.Story713.Criterion6279Spex do
     |> put_req_header("authorization", "Bearer k-abc123")
     |> put_req_header("content-type", "application/json")
     |> post("/api/content/pull", %{"manifest_url" => "https://content.foo.com/manifest.json"})
-  end
-
-  defp stub_pull(blob_rows, opts) do
-    Req.Test.set_req_test_to_shared(%{})
-    Application.put_env(:code_my_spec, PullClient, plug: {Req.Test, PullClient})
-    on_exit(fn -> Application.delete_env(:code_my_spec, PullClient) end)
-
-    blob_json = Jason.encode!(blob_rows)
-    real_hash = :crypto.hash(:sha256, blob_json) |> Base.encode16(case: :lower)
-
-    hash =
-      if Keyword.fetch!(opts, :match_hash),
-        do: "sha256:" <> real_hash,
-        else: "sha256:" <> String.duplicate("0", 64)
-
-    manifest = %{
-      "version" => "1.0",
-      "generated_at" => "2026-05-15T12:00:00Z",
-      "content_blob_url" => "https://content.foo.com/content.json",
-      "content_blob_hash" => hash,
-      "counts" => %{"blog" => length(blob_rows)}
-    }
-
-    Req.Test.stub(PullClient, fn conn ->
-      body =
-        case conn.request_path do
-          "/manifest.json" -> Jason.encode!(manifest)
-          "/content.json" -> blob_json
-          _ -> "{}"
-        end
-
-      conn
-      |> Plug.Conn.put_resp_content_type("application/json")
-      |> Plug.Conn.send_resp(200, body)
-    end)
-
-    :ok
   end
 
   defp set_deploy_key(_context) do

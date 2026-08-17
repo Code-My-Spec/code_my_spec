@@ -17,7 +17,7 @@ defmodule CodeMySpecSpex.Story713.Criterion6282Spex do
 
   use CodeMySpecSpex.Case
 
-  alias CodeMySpec.Content.PullClient
+  alias CodeMySpecSpex.Fixtures
 
   @endpoint CodeMySpecWeb.Endpoint
 
@@ -45,7 +45,7 @@ defmodule CodeMySpecSpex.Story713.Criterion6282Spex do
           row("p4", publish_at: tomorrow, expires_at: nil)
         ]
 
-        stub_pull(rows)
+        Fixtures.stub_content_pull(rows)
         trigger_pull()
 
         # Wait on the index, because the index is what this criterion reads
@@ -124,37 +124,6 @@ defmodule CodeMySpecSpex.Story713.Criterion6282Spex do
     |> put_req_header("content-type", "application/json")
     |> post("/api/content/pull", %{"manifest_url" => "https://content.foo.com/manifest.json"})
   end
-
-  defp stub_pull(blob_rows) do
-    Req.Test.set_req_test_to_shared(%{})
-    Application.put_env(:code_my_spec, PullClient, plug: {Req.Test, PullClient})
-    on_exit(fn -> Application.delete_env(:code_my_spec, PullClient) end)
-
-    blob_json = Jason.encode!(blob_rows)
-    hash = "sha256:" <> (:crypto.hash(:sha256, blob_json) |> Base.encode16(case: :lower))
-
-    manifest = %{
-      "version" => "1.0",
-      "generated_at" => "2026-05-15T12:00:00Z",
-      "content_blob_url" => "https://content.foo.com/content.json",
-      "content_blob_hash" => hash,
-      "counts" => %{"blog" => length(blob_rows)}
-    }
-
-    Req.Test.stub(PullClient, fn conn ->
-      conn
-      |> Plug.Conn.put_resp_content_type("application/json")
-      |> Plug.Conn.send_resp(200, served(conn.request_path, manifest, blob_json))
-    end)
-
-    :ok
-  end
-
-  # The two documents the pull fetches, answered by path. Function heads rather
-  # than a `case`: a spex file may not branch imperatively, helpers included.
-  defp served("/manifest.json", manifest, _blob_json), do: Jason.encode!(manifest)
-  defp served("/content.json", _manifest, blob_json), do: blob_json
-  defp served(_other, _manifest, _blob_json), do: "{}"
 
   defp set_deploy_key(_context) do
     previous = Application.get_env(:code_my_spec, :deploy_key)

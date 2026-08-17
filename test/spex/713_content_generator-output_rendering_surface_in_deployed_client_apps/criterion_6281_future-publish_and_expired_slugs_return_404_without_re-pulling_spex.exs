@@ -20,7 +20,7 @@ defmodule CodeMySpecSpex.Story713.Criterion6281Spex do
 
   use CodeMySpecSpex.Case
 
-  alias CodeMySpec.Content.PullClient
+  alias CodeMySpecSpex.Fixtures
 
   @endpoint CodeMySpecWeb.Endpoint
 
@@ -47,7 +47,7 @@ defmodule CodeMySpecSpex.Story713.Criterion6281Spex do
           row("gamma", publish_at: two_days_ago, expires_at: yesterday)
         ]
 
-        stub_pull(rows)
+        Fixtures.stub_content_pull(rows)
         trigger_pull()
 
         eventually(fn ->
@@ -104,43 +104,6 @@ defmodule CodeMySpecSpex.Story713.Criterion6281Spex do
     |> put_req_header("authorization", "Bearer k-abc123")
     |> put_req_header("content-type", "application/json")
     |> post("/api/content/pull", %{"manifest_url" => "https://content.foo.com/manifest.json"})
-  end
-
-  defp stub_pull(blob_rows) do
-    Req.Test.set_req_test_to_shared(%{})
-    Application.put_env(:code_my_spec, PullClient, plug: {Req.Test, PullClient})
-    on_exit(fn -> Application.delete_env(:code_my_spec, PullClient) end)
-
-    blob_json = Jason.encode!(blob_rows)
-    hash = "sha256:" <> (:crypto.hash(:sha256, blob_json) |> Base.encode16(case: :lower))
-
-    manifest = %{
-      "version" => "1.0",
-      "generated_at" => "2026-05-15T12:00:00Z",
-      "content_blob_url" => "https://content.foo.com/content.json",
-      "content_blob_hash" => hash,
-      "counts" => %{"blog" => length(blob_rows)}
-    }
-
-    test_pid = self()
-
-    Req.Test.stub(PullClient, fn conn ->
-      url = "#{conn.scheme}://#{conn.host}#{conn.request_path}"
-      send(test_pid, {:pull_fetch, url})
-
-      body =
-        case conn.request_path do
-          "/manifest.json" -> Jason.encode!(manifest)
-          "/content.json" -> blob_json
-          _ -> "{}"
-        end
-
-      conn
-      |> Plug.Conn.put_resp_content_type("application/json")
-      |> Plug.Conn.send_resp(200, body)
-    end)
-
-    :ok
   end
 
   defp set_deploy_key(_context) do
