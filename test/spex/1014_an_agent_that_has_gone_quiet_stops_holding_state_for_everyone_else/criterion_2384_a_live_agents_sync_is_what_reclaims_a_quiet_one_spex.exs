@@ -36,6 +36,20 @@ defmodule CodeMySpecSpex.Story1014.Criterion2384Spex do
         {:ok, Map.put(context, :live, Fixtures.live_agent_scope(context.scope))}
       end
 
+      # It is on the page to begin with. The `then_` refutes its presence
+      # afterwards, and a components page that renders nothing — or fails —
+      # satisfies that whether or not anything was reclaimed.
+      given_ "the quiet checkout's component is listed", context do
+        {:ok, view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/components")
+
+        assert render(view) =~ "ExampleContext",
+               "expected the quiet checkout's component to be listed before the sweep — " <>
+                 "without that, the refute below cannot fail"
+
+        {:ok, context}
+      end
+
       when_ "that agent stops, and nothing else runs", context do
         hook(context.live, %{"session_id" => "spex-#{System.unique_integer([:positive])}"})
         {:ok, context}

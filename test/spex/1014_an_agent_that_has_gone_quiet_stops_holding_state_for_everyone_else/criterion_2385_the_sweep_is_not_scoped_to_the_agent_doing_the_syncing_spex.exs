@@ -43,6 +43,19 @@ defmodule CodeMySpecSpex.Story1014.Criterion2385Spex do
         {:ok, Map.put(context, :live, live)}
       end
 
+      # Listed to begin with, for the same reason 2384 needs it: the `then_`
+      # refutes its presence afterwards, and a page rendering nothing satisfies
+      # that whether or not the sweep reclaimed anything.
+      given_ "the quiet checkout's component is listed", context do
+        {:ok, view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/components")
+
+        assert render(view) =~ "ExampleContext",
+               "expected the quiet checkout's component to be listed before the sweep"
+
+        {:ok, context}
+      end
+
       when_ "the live agent stops, which syncs components", context do
         hook(context.live, %{"session_id" => "spex-#{System.unique_integer([:positive])}"})
         {:ok, context}

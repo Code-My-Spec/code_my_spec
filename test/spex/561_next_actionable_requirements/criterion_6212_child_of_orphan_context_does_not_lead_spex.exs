@@ -109,6 +109,16 @@ defmodule CodeMySpecSpex.Story561.Criterion6212Spex do
         {:ok, Map.put(context, :response_text, TaskResponseHelpers.response_text(response))}
       end
 
+      then_ "the priority-1 linked context leads", context do
+        # The first half of this scenario's own title, which nothing asserted.
+        # Both refutes below hold for a reply that offered nothing at all, so
+        # "the orphan is not in the wave" was true of an empty wave.
+        assert context.response_text =~ "entity_id=`#{context.linked.id}`",
+               "expected the linked context to lead the wave, got:\n#{context.response_text}"
+
+        {:ok, context}
+      end
+
       then_ "the orphan context's child schema is not in the wave", context do
         text = context.response_text
 

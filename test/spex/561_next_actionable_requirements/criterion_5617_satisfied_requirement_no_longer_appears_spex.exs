@@ -31,6 +31,17 @@ defmodule CodeMySpecSpex.Story561.Criterion5617Spex do
         {:ok, Map.put(context, :response_text, TaskResponseHelpers.response_text(response))}
       end
 
+      then_ "the tool offered actionable work at all", context do
+        # The contrast the refutes need. `get_next_requirement` returning
+        # nothing satisfies "this particular requirement is absent" exactly as
+        # well as returning a list with it correctly left out.
+        assert context.response_text =~ "requirement_name=",
+               "expected at least one actionable requirement to be advertised, got:\n" <>
+                 context.response_text
+
+        {:ok, context}
+      end
+
       then_ "no start_task call references the parent context's spec_file",
             context do
         parent_id = context.parent_context.id

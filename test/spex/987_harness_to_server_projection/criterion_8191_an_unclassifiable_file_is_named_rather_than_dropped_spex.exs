@@ -64,8 +64,31 @@ defmodule CodeMySpecSpex.Story987.Criterion8191Spex do
         {:ok, context}
       end
 
+      # And one it does not, so the scan has something to skip. The `then_`
+      # refutes membership in the skipped list, and an empty list — a scan that
+      # found nothing, or failed — satisfies that whether or not this file
+      # classified.
+      given_ "a file the classifier does not recognise", context do
+        :ok =
+          Environments.write_file(
+            context.environment,
+            "test/support/unrecognised_helper.ex",
+            "defmodule UnrecognisedHelper do\nend\n"
+          )
+
+        {:ok, context}
+      end
+
       when_ "the harness scans the working copy", context do
         {:ok, Map.put(context, :skipped, Fixtures.unclassified_files(context.scope))}
+      end
+
+      then_ "the scan skipped something, so the list is a real answer", context do
+        assert "test/support/unrecognised_helper.ex" in context.skipped,
+               "expected the unrecognised file to be skipped — without that, the refute " <>
+                 "below holds for an empty list. Got: #{inspect(context.skipped)}"
+
+        {:ok, context}
       end
 
       then_ "it is absent from the skipped list", context do

@@ -39,6 +39,17 @@ defmodule CodeMySpecSpex.Story841.Criterion1970Spex do
         {:ok, Map.put(context, :next, response_text(response))}
       end
 
+      then_ "the loop was offered work at all", context do
+        # The contrast the refutes need. A reply that offered nothing — an
+        # error, or a graph with no actionable work — contains none of the
+        # infrastructure words either, so "the loop never mentions it" was
+        # true of a loop that said nothing.
+        assert context.next =~ "requirement_name=",
+               "expected the graph to offer ordinary work with devops off, got:\n#{context.next}"
+
+        {:ok, context}
+      end
+
       then_ "no infrastructure work is offered", context do
         for word <- ~w(devops_setup deploy release provisioning) do
           refute context.next =~ word,
