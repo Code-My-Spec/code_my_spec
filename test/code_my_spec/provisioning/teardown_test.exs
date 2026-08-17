@@ -40,7 +40,11 @@ defmodule CodeMySpec.Provisioning.TeardownTest do
         origin: "adopted"
       }
 
-      assert {:ok, ^adopted} = Teardown.resource(scope, adopted),
+      # `:skipped`, not `:ok`. Sparing it is still the claim; saying so in the
+      # return is what stops the summary counting it as removed — a teardown
+      # reported 14/14 complete while a live DNS record it had skipped still
+      # pointed at a released address (167394ad).
+      assert {:skipped, ^adopted} = Teardown.resource(scope, adopted),
              "teardown touched a domain setup did not create"
     end
 
@@ -48,7 +52,7 @@ defmodule CodeMySpec.Provisioning.TeardownTest do
       for kind <- ~w(bucket server firewall receiving_domain sending_domain webhook dns_record) do
         r = %{kind: kind, location: "provider/thing", origin: "adopted"}
 
-        assert {:ok, ^r} = Teardown.resource(scope, r),
+        assert {:skipped, ^r} = Teardown.resource(scope, r),
                "an adopted #{kind} was not spared"
       end
     end
@@ -85,6 +89,29 @@ defmodule CodeMySpec.Provisioning.TeardownTest do
       assert source =~ "def resource(%Scope{} = scope, %{kind:"
 
       _ = scope
+    end
+  end
+
+  describe "a teardown reports only what it removed" do
+    # The drill's teardown said "14/14, everything recorded came down" in 9.5
+    # seconds. One of the fourteen was a `dns_record` marked adopted: skipped,
+    # counted as removed, and still resolving to an address Hetzner had just
+    # released back into its pool. The ordering guarantee in
+    # `environment/3`'s moduledoc is about *when* a record is removed and
+    # cannot help when it is not removed at all (167394ad).
+    test "a skipped adoption is not counted among the removed", %{scope: scope} do
+      StepRepository.upsert(scope, :dns, %{
+        state: :done,
+        position: 5,
+        resources: [
+          %{kind: "dns_record", location: "cloudflare/uat.example.com", origin: "adopted"}
+        ]
+      })
+
+      assert {:ok, removed} = Teardown.step(scope, :dns)
+
+      assert removed == [],
+             "a resource teardown skipped was reported as removed: #{inspect(removed)}"
     end
   end
 

@@ -62,12 +62,14 @@ defmodule CodeMySpec.Provisioning.Teardown do
         {:ok, []}
 
       %{resources: resources} ->
-        removed = Enum.map(resources, &resource(scope, &1, opts))
+        outcomes = Enum.map(resources, &resource(scope, &1, opts))
 
-        case Enum.filter(removed, &match?({:error, _}, &1)) do
+        case Enum.filter(outcomes, &match?({:error, _}, &1)) do
           [] ->
             forget(scope, key)
-            {:ok, Enum.map(removed, fn {:ok, r} -> r end)}
+            # Only what was removed. A skipped adoption is still standing, and
+            # counting it here is how a teardown reports work it did not do.
+            {:ok, for({:ok, r} <- outcomes, do: r)}
 
           failures ->
             {:error, {:left_behind, Enum.map(failures, fn {:error, r} -> r end)}}
@@ -132,6 +134,7 @@ defmodule CodeMySpec.Provisioning.Teardown do
 
         removed = for {:ok, r} <- outcomes, do: r
         left = for {:error, r} <- outcomes, do: r
+        _skipped = for {:skipped, r} <- outcomes, do: r
 
         case left do
           [] -> {:ok, removed}
@@ -183,7 +186,14 @@ defmodule CodeMySpec.Provisioning.Teardown do
   # followed silently dropped inbound mail for it. "Only remove what the step
   # recorded" was not a sufficient safety property — a step records what it
   # adopted too.
-  def resource(_scope, %{origin: "adopted"} = r, _opts), do: {:ok, r}
+  #
+  # Skipped is its own outcome, not a quiet success. Reporting it as `{:ok, r}`
+  # is what let the drill's teardown say "14/14, everything recorded came down"
+  # in 9.5 seconds while a `dns_record cloudflare/uat.spex-drill.legwork.ca
+  # (adopted)` was never touched — the server really was released, the record
+  # really was still live, and the summary could not tell those apart because
+  # the two outcomes had the same shape (167394ad).
+  def resource(_scope, %{origin: "adopted"} = r, _opts), do: {:skipped, r}
 
   # Four operations behind one catch-all, which is three too few to debug.
   # Registry buckets survived teardown twice and the only evidence was
