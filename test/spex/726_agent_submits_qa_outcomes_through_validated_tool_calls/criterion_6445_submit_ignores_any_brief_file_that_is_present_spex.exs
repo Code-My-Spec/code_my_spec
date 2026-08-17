@@ -59,6 +59,13 @@ defmodule CodeMySpecSpex.Story726.Criterion6445Spex do
             context do
         refute context.submit_response.isError
 
+        # And an attempt to show for it. Every assertion in this scenario is a
+        # refute, so a reply carrying no error and no attempt satisfies all of
+        # them — "submit succeeds" is the title's own claim and nothing was
+        # checking it.
+        assert extract_attempt_id!(context.submit_response),
+               "expected a successful submit to record an attempt"
+
         text = response_text(context.submit_response)
 
         refute text =~ "garbage",

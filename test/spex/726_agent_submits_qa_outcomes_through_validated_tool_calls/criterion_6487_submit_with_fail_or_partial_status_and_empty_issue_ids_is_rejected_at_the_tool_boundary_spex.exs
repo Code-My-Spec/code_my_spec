@@ -118,6 +118,13 @@ defmodule CodeMySpecSpex.Story726.Criterion6487Spex do
         refute context.response.isError,
                "expected pass with empty issue_ids to be accepted"
 
+        # And an attempt to show for it. The refute alone holds for a reply
+        # that carries no error and no attempt either — the rejection
+        # scenarios above asserted both the error and its message, and this
+        # one asserted half as much about the case that is supposed to work.
+        assert extract_attempt_id!(context.response),
+               "expected an accepted submit to record an attempt"
+
         {:ok, context}
       end
     end
