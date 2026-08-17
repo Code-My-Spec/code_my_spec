@@ -74,11 +74,13 @@ defmodule CodeMySpec.Provisioning.TeardownTest do
   # (167394ad). The next build then reads the record it should have removed as
   # a live site and refuses to repoint it (7f999888).
   describe "an adopted record aimed at a server we own" do
+    defp uat, do: %{name: "uat", host: "uat.astralbi.com", ip: "49.12.189.154"}
+
     test "is removed rather than spared", %{scope: scope} do
       record = %{
         kind: "dns_record",
-        location: "cloudflare/uat.example.com",
-        identifier: "5.161.239.73 environment=uat",
+        location: "cloudflare/uat.astralbi.com",
+        identifier: "49.12.189.154 environment=uat",
         origin: "adopted"
       }
 
@@ -90,35 +92,58 @@ defmodule CodeMySpec.Provisioning.TeardownTest do
           # teardown walked past a record still pointing at a released box.
           refute match?(
                    {:skipped, _},
-                   Teardown.resource(scope, record, project_addresses: ["5.161.239.73"])
+                   Teardown.resource(scope, record, project_environments: [uat()])
                  ),
-                 "an adopted record aimed at a server this project owns must not be spared"
+                 "an adopted record at an environment's own host must not be spared"
         end)
 
-      assert log =~ "points at 5.161.239.73"
+      assert log =~ "uat.astralbi.com"
+    end
+
+    # The case QA on story 851 actually found, and the reason this is matched on
+    # the host rather than on the recorded address. The uat box was at
+    # 49.12.189.154 — in the environment row, in Hetzner, and in `dig` — while
+    # the recorded resource still carried 5.161.239.73 from the run before. An
+    # address comparison misses exactly the live instance of the takeover it
+    # was written to catch.
+    test "is removed even when the recorded address went stale", %{scope: scope} do
+      record = %{
+        kind: "dns_record",
+        location: "cloudflare/uat.astralbi.com",
+        identifier: "5.161.239.73 environment=uat",
+        origin: "adopted"
+      }
+
+      capture_log(fn ->
+        refute match?(
+                 {:skipped, _},
+                 Teardown.resource(scope, record, project_environments: [uat()])
+               ),
+               "a stale identifier must not be the reason a dangling record survives"
+      end)
     end
 
     # The narrowness is the point. "Ignore origin for DNS records" would be the
     # easy version and it deletes an apex a customer already had, pointing at
     # Cloudflare's proxy or at a site hosted somewhere else — exactly the
     # resource the adopted rule exists to spare.
-    test "a record pointing anywhere else is still spared", %{scope: scope} do
+    test "a record at a name no environment uses is still spared", %{scope: scope} do
       record = %{
         kind: "dns_record",
-        location: "cloudflare/example.com",
+        location: "cloudflare/blog.astralbi.com",
         identifier: "172.64.80.1 environment=prod",
         origin: "adopted"
       }
 
       assert {:skipped, ^record} =
-               Teardown.resource(scope, record, project_addresses: ["5.161.239.73"])
+               Teardown.resource(scope, record, project_environments: [uat()])
     end
 
     test "a record that recorded no target is spared", %{scope: scope} do
-      record = %{kind: "dns_record", location: "cloudflare/example.com", origin: "adopted"}
+      record = %{kind: "dns_record", location: "cloudflare/blog.astralbi.com", origin: "adopted"}
 
       assert {:skipped, ^record} =
-               Teardown.resource(scope, record, project_addresses: ["5.161.239.73"])
+               Teardown.resource(scope, record, project_environments: [uat()])
     end
 
     # Only the record. The address belongs to a server, and a server recorded
@@ -127,13 +152,13 @@ defmodule CodeMySpec.Provisioning.TeardownTest do
     test "an adopted server at one of those addresses is still spared", %{scope: scope} do
       record = %{
         kind: "server",
-        location: "hetzner/uat-box",
-        identifier: "5.161.239.73 environment=uat",
+        location: "hetzner/qa-fixture-project-uat",
+        identifier: "49.12.189.154 environment=uat",
         origin: "adopted"
       }
 
       assert {:skipped, ^record} =
-               Teardown.resource(scope, record, project_addresses: ["5.161.239.73"])
+               Teardown.resource(scope, record, project_environments: [uat()])
     end
   end
 

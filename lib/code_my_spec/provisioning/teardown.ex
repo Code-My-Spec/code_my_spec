@@ -393,35 +393,58 @@ defmodule CodeMySpec.Provisioning.Teardown do
 
   ## Internals
 
-  # Whether an adopted DNS record points at a server this project owns.
+  # Whether an adopted DNS record is one setup pointed at a machine of ours.
   #
   # Narrow on purpose. "Ignore origin for DNS records" would be the easy
   # version and it breaks domains setup did not build: an apex a customer
   # already had, pointing at Cloudflare's proxy or at a site hosted somewhere
-  # else, is exactly the resource the adopted rule exists to spare. What
-  # distinguishes the dangerous record is not its kind but its target — an
-  # address this project's own environments hold, which no record of Sam's
-  # would be aimed at.
+  # else, is exactly the resource the adopted rule exists to spare.
   #
-  # Read from what the step wrote down rather than from Cloudflare. The dns
-  # step records `identifier: "5.161.239.73 environment=uat"`, so the address
-  # is already here; asking the provider again would add a network round trip
-  # to a decision the recorded resource can already make, and would answer
-  # differently if somebody edited the record in between.
+  # Matched on the environment's host, because that is the name setup assigns
+  # and therefore the name setup owns. `assign_hosts/2` hands `uat` the name
+  # `uat.example.com`; a record there is the dns step's record whatever its
+  # content happens to be today.
+  #
+  # It was matched on the recorded address first, and that was wrong — QA on
+  # story 851 caught it on the run that was meant to confirm it. The dns step
+  # records `identifier: "5.161.239.73 environment=uat"`, but on a rebuild the
+  # identifier keeps the address from the run before: the uat box really was at
+  # 49.12.189.154, in the environment row and in Hetzner and in `dig`, while
+  # its recorded resource still said 5.161.239.73. So the comparison that was
+  # supposed to catch the takeover missed the one live instance of it. The
+  # address is kept as a second trigger — when it is current it is direct
+  # evidence — but it can no longer be the only one (filed separately).
+  #
+  # The apex is the case worth stating. `prod`'s host is the domain itself, so
+  # a host match would reach a record Sam definitely had first — but the dns
+  # step cannot record a resource there without passing the apex guard, which
+  # pauses rather than writes whenever the name already resolves to something
+  # else. A recorded apex record means setup was given that name deliberately.
   #
   # An environment row that is already gone reads as `:none` and the record is
   # spared, which is today's behaviour. `environment/3` builds its own list
   # with `origin: "created"` and does not come through here at all.
-  defp aimed_at_our_server(scope, %{kind: "dns_record"} = r, opts) do
-    with address when is_binary(address) <- recorded_address(r),
-         true <- address in project_addresses(scope, opts) do
-      {:ok, address}
-    else
-      _ -> :none
+  defp aimed_at_our_server(scope, %{kind: "dns_record", location: location} = r, opts) do
+    environments = project_environments(scope, opts)
+    host = after_slash(location)
+
+    cond do
+      Enum.any?(environments, &(&1.host == host)) ->
+        {:ok, host}
+
+      recorded_address(r) in current_addresses(environments) ->
+        {:ok, recorded_address(r)}
+
+      true ->
+        :none
     end
   end
 
   defp aimed_at_our_server(_scope, _resource, _opts), do: :none
+
+  defp current_addresses(environments) do
+    environments |> Enum.map(& &1.ip) |> Enum.filter(&(is_binary(&1) and &1 != ""))
+  end
 
   defp recorded_address(%{identifier: identifier}) when is_binary(identifier) do
     case String.split(identifier, " ", parts: 2) do
@@ -434,17 +457,11 @@ defmodule CodeMySpec.Provisioning.Teardown do
 
   # Injectable for the same reason `environment/3` takes `:teardown`: the
   # decision is the claim worth testing, and proving it should not cost a real
-  # server.
-  defp project_addresses(scope, opts) do
-    case Keyword.fetch(opts, :project_addresses) do
-      {:ok, addresses} ->
-        addresses
-
-      :error ->
-        scope
-        |> EnvironmentRepository.list_existing()
-        |> Enum.map(& &1.ip)
-        |> Enum.filter(&(is_binary(&1) and &1 != ""))
+  # server and a real DNS record.
+  defp project_environments(scope, opts) do
+    case Keyword.fetch(opts, :project_environments) do
+      {:ok, environments} -> environments
+      :error -> EnvironmentRepository.list_existing(scope)
     end
   end
 
