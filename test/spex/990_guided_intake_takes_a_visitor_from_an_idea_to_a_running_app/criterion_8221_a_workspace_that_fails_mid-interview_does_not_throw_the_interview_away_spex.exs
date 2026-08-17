@@ -87,11 +87,21 @@ defmodule CodeMySpecSpex.Story990.Criterion8221Spex do
       end
 
       then_ "the answer they already gave is still there", context do
+        watchers = boot_watchers()
+
         # Re-mount, the way a visitor who reloads after a failure would.
-        {:ok, _view, html} = live(context.conn, "/build/workspace")
+        {:ok, view, html} = live(context.conn, "/build/workspace")
 
         assert html =~ @answer,
                "expected the answer given before the failure to survive it, got: #{html}"
+
+        # This mount brought the workspace up again — the container is gone, so
+        # there is something to start — and that spawns a watcher which polls
+        # the database. Returning here ends the test mid-poll and takes the
+        # sandbox connection with it. Wait for the failure this scenario has
+        # already established, then for the watcher itself.
+        until_rendered(view, "didn&#39;t come up")
+        settled_boot_watchers(watchers)
 
         {:ok, context}
       end

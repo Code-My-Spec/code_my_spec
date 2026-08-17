@@ -1529,6 +1529,31 @@ defmodule CodeMySpecSpex.Case do
   end
 
   @doc """
+  The boot watchers running right now, to be handed back to
+  `settled_boot_watchers/1` after the step that starts more.
+
+  Bringing a workspace up spawns a supervised task that polls the database.
+  A scenario that returns while one is mid-query takes the sandbox connection
+  out from under it, and the crash is reported at `:error` — which fails the
+  run. 990/8221 failed exactly that way in a full sweep and passed in
+  isolation, because which side of the query the test lands on only changes
+  when the machine is busy.
+
+  Waiting for the *rendered* outcome is not enough on its own: the screen
+  updates on the first watcher's broadcast, and a second one started by the
+  same page can still be a poll behind.
+  """
+  defdelegate boot_watchers(), to: CodeMySpecTest.WorkspaceWatchers, as: :running
+
+  @doc """
+  Waits for the boot watchers started since `started_before` to finish. See
+  `boot_watchers/0`.
+  """
+  defdelegate settled_boot_watchers(started_before),
+    to: CodeMySpecTest.WorkspaceWatchers,
+    as: :settle
+
+  @doc """
   A scripted step that answers one thing on its first run and another after.
 
   The shape every resume criterion needs: a step fails, errors or pauses, and
