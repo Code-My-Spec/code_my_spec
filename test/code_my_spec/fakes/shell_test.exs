@@ -7,7 +7,13 @@ defmodule CodeMySpecSpex.Fakes.ShellTest do
   replays the stdout and leaves the world untouched, so the next step reads
   something the recording never created.
   """
-  use ExUnit.Case, async: true
+  # Not async. The shell fake is selected by `:memory_shell` in application
+  # env, which is global — every test here setting the same module was
+  # survivable, but the injection points below set *different* values
+  # (`:memory_shell_push`, `:memory_shell_migration`), and two of those
+  # running concurrently would decide each other's outcome. Serialising 72
+  # tests that finish in a tenth of a second is the cheap side of that trade.
+  use ExUnit.Case, async: false
 
   alias CodeMySpec.Environments
   alias CodeMySpec.Support.InMemoryEnvironment
@@ -139,6 +145,55 @@ defmodule CodeMySpecSpex.Fakes.ShellTest do
   test "git rev-parse answers a sha", %{env: env} do
     assert {output, 0} = Environments.cmd(env, "git", ["rev-parse", "HEAD"])
     assert String.trim(output) =~ ~r/^[0-9a-f]{16}$/
+  end
+
+  # The three injection points criteria now depend on. Each exists because
+  # nothing on this side can know the answer — what a remote holds, what a
+  # migration would do — so a fake that guessed would be deciding the criterion
+  # rather than serving it. Untested, they are a second implementation nobody
+  # checks, which is what this file exists to prevent.
+
+  # 985/8184: a repository that exists but rejects the push is not done.
+  test "a push is refused when the spex says the remote has moved on", %{env: env} do
+    previous = Application.get_env(:code_my_spec, :memory_shell_push)
+    Application.put_env(:code_my_spec, :memory_shell_push, :rejected)
+    on_exit(fn -> Application.put_env(:code_my_spec, :memory_shell_push, previous) end)
+
+    assert {output, 1} = Environments.cmd(env, "git", ["push", "-u", "origin", "main"])
+    assert output =~ "non-fast-forward"
+  end
+
+  test "and lands otherwise", %{env: env} do
+    assert {_out, 0} = Environments.cmd(env, "git", ["push", "-u", "origin", "main"])
+  end
+
+  # 966/8008: a failed migration leaves the old version serving. The deploy
+  # step tells the two apart by exit status, so the status is the fixture.
+  test "bin/deploy migrate fails when the spex says the migration does", %{env: env} do
+    previous = Application.get_env(:code_my_spec, :memory_shell_migration)
+    Application.put_env(:code_my_spec, :memory_shell_migration, :fails)
+    on_exit(fn -> Application.put_env(:code_my_spec, :memory_shell_migration, previous) end)
+
+    assert {output, 1} = Environments.cmd(env, "/memfs/bin/deploy", ["migrate", "prod"])
+    assert output =~ "Postgrex"
+
+    # Only the migration. A deploy whose migration fails must still be able to
+    # report what else it did.
+    assert {_out, 0} = Environments.cmd(env, "/memfs/bin/deploy", ["deploy", "prod"])
+  end
+
+  # 973's premise: the widget step skips the generator when the file is already
+  # there, so writing it is both the effect and what makes a re-run a no-op.
+  test "the widget generator leaves the file installed?/2 looks for", %{env: env} do
+    :ok = Environments.write_file(env, "lib/app_web/router.ex", "defmodule AppWeb.Router do\nend\n")
+
+    assert {output, 0} = Environments.cmd(env, "mix", ["cms_gen.support_widget"])
+    assert output =~ "support_widget_live"
+
+    assert {:ok, contents} =
+             Environments.read_file(env, "lib/app_web/live/support_widget_live.ex")
+
+    assert contents =~ "data-cms-widget"
   end
 
   # A shell that silently succeeds at everything makes every step pass and
