@@ -31,7 +31,7 @@ defmodule CodeMySpecSpex.Story713.Criterion6280Spex do
   # makes the atomic persist log :error as it rolls back — an expected,
   # handled condition here, so don't fail the spex on those logs.
   spex "A clean replace lands whole; a failing replace preserves the prior state",
-       fail_on_error_logs: false do
+    fail_on_error_logs: false do
     scenario "New manifest replaces local content atomically" do
       given_ "a first sync persisted five posts", context do
         stub_pull(Enum.map(@five, &content_row(&1, "Post #{&1}")), valid: true)
@@ -156,16 +156,5 @@ defmodule CodeMySpecSpex.Story713.Criterion6280Spex do
     Application.put_env(:code_my_spec, :deploy_key, "k-abc123")
     on_exit(fn -> Application.put_env(:code_my_spec, :deploy_key, previous) end)
     :ok
-  end
-
-  defp eventually(fun, retries \\ 40)
-  defp eventually(fun, 0), do: fun.()
-
-  defp eventually(fun, n) do
-    fun.()
-  rescue
-    ExUnit.AssertionError ->
-      Process.sleep(25)
-      eventually(fun, n - 1)
   end
 end

@@ -75,7 +75,7 @@ defmodule CodeMySpecSpex.Story990.Criterion8221Spex do
       when_ "the workspace dies under them", context do
         Application.put_env(:code_my_spec, :fake_workspace_alive, false)
 
-        html = eventually(context.view, "didn&#39;t come up")
+        html = until_rendered(context.view, "didn&#39;t come up")
 
         {:ok, Map.put(context, :html, html)}
       end
@@ -98,19 +98,13 @@ defmodule CodeMySpecSpex.Story990.Criterion8221Spex do
     end
   end
 
-  defp eventually(view, text, attempts \\ 250)
-
-  defp eventually(view, text, 0), do: flunk("never rendered #{inspect(text)}: #{render(view)}")
-
-  defp eventually(view, text, attempts) do
-    html = render(view)
-    eventually_rendered(String.contains?(html, text), html, view, text, attempts)
-  end
-
-  defp eventually_rendered(true, html, _view, _text, _attempts), do: html
-
-  defp eventually_rendered(false, _html, view, text, attempts) do
-    Process.sleep(20)
-    eventually(view, text, attempts - 1)
+  # `eventually/2` from the Case, which owns the deadline. The local version
+  # counted attempts, and a count is only a duration when the body is instant.
+  defp until_rendered(view, text) do
+    eventually(fn ->
+      html = render(view)
+      assert html =~ text
+      html
+    end)
   end
 end

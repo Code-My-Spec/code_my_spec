@@ -1405,6 +1405,47 @@ defmodule CodeMySpecSpex.Case do
   end
 
   @doc """
+  Retry an assertion until it holds, or until the budget runs out.
+
+  For the things that arrive out of band — a content pull the site performs
+  after a trigger, a PubSub announce the page has not rendered yet. The
+  assertion is the assertion; this only decides how long to keep asking.
+
+  A deadline rather than a count of attempts. Copies of this in story 713 slept
+  25ms forty times and called that a second, which it is only when the body is
+  instant: the body here does an HTTP request, so on a loaded machine forty
+  attempts is forty requests plus a second, and the budget nobody wrote down
+  was "however long forty requests take". 713/6282 was reported red by the
+  harness on a machine running the analyzer, and green in every isolated run,
+  twelve repeats and four full sweeps — which is the shape of a wait that is
+  too short rather than a claim that is wrong.
+
+  Five seconds because that is long enough to absorb a loaded machine and
+  short enough that a genuine failure is still reported in one test's time.
+
+  The last attempt runs outside the rescue, so what fails is the caller's own
+  assertion with its own message — not "eventually gave up", which names the
+  helper and not the thing.
+  """
+  def eventually(fun, timeout \\ 5_000) when is_function(fun, 0) do
+    eventually(fun, System.monotonic_time(:millisecond) + timeout, :first)
+  end
+
+  defp eventually(fun, deadline, _attempt) do
+    fun.()
+  rescue
+    error in [ExUnit.AssertionError] ->
+      case System.monotonic_time(:millisecond) < deadline do
+        true ->
+          Process.sleep(25)
+          eventually(fun, deadline, :again)
+
+        false ->
+          reraise(error, __STACKTRACE__)
+      end
+  end
+
+  @doc """
   A scripted step that answers one thing on its first run and another after.
 
   The shape every resume criterion needs: a step fails, errors or pauses, and

@@ -27,9 +27,15 @@ defmodule CodeMySpecSpex.Story713.Criterion6282Spex do
     scenario "Tag-filtered index lists only currently in-window slugs" do
       given_ "four ai-tagged posts with mixed schedule windows are synced", context do
         now = DateTime.utc_now()
-        yesterday = DateTime.add(now, -1, :day) |> DateTime.truncate(:second) |> DateTime.to_iso8601()
-        tomorrow = DateTime.add(now, 1, :day) |> DateTime.truncate(:second) |> DateTime.to_iso8601()
-        two_days_ago = DateTime.add(now, -2, :day) |> DateTime.truncate(:second) |> DateTime.to_iso8601()
+
+        yesterday =
+          DateTime.add(now, -1, :day) |> DateTime.truncate(:second) |> DateTime.to_iso8601()
+
+        tomorrow =
+          DateTime.add(now, 1, :day) |> DateTime.truncate(:second) |> DateTime.to_iso8601()
+
+        two_days_ago =
+          DateTime.add(now, -2, :day) |> DateTime.truncate(:second) |> DateTime.to_iso8601()
 
         rows = [
           row("p1", publish_at: yesterday, expires_at: nil),
@@ -126,16 +132,5 @@ defmodule CodeMySpecSpex.Story713.Criterion6282Spex do
     Application.put_env(:code_my_spec, :deploy_key, "k-abc123")
     on_exit(fn -> Application.put_env(:code_my_spec, :deploy_key, previous) end)
     :ok
-  end
-
-  defp eventually(fun, retries \\ 40)
-  defp eventually(fun, 0), do: fun.()
-
-  defp eventually(fun, n) do
-    fun.()
-  rescue
-    ExUnit.AssertionError ->
-      Process.sleep(25)
-      eventually(fun, n - 1)
   end
 end

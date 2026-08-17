@@ -46,7 +46,8 @@ defmodule CodeMySpecSpex.Story713.Criterion6277Spex do
         assert json_response(context.conn, 202)
 
         # The sync job runs async, so wait briefly for the fetch to start.
-        assert_receive {:pull_fetch, @manifest_url}, 1000,
+        assert_receive {:pull_fetch, @manifest_url},
+                       1000,
                        "a 202 must start a sync job that fetches the manifest URL"
 
         {:ok, context}

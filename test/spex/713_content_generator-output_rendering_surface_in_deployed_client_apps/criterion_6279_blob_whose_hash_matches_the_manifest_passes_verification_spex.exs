@@ -119,15 +119,4 @@ defmodule CodeMySpecSpex.Story713.Criterion6279Spex do
     on_exit(fn -> Application.put_env(:code_my_spec, :deploy_key, previous) end)
     :ok
   end
-
-  defp eventually(fun, retries \\ 40)
-  defp eventually(fun, 0), do: fun.()
-
-  defp eventually(fun, n) do
-    fun.()
-  rescue
-    ExUnit.AssertionError ->
-      Process.sleep(25)
-      eventually(fun, n - 1)
-  end
 end

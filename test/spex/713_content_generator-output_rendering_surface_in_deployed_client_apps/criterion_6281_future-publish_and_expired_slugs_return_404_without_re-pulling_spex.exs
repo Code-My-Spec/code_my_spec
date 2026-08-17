@@ -30,9 +30,15 @@ defmodule CodeMySpecSpex.Story713.Criterion6281Spex do
     scenario "Future-publish and expired slugs return 404 without re-pulling" do
       given_ "three posts with different schedule windows are synced", context do
         now = DateTime.utc_now()
-        yesterday = DateTime.add(now, -1, :day) |> DateTime.truncate(:second) |> DateTime.to_iso8601()
-        tomorrow = DateTime.add(now, 1, :day) |> DateTime.truncate(:second) |> DateTime.to_iso8601()
-        two_days_ago = DateTime.add(now, -2, :day) |> DateTime.truncate(:second) |> DateTime.to_iso8601()
+
+        yesterday =
+          DateTime.add(now, -1, :day) |> DateTime.truncate(:second) |> DateTime.to_iso8601()
+
+        tomorrow =
+          DateTime.add(now, 1, :day) |> DateTime.truncate(:second) |> DateTime.to_iso8601()
+
+        two_days_ago =
+          DateTime.add(now, -2, :day) |> DateTime.truncate(:second) |> DateTime.to_iso8601()
 
         rows = [
           row("alpha", publish_at: yesterday, expires_at: nil),
@@ -150,16 +156,5 @@ defmodule CodeMySpecSpex.Story713.Criterion6281Spex do
     after
       0 -> :ok
     end
-  end
-
-  defp eventually(fun, retries \\ 40)
-  defp eventually(fun, 0), do: fun.()
-
-  defp eventually(fun, n) do
-    fun.()
-  rescue
-    ExUnit.AssertionError ->
-      Process.sleep(25)
-      eventually(fun, n - 1)
   end
 end
