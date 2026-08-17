@@ -36,9 +36,13 @@ defmodule CodeMySpecSpex.Story563.Criterion5905Spex do
             {"LowContext", :context, []}
           ],
           fn {module, type, deps} ->
-            spec_content = Content.context_spec(module, type: Atom.to_string(type), dependencies: deps)
+            spec_content =
+              Content.context_spec(module, type: Atom.to_string(type), dependencies: deps)
+
             :ok = Environments.write_file(env, Content.spec_path(module), spec_content)
-            :ok = Environments.write_file(env, Content.impl_path(module), Content.impl_file(module))
+
+            :ok =
+              Environments.write_file(env, Content.impl_path(module), Content.impl_file(module))
           end
         )
 

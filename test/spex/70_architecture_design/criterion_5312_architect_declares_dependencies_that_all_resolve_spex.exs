@@ -112,7 +112,11 @@ defmodule CodeMySpecSpex.Story70.Criterion5312Spex do
         """
 
         :ok =
-          CodeMySpec.Environments.write_file(context.environment, Fixtures.proposal_path(), proposal)
+          CodeMySpec.Environments.write_file(
+            context.environment,
+            Fixtures.proposal_path(),
+            proposal
+          )
 
         {:reply, executed, _frame} =
           ExecuteProposal.execute(%{}, %Frame{assigns: %{current_scope: context.scope}})
@@ -159,19 +163,11 @@ defmodule CodeMySpecSpex.Story70.Criterion5312Spex do
     end
   end
 
-  defp response_text(%{content: parts}) when is_list(parts) do
-    Enum.map_join(parts, "\n", fn
-      %{text: text} -> text
-      %{"text" => text} -> text
-      other -> inspect(other)
-    end)
-  end
-
-  defp response_text(%{text: text}), do: text
-  defp response_text(other), do: inspect(other)
-
-  defp extract_task_id(text), do: extract_task_id_from(Regex.run(~r/Task ID: `([^`]+)`/, text), text)
+  defp extract_task_id(text),
+    do: extract_task_id_from(Regex.run(~r/Task ID: `([^`]+)`/, text), text)
 
   defp extract_task_id_from([_, task_id], _text), do: task_id
-  defp extract_task_id_from(_, text), do: raise("Could not extract task ID from response: #{inspect(text)}")
+
+  defp extract_task_id_from(_, text),
+    do: raise("Could not extract task ID from response: #{inspect(text)}")
 end

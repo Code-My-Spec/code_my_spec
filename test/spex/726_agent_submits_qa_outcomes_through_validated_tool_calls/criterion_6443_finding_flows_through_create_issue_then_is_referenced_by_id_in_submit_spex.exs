@@ -21,7 +21,6 @@ defmodule CodeMySpecSpex.Story726.Criterion6443Spex do
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Issues.Tools.{CreateIssue, ListIssues}
   alias CodeMySpec.McpServers.Qa.Tools.SubmitQaResult
-  import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -66,7 +65,8 @@ defmodule CodeMySpecSpex.Story726.Criterion6443Spex do
 
         refute submit_response.isError
 
-        {:ok, context |> Map.put(:issue_id, issue_id) |> Map.put(:submit_response, submit_response)}
+        {:ok,
+         context |> Map.put(:issue_id, issue_id) |> Map.put(:submit_response, submit_response)}
       end
 
       then_ "the issue is queryable on the story via list_issues", context do
@@ -95,7 +95,9 @@ defmodule CodeMySpecSpex.Story726.Criterion6443Spex do
     end
   end
 
-  defp extract_issue_id(text), do: extract_issue_id_from(Regex.run(~r/(?:ID:?\s*|issue[_ ]id[: ]+)([a-f0-9-]+)/i, text), text)
+  defp extract_issue_id(text),
+    do:
+      extract_issue_id_from(Regex.run(~r/(?:ID:?\s*|issue[_ ]id[: ]+)([a-f0-9-]+)/i, text), text)
 
   defp extract_issue_id_from([_, id], _text), do: id
   defp extract_issue_id_from(_, text), do: raise("no issue id in create_issue response: #{text}")

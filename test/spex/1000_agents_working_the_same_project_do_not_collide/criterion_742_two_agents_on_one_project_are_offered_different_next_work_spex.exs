@@ -31,8 +31,6 @@ defmodule CodeMySpecSpex.Story1000.Criterion742Spex do
   alias CodeMySpecWeb.{HarnessProjectChannel, UserSocket}
   alias Ecto.Adapters.SQL.Sandbox
 
-  import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
-
   @endpoint CodeMySpecWeb.Endpoint
   @contract_version 1
 

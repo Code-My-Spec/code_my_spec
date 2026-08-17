@@ -102,5 +102,4 @@ defmodule CodeMySpecSpex.Story670.Criterion5592Spex do
     Approved for implementation.
     """
   end
-
 end

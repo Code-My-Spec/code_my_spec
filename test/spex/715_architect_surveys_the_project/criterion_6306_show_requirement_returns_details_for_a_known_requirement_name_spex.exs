@@ -18,7 +18,6 @@ defmodule CodeMySpecSpex.Story715.Criterion6306Spex do
   alias CodeMySpec.McpServers.Requirements.Tools.ShowRequirement
 
   import CodeMySpecSpex.SharedGivens
-  import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   setup :register_log_in_setup_account
   setup :setup_active_project

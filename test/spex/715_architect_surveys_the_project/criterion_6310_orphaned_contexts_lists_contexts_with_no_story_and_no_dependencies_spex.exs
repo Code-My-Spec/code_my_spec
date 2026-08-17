@@ -17,7 +17,6 @@ defmodule CodeMySpecSpex.Story715.Criterion6310Spex do
   alias CodeMySpec.McpServers.Components.Tools.OrphanedContexts
 
   import CodeMySpecSpex.GraphGivens
-  import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   setup :register_log_in_setup_account
   setup :setup_active_project

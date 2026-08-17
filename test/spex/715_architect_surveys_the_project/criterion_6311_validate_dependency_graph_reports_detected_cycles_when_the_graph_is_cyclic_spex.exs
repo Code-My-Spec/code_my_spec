@@ -23,7 +23,6 @@ defmodule CodeMySpecSpex.Story715.Criterion6311Spex do
   alias CodeMySpecSpex.Fixtures
 
   import CodeMySpecSpex.GraphGivens
-  import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -39,7 +38,11 @@ defmodule CodeMySpecSpex.Story715.Criterion6311Spex do
         # this state, but the DB-level validator needs to detect it when it
         # exists.
         {:ok, _dep} =
-          Fixtures.dependency_fixture(context.scope, context.users_context, context.stories_context)
+          Fixtures.dependency_fixture(
+            context.scope,
+            context.users_context,
+            context.stories_context
+          )
 
         {:ok, context}
       end

@@ -72,5 +72,7 @@ defmodule CodeMySpecSpex.Story687.Criterion5950Spex do
     do: href_match(Regex.run(~r/href=["']([^"']+)["']/, rendered_html), rendered_html)
 
   defp href_match([_, href], _html), do: href
-  defp href_match(_, html), do: raise("could not extract href from rendered component link: #{inspect(html)}")
+
+  defp href_match(_, html),
+    do: raise("could not extract href from rendered component link: #{inspect(html)}")
 end

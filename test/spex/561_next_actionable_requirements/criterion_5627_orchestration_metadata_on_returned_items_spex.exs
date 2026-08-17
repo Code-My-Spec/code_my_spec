@@ -50,7 +50,10 @@ defmodule CodeMySpecSpex.Story561.Criterion5627Spex do
 
         Enum.each(start_task_lines, fn line ->
           mentions_requirement? = line =~ "requirement_name=" or line =~ "requirement `"
-          mentions_entity? = line =~ "entity_id=" or line =~ "component `" or line =~ "project `" or line =~ "story `"
+
+          mentions_entity? =
+            line =~ "entity_id=" or line =~ "component `" or line =~ "project `" or
+              line =~ "story `"
 
           assert mentions_requirement?,
                  "actionable line lacks any requirement reference: #{line}"

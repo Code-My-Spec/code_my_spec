@@ -25,7 +25,8 @@ defmodule CodeMySpecSpex.Story668.Criterion5485Spex do
 
   spex "QA setup prompt patches an existing plan rather than rewriting" do
     scenario "Existing plan plus existing seed inventory triggers update-rather-than-rewrite mode" do
-      given_ "the project already has a qa plan, a qa seed script, and a helper script", context do
+      given_ "the project already has a qa plan, a qa seed script, and a helper script",
+             context do
         env = context.environment
 
         :ok =
@@ -65,7 +66,8 @@ defmodule CodeMySpecSpex.Story668.Criterion5485Spex do
         {:ok, context}
       end
 
-      then_ "the prompt's Inventory section lists the existing seed and helper scripts", context do
+      then_ "the prompt's Inventory section lists the existing seed and helper scripts",
+            context do
         prompt = context.prompt
 
         assert prompt =~ "priv/repo/qa_seeds.exs",

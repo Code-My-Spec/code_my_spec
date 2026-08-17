@@ -29,7 +29,8 @@ defmodule CodeMySpecSpex.Story76.Criterion5545Spex do
 
   spex "Component Specification Generation" do
     scenario "Invalid spec re-fires the same node with diagnostics" do
-      given_ "an ExampleContext Component is synced with an INVALID context spec on disk", context do
+      given_ "an ExampleContext Component is synced with an INVALID context spec on disk",
+             context do
         env = context.environment
 
         invalid_spec = """
@@ -85,7 +86,8 @@ defmodule CodeMySpecSpex.Story76.Criterion5545Spex do
         {:ok, Map.put(context, :prompt, response_text(response))}
       end
 
-      then_ "the prompt names the spec file path so the agent can read the prior content", context do
+      then_ "the prompt names the spec file path so the agent can read the prior content",
+            context do
         assert context.prompt =~ @spec_path,
                "expected the canonical spec path to appear so the agent can re-read its prior attempt"
 
@@ -93,22 +95,12 @@ defmodule CodeMySpecSpex.Story76.Criterion5545Spex do
       end
 
       and_ "the prompt surfaces the validator diagnostics from the prior failure", context do
-        assert context.prompt =~ ~r/Previous validation|Validator diagnostics|Diagnostics from prior run/i,
+        assert context.prompt =~
+                 ~r/Previous validation|Validator diagnostics|Diagnostics from prior run/i,
                "expected a heading that introduces the validator's diagnostic feedback on a re-fire"
 
         {:ok, context}
       end
     end
   end
-
-  defp response_text(%{content: parts}) when is_list(parts) do
-    Enum.map_join(parts, "\n", fn
-      %{text: t} -> t
-      %{"text" => t} -> t
-      other -> inspect(other)
-    end)
-  end
-
-  defp response_text(%{text: text}), do: text
-  defp response_text(other), do: inspect(other)
 end

@@ -18,7 +18,6 @@ defmodule CodeMySpecSpex.Story715.Criterion6304Spex do
   alias CodeMySpec.McpServers.Components.Tools.ContextStatistics
 
   import CodeMySpecSpex.GraphGivens
-  import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -38,7 +37,9 @@ defmodule CodeMySpecSpex.Story715.Criterion6304Spex do
         live_pos = position_of(context.body, "Marketing.HomeLive")
         orphan_pos = position_of(context.body, "OrphanContext")
 
-        assert is_integer(live_pos), "expected Marketing.HomeLive in response, got:\n#{context.body}"
+        assert is_integer(live_pos),
+               "expected Marketing.HomeLive in response, got:\n#{context.body}"
+
         assert is_integer(orphan_pos), "expected OrphanContext in response, got:\n#{context.body}"
 
         assert live_pos < orphan_pos,

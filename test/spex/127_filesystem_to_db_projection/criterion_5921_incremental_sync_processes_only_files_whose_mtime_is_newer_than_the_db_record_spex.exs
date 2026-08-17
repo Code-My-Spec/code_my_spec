@@ -55,8 +55,7 @@ defmodule CodeMySpecSpex.Story127.Criterion5921Spex do
         assert is_binary(bravo_mtime)
         assert is_binary(alpha_v1_mtime)
 
-        {:ok,
-         Map.merge(context, %{bravo_mtime: bravo_mtime, alpha_v1_mtime: alpha_v1_mtime})}
+        {:ok, Map.merge(context, %{bravo_mtime: bravo_mtime, alpha_v1_mtime: alpha_v1_mtime})}
       end
 
       when_ "the agent edits alpha and the stop hook fires (freestyle, no session)",
@@ -152,6 +151,7 @@ defmodule CodeMySpecSpex.Story127.Criterion5921Spex do
   defp sha256(content) do
     :crypto.hash(:sha256, content) |> Base.encode16(case: :lower)
   end
+
   defp extract_match([_, value]), do: value
   defp extract_match(_), do: nil
 end

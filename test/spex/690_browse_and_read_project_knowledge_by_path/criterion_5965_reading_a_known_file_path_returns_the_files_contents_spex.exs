@@ -15,8 +15,6 @@ defmodule CodeMySpecSpex.Story690.Criterion5965Spex do
   alias CodeMySpec.Environments
   alias CodeMySpec.McpServers.Knowledge.Tools.ReadKnowledge
 
-  import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
-
   setup :register_log_in_setup_account
   setup :setup_active_project
 

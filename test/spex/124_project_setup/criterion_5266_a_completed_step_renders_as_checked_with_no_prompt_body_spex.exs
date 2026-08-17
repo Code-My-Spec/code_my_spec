@@ -19,7 +19,11 @@ defmodule CodeMySpecSpex.Story124.Criterion5266Spex do
     scenario "a completed step renders with no prompt body" do
       given_ "only ApplicationInWeb is satisfied", context do
         Fixtures.reset_setup_env(context.environment)
-        Fixtures.satisfy_setup_steps(context.scope, [Fixtures.find_setup_step("application_in_web")])
+
+        Fixtures.satisfy_setup_steps(context.scope, [
+          Fixtures.find_setup_step("application_in_web")
+        ])
+
         {:ok, context}
       end
 
@@ -31,12 +35,15 @@ defmodule CodeMySpecSpex.Story124.Criterion5266Spex do
       end
 
       then_ "ApplicationInWeb's step name is rendered", context do
-        assert render(context.view) =~ Fixtures.step_name(Fixtures.find_setup_step("application_in_web"))
+        assert render(context.view) =~
+                 Fixtures.step_name(Fixtures.find_setup_step("application_in_web"))
+
         {:ok, context}
       end
 
       and_ "ApplicationInWeb's inline prompt heading is absent", context do
-        heading = step_prompt_heading(Fixtures.find_setup_step("application_in_web"), context.scope)
+        heading =
+          step_prompt_heading(Fixtures.find_setup_step("application_in_web"), context.scope)
 
         refute render(context.view) =~ heading,
                "expected ApplicationInWeb prompt heading #{inspect(heading)} to be absent when completed"

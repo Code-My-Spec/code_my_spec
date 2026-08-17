@@ -18,7 +18,6 @@ defmodule CodeMySpecSpex.Story715.Criterion6307Spex do
   alias CodeMySpec.McpServers.Requirements.Tools.ShowComponentRequirements
 
   import CodeMySpecSpex.SharedGivens
-  import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -27,7 +26,8 @@ defmodule CodeMySpecSpex.Story715.Criterion6307Spex do
     scenario "show_component_requirements lists requirements for a known component by module name" do
       given_ :synced_context_component
 
-      when_ ~s|the agent calls show_component_requirements with module name "ExampleContext"|, context do
+      when_ ~s|the agent calls show_component_requirements with module name "ExampleContext"|,
+            context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
         {:reply, response, _frame} =

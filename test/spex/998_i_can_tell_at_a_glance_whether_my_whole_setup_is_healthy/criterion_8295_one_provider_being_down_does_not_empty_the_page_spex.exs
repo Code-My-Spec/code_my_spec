@@ -57,7 +57,8 @@ defmodule CodeMySpecSpex.Story998.Criterion8295Spex do
       end
 
       then_ "the one that could not be asked says so, and why", context do
-        error = Floki.find(context.document, "[data-test='provider-error'][data-provider='cloudflare']")
+        error =
+          Floki.find(context.document, "[data-test='provider-error'][data-provider='cloudflare']")
 
         assert error != [],
                "a provider that could not be asked produced no error, so its absence " <>

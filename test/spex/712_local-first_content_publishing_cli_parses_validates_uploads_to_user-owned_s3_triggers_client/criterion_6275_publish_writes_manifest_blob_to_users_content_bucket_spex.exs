@@ -60,7 +60,9 @@ defmodule CodeMySpecSpex.Story712.Criterion6275Spex do
         {:ok, view, _html} = live(context.conn, "/app/projects/#{context.project.id}/content")
 
         view
-        |> form("[data-test='content-settings-form']", settings: %{content_bucket: "content.foo.com"})
+        |> form("[data-test='content-settings-form']",
+          settings: %{content_bucket: "content.foo.com"}
+        )
         |> render_submit()
 
         view
@@ -83,7 +85,9 @@ defmodule CodeMySpecSpex.Story712.Criterion6275Spex do
         manifest_bytes = find_put(puts, "content.foo.com", "manifest.json")
 
         assert blob, "expected content.json written to s3://content.foo.com/content.json"
-        assert manifest_bytes, "expected manifest.json written to s3://content.foo.com/manifest.json"
+
+        assert manifest_bytes,
+               "expected manifest.json written to s3://content.foo.com/manifest.json"
 
         manifest = Jason.decode!(manifest_bytes)
 
@@ -91,6 +95,7 @@ defmodule CodeMySpecSpex.Story712.Criterion6275Spex do
         assert {:ok, _, _} = DateTime.from_iso8601(manifest["generated_at"])
         assert manifest["content_blob_url"] =~ "content.foo.com"
         assert manifest["content_blob_url"] =~ "content.json"
+
         assert manifest["content_blob_hash"] == "sha256:" <> sha256(blob),
                "the manifest hash must be the sha256 of the blob bytes (wire format: sha256:<hex>)"
 

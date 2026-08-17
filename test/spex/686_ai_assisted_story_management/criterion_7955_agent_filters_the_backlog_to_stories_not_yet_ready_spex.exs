@@ -16,8 +16,6 @@ defmodule CodeMySpecSpex.Story686.Criterion7955Spex do
   alias CodeMySpec.McpServers.Stories.Tools.ListStories
   alias CodeMySpec.McpServers.Stories.Tools.UpdateStory
 
-  import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
-
   setup :register_log_in_setup_account
   setup :setup_active_project
 
@@ -38,7 +36,8 @@ defmodule CodeMySpecSpex.Story686.Criterion7955Spex do
             frame
           )
 
-        refute released_response.isError, "expected create_story to succeed for the released story"
+        refute released_response.isError,
+               "expected create_story to succeed for the released story"
 
         {:reply, update_response, _frame} =
           UpdateStory.execute(

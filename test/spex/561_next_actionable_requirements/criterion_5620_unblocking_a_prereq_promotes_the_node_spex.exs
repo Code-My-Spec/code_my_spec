@@ -44,7 +44,10 @@ defmodule CodeMySpecSpex.Story561.Criterion5620Spex do
 
       when_ "the engineer opens the requirements graph in the blocked state", context do
         {:ok, _live, html} =
-          live(context.conn, "/app/projects/#{context.project.id}/requirements/graph?preload=true")
+          live(
+            context.conn,
+            "/app/projects/#{context.project.id}/requirements/graph?preload=true"
+          )
 
         {:ok, Map.put(context, :blocked_graph, GraphAssertions.extract_graph!(html))}
       end
@@ -66,7 +69,10 @@ defmodule CodeMySpecSpex.Story561.Criterion5620Spex do
 
       and_ "the engineer re-opens the requirements graph in the unblocked state", context do
         {:ok, _live, html} =
-          live(context.conn, "/app/projects/#{context.project.id}/requirements/graph?preload=true")
+          live(
+            context.conn,
+            "/app/projects/#{context.project.id}/requirements/graph?preload=true"
+          )
 
         {:ok, Map.put(context, :unblocked_graph, GraphAssertions.extract_graph!(html))}
       end

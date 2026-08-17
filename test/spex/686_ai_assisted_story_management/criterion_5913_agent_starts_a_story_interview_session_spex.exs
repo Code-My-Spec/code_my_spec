@@ -13,8 +13,6 @@ defmodule CodeMySpecSpex.Story686.Criterion5913Spex do
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Stories.Tools.StartStoryInterview
 
-  import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
-
   setup :register_log_in_setup_account
   setup :setup_active_project
 

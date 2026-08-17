@@ -51,7 +51,10 @@ defmodule CodeMySpecSpex.Story815.Criterion6569Spex do
             %{}
           )
 
-        Phoenix.ChannelTest.push(channel, "send_message", %{"body" => "Hi, I need help getting started"})
+        Phoenix.ChannelTest.push(channel, "send_message", %{
+          "body" => "Hi, I need help getting started"
+        })
+
         wait_for_channel(channel)
 
         {:ok, Map.put(context, :channel, channel)}

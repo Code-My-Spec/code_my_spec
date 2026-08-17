@@ -26,7 +26,13 @@ defmodule CodeMySpecSpex.Story76.Criterion5546Spex do
       given_ "ExampleContext is synced with an INVALID spec on disk", context do
         env = context.environment
 
-        :ok = Environments.write_file(env, @spec_path, "# ExampleContext\n\n(missing required sections)\n")
+        :ok =
+          Environments.write_file(
+            env,
+            @spec_path,
+            "# ExampleContext\n\n(missing required sections)\n"
+          )
+
         :ok = Environments.write_file(env, @impl_path, "defmodule ExampleContext do\nend\n")
 
         {:ok, sync_live, _html} =
@@ -98,15 +104,4 @@ defmodule CodeMySpecSpex.Story76.Criterion5546Spex do
     Placeholder child module.
     """
   end
-
-  defp response_text(%{content: parts}) when is_list(parts) do
-    Enum.map_join(parts, "\n", fn
-      %{text: t} -> t
-      %{"text" => t} -> t
-      other -> inspect(other)
-    end)
-  end
-
-  defp response_text(%{text: text}), do: text
-  defp response_text(other), do: inspect(other)
 end

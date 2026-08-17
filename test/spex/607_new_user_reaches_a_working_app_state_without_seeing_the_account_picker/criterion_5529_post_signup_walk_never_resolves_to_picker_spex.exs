@@ -42,7 +42,6 @@ defmodule CodeMySpecSpex.Story607.Criterion5529Spex do
         refute target == "/app/accounts/picker"
         {:ok, context}
       end
-
     end
   end
 

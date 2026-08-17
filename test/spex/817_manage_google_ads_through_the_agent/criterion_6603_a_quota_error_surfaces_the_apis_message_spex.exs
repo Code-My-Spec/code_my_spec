@@ -69,7 +69,7 @@ defmodule CodeMySpecSpex.Story817.Criterion6603Spex do
   end
 
   defp with_ads_cassette(name, fun) do
-    with_cassette name, @cassette_opts, fn plug ->
+    with_cassette(name, @cassette_opts, fn plug ->
       original = Application.get_env(:code_my_spec, Ads, [])
       Application.put_env(:code_my_spec, Ads, Keyword.put(original, :plug, plug))
 
@@ -78,17 +78,6 @@ defmodule CodeMySpecSpex.Story817.Criterion6603Spex do
       after
         Application.put_env(:code_my_spec, Ads, original)
       end
-    end
-  end
-
-  defp response_text(%{content: parts}) when is_list(parts) do
-    Enum.map_join(parts, "\n", fn
-      %{text: t} -> t
-      %{"text" => t} -> t
-      other -> inspect(other)
     end)
   end
-
-  defp response_text(%{text: text}), do: text
-  defp response_text(other), do: inspect(other)
 end

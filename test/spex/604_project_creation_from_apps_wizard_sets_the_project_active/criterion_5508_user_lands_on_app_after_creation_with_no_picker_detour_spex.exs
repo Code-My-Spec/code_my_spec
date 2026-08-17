@@ -70,7 +70,5 @@ defmodule CodeMySpecSpex.Story604.Criterion5508Spex do
 
   defp assert_no_picker_bounce(status, _conn, context),
     do:
-      flunk(
-        "unexpected status #{status} after following redirect to #{context.redirect_target}"
-      )
+      flunk("unexpected status #{status} after following redirect to #{context.redirect_target}")
 end

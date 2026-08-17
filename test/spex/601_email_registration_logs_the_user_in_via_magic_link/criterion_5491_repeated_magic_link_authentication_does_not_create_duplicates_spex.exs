@@ -44,7 +44,9 @@ defmodule CodeMySpecSpex.Story601.Criterion5491Spex do
           )
 
         login_view
-        |> Phoenix.LiveViewTest.form("#login_form_magic", user: %{email: context.registered_email})
+        |> Phoenix.LiveViewTest.form("#login_form_magic",
+          user: %{email: context.registered_email}
+        )
         |> Phoenix.LiveViewTest.render_submit()
 
         sent =
@@ -102,5 +104,7 @@ defmodule CodeMySpecSpex.Story601.Criterion5491Spex do
     do: magic_link_match(Regex.run(~r{https?://\S+/users/log-in/[^\s.,;:!?\"'>)]+}, body), body)
 
   defp magic_link_match([url], _body), do: url
-  defp magic_link_match(_, body), do: raise("could not extract magic-link URL from email body: #{inspect(body)}")
+
+  defp magic_link_match(_, body),
+    do: raise("could not extract magic-link URL from email body: #{inspect(body)}")
 end

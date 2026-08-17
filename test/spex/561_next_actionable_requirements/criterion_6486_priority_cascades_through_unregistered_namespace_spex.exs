@@ -78,7 +78,11 @@ defmodule CodeMySpecSpex.Story561.Criterion6486Spex do
           )
 
         :ok =
-          Environments.write_file(env, Content.impl_path("MyContext"), Content.impl_file("MyContext"))
+          Environments.write_file(
+            env,
+            Content.impl_path("MyContext"),
+            Content.impl_file("MyContext")
+          )
 
         :ok =
           Environments.write_file(

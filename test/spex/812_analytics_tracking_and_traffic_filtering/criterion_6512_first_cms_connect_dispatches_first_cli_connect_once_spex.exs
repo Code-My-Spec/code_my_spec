@@ -70,8 +70,7 @@ defmodule CodeMySpecSpex.Story812.Criterion6512Spex do
       end
 
       then_ "no second first_cli_connect MP payload arrives", context do
-        refute_receive {:ga_measurement_protocol,
-                        %{events: [%{name: "first_cli_connect"} | _]}},
+        refute_receive {:ga_measurement_protocol, %{events: [%{name: "first_cli_connect"} | _]}},
                        200
 
         {:ok, context}

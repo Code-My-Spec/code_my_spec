@@ -62,7 +62,11 @@ defmodule CodeMySpecSpex.Story689.Criterion5978Spex do
 
         {:reply, response, _frame} =
           SemanticSearch.execute(
-            %{query: "fire and forget asynchronous dispatch", source: "hexdocs:phoenix", limit: 5},
+            %{
+              query: "fire and forget asynchronous dispatch",
+              source: "hexdocs:phoenix",
+              limit: 5
+            },
             frame
           )
 
@@ -82,9 +86,11 @@ defmodule CodeMySpecSpex.Story689.Criterion5978Spex do
 
         {:reply, response, _frame} =
           SemanticSearch.execute(
-            %{query: "synchronous publishing v1.x interface blocks",
+            %{
+              query: "synchronous publishing v1.x interface blocks",
               source: "hexdocs:phoenix",
-              limit: 5},
+              limit: 5
+            },
             frame
           )
 

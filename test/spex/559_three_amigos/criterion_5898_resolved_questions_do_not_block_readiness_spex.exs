@@ -128,17 +128,8 @@ defmodule CodeMySpecSpex.Story559.Criterion5898Spex do
     extract_question_id(Regex.run(~r/id:\s*`?([0-9a-f-]{36})`?/, body), response)
   end
 
-  defp response_text(%{content: parts}) when is_list(parts) do
-    Enum.map_join(parts, "\n", fn
-      %{text: text} -> text
-      %{"text" => text} -> text
-      other -> inspect(other)
-    end)
-  end
-
-  defp response_text(%{text: text}), do: text
-  defp response_text(other), do: inspect(other)
   defp extract_question_id([_, id], _response), do: id
+
   defp extract_question_id(_, response),
     do: raise("Could not extract question id from response: " <> inspect(response))
 end

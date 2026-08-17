@@ -31,7 +31,6 @@ defmodule CodeMySpecSpex.Story985.Criterion8179Spex do
       # repository that merely happens to exist is criterion 8185's case, and
       # that one stops and asks rather than adopting.
       given_ "setup already created the repository on an earlier run", context do
-
         # The repository an earlier run left in the account. A premise, not a
         # first click in this test: a step re-run merges its resources by
         # location, so a repository created inside the scenario keeps the

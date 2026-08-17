@@ -50,8 +50,7 @@ defmodule CodeMySpecSpex.Story812.Criterion6513Spex do
       end
 
       then_ "no :first_cli_connect telemetry event is dispatched", context do
-        refute_receive {:ga_measurement_protocol,
-                        %{events: [%{name: "first_cli_connect"} | _]}},
+        refute_receive {:ga_measurement_protocol, %{events: [%{name: "first_cli_connect"} | _]}},
                        250
 
         {:ok, context}

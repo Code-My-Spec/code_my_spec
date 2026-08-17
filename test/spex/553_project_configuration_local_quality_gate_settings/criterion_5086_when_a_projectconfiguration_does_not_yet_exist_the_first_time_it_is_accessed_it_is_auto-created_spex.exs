@@ -46,16 +46,20 @@ defmodule CodeMySpecSpex.Story553.Criterion5086Spex do
       then_ "analyzer selects show the documented defaults", context do
         html = render(context.config_live)
 
-        assert html =~ ~r/name="configuration\[compile_warnings\]"[^>]*>.*?<option[^>]*value="block"[^>]*selected/s,
+        assert html =~
+                 ~r/name="configuration\[compile_warnings\]"[^>]*>.*?<option[^>]*value="block"[^>]*selected/s,
                "compile_warnings must default to block"
 
-        assert html =~ ~r/name="configuration\[credo\]"[^>]*>.*?<option[^>]*value="block_changed"[^>]*selected/s,
+        assert html =~
+                 ~r/name="configuration\[credo\]"[^>]*>.*?<option[^>]*value="block_changed"[^>]*selected/s,
                "credo must default to block_changed"
 
-        assert html =~ ~r/name="configuration\[exunit\]"[^>]*>.*?<option[^>]*value="block_all"[^>]*selected/s,
+        assert html =~
+                 ~r/name="configuration\[exunit\]"[^>]*>.*?<option[^>]*value="block_all"[^>]*selected/s,
                "exunit must default to block_all"
 
-        assert html =~ ~r/name="configuration\[spex\]"[^>]*>.*?<option[^>]*value="off"[^>]*selected/s,
+        assert html =~
+                 ~r/name="configuration\[spex\]"[^>]*>.*?<option[^>]*value="off"[^>]*selected/s,
                "spex must default to off"
 
         assert html =~

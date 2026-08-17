@@ -82,6 +82,10 @@ defmodule CodeMySpecSpex.Story689.Criterion5982Spex do
 
     :ok
   end
-  defp restore_embeddings_backend(nil), do: Application.delete_env(:code_my_spec, :embeddings_backend)
-  defp restore_embeddings_backend(prior), do: Application.put_env(:code_my_spec, :embeddings_backend, prior)
+
+  defp restore_embeddings_backend(nil),
+    do: Application.delete_env(:code_my_spec, :embeddings_backend)
+
+  defp restore_embeddings_backend(prior),
+    do: Application.put_env(:code_my_spec, :embeddings_backend, prior)
 end

@@ -76,6 +76,18 @@ defmodule CodeMySpecSpex.Case do
       # and solved it the same way.
       import Phoenix.ChannelTest, except: [push: 3, assert_reply: 3]
       import CodeMySpecSpex.Case
+
+      # The canonical reader for an MCP tool's reply. It has always lived here,
+      # and 136 criteria carried a private copy of it anyway — in three
+      # variants, because a copy drifts. Two differed only in a variable name;
+      # the third had lost the `%{text: …}` clause, so in sixteen files a reply
+      # shaped that way was `inspect/1`ed into the assertion instead of read,
+      # and the criterion compared prose against `%{text: "..."}`.
+      #
+      # Imported for everyone rather than per file: a criterion that drives a
+      # tool needs it, and the copies existed because reaching for the import
+      # was the less obvious of the two.
+      import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
     end
   end
 

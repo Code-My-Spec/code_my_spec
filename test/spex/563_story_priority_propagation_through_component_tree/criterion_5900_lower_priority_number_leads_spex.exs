@@ -37,7 +37,9 @@ defmodule CodeMySpecSpex.Story563.Criterion5900Spex do
           fn {module, deps} ->
             spec = Content.context_spec(module, type: "context", dependencies: deps)
             :ok = Environments.write_file(env, Content.spec_path(module), spec)
-            :ok = Environments.write_file(env, Content.impl_path(module), Content.impl_file(module))
+
+            :ok =
+              Environments.write_file(env, Content.impl_path(module), Content.impl_file(module))
           end
         )
 
@@ -79,7 +81,8 @@ defmodule CodeMySpecSpex.Story563.Criterion5900Spex do
           {urgent_pos, later_pos},
           high_label: "urgent_pos",
           low_label: "later_pos",
-          only_low_flunk: "later (priority 5) appeared while urgent (priority 1) did not — sort violated. Response: #{text}",
+          only_low_flunk:
+            "later (priority 5) appeared while urgent (priority 1) did not — sort violated. Response: #{text}",
           order_assert: "expected urgent before later. Response: #{text}",
           neither_flunk: "neither context appeared. Response: #{text}"
         )

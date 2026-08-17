@@ -35,7 +35,9 @@ defmodule CodeMySpecSpex.Story124.Criterion5257Spex do
 
         html = render(view)
         assert html =~ "Project Setup (11/12)"
-        assert html =~ step_prompt_heading(Fixtures.find_setup_step("codemyspec_deps"), context.scope)
+
+        assert html =~
+                 step_prompt_heading(Fixtures.find_setup_step("codemyspec_deps"), context.scope)
 
         {:ok, Map.put(context, :view, view)}
       end
@@ -55,7 +57,9 @@ defmodule CodeMySpecSpex.Story124.Criterion5257Spex do
       end
 
       and_ "CodemyspecDeps no longer shows its inline prompt", context do
-        refute render(context.view) =~ step_prompt_heading(Fixtures.find_setup_step("codemyspec_deps"), context.scope)
+        refute render(context.view) =~
+                 step_prompt_heading(Fixtures.find_setup_step("codemyspec_deps"), context.scope)
+
         {:ok, context}
       end
     end

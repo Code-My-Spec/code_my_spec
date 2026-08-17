@@ -141,6 +141,10 @@ defmodule CodeMySpecSpex.Story688.Criterion5975Spex do
 
     Map.put(context, :framework_knowledge_dir, dir)
   end
-  defp restore_framework_knowledge_dir(nil), do: Application.delete_env(:code_my_spec, :framework_knowledge_dir)
-  defp restore_framework_knowledge_dir(prior), do: Application.put_env(:code_my_spec, :framework_knowledge_dir, prior)
+
+  defp restore_framework_knowledge_dir(nil),
+    do: Application.delete_env(:code_my_spec, :framework_knowledge_dir)
+
+  defp restore_framework_knowledge_dir(prior),
+    do: Application.put_env(:code_my_spec, :framework_knowledge_dir, prior)
 end

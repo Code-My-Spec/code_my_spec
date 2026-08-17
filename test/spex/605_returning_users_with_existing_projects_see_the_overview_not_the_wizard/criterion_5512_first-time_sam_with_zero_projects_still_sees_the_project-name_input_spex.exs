@@ -26,7 +26,8 @@ defmodule CodeMySpecSpex.Story605.Criterion5512Spex do
       end
 
       then_ "the page prompts Sam to name their first project", context do
-        assert context.html =~ ~r/name.*?first.*?project|first.*?project.*?name|call.*?first.*?project/i,
+        assert context.html =~
+                 ~r/name.*?first.*?project|first.*?project.*?name|call.*?first.*?project/i,
                "expected a prompt asking the user to name their first project " <>
                  "on /app when in empty state"
 

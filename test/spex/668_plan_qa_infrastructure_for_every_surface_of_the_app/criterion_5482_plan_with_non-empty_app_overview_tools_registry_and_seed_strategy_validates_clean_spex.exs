@@ -91,15 +91,4 @@ defmodule CodeMySpecSpex.Story668.Criterion5482Spex do
     projects. Credentials print at the end of the run.
     """
   end
-
-  defp response_text(%{content: parts}) when is_list(parts) do
-    Enum.map_join(parts, "\n", fn
-      %{text: t} -> t
-      %{"text" => t} -> t
-      other -> inspect(other)
-    end)
-  end
-
-  defp response_text(%{text: text}), do: text
-  defp response_text(other), do: inspect(other)
 end

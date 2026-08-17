@@ -40,7 +40,13 @@ defmodule CodeMySpecSpex.Story669.Criterion5568Spex do
         env = context.environment
 
         :ok = Environments.write_file(env, @spec_path, spec_with_test_assertions())
-        :ok = Environments.write_file(env, @impl_path, "defmodule ExampleContext do\n  @moduledoc false\nend\n")
+
+        :ok =
+          Environments.write_file(
+            env,
+            @impl_path,
+            "defmodule ExampleContext do\n  @moduledoc false\nend\n"
+          )
 
         # Empty test module — has no `test "returns :ok when called"`,
         # so `FileSync.validate_test_alignment/3` will flip File.valid

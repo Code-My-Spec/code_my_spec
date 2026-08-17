@@ -102,15 +102,4 @@ defmodule CodeMySpecSpex.Story668.Criterion5483Spex do
     Run `mix run priv/repo/qa_seeds.exs`.
     """
   end
-
-  defp response_text(%{content: parts}) when is_list(parts) do
-    Enum.map_join(parts, "\n", fn
-      %{text: t} -> t
-      %{"text" => t} -> t
-      other -> inspect(other)
-    end)
-  end
-
-  defp response_text(%{text: text}), do: text
-  defp response_text(other), do: inspect(other)
 end

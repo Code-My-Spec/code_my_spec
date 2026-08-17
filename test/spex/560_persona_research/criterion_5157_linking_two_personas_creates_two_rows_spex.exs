@@ -84,18 +84,11 @@ defmodule CodeMySpecSpex.Story560.Criterion5157Spex do
     end
   end
 
-  defp response_text(%{content: parts}) when is_list(parts) do
-    Enum.map_join(parts, "\n", fn
-      %{text: t} -> t
-      %{"text" => t} -> t
-      o -> inspect(o)
-    end)
-  end
-
-  defp response_text(other), do: inspect(other)
-
-  defp extract_persona_id(response), do: extract_persona_id_from(Regex.run(~r/\bid: `([^`]+)`/, response_text(response)), response)
+  defp extract_persona_id(response),
+    do: extract_persona_id_from(Regex.run(~r/\bid: `([^`]+)`/, response_text(response)), response)
 
   defp extract_persona_id_from([_, id], _response), do: id
-  defp extract_persona_id_from(_, response), do: raise("Could not extract persona id from response: #{inspect(response)}")
+
+  defp extract_persona_id_from(_, response),
+    do: raise("Could not extract persona id from response: #{inspect(response)}")
 end

@@ -21,7 +21,9 @@ defmodule CodeMySpecSpex.Story726.Criterion6446Spex do
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Issues.Tools.CreateIssue
   alias CodeMySpec.McpServers.Qa.Tools.{ListQaAttempts, SubmitQaResult}
-  import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1, satisfied_qa_complete_text: 1]
+
+  import CodeMySpecSpex.TaskResponseHelpers,
+    only: [response_text: 1, satisfied_qa_complete_text: 1]
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -29,7 +31,8 @@ defmodule CodeMySpecSpex.Story726.Criterion6446Spex do
 
   spex "Multiple submissions are allowed and the latest is canonical" do
     scenario "Resubmitting creates a new attempt and the latest wins for qa_complete" do
-      given_ "a started qa_complete task and an issue filed for the first-pass finding", context do
+      given_ "a started qa_complete task and an issue filed for the first-pass finding",
+             context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
         {:reply, issue_response, _frame} =

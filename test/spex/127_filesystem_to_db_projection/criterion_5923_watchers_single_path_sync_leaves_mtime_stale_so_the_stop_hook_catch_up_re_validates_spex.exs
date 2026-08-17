@@ -76,7 +76,6 @@ defmodule CodeMySpecSpex.Story127.Criterion5923Spex do
 
         {:ok, context}
       end
-
     end
 
     scenario "follow-up full sync brings the mtime forward, completing the catch-up" do
@@ -161,6 +160,7 @@ defmodule CodeMySpecSpex.Story127.Criterion5923Spex do
   defp sha256(content) do
     :crypto.hash(:sha256, content) |> Base.encode16(case: :lower)
   end
+
   defp extract_match([_, value]), do: value
   defp extract_match(_), do: nil
 end

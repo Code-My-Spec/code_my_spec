@@ -118,15 +118,4 @@ defmodule CodeMySpecSpex.Story560.Criterion5141Spex do
     - https://example.com/interview — Founder interview — 2026-04-23
     """
   end
-
-  defp response_text(%{content: parts}) when is_list(parts) do
-    Enum.map_join(parts, "\n", fn
-      %{text: text} -> text
-      %{"text" => text} -> text
-      other -> inspect(other)
-    end)
-  end
-
-  defp response_text(%{text: text}), do: text
-  defp response_text(other), do: inspect(other)
 end

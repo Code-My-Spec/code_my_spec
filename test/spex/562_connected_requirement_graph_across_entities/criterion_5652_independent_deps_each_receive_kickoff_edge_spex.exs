@@ -37,7 +37,12 @@ defmodule CodeMySpecSpex.Story562.Criterion5652Spex do
           fn {module_name, type, deps} ->
             content = spec_content_for(type, module_name, deps)
 
-            :ok = Environments.write_file(context.environment, Content.spec_path(module_name), content)
+            :ok =
+              Environments.write_file(
+                context.environment,
+                Content.spec_path(module_name),
+                content
+              )
 
             :ok =
               Environments.write_file(
@@ -77,7 +82,10 @@ defmodule CodeMySpecSpex.Story562.Criterion5652Spex do
 
       when_ "the engineer opens the requirements graph", context do
         {:ok, _live, html} =
-          live(context.conn, "/app/projects/#{context.project.id}/requirements/graph?preload=true")
+          live(
+            context.conn,
+            "/app/projects/#{context.project.id}/requirements/graph?preload=true"
+          )
 
         {:ok, Map.put(context, :graph, GraphAssertions.extract_graph!(html))}
       end
@@ -122,6 +130,7 @@ defmodule CodeMySpecSpex.Story562.Criterion5652Spex do
       end
     end
   end
+
   defp spec_content_for(:context, module_name, deps),
     do: Content.context_spec(module_name, type: "context", dependencies: deps)
 

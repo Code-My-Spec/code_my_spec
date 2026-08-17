@@ -134,7 +134,8 @@ defmodule CodeMySpecSpex.Story560.Criterion5144Spex do
         # The two gaps are the load-bearing bit. The checker must attribute
         # the right missing file to the right persona, not just list the
         # union of missing files across all personas.
-        assert body =~ ~r/#{context.persona_slug}[\s\S]{0,200}summary\.md|summary\.md[\s\S]{0,200}#{context.persona_slug}/,
+        assert body =~
+                 ~r/#{context.persona_slug}[\s\S]{0,200}summary\.md|summary\.md[\s\S]{0,200}#{context.persona_slug}/,
                "expected feedback to attribute summary.md as the gap for '#{context.persona_slug}'"
 
         {:ok, context}
@@ -143,7 +144,8 @@ defmodule CodeMySpecSpex.Story560.Criterion5144Spex do
       then_ "the feedback names 'agency_pm' with sources.md as its gap", context do
         body = response_text(context.response)
 
-        assert body =~ ~r/#{context.second_slug}[\s\S]{0,200}sources\.md|sources\.md[\s\S]{0,200}#{context.second_slug}/,
+        assert body =~
+                 ~r/#{context.second_slug}[\s\S]{0,200}sources\.md|sources\.md[\s\S]{0,200}#{context.second_slug}/,
                "expected feedback to attribute sources.md as the gap for '#{context.second_slug}'"
 
         {:ok, context}
@@ -151,20 +153,13 @@ defmodule CodeMySpecSpex.Story560.Criterion5144Spex do
     end
   end
 
-  defp response_text(%{content: parts}) when is_list(parts) do
-    Enum.map_join(parts, "\n", fn
-      %{text: t} -> t
-      %{"text" => t} -> t
-      o -> inspect(o)
-    end)
-  end
-
-  defp response_text(other), do: inspect(other)
-
-  defp extract_persona_id(response), do: extract_persona_id_from(Regex.run(~r/\bid: `([^`]+)`/, response_text(response)), response)
+  defp extract_persona_id(response),
+    do: extract_persona_id_from(Regex.run(~r/\bid: `([^`]+)`/, response_text(response)), response)
 
   defp extract_persona_id_from([_, id], _response), do: id
-  defp extract_persona_id_from(_, response), do: raise("Could not extract persona id from response: #{inspect(response)}")
+
+  defp extract_persona_id_from(_, response),
+    do: raise("Could not extract persona id from response: #{inspect(response)}")
 
   defp minimal_persona_summary do
     """

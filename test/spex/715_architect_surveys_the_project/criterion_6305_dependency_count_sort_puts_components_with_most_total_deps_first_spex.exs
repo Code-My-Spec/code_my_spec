@@ -17,7 +17,6 @@ defmodule CodeMySpecSpex.Story715.Criterion6305Spex do
   alias CodeMySpec.McpServers.Components.Tools.ContextStatistics
 
   import CodeMySpecSpex.GraphGivens
-  import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -28,7 +27,10 @@ defmodule CodeMySpecSpex.Story715.Criterion6305Spex do
 
       when_ ~s|the agent calls context_statistics with sort_by = "dependency_count"|, context do
         frame = %Frame{assigns: %{current_scope: context.scope}}
-        {:reply, response, _frame} = ContextStatistics.execute(%{sort_by: "dependency_count"}, frame)
+
+        {:reply, response, _frame} =
+          ContextStatistics.execute(%{sort_by: "dependency_count"}, frame)
+
         {:ok, Map.put(context, :body, response_text(response))}
       end
 
@@ -41,7 +43,9 @@ defmodule CodeMySpecSpex.Story715.Criterion6305Spex do
         child_pos = position_of(context.body, "Stories.Story")
 
         assert is_integer(ctx_pos), "expected Stories context in response, got:\n#{context.body}"
-        assert is_integer(child_pos), "expected Stories.Story child in response, got:\n#{context.body}"
+
+        assert is_integer(child_pos),
+               "expected Stories.Story child in response, got:\n#{context.body}"
 
         assert ctx_pos < child_pos,
                "expected Stories (1 dep) to appear before Stories.Story (0 deps), got positions #{ctx_pos} vs #{child_pos}"

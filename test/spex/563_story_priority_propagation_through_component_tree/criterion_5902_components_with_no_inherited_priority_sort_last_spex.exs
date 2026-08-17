@@ -84,8 +84,10 @@ defmodule CodeMySpecSpex.Story563.Criterion5902Spex do
           {linked_pos, orphan_pos},
           high_label: "linked_pos",
           low_label: "orphan_pos",
-          only_low_flunk: "orphan led the wave while the priority-1 linked component did not surface. Response: #{text}",
-          order_assert: "expected linked (priority 1) to precede orphan (no priority). Response: #{text}",
+          only_low_flunk:
+            "orphan led the wave while the priority-1 linked component did not surface. Response: #{text}",
+          order_assert:
+            "expected linked (priority 1) to precede orphan (no priority). Response: #{text}",
           neither_flunk: "neither component appeared. Response: #{text}"
         )
 

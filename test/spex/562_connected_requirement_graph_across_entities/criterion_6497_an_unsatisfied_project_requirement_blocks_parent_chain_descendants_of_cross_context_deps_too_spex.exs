@@ -54,7 +54,11 @@ defmodule CodeMySpecSpex.Story562.Criterion6497Spex do
           )
 
         :ok =
-          Environments.write_file(env, Content.impl_path("External"), Content.impl_file("External"))
+          Environments.write_file(
+            env,
+            Content.impl_path("External"),
+            Content.impl_file("External")
+          )
 
         :ok =
           Environments.write_file(

@@ -41,14 +41,4 @@ defmodule CodeMySpecSpex.Story560.Criterion5145Spex do
       end
     end
   end
-
-  defp response_text(%{content: parts}) when is_list(parts) do
-    Enum.map_join(parts, "\n", fn
-      %{text: t} -> t
-      %{"text" => t} -> t
-      o -> inspect(o)
-    end)
-  end
-
-  defp response_text(other), do: inspect(other)
 end

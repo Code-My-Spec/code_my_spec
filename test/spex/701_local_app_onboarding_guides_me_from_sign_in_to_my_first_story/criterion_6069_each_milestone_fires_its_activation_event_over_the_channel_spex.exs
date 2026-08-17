@@ -110,8 +110,7 @@ defmodule CodeMySpecSpex.Story701.Criterion6069Spex do
             context do
         user_id = context.user.id
 
-        assert_receive {:analytics_event, :local_project_setup_complete,
-                        %{user_id: ^user_id}},
+        assert_receive {:analytics_event, :local_project_setup_complete, %{user_id: ^user_id}},
                        1_000
 
         {:ok, context}

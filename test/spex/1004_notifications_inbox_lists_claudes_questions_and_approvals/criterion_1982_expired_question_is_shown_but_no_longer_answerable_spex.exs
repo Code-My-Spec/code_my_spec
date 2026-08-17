@@ -27,7 +27,12 @@ defmodule CodeMySpecSpex.Story1004.Criterion1982Spex do
         id =
           Fixtures.ask_question(context.scope.user.id,
             title: "Which storage backend?",
-            questions: [%{"question" => "Which storage backend?", "options" => [%{"label" => "S3"}, %{"label" => "Disk"}]}]
+            questions: [
+              %{
+                "question" => "Which storage backend?",
+                "options" => [%{"label" => "S3"}, %{"label" => "Disk"}]
+              }
+            ]
           )
 
         {:ok, Map.put(context, :question_id, id)}

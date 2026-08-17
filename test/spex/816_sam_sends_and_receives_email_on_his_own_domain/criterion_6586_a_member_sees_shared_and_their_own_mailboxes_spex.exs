@@ -34,7 +34,12 @@ defmodule CodeMySpecSpex.Story816.Criterion6586Spex do
         _bob_member = Fixtures.member_fixture(bob, context.account, :member)
 
         Fixtures.mailbox_fixture(context.project, %{address: "team@#{@domain}"})
-        Fixtures.mailbox_fixture(context.project, %{address: "alice@#{@domain}", user_id: alice.id})
+
+        Fixtures.mailbox_fixture(context.project, %{
+          address: "alice@#{@domain}",
+          user_id: alice.id
+        })
+
         Fixtures.mailbox_fixture(context.project, %{address: "bob@#{@domain}", user_id: bob.id})
 
         alice_scope = Fixtures.user_scope_fixture(alice, context.account)

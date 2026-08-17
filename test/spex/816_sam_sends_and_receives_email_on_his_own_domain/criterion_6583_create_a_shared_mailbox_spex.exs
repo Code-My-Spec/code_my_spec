@@ -34,7 +34,9 @@ defmodule CodeMySpecSpex.Story816.Criterion6583Spex do
 
       when_ "Sam creates a mailbox with no assigned user", context do
         context.view
-        |> form("[data-test='new-mailbox-form']", mailbox: %{address: "hello@#{@domain}", user_id: ""})
+        |> form("[data-test='new-mailbox-form']",
+          mailbox: %{address: "hello@#{@domain}", user_id: ""}
+        )
         |> render_submit()
 
         {:ok, context}

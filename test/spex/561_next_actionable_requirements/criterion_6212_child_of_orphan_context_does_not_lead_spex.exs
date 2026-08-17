@@ -84,7 +84,9 @@ defmodule CodeMySpecSpex.Story561.Criterion6212Spex do
 
         linked = Fixtures.get_component_by_module_name(context.scope, "LinkedContext")
         orphan = Fixtures.get_component_by_module_name(context.scope, "OrphanContext")
-        orphan_child = Fixtures.get_component_by_module_name(context.scope, "OrphanContext.Schema")
+
+        orphan_child =
+          Fixtures.get_component_by_module_name(context.scope, "OrphanContext.Schema")
 
         StoryHelpers.create_and_link(context.scope, "LinkedContext",
           title: "Linked story",

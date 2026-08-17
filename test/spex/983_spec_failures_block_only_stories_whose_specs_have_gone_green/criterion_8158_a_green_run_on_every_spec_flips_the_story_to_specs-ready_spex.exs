@@ -25,7 +25,6 @@ defmodule CodeMySpecSpex.Story983.Criterion8158Spex do
   use ExCliVcr
 
   import CodeMySpecSpex.SharedGivens
-  import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
   alias CodeMySpec.Environments

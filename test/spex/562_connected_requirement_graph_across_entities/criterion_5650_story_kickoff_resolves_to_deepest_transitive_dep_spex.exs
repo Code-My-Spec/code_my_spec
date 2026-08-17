@@ -60,7 +60,10 @@ defmodule CodeMySpecSpex.Story562.Criterion5650Spex do
 
       when_ "the engineer opens the requirements graph", context do
         {:ok, _live, html} =
-          live(context.conn, "/app/projects/#{context.project.id}/requirements/graph?preload=true")
+          live(
+            context.conn,
+            "/app/projects/#{context.project.id}/requirements/graph?preload=true"
+          )
 
         {:ok, Map.put(context, :graph, GraphAssertions.extract_graph!(html))}
       end
@@ -116,7 +119,13 @@ defmodule CodeMySpecSpex.Story562.Criterion5650Spex do
       content = spec_content_for(type, module_name, deps)
 
       :ok = Environments.write_file(env, Content.spec_path(module_name), content)
-      :ok = Environments.write_file(env, Content.impl_path(module_name), Content.impl_file(module_name))
+
+      :ok =
+        Environments.write_file(
+          env,
+          Content.impl_path(module_name),
+          Content.impl_file(module_name)
+        )
     end)
   end
 
@@ -127,6 +136,7 @@ defmodule CodeMySpecSpex.Story562.Criterion5650Spex do
     sync_live |> element("button[phx-click='sync']") |> render_click()
     :ok
   end
+
   defp spec_content_for(:context, module_name, deps),
     do: Content.context_spec(module_name, type: "context", dependencies: deps)
 

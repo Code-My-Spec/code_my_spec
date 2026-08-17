@@ -16,8 +16,6 @@ defmodule CodeMySpecSpex.Story686.Criterion7948Spex do
   alias CodeMySpec.McpServers.Stories.Tools.CreateStory
   alias CodeMySpec.McpServers.Stories.Tools.GetStory
 
-  import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
-
   setup :register_log_in_setup_account
   setup :setup_active_project
 

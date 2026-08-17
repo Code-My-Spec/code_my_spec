@@ -69,7 +69,11 @@ defmodule CodeMySpecSpex.Story712.Criterion6273Spex do
 
       when_ "Sam replaces the image bytes and re-syncs", context do
         :ok =
-          Environments.write_file(context.environment, "#{@source}/images/hero-foo.webp", "new-bytes")
+          Environments.write_file(
+            context.environment,
+            "#{@source}/images/hero-foo.webp",
+            "new-bytes"
+          )
 
         context.view |> element("[data-test='sync-button']") |> render_click()
         {:ok, context}

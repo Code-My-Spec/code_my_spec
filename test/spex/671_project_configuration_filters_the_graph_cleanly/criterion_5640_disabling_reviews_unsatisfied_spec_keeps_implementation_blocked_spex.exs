@@ -44,15 +44,19 @@ defmodule CodeMySpecSpex.Story671.Criterion5640Spex do
         # Keep the title + type so sync still recognizes the child,
         # but omit the required Fields section so spec_valid fails.
         :ok =
-          Environments.write_file(context.environment, Content.spec_path("Reservations.Booking"), """
-          # Reservations.Booking
+          Environments.write_file(
+            context.environment,
+            Content.spec_path("Reservations.Booking"),
+            """
+            # Reservations.Booking
 
-          ## Type
+            ## Type
 
-          schema
+            schema
 
-          A spec stub missing the required Fields section.
-          """)
+            A spec stub missing the required Fields section.
+            """
+          )
 
         :ok = Environments.delete_file(context.environment, Content.impl_path("Reservations"))
 
@@ -81,7 +85,10 @@ defmodule CodeMySpecSpex.Story671.Criterion5640Spex do
 
       and_ "the engineer renders the requirements graph", context do
         {:ok, _live, html} =
-          live(context.conn, "/app/projects/#{context.project.id}/requirements/graph?preload=true")
+          live(
+            context.conn,
+            "/app/projects/#{context.project.id}/requirements/graph?preload=true"
+          )
 
         {:ok, Map.put(context, :graph, GraphAssertions.extract_graph!(html))}
       end

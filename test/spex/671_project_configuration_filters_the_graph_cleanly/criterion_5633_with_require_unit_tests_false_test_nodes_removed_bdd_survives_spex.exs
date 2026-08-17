@@ -52,7 +52,10 @@ defmodule CodeMySpecSpex.Story671.Criterion5633Spex do
 
       and_ "the engineer renders the requirements graph", context do
         {:ok, _live, html} =
-          live(context.conn, "/app/projects/#{context.project.id}/requirements/graph?preload=true")
+          live(
+            context.conn,
+            "/app/projects/#{context.project.id}/requirements/graph?preload=true"
+          )
 
         {:ok, Map.put(context, :graph, GraphAssertions.extract_graph!(html))}
       end
@@ -75,7 +78,8 @@ defmodule CodeMySpecSpex.Story671.Criterion5633Spex do
         # bdd_specs_passing was removed from story_graph in favor of
         # stop-hook enforcement; the surviving BDD-coverage gate at
         # story level is bdd_specs_exist (BDD spec files written).
-        node = GraphAssertions.find_node(context.graph, "story", context.story.id, "bdd_specs_exist")
+        node =
+          GraphAssertions.find_node(context.graph, "story", context.story.id, "bdd_specs_exist")
 
         assert node,
                "expected story to retain bdd_specs_exist when require_unit_tests is false (BDD coverage is a separate concern from unit tests)"

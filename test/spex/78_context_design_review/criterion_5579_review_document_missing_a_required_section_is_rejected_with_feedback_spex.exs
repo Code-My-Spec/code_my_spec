@@ -60,7 +60,8 @@ defmodule CodeMySpecSpex.Story78.Criterion5579Spex do
         {:ok, context}
       end
 
-      and_ "review_valid stays unsatisfied because the document fails schema validation", context do
+      and_ "review_valid stays unsatisfied because the document fails schema validation",
+           context do
         assert context.response_text =~ ~r/\[ \]\s+\*\*review_valid\*\*/,
                "expected review_valid to remain unsatisfied — missing the Conclusion section blocks schema validation"
 
@@ -86,15 +87,4 @@ defmodule CodeMySpecSpex.Story78.Criterion5579Spex do
     - Public APIs delegated cleanly
     """
   end
-
-  defp response_text(%{content: parts}) when is_list(parts) do
-    Enum.map_join(parts, "\n", fn
-      %{text: t} -> t
-      %{"text" => t} -> t
-      other -> inspect(other)
-    end)
-  end
-
-  defp response_text(%{text: text}), do: text
-  defp response_text(other), do: inspect(other)
 end

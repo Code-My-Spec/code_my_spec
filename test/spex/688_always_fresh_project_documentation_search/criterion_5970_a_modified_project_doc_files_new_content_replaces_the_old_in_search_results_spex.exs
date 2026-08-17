@@ -74,6 +74,7 @@ defmodule CodeMySpecSpex.Story688.Criterion5970Spex do
 
         assert body =~ "create_widget/3",
                "Expected v2 content to appear in results, got:\n#{body}"
+
         {:ok, context}
       end
 
@@ -94,6 +95,7 @@ defmodule CodeMySpecSpex.Story688.Criterion5970Spex do
 
         refute body =~ "inserts a new widget for the given scope.\n",
                "Expected v1's distinguishing wording to be gone after re-sync, got:\n#{body}"
+
         {:ok, context}
       end
     end

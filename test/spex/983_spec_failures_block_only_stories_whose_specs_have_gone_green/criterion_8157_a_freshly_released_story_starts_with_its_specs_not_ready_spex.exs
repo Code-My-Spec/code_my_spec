@@ -18,7 +18,6 @@ defmodule CodeMySpecSpex.Story983.Criterion8157Spex do
   use CodeMySpecSpex.Case
 
   import CodeMySpecSpex.SharedGivens
-  import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Requirements.Tools.ShowStoryRequirements

@@ -41,7 +41,8 @@ defmodule CodeMySpecSpex.Story563.Criterion5901Spex do
                 Content.context_spec(module, type: "context", dependencies: deps)
               )
 
-            :ok = Environments.write_file(env, Content.impl_path(module), Content.impl_file(module))
+            :ok =
+              Environments.write_file(env, Content.impl_path(module), Content.impl_file(module))
           end
         )
 
@@ -88,7 +89,8 @@ defmodule CodeMySpecSpex.Story563.Criterion5901Spex do
           {first_pos, second_pos},
           high_label: "first_pos",
           low_label: "second_pos",
-          only_low_flunk: "newer story surfaced while older did not — created_at tiebreak violated. Response: #{text}",
+          only_low_flunk:
+            "newer story surfaced while older did not — created_at tiebreak violated. Response: #{text}",
           order_assert: "expected older (FirstContext) to lead newer. Response: #{text}",
           neither_flunk: "neither context surfaced. Response: #{text}"
         )

@@ -31,7 +31,8 @@ defmodule CodeMySpecSpex.Story812.Criterion6515Spex do
         {:ok, Map.put(context, :html, install)}
       end
 
-      then_ "install-card buttons fire install_command_copy with the harness dimension", context do
+      then_ "install-card buttons fire install_command_copy with the harness dimension",
+            context do
         assert context.html =~ ~s(data-event-name="install_command_copy")
         assert context.html =~ ~s(data-event-harness="codemyspec")
         {:ok, context}

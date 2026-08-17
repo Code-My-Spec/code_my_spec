@@ -45,7 +45,11 @@ defmodule CodeMySpecSpex.Story816.Criterion6580Spex do
 
         show_view
         |> form("[data-test='compose-form']",
-          email: %{to: "lead@example.com", subject: "Welcome aboard", body: "Thanks for signing up!"}
+          email: %{
+            to: "lead@example.com",
+            subject: "Welcome aboard",
+            body: "Thanks for signing up!"
+          }
         )
         |> render_submit()
 

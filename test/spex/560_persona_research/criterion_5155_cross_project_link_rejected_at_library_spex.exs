@@ -32,7 +32,11 @@ defmodule CodeMySpecSpex.Story560.Criterion5155Spex do
             module_name: "SiblingProject"
           })
 
-        foreign_scope = %{context.scope | active_project: foreign_project, active_project_id: foreign_project.id}
+        foreign_scope = %{
+          context.scope
+          | active_project: foreign_project,
+            active_project_id: foreign_project.id
+        }
 
         story =
           StoryHelpers.create_story(foreign_scope,
@@ -69,14 +73,4 @@ defmodule CodeMySpecSpex.Story560.Criterion5155Spex do
       end
     end
   end
-
-  defp response_text(%{content: parts}) when is_list(parts) do
-    Enum.map_join(parts, "\n", fn
-      %{text: t} -> t
-      %{"text" => t} -> t
-      o -> inspect(o)
-    end)
-  end
-
-  defp response_text(other), do: inspect(other)
 end

@@ -40,7 +40,9 @@ defmodule CodeMySpecSpex.Story561.Criterion5614Spex do
         # (entity, requirement_name) pair is absent.
         parent_id = context.parent_context.id
         signature = "entity_id=`#{parent_id}`"
-        spec_file_for_parent_pattern = ~r/requirement_name=`spec_file`,\s*entity_type=`component`,\s*#{Regex.escape(signature)}/
+
+        spec_file_for_parent_pattern =
+          ~r/requirement_name=`spec_file`,\s*entity_type=`component`,\s*#{Regex.escape(signature)}/
 
         refute Regex.match?(spec_file_for_parent_pattern, context.response_text),
                "expected the parent's satisfied spec_file to be excluded from actionable, but found it"

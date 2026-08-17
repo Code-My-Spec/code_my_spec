@@ -134,7 +134,8 @@ defmodule CodeMySpecSpex.Story599.Criterion5329Spex do
         {:ok, context}
       end
 
-      then_ "list_issues(severity: medium) returns exactly the 3 medium incoming issues", context do
+      then_ "list_issues(severity: medium) returns exactly the 3 medium incoming issues",
+            context do
         for issue <- context.medium_issues do
           assert context.medium_list_text =~ issue.id,
                  "expected list_issues(severity: medium) to include #{issue.id}, got: #{inspect(context.medium_list_text)}"
@@ -149,15 +150,4 @@ defmodule CodeMySpecSpex.Story599.Criterion5329Spex do
       end
     end
   end
-
-  defp response_text(%{content: parts}) when is_list(parts) do
-    Enum.map_join(parts, "\n", fn
-      %{text: t} -> t
-      %{"text" => t} -> t
-      other -> inspect(other)
-    end)
-  end
-
-  defp response_text(%{text: text}), do: text
-  defp response_text(other), do: inspect(other)
 end

@@ -109,20 +109,13 @@ defmodule CodeMySpecSpex.Story560.Criterion5143Spex do
     end
   end
 
-  defp response_text(%{content: parts}) when is_list(parts) do
-    Enum.map_join(parts, "\n", fn
-      %{text: t} -> t
-      %{"text" => t} -> t
-      o -> inspect(o)
-    end)
-  end
-
-  defp response_text(other), do: inspect(other)
-
-  defp extract_task_id(response), do: extract_task_id_from(Regex.run(~r/Task ID: `([^`]+)`/, response_text(response)), response)
+  defp extract_task_id(response),
+    do: extract_task_id_from(Regex.run(~r/Task ID: `([^`]+)`/, response_text(response)), response)
 
   defp extract_task_id_from([_, task_id], _response), do: task_id
-  defp extract_task_id_from(_, response), do: raise("Could not extract task ID from response: #{inspect(response)}")
+
+  defp extract_task_id_from(_, response),
+    do: raise("Could not extract task ID from response: #{inspect(response)}")
 
   defp minimal_persona_summary do
     """

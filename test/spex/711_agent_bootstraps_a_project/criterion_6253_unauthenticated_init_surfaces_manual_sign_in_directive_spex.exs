@@ -59,7 +59,8 @@ defmodule CodeMySpecSpex.Story711.Criterion6253Spex do
 
       and_ "the per-step prompt states the agent cannot complete this step automatically",
            context do
-        assert context.prompt_text =~ ~r/cannot complete it automatically|requires user interaction/i,
+        assert context.prompt_text =~
+                 ~r/cannot complete it automatically|requires user interaction/i,
                "expected prompt to say the agent can't do this automatically, got:\n#{context.prompt_text}"
 
         {:ok, context}

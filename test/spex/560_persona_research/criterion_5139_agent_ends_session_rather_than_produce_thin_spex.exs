@@ -16,7 +16,8 @@ defmodule CodeMySpecSpex.Story560.Criterion5139Spex do
     scenario "prompt directs the agent to end the session without writing" do
       given_ :persona_research_prompt
 
-      then_ "the prompt directs ending the session rather than producing a thin persona", context do
+      then_ "the prompt directs ending the session rather than producing a thin persona",
+            context do
         assert context.prompt =~ ~r/thin in|fabricate/i,
                "expected prompt to flag fabrication / thin-in nothing-out"
 

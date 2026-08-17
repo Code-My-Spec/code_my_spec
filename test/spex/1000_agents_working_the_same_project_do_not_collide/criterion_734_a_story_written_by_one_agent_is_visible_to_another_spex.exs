@@ -22,8 +22,6 @@ defmodule CodeMySpecSpex.Story1000.Criterion734Spex do
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Stories.Tools.{CreateStory, ListStories, UpdateStory}
 
-  import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
-
   setup :register_log_in_setup_account
   setup :setup_active_project
 

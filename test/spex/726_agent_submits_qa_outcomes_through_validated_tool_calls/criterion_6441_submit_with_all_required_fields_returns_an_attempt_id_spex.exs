@@ -13,8 +13,6 @@ defmodule CodeMySpecSpex.Story726.Criterion6441Spex do
 
   use CodeMySpecSpex.Case
 
-  import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
-
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Qa.Tools.SubmitQaResult
 

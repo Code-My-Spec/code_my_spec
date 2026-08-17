@@ -21,7 +21,6 @@ defmodule CodeMySpecSpex.Story715.Criterion6303Spex do
   alias CodeMySpec.McpServers.Components.Tools.ArchitectureHealthSummary
 
   import CodeMySpecSpex.GraphGivens
-  import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -38,7 +37,8 @@ defmodule CodeMySpecSpex.Story715.Criterion6303Spex do
       end
 
       then_ "the response carries the five concrete percentage keys", context do
-        for key <- ~w(story_coverage_percentage orphaned_percentage coverage_score dependency_score overall_score) do
+        for key <-
+              ~w(story_coverage_percentage orphaned_percentage coverage_score dependency_score overall_score) do
           assert context.body =~ key,
                  "expected `#{key}` in health summary, got:\n#{context.body}"
         end
@@ -47,7 +47,8 @@ defmodule CodeMySpecSpex.Story715.Criterion6303Spex do
       end
 
       and_ "each percentage is a numeric value", context do
-        for key <- ~w(story_coverage_percentage orphaned_percentage coverage_score dependency_score overall_score) do
+        for key <-
+              ~w(story_coverage_percentage orphaned_percentage coverage_score dependency_score overall_score) do
           assert context.body =~ ~r/"#{key}":\s*\d+(\.\d+)?/,
                  "expected `#{key}` to be a numeric value, got:\n#{context.body}"
         end

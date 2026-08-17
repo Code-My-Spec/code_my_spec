@@ -18,7 +18,11 @@ defmodule CodeMySpecSpex.Story124.Criterion5263Spex do
 
   spex "Completion is gated by every step evaluating valid" do
     scenario "multiple incomplete steps each render with their prompts" do
-      incomplete = [Fixtures.find_setup_step("rules"), Fixtures.find_setup_step("credo_checks"), Fixtures.find_setup_step("claude_md")]
+      incomplete = [
+        Fixtures.find_setup_step("rules"),
+        Fixtures.find_setup_step("credo_checks"),
+        Fixtures.find_setup_step("claude_md")
+      ]
 
       given_ "Rules, CredoChecks, and ClaudeMd are unsatisfied; others are satisfied", context do
         Fixtures.reset_setup_env(context.environment)

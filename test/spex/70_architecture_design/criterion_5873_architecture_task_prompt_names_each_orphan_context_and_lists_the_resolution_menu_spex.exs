@@ -144,7 +144,10 @@ defmodule CodeMySpecSpex.Story70.Criterion5873Spex do
         # WITHOUT any orphan diagnostic. Pattern-matched on the contains?
         # bool so the assertion stays declarative.
         assert_orphan_named_when_satisfied(
-          String.contains?(prompt, "All user stories are currently satisfied by the architecture"),
+          String.contains?(
+            prompt,
+            "All user stories are currently satisfied by the architecture"
+          ),
           prompt
         )
 
@@ -152,17 +155,6 @@ defmodule CodeMySpecSpex.Story70.Criterion5873Spex do
       end
     end
   end
-
-  defp response_text(%{content: parts}) when is_list(parts) do
-    Enum.map_join(parts, "\n", fn
-      %{text: text} -> text
-      %{"text" => text} -> text
-      other -> inspect(other)
-    end)
-  end
-
-  defp response_text(%{text: text}), do: text
-  defp response_text(other), do: inspect(other)
 
   # When the prompt declares all stories satisfied, the orphan must still
   # be named OUTSIDE that phrase. False short-circuits to :ok.

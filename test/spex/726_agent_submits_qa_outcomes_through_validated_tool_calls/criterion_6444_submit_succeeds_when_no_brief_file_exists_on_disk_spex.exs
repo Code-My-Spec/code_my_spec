@@ -15,7 +15,6 @@ defmodule CodeMySpecSpex.Story726.Criterion6444Spex do
   alias Anubis.Server.Frame
   alias CodeMySpec.Environments
   alias CodeMySpec.McpServers.Qa.Tools.SubmitQaResult
-  import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -26,6 +25,7 @@ defmodule CodeMySpecSpex.Story726.Criterion6444Spex do
       given_ "a started qa_complete task and no brief.md under .code_my_spec/qa/<story_id>/",
              context do
         brief_path = ".code_my_spec/qa/#{context.story.id}/brief.md"
+
         refute Environments.file_exists?(context.environment, brief_path),
                "precondition: expected no brief.md on disk"
 

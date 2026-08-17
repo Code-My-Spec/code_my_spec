@@ -56,7 +56,8 @@ defmodule CodeMySpecSpex.Story815.Criterion6575Spex do
       end
 
       when_ "the teammate opens the conversation and replies", context do
-        {:ok, index_view, _html} = live(context.teammate_conn, "/app/projects/#{context.project.id}/inbox")
+        {:ok, index_view, _html} =
+          live(context.teammate_conn, "/app/projects/#{context.project.id}/inbox")
 
         {:ok, show_view, thread_html} =
           index_view

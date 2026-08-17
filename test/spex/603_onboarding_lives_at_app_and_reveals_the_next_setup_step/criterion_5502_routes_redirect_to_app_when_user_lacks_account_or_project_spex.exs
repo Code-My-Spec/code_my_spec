@@ -49,6 +49,5 @@ defmodule CodeMySpecSpex.Story603.Criterion5502Spex do
         {:ok, context}
       end
     end
-
   end
 end

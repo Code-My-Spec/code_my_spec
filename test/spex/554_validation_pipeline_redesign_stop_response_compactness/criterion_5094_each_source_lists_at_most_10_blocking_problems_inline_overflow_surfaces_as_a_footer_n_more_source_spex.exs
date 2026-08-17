@@ -76,6 +76,7 @@ defmodule CodeMySpecSpex.Story554.Criterion5094Spex do
         assert context.response["decision"] == "block"
 
         reason = context.response["reason"]
+
         assert reason =~ ~r/exunit\s*\(15\)/,
                "source header must show total count of 15, got:\n#{reason}"
 

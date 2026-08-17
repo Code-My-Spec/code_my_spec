@@ -82,7 +82,8 @@ defmodule CodeMySpecSpex.Story997.Criterion8286Spex do
       then_ "and it does not read as healthy", context do
         running = Floki.find(context.document, "[data-test='container'][data-name='fuellytics']")
 
-        refute Floki.attribute(context.row, "data-state") == Floki.attribute(running, "data-state"),
+        refute Floki.attribute(context.row, "data-state") ==
+                 Floki.attribute(running, "data-state"),
                "the dead container is presented identically to the live one"
 
         {:ok, context}

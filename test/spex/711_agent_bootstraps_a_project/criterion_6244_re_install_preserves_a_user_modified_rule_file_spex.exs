@@ -58,7 +58,8 @@ defmodule CodeMySpecSpex.Story711.Criterion6244Spex do
       end
 
       then_ "elixir.md still holds the user-written content", context do
-        assert {:ok, contents} = Environments.read_file(context.environment, context.user_rule_path)
+        assert {:ok, contents} =
+                 Environments.read_file(context.environment, context.user_rule_path)
 
         assert contents == @user_marker,
                "expected user-modified elixir.md to be preserved, got:\n#{contents}"

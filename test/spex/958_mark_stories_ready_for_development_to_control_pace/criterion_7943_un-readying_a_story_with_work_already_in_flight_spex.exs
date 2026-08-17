@@ -20,8 +20,6 @@ defmodule CodeMySpecSpex.Story958.Criterion7943Spex do
   alias CodeMySpec.McpServers.Stories.Tools.GetStory
   alias CodeMySpec.McpServers.Stories.Tools.SetStoryComponent
 
-  import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
-
   import CodeMySpecSpex.SharedGivens
 
   setup :register_log_in_setup_account

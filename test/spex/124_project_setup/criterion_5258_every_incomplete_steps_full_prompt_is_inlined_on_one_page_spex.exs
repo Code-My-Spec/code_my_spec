@@ -41,7 +41,11 @@ defmodule CodeMySpecSpex.Story124.Criterion5258Spex do
 
         # TestSupportNamespace passes by default (missing conn_case.ex / data_case.ex
         # counts as "not wrong") — treat it as satisfied for this assertion.
-        satisfied_by_fixture = [Fixtures.find_setup_step("application_in_web"), Fixtures.find_setup_step("codemyspec_deps")]
+        satisfied_by_fixture = [
+          Fixtures.find_setup_step("application_in_web"),
+          Fixtures.find_setup_step("codemyspec_deps")
+        ]
+
         satisfied_by_default = [Fixtures.find_setup_step("test_support_namespace")]
 
         incomplete =
@@ -60,7 +64,10 @@ defmodule CodeMySpecSpex.Story124.Criterion5258Spex do
       and_ "satisfied steps do not render their inline prompt heading", context do
         html = render(context.view)
 
-        for mod <- [Fixtures.find_setup_step("application_in_web"), Fixtures.find_setup_step("codemyspec_deps")] do
+        for mod <- [
+              Fixtures.find_setup_step("application_in_web"),
+              Fixtures.find_setup_step("codemyspec_deps")
+            ] do
           heading = step_prompt_heading(mod, context.scope)
 
           refute html =~ heading,

@@ -21,7 +21,6 @@ defmodule CodeMySpecSpex.Story727.Criterion6455Spex do
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Issues.Tools.CreateIssue
   alias CodeMySpec.McpServers.Qa.Tools.{ListQaAttempts, SubmitQaResult}
-  import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   setup :register_log_in_setup_account
   setup :setup_active_project

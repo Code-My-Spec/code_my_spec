@@ -61,8 +61,7 @@ defmodule CodeMySpecSpex.Story812.Criterion6510Spex do
       end
 
       then_ "no :sign_up telemetry event is dispatched", context do
-        refute_receive {:ga_measurement_protocol,
-                        %{events: [%{name: "sign_up"} | _]}},
+        refute_receive {:ga_measurement_protocol, %{events: [%{name: "sign_up"} | _]}},
                        250
 
         {:ok, context}

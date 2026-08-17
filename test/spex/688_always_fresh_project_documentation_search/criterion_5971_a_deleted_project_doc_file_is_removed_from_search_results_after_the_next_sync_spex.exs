@@ -83,6 +83,7 @@ defmodule CodeMySpecSpex.Story688.Criterion5971Spex do
 
         refute body =~ "legacy.md",
                "Expected legacy.md to be absent from search after delete + watcher sync, got:\n#{body}"
+
         {:ok, context}
       end
     end

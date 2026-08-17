@@ -20,7 +20,9 @@ defmodule CodeMySpecSpex.Story727.Criterion6457Spex do
 
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Qa.Tools.{InvalidateQaAttempt, SubmitQaResult}
-  import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1, satisfied_qa_complete_text: 1]
+
+  import CodeMySpecSpex.TaskResponseHelpers,
+    only: [response_text: 1, satisfied_qa_complete_text: 1]
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -86,7 +88,8 @@ defmodule CodeMySpecSpex.Story727.Criterion6457Spex do
     end
   end
 
-  defp extract_attempt_id(text), do: extract_attempt_id_from(Regex.run(~r/attempt[_ ]id[: ]+([a-f0-9-]+)/i, text), text)
+  defp extract_attempt_id(text),
+    do: extract_attempt_id_from(Regex.run(~r/attempt[_ ]id[: ]+([a-f0-9-]+)/i, text), text)
 
   defp extract_attempt_id_from([_, id], _text), do: id
   defp extract_attempt_id_from(_, text), do: raise("no attempt_id in submit response: #{text}")

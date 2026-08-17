@@ -26,6 +26,7 @@ defmodule CodeMySpecSpex.Story62.Criterion6084Spex do
           )
 
         {:ok, view, html} = live(context.conn, "/app/projects")
+
         assert html =~ project.name,
                "precondition: expected the project to appear in the initial listing"
 

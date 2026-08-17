@@ -42,7 +42,6 @@ defmodule CodeMySpecSpex.Story559.Criterion5888Spex do
   use CodeMySpecSpex.Case
 
   import CodeMySpecSpex.SharedGivens
-  import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
   import Phoenix.LiveViewTest
 
   alias Anubis.Server.Frame
@@ -83,7 +82,11 @@ defmodule CodeMySpecSpex.Story559.Criterion5888Spex do
           )
 
         :ok =
-          Environments.write_file(context.environment, impl_path, Content.impl_file(surface_module))
+          Environments.write_file(
+            context.environment,
+            impl_path,
+            Content.impl_file(surface_module)
+          )
 
         {:ok, sync_live, _html} =
           live(context.conn, "/app/projects/#{context.project.id}/files")
@@ -219,8 +222,11 @@ defmodule CodeMySpecSpex.Story559.Criterion5888Spex do
     end
   end
 
-  defp extract_persona_id(response), do: extract_persona_id_from(Regex.run(~r/\bid: `([^`]+)`/, response_text(response)), response)
+  defp extract_persona_id(response),
+    do: extract_persona_id_from(Regex.run(~r/\bid: `([^`]+)`/, response_text(response)), response)
 
   defp extract_persona_id_from([_, id], _response), do: id
-  defp extract_persona_id_from(_, response), do: raise("Could not extract persona id from response: #{inspect(response)}")
+
+  defp extract_persona_id_from(_, response),
+    do: raise("Could not extract persona id from response: #{inspect(response)}")
 end

@@ -31,8 +31,8 @@ defmodule CodeMySpecSpex.Story985.Criterion8185Spex do
 
   spex "A colliding name is named, and Sam chooses" do
     scenario "the collision is surfaced with both choices and neither is taken automatically" do
-      given_ "Sam is on the setup status page and already has a repository by that name", context do
-
+      given_ "Sam is on the setup status page and already has a repository by that name",
+             context do
         # The repository is already there — that is the premise. It used to be
         # there because an earlier run left it, which made this pass on a dirty
         # account and fail on a clean one; planted in the account here, so the

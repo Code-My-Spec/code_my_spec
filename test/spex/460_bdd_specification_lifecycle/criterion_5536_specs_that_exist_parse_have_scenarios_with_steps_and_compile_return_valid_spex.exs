@@ -109,5 +109,4 @@ defmodule CodeMySpecSpex.Story460.Criterion5536Spex do
     end
     """
   end
-
 end
