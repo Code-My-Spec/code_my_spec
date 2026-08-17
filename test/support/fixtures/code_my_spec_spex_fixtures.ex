@@ -954,6 +954,29 @@ defmodule CodeMySpecSpex.Fixtures do
   Ages rows only. The harness's `last_seen_at` is left alone, which is what makes
   the two clocks distinguishable in a spec.
   """
+  @doc """
+  Make a story older, so "the oldest wins" is a fact the premise set.
+
+  The tie-break spex separated two creations with `Process.sleep(10)` and hoped
+  the clock had moved. That is a guess about how far apart two inserts land: on
+  a loaded machine both rows can take the same timestamp, and the tie-break the
+  criterion is about then has nothing to break the tie with. It failed that way
+  once in a sweep (48924084).
+
+  Setting the value removes the race rather than widening it — the same idiom
+  `age_files_of/2` already uses one function below.
+  """
+  @spec age_story(Scope.t(), term(), number()) :: :ok
+  def age_story(%Scope{} = _scope, story_id, seconds) do
+    at = DateTime.add(DateTime.utc_now(), -round(seconds), :second)
+    naive = at |> DateTime.to_naive() |> NaiveDateTime.truncate(:second)
+
+    from(s in CodeMySpec.Stories.Story, where: s.id == ^story_id)
+    |> Repo.update_all(set: [inserted_at: naive, updated_at: naive])
+
+    :ok
+  end
+
   @spec age_files_of(Scope.t(), number()) :: :ok
   def age_files_of(%Scope{active_project_id: project_id} = scope, hours) do
     at = DateTime.add(DateTime.utc_now(), -round(hours * 3600), :second)

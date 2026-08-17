@@ -52,17 +52,20 @@ defmodule CodeMySpecSpex.Story563.Criterion5901Spex do
         first = Fixtures.get_component_by_module_name(context.scope, "FirstContext")
         second = Fixtures.get_component_by_module_name(context.scope, "SecondContext")
 
-        # Create in deterministic order so the older one is unambiguous.
-        StoryHelpers.create_and_link(context.scope, "FirstContext",
-          title: "First",
-          description: "As a user, I want the older story to lead on tiebreak.",
-          acceptance_criteria: ["First ships first"],
-          priority: 1
-        )
+        # Created older, not created earlier. This separated the two with a
+        # `Process.sleep(10)` and hoped the clock had moved — a guess about how
+        # far apart two inserts land, and one that failed in a sweep when both
+        # rows took the same timestamp, leaving the tie-break with nothing to
+        # break the tie on (48924084).
+        older =
+          StoryHelpers.create_and_link(context.scope, "FirstContext",
+            title: "First",
+            description: "As a user, I want the older story to lead on tiebreak.",
+            acceptance_criteria: ["First ships first"],
+            priority: 1
+          )
 
-        # Tiny sleep to guarantee distinct timestamps. created_at resolves at
-        # microsecond precision, but explicit ordering avoids fixture flake.
-        Process.sleep(10)
+        Fixtures.age_story(context.scope, older.id, 60)
 
         StoryHelpers.create_and_link(context.scope, "SecondContext",
           title: "Second",
