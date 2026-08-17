@@ -82,7 +82,6 @@ defmodule CodeMySpecSpex.Fixtures do
   alias CodeMySpec.Provisioning.Hetzner
   alias CodeMySpec.Provisioning.Repository
   alias CodeMySpec.Provisioning.Resend
-  alias CodeMySpec.Provisioning.Resend
   alias CodeMySpec.Provisioning.Sequence
   alias CodeMySpec.Provisioning.StepRepository
   alias CodeMySpec.Provisioning.Steps
@@ -99,6 +98,9 @@ defmodule CodeMySpecSpex.Fixtures do
   alias CodeMySpec.Workspaces.PreviewAddress
   alias CodeMySpec.Workspaces.Workspace
   alias CodeMySpec.Workspaces.WorkspacesRepository
+  alias CodeMySpec.Content.S3Client
+  alias CodeMySpec.Content.TriggerClient
+  alias CodeMySpec.Mail.ResendClient
   alias CodeMySpecTest.FakeWorkspaceRunner
   alias CodeMySpecTest.LocalPreviewRunner
   alias CodeMySpecTest.PreviewApp
@@ -1757,6 +1759,97 @@ defmodule CodeMySpecSpex.Fixtures do
   @doc "The account's project with this name, or `nil`. See `account_owned_by/1`."
   def project_named(account_id, name) do
     Repo.get_by(Project, account_id: account_id, name: name)
+  end
+
+  # -- Content publishing --
+
+  @doc """
+  Stub the outbound halves of publishing, recording each call to `test_pid`.
+
+  A spex may not call `send/2` — specs drive the surface, they do not post
+  messages at it — and the rule holds for helpers in the file too. Recording
+  what a stub was asked to do is the exception the rule is not about, so it
+  lives here, where the bridge is allowed to.
+
+  The two clients are stubbed separately rather than in a loop that branches on
+  which one it is: the message each records has a different shape, and that
+  difference is the whole content of the two stubs.
+  """
+  @spec stub_publishing_outbound(pid()) :: :ok
+  def stub_publishing_outbound(test_pid) do
+    Req.Test.set_req_test_to_shared(%{})
+
+    stub_client(S3Client, fn conn ->
+      send(test_pid, {:s3_put, conn.host <> conn.request_path})
+      conn
+    end)
+
+    stub_client(TriggerClient, fn conn ->
+      {:ok, body, conn} = Plug.Conn.read_body(conn)
+      send(test_pid, {:trigger_post, conn.request_path, body})
+      conn
+    end)
+  end
+
+  defp stub_client(module, record) do
+    previous = Application.get_env(:code_my_spec, module, [])
+    Application.put_env(:code_my_spec, module, plug: {Req.Test, module})
+
+    ExUnit.Callbacks.on_exit(fn ->
+      Application.put_env(:code_my_spec, module, previous)
+    end)
+
+    Req.Test.stub(module, fn conn ->
+      conn
+      |> record.()
+      |> Plug.Conn.send_resp(200, "")
+    end)
+
+    :ok
+  end
+
+  # -- Mail --
+
+  @doc """
+  Serve Resend's two inbound-mail reads from their recorded bodies.
+
+  A spex may not call `File` — it drives the surface and observes rendered
+  output — so reading the recordings belongs here. The path is answered by
+  function head rather than a `case` for the same reason it is everywhere else
+  in this codebase: the shape of the request is what selects the answer.
+  """
+  @spec stub_resend_receiving() :: :ok
+  def stub_resend_receiving do
+    # Shared, because the call is made by the LiveView process rather than the
+    # test — a per-process stub leaves it unstubbed and the sync silently finds
+    # nothing.
+    Req.Test.set_req_test_to_shared(%{})
+
+    previous = Application.get_env(:code_my_spec, ResendClient, [])
+
+    Application.put_env(:code_my_spec, ResendClient,
+      api_key: "re_test",
+      plug: {Req.Test, ResendClient}
+    )
+
+    ExUnit.Callbacks.on_exit(fn ->
+      Application.put_env(:code_my_spec, ResendClient, previous)
+    end)
+
+    Req.Test.stub(ResendClient, fn conn ->
+      conn
+      |> Plug.Conn.put_resp_content_type("application/json")
+      |> Plug.Conn.send_resp(200, resend_recording(conn.method, conn.request_path))
+    end)
+
+    :ok
+  end
+
+  defp resend_recording("GET", "/emails/receiving/" <> _id), do: recorded_body("received_email")
+  defp resend_recording("GET", "/emails/receiving"), do: recorded_body("received_list")
+
+  defp recorded_body(name) do
+    File.read!(Path.join(["test", "cassettes", "resend", "#{name}.json"]))
   end
 
   # -- Workspaces --

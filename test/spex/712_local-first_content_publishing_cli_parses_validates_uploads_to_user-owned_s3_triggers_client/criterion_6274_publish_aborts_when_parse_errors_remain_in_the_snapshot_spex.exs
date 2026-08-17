@@ -19,8 +19,7 @@ defmodule CodeMySpecSpex.Story712.Criterion6274Spex do
   use CodeMySpecSpex.Case
 
   alias CodeMySpec.Environments
-  alias CodeMySpec.Content.S3Client
-  alias CodeMySpec.Content.TriggerClient
+  alias CodeMySpecSpex.Fixtures
 
   setup :register_log_in_setup_account
   setup :setup_active_project
@@ -98,29 +97,7 @@ defmodule CodeMySpecSpex.Story712.Criterion6274Spex do
     end
   end
 
-  defp stub_outbound(_context) do
-    Req.Test.set_req_test_to_shared(%{})
-    test_pid = self()
-
-    for {mod, msg} <- [{S3Client, :s3_put}, {TriggerClient, :trigger_post}] do
-      previous = Application.get_env(:code_my_spec, mod, [])
-      Application.put_env(:code_my_spec, mod, plug: {Req.Test, mod})
-      on_exit(fn -> Application.put_env(:code_my_spec, mod, previous) end)
-
-      Req.Test.stub(mod, fn conn ->
-        case msg do
-          :s3_put ->
-            send(test_pid, {:s3_put, conn.host <> conn.request_path})
-
-          :trigger_post ->
-            {:ok, body, _} = Plug.Conn.read_body(conn)
-            send(test_pid, {:trigger_post, conn.request_path, body})
-        end
-
-        Plug.Conn.send_resp(conn, 200, "")
-      end)
-    end
-
-    :ok
-  end
+  # Both stubs live in the bridge: a spex may not call `send/2`, and that holds
+  # for its helpers too.
+  defp stub_outbound(_context), do: Fixtures.stub_publishing_outbound(self())
 end
