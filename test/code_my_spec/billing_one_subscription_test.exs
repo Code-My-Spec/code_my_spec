@@ -12,13 +12,19 @@ defmodule CodeMySpec.BillingOneSubscriptionTest do
   Found by story 878's QA driving two real purchases through the Payment Element
   and then asking Stripe directly: `sub_1U5RtI…` (light, $25) and `sub_1U5S2n…`
   (pro, $100) both `status=active`, `cancel_at_period_end=false`, on customer
-  `cus_V5d9PRejXYh894`. $125/mo for a $100/mo plan, compounding with every
-  future upgrade (`27f519dc`).
+  `cus_V5d9PRejXYh894` (`27f519dc`).
 
-  These assert on the *requests made to Stripe*, because that is where the
-  defect lived. A test that checked the return value would have passed against
-  the broken code — it returned a perfectly good client secret for the second
-  subscription.
+  The first fix was wrong in a way these tests now cover. It branched on
+  `scope.active_account`, a snapshot from page mount, while
+  `stripe_subscription_id` is written by a *webhook* after it — so the struct in
+  hand at click time is exactly the one that has not heard about the
+  subscription. Re-QA reproduced the duplicate in both directions against real
+  Stripe while every unit test here passed, because the tests build their own
+  account and never hold a stale one (`5a5708a7`).
+
+  These assert on the **requests made to Stripe**, not on return values. The
+  broken code returned a perfectly good client secret for its second
+  subscription, so anything checking the return passes against it.
   """
 
   # `async: false` deliberately. This file configures the Stripe client through
@@ -54,7 +60,25 @@ defmodule CodeMySpec.BillingOneSubscriptionTest do
     :ok
   end
 
-  defp stub(fun), do: Req.Test.stub(CodeMySpec.Billing.StripeClient, fun)
+  # Routed by map lookup rather than `case`, which this project bans in test
+  # files — and which is the better shape anyway: `Map.fetch!` raises naming the
+  # unexpected path, where a `case` clause would either fall through silently or
+  # need a catch-all that hides the surprise.
+  #
+  # Every request is announced to the test process, including its body, so a
+  # test can assert on what was sent and on what was *not*.
+  defp stub_routes(routes) do
+    test_pid = self()
+
+    Req.Test.stub(CodeMySpec.Billing.StripeClient, fn conn ->
+      {:ok, body, conn} = Plug.Conn.read_body(conn)
+      send(test_pid, {:stripe, conn.method, conn.request_path, body})
+
+      conn
+      |> Plug.Conn.put_resp_content_type("application/json")
+      |> Plug.Conn.send_resp(200, Jason.encode!(Map.fetch!(routes, conn.request_path)))
+    end)
+  end
 
   # Buying writes to the account, so the buyer has to be an owner — same shape
   # as `BillingTest`.
@@ -63,12 +87,6 @@ defmodule CodeMySpec.BillingOneSubscriptionTest do
     account = account_fixture()
     member_fixture(user, account, :owner)
     user_scope_fixture(user, account)
-  end
-
-  defp json(conn, body) do
-    conn
-    |> Plug.Conn.put_resp_content_type("application/json")
-    |> Plug.Conn.send_resp(200, Jason.encode!(body))
   end
 
   defp with_subscription(scope, id) do
@@ -82,71 +100,26 @@ defmodule CodeMySpec.BillingOneSubscriptionTest do
 
   defp secret, do: %{"confirmation_secret" => %{"client_secret" => "pi_secret"}}
 
+  defp active(id),
+    do: %{
+      "id" => id,
+      "status" => "active",
+      "items" => %{"data" => [%{"id" => "si_1"}]},
+      "latest_invoice" => secret()
+    }
+
   describe "an account that already pays" do
-    # The case the first attempt at this fix shipped broken.
-    #
-    # `ensure_customer/1` hands back `scope.active_account` — a snapshot from
-    # when the page mounted. `stripe_subscription_id` is written by a webhook
-    # *after* that, so at click time the struct in hand is precisely the one
-    # that has not heard about the subscription. Branching on it created a
-    # second subscription every time, in both directions, against real Stripe
-    # (`5a5708a7`) while every unit test passed — because the tests built the
-    # account themselves and never had a stale one.
-    test "a stale scope does not cause a second subscription" do
-      scope = owner_scope() |> with_subscription("sub_existing")
-
-      # What a LiveView actually holds: the account as it was before the
-      # webhook landed. The database knows better.
-      stale = %{scope | active_account: %{scope.active_account | stripe_subscription_id: nil}}
-
-      test_pid = self()
-
-      stub(fn conn ->
-        send(test_pid, {:stripe, conn.method, conn.request_path})
-
-        case conn.request_path do
-          "/v1/subscriptions/sub_existing" ->
-            json(conn, %{"id" => "sub_existing", "status" => "active",
-                         "items" => %{"data" => [%{"id" => "si_1"}]},
-                         "latest_invoice" => secret()})
-
-          "/v1/subscriptions" ->
-            json(conn, %{"id" => "sub_new", "latest_invoice" => secret()})
-        end
-      end)
-
-      assert {:ok, %{subscription_id: "sub_existing"}} = Billing.start_subscription(stale, :pro)
-
-      refute_received {:stripe, "POST", "/v1/subscriptions"},
-                      """
-                      The scope's account was stale, so the existing subscription
-                      was invisible and a second was created — which is exactly
-                      what shipped and what real Stripe caught. The account has
-                      to be reloaded, not taken from the scope.
-                      """
-    end
-
     test "has its existing subscription moved, not a second one created" do
       scope = owner_scope() |> with_subscription("sub_existing")
-      test_pid = self()
 
-      stub(fn conn ->
-        send(test_pid, {:stripe, conn.method, conn.request_path})
-
-        case conn.request_path do
-          "/v1/subscriptions/sub_existing" ->
-            json(conn, %{"id" => "sub_existing", "status" => "active",
-                         "items" => %{"data" => [%{"id" => "si_1"}]},
-                         "latest_invoice" => secret()})
-
-          "/v1/subscriptions" ->
-            json(conn, %{"id" => "sub_new", "latest_invoice" => secret()})
-        end
-      end)
+      stub_routes(%{
+        "/v1/subscriptions/sub_existing" => active("sub_existing"),
+        "/v1/subscriptions" => %{"id" => "sub_new", "latest_invoice" => secret()}
+      })
 
       assert {:ok, %{subscription_id: "sub_existing"}} = Billing.start_subscription(scope, :pro)
 
-      refute_received {:stripe, "POST", "/v1/subscriptions"},
+      refute_received {:stripe, "POST", "/v1/subscriptions", _},
                       """
                       A second subscription was created. Stripe bills both, and our
                       single stripe_subscription_id keeps only this one — so the
@@ -154,27 +127,38 @@ defmodule CodeMySpec.BillingOneSubscriptionTest do
                       """
     end
 
+    # The case the first attempt at this fix shipped broken.
+    test "a stale scope does not cause a second subscription" do
+      scope = owner_scope() |> with_subscription("sub_existing")
+
+      # What a LiveView actually holds: the account as it was before the webhook
+      # landed. The database knows better.
+      stale = %{scope | active_account: %{scope.active_account | stripe_subscription_id: nil}}
+
+      stub_routes(%{
+        "/v1/subscriptions/sub_existing" => active("sub_existing"),
+        "/v1/subscriptions" => %{"id" => "sub_new", "latest_invoice" => secret()}
+      })
+
+      assert {:ok, %{subscription_id: "sub_existing"}} = Billing.start_subscription(stale, :pro)
+
+      refute_received {:stripe, "POST", "/v1/subscriptions", _},
+                      """
+                      The scope's account was stale, so the existing subscription
+                      was invisible and a second was created — which is exactly
+                      what shipped and what real Stripe caught (5a5708a7). The
+                      account has to be reloaded, not taken from the scope.
+                      """
+    end
+
     test "the update names the subscription item, not just the price" do
       scope = owner_scope() |> with_subscription("sub_existing")
-      test_pid = self()
 
-      stub(fn conn ->
-        case conn.request_path do
-          "/v1/subscriptions/sub_existing" ->
-            if conn.method == "POST" do
-              {:ok, body, conn} = Plug.Conn.read_body(conn)
-              send(test_pid, {:update_body, body})
-            end
-
-            json(conn, %{"id" => "sub_existing", "status" => "active",
-                         "items" => %{"data" => [%{"id" => "si_1"}]},
-                         "latest_invoice" => secret()})
-        end
-      end)
+      stub_routes(%{"/v1/subscriptions/sub_existing" => active("sub_existing")})
 
       assert {:ok, _} = Billing.start_subscription(scope, :pro)
 
-      assert_received {:update_body, body}
+      assert_received {:stripe, "POST", "/v1/subscriptions/sub_existing", body}
 
       assert body =~ "items%5B0%5D%5Bid%5D=si_1",
              """
@@ -190,57 +174,45 @@ defmodule CodeMySpec.BillingOneSubscriptionTest do
   describe "an account that does not yet pay" do
     test "gets a subscription created" do
       scope = owner_scope()
-      test_pid = self()
 
-      stub(fn conn ->
-        send(test_pid, {:stripe, conn.request_path})
-
-        case conn.request_path do
-          "/v1/customers" -> json(conn, %{"id" => "cus_1"})
-          "/v1/subscriptions" -> json(conn, %{"id" => "sub_1", "latest_invoice" => secret()})
-        end
-      end)
+      stub_routes(%{
+        "/v1/customers" => %{"id" => "cus_1"},
+        "/v1/subscriptions" => %{"id" => "sub_1", "latest_invoice" => secret()}
+      })
 
       assert {:ok, %{subscription_id: "sub_1"}} = Billing.start_subscription(scope, :light)
-      assert_received {:stripe, "/v1/subscriptions"}
+      assert_received {:stripe, "POST", "/v1/subscriptions", _}
     end
 
     test "an abandoned checkout does not block buying" do
       # `incomplete` never charged, so it cannot double-bill and must not stand
       # in the way of a purchase. Stripe expires these on its own.
       scope = owner_scope() |> with_subscription("sub_abandoned")
-      test_pid = self()
 
-      stub(fn conn ->
-        send(test_pid, {:stripe, conn.method, conn.request_path})
-
-        case conn.request_path do
-          "/v1/subscriptions/sub_abandoned" ->
-            json(conn, %{"id" => "sub_abandoned", "status" => "incomplete",
-                         "items" => %{"data" => [%{"id" => "si_x"}]}})
-
-          "/v1/subscriptions" ->
-            json(conn, %{"id" => "sub_fresh", "latest_invoice" => secret()})
-        end
-      end)
+      stub_routes(%{
+        "/v1/subscriptions/sub_abandoned" => %{
+          "id" => "sub_abandoned",
+          "status" => "incomplete",
+          "items" => %{"data" => [%{"id" => "si_x"}]}
+        },
+        "/v1/subscriptions" => %{"id" => "sub_fresh", "latest_invoice" => secret()}
+      })
 
       assert {:ok, %{subscription_id: "sub_fresh"}} = Billing.start_subscription(scope, :light)
-      assert_received {:stripe, "POST", "/v1/subscriptions"}
+      assert_received {:stripe, "POST", "/v1/subscriptions", _}
     end
 
     test "a cancelled subscription does not block buying again" do
       scope = owner_scope() |> with_subscription("sub_gone")
 
-      stub(fn conn ->
-        case conn.request_path do
-          "/v1/subscriptions/sub_gone" ->
-            json(conn, %{"id" => "sub_gone", "status" => "canceled",
-                         "items" => %{"data" => [%{"id" => "si_y"}]}})
-
-          "/v1/subscriptions" ->
-            json(conn, %{"id" => "sub_again", "latest_invoice" => secret()})
-        end
-      end)
+      stub_routes(%{
+        "/v1/subscriptions/sub_gone" => %{
+          "id" => "sub_gone",
+          "status" => "canceled",
+          "items" => %{"data" => [%{"id" => "si_y"}]}
+        },
+        "/v1/subscriptions" => %{"id" => "sub_again", "latest_invoice" => secret()}
+      })
 
       assert {:ok, %{subscription_id: "sub_again"}} = Billing.start_subscription(scope, :light)
     end
@@ -249,11 +221,7 @@ defmodule CodeMySpec.BillingOneSubscriptionTest do
   test "the account's plan is still not granted here" do
     scope = owner_scope() |> with_subscription("sub_existing")
 
-    stub(fn conn ->
-      json(conn, %{"id" => "sub_existing", "status" => "active",
-                   "items" => %{"data" => [%{"id" => "si_1"}]},
-                   "latest_invoice" => secret()})
-    end)
+    stub_routes(%{"/v1/subscriptions/sub_existing" => active("sub_existing")})
 
     assert {:ok, _} = Billing.start_subscription(scope, :pro)
 
