@@ -16,28 +16,78 @@ defmodule CodeMySpec.Analysis.Fingerprint do
   alias CodeMySpec.Files.File, as: ProjectFile
   alias CodeMySpec.Users.Scope
 
-  # Which File roles feed each analyzer's inputs. `test_support` ships with
-  # the test suite; `mix_exs` changes force full re-runs everywhere.
+  # Every role, split once into "code the Elixir toolchain reads" and
+  # "documents". Sources are then composed from `@code_roles` rather than
+  # each listing its own inputs from memory.
   #
-  # `credo` carries `:bdd_spec` because `.credo.exs` includes `test/`, so credo
-  # lints `test/spex/**/*_spex.exs` like anything else — and this project ships
-  # checks written only for those files (`spex_denied_calls.ex`, the ban on
-  # imperative `case` in a `_spex.exs`). Omitting the role meant editing a spex
-  # file could not change credo's fingerprint, so credo reported *fresh* while
-  # holding findings about the version before the edit, and the stop hook
-  # dropped the "stale" marker that would have said so. Observed 2026-08-17:
-  # five `case` findings fixed at 06:58:44 were still presented as current at
-  # 07:02:08 with no staleness note, against a credo run that had completed at
-  # 06:58:18. A source's fingerprint has to span the files it actually reads.
+  # The split is the point. Listing inputs per source is an allow-list, and an
+  # allow-list that falls short fails *silently*: the source keeps reporting
+  # fresh while holding findings about content that has since changed, and the
+  # stop hook drops the staleness marker that would have said so. That is
+  # `b1340e13` — credo's set omitted `:bdd_spec`, so editing a `_spex.exs`
+  # could not move credo's fingerprint, and five already-fixed findings were
+  # presented as current. `:credo_check` was the same bug unfired: those are
+  # Elixir modules credo *loads*, so editing a check changes its verdicts, and
+  # nothing invalidated credo.
   #
-  # `compiler` and `exunit` do not, and should not: `mix compile` does not
-  # compile test files, and `mix test` does not run `*_spex.exs` — those are a
-  # separate task with its own pattern, which is what `spex` covers.
+  # Splitting every role forces the decision to be made once, in the open, and
+  # `FingerprintRolesTest` fails if a new role is added to neither list. The
+  # residual failure mode is over-invalidation — a needless re-run — which
+  # costs time and never lies.
+  @code_roles [
+    :implementation,
+    :test,
+    :test_support,
+    :bdd_spec,
+    :credo_check,
+    :mix_exs,
+    :credo_exs
+  ]
+
+  # Not read by any analyzer: markdown, JSON, persona and QA artifacts, and the
+  # knowledge corpora. `:integration` and `:qa_script` look like code and are
+  # not — the scanner files them under document directories.
+  @document_roles [
+    :spec,
+    :rule,
+    :json,
+    :review,
+    :qa_brief,
+    :qa_result,
+    :qa_plan,
+    :qa_script,
+    :config,
+    :architecture,
+    :persona_summary,
+    :persona_sources,
+    :integration,
+    :task_artifact,
+    :claude_md,
+    :agents_md,
+    :setup_config,
+    :knowledge,
+    :project_knowledge,
+    :hex_doc
+  ]
+
+  @doc "Roles holding code an analyzer reads."
+  @spec code_roles() :: [atom()]
+  def code_roles, do: @code_roles
+
+  @doc "Roles no analyzer reads."
+  @spec document_roles() :: [atom()]
+  def document_roles, do: @document_roles
+
+  # `mix compile` and `mix test` do not read `*_spex.exs` — those are a
+  # separate task with its own pattern, which `spex` covers — and neither cares
+  # about `.credo.exs` or credo's own checks.
+  @toolchain_only @code_roles -- [:bdd_spec, :credo_check, :credo_exs]
+
   @source_roles %{
-    "compiler" => [:implementation, :test, :test_support, :mix_exs],
-    "credo" => [:implementation, :test, :test_support, :bdd_spec, :mix_exs, :credo_exs],
-    "exunit" => [:implementation, :test, :test_support, :mix_exs],
-    "spex" => [:implementation, :test, :test_support, :bdd_spec, :mix_exs]
+    "compiler" => @toolchain_only,
+    "credo" => @code_roles,
+    "exunit" => @toolchain_only,
+    "spex" => @code_roles -- [:credo_check, :credo_exs]
   }
 
   @doc "Roles that feed the given source."

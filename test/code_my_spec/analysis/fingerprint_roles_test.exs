@@ -35,6 +35,57 @@ defmodule CodeMySpec.Analysis.FingerprintRolesTest do
     ]
   end
 
+  defp check_ledger(fingerprint) do
+    [
+      file("lib/app.ex", :implementation, "impl-1"),
+      file(".code_my_spec/credo_checks/framework/x.ex", :credo_check, fingerprint)
+    ]
+  end
+
+  describe "every role is classified" do
+    # The one that closes the class rather than an instance.
+    #
+    # Per-source allow-lists under-approximate silently: the source keeps
+    # reporting fresh while its findings describe content that has changed.
+    # Splitting every role into code-or-document makes the omission impossible
+    # to reach without failing here first.
+    test "no role is missing from both lists" do
+      unclassified =
+        ProjectFile.roles() -- (Fingerprint.code_roles() ++ Fingerprint.document_roles())
+
+      assert unclassified == [],
+             """
+             These file roles feed no analyzer and are declared no document:
+
+             #{Enum.map_join(unclassified, "\n", &("  " <> inspect(&1)))}
+
+             Put each in `@code_roles` if an analyzer reads it, `@document_roles`
+             if none does. Leaving it out is not neutral — a role absent from
+             every source's set cannot invalidate anything, so an analyzer holds
+             findings about a file it can no longer notice changing, and reports
+             them as current (b1340e13).
+             """
+    end
+
+    test "no list names a role that does not exist" do
+      phantom =
+        Fingerprint.code_roles() ++ Fingerprint.document_roles()
+
+      assert phantom -- ProjectFile.roles() == [],
+             "a classified role that File.roles/0 does not define is dead weight"
+    end
+
+    test "the two lists do not overlap" do
+      overlap =
+        MapSet.intersection(
+          MapSet.new(Fingerprint.code_roles()),
+          MapSet.new(Fingerprint.document_roles())
+        )
+
+      assert MapSet.equal?(overlap, MapSet.new()), "a role is either read or it is not"
+    end
+  end
+
   describe "credo" do
     test "a changed spex file changes the fingerprint" do
       roles = Fingerprint.roles("credo")
@@ -51,6 +102,19 @@ defmodule CodeMySpec.Analysis.FingerprintRolesTest do
 
     test "spex files are part of the input, not merely tolerated" do
       assert :bdd_spec in Fingerprint.roles("credo")
+    end
+
+    # The same omission, one file over, found while fixing the first.
+    test "a changed credo check changes the fingerprint" do
+      roles = Fingerprint.roles("credo")
+
+      refute Fingerprint.compute(check_ledger("before"), roles) ==
+               Fingerprint.compute(check_ledger("after"), roles),
+             """
+             `.code_my_spec/credo_checks/**/*.ex` are Elixir modules credo loads.
+             Editing one changes credo's verdicts, so a fingerprint blind to them
+             lets credo report findings produced by rules that no longer exist.
+             """
     end
   end
 
