@@ -130,11 +130,14 @@ defmodule CodeMySpecSpex.Story1017.Criterion2415Spex do
   defp question_id!(response) do
     body = response_text(response)
 
-    case Regex.run(~r/Question id: ([0-9a-f-]{36})/, body) do
-      [_, id] -> id
-      _ -> raise "could not read a question id from: #{body}"
-    end
+    captured!(Regex.run(~r/Question id: ([0-9a-f-]{36})/, body), body)
   end
+
+  # Two heads rather than a `case`, following 958's `captured!/2`: imperative
+  # `case` is banned in spex files, and a bare match would throw away the
+  # haystack — `Regex.run/2` returns nil, so the MatchError says only "nil".
+  defp captured!([_, id], _body), do: id
+  defp captured!(_no_match, body), do: raise("could not read a question id from: #{body}")
 
   defp broken_impl do
     """
