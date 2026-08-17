@@ -53,7 +53,13 @@ defmodule CodeMySpecSpex.Story999.Criterion8305Spex do
           live(context.conn, "/app/projects/#{context.project.id}/provisioning")
 
         view |> element("[data-test='start-setup']") |> render_click()
-        await_step_state(view, "monitoring", "done")
+        # The run settling, not a step by name. This waited on `monitoring`,
+        # a step removed from the sequence when it turned out to need an
+        # account, an API key and a notification target only a person can
+        # supply — so the wait could never succeed, spent its full thirty
+        # seconds, and the criterion passed because thirty seconds is long
+        # enough for the run to finish on its own.
+        await_provisioning(view)
 
         {:ok, context}
       end

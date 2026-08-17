@@ -1425,12 +1425,31 @@ defmodule CodeMySpecSpex.Case do
         html
 
       System.monotonic_time(:millisecond) > deadline ->
-        html
+        raise """
+        the #{step} step never reached #{state}.
+
+        It returned the page silently before, which made this a sleep rather
+        than a wait: five criteria across 998 and 999 waited for a `monitoring`
+        step that had been removed from the sequence, spent thirty seconds each
+        doing it, and passed anyway because thirty seconds was long enough for
+        the run to finish on its own. That is 150 seconds of a four-minute
+        suite, and a premise nobody was establishing.
+
+        Steps currently on the page: #{steps_on(html)}
+        """
 
       true ->
         Process.sleep(100)
         await_step_state(view, step, state, deadline, nil)
     end
+  end
+
+  defp steps_on(html) do
+    ~r/data-step="([a-z_]+)"/
+    |> Regex.scan(html)
+    |> Enum.map(&List.last/1)
+    |> Enum.uniq()
+    |> Enum.join(", ")
   end
 
   @doc """
