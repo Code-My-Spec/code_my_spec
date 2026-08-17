@@ -2,6 +2,7 @@ defmodule CodeMySpec.Provisioning.TeardownTest do
   use CodeMySpecTest.DataCase, async: true
 
   import CodeMySpec.UsersFixtures
+  import ExUnit.CaptureLog
 
   alias CodeMySpec.Provisioning
   alias CodeMySpec.Provisioning.{StepRepository, Teardown}
@@ -62,6 +63,77 @@ defmodule CodeMySpec.Provisioning.TeardownTest do
     # adopted rather than as fair game.
     test "a resource with no recorded origin defaults to adopted" do
       assert %{origin: "adopted"} = %CodeMySpec.Provisioning.Resource{}
+    end
+  end
+
+  # The one exception, and the reason the drill mattered. Sparing an adopted
+  # resource preserves something Sam had; sparing a DNS record aimed at a
+  # server this project is releasing preserves nothing and manufactures a
+  # subdomain takeover — Hetzner recycles the address, the name keeps
+  # resolving, and it resolves to a stranger's machine under Sam's own domain
+  # (167394ad). The next build then reads the record it should have removed as
+  # a live site and refuses to repoint it (7f999888).
+  describe "an adopted record aimed at a server we own" do
+    test "is removed rather than spared", %{scope: scope} do
+      record = %{
+        kind: "dns_record",
+        location: "cloudflare/uat.example.com",
+        identifier: "5.161.239.73 environment=uat",
+        origin: "adopted"
+      }
+
+      log =
+        capture_log(fn ->
+          # Not `{:ok, _}`: removal itself is the Cloudflare clause, which has
+          # no credential here and reports it. What is under test is the
+          # decision in front of it, and `:skipped` is the outcome that says
+          # teardown walked past a record still pointing at a released box.
+          refute match?(
+                   {:skipped, _},
+                   Teardown.resource(scope, record, project_addresses: ["5.161.239.73"])
+                 ),
+                 "an adopted record aimed at a server this project owns must not be spared"
+        end)
+
+      assert log =~ "points at 5.161.239.73"
+    end
+
+    # The narrowness is the point. "Ignore origin for DNS records" would be the
+    # easy version and it deletes an apex a customer already had, pointing at
+    # Cloudflare's proxy or at a site hosted somewhere else — exactly the
+    # resource the adopted rule exists to spare.
+    test "a record pointing anywhere else is still spared", %{scope: scope} do
+      record = %{
+        kind: "dns_record",
+        location: "cloudflare/example.com",
+        identifier: "172.64.80.1 environment=prod",
+        origin: "adopted"
+      }
+
+      assert {:skipped, ^record} =
+               Teardown.resource(scope, record, project_addresses: ["5.161.239.73"])
+    end
+
+    test "a record that recorded no target is spared", %{scope: scope} do
+      record = %{kind: "dns_record", location: "cloudflare/example.com", origin: "adopted"}
+
+      assert {:skipped, ^record} =
+               Teardown.resource(scope, record, project_addresses: ["5.161.239.73"])
+    end
+
+    # Only the record. The address belongs to a server, and a server recorded
+    # adopted is one setup found running — destroying it is the original
+    # incident in a new place.
+    test "an adopted server at one of those addresses is still spared", %{scope: scope} do
+      record = %{
+        kind: "server",
+        location: "hetzner/uat-box",
+        identifier: "5.161.239.73 environment=uat",
+        origin: "adopted"
+      }
+
+      assert {:skipped, ^record} =
+               Teardown.resource(scope, record, project_addresses: ["5.161.239.73"])
     end
   end
 

@@ -193,7 +193,30 @@ defmodule CodeMySpec.Provisioning.Teardown do
   # (adopted)` was never touched — the server really was released, the record
   # really was still live, and the summary could not tell those apart because
   # the two outcomes had the same shape (167394ad).
-  def resource(_scope, %{origin: "adopted"} = r, _opts), do: {:skipped, r}
+  #
+  # With one exception, and it is the reason that drill mattered. A DNS record
+  # aimed at a server this project owns is not something Sam had before setup
+  # ran — it is a record setup pointed at a machine, and when that machine is
+  # released the name resolves to whoever Hetzner hands the address to next.
+  # Sparing it does not preserve something of Sam's; it manufactures the
+  # subdomain takeover `environment/3`'s ordering exists to prevent, and then
+  # the next build's apex guard reads the record it should have removed as a
+  # live site and refuses to repoint it (7f999888).
+  def resource(%Scope{} = scope, %{origin: "adopted"} = r, opts) do
+    case aimed_at_our_server(scope, r, opts) do
+      {:ok, address} ->
+        Logger.warning(
+          "[Teardown] #{r.location} is recorded adopted, but points at #{address} — a server " <>
+            "this project owns. Removing it rather than leaving the name pointing at an " <>
+            "address the provider will give to somebody else."
+        )
+
+        resource(scope, %{r | origin: "created"}, opts)
+
+      :none ->
+        {:skipped, r}
+    end
+  end
 
   # Four operations behind one catch-all, which is three too few to debug.
   # Registry buckets survived teardown twice and the only evidence was
@@ -369,6 +392,61 @@ defmodule CodeMySpec.Provisioning.Teardown do
   end
 
   ## Internals
+
+  # Whether an adopted DNS record points at a server this project owns.
+  #
+  # Narrow on purpose. "Ignore origin for DNS records" would be the easy
+  # version and it breaks domains setup did not build: an apex a customer
+  # already had, pointing at Cloudflare's proxy or at a site hosted somewhere
+  # else, is exactly the resource the adopted rule exists to spare. What
+  # distinguishes the dangerous record is not its kind but its target — an
+  # address this project's own environments hold, which no record of Sam's
+  # would be aimed at.
+  #
+  # Read from what the step wrote down rather than from Cloudflare. The dns
+  # step records `identifier: "5.161.239.73 environment=uat"`, so the address
+  # is already here; asking the provider again would add a network round trip
+  # to a decision the recorded resource can already make, and would answer
+  # differently if somebody edited the record in between.
+  #
+  # An environment row that is already gone reads as `:none` and the record is
+  # spared, which is today's behaviour. `environment/3` builds its own list
+  # with `origin: "created"` and does not come through here at all.
+  defp aimed_at_our_server(scope, %{kind: "dns_record"} = r, opts) do
+    with address when is_binary(address) <- recorded_address(r),
+         true <- address in project_addresses(scope, opts) do
+      {:ok, address}
+    else
+      _ -> :none
+    end
+  end
+
+  defp aimed_at_our_server(_scope, _resource, _opts), do: :none
+
+  defp recorded_address(%{identifier: identifier}) when is_binary(identifier) do
+    case String.split(identifier, " ", parts: 2) do
+      [address | _] -> if address =~ ~r/^\d+\.\d+\.\d+\.\d+$/, do: address
+      _ -> nil
+    end
+  end
+
+  defp recorded_address(_resource), do: nil
+
+  # Injectable for the same reason `environment/3` takes `:teardown`: the
+  # decision is the claim worth testing, and proving it should not cost a real
+  # server.
+  defp project_addresses(scope, opts) do
+    case Keyword.fetch(opts, :project_addresses) do
+      {:ok, addresses} ->
+        addresses
+
+      :error ->
+        scope
+        |> EnvironmentRepository.list_existing()
+        |> Enum.map(& &1.ip)
+        |> Enum.filter(&(is_binary(&1) and &1 != ""))
+    end
+  end
 
   defp confirm(resource, true), do: {:ok, resource}
   defp confirm(resource, false), do: {:error, resource}
