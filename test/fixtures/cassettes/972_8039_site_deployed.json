@@ -1023,7 +1023,7 @@
         "-i",
         "*/id_ed25519",
         "root@178.156.185.52",
-        "docker network create db_net >/dev/null 2>&1; docker rm -f cms-postgres >/dev/null 2>&1; docker run -d --name cms-postgres --restart always --network db_net -v cms-postgres-data:/var/lib/postgresql/data -e POSTGRES_USER='app' -e POSTGRES_PASSWORD='TIngClNoQP29T-_Uq5-pmjmdB9p2n6axRiPH9n1s3nU' -e POSTGRES_DB='app_prod' postgres:17"
+        "docker network create db_net >/dev/null 2>&1; docker rm -f cms-postgres >/dev/null 2>&1; docker run -d --name cms-postgres --restart always --network db_net -v cms-postgres-data:/var/lib/postgresql/data -e POSTGRES_USER='app' -e POSTGRES_PASSWORD=<REDACTED> -e POSTGRES_DB='app_prod' postgres:17"
       ],
       "command": "ssh",
       "exit_code": 0,
@@ -1619,7 +1619,7 @@
         "-i",
         "*/id_ed25519",
         "root@178.156.216.165",
-        "docker network create db_net >/dev/null 2>&1; docker rm -f cms-postgres >/dev/null 2>&1; docker run -d --name cms-postgres --restart always --network db_net -v cms-postgres-data:/var/lib/postgresql/data -e POSTGRES_USER='app' -e POSTGRES_PASSWORD='bIUyVCch6nP15Y1iNsXLN2ogtoxGVIviYkyjH60R3A8' -e POSTGRES_DB='app_uat' postgres:17"
+        "docker network create db_net >/dev/null 2>&1; docker rm -f cms-postgres >/dev/null 2>&1; docker run -d --name cms-postgres --restart always --network db_net -v cms-postgres-data:/var/lib/postgresql/data -e POSTGRES_USER='app' -e POSTGRES_PASSWORD=<REDACTED> -e POSTGRES_DB='app_uat' postgres:17"
       ],
       "command": "ssh",
       "exit_code": 0,

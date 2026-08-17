@@ -74,7 +74,7 @@
         "-i",
         "/Users/johndavenport/Documents/github/code_my_spec/.claude/worktrees/devops-qa/docker/fleet/keys/fleet",
         "root@127.0.0.1",
-        "cd '/opt/cms-backup' && BACKUP_BUCKET='spex-story968-criterion8014-prod' BACKUP_ENDPOINT='https://fsn1.your-objectstorage.com' AWS_ACCESS_KEY_ID='0J74VPCQHNQTI6XH75XU' AWS_SECRET_ACCESS_KEY='1I99qXtzVhNoJH4wkRw9wfClbMwbvjSn7eQI4t2j' AWS_REGION='fsn1' DATABASE_URL='ecto://app:spexfleet@cms-postgres/app_prod' bin/backup 'dump' 'prod'"
+        "cd '/opt/cms-backup' && BACKUP_BUCKET='spex-story968-criterion8014-prod' BACKUP_ENDPOINT='https://fsn1.your-objectstorage.com' AWS_ACCESS_KEY_ID=<REDACTED> AWS_SECRET_ACCESS_KEY=<REDACTED> AWS_REGION='fsn1' DATABASE_URL='ecto://app:spexfleet@cms-postgres/app_prod' bin/backup 'dump' 'prod'"
       ],
       "command": "ssh",
       "exit_code": 0,
@@ -145,7 +145,7 @@
         "-i",
         "/Users/johndavenport/Documents/github/code_my_spec/.claude/worktrees/devops-qa/docker/fleet/keys/fleet",
         "root@127.0.0.1",
-        "cd '/opt/cms-backup' && BACKUP_BUCKET='spex-story968-criterion8014-prod' BACKUP_ENDPOINT='https://fsn1.your-objectstorage.com' AWS_ACCESS_KEY_ID='0J74VPCQHNQTI6XH75XU' AWS_SECRET_ACCESS_KEY='1I99qXtzVhNoJH4wkRw9wfClbMwbvjSn7eQI4t2j' AWS_REGION='fsn1' DATABASE_URL='ecto://app:spexfleet@cms-postgres/app_prod' bin/backup 'restore' 'dumps/prod-20260816T024141Z.sql.gz' 'scratch'"
+        "cd '/opt/cms-backup' && BACKUP_BUCKET='spex-story968-criterion8014-prod' BACKUP_ENDPOINT='https://fsn1.your-objectstorage.com' AWS_ACCESS_KEY_ID=<REDACTED> AWS_SECRET_ACCESS_KEY=<REDACTED> AWS_REGION='fsn1' DATABASE_URL='ecto://app:spexfleet@cms-postgres/app_prod' bin/backup 'restore' 'dumps/prod-20260816T024141Z.sql.gz' 'scratch'"
       ],
       "command": "ssh",
       "exit_code": 0,
@@ -216,7 +216,7 @@
         "-i",
         "/Users/johndavenport/Documents/github/code_my_spec/.claude/worktrees/devops-qa/docker/fleet/keys/fleet",
         "root@127.0.0.1",
-        "cd '/opt/cms-backup' && BACKUP_BUCKET='spex-story968-criterion8014-prod' BACKUP_ENDPOINT='https://fsn1.your-objectstorage.com' AWS_ACCESS_KEY_ID='0J74VPCQHNQTI6XH75XU' AWS_SECRET_ACCESS_KEY='1I99qXtzVhNoJH4wkRw9wfClbMwbvjSn7eQI4t2j' AWS_REGION='fsn1' DATABASE_URL='ecto://app:spexfleet@cms-postgres/app_prod' bin/backup 'schedule' 'prod'"
+        "cd '/opt/cms-backup' && BACKUP_BUCKET='spex-story968-criterion8014-prod' BACKUP_ENDPOINT='https://fsn1.your-objectstorage.com' AWS_ACCESS_KEY_ID=<REDACTED> AWS_SECRET_ACCESS_KEY=<REDACTED> AWS_REGION='fsn1' DATABASE_URL='ecto://app:spexfleet@cms-postgres/app_prod' bin/backup 'schedule' 'prod'"
       ],
       "command": "ssh",
       "exit_code": 127,

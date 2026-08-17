@@ -498,7 +498,7 @@
         "-i",
         "*/id_ed25519",
         "root@178.156.200.94",
-        "mkdir -p /etc/cms-registry && printf %s 'cms:$2b$04$X1CLXyq2OuM/J3P7FPIST.9W4Iv.s42enMA1wyYoRevsAWPeUf3IW' > /etc/cms-registry/htpasswd && chmod 600 /etc/cms-registry/htpasswd && docker rm -f cms-registry >/dev/null 2>&1; docker run -d --name cms-registry --restart always -v /etc/cms-registry/htpasswd:/auth/htpasswd:ro -e REGISTRY_AUTH=htpasswd -e REGISTRY_AUTH_HTPASSWD_REALM=cms -e REGISTRY_AUTH_HTPASSWD_PATH=/auth/htpasswd -p 10.0.0.2:5000:5000 -e REGISTRY_STORAGE='s3' -e REGISTRY_STORAGE_S3_REGION='fsn1' -e REGISTRY_STORAGE_S3_REGIONENDPOINT='https://fsn1.your-objectstorage.com' -e REGISTRY_STORAGE_S3_FORCEPATHSTYLE='true' -e REGISTRY_STORAGE_S3_BUCKET='spex-story985-criterion8182-registry-prod' -e REGISTRY_STORAGE_S3_ACCESSKEY='0J74VPCQHNQTI6XH75XU' -e REGISTRY_STORAGE_S3_SECRETKEY='1I99qXtzVhNoJH4wkRw9wfClbMwbvjSn7eQI4t2j' registry:3"
+        "mkdir -p /etc/cms-registry && printf %s 'cms:$2b$04$X1CLXyq2OuM/J3P7FPIST.9W4Iv.s42enMA1wyYoRevsAWPeUf3IW' > /etc/cms-registry/htpasswd && chmod 600 /etc/cms-registry/htpasswd && docker rm -f cms-registry >/dev/null 2>&1; docker run -d --name cms-registry --restart always -v /etc/cms-registry/htpasswd:/auth/htpasswd:ro -e REGISTRY_AUTH=htpasswd -e REGISTRY_AUTH_HTPASSWD_REALM=cms -e REGISTRY_AUTH_HTPASSWD_PATH=/auth/htpasswd -p 10.0.0.2:5000:5000 -e REGISTRY_STORAGE='s3' -e REGISTRY_STORAGE_S3_REGION='fsn1' -e REGISTRY_STORAGE_S3_REGIONENDPOINT='https://fsn1.your-objectstorage.com' -e REGISTRY_STORAGE_S3_FORCEPATHSTYLE='true' -e REGISTRY_STORAGE_S3_BUCKET='spex-story985-criterion8182-registry-prod' -e REGISTRY_STORAGE_S3_ACCESSKEY=<REDACTED> -e REGISTRY_STORAGE_S3_SECRETKEY=<REDACTED> registry:3"
       ],
       "command": "ssh",
       "exit_code": 0,
@@ -618,7 +618,7 @@
         "-i",
         "*/id_ed25519",
         "root@178.156.200.94",
-        "docker network create db_net >/dev/null 2>&1; docker rm -f cms-postgres >/dev/null 2>&1; docker run -d --name cms-postgres --restart always --network db_net -v cms-postgres-data:/var/lib/postgresql/data -e POSTGRES_USER='app' -e POSTGRES_PASSWORD='9OCfnJc6QT_VVuxExcNOMRC31NiYFS5IdZeoTyxdbO4' -e POSTGRES_DB='app_prod' postgres:17"
+        "docker network create db_net >/dev/null 2>&1; docker rm -f cms-postgres >/dev/null 2>&1; docker run -d --name cms-postgres --restart always --network db_net -v cms-postgres-data:/var/lib/postgresql/data -e POSTGRES_USER='app' -e POSTGRES_PASSWORD=<REDACTED> -e POSTGRES_DB='app_prod' postgres:17"
       ],
       "command": "ssh",
       "exit_code": 0,

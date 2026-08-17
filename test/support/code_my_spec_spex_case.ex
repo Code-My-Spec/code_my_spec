@@ -4293,6 +4293,7 @@ defmodule CodeMySpecSpex.Case do
             path
             |> File.read!()
             |> redact_recorded_env()
+            |> redact_inline_credentials()
             |> wildcard_working_directories()
             |> redact_sensitive_patterns()
 
@@ -4344,6 +4345,38 @@ defmodule CodeMySpecSpex.Case do
   defp sensitive_env_name?(name) do
     upper = String.upcase(name)
     upper in @sensitive_env_exact or Enum.any?(@sensitive_env_names, &String.contains?(upper, &1))
+  end
+
+  # The same names, where the value has no name attached to it.
+  #
+  # `redact_command_env/1` reads `opts.env`, which is a map — a name to match
+  # on and a value to blank. The steps also pass credentials *inline*, as part
+  # of the command they run:
+  #
+  #     docker run … -e REGISTRY_STORAGE_S3_SECRETKEY='<the real key>' registry:3
+  #     AWS_ACCESS_KEY_ID='…' AWS_SECRET_ACCESS_KEY='<the real key>' restic …
+  #
+  # There the pair lives in `command`/`args` as one string, so nothing walks it
+  # and the name-based pass never sees it. That is how the live Hetzner S3 key
+  # pair reached two committed cassettes (`setup_run_repository_then_deploy`,
+  # `968_8014_backup_schedule_installed`) while every `env` map in them was
+  # clean.
+  #
+  # Matched by shape rather than by value, deliberately. Scrubbing a known list
+  # of values only protects the credentials we happen to hold when the
+  # recording is made; this catches the next one too, including a credential
+  # belonging to somebody else's account.
+  #
+  # `ACCESS_?KEY` rather than `ACCESS_KEY` because the two files that leaked
+  # spell it both ways — `AWS_SECRET_ACCESS_KEY` and, from the registry's own
+  # config, `REGISTRY_STORAGE_S3_ACCESSKEY`. The first version of this pattern
+  # cleared three of the four and left that one, which is the argument for
+  # checking a scrub against the file it is meant to clean rather than against
+  # the name you expected to find.
+  @inline_credential ~r/\b([A-Z][A-Z0-9_]*(?:SECRET|TOKEN|PASSWORD|CREDENTIAL|PRIVATE|ACCESS_?KEY)[A-Z0-9_]*)=(?:'[^']*'|"[^"]*"|[^\s'"]+)/
+
+  defp redact_inline_credentials(body) do
+    String.replace(body, @inline_credential, "\\1=<REDACTED>")
   end
 
   # A step that shells out to a generated script runs it by absolute path —
