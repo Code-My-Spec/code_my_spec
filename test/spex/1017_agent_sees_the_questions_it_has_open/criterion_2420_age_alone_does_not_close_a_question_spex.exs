@@ -49,8 +49,8 @@ defmodule CodeMySpecSpex.Story1017.Criterion2420Spex do
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
+  alias CodeMySpec.McpServers.Tasks.Tools.AskUser
   alias CodeMySpec.McpServers.Tasks.Tools.ListUserQuestions
-  alias CodeMySpecSpex.Fixtures
 
   @question "Which approach do you want here?"
 
@@ -72,7 +72,15 @@ defmodule CodeMySpecSpex.Story1017.Criterion2420Spex do
       end
 
       given_ "the agent asked a question and nobody answered it", context do
-        {:ok, ask_question(context, @question)}
+        frame = %Frame{assigns: %{current_scope: context.scope}}
+
+        {:reply, response, _frame} = AskUser.execute(%{message: @question}, frame)
+
+        refute response.isError,
+               "asking is the agent's own surface and has to work here. " <>
+                 "Got: #{response_text(response)}"
+
+        {:ok, Map.put(context, :question_id, question_id!(response))}
       end
 
       when_ "the agent stops twice without the question being answered", context do
@@ -115,23 +123,13 @@ defmodule CodeMySpecSpex.Story1017.Criterion2420Spex do
     |> Phoenix.ConnTest.json_response(200)
   end
 
-  defp ask_question(context, text) do
-    key = "spex-deploy-key-#{System.unique_integer([:positive])}"
-    Fixtures.project_with_deploy_key(context.scope, context.project, key)
+  # `ask_user` reports the id in prose, which is what the agent reads.
+  defp question_id!(response) do
+    body = response_text(response)
 
-    %{"id" => id} =
-      Phoenix.ConnTest.build_conn()
-      |> Plug.Conn.put_req_header("authorization", "Bearer #{key}")
-      |> Plug.Conn.put_req_header("content-type", "application/json")
-      |> Phoenix.ConnTest.dispatch(CodeMySpecWeb.Endpoint, :post, "/api/questions/ask", %{
-        "questions" => [
-          %{"question" => text, "header" => nil, "multiSelect" => false, "options" => []}
-        ],
-        "title" => "Claude has a message",
-        "harness_id" => context.scope.active_harness_id
-      })
-      |> Phoenix.ConnTest.json_response(201)
-
-    context |> Map.put(:deploy_key, key) |> Map.put(:question_id, id)
+    case Regex.run(~r/Question id: ([0-9a-f-]{36})/, body) do
+      [_, id] -> id
+      _ -> raise "could not read a question id from: #{body}"
+    end
   end
 end

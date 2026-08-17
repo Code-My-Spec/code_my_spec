@@ -51,8 +51,8 @@ defmodule CodeMySpecSpex.Story1017.Criterion2417Spex do
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
+  alias CodeMySpec.McpServers.Tasks.Tools.AskUser
   alias CodeMySpec.McpServers.Tasks.Tools.ListUserQuestions
-  alias CodeMySpecSpex.Fixtures
 
   @first "Which approach do you want here?"
   @second "Should this ship behind a flag?"
@@ -75,8 +75,20 @@ defmodule CodeMySpecSpex.Story1017.Criterion2417Spex do
       end
 
       given_ "the agent asked two questions, oldest first", context do
-        context = context |> ask_question(@first) |> ask_question(@second)
-        {:ok, context}
+        frame = %Frame{assigns: %{current_scope: context.scope}}
+
+        ids =
+          for text <- [@first, @second] do
+            {:reply, response, _frame} = AskUser.execute(%{message: text}, frame)
+
+            refute response.isError,
+                   "asking is the agent's own surface and has to work here. " <>
+                     "Got: #{response_text(response)}"
+
+            question_id!(response)
+          end
+
+        {:ok, Map.put(context, :question_ids, ids)}
       end
 
       when_ "the agent lists its questions", context do
@@ -116,30 +128,13 @@ defmodule CodeMySpecSpex.Story1017.Criterion2417Spex do
     end
   end
 
-  defp ask_question(context, text) do
-    key = context[:deploy_key] || issue_deploy_key(context)
+  # `ask_user` reports the id in prose, which is what the agent reads.
+  defp question_id!(response) do
+    body = response_text(response)
 
-    %{"id" => id} =
-      Phoenix.ConnTest.build_conn()
-      |> Plug.Conn.put_req_header("authorization", "Bearer #{key}")
-      |> Plug.Conn.put_req_header("content-type", "application/json")
-      |> Phoenix.ConnTest.dispatch(CodeMySpecWeb.Endpoint, :post, "/api/questions/ask", %{
-        "questions" => [
-          %{"question" => text, "header" => nil, "multiSelect" => false, "options" => []}
-        ],
-        "title" => "Claude has a message",
-        "harness_id" => context.scope.active_harness_id
-      })
-      |> Phoenix.ConnTest.json_response(201)
-
-    context
-    |> Map.put(:deploy_key, key)
-    |> Map.update(:question_ids, [id], &(&1 ++ [id]))
-  end
-
-  defp issue_deploy_key(context) do
-    key = "spex-deploy-key-#{System.unique_integer([:positive])}"
-    Fixtures.project_with_deploy_key(context.scope, context.project, key)
-    key
+    case Regex.run(~r/Question id: ([0-9a-f-]{36})/, body) do
+      [_, id] -> id
+      _ -> raise "could not read a question id from: #{body}"
+    end
   end
 end

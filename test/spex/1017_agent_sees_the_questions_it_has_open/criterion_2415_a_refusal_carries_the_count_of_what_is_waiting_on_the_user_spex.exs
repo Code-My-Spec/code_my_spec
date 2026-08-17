@@ -44,9 +44,11 @@ defmodule CodeMySpecSpex.Story1017.Criterion2415Spex do
   use ExCliVcr
 
   import CodeMySpecSpex.SharedGivens
+  import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
+  alias Anubis.Server.Frame
   alias CodeMySpec.Environments
-  alias CodeMySpecSpex.Fixtures
+  alias CodeMySpec.McpServers.Tasks.Tools.AskUser
 
   @impl_path "lib/example_context.ex"
   @fixture_dir "test/fixtures/validation/pipeline_compile_error"
@@ -60,12 +62,20 @@ defmodule CodeMySpecSpex.Story1017.Criterion2415Spex do
       given_ :context_spec_task_started
 
       given_ "the agent asked the user two questions", context do
-        context =
-          context
-          |> ask_question("Which approach do you want here?")
-          |> ask_question("Should this ship behind a flag?")
+        frame = %Frame{assigns: %{current_scope: context.scope}}
 
-        {:ok, context}
+        ids =
+          for text <- ["Which approach do you want here?", "Should this ship behind a flag?"] do
+            {:reply, response, _frame} = AskUser.execute(%{message: text}, frame)
+
+            refute response.isError,
+                   "asking is the agent's own surface and has to work here. " <>
+                     "Got: #{response_text(response)}"
+
+            question_id!(response)
+          end
+
+        {:ok, Map.put(context, :question_ids, ids)}
       end
 
       given_ "a problem is outstanding, so the stop will be refused", context do
@@ -116,34 +126,14 @@ defmodule CodeMySpecSpex.Story1017.Criterion2415Spex do
 
   defp fixture_path(name), do: Path.expand(Path.join(@fixture_dir, name))
 
-  # The real path an unattended agent's question takes: the cloud endpoint,
-  # behind `DeployKeyOrOAuth`. Reused across calls, so the deploy key is issued
-  # once and only when absent.
-  defp ask_question(context, text) do
-    key = context[:deploy_key] || issue_deploy_key(context)
+  # `ask_user` reports the id in prose, which is what the agent reads.
+  defp question_id!(response) do
+    body = response_text(response)
 
-    %{"id" => id} =
-      Phoenix.ConnTest.build_conn()
-      |> Plug.Conn.put_req_header("authorization", "Bearer #{key}")
-      |> Plug.Conn.put_req_header("content-type", "application/json")
-      |> Phoenix.ConnTest.dispatch(CodeMySpecWeb.Endpoint, :post, "/api/questions/ask", %{
-        "questions" => [
-          %{"question" => text, "header" => nil, "multiSelect" => false, "options" => []}
-        ],
-        "title" => "Claude has a message",
-        "harness_id" => context.scope.active_harness_id
-      })
-      |> Phoenix.ConnTest.json_response(201)
-
-    context
-    |> Map.put(:deploy_key, key)
-    |> Map.update(:question_ids, [id], &(&1 ++ [id]))
-  end
-
-  defp issue_deploy_key(context) do
-    key = "spex-deploy-key-#{System.unique_integer([:positive])}"
-    Fixtures.project_with_deploy_key(context.scope, context.project, key)
-    key
+    case Regex.run(~r/Question id: ([0-9a-f-]{36})/, body) do
+      [_, id] -> id
+      _ -> raise "could not read a question id from: #{body}"
+    end
   end
 
   defp broken_impl do

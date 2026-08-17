@@ -44,8 +44,8 @@ defmodule CodeMySpecSpex.Story1017.Criterion2418Spex do
   import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
 
   alias Anubis.Server.Frame
+  alias CodeMySpec.McpServers.Tasks.Tools.AskUser
   alias CodeMySpec.McpServers.Tasks.Tools.ListUserQuestions
-  alias CodeMySpecSpex.Fixtures
 
   @mine "Which approach do you want here?"
   @theirs "Should the other worktree ship behind a flag?"
@@ -56,10 +56,14 @@ defmodule CodeMySpecSpex.Story1017.Criterion2418Spex do
   spex "A list is scoped to the session that asked" do
     scenario "another session on the same user has a question open" do
       given_ "a session exists and asks a question", context do
-        context =
-          context
-          |> start_session("spex-2418-mine")
-          |> ask_question(@mine)
+        context = start_session(context, "spex-2418-mine")
+        frame = %Frame{assigns: %{current_scope: context.scope}}
+
+        {:reply, response, _frame} = AskUser.execute(%{message: @mine}, frame)
+
+        refute response.isError,
+               "asking is the agent's own surface and has to work here. " <>
+                 "Got: #{response_text(response)}"
 
         {:ok, Map.put(context, :mine_session_id, context.session_id)}
       end
@@ -68,10 +72,14 @@ defmodule CodeMySpecSpex.Story1017.Criterion2418Spex do
         # Same user, same working copy, different conversation. A question from
         # another *user* would be excluded by ownership alone and would prove
         # nothing about session scoping.
-        context =
-          context
-          |> start_session("spex-2418-theirs")
-          |> ask_question(@theirs)
+        frame = %Frame{assigns: %{current_scope: context.scope}}
+        context = start_session(context, "spex-2418-theirs")
+
+        {:reply, response, _frame} = AskUser.execute(%{message: @theirs}, frame)
+
+        refute response.isError,
+               "asking is the agent's own surface and has to work here. " <>
+                 "Got: #{response_text(response)}"
 
         {:ok, context}
       end
@@ -108,32 +116,5 @@ defmodule CodeMySpecSpex.Story1017.Criterion2418Spex do
     |> Phoenix.ConnTest.json_response(200)
 
     Map.put(context, :session_id, session_id)
-  end
-
-  defp ask_question(context, text) do
-    key = context[:deploy_key] || issue_deploy_key(context)
-
-    %{"id" => id} =
-      Phoenix.ConnTest.build_conn()
-      |> Plug.Conn.put_req_header("authorization", "Bearer #{key}")
-      |> Plug.Conn.put_req_header("content-type", "application/json")
-      |> Phoenix.ConnTest.dispatch(CodeMySpecWeb.Endpoint, :post, "/api/questions/ask", %{
-        "questions" => [
-          %{"question" => text, "header" => nil, "multiSelect" => false, "options" => []}
-        ],
-        "title" => "Claude has a message",
-        "harness_id" => context.scope.active_harness_id
-      })
-      |> Phoenix.ConnTest.json_response(201)
-
-    context
-    |> Map.put(:deploy_key, key)
-    |> Map.update(:question_ids, [id], &(&1 ++ [id]))
-  end
-
-  defp issue_deploy_key(context) do
-    key = "spex-deploy-key-#{System.unique_integer([:positive])}"
-    Fixtures.project_with_deploy_key(context.scope, context.project, key)
-    key
   end
 end
