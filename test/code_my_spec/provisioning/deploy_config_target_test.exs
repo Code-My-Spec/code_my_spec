@@ -21,6 +21,7 @@ defmodule CodeMySpec.Provisioning.DeployConfigTargetTest do
   import CodeMySpec.UsersFixtures
 
   alias CodeMySpec.Environments.Environment
+  alias CodeMySpec.Generators.DeployArtifacts
   alias CodeMySpec.ProjectSecrets
   alias CodeMySpec.Provisioning.{EnvironmentRepository, Sops, Steps}
 
@@ -59,7 +60,36 @@ defmodule CodeMySpec.Provisioning.DeployConfigTargetTest do
     :ok = Sops.put_secret(scope.environment, "uat", "DATABASE_URL", "ecto://x", private)
 
     File.mkdir_p!(Path.join(tmp, "config"))
+    write_boilerplate(tmp)
     {:ok, scope: scope, tmp: tmp}
+  end
+
+  # The deploy step audits the checkout before it builds anything, so a project
+  # carrying only a kamal config is refused for the eight artifacts it is
+  # missing and never reaches the guard these tests are about. Giving the
+  # fixture what `cms new` would have given it puts the config mismatch back to
+  # being the only thing wrong with the project.
+  #
+  # `.sops.yaml` and `envs/uat.enc.env` are skipped: the setup above wrote real
+  # ones with a real key, and the generator ships placeholders. Overwriting
+  # them left `check_secrets` failing with "sops metadata not found", which is
+  # `reaches_the_guard!/1` doing its job — the tests would otherwise have been
+  # asserting on a run that stopped two steps early.
+  @generated_by_setup ["config/deploy.uat.yml", ".sops.yaml", "envs/uat.enc.env"]
+
+  defp write_boilerplate(tmp) do
+    for {path, body} <-
+          DeployArtifacts.files(
+            app: "my_app",
+            host: @domain,
+            registry: "ghcr.io",
+            owner: "acme"
+          ),
+        path not in @generated_by_setup do
+      full = Path.join(tmp, path)
+      File.mkdir_p!(Path.dirname(full))
+      File.write!(full, body)
+    end
   end
 
   defp write_config(tmp, host) do
@@ -103,13 +133,20 @@ defmodule CodeMySpec.Provisioning.DeployConfigTargetTest do
       reaches_the_guard!(ctx.scope)
       write_config(ctx.tmp, "uat.astralbi.com")
 
-      refute File.exists?(Path.join(ctx.tmp, "bin/deploy")),
-             "no deploy script exists, so reaching it would surface as a different error"
+      # `bin/deploy` is present now — the fixture carries the whole boilerplate
+      # so the run gets past the deploy-readiness audit. Its absence used to be
+      # the proof; the proof is now that the script left no trace. It refuses a
+      # dirty tree before anything else and would have written `.kamal/` on the
+      # way to kamal, so neither existing means it was never invoked.
+      assert File.exists?(Path.join(ctx.tmp, "bin/deploy"))
 
       assert {:error, message} = Steps.run(:deploy, ctx.scope, environment: "uat")
 
-      refute message =~ "bin/deploy",
-             "expected the host mismatch to stop the run before the script was required"
+      refute File.exists?(Path.join(ctx.tmp, ".kamal")),
+             "the deploy script ran — the host mismatch was reported after the fact"
+
+      refute message =~ "working tree is dirty",
+             "expected the host mismatch to stop the run before the script was invoked"
     end
   end
 

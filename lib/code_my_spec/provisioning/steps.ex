@@ -511,9 +511,43 @@ defmodule CodeMySpec.Provisioning.Steps do
   # per-environment criteria (1963's ride-to-UAT, 1964's failing health check)
   # drive.
   def run(:deploy, %Scope{} = scope, opts) do
-    case Keyword.fetch(opts, :environment) do
-      {:ok, environment} -> deploy_environment(scope, environment, opts)
-      :error -> deploy_environments(scope, environments(scope, opts), opts)
+    case deploy_ready(scope) do
+      :ok ->
+        case Keyword.fetch(opts, :environment) do
+          {:ok, environment} -> deploy_environment(scope, environment, opts)
+          :error -> deploy_environments(scope, environments(scope, opts), opts)
+        end
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  # Asked before anything is built, because the answer is already on disk.
+  #
+  # `Generators.audit/2` reads files in the checkout and needs nothing from the
+  # box, yet its only call site here was inside `require_script_in/3`'s `else`
+  # branch — so it ran only when `bin/deploy` was *missing*, purely to explain
+  # why. A project whose `bin/deploy` existed and whose config the audit could
+  # prove would fail went the whole way instead: a builder box, an image build
+  # and push, a migration against the real database, a container start, and a
+  # 30-second health timeout, ending in "target failed to become healthy" —
+  # which reads as an application fault rather than a config one.
+  #
+  # The `force_ssl` case is the one that cost a QA session. `exclude:
+  # ["/health", …]` excludes a *host* named "/health", matches nothing, and
+  # leaves the proxy's plain-HTTP probe redirected; `explain/1` has had the
+  # sentence for it all along.
+  defp deploy_ready(%Scope{} = scope) do
+    case CodeMySpec.Generators.audit(scope, router_path(scope)) do
+      [] ->
+        :ok
+
+      findings ->
+        {:error,
+         "this project is not deploy-ready: " <>
+           Enum.map_join(findings, "; ", &CodeMySpec.Generators.explain/1) <>
+           ". Setup will not build and ship an image it can already tell will not come up."}
     end
   end
 
