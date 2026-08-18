@@ -11,6 +11,24 @@ defmodule CodeMySpecSpex.Story812.Criterion6513Spex do
 
   Setup: pre-set `cli_first_connected_at` via
   `UsersFixtures.mark_cli_first_connected/1`.
+
+  ## Read for issue `214d8050` and left alone — the guards are matches, not asserts
+
+  The refute-only scan flags this because nothing in it is spelled `assert`. Three
+  things are, in the form `=` rather than the word:
+
+  - `:ok = Fixtures.attach_ga_test_subscriber(self())` — a subscriber that failed
+    to attach would make the refute vacuous, and this raises instead.
+  - `:ok = Fixtures.mark_cli_first_connected(user)` — if the precondition did not
+    take, the user looks like a first connect and the event *should* fire, so the
+    refute fails correctly rather than vacuously. That direction is safe either way.
+  - `{:ok, _reply, channel_socket} = subscribe_and_join(...)` — a join that never
+    happened is the main way to get silence for the wrong reason, and this raises.
+
+  Sibling 6512 asserts the positive `:first_cli_connect` on a first connect, so
+  the event is known to be live. Adding ceremony here would not buy a guard that
+  is missing; it would rename ones that exist. Recorded so the next scan run does
+  not re-litigate it.
   """
 
   use CodeMySpecSpex.Case

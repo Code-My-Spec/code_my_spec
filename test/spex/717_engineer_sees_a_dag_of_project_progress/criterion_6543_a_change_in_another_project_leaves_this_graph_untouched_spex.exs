@@ -7,6 +7,20 @@ defmodule CodeMySpecSpex.Story717.Criterion6543Spex do
 
   Surface: same as 6541. Open the graph for one project, fire a watcher event
   scoped to a second project, and assert no graph:update arrives here.
+
+  ## Why it then fires a change to *this* project (issue `214d8050`)
+
+  The refute alone cannot fail if `graph:update` is never pushed at all — a
+  renamed event, a subscription that stopped being made, a debounce that swallows
+  everything. The comment on the timeout said as much sideways, "a same-project
+  change would have landed", which was a claim about a run nobody performed.
+
+  6541 and 6542 do assert the positive push, so the mechanism is proven live
+  somewhere in this story. That is not the same as this criterion being able to
+  tell the two cases apart on its own: read alone, or run alone, it passes on a
+  dead surface. So it now does the same change against its own project after the
+  refute and requires the push to arrive. Scoping is then a real difference
+  between two events in one run, rather than an absence measured against nothing.
   """
 
   use CodeMySpecSpex.Case
@@ -51,6 +65,14 @@ defmodule CodeMySpecSpex.Story717.Criterion6543Spex do
       then_ "no graph update is pushed to this view", context do
         # Well past the 750ms debounce — a same-project change would have landed.
         refute_push_event(context.view, "graph:update", 1_500)
+
+        {:ok, context}
+      end
+
+      then_ "the same change to this project does push one", context do
+        {:ok, _} = Fixtures.notify_file_changed(context.scope, "CLAUDE.md")
+
+        assert_push_event(context.view, "graph:update", %{}, 1_500)
 
         {:ok, context}
       end

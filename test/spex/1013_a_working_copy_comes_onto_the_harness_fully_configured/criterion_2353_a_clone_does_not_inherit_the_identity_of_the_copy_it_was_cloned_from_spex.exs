@@ -19,6 +19,18 @@ defmodule CodeMySpecSpex.Story1013.Criterion2353Spex do
   Asserted as the absence of the identity from tracked files rather than by
   performing a clone, because the tracked set is what a clone receives, and it is
   a thing a spec can read.
+
+  ## Why it reads the untracked file first (issue `214d8050`)
+
+  Both assertions here are refutes against the contents of `.claude/settings.json`,
+  and the `given_` seeds that file with `{}`. So an onboarding run that did
+  nothing at all — a task that errored, a project id it would not accept — leaves
+  `{}` behind, and `{}` contains neither the harness id nor `ANTHROPIC_BASE_URL`.
+  The criterion passed hardest in exactly the case where nothing was configured.
+
+  The rule is "written only to files git does not track", and *only* is a contrast
+  between two files. Reading the untracked one first makes it one: the values are
+  here, and therefore demonstrably not merely absent everywhere.
   """
 
   use CodeMySpecSpex.Case
@@ -29,6 +41,7 @@ defmodule CodeMySpecSpex.Story1013.Criterion2353Spex do
   setup :setup_active_project
 
   @tracked ".claude/settings.json"
+  @untracked ".claude/settings.local.json"
 
   spex "Identity does not travel with the repository" do
     scenario "A clone does not inherit the identity of the copy it was cloned from" do
@@ -52,7 +65,19 @@ defmodule CodeMySpecSpex.Story1013.Criterion2353Spex do
 
       when_ "the tracked files that a clone would receive are read", context do
         {:ok, tracked} = Environments.read_file(context.environment, @tracked)
-        {:ok, Map.put(context, :tracked, tracked)}
+        {:ok, untracked} = Environments.read_file(context.environment, @untracked)
+
+        {:ok, context |> Map.put(:tracked, tracked) |> Map.put(:untracked, untracked)}
+      end
+
+      then_ "this machine's identity was written somewhere", context do
+        assert context.untracked =~ context.report.harness_id,
+               "onboarding wrote this machine's harness id into neither file. The " <>
+                 "refutes below would then hold because nothing was configured, " <>
+                 "which is the one case this criterion is not about. Got " <>
+                 "#{@untracked}: #{context.untracked}"
+
+        {:ok, context}
       end
 
       then_ "this machine's harness id is nowhere in them", context do
