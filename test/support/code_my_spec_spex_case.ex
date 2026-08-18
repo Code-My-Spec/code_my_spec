@@ -5316,24 +5316,19 @@ defmodule CodeMySpecSpex.Case do
 
     teardown_later(name, name, fn ->
       case tear_down_steps_with_retry(scope, keys, opts) do
-        {:unreachable, reason} ->
-          raise_unreachable!(scope, keys, reason)
-
-        outcomes ->
-          for {key, result} <- outcomes do
-            case result do
-              {:ok, _removed} ->
-                :ok
-
-              {:error, {:left_behind, remaining}} ->
-                IO.warn(
-                  "spex teardown left #{key} resources behind: " <>
-                    inspect(Enum.map(remaining, & &1.location))
-                )
-            end
-          end
+        {:unreachable, reason} -> raise_unreachable!(scope, keys, reason)
+        outcomes -> Enum.each(outcomes, &report_outcome/1)
       end
     end)
+  end
+
+  defp report_outcome({_key, {:ok, _removed}}), do: :ok
+
+  defp report_outcome({key, {:error, {:left_behind, remaining}}}) do
+    IO.warn(
+      "spex teardown left #{key} resources behind: " <>
+        inspect(Enum.map(remaining, & &1.location))
+    )
   end
 
   # -- Auth setup helpers (mirror ConnCase, but route through Fixtures only) --
