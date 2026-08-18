@@ -269,13 +269,25 @@ defmodule CodeMySpec.MixProject do
       # that changes how every spex run boots, in a fork shared by two repos,
       # and the ordering against its own `ExUnit.start/1` wants care. This is
       # one query in front of a task that was already an alias.
-      spex: ["cms.check_test_migrations", "spex --quiet"],
+      spex: ["ecto.create --quiet", "ecto.migrate --quiet", "cms.check_test_migrations", "spex --quiet"],
       # Same shape as `spex` above: a refusal in front of a task that was already
       # an alias. `mix ecto.migrate` runs `priv/repo/migrations` whatever MIX_ENV
       # says, so under a SQLite environment it points the Postgres set at a
       # database that cannot take it and fails as if the DDL were broken
       # (02ff6d6b). Self-referencing alias — Mix invokes the real task.
       "ecto.migrate": ["cms.guard_cli_migrate", "ecto.migrate"],
+      # Phoenix generates this and this project had lost it, which is how half
+      # the analyzer runs came to fail. `mix test` is what the exunit analyzer
+      # shells (`Tests.execute/2`), and each working copy owns its own
+      # `MIX_TEST_PARTITION` database — so with no alias, one checkout landing a
+      # migration left every other checkout's analyzer database behind, its
+      # suite refusing to run, and its findings replaying stale forever because
+      # nothing could ever re-validate them. Nobody could see why: the reason
+      # was in the analyzer's stats, and the agent saw "failed, 0 problems".
+      #
+      # `cms.new` ships it (templates/phx_single/mix.exs.eex); only this repo
+      # dropped it while the aliases were reworked around `agent_test`.
+      test: ["ecto.create --quiet", "ecto.migrate --quiet", "test"],
       setup: ["deps.get", "ecto.setup", "assets.setup", "assets.build"],
       "ecto.setup": ["ecto.create", "ecto.migrate", "run priv/repo/seeds.exs"],
       "ecto.reset": ["ecto.drop", "ecto.setup"],
