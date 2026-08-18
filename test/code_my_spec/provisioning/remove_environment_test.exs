@@ -21,7 +21,7 @@ defmodule CodeMySpec.Provisioning.RemoveEnvironmentTest do
 
   import CodeMySpec.UsersFixtures
 
-  alias CodeMySpec.Provisioning.{EnvironmentRepository, Teardown}
+  alias CodeMySpec.Provisioning.{EnvironmentRepository, StepRepository, Teardown}
 
   setup do
     scope = full_scope_fixture()
@@ -84,20 +84,107 @@ defmodule CodeMySpec.Provisioning.RemoveEnvironmentTest do
       {:ok, _} =
         EnvironmentRepository.put(scope, "qa4", %{host: "qa4.example.com", server_name: "p-qa4"})
 
-      refuse = fn _scope, resource ->
-        if resource.kind == "server", do: {:error, resource}, else: {:ok, resource}
-      end
+      # Refuses everything, so there is no branch anywhere in the stub and no
+      # ordering to depend on. What the claim needs is that the row goes even
+      # when teardown did not, and that what survived is named — neither of
+      # which wants a mixed outcome to demonstrate.
+      refuse = fn _scope, resource -> {:error, resource} end
 
-      assert {:error, {:left_behind, [left]}, [removed]} =
+      assert {:error, {:left_behind, left}, []} =
                Teardown.environment(scope, "qa4", teardown: refuse)
 
-      assert left.kind == "server"
-      assert removed.kind == "dns_record"
+      assert Enum.map(left, & &1.kind) == ["dns_record", "server"]
       refute EnvironmentRepository.get(scope, "qa4")
     end
   end
 
   test "an environment that does not exist is not an error", %{scope: scope} do
     assert {:ok, []} = Teardown.environment(scope, "nope", teardown: recorder())
+  end
+
+  # Criterion 7969 is "Sam reads back what he now owns", and removing an
+  # environment used to leave every step still claiming its server, database,
+  # registry and DNS record — permanently, since only `Teardown.step/3` calls
+  # `forget/2`. The page listed three servers where one existed, and a
+  # `dns_record` for a name the zone did not answer for (92445d6f).
+  describe "what the steps still claim afterwards" do
+    setup %{scope: scope} do
+      StepRepository.upsert(scope, :server, %{
+        state: :done,
+        position: 2,
+        resources: [
+          %{
+            kind: "server",
+            location: "hetzner/p-uat",
+            identifier: "49.12.189.154 environment=uat",
+            origin: "created"
+          },
+          %{
+            kind: "server",
+            location: "hetzner/p-prod",
+            identifier: "159.69.49.203 environment=prod",
+            origin: "created"
+          },
+          # No marker: the firewall belongs to the project, not to one
+          # environment, and outlives any single one.
+          %{kind: "firewall", location: "hetzner/p", origin: "created"}
+        ]
+      })
+
+      EnvironmentRepository.put(scope, "uat", %{host: "uat.example.com", server_name: "p-uat"})
+
+      :ok
+    end
+
+    defp locations(scope) do
+      StepRepository.get(scope, :server).resources
+      |> Enum.map(& &1.location)
+      |> Enum.sort()
+    end
+
+    test "drops the removed environment's resources", %{scope: scope} do
+      Teardown.environment(scope, "uat", teardown: fn _s, r -> {:ok, r} end)
+
+      refute "hetzner/p-uat" in locations(scope),
+             "a server whose environment is gone is not a server anybody owns"
+    end
+
+    test "keeps the other environment's, and the project's own", %{scope: scope} do
+      Teardown.environment(scope, "uat", teardown: fn _s, r -> {:ok, r} end)
+
+      assert locations(scope) == ["hetzner/p", "hetzner/p-prod"],
+             "removing one environment took something that was not its own"
+    end
+  end
+
+  # `environment=uat` must not take `environment=uat2` with it, which a
+  # substring match would.
+  describe "matching the environment marker" do
+    setup %{scope: scope} do
+      StepRepository.upsert(scope, :server, %{
+        state: :done,
+        position: 2,
+        resources: [
+          %{
+            kind: "server",
+            location: "hetzner/p-uat2",
+            identifier: "10.0.0.9 environment=uat2",
+            origin: "created"
+          }
+        ]
+      })
+
+      EnvironmentRepository.put(scope, "uat", %{host: "uat.example.com", server_name: "p-uat"})
+
+      :ok
+    end
+
+    test "does not take an environment whose name merely starts the same", %{scope: scope} do
+      Teardown.environment(scope, "uat", teardown: fn _s, r -> {:ok, r} end)
+
+      assert StepRepository.get(scope, :server).resources |> Enum.map(& &1.location) ==
+               ["hetzner/p-uat2"],
+             "removing uat took uat2's server with it"
+    end
   end
 end

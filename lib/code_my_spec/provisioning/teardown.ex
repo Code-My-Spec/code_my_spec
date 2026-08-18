@@ -131,6 +131,7 @@ defmodule CodeMySpec.Provisioning.Teardown do
       environment ->
         outcomes = Enum.map(environment_resources(environment), &teardown.(scope, &1))
         EnvironmentRepository.delete(scope, name)
+        forget_environment(scope, name)
 
         removed = for {:ok, r} <- outcomes, do: r
         left = for {:error, r} <- outcomes, do: r
@@ -142,6 +143,43 @@ defmodule CodeMySpec.Provisioning.Teardown do
         end
     end
   end
+
+  # A resource belonging to an environment that no longer exists is not a
+  # resource anybody owns.
+  #
+  # Deleting the row left every step still claiming that environment's server,
+  # database, registry and DNS record — and permanently, because only `step/3`
+  # calls `forget/2` and only on full success. Nothing else ever revisits what
+  # a step recorded.
+  #
+  # What that cost is criterion 7969, "Sam reads back what he now owns": the
+  # page listed `qa-fixture-project-uat`, `-qa2` and `-prod` as owned when one
+  # existed, and a `dns_record` for a name that returned nothing from the
+  # zone's own nameservers — with no "(not found)" annotation on any of it, so
+  # nothing distinguished the two servers that were gone from the one that was
+  # not (92445d6f). Two of the three were not in any provider console, which is
+  # exactly what that criterion promises they will be.
+  #
+  # Matched on the `environment=` the identifiers already carry, tokenised
+  # rather than by substring: `environment=uat` must not take `environment=uat2`
+  # with it. A resource with no marker is left alone — it belongs to the
+  # project rather than to one environment, like the shared firewall, network
+  # and ssh key, and those outlive any single environment.
+  defp forget_environment(scope, name) do
+    for step <- StepRepository.list(scope),
+        kept = Enum.reject(step.resources, &belongs_to_environment?(&1, name)),
+        length(kept) < length(step.resources) do
+      StepRepository.upsert(scope, step.key, %{resources: Enum.map(kept, &Map.from_struct/1)})
+    end
+
+    :ok
+  end
+
+  defp belongs_to_environment?(%{identifier: identifier}, name) when is_binary(identifier) do
+    "environment=#{name}" in String.split(identifier)
+  end
+
+  defp belongs_to_environment?(_resource, _name), do: false
 
   # Ordered, not merely listed. `Teardown.resource/3` is called down this list
   # in sequence, so the DNS record has to come before the server.
