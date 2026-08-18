@@ -2544,17 +2544,7 @@ defmodule CodeMySpec.Provisioning.Steps do
           # same trap in its own words: checking one half made the failure
           # unrecoverable rather than merely broken, because re-running the
           # step was the obvious remedy and it did nothing.
-          if sending_published?(scope, sending, d) do
-            {:cont,
-             {:ok,
-              acc ++
-                [
-                  %{kind: "sending_domain", location: "resend/#{d["name"]}"},
-                  %{kind: "verification", location: "1 attempts"}
-                ]}}
-          else
-            {:halt, :absent}
-          end
+          sending_domain_outcome(scope, sending, d, acc)
 
         {:ok, _unverified} ->
           {:halt, :absent}
@@ -2631,6 +2621,22 @@ defmodule CodeMySpec.Provisioning.Steps do
   end
 
   defp dns_record_type(_type), do: :txt
+
+  defp sending_domain_outcome(scope, sending, domain, acc) do
+    case sending_published?(scope, sending, domain) do
+      true ->
+        {:cont,
+         {:ok,
+          acc ++
+            [
+              %{kind: "sending_domain", location: "resend/#{domain["name"]}"},
+              %{kind: "verification", location: "1 attempts"}
+            ]}}
+
+      false ->
+        {:halt, :absent}
+    end
+  end
 
   defp register_sending_domains(scope, base, environments, opts) do    Enum.reduce_while(environments, {:ok, []}, fn environment, {:ok, acc} ->
       case register_sending_domain(scope, base, environment, opts) do
