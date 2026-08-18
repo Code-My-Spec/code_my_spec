@@ -18,6 +18,7 @@ defmodule CodeMySpec.Provisioning.EnvironmentServersTest do
 
   import CodeMySpec.UsersFixtures
 
+  alias CodeMySpec.Configurations
   alias CodeMySpec.ProjectSecrets
   alias CodeMySpec.Provisioning.Hetzner
   alias CodeMySpec.Provisioning.Steps
@@ -62,6 +63,36 @@ defmodule CodeMySpec.Provisioning.EnvironmentServersTest do
            "asked for #{inspect(names)} — the capacity fallback dropped an environment"
 
     assert length(names) == 2, "expected both environments, got #{inspect(names)}"
+  end
+
+  # The other direction, and the one that costs money when it is wrong.
+  #
+  # `ProjectConfiguration` says `:uat` means "stand up staging only; the user
+  # promotes to prod themselves". Nothing consulted it: `seed/1` creates prod
+  # and uat for every project and every step fanned out over both, so a project
+  # set to `:uat` finished setup holding a production server, a DNS record and
+  # a database it had explicitly opted out of (27749cc8).
+  #
+  # It hid behind a green, which is why this is a test rather than a drill
+  # observation — the prod steps *succeeded*, so `devops_status` reported
+  # complete and 841/1962, the criterion whose whole subject is this, passed
+  # for the wrong reason.
+  #
+  # Asserted on what was asked of the provider. A box that is never requested
+  # is the only version of this that is actually true; checking rows afterwards
+  # would pass on a run that created one and forgot to record it.
+  test "asks for no prod server when the project opted out of prod", ctx do
+    {:ok, _} = Configurations.update(ctx.scope, %{devops: :uat})
+    record_requests(self(), :always_available)
+
+    Steps.run(:server, ctx.scope, [])
+
+    names = collect_names([])
+
+    assert names == Enum.filter(names, &String.ends_with?(&1, "-uat")),
+           "asked the provider for #{inspect(names)} on a project set to devops: :uat"
+
+    assert length(names) == 1, "expected staging only, got #{inspect(names)}"
   end
 
   # Answers every Hetzner call plausibly and reports what was asked for. The
