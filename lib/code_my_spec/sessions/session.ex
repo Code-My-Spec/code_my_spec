@@ -68,7 +68,7 @@ defmodule CodeMySpec.Sessions.Session do
       foreign_key: :session_id,
       type: :binary_id
 
-    timestamps(type: :utc_datetime)
+    timestamps(type: :utc_datetime_usec)
   end
 
   @doc "Changeset for creating a session."

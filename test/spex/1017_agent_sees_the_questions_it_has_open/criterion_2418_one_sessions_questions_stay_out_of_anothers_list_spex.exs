@@ -73,16 +73,12 @@ defmodule CodeMySpecSpex.Story1017.Criterion2418Spex do
         # another *user* would be excluded by ownership alone and would prove
         # nothing about session scoping.
         #
-        # The wait is not padding. `Sessions.external_id_for_harness/1` resolves
-        # "newest wins" by `order_by desc: :inserted_at, limit: 1`, and
-        # `sessions` carries `timestamps(type: :utc_datetime)` — second
-        # granularity. Two sessions started inside one second tie, the limit
-        # returns whichever row comes first, and both sessions' questions land
-        # under one id. Without this the scenario cannot even establish its own
-        # Given: there is no "earlier" session, only two indistinguishable ones.
-        # Filed separately; the fix is usec timestamps, not a sleep in a spec.
-        Process.sleep(1_100)
-
+        # This used to need a `Process.sleep(1_100)` to force the two sessions
+        # apart: `sessions` carried second-granularity timestamps, so two
+        # started inside one second tied on `desc: :inserted_at` and the harness
+        # resolved to whichever row came back first — meaning the scenario could
+        # not establish its own Given. Fixed by `a879ed53`; the sleep is gone
+        # and the sessions are distinguishable on their own.
         context = start_session(context, "spex-2418-later")
         frame = %Frame{assigns: %{current_scope: context.scope}}
 
