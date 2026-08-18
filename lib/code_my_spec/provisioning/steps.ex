@@ -2527,13 +2527,34 @@ defmodule CodeMySpec.Provisioning.Steps do
           # told "verified" rendered "0 check(s)" — it did look, and said it
           # had not, which is indistinguishable from assuming. One call to
           # `find_domain` is one check, so that is what it reports.
-          {:cont,
-           {:ok,
-            acc ++
-              [
-                %{kind: "sending_domain", location: "resend/#{d["name"]}"},
-                %{kind: "verification", location: "1 attempts"}
-              ]}}
+          #
+          # And the provider's answer is not the whole answer. "Verified" is
+          # Resend's memory of a check it ran, not a statement about the zone
+          # now, and `Dns`'s moduledoc is written about exactly this gap: "a
+          # provider holds a verification long after the record behind it is
+          # deleted, so a domain reads verified while its DKIM is gone and mail
+          # is being rejected somewhere else."
+          #
+          # Measured, after an unrelated teardown removed every record in the
+          # zone: Resend still said verified, this returned satisfied, and
+          # `run_step/3` therefore never called `run(:email, …)` — so the one
+          # action that rebuilds the records was skipped precisely because it
+          # was "already done", and the domain kept reporting healthy with no
+          # DKIM at all (5dfd6eff). The `secrets` verify above documents the
+          # same trap in its own words: checking one half made the failure
+          # unrecoverable rather than merely broken, because re-running the
+          # step was the obvious remedy and it did nothing.
+          if sending_published?(scope, sending, d) do
+            {:cont,
+             {:ok,
+              acc ++
+                [
+                  %{kind: "sending_domain", location: "resend/#{d["name"]}"},
+                  %{kind: "verification", location: "1 attempts"}
+                ]}}
+          else
+            {:halt, :absent}
+          end
 
         {:ok, _unverified} ->
           {:halt, :absent}
@@ -2552,8 +2573,66 @@ defmodule CodeMySpec.Provisioning.Steps do
     end
   end
 
-  defp register_sending_domains(scope, base, environments, opts) do
-    Enum.reduce_while(environments, {:ok, []}, fn environment, {:ok, acc} ->
+  # Whether the records Resend requires are actually in the zone.
+  #
+  # Asked of the provider's own list rather than a hand-built one: the DKIM
+  # public key is generated per domain, so a name derived here would be wrong
+  # for exactly the record that matters most. `Resend.records/1` says the same
+  # thing about deriving them.
+  #
+  # Existence only, not content. A record whose value drifted is a different
+  # failure from one that is absent, and rewriting on a value mismatch would
+  # fight anyone who edited a record deliberately. Absence is the case that
+  # left a domain sending unsigned mail.
+  #
+  # Authoritative rather than recursive, because this runs immediately after a
+  # write often enough to matter — a recursive resolver holding a negative from
+  # before the record existed would report a healthy zone as broken and rewrite
+  # records that were already correct.
+  defp sending_published?(scope, sending, domain) do
+    records =
+      scope
+      |> sending_records_for(domain)
+      |> Resend.sending_records(sending)
+
+    case {records, find_sending_zone(scope, sending)} do
+      # Nothing required is trivially satisfied — and is the normal answer when
+      # the provider hands back a domain with no record list.
+      {[], _} ->
+        true
+
+      {records, {:ok, zone}} ->
+        Enum.all?(records, &record_published?(&1, zone))
+
+      # Cannot tell. Reporting absent here would make a zone lookup failure
+      # rewrite every record on every verify, which is churn against a live
+      # domain for a question that was never answered. The provider's verified
+      # stands when there is nothing better.
+      {_records, _} ->
+        true
+    end
+  end
+
+  defp record_published?(record, zone) do
+    record["name"]
+    |> qualify(zone["name"])
+    |> Dns.lookup_authoritative(dns_record_type(record["type"]))
+    |> Kernel.!=([])
+  end
+
+  # Resend names types the way DNS does; `Dns` wants them as atoms.
+  defp dns_record_type(type) when is_binary(type) do
+    case String.upcase(type) do
+      "MX" -> :mx
+      "CNAME" -> :cname
+      "A" -> :a
+      _ -> :txt
+    end
+  end
+
+  defp dns_record_type(_type), do: :txt
+
+  defp register_sending_domains(scope, base, environments, opts) do    Enum.reduce_while(environments, {:ok, []}, fn environment, {:ok, acc} ->
       case register_sending_domain(scope, base, environment, opts) do
         {:ok, resources} -> {:cont, {:ok, acc ++ resources}}
         # Carries what earlier environments already made, exactly as the error
