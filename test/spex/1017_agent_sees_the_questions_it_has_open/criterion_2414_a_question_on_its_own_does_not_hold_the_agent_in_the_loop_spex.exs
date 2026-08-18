@@ -65,6 +65,7 @@ defmodule CodeMySpecSpex.Story1017.Criterion2414Spex do
 
   alias Anubis.Server.Frame
   alias CodeMySpec.McpServers.Tasks.Tools.AskUser
+  alias CodeMySpec.McpServers.Tasks.Tools.ListUserQuestions
   alias CodeMySpecSpex.FullSatisfactionFixtures
 
   setup :register_log_in_setup_account
@@ -99,6 +100,25 @@ defmodule CodeMySpecSpex.Story1017.Criterion2414Spex do
                  "Got: #{response_text(response)}"
 
         {:ok, Map.put(context, :question_id, question_id!(response))}
+      end
+
+      # The scenario is "a question is outstanding and no class of work is live",
+      # and until now nothing checked the first half (issue `214d8050`). A row
+      # written but not visible to this session — the exact bug class this story
+      # exists around — leaves the stop allowed for the ordinary reason that
+      # nothing was outstanding, and the criterion reports green having tested
+      # the empty case twice.
+      given_ "the question is outstanding on the agent's own surface", context do
+        frame = %Frame{assigns: %{current_scope: context.scope}}
+        {:reply, listing, _frame} = ListUserQuestions.execute(%{}, frame)
+
+        assert response_text(listing) =~ context.question_id,
+               "the question was asked but is not listed as open for this session, " <>
+                 "so the stop below would be allowed because nothing was " <>
+                 "outstanding — which is not what this criterion claims. " <>
+                 "Got: #{response_text(listing)}"
+
+        {:ok, context}
       end
 
       when_ "the agent attempts to stop", context do

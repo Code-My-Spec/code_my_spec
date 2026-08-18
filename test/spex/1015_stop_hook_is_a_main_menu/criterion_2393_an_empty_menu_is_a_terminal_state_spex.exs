@@ -31,6 +31,14 @@ defmodule CodeMySpecSpex.Story1015.Criterion2393Spex do
   terminal state on the continuous-mode branch. Nothing else is set up, because
   anything set up here is work the menu would then report.
 
+  And the Given is now *asserted* rather than trusted (issue `214d8050`). Both
+  wrong preconditions above passed, and they passed for the reason every refute-
+  only scenario does: every claim here is an absence, and a graph with work left
+  in it produces the same silence in the `reason` field as a graph with none.
+  `get_next_requirement` distinguishes them, and distinguishes the third case
+  too — an unsynced project answers `sync_required` rather than
+  "All requirements satisfied", which is not this criterion's premise either.
+
   ## Surface
 
   `POST /api/hooks/stop`, routed by `x-harness-id`. No cassette and no
@@ -41,6 +49,10 @@ defmodule CodeMySpecSpex.Story1015.Criterion2393Spex do
 
   use CodeMySpecSpex.Case
 
+  import CodeMySpecSpex.TaskResponseHelpers, only: [response_text: 1]
+
+  alias Anubis.Server.Frame
+  alias CodeMySpec.McpServers.Requirements.Tools.GetNextRequirement
   alias CodeMySpecSpex.FullSatisfactionFixtures
 
   setup :register_log_in_setup_account
@@ -49,7 +61,18 @@ defmodule CodeMySpecSpex.Story1015.Criterion2393Spex do
   spex "An agent with nothing to do is allowed to stop" do
     scenario "no class of work has anything for this working copy" do
       given_ "every requirement in the graph is satisfied, so no class is live", context do
-        {:ok, FullSatisfactionFixtures.apply(context)}
+        context = FullSatisfactionFixtures.apply(context)
+
+        frame = %Frame{assigns: %{current_scope: context.scope}}
+        {:reply, next, _frame} = GetNextRequirement.execute(%{}, frame)
+
+        assert response_text(next) =~ "All requirements satisfied",
+               "the premise is false, and every assertion below is an absence that " <>
+                 "a graph with work left in it satisfies just as well. Two earlier " <>
+                 "preconditions were wrong exactly here and passed anyway. " <>
+                 "Got: #{response_text(next)}"
+
+        {:ok, context}
       end
 
       given_ "a session exists for this working copy", context do

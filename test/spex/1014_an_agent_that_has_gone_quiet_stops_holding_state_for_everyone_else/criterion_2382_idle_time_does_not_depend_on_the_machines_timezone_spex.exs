@@ -44,6 +44,24 @@ defmodule CodeMySpecSpex.Story1014.Criterion2382Spex do
         {:ok, Map.put(context, :live, Fixtures.live_agent_scope(context.scope))}
       end
 
+      # The premise sibling 2384 has and this one did not (issue `214d8050`).
+      # The claim below is that a component *stopped* being listed, and a
+      # components page that renders nothing — or fails to render — satisfies
+      # that whether or not any reclaim happened. Worse here than in its
+      # siblings: this criterion's whole point is a margin of hours, and a
+      # vacuous refute is exactly as green at 2.5 hours as at 250.
+      given_ "the quiet checkout's component is listed", context do
+        {:ok, view, _html} =
+          live(context.conn, "/app/projects/#{context.project.id}/components")
+
+        assert render(view) =~ "ExampleContext",
+               "expected the quiet checkout's component to be listed before the " <>
+                 "sweep — without that, the refute below cannot fail and the window " <>
+                 "this criterion measures is not being measured at all"
+
+        {:ok, context}
+      end
+
       when_ "the live agent stops, which syncs components", context do
         post_hook(context.live, "/api/hooks/stop", %{
           "session_id" => "spex-#{System.unique_integer([:positive])}"
