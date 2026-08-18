@@ -71,6 +71,7 @@ defmodule CodeMySpec.Billing do
       case billing_subscription(account) do
         {:ok, existing} -> change_tier(account, existing, tier)
         :none -> create_subscription(account, tier)
+        {:error, reason} -> {:error, reason}
       end
     end
   end
@@ -111,7 +112,29 @@ defmodule CodeMySpec.Billing do
              "metadata[tier]" => to_string(tier),
              "expand[0]" => "latest_invoice.confirmation_secret"
            }) do
-      client_secret(updated)
+      settled_or_confirmable(updated)
+    end
+  end
+
+  # A tier change does not always need paying for.
+  #
+  # `always_invoice` bills the proration immediately, and on an *upgrade* that
+  # is a charge with a secret for the Payment Element to confirm. On a
+  # downgrade it is a credit — nothing to collect, so Stripe returns no
+  # `confirmation_secret`, and treating that as `:no_client_secret` told the
+  # user "Stripe didn't give us a way to take the payment" about a change that
+  # had already succeeded (`d5befe3c`).
+  #
+  # So the two are distinguished here rather than at the call site: a secret
+  # means confirm it, no secret on a *successful* update means the change is
+  # done and there is nothing to pay.
+  defp settled_or_confirmable(subscription) do
+    case get_in(subscription, ["latest_invoice", "confirmation_secret", "client_secret"]) do
+      secret when is_binary(secret) ->
+        {:ok, %{client_secret: secret, subscription_id: subscription["id"]}}
+
+      _ ->
+        {:ok, %{client_secret: nil, subscription_id: subscription["id"]}}
     end
   end
 
@@ -137,24 +160,27 @@ defmodule CodeMySpec.Billing do
         :none
 
       other ->
-        # Unreadable is treated as absent deliberately: refusing to take money
-        # because Stripe blipped is worse than the duplicate this guards
-        # against. But it is logged at warning, because a *persistent* read
-        # failure here silently reinstates the double-billing bug and nothing
-        # else in the system would ever notice.
+        # Refuse. This used to create, on the reasoning that declining a sale
+        # because Stripe blipped is worse than a duplicate subscription.
         #
-        # An earlier version of this comment claimed "the reconciliation below
-        # would still catch it". There is no reconciliation, here or anywhere —
-        # that was a reassurance I wrote and did not have. Saying so plainly
-        # rather than deleting it, because the claim was load-bearing in
-        # review: it is why this fallback looked safe.
+        # That was wrong, and QA proved it against real Stripe rather than in
+        # argument: a DNS failure reading the subscription hit this branch twice
+        # on one account, and the second time the create succeeded — leaving two
+        # active subscriptions, the old one orphaned and still charging. The
+        # exact defect `27f519dc` describes, arriving through the fallback meant
+        # to be the safe side of the trade (`5a5708a7`).
+        #
+        # The two outcomes are not comparable. A refused checkout is visible
+        # immediately, costs nothing, and the customer retries. A duplicate
+        # subscription is invisible to us — our own data looks correct — and
+        # bills every month until a human reads Stripe. So when we cannot tell
+        # whether an account already pays, we do not sell.
         Logger.warning(
           "[Billing] account #{account.id}: could not read subscription #{id} " <>
-            "(#{inspect(other)}) — creating a new one, which double-bills if the " <>
-            "old one is still active"
+            "(#{inspect(other)}) — refusing rather than risk a duplicate"
         )
 
-        :none
+        {:error, :subscription_unreadable}
     end
   end
 

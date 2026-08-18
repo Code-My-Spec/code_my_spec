@@ -123,8 +123,21 @@ defmodule CodeMySpecWeb.CheckoutLive do
     tier = String.to_existing_atom(tier)
 
     case Billing.start_subscription(socket.assigns.current_scope, tier) do
-      {:ok, %{client_secret: secret}} ->
+      {:ok, %{client_secret: secret}} when is_binary(secret) ->
         {:noreply, assign(socket, client_secret: secret, tier: tier, error: nil)}
+
+      # A tier change with nothing to collect — a downgrade, whose proration is
+      # a credit rather than a charge. There is no secret because there is no
+      # payment, and the change has already happened at Stripe. Showing the
+      # Payment Element here would ask for money that is not owed; showing the
+      # error we used to show told the user their successful downgrade had
+      # failed (`d5befe3c`).
+      {:ok, %{client_secret: nil}} ->
+        {:noreply,
+         socket
+         |> assign(client_secret: nil, error: nil)
+         |> put_flash(:info, "Your plan has been changed. Nothing to pay today.")
+         |> redirect(to: ~p"/app")}
 
       {:error, reason} ->
         {:noreply, assign(socket, error: message_for(reason))}
@@ -157,6 +170,14 @@ defmodule CodeMySpecWeb.CheckoutLive do
 
   defp message_for(:stripe_not_configured), do: "Payments aren't set up yet."
   defp message_for(:no_client_secret), do: "Stripe didn't give us a way to take the payment."
+
+  # We could not read the account's existing subscription, so we do not know
+  # whether it already pays. Selling here is what left two active subscriptions
+  # billing one customer (`5a5708a7`), so the sale is refused instead — and the
+  # message says it is temporary, because it is: the customer should retry, not
+  # conclude the product is broken.
+  defp message_for(:subscription_unreadable),
+    do: "We couldn't reach Stripe to check your current plan. Please try again in a moment."
 
   defp message_for(%{body: %{"error" => %{"message" => message}}}) when is_binary(message),
     do: message

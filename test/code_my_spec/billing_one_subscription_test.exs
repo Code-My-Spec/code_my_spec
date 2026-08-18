@@ -108,6 +108,63 @@ defmodule CodeMySpec.BillingOneSubscriptionTest do
       "latest_invoice" => secret()
     }
 
+  describe "when we cannot tell whether the account already pays" do
+    # Found against real Stripe, not in argument. A DNS failure reading the
+    # subscription hit this branch twice on one account; the second time the
+    # create succeeded, leaving two active subscriptions with the older
+    # orphaned and still charging (`5a5708a7`).
+    #
+    # The fallback used to create, reasoning that declining a sale because
+    # Stripe blipped is worse than a duplicate. The two are not comparable: a
+    # refused checkout is visible immediately and costs nothing, while a
+    # duplicate subscription is invisible to us — our own data looks correct —
+    # and bills monthly until a human reads Stripe.
+    test "the sale is refused rather than risking a duplicate" do
+      scope = owner_scope() |> with_subscription("sub_existing")
+
+      Req.Test.stub(CodeMySpec.Billing.StripeClient, fn conn ->
+        send(self(), {:stripe, conn.method, conn.request_path})
+        Req.Test.transport_error(conn, :nxdomain)
+      end)
+
+      assert {:error, :subscription_unreadable} = Billing.start_subscription(scope, :pro)
+
+      refute_received {:stripe, "POST", "/v1/subscriptions"},
+                      """
+                      A subscription was created while we could not tell whether
+                      the account already had one. That is exactly how the
+                      duplicate arrived in production.
+                      """
+    end
+  end
+
+  describe "a change with nothing to collect" do
+    # A downgrade's proration is a credit, so Stripe returns no
+    # confirmation_secret. Treating that as an error told the user their
+    # successful downgrade had failed: "Stripe didn't give us a way to take the
+    # payment" (`d5befe3c`).
+    test "succeeds with no client secret rather than erroring" do
+      scope = owner_scope() |> with_subscription("sub_existing")
+
+      stub_routes(%{
+        "/v1/subscriptions/sub_existing" => %{
+          "id" => "sub_existing",
+          "status" => "active",
+          "items" => %{"data" => [%{"id" => "si_1"}]},
+          # Updated, invoiced, nothing owed — no secret.
+          "latest_invoice" => %{}
+        }
+      })
+
+      assert {:ok, %{client_secret: nil, subscription_id: "sub_existing"}} =
+               Billing.start_subscription(scope, :light),
+             """
+             The tier change succeeded at Stripe. Reporting an error because
+             there was nothing to pay is a lie about work that was done.
+             """
+    end
+  end
+
   describe "an account that already pays" do
     test "has its existing subscription moved, not a second one created" do
       scope = owner_scope() |> with_subscription("sub_existing")
