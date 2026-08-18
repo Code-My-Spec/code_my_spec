@@ -442,7 +442,6 @@ defmodule CodeMySpec.Provisioning.Teardown do
     |> Enum.filter(&(is_binary(&1) and &1 != ""))
   end
 
-
   # Whether an adopted DNS record is one setup pointed at a machine of ours.
   #
   # Narrow on purpose. "Ignore origin for DNS records" would be the easy
