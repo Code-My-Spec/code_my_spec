@@ -75,6 +75,7 @@ defmodule CodeMySpecWeb.ProvisioningLive do
   @impl true
   def render(assigns) do
     ~H"""
+    <Layouts.flash_group flash={@flash} />
     <.header>
       Setup
       <:subtitle>

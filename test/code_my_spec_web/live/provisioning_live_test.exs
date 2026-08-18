@@ -455,6 +455,28 @@ defmodule CodeMySpecWeb.ProvisioningLiveTest do
                "[data-test='setup-step'][data-step='server'] [data-test='retry-step']"
              )
     end
+
+    # `start_setup` refuses server-side when a credential is missing, and must —
+    # a run that starts without its credentials fails partway having already
+    # made things (criterion 7985). It said so with `put_flash`, into a page
+    # that renders no flash container: this view is mounted without the app
+    # layout, so it has no `<aside>` and no flash group, and all fourteen of its
+    # `put_flash` calls were written and discarded. Someone who pressed the
+    # button got a page identical to the one before they pressed it, and could
+    # not tell a refusal from a dead button (85e91bf8, found in QA on story
+    # 850).
+    #
+    # The button stays enabled on purpose — 964/7985 clicks it to prove the
+    # refusal is enforced rather than merely displayed, and disabling it would
+    # delete that proof.
+    test "a refused run says so where the presser can see it", %{conn: conn, project: project} do
+      {:ok, view, _html} = live(conn, path(project))
+
+      html = view |> element("[data-test='start-setup']") |> render_click()
+
+      assert html =~ "before it can start.",
+             "expected the refusal to reach the page, not just the socket's flash map"
+    end
   end
 
   describe "pasted provider credentials" do
