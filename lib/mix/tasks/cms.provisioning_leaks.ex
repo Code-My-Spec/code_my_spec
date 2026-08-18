@@ -410,13 +410,25 @@ defmodule Mix.Tasks.Cms.ProvisioningLeaks do
     end
   end
 
-  # Named like a spex resource and deliberately permanent: the inbound
-  # criteria send to a verified receiving domain that nothing tears down, so
-  # they pay a send and a poll instead of creating a domain and waiting for a
-  # third party to see its MX. It matches `@spex_prefix` by design — it belongs
-  # to the suite — and `--delete` would remove it along with its DNS records,
-  # which reads afterwards as mail that mysteriously stopped arriving.
-  @kept ~w(spex-inbound.astralbi.com)
+  # Nothing is kept any more, and `spex-inbound.astralbi.com` is why the list
+  # exists at all — so this is the record of why it stopped needing to.
+  #
+  # It was a permanently verified receiving domain the inbound criteria sent
+  # to, so they paid a send and a poll instead of creating a domain and waiting
+  # for a third party to see its MX. Sweeping it would have taken its DNS
+  # records with it, which reads afterwards as mail that mysteriously stopped
+  # arriving.
+  #
+  # Provisioning moved to fakes. 974's criteria 8030 and 8048 both `setup
+  # :fake_providers` now, so the probe is answered by an agent in the test and
+  # never reaches Resend — the real domain has not been load-bearing since.
+  # Confirmed the hard way: its records were destroyed on 2026-08-18 and the
+  # full spex suite stayed green.
+  #
+  # Kept as an empty list rather than deleted, because the mechanism is right
+  # and the next resource that belongs to the suite rather than to a run will
+  # want it.
+  @kept []
 
   # A build server is named after the commit it builds (`builder-24b93652c4ab`),
   # never after the project, so nothing above can see one — and a sweep that
