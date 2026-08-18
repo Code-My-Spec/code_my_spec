@@ -398,7 +398,8 @@ defmodule CodeMySpec.Provisioning.Steps do
     # construction rather than by convention.
     name = server_name(scope, opts)
 
-    with {:ok, firewall} <- Hetzner.ensure_firewall(scope, name),
+    with :ok <- storage_credentials_ready(scope, opts),
+         {:ok, firewall} <- Hetzner.ensure_firewall(scope, name),
          made = [firewall_resource(name, firewall)],
          {:ok, ssh_key} <- made_or_error(ensure_access_key(scope, name), made),
          made = [ssh_key_resource(name, ssh_key) | made],
@@ -415,6 +416,7 @@ defmodule CodeMySpec.Provisioning.Steps do
            |> Keyword.put_new(:image, "docker-ce") do
       ensure_environment_servers(scope, opts, made)
     else
+      {:paused, instructions} -> {:paused, instructions}
       {:error, reason, partial} -> {:error, format(reason), partial}
       {:error, reason} -> {:error, format(reason)}
     end
@@ -3303,13 +3305,53 @@ defmodule CodeMySpec.Provisioning.Steps do
   # The disposition rides on the resource because "adopted rather than
   # duplicated" is only checkable if the page can tell the two apart — and
   # `created` twice is exactly the failure the criterion is about.
+  # Asked before the firewall, because everything after it costs money.
+  #
+  # Every environment's box serves the registry the deploy pulls from, and
+  # `Registry.ensure/2` needs the object-storage key pair to do it. That call
+  # sits behind `await_box/2`, which waits for SSH on a machine Hetzner has
+  # already started billing for — so a project with no keys paid for a server,
+  # waited a minute for it to boot, and then failed with the bare atom
+  # `:no_storage_credentials`. `Credentials`' moduledoc names that outcome as
+  # the one the credential check exists to prevent: "by which point Sam has a
+  # server he did not want yet".
+  #
+  # Nothing here needs the box, so it can all be answered first.
+  #
+  # Paused, not errored: a console-only credential that has not been pasted yet
+  # is a step waiting on Sam, not a broken one — and `credentials_instructions/0`
+  # is already what the storage step says in the same situation, so he reads one
+  # answer rather than two that disagree.
+  #
+  # `opts[:credentials]` wins, matching `Registry.credentials/2`, so a caller
+  # that supplies its own pair is not asked to have stored one.
+  defp storage_credentials_ready(%Scope{} = scope, opts) do
+    case Keyword.get(opts, :credentials) || Storage.credentials(scope, opts) do
+      :none -> {:paused, Storage.credentials_instructions()}
+      _credentials -> :ok
+    end
+  end
+
+  # `origin` set from the disposition, not left to the schema default.
+  #
+  # It defaulted to "adopted", so a repository setup had just created recorded
+  # itself as one Sam already had — the field teardown keys on saying the
+  # opposite of what happened, with the truth sitting one key over in
+  # `identifier`. Nothing acts on it today (teardown lists "repository" among
+  # the kinds with nothing provider-side to remove), which is exactly why it
+  # went unnoticed; it would be found by whoever first wrote a rule that
+  # trusted it.
   defp repo_resource(repo, disposition) do
     %{
       kind: "repository",
       location: repo["full_name"] || repo["name"],
+      origin: repo_origin(disposition),
       identifier: disposition && to_string(disposition)
     }
   end
+
+  defp repo_origin(:adopted), do: "adopted"
+  defp repo_origin(_disposition), do: "created"
 
   # The address, not the datacenter. Hetzner omits `datacenter` from the
   # create response, so that read rendered "hetzner/?/name" on the one run

@@ -365,7 +365,7 @@ defmodule Mix.Tasks.Cms.ProvisioningLeaks do
   defp ssh_key_names(scope) do
     case Hetzner.list_ssh_keys(scope) do
       {:ok, keys} -> Enum.map(keys, &name_of/1)
-      _ -> []
+      other -> Mix.shell().error("could not list SSH keys: #{inspect(other)}") || []
     end
   end
 
@@ -379,10 +379,16 @@ defmodule Mix.Tasks.Cms.ProvisioningLeaks do
   # belongs to a run that has not finished, and the server sweep's own recency
   # window is what protects that case — this must not race it by removing the
   # rule set off a box mid-drill.
+  # Both collectors say so when the call fails, for the reason `run/1` already
+  # gives about Cloudflare and Resend: "nothing leaked" and "nothing was
+  # checked" must never look the same. They returned a bare `[]` on any
+  # failure, so a wrong-project or expired token printed "none" — the same
+  # thing a clean account prints, from the one tool whose job is finding
+  # infrastructure nobody is watching.
   defp firewall_names(scope) do
     case Hetzner.list_firewalls(scope) do
       {:ok, firewalls} -> firewalls |> Enum.filter(&unattached?/1) |> Enum.map(&name_of/1)
-      _ -> []
+      other -> Mix.shell().error("could not list firewalls: #{inspect(other)}") || []
     end
   end
 

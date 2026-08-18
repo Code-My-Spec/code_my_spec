@@ -26,7 +26,37 @@ defmodule CodeMySpec.Provisioning.EnvironmentServersTest do
   setup do
     scope = full_scope_fixture()
     {:ok, _} = ProjectSecrets.put_value(scope, "hetzner_api_token", "test-token")
+
+    # The step now refuses before it creates anything when the project has no
+    # object-storage key pair, because every box it makes serves the registry
+    # and the registry needs them. These tests are about which servers get
+    # asked for, so the project is given the pair and the refusal is tested
+    # separately.
+    {:ok, _} = ProjectSecrets.put_value(scope, "hetzner_s3_access_key_id", "test-key-id")
+    {:ok, _} = ProjectSecrets.put_value(scope, "hetzner_s3_secret_access_key", "test-secret")
+
     {:ok, scope: scope}
+  end
+
+  test "refuses before making anything when the project has no storage keys", ctx do
+    record_requests(self(), :always_available)
+
+    scope = full_scope_fixture()
+    {:ok, _} = ProjectSecrets.put_value(scope, "hetzner_api_token", "test-token")
+
+    assert {:paused, instructions} = Steps.run(:server, scope, [])
+
+    # The storage step's own words, so a project missing one credential is not
+    # told two different things by two steps.
+    assert instructions == CodeMySpec.Provisioning.Storage.credentials_instructions()
+
+    # The point of the guard: nothing was asked of the provider. A server was
+    # created before this check existed, and it billed from the moment Hetzner
+    # accepted it — roughly a minute before the step failed on the missing
+    # keys, having waited for SSH on a box it was about to abandon.
+    assert collect_names([]) == []
+
+    _ = ctx
   end
 
   test "asks for one server per environment, named for it", ctx do
