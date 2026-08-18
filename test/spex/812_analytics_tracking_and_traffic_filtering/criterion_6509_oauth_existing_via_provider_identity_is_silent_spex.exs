@@ -63,11 +63,25 @@ defmodule CodeMySpecSpex.Story812.Criterion6509Spex do
       end
 
       when_ "the OAuth callback completes for that same sub", context do
-        OAuthHelpers.do_google_callback(
-          Phoenix.ConnTest.build_conn(),
-          context.oauth_cassette,
-          "state-812-existing"
-        )
+        conn =
+          OAuthHelpers.do_google_callback(
+            Phoenix.ConnTest.build_conn(),
+            context.oauth_cassette,
+            "state-812-existing"
+          )
+
+        {:ok, Map.put(context, :callback, conn)}
+      end
+
+      # The anchor. `refute_receive` cannot tell "the login was classified
+      # :existing, so nothing fired" from "the callback never got as far as
+      # classifying anything" — a cassette miss, a rejected state, an exception
+      # in the strategy all produce the same silence. A session token means the
+      # callback ran to completion and logged this user in.
+      then_ "the returning user is logged in", context do
+        assert Plug.Conn.get_session(context.callback, :user_token),
+               "the OAuth callback logged nobody in, so the refute below would hold " <>
+                 "for a callback that failed rather than for a returning user"
 
         {:ok, context}
       end

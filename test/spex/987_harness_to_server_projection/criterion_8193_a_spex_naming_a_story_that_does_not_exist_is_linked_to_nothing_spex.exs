@@ -38,7 +38,23 @@ defmodule CodeMySpecSpex.Story987.Criterion8193Spex do
       end
 
       when_ "the harness delivers a manifest containing it", context do
-        Fixtures.deliver_manifest(context.scope)
+        {:ok, %{"status" => "accepted"}} = Fixtures.deliver_manifest(context.scope)
+        {:ok, context}
+      end
+
+      # The scenario's first clause, and it used to go unchecked. A manifest is
+      # rejected *whole* on version skew, and a rejected manifest stores nothing
+      # — which satisfies the refute below for the one reason this criterion is
+      # not about. The file has to be on the projection before "it owns nothing"
+      # says anything.
+      then_ "the file is stored", context do
+        {:ok, view, _html} = live(context.conn, "/app/projects/#{context.project.id}/files")
+
+        assert render(view) =~ "99999999_a_story_that_never_existed",
+               "the ghost spex is not on the files projection, so the refute below " <>
+                 "would hold for a file that was never stored rather than for a file " <>
+                 "stored and linked to nothing"
+
         {:ok, context}
       end
 

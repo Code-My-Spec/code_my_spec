@@ -54,11 +54,26 @@ defmodule CodeMySpecSpex.Story812.Criterion6510Spex do
       end
 
       when_ "the OAuth callback completes with that matching email", context do
-        OAuthHelpers.do_google_callback(
-          Phoenix.ConnTest.build_conn(),
-          context.oauth_cassette,
-          "state-812-email"
-        )
+        conn =
+          OAuthHelpers.do_google_callback(
+            Phoenix.ConnTest.build_conn(),
+            context.oauth_cassette,
+            "state-812-email"
+          )
+
+        {:ok, Map.put(context, :callback, conn)}
+      end
+
+      # The anchor, and it carries more weight here than in 6509. This criterion
+      # turns on the auto-link *finding* the existing user by email — there is no
+      # Google integration to match on — and a callback that failed to link would
+      # be just as silent as one that linked correctly. A session token says the
+      # match was made and this user was logged in by it.
+      then_ "the matched user is logged in", context do
+        assert Plug.Conn.get_session(context.callback, :user_token),
+               "the OAuth callback logged nobody in, so the refute below would hold " <>
+                 "for a callback that never matched the email rather than for an " <>
+                 "auto-link that worked"
 
         {:ok, context}
       end
