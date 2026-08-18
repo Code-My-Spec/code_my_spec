@@ -295,16 +295,18 @@ defmodule CodeMySpec.Provisioning.Teardown do
   # in the zone at or beneath that name. Without this clause `dns_record` was
   # an unknown kind: every spex that wrote DNS reported "left behind" and left
   # real records pointing at a server that had already been deleted.
-  def resource(%Scope{} = scope, %{kind: "dns_record", location: location} = r, _opts) do
+  def resource(%Scope{} = scope, %{kind: "dns_record", location: location} = r, opts) do
     name = after_slash(location)
 
-    with {:ok, %{"id" => zone_id}} <- Cloudflare.find_zone(scope, name),
+    with {:ok, %{"id" => zone_id} = zone} <- Cloudflare.find_zone(scope, name),
          {:ok, records} <- Cloudflare.list_dns_records(scope, zone_id) do
+      doomed = doomed?(scope, name, zone["name"], opts)
+
       records
-      |> Enum.filter(&at_or_under?(&1["name"], name))
+      |> Enum.filter(doomed)
       |> Enum.each(&Cloudflare.delete_dns_record(scope, zone_id, &1["id"]))
 
-      confirm(r, absent?(fn -> any_record_left(scope, zone_id, name) end))
+      confirm(r, absent?(fn -> any_record_left(scope, zone_id, doomed) end))
     else
       {:error, :not_found} -> {:ok, r}
       _ -> {:error, r}
@@ -392,6 +394,54 @@ defmodule CodeMySpec.Provisioning.Teardown do
   end
 
   ## Internals
+
+  # Which records this teardown may remove, as a predicate.
+  #
+  # Below the apex it is the subtree, unchanged: the dns step writes a record
+  # for the hostname and one for each name beneath it, and removing the lot is
+  # what the clause above exists for.
+  #
+  # **At the apex the subtree is the entire zone**, and that is not a corner
+  # case — `prod`'s host *is* the bare domain, because `assign_hosts/2` gives it
+  # one. So removing a prod environment deleted every record the customer had:
+  # apex, every subdomain, MX, DKIM, SPF. Measured, on a real domain during QA
+  # of story 849 — astralbi.com went to zero records, and recovering it took a
+  # hand-rebuilt apex and a separate bug fix before the mail records could be
+  # republished (ab6029c5).
+  #
+  # `at_or_under?/2` is not wrong; it is being asked the wrong question. Its
+  # label-boundary check stops teardown reaching *outside* the name it was
+  # given, and nothing stopped it reaching everything inside — which, for a
+  # zone apex, is everything.
+  #
+  # So at the apex: the exact name only, and only where the record points at an
+  # address this project owns. That is the record setup aimed at a machine it is
+  # releasing, which is the one that must go or the name resolves to whoever
+  # gets the address next. Everything else at the apex belonged to the customer
+  # before setup ran. It is also what the dns step's own apex guard already
+  # promises the user — it refuses to repoint a resolving apex and says
+  # "remove the `prod` environment to leave the apex alone", and that sentence
+  # was false in the most expensive possible way.
+  defp doomed?(scope, name, zone_name, opts) do
+    case apex?(name, zone_name) do
+      false ->
+        &at_or_under?(&1["name"], name)
+
+      true ->
+        ours = project_addresses(scope, opts)
+        &(&1["name"] == name and &1["content"] in ours)
+    end
+  end
+
+  defp apex?(name, zone_name), do: is_binary(zone_name) and name == zone_name
+
+  defp project_addresses(scope, opts) do
+    scope
+    |> project_environments(opts)
+    |> Enum.map(& &1.ip)
+    |> Enum.filter(&(is_binary(&1) and &1 != ""))
+  end
+
 
   # Whether an adopted DNS record is one setup pointed at a machine of ours.
   #
@@ -524,15 +574,19 @@ defmodule CodeMySpec.Provisioning.Teardown do
   # Shaped like the `find_*` calls `absent?/1` polls elsewhere: `:not_found`
   # means gone, anything else means keep waiting. A `case` nested inside the
   # `confirm` call said the same thing three levels deep.
-  defp any_record_left(scope, zone_id, name) do
+  defp any_record_left(scope, zone_id, doomed) do
     case Cloudflare.list_dns_records(scope, zone_id) do
-      {:ok, remaining} -> still_present(remaining, name)
+      {:ok, remaining} -> still_present(remaining, doomed)
       other -> other
     end
   end
 
-  defp still_present(remaining, name) do
-    if Enum.any?(remaining, &at_or_under?(&1["name"], name)),
+  # Confirmed against the same predicate that chose what to delete. Asking
+  # `at_or_under?` here instead would never confirm an apex teardown: the
+  # records deliberately left standing are all "under" the apex, so a teardown
+  # that did exactly the right thing would report itself failed.
+  defp still_present(remaining, doomed) do
+    if Enum.any?(remaining, doomed),
       do: {:ok, :present},
       else: {:error, :not_found}
   end
