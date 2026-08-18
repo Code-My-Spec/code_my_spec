@@ -56,10 +56,18 @@ defmodule CodeMySpec.Generators.DeployBoilerplate do
       why: "declares one age recipient per environment, so UAT's key cannot open production's secrets"
     },
     %{
+      key: :boot_overlay,
+      path: "rel/overlays/bin/boot",
+      description: "boot release overlay",
+      why:
+        "the Dockerfile's CMD; decrypts the environment before starting the release, without which the app raises \"environment variable DATABASE_URL is missing\" and the deploy reports a failed traffic swap"
+    },
+    %{
       key: :migrate_overlay,
       path: "rel/overlays/bin/migrate",
       description: "migrate release overlay",
-      why: "lets the deploy migrate against the new image before traffic moves to it"
+      why:
+        "lets the deploy migrate against the new image before traffic moves to it, decrypting the same environment the app boots with"
     },
     %{
       key: :deploy_script,

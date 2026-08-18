@@ -94,6 +94,7 @@ defmodule CodeMySpec.Generators.DeployArtifacts do
       {"config/deploy.yml", kamal_config(app, image, host, "prod")},
       {"config/deploy.uat.yml", kamal_config(app, image, "uat.#{host}", "uat")},
       {".sops.yaml", sops_rules()},
+      {"rel/overlays/bin/boot", boot_overlay(app)},
       {"rel/overlays/bin/migrate", migrate_overlay(app)},
       {"bin/deploy", deploy_script()},
       {"bin/backup", backup_script(app)},
@@ -115,9 +116,22 @@ defmodule CodeMySpec.Generators.DeployArtifacts do
     # Build the release, then run it on a runtime with none of the build tools.
     FROM hexpm/elixir:1.17.3-erlang-27.1.2-debian-bookworm-20241111 AS builder
 
-    RUN apt-get update && apt-get install -y --no-install-recommends build-essential git \\
+    RUN apt-get update && apt-get install -y --no-install-recommends build-essential git curl \\
         && rm -rf /var/lib/apt/lists/*
     RUN mix local.hex --force && mix local.rebar --force
+
+    # sops, fetched here so the runtime stage needs no download tooling of its
+    # own. The container decrypts its own environment at boot, which is what
+    # makes SOPS_AGE_KEY the only secret the deploy has to carry.
+    #
+    # `dpkg --print-architecture` prints amd64/arm64, which is exactly how sops
+    # names its release assets — so this follows the image's own architecture
+    # rather than assuming whichever one the deploy box happens to be.
+    ARG SOPS_VERSION=3.9.4
+    RUN curl -fsSL -o /usr/local/bin/sops \\
+          "https://github.com/getsops/sops/releases/download/v${SOPS_VERSION}/sops-v${SOPS_VERSION}.linux.$(dpkg --print-architecture)" && \\
+        chmod +x /usr/local/bin/sops && \\
+        sops --version --disable-version-check
 
     ENV MIX_ENV=prod
     WORKDIR /build
@@ -130,6 +144,11 @@ defmodule CodeMySpec.Generators.DeployArtifacts do
     COPY priv priv
     COPY lib lib
     COPY assets assets
+
+    # The encrypted environments travel inside the image, as release overlays.
+    # The key does not: it arrives as SOPS_AGE_KEY at run time, so an image
+    # somebody pulls without the key is ciphertext and nothing else.
+    COPY envs rel/overlays/envs
 
     RUN mix assets.deploy
     RUN mix release
@@ -148,6 +167,10 @@ defmodule CodeMySpec.Generators.DeployArtifacts do
     WORKDIR /app
     COPY --from=builder /build/_build/prod/rel/#{app} ./
 
+    # sops, to decrypt that environment at boot. No download tooling in this
+    # stage — the builder already fetched it for this image's architecture.
+    COPY --from=builder /usr/local/bin/sops /usr/local/bin/sops
+
     # Not root. A container that runs as root turns a code-execution bug into a
     # host problem.
     RUN useradd --create-home --shell /usr/sbin/nologin #{app} && chown -R #{app}:#{app} /app
@@ -156,7 +179,14 @@ defmodule CodeMySpec.Generators.DeployArtifacts do
     ENV PHX_SERVER=true
     EXPOSE 4000
 
-    CMD ["bin/#{app}", "start"]
+    # `bin/boot`, not `bin/#{app} start`. The release reads DATABASE_URL and
+    # SECRET_KEY_BASE from its environment in runtime.exs, and nothing has put
+    # them there yet — the image carries the ciphertext and the container
+    # carries the key. Starting the release directly raises "environment
+    # variable DATABASE_URL is missing", kamal waits out its health timeout,
+    # and the deploy reports a failed traffic swap, naming the swap rather than
+    # the thing that was wrong.
+    CMD ["bin/boot"]
     """
   end
 
@@ -282,6 +312,62 @@ defmodule CodeMySpec.Generators.DeployArtifacts do
     """
   end
 
+  # Both overlays need the same environment for the same reason: each starts
+  # the release, and the release evaluates `runtime.exs`, which reads
+  # DATABASE_URL and SECRET_KEY_BASE from its environment.
+  #
+  # This is one function because the two drifted apart once already. The
+  # decryption was written for the serving path and `migrate` was left running
+  # the release raw, so every migration died on "environment variable
+  # DATABASE_URL is missing" — a deploy that could never complete, on every
+  # project the generator produced.
+  #
+  # Both failures are named before sops is asked to do anything. An absent key
+  # makes sops fail with "no identity matched any of the recipients", which
+  # reads as the file being encrypted to somebody else rather than as nobody
+  # having supplied a key.
+  defp sops_preamble(command) do
+    """
+    set -eu
+
+    cd -P -- "$(dirname -- "$0")/.."
+
+    ENV_NAME="${APP_ENV:-prod}"
+    ENV_FILE="envs/${ENV_NAME}.enc.env"
+
+    if [ ! -f "$ENV_FILE" ]; then
+      echo "$0: no $ENV_FILE in this image — setup encrypts one per environment" >&2
+      echo "$0: APP_ENV=$ENV_NAME; the image holds: $(ls envs 2>/dev/null | tr '\\n' ' ')" >&2
+      exit 1
+    fi
+
+    if [ -z "${SOPS_AGE_KEY:-}" ]; then
+      echo "$0: SOPS_AGE_KEY is not set, so $ENV_FILE cannot be decrypted" >&2
+      echo "$0: the deploy carries it to the host — see config/deploy*.yml env.secret" >&2
+      exit 1
+    fi
+
+    exec sops exec-env "$ENV_FILE" "#{command}"
+    """
+  end
+
+  # `exec` so the release is PID 1 and receives the signals a container stop
+  # sends. Running it as a child would leave kamal's stop waiting for a process
+  # that never hears it.
+  defp boot_overlay(app) do
+    """
+    #!/bin/sh
+    # Release overlay: turn the age key into an environment, then start the app.
+    #
+    # Setup encrypts each environment's secrets into `envs/<env>.enc.env` and
+    # commits the ciphertext, and hands the container exactly one secret —
+    # SOPS_AGE_KEY, that environment's own private key. Per-environment keys
+    # mean UAT's cannot open production's, so being able to deploy UAT
+    # discloses nothing about production.
+    #{sops_preamble("./bin/#{app} start")}\
+    """
+  end
+
   defp migrate_overlay(app) do
     """
     #!/bin/sh
@@ -290,9 +376,7 @@ defmodule CodeMySpec.Generators.DeployArtifacts do
     # `eval` rather than `rpc`, because the app is not started yet — this runs
     # before traffic moves, so a failed migration leaves the previous version
     # serving rather than half-migrating under a live one.
-    set -e
-
-    exec bin/#{app} eval "#{Macro.camelize(app)}.Release.migrate"
+    #{sops_preamble("./bin/#{app} eval #{Macro.camelize(app)}.Release.migrate")}\
     """
   end
 

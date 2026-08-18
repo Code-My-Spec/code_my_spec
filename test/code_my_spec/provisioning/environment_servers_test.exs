@@ -22,6 +22,7 @@ defmodule CodeMySpec.Provisioning.EnvironmentServersTest do
   alias CodeMySpec.ProjectSecrets
   alias CodeMySpec.Provisioning.Hetzner
   alias CodeMySpec.Provisioning.Steps
+  alias CodeMySpec.Provisioning.Storage
 
   setup do
     scope = full_scope_fixture()
@@ -48,7 +49,7 @@ defmodule CodeMySpec.Provisioning.EnvironmentServersTest do
 
     # The storage step's own words, so a project missing one credential is not
     # told two different things by two steps.
-    assert instructions == CodeMySpec.Provisioning.Storage.credentials_instructions()
+    assert instructions == Storage.credentials_instructions()
 
     # The point of the guard: nothing was asked of the provider. A server was
     # created before this check existed, and it billed from the moment Hetzner
