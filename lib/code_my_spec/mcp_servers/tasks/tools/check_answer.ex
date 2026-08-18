@@ -45,12 +45,6 @@ defmodule CodeMySpec.McpServers.Tasks.Tools.CheckAnswer do
          that queues a duplicate for them.
          """), frame}
 
-      {:error, :expired} ->
-        {:reply,
-         Response.tool()
-         |> Response.error("That question expired unanswered. Ask again if you still need it."),
-         frame}
-
       {:error, :not_configured} ->
         {:reply,
          Response.tool()

@@ -1323,24 +1323,6 @@ defmodule CodeMySpecSpex.Fixtures do
   end
 
   @doc """
-  Expire a pending question.
-
-  There is no public call for this — expiry is a state a question reaches by
-  being abandoned, not an action anyone takes — so the bridge writes it, and
-  is the only place that reaches for the changeset directly.
-  """
-  @spec expire_question(String.t()) :: :ok
-  def expire_question(id) do
-    {:ok, _} =
-      id
-      |> Notifications.get_question_request()
-      |> QuestionRequest.changeset(%{"status" => "expired"})
-      |> Repo.update()
-
-    :ok
-  end
-
-  @doc """
   Report a turn whose recording fails.
 
   Exercises the recorder directly rather than through the channel: the failure

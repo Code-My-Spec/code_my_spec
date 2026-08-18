@@ -91,15 +91,17 @@ defmodule CodeMySpecWeb.NotificationLiveTest do
     assert view |> element(".indicator-item") |> render() =~ "2"
   end
 
-  test "expired question shows as expired in the inbox", %{conn: conn, user: user} do
+  # Was "expired question shows as expired in the inbox", setting a status
+  # nothing in production could ever write. `expired` had two readers and no
+  # writer; story 896 decided against building the sweeper that would have made
+  # it reachable, so the status is gone and this asserts the terminal state the
+  # system actually has (83309b2a).
+  test "answered question shows as answered in the inbox", %{conn: conn, user: user} do
     req = create_question(user.id, "Too late?")
 
-    {:ok, _} =
-      req
-      |> CodeMySpec.Notifications.QuestionRequest.changeset(%{"status" => "expired"})
-      |> CodeMySpec.Repo.update()
+    {:ok, _} = CodeMySpec.Notifications.answer_question_request(req.id, %{"Too late?" => "Yes"})
 
     {:ok, _view, html} = live(conn, ~p"/app/notifications")
-    assert html =~ "expired"
+    assert html =~ "answered"
   end
 end

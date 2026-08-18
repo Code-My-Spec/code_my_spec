@@ -19,7 +19,13 @@ defmodule CodeMySpec.Notifications.QuestionRequest do
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
 
-  @statuses ~w(pending answered expired)
+  # `expired` was here with two readers and no writer — nothing in production
+  # could ever set it, and only the spex fixtures manufactured it. Story 896
+  # decided against building the sweeper that would have made it reachable: a
+  # question vanishing on a clock is a decision the user never made
+  # disappearing from the one place they would have seen it. Answering is the
+  # only terminal state, and in use it is enough (83309b2a).
+  @statuses ~w(pending answered)
 
   schema "question_requests" do
     field :title, :string

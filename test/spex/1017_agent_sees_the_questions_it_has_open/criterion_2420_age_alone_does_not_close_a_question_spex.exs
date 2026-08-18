@@ -7,16 +7,16 @@ defmodule CodeMySpecSpex.Story1017.Criterion2420Spex do
 
   > A question stays open until it is answered.
 
-  This is the no-expiry decision stated as behaviour. `expired` is currently a
-  legal status — `QuestionRequest` declares `~w(pending answered expired)` and
-  both `QuestionClient.poll/3` and `CheckAnswer` have branches for it — with no
-  writer anywhere in production. Only the spex fixtures manufacture it, and
-  `expire_question/1` says so outright: "There is no public call for this."
+  This is the no-expiry decision stated as behaviour. `expired` was a legal
+  status with two readers — `QuestionClient.poll/3` and `CheckAnswer` — and no
+  writer anywhere in production; only a spex fixture manufactured it, and that
+  fixture said so outright ("There is no public call for this").
 
-  The Three Amigos session chose to delete the status and its dead reader
-  branches rather than build the TTL that would justify them. So this criterion
-  guards against the other direction: somebody seeing the orphaned `expired`
-  branch later and implementing a sweeper to make it reachable.
+  The Three Amigos session chose to delete the status and its dead branches
+  rather than build the TTL that would justify them, and that deletion has since
+  happened — status, both readers, the fixture, and the UI branch that rendered
+  a state nothing could reach. So this criterion now guards against the
+  reverse: somebody deciding a question ought to age out and adding a sweeper.
 
   ## "A long time ago" is encoded as "across repeated stops", and that is a
   ## deliberate weakening

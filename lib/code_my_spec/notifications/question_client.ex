@@ -76,9 +76,6 @@ defmodule CodeMySpec.Notifications.QuestionClient do
       {:ok, %{status: 200, body: %{"status" => "answered", "answers" => answers}}} ->
         {:ok, answers}
 
-      {:ok, %{status: 200, body: %{"status" => "expired"}}} ->
-        {:error, :expired}
-
       {:ok, %{status: 200}} ->
         wait_and_retry(id, token, deadline)
 
