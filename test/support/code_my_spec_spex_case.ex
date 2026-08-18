@@ -3046,8 +3046,7 @@ defmodule CodeMySpecSpex.Case do
         Process.sleep(100)
         tear_down_steps_with_retry(scope, keys, opts, attempts - 1)
       else
-        IO.warn("spex teardown could not reach the database: #{Exception.message(error)}")
-        []
+        {:unreachable, Exception.message(error)}
       end
   catch
     :exit, _reason when attempts > 1 ->
@@ -3055,8 +3054,41 @@ defmodule CodeMySpecSpex.Case do
       tear_down_steps_with_retry(scope, keys, opts, attempts - 1)
 
     :exit, reason ->
-      IO.warn("spex teardown could not reach the database: #{inspect(reason, limit: 3)}")
-      []
+      {:unreachable, inspect(reason, limit: 3)}
+  end
+
+  # A teardown that cannot read its inventory has to fail, not return empty.
+  #
+  # Teardown works from the persisted resource rows, so a dead sandbox
+  # connection enumerates nothing and destroys nothing — and `[]` is exactly
+  # what a spex that made nothing also returns. The two were indistinguishable,
+  # so a run that leaked two Hetzner servers looked identical to a clean one;
+  # they were found by checking the account by hand (bb0e1b30).
+  #
+  # It did warn. That was not enough on its own: the warning scrolled past in a
+  # failing run, and nothing downstream treated it as a failure. Raising is the
+  # difference between a line in the output and a red test, and a leak that
+  # reports success is worse than a loud failure — it removes the one signal
+  # that would prompt a sweep.
+  #
+  # Raised from `on_exit`, so it marks the test failed after its assertions have
+  # already passed. That is the intended trade: the resources are real and
+  # somebody pays for them.
+  defp raise_unreachable!(scope, keys, reason) do
+    raise """
+    spex teardown could not reach the database, so it destroyed nothing.
+
+      project:  #{project_name(scope)}
+      steps:    #{Enum.join(keys, ", ")}
+      because:  #{reason}
+
+    Anything those steps recorded is still running at the provider. This is
+    reported as a failure rather than a warning because an empty teardown and a
+    teardown with nothing to do return the same thing, and the difference is
+    two servers nobody is watching (bb0e1b30).
+
+    Sweep with: MIX_ENV=test mix cms.provisioning_leaks --delete --force
+    """
   end
 
   defp slug(value) do
@@ -5283,17 +5315,23 @@ defmodule CodeMySpecSpex.Case do
         "teardown_#{slug(project_name(scope))}_#{Enum.join(keys, "_")}"
 
     teardown_later(name, name, fn ->
-      for {key, result} <- tear_down_steps_with_retry(scope, keys, opts) do
-        case result do
-          {:ok, _removed} ->
-            :ok
+      case tear_down_steps_with_retry(scope, keys, opts) do
+        {:unreachable, reason} ->
+          raise_unreachable!(scope, keys, reason)
 
-          {:error, {:left_behind, remaining}} ->
-            IO.warn(
-              "spex teardown left #{key} resources behind: " <>
-                inspect(Enum.map(remaining, & &1.location))
-            )
-        end
+        outcomes ->
+          for {key, result} <- outcomes do
+            case result do
+              {:ok, _removed} ->
+                :ok
+
+              {:error, {:left_behind, remaining}} ->
+                IO.warn(
+                  "spex teardown left #{key} resources behind: " <>
+                    inspect(Enum.map(remaining, & &1.location))
+                )
+            end
+          end
       end
     end)
   end
