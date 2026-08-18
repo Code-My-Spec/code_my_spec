@@ -190,6 +190,32 @@ defmodule CodeMySpec.Provisioning.Steps do
     end
   end
 
+  # There was no `verify(:dns, …)` clause, so dns fell to the catch-all at the
+  # bottom and always reported absent. A step whose records existed and
+  # resolved therefore read `not_started` after any page load — the mount
+  # re-verifies, and `{:ok, :absent}` overwrote a perfectly good `done` without
+  # asking Cloudflare anything (44905320).
+  #
+  # Criterion 2007 is "a step's state is checked against the provider, not
+  # remembered", and assumed-absent is neither. It also made a provisioned
+  # project indistinguishable from an untouched one for this step, and left the
+  # readback claiming records under a step that said it had never run.
+  #
+  # Asked of the zone rather than of a resolver. The step already confirms
+  # publication when it writes, and what verify needs to know is narrower and
+  # cheaper: does the record Cloudflare holds still point where this project
+  # put it. One zone lookup and one record list, whatever the environment
+  # count.
+  def verify(:dns, %Scope{} = scope, _opts) do
+    case {domain(scope), pointable_environments(scope)} do
+      {nil, _} -> {:ok, :absent}
+      # No environment has an address yet, so there is nothing dns could have
+      # written. Absent rather than satisfied: the server step has not run.
+      {_domain, []} -> {:ok, :absent}
+      {domain, environments} -> verify_dns_records(scope, domain, environments)
+    end
+  end
+
   def verify(:email, %Scope{} = scope, opts) do
     case {domain(scope), mail_environments(scope, opts)} do
       {nil, _} -> {:ok, :absent}
@@ -2516,6 +2542,59 @@ defmodule CodeMySpec.Provisioning.Steps do
   #
   # Partial results are carried through the failure so a run that registers
   # production and then fails on UAT can still clean up what it made.
+  # Only environments the server step has given an address. One without an ip
+  # has no record to check, and treating it as unsatisfied would keep dns
+  # permanently absent on a half-built project.
+  defp pointable_environments(scope) do
+    scope
+    |> permitted_environment_rows()
+    |> Enum.filter(&(is_binary(&1.ip) and &1.ip != "" and is_binary(&1.host) and &1.host != ""))
+  end
+
+  defp verify_dns_records(scope, domain, environments) do
+    with {:ok, %{"id" => zone_id}} <- Cloudflare.find_zone(scope, domain),
+         {:ok, records} <- Cloudflare.list_dns_records(scope, zone_id) do
+      dns_records_satisfied(records, environments)
+    else
+      # A zone we cannot read is a question unanswered, not a record missing.
+      # Absent is the safe reading: the step re-runs and `ensure_dns_record`
+      # converges rather than duplicating.
+      _ -> {:ok, :absent}
+    end
+  end
+
+  defp dns_records_satisfied(records, environments) do
+    case Enum.all?(environments, &record_points_at?(records, &1)) do
+      true -> {:ok, :satisfied, Enum.flat_map(environments, &dns_resources_for/1)}
+      false -> {:ok, :absent}
+    end
+  end
+
+  # Present *and* pointing at this environment's server. A record left over
+  # from a previous build points at an address the project no longer holds, and
+  # reporting that as satisfied is how a name keeps resolving to a machine
+  # somebody else was given.
+  defp record_points_at?(records, environment) do
+    Enum.any?(records, fn record ->
+      record["name"] == environment.host and record["content"] == environment.ip
+    end)
+  end
+
+  defp dns_resources_for(environment) do
+    [
+      %{
+        kind: "dns_record",
+        location: "cloudflare/#{environment.host}",
+        identifier: "#{environment.ip} environment=#{environment.name}"
+      },
+      %{
+        kind: "dns_verification",
+        location: environment.host,
+        identifier: "source=zone environment=#{environment.name}"
+      }
+    ]
+  end
+
   defp verify_sending_domains(scope, base, environments) do
     environments
     |> Enum.reduce_while({:ok, []}, fn environment, {:ok, acc} ->
