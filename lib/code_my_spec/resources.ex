@@ -229,12 +229,21 @@ defmodule CodeMySpec.Resources do
   # the first place. Re-deriving `:local` here, the same way
   # `Scope.for_local_project/2` does, is what makes an MCP-invoked run behave
   # like the button on the page instead of like whichever connection issued it.
-  defp project_scope(%Scope{environment: %Environment{type: :harness}} = scope, project) do
+  @doc """
+  A scope acting as `project`, with an `environment` real commands can run in.
+
+  Public because `project_scope/2` is the one place this coercion lives —
+  anything that needs to run a provisioning-shaped action (a step, or a
+  generator write) against a specific project from an MCP call should build
+  its scope through this rather than re-deriving `:local` itself.
+  """
+  @spec project_scope(Scope.t(), Project.t()) :: Scope.t()
+  def project_scope(%Scope{environment: %Environment{type: :harness}} = scope, project) do
     environment = Environment.new(:local, project.local_path)
     %Scope{scope | active_project: project, active_project_id: project.id, environment: environment}
   end
 
-  defp project_scope(%Scope{} = scope, project) do
+  def project_scope(%Scope{} = scope, project) do
     %Scope{scope | active_project: project, active_project_id: project.id}
   end
 

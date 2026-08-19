@@ -24,8 +24,28 @@ defmodule CodeMySpec.Generators.DeployArtifacts do
   """
 
   alias CodeMySpec.Environments
+  alias CodeMySpec.Provisioning.Repository
 
   @type result :: {:ok, [String.t()]} | {:error, term()}
+
+  @doc """
+  The OTP application name for a project — not the repository name.
+
+  `module_name` is where the app name already lives (e.g. `DevopsDrill`), and
+  underscoring it is the conversion `mix` makes in the other direction. The
+  fallback replaces hyphens rather than passing them through: `Repository.
+  default_name/1` is the project name slugified for GitHub, where hyphens are
+  correct and required, but an OTP app name cannot carry one — `DeployArtifacts`
+  interpolates this into a release name, a `_build/prod/rel/<app>` path and a
+  module name, and a hyphen breaks all three the same way it broke
+  `defmodule Devops-drillWeb.Router`.
+  """
+  @spec otp_app_name(map()) :: String.t()
+  def otp_app_name(%{module_name: name}) when is_binary(name) and name != "",
+    do: Macro.underscore(name)
+
+  def otp_app_name(project),
+    do: project |> Repository.default_name() |> String.replace("-", "_")
 
   @doc """
   Write every missing artifact, leaving anything already present alone.
