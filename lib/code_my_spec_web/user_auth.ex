@@ -411,11 +411,14 @@ defmodule CodeMySpecWeb.UserAuth do
 
   defp send_unauthorized_response(conn, error_code, error_description) do
     base_url = get_base_url()
+    resource = base_url <> conn.request_path
+    resource_metadata = base_url <> "/.well-known/oauth-protected-resource" <> conn.request_path
 
     conn
     |> put_resp_header(
       "www-authenticate",
-      "Bearer realm=\"#{base_url}/mcp\", error=\"#{error_code}\", error_description=\"#{error_description}\""
+      "Bearer realm=\"#{resource}\", error=\"#{error_code}\", " <>
+        "error_description=\"#{error_description}\", resource_metadata=\"#{resource_metadata}\""
     )
     |> put_status(:unauthorized)
     |> json(%{

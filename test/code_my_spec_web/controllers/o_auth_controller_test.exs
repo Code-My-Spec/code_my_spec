@@ -147,6 +147,61 @@ defmodule CodeMySpecWeb.OAuthControllerTest do
     end
   end
 
+  describe "GET /.well-known/oauth-protected-resource" do
+    test "the bare route names the shared /mcp resource", %{conn: conn} do
+      conn = get(conn, "/.well-known/oauth-protected-resource")
+
+      assert %{"resource" => resource} = json_response(conn, 200)
+      assert resource == CodeMySpecWeb.Endpoint.url() <> "/mcp"
+    end
+
+    test "a path-suffixed request names the exact resource a client is connecting to", %{
+      conn: conn
+    } do
+      # Every mount under /mcp used to get back the same "<base_url>/mcp" no
+      # matter which one asked, because the *path wildcard was ignored. A
+      # client validating that this value matches the URL it actually
+      # connected to (mcp/harness, not mcp) would fail on every request,
+      # independent of any token or auth state — this pins that it now
+      # reflects the real path.
+      conn = get(conn, "/.well-known/oauth-protected-resource/mcp/harness")
+
+      assert %{"resource" => resource} = json_response(conn, 200)
+      assert resource == CodeMySpecWeb.Endpoint.url() <> "/mcp/harness"
+    end
+
+    test "a different mount's path is named just as precisely", %{conn: conn} do
+      conn = get(conn, "/.well-known/oauth-protected-resource/mcp/stories")
+
+      assert %{"resource" => resource} = json_response(conn, 200)
+      assert resource == CodeMySpecWeb.Endpoint.url() <> "/mcp/stories"
+    end
+  end
+
+  describe "the 401 an unauthenticated MCP request gets back" do
+    test "realm names the exact resource requested, not the shared /mcp parent", %{conn: conn} do
+      conn = get(conn, "/mcp/harness")
+
+      assert conn.status == 401
+      [challenge] = get_resp_header(conn, "www-authenticate")
+      assert challenge =~ ~s(realm="#{CodeMySpecWeb.Endpoint.url()}/mcp/harness")
+      refute challenge =~ ~s(realm="#{CodeMySpecWeb.Endpoint.url()}/mcp"\")
+    end
+
+    test "resource_metadata points a client at that resource's own discovery doc", %{
+      conn: conn
+    } do
+      # RFC 9728 §5.1 — without this a client has to guess the discovery
+      # URL rather than being told it.
+      conn = get(conn, "/mcp/harness")
+
+      [challenge] = get_resp_header(conn, "www-authenticate")
+
+      assert challenge =~
+               ~s(resource_metadata="#{CodeMySpecWeb.Endpoint.url()}/.well-known/oauth-protected-resource/mcp/harness")
+    end
+  end
+
   # Helper function to create OAuth application fixture
   defp oauth_application_fixture(attrs \\ %{}) do
     attrs =

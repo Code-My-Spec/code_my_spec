@@ -196,21 +196,40 @@ defmodule CodeMySpecWeb.OAuthController do
 
   @doc """
   GET /.well-known/oauth-protected-resource
+  GET /.well-known/oauth-protected-resource/*path
   MCP Protected Resource Metadata (RFC 9728)
+
+  `resource` has to name the exact URL a client is connecting to, not a
+  shared parent. Every mount under `/mcp` — `/mcp/harness`, `/mcp/stories`,
+  the rest — used to get back the same `"resource": "<base_url>/mcp"`
+  regardless of which one asked, because this ignored `*path` entirely.
+  RFC 9728 doesn't mandate exact-match resource validation, but the MCP
+  authorization spec's clients are free to enforce it, and got a value that
+  could never match what they'd actually connected to — a discovery
+  response that fails validation on every single request, independent of
+  any token or auth state. Reachable from
+  `.well-known/oauth-protected-resource` bare (no suffix — the RFC 9728
+  default, host-wide) as well as the per-resource suffixed form.
   """
-  def protected_resource_metadata(conn, _params) do
+  def protected_resource_metadata(conn, params) do
     base_url = get_base_url()
+    resource = resource_url(base_url, params)
 
     conn
     |> put_resp_header("content-type", "application/json")
     |> put_resp_header("access-control-allow-origin", "*")
     |> json(%{
-      "resource" => "#{base_url}/mcp",
+      "resource" => resource,
       "authorization_servers" => [base_url],
       "scopes_supported" => ["read", "write"],
       "bearer_methods_supported" => ["header"]
     })
   end
+
+  defp resource_url(base_url, %{"path" => path}) when is_list(path) and path != [],
+    do: Enum.join([base_url | path], "/")
+
+  defp resource_url(base_url, _params), do: "#{base_url}/mcp"
 
   @doc """
   GET /.well-known/oauth-authorization-server
