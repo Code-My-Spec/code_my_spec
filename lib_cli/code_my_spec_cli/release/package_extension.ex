@@ -433,6 +433,20 @@ defmodule CodeMySpecCli.Release.PackageExtension do
   # `Path.wildcard/1` skips dot entries by default — without it, plugin.json and
   # the bin/hook,approve scripts (carrying `${CODEMYSPEC_PORT:-4004}`) silently
   # keep the dev port, shipping a prod plugin whose MCP server points at 4004.
+  #
+  # ## The fallback list is reordered, not rewritten
+  #
+  # Every skill carries `PORTS="4004 4003"` and tries each in turn, because
+  # neither port is right for everyone: a packaged-CLI user has 4003 and no
+  # 4004, a dev checkout has the reverse, and the two serve disjoint routes.
+  # A blanket token swap turns that list into `"4003 4003"` — a fallback that
+  # falls back to itself — which is exactly what shipped in v2.0.2 and is the
+  # bug this whole class kept producing (`5fdc0cbf`, `6c93a317`).
+  #
+  # So the pair is handled first and put back last, with the prod port leading:
+  # a shipped plugin tries 4003 and then 4004, and a dev tree tries 4004 and
+  # then 4003. The sentinel is what keeps the blanket pass from touching it in
+  # between.
   # sobelow_skip ["Traversal"]
   defp rewrite_dev_port(plugin_dest) do
     plugin_dest
@@ -444,7 +458,7 @@ defmodule CodeMySpecCli.Release.PackageExtension do
 
       rewritten =
         content
-        |> String.replace("4004", "4003")
+        |> CodeMySpec.Release.PluginPorts.rewrite()
         |> String.replace("dev.codemyspec.com", "codemyspec.com")
 
       if rewritten != content, do: File.write!(path, rewritten)
