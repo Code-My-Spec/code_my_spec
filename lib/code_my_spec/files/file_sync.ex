@@ -205,7 +205,10 @@ defmodule CodeMySpec.Files.FileSync do
     # Re-resolving here costs one read-model build per manifest and removes the
     # whole class: the harness reports what a file *is*, and the server, which
     # owns the database, decides what it *belongs to*.
-    observations = Scanner.resolve_owners(observations, Files.read_model(scope))
+    observations =
+      observations
+      |> Scanner.resolve_owners(Files.read_model(scope))
+      |> keep_backfilled_owners(existing_by_path)
 
     # And record where each spex file is, for criteria that do not already say.
     # The same reasoning as re-resolving ownership above: the association should
@@ -464,6 +467,42 @@ defmodule CodeMySpec.Files.FileSync do
             "that had none — their files are now found by record rather than by name"
         )
     end
+  end
+
+  # A `nil` from `resolve_owners/2` means "I have no rule for this file", not
+  # "this file has no owner", and the two must not be written the same way.
+  #
+  # `component_id` has a second writer. `ComponentSync.backfill_file_owners/2`
+  # claims `test/<path>_test.exs` for the component it tests, and by declared
+  # module for the Phoenix files whose location does not match their name — and
+  # it is careful never to steal, matching only `is_nil(f.component_id)`.
+  # `resolve_owners/2` cannot make that link at all: it matches a file's
+  # declared module against `component_by_module`, and a test file declares
+  # `CodeMySpec.Git.CLITest` while the component is `CodeMySpec.Git.CLI`. So it
+  # answered `nil` for every test file, wrote that over the backfill, and the
+  # backfill put it back inside the same transaction. Next scan, again — an
+  # oscillation that ran on every sync of every working copy (`d698ab0e`).
+  #
+  # Preserving costs nothing in correctness: the end state is what it already
+  # was, because the backfill won every round anyway. What goes is the write
+  # that was always immediately undone, and with it the two rows that made
+  # `changed_entries` permanently non-empty and kept the component projection
+  # from ever skipping.
+  #
+  # `story_id` is deliberately not preserved. Nothing else writes it, so a `nil`
+  # there really is this function's answer — a spex file whose criterion was
+  # deleted should lose its story, and holding the old one would be the mirror
+  # bug.
+  defp keep_backfilled_owners(observations, existing_by_path) do
+    Enum.map(observations, fn entry ->
+      with nil <- Map.get(entry, :component_id),
+           %{component_id: stored} when not is_nil(stored) <-
+             Map.get(existing_by_path, entry.path) do
+        Map.put(entry, :component_id, stored)
+      else
+        _ -> entry
+      end
+    end)
   end
 
   # Entries the stored row does not already say.

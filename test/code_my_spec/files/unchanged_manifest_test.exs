@@ -171,4 +171,64 @@ defmodule CodeMySpec.Files.UnchangedManifestTest do
            "a reconcile that did nothing still has to say it ran, or a quiet log " <>
              "reads as a harness that stopped syncing"
   end
+
+  # The oscillation that kept `changed_entries` permanently non-empty, and with
+  # it stopped the component projection from ever skipping (`d698ab0e`).
+  #
+  # The two directions are not equally well-defined. `ComponentSync`'s backfill
+  # goes module → path (`CodeMySpec.Git.CLI` → `.../git/cli_test.exs`), which is
+  # exact. `Scanner.resolve_owners/2` goes path → module by camelizing, and
+  # `cli` camelizes to `Cli`, not `CLI` — so it cannot resolve any component
+  # whose name carries an acronym. It answered `nil`, wrote that over the
+  # backfill, and the backfill put it back inside the same transaction. Every
+  # scan, on every working copy. Exactly two files on this project:
+  # `Git.CLI` and `Git.URLParser`.
+  test "a backfilled owner survives a manifest that cannot resolve one", %{scope: scope} do
+    component =
+      CodeMySpec.ComponentsFixtures.component_fixture(scope, %{
+        module_name: "Demo.CLI",
+        name: "CLI"
+      })
+
+    # `demo/cli` camelizes to `Demo.Cli`, which is not `Demo.CLI` — so
+    # `resolve_owners/2` finds nothing and answers nil, the production shape.
+    manifest = [observation("test/demo/cli_test.exs", %{role: :test})]
+    FileSync.reconcile_and_project(scope, manifest)
+
+    # Stand in for the backfill, which claims by path and never steals.
+    [row] = Files.list_files(scope)
+
+    {:ok, _} =
+      row
+      |> Ecto.Changeset.change(component_id: component.id)
+      |> CodeMySpec.Repo.update()
+
+    result = FileSync.reconcile_and_project(scope, manifest)
+
+    assert result.upserted == 0, """
+    The manifest wrote `component_id: nil` over an owner it has no rule to
+    resolve.
+
+    `ComponentSync` puts it back in the same transaction, so the end state was
+    always correct and the write was always wasted — but the row then disagrees
+    with the next manifest forever, which is what kept the projection skip from
+    firing.
+    """
+
+    [reloaded] = Files.list_files(scope)
+
+    assert reloaded.component_id == component.id,
+           "and the owner has to still be there — preserving it is the point"
+  end
+
+  test "a story that resolve_owners drops is still cleared", %{scope: scope} do
+    # The mirror of the clause above, asserted because the fix is deliberately
+    # asymmetric: nothing else writes `story_id`, so a nil there really is this
+    # function's answer and must be honoured.
+    manifest = [observation("lib/b.ex")]
+    FileSync.reconcile_and_project(scope, manifest)
+
+    [row] = Files.list_files(scope)
+    assert is_nil(row.story_id)
+  end
 end
