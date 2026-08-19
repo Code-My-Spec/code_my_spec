@@ -32,6 +32,7 @@ defmodule CodeMySpec.Resources do
   import Ecto.Query
 
   alias CodeMySpec.Configurations
+  alias CodeMySpec.Environments.Environment
   alias CodeMySpec.Projects
   alias CodeMySpec.Projects.Project
   alias CodeMySpec.Provisioning
@@ -210,6 +211,27 @@ defmodule CodeMySpec.Resources do
     end
   rescue
     _ -> :off
+  end
+
+  # An MCP call arriving over a harness connection carries that harness's own
+  # `environment` — `%Environment{type: :harness}`, correct for addressing
+  # *this session's* working copy (analysis, hooks) but not a general command
+  # runner: `CmsHarness.Environments.Harness.cmd/4` is a stub that always
+  # returns `{:error, :not_supported_on_harness}`. Provisioning steps that
+  # shell out (the repository push, most concretely) crashed on it —
+  # `String.trim(:error)`, the stub's return value pattern-matched as if it
+  # were `{output, status}` — rather than failing cleanly, because nothing
+  # upstream expects `cmd/4` to disagree with its own declared contract.
+  #
+  # Provisioning has always run against the project's own checkout, regardless
+  # of which session asked for it to run — the same assumption the web UI's
+  # `ProvisioningLive` gets for free by never carrying a harness-typed scope in
+  # the first place. Re-deriving `:local` here, the same way
+  # `Scope.for_local_project/2` does, is what makes an MCP-invoked run behave
+  # like the button on the page instead of like whichever connection issued it.
+  defp project_scope(%Scope{environment: %Environment{type: :harness}} = scope, project) do
+    environment = Environment.new(:local, project.local_path)
+    %Scope{scope | active_project: project, active_project_id: project.id, environment: environment}
   end
 
   defp project_scope(%Scope{} = scope, project) do
