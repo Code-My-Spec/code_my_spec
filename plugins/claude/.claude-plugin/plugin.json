@@ -29,7 +29,7 @@
     },
     "cms_cloud": {
       "type": "http",
-      "url": "https://codemyspec.com/mcp/harness",
+      "url": "https://dev.codemyspec.com/mcp/harness",
       "headers": {
         "X-Project-ID": "${CMS_CLOUD_PROJECT_ID}"
       }

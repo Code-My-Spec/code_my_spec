@@ -92,7 +92,7 @@ defmodule CodeMySpecCli.Release.PackageExtension do
     log("Copied plugin files into plugins/#{@plugin_slug}/")
 
     rewrite_dev_port(plugin_dest)
-    log("Rewrote dev port 4004 -> prod port 4003")
+    log("Rewrote dev values (4004 -> 4003, dev.codemyspec.com -> codemyspec.com)")
 
     create_marketplace_json(extension_dir, plugin_dest)
     log("Created marketplace.json")
@@ -140,7 +140,7 @@ defmodule CodeMySpecCli.Release.PackageExtension do
       log("Copied Antigravity plugin into antigravity/#{@plugin_slug}/")
 
       rewrite_dev_port(antigravity_dest)
-      log("Rewrote Antigravity dev port 4004 -> prod port 4003")
+      log("Rewrote Antigravity dev values (4004 -> 4003, dev.codemyspec.com -> codemyspec.com)")
 
       # cp_r preserves modes, but the hook script MUST be executable —
       # a silent chmod loss would make every hook a no-op.
@@ -246,7 +246,7 @@ defmodule CodeMySpecCli.Release.PackageExtension do
       log("Copied Codex plugin into codex/#{@plugin_slug}/")
 
       rewrite_dev_port(codex_dest)
-      log("Rewrote Codex dev port 4004 -> prod port 4003")
+      log("Rewrote Codex dev values (4004 -> 4003, dev.codemyspec.com -> codemyspec.com)")
 
       hook_script = Path.join([codex_dest, "bin", "hook"])
       if File.exists?(hook_script), do: File.chmod!(hook_script, 0o755)
@@ -424,9 +424,9 @@ defmodule CodeMySpecCli.Release.PackageExtension do
     end
   end
 
-  # Source tree is configured for dev (port 4004 so it can coexist with
-  # the published binary on 4003). Walk the whole plugin tree and swap every
-  # `4004` token to `4003` so the shipped plugin lands on the prod port.
+  # Source tree is configured for dev (port 4004, dev.codemyspec.com) so it can
+  # coexist with the published binary (port 4003, codemyspec.com). Walk the
+  # whole plugin tree and swap every dev token to its prod counterpart.
   # Originally limited to `.claude-plugin/`, but skill markdown files (under
   # `skills/`) now contain server calls that also need rewriting.
   # NOTE: `match_dot: true` is REQUIRED. `.claude-plugin/` is a dotdir, and
@@ -442,9 +442,12 @@ defmodule CodeMySpecCli.Release.PackageExtension do
     |> Enum.each(fn path ->
       content = File.read!(path)
 
-      if String.contains?(content, "4004") do
-        File.write!(path, String.replace(content, "4004", "4003"))
-      end
+      rewritten =
+        content
+        |> String.replace("4004", "4003")
+        |> String.replace("dev.codemyspec.com", "codemyspec.com")
+
+      if rewritten != content, do: File.write!(path, rewritten)
     end)
   end
 

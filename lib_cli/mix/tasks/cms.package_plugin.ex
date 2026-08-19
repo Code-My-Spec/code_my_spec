@@ -16,7 +16,8 @@ defmodule Mix.Tasks.Cms.PackagePlugin do
   Inspect the output:
 
       diff -r plugins/claude release/codemyspec-extension/plugins/codemyspec
-      grep -rn 4004 release/codemyspec-extension          # should be empty
+      grep -rn 4004 release/codemyspec-extension                  # should be empty
+      grep -rn dev.codemyspec.com release/codemyspec-extension    # should be empty
       grep -rn 4003 release/codemyspec-extension          # should show rewrites
   """
   @shortdoc "Lay out the plugin release locally for inspection"
@@ -50,5 +51,8 @@ defmodule Mix.Tasks.Cms.PackagePlugin do
     Mix.shell().info("Inspect:")
     Mix.shell().info("  diff -r CodeMySpec #{Path.relative_to(plugin, app_path)}")
     Mix.shell().info("  grep -rn 4004 #{Path.relative_to(out, app_path)}    # should be empty")
+    Mix.shell().info(
+      "  grep -rn dev.codemyspec.com #{Path.relative_to(out, app_path)}    # should be empty"
+    )
   end
 end
